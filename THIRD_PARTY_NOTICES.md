@@ -1,0 +1,114 @@
+# Third-party notices
+
+This file covers source incorporated or regenerated directly in Garden. It is
+not yet a complete inventory of every transitive package installed by the
+workspace package manager.
+
+## Bundled agent skills
+
+Garden includes a curated set of development-time agent instructions under
+`.agents/skills`. Their exact upstream repositories, local treatment, and
+primary license evidence are recorded in
+`third_party/agent-skills/UPSTREAM.md`. Complete upstream license files are
+bundled under `third_party/agent-skills/`.
+
+Copies without a verifiable redistribution grant were removed during OSS
+preparation. These instructions are not part of Garden's application runtime.
+
+## Cloudflare OS Workspace Docs
+
+Garden incorporates Cloudflare OS's embedded Workspace Docs browser client and
+server authority. The extracted sources are retained byte-identically at
+`third_party/cloudflare-os/workspace-docs/client.js` and
+`third_party/cloudflare-os/workspace-docs/server.js`. Reference:
+`cloudflare/cloudflare-os`, file
+`packages/workshop-backend/format-blueprints/workspace-docs.gadget`, commit
+`f0517773aa6a2f6fbb1281ddbadcca3cb6fd2992`.
+
+Cloudflare OS is licensed under the Apache License, Version 2.0. The complete
+upstream license is included at `third_party/cloudflare-os/LICENSE`.
+
+Garden's integration is modified: the upstream client runs in an isolated
+iframe; an external adapter maps its Gadget RPC vocabulary onto authenticated
+Effect HttpApi GET/POST/SSE routes; Effect Schema defines the contracts;
+`SynchronizedRef.modifyEffect` serializes Durable Object storage transitions;
+operation ids are deduplicated; and DOCX ingestion uses Cloudflare Workers AI
+`toMarkdown` plus structural HTML sanitization, matching Cloudflare OS's own
+document-conversion boundary. The typed `server-authority.ts` adaptation mechanically
+retains upstream `setDocumentLocked`/`applyOperationLocked` mutation behavior
+while composing it into Garden's existing per-thread Durable Object instead of
+introducing the gadget's second Durable Object.
+
+## Cloudflare Agents
+
+Garden carries `patches/agents@0.17.3.patch`, which modifies Cloudflare Agents
+distribution files used by the MCP session runtime. The patch changes replay,
+delivery acknowledgement, Durable Object storage handling, SSE rotation, and
+priming-event behavior.
+
+Upstream: https://github.com/cloudflare/agents
+
+The upstream MIT license, NOTICE, and third-party license inventory are
+included unchanged under `third_party/cloudflare-agents/`.
+
+## Executor
+
+Garden uses Executor v1.5.40 from upstream commit
+`b029643641832ef5f9b0d4ff263d96e1a5b2739c`. The public SDK and plugins are
+normal package dependencies. Exact upstream source retained under
+`third_party/executor` supplies only unpublished Cloudflare MCP/Durable Object,
+dynamic-runtime, encrypted-secret, toolkit, and preset surfaces. Garden's
+documented changes adapt those sources to one in-process Worker runtime and
+bound result envelopes.
+
+Upstream: https://github.com/UsefulSoftwareCo/executor
+
+Copyright (c) 2026 Rhys Sullivan
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+## shadcn/ui
+
+Garden's files under `packages/ui/components/ui` and
+`packages/ui/hooks/use-mobile.ts` were regenerated from the official shadcn/ui
+registry and then adapted to Garden's package boundaries.
+
+Copyright (c) 2023 shadcn
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
