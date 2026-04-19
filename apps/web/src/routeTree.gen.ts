@@ -21,6 +21,7 @@ import { Route as ApiIssuesRouteImport } from './routes/api/issues'
 import { Route as ApiInvitationsRouteImport } from './routes/api/invitations'
 import { Route as ApiInboxRouteImport } from './routes/api/inbox'
 import { Route as ApiConfigRouteImport } from './routes/api/config'
+import { Route as ApiBootstrapRouteImport } from './routes/api/bootstrap'
 import { Route as ApiAgentsRouteImport } from './routes/api/agents'
 import { Route as AuthenticatedWorkspaceRouteImport } from './routes/_authenticated/workspace'
 import { Route as ApiWorkspacesIdRouteImport } from './routes/api/workspaces/$id'
@@ -98,6 +99,11 @@ const ApiInboxRoute = ApiInboxRouteImport.update({
 const ApiConfigRoute = ApiConfigRouteImport.update({
   id: '/api/config',
   path: '/api/config',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBootstrapRoute = ApiBootstrapRouteImport.update({
+  id: '/api/bootstrap',
+  path: '/api/bootstrap',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAgentsRoute = ApiAgentsRouteImport.update({
@@ -205,6 +211,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/workspace': typeof AuthenticatedWorkspaceRoute
   '/api/agents': typeof ApiAgentsRouteWithChildren
+  '/api/bootstrap': typeof ApiBootstrapRoute
   '/api/config': typeof ApiConfigRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
   '/api/invitations': typeof ApiInvitationsRouteWithChildren
@@ -237,6 +244,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/workspace': typeof AuthenticatedWorkspaceRoute
   '/api/agents': typeof ApiAgentsRouteWithChildren
+  '/api/bootstrap': typeof ApiBootstrapRoute
   '/api/config': typeof ApiConfigRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
   '/api/invitations': typeof ApiInvitationsRouteWithChildren
@@ -271,6 +279,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/_authenticated/workspace': typeof AuthenticatedWorkspaceRoute
   '/api/agents': typeof ApiAgentsRouteWithChildren
+  '/api/bootstrap': typeof ApiBootstrapRoute
   '/api/config': typeof ApiConfigRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
   '/api/invitations': typeof ApiInvitationsRouteWithChildren
@@ -305,6 +314,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/workspace'
     | '/api/agents'
+    | '/api/bootstrap'
     | '/api/config'
     | '/api/inbox'
     | '/api/invitations'
@@ -337,6 +347,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/workspace'
     | '/api/agents'
+    | '/api/bootstrap'
     | '/api/config'
     | '/api/inbox'
     | '/api/invitations'
@@ -370,6 +381,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/_authenticated/workspace'
     | '/api/agents'
+    | '/api/bootstrap'
     | '/api/config'
     | '/api/inbox'
     | '/api/invitations'
@@ -403,6 +415,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   ApiAgentsRoute: typeof ApiAgentsRouteWithChildren
+  ApiBootstrapRoute: typeof ApiBootstrapRoute
   ApiConfigRoute: typeof ApiConfigRoute
   ApiInboxRoute: typeof ApiInboxRouteWithChildren
   ApiInvitationsRoute: typeof ApiInvitationsRouteWithChildren
@@ -499,6 +512,13 @@ declare module '@tanstack/react-router' {
       path: '/api/config'
       fullPath: '/api/config'
       preLoaderRoute: typeof ApiConfigRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/bootstrap': {
+      id: '/api/bootstrap'
+      path: '/api/bootstrap'
+      fullPath: '/api/bootstrap'
+      preLoaderRoute: typeof ApiBootstrapRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/agents': {
@@ -799,6 +819,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   ApiAgentsRoute: ApiAgentsRouteWithChildren,
+  ApiBootstrapRoute: ApiBootstrapRoute,
   ApiConfigRoute: ApiConfigRoute,
   ApiInboxRoute: ApiInboxRouteWithChildren,
   ApiInvitationsRoute: ApiInvitationsRouteWithChildren,

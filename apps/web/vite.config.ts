@@ -7,6 +7,7 @@ import { cloudflare } from '@cloudflare/vite-plugin'
 import agents from 'agents/vite'
 
 const config = defineConfig({
+  clearScreen: false,
   resolve: { tsconfigPaths: true },
   plugins: [
     devtools(),

@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
+@import 'dockview/dist/styles/dockview.css';
 @import '../../../packages/ui/styles/tokens.css';
 @import '../../../packages/ui/styles/base.css';
 @import './custom.css';

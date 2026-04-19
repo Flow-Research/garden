@@ -4,7 +4,7 @@ import { createAuth } from '@/lib/auth'
 import {
   badRequest,
   requireSession,
-  toWorkspace,
+  toWorkspaceFromOrganization,
   unauthorized,
 } from '@/lib/server/control-plane'
 
@@ -20,19 +20,7 @@ export const Route = createFileRoute('/api/workspaces')({
         })
         return Response.json(
           organizations.map((organization) =>
-            toWorkspace(
-              {
-                ...organization,
-                description: null,
-                context: null,
-                settings: {},
-                plan: null,
-                updatedAt: organization.createdAt,
-                logo: organization.logo ?? null,
-                metadata: organization.metadata ?? null,
-              },
-              'owner',
-            ),
+            toWorkspaceFromOrganization(organization, 'owner'),
           ),
         )
       },
@@ -60,23 +48,9 @@ export const Route = createFileRoute('/api/workspaces')({
               typeof body.context === 'string' ? body.context : undefined,
           },
         })
-        return Response.json(
-          toWorkspace(
-            {
-              ...organization,
-              description:
-                typeof body.description === 'string' ? body.description : null,
-              context: typeof body.context === 'string' ? body.context : null,
-              settings: {},
-              plan: null,
-              updatedAt: organization.createdAt,
-              logo: organization.logo ?? null,
-              metadata: organization.metadata ?? null,
-            },
-            'owner',
-          ),
-          { status: 201 },
-        )
+        return Response.json(toWorkspaceFromOrganization(organization, 'owner'), {
+          status: 201,
+        })
       },
     },
   },

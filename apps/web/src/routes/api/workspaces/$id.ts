@@ -1,14 +1,30 @@
-import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { createAuth } from '@/lib/auth'
-import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   notFound,
   requireSession,
-  toWorkspace,
+  toWorkspaceFromOrganization,
   unauthorized,
 } from '@/lib/server/control-plane'
+
+type FullOrganization = {
+  id: string
+  name: string
+  slug: string
+  createdAt: Date | string
+  logo?: string | null
+  metadata?: unknown
+  description?: string | null
+  context?: string | null
+  settings?: unknown
+  plan?: string | null
+  updatedAt?: Date | string | null
+  members: Array<{
+    userId: string
+    role: string
+  }>
+} | null
 
 export const Route = createFileRoute('/api/workspaces/$id')({
   server: {
@@ -16,17 +32,27 @@ export const Route = createFileRoute('/api/workspaces/$id')({
       GET: async ({ request, params }) => {
         const session = await requireSession(request)
         if (!session) return unauthorized()
-        const db = getDb(appEnv)
-        const [workspace] = await db
-          .select()
-          .from(schema.workspace)
-          .where(eq(schema.workspace.id, params.id))
-        if (!workspace) return notFound('Workspace not found')
-        return Response.json(toWorkspace(workspace))
+
+        const auth = createAuth(appEnv)
+        const organization = (await auth.api.getFullOrganization({
+          headers: request.headers,
+          query: {
+            organizationId: params.id,
+          },
+        })) as FullOrganization
+
+        if (!organization) return notFound('Workspace not found')
+
+        const role =
+          organization.members.find((member) => member.userId === session.user.id)
+            ?.role ?? 'member'
+
+        return Response.json(toWorkspaceFromOrganization(organization, role))
       },
       PATCH: async ({ request, params }) => {
         const session = await requireSession(request)
         if (!session) return unauthorized()
+
         const body = (await request.json().catch(() => null)) as Record<
           string,
           unknown
@@ -54,13 +80,21 @@ export const Route = createFileRoute('/api/workspaces/$id')({
             data,
           },
         })
-        const db = getDb(appEnv)
-        const [workspace] = await db
-          .select()
-          .from(schema.workspace)
-          .where(eq(schema.workspace.id, params.id))
-        if (!workspace) return notFound('Workspace not found')
-        return Response.json(toWorkspace(workspace))
+
+        const organization = (await auth.api.getFullOrganization({
+          headers: request.headers,
+          query: {
+            organizationId: params.id,
+          },
+        })) as FullOrganization
+
+        if (!organization) return notFound('Workspace not found')
+
+        const role =
+          organization.members.find((member) => member.userId === session.user.id)
+            ?.role ?? 'member'
+
+        return Response.json(toWorkspaceFromOrganization(organization, role))
       },
     },
   },
