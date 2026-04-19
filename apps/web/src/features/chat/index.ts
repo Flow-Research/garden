@@ -1,2 +1,1 @@
-export { ChatFab } from './components/chat-fab'
-export { ChatWindow } from './components/chat-window'
+export { ChatSessionExplorer } from './components/session-explorer'

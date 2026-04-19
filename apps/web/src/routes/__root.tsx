@@ -4,6 +4,7 @@ import {
   Scripts,
   createRootRoute,
 } from '@tanstack/react-router'
+import { NuqsAdapter } from 'nuqs/adapters/tanstack-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
 import { WebProviders } from '@/components/web-providers'
@@ -31,9 +32,11 @@ function RootDocument() {
         <HeadContent />
       </head>
       <body className="h-full overflow-hidden antialiased">
-        <WebProviders>
-          <Outlet />
-        </WebProviders>
+        <NuqsAdapter>
+          <WebProviders>
+            <Outlet />
+          </WebProviders>
+        </NuqsAdapter>
         <TanStackDevtools
           config={{ position: 'bottom-right' }}
           plugins={[

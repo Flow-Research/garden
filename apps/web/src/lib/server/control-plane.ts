@@ -1,0 +1,299 @@
+import { and, eq } from 'drizzle-orm'
+import { getDb, schema } from '@/lib/server/db'
+import { appEnv } from '@/lib/server/env'
+import { getAuthSession, toCoreUser } from '@/lib/server/session'
+import type { MemberRole } from '@accelerate/core/types'
+
+export function json(data: unknown, status = 200) {
+  return Response.json(data, { status })
+}
+
+export function badRequest(message: string) {
+  return json({ error: message }, 400)
+}
+
+export function unauthorized() {
+  return json({ error: 'Unauthorized' }, 401)
+}
+
+export function forbidden(message = 'Forbidden') {
+  return json({ error: message }, 403)
+}
+
+export function notFound(message = 'Not found') {
+  return json({ error: message }, 404)
+}
+
+export async function requireSession(request: Request) {
+  return getAuthSession(request, appEnv)
+}
+
+export async function resolveWorkspaceId(request: Request, userId: string) {
+  const url = new URL(request.url)
+  const candidate =
+    request.headers.get('X-Workspace-ID') ??
+    url.searchParams.get('workspace_id') ??
+    null
+  const db = getDb(appEnv)
+
+  if (candidate) {
+    const [membership] = await db
+      .select()
+      .from(schema.membership)
+      .where(
+        and(
+          eq(schema.membership.organizationId, candidate),
+          eq(schema.membership.userId, userId),
+        ),
+      )
+    if (membership) return candidate
+  }
+
+  const [membership] = await db
+    .select()
+    .from(schema.membership)
+    .where(eq(schema.membership.userId, userId))
+
+  return membership?.organizationId ?? null
+}
+
+export async function requireWorkspaceAccess(
+  request: Request,
+  workspaceId: string,
+) {
+  const session = await requireSession(request)
+  if (!session) return unauthorized()
+
+  const db = getDb(appEnv)
+  const [membership] = await db
+    .select({
+      organizationId: schema.membership.organizationId,
+      role: schema.membership.role,
+    })
+    .from(schema.membership)
+    .where(
+      and(
+        eq(schema.membership.organizationId, workspaceId),
+        eq(schema.membership.userId, session.user.id),
+      ),
+    )
+
+  if (!membership) {
+    return forbidden('Workspace access denied')
+  }
+
+  return {
+    session,
+    membership,
+  }
+}
+
+export function toWorkspace(
+  record: typeof schema.workspace.$inferSelect,
+  role = 'owner',
+) {
+  const created = record.createdAt
+    ? new Date(record.createdAt).toISOString()
+    : new Date().toISOString()
+  return {
+    id: record.id,
+    name: record.name,
+    slug: record.slug,
+    description: record.description ?? null,
+    context: record.context ?? null,
+    settings:
+      record.settings &&
+      typeof record.settings === 'object' &&
+      !Array.isArray(record.settings)
+        ? record.settings
+        : {},
+    repos: [],
+    issue_prefix: 'ACC',
+    created_at: created,
+    updated_at: record.updatedAt
+      ? new Date(record.updatedAt).toISOString()
+      : created,
+    role,
+  }
+}
+
+type OrganizationRecord = {
+  id: string
+  name: string
+  slug: string
+  createdAt: Date | string
+  logo?: string | null
+  metadata?: unknown
+  description?: string | null
+  context?: string | null
+  settings?: unknown
+  plan?: string | null
+  updatedAt?: Date | string | null
+}
+
+export function toWorkspaceFromOrganization(
+  record: OrganizationRecord,
+  role = 'owner',
+) {
+  const created = new Date(record.createdAt).toISOString()
+  return {
+    id: record.id,
+    name: record.name,
+    slug: record.slug,
+    description: record.description ?? null,
+    context: record.context ?? null,
+    settings:
+      record.settings &&
+      typeof record.settings === 'object' &&
+      !Array.isArray(record.settings)
+        ? (record.settings as Record<string, unknown>)
+        : {},
+    repos: [],
+    issue_prefix: 'ACC',
+    created_at: created,
+    updated_at: record.updatedAt
+      ? new Date(record.updatedAt).toISOString()
+      : created,
+    role,
+  }
+}
+
+type InvitationRecord = {
+  id: string
+  organizationId: string
+  inviterId: string
+  email: string
+  role?: string | null
+  status: string
+  createdAt?: Date | string | null
+  expiresAt?: Date | string | null
+  organizationName?: string | null
+  inviterName?: string | null
+  inviterEmail?: string | null
+}
+
+function toISOString(value?: Date | string | null) {
+  if (!value) {
+    return new Date().toISOString()
+  }
+
+  return new Date(value).toISOString()
+}
+
+function toMemberRole(role?: string | null): MemberRole {
+  return role === 'owner' || role === 'admin' || role === 'member'
+    ? role
+    : 'member'
+}
+
+function toInvitationStatus(status: string) {
+  switch (status) {
+    case 'accepted':
+    case 'rejected':
+    case 'canceled':
+      return status
+    default:
+      return 'pending'
+  }
+}
+
+export function toInvitation(record: InvitationRecord) {
+  return {
+    id: record.id,
+    organizationId: record.organizationId,
+    inviterId: record.inviterId,
+    email: record.email,
+    role: toMemberRole(record.role),
+    status: toInvitationStatus(record.status),
+    createdAt: toISOString(record.createdAt),
+    expiresAt: toISOString(record.expiresAt),
+    organizationName: record.organizationName ?? undefined,
+    inviterName: record.inviterName ?? undefined,
+    inviterEmail: record.inviterEmail ?? undefined,
+  }
+}
+
+export function toIssue(record: typeof schema.issue.$inferSelect) {
+  return {
+    id: record.id,
+    workspace_id: record.workspaceId,
+    number: record.number,
+    identifier: `ACC-${record.number}`,
+    title: record.title,
+    description: record.description ?? null,
+    status: record.status,
+    priority: record.priority,
+    assignee_type:
+      record.assigneeType === 'user' ? 'member' : record.assigneeType,
+    assignee_id: record.assigneeId ?? null,
+    creator_type: 'member',
+    creator_id: record.createdBy,
+    parent_issue_id: record.parentId ?? null,
+    project_id: record.projectId ?? null,
+    position: 0,
+    due_date: null,
+    reactions: [],
+    created_at: record.createdAt
+      ? new Date(record.createdAt).toISOString()
+      : new Date().toISOString(),
+    updated_at: record.updatedAt
+      ? new Date(record.updatedAt).toISOString()
+      : new Date().toISOString(),
+  }
+}
+
+export function toAgent(record: typeof schema.agent.$inferSelect) {
+  const created = record.createdAt
+    ? new Date(record.createdAt).toISOString()
+    : new Date().toISOString()
+  return {
+    id: record.id,
+    workspace_id: record.workspaceId,
+    reports_to: record.reportsTo ?? null,
+    runtime_id: '',
+    name: record.name,
+    description: record.roleTitle ?? '',
+    instructions: '',
+    avatar_url: null,
+    runtime_mode: 'cloud',
+    runtime_config: record.persona ? JSON.parse(record.persona) : {},
+    custom_env: {},
+    custom_args: [],
+    custom_env_redacted: false,
+    visibility: 'workspace',
+    status: record.status === 'archived' ? 'offline' : 'idle',
+    max_concurrent_tasks: 1,
+    owner_id: record.ownerUserId ?? null,
+    skills: [],
+    created_at: created,
+    updated_at: created,
+    archived_at: record.status === 'archived' ? created : null,
+    archived_by: null,
+  }
+}
+
+export function toSkill(record: typeof schema.skill.$inferSelect) {
+  const created = record.createdAt
+    ? new Date(record.createdAt).toISOString()
+    : new Date().toISOString()
+  return {
+    id: record.id,
+    workspace_id: record.workspaceId,
+    name: record.name,
+    description: record.description ?? '',
+    content: record.body ?? '',
+    config: record.frontmatter ? JSON.parse(record.frontmatter) : {},
+    files: [],
+    created_by: record.authorId ?? null,
+    created_at: created,
+    updated_at: record.updatedAt
+      ? new Date(record.updatedAt).toISOString()
+      : created,
+  }
+}
+
+export function toCoreSessionUser(
+  result: NonNullable<Awaited<ReturnType<typeof getAuthSession>>>,
+) {
+  return toCoreUser(result.user)
+}

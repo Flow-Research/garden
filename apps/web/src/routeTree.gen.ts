@@ -26,7 +26,6 @@ import { Route as ApiAgentsRouteImport } from './routes/api/agents'
 import { Route as AuthenticatedWorkspaceRouteImport } from './routes/_authenticated/workspace'
 import { Route as ApiWorkspacesIdRouteImport } from './routes/api/workspaces/$id'
 import { Route as ApiSkillsIdRouteImport } from './routes/api/skills/$id'
-import { Route as ApiProjectsSearchRouteImport } from './routes/api/projects/search'
 import { Route as ApiIssuesSearchRouteImport } from './routes/api/issues/search'
 import { Route as ApiIssuesChildProgressRouteImport } from './routes/api/issues/child-progress'
 import { Route as ApiInvitationsIdRouteImport } from './routes/api/invitations/$id'
@@ -126,11 +125,6 @@ const ApiSkillsIdRoute = ApiSkillsIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => ApiSkillsRoute,
 } as any)
-const ApiProjectsSearchRoute = ApiProjectsSearchRouteImport.update({
-  id: '/api/projects/search',
-  path: '/api/projects/search',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiIssuesSearchRoute = ApiIssuesSearchRouteImport.update({
   id: '/search',
   path: '/search',
@@ -226,7 +220,6 @@ export interface FileRoutesByFullPath {
   '/api/invitations/$id': typeof ApiInvitationsIdRouteWithChildren
   '/api/issues/child-progress': typeof ApiIssuesChildProgressRoute
   '/api/issues/search': typeof ApiIssuesSearchRoute
-  '/api/projects/search': typeof ApiProjectsSearchRoute
   '/api/skills/$id': typeof ApiSkillsIdRoute
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
@@ -259,7 +252,6 @@ export interface FileRoutesByTo {
   '/api/invitations/$id': typeof ApiInvitationsIdRouteWithChildren
   '/api/issues/child-progress': typeof ApiIssuesChildProgressRoute
   '/api/issues/search': typeof ApiIssuesSearchRoute
-  '/api/projects/search': typeof ApiProjectsSearchRoute
   '/api/skills/$id': typeof ApiSkillsIdRoute
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
@@ -294,7 +286,6 @@ export interface FileRoutesById {
   '/api/invitations/$id': typeof ApiInvitationsIdRouteWithChildren
   '/api/issues/child-progress': typeof ApiIssuesChildProgressRoute
   '/api/issues/search': typeof ApiIssuesSearchRoute
-  '/api/projects/search': typeof ApiProjectsSearchRoute
   '/api/skills/$id': typeof ApiSkillsIdRoute
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
@@ -329,7 +320,6 @@ export interface FileRouteTypes {
     | '/api/invitations/$id'
     | '/api/issues/child-progress'
     | '/api/issues/search'
-    | '/api/projects/search'
     | '/api/skills/$id'
     | '/api/workspaces/$id'
     | '/api/agents/$id/archive'
@@ -362,7 +352,6 @@ export interface FileRouteTypes {
     | '/api/invitations/$id'
     | '/api/issues/child-progress'
     | '/api/issues/search'
-    | '/api/projects/search'
     | '/api/skills/$id'
     | '/api/workspaces/$id'
     | '/api/agents/$id/archive'
@@ -396,7 +385,6 @@ export interface FileRouteTypes {
     | '/api/invitations/$id'
     | '/api/issues/child-progress'
     | '/api/issues/search'
-    | '/api/projects/search'
     | '/api/skills/$id'
     | '/api/workspaces/$id'
     | '/api/agents/$id/archive'
@@ -425,7 +413,6 @@ export interface RootRouteChildren {
   ApiSkillsRoute: typeof ApiSkillsRouteWithChildren
   ApiWorkspacesRoute: typeof ApiWorkspacesRouteWithChildren
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
-  ApiProjectsSearchRoute: typeof ApiProjectsSearchRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -548,13 +535,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/skills/$id'
       preLoaderRoute: typeof ApiSkillsIdRouteImport
       parentRoute: typeof ApiSkillsRoute
-    }
-    '/api/projects/search': {
-      id: '/api/projects/search'
-      path: '/api/projects/search'
-      fullPath: '/api/projects/search'
-      preLoaderRoute: typeof ApiProjectsSearchRouteImport
-      parentRoute: typeof rootRouteImport
     }
     '/api/issues/search': {
       id: '/api/issues/search'
@@ -829,7 +809,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiSkillsRoute: ApiSkillsRouteWithChildren,
   ApiWorkspacesRoute: ApiWorkspacesRouteWithChildren,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
-  ApiProjectsSearchRoute: ApiProjectsSearchRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
