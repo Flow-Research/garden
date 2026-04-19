@@ -1,0 +1,26 @@
+{
+  "name": "@accelerate/db",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@accelerate/env": "workspace:*",
+    "@neondatabase/serverless": "^1.0.1",
+    "drizzle-orm": "^0.44.6"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.7",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "lint:fix": "oxlint -c ../../.oxlintrc.json --fix .",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push"
+  },
+  "exports": {
+    ".": "./src/client.ts",
+    "./schema": "./src/schema/index.ts",
+    "./schema/*": "./src/schema/*.ts"
+  }
+}

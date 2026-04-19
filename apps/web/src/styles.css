@@ -1,0 +1,28 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600;700&display=swap');
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import '../../../packages/ui/styles/tokens.css';
+@import '../../../packages/ui/styles/base.css';
+@import './custom.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@source "./**/*.{ts,tsx}";
+@source "../../../packages/ui/**/*.{ts,tsx}";
+@source "../../../packages/core/**/*.{ts,tsx}";
+
+:root {
+  --font-sans:
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}

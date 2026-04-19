@@ -1,0 +1,32 @@
+{
+  "name": "@accelerate/workspace",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:web": "turbo run dev --filter=@accelerate/web",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "format": "oxfmt -c ./.oxfmtrc.json --check apps packages",
+    "format:write": "oxfmt -c ./.oxfmtrc.json --write apps packages",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "oxfmt": "^0.45.0",
+    "oxlint": "^1.60.0",
+    "turbo": "^2.5.8",
+    "typescript": "catalog:"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "lightningcss"
+    ]
+  },
+  "dependencies": {
+    "better-result": "^2.8.2"
+  }
+}
