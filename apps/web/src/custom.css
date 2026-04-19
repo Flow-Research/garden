@@ -176,6 +176,7 @@
 .accelerate-dock-tab {
   display: flex;
   align-items: center;
+  min-width: 0;
 }
 
 .accelerate-dock-tab__label {
@@ -190,6 +191,42 @@
   align-items: center;
   gap: 0.125rem;
   padding-right: 0.25rem;
+}
+
+.accelerate-dock-tabstrip-actions {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding-left: 0.125rem;
+  padding-right: 0.25rem;
+}
+
+.accelerate-dock-tabstrip-actions__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.accelerate-dock-tabstrip-actions__button:hover {
+  background: color-mix(in srgb, var(--muted) 88%, transparent);
+  color: var(--foreground);
+}
+
+.accelerate-dock-tabstrip-actions__button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.accelerate-dock-tabstrip-actions__button:disabled:hover {
+  background: transparent;
+  color: var(--muted-foreground);
 }
 
 .accelerate-dock-prefix {
