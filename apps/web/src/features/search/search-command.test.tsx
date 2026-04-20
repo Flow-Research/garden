@@ -6,17 +6,23 @@ import { SearchCommand } from './search-command'
 import { useSearchStore } from './search-store'
 
 const {
-  mockPush,
   mockSearchIssues,
   mockSearchProjects,
   mockRecentItems,
   mockAllIssues,
+  mockOpenPanel,
+  mockGetNextIdleSession,
+  mockSetActiveSession,
 } = vi.hoisted(() => ({
-  mockPush: vi.fn(),
   mockSearchIssues: vi.fn(),
   mockSearchProjects: vi.fn(),
   mockRecentItems: { current: [] as Array<{ id: string; visitedAt: number }> },
   mockAllIssues: { current: [] as Array<Record<string, unknown>> },
+  mockOpenPanel: vi.fn(),
+  mockGetNextIdleSession: vi
+    .fn()
+    .mockResolvedValue({ id: 'session-new', title: 'New Chat' }),
+  mockSetActiveSession: vi.fn(),
 }))
 
 vi.mock('@garden/core/api', () => ({
@@ -52,15 +58,55 @@ vi.mock('@tanstack/react-query', () => ({
 
 vi.mock('../navigation', () => ({
   useNavigation: () => ({
-    push: mockPush,
+    push: vi.fn(),
+  }),
+}))
+
+vi.mock('@garden/core/chat', () => ({
+  useChatStore: Object.assign(
+    (
+      selector?: (state: {
+        activeSessionId: string | null
+        setActiveSession: typeof mockSetActiveSession
+      }) => unknown,
+    ) => {
+      const state = {
+        activeSessionId: null,
+        setActiveSession: mockSetActiveSession,
+      }
+      return selector ? selector(state) : state
+    },
+    {
+      getState: () => ({
+        activeSessionId: null,
+        setActiveSession: mockSetActiveSession,
+      }),
+    },
+  ),
+}))
+
+vi.mock('@/components/shell/workspace-dock', () => ({
+  useWorkspaceDock: () => ({
+    openPanel: mockOpenPanel,
+  }),
+}))
+
+vi.mock('@/features/chat/use-agent-chat-sessions', () => ({
+  useAgentSessions: () => ({
+    getNextIdleSession: mockGetNextIdleSession,
   }),
 }))
 
 describe('SearchCommand', () => {
   beforeEach(() => {
-    mockPush.mockReset()
     mockSearchIssues.mockReset().mockResolvedValue({ issues: [] })
     mockSearchProjects.mockReset().mockResolvedValue({ projects: [] })
+    mockOpenPanel.mockReset()
+    mockGetNextIdleSession.mockReset().mockResolvedValue({
+      id: 'session-new',
+      title: 'New Chat',
+    })
+    mockSetActiveSession.mockReset()
     mockRecentItems.current = []
     mockAllIssues.current = []
 
@@ -77,7 +123,7 @@ describe('SearchCommand', () => {
 
     render(<SearchCommand />)
 
-    const input = screen.getByPlaceholderText('Type a command or search...')
+    const input = screen.getByPlaceholderText('Search issues or open a panel...')
     await user.click(input)
 
     expect(useSearchStore.getState().open).toBe(true)
@@ -95,14 +141,14 @@ describe('SearchCommand', () => {
   it('does not show pages when no query is entered', () => {
     render(<SearchCommand />)
 
-    expect(screen.queryByText('Pages')).not.toBeInTheDocument()
+    expect(screen.queryByText('Panels')).not.toBeInTheDocument()
   })
 
   it('filters navigation pages by query', async () => {
     const user = userEvent.setup()
     render(<SearchCommand />)
 
-    const input = screen.getByPlaceholderText('Type a command or search...')
+    const input = screen.getByPlaceholderText('Search issues or open a panel...')
     await user.type(input, 'set')
 
     await waitFor(() => {
@@ -121,13 +167,16 @@ describe('SearchCommand', () => {
     const user = userEvent.setup()
     render(<SearchCommand />)
 
-    const input = screen.getByPlaceholderText('Type a command or search...')
+    const input = screen.getByPlaceholderText('Search issues or open a panel...')
     await user.type(input, 'settings')
 
     const settingsItem = await screen.findByText('Settings')
     await user.click(settingsItem)
 
-    expect(mockPush).toHaveBeenCalledWith('/settings')
+    expect(mockOpenPanel).toHaveBeenCalledWith({
+      kind: 'settings',
+      title: 'Settings',
+    })
     expect(useSearchStore.getState().open).toBe(false)
   })
 
@@ -153,7 +202,7 @@ describe('SearchCommand', () => {
 
     render(<SearchCommand />)
 
-    expect(screen.getByText('Recent')).toBeInTheDocument()
+    expect(screen.getByText('Recent Issues')).toBeInTheDocument()
     expect(screen.getByText('First issue')).toBeInTheDocument()
     expect(screen.getByText('MUL-1')).toBeInTheDocument()
     expect(screen.getByText('Second issue')).toBeInTheDocument()
@@ -176,7 +225,7 @@ describe('SearchCommand', () => {
 
     render(<SearchCommand />)
 
-    expect(screen.getByText('Recent')).toBeInTheDocument()
+    expect(screen.getByText('Recent Issues')).toBeInTheDocument()
     expect(screen.getByText('Existing issue')).toBeInTheDocument()
     expect(screen.queryByText('deleted-issue')).not.toBeInTheDocument()
   })

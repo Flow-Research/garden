@@ -89,7 +89,7 @@ function RestoringWorkspaceShell() {
           </div>
           <div className="space-y-2">
             <div className="px-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-              Active Work
+              Tasks
             </div>
             <Skeleton className="h-8 w-full rounded-md" />
             <Skeleton className="h-8 w-full rounded-md" />

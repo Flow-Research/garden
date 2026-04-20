@@ -16,10 +16,13 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiWorkspacesRouteImport } from './routes/api/workspaces'
 import { Route as ApiSkillsRouteImport } from './routes/api/skills'
 import { Route as ApiRuntimesRouteImport } from './routes/api/runtimes'
+import { Route as ApiProjectsRouteImport } from './routes/api/projects'
 import { Route as ApiMeRouteImport } from './routes/api/me'
 import { Route as ApiIssuesRouteImport } from './routes/api/issues'
 import { Route as ApiInvitationsRouteImport } from './routes/api/invitations'
 import { Route as ApiInboxRouteImport } from './routes/api/inbox'
+import { Route as ApiDashboardRouteImport } from './routes/api/dashboard'
+import { Route as ApiConnectionsRouteImport } from './routes/api/connections'
 import { Route as ApiConfigRouteImport } from './routes/api/config'
 import { Route as ApiBootstrapRouteImport } from './routes/api/bootstrap'
 import { Route as ApiAgentsRouteImport } from './routes/api/agents'
@@ -28,14 +31,24 @@ import { Route as ApiWorkspacesIdRouteImport } from './routes/api/workspaces/$id
 import { Route as ApiSkillsIdRouteImport } from './routes/api/skills/$id'
 import { Route as ApiIssuesSearchRouteImport } from './routes/api/issues/search'
 import { Route as ApiIssuesChildProgressRouteImport } from './routes/api/issues/child-progress'
+import { Route as ApiIssuesIdRouteImport } from './routes/api/issues/$id'
 import { Route as ApiInvitationsIdRouteImport } from './routes/api/invitations/$id'
 import { Route as ApiInboxUnreadCountRouteImport } from './routes/api/inbox/unread-count'
+import { Route as ApiCommentsIdRouteImport } from './routes/api/comments/$id'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiAgentsIdRouteImport } from './routes/api/agents/$id'
 import { Route as ApiWorkspacesIdMembersRouteImport } from './routes/api/workspaces/$id/members'
 import { Route as ApiWorkspacesIdInvitationsRouteImport } from './routes/api/workspaces/$id/invitations'
+import { Route as ApiIssuesIdUsageRouteImport } from './routes/api/issues/$id/usage'
+import { Route as ApiIssuesIdUnsubscribeRouteImport } from './routes/api/issues/$id/unsubscribe'
+import { Route as ApiIssuesIdTimelineRouteImport } from './routes/api/issues/$id/timeline'
+import { Route as ApiIssuesIdSubscribersRouteImport } from './routes/api/issues/$id/subscribers'
+import { Route as ApiIssuesIdSubscribeRouteImport } from './routes/api/issues/$id/subscribe'
+import { Route as ApiIssuesIdReactionsRouteImport } from './routes/api/issues/$id/reactions'
+import { Route as ApiIssuesIdCommentsRouteImport } from './routes/api/issues/$id/comments'
 import { Route as ApiInvitationsIdDeclineRouteImport } from './routes/api/invitations/$id/decline'
 import { Route as ApiInvitationsIdAcceptRouteImport } from './routes/api/invitations/$id/accept'
+import { Route as ApiCommentsIdReactionsRouteImport } from './routes/api/comments/$id/reactions'
 import { Route as ApiAgentsIdRestoreRouteImport } from './routes/api/agents/$id/restore'
 import { Route as ApiAgentsIdArchiveRouteImport } from './routes/api/agents/$id/archive'
 import { Route as ApiWorkspacesIdMembersMemberIdRouteImport } from './routes/api/workspaces/$id/members/$memberId'
@@ -75,6 +88,11 @@ const ApiRuntimesRoute = ApiRuntimesRouteImport.update({
   path: '/api/runtimes',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiProjectsRoute = ApiProjectsRouteImport.update({
+  id: '/api/projects',
+  path: '/api/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiMeRoute = ApiMeRouteImport.update({
   id: '/api/me',
   path: '/api/me',
@@ -93,6 +111,16 @@ const ApiInvitationsRoute = ApiInvitationsRouteImport.update({
 const ApiInboxRoute = ApiInboxRouteImport.update({
   id: '/api/inbox',
   path: '/api/inbox',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDashboardRoute = ApiDashboardRouteImport.update({
+  id: '/api/dashboard',
+  path: '/api/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiConnectionsRoute = ApiConnectionsRouteImport.update({
+  id: '/api/connections',
+  path: '/api/connections',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiConfigRoute = ApiConfigRouteImport.update({
@@ -135,6 +163,11 @@ const ApiIssuesChildProgressRoute = ApiIssuesChildProgressRouteImport.update({
   path: '/child-progress',
   getParentRoute: () => ApiIssuesRoute,
 } as any)
+const ApiIssuesIdRoute = ApiIssuesIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiIssuesRoute,
+} as any)
 const ApiInvitationsIdRoute = ApiInvitationsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -144,6 +177,11 @@ const ApiInboxUnreadCountRoute = ApiInboxUnreadCountRouteImport.update({
   id: '/unread-count',
   path: '/unread-count',
   getParentRoute: () => ApiInboxRoute,
+} as any)
+const ApiCommentsIdRoute = ApiCommentsIdRouteImport.update({
+  id: '/api/comments/$id',
+  path: '/api/comments/$id',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
@@ -166,6 +204,41 @@ const ApiWorkspacesIdInvitationsRoute =
     path: '/invitations',
     getParentRoute: () => ApiWorkspacesIdRoute,
   } as any)
+const ApiIssuesIdUsageRoute = ApiIssuesIdUsageRouteImport.update({
+  id: '/usage',
+  path: '/usage',
+  getParentRoute: () => ApiIssuesIdRoute,
+} as any)
+const ApiIssuesIdUnsubscribeRoute = ApiIssuesIdUnsubscribeRouteImport.update({
+  id: '/unsubscribe',
+  path: '/unsubscribe',
+  getParentRoute: () => ApiIssuesIdRoute,
+} as any)
+const ApiIssuesIdTimelineRoute = ApiIssuesIdTimelineRouteImport.update({
+  id: '/timeline',
+  path: '/timeline',
+  getParentRoute: () => ApiIssuesIdRoute,
+} as any)
+const ApiIssuesIdSubscribersRoute = ApiIssuesIdSubscribersRouteImport.update({
+  id: '/subscribers',
+  path: '/subscribers',
+  getParentRoute: () => ApiIssuesIdRoute,
+} as any)
+const ApiIssuesIdSubscribeRoute = ApiIssuesIdSubscribeRouteImport.update({
+  id: '/subscribe',
+  path: '/subscribe',
+  getParentRoute: () => ApiIssuesIdRoute,
+} as any)
+const ApiIssuesIdReactionsRoute = ApiIssuesIdReactionsRouteImport.update({
+  id: '/reactions',
+  path: '/reactions',
+  getParentRoute: () => ApiIssuesIdRoute,
+} as any)
+const ApiIssuesIdCommentsRoute = ApiIssuesIdCommentsRouteImport.update({
+  id: '/comments',
+  path: '/comments',
+  getParentRoute: () => ApiIssuesIdRoute,
+} as any)
 const ApiInvitationsIdDeclineRoute = ApiInvitationsIdDeclineRouteImport.update({
   id: '/decline',
   path: '/decline',
@@ -175,6 +248,11 @@ const ApiInvitationsIdAcceptRoute = ApiInvitationsIdAcceptRouteImport.update({
   id: '/accept',
   path: '/accept',
   getParentRoute: () => ApiInvitationsIdRoute,
+} as any)
+const ApiCommentsIdReactionsRoute = ApiCommentsIdReactionsRouteImport.update({
+  id: '/reactions',
+  path: '/reactions',
+  getParentRoute: () => ApiCommentsIdRoute,
 } as any)
 const ApiAgentsIdRestoreRoute = ApiAgentsIdRestoreRouteImport.update({
   id: '/restore',
@@ -207,25 +285,38 @@ export interface FileRoutesByFullPath {
   '/api/agents': typeof ApiAgentsRouteWithChildren
   '/api/bootstrap': typeof ApiBootstrapRoute
   '/api/config': typeof ApiConfigRoute
+  '/api/connections': typeof ApiConnectionsRoute
+  '/api/dashboard': typeof ApiDashboardRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
   '/api/invitations': typeof ApiInvitationsRouteWithChildren
   '/api/issues': typeof ApiIssuesRouteWithChildren
   '/api/me': typeof ApiMeRoute
+  '/api/projects': typeof ApiProjectsRoute
   '/api/runtimes': typeof ApiRuntimesRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/comments/$id': typeof ApiCommentsIdRouteWithChildren
   '/api/inbox/unread-count': typeof ApiInboxUnreadCountRoute
   '/api/invitations/$id': typeof ApiInvitationsIdRouteWithChildren
+  '/api/issues/$id': typeof ApiIssuesIdRouteWithChildren
   '/api/issues/child-progress': typeof ApiIssuesChildProgressRoute
   '/api/issues/search': typeof ApiIssuesSearchRoute
   '/api/skills/$id': typeof ApiSkillsIdRoute
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
+  '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
   '/api/invitations/$id/accept': typeof ApiInvitationsIdAcceptRoute
   '/api/invitations/$id/decline': typeof ApiInvitationsIdDeclineRoute
+  '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
+  '/api/issues/$id/reactions': typeof ApiIssuesIdReactionsRoute
+  '/api/issues/$id/subscribe': typeof ApiIssuesIdSubscribeRoute
+  '/api/issues/$id/subscribers': typeof ApiIssuesIdSubscribersRoute
+  '/api/issues/$id/timeline': typeof ApiIssuesIdTimelineRoute
+  '/api/issues/$id/unsubscribe': typeof ApiIssuesIdUnsubscribeRoute
+  '/api/issues/$id/usage': typeof ApiIssuesIdUsageRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
@@ -239,25 +330,38 @@ export interface FileRoutesByTo {
   '/api/agents': typeof ApiAgentsRouteWithChildren
   '/api/bootstrap': typeof ApiBootstrapRoute
   '/api/config': typeof ApiConfigRoute
+  '/api/connections': typeof ApiConnectionsRoute
+  '/api/dashboard': typeof ApiDashboardRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
   '/api/invitations': typeof ApiInvitationsRouteWithChildren
   '/api/issues': typeof ApiIssuesRouteWithChildren
   '/api/me': typeof ApiMeRoute
+  '/api/projects': typeof ApiProjectsRoute
   '/api/runtimes': typeof ApiRuntimesRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/comments/$id': typeof ApiCommentsIdRouteWithChildren
   '/api/inbox/unread-count': typeof ApiInboxUnreadCountRoute
   '/api/invitations/$id': typeof ApiInvitationsIdRouteWithChildren
+  '/api/issues/$id': typeof ApiIssuesIdRouteWithChildren
   '/api/issues/child-progress': typeof ApiIssuesChildProgressRoute
   '/api/issues/search': typeof ApiIssuesSearchRoute
   '/api/skills/$id': typeof ApiSkillsIdRoute
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
+  '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
   '/api/invitations/$id/accept': typeof ApiInvitationsIdAcceptRoute
   '/api/invitations/$id/decline': typeof ApiInvitationsIdDeclineRoute
+  '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
+  '/api/issues/$id/reactions': typeof ApiIssuesIdReactionsRoute
+  '/api/issues/$id/subscribe': typeof ApiIssuesIdSubscribeRoute
+  '/api/issues/$id/subscribers': typeof ApiIssuesIdSubscribersRoute
+  '/api/issues/$id/timeline': typeof ApiIssuesIdTimelineRoute
+  '/api/issues/$id/unsubscribe': typeof ApiIssuesIdUnsubscribeRoute
+  '/api/issues/$id/usage': typeof ApiIssuesIdUsageRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
@@ -273,25 +377,38 @@ export interface FileRoutesById {
   '/api/agents': typeof ApiAgentsRouteWithChildren
   '/api/bootstrap': typeof ApiBootstrapRoute
   '/api/config': typeof ApiConfigRoute
+  '/api/connections': typeof ApiConnectionsRoute
+  '/api/dashboard': typeof ApiDashboardRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
   '/api/invitations': typeof ApiInvitationsRouteWithChildren
   '/api/issues': typeof ApiIssuesRouteWithChildren
   '/api/me': typeof ApiMeRoute
+  '/api/projects': typeof ApiProjectsRoute
   '/api/runtimes': typeof ApiRuntimesRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/comments/$id': typeof ApiCommentsIdRouteWithChildren
   '/api/inbox/unread-count': typeof ApiInboxUnreadCountRoute
   '/api/invitations/$id': typeof ApiInvitationsIdRouteWithChildren
+  '/api/issues/$id': typeof ApiIssuesIdRouteWithChildren
   '/api/issues/child-progress': typeof ApiIssuesChildProgressRoute
   '/api/issues/search': typeof ApiIssuesSearchRoute
   '/api/skills/$id': typeof ApiSkillsIdRoute
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
+  '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
   '/api/invitations/$id/accept': typeof ApiInvitationsIdAcceptRoute
   '/api/invitations/$id/decline': typeof ApiInvitationsIdDeclineRoute
+  '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
+  '/api/issues/$id/reactions': typeof ApiIssuesIdReactionsRoute
+  '/api/issues/$id/subscribe': typeof ApiIssuesIdSubscribeRoute
+  '/api/issues/$id/subscribers': typeof ApiIssuesIdSubscribersRoute
+  '/api/issues/$id/timeline': typeof ApiIssuesIdTimelineRoute
+  '/api/issues/$id/unsubscribe': typeof ApiIssuesIdUnsubscribeRoute
+  '/api/issues/$id/usage': typeof ApiIssuesIdUsageRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
@@ -307,25 +424,38 @@ export interface FileRouteTypes {
     | '/api/agents'
     | '/api/bootstrap'
     | '/api/config'
+    | '/api/connections'
+    | '/api/dashboard'
     | '/api/inbox'
     | '/api/invitations'
     | '/api/issues'
     | '/api/me'
+    | '/api/projects'
     | '/api/runtimes'
     | '/api/skills'
     | '/api/workspaces'
     | '/api/agents/$id'
     | '/api/auth/$'
+    | '/api/comments/$id'
     | '/api/inbox/unread-count'
     | '/api/invitations/$id'
+    | '/api/issues/$id'
     | '/api/issues/child-progress'
     | '/api/issues/search'
     | '/api/skills/$id'
     | '/api/workspaces/$id'
     | '/api/agents/$id/archive'
     | '/api/agents/$id/restore'
+    | '/api/comments/$id/reactions'
     | '/api/invitations/$id/accept'
     | '/api/invitations/$id/decline'
+    | '/api/issues/$id/comments'
+    | '/api/issues/$id/reactions'
+    | '/api/issues/$id/subscribe'
+    | '/api/issues/$id/subscribers'
+    | '/api/issues/$id/timeline'
+    | '/api/issues/$id/unsubscribe'
+    | '/api/issues/$id/usage'
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
     | '/api/workspaces/$id/invitations/$invitationId'
@@ -339,25 +469,38 @@ export interface FileRouteTypes {
     | '/api/agents'
     | '/api/bootstrap'
     | '/api/config'
+    | '/api/connections'
+    | '/api/dashboard'
     | '/api/inbox'
     | '/api/invitations'
     | '/api/issues'
     | '/api/me'
+    | '/api/projects'
     | '/api/runtimes'
     | '/api/skills'
     | '/api/workspaces'
     | '/api/agents/$id'
     | '/api/auth/$'
+    | '/api/comments/$id'
     | '/api/inbox/unread-count'
     | '/api/invitations/$id'
+    | '/api/issues/$id'
     | '/api/issues/child-progress'
     | '/api/issues/search'
     | '/api/skills/$id'
     | '/api/workspaces/$id'
     | '/api/agents/$id/archive'
     | '/api/agents/$id/restore'
+    | '/api/comments/$id/reactions'
     | '/api/invitations/$id/accept'
     | '/api/invitations/$id/decline'
+    | '/api/issues/$id/comments'
+    | '/api/issues/$id/reactions'
+    | '/api/issues/$id/subscribe'
+    | '/api/issues/$id/subscribers'
+    | '/api/issues/$id/timeline'
+    | '/api/issues/$id/unsubscribe'
+    | '/api/issues/$id/usage'
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
     | '/api/workspaces/$id/invitations/$invitationId'
@@ -372,25 +515,38 @@ export interface FileRouteTypes {
     | '/api/agents'
     | '/api/bootstrap'
     | '/api/config'
+    | '/api/connections'
+    | '/api/dashboard'
     | '/api/inbox'
     | '/api/invitations'
     | '/api/issues'
     | '/api/me'
+    | '/api/projects'
     | '/api/runtimes'
     | '/api/skills'
     | '/api/workspaces'
     | '/api/agents/$id'
     | '/api/auth/$'
+    | '/api/comments/$id'
     | '/api/inbox/unread-count'
     | '/api/invitations/$id'
+    | '/api/issues/$id'
     | '/api/issues/child-progress'
     | '/api/issues/search'
     | '/api/skills/$id'
     | '/api/workspaces/$id'
     | '/api/agents/$id/archive'
     | '/api/agents/$id/restore'
+    | '/api/comments/$id/reactions'
     | '/api/invitations/$id/accept'
     | '/api/invitations/$id/decline'
+    | '/api/issues/$id/comments'
+    | '/api/issues/$id/reactions'
+    | '/api/issues/$id/subscribe'
+    | '/api/issues/$id/subscribers'
+    | '/api/issues/$id/timeline'
+    | '/api/issues/$id/unsubscribe'
+    | '/api/issues/$id/usage'
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
     | '/api/workspaces/$id/invitations/$invitationId'
@@ -405,14 +561,18 @@ export interface RootRouteChildren {
   ApiAgentsRoute: typeof ApiAgentsRouteWithChildren
   ApiBootstrapRoute: typeof ApiBootstrapRoute
   ApiConfigRoute: typeof ApiConfigRoute
+  ApiConnectionsRoute: typeof ApiConnectionsRoute
+  ApiDashboardRoute: typeof ApiDashboardRoute
   ApiInboxRoute: typeof ApiInboxRouteWithChildren
   ApiInvitationsRoute: typeof ApiInvitationsRouteWithChildren
   ApiIssuesRoute: typeof ApiIssuesRouteWithChildren
   ApiMeRoute: typeof ApiMeRoute
+  ApiProjectsRoute: typeof ApiProjectsRoute
   ApiRuntimesRoute: typeof ApiRuntimesRoute
   ApiSkillsRoute: typeof ApiSkillsRouteWithChildren
   ApiWorkspacesRoute: typeof ApiWorkspacesRouteWithChildren
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiCommentsIdRoute: typeof ApiCommentsIdRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -466,6 +626,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiRuntimesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/projects': {
+      id: '/api/projects'
+      path: '/api/projects'
+      fullPath: '/api/projects'
+      preLoaderRoute: typeof ApiProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/me': {
       id: '/api/me'
       path: '/api/me'
@@ -492,6 +659,20 @@ declare module '@tanstack/react-router' {
       path: '/api/inbox'
       fullPath: '/api/inbox'
       preLoaderRoute: typeof ApiInboxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/dashboard': {
+      id: '/api/dashboard'
+      path: '/api/dashboard'
+      fullPath: '/api/dashboard'
+      preLoaderRoute: typeof ApiDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/connections': {
+      id: '/api/connections'
+      path: '/api/connections'
+      fullPath: '/api/connections'
+      preLoaderRoute: typeof ApiConnectionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/config': {
@@ -550,6 +731,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiIssuesChildProgressRouteImport
       parentRoute: typeof ApiIssuesRoute
     }
+    '/api/issues/$id': {
+      id: '/api/issues/$id'
+      path: '/$id'
+      fullPath: '/api/issues/$id'
+      preLoaderRoute: typeof ApiIssuesIdRouteImport
+      parentRoute: typeof ApiIssuesRoute
+    }
     '/api/invitations/$id': {
       id: '/api/invitations/$id'
       path: '/$id'
@@ -563,6 +751,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/inbox/unread-count'
       preLoaderRoute: typeof ApiInboxUnreadCountRouteImport
       parentRoute: typeof ApiInboxRoute
+    }
+    '/api/comments/$id': {
+      id: '/api/comments/$id'
+      path: '/api/comments/$id'
+      fullPath: '/api/comments/$id'
+      preLoaderRoute: typeof ApiCommentsIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
       id: '/api/auth/$'
@@ -592,6 +787,55 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWorkspacesIdInvitationsRouteImport
       parentRoute: typeof ApiWorkspacesIdRoute
     }
+    '/api/issues/$id/usage': {
+      id: '/api/issues/$id/usage'
+      path: '/usage'
+      fullPath: '/api/issues/$id/usage'
+      preLoaderRoute: typeof ApiIssuesIdUsageRouteImport
+      parentRoute: typeof ApiIssuesIdRoute
+    }
+    '/api/issues/$id/unsubscribe': {
+      id: '/api/issues/$id/unsubscribe'
+      path: '/unsubscribe'
+      fullPath: '/api/issues/$id/unsubscribe'
+      preLoaderRoute: typeof ApiIssuesIdUnsubscribeRouteImport
+      parentRoute: typeof ApiIssuesIdRoute
+    }
+    '/api/issues/$id/timeline': {
+      id: '/api/issues/$id/timeline'
+      path: '/timeline'
+      fullPath: '/api/issues/$id/timeline'
+      preLoaderRoute: typeof ApiIssuesIdTimelineRouteImport
+      parentRoute: typeof ApiIssuesIdRoute
+    }
+    '/api/issues/$id/subscribers': {
+      id: '/api/issues/$id/subscribers'
+      path: '/subscribers'
+      fullPath: '/api/issues/$id/subscribers'
+      preLoaderRoute: typeof ApiIssuesIdSubscribersRouteImport
+      parentRoute: typeof ApiIssuesIdRoute
+    }
+    '/api/issues/$id/subscribe': {
+      id: '/api/issues/$id/subscribe'
+      path: '/subscribe'
+      fullPath: '/api/issues/$id/subscribe'
+      preLoaderRoute: typeof ApiIssuesIdSubscribeRouteImport
+      parentRoute: typeof ApiIssuesIdRoute
+    }
+    '/api/issues/$id/reactions': {
+      id: '/api/issues/$id/reactions'
+      path: '/reactions'
+      fullPath: '/api/issues/$id/reactions'
+      preLoaderRoute: typeof ApiIssuesIdReactionsRouteImport
+      parentRoute: typeof ApiIssuesIdRoute
+    }
+    '/api/issues/$id/comments': {
+      id: '/api/issues/$id/comments'
+      path: '/comments'
+      fullPath: '/api/issues/$id/comments'
+      preLoaderRoute: typeof ApiIssuesIdCommentsRouteImport
+      parentRoute: typeof ApiIssuesIdRoute
+    }
     '/api/invitations/$id/decline': {
       id: '/api/invitations/$id/decline'
       path: '/decline'
@@ -605,6 +849,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/invitations/$id/accept'
       preLoaderRoute: typeof ApiInvitationsIdAcceptRouteImport
       parentRoute: typeof ApiInvitationsIdRoute
+    }
+    '/api/comments/$id/reactions': {
+      id: '/api/comments/$id/reactions'
+      path: '/reactions'
+      fullPath: '/api/comments/$id/reactions'
+      preLoaderRoute: typeof ApiCommentsIdReactionsRouteImport
+      parentRoute: typeof ApiCommentsIdRoute
     }
     '/api/agents/$id/restore': {
       id: '/api/agents/$id/restore'
@@ -712,12 +963,38 @@ const ApiInvitationsRouteWithChildren = ApiInvitationsRoute._addFileChildren(
   ApiInvitationsRouteChildren,
 )
 
+interface ApiIssuesIdRouteChildren {
+  ApiIssuesIdCommentsRoute: typeof ApiIssuesIdCommentsRoute
+  ApiIssuesIdReactionsRoute: typeof ApiIssuesIdReactionsRoute
+  ApiIssuesIdSubscribeRoute: typeof ApiIssuesIdSubscribeRoute
+  ApiIssuesIdSubscribersRoute: typeof ApiIssuesIdSubscribersRoute
+  ApiIssuesIdTimelineRoute: typeof ApiIssuesIdTimelineRoute
+  ApiIssuesIdUnsubscribeRoute: typeof ApiIssuesIdUnsubscribeRoute
+  ApiIssuesIdUsageRoute: typeof ApiIssuesIdUsageRoute
+}
+
+const ApiIssuesIdRouteChildren: ApiIssuesIdRouteChildren = {
+  ApiIssuesIdCommentsRoute: ApiIssuesIdCommentsRoute,
+  ApiIssuesIdReactionsRoute: ApiIssuesIdReactionsRoute,
+  ApiIssuesIdSubscribeRoute: ApiIssuesIdSubscribeRoute,
+  ApiIssuesIdSubscribersRoute: ApiIssuesIdSubscribersRoute,
+  ApiIssuesIdTimelineRoute: ApiIssuesIdTimelineRoute,
+  ApiIssuesIdUnsubscribeRoute: ApiIssuesIdUnsubscribeRoute,
+  ApiIssuesIdUsageRoute: ApiIssuesIdUsageRoute,
+}
+
+const ApiIssuesIdRouteWithChildren = ApiIssuesIdRoute._addFileChildren(
+  ApiIssuesIdRouteChildren,
+)
+
 interface ApiIssuesRouteChildren {
+  ApiIssuesIdRoute: typeof ApiIssuesIdRouteWithChildren
   ApiIssuesChildProgressRoute: typeof ApiIssuesChildProgressRoute
   ApiIssuesSearchRoute: typeof ApiIssuesSearchRoute
 }
 
 const ApiIssuesRouteChildren: ApiIssuesRouteChildren = {
+  ApiIssuesIdRoute: ApiIssuesIdRouteWithChildren,
   ApiIssuesChildProgressRoute: ApiIssuesChildProgressRoute,
   ApiIssuesSearchRoute: ApiIssuesSearchRoute,
 }
@@ -793,6 +1070,18 @@ const ApiWorkspacesRouteWithChildren = ApiWorkspacesRoute._addFileChildren(
   ApiWorkspacesRouteChildren,
 )
 
+interface ApiCommentsIdRouteChildren {
+  ApiCommentsIdReactionsRoute: typeof ApiCommentsIdReactionsRoute
+}
+
+const ApiCommentsIdRouteChildren: ApiCommentsIdRouteChildren = {
+  ApiCommentsIdReactionsRoute: ApiCommentsIdReactionsRoute,
+}
+
+const ApiCommentsIdRouteWithChildren = ApiCommentsIdRoute._addFileChildren(
+  ApiCommentsIdRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
@@ -801,14 +1090,18 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAgentsRoute: ApiAgentsRouteWithChildren,
   ApiBootstrapRoute: ApiBootstrapRoute,
   ApiConfigRoute: ApiConfigRoute,
+  ApiConnectionsRoute: ApiConnectionsRoute,
+  ApiDashboardRoute: ApiDashboardRoute,
   ApiInboxRoute: ApiInboxRouteWithChildren,
   ApiInvitationsRoute: ApiInvitationsRouteWithChildren,
   ApiIssuesRoute: ApiIssuesRouteWithChildren,
   ApiMeRoute: ApiMeRoute,
+  ApiProjectsRoute: ApiProjectsRoute,
   ApiRuntimesRoute: ApiRuntimesRoute,
   ApiSkillsRoute: ApiSkillsRouteWithChildren,
   ApiWorkspacesRoute: ApiWorkspacesRouteWithChildren,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiCommentsIdRoute: ApiCommentsIdRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1,8 +1,12 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useAgent } from 'agents/react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { useAuthStore } from '@garden/core/auth'
 import { useWorkspaceStore } from '@garden/core/workspace'
 
@@ -17,9 +21,22 @@ export interface AgentChatSession {
   archivedAt: string | null
 }
 
+export const NEW_SESSION_TITLE = 'New Chat'
+
+const pendingIdleSessionCreations = new Map<string, Promise<AgentChatSession>>()
+
 function sortSessions(sessions: AgentChatSession[]) {
   return [...sessions].sort(
     (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
+  )
+}
+
+function isIdleSession(session: AgentChatSession) {
+  return (
+    session.title.trim().toLowerCase() === NEW_SESSION_TITLE.toLowerCase() &&
+    session.lastMessage.trim().length === 0 &&
+    session.status === 'idle' &&
+    !session.archivedAt
   )
 }
 
@@ -42,7 +59,10 @@ export function useAgentSessions() {
       : { agent: 'PrimaryAgent', name: 'anonymous' },
   )
 
-  const queryKey = ['agent-sessions', agentName]
+  const queryKey = useMemo(
+    () => ['agent-sessions', agentName] as const,
+    [agentName],
+  )
 
   const sessionsQuery = useQuery({
     queryKey,
@@ -129,6 +149,21 @@ export function useAgentSessions() {
     },
   })
 
+  const archiveSession = useMutation({
+    mutationFn: async (sessionId: string) => {
+      await agent.stub.archiveSession?.(sessionId)
+      return {
+        archivedAt: new Date().toISOString(),
+        sessionId,
+      }
+    },
+    onMutate: async (sessionId) => {
+      qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>
+        current.filter((session) => session.id !== sessionId),
+      )
+    },
+  })
+
   const updateSessionPreview = (input: {
     sessionId: string
     title?: string
@@ -169,11 +204,60 @@ export function useAgentSessions() {
     })
   }
 
+  const ensureIdleSession = useCallback(async () => {
+    if (!agentName) {
+      throw new Error('Missing agent identity')
+    }
+
+    const currentSessions =
+      qc.getQueryData<AgentChatSession[]>(queryKey) ?? sessionsQuery.data ?? []
+    const existingIdle = currentSessions.find(isIdleSession)
+    if (existingIdle) {
+      return existingIdle
+    }
+
+    const pending = pendingIdleSessionCreations.get(agentName)
+    if (pending) {
+      return pending
+    }
+
+    const creation = createSession.mutateAsync(NEW_SESSION_TITLE)
+    pendingIdleSessionCreations.set(agentName, creation)
+
+    return creation.finally(() => {
+      pendingIdleSessionCreations.delete(agentName)
+    })
+  }, [agentName, createSession, qc, queryKey, sessionsQuery.data])
+
+  const getNextIdleSession = useCallback(async (activeSessionId?: string | null) => {
+    const currentSessions =
+      qc.getQueryData<AgentChatSession[]>(queryKey) ?? sessionsQuery.data ?? []
+    const otherIdle =
+      currentSessions.find(
+        (session) => isIdleSession(session) && session.id !== activeSessionId,
+      ) ?? currentSessions.find(isIdleSession)
+
+    if (otherIdle) {
+      return otherIdle
+    }
+
+    return ensureIdleSession()
+  }, [ensureIdleSession, qc, queryKey, sessionsQuery.data])
+
+  useEffect(() => {
+    if (!agentName || !sessionsQuery.isSuccess) return
+    if (sessionsQuery.data?.some(isIdleSession)) return
+    void ensureIdleSession()
+  }, [agentName, ensureIdleSession, sessionsQuery.data, sessionsQuery.isSuccess])
+
   return {
     agent,
     agentName,
     createSession,
+    archiveSession,
     deleteSession,
+    ensureIdleSession,
+    getNextIdleSession,
     renameSession,
     reorderSessions,
     sessions: sessionsQuery.data ?? [],

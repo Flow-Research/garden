@@ -16,7 +16,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Archive, GripVertical, Pencil, Plus } from 'lucide-react'
 import { useChatStore } from '@garden/core/chat'
 import { Button } from '@garden/ui/components/ui/button'
 import {
@@ -30,7 +30,6 @@ import {
   useAgentSessions,
   type AgentChatSession,
 } from '../use-agent-chat-sessions'
-import { isDraftChatSessionId, startNewChat } from '../draft-session'
 
 function formatTimeAgo(dateStr: string) {
   const date = new Date(dateStr)
@@ -76,15 +75,15 @@ function SessionStatusDot({ session }: { session: AgentChatSession }) {
 function SessionRow({
   session,
   active,
+  onArchive,
   onSelect,
   onRename,
-  onDelete,
 }: {
   session: AgentChatSession
   active: boolean
+  onArchive: () => void
   onSelect: () => void
   onRename: () => void
-  onDelete: () => void
 }) {
   const {
     attributes,
@@ -158,9 +157,9 @@ function SessionRow({
           <Pencil className="size-4" />
           Rename
         </ContextMenuItem>
-        <ContextMenuItem variant="destructive" onClick={onDelete}>
-          <Trash2 className="size-4" />
-          Delete
+        <ContextMenuItem onClick={onArchive}>
+          <Archive className="size-4" />
+          Archive
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
@@ -175,22 +174,23 @@ export function ChatSessionExplorer({
   const activeSessionId = useChatStore((state) => state.activeSessionId)
   const setActiveSession = useChatStore((state) => state.setActiveSession)
   const {
-    deleteSession,
+    archiveSession,
+    getNextIdleSession,
     renameSession,
     reorderSessions: persistOrder,
     sessions,
   } = useAgentSessions()
 
   const activeSessions = useMemo(() => sessions, [sessions])
-  const draftIsActive = isDraftChatSessionId(activeSessionId)
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
     }),
   )
 
-  const handleCreate = () => {
-    startNewChat()
+  const handleCreate = async () => {
+    const idleSession = await getNextIdleSession(activeSessionId)
+    setActiveSession(idleSession.id)
     onActivate?.()
   }
 
@@ -205,6 +205,23 @@ export function ChatSessionExplorer({
     const next = window.prompt('Rename chat', session.title)?.trim()
     if (!next || next === session.title) return
     await renameSession.mutateAsync({ sessionId, title: next })
+  }
+
+  const handleArchive = async (sessionId: string) => {
+    const isCurrentSession = activeSessionId === sessionId
+    await archiveSession.mutateAsync(sessionId)
+
+    if (!isCurrentSession) {
+      return
+    }
+
+    const remainingSessions = activeSessions.filter(
+      (session) => session.id !== sessionId,
+    )
+    const nextSession =
+      remainingSessions[0] ?? (await getNextIdleSession(sessionId))
+    setActiveSession(nextSession.id)
+    onActivate?.()
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -226,7 +243,7 @@ export function ChatSessionExplorer({
         </Button>
       </div>
 
-      {draftIsActive || activeSessions.length > 0 ? (
+      {activeSessions.length > 0 ? (
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -237,51 +254,14 @@ export function ChatSessionExplorer({
             strategy={rectSortingStrategy}
           >
             <div className="space-y-1 px-3">
-              {draftIsActive ? (
-                <div className="flex w-full items-start gap-2 rounded-lg border border-border bg-accent px-3 py-2.5 text-left text-accent-foreground">
-                  <span
-                    aria-hidden="true"
-                    className="mt-0.5 inline-flex shrink-0 text-muted-foreground/70"
-                  >
-                    <GripVertical className="size-3.5" />
-                  </span>
-                  <div className="mt-0.5 shrink-0">
-                    <SessionStatusDot
-                      session={{
-                        id: 'draft',
-                        title: 'New Chat',
-                        createdAt: new Date(0).toISOString(),
-                        updatedAt: new Date().toISOString(),
-                        lastMessage: '',
-                        status: 'idle',
-                        unread: false,
-                        archivedAt: null,
-                      }}
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium">
-                        New Chat
-                      </span>
-                    </div>
-                    <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                      No messages yet
-                    </div>
-                  </div>
-                  <span className="pt-0.5 text-[11px] text-muted-foreground">
-                    now
-                  </span>
-                </div>
-              ) : null}
               {activeSessions.map((session) => (
                 <SessionRow
                   key={session.id}
                   session={session}
                   active={session.id === activeSessionId}
+                  onArchive={() => void handleArchive(session.id)}
                   onSelect={() => handleSelect(session.id)}
                   onRename={() => void handleRename(session.id)}
-                  onDelete={() => deleteSession.mutate(session.id)}
                 />
               ))}
             </div>

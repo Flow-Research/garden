@@ -10,7 +10,7 @@ import {
 } from 'drizzle-orm/pg-core'
 import { agent } from './agents.js'
 import { user } from './users.js'
-import { workspace } from './workspaces.js'
+import { organization } from './workspaces.js'
 
 export const capability = pgTable(
   'capability',
@@ -38,7 +38,7 @@ export const connectorConnection = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => workspace.id),
+      .references(() => organization.id),
     userId: uuid('user_id')
       .notNull()
       .references(() => user.id),

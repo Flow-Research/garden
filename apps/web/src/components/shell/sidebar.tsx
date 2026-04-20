@@ -6,16 +6,14 @@ import {
   IconBrandGithub,
   IconBrandGmail,
   IconBrandSlack,
-  IconChecklist,
   IconHomeSpark,
-  IconInbox,
   IconMessage2,
   IconMessage2Plus,
   IconPlugConnected,
   IconSettings2,
   IconSparkles2,
 } from '@tabler/icons-react'
-import { cn } from '@garden/ui/lib/utils'
+import { Icon as IconifyIcon } from '@iconify/react'
 import { BrandIcon } from '@garden/ui/components/common/brand-icon'
 import {
   Sidebar,
@@ -35,11 +33,12 @@ import {
   deduplicateInboxItems,
   inboxListOptions,
 } from '@garden/core/inbox/queries'
-import type { InboxItem } from '@garden/core/types'
+import { useChatStore } from '@garden/core/chat'
 import { useAuthStore } from '@garden/core/auth'
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { SearchTrigger } from '@/features/search'
-import { ChatSessionExplorer, startNewChat } from '@/features/chat'
+import { ChatSessionExplorer } from '@/features/chat'
+import { useAgentSessions } from '@/features/chat/use-agent-chat-sessions'
 import { useNavigation } from '@/features/navigation'
 import { NavUser } from '@/components/nav-user'
 import {
@@ -68,7 +67,7 @@ const railItems: RailItem[] = [
     id: 'home',
     label: 'Home',
     icon: IconHomeSpark,
-    defaultPanel: { kind: 'inbox', title: 'Inbox' },
+    defaultPanel: { kind: 'dashboard', title: 'Dashboard' },
   },
   {
     id: 'chats',
@@ -96,16 +95,6 @@ const railItems: RailItem[] = [
   },
 ]
 
-const inboxTypeLabels: Partial<Record<InboxItem['type'], string>> = {
-  issue_assigned: 'Assigned',
-  mentioned: 'Mentioned',
-  review_requested: 'Review',
-  task_completed: 'Completed',
-  task_failed: 'Failed',
-  agent_blocked: 'Blocked',
-  agent_completed: 'Finished',
-}
-
 function contextFromPanel(kind: WorkspacePanelKind | null): RailContext {
   switch (kind) {
     case 'chat':
@@ -117,12 +106,27 @@ function contextFromPanel(kind: WorkspacePanelKind | null): RailContext {
     case 'settings':
       return 'settings'
     case 'blank':
+    case 'dashboard':
     case 'inbox':
     case 'issues':
     case 'issue-detail':
     default:
       return 'home'
   }
+}
+
+function HomeDashboardIcon({ className }: { className?: string }) {
+  return <IconifyIcon icon="ic:sharp-dashboard" className={className} />
+}
+
+function HomeTasksIcon({ className }: { className?: string }) {
+  return <IconifyIcon icon="ic:sharp-checklist" className={className} />
+}
+
+function HomeInboxIcon({ className }: { className?: string }) {
+  return (
+    <IconifyIcon icon="material-symbols:inbox-outline-sharp" className={className} />
+  )
 }
 
 function ExplorerSection({
@@ -166,7 +170,7 @@ function ExplorerActionRow({
     <SidebarMenuItem>
       <SidebarMenuButton
         isActive={active}
-        className="px-3"
+        className="rounded-[2px] px-3"
         onClick={onClick}
       >
         <Icon className="size-4" />
@@ -179,61 +183,17 @@ function ExplorerActionRow({
   )
 }
 
-function ExplorerEntityRow({
-  label,
-  meta,
-  active = false,
-  onClick,
-  tone = 'default',
-}: {
-  label: string
-  meta?: string
-  active?: boolean
-  onClick: () => void
-  tone?: 'default' | 'muted' | 'warning'
-}) {
-  const dotClassName =
-    tone === 'warning'
-      ? 'bg-amber-400'
-      : tone === 'muted'
-        ? 'bg-muted-foreground/40'
-        : 'bg-sidebar-accent-foreground/70'
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'flex w-full items-center gap-2 border-b border-sidebar-border/50 px-3 py-2 text-left text-[13px] text-muted-foreground transition-colors last:border-b-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-        active && 'bg-sidebar-accent text-sidebar-accent-foreground',
-      )}
-    >
-      <span className={cn('size-2 shrink-0 rounded-full', dotClassName)} />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {meta ? (
-        <span className="shrink-0 text-[11px] text-muted-foreground">
-          {meta}
-        </span>
-      ) : null}
-    </button>
-  )
-}
-
-function ExplorerEmpty({ children }: { children: React.ReactNode }) {
-  return <div className="px-3 py-2 text-[12px] text-muted-foreground">{children}</div>
-}
-
 export function WorkspaceSidebar() {
   const queryClient = useQueryClient()
   const { replace } = useNavigation()
   const { activePanel, openPanel } = useWorkspaceDock()
+  const { getNextIdleSession } = useAgentSessions()
   const { setOpen } = useSidebar()
   const workspace = useWorkspaceStore((state) => state.workspace)
   const clearWorkspace = useWorkspaceStore((state) => state.clearWorkspace)
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)
   const activeType = activePanel?.kind ?? null
-  const activeEntityId = activePanel?.entityId
   const activeRailId = contextFromPanel(activeType)
   const activeRail = railItems.find((item) => item.id === activeRailId) ?? railItems[0]
   const workspaceId = workspace?.id ?? ''
@@ -248,7 +208,6 @@ export function WorkspaceSidebar() {
     [rawInboxItems],
   )
   const unreadCount = inboxItems.filter((item) => !item.read).length
-  const issueItems = inboxItems.filter((item) => !!item.issue_id).slice(0, 4)
 
   const revealExplorer = useCallback(() => {
     setOpen(true)
@@ -258,25 +217,13 @@ export function WorkspaceSidebar() {
     openPanel({ kind: 'inbox', title: 'Inbox' })
   }, [openPanel])
 
-  const openIssues = useCallback(() => {
-    openPanel({ kind: 'issues', title: 'Active Work' })
+  const openDashboard = useCallback(() => {
+    openPanel({ kind: 'dashboard', title: 'Dashboard' })
   }, [openPanel])
 
-  const openInboxItem = useCallback(
-    (item: InboxItem) => {
-      if (item.issue_id) {
-        openPanel({
-          kind: 'issue-detail',
-          title: item.title,
-          entityId: item.issue_id,
-        })
-        return
-      }
-
-      openInbox()
-    },
-    [openInbox, openPanel],
-  )
+  const openTasks = useCallback(() => {
+    openPanel({ kind: 'issues', title: 'Tasks' })
+  }, [openPanel])
 
   const openSettings = useCallback(() => {
     openPanel({ kind: 'settings', title: 'Settings' })
@@ -317,14 +264,14 @@ export function WorkspaceSidebar() {
             <SidebarMenuItem>
               <SidebarMenuButton
                 size="lg"
-                className="justify-center md:h-9 md:p-0"
+                className="justify-center rounded-[2px] md:h-9 md:p-0"
                 tooltip={{
                   children: workspace?.name ?? 'Garden',
                   hidden: false,
                 }}
-                onClick={openInbox}
+                onClick={openDashboard}
               >
-                <div className="flex size-8 items-center justify-center rounded-lg border border-sidebar-border bg-background text-foreground">
+                <div className="flex size-8 items-center justify-center rounded-[2px] border border-sidebar-border bg-background text-foreground">
                   <BrandIcon className="size-3.5" noSpin />
                 </div>
               </SidebarMenuButton>
@@ -335,16 +282,16 @@ export function WorkspaceSidebar() {
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupContent className="px-1.5 md:px-0">
-              <SidebarMenu>
+              <SidebarMenu className="space-y-1 px-0.5">
                 {railItems.map((item) => (
-                  <SidebarMenuItem key={item.id}>
+                  <SidebarMenuItem key={item.id} className="mb-1 last:mb-0">
                     <SidebarMenuButton
                       tooltip={{
                         children: item.label,
                         hidden: false,
                       }}
                       isActive={activeRailId === item.id}
-                      className="px-2.5 md:px-2"
+                      className="rounded-[2px] px-2.5 md:px-2"
                       onClick={() => openRailContext(item)}
                     >
                       <item.icon className="size-4" />
@@ -383,68 +330,28 @@ export function WorkspaceSidebar() {
         <SidebarContent>
           {activeRailId === 'home' ? (
             <>
-              <ExplorerSection label="Inbox" count={unreadCount}>
+              <ExplorerSection label="Home">
                 <SidebarMenu>
                   <ExplorerActionRow
+                    label="Dashboard"
+                    icon={HomeDashboardIcon}
+                    active={activeType === 'dashboard'}
+                    onClick={openDashboard}
+                  />
+                  <ExplorerActionRow
+                    label="Tasks"
+                    icon={HomeTasksIcon}
+                    active={activeType === 'issues'}
+                    onClick={openTasks}
+                  />
+                  <ExplorerActionRow
                     label="Inbox"
-                    icon={IconInbox}
+                    icon={HomeInboxIcon}
                     active={activeType === 'inbox'}
                     badge={unreadCount}
                     onClick={openInbox}
                   />
                 </SidebarMenu>
-                {inboxItems.length === 0 ? (
-                  <ExplorerEmpty>No notifications yet.</ExplorerEmpty>
-                ) : (
-                  <div>
-                    {inboxItems.map((item) => (
-                      <ExplorerEntityRow
-                        key={item.id}
-                        label={item.title}
-                        meta={
-                          inboxTypeLabels[item.type] ??
-                          item.type.replaceAll('_', ' ')
-                        }
-                        tone={item.read ? 'muted' : 'warning'}
-                        active={
-                          activeType === 'issue-detail' &&
-                          !!item.issue_id &&
-                          activeEntityId === item.issue_id
-                        }
-                        onClick={() => openInboxItem(item)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </ExplorerSection>
-
-              <ExplorerSection label="Active Work" count={issueItems.length}>
-                <SidebarMenu>
-                  <ExplorerActionRow
-                    label="Active Work"
-                    icon={IconChecklist}
-                    active={activeType === 'issues'}
-                    onClick={openIssues}
-                  />
-                </SidebarMenu>
-                {issueItems.length === 0 ? (
-                  <ExplorerEmpty>No active work yet.</ExplorerEmpty>
-                ) : (
-                  <div>
-                    {issueItems.map((item) => (
-                      <ExplorerEntityRow
-                        key={`${item.id}:issue`}
-                        label={item.title}
-                        active={
-                          activeType === 'issue-detail' &&
-                          !!item.issue_id &&
-                          activeEntityId === item.issue_id
-                        }
-                        onClick={() => openInboxItem(item)}
-                      />
-                    ))}
-                  </div>
-                )}
               </ExplorerSection>
             </>
           ) : null}
@@ -457,8 +364,10 @@ export function WorkspaceSidebar() {
                   icon={IconMessage2Plus}
                   active={activeType === 'chat'}
                   onClick={() => {
-                    startNewChat()
-                    openPanel({ kind: 'chat', title: 'New Chat' })
+                    void getNextIdleSession().then((session) => {
+                      useChatStore.getState().setActiveSession(session.id)
+                      openPanel({ kind: 'chat', title: 'New Chat' })
+                    })
                   }}
                 />
               </SidebarMenu>

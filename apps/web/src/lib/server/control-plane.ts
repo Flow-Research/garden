@@ -39,11 +39,11 @@ export async function resolveWorkspaceId(request: Request, userId: string) {
   if (candidate) {
     const [membership] = await db
       .select()
-      .from(schema.membership)
+      .from(schema.member)
       .where(
         and(
-          eq(schema.membership.organizationId, candidate),
-          eq(schema.membership.userId, userId),
+          eq(schema.member.organizationId, candidate),
+          eq(schema.member.userId, userId),
         ),
       )
     if (membership) return candidate
@@ -51,8 +51,8 @@ export async function resolveWorkspaceId(request: Request, userId: string) {
 
   const [membership] = await db
     .select()
-    .from(schema.membership)
-    .where(eq(schema.membership.userId, userId))
+    .from(schema.member)
+    .where(eq(schema.member.userId, userId))
 
   return membership?.organizationId ?? null
 }
@@ -67,14 +67,14 @@ export async function requireWorkspaceAccess(
   const db = getDb(appEnv)
   const [membership] = await db
     .select({
-      organizationId: schema.membership.organizationId,
-      role: schema.membership.role,
+      organizationId: schema.member.organizationId,
+      role: schema.member.role,
     })
-    .from(schema.membership)
+    .from(schema.member)
     .where(
       and(
-        eq(schema.membership.organizationId, workspaceId),
-        eq(schema.membership.userId, session.user.id),
+        eq(schema.member.organizationId, workspaceId),
+        eq(schema.member.userId, session.user.id),
       ),
     )
 
@@ -89,7 +89,7 @@ export async function requireWorkspaceAccess(
 }
 
 export function toWorkspace(
-  record: typeof schema.workspace.$inferSelect,
+  record: typeof schema.organization.$inferSelect,
   role = 'owner',
 ) {
   const created = record.createdAt

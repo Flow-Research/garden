@@ -14,9 +14,9 @@
   "scripts": {
     "lint": "oxlint -c ../../.oxlintrc.json .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix .",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
-    "db:push": "drizzle-kit push"
+    "db:generate": "bash -c 'set -a && source ../../apps/web/.dev.vars && drizzle-kit generate'",
+    "db:migrate": "bash -c 'set -a && source ../../apps/web/.dev.vars && drizzle-kit migrate'",
+    "db:push": "bash -c 'set -a && source ../../apps/web/.dev.vars && drizzle-kit push'"
   },
   "exports": {
     ".": "./src/client.ts",

@@ -11,7 +11,7 @@ import {
 } from 'drizzle-orm/pg-core'
 import { agent } from './agents.js'
 import { capability } from './capabilities.js'
-import { workspace } from './workspaces.js'
+import { organization } from './workspaces.js'
 
 export const invocationLog = pgTable(
   'invocation_log',
@@ -49,7 +49,7 @@ export const activityEvent = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => workspace.id),
+      .references(() => organization.id),
     subjectType: text('subject_type').notNull(),
     subjectId: uuid('subject_id').notNull(),
     actorType: text('actor_type').notNull(),

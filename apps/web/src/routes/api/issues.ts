@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
@@ -20,16 +20,53 @@ export const Route = createFileRoute('/api/issues')({
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
         if (!workspaceId) return Response.json({ issues: [], total: 0 })
         const db = getDb(appEnv)
-        const status = new URL(request.url).searchParams.get('status')
-        const openOnly =
-          new URL(request.url).searchParams.get('open_only') === 'true'
-        let rows = await db
+        const searchParams = new URL(request.url).searchParams
+        const status = searchParams.get('status')
+        const priority = searchParams.get('priority')
+        const assigneeId = searchParams.get('assignee_id')
+        const assigneeIds = searchParams
+          .get('assignee_ids')
+          ?.split(',')
+          .map((value) => value.trim())
+          .filter(Boolean)
+        const creatorId = searchParams.get('creator_id')
+        const openOnly = searchParams.get('open_only') === 'true'
+        const limit = Number(searchParams.get('limit') ?? '')
+        const offset = Number(searchParams.get('offset') ?? '')
+
+        const conditions = [eq(schema.issue.workspaceId, workspaceId)]
+        if (status) conditions.push(eq(schema.issue.status, status))
+        if (priority) conditions.push(eq(schema.issue.priority, priority))
+        if (assigneeId) conditions.push(eq(schema.issue.assigneeId, assigneeId))
+        if (assigneeIds && assigneeIds.length > 0) {
+          conditions.push(inArray(schema.issue.assigneeId, assigneeIds))
+        }
+        if (creatorId) conditions.push(eq(schema.issue.createdBy, creatorId))
+        if (openOnly) conditions.push(sql`${schema.issue.status} <> 'done'`)
+
+        const whereClause = and(...conditions)
+        const [{ count }] = await db
+          .select({ count: sql<number>`cast(count(*) as int)` })
+          .from(schema.issue)
+          .where(whereClause)
+
+        const query = db
           .select()
           .from(schema.issue)
-          .where(eq(schema.issue.workspaceId, workspaceId))
-        if (status) rows = rows.filter((row) => row.status === status)
-        if (openOnly) rows = rows.filter((row) => row.status !== 'done')
-        return Response.json({ issues: rows.map(toIssue), total: rows.length })
+          .where(whereClause)
+          .orderBy(
+            desc(schema.issue.updatedAt),
+            desc(schema.issue.createdAt),
+            desc(schema.issue.number),
+          )
+
+        const safeLimit = Number.isFinite(limit) && limit > 0 ? limit : null
+        const safeOffset = Number.isFinite(offset) && offset > 0 ? offset : 0
+        const rows = await (safeLimit !== null
+          ? query.limit(safeLimit).offset(safeOffset)
+          : query.offset(safeOffset))
+
+        return Response.json({ issues: rows.map(toIssue), total: count })
       },
       POST: async ({ request }) => {
         const session = await requireSession(request)
@@ -60,9 +97,20 @@ export const Route = createFileRoute('/api/issues')({
           priority:
             typeof body.priority === 'string' ? body.priority : 'medium',
           createdBy: session.user.id,
-          assigneeType: typeof body.assignee_id === 'string' ? 'user' : null,
+          assigneeType:
+            typeof body.assignee_id === 'string'
+              ? body.assignee_type === 'agent'
+                ? 'agent'
+                : 'user'
+              : null,
           assigneeId:
             typeof body.assignee_id === 'string' ? body.assignee_id : null,
+          parentId:
+            typeof body.parent_issue_id === 'string'
+              ? body.parent_issue_id
+              : null,
+          projectId:
+            typeof body.project_id === 'string' ? body.project_id : null,
         } as typeof schema.issue.$inferInsert
         const [issue] = await db
           .insert(schema.issue)

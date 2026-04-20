@@ -29,8 +29,6 @@ export const organization = pgTable('organization', {
   updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
 })
 
-export const workspace = organization
-
 export const member = pgTable(
   'member',
   {
@@ -57,8 +55,6 @@ export const member = pgTable(
     ),
   ],
 )
-
-export const membership = member
 
 export const invitation = pgTable(
   'invitation',

@@ -10,7 +10,6 @@ import {
   useIssueViewStore,
   initFilterWorkspaceSync,
 } from '@garden/core/issues/stores/view-store'
-import { useIssuesScopeStore } from '@garden/core/issues/stores/issues-scope-store'
 import { ViewStoreProvider } from '@garden/core/issues/stores/view-store-context'
 import { filterIssues } from '../utils/filter'
 import { BOARD_STATUSES } from '@garden/core/issues/config'
@@ -28,6 +27,7 @@ import { IssuesHeader } from './issues-header'
 import { BoardView } from './board-view'
 import { ListView } from './list-view'
 import { BatchActionToolbar } from './batch-action-toolbar'
+import { useIssuesPageViewState } from '../hooks/use-issues-view-state'
 
 export function IssuesPage() {
   const wsId = useWorkspaceId()
@@ -36,15 +36,17 @@ export function IssuesPage() {
   )
 
   const workspace = useWorkspaceStore((s) => s.workspace)
-  const scope = useIssuesScopeStore((s) => s.scope)
-  const viewMode = useIssueViewStore((s) => s.viewMode)
-  const statusFilters = useIssueViewStore((s) => s.statusFilters)
-  const priorityFilters = useIssueViewStore((s) => s.priorityFilters)
-  const assigneeFilters = useIssueViewStore((s) => s.assigneeFilters)
-  const includeNoAssignee = useIssueViewStore((s) => s.includeNoAssignee)
-  const creatorFilters = useIssueViewStore((s) => s.creatorFilters)
-  const projectFilters = useIssueViewStore((s) => s.projectFilters)
-  const includeNoProject = useIssueViewStore((s) => s.includeNoProject)
+  const {
+    scope,
+    viewMode,
+    statusFilters,
+    priorityFilters,
+    assigneeFilters,
+    includeNoAssignee,
+    creatorFilters,
+    projectFilters,
+    includeNoProject,
+  } = useIssuesPageViewState()
 
   useEffect(() => {
     initFilterWorkspaceSync((cb) =>

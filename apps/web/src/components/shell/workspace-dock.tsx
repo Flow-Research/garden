@@ -14,6 +14,7 @@ import {
   Columns2,
   File,
   Inbox,
+  LayoutDashboard,
   LayoutList,
   Maximize2,
   MessageSquare,
@@ -54,9 +55,12 @@ import { SettingsPage } from '@/features/settings'
 import { SkillsPage } from '@/features/skills/components'
 import { IssueDetail, IssuesPage } from '@/features/issues/components'
 import { AgentInteractionScreen } from '@/features/chat/components/agent-interaction-screen'
+import { DashboardPage } from '@/features/dashboard'
+import { ConnectionsPage } from '@/features/connections'
 
 export type WorkspacePanelKind =
   | 'blank'
+  | 'dashboard'
   | 'inbox'
   | 'issues'
   | 'issue-detail'
@@ -73,6 +77,7 @@ export type WorkspacePanelInput = {
 
 const workspacePanelKinds = [
   'blank',
+  'dashboard',
   'inbox',
   'issues',
   'issue-detail',
@@ -123,6 +128,7 @@ const WorkspaceDockContext = createContext<WorkspaceDockContextValue | null>(
 )
 
 const singletonKinds = new Set<WorkspacePanelKind>([
+  'dashboard',
   'inbox',
   'issues',
   'chat',
@@ -136,6 +142,7 @@ const panelIcons: Record<
   React.ComponentType<{ className?: string }>
 > = {
   blank: File,
+  dashboard: LayoutDashboard,
   inbox: Inbox,
   issues: LayoutList,
   'issue-detail': LayoutList,
@@ -166,6 +173,7 @@ function readPanelFromQueryState(input: {
 }): WorkspacePanelInput | null {
   const { panel, panelTitle, panelEntityId } = input
   if (
+    panel !== 'dashboard' &&
     panel !== 'inbox' &&
     panel !== 'issues' &&
     panel !== 'issue-detail' &&
@@ -259,6 +267,11 @@ function getPanelConstraints(kind: WorkspacePanelKind) {
       return {
         minimumWidth: 540,
         minimumHeight: 320,
+      }
+    case 'dashboard':
+      return {
+        minimumWidth: 820,
+        minimumHeight: 460,
       }
     case 'issue-detail':
       return {
@@ -581,6 +594,14 @@ function InboxDockPanel() {
   )
 }
 
+function DashboardDockPanel() {
+  return (
+    <WorkspacePanelFrame>
+      <DashboardPage />
+    </WorkspacePanelFrame>
+  )
+}
+
 function IssuesDockPanel() {
   return (
     <WorkspacePanelFrame>
@@ -636,26 +657,6 @@ function SettingsDockPanel() {
   )
 }
 
-function PlaceholderDockPanel({
-  icon: Icon,
-  title,
-  body,
-}: {
-  icon: React.ComponentType<{ className?: string }>
-  title: string
-  body: string
-}) {
-  return (
-    <section className="flex h-full flex-col gap-4 px-6 py-5">
-      <div className="flex items-center gap-2 text-sm font-medium">
-        <Icon className="size-4" />
-        <span>{title}</span>
-      </div>
-      <p className="max-w-2xl text-sm text-muted-foreground">{body}</p>
-    </section>
-  )
-}
-
 function ChatDockPanel() {
   return (
     <WorkspacePanelFrame>
@@ -666,16 +667,15 @@ function ChatDockPanel() {
 
 function CapabilitiesDockPanel() {
   return (
-    <PlaceholderDockPanel
-      icon={Plug}
-      title="Connections"
-      body="Connector-scoped permissions and typed tool controls will land here once the connections surface is wired into the new control plane."
-    />
+    <WorkspacePanelFrame>
+      <ConnectionsPage />
+    </WorkspacePanelFrame>
   )
 }
 
 const dockComponents = {
   blank: BlankDockPanel,
+  dashboard: DashboardDockPanel,
   inbox: InboxDockPanel,
   issues: IssuesDockPanel,
   'issue-detail': IssueDetailDockPanel,

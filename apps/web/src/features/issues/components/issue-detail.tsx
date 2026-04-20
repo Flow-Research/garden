@@ -109,34 +109,12 @@ import { CommentCard } from './comment-card'
 import { CommentInput } from './comment-input'
 import { AgentLiveCard, TaskRunHistory } from './agent-live-card'
 import { BacklogAgentHintDialog } from './backlog-agent-hint-dialog'
-import { useQuery } from '@tanstack/react-query'
-import { useAuthStore } from '@garden/core/auth'
-import { useWorkspaceStore } from '@garden/core/workspace'
-import { useActorName } from '@garden/core/workspace/hooks'
-import { useWorkspaceId } from '@garden/core/hooks'
-import {
-  issueListOptions,
-  issueDetailOptions,
-  childIssuesOptions,
-  issueUsageOptions,
-} from '@garden/core/issues/queries'
-import {
-  memberListOptions,
-  agentListOptions,
-} from '@garden/core/workspace/queries'
-import { useUpdateIssue, useDeleteIssue } from '@garden/core/issues/mutations'
-import { useRecentIssuesStore } from '@garden/core/issues/stores'
-import { useIssueTimeline } from '../hooks/use-issue-timeline'
-import { useIssueReactions } from '../hooks/use-issue-reactions'
-import { useIssueSubscribers } from '../hooks/use-issue-subscribers'
 import { ReactionBar } from '@garden/ui/components/common/reaction-bar'
-import { useFileUpload } from '@garden/core/hooks/use-file-upload'
-import { api } from '@garden/core/api'
 import { useModalStore } from '@garden/core/modals'
 import { timeAgo } from '@garden/core/utils'
 import { cn } from '@garden/ui/lib/utils'
-import { pinListOptions } from '@garden/core/pins'
-import { useCreatePin, useDeletePin } from '@garden/core/pins'
+import { useIssueSearch } from '../hooks/use-issue-search'
+import { useIssueDetailData } from '../hooks/use-issue-detail-data'
 
 import { ProgressRing } from './progress-ring'
 
@@ -253,56 +231,16 @@ function IssuePickerDialog({
   excludeIds: string[]
   onSelect: (issue: Issue) => void
 }) {
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<Issue[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const abortRef = useRef<AbortController>(undefined)
+  const { query, results, isLoading, setQuery, reset } = useIssueSearch({
+    excludeIds,
+  })
 
   // Reset state when dialog opens/closes
   useEffect(() => {
     if (!open) {
-      setQuery('')
-      setResults([])
-      setIsLoading(false)
+      reset()
     }
-  }, [open])
-
-  const search = useCallback(
-    (q: string) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-      if (abortRef.current) abortRef.current.abort()
-
-      if (!q.trim()) {
-        setResults([])
-        setIsLoading(false)
-        return
-      }
-
-      setIsLoading(true)
-      debounceRef.current = setTimeout(async () => {
-        const controller = new AbortController()
-        abortRef.current = controller
-        try {
-          const res = await api.searchIssues({
-            q: q.trim(),
-            limit: 20,
-            include_closed: true,
-            signal: controller.signal,
-          })
-          if (!controller.signal.aborted) {
-            setResults(res.issues.filter((i) => !excludeIds.includes(i.id)))
-            setIsLoading(false)
-          }
-        } catch {
-          if (!controller.signal.aborted) {
-            setIsLoading(false)
-          }
-        }
-      }, 300)
-    },
-    [excludeIds],
-  )
+  }, [open, reset])
 
   return (
     <CommandDialog
@@ -315,10 +253,7 @@ function IssuePickerDialog({
         <CommandInput
           placeholder="Search issues..."
           value={query}
-          onValueChange={(v) => {
-            setQuery(v)
-            search(v)
-          }}
+          onValueChange={setQuery}
         />
         <CommandList>
           {isLoading && (
@@ -389,18 +324,30 @@ export function IssueDetail({
 }: IssueDetailProps) {
   const id = issueId
   const router = useNavigation()
-  const user = useAuthStore((s) => s.user)
-  const userId = useAuthStore((s) => s.user?.id)
-  const workspace = useWorkspaceStore((s) => s.workspace)
-
-  // Issue navigation — read from TQ list cache
-  const wsId = useWorkspaceId()
-  const { data: members = [] } = useQuery(memberListOptions(wsId))
-  const { data: agents = [] } = useQuery(agentListOptions(wsId))
-  const currentMemberRole = members.find((m) => m.user_id === user?.id)?.role
-  const { data: allIssues = [] } = useQuery(issueListOptions(wsId))
-  const { getActorName } = useActorName()
-  const { uploadWithToast } = useFileUpload(api)
+  const {
+    user,
+    workspace,
+    members,
+    agents,
+    currentMemberRole,
+    getActorName,
+    uploadWithToast,
+    issue,
+    issueLoading,
+    timelineState,
+    issueReactionState,
+    subscriberState,
+    usage,
+    createPin,
+    deletePin,
+    isPinned,
+    parentIssueId,
+    parentIssue,
+    childIssues,
+    parentChildIssues,
+    updateIssueMutation,
+    deleteIssueMutation,
+  } = useIssueDetailData(id)
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: layoutId,
   })
@@ -427,26 +374,6 @@ export function IssueDetail({
   const [parentPickerOpen, setParentPickerOpen] = useState(false)
   const [childPickerOpen, setChildPickerOpen] = useState(false)
 
-  // Issue data from TQ — uses detail query, seeded from list cache if available.
-  // Only seed when description is present; list API omits it, and ContentEditor
-  // reads defaultValue on mount only — seeding null description shows an empty editor.
-  const { data: issue = null, isLoading: issueLoading } = useQuery({
-    ...issueDetailOptions(wsId, id),
-    initialData: () => {
-      const cached = allIssues.find((i) => i.id === id)
-      return cached?.description != null ? cached : undefined
-    },
-  })
-
-  // Record recent visit
-  const recordVisit = useRecentIssuesStore((s) => s.recordVisit)
-  useEffect(() => {
-    if (issue) {
-      recordVisit(issue.id)
-    }
-  }, [issue?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Custom hooks — encapsulate timeline, reactions, subscribers
   const {
     timeline,
     loading: timelineLoading,
@@ -455,13 +382,13 @@ export function IssueDetail({
     editComment,
     deleteComment,
     toggleReaction: handleToggleReaction,
-  } = useIssueTimeline(id, user?.id)
+  } = timelineState
 
   const {
     reactions: issueReactions,
     loading: reactionsLoading,
     toggleReaction: handleToggleIssueReaction,
-  } = useIssueReactions(id, user?.id)
+  } = issueReactionState
 
   const {
     subscribers,
@@ -469,39 +396,7 @@ export function IssueDetail({
     isSubscribed,
     toggleSubscribe: handleToggleSubscribe,
     toggleSubscriber,
-  } = useIssueSubscribers(id, user?.id)
-
-  // Token usage
-  const { data: usage } = useQuery(issueUsageOptions(id))
-
-  // Pinned state
-  const { data: pinnedItems = [] } = useQuery({
-    ...pinListOptions(wsId, userId ?? ''),
-    enabled: !!userId,
-  })
-  const isPinned = pinnedItems.some(
-    (p) => p.item_type === 'issue' && p.item_id === id,
-  )
-  const createPin = useCreatePin()
-  const deletePin = useDeletePin()
-
-  // Sub-issue queries
-  const parentIssueId = issue?.parent_issue_id
-  const { data: parentIssue = null } = useQuery({
-    ...issueDetailOptions(wsId, parentIssueId ?? ''),
-    enabled: !!parentIssueId,
-    initialData: () => allIssues.find((i) => i.id === parentIssueId),
-  })
-  const { data: childIssues = [] } = useQuery({
-    ...childIssuesOptions(wsId, id),
-    enabled: !!issue,
-  })
-  // Parent's children — used to render the "x/y" progress next to the
-  // "Sub-issue of …" breadcrumb under the title.
-  const { data: parentChildIssues = [] } = useQuery({
-    ...childIssuesOptions(wsId, parentIssueId ?? ''),
-    enabled: !!parentIssueId,
-  })
+  } = subscriberState
   const [subIssuesCollapsed, setSubIssuesCollapsed] = useState(false)
 
   const loading = issueLoading
@@ -522,8 +417,6 @@ export function IssueDetail({
     }
   }, [highlightCommentId, timeline.length])
 
-  // Issue field updates via TQ mutation (optimistic update + rollback in mutation hook)
-  const updateIssueMutation = useUpdateIssue()
   const handleUpdateField = useCallback(
     (updates: Partial<UpdateIssueRequest>) => {
       if (!issue) return
@@ -558,7 +451,6 @@ export function IssueDetail({
     [uploadWithToast],
   )
 
-  const deleteIssueMutation = useDeleteIssue()
   const handleDelete = async () => {
     setDeleting(true)
     try {

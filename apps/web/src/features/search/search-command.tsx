@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import {
   IconBook,
+  IconLayoutDashboard,
   IconInbox,
   IconKeyboard,
   IconMessageCircle,
@@ -14,8 +15,6 @@ import {
   type Icon,
 } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
-import type { SearchIssueResult } from '@garden/core/types'
-import { api } from '@garden/core/api'
 import { useRecentIssuesStore } from '@garden/core/issues/stores'
 import { issueListOptions } from '@garden/core/issues/queries'
 import { useWorkspaceId } from '@garden/core'
@@ -38,9 +37,11 @@ import {
 } from '@garden/ui/components/ui/dialog'
 import { Kbd, KbdGroup } from '@garden/ui/components/ui/kbd'
 import { Loader2 } from 'lucide-react'
+import { useChatStore } from '@garden/core/chat'
 import { useWorkspaceDock, type WorkspacePanelKind } from '@/components/shell/workspace-dock'
-import { startNewChat } from '@/features/chat'
+import { useAgentSessions } from '@/features/chat/use-agent-chat-sessions'
 import { useSearchStore } from './search-store'
+import { useIssueSearch } from '@/features/issues/hooks/use-issue-search'
 
 function HighlightText({ text, query }: { text: string; query: string }) {
   const parts = useMemo(() => {
@@ -95,6 +96,13 @@ interface NavPage {
 
 const navPages: NavPage[] = [
   {
+    kind: 'dashboard',
+    title: 'Dashboard',
+    label: 'Dashboard',
+    icon: IconLayoutDashboard,
+    keywords: ['dashboard', 'home', 'overview', 'workspace'],
+  },
+  {
     kind: 'inbox',
     title: 'Inbox',
     label: 'Inbox',
@@ -103,8 +111,8 @@ const navPages: NavPage[] = [
   },
   {
     kind: 'issues',
-    title: 'Issues',
-    label: 'Issues',
+    title: 'Tasks',
+    label: 'Tasks',
     icon: IconSparkles,
     keywords: ['issues', 'tasks', 'board', 'work'],
   },
@@ -158,6 +166,7 @@ const ITEM_CLASS = 'mx-2 rounded-lg py-2.5'
 
 export function SearchCommand() {
   const { openPanel } = useWorkspaceDock()
+  const { getNextIdleSession } = useAgentSessions()
   const open = useSearchStore((s) => s.open)
   const setOpen = useSearchStore((s) => s.setOpen)
   const recentItems = useRecentIssuesStore((s) => s.items)
@@ -172,11 +181,7 @@ export function SearchCommand() {
     })
   }, [recentItems, allIssues])
 
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<SearchIssueResult[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
+  const { query, results, isLoading, setQuery, reset } = useIssueSearch()
 
   const filteredPages = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -213,59 +218,16 @@ export function SearchCommand() {
   }, [open, setOpen])
 
   useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-      if (abortRef.current) abortRef.current.abort()
-    }
-  }, [])
-
-  useEffect(() => {
     if (!open) {
-      setQuery('')
-      setResults([])
-      setIsLoading(false)
+      reset()
     }
-  }, [open])
-
-  const search = useCallback((q: string) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (abortRef.current) abortRef.current.abort()
-
-    if (!q.trim()) {
-      setResults([])
-      setIsLoading(false)
-      return
-    }
-
-    setIsLoading(true)
-    debounceRef.current = setTimeout(async () => {
-      const controller = new AbortController()
-      abortRef.current = controller
-      try {
-        const issueRes = await api.searchIssues({
-          q: q.trim(),
-          limit: 20,
-          include_closed: true,
-          signal: controller.signal,
-        })
-        if (!controller.signal.aborted) {
-          setResults(issueRes.issues)
-          setIsLoading(false)
-        }
-      } catch {
-        if (!controller.signal.aborted) {
-          setIsLoading(false)
-        }
-      }
-    }, 300)
-  }, [])
+  }, [open, reset])
 
   const handleValueChange = useCallback(
     (value: string) => {
       setQuery(value)
-      search(value)
     },
-    [search],
+    [setQuery],
   )
 
   const openIssue = useCallback(
@@ -284,11 +246,17 @@ export function SearchCommand() {
     (page: NavPage) => {
       setOpen(false)
       if (page.kind === 'chat' && page.title === 'New Chat') {
-        startNewChat()
+        void getNextIdleSession(useChatStore.getState().activeSessionId).then(
+          (session) => {
+            useChatStore.getState().setActiveSession(session.id)
+            openPanel({ kind: page.kind, title: page.title })
+          },
+        )
+        return
       }
       openPanel({ kind: page.kind, title: page.title })
     },
-    [openPanel, setOpen],
+    [getNextIdleSession, openPanel, setOpen],
   )
 
   const quickActions: QuickAction[] = useMemo(
@@ -300,8 +268,12 @@ export function SearchCommand() {
         shortcut: ['C'],
         onSelect: ({ setOpen }) => {
           setOpen(false)
-          startNewChat()
-          openPanel({ kind: 'chat', title: 'New Chat' })
+          void getNextIdleSession(useChatStore.getState().activeSessionId).then(
+            (session) => {
+              useChatStore.getState().setActiveSession(session.id)
+              openPanel({ kind: 'chat', title: 'New Chat' })
+            },
+          )
         },
       },
       {
@@ -315,7 +287,7 @@ export function SearchCommand() {
         },
       },
     ],
-    [openPanel],
+    [getNextIdleSession, openPanel],
   )
 
   return (

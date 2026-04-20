@@ -1,5 +1,9 @@
 {
   "name": "@garden/tsconfig",
   "version": "0.0.0",
-  "private": true
+  "private": true,
+  "exports": {
+    "./base.json": "./base.json",
+    "./react-library.json": "./react-library.json"
+  }
 }

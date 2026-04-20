@@ -11,6 +11,7 @@ import {
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { AccountTab } from './account-tab'
 import { AppearanceTab } from './appearance-tab'
+import { EnvironmentDebugDrawer } from './environment-debug-drawer'
 import { WorkspaceTab } from './workspace-tab'
 import { MembersTab } from './members-tab'
 
@@ -81,7 +82,12 @@ export function SettingsPage({ extraAccountTabs }: SettingsPageProps = {}) {
 
       {/* Right content */}
       <div className="flex-1 min-w-0 overflow-y-auto">
-        <div className="w-full max-w-3xl mx-auto p-6">
+        <div className="w-full max-w-3xl mx-auto px-6 pt-6">
+          <div className="mb-4 flex items-center justify-end">
+            <EnvironmentDebugDrawer />
+          </div>
+        </div>
+        <div className="w-full max-w-3xl mx-auto px-6 pb-6">
           <TabsContent value="profile">
             <AccountTab />
           </TabsContent>

@@ -7,6 +7,10 @@ const mockSetOpen = vi.hoisted(() => vi.fn())
 const mockOpenPanel = vi.hoisted(() => vi.fn())
 const mockReplace = vi.hoisted(() => vi.fn())
 const mockQueryClear = vi.hoisted(() => vi.fn())
+const mockGetNextIdleSession = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ id: 'session-new', title: 'New Chat' }),
+)
+const mockSetActiveSession = vi.hoisted(() => vi.fn())
 
 const mockDockState = vi.hoisted(() => ({
   activePanel: {
@@ -57,6 +61,24 @@ vi.mock('@garden/core/workspace', () => ({
       selector ? selector(mockWorkspaceState) : mockWorkspaceState,
     {
       getState: () => mockWorkspaceState,
+    },
+  ),
+}))
+
+vi.mock('@garden/core/chat', () => ({
+  useChatStore: Object.assign(
+    (selector?: (state: { activeSessionId: string | null; setActiveSession: typeof mockSetActiveSession }) => unknown) => {
+      const state = {
+        activeSessionId: null,
+        setActiveSession: mockSetActiveSession,
+      }
+      return selector ? selector(state) : state
+    },
+    {
+      getState: () => ({
+        activeSessionId: null,
+        setActiveSession: mockSetActiveSession,
+      }),
     },
   ),
 }))
@@ -125,6 +147,12 @@ vi.mock('@/features/chat', () => ({
   ChatSessionExplorer: () => <div>Chat session explorer</div>,
 }))
 
+vi.mock('@/features/chat/use-agent-chat-sessions', () => ({
+  useAgentSessions: () => ({
+    getNextIdleSession: mockGetNextIdleSession,
+  }),
+}))
+
 vi.mock('@/features/navigation', () => ({
   useNavigation: () => ({
     replace: mockReplace,
@@ -162,7 +190,9 @@ describe('WorkspaceSidebar', () => {
     const user = userEvent.setup()
     const { rerender } = render(<WorkspaceSidebar />)
 
-    expect(screen.getByText('No active work yet.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /dashboard/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /tasks/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /inbox/i })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /chats/i }))
 
@@ -171,7 +201,7 @@ describe('WorkspaceSidebar', () => {
       kind: 'chat',
       title: 'New Chat',
     })
-    expect(screen.getByText('No active work yet.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /dashboard/i })).toBeInTheDocument()
     expect(screen.queryByText('Chat session explorer')).not.toBeInTheDocument()
 
     mockDockState.activePanel = {
@@ -210,7 +240,7 @@ describe('WorkspaceSidebar', () => {
     rerender(<WorkspaceSidebar />)
 
     await waitFor(() => {
-      expect(screen.getByText('No active work yet.')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /tasks/i })).toBeInTheDocument()
     })
     expect(screen.queryByText('Chat session explorer')).not.toBeInTheDocument()
   })
