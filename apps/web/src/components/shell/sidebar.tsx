@@ -6,8 +6,6 @@ import {
   IconBrandGithub,
   IconBrandGmail,
   IconBrandSlack,
-  IconHomeSpark,
-  IconMessage2,
   IconMessage2Plus,
   IconPlugConnected,
   IconSettings2,
@@ -66,31 +64,31 @@ const railItems: RailItem[] = [
   {
     id: 'home',
     label: 'Home',
-    icon: IconHomeSpark,
+    icon: RailHomeIcon,
     defaultPanel: { kind: 'dashboard', title: 'Dashboard' },
   },
   {
     id: 'chats',
     label: 'Chats',
-    icon: IconMessage2,
+    icon: RailChatsIcon,
     defaultPanel: { kind: 'chat', title: 'New Chat' },
   },
   {
     id: 'skills',
     label: 'Skills',
-    icon: IconSparkles2,
+    icon: RailSkillsIcon,
     defaultPanel: { kind: 'skill-editor', title: 'Skills' },
   },
   {
     id: 'connections',
     label: 'Connections',
-    icon: IconPlugConnected,
+    icon: RailConnectionsIcon,
     defaultPanel: { kind: 'capabilities', title: 'Connections' },
   },
   {
     id: 'settings',
     label: 'Settings',
-    icon: IconSettings2,
+    icon: RailSettingsIcon,
     defaultPanel: { kind: 'settings', title: 'Settings' },
   },
 ]
@@ -117,6 +115,33 @@ function contextFromPanel(kind: WorkspacePanelKind | null): RailContext {
 
 function HomeDashboardIcon({ className }: { className?: string }) {
   return <IconifyIcon icon="ic:sharp-dashboard" className={className} />
+}
+
+function RailHomeIcon({ className }: { className?: string }) {
+  return <IconifyIcon icon="ic:sharp-home" className={className} />
+}
+
+function RailChatsIcon({ className }: { className?: string }) {
+  return (
+    <IconifyIcon icon="material-symbols:chat-outline-sharp" className={className} />
+  )
+}
+
+function RailSkillsIcon({ className }: { className?: string }) {
+  return (
+    <IconifyIcon
+      icon="material-symbols:menu-book-outline-sharp"
+      className={className}
+    />
+  )
+}
+
+function RailConnectionsIcon({ className }: { className?: string }) {
+  return <IconifyIcon icon="ic:sharp-link" className={className} />
+}
+
+function RailSettingsIcon({ className }: { className?: string }) {
+  return <IconifyIcon icon="ic:sharp-settings" className={className} />
 }
 
 function HomeTasksIcon({ className }: { className?: string }) {
@@ -294,7 +319,7 @@ export function WorkspaceSidebar() {
                       className="rounded-[2px] px-2.5 md:px-2"
                       onClick={() => openRailContext(item)}
                     >
-                      <item.icon className="size-4" />
+                      <item.icon className="size-[22px]" />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
