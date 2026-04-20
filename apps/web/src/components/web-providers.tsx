@@ -1,6 +1,6 @@
-import { CoreProvider } from '@accelerate/core/platform'
-import { ThemeProvider } from '@accelerate/ui/components/common/theme-provider'
-import { Toaster } from '@accelerate/ui/components/ui/sonner'
+import { CoreProvider } from '@garden/core/platform'
+import { ThemeProvider } from '@garden/ui/components/common/theme-provider'
+import { Toaster } from '@garden/ui/components/ui/sonner'
 import { WebNavigationProvider } from '@/platform/navigation'
 
 export function WebProviders({ children }: { children: React.ReactNode }) {

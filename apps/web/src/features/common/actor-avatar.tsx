@@ -1,7 +1,7 @@
 'use client'
 
-import { ActorAvatar as ActorAvatarBase } from '@accelerate/ui/components/common/actor-avatar'
-import { useActorName } from '@accelerate/core/workspace/hooks'
+import { ActorAvatar as ActorAvatarBase } from '@garden/ui/components/common/actor-avatar'
+import { useActorName } from '@garden/core/workspace/hooks'
 
 interface ActorAvatarProps {
   actorType: string

@@ -3,11 +3,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useDefaultLayout } from 'react-resizable-panels'
 import { useQuery } from '@tanstack/react-query'
-import { useWorkspaceId } from '@accelerate/core/hooks'
+import { useWorkspaceId } from '@garden/core/hooks'
 import {
   inboxListOptions,
   deduplicateInboxItems,
-} from '@accelerate/core/inbox/queries'
+} from '@garden/core/inbox/queries'
 import {
   useMarkInboxRead,
   useArchiveInbox,
@@ -15,7 +15,7 @@ import {
   useArchiveAllInbox,
   useArchiveAllReadInbox,
   useArchiveCompletedInbox,
-} from '@accelerate/core/inbox/mutations'
+} from '@garden/core/inbox/mutations'
 import { IssueDetail } from '../../issues/components'
 import { useNavigation } from '../../navigation'
 import { toast } from 'sonner'
@@ -28,22 +28,22 @@ import {
   ListChecks,
   ArrowLeft,
 } from 'lucide-react'
-import type { InboxItem } from '@accelerate/core/types'
-import { Button } from '@accelerate/ui/components/ui/button'
+import type { InboxItem } from '@garden/core/types'
+import { Button } from '@garden/ui/components/ui/button'
 import {
   ResizablePanelGroup,
   ResizablePanel,
   ResizableHandle,
-} from '@accelerate/ui/components/ui/resizable'
-import { Skeleton } from '@accelerate/ui/components/ui/skeleton'
+} from '@garden/ui/components/ui/resizable'
+import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-} from '@accelerate/ui/components/ui/dropdown-menu'
-import { useIsMobile } from '@accelerate/ui/hooks/use-mobile'
+} from '@garden/ui/components/ui/dropdown-menu'
+import { useIsMobile } from '@garden/ui/hooks/use-mobile'
 import { PageHeader } from '../../layout/page-header'
 import { InboxListItem, timeAgo } from './inbox-list-item'
 import { typeLabels } from './inbox-detail-label'

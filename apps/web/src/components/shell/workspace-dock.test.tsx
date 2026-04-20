@@ -22,11 +22,11 @@ vi.mock('dockview', () => ({
   themeLight: {},
 }))
 
-vi.mock('@accelerate/ui/components/common/theme-provider', () => ({
+vi.mock('@garden/ui/components/common/theme-provider', () => ({
   useTheme: () => ({ resolvedTheme: 'light' }),
 }))
 
-vi.mock('@accelerate/ui/components/ui/button', () => ({
+vi.mock('@garden/ui/components/ui/button', () => ({
   Button: ({
     children,
     ...props
@@ -70,33 +70,113 @@ type FakePanelKind =
 
 type FakeSerializedPanel = {
   id: string
-  kind: FakePanelKind
-  title: string
-  entityId?: string
+  contentComponent: FakePanelKind
+  title?: string
+  params?: {
+    kind: FakePanelKind
+    title: string
+    entityId?: string
+    canonicalId: string
+  }
 }
 
 type FakeSerializedGroup = {
   id: string
-  panels: FakeSerializedPanel[]
-  activePanelId?: string | null
+  views: string[]
+  activeView?: string | null
 }
 
 type FakeSerializedDock = {
-  __groups: FakeSerializedGroup[]
+  grid: {
+    root: {
+      type: 'branch'
+      data: Array<{
+        type: 'leaf'
+        data: FakeSerializedGroup
+      }>
+    }
+    height: number
+    width: number
+    orientation: 'horizontal' | 'vertical'
+  }
+  panels: Record<string, FakeSerializedPanel>
   activeGroup?: string | null
+}
+
+function makeSerializedDock(
+  groups: Array<{
+    id: string
+    activePanelId?: string | null
+    panels: Array<{
+      id: string
+      kind: FakePanelKind
+      title: string
+      entityId?: string
+    }>
+  }>,
+  activeGroup?: string | null,
+): FakeSerializedDock {
+  const panels = Object.fromEntries(
+    groups.flatMap((group) =>
+      group.panels.map((panel) => [
+        panel.id,
+        {
+          id: panel.id,
+          contentComponent: panel.kind,
+          title: panel.title,
+          params: {
+            kind: panel.kind,
+            title: panel.title,
+            entityId: panel.entityId,
+            canonicalId: panel.entityId
+              ? `${panel.kind}:${panel.entityId}`
+              : `${panel.kind}:singleton`,
+          },
+        } satisfies FakeSerializedPanel,
+      ]),
+    ),
+  )
+
+  return {
+    grid: {
+      root: {
+        type: 'branch',
+        data: groups.map((group) => ({
+          type: 'leaf',
+          data: {
+            id: group.id,
+            views: group.panels.map((panel) => panel.id),
+            activeView: group.activePanelId ?? null,
+          },
+        })),
+      },
+      height: 0,
+      width: 0,
+      orientation: 'horizontal',
+    },
+    panels,
+    activeGroup: activeGroup ?? null,
+  }
 }
 
 type FakePanel = {
   id: string
   group: FakeGroup
+  params: {
+    kind: FakePanelKind
+    title: string
+    entityId?: string
+    canonicalId: string
+  }
+  initialApiParametersVisible: boolean
   api: {
     id: string
     title: string
     getParameters: () => {
-      kind: FakePanelKind
-      title: string
+      kind?: FakePanelKind
+      title?: string
       entityId?: string
-      canonicalId: string
+      canonicalId?: string
     }
     setActive: () => void
     close: () => void
@@ -130,18 +210,40 @@ class FakeDockApi {
   private groupCounter = 0
 
   toJSON = vi.fn(() => ({
-    __groups: this.groups.map((group) => ({
-      id: group.id,
-      activePanelId: group.activePanel?.id ?? null,
-      panels: group.panels.map((panel) => ({
-        id: panel.id,
-        kind: panel.api.getParameters().kind,
-        title: panel.api.title,
-        entityId: panel.api.getParameters().entityId,
-      })),
-    })),
+    grid: {
+      root: {
+        type: 'branch',
+        data: this.groups.map((group) => ({
+          type: 'leaf',
+          data: {
+            id: group.id,
+            views: group.panels.map((panel) => panel.id),
+            activeView: group.activePanel?.id ?? null,
+          },
+        })),
+      },
+      height: 0,
+      width: 0,
+      orientation: 'horizontal',
+    },
+    panels: Object.fromEntries(
+      this.groups.flatMap((group) =>
+        group.panels.map((panel) => {
+          const params = panel.params
+          return [
+            panel.id,
+            {
+              id: panel.id,
+              contentComponent: params.kind,
+              title: panel.api.title,
+              params,
+            } satisfies FakeSerializedPanel,
+          ]
+        }),
+      ),
+    ),
     activeGroup: this.activeGroup?.id ?? null,
-  }))
+  } satisfies FakeSerializedDock))
 
   hasMaximizedGroup() {
     return false
@@ -155,6 +257,10 @@ class FakeDockApi {
 
   get panels() {
     return this.groups.flatMap((group) => group.panels)
+  }
+
+  getPanel(id: string) {
+    return this.panels.find((panel) => panel.id === id)
   }
 
   getGroup(id: string) {
@@ -227,17 +333,24 @@ class FakeDockApi {
     this.activeGroup = null
     this.activePanel = null
 
-    for (const serializedGroup of data.__groups) {
+    for (const node of data.grid.root.data) {
+      const serializedGroup = node.data
       const group = this.createGroup(serializedGroup.id)
-      for (const serializedPanel of serializedGroup.panels) {
+      for (const panelId of serializedGroup.views) {
+        const serializedPanel = data.panels[panelId]
+        if (!serializedPanel?.params) {
+          continue
+        }
+
         const panel = this.createPanel(group, {
-          ...serializedPanel,
-          canonicalId: serializedPanel.entityId
-            ? `${serializedPanel.kind}:${serializedPanel.entityId}`
-            : `${serializedPanel.kind}:singleton`,
+          id: serializedPanel.id,
+          kind: serializedPanel.params.kind,
+          title: serializedPanel.title ?? serializedPanel.params.title,
+          entityId: serializedPanel.params.entityId,
+          canonicalId: serializedPanel.params.canonicalId,
         })
         group.panels.push(panel)
-        if (serializedGroup.activePanelId === panel.id) {
+        if (serializedGroup.activeView === panel.id) {
           group.activePanel = panel
         }
       }
@@ -262,6 +375,32 @@ class FakeDockApi {
     }
 
     this.activePanelListeners.forEach((listener) => listener())
+  }
+
+  setVisibleGroupPanel(
+    groupId: string,
+    panelId: string,
+    options?: { keepContainerActivePanel?: boolean },
+  ) {
+    const group = this.getGroup(groupId)
+    const panel = group?.panels.find((candidate) => candidate.id === panelId)
+    if (!group || !panel) return
+
+    const previousGroupId = this.activeGroup?.id ?? null
+    this.activeGroup = group
+    group.activePanel = panel
+
+    if (!options?.keepContainerActivePanel) {
+      this.activePanel = panel
+    }
+
+    if (previousGroupId !== group.id) {
+      this.activeGroupListeners.forEach((listener) => listener())
+    }
+
+    if (!options?.keepContainerActivePanel) {
+      this.activePanelListeners.forEach((listener) => listener())
+    }
   }
 
   private createGroup(id?: string): FakeGroup {
@@ -290,15 +429,20 @@ class FakeDockApi {
     const panel = {
       id: params.id,
       group,
+      params: {
+        kind: params.kind,
+        title: params.title,
+        entityId: params.entityId,
+        canonicalId: params.canonicalId,
+      },
+      initialApiParametersVisible: false,
       api: {
         id: params.id,
         title: params.title,
-        getParameters: () => ({
-          kind: params.kind,
-          title: params.title,
-          entityId: params.entityId,
-          canonicalId: params.canonicalId,
-        }),
+        getParameters: () =>
+          panel.initialApiParametersVisible
+            ? { ...panel.params }
+            : {},
         setActive: () => this.setActivePanel(panel),
         close: () => {},
       },
@@ -391,23 +535,31 @@ describe('WorkspaceDockProvider', () => {
         'chat',
       )
     })
+
+    expect(mockSetQueryState).toHaveBeenLastCalledWith({
+      panel: 'chat',
+      panelTitle: 'New Chat',
+      panelEntityId: null,
+    })
   })
 
   it('restores a saved layout with no active group by selecting the first non-blank panel', async () => {
     const api = new FakeDockApi()
 
     window.localStorage.setItem(
-      'accelerate:dockview:workspace-1',
-      JSON.stringify({
-        __groups: [
-          {
-            id: 'group-1',
-            activePanelId: null,
-            panels: [{ id: 'panel-1', kind: 'chat', title: 'New Chat' }],
-          },
-        ],
-        activeGroup: null,
-      } satisfies FakeSerializedDock),
+      'garden:dockview:workspace-1',
+      JSON.stringify(
+        makeSerializedDock(
+          [
+            {
+              id: 'group-1',
+              activePanelId: null,
+              panels: [{ id: 'panel-1', kind: 'chat', title: 'New Chat' }],
+            },
+          ],
+          null,
+        ),
+      ),
     )
 
     render(
@@ -432,22 +584,24 @@ describe('WorkspaceDockProvider', () => {
     const api = new FakeDockApi()
 
     window.localStorage.setItem(
-      'accelerate:dockview:workspace-1',
-      JSON.stringify({
-        __groups: [
-          {
-            id: 'group-1',
-            activePanelId: 'panel-1',
-            panels: [{ id: 'panel-1', kind: 'chat', title: 'New Chat' }],
-          },
-          {
-            id: 'group-2',
-            activePanelId: null,
-            panels: [],
-          },
-        ],
-        activeGroup: 'group-1',
-      } satisfies FakeSerializedDock),
+      'garden:dockview:workspace-1',
+      JSON.stringify(
+        makeSerializedDock(
+          [
+            {
+              id: 'group-1',
+              activePanelId: 'panel-1',
+              panels: [{ id: 'panel-1', kind: 'chat', title: 'New Chat' }],
+            },
+            {
+              id: 'group-2',
+              activePanelId: null,
+              panels: [],
+            },
+          ],
+          'group-1',
+        ),
+      ),
     )
 
     render(
@@ -472,5 +626,127 @@ describe('WorkspaceDockProvider', () => {
       'chat',
     )
     expect(api.getGroup('group-2')?.panels).toHaveLength(1)
+  })
+
+  it('follows the active group panel when dockview keeps a stale container activePanel', async () => {
+    const api = new FakeDockApi()
+
+    window.localStorage.setItem(
+      'garden:dockview:workspace-1',
+      JSON.stringify(
+        makeSerializedDock(
+          [
+            {
+              id: 'group-1',
+              activePanelId: 'panel-1',
+              panels: [{ id: 'panel-1', kind: 'inbox', title: 'Inbox' }],
+            },
+            {
+              id: 'group-2',
+              activePanelId: 'panel-2',
+              panels: [{ id: 'panel-2', kind: 'chat', title: 'New Chat' }],
+            },
+          ],
+          'group-1',
+        ),
+      ),
+    )
+
+    render(
+      <WorkspaceDockProvider workspaceId="workspace-1">
+        <DockContextCapture />
+      </WorkspaceDockProvider>,
+    )
+
+    await act(async () => {
+      capturedDock?.handleReady({ api } as never)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dock-state')).toHaveAttribute(
+        'data-panel',
+        'inbox',
+      )
+    })
+
+    await act(async () => {
+      api.setVisibleGroupPanel('group-2', 'panel-2', {
+        keepContainerActivePanel: true,
+      })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dock-state')).toHaveAttribute(
+        'data-group',
+        'group-2',
+      )
+    })
+
+    expect(screen.getByTestId('dock-state')).toHaveAttribute(
+      'data-panel',
+      'chat',
+    )
+  })
+
+  it('drops invalid saved layouts and falls back to inbox', async () => {
+    const api = new FakeDockApi()
+
+    window.localStorage.setItem(
+      'garden:dockview:workspace-1',
+      JSON.stringify({
+        grid: {
+          root: {
+            type: 'branch',
+            data: [
+              {
+                type: 'leaf',
+                data: {
+                  id: 'group-1',
+                  views: ['panel-1'],
+                  activeView: 'panel-1',
+                },
+              },
+            ],
+          },
+          height: 0,
+          width: 0,
+          orientation: 'horizontal',
+        },
+        panels: {
+          'panel-1': {
+            id: 'panel-1',
+            contentComponent: 'agent-detail',
+            title: 'Agent',
+            params: {
+              kind: 'agent-detail',
+              title: 'Agent',
+              canonicalId: 'agent-detail:singleton',
+            },
+          },
+        },
+        activeGroup: 'group-1',
+      }),
+    )
+
+    render(
+      <WorkspaceDockProvider workspaceId="workspace-1">
+        <DockContextCapture />
+      </WorkspaceDockProvider>,
+    )
+
+    await act(async () => {
+      capturedDock?.handleReady({ api } as never)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dock-state')).toHaveAttribute(
+        'data-panel',
+        'inbox',
+      )
+    })
+
+    expect(window.localStorage.getItem('garden:dockview:workspace-1')).toBe(
+      null,
+    )
   })
 })

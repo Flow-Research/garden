@@ -1,17 +1,17 @@
 "use client";
 
-import { Button } from "@accelerate/ui/components/ui/button";
+import { Button } from "@garden/ui/components/ui/button";
 import {
   ButtonGroup,
   ButtonGroupText,
-} from "@accelerate/ui/components/ui/button-group";
+} from "@garden/ui/components/ui/button-group";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@accelerate/ui/components/ui/tooltip";
-import { cn } from "@accelerate/ui/lib/utils";
+} from "@garden/ui/components/ui/tooltip";
+import { cn } from "@garden/ui/lib/utils";
 import { cjk } from "@streamdown/cjk";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";

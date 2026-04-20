@@ -7,14 +7,14 @@ import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
-} from '@accelerate/ui/components/ui/tooltip'
-import { Button } from '@accelerate/ui/components/ui/button'
-import type { Issue, IssueStatus } from '@accelerate/core/types'
-import { useLoadMoreDoneIssues } from '@accelerate/core/issues/mutations'
-import { STATUS_CONFIG } from '@accelerate/core/issues/config'
-import { useModalStore } from '@accelerate/core/modals'
-import { useViewStore } from '@accelerate/core/issues/stores/view-store-context'
-import { useIssueSelectionStore } from '@accelerate/core/issues/stores/selection-store'
+} from '@garden/ui/components/ui/tooltip'
+import { Button } from '@garden/ui/components/ui/button'
+import type { Issue, IssueStatus } from '@garden/core/types'
+import { useLoadMoreDoneIssues } from '@garden/core/issues/mutations'
+import { STATUS_CONFIG } from '@garden/core/issues/config'
+import { useModalStore } from '@garden/core/modals'
+import { useViewStore } from '@garden/core/issues/stores/view-store-context'
+import { useIssueSelectionStore } from '@garden/core/issues/stores/selection-store'
 import { sortIssues } from '../utils/sort'
 import { StatusIcon } from './status-icon'
 import { ListRow, type ChildProgress } from './list-row'

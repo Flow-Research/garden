@@ -17,19 +17,20 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useChatStore } from '@accelerate/core/chat'
-import { Button } from '@accelerate/ui/components/ui/button'
+import { useChatStore } from '@garden/core/chat'
+import { Button } from '@garden/ui/components/ui/button'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
-} from '@accelerate/ui/components/ui/context-menu'
-import { cn } from '@accelerate/ui/lib/utils'
+} from '@garden/ui/components/ui/context-menu'
+import { cn } from '@garden/ui/lib/utils'
 import {
   useAgentSessions,
   type AgentChatSession,
 } from '../use-agent-chat-sessions'
+import { isDraftChatSessionId, startNewChat } from '../draft-session'
 
 function formatTimeAgo(dateStr: string) {
   const date = new Date(dateStr)
@@ -127,7 +128,7 @@ function SessionRow({
         >
           <span
             aria-hidden="true"
-            className="mt-0.5 hidden shrink-0 cursor-grab text-muted-foreground group-hover:inline-flex"
+            className="mt-0.5 inline-flex shrink-0 cursor-grab text-muted-foreground/70 transition-colors group-hover:text-muted-foreground"
             {...attributes}
             {...listeners}
           >
@@ -174,7 +175,6 @@ export function ChatSessionExplorer({
   const activeSessionId = useChatStore((state) => state.activeSessionId)
   const setActiveSession = useChatStore((state) => state.setActiveSession)
   const {
-    createSession,
     deleteSession,
     renameSession,
     reorderSessions: persistOrder,
@@ -182,15 +182,15 @@ export function ChatSessionExplorer({
   } = useAgentSessions()
 
   const activeSessions = useMemo(() => sessions, [sessions])
+  const draftIsActive = isDraftChatSessionId(activeSessionId)
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
     }),
   )
 
-  const handleCreate = async () => {
-    const created = await createSession.mutateAsync('New chat')
-    setActiveSession(created.id)
+  const handleCreate = () => {
+    startNewChat()
     onActivate?.()
   }
 
@@ -226,11 +226,7 @@ export function ChatSessionExplorer({
         </Button>
       </div>
 
-      {activeSessions.length === 0 ? (
-        <div className="px-3 py-2 text-[12px] text-muted-foreground">
-          Start a chat to create your first session.
-        </div>
-      ) : (
+      {draftIsActive || activeSessions.length > 0 ? (
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -241,6 +237,43 @@ export function ChatSessionExplorer({
             strategy={rectSortingStrategy}
           >
             <div className="space-y-1 px-3">
+              {draftIsActive ? (
+                <div className="flex w-full items-start gap-2 rounded-lg border border-border bg-accent px-3 py-2.5 text-left text-accent-foreground">
+                  <span
+                    aria-hidden="true"
+                    className="mt-0.5 inline-flex shrink-0 text-muted-foreground/70"
+                  >
+                    <GripVertical className="size-3.5" />
+                  </span>
+                  <div className="mt-0.5 shrink-0">
+                    <SessionStatusDot
+                      session={{
+                        id: 'draft',
+                        title: 'New Chat',
+                        createdAt: new Date(0).toISOString(),
+                        updatedAt: new Date().toISOString(),
+                        lastMessage: '',
+                        status: 'idle',
+                        unread: false,
+                        archivedAt: null,
+                      }}
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium">
+                        New Chat
+                      </span>
+                    </div>
+                    <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                      No messages yet
+                    </div>
+                  </div>
+                  <span className="pt-0.5 text-[11px] text-muted-foreground">
+                    now
+                  </span>
+                </div>
+              ) : null}
               {activeSessions.map((session) => (
                 <SessionRow
                   key={session.id}
@@ -254,6 +287,10 @@ export function ChatSessionExplorer({
             </div>
           </SortableContext>
         </DndContext>
+      ) : (
+        <div className="px-3 py-2 text-[12px] text-muted-foreground">
+          Start a chat to create your first session.
+        </div>
       )}
     </div>
   )

@@ -7,8 +7,8 @@ import {
   TabsList,
   TabsTrigger,
   TabsContent,
-} from '@accelerate/ui/components/ui/tabs'
-import { useWorkspaceStore } from '@accelerate/core/workspace'
+} from '@garden/ui/components/ui/tabs'
+import { useWorkspaceStore } from '@garden/core/workspace'
 import { AccountTab } from './account-tab'
 import { AppearanceTab } from './appearance-tab'
 import { WorkspaceTab } from './workspace-tab'

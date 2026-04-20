@@ -5,11 +5,11 @@
  * (react-markdown link component), and link-hover-card (Open button).
  */
 
-/** Open a link — internal paths dispatch accelerate:navigate, external open new tab. */
+/** Open a link — internal paths dispatch garden:navigate, external open new tab. */
 export function openLink(href: string): void {
   if (href.startsWith('/')) {
     window.dispatchEvent(
-      new CustomEvent('accelerate:navigate', { detail: { path: href } }),
+      new CustomEvent('garden:navigate', { detail: { path: href } }),
     )
   } else {
     window.open(href, '_blank', 'noopener,noreferrer')

@@ -1,4 +1,4 @@
-import { cn } from "@accelerate/ui/lib/utils";
+import { cn } from "@garden/ui/lib/utils";
 import { Panel as PanelPrimitive } from "@xyflow/react";
 import type { ComponentProps } from "react";
 

@@ -1,5 +1,5 @@
 {
-  "name": "@accelerate/env",
+  "name": "@garden/env",
   "private": true,
   "type": "module",
   "exports": {

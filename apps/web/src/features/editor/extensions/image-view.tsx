@@ -6,7 +6,7 @@ import { NodeViewWrapper } from '@tiptap/react'
 import type { NodeViewProps } from '@tiptap/react'
 import { Maximize2, Download, Link as LinkIcon, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { cn } from '@accelerate/ui/lib/utils'
+import { cn } from '@garden/ui/lib/utils'
 
 // ---------------------------------------------------------------------------
 // Lightbox — full-screen image preview (ESC or click backdrop to close)

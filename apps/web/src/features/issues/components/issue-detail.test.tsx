@@ -2,16 +2,16 @@ import { forwardRef, useRef, useState, useImperativeHandle } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { Issue, TimelineEntry } from '@accelerate/core/types'
-import { WorkspaceIdProvider } from '@accelerate/core/hooks'
+import type { Issue, TimelineEntry } from '@garden/core/types'
+import { WorkspaceIdProvider } from '@garden/core/hooks'
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
-// Mock @accelerate/core/auth
+// Mock @garden/core/auth
 const mockAuthUser = { id: 'user-1', email: 'test@test.com', name: 'Test User' }
-vi.mock('@accelerate/core/auth', () => ({
+vi.mock('@garden/core/auth', () => ({
   useAuthStore: Object.assign(
     (selector?: any) => {
       const state = { user: mockAuthUser, isAuthenticated: true }
@@ -23,8 +23,8 @@ vi.mock('@accelerate/core/auth', () => ({
   createAuthStore: vi.fn(),
 }))
 
-// Mock @accelerate/core/workspace
-vi.mock('@accelerate/core/workspace', () => ({
+// Mock @garden/core/workspace
+vi.mock('@garden/core/workspace', () => ({
   useWorkspaceStore: Object.assign(
     (selector?: any) => {
       const state = {
@@ -45,8 +45,8 @@ vi.mock('@accelerate/core/workspace', () => ({
   registerWorkspaceStore: vi.fn(),
 }))
 
-// Mock @accelerate/core/workspace/hooks
-vi.mock('@accelerate/core/workspace/hooks', () => ({
+// Mock @garden/core/workspace/hooks
+vi.mock('@garden/core/workspace/hooks', () => ({
   useActorName: () => ({
     getMemberName: (id: string) => (id === 'user-1' ? 'Test User' : 'Unknown'),
     getAgentName: (id: string) =>
@@ -62,7 +62,7 @@ vi.mock('@accelerate/core/workspace/hooks', () => ({
 }))
 
 // Mock workspace queries
-vi.mock('@accelerate/core/workspace/queries', () => ({
+vi.mock('@garden/core/workspace/queries', () => ({
   memberListOptions: () => ({
     queryKey: ['workspaces', 'ws-1', 'members'],
     queryFn: () =>
@@ -209,14 +209,14 @@ const mockApiObj = vi.hoisted(() => ({
   listAgents: vi.fn().mockResolvedValue([]),
 }))
 
-vi.mock('@accelerate/core/api', () => ({
+vi.mock('@garden/core/api', () => ({
   api: mockApiObj,
   getApi: () => mockApiObj,
   setApiInstance: vi.fn(),
 }))
 
 // Mock issue config
-vi.mock('@accelerate/core/issues/config', () => ({
+vi.mock('@garden/core/issues/config', () => ({
   ALL_STATUSES: [
     'backlog',
     'todo',
@@ -322,7 +322,7 @@ vi.mock('@accelerate/core/issues/config', () => ({
 
 // Mock recent issues store
 const mockRecordVisit = vi.fn()
-vi.mock('@accelerate/core/issues/stores', () => ({
+vi.mock('@garden/core/issues/stores', () => ({
   useRecentIssuesStore: Object.assign(
     (selector?: any) => {
       const state = { items: [], recordVisit: mockRecordVisit }
@@ -333,26 +333,26 @@ vi.mock('@accelerate/core/issues/stores', () => ({
 }))
 
 // Mock modals
-vi.mock('@accelerate/core/modals', () => ({
+vi.mock('@garden/core/modals', () => ({
   useModalStore: Object.assign(() => ({ open: vi.fn() }), {
     getState: () => ({ open: vi.fn() }),
   }),
 }))
 
 // Mock core/utils
-vi.mock('@accelerate/core/utils', () => ({
+vi.mock('@garden/core/utils', () => ({
   timeAgo: () => '1d ago',
 }))
 
 // Mock core/hooks/use-file-upload
-vi.mock('@accelerate/core/hooks/use-file-upload', () => ({
+vi.mock('@garden/core/hooks/use-file-upload', () => ({
   useFileUpload: () => ({
     uploadWithToast: vi.fn().mockResolvedValue('https://example.com/file.png'),
   }),
 }))
 
 // Mock realtime
-vi.mock('@accelerate/core/realtime', () => ({
+vi.mock('@garden/core/realtime', () => ({
   useWSEvent: vi.fn(),
   useWSReconnect: vi.fn(),
   useWS: () => ({
@@ -368,7 +368,7 @@ vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }))
 
-// Mock react-resizable-panels (used by @accelerate/ui/components/ui/resizable)
+// Mock react-resizable-panels (used by /ui/components/ui/resizable)
 vi.mock('react-resizable-panels', () => ({
   Group: ({ children, ...props }: any) => (
     <div data-testid="panel-group" {...props}>

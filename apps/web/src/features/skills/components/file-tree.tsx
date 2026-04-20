@@ -9,7 +9,7 @@ import {
   Folder,
   FolderOpen,
 } from 'lucide-react'
-import { cn } from '@accelerate/ui/lib/utils'
+import { cn } from '@garden/ui/lib/utils'
 
 // ---------------------------------------------------------------------------
 // Tree data structures

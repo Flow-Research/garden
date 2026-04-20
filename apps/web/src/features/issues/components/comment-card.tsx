@@ -11,20 +11,20 @@ import {
   Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { Card } from '@accelerate/ui/components/ui/card'
-import { Button } from '@accelerate/ui/components/ui/button'
+import { Card } from '@garden/ui/components/ui/card'
+import { Button } from '@garden/ui/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-} from '@accelerate/ui/components/ui/dropdown-menu'
+} from '@garden/ui/components/ui/dropdown-menu'
 import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
-} from '@accelerate/ui/components/ui/tooltip'
+} from '@garden/ui/components/ui/tooltip'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,18 +34,18 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@accelerate/ui/components/ui/alert-dialog'
+} from '@garden/ui/components/ui/alert-dialog'
 import {
   Collapsible,
   CollapsibleTrigger,
   CollapsibleContent,
-} from '@accelerate/ui/components/ui/collapsible'
+} from '@garden/ui/components/ui/collapsible'
 import { ActorAvatar } from '../../common/actor-avatar'
-import { ReactionBar } from '@accelerate/ui/components/common/reaction-bar'
-import { QuickEmojiPicker } from '@accelerate/ui/components/common/quick-emoji-picker'
-import { cn } from '@accelerate/ui/lib/utils'
-import { useActorName } from '@accelerate/core/workspace/hooks'
-import { timeAgo } from '@accelerate/core/utils'
+import { ReactionBar } from '@garden/ui/components/common/reaction-bar'
+import { QuickEmojiPicker } from '@garden/ui/components/common/quick-emoji-picker'
+import { cn } from '@garden/ui/lib/utils'
+import { useActorName } from '@garden/core/workspace/hooks'
+import { timeAgo } from '@garden/core/utils'
 import {
   ContentEditor,
   type ContentEditorRef,
@@ -54,11 +54,11 @@ import {
   useFileDropZone,
   FileDropOverlay,
 } from '../../editor'
-import { FileUploadButton } from '@accelerate/ui/components/common/file-upload-button'
-import { useFileUpload } from '@accelerate/core/hooks/use-file-upload'
-import { api } from '@accelerate/core/api'
+import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
+import { useFileUpload } from '@garden/core/hooks/use-file-upload'
+import { api } from '@garden/core/api'
 import { ReplyInput } from './reply-input'
-import type { TimelineEntry, Attachment } from '@accelerate/core/types'
+import type { TimelineEntry, Attachment } from '@garden/core/types'
 
 // ---------------------------------------------------------------------------
 // Types

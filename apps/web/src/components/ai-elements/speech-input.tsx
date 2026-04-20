@@ -1,8 +1,8 @@
 "use client";
 
-import { Button } from "@accelerate/ui/components/ui/button";
-import { Spinner } from "@accelerate/ui/components/ui/spinner";
-import { cn } from "@accelerate/ui/lib/utils";
+import { Button } from "@garden/ui/components/ui/button";
+import { Spinner } from "@garden/ui/components/ui/spinner";
+import { cn } from "@garden/ui/lib/utils";
 import { MicIcon, SquareIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";

@@ -1,14 +1,14 @@
 'use client'
 
-import { STATUS_CONFIG, PRIORITY_CONFIG } from '@accelerate/core/issues/config'
-import { useActorName } from '@accelerate/core/workspace/hooks'
+import { STATUS_CONFIG, PRIORITY_CONFIG } from '@garden/core/issues/config'
+import { useActorName } from '@garden/core/workspace/hooks'
 import { StatusIcon, PriorityIcon } from '../../issues/components'
 import type {
   InboxItem,
   InboxItemType,
   IssueStatus,
   IssuePriority,
-} from '@accelerate/core/types'
+} from '@garden/core/types'
 
 const typeLabels: Record<InboxItemType, string> = {
   issue_assigned: 'Assigned',

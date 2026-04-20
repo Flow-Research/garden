@@ -16,8 +16,8 @@
   "menuAccent": "subtle",
   "aliases": {
     "components": "@/components",
-    "utils": "@accelerate/ui/lib/utils",
-    "ui": "@accelerate/ui/components/ui",
+    "utils": "@garden/ui/lib/utils",
+    "ui": "@garden/ui/components/ui",
     "lib": "@/lib",
     "hooks": "@/hooks"
   },

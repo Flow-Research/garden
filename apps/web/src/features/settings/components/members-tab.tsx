@@ -18,11 +18,11 @@ import type {
   MemberWithUser,
   MemberRole,
   Invitation,
-} from '@accelerate/core/types'
-import { Input } from '@accelerate/ui/components/ui/input'
-import { Button } from '@accelerate/ui/components/ui/button'
-import { Card, CardContent } from '@accelerate/ui/components/ui/card'
-import { Badge } from '@accelerate/ui/components/ui/badge'
+} from '@garden/core/types'
+import { Input } from '@garden/ui/components/ui/input'
+import { Button } from '@garden/ui/components/ui/button'
+import { Card, CardContent } from '@garden/ui/components/ui/card'
+import { Badge } from '@garden/ui/components/ui/badge'
 import {
   AlertDialog,
   AlertDialogContent,
@@ -32,14 +32,14 @@ import {
   AlertDialogFooter,
   AlertDialogCancel,
   AlertDialogAction,
-} from '@accelerate/ui/components/ui/alert-dialog'
+} from '@garden/ui/components/ui/alert-dialog'
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from '@accelerate/ui/components/ui/select'
+} from '@garden/ui/components/ui/select'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -49,18 +49,18 @@ import {
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
-} from '@accelerate/ui/components/ui/dropdown-menu'
+} from '@garden/ui/components/ui/dropdown-menu'
 import { toast } from 'sonner'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useAuthStore } from '@accelerate/core/auth'
-import { useWorkspaceStore } from '@accelerate/core/workspace'
-import { useWorkspaceId } from '@accelerate/core/hooks'
+import { useAuthStore } from '@garden/core/auth'
+import { useWorkspaceStore } from '@garden/core/workspace'
+import { useWorkspaceId } from '@garden/core/hooks'
 import {
   memberListOptions,
   invitationListOptions,
   workspaceKeys,
-} from '@accelerate/core/workspace/queries'
-import { api } from '@accelerate/core/api'
+} from '@garden/core/workspace/queries'
+import { api } from '@garden/core/api'
 
 const roleConfig: Record<
   MemberRole,

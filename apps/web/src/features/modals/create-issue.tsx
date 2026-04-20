@@ -9,24 +9,24 @@ import {
   Minimize2,
   X as XIcon,
 } from 'lucide-react'
-import { cn } from '@accelerate/ui/lib/utils'
+import { cn } from '@garden/ui/lib/utils'
 import { toast } from 'sonner'
 import type {
   IssueStatus,
   IssuePriority,
   IssueAssigneeType,
-} from '@accelerate/core/types'
+} from '@garden/core/types'
 import {
   Dialog,
   DialogContent,
   DialogTitle,
-} from '@accelerate/ui/components/ui/dialog'
+} from '@garden/ui/components/ui/dialog'
 import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
-} from '@accelerate/ui/components/ui/tooltip'
-import { Button } from '@accelerate/ui/components/ui/button'
+} from '@garden/ui/components/ui/tooltip'
+import { Button } from '@garden/ui/components/ui/button'
 import {
   ContentEditor,
   type ContentEditorRef,
@@ -43,12 +43,12 @@ import {
 } from '../issues/components'
 import { BacklogAgentHintContent } from '../issues/components/backlog-agent-hint-dialog'
 import { ProjectPicker } from '../projects/components/project-picker'
-import { useWorkspaceStore } from '@accelerate/core/workspace'
-import { useIssueDraftStore } from '@accelerate/core/issues/stores/draft-store'
-import { useCreateIssue, useUpdateIssue } from '@accelerate/core/issues/mutations'
-import { useFileUpload } from '@accelerate/core/hooks/use-file-upload'
-import { api } from '@accelerate/core/api'
-import { FileUploadButton } from '@accelerate/ui/components/common/file-upload-button'
+import { useWorkspaceStore } from '@garden/core/workspace'
+import { useIssueDraftStore } from '@garden/core/issues/stores/draft-store'
+import { useCreateIssue, useUpdateIssue } from '@garden/core/issues/mutations'
+import { useFileUpload } from '@garden/core/hooks/use-file-upload'
+import { api } from '@garden/core/api'
+import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
 
 // ---------------------------------------------------------------------------
 // Pill trigger — shared rounded-full button style for toolbar
@@ -176,7 +176,7 @@ export function CreateIssueModal({
         status === 'backlog' &&
         assigneeType === 'agent' &&
         assigneeId &&
-        localStorage.getItem('accelerate:backlog-agent-hint-dismissed') !== 'true'
+        localStorage.getItem('garden:backlog-agent-hint-dismissed') !== 'true'
 
       if (shouldShowBacklogHint) {
         setBacklogHintIssueId(issue.id)
@@ -259,7 +259,7 @@ export function CreateIssueModal({
             }}
             onDismissPermanently={() => {
               localStorage.setItem(
-                'accelerate:backlog-agent-hint-dismissed',
+                'garden:backlog-agent-hint-dismissed',
                 'true',
               )
             }}

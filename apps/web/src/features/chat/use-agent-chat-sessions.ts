@@ -3,8 +3,8 @@
 import { useMemo } from 'react'
 import { useAgent } from 'agents/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useAuthStore } from '@accelerate/core/auth'
-import { useWorkspaceStore } from '@accelerate/core/workspace'
+import { useAuthStore } from '@garden/core/auth'
+import { useWorkspaceStore } from '@garden/core/workspace'
 
 export interface AgentChatSession {
   id: string

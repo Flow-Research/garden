@@ -2,17 +2,17 @@
 
 import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import type { IssueSubscriber } from '@accelerate/core/types'
+import type { IssueSubscriber } from '@garden/core/types'
 import type {
   SubscriberAddedPayload,
   SubscriberRemovedPayload,
-} from '@accelerate/core/types'
+} from '@garden/core/types'
 import {
   issueSubscribersOptions,
   issueKeys,
-} from '@accelerate/core/issues/queries'
-import { useToggleIssueSubscriber } from '@accelerate/core/issues/mutations'
-import { useWSEvent, useWSReconnect } from '@accelerate/core/realtime'
+} from '@garden/core/issues/queries'
+import { useToggleIssueSubscriber } from '@garden/core/issues/mutations'
+import { useWSEvent, useWSReconnect } from '@garden/core/realtime'
 
 export function useIssueSubscribers(issueId: string, userId?: string) {
   const qc = useQueryClient()

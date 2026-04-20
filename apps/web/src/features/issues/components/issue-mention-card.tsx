@@ -5,8 +5,8 @@ import { useQuery } from '@tanstack/react-query'
 import {
   issueListOptions,
   issueDetailOptions,
-} from '@accelerate/core/issues/queries'
-import { useWorkspaceId } from '@accelerate/core/hooks'
+} from '@garden/core/issues/queries'
+import { useWorkspaceId } from '@garden/core/hooks'
 import { StatusIcon } from './status-icon'
 
 interface IssueMentionCardProps {

@@ -2,7 +2,7 @@ import {
   Avatar,
   AvatarFallback,
   AvatarImage,
-} from '@accelerate/ui/components/ui/avatar'
+} from '@garden/ui/components/ui/avatar'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,13 +11,13 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@accelerate/ui/components/ui/dropdown-menu'
+} from '@garden/ui/components/ui/dropdown-menu'
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from '@accelerate/ui/components/ui/sidebar'
+} from '@garden/ui/components/ui/sidebar'
 import {
   BadgeCheckIcon,
   ChevronsUpDownIcon,

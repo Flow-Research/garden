@@ -1,13 +1,13 @@
 "use client";
 
-import { Button } from "@accelerate/ui/components/ui/button";
+import { Button } from "@garden/ui/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@accelerate/ui/components/ui/tooltip";
-import { cn } from "@accelerate/ui/lib/utils";
+} from "@garden/ui/components/ui/tooltip";
+import { cn } from "@garden/ui/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import { XIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes } from "react";

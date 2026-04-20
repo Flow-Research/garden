@@ -6,8 +6,8 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "@accelerate/ui/components/ui/card";
-import { cn } from "@accelerate/ui/lib/utils";
+} from "@garden/ui/components/ui/card";
+import { cn } from "@garden/ui/lib/utils";
 import { Handle, Position } from "@xyflow/react";
 import type { ComponentProps } from "react";
 

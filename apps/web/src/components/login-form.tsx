@@ -1,15 +1,15 @@
-import { cn } from '@accelerate/ui/lib/utils'
-import { Button } from '@accelerate/ui/components/ui/button'
-import { Card, CardContent } from '@accelerate/ui/components/ui/card'
+import { cn } from '@garden/ui/lib/utils'
+import { Button } from '@garden/ui/components/ui/button'
+import { Card, CardContent } from '@garden/ui/components/ui/card'
 import {
   Field,
   FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
-} from '@accelerate/ui/components/ui/field'
-import { Input } from '@accelerate/ui/components/ui/input'
-import { BrandIcon } from '@accelerate/ui/components/common/brand-icon'
+} from '@garden/ui/components/ui/field'
+import { Input } from '@garden/ui/components/ui/input'
+import { BrandIcon } from '@garden/ui/components/common/brand-icon'
 import { ArrowRightIcon, Loader2Icon } from 'lucide-react'
 
 export function LoginForm({

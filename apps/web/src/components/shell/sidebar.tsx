@@ -15,8 +15,8 @@ import {
   IconSettings2,
   IconSparkles2,
 } from '@tabler/icons-react'
-import { cn } from '@accelerate/ui/lib/utils'
-import { BrandIcon } from '@accelerate/ui/components/common/brand-icon'
+import { cn } from '@garden/ui/lib/utils'
+import { BrandIcon } from '@garden/ui/components/common/brand-icon'
 import {
   Sidebar,
   SidebarContent,
@@ -30,16 +30,16 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from '@accelerate/ui/components/ui/sidebar'
+} from '@garden/ui/components/ui/sidebar'
 import {
   deduplicateInboxItems,
   inboxListOptions,
-} from '@accelerate/core/inbox/queries'
-import type { InboxItem } from '@accelerate/core/types'
-import { useAuthStore } from '@accelerate/core/auth'
-import { useWorkspaceStore } from '@accelerate/core/workspace'
+} from '@garden/core/inbox/queries'
+import type { InboxItem } from '@garden/core/types'
+import { useAuthStore } from '@garden/core/auth'
+import { useWorkspaceStore } from '@garden/core/workspace'
 import { SearchTrigger } from '@/features/search'
-import { ChatSessionExplorer } from '@/features/chat'
+import { ChatSessionExplorer, startNewChat } from '@/features/chat'
 import { useNavigation } from '@/features/navigation'
 import { NavUser } from '@/components/nav-user'
 import {
@@ -319,7 +319,7 @@ export function WorkspaceSidebar() {
                 size="lg"
                 className="justify-center md:h-9 md:p-0"
                 tooltip={{
-                  children: workspace?.name ?? 'Accelerate',
+                  children: workspace?.name ?? 'Garden',
                   hidden: false,
                 }}
                 onClick={openInbox}
@@ -456,7 +456,10 @@ export function WorkspaceSidebar() {
                   label="New Chat"
                   icon={IconMessage2Plus}
                   active={activeType === 'chat'}
-                  onClick={() => openPanel({ kind: 'chat', title: 'New Chat' })}
+                  onClick={() => {
+                    startNewChat()
+                    openPanel({ kind: 'chat', title: 'New Chat' })
+                  }}
                 />
               </SidebarMenu>
               <div className="pt-2">

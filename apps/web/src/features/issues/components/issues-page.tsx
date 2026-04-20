@@ -3,26 +3,26 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import { ChevronRight, ListTodo } from 'lucide-react'
-import type { IssueStatus } from '@accelerate/core/types'
-import { Skeleton } from '@accelerate/ui/components/ui/skeleton'
+import type { IssueStatus } from '@garden/core/types'
+import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { useQuery } from '@tanstack/react-query'
 import {
   useIssueViewStore,
   initFilterWorkspaceSync,
-} from '@accelerate/core/issues/stores/view-store'
-import { useIssuesScopeStore } from '@accelerate/core/issues/stores/issues-scope-store'
-import { ViewStoreProvider } from '@accelerate/core/issues/stores/view-store-context'
+} from '@garden/core/issues/stores/view-store'
+import { useIssuesScopeStore } from '@garden/core/issues/stores/issues-scope-store'
+import { ViewStoreProvider } from '@garden/core/issues/stores/view-store-context'
 import { filterIssues } from '../utils/filter'
-import { BOARD_STATUSES } from '@accelerate/core/issues/config'
-import { useWorkspaceStore } from '@accelerate/core/workspace'
+import { BOARD_STATUSES } from '@garden/core/issues/config'
+import { useWorkspaceStore } from '@garden/core/workspace'
 import { WorkspaceAvatar } from '../../workspace/workspace-avatar'
-import { useWorkspaceId } from '@accelerate/core/hooks'
+import { useWorkspaceId } from '@garden/core/hooks'
 import {
   issueListOptions,
   childIssueProgressOptions,
-} from '@accelerate/core/issues/queries'
-import { useUpdateIssue } from '@accelerate/core/issues/mutations'
-import { useIssueSelectionStore } from '@accelerate/core/issues/stores/selection-store'
+} from '@garden/core/issues/queries'
+import { useUpdateIssue } from '@garden/core/issues/mutations'
+import { useIssueSelectionStore } from '@garden/core/issues/stores/selection-store'
 import { PageHeader } from '../../layout/page-header'
 import { IssuesHeader } from './issues-header'
 import { BoardView } from './board-view'

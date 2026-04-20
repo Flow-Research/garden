@@ -11,19 +11,19 @@ import {
 import { ReactRenderer } from '@tiptap/react'
 import { computePosition, offset, flip, shift } from '@floating-ui/dom'
 import type { QueryClient } from '@tanstack/react-query'
-import { useWorkspaceStore } from '@accelerate/core/workspace'
-import { issueKeys } from '@accelerate/core/issues/queries'
-import { workspaceKeys } from '@accelerate/core/workspace/queries'
+import { useWorkspaceStore } from '@garden/core/workspace'
+import { issueKeys } from '@garden/core/issues/queries'
+import { workspaceKeys } from '@garden/core/workspace/queries'
 import type {
   Issue,
   ListIssuesResponse,
   MemberWithUser,
   Agent,
-} from '@accelerate/core/types'
+} from '@garden/core/types'
 import { ActorAvatar } from '../../common/actor-avatar'
 import { StatusIcon } from '../../issues/components/status-icon'
-import { Badge } from '@accelerate/ui/components/ui/badge'
-import type { IssueStatus } from '@accelerate/core/types'
+import { Badge } from '@garden/ui/components/ui/badge'
+import type { IssueStatus } from '@garden/core/types'
 import type { SuggestionOptions, SuggestionProps } from '@tiptap/suggestion'
 
 // ---------------------------------------------------------------------------

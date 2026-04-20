@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { getAuthSession, toCoreUser } from '@/lib/server/session'
-import type { MemberRole } from '@accelerate/core/types'
+import type { MemberRole } from '@garden/core/types'
 
 export function json(data: unknown, status = 200) {
   return Response.json(data, { status })

@@ -18,6 +18,8 @@ import {
   Maximize2,
   MessageSquare,
   PanelBottom,
+  Pin,
+  PinOff,
   Plug,
   Plus,
   BookOpenText,
@@ -36,8 +38,17 @@ import {
   type IDockviewHeaderActionsProps,
   type IDockviewPanelProps,
 } from 'dockview'
-import { useTheme } from '@accelerate/ui/components/common/theme-provider'
-import { Button } from '@accelerate/ui/components/ui/button'
+import type { SerializedDockview } from 'dockview-core'
+import { Result } from 'better-result'
+import { useTheme } from '@garden/ui/components/common/theme-provider'
+import { Button } from '@garden/ui/components/ui/button'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@garden/ui/components/ui/context-menu'
 import { InboxPage } from '@/features/inbox'
 import { SettingsPage } from '@/features/settings'
 import { SkillsPage } from '@/features/skills/components'
@@ -60,14 +71,35 @@ export type WorkspacePanelInput = {
   entityId?: string
 }
 
+const workspacePanelKinds = [
+  'blank',
+  'inbox',
+  'issues',
+  'issue-detail',
+  'chat',
+  'skill-editor',
+  'capabilities',
+  'settings',
+] as const
+
 type WorkspacePanelParams = WorkspacePanelInput & {
   canonicalId: string
+}
+
+type DockPanelState = {
+  id: string
+  params?: unknown
+  title?: string
+  api: {
+    id?: string
+    title?: string
+  }
 }
 
 type WorkspaceDockContextValue = {
   activeGroupId: string | null
   activePanel: WorkspacePanelInput | null
-  activePanelIsSingleton: boolean
+  activePanelIsPinned: boolean
   dockTheme: DockviewTheme
   handleReady: (event: DockviewReadyEvent) => void
   isReady: boolean
@@ -76,10 +108,14 @@ type WorkspaceDockContextValue = {
     options?: { position?: AddPanelPositionOptions; forceNew?: boolean },
   ) => string | null
   splitActivePanel: (direction: 'right' | 'below') => void
+  splitPanel: (panelId: string, direction: 'right' | 'below') => void
   maximizeActivePanel: () => void
   openBlankInActiveGroup: () => string | null
   focusNextPanel: () => void
   focusPreviousPanel: () => void
+  isPanelPinned: (panelId: string) => boolean
+  toggleActivePanelPinned: () => void
+  togglePanelPinned: (panelId: string) => void
 }
 
 const WorkspaceDockContext = createContext<WorkspaceDockContextValue | null>(
@@ -114,6 +150,13 @@ let dockPanelCounter = 0
 function nextDockPanelId(kind: WorkspacePanelKind) {
   dockPanelCounter += 1
   return `${kind}:${Date.now()}:${dockPanelCounter}`
+}
+
+function isWorkspacePanelKind(value: unknown): value is WorkspacePanelKind {
+  return (
+    typeof value === 'string' &&
+    workspacePanelKinds.includes(value as WorkspacePanelKind)
+  )
 }
 
 function readPanelFromQueryState(input: {
@@ -168,18 +211,43 @@ function getStoredPanelParams(
   return params
 }
 
+function getPanelParams(panel: DockPanelState) {
+  return getStoredPanelParams(
+    panel.params as WorkspacePanelParams | undefined,
+    panel.title ?? panel.api.title ?? 'Panel',
+  )
+}
+
+function readPinnedCanonicalIds(storageKey: string) {
+  const raw = window.localStorage.getItem(storageKey)
+  if (!raw) {
+    return []
+  }
+
+  return Result.try(() => JSON.parse(raw))
+    .andThen((parsed) =>
+      Array.isArray(parsed) && parsed.every((entry) => typeof entry === 'string')
+        ? Result.ok(parsed)
+        : Result.err('invalid-pinned-tab-state'),
+    )
+    .tapError(() => {
+      window.localStorage.removeItem(storageKey)
+    })
+    .match({
+      ok: (ids) => [...new Set(ids)],
+      err: () => [],
+    })
+}
+
 function getPreferredPanelAfterRestore(api: DockviewApi) {
-  const current = api.activePanel
+  const current = api.activeGroup?.activePanel ?? api.activePanel
   if (current) {
     return current
   }
 
   return (
     api.panels.find((candidate) => {
-      const params = getStoredPanelParams(
-        candidate.api.getParameters<WorkspacePanelParams>(),
-        candidate.api.title ?? 'Panel',
-      )
+      const params = getPanelParams(candidate)
       return params.kind !== 'blank'
     }) ?? api.panels[0] ?? null
   )
@@ -221,6 +289,7 @@ function getPanelConstraints(kind: WorkspacePanelKind) {
 }
 
 function WorkspaceDockTab(props: React.ComponentProps<typeof DockviewDefaultTab>) {
+  const ctx = useContext(WorkspaceDockContext)
   const panel = getStoredPanelParams(props.params, props.api.title ?? 'Panel')
   const Icon = panelIcons[panel.kind]
   const {
@@ -231,12 +300,13 @@ function WorkspaceDockTab(props: React.ComponentProps<typeof DockviewDefaultTab>
     onPointerUp,
     onPointerLeave,
     params: _params,
-    containerApi: _containerApi,
+    containerApi,
     tabLocation: _tabLocation,
     className,
     ...domProps
   } = props
   const shouldHideClose = hideClose || panel.kind === 'blank'
+  const isPinned = ctx?.isPanelPinned(api.id) ?? false
 
   const handleClose = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -249,58 +319,113 @@ function WorkspaceDockTab(props: React.ComponentProps<typeof DockviewDefaultTab>
   }
 
   return (
-    <div
-      {...domProps}
-      className={['dv-default-tab', 'accelerate-dock-tab', className]
-        .filter(Boolean)
-        .join(' ')}
-      onPointerDown={onPointerDown}
-      onPointerUp={onPointerUp}
-      onPointerLeave={onPointerLeave}
-    >
-      <span className="dv-default-tab-content">
-        <span className="accelerate-dock-tab__label">
-          <Icon className="size-3.5 shrink-0" />
-          <span className="truncate">{api.title ?? panel.title}</span>
+    <ContextMenu>
+      <ContextMenuTrigger
+        render={
+          <div
+            {...domProps}
+            className={['dv-default-tab', 'garden-dock-tab', className]
+              .filter(Boolean)
+              .join(' ')}
+            onPointerDown={onPointerDown}
+            onPointerUp={onPointerUp}
+            onPointerLeave={onPointerLeave}
+          />
+        }
+      >
+        <span className="dv-default-tab-content">
+          <span className="garden-dock-tab__label">
+            <Icon className="size-3.5 shrink-0" />
+            {isPinned ? (
+              <Pin className="garden-dock-tab__pin size-3 shrink-0" />
+            ) : null}
+            <span className="truncate">{api.title ?? panel.title}</span>
+          </span>
         </span>
-      </span>
-      {!shouldHideClose ? (
-        <div
-          className="dv-default-tab-action"
-          onPointerDown={(event) => {
-            event.preventDefault()
+        {!shouldHideClose ? (
+          <div
+            className="dv-default-tab-action"
+            onPointerDown={(event) => {
+              event.preventDefault()
+            }}
+            onClick={handleClose}
+          >
+            <X className="size-3.5" />
+          </div>
+        ) : null}
+      </ContextMenuTrigger>
+      <ContextMenuContent side="bottom">
+        <ContextMenuItem
+          onClick={() => {
+            ctx?.togglePanelPinned(api.id)
           }}
-          onClick={handleClose}
         >
-          <X className="size-3.5" />
-        </div>
-      ) : null}
-    </div>
+          {isPinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
+          {isPinned ? 'Unpin tab' : 'Pin tab'}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          onClick={() => {
+            ctx?.splitPanel(api.id, 'right')
+          }}
+        >
+          <Columns2 className="size-4" />
+          Create split right
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => {
+            ctx?.splitPanel(api.id, 'below')
+          }}
+        >
+          <PanelBottom className="size-4" />
+          Create split down
+        </ContextMenuItem>
+        {!shouldHideClose ? (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onClick={() => {
+                const target = containerApi.getPanel(api.id)
+                if (target && containerApi.activePanel?.id !== target.id) {
+                  target.api.setActive()
+                }
+                api.close()
+              }}
+            >
+              <X className="size-4" />
+              Close tab
+            </ContextMenuItem>
+          </>
+        ) : null}
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 
 type WorkspaceDockControlsProps = {
-  activePanelIsSingleton?: boolean
+  activePanelIsPinned?: boolean
   disabledAll?: boolean
   onMaximize?: () => void
+  onTogglePinned?: () => void
   onSplitBelow?: () => void
   onSplitRight?: () => void
 }
 
 function WorkspaceDockControls({
-  activePanelIsSingleton = false,
+  activePanelIsPinned = false,
   disabledAll = false,
   onMaximize,
+  onTogglePinned,
   onSplitBelow,
   onSplitRight,
 }: WorkspaceDockControlsProps) {
   const isDisabled = (handler?: () => void) => disabledAll || !handler
 
   return (
-    <div className="accelerate-dock-actions">
+    <div className="garden-dock-actions">
       <button
         type="button"
-        className="accelerate-dock-actions__button"
+        className="garden-dock-actions__button"
         disabled={isDisabled(onSplitRight)}
         onClick={onSplitRight}
         title="Split right"
@@ -309,7 +434,7 @@ function WorkspaceDockControls({
       </button>
       <button
         type="button"
-        className="accelerate-dock-actions__button"
+        className="garden-dock-actions__button"
         disabled={isDisabled(onSplitBelow)}
         onClick={onSplitBelow}
         title="Split down"
@@ -318,16 +443,28 @@ function WorkspaceDockControls({
       </button>
       <button
         type="button"
-        className="accelerate-dock-actions__button"
+        className="garden-dock-actions__button"
         disabled={isDisabled(onMaximize)}
         onClick={onMaximize}
         title="Maximize group"
       >
         <Maximize2 className="size-3.5" />
       </button>
-      {!disabledAll && activePanelIsSingleton ? (
-        <span className="accelerate-dock-actions__hint">pinned</span>
-      ) : null}
+      <button
+        type="button"
+        className={['garden-dock-actions__button', activePanelIsPinned ? 'garden-dock-actions__button--active' : '']
+          .filter(Boolean)
+          .join(' ')}
+        disabled={isDisabled(onTogglePinned)}
+        onClick={onTogglePinned}
+        title={activePanelIsPinned ? 'Unpin tab' : 'Pin tab'}
+      >
+        {activePanelIsPinned ? (
+          <PinOff className="size-3.5" />
+        ) : (
+          <Pin className="size-3.5" />
+        )}
+      </button>
     </div>
   )
 }
@@ -343,17 +480,19 @@ export function WorkspaceDockControlsStrip(
 
   const {
     activeGroupId,
-    activePanelIsSingleton,
+    activePanelIsPinned,
     splitActivePanel,
     maximizeActivePanel,
+    toggleActivePanelPinned,
   } = ctx
   const hasActiveGroup = Boolean(activeGroupId)
   const hasActivePanel = Boolean(ctx.activePanel)
 
   return (
     <WorkspaceDockControls
-      activePanelIsSingleton={activePanelIsSingleton}
+      activePanelIsPinned={activePanelIsPinned}
       onMaximize={hasActiveGroup ? () => maximizeActivePanel() : undefined}
+      onTogglePinned={hasActivePanel ? () => toggleActivePanelPinned() : undefined}
       onSplitBelow={hasActivePanel ? () => splitActivePanel('below') : undefined}
       onSplitRight={hasActivePanel ? () => splitActivePanel('right') : undefined}
     />
@@ -372,10 +511,10 @@ export function WorkspaceDockTabStripActions(
   const hasActiveGroup = Boolean(ctx.activeGroupId)
 
   return (
-    <div className="accelerate-dock-tabstrip-actions">
+    <div className="garden-dock-tabstrip-actions">
       <button
         type="button"
-        className="accelerate-dock-tabstrip-actions__button"
+        className="garden-dock-tabstrip-actions__button"
         disabled={!hasActiveGroup}
         onClick={() => {
           ctx.openBlankInActiveGroup()
@@ -399,9 +538,9 @@ export function WorkspaceDockTitlebar({
   const hasActiveGroup = Boolean(ctx?.activeGroupId)
 
   return (
-    <div className="accelerate-titlebar">
+    <div className="garden-titlebar">
       {!hasActiveGroup ? (
-        <div className="accelerate-titlebar__fallback">
+        <div className="garden-titlebar__fallback">
           <WorkspaceDockControls disabledAll />
         </div>
       ) : null}
@@ -549,6 +688,77 @@ const dockComponents = {
   React.FunctionComponent<IDockviewPanelProps<WorkspacePanelParams>>
 >
 
+type StoredDockviewPanelState = {
+  contentComponent?: unknown
+  params?: {
+    kind?: unknown
+  }
+}
+
+type StoredDockviewLayout = SerializedDockview
+
+function isStoredDockviewLayout(value: unknown): value is StoredDockviewLayout {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const { grid, panels } = value as {
+    grid?: unknown
+    panels?: unknown
+  }
+  if (!grid || typeof grid !== 'object') {
+    return false
+  }
+
+  if (!panels || typeof panels !== 'object') {
+    return false
+  }
+
+  const entries = Object.values(panels)
+  if (entries.length === 0) {
+    return false
+  }
+
+  return entries.every((panel) => {
+    if (!panel || typeof panel !== 'object') {
+      return false
+    }
+
+    const component = (panel as StoredDockviewPanelState).contentComponent
+    if (!isWorkspacePanelKind(component)) {
+      return false
+    }
+
+    const params = (panel as StoredDockviewPanelState).params
+    if (!params || typeof params !== 'object' || !('kind' in params)) {
+      return false
+    }
+
+    return params.kind === component
+  })
+}
+
+function readStoredDockviewLayout(storageKey: string) {
+  const rawLayout = window.localStorage.getItem(storageKey)
+  if (!rawLayout) {
+    return null
+  }
+
+  return Result.try(() => JSON.parse(rawLayout))
+    .andThen((parsed) =>
+      isStoredDockviewLayout(parsed)
+        ? Result.ok(parsed)
+        : Result.err('invalid-dockview-layout'),
+    )
+    .tapError(() => {
+      window.localStorage.removeItem(storageKey)
+    })
+    .match({
+      ok: (layout) => layout,
+      err: () => null,
+    })
+}
+
 export function WorkspaceDockProvider({
   workspaceId,
   children,
@@ -571,30 +781,37 @@ export function WorkspaceDockProvider({
     null,
   )
   const [isReady, setIsReady] = useState(false)
+  const [pinnedCanonicalIds, setPinnedCanonicalIds] = useState<string[]>([])
 
-  const storageKey = `accelerate:dockview:${workspaceId}`
+  const storageKey = `garden:dockview:${workspaceId}`
+  const pinnedStorageKey = `garden:dockview:pinned:${workspaceId}`
 
   const dockTheme =
     resolvedTheme === 'dark'
       ? {
           ...themeDark,
-          className: 'dockview-theme-dark accelerate-dock-theme',
+          className: 'dockview-theme-dark garden-dock-theme',
         }
       : {
           ...themeLight,
-          className: 'dockview-theme-light accelerate-dock-theme',
+          className: 'dockview-theme-light garden-dock-theme',
         }
 
+  const getVisiblePanelFromApi = useCallback(
+    (api: DockviewApi) => api.activeGroup?.activePanel ?? api.activePanel,
+    [],
+  )
+
   const getPanelInputFromApi = useCallback((api: DockviewApi) => {
-    const panel = api.activePanel
+    const panel = getVisiblePanelFromApi(api)
     if (!panel) return null
-    const params = panel.api.getParameters<WorkspacePanelParams>()
+    const params = getPanelParams(panel)
     return {
       kind: params.kind,
-      title: panel.api.title ?? params.title,
+      title: panel.title ?? panel.api.title ?? params.title,
       entityId: params.entityId,
     } satisfies WorkspacePanelInput
-  }, [])
+  }, [getVisiblePanelFromApi])
 
   const writePanelToQueryState = useCallback(
     (nextPanel: WorkspacePanelInput | null) => {
@@ -617,6 +834,54 @@ export function WorkspaceDockProvider({
     },
     [getPanelInputFromApi, writePanelToQueryState],
   )
+
+  const resolveCanonicalIdForPanel = useCallback((panelId: string) => {
+    const panel = apiRef.current?.getPanel(panelId)
+    if (!panel) return null
+    return getPanelParams(panel).canonicalId
+  }, [])
+
+  const isPanelPinned = useCallback(
+    (panelId: string) => {
+      const canonicalId = resolveCanonicalIdForPanel(panelId)
+      return canonicalId ? pinnedCanonicalIds.includes(canonicalId) : false
+    },
+    [pinnedCanonicalIds, resolveCanonicalIdForPanel],
+  )
+
+  const setPinnedIds = useCallback(
+    (updater: (current: string[]) => string[]) => {
+      setPinnedCanonicalIds((current) => {
+        const next = [...new Set(updater(current))]
+        if (next.length === 0) {
+          window.localStorage.removeItem(pinnedStorageKey)
+        } else {
+          window.localStorage.setItem(pinnedStorageKey, JSON.stringify(next))
+        }
+        return next
+      })
+    },
+    [pinnedStorageKey],
+  )
+
+  const togglePanelPinned = useCallback(
+    (panelId: string) => {
+      const canonicalId = resolveCanonicalIdForPanel(panelId)
+      if (!canonicalId) return
+      setPinnedIds((current) =>
+        current.includes(canonicalId)
+          ? current.filter((id) => id !== canonicalId)
+          : [...current, canonicalId],
+      )
+    },
+    [resolveCanonicalIdForPanel, setPinnedIds],
+  )
+
+  const toggleActivePanelPinned = useCallback(() => {
+    const panelId = apiRef.current?.activePanel?.id
+    if (!panelId) return
+    togglePanelPinned(panelId)
+  }, [togglePanelPinned])
 
   const addBlankPanelToGroup = useCallback(
     (
@@ -683,10 +948,7 @@ export function WorkspaceDockProvider({
         options?.forceNew === true
           ? undefined
           : api.panels.find((candidate) => {
-              const params = getStoredPanelParams(
-                candidate.api.getParameters<WorkspacePanelParams>(),
-                candidate.api.title ?? 'Panel',
-              )
+              const params = getPanelParams(candidate)
               return params?.canonicalId === canonicalId
             })
 
@@ -722,11 +984,36 @@ export function WorkspaceDockProvider({
       const current = api?.activePanel
       if (!api || !current) return
 
-      const params = current.api.getParameters<WorkspacePanelParams>()
+      const params = getPanelParams(current)
       openPanel(
         {
           kind: params.kind,
-          title: current.api.title ?? params.title,
+          title: current.title ?? current.api.title ?? params.title,
+          entityId: params.entityId,
+        },
+        {
+          forceNew: true,
+          position: {
+            referencePanel: current,
+            direction,
+          },
+        },
+      )
+    },
+    [openPanel],
+  )
+
+  const splitPanel = useCallback(
+    (panelId: string, direction: 'right' | 'below') => {
+      const api = apiRef.current
+      const current = api?.getPanel(panelId)
+      if (!api || !current) return
+
+      const params = getPanelParams(current)
+      openPanel(
+        {
+          kind: params.kind,
+          title: current.title ?? current.api.title ?? params.title,
           entityId: params.entityId,
         },
         {
@@ -761,9 +1048,10 @@ export function WorkspaceDockProvider({
     return addBlankPanelToGroup(activeGroupId, { activate: true })
   }, [addBlankPanelToGroup])
 
-  const activePanelIsSingleton = activePanel
-    ? singletonKinds.has(activePanel.kind)
-    : false
+  const activePanelIsPinned = useMemo(() => {
+    const panelId = apiRef.current?.activePanel?.id
+    return panelId ? isPanelPinned(panelId) : false
+  }, [activePanel, isPanelPinned])
 
   const focusNextPanel = useCallback(() => {
     apiRef.current?.moveToNext({ includePanel: true })
@@ -794,6 +1082,10 @@ export function WorkspaceDockProvider({
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [focusNextPanel, focusPreviousPanel])
+
+  useEffect(() => {
+    setPinnedCanonicalIds(readPinnedCanonicalIds(pinnedStorageKey))
+  }, [pinnedStorageKey])
 
   useEffect(() => {
     return () => {
@@ -839,10 +1131,14 @@ export function WorkspaceDockProvider({
         }, 150)
       }
 
-      const savedLayout = window.localStorage.getItem(storageKey)
+      const savedLayout = readStoredDockviewLayout(storageKey)
       const hasSavedLayout = Boolean(savedLayout)
       if (savedLayout) {
-        api.fromJSON(JSON.parse(savedLayout))
+        api.fromJSON(savedLayout)
+
+        if (api.panels.length === 0) {
+          window.localStorage.removeItem(storageKey)
+        }
       }
 
       ensureEmptyGroupsHaveBlankPanel(api)
@@ -853,7 +1149,7 @@ export function WorkspaceDockProvider({
       })
       if (searchPanel) {
         openPanel(searchPanel)
-      } else if (!hasSavedLayout) {
+      } else if (!hasSavedLayout || api.panels.length === 0) {
         openPanel({ kind: 'inbox', title: 'Inbox' })
       }
 
@@ -882,6 +1178,7 @@ export function WorkspaceDockProvider({
     },
     [
       ensureEmptyGroupsHaveBlankPanel,
+      getVisiblePanelFromApi,
       getPanelInputFromApi,
       panel,
       panelEntityId,
@@ -896,30 +1193,38 @@ export function WorkspaceDockProvider({
     () => ({
       activeGroupId,
       activePanel,
-      activePanelIsSingleton,
+      activePanelIsPinned,
       dockTheme,
       handleReady,
       isReady,
       openPanel,
       splitActivePanel: duplicateActivePanel,
+      splitPanel,
       maximizeActivePanel,
       openBlankInActiveGroup,
       focusNextPanel,
       focusPreviousPanel,
+      isPanelPinned,
+      toggleActivePanelPinned,
+      togglePanelPinned,
     }),
     [
       activeGroupId,
       activePanel,
-      activePanelIsSingleton,
+      activePanelIsPinned,
       dockTheme,
       duplicateActivePanel,
       focusNextPanel,
       focusPreviousPanel,
       handleReady,
+      isPanelPinned,
       isReady,
       maximizeActivePanel,
       openBlankInActiveGroup,
       openPanel,
+      splitPanel,
+      toggleActivePanelPinned,
+      togglePanelPinned,
     ],
   )
 
@@ -945,7 +1250,7 @@ export function WorkspaceDockView() {
 
   return (
     <DockviewReact
-      className="accelerate-dockview"
+      className="garden-dockview"
       components={dockComponents}
       defaultTabComponent={WorkspaceDockTab}
       leftHeaderActionsComponent={WorkspaceDockTabStripActions}

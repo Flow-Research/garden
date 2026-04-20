@@ -1,8 +1,8 @@
 :root {
-  --accelerate-titlebar-height: 34px;
+  --garden-titlebar-height: 34px;
 }
 
-.accelerate-dockview {
+.garden-dockview {
   height: 100%;
   min-height: 0;
 }
@@ -12,18 +12,18 @@
  * space above the sidebar+dock body and also carries fallback chrome while the
  * dock has no active group.
  */
-.accelerate-titlebar {
+.garden-titlebar {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   width: 100%;
-  height: var(--accelerate-titlebar-height);
+  height: var(--garden-titlebar-height);
   background: color-mix(in srgb, var(--muted) 82%, var(--background));
   border-bottom: 1px solid
     color-mix(in srgb, var(--border) 84%, transparent);
 }
 
-.accelerate-titlebar__fallback {
+.garden-titlebar__fallback {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -33,11 +33,11 @@
   padding: 0 0.375rem 0 0.25rem;
 }
 
-.accelerate-titlebar__copy {
+.garden-titlebar__copy {
   min-width: 0;
 }
 
-.accelerate-titlebar__title {
+.garden-titlebar__title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -46,7 +46,7 @@
   color: var(--foreground);
 }
 
-.accelerate-titlebar__subtitle {
+.garden-titlebar__subtitle {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -63,8 +63,8 @@
  * where the title bar is.
  */
 [data-slot='sidebar-container'] {
-  top: var(--accelerate-titlebar-height) !important;
-  height: calc(100svh - var(--accelerate-titlebar-height)) !important;
+  top: var(--garden-titlebar-height) !important;
+  height: calc(100svh - var(--garden-titlebar-height)) !important;
 }
 
 /*
@@ -74,7 +74,7 @@
  * which would pin the tab row to the dock area, not the viewport. Disable
  * it so our fixed positioning below works relative to the viewport.
  */
-.accelerate-dockview .dv-dockview {
+.garden-dockview .dv-dockview {
   contain: none !important;
 }
 
@@ -83,22 +83,22 @@
  * hoist only the active group's row into the global title-bar strip so the top
  * chrome tracks whichever group currently has focus.
  */
-.accelerate-dockview .dv-groupview > .dv-tabs-and-actions-container {
+.garden-dockview .dv-groupview > .dv-tabs-and-actions-container {
   display: none;
 }
 
-.accelerate-dockview .dv-groupview.dv-active-group > .dv-tabs-and-actions-container {
+.garden-dockview .dv-groupview.dv-active-group > .dv-tabs-and-actions-container {
   display: flex;
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: var(--accelerate-titlebar-height);
+  height: var(--garden-titlebar-height);
   z-index: 40;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
 }
 
-.accelerate-dockview .dv-pre-actions-container {
+.garden-dockview .dv-pre-actions-container {
   display: flex;
   align-items: center;
   height: 100%;
@@ -106,11 +106,11 @@
   padding-right: 0.125rem;
 }
 
-.accelerate-dockview .dv-pre-actions-container:empty {
+.garden-dockview .dv-pre-actions-container:empty {
   display: none;
 }
 
-.accelerate-dock-theme {
+.garden-dock-theme {
   --dv-border-radius: 6px;
   --dv-tab-margin: 0;
   --dv-tab-font-size: 12px;
@@ -159,41 +159,45 @@
   --dv-active-sash-color: color-mix(in srgb, var(--foreground) 22%, transparent);
 }
 
-.accelerate-dockview .dv-groupview {
+.garden-dockview .dv-groupview {
   border-radius: 6px;
   overflow: hidden;
 }
 
-.accelerate-dockview .dv-groupview.dv-active-group {
+.garden-dockview .dv-groupview.dv-active-group {
   outline: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
   outline-offset: -1px;
 }
 
-.accelerate-dockview .dv-groupview .dv-content-container {
+.garden-dockview .dv-groupview .dv-content-container {
   background: var(--background);
 }
 
-.accelerate-dock-tab {
+.garden-dock-tab {
   display: flex;
   align-items: center;
   min-width: 0;
 }
 
-.accelerate-dock-tab__label {
+.garden-dock-tab__label {
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
   min-width: 0;
 }
 
-.accelerate-dock-actions {
+.garden-dock-tab__pin {
+  color: var(--muted-foreground);
+}
+
+.garden-dock-actions {
   display: flex;
   align-items: center;
   gap: 0.125rem;
   padding-right: 0.25rem;
 }
 
-.accelerate-dock-tabstrip-actions {
+.garden-dock-tabstrip-actions {
   display: flex;
   align-items: center;
   height: 100%;
@@ -201,7 +205,7 @@
   padding-right: 0.25rem;
 }
 
-.accelerate-dock-tabstrip-actions__button {
+.garden-dock-tabstrip-actions__button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -214,22 +218,22 @@
   cursor: pointer;
 }
 
-.accelerate-dock-tabstrip-actions__button:hover {
+.garden-dock-tabstrip-actions__button:hover {
   background: color-mix(in srgb, var(--muted) 88%, transparent);
   color: var(--foreground);
 }
 
-.accelerate-dock-tabstrip-actions__button:disabled {
+.garden-dock-tabstrip-actions__button:disabled {
   cursor: default;
   opacity: 0.45;
 }
 
-.accelerate-dock-tabstrip-actions__button:disabled:hover {
+.garden-dock-tabstrip-actions__button:disabled:hover {
   background: transparent;
   color: var(--muted-foreground);
 }
 
-.accelerate-dock-prefix {
+.garden-dock-prefix {
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
@@ -241,7 +245,7 @@
   letter-spacing: 0.02em;
 }
 
-.accelerate-dock-prefix__count {
+.garden-dock-prefix__count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -254,7 +258,7 @@
   font-size: 10px;
 }
 
-.accelerate-dock-groupmeta {
+.garden-dock-groupmeta {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
@@ -265,12 +269,12 @@
   text-transform: lowercase;
 }
 
-.accelerate-dock-groupmeta strong {
+.garden-dock-groupmeta strong {
   color: var(--foreground);
   font-weight: 600;
 }
 
-.accelerate-dock-actions__button {
+.garden-dock-actions__button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -283,30 +287,27 @@
   cursor: pointer;
 }
 
-.accelerate-dock-actions__button:hover {
+.garden-dock-actions__button:hover {
   background: color-mix(in srgb, var(--muted) 88%, transparent);
   color: var(--foreground);
 }
 
-.accelerate-dock-actions__button:disabled {
+.garden-dock-actions__button:disabled {
   cursor: default;
   opacity: 0.45;
 }
 
-.accelerate-dock-actions__button:disabled:hover {
+.garden-dock-actions__button:disabled:hover {
   background: transparent;
   color: var(--muted-foreground);
 }
 
-.accelerate-dock-actions__hint {
-  padding-left: 0.375rem;
-  font-size: 11px;
-  line-height: 1;
-  color: var(--muted-foreground);
-  text-transform: lowercase;
+.garden-dock-actions__button--active {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--muted) 88%, transparent);
 }
 
-.accelerate-dock-watermark {
+.garden-dock-watermark {
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -316,25 +317,25 @@
   padding: 2rem;
 }
 
-.accelerate-dock-watermark__copy {
+.garden-dock-watermark__copy {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 
-.accelerate-dock-watermark__copy h2 {
+.garden-dock-watermark__copy h2 {
   margin: 0;
   font-size: 1.125rem;
   line-height: 1.35;
 }
 
-.accelerate-dock-watermark__copy p {
+.garden-dock-watermark__copy p {
   margin: 0;
   color: var(--muted-foreground);
   font-size: 0.9375rem;
 }
 
-.accelerate-dock-watermark__eyebrow {
+.garden-dock-watermark__eyebrow {
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -342,13 +343,13 @@
   color: var(--muted-foreground);
 }
 
-.accelerate-dock-watermark__actions {
+.garden-dock-watermark__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
 
-.accelerate-dock-watermark__hints {
+.garden-dock-watermark__hints {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;

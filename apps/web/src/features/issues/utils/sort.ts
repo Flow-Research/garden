@@ -1,9 +1,9 @@
-import type { Issue } from '@accelerate/core/types'
-import { PRIORITY_ORDER } from '@accelerate/core/issues/config'
+import type { Issue } from '@garden/core/types'
+import { PRIORITY_ORDER } from '@garden/core/issues/config'
 import type {
   SortField,
   SortDirection,
-} from '@accelerate/core/issues/stores/view-store'
+} from '@garden/core/issues/stores/view-store'
 
 const PRIORITY_RANK: Record<string, number> = Object.fromEntries(
   PRIORITY_ORDER.map((p, i) => [p, i]),

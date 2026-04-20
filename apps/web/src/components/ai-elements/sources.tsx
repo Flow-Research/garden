@@ -4,8 +4,8 @@ import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@accelerate/ui/components/ui/collapsible";
-import { cn } from "@accelerate/ui/lib/utils";
+} from "@garden/ui/components/ui/collapsible";
+import { cn } from "@garden/ui/lib/utils";
 import { BookIcon, ChevronDownIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 

@@ -1,7 +1,7 @@
 'use client'
 
-import { useTheme } from '@accelerate/ui/components/common/theme-provider'
-import { cn } from '@accelerate/ui/lib/utils'
+import { useTheme } from '@garden/ui/components/common/theme-provider'
+import { cn } from '@garden/ui/lib/utils'
 
 const LIGHT_COLORS = {
   titleBar: '#e8e8e8',

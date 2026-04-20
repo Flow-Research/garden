@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { Issue } from '@accelerate/core/types'
+import type { Issue } from '@garden/core/types'
 import { filterIssues, type IssueFilters } from './filter'
 
 const NO_FILTER: IssueFilters = {

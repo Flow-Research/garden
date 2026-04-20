@@ -36,12 +36,12 @@ vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ clear: mockQueryClear }),
 }))
 
-vi.mock('@accelerate/core/inbox/queries', () => ({
+vi.mock('@garden/core/inbox/queries', () => ({
   deduplicateInboxItems: (items: unknown[]) => items,
   inboxListOptions: () => ({ queryKey: ['inbox'], queryFn: vi.fn() }),
 }))
 
-vi.mock('@accelerate/core/auth', () => ({
+vi.mock('@garden/core/auth', () => ({
   useAuthStore: Object.assign(
     (selector?: (state: typeof mockAuthState) => unknown) =>
       selector ? selector(mockAuthState) : mockAuthState,
@@ -51,7 +51,7 @@ vi.mock('@accelerate/core/auth', () => ({
   ),
 }))
 
-vi.mock('@accelerate/core/workspace', () => ({
+vi.mock('@garden/core/workspace', () => ({
   useWorkspaceStore: Object.assign(
     (selector?: (state: typeof mockWorkspaceState) => unknown) =>
       selector ? selector(mockWorkspaceState) : mockWorkspaceState,
@@ -61,7 +61,7 @@ vi.mock('@accelerate/core/workspace', () => ({
   ),
 }))
 
-vi.mock('@accelerate/ui/components/ui/sidebar', () => ({
+vi.mock('@garden/ui/components/ui/sidebar', () => ({
   Sidebar: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   SidebarContent: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
@@ -108,11 +108,11 @@ vi.mock('@accelerate/ui/components/ui/sidebar', () => ({
   }),
 }))
 
-vi.mock('@accelerate/ui/components/common/brand-icon', () => ({
+vi.mock('@garden/ui/components/common/brand-icon', () => ({
   BrandIcon: () => <span>Logo</span>,
 }))
 
-vi.mock('@accelerate/ui/lib/utils', () => ({
+vi.mock('@garden/ui/lib/utils', () => ({
   cn: (...values: Array<string | false | null | undefined>) =>
     values.filter(Boolean).join(' '),
 }))

@@ -16,24 +16,24 @@ import {
 } from '@dnd-kit/core'
 import { arrayMove } from '@dnd-kit/sortable'
 import { Eye, MoreHorizontal } from 'lucide-react'
-import type { Issue, IssueStatus } from '@accelerate/core/types'
-import { Button } from '@accelerate/ui/components/ui/button'
-import { useLoadMoreDoneIssues } from '@accelerate/core/issues/mutations'
+import type { Issue, IssueStatus } from '@garden/core/types'
+import { Button } from '@garden/ui/components/ui/button'
+import { useLoadMoreDoneIssues } from '@garden/core/issues/mutations'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-} from '@accelerate/ui/components/ui/dropdown-menu'
-import { ALL_STATUSES, STATUS_CONFIG } from '@accelerate/core/issues/config'
+} from '@garden/ui/components/ui/dropdown-menu'
+import { ALL_STATUSES, STATUS_CONFIG } from '@garden/core/issues/config'
 import {
   useViewStoreApi,
   useViewStore,
-} from '@accelerate/core/issues/stores/view-store-context'
+} from '@garden/core/issues/stores/view-store-context'
 import type {
   SortField,
   SortDirection,
-} from '@accelerate/core/issues/stores/view-store'
+} from '@garden/core/issues/stores/view-store'
 import { sortIssues } from '../utils/sort'
 import { StatusIcon } from './status-icon'
 import { BoardColumn } from './board-column'

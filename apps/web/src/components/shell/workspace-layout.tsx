@@ -1,14 +1,14 @@
 import { useMemo } from 'react'
-import { useAuthStore } from '@accelerate/core/auth'
-import { WorkspaceIdProvider } from '@accelerate/core/hooks'
-import { useWorkspaceStore } from '@accelerate/core/workspace'
+import { useAuthStore } from '@garden/core/auth'
+import { WorkspaceIdProvider } from '@garden/core/hooks'
+import { useWorkspaceStore } from '@garden/core/workspace'
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
   useSidebar,
-} from '@accelerate/ui/components/ui/sidebar'
-import { Spinner } from '@accelerate/ui/components/ui/spinner'
+} from '@garden/ui/components/ui/sidebar'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import { SearchCommand } from '@/features/search'
 import { OnboardingOverlay } from '@/features/onboarding'
 import { useOnboardingStore } from '@/features/onboarding'
@@ -75,7 +75,7 @@ export function WorkspaceLayout() {
     !authLoading && hasSession && !workspace?.id && !onboardingCompleted
   const headerTitle = useMemo(() => {
     if (workspace?.name) return workspace.name
-    return 'Accelerate'
+    return 'Garden'
   }, [workspace?.name])
 
   return (

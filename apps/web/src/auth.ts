@@ -13,7 +13,7 @@ import { createBetterAuth } from './lib/auth-instance'
 
 const databaseUrl =
   process.env.DATABASE_URL ??
-  'postgresql://user:password@localhost:5432/accelerate'
+  'postgresql://user:password@localhost:5432/garden'
 
 const db = drizzle(neon(databaseUrl), {
   schema: {
@@ -30,6 +30,6 @@ const db = drizzle(neon(databaseUrl), {
 export const auth = createBetterAuth(db, {
   BETTER_AUTH_SECRET:
     process.env.BETTER_AUTH_SECRET ??
-    'accelerate-dev-secret-please-change-me-123456',
+    'garden-dev-secret-please-change-me-123456',
   BETTER_AUTH_URL: process.env.BETTER_AUTH_URL ?? 'http://localhost:3000',
 })

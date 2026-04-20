@@ -2,9 +2,9 @@
 
 import { memo } from 'react'
 import { AppLink } from '../../navigation'
-import type { Issue } from '@accelerate/core/types'
+import type { Issue } from '@garden/core/types'
 import { ActorAvatar } from '../../common/actor-avatar'
-import { useIssueSelectionStore } from '@accelerate/core/issues/stores/selection-store'
+import { useIssueSelectionStore } from '@garden/core/issues/stores/selection-store'
 import { PriorityIcon } from './priority-icon'
 import { ProgressRing } from './progress-ring'
 

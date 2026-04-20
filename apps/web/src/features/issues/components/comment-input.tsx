@@ -2,16 +2,16 @@
 
 import { useRef, useState } from 'react'
 import { ArrowUp, Loader2 } from 'lucide-react'
-import { Button } from '@accelerate/ui/components/ui/button'
+import { Button } from '@garden/ui/components/ui/button'
 import {
   ContentEditor,
   type ContentEditorRef,
   useFileDropZone,
   FileDropOverlay,
 } from '../../editor'
-import { FileUploadButton } from '@accelerate/ui/components/common/file-upload-button'
-import { useFileUpload } from '@accelerate/core/hooks/use-file-upload'
-import { api } from '@accelerate/core/api'
+import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
+import { useFileUpload } from '@garden/core/hooks/use-file-upload'
+import { api } from '@garden/core/api'
 
 interface CommentInputProps {
   issueId: string

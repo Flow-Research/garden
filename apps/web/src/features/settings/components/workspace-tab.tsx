@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { Save, LogOut } from 'lucide-react'
-import { Input } from '@accelerate/ui/components/ui/input'
-import { Textarea } from '@accelerate/ui/components/ui/textarea'
-import { Label } from '@accelerate/ui/components/ui/label'
-import { Button } from '@accelerate/ui/components/ui/button'
-import { Card, CardContent } from '@accelerate/ui/components/ui/card'
+import { Input } from '@garden/ui/components/ui/input'
+import { Textarea } from '@garden/ui/components/ui/textarea'
+import { Label } from '@garden/ui/components/ui/label'
+import { Button } from '@garden/ui/components/ui/button'
+import { Card, CardContent } from '@garden/ui/components/ui/card'
 import {
   AlertDialog,
   AlertDialogContent,
@@ -16,22 +16,22 @@ import {
   AlertDialogFooter,
   AlertDialogCancel,
   AlertDialogAction,
-} from '@accelerate/ui/components/ui/alert-dialog'
+} from '@garden/ui/components/ui/alert-dialog'
 import { toast } from 'sonner'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useAuthStore } from '@accelerate/core/auth'
-import { useWorkspaceStore } from '@accelerate/core/workspace'
+import { useAuthStore } from '@garden/core/auth'
+import { useWorkspaceStore } from '@garden/core/workspace'
 import {
   useLeaveWorkspace,
   useDeleteWorkspace,
-} from '@accelerate/core/workspace/mutations'
-import { useWorkspaceId } from '@accelerate/core/hooks'
+} from '@garden/core/workspace/mutations'
+import { useWorkspaceId } from '@garden/core/hooks'
 import {
   memberListOptions,
   workspaceKeys,
-} from '@accelerate/core/workspace/queries'
-import { api } from '@accelerate/core/api'
-import type { Workspace } from '@accelerate/core/types'
+} from '@garden/core/workspace/queries'
+import { api } from '@garden/core/api'
+import type { Workspace } from '@garden/core/types'
 
 export function WorkspaceTab() {
   const user = useAuthStore((s) => s.user)

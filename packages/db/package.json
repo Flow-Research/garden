@@ -1,9 +1,9 @@
 {
-  "name": "@accelerate/db",
+  "name": "@garden/db",
   "private": true,
   "type": "module",
   "dependencies": {
-    "@accelerate/env": "workspace:*",
+    "@garden/env": "workspace:*",
     "@neondatabase/serverless": "^1.0.1",
     "drizzle-orm": "^0.44.6"
   },

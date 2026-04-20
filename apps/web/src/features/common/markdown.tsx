@@ -5,8 +5,8 @@ import {
   Markdown as MarkdownBase,
   type MarkdownProps as MarkdownBaseProps,
   type RenderMode,
-} from '@accelerate/ui/markdown'
-import { useConfigStore } from '@accelerate/core/config'
+} from '@garden/ui/markdown'
+import { useConfigStore } from '@garden/core/config'
 import { IssueMentionCard } from '../issues/components/issue-mention-card'
 
 export type { RenderMode }

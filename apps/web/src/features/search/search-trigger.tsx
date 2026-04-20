@@ -1,8 +1,8 @@
 'use client'
 
-import { cn } from '@accelerate/ui/lib/utils'
+import { cn } from '@garden/ui/lib/utils'
 import { IconSearch } from '@tabler/icons-react'
-import { SidebarMenuButton } from '@accelerate/ui/components/ui/sidebar'
+import { SidebarMenuButton } from '@garden/ui/components/ui/sidebar'
 import { useSearchStore } from './search-store'
 
 export function SearchTrigger({ className }: { className?: string } = {}) {

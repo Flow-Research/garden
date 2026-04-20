@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 
-// JSDOM polyfills — cmdk uses ResizeObserver; @accelerate/ui's use-mobile hook
+// JSDOM polyfills — cmdk uses ResizeObserver; /ui's use-mobile hook
 // reads window.matchMedia. Neither ships with JSDOM so we stub them.
 if (typeof globalThis.ResizeObserver === 'undefined') {
   globalThis.ResizeObserver = class {

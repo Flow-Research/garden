@@ -14,12 +14,12 @@ import {
   type Icon,
 } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
-import type { SearchIssueResult } from '@accelerate/core/types'
-import { api } from '@accelerate/core/api'
-import { useRecentIssuesStore } from '@accelerate/core/issues/stores'
-import { issueListOptions } from '@accelerate/core/issues/queries'
-import { useWorkspaceId } from '@accelerate/core'
-import { STATUS_CONFIG } from '@accelerate/core/issues/config'
+import type { SearchIssueResult } from '@garden/core/types'
+import { api } from '@garden/core/api'
+import { useRecentIssuesStore } from '@garden/core/issues/stores'
+import { issueListOptions } from '@garden/core/issues/queries'
+import { useWorkspaceId } from '@garden/core'
+import { STATUS_CONFIG } from '@garden/core/issues/config'
 import { StatusIcon } from '../issues/components'
 import {
   Command,
@@ -28,17 +28,18 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from '@accelerate/ui/components/ui/command'
+} from '@garden/ui/components/ui/command'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '@accelerate/ui/components/ui/dialog'
-import { Kbd, KbdGroup } from '@accelerate/ui/components/ui/kbd'
+} from '@garden/ui/components/ui/dialog'
+import { Kbd, KbdGroup } from '@garden/ui/components/ui/kbd'
 import { Loader2 } from 'lucide-react'
 import { useWorkspaceDock, type WorkspacePanelKind } from '@/components/shell/workspace-dock'
+import { startNewChat } from '@/features/chat'
 import { useSearchStore } from './search-store'
 
 function HighlightText({ text, query }: { text: string; query: string }) {
@@ -282,6 +283,9 @@ export function SearchCommand() {
   const openPage = useCallback(
     (page: NavPage) => {
       setOpen(false)
+      if (page.kind === 'chat' && page.title === 'New Chat') {
+        startNewChat()
+      }
       openPanel({ kind: page.kind, title: page.title })
     },
     [openPanel, setOpen],
@@ -296,6 +300,7 @@ export function SearchCommand() {
         shortcut: ['C'],
         onSelect: ({ setOpen }) => {
           setOpen(false)
+          startNewChat()
           openPanel({ kind: 'chat', title: 'New Chat' })
         },
       },

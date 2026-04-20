@@ -6,7 +6,7 @@ import {
   useQueryClient,
   useMutationState,
 } from '@tanstack/react-query'
-import type { Comment, TimelineEntry, Reaction } from '@accelerate/core/types'
+import type { Comment, TimelineEntry, Reaction } from '@garden/core/types'
 import type {
   CommentCreatedPayload,
   CommentUpdatedPayload,
@@ -14,16 +14,16 @@ import type {
   ActivityCreatedPayload,
   ReactionAddedPayload,
   ReactionRemovedPayload,
-} from '@accelerate/core/types'
-import { issueTimelineOptions, issueKeys } from '@accelerate/core/issues/queries'
+} from '@garden/core/types'
+import { issueTimelineOptions, issueKeys } from '@garden/core/issues/queries'
 import {
   useCreateComment,
   useUpdateComment,
   useDeleteComment,
   useToggleCommentReaction,
   type ToggleCommentReactionVars,
-} from '@accelerate/core/issues/mutations'
-import { useWSEvent, useWSReconnect } from '@accelerate/core/realtime'
+} from '@garden/core/issues/mutations'
+import { useWSEvent, useWSReconnect } from '@garden/core/realtime'
 import { toast } from 'sonner'
 
 function commentToTimelineEntry(c: Comment): TimelineEntry {

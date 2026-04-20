@@ -14,7 +14,7 @@ import type {
   Skill,
   CreateSkillRequest,
   UpdateSkillRequest,
-} from '@accelerate/core/types'
+} from '@garden/core/types'
 import {
   Dialog,
   DialogContent,
@@ -22,37 +22,37 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from '@accelerate/ui/components/ui/dialog'
+} from '@garden/ui/components/ui/dialog'
 import {
   ResizablePanelGroup,
   ResizablePanel,
   ResizableHandle,
-} from '@accelerate/ui/components/ui/resizable'
+} from '@garden/ui/components/ui/resizable'
 import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
-} from '@accelerate/ui/components/ui/tooltip'
-import { Badge } from '@accelerate/ui/components/ui/badge'
-import { Button } from '@accelerate/ui/components/ui/button'
-import { Input } from '@accelerate/ui/components/ui/input'
-import { Label } from '@accelerate/ui/components/ui/label'
+} from '@garden/ui/components/ui/tooltip'
+import { Badge } from '@garden/ui/components/ui/badge'
+import { Button } from '@garden/ui/components/ui/button'
+import { Input } from '@garden/ui/components/ui/input'
+import { Label } from '@garden/ui/components/ui/label'
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from '@accelerate/ui/components/ui/tabs'
+} from '@garden/ui/components/ui/tabs'
 import { toast } from 'sonner'
-import { Skeleton } from '@accelerate/ui/components/ui/skeleton'
-import { api } from '@accelerate/core/api'
+import { Skeleton } from '@garden/ui/components/ui/skeleton'
+import { api } from '@garden/core/api'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useAuthStore } from '@accelerate/core/auth'
-import { useWorkspaceId } from '@accelerate/core/hooks'
+import { useAuthStore } from '@garden/core/auth'
+import { useWorkspaceId } from '@garden/core/hooks'
 import {
   skillListOptions,
   workspaceKeys,
-} from '@accelerate/core/workspace/queries'
+} from '@garden/core/workspace/queries'
 
 import { PageHeader } from '../../layout/page-header'
 import { FileTree } from './file-tree'

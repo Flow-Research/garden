@@ -24,8 +24,8 @@ import { useQuery } from '@tanstack/react-query'
 import {
   issueListOptions,
   issueDetailOptions,
-} from '@accelerate/core/issues/queries'
-import { useWorkspaceId } from '@accelerate/core/hooks'
+} from '@garden/core/issues/queries'
+import { useWorkspaceId } from '@garden/core/hooks'
 import { useNavigation } from '../../navigation'
 import { StatusIcon } from '../../issues/components/status-icon'
 

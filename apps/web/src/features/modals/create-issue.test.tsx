@@ -29,7 +29,7 @@ vi.mock('../navigation', () => ({
   useNavigation: () => ({ push: mockPush }),
 }))
 
-vi.mock('@accelerate/core/workspace', () => ({
+vi.mock('@garden/core/workspace', () => ({
   useWorkspaceStore: Object.assign(
     (selector?: (state: { workspace: { name: string } }) => unknown) => {
       const state = { workspace: { name: 'Test Workspace' } }
@@ -39,7 +39,7 @@ vi.mock('@accelerate/core/workspace', () => ({
   ),
 }))
 
-vi.mock('@accelerate/core/issues/stores/draft-store', () => ({
+vi.mock('@garden/core/issues/stores/draft-store', () => ({
   useIssueDraftStore: Object.assign(
     (selector?: (state: typeof mockDraftStore) => unknown) =>
       selector ? selector(mockDraftStore) : mockDraftStore,
@@ -47,16 +47,16 @@ vi.mock('@accelerate/core/issues/stores/draft-store', () => ({
   ),
 }))
 
-vi.mock('@accelerate/core/issues/mutations', () => ({
+vi.mock('@garden/core/issues/mutations', () => ({
   useCreateIssue: () => ({ mutateAsync: mockCreateIssue }),
   useUpdateIssue: () => ({ mutate: vi.fn() }),
 }))
 
-vi.mock('@accelerate/core/hooks/use-file-upload', () => ({
+vi.mock('@garden/core/hooks/use-file-upload', () => ({
   useFileUpload: () => ({ uploadWithToast: vi.fn() }),
 }))
 
-vi.mock('@accelerate/core/api', () => ({
+vi.mock('@garden/core/api', () => ({
   api: {},
 }))
 
@@ -121,7 +121,7 @@ vi.mock('../projects/components/project-picker', () => ({
   ProjectPicker: () => <div data-testid="project-picker" />,
 }))
 
-vi.mock('@accelerate/ui/components/ui/dialog', () => ({
+vi.mock('@garden/ui/components/ui/dialog', () => ({
   Dialog: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="dialog-root">{children}</div>
   ),
@@ -141,7 +141,7 @@ vi.mock('@accelerate/ui/components/ui/dialog', () => ({
   }) => <div className={className}>{children}</div>,
 }))
 
-vi.mock('@accelerate/ui/components/ui/tooltip', () => ({
+vi.mock('@garden/ui/components/ui/tooltip', () => ({
   Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   TooltipTrigger: ({ render }: { render: React.ReactNode }) => <>{render}</>,
   TooltipContent: ({ children }: { children: React.ReactNode }) => (
@@ -149,7 +149,7 @@ vi.mock('@accelerate/ui/components/ui/tooltip', () => ({
   ),
 }))
 
-vi.mock('@accelerate/ui/components/ui/button', () => ({
+vi.mock('@garden/ui/components/ui/button', () => ({
   Button: ({
     children,
     disabled,
@@ -167,7 +167,7 @@ vi.mock('@accelerate/ui/components/ui/button', () => ({
   ),
 }))
 
-vi.mock('@accelerate/ui/components/common/file-upload-button', () => ({
+vi.mock('@garden/ui/components/common/file-upload-button', () => ({
   FileUploadButton: ({ onSelect }: { onSelect: (file: File) => void }) => (
     <button
       type="button"
@@ -178,7 +178,7 @@ vi.mock('@accelerate/ui/components/common/file-upload-button', () => ({
   ),
 }))
 
-vi.mock('@accelerate/ui/lib/utils', () => ({
+vi.mock('@garden/ui/lib/utils', () => ({
   cn: (...values: Array<string | false | null | undefined>) =>
     values.filter(Boolean).join(' '),
 }))

@@ -19,14 +19,14 @@ const {
   mockAllIssues: { current: [] as Array<Record<string, unknown>> },
 }))
 
-vi.mock('@accelerate/core/api', () => ({
+vi.mock('@garden/core/api', () => ({
   api: {
     searchIssues: mockSearchIssues,
     searchProjects: mockSearchProjects,
   },
 }))
 
-vi.mock('@accelerate/core/issues/stores', () => ({
+vi.mock('@garden/core/issues/stores', () => ({
   useRecentIssuesStore: (
     selector?: (state: { items: typeof mockRecentItems.current }) => unknown,
   ) => {
@@ -35,11 +35,11 @@ vi.mock('@accelerate/core/issues/stores', () => ({
   },
 }))
 
-vi.mock('@accelerate/core', () => ({
+vi.mock('@garden/core', () => ({
   useWorkspaceId: () => 'ws-test',
 }))
 
-vi.mock('@accelerate/core/issues/queries', () => ({
+vi.mock('@garden/core/issues/queries', () => ({
   issueListOptions: () => ({
     queryKey: ['issues', 'ws-test', 'list'],
     enabled: false,

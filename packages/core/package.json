@@ -1,5 +1,5 @@
 {
-  "name": "@accelerate/core",
+  "name": "@garden/core",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -67,7 +67,7 @@
     "react": "catalog:"
   },
   "devDependencies": {
-    "@accelerate/tsconfig": "workspace:*",
+    "@garden/tsconfig": "workspace:*",
     "@types/react": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

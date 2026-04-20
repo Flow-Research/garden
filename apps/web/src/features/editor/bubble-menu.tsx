@@ -17,21 +17,21 @@ import type { Editor } from '@tiptap/core'
 import { NodeSelection } from '@tiptap/pm/state'
 import type { EditorState } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
-import { Toggle } from '@accelerate/ui/components/ui/toggle'
-import { Separator } from '@accelerate/ui/components/ui/separator'
+import { Toggle } from '@garden/ui/components/ui/toggle'
+import { Separator } from '@garden/ui/components/ui/separator'
 import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
   TooltipProvider,
-} from '@accelerate/ui/components/ui/tooltip'
+} from '@garden/ui/components/ui/tooltip'
 import {
   Popover,
   PopoverTrigger,
   PopoverContent,
-} from '@accelerate/ui/components/ui/popover'
-import { Input } from '@accelerate/ui/components/ui/input'
-import { Button } from '@accelerate/ui/components/ui/button'
+} from '@garden/ui/components/ui/popover'
+import { Input } from '@garden/ui/components/ui/input'
+import { Button } from '@garden/ui/components/ui/button'
 import {
   Bold,
   Italic,

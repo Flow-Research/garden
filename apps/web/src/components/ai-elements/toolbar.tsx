@@ -1,4 +1,4 @@
-import { cn } from "@accelerate/ui/lib/utils";
+import { cn } from "@garden/ui/lib/utils";
 import { NodeToolbar, Position } from "@xyflow/react";
 import type { ComponentProps } from "react";
 

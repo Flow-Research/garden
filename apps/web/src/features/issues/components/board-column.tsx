@@ -6,20 +6,20 @@ import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
-} from '@accelerate/ui/components/ui/tooltip'
+} from '@garden/ui/components/ui/tooltip'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import type { Issue, IssueStatus } from '@accelerate/core/types'
-import { Button } from '@accelerate/ui/components/ui/button'
+import type { Issue, IssueStatus } from '@garden/core/types'
+import { Button } from '@garden/ui/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-} from '@accelerate/ui/components/ui/dropdown-menu'
-import { STATUS_CONFIG } from '@accelerate/core/issues/config'
-import { useModalStore } from '@accelerate/core/modals'
-import { useViewStoreApi } from '@accelerate/core/issues/stores/view-store-context'
+} from '@garden/ui/components/ui/dropdown-menu'
+import { STATUS_CONFIG } from '@garden/core/issues/config'
+import { useModalStore } from '@garden/core/modals'
+import { useViewStoreApi } from '@garden/core/issues/stores/view-store-context'
 import { StatusIcon } from './status-icon'
 import { DraggableBoardCard } from './board-card'
 import type { ChildProgress } from './list-row'

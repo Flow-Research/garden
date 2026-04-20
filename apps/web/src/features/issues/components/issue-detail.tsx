@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '../../layout/page-header'
 import { toast } from 'sonner'
-import { Skeleton } from '@accelerate/ui/components/ui/skeleton'
+import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,8 +33,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@accelerate/ui/components/ui/alert-dialog'
-import { Button } from '@accelerate/ui/components/ui/button'
+} from '@garden/ui/components/ui/alert-dialog'
+import { Button } from '@garden/ui/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -44,14 +44,14 @@ import {
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
-} from '@accelerate/ui/components/ui/dropdown-menu'
+} from '@garden/ui/components/ui/dropdown-menu'
 import {
   ResizablePanelGroup,
   ResizablePanel,
   ResizableHandle,
-} from '@accelerate/ui/components/ui/resizable'
-import { Sheet, SheetContent } from '@accelerate/ui/components/ui/sheet'
-import { useIsMobile } from '@accelerate/ui/hooks/use-mobile'
+} from '@garden/ui/components/ui/resizable'
+import { Sheet, SheetContent } from '@garden/ui/components/ui/sheet'
+import { useIsMobile } from '@garden/ui/hooks/use-mobile'
 import {
   ContentEditor,
   type ContentEditorRef,
@@ -59,18 +59,18 @@ import {
   useFileDropZone,
   FileDropOverlay,
 } from '../../editor'
-import { FileUploadButton } from '@accelerate/ui/components/common/file-upload-button'
+import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
 import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
-} from '@accelerate/ui/components/ui/tooltip'
+} from '@garden/ui/components/ui/tooltip'
 import {
   Popover,
   PopoverTrigger,
   PopoverContent,
-} from '@accelerate/ui/components/ui/popover'
-import { Checkbox } from '@accelerate/ui/components/ui/checkbox'
+} from '@garden/ui/components/ui/popover'
+import { Checkbox } from '@garden/ui/components/ui/checkbox'
 import {
   Command,
   CommandDialog,
@@ -79,8 +79,8 @@ import {
   CommandEmpty,
   CommandGroup,
   CommandItem,
-} from '@accelerate/ui/components/ui/command'
-import { AvatarGroup, AvatarGroupCount } from '@accelerate/ui/components/ui/avatar'
+} from '@garden/ui/components/ui/command'
+import { AvatarGroup, AvatarGroupCount } from '@garden/ui/components/ui/avatar'
 import { ActorAvatar } from '../../common/actor-avatar'
 import type {
   UpdateIssueRequest,
@@ -88,13 +88,13 @@ import type {
   IssuePriority,
   TimelineEntry,
   Issue,
-} from '@accelerate/core/types'
+} from '@garden/core/types'
 import {
   ALL_STATUSES,
   STATUS_CONFIG,
   PRIORITY_ORDER,
   PRIORITY_CONFIG,
-} from '@accelerate/core/issues/config'
+} from '@garden/core/issues/config'
 import {
   StatusIcon,
   PriorityIcon,
@@ -110,33 +110,33 @@ import { CommentInput } from './comment-input'
 import { AgentLiveCard, TaskRunHistory } from './agent-live-card'
 import { BacklogAgentHintDialog } from './backlog-agent-hint-dialog'
 import { useQuery } from '@tanstack/react-query'
-import { useAuthStore } from '@accelerate/core/auth'
-import { useWorkspaceStore } from '@accelerate/core/workspace'
-import { useActorName } from '@accelerate/core/workspace/hooks'
-import { useWorkspaceId } from '@accelerate/core/hooks'
+import { useAuthStore } from '@garden/core/auth'
+import { useWorkspaceStore } from '@garden/core/workspace'
+import { useActorName } from '@garden/core/workspace/hooks'
+import { useWorkspaceId } from '@garden/core/hooks'
 import {
   issueListOptions,
   issueDetailOptions,
   childIssuesOptions,
   issueUsageOptions,
-} from '@accelerate/core/issues/queries'
+} from '@garden/core/issues/queries'
 import {
   memberListOptions,
   agentListOptions,
-} from '@accelerate/core/workspace/queries'
-import { useUpdateIssue, useDeleteIssue } from '@accelerate/core/issues/mutations'
-import { useRecentIssuesStore } from '@accelerate/core/issues/stores'
+} from '@garden/core/workspace/queries'
+import { useUpdateIssue, useDeleteIssue } from '@garden/core/issues/mutations'
+import { useRecentIssuesStore } from '@garden/core/issues/stores'
 import { useIssueTimeline } from '../hooks/use-issue-timeline'
 import { useIssueReactions } from '../hooks/use-issue-reactions'
 import { useIssueSubscribers } from '../hooks/use-issue-subscribers'
-import { ReactionBar } from '@accelerate/ui/components/common/reaction-bar'
-import { useFileUpload } from '@accelerate/core/hooks/use-file-upload'
-import { api } from '@accelerate/core/api'
-import { useModalStore } from '@accelerate/core/modals'
-import { timeAgo } from '@accelerate/core/utils'
-import { cn } from '@accelerate/ui/lib/utils'
-import { pinListOptions } from '@accelerate/core/pins'
-import { useCreatePin, useDeletePin } from '@accelerate/core/pins'
+import { ReactionBar } from '@garden/ui/components/common/reaction-bar'
+import { useFileUpload } from '@garden/core/hooks/use-file-upload'
+import { api } from '@garden/core/api'
+import { useModalStore } from '@garden/core/modals'
+import { timeAgo } from '@garden/core/utils'
+import { cn } from '@garden/ui/lib/utils'
+import { pinListOptions } from '@garden/core/pins'
+import { useCreatePin, useDeletePin } from '@garden/core/pins'
 
 import { ProgressRing } from './progress-ring'
 
@@ -537,7 +537,7 @@ export function IssueDetail({
         updates.assignee_type === 'agent' &&
         updates.assignee_id &&
         issue.status === 'backlog' &&
-        localStorage.getItem('accelerate:backlog-agent-hint-dismissed') !== 'true'
+        localStorage.getItem('garden:backlog-agent-hint-dismissed') !== 'true'
       ) {
         setBacklogHintOpen(true)
       }
@@ -1203,7 +1203,7 @@ export function IssueDetail({
             onOpenChange={setBacklogHintOpen}
             onDismissPermanently={() => {
               localStorage.setItem(
-                'accelerate:backlog-agent-hint-dismissed',
+                'garden:backlog-agent-hint-dismissed',
                 'true',
               )
             }}

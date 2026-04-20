@@ -1,5 +1,5 @@
 {
-  "extends": "@accelerate/tsconfig/react-library.json",
+  "extends": "@garden/tsconfig/react-library.json",
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "."

@@ -6,17 +6,17 @@ import { useNavigation } from '../navigation'
 import { useImmersiveMode } from '../platform'
 import { toast } from 'sonner'
 import { ArrowLeft } from 'lucide-react'
-import { Input } from '@accelerate/ui/components/ui/input'
-import { Label } from '@accelerate/ui/components/ui/label'
-import { Button } from '@accelerate/ui/components/ui/button'
+import { Input } from '@garden/ui/components/ui/input'
+import { Label } from '@garden/ui/components/ui/label'
+import { Button } from '@garden/ui/components/ui/button'
 import {
   Dialog,
   DialogContent,
   DialogTitle,
   DialogDescription,
-} from '@accelerate/ui/components/ui/dialog'
-import { Card, CardContent } from '@accelerate/ui/components/ui/card'
-import { useCreateWorkspace } from '@accelerate/core/workspace/mutations'
+} from '@garden/ui/components/ui/dialog'
+import { Card, CardContent } from '@garden/ui/components/ui/card'
+import { useCreateWorkspace } from '@garden/core/workspace/mutations'
 import {
   WORKSPACE_SLUG_CONFLICT_ERROR,
   WORKSPACE_SLUG_FORMAT_ERROR,
@@ -24,7 +24,7 @@ import {
   isWorkspaceSlugConflict,
   nameToWorkspaceSlug,
 } from '../workspace/slug'
-import { createLogger } from '@accelerate/core/logger'
+import { createLogger } from '@garden/core/logger'
 
 const logger = createLogger('workspace.create')
 
