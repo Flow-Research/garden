@@ -1,35 +1,22 @@
-import { neon } from '@neondatabase/serverless'
-import { drizzle } from 'drizzle-orm/neon-http'
-import {
-  account,
-  session,
-  verification,
-  member as memberTable,
-  organization as organizationTable,
-  invitation,
-  user,
-} from '../../../packages/db/src/schema/index.ts'
-import { createBetterAuth } from './lib/auth-instance'
+import { parseServerEnv } from '@garden/env'
+import { createAuth } from './lib/auth'
 
-const databaseUrl =
-  process.env.DATABASE_URL ??
-  'postgresql://user:password@localhost:5432/garden'
-
-const db = drizzle(neon(databaseUrl), {
-  schema: {
-    user,
-    session,
-    account,
-    verification,
-    organization: organizationTable,
-    member: memberTable,
-    invitation,
-  },
+const env = parseServerEnv({
+  DATABASE_URL: process.env.DATABASE_URL,
+  BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
+  BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
+  OPENCODE_GO_API_KEY: process.env.OPENCODE_GO_API_KEY,
+  ENVIRONMENT: process.env.ENVIRONMENT,
 })
 
-export const auth = createBetterAuth(db, {
-  BETTER_AUTH_SECRET:
-    process.env.BETTER_AUTH_SECRET ??
-    'garden-dev-secret-please-change-me-123456',
-  BETTER_AUTH_URL: process.env.BETTER_AUTH_URL ?? 'http://localhost:3000',
+if (!env.BETTER_AUTH_SECRET || !env.BETTER_AUTH_URL) {
+  throw new Error(
+    'BETTER_AUTH_SECRET and BETTER_AUTH_URL must be set before loading auth CLI config',
+  )
+}
+
+export const auth = createAuth({
+  DATABASE_URL: env.DATABASE_URL,
+  BETTER_AUTH_SECRET: env.BETTER_AUTH_SECRET,
+  BETTER_AUTH_URL: env.BETTER_AUTH_URL,
 })

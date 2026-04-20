@@ -26,7 +26,7 @@ import { api } from '@garden/core/api'
 import { useFileUpload } from '@garden/core/hooks/use-file-upload'
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { useNavigation } from '@/features/navigation'
-import { authClient } from '@/lib/auth-client'
+import { authClient } from '@/lib/auth/client'
 
 const sessionQueryKey = ['account', 'sessions']
 

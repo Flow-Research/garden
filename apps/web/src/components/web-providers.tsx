@@ -6,7 +6,7 @@ import { WebNavigationProvider } from '@/platform/navigation'
 export function WebProviders({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
-      <CoreProvider apiBaseUrl="" cookieAuth>
+      <CoreProvider apiBaseUrl="">
         <WebNavigationProvider>{children}</WebNavigationProvider>
       </CoreProvider>
       <Toaster />

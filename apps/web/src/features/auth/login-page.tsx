@@ -7,7 +7,7 @@ import { useAuthStore } from '@garden/core/auth'
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { workspaceKeys } from '@garden/core/workspace/queries'
 import { toast } from 'sonner'
-import { authClient } from '@/lib/auth-client'
+import { authClient } from '@/lib/auth/client'
 import { LoginForm } from '@/components/login-form'
 
 export function LoginPage({
