@@ -31,7 +31,6 @@ import {
   deduplicateInboxItems,
   inboxListOptions,
 } from '@garden/core/inbox/queries'
-import { useChatStore } from '@garden/core/chat'
 import { useAuthStore } from '@garden/core/auth'
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { SearchTrigger } from '@/features/search'
@@ -118,30 +117,23 @@ function HomeDashboardIcon({ className }: { className?: string }) {
 }
 
 function RailHomeIcon({ className }: { className?: string }) {
-  return <IconifyIcon icon="ic:sharp-home" className={className} />
+  return <IconifyIcon icon="hugeicons:home-05" className={className} />
 }
 
 function RailChatsIcon({ className }: { className?: string }) {
-  return (
-    <IconifyIcon icon="material-symbols:chat-outline-sharp" className={className} />
-  )
+  return <IconifyIcon icon="hugeicons:bubble-chat" className={className} />
 }
 
 function RailSkillsIcon({ className }: { className?: string }) {
-  return (
-    <IconifyIcon
-      icon="material-symbols:menu-book-outline-sharp"
-      className={className}
-    />
-  )
+  return <IconifyIcon icon="hugeicons:book-open-01" className={className} />
 }
 
 function RailConnectionsIcon({ className }: { className?: string }) {
-  return <IconifyIcon icon="ic:sharp-link" className={className} />
+  return <IconifyIcon icon="hugeicons:plug-socket" className={className} />
 }
 
 function RailSettingsIcon({ className }: { className?: string }) {
-  return <IconifyIcon icon="ic:sharp-settings" className={className} />
+  return <IconifyIcon icon="hugeicons:settings-02" className={className} />
 }
 
 function HomeTasksIcon({ className }: { className?: string }) {
@@ -159,20 +151,22 @@ function ExplorerSection({
   count,
   children,
 }: {
-  label: string
+  label?: string
   count?: number
   children: React.ReactNode
 }) {
   return (
     <SidebarGroup className="px-0 py-1.5">
-      <div className="flex items-center gap-2 px-4 pb-1">
-        <SidebarGroupLabel className="h-auto px-0 text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
-          {label}
-        </SidebarGroupLabel>
-        {typeof count === 'number' ? (
-          <span className="text-[10px] text-muted-foreground">{count}</span>
-        ) : null}
-      </div>
+      {label ? (
+        <div className="flex items-center gap-2 px-4 pb-1">
+          <SidebarGroupLabel className="h-auto px-0 text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+            {label}
+          </SidebarGroupLabel>
+          {typeof count === 'number' ? (
+            <span className="text-[10px] text-muted-foreground">{count}</span>
+          ) : null}
+        </div>
+      ) : null}
       <SidebarGroupContent>{children}</SidebarGroupContent>
     </SidebarGroup>
   )
@@ -212,7 +206,7 @@ export function WorkspaceSidebar() {
   const queryClient = useQueryClient()
   const { replace } = useNavigation()
   const { activePanel, openPanel } = useWorkspaceDock()
-  const { getNextIdleSession } = useAgentSessions()
+  const { createSession } = useAgentSessions()
   const { setOpen } = useSidebar()
   const workspace = useWorkspaceStore((state) => state.workspace)
   const clearWorkspace = useWorkspaceStore((state) => state.clearWorkspace)
@@ -276,20 +270,20 @@ export function WorkspaceSidebar() {
 
   return (
     <Sidebar
-      variant="inset"
       collapsible="icon"
-      className="overflow-hidden *:data-[sidebar=sidebar]:flex-row"
+      className="overflow-hidden border-r-0 *:data-[sidebar=sidebar]:flex-row"
     >
       <Sidebar
         collapsible="none"
-        className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r border-sidebar-border/70"
+        className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r-[3px] border-sidebar-border"
       >
-        <SidebarHeader className="px-2 py-3">
+        <SidebarHeader className="p-0">
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
                 size="lg"
-                className="justify-center rounded-[2px] md:h-9 md:p-0"
+                aria-label={workspace?.name ?? 'Garden'}
+                className="!h-12 !w-full !gap-0 !p-0 justify-center rounded-none group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-full"
                 tooltip={{
                   children: workspace?.name ?? 'Garden',
                   hidden: false,
@@ -305,22 +299,22 @@ export function WorkspaceSidebar() {
         </SidebarHeader>
 
         <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupContent className="px-1.5 md:px-0">
-              <SidebarMenu className="space-y-1 px-0.5">
+          <SidebarGroup className="p-0">
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-2 py-2">
                 {railItems.map((item) => (
-                  <SidebarMenuItem key={item.id} className="mb-1 last:mb-0">
+                  <SidebarMenuItem key={item.id}>
                     <SidebarMenuButton
                       tooltip={{
                         children: item.label,
                         hidden: false,
                       }}
+                      aria-label={item.label}
                       isActive={activeRailId === item.id}
-                      className="rounded-[2px] px-2.5 md:px-2"
+                      className="!h-10 !w-full !gap-0 !p-0 justify-center !rounded-none group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-full"
                       onClick={() => openRailContext(item)}
                     >
-                      <item.icon className="size-[22px]" />
-                      <span>{item.label}</span>
+                      <item.icon className="!size-[22px] shrink-0" />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
@@ -329,7 +323,7 @@ export function WorkspaceSidebar() {
           </SidebarGroup>
         </SidebarContent>
 
-        <SidebarFooter>
+        <SidebarFooter className="p-0">
           <NavUser
             user={{
               name: user?.name ?? 'Account',
@@ -344,10 +338,15 @@ export function WorkspaceSidebar() {
         </SidebarFooter>
       </Sidebar>
 
-      <Sidebar collapsible="none" className="hidden flex-1 md:flex">
-        <SidebarHeader className="gap-3 border-b border-sidebar-border/70 p-2">
-          <div className="px-2 text-sm font-medium text-foreground">
-            {activeRail.label}
+      <Sidebar
+        collapsible="none"
+        className="hidden flex-1 md:flex group-data-[state=collapsed]:md:hidden"
+      >
+        <SidebarHeader className="gap-3 p-2">
+          <div className="px-2">
+            <span className="text-sm font-medium text-foreground">
+              {activeRail.label}
+            </span>
           </div>
           <SearchTrigger className="flex-1" />
         </SidebarHeader>
@@ -382,23 +381,32 @@ export function WorkspaceSidebar() {
           ) : null}
 
           {activeRailId === 'chats' ? (
-            <ExplorerSection label="Chats">
+            <ExplorerSection>
               <SidebarMenu>
                 <ExplorerActionRow
                   label="New Chat"
                   icon={IconMessage2Plus}
                   active={activeType === 'chat'}
                   onClick={() => {
-                    void getNextIdleSession().then((session) => {
-                      useChatStore.getState().setActiveSession(session.id)
-                      openPanel({ kind: 'chat', title: 'New Chat' })
+                    void createSession.mutateAsync('New Chat').then((session) => {
+                      openPanel({
+                        kind: 'chat',
+                        title: session.title,
+                        entityId: session.id,
+                      })
                     })
                   }}
                 />
               </SidebarMenu>
-              <div className="pt-2">
+              <div className="mt-2 border-t border-sidebar-border/70 pt-2">
                 <ChatSessionExplorer
-                  onActivate={() => openPanel({ kind: 'chat', title: 'New Chat' })}
+                  onActivate={(session) =>
+                    openPanel({
+                      kind: 'chat',
+                      title: session.title,
+                      entityId: session.id,
+                    })
+                  }
                 />
               </div>
             </ExplorerSection>

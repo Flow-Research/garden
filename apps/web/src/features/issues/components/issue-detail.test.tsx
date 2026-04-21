@@ -506,11 +506,7 @@ describe('IssueDetail (shared)', () => {
     mockApiObj.getIssue.mockReturnValue(new Promise(() => {}))
     renderIssueDetail()
 
-    expect(
-      screen
-        .getAllByRole('generic')
-        .some((el) => el.getAttribute('data-slot') === 'skeleton'),
-    ).toBe(true)
+    expect(document.querySelector('[data-boneyard-bone="true"]')).not.toBeNull()
   })
 
   it('renders issue title and description after loading', async () => {

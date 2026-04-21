@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { Skeleton as BoneyardSkeleton } from 'boneyard-js/react'
 import { useDefaultLayout, usePanelRef } from 'react-resizable-panels'
 import { AppLink } from '../../navigation'
 import { useNavigation } from '../../navigation'
@@ -23,7 +24,6 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '../../layout/page-header'
 import { toast } from 'sonner'
-import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -118,6 +118,11 @@ import { useIssueDetailData } from '../hooks/use-issue-detail-data'
 
 import { ProgressRing } from './progress-ring'
 
+const ISSUE_DETAIL_PAGE_SKELETON = 'issue-detail-page'
+const ISSUE_DETAIL_REACTIONS_SKELETON = 'issue-detail-reactions'
+const ISSUE_DETAIL_SUBSCRIBERS_SKELETON = 'issue-detail-subscribers'
+const ISSUE_DETAIL_TIMELINE_SKELETON = 'issue-detail-timeline'
+
 function shortDate(date: string | null): string {
   if (!date) return '—'
   return new Date(date).toLocaleDateString('en-US', {
@@ -187,6 +192,177 @@ function formatTokenCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
   return String(n)
+}
+
+function IssueDetailPageFixture() {
+  return (
+    <div className="flex flex-1 min-h-0 flex-col">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+        <span className="text-sm text-muted-foreground">Issues</span>
+        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+        <span className="text-sm font-medium">GDN-14</span>
+      </div>
+      <div className="flex flex-1 min-h-0">
+        <div className="flex-1 space-y-6 p-8">
+          <div className="space-y-3">
+            <h1 className="text-2xl font-semibold text-foreground">
+              Ship boneyard skeletons across the app
+            </h1>
+            <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+              Replace the hand-built placeholder system with colocated fixtures
+              captured from the real layout.
+            </p>
+          </div>
+          <div className="space-y-3 rounded-lg border border-border/70 p-4">
+            <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+              Description
+            </p>
+            <p className="text-sm text-foreground">
+              Keep the skeleton order with the UI file, then generate bones from
+              a dedicated fixture route.
+            </p>
+          </div>
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-foreground">Activity</span>
+              <span className="text-xs text-muted-foreground">4 updates</span>
+            </div>
+            <IssueDetailTimelineFixture />
+          </div>
+        </div>
+        <div className="w-64 border-l p-4">
+          <div className="space-y-4">
+            {[
+              ['Status', 'In Progress'],
+              ['Priority', 'High'],
+              ['Assignee', 'Garden Agent'],
+              ['Project', 'MVP'],
+            ].map(([label, value]) => (
+              <div key={label} className="flex items-center justify-between gap-3">
+                <span className="text-xs text-muted-foreground">{label}</span>
+                <span className="text-xs font-medium text-foreground">{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function IssueDetailReactionsFixture() {
+  return (
+    <div className="flex items-center gap-1">
+      {['👍 4', '👀 2'].map((reaction) => (
+        <div
+          key={reaction}
+          className="inline-flex h-7 items-center rounded-full border border-border bg-accent px-3 text-xs text-foreground"
+        >
+          {reaction}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function IssueDetailSubscribersFixture() {
+  return (
+    <div className="flex items-center gap-2">
+      <button className="text-xs text-muted-foreground">Unsubscribe</button>
+      <div className="flex -space-x-1">
+        {['A', 'M'].map((label) => (
+          <div
+            key={label}
+            className="flex h-6 w-6 items-center justify-center rounded-full border bg-accent text-[10px] font-medium text-foreground"
+          >
+            {label}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function IssueDetailTimelineFixture() {
+  return (
+    <div className="space-y-4">
+      {[
+        ['KG', 'Updated the rollout plan and capture route.'],
+        ['AG', 'Connected boneyard to the web app runtime.'],
+        ['KG', 'Queued the remaining page swaps.'],
+      ].map(([actor, body]) => (
+        <div key={body} className="flex items-start gap-3 px-4">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-xs font-medium text-foreground">
+            {actor}
+          </div>
+          <div className="flex-1 rounded-lg border border-border/70 bg-card px-3 py-3">
+            <p className="text-sm font-medium text-foreground">{actor}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{body}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+export function IssueDetailPageSkeleton() {
+  const fixture = <IssueDetailPageFixture />
+
+  return (
+    <BoneyardSkeleton
+      name={ISSUE_DETAIL_PAGE_SKELETON}
+      loading
+      fixture={fixture}
+      className="flex flex-1 min-h-0"
+    >
+      {fixture}
+    </BoneyardSkeleton>
+  )
+}
+
+export function IssueDetailReactionsSkeleton() {
+  const fixture = <IssueDetailReactionsFixture />
+
+  return (
+    <BoneyardSkeleton
+      name={ISSUE_DETAIL_REACTIONS_SKELETON}
+      loading
+      fixture={fixture}
+      className="inline-flex"
+    >
+      {fixture}
+    </BoneyardSkeleton>
+  )
+}
+
+export function IssueDetailSubscribersSkeleton() {
+  const fixture = <IssueDetailSubscribersFixture />
+
+  return (
+    <BoneyardSkeleton
+      name={ISSUE_DETAIL_SUBSCRIBERS_SKELETON}
+      loading
+      fixture={fixture}
+      className="inline-flex"
+    >
+      {fixture}
+    </BoneyardSkeleton>
+  )
+}
+
+export function IssueDetailTimelineSkeleton() {
+  const fixture = <IssueDetailTimelineFixture />
+
+  return (
+    <BoneyardSkeleton
+      name={ISSUE_DETAIL_TIMELINE_SKELETON}
+      loading
+      fixture={fixture}
+      className="w-full"
+    >
+      {fixture}
+    </BoneyardSkeleton>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -464,76 +640,7 @@ export function IssueDetail({
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex flex-1 min-h-0 flex-col">
-        {/* Header skeleton */}
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
-          <Skeleton className="h-4 w-16" />
-          <Skeleton className="h-4 w-4" />
-          <Skeleton className="h-4 w-24" />
-        </div>
-        <div className="flex flex-1 min-h-0">
-          {/* Content skeleton */}
-          <div className="flex-1 p-8 space-y-6">
-            <Skeleton className="h-8 w-3/4" />
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-5/6" />
-              <Skeleton className="h-4 w-2/3" />
-            </div>
-            <Skeleton className="h-px w-full" />
-            <div className="space-y-3">
-              <Skeleton className="h-4 w-20" />
-              <div className="flex items-start gap-3">
-                <Skeleton className="h-8 w-8 rounded-full" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-16 w-full rounded-lg" />
-                </div>
-              </div>
-            </div>
-          </div>
-          {/* Sidebar skeleton */}
-          <div className="w-64 border-l p-4 space-y-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="flex items-center justify-between">
-                <Skeleton className="h-3 w-16" />
-                <Skeleton className="h-5 w-24" />
-              </div>
-            ))}
-            <Skeleton className="h-px w-full" />
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="flex items-center justify-between">
-                <Skeleton className="h-3 w-16" />
-                <Skeleton className="h-4 w-28" />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!issue) {
-    return (
-      <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
-        <p>This issue does not exist or has been deleted in this workspace.</p>
-        {!onDelete && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => router.push('/issues')}
-          >
-            <ChevronLeft className="mr-1 h-3.5 w-3.5" />
-            Back to Issues
-          </Button>
-        )}
-      </div>
-    )
-  }
-
-  const sidebarContent = (
+  const sidebarContent = issue ? (
     <div className="space-y-5">
       {/* Properties */}
       <div>
@@ -550,35 +657,35 @@ export function IssueDetail({
           <div className="space-y-0.5 pl-2">
             <PropRow label="Status">
               <StatusPicker
-                status={issue.status}
+                status={issue!.status}
                 onUpdate={handleUpdateField}
                 align="start"
               />
             </PropRow>
             <PropRow label="Priority">
               <PriorityPicker
-                priority={issue.priority}
+                priority={issue!.priority}
                 onUpdate={handleUpdateField}
                 align="start"
               />
             </PropRow>
             <PropRow label="Assignee">
               <AssigneePicker
-                assigneeType={issue.assignee_type}
-                assigneeId={issue.assignee_id}
+                assigneeType={issue!.assignee_type}
+                assigneeId={issue!.assignee_id}
                 onUpdate={handleUpdateField}
                 align="start"
               />
             </PropRow>
             <PropRow label="Due date">
               <DueDatePicker
-                dueDate={issue.due_date}
+                dueDate={issue!.due_date}
                 onUpdate={handleUpdateField}
               />
             </PropRow>
             <PropRow label="Project">
               <ProjectPicker
-                projectId={issue.project_id}
+                projectId={issue!.project_id}
                 onUpdate={handleUpdateField}
               />
             </PropRow>
@@ -635,22 +742,22 @@ export function IssueDetail({
           <div className="space-y-0.5 pl-2">
             <PropRow label="Created by">
               <ActorAvatar
-                actorType={issue.creator_type}
-                actorId={issue.creator_id}
+                actorType={issue!.creator_type}
+                actorId={issue!.creator_id}
                 size={18}
               />
               <span className="truncate">
-                {getActorName(issue.creator_type, issue.creator_id)}
+                {getActorName(issue!.creator_type, issue!.creator_id)}
               </span>
             </PropRow>
             <PropRow label="Created">
               <span className="text-muted-foreground">
-                {shortDate(issue.created_at)}
+                {shortDate(issue!.created_at)}
               </span>
             </PropRow>
             <PropRow label="Updated">
               <span className="text-muted-foreground">
-                {shortDate(issue.updated_at)}
+                {shortDate(issue!.updated_at)}
               </span>
             </PropRow>
           </div>
@@ -700,17 +807,23 @@ export function IssueDetail({
         </div>
       )}
     </div>
-  )
+  ) : null
 
   return (
-    <ResizablePanelGroup
-      orientation="horizontal"
-      className="flex-1 min-h-0"
-      defaultLayout={defaultLayout}
-      onLayoutChanged={onLayoutChanged}
+    <BoneyardSkeleton
+      name={ISSUE_DETAIL_PAGE_SKELETON}
+      loading={loading}
+      className="flex flex-1 min-h-0"
     >
-      <ResizablePanel id="content" minSize="50%">
-        <div className="flex h-full flex-col">
+      {issue ? (
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className="flex-1 min-h-0"
+          defaultLayout={defaultLayout}
+          onLayoutChanged={onLayoutChanged}
+        >
+          <ResizablePanel id="content" minSize="50%">
+            <div className="flex h-full flex-col">
           <PageHeader className="gap-2 bg-background text-sm">
             <div className="flex flex-1 items-center gap-1.5 min-w-0">
               {workspace && (
@@ -1210,19 +1323,20 @@ export function IssueDetail({
                 />
 
                 <div className="flex items-center gap-1 mt-3">
-                  {reactionsLoading ? (
-                    <div className="flex items-center gap-1">
-                      <Skeleton className="h-7 w-14 rounded-full" />
-                      <Skeleton className="h-7 w-14 rounded-full" />
-                    </div>
-                  ) : (
-                    <ReactionBar
-                      reactions={issueReactions}
-                      currentUserId={user?.id}
-                      onToggle={handleToggleIssueReaction}
-                      getActorName={getActorName}
-                    />
-                  )}
+                  <BoneyardSkeleton
+                    name={ISSUE_DETAIL_REACTIONS_SKELETON}
+                    loading={reactionsLoading}
+                    className="inline-flex"
+                  >
+                    {!reactionsLoading ? (
+                      <ReactionBar
+                        reactions={issueReactions}
+                        currentUserId={user?.id}
+                        onToggle={handleToggleIssueReaction}
+                        getActorName={getActorName}
+                      />
+                    ) : null}
+                  </BoneyardSkeleton>
                   <FileUploadButton
                     size="sm"
                     onSelect={(file) => descEditorRef.current?.uploadFile(file)}
@@ -1368,16 +1482,13 @@ export function IssueDetail({
                     <h2 className="text-base font-semibold">Activity</h2>
                   </div>
                   <div className="flex items-center gap-2">
-                    {subscribersLoading ? (
-                      <div className="flex items-center gap-1">
-                        <Skeleton className="h-4 w-16" />
-                        <div className="flex -space-x-1">
-                          <Skeleton className="h-6 w-6 rounded-full" />
-                          <Skeleton className="h-6 w-6 rounded-full" />
-                        </div>
-                      </div>
-                    ) : (
-                      <>
+                    <BoneyardSkeleton
+                      name={ISSUE_DETAIL_SUBSCRIBERS_SKELETON}
+                      loading={subscribersLoading}
+                      className="inline-flex"
+                    >
+                      {!subscribersLoading ? (
+                        <>
                         <button
                           onClick={handleToggleSubscribe}
                           className="text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -1504,7 +1615,8 @@ export function IssueDetail({
                           </PopoverContent>
                         </Popover>
                       </>
-                    )}
+                      ) : null}
+                    </BoneyardSkeleton>
                   </div>
                 </div>
 
@@ -1519,20 +1631,13 @@ export function IssueDetail({
 
                 {/* Timeline entries */}
                 <div className="mt-4 flex flex-col gap-3">
-                  {timelineLoading ? (
-                    <div className="space-y-4">
-                      {Array.from({ length: 3 }).map((_, i) => (
-                        <div key={i} className="flex items-start gap-3 px-4">
-                          <Skeleton className="h-8 w-8 rounded-full shrink-0" />
-                          <div className="flex-1 space-y-2">
-                            <Skeleton className="h-4 w-32" />
-                            <Skeleton className="h-16 w-full rounded-lg" />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    (() => {
+                  <BoneyardSkeleton
+                    name={ISSUE_DETAIL_TIMELINE_SKELETON}
+                    loading={timelineLoading}
+                    className="w-full"
+                  >
+                    {!timelineLoading ? (
+                      (() => {
                       const topLevel = timeline.filter(
                         (e) => e.type === 'activity' || !e.parent_id,
                       )
@@ -1696,7 +1801,8 @@ export function IssueDetail({
                         )
                       })
                     })()
-                  )}
+                    ) : null}
+                  </BoneyardSkeleton>
                 </div>
 
                 {/* Bottom comment input — no avatar, full width */}
@@ -1707,35 +1813,51 @@ export function IssueDetail({
             </div>
           </div>
         </div>
-      </ResizablePanel>
-      {!isMobile && <ResizableHandle />}
-      {!isMobile && (
-        <ResizablePanel
-          id="sidebar"
-          defaultSize={defaultSidebarOpen ? 320 : 0}
-          minSize={260}
-          maxSize={420}
-          collapsible
-          groupResizeBehavior="preserve-pixel-size"
-          panelRef={sidebarRef}
-          onResize={(size) => setSidebarOpen(size.inPixels > 0)}
-        >
-          <div className="overflow-y-auto border-l h-full">
-            <div className="p-4">{sidebarContent}</div>
-          </div>
-        </ResizablePanel>
-      )}
-      {isMobile && (
-        <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-          <SheetContent
-            side="right"
-            showCloseButton={false}
-            className="w-[320px] overflow-y-auto p-4"
-          >
-            {sidebarContent}
-          </SheetContent>
-        </Sheet>
-      )}
-    </ResizablePanelGroup>
+          </ResizablePanel>
+          {!isMobile && <ResizableHandle />}
+          {!isMobile && (
+            <ResizablePanel
+              id="sidebar"
+              defaultSize={defaultSidebarOpen ? 320 : 0}
+              minSize={260}
+              maxSize={420}
+              collapsible
+              groupResizeBehavior="preserve-pixel-size"
+              panelRef={sidebarRef}
+              onResize={(size) => setSidebarOpen(size.inPixels > 0)}
+            >
+              <div className="overflow-y-auto border-l h-full">
+                <div className="p-4">{sidebarContent}</div>
+              </div>
+            </ResizablePanel>
+          )}
+          {isMobile && (
+            <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+              <SheetContent
+                side="right"
+                showCloseButton={false}
+                className="w-[320px] overflow-y-auto p-4"
+              >
+                {sidebarContent}
+              </SheetContent>
+            </Sheet>
+          )}
+        </ResizablePanelGroup>
+      ) : !loading ? (
+        <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+          <p>This issue does not exist or has been deleted in this workspace.</p>
+          {!onDelete && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push('/issues')}
+            >
+              <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+              Back to Issues
+            </Button>
+          )}
+        </div>
+      ) : null}
+    </BoneyardSkeleton>
   )
 }

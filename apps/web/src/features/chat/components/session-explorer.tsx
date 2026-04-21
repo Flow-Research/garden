@@ -16,7 +16,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Archive, GripVertical, Pencil, Plus } from 'lucide-react'
+import { Archive, MoreHorizontal, Pencil } from 'lucide-react'
 import { useChatStore } from '@garden/core/chat'
 import { Button } from '@garden/ui/components/ui/button'
 import {
@@ -25,6 +25,12 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from '@garden/ui/components/ui/context-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@garden/ui/components/ui/dropdown-menu'
 import { cn } from '@garden/ui/lib/utils'
 import {
   useAgentSessions,
@@ -94,6 +100,19 @@ function SessionRow({
     isDragging,
   } = useSortable({ id: session.id })
 
+  const menuItems = (
+    <>
+      <ContextMenuItem onClick={onRename}>
+        <Pencil className="size-4" />
+        Rename
+      </ContextMenuItem>
+      <ContextMenuItem onClick={onArchive}>
+        <Archive className="size-4" />
+        Archive
+      </ContextMenuItem>
+    </>
+  )
+
   return (
     <ContextMenu>
       <ContextMenuTrigger
@@ -105,6 +124,8 @@ function SessionRow({
               transition,
             }}
             className={cn(isDragging && 'opacity-60')}
+            {...attributes}
+            {...listeners}
           />
         }
       >
@@ -119,49 +140,54 @@ function SessionRow({
             }
           }}
           className={cn(
-            'group flex w-full items-start gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors',
+            'group relative flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors',
             active
-              ? 'border-border bg-accent text-accent-foreground'
-              : 'border-transparent hover:bg-accent/60',
+              ? 'bg-accent text-accent-foreground'
+              : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
           )}
         >
+          <SessionStatusDot session={session} />
+          <span className="min-w-0 flex-1 truncate">{session.title}</span>
           <span
-            aria-hidden="true"
-            className="mt-0.5 inline-flex shrink-0 cursor-grab text-muted-foreground/70 transition-colors group-hover:text-muted-foreground"
-            {...attributes}
-            {...listeners}
+            className={cn(
+              'shrink-0 text-[11px] tabular-nums text-muted-foreground/70 transition-opacity',
+              'group-hover:opacity-0 group-focus-within:opacity-0',
+            )}
           >
-            <GripVertical className="size-3.5" />
-          </span>
-          <div className="mt-0.5 shrink-0">
-            <SessionStatusDot session={session} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <span className="truncate text-sm font-medium">{session.title}</span>
-              {session.unread && !active ? (
-                <span className="size-1.5 shrink-0 rounded-full bg-primary" />
-              ) : null}
-            </div>
-            <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-              {session.lastMessage || 'No messages yet'}
-            </div>
-          </div>
-          <span className="pt-0.5 text-[11px] text-muted-foreground">
             {formatTimeAgo(session.updatedAt)}
           </span>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Chat actions"
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                  className={cn(
+                    'absolute right-1 size-6 opacity-0 transition-opacity',
+                    'group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100',
+                  )}
+                />
+              }
+            >
+              <MoreHorizontal className="size-3.5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuItem onClick={onRename}>
+                <Pencil className="size-4" />
+                Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onArchive}>
+                <Archive className="size-4" />
+                Archive
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuItem onClick={onRename}>
-          <Pencil className="size-4" />
-          Rename
-        </ContextMenuItem>
-        <ContextMenuItem onClick={onArchive}>
-          <Archive className="size-4" />
-          Archive
-        </ContextMenuItem>
-      </ContextMenuContent>
+      <ContextMenuContent>{menuItems}</ContextMenuContent>
     </ContextMenu>
   )
 }
@@ -169,13 +195,11 @@ function SessionRow({
 export function ChatSessionExplorer({
   onActivate,
 }: {
-  onActivate?: () => void
+  onActivate?: (session: AgentChatSession) => void
 }) {
   const activeSessionId = useChatStore((state) => state.activeSessionId)
-  const setActiveSession = useChatStore((state) => state.setActiveSession)
   const {
     archiveSession,
-    getNextIdleSession,
     renameSession,
     reorderSessions: persistOrder,
     sessions,
@@ -188,15 +212,8 @@ export function ChatSessionExplorer({
     }),
   )
 
-  const handleCreate = async () => {
-    const idleSession = await getNextIdleSession(activeSessionId)
-    setActiveSession(idleSession.id)
-    onActivate?.()
-  }
-
-  const handleSelect = (sessionId: string) => {
-    setActiveSession(sessionId)
-    onActivate?.()
+  const handleSelect = (session: AgentChatSession) => {
+    onActivate?.(session)
   }
 
   const handleRename = async (sessionId: string) => {
@@ -208,20 +225,7 @@ export function ChatSessionExplorer({
   }
 
   const handleArchive = async (sessionId: string) => {
-    const isCurrentSession = activeSessionId === sessionId
     await archiveSession.mutateAsync(sessionId)
-
-    if (!isCurrentSession) {
-      return
-    }
-
-    const remainingSessions = activeSessions.filter(
-      (session) => session.id !== sessionId,
-    )
-    const nextSession =
-      remainingSessions[0] ?? (await getNextIdleSession(sessionId))
-    setActiveSession(nextSession.id)
-    onActivate?.()
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -233,16 +237,7 @@ export function ChatSessionExplorer({
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between px-3">
-        <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-          Active
-        </div>
-        <Button size="icon-sm" variant="ghost" onClick={handleCreate}>
-          <Plus className="size-4" />
-        </Button>
-      </div>
-
+    <div>
       {activeSessions.length > 0 ? (
         <DndContext
           sensors={sensors}
@@ -260,7 +255,7 @@ export function ChatSessionExplorer({
                   session={session}
                   active={session.id === activeSessionId}
                   onArchive={() => void handleArchive(session.id)}
-                  onSelect={() => handleSelect(session.id)}
+                  onSelect={() => handleSelect(session)}
                   onRename={() => void handleRename(session.id)}
                 />
               ))}

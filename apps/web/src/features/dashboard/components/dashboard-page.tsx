@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import { Skeleton as BoneyardSkeleton } from 'boneyard-js/react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Bot,
@@ -15,9 +16,8 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Badge } from '@garden/ui/components/ui/badge'
-import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { cn } from '@garden/ui/lib/utils'
-import { useWorkspaceStore } from '@garden/core/workspace'
+import { useWorkspaceId } from '@garden/core/hooks'
 import { STATUS_CONFIG } from '@garden/core/issues/config'
 import type { IssuePriority, IssueStatus } from '@garden/core/types'
 import { PriorityIcon, StatusIcon } from '@/features/issues/components'
@@ -82,6 +82,8 @@ type DashboardSnapshot = {
   agents: DashboardAgent[]
   connections: DashboardConnection[]
 }
+
+const DASHBOARD_PAGE_SKELETON = 'dashboard-page'
 
 async function loadDashboardSnapshot() {
   const response = await fetch('/api/dashboard', {
@@ -239,34 +241,125 @@ function DistributionBars({
   )
 }
 
-function DashboardSkeleton() {
+function DashboardPageFixture() {
   return (
-    <div className="space-y-6 px-6 py-6">
-      <div className="grid grid-cols-2 gap-1 sm:gap-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-24 rounded-lg" />
-        ))}
-      </div>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Skeleton className="h-48 rounded-lg" />
-        <Skeleton className="h-48 rounded-lg" />
-      </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Skeleton className="h-64 rounded-lg" />
-        <Skeleton className="h-64 rounded-lg" />
+    <div className="h-full min-h-0 overflow-y-auto">
+      <div className="mx-auto w-full max-w-[1360px] space-y-6 px-6 py-6">
+        <div className="grid grid-cols-2 gap-1 sm:gap-2 xl:grid-cols-4">
+          {[
+            ['18', 'Open Work'],
+            ['3', 'Blocked'],
+            ['12', 'Unread'],
+            ['4', 'Connections'],
+          ].map(([value, label]) => (
+            <div
+              key={label}
+              className="h-full rounded-lg border border-border px-4 py-4 sm:px-5 sm:py-5"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">
+                    {value}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-muted-foreground sm:text-sm">
+                    {label}
+                  </p>
+                </div>
+                <div className="mt-1.5 h-4 w-4 rounded-full bg-muted-foreground/30" />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <ChartCard title="Issue Status" subtitle="Current distribution">
+            <DistributionBars
+              emptyLabel="No status data"
+              entries={[
+                { name: 'backlog', value: 7, color: '#64748b' },
+                { name: 'in progress', value: 5, color: '#0ea5e9' },
+                { name: 'done', value: 6, color: '#22c55e' },
+              ]}
+            />
+          </ChartCard>
+          <ChartCard title="Issue Priority" subtitle="Current distribution">
+            <DistributionBars
+              emptyLabel="No priority data"
+              entries={[
+                { name: 'high', value: 4, color: '#ef4444' },
+                { name: 'medium', value: 8, color: '#f59e0b' },
+                { name: 'low', value: 6, color: '#22c55e' },
+              ]}
+            />
+          </ChartCard>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-3 rounded-lg border border-border p-4">
+            <h3 className="text-xs font-medium text-muted-foreground">
+              Recent Issues
+            </h3>
+            {['Refine inbox filters', 'Wire issue comments', 'Ship auth gate'].map(
+              (title) => (
+                <div
+                  key={title}
+                  className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Updated a moment ago
+                    </p>
+                  </div>
+                  <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                </div>
+              ),
+            )}
+          </div>
+          <div className="space-y-3 rounded-lg border border-border p-4">
+            <h3 className="text-xs font-medium text-muted-foreground">
+              Inbox
+            </h3>
+            {[
+              '3 agent replies need review',
+              '2 connection failures need fixes',
+              '1 blocked issue needs a human',
+            ].map((item) => (
+              <div
+                key={item}
+                className="rounded-md border border-border/70 px-3 py-2 text-sm"
+              >
+                {item}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   )
 }
 
+export function DashboardPageSkeleton() {
+  const fixture = <DashboardPageFixture />
+
+  return (
+    <BoneyardSkeleton
+      name={DASHBOARD_PAGE_SKELETON}
+      loading
+      fixture={fixture}
+      className="h-full min-h-0"
+    >
+      {fixture}
+    </BoneyardSkeleton>
+  )
+}
+
 export function DashboardPage() {
-  const workspace = useWorkspaceStore((state) => state.workspace)
+  const wsId = useWorkspaceId()
   const { openPanel } = useWorkspaceDock()
 
   const dashboardQuery = useQuery({
-    queryKey: ['workspace-dashboard', workspace?.id ?? 'none'],
+    queryKey: ['workspace-dashboard', wsId],
     queryFn: loadDashboardSnapshot,
-    enabled: !!workspace?.id,
+    enabled: !!wsId,
     staleTime: 20_000,
   })
 
@@ -281,12 +374,6 @@ export function DashboardPage() {
     [snapshot?.issuePriority],
   )
 
-  if (!workspace?.id) return null
-
-  if (dashboardQuery.isLoading || !snapshot) {
-    return <DashboardSkeleton />
-  }
-
   const openIssues = () => openPanel({ kind: 'issues', title: 'Tasks' })
   const openInbox = () => openPanel({ kind: 'inbox', title: 'Inbox' })
   const openConnections = () =>
@@ -298,11 +385,18 @@ export function DashboardPage() {
       entityId: issue.id,
     })
 
-  const hasAgents = snapshot.summary.agentCount > 0
+  const loading = dashboardQuery.isLoading || !snapshot
+  const hasAgents = snapshot ? snapshot.summary.agentCount > 0 : false
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto">
-      <div className="mx-auto w-full max-w-[1360px] space-y-6 px-6 py-6">
+    <BoneyardSkeleton
+      name={DASHBOARD_PAGE_SKELETON}
+      loading={loading}
+      className="h-full min-h-0"
+    >
+      {snapshot ? (
+        <div className="h-full min-h-0 overflow-y-auto">
+          <div className="mx-auto w-full max-w-[1360px] space-y-6 px-6 py-6">
         {dashboardQuery.error ? (
           <p className="text-sm text-destructive">
             {dashboardQuery.error instanceof Error
@@ -584,8 +678,9 @@ export function DashboardPage() {
             ) : null}
           </div>
         ) : null}
-      </div>
-    </div>
+          </div>
+        </div>
+      ) : null}
+    </BoneyardSkeleton>
   )
 }
-

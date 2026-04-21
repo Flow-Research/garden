@@ -37,7 +37,6 @@ import {
 } from '@garden/ui/components/ui/dialog'
 import { Kbd, KbdGroup } from '@garden/ui/components/ui/kbd'
 import { Loader2 } from 'lucide-react'
-import { useChatStore } from '@garden/core/chat'
 import { useWorkspaceDock, type WorkspacePanelKind } from '@/components/shell/workspace-dock'
 import { useAgentSessions } from '@/features/chat/use-agent-chat-sessions'
 import { useSearchStore } from './search-store'
@@ -166,7 +165,7 @@ const ITEM_CLASS = 'mx-2 rounded-lg py-2.5'
 
 export function SearchCommand() {
   const { openPanel } = useWorkspaceDock()
-  const { getNextIdleSession } = useAgentSessions()
+  const { createSession } = useAgentSessions()
   const open = useSearchStore((s) => s.open)
   const setOpen = useSearchStore((s) => s.setOpen)
   const recentItems = useRecentIssuesStore((s) => s.items)
@@ -245,18 +244,19 @@ export function SearchCommand() {
   const openPage = useCallback(
     (page: NavPage) => {
       setOpen(false)
-      if (page.kind === 'chat' && page.title === 'New Chat') {
-        void getNextIdleSession(useChatStore.getState().activeSessionId).then(
-          (session) => {
-            useChatStore.getState().setActiveSession(session.id)
-            openPanel({ kind: page.kind, title: page.title })
-          },
-        )
+      if (page.kind === 'chat') {
+        void createSession.mutateAsync('New Chat').then((session) => {
+          openPanel({
+            kind: 'chat',
+            title: session.title,
+            entityId: session.id,
+          })
+        })
         return
       }
       openPanel({ kind: page.kind, title: page.title })
     },
-    [getNextIdleSession, openPanel, setOpen],
+    [createSession, openPanel, setOpen],
   )
 
   const quickActions: QuickAction[] = useMemo(
@@ -268,12 +268,13 @@ export function SearchCommand() {
         shortcut: ['C'],
         onSelect: ({ setOpen }) => {
           setOpen(false)
-          void getNextIdleSession(useChatStore.getState().activeSessionId).then(
-            (session) => {
-              useChatStore.getState().setActiveSession(session.id)
-              openPanel({ kind: 'chat', title: 'New Chat' })
-            },
-          )
+          void createSession.mutateAsync('New Chat').then((session) => {
+            openPanel({
+              kind: 'chat',
+              title: session.title,
+              entityId: session.id,
+            })
+          })
         },
       },
       {
@@ -287,7 +288,7 @@ export function SearchCommand() {
         },
       },
     ],
-    [getNextIdleSession, openPanel],
+    [createSession, openPanel],
   )
 
   return (

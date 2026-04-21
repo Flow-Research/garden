@@ -18,6 +18,7 @@ import {
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'
 import { useWorkspaceDock } from '@/components/shell/workspace-dock'
+import { useAgentSessions } from '@/features/chat/use-agent-chat-sessions'
 
 type ConnectionTool = {
   name: string
@@ -106,6 +107,7 @@ function statusVariant(status: ConnectionItem['status']) {
 
 export function ConnectionsPage() {
   const { openPanel } = useWorkspaceDock()
+  const { createSession } = useAgentSessions()
 
   const snapshotQuery = useQuery({
     queryKey: ['workspace-connections'],
@@ -156,7 +158,15 @@ export function ConnectionsPage() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => openPanel({ kind: 'chat', title: 'New Chat' })}
+                onClick={() => {
+                  void createSession.mutateAsync('New Chat').then((session) => {
+                    openPanel({
+                      kind: 'chat',
+                      title: session.title,
+                      entityId: session.id,
+                    })
+                  })
+                }}
               >
                 Test in chat
               </Button>

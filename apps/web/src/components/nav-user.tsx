@@ -18,12 +18,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@garden/ui/components/ui/sidebar'
-import {
-  BadgeCheckIcon,
-  ChevronsUpDownIcon,
-  LogOutIcon,
-  ShieldIcon,
-} from 'lucide-react'
+import { BadgeCheckIcon, LogOutIcon, ShieldIcon } from 'lucide-react'
 
 export function NavUser({
   user,
@@ -55,19 +50,15 @@ export function NavUser({
               <SidebarMenuButton
                 size="lg"
                 tooltip="Account"
-                className="aria-expanded:bg-muted aria-expanded:text-foreground group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:p-0!"
+                aria-label="Account"
+                className="!h-12 !w-full !gap-0 !p-0 justify-center !rounded-none group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-full aria-expanded:bg-muted aria-expanded:text-foreground"
               />
             }
           >
-            <Avatar>
+            <Avatar className="size-7">
               <AvatarImage src={user.avatar ?? undefined} alt={user.name} />
               <AvatarFallback>{initials}</AvatarFallback>
             </Avatar>
-            <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-              <span className="truncate font-medium">{user.name}</span>
-              <span className="truncate text-xs">{user.email}</span>
-            </div>
-            <ChevronsUpDownIcon className="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
           </DropdownMenuTrigger>
           <DropdownMenuContent
             className="min-w-56 rounded-lg"

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { Skeleton as BoneyardSkeleton } from 'boneyard-js/react'
 import { useDefaultLayout } from 'react-resizable-panels'
 import {
   Sparkles,
@@ -44,7 +45,6 @@ import {
   TabsTrigger,
 } from '@garden/ui/components/ui/tabs'
 import { toast } from 'sonner'
-import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { api } from '@garden/core/api'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/core/auth'
@@ -57,6 +57,153 @@ import {
 import { PageHeader } from '../../layout/page-header'
 import { FileTree } from './file-tree'
 import { FileViewer } from './file-viewer'
+
+const SKILLS_PAGE_SKELETON = 'skills-page'
+const SKILLS_FILE_TREE_SKELETON = 'skills-file-tree'
+const SKILLS_FILE_VIEWER_SKELETON = 'skills-file-viewer'
+
+function SkillsFileTreeFixture() {
+  return (
+    <div className="p-3">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-xs font-medium text-muted-foreground">Files</span>
+        <div className="rounded-md bg-accent px-2 py-1 text-xs text-muted-foreground">
+          5
+        </div>
+      </div>
+      <div className="space-y-1">
+        {['SKILL.md', 'templates/review.md', 'notes/context.md'].map((path) => (
+          <div
+            key={path}
+            className="rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-accent"
+          >
+            {path}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SkillsFileViewerFixture() {
+  return (
+    <div className="p-4 space-y-3">
+      <p className="text-sm font-medium text-foreground"># Code Review</p>
+      <p className="text-sm text-muted-foreground">
+        Review pull requests for correctness, regressions, and missing tests.
+      </p>
+      <div className="space-y-2 rounded-lg border border-border/70 bg-card p-3">
+        <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+          Checklist
+        </p>
+        <p className="text-sm text-foreground">Look for behavioral bugs first.</p>
+        <p className="text-sm text-foreground">Keep summaries short and concrete.</p>
+      </div>
+    </div>
+  )
+}
+
+function SkillsPageFixture() {
+  return (
+    <div className="flex flex-1 min-h-0">
+      <div className="w-72 border-r">
+        <PageHeader className="justify-between">
+          <h1 className="text-sm font-semibold">Skills</h1>
+          <div className="rounded-md bg-accent px-2 py-1 text-xs text-muted-foreground">
+            New
+          </div>
+        </PageHeader>
+        <div className="divide-y">
+          {[
+            ['Code Review', 'Triage risky diffs'],
+            ['Bug Hunt', 'Reproduce and narrow regressions'],
+            ['Docs', 'Write concise technical docs'],
+          ].map(([name, description]) => (
+            <div key={name} className="flex items-center gap-3 px-4 py-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-xs font-medium">
+                {name.slice(0, 1)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {name}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {description}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex-1 flex flex-col">
+        <div className="flex items-center gap-3 border-b px-4 py-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-xs font-medium">
+            C
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">Code Review</p>
+            <p className="text-xs text-muted-foreground">
+              Review pull requests for regressions
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-1 min-h-0">
+          <div className="w-48 border-r">
+            <SkillsFileTreeFixture />
+          </div>
+          <div className="flex-1">
+            <SkillsFileViewerFixture />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function SkillsFileTreeSkeleton() {
+  const fixture = <SkillsFileTreeFixture />
+
+  return (
+    <BoneyardSkeleton
+      name={SKILLS_FILE_TREE_SKELETON}
+      loading
+      fixture={fixture}
+      className="h-full"
+    >
+      {fixture}
+    </BoneyardSkeleton>
+  )
+}
+
+export function SkillsFileViewerSkeleton() {
+  const fixture = <SkillsFileViewerFixture />
+
+  return (
+    <BoneyardSkeleton
+      name={SKILLS_FILE_VIEWER_SKELETON}
+      loading
+      fixture={fixture}
+      className="h-full"
+    >
+      {fixture}
+    </BoneyardSkeleton>
+  )
+}
+
+export function SkillsPageSkeleton() {
+  const fixture = <SkillsPageFixture />
+
+  return (
+    <BoneyardSkeleton
+      name={SKILLS_PAGE_SKELETON}
+      loading
+      fixture={fixture}
+      className="flex flex-1 min-h-0"
+    >
+      {fixture}
+    </BoneyardSkeleton>
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Create Skill Dialog
@@ -596,17 +743,19 @@ function SkillDetail({
           </div>
           <div className="flex-1 overflow-y-auto">
             {loadingFiles ? (
-              <div className="p-3 space-y-2">
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-4 w-1/2" />
-              </div>
+              <SkillsFileTreeSkeleton />
             ) : (
-              <FileTree
-                filePaths={filePaths}
-                selectedPath={selectedPath}
-                onSelect={setSelectedPath}
-              />
+              <BoneyardSkeleton
+                name={SKILLS_FILE_TREE_SKELETON}
+                loading={loadingFiles}
+                className="h-full"
+              >
+                <FileTree
+                  filePaths={filePaths}
+                  selectedPath={selectedPath}
+                  onSelect={setSelectedPath}
+                />
+              </BoneyardSkeleton>
             )}
           </div>
         </div>
@@ -614,20 +763,20 @@ function SkillDetail({
         {/* File viewer */}
         <div className="flex-1 min-w-0">
           {loadingFiles ? (
-            <div className="p-4 space-y-3">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-5/6" />
-              <Skeleton className="h-4 w-4/6" />
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-3/4" />
-            </div>
+            <SkillsFileViewerSkeleton />
           ) : (
-            <FileViewer
-              key={selectedPath}
-              path={selectedPath}
-              content={selectedContent}
-              onChange={handleFileContentChange}
-            />
+            <BoneyardSkeleton
+              name={SKILLS_FILE_VIEWER_SKELETON}
+              loading={loadingFiles}
+              className="h-full"
+            >
+              <FileViewer
+                key={selectedPath}
+                path={selectedPath}
+                content={selectedContent}
+                onChange={handleFileContentChange}
+              />
+            </BoneyardSkeleton>
           )}
         </div>
       </div>
@@ -747,57 +896,19 @@ export default function SkillsPage() {
 
   const selected = skills.find((s) => s.id === selectedId) ?? null
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-1 min-h-0">
-        {/* List skeleton */}
-        <div className="w-72 border-r">
-          <div className="flex h-12 items-center justify-between border-b px-4">
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-6 w-6 rounded" />
-          </div>
-          <div className="divide-y">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 px-4 py-3">
-                <Skeleton className="h-8 w-8 rounded-lg" />
-                <div className="flex-1 space-y-1.5">
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="h-3 w-40" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        {/* Detail skeleton */}
-        <div className="flex-1 flex flex-col">
-          <div className="flex items-center gap-3 border-b px-4 py-3">
-            <Skeleton className="h-8 w-8 rounded-lg" />
-            <Skeleton className="h-8 w-40" />
-            <Skeleton className="h-8 w-56" />
-          </div>
-          <div className="flex flex-1 min-h-0">
-            <div className="w-48 border-r p-3 space-y-2">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-3/4" />
-            </div>
-            <div className="flex-1 p-4 space-y-2">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-5/6" />
-              <Skeleton className="h-4 w-2/3" />
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <ResizablePanelGroup
-      orientation="horizontal"
-      className="flex-1 min-h-0"
-      defaultLayout={defaultLayout}
-      onLayoutChanged={onLayoutChanged}
+    <BoneyardSkeleton
+      name={SKILLS_PAGE_SKELETON}
+      loading={isLoading}
+      className="flex flex-1 min-h-0"
     >
+      {!isLoading ? (
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className="flex-1 min-h-0"
+          defaultLayout={defaultLayout}
+          onLayoutChanged={onLayoutChanged}
+        >
       <ResizablePanel
         id="list"
         defaultSize={280}
@@ -899,6 +1010,8 @@ export default function SkillsPage() {
           onImport={handleImport}
         />
       )}
-    </ResizablePanelGroup>
+        </ResizablePanelGroup>
+      ) : null}
+    </BoneyardSkeleton>
   )
 }

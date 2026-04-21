@@ -1,10 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useMemo } from 'react'
+import { Skeleton as BoneyardSkeleton } from 'boneyard-js/react'
 import { toast } from 'sonner'
 import { ChevronRight, ListTodo } from 'lucide-react'
 import type { IssueStatus } from '@garden/core/types'
-import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { useQuery } from '@tanstack/react-query'
 import {
   useIssueViewStore,
@@ -28,6 +28,80 @@ import { BoardView } from './board-view'
 import { ListView } from './list-view'
 import { BatchActionToolbar } from './batch-action-toolbar'
 import { useIssuesPageViewState } from '../hooks/use-issues-view-state'
+
+const ISSUES_PAGE_SKELETON = 'issues-page'
+
+function IssuesPageSkeletonFixture() {
+  return (
+    <div className="flex flex-1 min-h-0 flex-col">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+        <div className="size-5 rounded bg-muted-foreground/25" />
+        <span className="text-sm text-muted-foreground">Acme</span>
+        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+        <span className="text-sm font-medium">Issues</span>
+      </div>
+      <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
+        <div className="flex items-center gap-2">
+          {['All', 'Members', 'Agents'].map((scope) => (
+            <div
+              key={scope}
+              className="rounded-md bg-accent px-3 py-1.5 text-xs text-muted-foreground"
+            >
+              {scope}
+            </div>
+          ))}
+        </div>
+        <div className="rounded-md bg-accent px-3 py-1.5 text-xs text-muted-foreground">
+          Board
+        </div>
+      </div>
+      <div className="flex flex-1 min-h-0 gap-4 overflow-x-auto p-4">
+        {['Backlog', 'Todo', 'In Progress', 'Done'].map((status) => (
+          <div
+            key={status}
+            className="flex min-w-52 flex-1 flex-col gap-2 rounded-lg border border-border/70 bg-card p-3"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">
+                {status}
+              </span>
+              <span className="text-xs text-muted-foreground">3</span>
+            </div>
+            {Array.from({ length: 2 }).map((_, index) => (
+              <div
+                key={`${status}-${index}`}
+                className="space-y-2 rounded-md border border-border/70 bg-background px-3 py-3"
+              >
+                <div className="h-2 w-10 rounded-full bg-emerald-500/70" />
+                <p className="text-sm font-medium text-foreground">
+                  {status} issue {index + 1}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Ready for the next step
+                </p>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+export function IssuesPageSkeleton() {
+  const fixture = <IssuesPageSkeletonFixture />
+
+  return (
+    <BoneyardSkeleton
+      name={ISSUES_PAGE_SKELETON}
+      loading
+      fixture={fixture}
+      className="flex flex-1 min-h-0"
+    >
+      {fixture}
+    </BoneyardSkeleton>
+  )
+}
 
 export function IssuesPage() {
   const wsId = useWorkspaceId()
@@ -129,32 +203,14 @@ export function IssuesPage() {
     [updateIssueMutation],
   )
 
-  if (loading) {
-    return (
-      <div className="flex flex-1 min-h-0 flex-col">
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
-          <Skeleton className="h-5 w-5 rounded" />
-          <Skeleton className="h-4 w-32" />
-        </div>
-        <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
-          <Skeleton className="h-5 w-24" />
-          <Skeleton className="h-8 w-24" />
-        </div>
-        <div className="flex flex-1 min-h-0 gap-4 overflow-x-auto p-4">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="flex min-w-52 flex-1 flex-col gap-2">
-              <Skeleton className="h-4 w-20" />
-              <Skeleton className="h-24 w-full rounded-lg" />
-              <Skeleton className="h-24 w-full rounded-lg" />
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="flex flex-1 min-h-0 flex-col">
+    <BoneyardSkeleton
+      name={ISSUES_PAGE_SKELETON}
+      loading={loading}
+      className="flex flex-1 min-h-0"
+    >
+      {!loading ? (
+        <div className="flex flex-1 min-h-0 flex-col">
       {/* Header 1: Workspace breadcrumb */}
       <PageHeader className="gap-1.5">
         <WorkspaceAvatar name={workspace?.name ?? 'W'} size="sm" />
@@ -198,6 +254,8 @@ export function IssuesPage() {
         )}
         {viewMode === 'list' && <BatchActionToolbar />}
       </ViewStoreProvider>
-    </div>
+        </div>
+      ) : null}
+    </BoneyardSkeleton>
   )
 }

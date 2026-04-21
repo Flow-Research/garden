@@ -1,0 +1,93 @@
+{
+  "breakpoints": {
+    "375": {
+      "name": "issue-detail-subscribers",
+      "viewportWidth": 95,
+      "width": 95,
+      "height": 27,
+      "bones": [
+        [
+          0,
+          6,
+          74.7368,
+          16,
+          8
+        ],
+        [
+          74.7368,
+          3,
+          25.2632,
+          24,
+          8
+        ]
+      ]
+    },
+    "640": {
+      "name": "issue-detail-subscribers",
+      "viewportWidth": 95,
+      "width": 95,
+      "height": 27,
+      "bones": [
+        [
+          0,
+          6,
+          74.7368,
+          16,
+          8
+        ],
+        [
+          74.7368,
+          3,
+          25.2632,
+          24,
+          8
+        ]
+      ]
+    },
+    "768": {
+      "name": "issue-detail-subscribers",
+      "viewportWidth": 95,
+      "width": 95,
+      "height": 27,
+      "bones": [
+        [
+          0,
+          6,
+          74.7368,
+          16,
+          8
+        ],
+        [
+          74.7368,
+          3,
+          25.2632,
+          24,
+          8
+        ]
+      ]
+    },
+    "1024": {
+      "name": "issue-detail-subscribers",
+      "viewportWidth": 95,
+      "width": 95,
+      "height": 27,
+      "bones": [
+        [
+          0,
+          6,
+          74.7368,
+          16,
+          8
+        ],
+        [
+          74.7368,
+          3,
+          25.2632,
+          24,
+          8
+        ]
+      ]
+    }
+  },
+  "_hash": "0272f65f459eaf59aa548f1af8d86809"
+}

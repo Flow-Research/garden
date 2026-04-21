@@ -6,11 +6,13 @@ import tailwindcss from '@tailwindcss/vite'
 import { cloudflare } from '@cloudflare/vite-plugin'
 import agents from 'agents/vite'
 
+const enableDevtools = process.env.ENABLE_DEVTOOLS === '1'
+
 const config = defineConfig({
   clearScreen: false,
   resolve: { tsconfigPaths: true },
   plugins: [
-    devtools(),
+    ...(enableDevtools ? [devtools()] : []),
     cloudflare({ viteEnvironment: { name: 'ssr' } }),
     agents(),
     tailwindcss(),

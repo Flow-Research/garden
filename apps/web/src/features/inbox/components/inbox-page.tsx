@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Skeleton as BoneyardSkeleton } from 'boneyard-js/react'
 import { useDefaultLayout } from 'react-resizable-panels'
 import { useQuery } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/core/hooks'
@@ -35,7 +36,6 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from '@garden/ui/components/ui/resizable'
-import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -47,6 +47,125 @@ import { useIsMobile } from '@garden/ui/hooks/use-mobile'
 import { PageHeader } from '../../layout/page-header'
 import { InboxListItem, timeAgo } from './inbox-list-item'
 import { typeLabels } from './inbox-detail-label'
+
+const INBOX_PAGE_MOBILE_SKELETON = 'inbox-page-mobile'
+const INBOX_PAGE_DESKTOP_SKELETON = 'inbox-page-desktop'
+
+function InboxPageListFixture() {
+  return (
+    <div>
+      {[
+        ['Agent reply needs review', 'Comment', '2m'],
+        ['Slack connector needs re-auth', 'Connection', '9m'],
+        ['Blocked issue needs input', 'Issue', '21m'],
+        ['New task completed', 'Activity', '1h'],
+      ].map(([title, type, when]) => (
+        <div
+          key={title}
+          className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0"
+        >
+          <div className="flex size-8 items-center justify-center rounded-full bg-accent text-xs font-medium text-foreground">
+            {type.slice(0, 1)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-foreground">{title}</p>
+            <p className="text-xs text-muted-foreground">
+              {type} · {when}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function InboxPageMobileFixture() {
+  return (
+    <div className="flex flex-1 min-h-0 flex-col">
+      <PageHeader className="justify-between">
+        <h1 className="text-sm font-semibold">Inbox</h1>
+        <div className="rounded-md bg-accent px-2 py-1 text-xs text-muted-foreground">
+          4
+        </div>
+      </PageHeader>
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <InboxPageListFixture />
+      </div>
+    </div>
+  )
+}
+
+function InboxPageDesktopFixture() {
+  return (
+    <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0">
+      <ResizablePanel
+        id="list-fixture"
+        defaultSize={320}
+        minSize={240}
+        maxSize={480}
+        groupResizeBehavior="preserve-pixel-size"
+      >
+        <div className="flex h-full flex-col border-r">
+          <PageHeader className="justify-between">
+            <h1 className="text-sm font-semibold">Inbox</h1>
+            <div className="rounded-md bg-accent px-2 py-1 text-xs text-muted-foreground">
+              4
+            </div>
+          </PageHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <InboxPageListFixture />
+          </div>
+        </div>
+      </ResizablePanel>
+      <ResizableHandle />
+      <ResizablePanel id="detail-fixture" minSize="40%">
+        <div className="flex h-full flex-col p-6">
+          <h2 className="text-lg font-semibold">Agent reply needs review</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Comment · 2m ago
+          </p>
+          <div className="mt-4 space-y-3 text-sm text-foreground/80">
+            <p>
+              The agent finished triage and needs a human to confirm the next
+              step.
+            </p>
+            <p>Open the issue detail to review the conversation and respond.</p>
+          </div>
+        </div>
+      </ResizablePanel>
+    </ResizablePanelGroup>
+  )
+}
+
+export function InboxPageMobileSkeleton() {
+  const fixture = <InboxPageMobileFixture />
+
+  return (
+    <BoneyardSkeleton
+      name={INBOX_PAGE_MOBILE_SKELETON}
+      loading
+      fixture={fixture}
+      className="flex flex-1 min-h-0"
+    >
+      {fixture}
+    </BoneyardSkeleton>
+  )
+}
+
+export function InboxPageDesktopSkeleton() {
+  const fixture = <InboxPageDesktopFixture />
+
+  return (
+    <BoneyardSkeleton
+      name={INBOX_PAGE_DESKTOP_SKELETON}
+      loading
+      fixture={fixture}
+      className="flex flex-1 min-h-0"
+    >
+      {fixture}
+    </BoneyardSkeleton>
+  )
+}
 
 export function InboxPage() {
   const { searchParams, replace } = useNavigation()
@@ -241,135 +360,84 @@ export function InboxPage() {
   // -- Mobile layout: list / detail toggle -----------------------------------
 
   if (isMobile) {
-    if (loading) {
-      return (
-        <div className="flex flex-1 flex-col min-h-0">
-          <div className="flex h-12 shrink-0 items-center border-b px-4">
-            <Skeleton className="h-5 w-16" />
-          </div>
-          <div className="flex-1 min-h-0 overflow-y-auto space-y-1 p-2">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 px-4 py-2.5">
-                <Skeleton className="h-7 w-7 shrink-0 rounded-full" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-3 w-1/2" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )
-    }
-
     // Mobile: show detail full-screen when an item is selected
-    if (selected) {
-      return (
-        <div className="flex flex-1 flex-col min-h-0">
-          <div className="flex h-12 shrink-0 items-center border-b px-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSelectedKey('')}
-              className="gap-1.5 text-muted-foreground"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Inbox
-            </Button>
-          </div>
-          <div className="flex-1 min-h-0 overflow-y-auto">{detailContent}</div>
-        </div>
-      )
-    }
-
-    // Mobile: full-screen list
     return (
-      <div className="flex flex-1 flex-col min-h-0">
-        {listHeader}
-        <div className="flex-1 min-h-0 overflow-y-auto">{listBody}</div>
-      </div>
+      <BoneyardSkeleton
+        name={INBOX_PAGE_MOBILE_SKELETON}
+        loading={loading}
+        className="flex flex-1 min-h-0"
+      >
+        {!loading ? (
+          selected ? (
+            <div className="flex flex-1 flex-col min-h-0">
+              <div className="flex h-12 shrink-0 items-center border-b px-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedKey('')}
+                  className="gap-1.5 text-muted-foreground"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Inbox
+                </Button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto">{detailContent}</div>
+            </div>
+          ) : (
+            <div className="flex flex-1 flex-col min-h-0">
+              {listHeader}
+              <div className="flex-1 min-h-0 overflow-y-auto">{listBody}</div>
+            </div>
+          )
+        ) : null}
+      </BoneyardSkeleton>
     )
   }
 
   // -- Desktop layout: resizable two-panel -----------------------------------
 
-  if (loading) {
-    return (
-      <ResizablePanelGroup
-        orientation="horizontal"
-        className="flex-1 min-h-0"
-        defaultLayout={defaultLayout}
-        onLayoutChanged={onLayoutChanged}
-      >
-        <ResizablePanel
-          id="list"
-          defaultSize={320}
-          minSize={240}
-          maxSize={480}
-          groupResizeBehavior="preserve-pixel-size"
-        >
-          <div className="flex flex-col border-r h-full">
-            <div className="flex h-12 shrink-0 items-center border-b px-4">
-              <Skeleton className="h-5 w-16" />
-            </div>
-            <div className="flex-1 min-h-0 overflow-y-auto space-y-1 p-2">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-3 px-4 py-2.5">
-                  <Skeleton className="h-7 w-7 shrink-0 rounded-full" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-3 w-1/2" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </ResizablePanel>
-        <ResizableHandle />
-        <ResizablePanel id="detail" minSize="40%">
-          <div className="p-6">
-            <Skeleton className="h-6 w-48" />
-            <Skeleton className="mt-4 h-4 w-32" />
-          </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
-    )
-  }
-
   return (
-    <ResizablePanelGroup
-      orientation="horizontal"
-      className="flex-1 min-h-0"
-      defaultLayout={defaultLayout}
-      onLayoutChanged={onLayoutChanged}
+    <BoneyardSkeleton
+      name={INBOX_PAGE_DESKTOP_SKELETON}
+      loading={loading}
+      className="flex flex-1 min-h-0"
     >
-      <ResizablePanel
-        id="list"
-        defaultSize={320}
-        minSize={240}
-        maxSize={480}
-        groupResizeBehavior="preserve-pixel-size"
-      >
-        <div className="flex flex-col border-r h-full">
-          {listHeader}
-          <div className="flex-1 min-h-0 overflow-y-auto">{listBody}</div>
-        </div>
-      </ResizablePanel>
-      <ResizableHandle />
-      <ResizablePanel id="detail" minSize="40%">
-        <div className="flex flex-col min-h-0 h-full">
-          {detailContent ?? (
-            <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
-              <Inbox className="mb-3 h-10 w-10 text-muted-foreground/30" />
-              <p className="text-sm">
-                {items.length === 0
-                  ? 'Your inbox is empty'
-                  : 'Select a notification to view details'}
-              </p>
+      {!loading ? (
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className="flex-1 min-h-0"
+          defaultLayout={defaultLayout}
+          onLayoutChanged={onLayoutChanged}
+        >
+          <ResizablePanel
+            id="list"
+            defaultSize={320}
+            minSize={240}
+            maxSize={480}
+            groupResizeBehavior="preserve-pixel-size"
+          >
+            <div className="flex flex-col border-r h-full">
+              {listHeader}
+              <div className="flex-1 min-h-0 overflow-y-auto">{listBody}</div>
             </div>
-          )}
-        </div>
-      </ResizablePanel>
-    </ResizablePanelGroup>
+          </ResizablePanel>
+          <ResizableHandle />
+          <ResizablePanel id="detail" minSize="40%">
+            <div className="flex flex-col min-h-0 h-full">
+              {detailContent ?? (
+                <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
+                  <Inbox className="mb-3 h-10 w-10 text-muted-foreground/30" />
+                  <p className="text-sm">
+                    {items.length === 0
+                      ? 'Your inbox is empty'
+                      : 'Select a notification to view details'}
+                  </p>
+                </div>
+              )}
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      ) : null}
+    </BoneyardSkeleton>
   )
 }

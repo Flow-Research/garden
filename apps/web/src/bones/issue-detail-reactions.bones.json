@@ -1,0 +1,65 @@
+{
+  "breakpoints": {
+    "375": {
+      "name": "issue-detail-reactions",
+      "viewportWidth": 24,
+      "width": 24,
+      "height": 24,
+      "bones": [
+        [
+          0,
+          0,
+          100,
+          24,
+          "50%"
+        ]
+      ]
+    },
+    "640": {
+      "name": "issue-detail-reactions",
+      "viewportWidth": 24,
+      "width": 24,
+      "height": 24,
+      "bones": [
+        [
+          0,
+          0,
+          100,
+          24,
+          "50%"
+        ]
+      ]
+    },
+    "768": {
+      "name": "issue-detail-reactions",
+      "viewportWidth": 24,
+      "width": 24,
+      "height": 24,
+      "bones": [
+        [
+          0,
+          0,
+          100,
+          24,
+          "50%"
+        ]
+      ]
+    },
+    "1024": {
+      "name": "issue-detail-reactions",
+      "viewportWidth": 24,
+      "width": 24,
+      "height": 24,
+      "bones": [
+        [
+          0,
+          0,
+          100,
+          24,
+          "50%"
+        ]
+      ]
+    }
+  },
+  "_hash": "fea5eaf99d58c3ea24cf4279f56bc78a"
+}

@@ -155,8 +155,53 @@
     var(--foreground) 48%,
     transparent
   );
-  --dv-sash-color: transparent;
-  --dv-active-sash-color: color-mix(in srgb, var(--foreground) 22%, transparent);
+  --dv-sash-color: color-mix(in srgb, var(--border) 70%, transparent);
+  --dv-active-sash-color: color-mix(in srgb, var(--foreground) 40%, transparent);
+  /*
+   * Dockview defaults the hover feedback to transition-delay: 0.5s — that
+   * makes the sash feel dead for half a second when you finally land on it.
+   * Zero the delay so the hover/active color shows immediately.
+   */
+  --dv-active-sash-transition-delay: 0s;
+  --dv-active-sash-transition-duration: 60ms;
+  /*
+   * Tab drag-reorder smoothness. Dockview's .dv-tab--shifting and
+   * .dv-tab--dragging transitions fall back to 200ms if this isn't set —
+   * snapping to ~150ms feels noticeably crisper during reorder drags.
+   */
+  --dv-transition-duration: 150ms;
+}
+
+/*
+ * Sash (splitter between groups) discoverability. Dockview renders a 4px
+ * invisible strip by default — users can't find it to drag-resize. Paint a
+ * subtle resting line so the divider is visible, and use !important on the
+ * hover/active override to beat dockview's transition-delay'd rule.
+ */
+.garden-dockview .dv-split-view-container.dv-horizontal
+  > .dv-sash-container
+  > .dv-sash:not(.dv-disabled) {
+  background-color: var(--dv-sash-color);
+}
+
+.garden-dockview .dv-split-view-container.dv-vertical
+  > .dv-sash-container
+  > .dv-sash:not(.dv-disabled) {
+  background-color: var(--dv-sash-color);
+}
+
+.garden-dockview .dv-split-view-container > .dv-sash-container > .dv-sash:hover,
+.garden-dockview .dv-split-view-container > .dv-sash-container > .dv-sash:active {
+  background-color: var(--dv-active-sash-color) !important;
+}
+
+/*
+ * Dockview hints will-change: margin-left on shifting tabs but its transition
+ * also animates transform. Promote transform for GPU compositing too so the
+ * slide-over during reorder doesn't jitter on first-frame layout.
+ */
+.garden-dockview .dv-tab.dv-tab--shifting {
+  will-change: transform, margin-left;
 }
 
 .garden-dockview .dv-groupview {
@@ -193,6 +238,7 @@
 .garden-dock-actions {
   display: flex;
   align-items: center;
+  height: 100%;
   gap: 0.125rem;
   padding-right: 0.25rem;
 }

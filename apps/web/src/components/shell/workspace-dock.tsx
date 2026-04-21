@@ -18,7 +18,6 @@ import {
   LayoutList,
   Maximize2,
   MessageSquare,
-  PanelBottom,
   Pin,
   PinOff,
   Plug,
@@ -41,6 +40,7 @@ import {
 } from 'dockview'
 import type { SerializedDockview } from 'dockview-core'
 import { Result } from 'better-result'
+import { useChatStore } from '@garden/core/chat'
 import { useTheme } from '@garden/ui/components/common/theme-provider'
 import { Button } from '@garden/ui/components/ui/button'
 import {
@@ -112,8 +112,8 @@ type WorkspaceDockContextValue = {
     panel: WorkspacePanelInput,
     options?: { position?: AddPanelPositionOptions; forceNew?: boolean },
   ) => string | null
-  splitActivePanel: (direction: 'right' | 'below') => void
-  splitPanel: (panelId: string, direction: 'right' | 'below') => void
+  splitActivePanel: () => void
+  splitPanel: (panelId: string) => void
   maximizeActivePanel: () => void
   openBlankInActiveGroup: () => string | null
   focusNextPanel: () => void
@@ -131,7 +131,6 @@ const singletonKinds = new Set<WorkspacePanelKind>([
   'dashboard',
   'inbox',
   'issues',
-  'chat',
   'skill-editor',
   'capabilities',
   'settings',
@@ -202,6 +201,19 @@ function getCanonicalPanelId(panel: WorkspacePanelInput) {
   }
 
   return `${panel.kind}:${panel.title}`
+}
+
+function arePanelsEqual(
+  left: WorkspacePanelInput | null,
+  right: WorkspacePanelInput | null,
+) {
+  if (left === right) return true
+  if (!left || !right) return left === right
+  return (
+    left.kind === right.kind &&
+    left.title === right.title &&
+    left.entityId === right.entityId
+  )
 }
 
 function getStoredPanelParams(
@@ -379,19 +391,11 @@ function WorkspaceDockTab(props: React.ComponentProps<typeof DockviewDefaultTab>
         <ContextMenuSeparator />
         <ContextMenuItem
           onClick={() => {
-            ctx?.splitPanel(api.id, 'right')
+            ctx?.splitPanel(api.id)
           }}
         >
           <Columns2 className="size-4" />
           Create split right
-        </ContextMenuItem>
-        <ContextMenuItem
-          onClick={() => {
-            ctx?.splitPanel(api.id, 'below')
-          }}
-        >
-          <PanelBottom className="size-4" />
-          Create split down
         </ContextMenuItem>
         {!shouldHideClose ? (
           <>
@@ -420,7 +424,6 @@ type WorkspaceDockControlsProps = {
   disabledAll?: boolean
   onMaximize?: () => void
   onTogglePinned?: () => void
-  onSplitBelow?: () => void
   onSplitRight?: () => void
 }
 
@@ -429,7 +432,6 @@ function WorkspaceDockControls({
   disabledAll = false,
   onMaximize,
   onTogglePinned,
-  onSplitBelow,
   onSplitRight,
 }: WorkspaceDockControlsProps) {
   const isDisabled = (handler?: () => void) => disabledAll || !handler
@@ -444,15 +446,6 @@ function WorkspaceDockControls({
         title="Split right"
       >
         <Columns2 className="size-3.5" />
-      </button>
-      <button
-        type="button"
-        className="garden-dock-actions__button"
-        disabled={isDisabled(onSplitBelow)}
-        onClick={onSplitBelow}
-        title="Split down"
-      >
-        <PanelBottom className="size-3.5" />
       </button>
       <button
         type="button"
@@ -506,8 +499,7 @@ export function WorkspaceDockControlsStrip(
       activePanelIsPinned={activePanelIsPinned}
       onMaximize={hasActiveGroup ? () => maximizeActivePanel() : undefined}
       onTogglePinned={hasActivePanel ? () => toggleActivePanelPinned() : undefined}
-      onSplitBelow={hasActivePanel ? () => splitActivePanel('below') : undefined}
-      onSplitRight={hasActivePanel ? () => splitActivePanel('right') : undefined}
+      onSplitRight={hasActivePanel ? () => splitActivePanel() : undefined}
     />
   )
 }
@@ -657,10 +649,44 @@ function SettingsDockPanel() {
   )
 }
 
-function ChatDockPanel() {
+function ChatDockPanel({
+  api,
+  params,
+}: IDockviewPanelProps<WorkspacePanelParams>) {
+  const handleSessionChange = useCallback(
+    (session: { id: string; title: string }) => {
+      const nextTitle = session.title.trim() || 'New Chat'
+      const nextCanonicalId = getCanonicalPanelId({
+        kind: 'chat',
+        title: nextTitle,
+        entityId: session.id,
+      })
+      if (
+        params.entityId === session.id &&
+        params.title === nextTitle &&
+        params.canonicalId === nextCanonicalId
+      ) {
+        return
+      }
+      api.setTitle(nextTitle)
+      api.updateParameters({
+        ...params,
+        title: nextTitle,
+        entityId: session.id,
+        canonicalId: nextCanonicalId,
+      })
+    },
+    [api, params],
+  )
+
   return (
     <WorkspacePanelFrame>
-      <AgentInteractionScreen className="flex h-full min-h-0 flex-col bg-background" />
+      <AgentInteractionScreen
+        className="flex h-full min-h-0 flex-col bg-background"
+        panelTitle={params.title}
+        sessionId={params.entityId ?? null}
+        onSessionChange={handleSessionChange}
+      />
     </WorkspacePanelFrame>
   )
 }
@@ -766,6 +792,7 @@ export function WorkspaceDockProvider({
   workspaceId: string
   children: React.ReactNode
 }) {
+  const setActiveSession = useChatStore((state) => state.setActiveSession)
   const [{ panel, panelEntityId, panelTitle }, setPanelQueryState] =
     useQueryStates({
       panel: parseAsString,
@@ -815,24 +842,39 @@ export function WorkspaceDockProvider({
 
   const writePanelToQueryState = useCallback(
     (nextPanel: WorkspacePanelInput | null) => {
+      if (
+        panel === (nextPanel?.kind ?? null) &&
+        panelTitle === (nextPanel?.title ?? null) &&
+        panelEntityId === (nextPanel?.entityId ?? null)
+      ) {
+        return
+      }
       void setPanelQueryState({
         panel: nextPanel?.kind ?? null,
         panelTitle: nextPanel?.title ?? null,
         panelEntityId: nextPanel?.entityId ?? null,
       })
     },
-    [setPanelQueryState],
+    [panel, panelEntityId, panelTitle, setPanelQueryState],
   )
 
   const commitActiveDockState = useCallback(
     (api: DockviewApi) => {
       const nextPanel = getPanelInputFromApi(api)
-      setActiveGroupId(api.activeGroup?.id ?? null)
-      setActivePanel(nextPanel)
+      const nextGroupId = api.activeGroup?.id ?? null
+      setActiveGroupId((current) =>
+        current === nextGroupId ? current : nextGroupId,
+      )
+      setActivePanel((current) =>
+        arePanelsEqual(current, nextPanel) ? current : nextPanel,
+      )
+      setActiveSession(
+        nextPanel?.kind === 'chat' ? nextPanel.entityId ?? null : null,
+      )
       writePanelToQueryState(nextPanel)
       return nextPanel
     },
-    [getPanelInputFromApi, writePanelToQueryState],
+    [getPanelInputFromApi, setActiveSession, writePanelToQueryState],
   )
 
   const resolveCanonicalIdForPanel = useCallback((panelId: string) => {
@@ -978,33 +1020,30 @@ export function WorkspaceDockProvider({
     [commitActiveDockState],
   )
 
-  const duplicateActivePanel = useCallback(
-    (direction: 'right' | 'below') => {
-      const api = apiRef.current
-      const current = api?.activePanel
-      if (!api || !current) return
+  const duplicateActivePanel = useCallback(() => {
+    const api = apiRef.current
+    const current = api?.activePanel
+    if (!api || !current) return
 
-      const params = getPanelParams(current)
-      openPanel(
-        {
-          kind: params.kind,
-          title: current.title ?? current.api.title ?? params.title,
-          entityId: params.entityId,
+    const params = getPanelParams(current)
+    openPanel(
+      {
+        kind: params.kind,
+        title: current.title ?? current.api.title ?? params.title,
+        entityId: params.entityId,
+      },
+      {
+        forceNew: true,
+        position: {
+          referencePanel: current,
+          direction: 'right',
         },
-        {
-          forceNew: true,
-          position: {
-            referencePanel: current,
-            direction,
-          },
-        },
-      )
-    },
-    [openPanel],
-  )
+      },
+    )
+  }, [openPanel])
 
   const splitPanel = useCallback(
-    (panelId: string, direction: 'right' | 'below') => {
+    (panelId: string) => {
       const api = apiRef.current
       const current = api?.getPanel(panelId)
       if (!api || !current) return
@@ -1020,7 +1059,7 @@ export function WorkspaceDockProvider({
           forceNew: true,
           position: {
             referencePanel: current,
-            direction,
+            direction: 'right',
           },
         },
       )
@@ -1104,8 +1143,7 @@ export function WorkspaceDockProvider({
       setIsReady(true)
 
       const syncActiveDockState = () => {
-        setActiveGroupId(api.activeGroup?.id ?? null)
-        setActivePanel(getPanelInputFromApi(api))
+        commitActiveDockState(api)
       }
 
       const ensureActivePanel = () => {
@@ -1154,12 +1192,11 @@ export function WorkspaceDockProvider({
       }
 
       const settledPanel = ensureActivePanel()
-      syncActiveDockState()
+      commitActiveDockState(api)
       writePanelToQueryState(settledPanel)
 
       const disposeActive = api.onDidActivePanelChange(() => {
-        syncActiveDockState()
-        writePanelToQueryState(getPanelInputFromApi(api))
+        commitActiveDockState(api)
       })
       const disposeActiveGroup = api.onDidActiveGroupChange(() => {
         syncActiveDockState()
@@ -1169,16 +1206,25 @@ export function WorkspaceDockProvider({
         syncActiveDockState()
         saveLayout()
       })
+      // Veto the top/bottom overlays during drag so horizontal stacking is
+      // impossible — dropping on the top or bottom edge of a group does
+      // nothing. Right/left/center drops still work.
+      const disposeOverlay = api.onWillShowOverlay((event) => {
+        if (event.position === 'bottom' || event.position === 'top') {
+          event.preventDefault()
+        }
+      })
 
       readyCleanupRef.current = () => {
         disposeActive.dispose()
         disposeActiveGroup.dispose()
         disposeLayout.dispose()
+        disposeOverlay.dispose()
       }
     },
     [
+      commitActiveDockState,
       ensureEmptyGroupsHaveBlankPanel,
-      getVisiblePanelFromApi,
       getPanelInputFromApi,
       panel,
       panelEntityId,

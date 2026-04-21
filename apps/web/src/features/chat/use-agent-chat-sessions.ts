@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useAgent } from 'agents/react'
 import {
   useMutation,
@@ -243,12 +243,6 @@ export function useAgentSessions() {
 
     return ensureIdleSession()
   }, [ensureIdleSession, qc, queryKey, sessionsQuery.data])
-
-  useEffect(() => {
-    if (!agentName || !sessionsQuery.isSuccess) return
-    if (sessionsQuery.data?.some(isIdleSession)) return
-    void ensureIdleSession()
-  }, [agentName, ensureIdleSession, sessionsQuery.data, sessionsQuery.isSuccess])
 
   return {
     agent,

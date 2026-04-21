@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/vitest'
+import './src/bones/registry'
 
 // JSDOM polyfills — cmdk uses ResizeObserver; /ui's use-mobile hook
 // reads window.matchMedia. Neither ships with JSDOM so we stub them.
