@@ -7,6 +7,9 @@ const mockSetOpen = vi.hoisted(() => vi.fn())
 const mockOpenPanel = vi.hoisted(() => vi.fn())
 const mockReplace = vi.hoisted(() => vi.fn())
 const mockQueryClear = vi.hoisted(() => vi.fn())
+const mockCreateSession = vi.hoisted(() => ({
+  mutateAsync: vi.fn().mockResolvedValue({ id: 'session-new', title: 'New Chat' }),
+}))
 const mockGetNextIdleSession = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ id: 'session-new', title: 'New Chat' }),
 )
@@ -109,15 +112,17 @@ vi.mock('@garden/ui/components/ui/sidebar', () => ({
     children,
     isActive,
     onClick,
+    ...props
   }: {
     children: ReactNode
     isActive?: boolean
     onClick?: () => void
-  }) => (
+  } & Record<string, unknown>) => (
     <button
       type="button"
       data-active={isActive ? 'true' : 'false'}
       onClick={onClick}
+      {...props}
     >
       {children}
     </button>
@@ -149,7 +154,9 @@ vi.mock('@/features/chat', () => ({
 
 vi.mock('@/features/chat/use-agent-chat-sessions', () => ({
   useAgentSessions: () => ({
+    createSession: mockCreateSession,
     getNextIdleSession: mockGetNextIdleSession,
+    sessions: [],
   }),
 }))
 
@@ -197,9 +204,13 @@ describe('WorkspaceSidebar', () => {
     await user.click(screen.getByRole('button', { name: /chats/i }))
 
     expect(mockSetOpen).toHaveBeenCalledWith(true)
+    await waitFor(() => {
+      expect(mockCreateSession.mutateAsync).toHaveBeenCalledWith('New Chat')
+    })
     expect(mockOpenPanel).toHaveBeenCalledWith({
       kind: 'chat',
       title: 'New Chat',
+      entityId: 'session-new',
     })
     expect(screen.getByRole('button', { name: /dashboard/i })).toBeInTheDocument()
     expect(screen.queryByText('Chat session explorer')).not.toBeInTheDocument()

@@ -8,4 +8,8 @@ export default defineConfig({
   dbCredentials: {
     url: serverEnv.DATABASE_URL,
   },
+  migrations: {
+    schema: 'drizzle',
+    table: '__drizzle_migrations',
+  },
 })

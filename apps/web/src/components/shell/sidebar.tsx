@@ -206,7 +206,7 @@ export function WorkspaceSidebar() {
   const queryClient = useQueryClient()
   const { replace } = useNavigation()
   const { activePanel, openPanel } = useWorkspaceDock()
-  const { createSession } = useAgentSessions()
+  const { createSession, sessions } = useAgentSessions()
   const { setOpen } = useSidebar()
   const workspace = useWorkspaceStore((state) => state.workspace)
   const clearWorkspace = useWorkspaceStore((state) => state.clearWorkspace)
@@ -251,9 +251,30 @@ export function WorkspaceSidebar() {
   const openRailContext = useCallback(
     (item: RailItem) => {
       revealExplorer()
+      if (item.id === 'chats') {
+        const latestThread = sessions[0] ?? null
+        if (latestThread) {
+          openPanel({
+            kind: 'chat',
+            title: latestThread.title,
+            entityId: latestThread.id,
+          })
+          return
+        }
+
+        void createSession.mutateAsync('New Chat').then((session) => {
+          openPanel({
+            kind: 'chat',
+            title: session.title,
+            entityId: session.id,
+          })
+        })
+        return
+      }
+
       openPanel(item.defaultPanel)
     },
-    [openPanel, revealExplorer],
+    [createSession, openPanel, revealExplorer, sessions],
   )
 
   const handleLogout = useCallback(async () => {

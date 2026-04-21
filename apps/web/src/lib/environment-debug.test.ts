@@ -1,55 +1,92 @@
 import { describe, expect, it } from 'vitest'
-import { createEnvironmentDebugSnapshot } from './environment-debug'
+import {
+  createEnvironmentDebugSnapshot,
+  environmentDebugSnapshotSpec,
+} from './environment-debug'
+
+const liveState = {
+  agentName: 'chat:thread-123',
+  requestedSessionId: null,
+  effectiveSessionId: 'default',
+  visibleSessionCount: 1,
+  archivedSessionCount: 0,
+  currentMessageCount: 2,
+  currentPreview: 'Latest reply',
+  sessions: [
+    {
+      id: 'default',
+      title: 'New Chat',
+      createdAt: '2026-04-21T12:00:00.000Z',
+      updatedAt: '2026-04-21T12:01:00.000Z',
+      lastMessage: 'Latest reply',
+      messageCount: 2,
+    },
+  ],
+  workspace: {
+    rootEntries: [
+      {
+        path: '/workspace',
+        name: 'workspace',
+        type: 'directory',
+        size: 0,
+        mimeType: 'inode/directory',
+        updatedAt: 1,
+      },
+    ],
+    samplePaths: [],
+  },
+  sandbox: {
+    id: 'sandbox-123',
+    reachable: true,
+    cwd: '/workspace',
+    workspaceListing: 'README.md',
+    currentDirectoryListing: 'README.md',
+  },
+} as const
 
 describe('createEnvironmentDebugSnapshot', () => {
-  it('reports presence without leaking bound secret values', () => {
+  it('copies live agent state into the snapshot', () => {
     const snapshot = createEnvironmentDebugSnapshot({
-      PrimaryAgent: {} as Env['PrimaryAgent'],
-      Sandbox: {} as Env['Sandbox'],
-      FILES: {} as Env['FILES'],
-      LOADER: {} as Env['LOADER'],
-      SANDBOX_TRANSPORT: 'websocket',
-      DATABASE_URL: 'postgres://user:secret-pass@db.example.com:5432/garden',
-      BETTER_AUTH_SECRET: 'super-secret-auth-value',
-      BETTER_AUTH_URL: 'https://garden.example.com',
-      OPENCODE_GO_API_KEY: 'test-api-key-value',
+      workspaceId: 'workspace-123',
+      liveState,
     })
 
-    expect(snapshot.runtime.bindings.every((item) => item.available)).toBe(true)
-    expect(snapshot.runtime.variables).toEqual([
+    expect(snapshot.workspaceId).toBe('workspace-123')
+    expect(snapshot.agent).toEqual({
+      name: 'chat:thread-123',
+      requestedSessionId: null,
+      effectiveSessionId: 'default',
+      visibleSessionCount: 1,
+      archivedSessionCount: 0,
+      currentMessageCount: 2,
+      currentPreview: 'Latest reply',
+    })
+    expect(snapshot.sessions).toEqual(liveState.sessions)
+    expect(snapshot.virtualFs.rootEntries).toEqual(liveState.workspace.rootEntries)
+    expect(snapshot.sandbox).toEqual(
       expect.objectContaining({
-        name: 'SANDBOX_TRANSPORT',
-        available: true,
+        id: 'sandbox-123',
+        reachable: true,
+        cwd: '/workspace',
+        workspaceListing: 'README.md',
+        currentDirectoryListing: 'README.md',
       }),
-    ])
-    expect(snapshot.runtime.secrets).toEqual([
-      expect.objectContaining({ name: 'DATABASE_URL', available: true }),
-      expect.objectContaining({ name: 'BETTER_AUTH_SECRET', available: true }),
-      expect.objectContaining({ name: 'BETTER_AUTH_URL', available: true }),
-      expect.objectContaining({ name: 'OPENCODE_GO_API_KEY', available: true }),
-    ])
-
-    const serialized = JSON.stringify(snapshot)
-    expect(serialized).not.toContain('secret-pass')
-    expect(serialized).not.toContain('super-secret-auth-value')
-    expect(serialized).not.toContain('test-api-key-value')
-    expect(serialized).not.toContain('https://garden.example.com')
+    )
   })
 
-  it('marks missing bindings and secrets as unavailable', () => {
-    const snapshot = createEnvironmentDebugSnapshot({})
+  it('exposes the current debug spec metadata', () => {
+    const snapshot = createEnvironmentDebugSnapshot({
+      workspaceId: 'workspace-123',
+      liveState,
+    })
 
-    expect(snapshot.runtime.bindings.every((item) => !item.available)).toBe(
-      true,
+    expect(snapshot.sandbox.callableRpcMethods).toEqual(
+      environmentDebugSnapshotSpec.callableRpcMethods,
     )
-    expect(snapshot.runtime.secrets.every((item) => !item.available)).toBe(
-      true,
-    )
-    expect(snapshot.runtime.variables).toEqual([
-      expect.objectContaining({
-        name: 'SANDBOX_TRANSPORT',
-        available: false,
-      }),
+    expect(snapshot.sdks).toEqual(environmentDebugSnapshotSpec.sdks)
+    expect(snapshot.virtualFs.backingStores).toEqual([
+      'Durable Object SQLite',
+      'R2 spillover via FILES binding',
     ])
   })
 })

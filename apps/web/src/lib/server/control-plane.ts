@@ -272,6 +272,29 @@ export function toAgent(record: typeof schema.agent.$inferSelect) {
   }
 }
 
+export function toChatThread(record: typeof schema.chatThread.$inferSelect) {
+  const createdAt = record.createdAt
+    ? new Date(record.createdAt).toISOString()
+    : new Date().toISOString()
+  const updatedAt = record.updatedAt
+    ? new Date(record.updatedAt).toISOString()
+    : createdAt
+
+  return {
+    id: record.id,
+    workspaceId: record.workspaceId,
+    ownerUserId: record.ownerUserId,
+    title: record.title,
+    agentName: record.agentName,
+    lastMessage: record.lastMessage,
+    archivedAt: record.archivedAt
+      ? new Date(record.archivedAt).toISOString()
+      : null,
+    createdAt,
+    updatedAt,
+  }
+}
+
 export function toSkill(record: typeof schema.skill.$inferSelect) {
   const created = record.createdAt
     ? new Date(record.createdAt).toISOString()

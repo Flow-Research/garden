@@ -164,7 +164,7 @@ export function EnvironmentDebugDrawer() {
         workspaceId: workspaceId as string,
         sessionId: activeSessionId,
       }),
-    enabled: open && !!workspaceId,
+    enabled: open && !!workspaceId && !!activeSessionId,
     staleTime: 15_000,
   })
 
@@ -207,6 +207,18 @@ export function EnvironmentDebugDrawer() {
                   <CardTitle>No workspace selected</CardTitle>
                   <CardDescription>
                     Open a workspace first so the panel can query its live
+                    agent object.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            ) : null}
+
+            {workspaceId && !activeSessionId ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>No active chat selected</CardTitle>
+                  <CardDescription>
+                    Open a chat thread first so the panel can query its live
                     agent object.
                   </CardDescription>
                 </CardHeader>

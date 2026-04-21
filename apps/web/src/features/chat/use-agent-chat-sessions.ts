@@ -1,18 +1,16 @@
 'use client'
 
 import { useCallback, useMemo } from 'react'
-import { useAgent } from 'agents/react'
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/core/auth'
 import { useWorkspaceStore } from '@garden/core/workspace'
 
 export interface AgentChatSession {
   id: string
+  workspaceId: string
+  ownerUserId: string
   title: string
+  agentName: string
   createdAt: string
   updatedAt: string
   lastMessage: string
@@ -23,109 +21,169 @@ export interface AgentChatSession {
 
 export const NEW_SESSION_TITLE = 'New Chat'
 
-const pendingIdleSessionCreations = new Map<string, Promise<AgentChatSession>>()
-
 function sortSessions(sessions: AgentChatSession[]) {
   return [...sessions].sort(
     (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
   )
 }
 
-function isIdleSession(session: AgentChatSession) {
-  return (
-    session.title.trim().toLowerCase() === NEW_SESSION_TITLE.toLowerCase() &&
-    session.lastMessage.trim().length === 0 &&
-    session.status === 'idle' &&
-    !session.archivedAt
+async function fetchChatThreads(workspaceId: string) {
+  const url = new URL('/api/chat/threads', window.location.origin)
+  url.searchParams.set('workspace_id', workspaceId)
+
+  const response = await fetch(url.toString(), {
+    credentials: 'include',
+  })
+
+  if (!response.ok) {
+    throw new Error('Failed to load chat threads')
+  }
+
+  const rows = (await response.json()) as Array<{
+    id: string
+    workspaceId: string
+    ownerUserId: string
+    title: string
+    agentName: string
+    createdAt: string
+    updatedAt: string
+    lastMessage: string
+    archivedAt: string | null
+  }>
+
+  return sortSessions(
+    rows
+      .filter((row) => !row.archivedAt)
+      .map((row) => ({
+        ...row,
+        status: 'idle' as const,
+        unread: false,
+      })),
   )
+}
+
+async function createChatThread(workspaceId: string, title?: string) {
+  const url = new URL('/api/chat/threads', window.location.origin)
+  url.searchParams.set('workspace_id', workspaceId)
+
+  const response = await fetch(url.toString(), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ title }),
+  })
+
+  if (!response.ok) {
+    throw new Error('Failed to create chat thread')
+  }
+
+  const row = (await response.json()) as {
+    id: string
+    workspaceId: string
+    ownerUserId: string
+    title: string
+    agentName: string
+    createdAt: string
+    updatedAt: string
+    lastMessage: string
+    archivedAt: string | null
+  }
+
+  return {
+    ...row,
+    status: 'idle' as const,
+    unread: false,
+  } satisfies AgentChatSession
+}
+
+async function updateChatThread(
+  threadId: string,
+  body: Record<string, unknown>,
+) {
+  const response = await fetch(`/api/chat/threads/${threadId}`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    throw new Error('Failed to update chat thread')
+  }
+
+  const row = (await response.json()) as {
+    id: string
+    workspaceId: string
+    ownerUserId: string
+    title: string
+    agentName: string
+    createdAt: string
+    updatedAt: string
+    lastMessage: string
+    archivedAt: string | null
+  }
+
+  return {
+    ...row,
+    status: row.archivedAt ? ('archived' as const) : ('idle' as const),
+    unread: false,
+  } satisfies AgentChatSession
+}
+
+async function deleteChatThread(threadId: string) {
+  const response = await fetch(`/api/chat/threads/${threadId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+
+  if (!response.ok) {
+    throw new Error('Failed to delete chat thread')
+  }
 }
 
 export function useAgentSessions() {
   const qc = useQueryClient()
   const user = useAuthStore((state) => state.user)
   const workspace = useWorkspaceStore((state) => state.workspace)
-
-  const agentName = useMemo(() => {
-    if (!user?.id || !workspace?.id) return null
-    return `${workspace.id}:${user.id}`
-  }, [user?.id, workspace?.id])
-
-  const agent = useAgent(
-    agentName
-      ? {
-          agent: 'PrimaryAgent',
-          name: agentName,
-        }
-      : { agent: 'PrimaryAgent', name: 'anonymous' },
-  )
+  const workspaceId = workspace?.id ?? null
 
   const queryKey = useMemo(
-    () => ['agent-sessions', agentName] as const,
-    [agentName],
+    () => ['chat-threads', workspaceId, user?.id ?? null] as const,
+    [workspaceId, user?.id],
   )
 
   const sessionsQuery = useQuery({
     queryKey,
-    enabled: !!agentName,
-    queryFn: async () => {
-      const rows = (await agent.stub.listSessions?.()) as
-        | Array<{
-            id: string
-            title: string
-            createdAt: string
-            updatedAt: string
-            lastMessage?: string
-          }>
-        | undefined
-      return sortSessions(
-        (rows ?? []).map((row) => ({
-          ...row,
-          lastMessage: row.lastMessage ?? '',
-          status: 'idle' as const,
-          unread: false,
-          archivedAt: null,
-        })),
-      )
-    },
+    enabled: !!workspaceId && !!user?.id,
+    queryFn: () => fetchChatThreads(workspaceId as string),
     staleTime: 10_000,
   })
 
   const createSession = useMutation({
     mutationFn: async (title?: string) => {
-      const created = (await agent.stub.createSession?.(
-        title,
-      )) as
-        | {
-            id: string
-            title: string
-            createdAt: string
-            updatedAt: string
-            lastMessage?: string
-          }
-        | undefined
-      if (!created) {
-        throw new Error('Failed to create session')
+      if (!workspaceId) {
+        throw new Error('Missing workspace identity')
       }
-      return {
-        ...created,
-        lastMessage: created.lastMessage ?? '',
-        status: 'idle' as const,
-        unread: false,
-        archivedAt: null,
-      } satisfies AgentChatSession
+
+      return createChatThread(workspaceId, title)
     },
     onSuccess: (created) => {
       qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>
-        sortSessions([created, ...current.filter((session) => session.id !== created.id)]),
+        sortSessions([
+          created,
+          ...current.filter((session) => session.id !== created.id),
+        ]),
       )
     },
   })
 
   const renameSession = useMutation({
-    mutationFn: async (input: { sessionId: string; title: string }) => {
-      await agent.stub.renameSession?.(input.sessionId, input.title)
-      return input
-    },
+    mutationFn: async (input: { sessionId: string; title: string }) =>
+      updateChatThread(input.sessionId, { title: input.title }),
     onMutate: async ({ sessionId, title }) => {
       qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>
         current.map((session) =>
@@ -135,11 +193,20 @@ export function useAgentSessions() {
         ),
       )
     },
+    onSuccess: (updated) => {
+      qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>
+        sortSessions(
+          current.map((session) =>
+            session.id === updated.id ? { ...session, ...updated } : session,
+          ),
+        ),
+      )
+    },
   })
 
   const deleteSession = useMutation({
     mutationFn: async (sessionId: string) => {
-      await agent.stub.deleteSession?.(sessionId)
+      await deleteChatThread(sessionId)
       return sessionId
     },
     onMutate: async (sessionId) => {
@@ -150,13 +217,10 @@ export function useAgentSessions() {
   })
 
   const archiveSession = useMutation({
-    mutationFn: async (sessionId: string) => {
-      await agent.stub.archiveSession?.(sessionId)
-      return {
+    mutationFn: async (sessionId: string) =>
+      updateChatThread(sessionId, {
         archivedAt: new Date().toISOString(),
-        sessionId,
-      }
-    },
+      }),
     onMutate: async (sessionId) => {
       qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>
         current.filter((session) => session.id !== sessionId),
@@ -190,6 +254,14 @@ export function useAgentSessions() {
         ),
       ),
     )
+
+    void updateChatThread(input.sessionId, {
+      ...(input.title ? { title: input.title } : {}),
+      ...(input.lastMessage !== undefined
+        ? { lastMessage: input.lastMessage }
+        : {}),
+      updatedAt: input.updatedAt ?? new Date().toISOString(),
+    })
   }
 
   const reorderSessions = (orderedIds: string[]) => {
@@ -205,48 +277,16 @@ export function useAgentSessions() {
   }
 
   const ensureIdleSession = useCallback(async () => {
-    if (!agentName) {
-      throw new Error('Missing agent identity')
-    }
+    return createSession.mutateAsync(NEW_SESSION_TITLE)
+  }, [createSession])
 
-    const currentSessions =
-      qc.getQueryData<AgentChatSession[]>(queryKey) ?? sessionsQuery.data ?? []
-    const existingIdle = currentSessions.find(isIdleSession)
-    if (existingIdle) {
-      return existingIdle
-    }
-
-    const pending = pendingIdleSessionCreations.get(agentName)
-    if (pending) {
-      return pending
-    }
-
-    const creation = createSession.mutateAsync(NEW_SESSION_TITLE)
-    pendingIdleSessionCreations.set(agentName, creation)
-
-    return creation.finally(() => {
-      pendingIdleSessionCreations.delete(agentName)
-    })
-  }, [agentName, createSession, qc, queryKey, sessionsQuery.data])
-
-  const getNextIdleSession = useCallback(async (activeSessionId?: string | null) => {
-    const currentSessions =
-      qc.getQueryData<AgentChatSession[]>(queryKey) ?? sessionsQuery.data ?? []
-    const otherIdle =
-      currentSessions.find(
-        (session) => isIdleSession(session) && session.id !== activeSessionId,
-      ) ?? currentSessions.find(isIdleSession)
-
-    if (otherIdle) {
-      return otherIdle
-    }
-
-    return ensureIdleSession()
-  }, [ensureIdleSession, qc, queryKey, sessionsQuery.data])
+  const getNextIdleSession = useCallback(async () => {
+    return createSession.mutateAsync(NEW_SESSION_TITLE)
+  }, [createSession])
 
   return {
-    agent,
-    agentName,
+    agent: null,
+    agentName: null,
     createSession,
     archiveSession,
     deleteSession,

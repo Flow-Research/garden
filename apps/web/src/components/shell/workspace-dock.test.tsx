@@ -15,6 +15,24 @@ vi.mock('nuqs', () => ({
   useQueryStates: () => [mockQueryState, mockSetQueryState],
 }))
 
+vi.mock('@garden/core/chat', () => ({
+  useChatStore: Object.assign(
+    (selector?: (state: { activeSessionId: string | null; setActiveSession: (id: string | null) => void }) => unknown) => {
+      const state = {
+        activeSessionId: null,
+        setActiveSession: vi.fn(),
+      }
+      return selector ? selector(state) : state
+    },
+    {
+      getState: () => ({
+        activeSessionId: null,
+        setActiveSession: vi.fn(),
+      }),
+    },
+  ),
+}))
+
 vi.mock('dockview', () => ({
   DockviewDefaultTab: () => null,
   DockviewReact: () => null,
@@ -207,6 +225,9 @@ class FakeDockApi {
   private activePanelListeners: Array<() => void> = []
   private activeGroupListeners: Array<() => void> = []
   private layoutListeners: Array<() => void> = []
+  private overlayListeners: Array<
+    (event: { position: string; preventDefault: () => void }) => void
+  > = []
   private groupCounter = 0
 
   toJSON = vi.fn(() => ({
@@ -285,6 +306,15 @@ class FakeDockApi {
     this.layoutListeners.push(listener)
     return {
       dispose: () => removeListener(this.layoutListeners, listener),
+    }
+  }
+
+  onWillShowOverlay(
+    listener: (event: { position: string; preventDefault: () => void }) => void,
+  ) {
+    this.overlayListeners.push(listener)
+    return {
+      dispose: () => removeListener(this.overlayListeners, listener),
     }
   }
 
