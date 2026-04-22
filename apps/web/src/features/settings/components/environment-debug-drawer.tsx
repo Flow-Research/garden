@@ -12,7 +12,6 @@ import {
   Server,
   Wrench,
 } from 'lucide-react'
-import { useChatStore } from '@garden/core/chat'
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'
@@ -44,15 +43,21 @@ async function loadRuntimeStateSnapshot({
   workspaceId: string
   sessionId: string | null
 }) {
+  if (!workspaceId || !sessionId) {
+    return null
+  }
+
   const url = new URL('/api/config', window.location.origin)
   url.searchParams.set('workspace_id', workspaceId)
-  if (sessionId) {
-    url.searchParams.set('session_id', sessionId)
-  }
+  url.searchParams.set('session_id', sessionId)
 
   const response = await fetch(url.toString(), {
     credentials: 'include',
   })
+
+  if (response.status === 204) {
+    return null
+  }
 
   if (!response.ok) {
     throw new Error('Failed to load agent runtime state')
@@ -146,15 +151,24 @@ function TerminalBlock({
   )
 }
 
-export function EnvironmentDebugDrawer() {
+interface EnvironmentDebugDrawerProps {
+  /** Session id this drawer should inspect. */
+  sessionId: string | null
+  /** Optional button label (defaults to "Agent State"). */
+  label?: string
+}
+
+export function EnvironmentDebugDrawer({
+  sessionId,
+  label = 'Agent State',
+}: EnvironmentDebugDrawerProps) {
   const [open, setOpen] = useState(false)
   const workspaceId = useWorkspaceStore((state) => state.workspace?.id ?? null)
-  const activeSessionId = useChatStore((state) => state.activeSessionId)
   const { sessions: uiSessions } = useAgentSessions()
 
   const queryKey = useMemo(
-    () => ['agent-runtime-state', workspaceId, activeSessionId],
-    [workspaceId, activeSessionId],
+    () => ['agent-runtime-state', workspaceId, sessionId],
+    [workspaceId, sessionId],
   )
 
   const snapshotQuery = useQuery({
@@ -162,32 +176,32 @@ export function EnvironmentDebugDrawer() {
     queryFn: () =>
       loadRuntimeStateSnapshot({
         workspaceId: workspaceId as string,
-        sessionId: activeSessionId,
+        sessionId,
       }),
-    enabled: open && !!workspaceId && !!activeSessionId,
+    enabled: open && !!workspaceId && !!sessionId,
     staleTime: 15_000,
   })
 
-  const snapshot = snapshotQuery.data
+  const snapshot = snapshotQuery.data ?? null
   const sessionStatusMap = useMemo(
     () => new Map(uiSessions.map((session) => [session.id, session.status])),
     [uiSessions],
   )
   const activeUiStatus =
-    (activeSessionId ? sessionStatusMap.get(activeSessionId) : null) ?? null
+    (sessionId ? sessionStatusMap.get(sessionId) : null) ?? null
   const activeUiSession =
-    uiSessions.find((session) => session.id === activeSessionId) ?? null
+    uiSessions.find((session) => session.id === sessionId) ?? null
 
   return (
     <>
       <Button
-        variant="outline"
-        size="sm"
+        variant="ghost"
+        size="icon-sm"
         onClick={() => setOpen(true)}
-        data-icon="inline-start"
+        aria-label={label}
+        title={label}
       >
         <Bug className="size-4" />
-        Agent State
       </Button>
 
       <Drawer open={open} onOpenChange={setOpen} direction="right">
@@ -213,7 +227,7 @@ export function EnvironmentDebugDrawer() {
               </Card>
             ) : null}
 
-            {workspaceId && !activeSessionId ? (
+            {workspaceId && !sessionId ? (
               <Card>
                 <CardHeader>
                   <CardTitle>No active chat selected</CardTitle>
