@@ -8,7 +8,6 @@ import {
   Plus,
   MoreHorizontal,
   UserMinus,
-  Users,
   Clock,
   X,
   Mail,
@@ -21,7 +20,6 @@ import type {
 } from '@garden/core/types'
 import { Input } from '@garden/ui/components/ui/input'
 import { Button } from '@garden/ui/components/ui/button'
-import { Card, CardContent } from '@garden/ui/components/ui/card'
 import { Badge } from '@garden/ui/components/ui/badge'
 import {
   AlertDialog,
@@ -109,11 +107,11 @@ function MemberRow({
   const showMenu = canEditRole || canRemove
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
+    <li className="flex items-center gap-3 py-3">
       <ActorAvatar actorType="member" actorId={member.user_id} size={32} />
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium truncate">{member.name}</div>
-        <div className="text-xs text-muted-foreground truncate">
+        <div className="truncate text-sm font-medium">{member.name}</div>
+        <div className="truncate text-xs text-muted-foreground">
           {member.email}
         </div>
       </div>
@@ -150,7 +148,7 @@ function MemberRow({
                         <Icon className="h-3.5 w-3.5" />
                         <div className="flex flex-col">
                           <span>{config.label}</span>
-                          <span className="text-xs text-muted-foreground font-normal">
+                          <span className="text-xs font-normal text-muted-foreground">
                             {config.description}
                           </span>
                         </div>
@@ -179,7 +177,7 @@ function MemberRow({
         <RoleIcon className="h-3 w-3" />
         {rc.label}
       </Badge>
-    </div>
+    </li>
   )
 }
 
@@ -197,12 +195,12 @@ function InvitationRow({
   const rc = roleConfig[invitation.role]
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
+    <li className="flex items-center gap-3 py-3">
       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
         <Mail className="h-4 w-4 text-muted-foreground" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium truncate">{invitation.email}</div>
+        <div className="truncate text-sm font-medium">{invitation.email}</div>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <Clock className="h-3 w-3" />
           <span>Pending</span>
@@ -220,7 +218,7 @@ function InvitationRow({
         </Button>
       )}
       <Badge variant="outline">{rc.label}</Badge>
-    </div>
+    </li>
   )
 }
 
@@ -336,101 +334,99 @@ export function MembersTab() {
   if (!workspace) return null
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Users className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-sm font-semibold">Members ({members.length})</h2>
-        </div>
+    <div className="space-y-12">
+      <section className="space-y-5">
+        <header>
+          <h2 className="text-base font-semibold">
+            Members{' '}
+            <span className="font-normal text-muted-foreground">
+              ({members.length})
+            </span>
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            People with access to this workspace.
+          </p>
+        </header>
 
         {canManageWorkspace && (
-          <Card>
-            <CardContent className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Plus className="h-4 w-4 text-muted-foreground" />
-                <h3 className="text-sm font-medium">Invite member</h3>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-[1fr_120px_auto]">
-                <Input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="user@company.com"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && inviteEmail.trim())
-                      handleInviteMember()
-                  }}
-                />
-                <Select
-                  value={inviteRole}
-                  onValueChange={(value) => setInviteRole(value as MemberRole)}
-                >
-                  <SelectTrigger size="sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="member">Member</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  onClick={handleInviteMember}
-                  disabled={inviteLoading || !inviteEmail.trim()}
-                >
-                  {inviteLoading ? 'Inviting...' : 'Invite'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="grid gap-2 sm:grid-cols-[1fr_120px_auto]">
+            <Input
+              type="email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              placeholder="user@company.com"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && inviteEmail.trim())
+                  handleInviteMember()
+              }}
+            />
+            <Select
+              value={inviteRole}
+              onValueChange={(value) => setInviteRole(value as MemberRole)}
+            >
+              <SelectTrigger size="sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="member">Member</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              onClick={handleInviteMember}
+              disabled={inviteLoading || !inviteEmail.trim()}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {inviteLoading ? 'Inviting...' : 'Invite'}
+            </Button>
+          </div>
         )}
 
         {members.length > 0 ? (
-          <div className="overflow-hidden rounded-xl ring-1 ring-foreground/10">
-            {members.map((m, i) => (
-              <div
+          <ul className="divide-y border-t">
+            {members.map((m) => (
+              <MemberRow
                 key={m.id}
-                className={i > 0 ? 'border-t border-border/50' : ''}
-              >
-                <MemberRow
-                  member={m}
-                  canManage={canManageWorkspace}
-                  canManageOwners={isOwner}
-                  isSelf={m.user_id === user?.id}
-                  busy={memberActionId === m.id}
-                  onRoleChange={(role) => handleRoleChange(m.id, role)}
-                  onRemove={() => handleRemoveMember(m)}
-                />
-              </div>
+                member={m}
+                canManage={canManageWorkspace}
+                canManageOwners={isOwner}
+                isSelf={m.user_id === user?.id}
+                busy={memberActionId === m.id}
+                onRoleChange={(role) => handleRoleChange(m.id, role)}
+                onRemove={() => handleRemoveMember(m)}
+              />
             ))}
-          </div>
+          </ul>
         ) : (
           <p className="text-sm text-muted-foreground">No members found.</p>
         )}
       </section>
 
       {pendingInvitations.length > 0 && (
-        <section className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold">
-              Pending invitations ({pendingInvitations.length})
+        <section className="space-y-5">
+          <header>
+            <h2 className="text-base font-semibold">
+              Pending invitations{' '}
+              <span className="font-normal text-muted-foreground">
+                ({pendingInvitations.length})
+              </span>
             </h2>
-          </div>
-          <div className="overflow-hidden rounded-xl ring-1 ring-foreground/10">
-            {pendingInvitations.map((inv, i) => (
-              <div
+            <p className="text-sm text-muted-foreground">
+              Invitations that haven't been accepted yet.
+            </p>
+          </header>
+          <ul className="divide-y border-t">
+            {pendingInvitations.map((inv) => (
+              <InvitationRow
                 key={inv.id}
-                className={i > 0 ? 'border-t border-border/50' : ''}
-              >
-                <InvitationRow
-                  invitation={inv}
-                  canManage={canManageWorkspace}
-                  onRevoke={() => handleRevokeInvitation(inv)}
-                  busy={invitationActionId === inv.id}
-                />
-              </div>
+                invitation={inv}
+                canManage={canManageWorkspace}
+                onRevoke={() => handleRevokeInvitation(inv)}
+                busy={invitationActionId === inv.id}
+              />
             ))}
-          </div>
+          </ul>
         </section>
       )}
 

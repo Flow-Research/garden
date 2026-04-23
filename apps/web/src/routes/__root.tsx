@@ -10,7 +10,7 @@ import { WebProviders } from '@/components/web-providers'
 import appCss from '../styles.css?url'
 import '../bones/registry'
 
-const Devtools = import.meta.env.DEV
+const Devtools = import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEVTOOLS === '1'
   ? lazy(async () => {
       const [{ TanStackDevtools }, { TanStackRouterDevtoolsPanel }] =
         await Promise.all([

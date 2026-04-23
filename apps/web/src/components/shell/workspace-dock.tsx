@@ -23,7 +23,6 @@ import {
   Plug,
   Plus,
   BookOpenText,
-  Settings,
   X,
 } from 'lucide-react'
 import {
@@ -51,7 +50,6 @@ import {
   ContextMenuTrigger,
 } from '@garden/ui/components/ui/context-menu'
 import { InboxPage } from '@/features/inbox'
-import { SettingsPage } from '@/features/settings'
 import { SkillsPage } from '@/features/skills/components'
 import { IssueDetail, IssuesPage } from '@/features/issues/components'
 import { AgentInteractionScreen } from '@/features/chat/components/agent-interaction-screen'
@@ -67,7 +65,6 @@ export type WorkspacePanelKind =
   | 'chat'
   | 'skill-editor'
   | 'capabilities'
-  | 'settings'
 
 export type WorkspacePanelInput = {
   kind: WorkspacePanelKind
@@ -84,7 +81,6 @@ const workspacePanelKinds = [
   'chat',
   'skill-editor',
   'capabilities',
-  'settings',
 ] as const
 
 type WorkspacePanelParams = WorkspacePanelInput & {
@@ -133,7 +129,6 @@ const singletonKinds = new Set<WorkspacePanelKind>([
   'issues',
   'skill-editor',
   'capabilities',
-  'settings',
 ])
 
 const panelIcons: Record<
@@ -148,7 +143,6 @@ const panelIcons: Record<
   chat: MessageSquare,
   'skill-editor': BookOpenText,
   capabilities: Plug,
-  settings: Settings,
 }
 
 let dockPanelCounter = 0
@@ -178,8 +172,7 @@ function readPanelFromQueryState(input: {
     panel !== 'issue-detail' &&
     panel !== 'chat' &&
     panel !== 'skill-editor' &&
-    panel !== 'capabilities' &&
-    panel !== 'settings'
+    panel !== 'capabilities'
   ) {
     return null
   }
@@ -288,11 +281,6 @@ function getPanelConstraints(kind: WorkspacePanelKind) {
     case 'issue-detail':
       return {
         minimumWidth: 760,
-        minimumHeight: 420,
-      }
-    case 'settings':
-      return {
-        minimumWidth: 720,
         minimumHeight: 420,
       }
     case 'skill-editor':
@@ -641,14 +629,6 @@ function SkillsDockPanel() {
   )
 }
 
-function SettingsDockPanel() {
-  return (
-    <WorkspacePanelFrame>
-      <SettingsPage />
-    </WorkspacePanelFrame>
-  )
-}
-
 function ChatDockPanel({
   api,
   params,
@@ -708,7 +688,6 @@ const dockComponents = {
   chat: ChatDockPanel,
   'skill-editor': SkillsDockPanel,
   capabilities: CapabilitiesDockPanel,
-  settings: SettingsDockPanel,
 } satisfies Record<
   WorkspacePanelKind,
   React.FunctionComponent<IDockviewPanelProps<WorkspacePanelParams>>

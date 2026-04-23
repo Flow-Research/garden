@@ -11,6 +11,7 @@ const {
   mockRecentItems,
   mockAllIssues,
   mockOpenPanel,
+  mockOpenSettingsDialog,
   mockGetNextIdleSession,
   mockSetActiveSession,
 } = vi.hoisted(() => ({
@@ -19,6 +20,7 @@ const {
   mockRecentItems: { current: [] as Array<{ id: string; visitedAt: number }> },
   mockAllIssues: { current: [] as Array<Record<string, unknown>> },
   mockOpenPanel: vi.fn(),
+  mockOpenSettingsDialog: vi.fn(),
   mockGetNextIdleSession: vi
     .fn()
     .mockResolvedValue({ id: 'session-new', title: 'New Chat' }),
@@ -97,6 +99,15 @@ vi.mock('@/features/chat/use-agent-chat-sessions', () => ({
   }),
 }))
 
+vi.mock('@/features/settings', () => ({
+  useSettingsDialogStore: (
+    selector?: (state: { openSettings: typeof mockOpenSettingsDialog }) => unknown,
+  ) => {
+    const state = { openSettings: mockOpenSettingsDialog }
+    return selector ? selector(state) : state
+  },
+}))
+
 describe('SearchCommand', () => {
   beforeEach(() => {
     mockSearchIssues.mockReset().mockResolvedValue({ issues: [] })
@@ -149,13 +160,13 @@ describe('SearchCommand', () => {
     render(<SearchCommand />)
 
     const input = screen.getByPlaceholderText('Search issues or open a panel...')
-    await user.type(input, 'set')
+    await user.type(input, 'skill')
 
     await waitFor(() => {
       // HighlightText splits text, so use a function matcher
       expect(
         screen.getByText(
-          (_, el) => el?.textContent === 'Settings' && el?.tagName === 'SPAN',
+          (_, el) => el?.textContent === 'Skills' && el?.tagName === 'SPAN',
         ),
       ).toBeInTheDocument()
     })
@@ -163,20 +174,18 @@ describe('SearchCommand', () => {
     expect(screen.queryByText('Projects')).not.toBeInTheDocument()
   })
 
-  it('navigates to page on selection', async () => {
+  it('opens settings dialog via quick action', async () => {
     const user = userEvent.setup()
     render(<SearchCommand />)
 
-    const input = screen.getByPlaceholderText('Search issues or open a panel...')
-    await user.type(input, 'settings')
-
-    const settingsItem = await screen.findByText('Settings')
+    // Quick actions show when the query is empty.
+    const settingsItem = await screen.findByText('Open Settings')
     await user.click(settingsItem)
 
-    expect(mockOpenPanel).toHaveBeenCalledWith({
-      kind: 'settings',
-      title: 'Settings',
-    })
+    expect(mockOpenSettingsDialog).toHaveBeenCalled()
+    expect(mockOpenPanel).not.toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'settings' }),
+    )
     expect(useSearchStore.getState().open).toBe(false)
   })
 

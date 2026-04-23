@@ -5,21 +5,17 @@ import { format, formatDistanceToNowStrict } from 'date-fns'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Camera,
-  Clock3,
   KeyRound,
   Loader2,
   LogOut,
-  Mail,
   RefreshCw,
   Save,
-  Shield,
 } from 'lucide-react'
 import { Input } from '@garden/ui/components/ui/input'
 import { Label } from '@garden/ui/components/ui/label'
 import { Button } from '@garden/ui/components/ui/button'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Checkbox } from '@garden/ui/components/ui/checkbox'
-import { Separator } from '@garden/ui/components/ui/separator'
 import { toast } from 'sonner'
 import { useAuthStore } from '@garden/core/auth'
 import { api } from '@garden/core/api'
@@ -227,56 +223,32 @@ export function AccountTab() {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-lg border bg-background p-5">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold">Account</h2>
-              <Badge
-                variant={
-                  authSessionData?.user?.emailVerified ? 'secondary' : 'outline'
-                }
-              >
-                {authSessionData?.user?.emailVerified
-                  ? 'Email verified'
-                  : 'Email not verified'}
-              </Badge>
-            </div>
-            <p className="max-w-2xl text-sm text-muted-foreground">
-              Update your profile and keep the current browser session in view.
+    <div className="space-y-12">
+      {/* Profile */}
+      <section className="space-y-5">
+        <header className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold">Profile</h2>
+            <p className="text-sm text-muted-foreground">
+              Your name and avatar across the workspace.
             </p>
           </div>
+          <Badge
+            variant={
+              authSessionData?.user?.emailVerified ? 'secondary' : 'outline'
+            }
+          >
+            {authSessionData?.user?.emailVerified
+              ? 'Email verified'
+              : 'Email not verified'}
+          </Badge>
+        </header>
 
-          <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 lg:w-[24rem]">
-            <div className="rounded-md border bg-muted/20 px-3 py-2">
-              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.08em]">
-                <Mail className="size-3.5" />
-                <span>Email</span>
-              </div>
-              <div className="mt-1 truncate text-foreground">
-                {user?.email ?? 'Unavailable'}
-              </div>
-            </div>
-            <div className="rounded-md border bg-muted/20 px-3 py-2">
-              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.08em]">
-                <Clock3 className="size-3.5" />
-                <span>Joined</span>
-              </div>
-              <div className="mt-1 text-foreground">
-                {formatDateTime(user?.created_at)}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <Separator className="my-5" />
-
-        <div className="grid gap-6 lg:grid-cols-[96px_minmax(0,1fr)]">
+        <div className="flex items-start gap-6">
           <div className="space-y-2">
             <button
               type="button"
-              className="group relative flex size-24 items-center justify-center overflow-hidden rounded-full border bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="group relative flex size-20 items-center justify-center overflow-hidden rounded-full bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
             >
@@ -287,7 +259,7 @@ export function AccountTab() {
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <span className="text-2xl font-semibold text-muted-foreground">
+                <span className="text-xl font-semibold text-muted-foreground">
                   {initials}
                 </span>
               )}
@@ -306,10 +278,9 @@ export function AccountTab() {
               className="hidden"
               onChange={handleAvatarUpload}
             />
-            <p className="text-xs text-muted-foreground">PNG, JPG, or GIF.</p>
           </div>
 
-          <div className="space-y-4">
+          <div className="flex-1 space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Name</Label>
@@ -325,8 +296,9 @@ export function AccountTab() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
               <Button
+                size="sm"
                 onClick={handleProfileSave}
                 disabled={profileSaving || !profileName.trim()}
               >
@@ -338,7 +310,8 @@ export function AccountTab() {
                 {profileSaving ? 'Saving...' : 'Save changes'}
               </Button>
               <Button
-                variant="outline"
+                size="sm"
+                variant="ghost"
                 onClick={() => setProfileName(user?.name ?? '')}
                 disabled={profileSaving || profileName === (user?.name ?? '')}
               >
@@ -347,21 +320,24 @@ export function AccountTab() {
             </div>
           </div>
         </div>
+
+        <dl className="grid gap-x-6 gap-y-1 border-t pt-4 text-sm sm:grid-cols-2">
+          <div className="flex justify-between gap-4">
+            <dt className="text-muted-foreground">Member since</dt>
+            <dd>{formatDateTime(user?.created_at)}</dd>
+          </div>
+        </dl>
       </section>
 
-      <section className="rounded-lg border bg-background p-5">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Shield className="size-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold">Security</h2>
-          </div>
+      {/* Password */}
+      <section className="space-y-5">
+        <header>
+          <h2 className="text-base font-semibold">Password</h2>
           <p className="text-sm text-muted-foreground">
             Change your password and decide whether to keep other sessions
             alive.
           </p>
-        </div>
-
-        <Separator className="my-5" />
+        </header>
 
         <form className="space-y-4" onSubmit={handlePasswordSave}>
           <div className="grid gap-4 md:grid-cols-2">
@@ -390,7 +366,10 @@ export function AccountTab() {
             </div>
           </div>
 
-          <div className="flex items-start gap-3 rounded-md border bg-muted/20 px-3 py-3">
+          <label
+            htmlFor="revoke-other-sessions"
+            className="flex items-start gap-3 text-sm"
+          >
             <Checkbox
               id="revoke-other-sessions"
               checked={revokeAfterPasswordChange}
@@ -398,19 +377,20 @@ export function AccountTab() {
                 setRevokeAfterPasswordChange(checked === true)
               }
             />
-            <div className="space-y-1">
-              <Label htmlFor="revoke-other-sessions">
+            <span className="space-y-0.5">
+              <span className="block">
                 Sign out other sessions after changing password
-              </Label>
-              <p className="text-sm text-muted-foreground">
+              </span>
+              <span className="block text-muted-foreground">
                 Useful when you have stale browser sessions open on other
                 devices.
-              </p>
-            </div>
-          </div>
+              </span>
+            </span>
+          </label>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-3">
             <Button
+              size="sm"
               type="submit"
               disabled={
                 passwordSaving ||
@@ -425,26 +405,26 @@ export function AccountTab() {
               )}
               {passwordSaving ? 'Updating...' : 'Update password'}
             </Button>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Use at least 8 characters.
             </p>
           </div>
         </form>
       </section>
 
-      <section className="rounded-lg border bg-background p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1">
-            <h2 className="text-sm font-semibold">Sessions</h2>
+      {/* Sessions */}
+      <section className="space-y-5">
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">Sessions</h2>
             <p className="text-sm text-muted-foreground">
-              Review where you are signed in and close anything you do not
+              Review where you are signed in and close anything you don't
               trust.
             </p>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={() => void refreshSessionState()}
               disabled={sessionsPending || sessionPending}
@@ -461,116 +441,86 @@ export function AccountTab() {
               {revokingOtherSessions ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : null}
-              Sign out other sessions
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={handleSignOut}
-              disabled={signingOut}
-            >
-              {signingOut ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <LogOut className="size-4" />
-              )}
-              {signingOut ? 'Signing out...' : 'Sign out'}
+              Sign out others
             </Button>
           </div>
-        </div>
+        </header>
 
-        <Separator className="my-5" />
-
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <div className="rounded-md border bg-muted/20 p-4">
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary">Current</Badge>
-              <span className="text-sm font-medium">
-                {describeUserAgent(authSessionData?.session?.userAgent)}
-              </span>
-            </div>
-            <dl className="mt-4 grid gap-3 text-sm">
-              <div>
-                <dt className="text-muted-foreground">Signed in</dt>
-                <dd className="mt-1 text-foreground">
-                  {formatDateTime(authSessionData?.session?.createdAt)}
-                </dd>
+        <ul className="divide-y">
+          <li className="flex flex-col gap-1 py-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="truncate text-sm font-medium">
+                  {describeUserAgent(authSessionData?.session?.userAgent)}
+                </span>
+                <Badge variant="secondary">This device</Badge>
               </div>
-              <div>
-                <dt className="text-muted-foreground">Expires</dt>
-                <dd className="mt-1 text-foreground">
-                  {formatRelativeTime(authSessionData?.session?.expiresAt)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">IP address</dt>
-                <dd className="mt-1 text-foreground">
-                  {authSessionData?.session?.ipAddress ?? 'Unavailable'}
-                </dd>
-              </div>
-            </dl>
-          </div>
-
-          <div className="rounded-md border bg-muted/20 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-medium">Other active sessions</div>
-                <div className="text-sm text-muted-foreground">
-                  {otherSessions.length === 0
-                    ? 'No other active sessions.'
-                    : `${otherSessions.length} session${otherSessions.length === 1 ? '' : 's'} active.`}
-                </div>
+              <div className="text-xs text-muted-foreground">
+                Signed in {formatDateTime(authSessionData?.session?.createdAt)}
+                {' · '}
+                Expires{' '}
+                {formatRelativeTime(authSessionData?.session?.expiresAt)}
+                {' · '}
+                {authSessionData?.session?.ipAddress ?? 'Unavailable'}
               </div>
             </div>
+          </li>
 
-            <div className="mt-4 space-y-3">
-              {sessionsPending ? (
-                <div className="text-sm text-muted-foreground">
-                  Loading sessions...
-                </div>
-              ) : otherSessions.length === 0 ? (
-                <div className="text-sm text-muted-foreground">
-                  You only have the current browser session open.
-                </div>
-              ) : (
-                otherSessions.map((session) => (
-                  <div
-                    key={session.id}
-                    className="rounded-md border bg-background px-3 py-3"
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0 space-y-1">
-                        <div className="truncate text-sm font-medium">
-                          {describeUserAgent(session.userAgent)}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          Last active {formatRelativeTime(session.updatedAt)}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {session.ipAddress ?? 'Unavailable IP'} · Expires{' '}
-                          {formatRelativeTime(session.expiresAt)}
-                        </div>
-                      </div>
-
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void handleRevokeSession(session.token)}
-                        disabled={revokingToken === session.token}
-                      >
-                        {revokingToken === session.token ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          <LogOut className="size-4" />
-                        )}
-                        Sign out
-                      </Button>
-                    </div>
+          {sessionsPending ? (
+            <li className="py-3 text-sm text-muted-foreground">
+              Loading sessions...
+            </li>
+          ) : otherSessions.length === 0 ? null : (
+            otherSessions.map((session) => (
+              <li
+                key={session.id}
+                className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between"
+              >
+                <div className="min-w-0 space-y-1">
+                  <div className="truncate text-sm font-medium">
+                    {describeUserAgent(session.userAgent)}
                   </div>
-                ))
-              )}
-            </div>
-          </div>
+                  <div className="text-xs text-muted-foreground">
+                    Last active {formatRelativeTime(session.updatedAt)}
+                    {' · '}
+                    Expires {formatRelativeTime(session.expiresAt)}
+                    {' · '}
+                    {session.ipAddress ?? 'Unavailable IP'}
+                  </div>
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void handleRevokeSession(session.token)}
+                  disabled={revokingToken === session.token}
+                >
+                  {revokingToken === session.token ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <LogOut className="size-4" />
+                  )}
+                  Sign out
+                </Button>
+              </li>
+            ))
+          )}
+        </ul>
+
+        <div className="border-t pt-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSignOut}
+            disabled={signingOut}
+          >
+            {signingOut ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <LogOut className="size-4" />
+            )}
+            {signingOut ? 'Signing out...' : 'Sign out of this device'}
+          </Button>
         </div>
       </section>
     </div>

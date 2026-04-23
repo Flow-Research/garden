@@ -19,6 +19,7 @@ import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'
 import { useWorkspaceDock } from '@/components/shell/workspace-dock'
 import { useAgentSessions } from '@/features/chat/use-agent-chat-sessions'
+import { useSettingsDialogStore } from '@/features/settings'
 
 type ConnectionTool = {
   name: string
@@ -108,6 +109,7 @@ function statusVariant(status: ConnectionItem['status']) {
 export function ConnectionsPage() {
   const { openPanel } = useWorkspaceDock()
   const { createSession } = useAgentSessions()
+  const openSettings = useSettingsDialogStore((s) => s.openSettings)
 
   const snapshotQuery = useQuery({
     queryKey: ['workspace-connections'],
@@ -151,7 +153,7 @@ export function ConnectionsPage() {
             <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"
-                onClick={() => openPanel({ kind: 'settings', title: 'Settings' })}
+                onClick={() => openSettings()}
               >
                 Open settings
               </Button>

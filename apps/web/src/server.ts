@@ -11,7 +11,9 @@ export default {
     const sandboxResponse = await proxyToSandbox(request, env)
     if (sandboxResponse) return sandboxResponse
 
-    if (new URL(request.url).pathname.startsWith('/agents/')) {
+    const url = new URL(request.url)
+
+    if (url.pathname.startsWith('/agents/')) {
       const response = await routeAgentRequest(request, env)
       if (response) return response
     }

@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { User, Palette, Settings, Users } from 'lucide-react'
+import { Bug, User, Palette, Settings, Users } from 'lucide-react'
 import {
   Tabs,
   TabsList,
@@ -11,13 +11,14 @@ import {
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { AccountTab } from './account-tab'
 import { AppearanceTab } from './appearance-tab'
-import { EnvironmentDebugDrawer } from './environment-debug-drawer'
+import { DeveloperTab } from './developer-tab'
 import { WorkspaceTab } from './workspace-tab'
 import { MembersTab } from './members-tab'
 
 const accountTabs = [
   { value: 'profile', label: 'Account', icon: User },
   { value: 'appearance', label: 'Appearance', icon: Palette },
+  { value: 'developer', label: 'Developer', icon: Bug },
 ]
 
 const workspaceTabs = [
@@ -35,24 +36,30 @@ export interface ExtraSettingsTab {
 interface SettingsPageProps {
   /** Additional tabs injected by platform (e.g. desktop daemon settings) */
   extraAccountTabs?: ExtraSettingsTab[]
+  /** Initial tab to show; defaults to "profile". */
+  defaultTab?: string
 }
 
-export function SettingsPage({ extraAccountTabs }: SettingsPageProps = {}) {
+export function SettingsPage({
+  extraAccountTabs,
+  defaultTab = 'profile',
+}: SettingsPageProps = {}) {
   const workspaceName = useWorkspaceStore((s) => s.workspace?.name)
 
   return (
     <Tabs
-      defaultValue="profile"
+      defaultValue={defaultTab}
       orientation="vertical"
-      className="flex-1 min-h-0 gap-0"
+      className="min-h-0 flex-1 gap-0"
     >
       {/* Left nav */}
-      <div className="w-52 shrink-0 border-r overflow-y-auto p-4">
-        <h1 className="text-sm font-semibold mb-4 px-2">Settings</h1>
-        <TabsList variant="line" className="flex-col items-stretch">
-          {/* My Account group */}
-          <span className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">
-            My Account
+      <aside className="flex w-56 shrink-0 flex-col gap-6 overflow-y-auto bg-muted/30 px-3 py-6">
+        <TabsList
+          variant="line"
+          className="flex-col items-stretch gap-0.5 px-1"
+        >
+          <span className="px-2 pb-1 text-xs font-medium text-muted-foreground">
+            Account
           </span>
           {accountTabs.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value}>
@@ -67,8 +74,7 @@ export function SettingsPage({ extraAccountTabs }: SettingsPageProps = {}) {
             </TabsTrigger>
           ))}
 
-          {/* Workspace group */}
-          <span className="px-2 pb-1 pt-4 text-xs font-medium text-muted-foreground truncate">
+          <span className="truncate px-2 pt-4 pb-1 text-xs font-medium text-muted-foreground">
             {workspaceName ?? 'Workspace'}
           </span>
           {workspaceTabs.map((tab) => (
@@ -78,21 +84,19 @@ export function SettingsPage({ extraAccountTabs }: SettingsPageProps = {}) {
             </TabsTrigger>
           ))}
         </TabsList>
-      </div>
+      </aside>
 
       {/* Right content */}
-      <div className="flex-1 min-w-0 overflow-y-auto">
-        <div className="w-full max-w-3xl mx-auto px-6 pt-6">
-          <div className="mb-4 flex items-center justify-end">
-            <EnvironmentDebugDrawer />
-          </div>
-        </div>
-        <div className="w-full max-w-3xl mx-auto px-6 pb-6">
+      <div className="min-w-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-2xl px-10 py-10">
           <TabsContent value="profile">
             <AccountTab />
           </TabsContent>
           <TabsContent value="appearance">
             <AppearanceTab />
+          </TabsContent>
+          <TabsContent value="developer">
+            <DeveloperTab />
           </TabsContent>
           <TabsContent value="workspace">
             <WorkspaceTab />

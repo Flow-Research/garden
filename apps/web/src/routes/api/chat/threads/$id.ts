@@ -1,36 +1,12 @@
 import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { schema } from '@/lib/server/db'
 import {
   badRequest,
-  notFound,
-  requireSession,
-  requireWorkspaceAccess,
   toChatThread,
-  unauthorized,
+  notFound,
 } from '@/lib/server/control-plane'
-
-async function getThreadAccess(request: Request, threadId: string) {
-  const session = await requireSession(request)
-  if (!session) return unauthorized()
-
-  const db = getDb(appEnv)
-  const [thread] = await db
-    .select()
-    .from(schema.chatThread)
-    .where(eq(schema.chatThread.id, threadId))
-
-  if (!thread) return notFound('Chat thread not found')
-  if (thread.ownerUserId !== session.user.id) {
-    return notFound('Chat thread not found')
-  }
-
-  const access = await requireWorkspaceAccess(request, thread.workspaceId)
-  if (access instanceof Response) return access
-
-  return { db, session, thread }
-}
+import { getThreadAccess } from '@/lib/server/chat-threads'
 
 export const Route = createFileRoute('/api/chat/threads/$id')({
   server: {

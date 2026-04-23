@@ -39,6 +39,7 @@ import { Kbd, KbdGroup } from '@garden/ui/components/ui/kbd'
 import { Loader2 } from 'lucide-react'
 import { useWorkspaceDock, type WorkspacePanelKind } from '@/components/shell/workspace-dock'
 import { useAgentSessions } from '@/features/chat/use-agent-chat-sessions'
+import { useSettingsDialogStore } from '@/features/settings'
 import { useSearchStore } from './search-store'
 import { useIssueSearch } from '@/features/issues/hooks/use-issue-search'
 
@@ -143,14 +144,6 @@ const navPages: NavPage[] = [
     icon: IconSettingsCog,
     keywords: ['connections', 'capabilities', 'permissions'],
   },
-  {
-    kind: 'settings',
-    title: 'Settings',
-    label: 'Settings',
-    icon: IconSettings,
-    keywords: ['settings', 'config', 'preferences'],
-    shortcut: ['⌘', ','],
-  },
 ]
 
 interface QuickAction {
@@ -166,6 +159,7 @@ const ITEM_CLASS = 'mx-2 rounded-lg py-2.5'
 export function SearchCommand() {
   const { openPanel } = useWorkspaceDock()
   const { createSession } = useAgentSessions()
+  const openSettingsDialog = useSettingsDialogStore((s) => s.openSettings)
   const open = useSearchStore((s) => s.open)
   const setOpen = useSearchStore((s) => s.setOpen)
   const recentItems = useRecentIssuesStore((s) => s.items)
@@ -284,11 +278,11 @@ export function SearchCommand() {
         shortcut: ['⌘', ','],
         onSelect: ({ setOpen }) => {
           setOpen(false)
-          openPanel({ kind: 'settings', title: 'Settings' })
+          openSettingsDialog()
         },
       },
     ],
-    [createSession, openPanel],
+    [createSession, openPanel, openSettingsDialog],
   )
 
   return (

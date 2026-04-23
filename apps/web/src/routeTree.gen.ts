@@ -55,6 +55,7 @@ import { Route as ApiAgentsIdRestoreRouteImport } from './routes/api/agents/$id/
 import { Route as ApiAgentsIdArchiveRouteImport } from './routes/api/agents/$id/archive'
 import { Route as ApiWorkspacesIdMembersMemberIdRouteImport } from './routes/api/workspaces/$id/members/$memberId'
 import { Route as ApiWorkspacesIdInvitationsInvitationIdRouteImport } from './routes/api/workspaces/$id/invitations/$invitationId'
+import { Route as ApiChatThreadsIdMessagesRouteImport } from './routes/api/chat/threads/$id/messages'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -288,6 +289,12 @@ const ApiWorkspacesIdInvitationsInvitationIdRoute =
     path: '/$invitationId',
     getParentRoute: () => ApiWorkspacesIdInvitationsRoute,
   } as any)
+const ApiChatThreadsIdMessagesRoute =
+  ApiChatThreadsIdMessagesRouteImport.update({
+    id: '/messages',
+    path: '/messages',
+    getParentRoute: () => ApiChatThreadsIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -320,7 +327,7 @@ export interface FileRoutesByFullPath {
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
-  '/api/chat/threads/$id': typeof ApiChatThreadsIdRoute
+  '/api/chat/threads/$id': typeof ApiChatThreadsIdRouteWithChildren
   '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
   '/api/invitations/$id/accept': typeof ApiInvitationsIdAcceptRoute
   '/api/invitations/$id/decline': typeof ApiInvitationsIdDeclineRoute
@@ -333,6 +340,7 @@ export interface FileRoutesByFullPath {
   '/api/issues/$id/usage': typeof ApiIssuesIdUsageRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
+  '/api/chat/threads/$id/messages': typeof ApiChatThreadsIdMessagesRoute
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
 }
@@ -367,7 +375,7 @@ export interface FileRoutesByTo {
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
-  '/api/chat/threads/$id': typeof ApiChatThreadsIdRoute
+  '/api/chat/threads/$id': typeof ApiChatThreadsIdRouteWithChildren
   '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
   '/api/invitations/$id/accept': typeof ApiInvitationsIdAcceptRoute
   '/api/invitations/$id/decline': typeof ApiInvitationsIdDeclineRoute
@@ -380,6 +388,7 @@ export interface FileRoutesByTo {
   '/api/issues/$id/usage': typeof ApiIssuesIdUsageRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
+  '/api/chat/threads/$id/messages': typeof ApiChatThreadsIdMessagesRoute
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
 }
@@ -416,7 +425,7 @@ export interface FileRoutesById {
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
-  '/api/chat/threads/$id': typeof ApiChatThreadsIdRoute
+  '/api/chat/threads/$id': typeof ApiChatThreadsIdRouteWithChildren
   '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
   '/api/invitations/$id/accept': typeof ApiInvitationsIdAcceptRoute
   '/api/invitations/$id/decline': typeof ApiInvitationsIdDeclineRoute
@@ -429,6 +438,7 @@ export interface FileRoutesById {
   '/api/issues/$id/usage': typeof ApiIssuesIdUsageRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
+  '/api/chat/threads/$id/messages': typeof ApiChatThreadsIdMessagesRoute
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
 }
@@ -478,6 +488,7 @@ export interface FileRouteTypes {
     | '/api/issues/$id/usage'
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
+    | '/api/chat/threads/$id/messages'
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
   fileRoutesByTo: FileRoutesByTo
@@ -525,6 +536,7 @@ export interface FileRouteTypes {
     | '/api/issues/$id/usage'
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
+    | '/api/chat/threads/$id/messages'
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
   id:
@@ -573,6 +585,7 @@ export interface FileRouteTypes {
     | '/api/issues/$id/usage'
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
+    | '/api/chat/threads/$id/messages'
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
   fileRoutesById: FileRoutesById
@@ -924,6 +937,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWorkspacesIdInvitationsInvitationIdRouteImport
       parentRoute: typeof ApiWorkspacesIdInvitationsRoute
     }
+    '/api/chat/threads/$id/messages': {
+      id: '/api/chat/threads/$id/messages'
+      path: '/messages'
+      fullPath: '/api/chat/threads/$id/messages'
+      preLoaderRoute: typeof ApiChatThreadsIdMessagesRouteImport
+      parentRoute: typeof ApiChatThreadsIdRoute
+    }
   }
 }
 
@@ -1109,12 +1129,23 @@ const ApiWorkspacesRouteWithChildren = ApiWorkspacesRoute._addFileChildren(
   ApiWorkspacesRouteChildren,
 )
 
+interface ApiChatThreadsIdRouteChildren {
+  ApiChatThreadsIdMessagesRoute: typeof ApiChatThreadsIdMessagesRoute
+}
+
+const ApiChatThreadsIdRouteChildren: ApiChatThreadsIdRouteChildren = {
+  ApiChatThreadsIdMessagesRoute: ApiChatThreadsIdMessagesRoute,
+}
+
+const ApiChatThreadsIdRouteWithChildren =
+  ApiChatThreadsIdRoute._addFileChildren(ApiChatThreadsIdRouteChildren)
+
 interface ApiChatThreadsRouteChildren {
-  ApiChatThreadsIdRoute: typeof ApiChatThreadsIdRoute
+  ApiChatThreadsIdRoute: typeof ApiChatThreadsIdRouteWithChildren
 }
 
 const ApiChatThreadsRouteChildren: ApiChatThreadsRouteChildren = {
-  ApiChatThreadsIdRoute: ApiChatThreadsIdRoute,
+  ApiChatThreadsIdRoute: ApiChatThreadsIdRouteWithChildren,
 }
 
 const ApiChatThreadsRouteWithChildren = ApiChatThreadsRoute._addFileChildren(

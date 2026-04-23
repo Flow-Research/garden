@@ -11,6 +11,7 @@ import { Spinner } from '@garden/ui/components/ui/spinner'
 import { SearchCommand } from '@/features/search'
 import { OnboardingOverlay } from '@/features/onboarding'
 import { useOnboardingStore } from '@/features/onboarding'
+import { SettingsDialog } from '@/features/settings'
 import { WorkspaceSidebar } from './sidebar'
 import {
   WorkspaceDockProvider,
@@ -88,6 +89,7 @@ export function WorkspaceLayout() {
               <SearchCommand />
             </div>
           </WorkspaceDockProvider>
+          <SettingsDialog />
         </WorkspaceIdProvider>
       ) : (
         <>

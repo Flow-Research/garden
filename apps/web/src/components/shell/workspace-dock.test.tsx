@@ -84,7 +84,6 @@ type FakePanelKind =
   | 'chat'
   | 'skill-editor'
   | 'capabilities'
-  | 'settings'
 
 type FakeSerializedPanel = {
   id: string

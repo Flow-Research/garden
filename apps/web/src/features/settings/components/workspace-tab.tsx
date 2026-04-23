@@ -1,12 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Save, LogOut } from 'lucide-react'
+import { Save } from 'lucide-react'
 import { Input } from '@garden/ui/components/ui/input'
 import { Textarea } from '@garden/ui/components/ui/textarea'
 import { Label } from '@garden/ui/components/ui/label'
 import { Button } from '@garden/ui/components/ui/button'
-import { Card, CardContent } from '@garden/ui/components/ui/card'
 import {
   AlertDialog,
   AlertDialogContent,
@@ -134,122 +133,120 @@ export function WorkspaceTab() {
   if (!workspace) return null
 
   return (
-    <div className="space-y-8">
-      {/* Workspace settings */}
-      <section className="space-y-4">
-        <h2 className="text-sm font-semibold">General</h2>
+    <div className="space-y-12">
+      <section className="space-y-5">
+        <header>
+          <h2 className="text-base font-semibold">General</h2>
+          <p className="text-sm text-muted-foreground">
+            How this workspace shows up and how agents see its context.
+          </p>
+        </header>
 
-        <Card>
-          <CardContent className="space-y-3">
-            <div>
-              <Label className="text-xs text-muted-foreground">Name</Label>
-              <Input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                disabled={!canManageWorkspace}
-                className="mt-1"
-              />
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Name</Label>
+            <Input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={!canManageWorkspace}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Description</Label>
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              disabled={!canManageWorkspace}
+              className="resize-none"
+              placeholder="What does this workspace focus on?"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Context</Label>
+            <Textarea
+              value={context}
+              onChange={(e) => setContext(e.target.value)}
+              rows={4}
+              disabled={!canManageWorkspace}
+              className="resize-none"
+              placeholder="Background for AI agents working in this workspace"
+            />
+          </div>
+          <dl className="grid gap-x-6 gap-y-1 border-t pt-4 text-sm sm:grid-cols-2">
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">Slug</dt>
+              <dd className="font-mono text-xs">{workspace.slug}</dd>
             </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">
-                Description
-              </Label>
-              <Textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                disabled={!canManageWorkspace}
-                className="mt-1 resize-none"
-                placeholder="What does this workspace focus on?"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Context</Label>
-              <Textarea
-                value={context}
-                onChange={(e) => setContext(e.target.value)}
-                rows={4}
-                disabled={!canManageWorkspace}
-                className="mt-1 resize-none"
-                placeholder="Background information and context for AI agents working in this workspace"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Slug</Label>
-              <div className="mt-1 rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-                {workspace.slug}
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <Button
-                size="sm"
-                onClick={handleSave}
-                disabled={saving || !name.trim() || !canManageWorkspace}
-              >
-                <Save className="h-3 w-3" />
-                {saving ? 'Saving...' : 'Save'}
-              </Button>
-            </div>
+          </dl>
+          <div className="flex items-center gap-3">
+            <Button
+              size="sm"
+              onClick={handleSave}
+              disabled={saving || !name.trim() || !canManageWorkspace}
+            >
+              <Save className="h-3 w-3" />
+              {saving ? 'Saving...' : 'Save changes'}
+            </Button>
             {!canManageWorkspace && (
               <p className="text-xs text-muted-foreground">
                 Only admins and owners can update workspace settings.
               </p>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </section>
 
-      {/* Danger Zone */}
-      <section className="space-y-4">
-        <div className="flex items-center gap-2">
-          <LogOut className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-sm font-semibold">Danger Zone</h2>
-        </div>
+      <section className="space-y-5">
+        <header>
+          <h2 className="text-base font-semibold">Danger zone</h2>
+          <p className="text-sm text-muted-foreground">
+            Leaving or deleting is immediate and can't be undone.
+          </p>
+        </header>
 
-        <Card>
-          <CardContent className="space-y-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <ul className="divide-y border-t">
+          <li className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium">Leave workspace</p>
+              <p className="text-xs text-muted-foreground">
+                Remove yourself from this workspace.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLeaveWorkspace}
+              disabled={actionId === 'leave'}
+            >
+              {actionId === 'leave' ? 'Leaving...' : 'Leave workspace'}
+            </Button>
+          </li>
+
+          {isOwner && (
+            <li className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-sm font-medium">Leave workspace</p>
+                <p className="text-sm font-medium text-destructive">
+                  Delete workspace
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  Remove yourself from this workspace.
+                  Permanently delete this workspace and its data.
                 </p>
               </div>
               <Button
-                variant="outline"
+                variant="destructive"
                 size="sm"
-                onClick={handleLeaveWorkspace}
-                disabled={actionId === 'leave'}
+                onClick={handleDeleteWorkspace}
+                disabled={actionId === 'delete-workspace'}
               >
-                {actionId === 'leave' ? 'Leaving...' : 'Leave workspace'}
+                {actionId === 'delete-workspace'
+                  ? 'Deleting...'
+                  : 'Delete workspace'}
               </Button>
-            </div>
-
-            {isOwner && (
-              <div className="flex flex-col gap-2 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-medium text-destructive">
-                    Delete workspace
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Permanently delete this workspace and its data.
-                  </p>
-                </div>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleDeleteWorkspace}
-                  disabled={actionId === 'delete-workspace'}
-                >
-                  {actionId === 'delete-workspace'
-                    ? 'Deleting...'
-                    : 'Delete workspace'}
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            </li>
+          )}
+        </ul>
       </section>
 
       <AlertDialog

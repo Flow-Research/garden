@@ -1,11 +1,9 @@
-import { neon } from '@neondatabase/serverless'
-import { drizzle } from 'drizzle-orm/neon-http'
+import { drizzle } from 'drizzle-orm/neon-serverless'
 import * as schema from '@garden/db/schema'
 import type { AppEnv } from '@/lib/server/env'
 
 export function getDb(env: Pick<AppEnv, 'DATABASE_URL'>) {
-  const client = neon(env.DATABASE_URL)
-  return drizzle(client, { schema })
+  return drizzle(env.DATABASE_URL, { schema })
 }
 
 export { schema }

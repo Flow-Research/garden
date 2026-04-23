@@ -8,7 +8,6 @@ import {
   IconBrandSlack,
   IconMessage2Plus,
   IconPlugConnected,
-  IconSettings2,
   IconSparkles2,
 } from '@tabler/icons-react'
 import { Icon as IconifyIcon } from '@iconify/react'
@@ -37,6 +36,7 @@ import { SearchTrigger } from '@/features/search'
 import { ChatSessionExplorer } from '@/features/chat'
 import { useAgentSessions } from '@/features/chat/use-agent-chat-sessions'
 import { useNavigation } from '@/features/navigation'
+import { useSettingsDialogStore } from '@/features/settings'
 import { NavUser } from '@/components/nav-user'
 import {
   useWorkspaceDock,
@@ -50,7 +50,6 @@ type RailContext =
   | 'chats'
   | 'skills'
   | 'connections'
-  | 'settings'
 
 type RailItem = {
   id: RailContext
@@ -84,12 +83,6 @@ const railItems: RailItem[] = [
     icon: RailConnectionsIcon,
     defaultPanel: { kind: 'capabilities', title: 'Connections' },
   },
-  {
-    id: 'settings',
-    label: 'Settings',
-    icon: RailSettingsIcon,
-    defaultPanel: { kind: 'settings', title: 'Settings' },
-  },
 ]
 
 function contextFromPanel(kind: WorkspacePanelKind | null): RailContext {
@@ -100,8 +93,6 @@ function contextFromPanel(kind: WorkspacePanelKind | null): RailContext {
       return 'skills'
     case 'capabilities':
       return 'connections'
-    case 'settings':
-      return 'settings'
     case 'blank':
     case 'dashboard':
     case 'inbox':
@@ -212,6 +203,7 @@ export function WorkspaceSidebar() {
   const clearWorkspace = useWorkspaceStore((state) => state.clearWorkspace)
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)
+  const openSettingsDialog = useSettingsDialogStore((s) => s.openSettings)
   const activeType = activePanel?.kind ?? null
   const activeRailId = contextFromPanel(activeType)
   const activeRail = railItems.find((item) => item.id === activeRailId) ?? railItems[0]
@@ -245,8 +237,8 @@ export function WorkspaceSidebar() {
   }, [openPanel])
 
   const openSettings = useCallback(() => {
-    openPanel({ kind: 'settings', title: 'Settings' })
-  }, [openPanel])
+    openSettingsDialog()
+  }, [openSettingsDialog])
 
   const openRailContext = useCallback(
     (item: RailItem) => {
@@ -345,6 +337,21 @@ export function WorkspaceSidebar() {
         </SidebarContent>
 
         <SidebarFooter className="p-0">
+          <SidebarMenu className="gap-0">
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip={{
+                  children: 'Settings',
+                  hidden: false,
+                }}
+                aria-label="Settings"
+                className="!h-10 !w-full !gap-0 !p-0 justify-center !rounded-none group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-full"
+                onClick={openSettings}
+              >
+                <RailSettingsIcon className="!size-[22px] shrink-0" />
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
           <NavUser
             user={{
               name: user?.name ?? 'Account',
@@ -503,18 +510,6 @@ export function WorkspaceSidebar() {
             </>
           ) : null}
 
-          {activeRailId === 'settings' ? (
-            <ExplorerSection label="Settings" count={1}>
-              <SidebarMenu>
-                <ExplorerActionRow
-                  label="Workspace Settings"
-                  icon={IconSettings2}
-                  active={activeType === 'settings'}
-                  onClick={openSettings}
-                />
-              </SidebarMenu>
-            </ExplorerSection>
-          ) : null}
         </SidebarContent>
       </Sidebar>
     </Sidebar>

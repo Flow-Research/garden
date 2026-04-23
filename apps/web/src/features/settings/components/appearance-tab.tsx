@@ -85,10 +85,19 @@ export function AppearanceTab() {
   const { theme, setTheme } = useTheme()
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-4">
-        <h2 className="text-sm font-semibold">Theme</h2>
-        <div className="flex gap-6" role="radiogroup" aria-label="Theme">
+    <div className="space-y-12">
+      <section className="space-y-5">
+        <header>
+          <h2 className="text-base font-semibold">Appearance</h2>
+          <p className="text-sm text-muted-foreground">
+            How Garden looks on this device.
+          </p>
+        </header>
+        <div
+          className="flex gap-6 border-t pt-4"
+          role="radiogroup"
+          aria-label="Theme"
+        >
           {themeOptions.map((opt) => {
             const active = theme === opt.value
             return (
