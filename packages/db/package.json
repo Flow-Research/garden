@@ -8,12 +8,17 @@
     "drizzle-orm": "^0.44.6"
   },
   "devDependencies": {
+    "@types/pg": "^8.15.5",
     "drizzle-kit": "^0.31.7",
-    "typescript": "^5.9.3"
+    "pg": "^8.20.0",
+    "testcontainers": "^11.10.1",
+    "typescript": "^5.9.3",
+    "vitest": "catalog:"
   },
   "scripts": {
     "lint": "oxlint -c ../../.oxlintrc.json .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix .",
+    "test": "vitest run",
     "db:check": "bash -c 'set -a && source ../../apps/web/.dev.vars && drizzle-kit check'",
     "db:generate": "bash -c 'set -a && source ../../apps/web/.dev.vars && drizzle-kit generate'",
     "db:migrate": "bash -c 'set -a && source ../../apps/web/.dev.vars && drizzle-kit migrate'",
@@ -22,6 +27,7 @@
   "exports": {
     ".": "./src/client.ts",
     "./schema": "./src/schema/index.ts",
-    "./schema/*": "./src/schema/*.ts"
+    "./schema/*": "./src/schema/*.ts",
+    "./testing": "./src/testing/index.ts"
   }
 }
