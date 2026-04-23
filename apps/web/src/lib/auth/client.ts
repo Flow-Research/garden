@@ -1,5 +1,8 @@
 import { createAuthClient } from 'better-auth/react'
-import { organizationClient } from 'better-auth/client/plugins'
+import {
+  genericOAuthClient,
+  organizationClient,
+} from 'better-auth/client/plugins'
 
 const baseURL =
   typeof window === 'undefined'
@@ -8,5 +11,5 @@ const baseURL =
 
 export const authClient = createAuthClient({
   baseURL,
-  plugins: [organizationClient()],
+  plugins: [organizationClient(), genericOAuthClient()],
 })

@@ -31,13 +31,15 @@ Tier 2 (full custom `McpAgent` Worker per connector) is not implemented. It's th
 
 We ship with the bloat. A workspace with many connectors loads all their tool schemas into context each turn. We accept this until it hurts.
 
-**Later, when it hurts:** Code Mode is the planned escape hatch — a single `execute(code)` tool; upstream MCPs compiled into typed TypeScript wrappers; model writes code that calls them; code runs in a sandboxed V8 isolate (Cloudflare Worker Loader API). Documented here, not built now.
-
 **Not using:** Anthropic's server-side Tool Search (paid API feature). Vector tool routers (extra infra we don't need yet).
+
+## Code Mode — future escape hatch
+
+If context bloat becomes a real problem, Code Mode is the fallback we document but do not build in v1: one `execute(code)` tool, upstream MCPs compiled into typed TypeScript wrappers, and model-authored code executed in a sandboxed V8 isolate via Cloudflare's Worker Loader API.
 
 ## Storage
 
-Better Auth's `account` table stores upstream OAuth tokens (`encryptOAuthTokens: true`, `updateAccountOnSignIn: true`). One account row per `(user, providerId)`. The old `connector_connection` table is removed.
+Better Auth's `account` table stores upstream OAuth tokens (`encryptOAuthTokens: true`, `updateAccountOnSignIn: true`). One account row per `(user, providerId)`. The legacy `connector_connection` table is removed.
 
 - `capability` — synced from each connector's upstream `tools/list`, keyed by `(connector_type, tool_name)`, includes `schema_hash` + `required_scopes` + `risk_class`.
 - `permission_grant` — per `(agent_id, capability_id)` trust level: `auto | allow | ask`.

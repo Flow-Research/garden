@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import {
+  check,
   index,
   integer,
   jsonb,
@@ -39,6 +40,36 @@ export const invocationLog = pgTable(
     index('invocation_log_capability_created_at_idx').on(
       table.capabilityId,
       table.createdAt,
+    ),
+  ],
+)
+
+export const toolCallAudit = pgTable(
+  'tool_call_audit',
+  {
+    id: uuid('id').primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => organization.id),
+    agentId: uuid('agent_id')
+      .notNull()
+      .references(() => agent.id),
+    capabilityId: uuid('capability_id')
+      .notNull()
+      .references(() => capability.id),
+    toolCallId: text('tool_call_id').notNull(),
+    argsHash: text('args_hash').notNull(),
+    resultStatus: text('result_status').notNull(),
+    durationMs: integer('duration_ms').notNull(),
+    ts: timestamp('ts', { mode: 'date' }).notNull().default(sql`now()`),
+    error: text('error'),
+  },
+  (table) => [
+    index('tool_call_audit_workspace_ts_idx').on(table.workspaceId, table.ts),
+    index('tool_call_audit_capability_ts_idx').on(table.capabilityId, table.ts),
+    check(
+      'tool_call_audit_result_status_check',
+      sql`${table.resultStatus} in ('success', 'error', 'denied', 'timeout')`,
     ),
   ],
 )

@@ -1,12 +1,14 @@
 {
+  "extends": "../tsconfig/base.json",
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
     "lib": ["ES2022", "WebWorker"],
     "types": ["@cloudflare/workers-types"],
-    "skipLibCheck": true
+    "outDir": "dist",
+    "rootDir": "src",
+    "allowImportingTsExtensions": true,
+    "declaration": false,
+    "declarationMap": false
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]
