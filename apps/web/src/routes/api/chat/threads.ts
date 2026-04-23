@@ -3,6 +3,12 @@ import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
+  buildPrimaryAgentName,
+  ensurePrimaryControlPlaneAgent,
+  ensureChatThreadAgent,
+  ensureChatThreadAgents,
+} from '@/lib/server/chat-agents'
+import {
   badRequest,
   requireSession,
   resolveWorkspaceId,
@@ -20,6 +26,12 @@ export const Route = createFileRoute('/api/chat/threads')({
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
         if (!workspaceId) return Response.json([])
 
+        await ensurePrimaryControlPlaneAgent({
+          workspaceId,
+          ownerUserId: session.user.id,
+          agentName: buildPrimaryAgentName(workspaceId, session.user.id),
+        })
+
         const db = getDb(appEnv)
         const rows = await db
           .select()
@@ -31,6 +43,8 @@ export const Route = createFileRoute('/api/chat/threads')({
             ),
           )
           .orderBy(desc(schema.chatThread.updatedAt))
+
+        await ensureChatThreadAgents(rows)
 
         return Response.json(rows.map(toChatThread))
       },
@@ -55,9 +69,16 @@ export const Route = createFileRoute('/api/chat/threads')({
         }
 
         const id = crypto.randomUUID()
-        const agentName = `chat:${id}`
+        const agentName = buildPrimaryAgentName(workspaceId, session.user.id)
         const now = new Date()
         const db = getDb(appEnv)
+
+        await ensurePrimaryControlPlaneAgent({
+          workspaceId,
+          ownerUserId: session.user.id,
+          agentName,
+        })
+
         const [thread] = await db
           .insert(schema.chatThread)
           .values({
@@ -71,6 +92,11 @@ export const Route = createFileRoute('/api/chat/threads')({
             updatedAt: now,
           })
           .returning()
+
+        await ensureChatThreadAgent({
+          threadId: thread.id,
+          agentName: thread.agentName,
+        })
 
         return Response.json(toChatThread(thread), { status: 201 })
       },

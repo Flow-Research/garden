@@ -79,11 +79,6 @@ export interface EnvironmentDebugSnapshot {
 
 export const environmentDebugSnapshotSpec = {
   callableRpcMethods: [
-    'listSessions',
-    'createSession',
-    'renameSession',
-    'archiveSession',
-    'deleteSession',
     'ensureSandbox',
     'execSandbox',
     'readSandboxFile',
@@ -93,19 +88,19 @@ export const environmentDebugSnapshotSpec = {
   sdks: [
     {
       name: 'agents',
-      version: '0.11.4',
+      version: '0.11.5',
       channel: 'stable' as const,
       role: 'Durable agent runtime, routeAgentRequest, useAgent, @callable RPCs',
     },
     {
       name: '@cloudflare/ai-chat',
-      version: '0.4.6',
+      version: '0.5.1',
       channel: 'stable' as const,
       role: 'Chat transport hook on top of agents',
     },
     {
       name: '@cloudflare/think',
-      version: '0.3.0',
+      version: '0.4.0',
       channel: 'stable' as const,
       role: 'Think agent base class, built-in workspace tools, execute tool',
     },

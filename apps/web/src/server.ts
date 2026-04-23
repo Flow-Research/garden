@@ -1,9 +1,10 @@
 import handler from '@tanstack/react-start/server-entry'
 import { routeAgentRequest } from 'agents'
-import { PrimaryAgent } from '@garden/agent-runtime'
+import { ChatAgent, PrimaryAgent } from '@garden/agent-runtime'
 import { proxyToSandbox, Sandbox } from '@cloudflare/sandbox'
 
 export { PrimaryAgent }
+export { ChatAgent }
 export { Sandbox }
 
 export default {

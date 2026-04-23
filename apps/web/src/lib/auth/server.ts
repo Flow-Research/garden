@@ -7,6 +7,9 @@ type AuthEnv = Pick<
   'DATABASE_URL' | 'BETTER_AUTH_SECRET' | 'BETTER_AUTH_URL'
 >
 
-export function createAuth(env: AuthEnv) {
-  return createBetterAuth(getDb(env), env)
+export function createAuth(env: AuthEnv, request?: Request) {
+  return createBetterAuth(getDb(env), {
+    ...env,
+    request,
+  })
 }

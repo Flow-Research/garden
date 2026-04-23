@@ -30,6 +30,10 @@ export type GardenAuthEnv = Pick<
   | 'SLACK_CLIENT_SECRET'
 >
 
+type GardenAuthRuntime = GardenAuthEnv & {
+  request?: Request
+}
+
 type AuthDatabase = Parameters<typeof drizzleAdapter>[0]
 type AccountRecord = typeof account.$inferInsert
 type HookSession = {
@@ -113,15 +117,35 @@ function decorateAccountRecord(
   }
 }
 
-export function createBetterAuth(db: AuthDatabase, env: GardenAuthEnv) {
-  return betterAuth({
-    secret: env.BETTER_AUTH_SECRET,
-    baseURL: env.BETTER_AUTH_URL ?? 'http://localhost:3000',
-    trustedOrigins: [
+function getRequestOrigin(request?: Request) {
+  if (!request || !URL.canParse(request.url)) return null
+  return new URL(request.url).origin
+}
+
+export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
+  const runtimeOrigin = getRequestOrigin(env.request)
+  const baseURL = runtimeOrigin ?? env.BETTER_AUTH_URL ?? 'http://localhost:3000'
+  const trustedOrigins = Array.from(
+    new Set([
       'http://localhost:3000',
       'http://localhost:3001',
       ...(env.BETTER_AUTH_URL ? [env.BETTER_AUTH_URL] : []),
-    ],
+      ...(runtimeOrigin ? [runtimeOrigin] : []),
+    ]),
+  )
+  const oauthEnv = {
+    GITHUB_CLIENT_ID: env.GITHUB_CLIENT_ID,
+    GITHUB_CLIENT_SECRET: env.GITHUB_CLIENT_SECRET,
+    GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET,
+    SLACK_CLIENT_ID: env.SLACK_CLIENT_ID,
+    SLACK_CLIENT_SECRET: env.SLACK_CLIENT_SECRET,
+  } satisfies Record<string, string | undefined>
+
+  return betterAuth({
+    secret: env.BETTER_AUTH_SECRET,
+    baseURL,
+    trustedOrigins,
     database: drizzleAdapter(db, {
       provider: 'pg',
       schema: authSchema,
@@ -188,9 +212,7 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthEnv) {
         },
       }),
       genericOAuth({
-        config: buildConnectorOAuthConfigs(
-          env as Record<string, string | undefined>,
-        ),
+        config: buildConnectorOAuthConfigs(oauthEnv),
       }),
     ],
     hooks: {

@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import {
+  boolean,
   pgTable,
   primaryKey,
   text,
@@ -23,6 +24,9 @@ export const skill = pgTable(
     description: text('description'),
     frontmatter: text('frontmatter'),
     body: text('body'),
+    sourceType: text('source_type').notNull().default('manual'),
+    sourceUrl: text('source_url'),
+    bundleHash: text('bundle_hash'),
     authorId: uuid('author_id').references(() => user.id),
     createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
     updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
@@ -65,6 +69,7 @@ export const agentSkill = pgTable(
     skillId: uuid('skill_id')
       .notNull()
       .references(() => skill.id),
+    enabled: boolean('enabled').notNull().default(true),
   },
   (table) => [primaryKey({ columns: [table.agentId, table.skillId] })],
 )

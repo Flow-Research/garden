@@ -5,17 +5,17 @@ import {
 } from './environment-debug'
 
 const liveState = {
-  agentName: 'chat:thread-123',
-  requestedSessionId: null,
-  effectiveSessionId: 'default',
+  agentName: 'PrimaryAgent:workspace-123:user-123:primary / ChatAgent:thread-123',
+  requestedSessionId: 'thread-123',
+  effectiveSessionId: 'thread-123',
   visibleSessionCount: 1,
   archivedSessionCount: 0,
   currentMessageCount: 2,
   currentPreview: 'Latest reply',
   sessions: [
     {
-      id: 'default',
-      title: 'New Chat',
+      id: 'thread-123',
+      title: 'Current thread',
       createdAt: '2026-04-21T12:00:00.000Z',
       updatedAt: '2026-04-21T12:01:00.000Z',
       lastMessage: 'Latest reply',
@@ -53,9 +53,9 @@ describe('createEnvironmentDebugSnapshot', () => {
 
     expect(snapshot.workspaceId).toBe('workspace-123')
     expect(snapshot.agent).toEqual({
-      name: 'chat:thread-123',
-      requestedSessionId: null,
-      effectiveSessionId: 'default',
+      name: 'PrimaryAgent:workspace-123:user-123:primary / ChatAgent:thread-123',
+      requestedSessionId: 'thread-123',
+      effectiveSessionId: 'thread-123',
       visibleSessionCount: 1,
       archivedSessionCount: 0,
       currentMessageCount: 2,

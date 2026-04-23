@@ -2,6 +2,11 @@ import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { schema } from '@/lib/server/db'
 import {
+  deleteChatThreadAgent,
+  ensurePrimaryControlPlaneAgent,
+  ensureChatThreadAgent,
+} from '@/lib/server/chat-agents'
+import {
   badRequest,
   toChatThread,
   notFound,
@@ -14,6 +19,17 @@ export const Route = createFileRoute('/api/chat/threads/$id')({
       GET: async ({ request, params }) => {
         const access = await getThreadAccess(request, params.id)
         if (access instanceof Response) return access
+
+        await ensurePrimaryControlPlaneAgent({
+          workspaceId: access.thread.workspaceId,
+          ownerUserId: access.session.user.id,
+          agentName: access.thread.agentName,
+        })
+
+        await ensureChatThreadAgent({
+          threadId: access.thread.id,
+          agentName: access.thread.agentName,
+        })
 
         return Response.json(toChatThread(access.thread))
       },
@@ -64,6 +80,11 @@ export const Route = createFileRoute('/api/chat/threads/$id')({
       DELETE: async ({ request, params }) => {
         const access = await getThreadAccess(request, params.id)
         if (access instanceof Response) return access
+
+        await deleteChatThreadAgent({
+          threadId: access.thread.id,
+          agentName: access.thread.agentName,
+        })
 
         await access.db.delete(schema.chatThread).where(
           and(

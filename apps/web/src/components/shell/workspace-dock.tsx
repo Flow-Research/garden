@@ -542,7 +542,11 @@ export function WorkspaceDockTitlebar({
 }
 
 function WorkspacePanelFrame({ children }: { children: React.ReactNode }) {
-  return <div className="h-full min-h-0 overflow-hidden">{children}</div>
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      {children}
+    </div>
+  )
 }
 
 function BlankDockPanel({

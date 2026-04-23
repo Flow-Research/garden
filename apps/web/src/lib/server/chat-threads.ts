@@ -1,5 +1,4 @@
 import { eq } from 'drizzle-orm'
-import type { UIMessage } from 'ai'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
@@ -28,30 +27,4 @@ export async function getThreadAccess(request: Request, threadId: string) {
   if (access instanceof Response) return access
 
   return { db, session, thread }
-}
-
-export function getThreadMessages(thread: { messages: unknown }): UIMessage[] {
-  return Array.isArray(thread.messages) ? (thread.messages as UIMessage[]) : []
-}
-
-export function getThreadPreview(messages: UIMessage[]) {
-  const latest = messages[messages.length - 1]
-  if (!latest) return ''
-
-  const text = latest.parts
-    .flatMap((part) => {
-      if (part.type === 'text' && typeof part.text === 'string') {
-        return [part.text.trim()]
-      }
-      if (part.type === 'file') {
-        return [part.filename || 'Attachment']
-      }
-      return []
-    })
-    .filter(Boolean)
-    .join(' ')
-    .trim()
-
-  if (!text) return ''
-  return text.length > 120 ? `${text.slice(0, 120).trimEnd()}…` : text
 }

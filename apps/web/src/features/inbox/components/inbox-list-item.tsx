@@ -1,10 +1,10 @@
 'use client'
 
-import { StatusIcon } from '../../issues/components'
-import { ActorAvatar } from '../../common/actor-avatar'
+import { cn } from '@garden/ui/lib/utils'
 import { Archive } from 'lucide-react'
+import { useActorName } from '@garden/core/workspace/hooks'
 import type { InboxItem } from '@garden/core/types'
-import { InboxDetailLabel } from './inbox-detail-label'
+import { InboxDetailLabel, typeLabels } from './inbox-detail-label'
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -30,70 +30,68 @@ export function InboxListItem({
   onClick: () => void
   onArchive: () => void
 }) {
+  const { getActorName } = useActorName()
+  const actorName =
+    getActorName(
+      item.actor_type ?? item.recipient_type,
+      item.actor_id ?? item.recipient_id,
+    ) || typeLabels[item.type]
+
   return (
     <button
       onClick={onClick}
-      className={`group flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-        isSelected ? 'bg-accent' : 'hover:bg-accent/50'
-      }`}
+      className={cn(
+        'group relative flex w-full flex-col items-start gap-2 border-b p-4 text-left text-sm leading-tight transition-colors last:border-b-0',
+        isSelected
+          ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+          : 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+      )}
     >
-      <ActorAvatar
-        actorType={item.actor_type ?? item.recipient_type}
-        actorId={item.actor_id ?? item.recipient_id}
-        size={28}
-      />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-1.5">
-            {!item.read && (
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
-            )}
-            <span
-              className={`truncate text-sm ${!item.read ? 'font-medium' : 'text-muted-foreground'}`}
-            >
-              {item.title}
-            </span>
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <span
-              role="button"
-              tabIndex={-1}
-              title="Archive"
-              onClick={(e) => {
-                e.stopPropagation()
-                onArchive()
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.stopPropagation()
-                  onArchive()
-                }
-              }}
-              className="hidden rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground group-hover:inline-flex"
-            >
-              <Archive className="h-3.5 w-3.5" />
-            </span>
-            {item.issue_status && (
-              <StatusIcon
-                status={item.issue_status}
-                className="h-3.5 w-3.5 shrink-0"
-              />
-            )}
-          </div>
-        </div>
-        <div className="mt-0.5 flex items-center justify-between gap-2">
-          <p
-            className={`min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs ${item.read ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}
-          >
-            <InboxDetailLabel item={item} />
-          </p>
-          <span
-            className={`shrink-0 text-xs ${item.read ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}
-          >
-            {timeAgo(item.created_at)}
-          </span>
-        </div>
+      {/* Row 1: actor + timestamp */}
+      <div className="flex w-full items-center gap-2">
+        {!item.read && (
+          <span className="size-1.5 shrink-0 rounded-full bg-brand" />
+        )}
+        <span
+          className={cn(
+            'truncate',
+            !item.read ? 'font-medium' : 'text-muted-foreground',
+          )}
+        >
+          {actorName}
+        </span>
+        <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+          {timeAgo(item.created_at)}
+        </span>
       </div>
+
+      {/* Row 2: subject */}
+      <span className="w-full truncate font-medium">{item.title}</span>
+
+      {/* Row 3: teaser */}
+      <span className="line-clamp-2 w-full text-xs whitespace-break-spaces text-muted-foreground">
+        <InboxDetailLabel item={item} />
+      </span>
+
+      {/* Archive action on hover */}
+      <span
+        role="button"
+        tabIndex={-1}
+        title="Archive"
+        onClick={(e) => {
+          e.stopPropagation()
+          onArchive()
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.stopPropagation()
+            onArchive()
+          }
+        }}
+        className="absolute top-3 right-3 hidden rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground group-hover:inline-flex"
+      >
+        <Archive className="h-3.5 w-3.5" />
+      </span>
     </button>
   )
 }

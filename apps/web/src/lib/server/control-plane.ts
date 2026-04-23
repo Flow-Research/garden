@@ -295,18 +295,46 @@ export function toChatThread(record: typeof schema.chatThread.$inferSelect) {
   }
 }
 
-export function toSkill(record: typeof schema.skill.$inferSelect) {
+type SkillApiFile = {
+  id: string
+  skill_id: string
+  path: string
+  content?: string
+  content_hash?: string | null
+  r2_key?: string | null
+}
+
+export function toSkill(
+  record: typeof schema.skill.$inferSelect,
+  options?: {
+    files?: SkillApiFile[]
+  },
+) {
   const created = record.createdAt
     ? new Date(record.createdAt).toISOString()
     : new Date().toISOString()
   return {
     id: record.id,
     workspace_id: record.workspaceId,
+    slug: record.slug,
     name: record.name,
     description: record.description ?? '',
     content: record.body ?? '',
     config: record.frontmatter ? JSON.parse(record.frontmatter) : {},
-    files: [],
+    files: (options?.files ?? []).map((file) => ({
+      id: file.id,
+      skill_id: file.skill_id,
+      path: file.path,
+      content: file.content ?? '',
+      content_hash: file.content_hash ?? null,
+      r2_key: file.r2_key ?? null,
+      created_at: created,
+      updated_at: created,
+    })),
+    source_type:
+      record.sourceType === 'skills.sh' ? 'skills.sh' : 'manual',
+    source_url: record.sourceUrl ?? null,
+    bundle_hash: record.bundleHash ?? null,
     created_by: record.authorId ?? null,
     created_at: created,
     updated_at: record.updatedAt

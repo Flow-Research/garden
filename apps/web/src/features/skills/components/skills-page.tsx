@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useDeferredValue } from 'react'
 import { Skeleton as BoneyardSkeleton } from 'boneyard-js/react'
 import { useDefaultLayout } from 'react-resizable-panels'
 import {
@@ -10,10 +10,13 @@ import {
   Save,
   AlertCircle,
   Download,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react'
 import type {
   Skill,
   CreateSkillRequest,
+  SkillsShSearchResult,
   UpdateSkillRequest,
 } from '@garden/core/types'
 import {
@@ -34,7 +37,6 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@garden/ui/components/ui/tooltip'
-import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'
 import { Input } from '@garden/ui/components/ui/input'
 import { Label } from '@garden/ui/components/ui/label'
@@ -45,6 +47,7 @@ import {
   TabsTrigger,
 } from '@garden/ui/components/ui/tabs'
 import { toast } from 'sonner'
+import { cn } from '@garden/ui/lib/utils'
 import { api } from '@garden/core/api'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/core/auth'
@@ -54,13 +57,15 @@ import {
   workspaceKeys,
 } from '@garden/core/workspace/queries'
 
-import { PageHeader } from '../../layout/page-header'
 import { FileTree } from './file-tree'
 import { FileViewer } from './file-viewer'
 
 const SKILLS_PAGE_SKELETON = 'skills-page'
 const SKILLS_FILE_TREE_SKELETON = 'skills-file-tree'
 const SKILLS_FILE_VIEWER_SKELETON = 'skills-file-viewer'
+const SKILLS_SH_CHIP_CLASS_NAME =
+  'inline-flex max-w-full select-none items-center gap-1 rounded-md border border-fuchsia-500/25 bg-fuchsia-500/12 px-1.5 py-px font-medium text-[12px] leading-[1.1] text-fuchsia-700 align-middle dark:text-fuchsia-300'
+const SKILLS_SH_HOST = 'skills.sh'
 
 function SkillsFileTreeFixture() {
   return (
@@ -106,28 +111,33 @@ function SkillsFileViewerFixture() {
 function SkillsPageFixture() {
   return (
     <div className="flex flex-1 min-h-0">
-      <div className="w-72 border-r">
-        <PageHeader className="justify-between">
-          <h1 className="text-sm font-semibold">Skills</h1>
-          <div className="rounded-md bg-accent px-2 py-1 text-xs text-muted-foreground">
-            New
-          </div>
-        </PageHeader>
-        <div className="divide-y">
+      <div className="flex w-72 flex-col border-r">
+        <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
+          <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            3 skills
+          </span>
+          <div className="h-5 w-5 rounded-md bg-accent" />
+        </div>
+        <div className="py-1">
           {[
             ['Code Review', 'Triage risky diffs'],
             ['Bug Hunt', 'Reproduce and narrow regressions'],
             ['Docs', 'Write concise technical docs'],
-          ].map(([name, description]) => (
-            <div key={name} className="flex items-center gap-3 px-4 py-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-xs font-medium">
-                {name.slice(0, 1)}
-              </div>
+          ].map(([name, description], idx) => (
+            <div
+              key={name}
+              className={`relative flex items-center gap-2.5 py-2.5 pr-3 pl-4 ${
+                idx === 0 ? 'bg-accent/60' : ''
+              }`}
+            >
+              {idx === 0 ? (
+                <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-r-sm bg-primary" />
+              ) : null}
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">
                   {name}
                 </p>
-                <p className="truncate text-xs text-muted-foreground">
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
                   {description}
                 </p>
               </div>
@@ -136,19 +146,18 @@ function SkillsPageFixture() {
         </div>
       </div>
       <div className="flex-1 flex flex-col">
-        <div className="flex items-center gap-3 border-b px-4 py-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-xs font-medium">
-            C
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-foreground">Code Review</p>
-            <p className="text-xs text-muted-foreground">
+        <div className="flex h-12 shrink-0 items-center border-b px-4">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">
+              Code Review
+            </p>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
               Review pull requests for regressions
             </p>
           </div>
         </div>
         <div className="flex flex-1 min-h-0">
-          <div className="w-48 border-r">
+          <div className="w-52 border-r">
             <SkillsFileTreeFixture />
           </div>
           <div className="flex-1">
@@ -205,6 +214,44 @@ export function SkillsPageSkeleton() {
   )
 }
 
+function isSkillsShImportTarget(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return false
+
+  if (URL.canParse(trimmed)) {
+    return new URL(trimmed).hostname === SKILLS_SH_HOST
+  }
+
+  return trimmed
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter(Boolean).length >= 3
+}
+
+function getSkillsShSearchQuery(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed || isSkillsShImportTarget(trimmed)) return ''
+  return trimmed
+}
+
+function buildSkillsShUrl(result: SkillsShSearchResult) {
+  return `https://${SKILLS_SH_HOST}/${result.source}/${result.skill_id}`
+}
+
+function formatInstallCount(installs: number) {
+  if (installs >= 1_000_000) {
+    return `${(installs / 1_000_000).toFixed(installs >= 10_000_000 ? 0 : 1)}m`
+  }
+  if (installs >= 1_000) {
+    return `${(installs / 1_000).toFixed(installs >= 10_000 ? 0 : 1)}k`
+  }
+  return String(installs)
+}
+
+function formatSourceUrlForDisplay(url: string) {
+  return url.replace(/^https?:\/\//, '')
+}
+
 // ---------------------------------------------------------------------------
 // Create Skill Dialog
 // ---------------------------------------------------------------------------
@@ -224,13 +271,20 @@ function CreateSkillDialog({
   const [importUrl, setImportUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [importError, setImportError] = useState('')
+  const deferredImportUrl = useDeferredValue(importUrl.trim())
+  const searchQuery = useMemo(
+    () => getSkillsShSearchQuery(deferredImportUrl),
+    [deferredImportUrl],
+  )
 
-  const detectedSource = (() => {
-    const url = importUrl.trim().toLowerCase()
-    if (url.includes('clawhub.ai')) return 'clawhub' as const
-    if (url.includes('skills.sh')) return 'skills.sh' as const
-    return null
-  })()
+  const detectedSource = isSkillsShImportTarget(importUrl) ? 'skills.sh' : null
+  const skillsShSearchQuery = useQuery({
+    queryKey: ['skills.sh-search', searchQuery],
+    queryFn: () => api.searchSkills(searchQuery, 8),
+    enabled: tab === 'import' && searchQuery.length >= 2,
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+  })
 
   const handleCreate = async () => {
     if (!name.trim()) return
@@ -244,7 +298,7 @@ function CreateSkillDialog({
   }
 
   const handleImport = async () => {
-    if (!importUrl.trim()) return
+    if (!importUrl.trim() || searchQuery.length >= 2) return
     setLoading(true)
     setImportError('')
     try {
@@ -265,11 +319,9 @@ function CreateSkillDialog({
     >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add Workspace Skill</DialogTitle>
+          <DialogTitle>Add Skill</DialogTitle>
           <DialogDescription>
-            Create a new skill or import from ClawHub / Skills.sh. Workspace
-            skills are shared with your team and automatically injected into
-            agent runs.
+            Author a new skill or import one from skills.sh.
           </DialogDescription>
         </DialogHeader>
 
@@ -317,7 +369,9 @@ function CreateSkillDialog({
 
           <TabsContent value="import" className="space-y-4 mt-4 min-h-[180px]">
             <div>
-              <Label className="text-xs text-muted-foreground">Skill URL</Label>
+              <Label className="text-xs text-muted-foreground">
+                Search or paste a skills.sh URL
+              </Label>
               <Input
                 autoFocus
                 type="text"
@@ -326,44 +380,100 @@ function CreateSkillDialog({
                   setImportUrl(e.target.value)
                   setImportError('')
                 }}
-                placeholder="Paste a skill URL..."
+                placeholder="Search skills.sh or paste owner/repo/skill"
                 className="mt-1"
                 onKeyDown={(e) => e.key === 'Enter' && handleImport()}
               />
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Import keeps the full bundle layout intact so `SKILL.md`,
+                templates, scripts, and references stay mounted together.
+              </p>
             </div>
 
-            {/* Supported sources — highlight on detection */}
-            <div>
-              <p className="text-xs text-muted-foreground mb-2">
-                Supported sources
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <div
-                  className={`rounded-lg border px-3 py-2.5 transition-colors ${
-                    detectedSource === 'clawhub'
-                      ? 'border-primary bg-primary/5'
-                      : ''
-                  }`}
-                >
-                  <div className="text-xs font-medium">ClawHub</div>
-                  <div className="mt-0.5 truncate text-[11px] text-muted-foreground font-mono">
-                    clawhub.ai/owner/skill
-                  </div>
-                </div>
-                <div
-                  className={`rounded-lg border px-3 py-2.5 transition-colors ${
-                    detectedSource === 'skills.sh'
-                      ? 'border-primary bg-primary/5'
-                      : ''
-                  }`}
-                >
-                  <div className="text-xs font-medium">Skills.sh</div>
-                  <div className="mt-0.5 truncate text-[11px] text-muted-foreground font-mono">
-                    skills.sh/owner/repo/skill
-                  </div>
-                </div>
+            <div className="rounded-xl border border-border/80 bg-muted/20 p-3">
+              <div className="flex items-center gap-2">
+                <span className={SKILLS_SH_CHIP_CLASS_NAME}>skills.sh</span>
+                <p className="text-xs text-muted-foreground">
+                  Search, import, and later sync the canonical bundle from
+                  skills.sh.
+                </p>
               </div>
             </div>
+
+            {searchQuery.length >= 2 ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    skills.sh results
+                  </p>
+                  {skillsShSearchQuery.isFetching ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Searching
+                    </span>
+                  ) : null}
+                </div>
+                <div className="overflow-hidden rounded-xl border border-border/80 bg-popover/96 shadow-sm">
+                  {skillsShSearchQuery.data?.length ? (
+                    <div className="divide-y divide-border/70">
+                      {skillsShSearchQuery.data.map((skill) => {
+                        const candidateUrl = buildSkillsShUrl(skill)
+                        const isSelected = importUrl.trim() === candidateUrl
+
+                        return (
+                          <button
+                            key={skill.id}
+                            type="button"
+                            onClick={() => {
+                              setImportUrl(candidateUrl)
+                              setImportError('')
+                            }}
+                            className={cn(
+                              'flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-transparent hover:text-inherit',
+                              isSelected && 'bg-accent text-accent-foreground',
+                            )}
+                          >
+                            <span className="inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground/80">
+                              <Sparkles className="size-3.5" />
+                            </span>
+                            <span className="flex min-w-0 flex-1 items-center gap-2">
+                              <span className="shrink-0 text-sm font-medium">
+                                {skill.name}
+                              </span>
+                              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground/70">
+                                {skill.source}
+                              </span>
+                            </span>
+                            <span className="shrink-0 pl-2 text-xs text-muted-foreground/70">
+                              {formatInstallCount(skill.installs)} installs
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ) : skillsShSearchQuery.isFetching ? (
+                    <div className="px-3 py-4 text-xs text-muted-foreground">
+                      Searching skills.sh…
+                    </div>
+                  ) : (
+                    <div className="px-3 py-4 text-xs text-muted-foreground">
+                      No skills found for “{searchQuery}”.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            {detectedSource === 'skills.sh' ? (
+              <div className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/6 px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <span className={SKILLS_SH_CHIP_CLASS_NAME}>skills.sh</span>
+                  <span className="truncate font-mono text-[11px] text-muted-foreground">
+                    {formatSourceUrlForDisplay(importUrl.trim())}
+                  </span>
+                </div>
+              </div>
+            ) : null}
 
             {importError && (
               <div className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -385,12 +495,10 @@ function CreateSkillDialog({
           ) : (
             <Button
               onClick={handleImport}
-              disabled={loading || !importUrl.trim()}
+              disabled={loading || !importUrl.trim() || searchQuery.length >= 2}
             >
               {loading ? (
-                detectedSource === 'clawhub' ? (
-                  'Importing from ClawHub...'
-                ) : detectedSource === 'skills.sh' ? (
+                detectedSource === 'skills.sh' ? (
                   'Importing from Skills.sh...'
                 ) : (
                   'Importing...'
@@ -422,29 +530,52 @@ function SkillListItem({
   isSelected: boolean
   onClick: () => void
 }) {
+  const fileCount = skill.files?.length ?? 0
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors ${
-        isSelected ? 'bg-accent' : 'hover:bg-accent/50'
-      }`}
+      className={cn(
+        'group relative flex w-full items-center gap-2.5 py-2.5 pr-3 pl-4 text-left transition-colors',
+        'before:absolute before:left-0 before:top-1 before:bottom-1 before:w-[2px] before:rounded-r-sm before:transition-colors',
+        isSelected
+          ? 'bg-accent/60 before:bg-primary'
+          : 'before:bg-transparent hover:bg-accent/30',
+      )}
     >
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-        <Sparkles className="h-4 w-4 text-muted-foreground" />
-      </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{skill.name}</div>
-        {skill.description && (
-          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-2">
+          <div
+            className={cn(
+              'truncate text-sm leading-tight',
+              isSelected
+                ? 'font-semibold text-foreground'
+                : 'font-medium text-foreground/90',
+            )}
+          >
+            {skill.name}
+          </div>
+          {skill.source_type === 'skills.sh' ? (
+            <span className={cn(SKILLS_SH_CHIP_CLASS_NAME, 'shrink-0')}>
+              skills.sh
+            </span>
+          ) : null}
+        </div>
+        {skill.description ? (
+          <div className="mt-0.5 truncate text-xs text-muted-foreground leading-tight">
             {skill.description}
           </div>
-        )}
+        ) : null}
       </div>
-      {(skill.files?.length ?? 0) > 0 && (
-        <Badge variant="secondary">
-          {skill.files.length} file{skill.files.length !== 1 ? 's' : ''}
-        </Badge>
-      )}
+      {fileCount > 0 ? (
+        <span
+          className={cn(
+            'shrink-0 text-[11px] tabular-nums tracking-tight',
+            isSelected ? 'text-muted-foreground' : 'text-muted-foreground/60',
+          )}
+        >
+          {fileCount}
+        </span>
+      ) : null}
     </button>
   )
 }
@@ -545,15 +676,15 @@ function SkillDetail({
   skill,
   onUpdate,
   onDelete,
+  onReinstall,
 }: {
   skill: Skill
   onUpdate: (id: string, data: UpdateSkillRequest) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  onReinstall: (skill: Skill) => Promise<void>
 }) {
   const qc = useQueryClient()
   const wsId = useWorkspaceId()
-  const [name, setName] = useState(skill.name)
-  const [description, setDescription] = useState(skill.description)
   const [content, setContent] = useState(skill.content)
   const [files, setFiles] = useState<{ path: string; content: string }[]>(
     (skill.files ?? []).map((f) => ({ path: f.path, content: f.content })),
@@ -562,14 +693,14 @@ function SkillDetail({
   const [saving, setSaving] = useState(false)
   const [loadingFiles, setLoadingFiles] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmSync, setConfirmSync] = useState(false)
   const [showAddFile, setShowAddFile] = useState(false)
+  const [syncing, setSyncing] = useState(false)
 
-  // Sync basic fields from store updates
+  // Sync content from store updates
   useEffect(() => {
-    setName(skill.name)
-    setDescription(skill.description)
     setContent(skill.content)
-  }, [skill.id, skill.name, skill.description, skill.content])
+  }, [skill.id, skill.content])
 
   // Fetch full skill (with files) on selection change
   useEffect(() => {
@@ -597,20 +728,17 @@ function SkillDetail({
   const selectedContent = fileMap.get(selectedPath) ?? ''
 
   const isDirty =
-    name !== skill.name ||
-    description !== skill.description ||
     content !== skill.content ||
     JSON.stringify(files) !==
       JSON.stringify(
         (skill.files ?? []).map((f) => ({ path: f.path, content: f.content })),
       )
+  const canSync = skill.source_type === 'skills.sh' && Boolean(skill.source_url)
 
   const handleSave = async () => {
     setSaving(true)
     try {
       await onUpdate(skill.id, {
-        name: name.trim(),
-        description: description.trim(),
         content,
         files: files.filter((f) => f.path.trim()),
       })
@@ -647,37 +775,48 @@ function SkillDetail({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-            <Sparkles className="h-4 w-4 text-muted-foreground" />
+      <div className="flex min-h-12 shrink-0 items-start justify-between gap-3 border-b px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="truncate text-sm font-semibold leading-tight text-foreground">
+              {skill.name}
+            </div>
+            {skill.source_type === 'skills.sh' ? (
+              <span className={SKILLS_SH_CHIP_CLASS_NAME}>skills.sh</span>
+            ) : null}
           </div>
-          <div className="grid grid-cols-2 gap-3 flex-1 min-w-0">
-            <Input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="h-8 text-sm font-medium"
-              placeholder="Skill name"
-            />
-            <Input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="h-8 text-sm"
-              placeholder="Description"
-            />
-          </div>
+          {skill.description ? (
+            <div className="truncate text-xs text-muted-foreground leading-tight mt-0.5">
+              {skill.description}
+            </div>
+          ) : null}
+          {skill.source_url ? (
+            <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground/80">
+              {formatSourceUrlForDisplay(skill.source_url)}
+            </div>
+          ) : null}
         </div>
-        <div className="flex items-center gap-2 ml-3">
-          {isDirty && (
+        <div className="flex shrink-0 items-center gap-1">
+          {canSync ? (
             <Button
-              onClick={handleSave}
-              disabled={saving || !name.trim()}
+              variant="ghost"
               size="xs"
+              onClick={() => setConfirmSync(true)}
+              disabled={syncing}
+              className="text-muted-foreground"
             >
+              {syncing ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3" />
+              )}
+              {syncing ? 'Syncing…' : 'Sync'}
+            </Button>
+          ) : null}
+          {isDirty && (
+            <Button onClick={handleSave} disabled={saving} size="xs">
               <Save className="h-3 w-3" />
-              {saving ? 'Saving...' : 'Save'}
+              {saving ? 'Saving…' : 'Save'}
             </Button>
           )}
           <Tooltip>
@@ -685,11 +824,11 @@ function SkillDetail({
               render={
                 <Button
                   variant="ghost"
-                  size="xs"
+                  size="icon-sm"
                   onClick={() => setConfirmDelete(true)}
                   className="text-muted-foreground hover:text-destructive"
                 >
-                  <Trash2 className="h-3 w-3" />
+                  <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               }
             />
@@ -698,15 +837,22 @@ function SkillDetail({
         </div>
       </div>
 
+      {canSync ? (
+        <div className="border-b bg-muted/20 px-4 py-2 text-xs text-muted-foreground">
+          Sync replaces the imported snapshot and bundle files with the latest
+          source from skills.sh.
+        </div>
+      ) : null}
+
       {/* File browser: tree + viewer */}
       <div className="flex flex-1 min-h-0">
         {/* File tree */}
         <div className="w-52 shrink-0 border-r flex flex-col">
-          <div className="flex h-10 items-center justify-between border-b px-3">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          <div className="flex h-12 shrink-0 items-center justify-between border-b px-3">
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-[0.14em]">
               Files
             </span>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-0.5">
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -830,6 +976,60 @@ function SkillDetail({
           </DialogContent>
         </Dialog>
       )}
+
+      {confirmSync && canSync ? (
+        <Dialog
+          open
+          onOpenChange={(value) => {
+            if (!value) setConfirmSync(false)
+          }}
+        >
+          <DialogContent className="max-w-sm" showCloseButton={false}>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-fuchsia-500/10">
+                <RefreshCw className="h-5 w-5 text-fuchsia-700 dark:text-fuchsia-300" />
+              </div>
+              <DialogHeader className="flex-1 gap-1">
+                <DialogTitle className="text-sm font-semibold">
+                  Sync from skills.sh?
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  {isDirty
+                    ? 'You have unsaved edits in this editor. Syncing will discard them and replace the imported snapshot and bundle files with the latest skills.sh bundle.'
+                    : 'This replaces the imported snapshot and bundle files with the latest skills.sh bundle.'}
+                </DialogDescription>
+              </DialogHeader>
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setConfirmSync(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  setSyncing(true)
+                  void onReinstall(skill).finally(() => {
+                    setSyncing(false)
+                    setConfirmSync(false)
+                  })
+                }}
+                disabled={syncing}
+              >
+                {syncing ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Syncing…
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-3 w-3" />
+                    Sync
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </div>
   )
 }
@@ -864,9 +1064,9 @@ export default function SkillsPage() {
 
   const handleImport = async (url: string) => {
     const skill = await api.importSkill({ url })
-    qc.invalidateQueries({ queryKey: workspaceKeys.skills(wsId) })
+    await qc.invalidateQueries({ queryKey: workspaceKeys.skills(wsId) })
     setSelectedId(skill.id)
-    toast.success('Skill imported')
+    toast.success('Skill imported from skills.sh')
   }
 
   const handleUpdate = async (id: string, data: UpdateSkillRequest) => {
@@ -894,7 +1094,34 @@ export default function SkillsPage() {
     }
   }
 
+  const handleReinstall = async (skill: Skill) => {
+    if (!skill.source_url) return
+    const next = await api.importSkill({ url: skill.source_url })
+    await qc.invalidateQueries({ queryKey: workspaceKeys.skills(wsId) })
+    setSelectedId(next.id)
+    toast.success('Skill synced from skills.sh')
+  }
+
   const selected = skills.find((s) => s.id === selectedId) ?? null
+  const isEmpty = skills.length === 0
+
+  // Empty state renders outside BoneyardSkeleton so it can use the full dock
+  // panel height — BoneyardSkeleton wraps children in a plain div that blocks
+  // flex-1 propagation, collapsing h-full/flex-1 children to content size.
+  if (!isLoading && isEmpty) {
+    return (
+      <>
+        <LibraryEmptyState onCreate={() => setShowCreate(true)} />
+        {showCreate && (
+          <CreateSkillDialog
+            onClose={() => setShowCreate(false)}
+            onCreate={handleCreate}
+            onImport={handleImport}
+          />
+        )}
+      </>
+    )
+  }
 
   return (
     <BoneyardSkeleton
@@ -909,99 +1136,65 @@ export default function SkillsPage() {
           defaultLayout={defaultLayout}
           onLayoutChanged={onLayoutChanged}
         >
-      <ResizablePanel
-        id="list"
-        defaultSize={280}
-        minSize={240}
-        maxSize={400}
-        groupResizeBehavior="preserve-pixel-size"
-      >
-        {/* Left column — skill list */}
-        <div className="overflow-y-auto h-full border-r">
-          <PageHeader className="justify-between">
-            <h1 className="text-sm font-semibold">Skills</h1>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => setShowCreate(true)}
-                  >
-                    <Plus className="h-4 w-4 text-muted-foreground" />
-                  </Button>
-                }
-              />
-              <TooltipContent side="bottom">Create skill</TooltipContent>
-            </Tooltip>
-          </PageHeader>
-          {skills.length === 0 ? (
-            <div className="flex flex-col items-center justify-center px-4 py-12">
-              <Sparkles className="h-8 w-8 text-muted-foreground/40" />
-              <p className="mt-3 text-sm text-muted-foreground">
-                No workspace skills yet
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground text-center max-w-[280px]">
-                Workspace skills are shared across your team and injected into
-                agent runs. Skills already installed in your local runtime are
-                used automatically.
-              </p>
-              <Button
-                onClick={() => setShowCreate(true)}
-                size="xs"
-                className="mt-3"
-              >
-                <Plus className="h-3 w-3" />
-                Create Skill
-              </Button>
+          <ResizablePanel
+            id="list"
+            defaultSize={280}
+            minSize={240}
+            maxSize={400}
+            groupResizeBehavior="preserve-pixel-size"
+          >
+            {/* Left column — skill list */}
+            <div className="flex h-full flex-col border-r">
+              <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
+                <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground tabular-nums">
+                  {skills.length} {skills.length === 1 ? 'skill' : 'skills'}
+                </span>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => setShowCreate(true)}
+                      >
+                        <Plus className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    }
+                  />
+                  <TooltipContent side="bottom">New skill</TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex-1 overflow-y-auto py-1">
+                {skills.map((skill) => (
+                  <SkillListItem
+                    key={skill.id}
+                    skill={skill}
+                    isSelected={skill.id === selectedId}
+                    onClick={() => setSelectedId(skill.id)}
+                  />
+                ))}
+              </div>
             </div>
-          ) : (
-            <div className="divide-y">
-              {skills.map((skill) => (
-                <SkillListItem
-                  key={skill.id}
-                  skill={skill}
-                  isSelected={skill.id === selectedId}
-                  onClick={() => setSelectedId(skill.id)}
+          </ResizablePanel>
+
+          <ResizableHandle />
+
+          <ResizablePanel id="detail" minSize="50%">
+            {/* Right column — skill detail */}
+            <div className="h-full min-h-0 overflow-hidden">
+              {selected ? (
+                <SkillDetail
+                  key={selected.id}
+                  skill={selected}
+                  onUpdate={handleUpdate}
+                  onDelete={handleDelete}
+                  onReinstall={handleReinstall}
                 />
-              ))}
+              ) : null}
             </div>
-          )}
-        </div>
-      </ResizablePanel>
-
-      <ResizableHandle />
-
-      <ResizablePanel id="detail" minSize="50%">
-        {/* Right column — skill detail */}
-        <div className="flex-1 overflow-hidden h-full">
-          {selected ? (
-            <SkillDetail
-              key={selected.id}
-              skill={selected}
-              onUpdate={handleUpdate}
-              onDelete={handleDelete}
-            />
-          ) : (
-            <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
-              <Sparkles className="h-10 w-10 text-muted-foreground/30" />
-              <p className="mt-3 text-sm">Select a skill to view details</p>
-              <p className="mt-1 text-xs text-center max-w-[260px]">
-                Workspace skills supplement your local skills and are shared
-                across the team.
-              </p>
-              <Button
-                onClick={() => setShowCreate(true)}
-                size="xs"
-                className="mt-3"
-              >
-                <Plus className="h-3 w-3" />
-                Create Skill
-              </Button>
-            </div>
-          )}
-        </div>
-      </ResizablePanel>
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      ) : null}
 
       {showCreate && (
         <CreateSkillDialog
@@ -1010,8 +1203,28 @@ export default function SkillsPage() {
           onImport={handleImport}
         />
       )}
-        </ResizablePanelGroup>
-      ) : null}
     </BoneyardSkeleton>
+  )
+}
+
+function LibraryEmptyState({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div className="flex h-full w-full items-center justify-center px-6">
+      <div className="flex max-w-sm flex-col items-center text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+          <Sparkles className="h-5 w-5 text-muted-foreground" />
+        </div>
+        <h2 className="mt-4 text-base font-semibold tracking-tight text-foreground">
+          Your library is empty
+        </h2>
+        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+          Author a skill from scratch or import a full bundle from skills.sh.
+        </p>
+        <Button onClick={onCreate} size="sm" className="mt-5">
+          <Plus className="h-3.5 w-3.5" />
+          New skill
+        </Button>
+      </div>
+    </div>
   )
 }

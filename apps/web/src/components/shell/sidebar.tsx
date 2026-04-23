@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { IconMessage2Plus, IconSparkles2 } from '@tabler/icons-react'
+import { IconBook2, IconMessage2Plus } from '@tabler/icons-react'
 import { Plug } from 'lucide-react'
 import { Icon as IconifyIcon } from '@iconify/react'
 import { BrandIcon } from '@garden/ui/components/common/brand-icon'
@@ -70,7 +70,7 @@ const railItems: RailItem[] = [
     id: 'skills',
     label: 'Skills',
     icon: RailSkillsIcon,
-    defaultPanel: { kind: 'skill-editor', title: 'Skills' },
+    defaultPanel: { kind: 'skill-editor', title: 'Library' },
   },
   {
     id: 'connections',
@@ -437,14 +437,14 @@ export function WorkspaceSidebar() {
           ) : null}
 
           {activeRailId === 'skills' ? (
-            <ExplorerSection label="Skills" count={1}>
+            <ExplorerSection>
               <SidebarMenu>
                 <ExplorerActionRow
                   label="Library"
-                  icon={IconSparkles2}
+                  icon={IconBook2}
                   active={activeType === 'skill-editor'}
                   onClick={() =>
-                    openPanel({ kind: 'skill-editor', title: 'Skills' })
+                    openPanel({ kind: 'skill-editor', title: 'Library' })
                   }
                 />
               </SidebarMenu>
