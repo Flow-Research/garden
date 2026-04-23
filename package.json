@@ -11,17 +11,22 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "lint": "turbo run lint",
+    "verify:connectors": "node --experimental-strip-types scripts/verify-connector-coverage.ts",
     "format": "oxfmt -c ./.oxfmtrc.json --check apps packages",
     "format:write": "oxfmt -c ./.oxfmtrc.json --write apps packages",
     "clean": "turbo run clean"
   },
   "devDependencies": {
+    "create-garden-connector": "workspace:*",
     "oxfmt": "^0.45.0",
     "oxlint": "^1.60.0",
     "turbo": "^2.5.8",
     "typescript": "catalog:"
   },
   "pnpm": {
+    "overrides": {
+      "create-garden-connector": "workspace:*"
+    },
     "onlyBuiltDependencies": [
       "esbuild",
       "lightningcss"

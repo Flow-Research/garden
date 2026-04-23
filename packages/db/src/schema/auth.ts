@@ -1,5 +1,7 @@
-import { pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { check, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 import { user } from './users.js'
+import { organization } from './workspaces.js'
 
 export const session = pgTable('auth_session', {
   id: uuid('id').primaryKey(),
@@ -30,10 +32,21 @@ export const account = pgTable('auth_account', {
     mode: 'date',
   }),
   scope: text('scope'),
+  workspaceId: uuid('workspace_id').references(() => organization.id, {
+    onDelete: 'cascade',
+  }),
+  status: text('status'),
+  scopes: text('scopes').array().default(sql`'{}'::text[]`),
+  connectorType: text('connector_type'),
   password: text('password'),
   createdAt: timestamp('created_at', { mode: 'date' }).notNull(),
   updatedAt: timestamp('updated_at', { mode: 'date' }).notNull(),
-})
+}, (table) => [
+  check(
+    'auth_account_status_check',
+    sql`${table.status} is null or ${table.status} in ('connected', 'degraded', 'disconnected')`,
+  ),
+])
 
 export const verification = pgTable('auth_verification', {
   id: uuid('id').primaryKey(),

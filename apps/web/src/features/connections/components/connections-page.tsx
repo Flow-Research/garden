@@ -1,35 +1,49 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
-import {
-  IconBrandGithub,
-  IconBrandGmail,
-  IconBrandSlack,
-} from '@tabler/icons-react'
-import {
-  Bot,
-  Cable,
-  Gauge,
-  Link2,
-  ShieldCheck,
-  ShieldQuestion,
-  ShieldX,
-} from 'lucide-react'
-import { Badge } from '@garden/ui/components/ui/badge'
+import { useMemo, useState } from 'react'
+import { format, formatDistanceToNowStrict } from 'date-fns'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Icon as IconifyIcon } from '@iconify/react'
+import { ChevronDown, ChevronRight, Loader2, MoreHorizontal, Plug } from 'lucide-react'
+import { toast } from 'sonner'
+import { getConnectorById } from '@garden/connectors'
+import type { ConnectorId } from '@garden/connectors/registry'
 import { Button } from '@garden/ui/components/ui/button'
-import { useWorkspaceDock } from '@/components/shell/workspace-dock'
-import { useAgentSessions } from '@/features/chat/use-agent-chat-sessions'
-import { useSettingsDialogStore } from '@/features/settings'
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from '@garden/ui/components/ui/drawer'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@garden/ui/components/ui/dropdown-menu'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from '@garden/ui/components/ui/select'
+import { authClient } from '@/lib/auth/client'
+
+type PermissionTrustLevel = 'auto' | 'allow' | 'ask'
+type RiskClass = 'read' | 'write' | 'send_external' | 'destructive'
 
 type ConnectionTool = {
   name: string
   description: string
-  riskClass: 'read' | 'write' | 'send_external' | 'destructive'
+  riskClass: RiskClass
   invocationCount: number
+  grantsByAgent: Record<string, PermissionTrustLevel>
 }
 
 type ConnectionItem = {
-  id: 'gmail' | 'slack' | 'github'
+  id: ConnectorId
   label: string
   description: string
   status: 'available' | 'connected' | 'degraded' | 'disconnected'
@@ -37,11 +51,7 @@ type ConnectionItem = {
   connectedAt: string | null
   toolCount: number
   recentInvocations: number
-  grants: {
-    auto: number
-    allow: number
-    ask: number
-  }
+  grants: { auto: number; allow: number; ask: number }
   tools: ConnectionTool[]
 }
 
@@ -53,314 +63,709 @@ type ConnectionsSnapshot = {
     recentInvocations: number
     agentCount: number
   }
-  agents: Array<{
-    id: string
-    name: string
-    status: string
-  }>
+  agents: Array<{ id: string; name: string; status: string }>
   connectors: ConnectionItem[]
 }
 
+type ConnectionActivityItem = {
+  id: string
+  toolCallId: string
+  toolName: string
+  resultStatus: 'success' | 'error' | 'denied' | 'timeout'
+  durationMs: number
+  timestamp: string
+  error: string | null
+  agent: { id: string; name: string }
+}
+
+type ConnectionActivityResponse = {
+  connectorId: ConnectorId
+  activity: ConnectionActivityItem[]
+}
+
+type ConnectionAction = 'disconnect' | 'resync'
+
+type ToolGroupKey = 'read' | 'write' | 'interactive'
+
+const TOOL_GROUPS: Array<{ key: ToolGroupKey; label: string; risks: RiskClass[] }> = [
+  { key: 'read', label: 'Read-only tools', risks: ['read'] },
+  { key: 'write', label: 'Write / delete tools', risks: ['write', 'destructive'] },
+  { key: 'interactive', label: 'Interactive tools', risks: ['send_external'] },
+]
+
 async function loadConnectionsSnapshot() {
-  const response = await fetch('/api/connections', {
-    credentials: 'include',
-  })
-
-  if (!response.ok) {
-    throw new Error('Failed to load connections')
-  }
-
+  const response = await fetch('/api/connections', { credentials: 'include' })
+  if (!response.ok) throw new Error('Failed to load connections')
   return (await response.json()) as ConnectionsSnapshot
 }
 
-function connectorIcon(id: ConnectionItem['id']) {
-  switch (id) {
-    case 'gmail':
-      return IconBrandGmail
-    case 'slack':
-      return IconBrandSlack
-    case 'github':
-      return IconBrandGithub
-  }
+async function mutateConnection(
+  connectorId: ConnectorId,
+  action: ConnectionAction,
+) {
+  const response = await fetch(`/api/connections/${connectorId}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action }),
+  })
+  if (!response.ok) throw new Error(`Failed to ${action} ${connectorId}`)
+  return response.json()
 }
 
-function riskBadgeVariant(riskClass: ConnectionTool['riskClass']) {
-  switch (riskClass) {
-    case 'destructive':
-      return 'destructive'
-    case 'send_external':
-      return 'secondary'
-    default:
-      return 'outline'
-  }
+async function mutateToolGrant(args: {
+  connectorId: ConnectorId
+  toolName: string
+  agentId: string
+  trustLevel: PermissionTrustLevel
+}) {
+  const response = await fetch(
+    `/api/connections/${encodeURIComponent(args.connectorId)}/tools/${encodeURIComponent(args.toolName)}/grant`,
+    {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        agentId: args.agentId,
+        trustLevel: args.trustLevel,
+      }),
+    },
+  )
+  if (!response.ok) throw new Error(`Failed to update trust for ${args.toolName}`)
+  return response.json()
 }
 
-function statusVariant(status: ConnectionItem['status']) {
+async function loadConnectorActivity(connectorId: ConnectorId) {
+  const response = await fetch(
+    `/api/connections/${encodeURIComponent(connectorId)}/activity`,
+    { credentials: 'include' },
+  )
+  if (!response.ok) throw new Error(`Failed to load activity for ${connectorId}`)
+  return (await response.json()) as ConnectionActivityResponse
+}
+
+function currentCallbackUrl() {
+  return typeof window === 'undefined'
+    ? '/workspace'
+    : `${window.location.pathname}${window.location.search}`
+}
+
+const CONNECTOR_ICON_ID: Record<ConnectorId, string | null> = {
+  slack: 'logos:slack-icon',
+  gmail: 'logos:google-gmail',
+  'google-drive': 'logos:google-drive',
+  github: 'logos:github-icon',
+  'exa-search': 'simple-icons:exa',
+}
+
+function ConnectorIcon({
+  id,
+  className,
+}: {
+  id: ConnectorId
+  className?: string
+}) {
+  const icon = CONNECTOR_ICON_ID[id]
+  if (!icon) {
+    return <Plug className={className} />
+  }
+  return <IconifyIcon icon={icon} className={className} />
+}
+
+function statusDotColor(status: ConnectionItem['status']) {
   switch (status) {
     case 'connected':
-      return 'secondary'
+      return 'bg-emerald-500'
     case 'degraded':
-      return 'destructive'
+      return 'bg-amber-500'
+    case 'disconnected':
+      return 'bg-red-500'
     default:
-      return 'outline'
+      return 'bg-zinc-500'
   }
 }
 
-export function ConnectionsPage() {
-  const { openPanel } = useWorkspaceDock()
-  const { createSession } = useAgentSessions()
-  const openSettings = useSettingsDialogStore((s) => s.openSettings)
+function statusTextColor(status: ConnectionItem['status']) {
+  switch (status) {
+    case 'connected':
+      return 'text-emerald-500'
+    case 'degraded':
+      return 'text-amber-500'
+    case 'disconnected':
+      return 'text-red-500'
+    default:
+      return 'text-muted-foreground'
+  }
+}
+
+function groupOfRisk(risk: RiskClass): ToolGroupKey {
+  if (risk === 'read') return 'read'
+  if (risk === 'send_external') return 'interactive'
+  return 'write'
+}
+
+function activityStatusColor(
+  resultStatus: ConnectionActivityItem['resultStatus'],
+) {
+  switch (resultStatus) {
+    case 'success':
+      return 'text-emerald-500'
+    case 'error':
+    case 'timeout':
+      return 'text-red-500'
+    default:
+      return 'text-muted-foreground'
+  }
+}
+
+function bulkValueForTools(
+  tools: ConnectionTool[],
+  agentId: string | null,
+): PermissionTrustLevel | 'mixed' {
+  if (!tools.length || !agentId) return 'mixed'
+  const first = tools[0].grantsByAgent[agentId] ?? 'auto'
+  for (const tool of tools) {
+    const value = tool.grantsByAgent[agentId] ?? 'auto'
+    if (value !== first) return 'mixed'
+  }
+  return first
+}
+
+function pickDefaultConnector(
+  connectors: ConnectionItem[],
+  focusedId?: ConnectorId,
+): ConnectionItem | null {
+  if (focusedId) {
+    const match = connectors.find((c) => c.id === focusedId)
+    if (match) return match
+  }
+  const connected = connectors.find((c) => c.status === 'connected')
+  if (connected) return connected
+  return connectors[0] ?? null
+}
+
+export function ConnectionsPage({
+  focusedConnectorId,
+}: {
+  focusedConnectorId?: ConnectorId
+} = {}) {
+  const queryClient = useQueryClient()
+  const [activityOpen, setActivityOpen] = useState(false)
 
   const snapshotQuery = useQuery({
     queryKey: ['workspace-connections'],
     queryFn: loadConnectionsSnapshot,
     staleTime: 20_000,
   })
+  const connectionMutation = useMutation({
+    mutationFn: ({
+      connectorId,
+      action,
+    }: {
+      connectorId: ConnectorId
+      action: ConnectionAction
+    }) => mutateConnection(connectorId, action),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['workspace-connections'],
+      })
+    },
+  })
+  const grantMutation = useMutation({
+    mutationFn: mutateToolGrant,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['workspace-connections'],
+      })
+    },
+  })
 
   const snapshot = snapshotQuery.data
+  const connector = useMemo(
+    () =>
+      snapshot
+        ? pickDefaultConnector(snapshot.connectors, focusedConnectorId)
+        : null,
+    [snapshot, focusedConnectorId],
+  )
+
+  const selectedAgent = snapshot?.agents[0] ?? null
+
+  const toolsByGroup = useMemo(() => {
+    const map: Record<ToolGroupKey, ConnectionTool[]> = {
+      read: [],
+      write: [],
+      interactive: [],
+    }
+    for (const tool of connector?.tools ?? []) {
+      map[groupOfRisk(tool.riskClass)].push(tool)
+    }
+    return map
+  }, [connector])
 
   if (snapshotQuery.isLoading || !snapshot) {
     return (
-      <section className="flex h-full min-h-0 items-center justify-center px-6">
-        <div className="space-y-2 text-center">
-          <div className="text-sm font-medium">Loading connections</div>
-          <div className="text-sm text-muted-foreground">
-            Pulling connector status and tool coverage.
-          </div>
-        </div>
-      </section>
+      <div className="flex h-full min-h-0 items-center justify-center text-sm text-muted-foreground">
+        <Loader2 className="mr-2 size-4 animate-spin" />
+        Loading connections
+      </div>
     )
   }
 
+  if (!connector) {
+    return (
+      <div className="flex h-full min-h-0 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+        <Plug className="size-6 opacity-60" />
+        No connectors available
+      </div>
+    )
+  }
+
+  const connectorSpec = getConnectorById(connector.id)
+  const isConnected = connector.status === 'connected'
+  const isManaged = !connectorSpec?.oauth
+  const statusLabel = isConnected
+    ? 'Connected'
+    : connector.status === 'degraded'
+      ? 'Needs attention'
+      : connector.status === 'disconnected'
+        ? 'Disconnected'
+        : 'Available'
+
+  const handleBulkChange = (
+    groupTools: ConnectionTool[],
+    value: PermissionTrustLevel,
+  ) => {
+    if (!selectedAgent) return
+    for (const tool of groupTools) {
+      const current = tool.grantsByAgent[selectedAgent.id] ?? 'auto'
+      if (current === value) continue
+      grantMutation.mutate({
+        connectorId: connector.id,
+        toolName: tool.name,
+        agentId: selectedAgent.id,
+        trustLevel: value,
+      })
+    }
+  }
+
   return (
-    <div className="h-full min-h-0 overflow-y-auto bg-background">
-      <div className="mx-auto flex w-full max-w-[1320px] flex-col gap-6 px-6 py-6">
-        <section className="grid gap-4 border-b border-border pb-6 lg:grid-cols-[1.25fr_0.95fr]">
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
-              <Cable className="size-3.5" />
-              Connections
-            </div>
-            <div className="space-y-2">
-              <h1 className="text-3xl font-semibold tracking-tight">
-                Typed tools across the workspace
+    <div className="flex h-full min-h-0 flex-col bg-background">
+      <header className="flex items-start justify-between gap-4 px-8 pt-6 pb-4">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-muted/40">
+            <ConnectorIcon id={connector.id} className="size-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <h1 className="truncate text-base font-semibold text-foreground">
+                {connector.label}
               </h1>
-              <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-                Connector health, available actions, and the trust posture your
-                agents inherit when they reach for Gmail, Slack, or GitHub.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                onClick={() => openSettings()}
+              <span
+                className={`size-2 shrink-0 rounded-full ring-2 ring-background ${statusDotColor(connector.status)}`}
+                aria-hidden="true"
+              />
+              <span
+                className={`shrink-0 text-xs font-medium ${statusTextColor(connector.status)}`}
               >
-                Open settings
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  void createSession.mutateAsync('New Chat').then((session) => {
-                    openPanel({
-                      kind: 'chat',
-                      title: session.title,
-                      entityId: session.id,
+                {statusLabel}
+              </span>
+            </div>
+            <p className="mt-1 max-w-prose text-xs text-muted-foreground">
+              {connector.description}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          {isManaged && !isConnected ? (
+            <Button
+              size="sm"
+              className="h-7 text-xs"
+              disabled={connectionMutation.isPending}
+              onClick={() =>
+                connectionMutation.mutate({
+                  connectorId: connector.id,
+                  action: 'resync',
+                })
+              }
+            >
+              {connectionMutation.isPending ? 'Syncing…' : 'Sync'}
+            </Button>
+          ) : null}
+          {!isConnected && !isManaged ? (
+            <Button
+              size="sm"
+              className="h-7 text-xs"
+              disabled={connectionMutation.isPending || !connectorSpec?.oauth}
+              onClick={async () => {
+                if (!connectorSpec?.oauth) return
+                const response = await authClient.oauth2.link({
+                  providerId: connectorSpec.oauth.providerId,
+                  callbackURL: currentCallbackUrl(),
+                })
+                if (response.error) {
+                  toast.error(
+                    response.error.message ??
+                      `Failed to start ${connector.label} OAuth`,
+                  )
+                  return
+                }
+                // better-auth auto-redirects on { redirect: true } responses.
+                // Fall back to a manual nav if not.
+                if (response.data?.url && !response.data.redirect) {
+                  window.location.href = response.data.url
+                }
+              }}
+            >
+              {connector.status === 'degraded' ? 'Reconnect' : 'Connect'}
+            </Button>
+          ) : null}
+
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="size-7 p-0 text-muted-foreground"
+                  aria-label="More"
+                >
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={() => setActivityOpen(true)}>
+                Recent activity
+              </DropdownMenuItem>
+              {isConnected || isManaged ? (
+                <DropdownMenuItem
+                  onClick={() =>
+                    connectionMutation.mutate({
+                      connectorId: connector.id,
+                      action: 'resync',
                     })
-                  })
-                }}
-              >
-                Test in chat
-              </Button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border">
-            {[
-              {
-                label: 'Connected',
-                value: snapshot.summary.connectedCount,
-                icon: Link2,
-              },
-              {
-                label: 'Tools',
-                value: snapshot.summary.toolCount,
-                icon: Gauge,
-              },
-              {
-                label: 'Agents',
-                value: snapshot.summary.agentCount,
-                icon: Bot,
-              },
-              {
-                label: 'Recent calls',
-                value: snapshot.summary.recentInvocations,
-                icon: ShieldCheck,
-              },
-            ].map((metric) => (
-              <div key={metric.label} className="space-y-2 bg-background px-4 py-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                    {metric.label}
-                  </span>
-                  <metric.icon className="size-4 text-muted-foreground" />
-                </div>
-                <div className="text-3xl font-semibold tracking-tight">
-                  {metric.value}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-          <div className="space-y-4">
-            {snapshot.connectors.map((connector) => {
-              const Icon = connectorIcon(connector.id)
-              return (
-                <section
-                  key={connector.id}
-                  className="overflow-hidden rounded-lg border border-border"
+                  }
+                  disabled={connectionMutation.isPending}
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border px-4 py-4">
-                    <div className="flex items-start gap-3">
-                      <div className="flex size-11 items-center justify-center rounded-md border border-border bg-muted/50">
-                        <Icon className="size-5" />
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <h2 className="text-base font-medium">
-                            {connector.label}
-                          </h2>
-                          <Badge variant={statusVariant(connector.status)}>
-                            {connector.status}
-                          </Badge>
-                        </div>
-                        <p className="max-w-2xl text-sm text-muted-foreground">
-                          {connector.description}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 text-sm">
-                      <Badge variant="outline">{connector.toolCount} tools</Badge>
-                      <Badge variant="outline">
-                        {connector.recentInvocations} calls
-                      </Badge>
-                    </div>
-                  </div>
+                  Resync tools
+                </DropdownMenuItem>
+              ) : null}
+              {!isManaged && isConnected ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() =>
+                      connectionMutation.mutate({
+                        connectorId: connector.id,
+                        action: 'disconnect',
+                      })
+                    }
+                  >
+                    Disconnect
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>
 
-                  <div className="grid gap-0 lg:grid-cols-[1.05fr_0.95fr]">
-                    <div className="border-b border-border lg:border-r lg:border-b-0">
-                      <div className="px-4 py-3 text-sm font-medium">Tool catalog</div>
-                      <div>
-                        {connector.tools.map((tool) => (
-                          <div
-                            key={tool.name}
-                            className="flex flex-wrap items-start justify-between gap-3 border-t border-border px-4 py-3 first:border-t"
-                          >
-                            <div className="space-y-1">
-                              <div className="font-medium">{tool.name}</div>
-                              <div className="text-sm text-muted-foreground">
-                                {tool.description}
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2 text-sm">
-                              <Badge variant={riskBadgeVariant(tool.riskClass)}>
-                                {tool.riskClass.replaceAll('_', ' ')}
-                              </Badge>
-                              <span className="text-muted-foreground">
-                                {tool.invocationCount} calls
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10">
+        <section className="mt-2">
+          <h2 className="text-sm font-semibold text-foreground">
+            Tool permissions
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Choose when {selectedAgent?.name ?? 'your agent'} is allowed to use these tools.
+          </p>
 
-                    <div>
-                      <div className="px-4 py-3 text-sm font-medium">
-                        Trust posture
-                      </div>
-                      <div className="space-y-3 px-4 py-1 pb-4">
-                        <div className="grid grid-cols-3 gap-2 text-sm">
-                          <div className="rounded-md border border-border bg-muted/30 px-3 py-3">
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                              <ShieldCheck className="size-4" />
-                              Auto
-                            </div>
-                            <div className="mt-2 text-2xl font-semibold">
-                              {connector.grants.auto}
-                            </div>
-                          </div>
-                          <div className="rounded-md border border-border bg-muted/30 px-3 py-3">
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                              <ShieldQuestion className="size-4" />
-                              Allow
-                            </div>
-                            <div className="mt-2 text-2xl font-semibold">
-                              {connector.grants.allow}
-                            </div>
-                          </div>
-                          <div className="rounded-md border border-border bg-muted/30 px-3 py-3">
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                              <ShieldX className="size-4" />
-                              Ask
-                            </div>
-                            <div className="mt-2 text-2xl font-semibold">
-                              {connector.grants.ask}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="rounded-md border border-border bg-muted/20 px-3 py-3 text-sm text-muted-foreground">
-                          {connector.connectedAt
-                            ? `Connected ${new Date(connector.connectedAt).toLocaleString()}`
-                            : 'No live account has been linked in this workspace yet.'}
-                        </div>
-
-                        {connector.scopes.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {connector.scopes.map((scope) => (
-                              <Badge key={scope} variant="outline">
-                                {scope}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                </section>
-              )
-            })}
-          </div>
-
-          <aside className="space-y-4 rounded-lg border border-border">
-            <div className="border-b border-border px-4 py-4">
-              <div className="text-sm font-medium">Agent coverage</div>
-              <div className="text-sm text-muted-foreground">
-                The current workspace agents that can consume connector tools.
-              </div>
+          {connector.tools.length === 0 ? (
+            <div className="mt-10 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Plug className="size-5 opacity-60" />
+              {isConnected
+                ? 'No tools discovered yet. Try resyncing.'
+                : isManaged
+                  ? 'Sync this provider to load its tools.'
+                  : 'Connect this provider to load its tools.'}
             </div>
-            <div className="space-y-2 px-4 py-4">
-              {snapshot.agents.map((agent) => (
-                <div
-                  key={agent.id}
-                  className="flex items-center justify-between rounded-md border border-border bg-muted/20 px-3 py-3"
-                >
-                  <div>
-                    <div className="font-medium">{agent.name}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {agent.status}
-                    </div>
-                  </div>
-                  <Badge variant="outline">{agent.status}</Badge>
-                </div>
-              ))}
+          ) : (
+            <div className="mt-6 space-y-6">
+              {TOOL_GROUPS.map((group) => {
+                const tools = toolsByGroup[group.key]
+                if (!tools.length) return null
+                return (
+                  <ToolGroup
+                    key={group.key}
+                    label={group.label}
+                    tools={tools}
+                    agentId={selectedAgent?.id ?? null}
+                    onToolChange={(toolName, value) => {
+                      if (!selectedAgent) return
+                      grantMutation.mutate({
+                        connectorId: connector.id,
+                        toolName,
+                        agentId: selectedAgent.id,
+                        trustLevel: value,
+                      })
+                    }}
+                    onBulkChange={(value) => handleBulkChange(tools, value)}
+                    disabled={!selectedAgent}
+                  />
+                )
+              })}
             </div>
-          </aside>
+          )}
         </section>
       </div>
+
+      <Drawer
+        open={activityOpen}
+        onOpenChange={setActivityOpen}
+        direction="right"
+      >
+        <DrawerContent className="data-[vaul-drawer-direction=right]:w-full data-[vaul-drawer-direction=right]:sm:max-w-2xl">
+          <ActivityDrawerBody connector={connector} />
+        </DrawerContent>
+      </Drawer>
     </div>
+  )
+}
+
+function ToolGroup({
+  label,
+  tools,
+  agentId,
+  onToolChange,
+  onBulkChange,
+  disabled,
+}: {
+  label: string
+  tools: ConnectionTool[]
+  agentId: string | null
+  onToolChange: (toolName: string, value: PermissionTrustLevel) => void
+  onBulkChange: (value: PermissionTrustLevel) => void
+  disabled: boolean
+}) {
+  const [expanded, setExpanded] = useState(true)
+  const bulk = bulkValueForTools(tools, agentId)
+  const ChevronIcon = expanded ? ChevronDown : ChevronRight
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3">
+        <button
+          type="button"
+          className="flex items-center gap-1.5 text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase hover:text-foreground"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          <ChevronIcon className="size-3" />
+          {label}
+        </button>
+        <BulkSelect
+          value={bulk}
+          onChange={onBulkChange}
+          disabled={disabled}
+        />
+      </div>
+
+      {expanded ? (
+        <ul className="mt-2">
+          {tools.map((tool) => {
+            const value =
+              (agentId && tool.grantsByAgent[agentId]) || 'auto'
+            return (
+              <li
+                key={tool.name}
+                className="flex items-center justify-between gap-4 border-b border-border/40 py-2.5 last:border-b-0"
+              >
+                <span
+                  className="min-w-0 flex-1 truncate text-sm text-foreground"
+                  title={tool.description || tool.name}
+                >
+                  {formatToolName(tool.name)}
+                </span>
+                <PermissionSegment
+                  value={value}
+                  onChange={(next) => onToolChange(tool.name, next)}
+                  disabled={disabled}
+                />
+              </li>
+            )
+          })}
+        </ul>
+      ) : null}
+    </div>
+  )
+}
+
+function formatToolName(raw: string) {
+  const cleaned = raw.replace(/[_\-]+/g, ' ').trim()
+  if (!cleaned) return raw
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
+}
+
+function BulkSelect({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: PermissionTrustLevel | 'mixed'
+  onChange: (value: PermissionTrustLevel) => void
+  disabled: boolean
+}) {
+  const label =
+    value === 'mixed'
+      ? 'Mixed'
+      : value === 'auto'
+        ? 'Auto'
+        : value === 'allow'
+          ? 'Allow'
+          : 'Ask'
+
+  return (
+    <Select
+      value={value === 'mixed' ? '' : value}
+      onValueChange={(v) => onChange(v as PermissionTrustLevel)}
+      disabled={disabled}
+    >
+      <SelectTrigger
+        size="sm"
+        className="h-6 min-w-[78px] gap-1 rounded-md border-border/60 px-2 text-[11px] text-muted-foreground"
+      >
+        <span>{label}</span>
+      </SelectTrigger>
+      <SelectContent align="end">
+        <SelectItem value="auto">Auto</SelectItem>
+        <SelectItem value="allow">Allow</SelectItem>
+        <SelectItem value="ask">Ask</SelectItem>
+      </SelectContent>
+    </Select>
+  )
+}
+
+const SEGMENT_OPTIONS: Array<{ value: PermissionTrustLevel; label: string }> = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'allow', label: 'Allow' },
+  { value: 'ask', label: 'Ask' },
+]
+
+function PermissionSegment({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: PermissionTrustLevel
+  onChange: (value: PermissionTrustLevel) => void
+  disabled: boolean
+}) {
+  return (
+    <div
+      role="radiogroup"
+      className="inline-flex items-center rounded-md border border-border/60 bg-muted/30 p-0.5 text-[11px]"
+    >
+      {SEGMENT_OPTIONS.map((option) => {
+        const active = option.value === value
+        const activeClass =
+          option.value === 'allow'
+            ? 'text-emerald-500'
+            : option.value === 'ask'
+              ? 'text-amber-500'
+              : 'text-foreground'
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            disabled={disabled}
+            onClick={() => {
+              if (!active) onChange(option.value)
+            }}
+            className={[
+              'h-6 rounded-sm px-2.5 font-medium transition-colors',
+              active
+                ? `bg-background shadow-sm ${activeClass}`
+                : 'text-muted-foreground hover:text-foreground',
+              disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+            ].join(' ')}
+          >
+            {option.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function ActivityDrawerBody({ connector }: { connector: ConnectionItem }) {
+  const activityQuery = useQuery({
+    queryKey: ['connector-activity', connector.id],
+    queryFn: () => loadConnectorActivity(connector.id),
+    staleTime: 15_000,
+  })
+  const activity = useMemo(
+    () => activityQuery.data?.activity ?? [],
+    [activityQuery.data],
+  )
+
+  return (
+    <>
+      <DrawerHeader className="border-b">
+        <DrawerTitle>{connector.label} activity</DrawerTitle>
+        <DrawerDescription>
+          Last 50 tool calls in this workspace.
+        </DrawerDescription>
+      </DrawerHeader>
+      <div className="flex-1 overflow-y-auto">
+        {activityQuery.isLoading ? (
+          <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground">
+            <Loader2 className="mr-2 size-4 animate-spin" />
+            Loading
+          </div>
+        ) : activityQuery.isError ? (
+          <div className="px-6 py-4 text-sm text-destructive">
+            {activityQuery.error instanceof Error
+              ? activityQuery.error.message
+              : 'Failed to load'}
+          </div>
+        ) : activity.length === 0 ? (
+          <div className="px-6 py-10 text-center text-sm text-muted-foreground">
+            No tool calls yet.
+          </div>
+        ) : (
+          <ul className="divide-y divide-border">
+            {activity.map((entry) => (
+              <li key={entry.id} className="flex items-center gap-3 px-6 py-3">
+                <span
+                  className={`shrink-0 text-xs font-medium ${activityStatusColor(entry.resultStatus)}`}
+                >
+                  {entry.resultStatus}
+                </span>
+                <span className="flex-1 truncate font-mono text-xs">
+                  {entry.toolName}
+                </span>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {entry.agent.name}
+                </span>
+                <span className="w-16 shrink-0 text-right text-xs text-muted-foreground">
+                  {entry.durationMs}ms
+                </span>
+                <span
+                  className="w-24 shrink-0 text-right text-xs text-muted-foreground"
+                  title={format(new Date(entry.timestamp), "MMM d, yyyy 'at' h:mm a")}
+                >
+                  {formatDistanceToNowStrict(new Date(entry.timestamp), {
+                    addSuffix: true,
+                  })}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
   )
 }

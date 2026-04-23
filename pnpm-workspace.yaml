@@ -2,6 +2,8 @@ nodeLinker: hoisted
 
 packages:
   - "apps/*"
+  - "connectors"
+  - "workers/*"
   - "packages/*"
 
 catalog:

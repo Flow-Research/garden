@@ -185,12 +185,12 @@ function readPanelFromQueryState(input: {
 }
 
 function getCanonicalPanelId(panel: WorkspacePanelInput) {
-  if (panel.entityId) {
-    return `${panel.kind}:${panel.entityId}`
-  }
-
   if (singletonKinds.has(panel.kind)) {
     return `${panel.kind}:singleton`
+  }
+
+  if (panel.entityId) {
+    return `${panel.kind}:${panel.entityId}`
   }
 
   return `${panel.kind}:${panel.title}`
@@ -671,10 +671,22 @@ function ChatDockPanel({
   )
 }
 
-function CapabilitiesDockPanel() {
+function CapabilitiesDockPanel({
+  params,
+}: IDockviewPanelProps<WorkspacePanelParams>) {
   return (
     <WorkspacePanelFrame>
-      <ConnectionsPage />
+      <ConnectionsPage
+        focusedConnectorId={
+          params.entityId as
+            | 'exa-search'
+            | 'gmail'
+            | 'google-drive'
+            | 'slack'
+            | 'github'
+            | undefined
+        }
+      />
     </WorkspacePanelFrame>
   )
 }
@@ -974,6 +986,20 @@ export function WorkspaceDockProvider({
             })
 
       if (existing) {
+        const existingParams = getPanelParams(existing)
+        const entityChanged =
+          panel.entityId !== undefined &&
+          existingParams?.entityId !== panel.entityId
+        if (entityChanged) {
+          existing.api.updateParameters({
+            ...existingParams,
+            ...panel,
+            canonicalId,
+          } satisfies WorkspacePanelParams)
+          if (panel.title && existing.title !== panel.title) {
+            existing.api.setTitle(panel.title)
+          }
+        }
         existing.api.setActive()
         commitActiveDockState(api)
         return existing.id

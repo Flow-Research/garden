@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
@@ -22,23 +22,43 @@ export const Route = createFileRoute('/api/connections')({
         }
 
         const db = getDb(appEnv)
-        const [connections, capabilities, permissionGrants, invocationLogs, agents] =
+        const agents = await db
+          .select()
+          .from(schema.agent)
+          .where(eq(schema.agent.workspaceId, workspaceId))
+        const agentIds = agents.map((agent) => agent.id)
+        const [connections, capabilities, permissionGrants, toolCallAudits] =
           await Promise.all([
             db
               .select()
-              .from(schema.connectorConnection)
-              .where(eq(schema.connectorConnection.workspaceId, workspaceId)),
+              .from(schema.account)
+              .where(
+                and(
+                  eq(schema.account.workspaceId, workspaceId),
+                  isNotNull(schema.account.connectorType),
+                ),
+              ),
             db.select().from(schema.capability),
-            db.select().from(schema.permissionGrant),
-            db.select().from(schema.invocationLog),
-            db.select().from(schema.agent).where(eq(schema.agent.workspaceId, workspaceId)),
+            agentIds.length > 0
+              ? db
+                  .select()
+                  .from(schema.permissionGrant)
+                  .where(inArray(schema.permissionGrant.agentId, agentIds))
+              : Promise.resolve(
+                  [] as Array<typeof schema.permissionGrant.$inferSelect>,
+                ),
+            db
+              .select()
+              .from(schema.toolCallAudit)
+              .where(eq(schema.toolCallAudit.workspaceId, workspaceId)),
           ])
 
         const connectors = buildConnectionSurface({
+          agentIds,
           connections,
           capabilities,
           permissionGrants,
-          invocationLogs,
+          toolCallAudits,
         })
 
         return Response.json({
