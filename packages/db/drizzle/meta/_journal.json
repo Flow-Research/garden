@@ -22,13 +22,6 @@
       "when": 1776875639800,
       "tag": "0002_clean_darwin",
       "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1776903527447,
-      "tag": "0003_sudden_wilson_fisk",
-      "breakpoints": true
     }
   ]
 }

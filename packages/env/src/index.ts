@@ -12,14 +12,7 @@ const serverSchema = {
     ),
   BETTER_AUTH_SECRET: z.string().min(1).optional(),
   BETTER_AUTH_URL: z.string().url().optional(),
-  GITHUB_CLIENT_ID: z.string().min(1).optional(),
-  GITHUB_CLIENT_SECRET: z.string().min(1).optional(),
-  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
-  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
-  MCP_PROXY_URL: z.string().url().optional(),
   OPENCODE_GO_API_KEY: z.string().min(1).optional(),
-  SLACK_CLIENT_ID: z.string().min(1).optional(),
-  SLACK_CLIENT_SECRET: z.string().min(1).optional(),
   ENVIRONMENT: z
     .enum(['development', 'test', 'production'])
     .default('development'),

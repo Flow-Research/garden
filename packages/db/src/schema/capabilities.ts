@@ -10,6 +10,7 @@ import {
 } from 'drizzle-orm/pg-core'
 import { agent } from './agents.js'
 import { user } from './users.js'
+import { organization } from './workspaces.js'
 
 export const capability = pgTable(
   'capability',
@@ -20,24 +21,37 @@ export const capability = pgTable(
     description: text('description'),
     inputSchema: jsonb('input_schema'),
     outputSchema: jsonb('output_schema'),
-    schemaHash: text('schema_hash').notNull().default(''),
-    requiredScopes: text('required_scopes')
-      .array()
-      .notNull()
-      .default(sql`'{}'::text[]`),
-    riskClass: text('risk_class').notNull().default('read'),
-    createdAt: timestamp('created_at', { mode: 'date' })
-      .notNull()
-      .default(sql`now()`),
+    riskClass: text('risk_class').default('read'),
+    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
   },
   (table) => [
-    uniqueIndex('capability_connector_type_name_unique').on(
-      table.connectorType,
-      table.name,
-    ),
     check(
       'capability_risk_class_check',
       sql`${table.riskClass} in ('read', 'write', 'send_external', 'destructive')`,
+    ),
+  ],
+)
+
+export const connectorConnection = pgTable(
+  'connector_connection',
+  {
+    id: uuid('id').primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => organization.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => user.id),
+    connectorType: text('connector_type').notNull(),
+    encryptedCredentials: text('encrypted_credentials'),
+    scopes: text('scopes').array(),
+    status: text('status').default('connected'),
+    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
+  },
+  (table) => [
+    check(
+      'connector_connection_status_check',
+      sql`${table.status} in ('connected', 'degraded', 'disconnected')`,
     ),
   ],
 )
@@ -52,14 +66,11 @@ export const permissionGrant = pgTable(
     capabilityId: uuid('capability_id')
       .notNull()
       .references(() => capability.id),
-    trustLevel: text('trust_level').notNull().default('ask'),
+    trustLevel: text('trust_level').default('ask'),
     grantedBy: uuid('granted_by')
       .notNull()
       .references(() => user.id),
-    grantedAt: timestamp('granted_at', { mode: 'date' })
-      .notNull()
-      .default(sql`now()`),
-    expiresAt: timestamp('expires_at', { mode: 'date' }),
+    grantedAt: timestamp('granted_at', { mode: 'date' }).default(sql`now()`),
   },
   (table) => [
     uniqueIndex('permission_grant_agent_capability_unique').on(
@@ -85,19 +96,14 @@ export const permissionRequest = pgTable(
       .references(() => capability.id),
     context: text('context'),
     issueId: uuid('issue_id'),
-    argsJson: jsonb('args_json'),
-    toolCallId: text('tool_call_id').notNull().default(''),
-    requestedAt: timestamp('requested_at', { mode: 'date' })
-      .notNull()
-      .default(sql`now()`),
-    status: text('status').notNull().default('pending'),
+    status: text('status').default('pending'),
     resolvedBy: uuid('resolved_by'),
     resolvedAt: timestamp('resolved_at', { mode: 'date' }),
   },
   (table) => [
     check(
       'permission_request_status_check',
-      sql`${table.status} in ('pending', 'approved', 'denied')`,
+      sql`${table.status} in ('pending', 'approved', 'dismissed')`,
     ),
   ],
 )

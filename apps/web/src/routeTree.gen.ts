@@ -33,9 +33,7 @@ import { Route as ApiIssuesSearchRouteImport } from './routes/api/issues/search'
 import { Route as ApiIssuesChildProgressRouteImport } from './routes/api/issues/child-progress'
 import { Route as ApiIssuesIdRouteImport } from './routes/api/issues/$id'
 import { Route as ApiInvitationsIdRouteImport } from './routes/api/invitations/$id'
-import { Route as ApiInternalCapabilitySyncRouteImport } from './routes/api/internal/capability-sync'
 import { Route as ApiInboxUnreadCountRouteImport } from './routes/api/inbox/unread-count'
-import { Route as ApiConnectionsConnectorIdRouteImport } from './routes/api/connections/$connectorId'
 import { Route as ApiCommentsIdRouteImport } from './routes/api/comments/$id'
 import { Route as ApiChatThreadsRouteImport } from './routes/api/chat/threads'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -51,16 +49,13 @@ import { Route as ApiIssuesIdReactionsRouteImport } from './routes/api/issues/$i
 import { Route as ApiIssuesIdCommentsRouteImport } from './routes/api/issues/$id/comments'
 import { Route as ApiInvitationsIdDeclineRouteImport } from './routes/api/invitations/$id/decline'
 import { Route as ApiInvitationsIdAcceptRouteImport } from './routes/api/invitations/$id/accept'
-import { Route as ApiConnectionsConnectorIdActivityRouteImport } from './routes/api/connections/$connectorId/activity'
 import { Route as ApiCommentsIdReactionsRouteImport } from './routes/api/comments/$id/reactions'
 import { Route as ApiChatThreadsIdRouteImport } from './routes/api/chat/threads/$id'
 import { Route as ApiAgentsIdRestoreRouteImport } from './routes/api/agents/$id/restore'
 import { Route as ApiAgentsIdArchiveRouteImport } from './routes/api/agents/$id/archive'
 import { Route as ApiWorkspacesIdMembersMemberIdRouteImport } from './routes/api/workspaces/$id/members/$memberId'
 import { Route as ApiWorkspacesIdInvitationsInvitationIdRouteImport } from './routes/api/workspaces/$id/invitations/$invitationId'
-import { Route as ApiChatThreadsIdToolApprovalRouteImport } from './routes/api/chat/threads/$id/tool-approval'
 import { Route as ApiChatThreadsIdMessagesRouteImport } from './routes/api/chat/threads/$id/messages'
-import { Route as ApiConnectionsConnectorIdToolsNameGrantRouteImport } from './routes/api/connections/$connectorId/tools/$name/grant'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -181,23 +176,11 @@ const ApiInvitationsIdRoute = ApiInvitationsIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => ApiInvitationsRoute,
 } as any)
-const ApiInternalCapabilitySyncRoute =
-  ApiInternalCapabilitySyncRouteImport.update({
-    id: '/api/internal/capability-sync',
-    path: '/api/internal/capability-sync',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ApiInboxUnreadCountRoute = ApiInboxUnreadCountRouteImport.update({
   id: '/unread-count',
   path: '/unread-count',
   getParentRoute: () => ApiInboxRoute,
 } as any)
-const ApiConnectionsConnectorIdRoute =
-  ApiConnectionsConnectorIdRouteImport.update({
-    id: '/$connectorId',
-    path: '/$connectorId',
-    getParentRoute: () => ApiConnectionsRoute,
-  } as any)
 const ApiCommentsIdRoute = ApiCommentsIdRouteImport.update({
   id: '/api/comments/$id',
   path: '/api/comments/$id',
@@ -274,12 +257,6 @@ const ApiInvitationsIdAcceptRoute = ApiInvitationsIdAcceptRouteImport.update({
   path: '/accept',
   getParentRoute: () => ApiInvitationsIdRoute,
 } as any)
-const ApiConnectionsConnectorIdActivityRoute =
-  ApiConnectionsConnectorIdActivityRouteImport.update({
-    id: '/activity',
-    path: '/activity',
-    getParentRoute: () => ApiConnectionsConnectorIdRoute,
-  } as any)
 const ApiCommentsIdReactionsRoute = ApiCommentsIdReactionsRouteImport.update({
   id: '/reactions',
   path: '/reactions',
@@ -312,23 +289,11 @@ const ApiWorkspacesIdInvitationsInvitationIdRoute =
     path: '/$invitationId',
     getParentRoute: () => ApiWorkspacesIdInvitationsRoute,
   } as any)
-const ApiChatThreadsIdToolApprovalRoute =
-  ApiChatThreadsIdToolApprovalRouteImport.update({
-    id: '/tool-approval',
-    path: '/tool-approval',
-    getParentRoute: () => ApiChatThreadsIdRoute,
-  } as any)
 const ApiChatThreadsIdMessagesRoute =
   ApiChatThreadsIdMessagesRouteImport.update({
     id: '/messages',
     path: '/messages',
     getParentRoute: () => ApiChatThreadsIdRoute,
-  } as any)
-const ApiConnectionsConnectorIdToolsNameGrantRoute =
-  ApiConnectionsConnectorIdToolsNameGrantRouteImport.update({
-    id: '/tools/$name/grant',
-    path: '/tools/$name/grant',
-    getParentRoute: () => ApiConnectionsConnectorIdRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -339,7 +304,7 @@ export interface FileRoutesByFullPath {
   '/api/agents': typeof ApiAgentsRouteWithChildren
   '/api/bootstrap': typeof ApiBootstrapRoute
   '/api/config': typeof ApiConfigRoute
-  '/api/connections': typeof ApiConnectionsRouteWithChildren
+  '/api/connections': typeof ApiConnectionsRoute
   '/api/dashboard': typeof ApiDashboardRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
   '/api/invitations': typeof ApiInvitationsRouteWithChildren
@@ -353,9 +318,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
   '/api/comments/$id': typeof ApiCommentsIdRouteWithChildren
-  '/api/connections/$connectorId': typeof ApiConnectionsConnectorIdRouteWithChildren
   '/api/inbox/unread-count': typeof ApiInboxUnreadCountRoute
-  '/api/internal/capability-sync': typeof ApiInternalCapabilitySyncRoute
   '/api/invitations/$id': typeof ApiInvitationsIdRouteWithChildren
   '/api/issues/$id': typeof ApiIssuesIdRouteWithChildren
   '/api/issues/child-progress': typeof ApiIssuesChildProgressRoute
@@ -366,7 +329,6 @@ export interface FileRoutesByFullPath {
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
   '/api/chat/threads/$id': typeof ApiChatThreadsIdRouteWithChildren
   '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
-  '/api/connections/$connectorId/activity': typeof ApiConnectionsConnectorIdActivityRoute
   '/api/invitations/$id/accept': typeof ApiInvitationsIdAcceptRoute
   '/api/invitations/$id/decline': typeof ApiInvitationsIdDeclineRoute
   '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
@@ -379,10 +341,8 @@ export interface FileRoutesByFullPath {
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
   '/api/chat/threads/$id/messages': typeof ApiChatThreadsIdMessagesRoute
-  '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
-  '/api/connections/$connectorId/tools/$name/grant': typeof ApiConnectionsConnectorIdToolsNameGrantRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -392,7 +352,7 @@ export interface FileRoutesByTo {
   '/api/agents': typeof ApiAgentsRouteWithChildren
   '/api/bootstrap': typeof ApiBootstrapRoute
   '/api/config': typeof ApiConfigRoute
-  '/api/connections': typeof ApiConnectionsRouteWithChildren
+  '/api/connections': typeof ApiConnectionsRoute
   '/api/dashboard': typeof ApiDashboardRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
   '/api/invitations': typeof ApiInvitationsRouteWithChildren
@@ -406,9 +366,7 @@ export interface FileRoutesByTo {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
   '/api/comments/$id': typeof ApiCommentsIdRouteWithChildren
-  '/api/connections/$connectorId': typeof ApiConnectionsConnectorIdRouteWithChildren
   '/api/inbox/unread-count': typeof ApiInboxUnreadCountRoute
-  '/api/internal/capability-sync': typeof ApiInternalCapabilitySyncRoute
   '/api/invitations/$id': typeof ApiInvitationsIdRouteWithChildren
   '/api/issues/$id': typeof ApiIssuesIdRouteWithChildren
   '/api/issues/child-progress': typeof ApiIssuesChildProgressRoute
@@ -419,7 +377,6 @@ export interface FileRoutesByTo {
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
   '/api/chat/threads/$id': typeof ApiChatThreadsIdRouteWithChildren
   '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
-  '/api/connections/$connectorId/activity': typeof ApiConnectionsConnectorIdActivityRoute
   '/api/invitations/$id/accept': typeof ApiInvitationsIdAcceptRoute
   '/api/invitations/$id/decline': typeof ApiInvitationsIdDeclineRoute
   '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
@@ -432,10 +389,8 @@ export interface FileRoutesByTo {
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
   '/api/chat/threads/$id/messages': typeof ApiChatThreadsIdMessagesRoute
-  '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
-  '/api/connections/$connectorId/tools/$name/grant': typeof ApiConnectionsConnectorIdToolsNameGrantRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -447,7 +402,7 @@ export interface FileRoutesById {
   '/api/agents': typeof ApiAgentsRouteWithChildren
   '/api/bootstrap': typeof ApiBootstrapRoute
   '/api/config': typeof ApiConfigRoute
-  '/api/connections': typeof ApiConnectionsRouteWithChildren
+  '/api/connections': typeof ApiConnectionsRoute
   '/api/dashboard': typeof ApiDashboardRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
   '/api/invitations': typeof ApiInvitationsRouteWithChildren
@@ -461,9 +416,7 @@ export interface FileRoutesById {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
   '/api/comments/$id': typeof ApiCommentsIdRouteWithChildren
-  '/api/connections/$connectorId': typeof ApiConnectionsConnectorIdRouteWithChildren
   '/api/inbox/unread-count': typeof ApiInboxUnreadCountRoute
-  '/api/internal/capability-sync': typeof ApiInternalCapabilitySyncRoute
   '/api/invitations/$id': typeof ApiInvitationsIdRouteWithChildren
   '/api/issues/$id': typeof ApiIssuesIdRouteWithChildren
   '/api/issues/child-progress': typeof ApiIssuesChildProgressRoute
@@ -474,7 +427,6 @@ export interface FileRoutesById {
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
   '/api/chat/threads/$id': typeof ApiChatThreadsIdRouteWithChildren
   '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
-  '/api/connections/$connectorId/activity': typeof ApiConnectionsConnectorIdActivityRoute
   '/api/invitations/$id/accept': typeof ApiInvitationsIdAcceptRoute
   '/api/invitations/$id/decline': typeof ApiInvitationsIdDeclineRoute
   '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
@@ -487,10 +439,8 @@ export interface FileRoutesById {
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
   '/api/chat/threads/$id/messages': typeof ApiChatThreadsIdMessagesRoute
-  '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
-  '/api/connections/$connectorId/tools/$name/grant': typeof ApiConnectionsConnectorIdToolsNameGrantRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -516,9 +466,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/chat/threads'
     | '/api/comments/$id'
-    | '/api/connections/$connectorId'
     | '/api/inbox/unread-count'
-    | '/api/internal/capability-sync'
     | '/api/invitations/$id'
     | '/api/issues/$id'
     | '/api/issues/child-progress'
@@ -529,7 +477,6 @@ export interface FileRouteTypes {
     | '/api/agents/$id/restore'
     | '/api/chat/threads/$id'
     | '/api/comments/$id/reactions'
-    | '/api/connections/$connectorId/activity'
     | '/api/invitations/$id/accept'
     | '/api/invitations/$id/decline'
     | '/api/issues/$id/comments'
@@ -542,10 +489,8 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
     | '/api/chat/threads/$id/messages'
-    | '/api/chat/threads/$id/tool-approval'
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
-    | '/api/connections/$connectorId/tools/$name/grant'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -569,9 +514,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/chat/threads'
     | '/api/comments/$id'
-    | '/api/connections/$connectorId'
     | '/api/inbox/unread-count'
-    | '/api/internal/capability-sync'
     | '/api/invitations/$id'
     | '/api/issues/$id'
     | '/api/issues/child-progress'
@@ -582,7 +525,6 @@ export interface FileRouteTypes {
     | '/api/agents/$id/restore'
     | '/api/chat/threads/$id'
     | '/api/comments/$id/reactions'
-    | '/api/connections/$connectorId/activity'
     | '/api/invitations/$id/accept'
     | '/api/invitations/$id/decline'
     | '/api/issues/$id/comments'
@@ -595,10 +537,8 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
     | '/api/chat/threads/$id/messages'
-    | '/api/chat/threads/$id/tool-approval'
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
-    | '/api/connections/$connectorId/tools/$name/grant'
   id:
     | '__root__'
     | '/'
@@ -623,9 +563,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/chat/threads'
     | '/api/comments/$id'
-    | '/api/connections/$connectorId'
     | '/api/inbox/unread-count'
-    | '/api/internal/capability-sync'
     | '/api/invitations/$id'
     | '/api/issues/$id'
     | '/api/issues/child-progress'
@@ -636,7 +574,6 @@ export interface FileRouteTypes {
     | '/api/agents/$id/restore'
     | '/api/chat/threads/$id'
     | '/api/comments/$id/reactions'
-    | '/api/connections/$connectorId/activity'
     | '/api/invitations/$id/accept'
     | '/api/invitations/$id/decline'
     | '/api/issues/$id/comments'
@@ -649,10 +586,8 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
     | '/api/chat/threads/$id/messages'
-    | '/api/chat/threads/$id/tool-approval'
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
-    | '/api/connections/$connectorId/tools/$name/grant'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -663,7 +598,7 @@ export interface RootRouteChildren {
   ApiAgentsRoute: typeof ApiAgentsRouteWithChildren
   ApiBootstrapRoute: typeof ApiBootstrapRoute
   ApiConfigRoute: typeof ApiConfigRoute
-  ApiConnectionsRoute: typeof ApiConnectionsRouteWithChildren
+  ApiConnectionsRoute: typeof ApiConnectionsRoute
   ApiDashboardRoute: typeof ApiDashboardRoute
   ApiInboxRoute: typeof ApiInboxRouteWithChildren
   ApiInvitationsRoute: typeof ApiInvitationsRouteWithChildren
@@ -676,7 +611,6 @@ export interface RootRouteChildren {
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiChatThreadsRoute: typeof ApiChatThreadsRouteWithChildren
   ApiCommentsIdRoute: typeof ApiCommentsIdRouteWithChildren
-  ApiInternalCapabilitySyncRoute: typeof ApiInternalCapabilitySyncRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -849,26 +783,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInvitationsIdRouteImport
       parentRoute: typeof ApiInvitationsRoute
     }
-    '/api/internal/capability-sync': {
-      id: '/api/internal/capability-sync'
-      path: '/api/internal/capability-sync'
-      fullPath: '/api/internal/capability-sync'
-      preLoaderRoute: typeof ApiInternalCapabilitySyncRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/inbox/unread-count': {
       id: '/api/inbox/unread-count'
       path: '/unread-count'
       fullPath: '/api/inbox/unread-count'
       preLoaderRoute: typeof ApiInboxUnreadCountRouteImport
       parentRoute: typeof ApiInboxRoute
-    }
-    '/api/connections/$connectorId': {
-      id: '/api/connections/$connectorId'
-      path: '/$connectorId'
-      fullPath: '/api/connections/$connectorId'
-      preLoaderRoute: typeof ApiConnectionsConnectorIdRouteImport
-      parentRoute: typeof ApiConnectionsRoute
     }
     '/api/comments/$id': {
       id: '/api/comments/$id'
@@ -975,13 +895,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInvitationsIdAcceptRouteImport
       parentRoute: typeof ApiInvitationsIdRoute
     }
-    '/api/connections/$connectorId/activity': {
-      id: '/api/connections/$connectorId/activity'
-      path: '/activity'
-      fullPath: '/api/connections/$connectorId/activity'
-      preLoaderRoute: typeof ApiConnectionsConnectorIdActivityRouteImport
-      parentRoute: typeof ApiConnectionsConnectorIdRoute
-    }
     '/api/comments/$id/reactions': {
       id: '/api/comments/$id/reactions'
       path: '/reactions'
@@ -1024,26 +937,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWorkspacesIdInvitationsInvitationIdRouteImport
       parentRoute: typeof ApiWorkspacesIdInvitationsRoute
     }
-    '/api/chat/threads/$id/tool-approval': {
-      id: '/api/chat/threads/$id/tool-approval'
-      path: '/tool-approval'
-      fullPath: '/api/chat/threads/$id/tool-approval'
-      preLoaderRoute: typeof ApiChatThreadsIdToolApprovalRouteImport
-      parentRoute: typeof ApiChatThreadsIdRoute
-    }
     '/api/chat/threads/$id/messages': {
       id: '/api/chat/threads/$id/messages'
       path: '/messages'
       fullPath: '/api/chat/threads/$id/messages'
       preLoaderRoute: typeof ApiChatThreadsIdMessagesRouteImport
       parentRoute: typeof ApiChatThreadsIdRoute
-    }
-    '/api/connections/$connectorId/tools/$name/grant': {
-      id: '/api/connections/$connectorId/tools/$name/grant'
-      path: '/tools/$name/grant'
-      fullPath: '/api/connections/$connectorId/tools/$name/grant'
-      preLoaderRoute: typeof ApiConnectionsConnectorIdToolsNameGrantRouteImport
-      parentRoute: typeof ApiConnectionsConnectorIdRoute
     }
   }
 }
@@ -1084,36 +983,6 @@ const ApiAgentsRouteChildren: ApiAgentsRouteChildren = {
 
 const ApiAgentsRouteWithChildren = ApiAgentsRoute._addFileChildren(
   ApiAgentsRouteChildren,
-)
-
-interface ApiConnectionsConnectorIdRouteChildren {
-  ApiConnectionsConnectorIdActivityRoute: typeof ApiConnectionsConnectorIdActivityRoute
-  ApiConnectionsConnectorIdToolsNameGrantRoute: typeof ApiConnectionsConnectorIdToolsNameGrantRoute
-}
-
-const ApiConnectionsConnectorIdRouteChildren: ApiConnectionsConnectorIdRouteChildren =
-  {
-    ApiConnectionsConnectorIdActivityRoute:
-      ApiConnectionsConnectorIdActivityRoute,
-    ApiConnectionsConnectorIdToolsNameGrantRoute:
-      ApiConnectionsConnectorIdToolsNameGrantRoute,
-  }
-
-const ApiConnectionsConnectorIdRouteWithChildren =
-  ApiConnectionsConnectorIdRoute._addFileChildren(
-    ApiConnectionsConnectorIdRouteChildren,
-  )
-
-interface ApiConnectionsRouteChildren {
-  ApiConnectionsConnectorIdRoute: typeof ApiConnectionsConnectorIdRouteWithChildren
-}
-
-const ApiConnectionsRouteChildren: ApiConnectionsRouteChildren = {
-  ApiConnectionsConnectorIdRoute: ApiConnectionsConnectorIdRouteWithChildren,
-}
-
-const ApiConnectionsRouteWithChildren = ApiConnectionsRoute._addFileChildren(
-  ApiConnectionsRouteChildren,
 )
 
 interface ApiInboxRouteChildren {
@@ -1262,12 +1131,10 @@ const ApiWorkspacesRouteWithChildren = ApiWorkspacesRoute._addFileChildren(
 
 interface ApiChatThreadsIdRouteChildren {
   ApiChatThreadsIdMessagesRoute: typeof ApiChatThreadsIdMessagesRoute
-  ApiChatThreadsIdToolApprovalRoute: typeof ApiChatThreadsIdToolApprovalRoute
 }
 
 const ApiChatThreadsIdRouteChildren: ApiChatThreadsIdRouteChildren = {
   ApiChatThreadsIdMessagesRoute: ApiChatThreadsIdMessagesRoute,
-  ApiChatThreadsIdToolApprovalRoute: ApiChatThreadsIdToolApprovalRoute,
 }
 
 const ApiChatThreadsIdRouteWithChildren =
@@ -1305,7 +1172,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAgentsRoute: ApiAgentsRouteWithChildren,
   ApiBootstrapRoute: ApiBootstrapRoute,
   ApiConfigRoute: ApiConfigRoute,
-  ApiConnectionsRoute: ApiConnectionsRouteWithChildren,
+  ApiConnectionsRoute: ApiConnectionsRoute,
   ApiDashboardRoute: ApiDashboardRoute,
   ApiInboxRoute: ApiInboxRouteWithChildren,
   ApiInvitationsRoute: ApiInvitationsRouteWithChildren,
@@ -1318,7 +1185,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiChatThreadsRoute: ApiChatThreadsRouteWithChildren,
   ApiCommentsIdRoute: ApiCommentsIdRouteWithChildren,
-  ApiInternalCapabilitySyncRoute: ApiInternalCapabilitySyncRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

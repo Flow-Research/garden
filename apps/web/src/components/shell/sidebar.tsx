@@ -2,11 +2,16 @@
 
 import { useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { IconMessage2Plus, IconSparkles2 } from '@tabler/icons-react'
-import { Plug } from 'lucide-react'
+import {
+  IconBrandGithub,
+  IconBrandGmail,
+  IconBrandSlack,
+  IconMessage2Plus,
+  IconPlugConnected,
+  IconSparkles2,
+} from '@tabler/icons-react'
 import { Icon as IconifyIcon } from '@iconify/react'
 import { BrandIcon } from '@garden/ui/components/common/brand-icon'
-import type { ConnectorId } from '@garden/connectors/registry'
 import {
   Sidebar,
   SidebarContent,
@@ -200,7 +205,6 @@ export function WorkspaceSidebar() {
   const logout = useAuthStore((state) => state.logout)
   const openSettingsDialog = useSettingsDialogStore((s) => s.openSettings)
   const activeType = activePanel?.kind ?? null
-  const activeEntityId = activePanel?.entityId ?? null
   const activeRailId = contextFromPanel(activeType)
   const activeRail = railItems.find((item) => item.id === activeRailId) ?? railItems[0]
   const workspaceId = workspace?.id ?? ''
@@ -452,136 +456,62 @@ export function WorkspaceSidebar() {
           ) : null}
 
           {activeRailId === 'connections' ? (
-            <ConnectionsExplorer
-              activeEntityId={
-                activeType === 'capabilities'
-                  ? (activeEntityId as ConnectorId | null)
-                  : null
-              }
-              onOpenConnector={(connector) =>
-                openPanel({
-                  kind: 'capabilities',
-                  title: connector.label,
-                  entityId: connector.id,
-                })
-              }
-            />
+            <>
+              <ExplorerSection label="Connected">
+                <SidebarMenu>
+                  <ExplorerActionRow
+                    label="Connections"
+                    icon={IconPlugConnected}
+                    active={activeType === 'capabilities'}
+                    onClick={() =>
+                      openPanel({
+                        kind: 'capabilities',
+                        title: 'Connections',
+                      })
+                    }
+                  />
+                </SidebarMenu>
+              </ExplorerSection>
+
+              <ExplorerSection label="Available" count={3}>
+                <SidebarMenu>
+                  <ExplorerActionRow
+                    label="Gmail"
+                    icon={IconBrandGmail}
+                    onClick={() =>
+                      openPanel({
+                        kind: 'capabilities',
+                        title: 'Connections',
+                      })
+                    }
+                  />
+                  <ExplorerActionRow
+                    label="Slack"
+                    icon={IconBrandSlack}
+                    onClick={() =>
+                      openPanel({
+                        kind: 'capabilities',
+                        title: 'Connections',
+                      })
+                    }
+                  />
+                  <ExplorerActionRow
+                    label="GitHub"
+                    icon={IconBrandGithub}
+                    onClick={() =>
+                      openPanel({
+                        kind: 'capabilities',
+                        title: 'Connections',
+                      })
+                    }
+                  />
+                </SidebarMenu>
+              </ExplorerSection>
+            </>
           ) : null}
 
         </SidebarContent>
       </Sidebar>
     </Sidebar>
-  )
-}
-
-type ConnectionRowData = {
-  id: ConnectorId
-  label: string
-  status: 'available' | 'connected' | 'degraded' | 'disconnected'
-}
-
-type ConnectionsSnapshotLite = {
-  connectors: ConnectionRowData[]
-}
-
-async function loadConnectionsForSidebar(): Promise<ConnectionsSnapshotLite> {
-  const response = await fetch('/api/connections', { credentials: 'include' })
-  if (!response.ok) throw new Error('Failed to load connections')
-  return (await response.json()) as ConnectionsSnapshotLite
-}
-
-const CONNECTOR_ROW_ICON: Record<ConnectorId, string | null> = {
-  slack: 'logos:slack-icon',
-  gmail: 'logos:google-gmail',
-  'google-drive': 'logos:google-drive',
-  github: 'logos:github-icon',
-  'exa-search': 'simple-icons:exa',
-}
-
-function ConnectorRowIcon({
-  id,
-  className,
-}: {
-  id: ConnectorId
-  className?: string
-}) {
-  const icon = CONNECTOR_ROW_ICON[id]
-  if (!icon) return <Plug className={className} />
-  return <IconifyIcon icon={icon} className={className} />
-}
-
-function connectorDotColor(status: ConnectionRowData['status']) {
-  switch (status) {
-    case 'connected':
-      return 'bg-emerald-500'
-    case 'degraded':
-      return 'bg-amber-500'
-    case 'disconnected':
-      return 'bg-red-500'
-    default:
-      return 'bg-zinc-500'
-  }
-}
-
-function ConnectionsExplorer({
-  activeEntityId,
-  onOpenConnector,
-}: {
-  activeEntityId: ConnectorId | null
-  onOpenConnector: (connector: ConnectionRowData) => void
-}) {
-  const snapshotQuery = useQuery({
-    queryKey: ['workspace-connections'],
-    queryFn: loadConnectionsForSidebar,
-    staleTime: 20_000,
-  })
-
-  const { connected, available } = useMemo(() => {
-    const list = snapshotQuery.data?.connectors ?? []
-    return {
-      connected: list.filter((c) => c.status === 'connected' || c.status === 'degraded'),
-      available: list.filter((c) => c.status !== 'connected' && c.status !== 'degraded'),
-    }
-  }, [snapshotQuery.data])
-
-  const renderRow = (connector: ConnectionRowData) => {
-    const active = activeEntityId === connector.id
-    return (
-      <SidebarMenuItem key={connector.id}>
-        <SidebarMenuButton
-          isActive={active}
-          className="rounded-[2px] px-3"
-          onClick={() => onOpenConnector(connector)}
-        >
-          <ConnectorRowIcon id={connector.id} className="size-4" />
-          <span className="flex-1 truncate">{connector.label}</span>
-          <span
-            className={`size-2 shrink-0 rounded-full ring-2 ring-sidebar ${connectorDotColor(connector.status)}`}
-            aria-hidden="true"
-            title={connector.status}
-          />
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    )
-  }
-
-  return (
-    <>
-      {connected.length > 0 ? (
-        <ExplorerSection label="Connected" count={connected.length}>
-          <SidebarMenu>{connected.map(renderRow)}</SidebarMenu>
-        </ExplorerSection>
-      ) : null}
-      {available.length > 0 ? (
-        <ExplorerSection label="Available" count={available.length}>
-          <SidebarMenu>{available.map(renderRow)}</SidebarMenu>
-        </ExplorerSection>
-      ) : null}
-      {snapshotQuery.isLoading && !snapshotQuery.data ? (
-        <div className="px-4 py-3 text-xs text-muted-foreground">
-          Loading connections…
-        </div>
-      ) : null}
-    </>
   )
 }
