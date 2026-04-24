@@ -48,8 +48,14 @@ export const Route = createFileRoute('/api/chat/threads/$id')({
         )
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
+
+        const clientUpdatedAt =
+          typeof body.updatedAt === 'string' ? new Date(body.updatedAt) : null
         const updateValues: Partial<typeof schema.chatThread.$inferInsert> = {
-          updatedAt: new Date(),
+          updatedAt:
+            clientUpdatedAt && !Number.isNaN(clientUpdatedAt.getTime())
+              ? clientUpdatedAt
+              : new Date(),
         }
 
         if (typeof body.title === 'string') {

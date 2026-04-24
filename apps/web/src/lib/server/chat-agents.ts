@@ -44,8 +44,8 @@ export async function ensurePrimaryControlPlaneAgent(input: {
       id: crypto.randomUUID(),
       workspaceId: input.workspaceId,
       ownerUserId: input.ownerUserId,
-      name: 'Primary Agent',
-      roleTitle: 'Chat agent',
+      name: 'Agent',
+      roleTitle: null,
       status: 'active',
       doId: input.agentName,
     })
@@ -92,6 +92,54 @@ export async function refreshChatThreadSkillInventory(input: {
 }) {
   const stub = await getPrimaryAgentStub(input.agentName)
   await stub.refreshThreadSkills(input.threadId)
+}
+
+export async function refreshChatThreadPromptConfig(input: {
+  threadId: string
+  agentName: string
+}) {
+  const stub = await getPrimaryAgentStub(input.agentName)
+  await stub.refreshThreadPrompt(input.threadId)
+}
+
+export async function debugChatThreadMeta(input: {
+  threadId: string
+  agentName: string
+}) {
+  const stub = await getPrimaryAgentStub(input.agentName)
+  return stub.debugThreadMeta(input.threadId)
+}
+
+export async function debugChatThreadWorkspace(input: {
+  threadId: string
+  agentName: string
+}) {
+  const stub = await getPrimaryAgentStub(input.agentName)
+  return stub.debugThreadWorkspace(input.threadId)
+}
+
+export async function debugChatThreadSandbox(input: {
+  threadId: string
+  agentName: string
+}) {
+  const stub = await getPrimaryAgentStub(input.agentName)
+  return stub.debugThreadSandbox(input.threadId)
+}
+
+export async function debugChatThreadTools(input: {
+  threadId: string
+  agentName: string
+}) {
+  const stub = await getPrimaryAgentStub(input.agentName)
+  return stub.debugThreadTools(input.threadId)
+}
+
+export async function debugChatThreadPrompt(input: {
+  threadId: string
+  agentName: string
+}) {
+  const stub = await getPrimaryAgentStub(input.agentName)
+  return stub.debugThreadPrompt(input.threadId)
 }
 
 export async function debugChatThreadAgent(input: {

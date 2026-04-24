@@ -1,5 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import { refreshChatThreadPromptConfig } from '@/lib/server/chat-agents'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { badRequest, notFound, requireWorkspaceAccess, toAgent } from '@/lib/server/control-plane'
@@ -21,6 +22,9 @@ export const Route = createFileRoute('/api/agents/$id')({
         if (typeof body.name === 'string') updateValues.name = body.name
         if (typeof body.description === 'string')
           updateValues.roleTitle = body.description
+        if (typeof body.instructions === 'string') {
+          updateValues.instructions = body.instructions
+        }
         if (Object.prototype.hasOwnProperty.call(body, 'runtime_config')) {
           updateValues.persona =
             body.runtime_config && typeof body.runtime_config === 'object'
@@ -29,7 +33,10 @@ export const Route = createFileRoute('/api/agents/$id')({
         }
         const db = getDb(appEnv)
         const [existingAgent] = await db
-          .select({ workspaceId: schema.agent.workspaceId })
+          .select({
+            workspaceId: schema.agent.workspaceId,
+            doId: schema.agent.doId,
+          })
           .from(schema.agent)
           .where(eq(schema.agent.id, params.id))
         if (!existingAgent) return notFound('Agent not found')
@@ -54,6 +61,26 @@ export const Route = createFileRoute('/api/agents/$id')({
           )
           .returning()
         if (!agent) return notFound('Agent not found')
+
+        if (existingAgent.doId) {
+          const threads = await db
+            .select({
+              id: schema.chatThread.id,
+              agentName: schema.chatThread.agentName,
+            })
+            .from(schema.chatThread)
+            .where(eq(schema.chatThread.agentName, existingAgent.doId))
+
+          await Promise.all(
+            threads.map((thread) =>
+              refreshChatThreadPromptConfig({
+                threadId: thread.id,
+                agentName: thread.agentName,
+              }),
+            ),
+          )
+        }
+
         return Response.json(toAgent(agent))
       },
     },

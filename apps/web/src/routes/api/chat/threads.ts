@@ -70,9 +70,6 @@ export const Route = createFileRoute('/api/chat/threads')({
         const body = bodyResult.value
         const requestedTitle = typeof body.title === 'string' ? body.title : ''
         const title = requestedTitle || 'New Chat'
-        if (!title) {
-          return badRequest('Chat title is required')
-        }
 
         const id = crypto.randomUUID()
         const agentName = buildPrimaryAgentName(workspaceId, session.user.id)

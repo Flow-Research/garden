@@ -253,7 +253,7 @@ export function toAgent(record: typeof schema.agent.$inferSelect) {
     runtime_id: '',
     name: record.name,
     description: record.roleTitle ?? '',
-    instructions: '',
+    instructions: record.instructions ?? '',
     avatar_url: null,
     runtime_mode: 'cloud',
     runtime_config: record.persona ? JSON.parse(record.persona) : {},
