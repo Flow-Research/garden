@@ -1,9 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { createAuth } from '@/lib/auth'
 import {
+  createWorkspaceMemberBodySchema,
+  parseJsonBody,
+} from '@/lib/server/api-validation'
+import {
   requireSession,
   toInvitation,
   unauthorized,
+  badRequest,
 } from '@/lib/server/control-plane'
 import { appEnv } from '@/lib/server/env'
 
@@ -51,22 +56,19 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
       POST: async ({ request, params }) => {
         const session = await requireSession(request)
         if (!session) return unauthorized()
-        const body = (await request.json().catch(() => null)) as {
-          email?: unknown
-          role?: unknown
-        } | null
-        if (typeof body?.email !== 'string' || typeof body?.role !== 'string') {
-          return Response.json(
-            { error: 'Invalid invite payload' },
-            { status: 400 },
-          )
-        }
+        const bodyResult = await parseJsonBody(
+          request,
+          createWorkspaceMemberBodySchema,
+          'Invalid invite payload',
+        )
+        if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
+        const body = bodyResult.value
         const auth = createAuth(appEnv)
         const invitation = (await auth.api.createInvitation({
           headers: request.headers,
           body: {
             email: body.email,
-            role: body.role as 'owner' | 'admin' | 'member',
+            role: body.role ?? 'member',
             organizationId: params.id,
           },
         })) as {

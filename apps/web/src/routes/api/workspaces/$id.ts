@@ -2,6 +2,11 @@ import { createFileRoute } from '@tanstack/react-router'
 import { createAuth } from '@/lib/auth'
 import { appEnv } from '@/lib/server/env'
 import {
+  parseJsonBody,
+  updateWorkspaceBodySchema,
+} from '@/lib/server/api-validation'
+import {
+  badRequest,
   notFound,
   requireSession,
   toWorkspaceFromOrganization,
@@ -53,24 +58,20 @@ export const Route = createFileRoute('/api/workspaces/$id')({
         const session = await requireSession(request)
         if (!session) return unauthorized()
 
-        const body = (await request.json().catch(() => null)) as Record<
-          string,
-          unknown
-        > | null
+        const bodyResult = await parseJsonBody(
+          request,
+          updateWorkspaceBodySchema,
+          'Invalid workspace payload',
+        )
+        if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
+        const body = bodyResult.value
         const auth = createAuth(appEnv)
         const data: Record<string, unknown> = {}
-        if (typeof body?.name === 'string') data.name = body.name
-        if (typeof body?.slug === 'string') data.slug = body.slug
-        if (typeof body?.description === 'string')
-          data.description = body.description
-        if (typeof body?.context === 'string') data.context = body.context
-        if (
-          body &&
-          Object.prototype.hasOwnProperty.call(body, 'settings') &&
-          body.settings &&
-          typeof body.settings === 'object' &&
-          !Array.isArray(body.settings)
-        ) {
+        if (typeof body.name === 'string') data.name = body.name
+        if (typeof body.slug === 'string') data.slug = body.slug
+        if (typeof body.description === 'string') data.description = body.description
+        if (typeof body.context === 'string') data.context = body.context
+        if (body.settings) {
           data.settings = body.settings
         }
         await auth.api.updateOrganization({

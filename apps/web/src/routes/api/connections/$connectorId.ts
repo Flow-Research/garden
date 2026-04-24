@@ -2,6 +2,10 @@ import { Result } from 'better-result'
 import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { getConnectorById } from '@garden/connectors'
+import {
+  connectionActionBodySchema,
+  parseJsonBody,
+} from '@/lib/server/api-validation'
 import { syncCapabilities } from '@/lib/server/capability-sync'
 import {
   badRequest,
@@ -28,18 +32,14 @@ function syncErrorStatus(code: string) {
 }
 
 async function parseAction(request: Request) {
-  const bodyResult = await Result.tryPromise({
-    try: async () => (await request.json()) as Record<string, unknown>,
-    catch: () => null,
-  })
+  const bodyResult = await parseJsonBody(
+    request,
+    connectionActionBodySchema,
+    'Invalid connection action',
+  )
 
-  if (bodyResult.isErr()) {
-    return Result.err('invalid-body')
-  }
-
-  const action = bodyResult.value?.action
-  return action === 'disconnect' || action === 'resync'
-    ? Result.ok(action)
+  return bodyResult.isOk()
+    ? Result.ok(bodyResult.value.action)
     : Result.err('invalid-action')
 }
 

@@ -2,7 +2,8 @@ import { Result, TaggedError } from 'better-result'
 import { and, eq, inArray } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { schema } from '@/lib/server/db'
-import { badRequest, json, notFound } from '@/lib/server/control-plane'
+import { parseJsonBody, toolApprovalBodySchema } from '@/lib/server/api-validation'
+import { json, notFound } from '@/lib/server/control-plane'
 import { getThreadAccess } from '@/lib/server/chat-threads'
 
 const textEncoder = new TextEncoder()
@@ -58,30 +59,16 @@ export const Route = createFileRoute('/api/chat/threads/$id/tool-approval')({
         const access = await getThreadAccess(request, params.id)
         if (access instanceof Response) return access
 
-        const bodyResult = await Result.tryPromise({
-          try: async () => (await request.json()) as Record<string, unknown>,
-          catch: () =>
-            new ToolApprovalRouteError({
-              status: 400,
-              message: 'Invalid tool approval payload',
-            }),
-        })
+        const bodyResult = await parseJsonBody(
+          request,
+          toolApprovalBodySchema,
+          'Invalid tool approval payload',
+        )
         if (bodyResult.isErr()) {
-          return json({ error: bodyResult.error.message }, bodyResult.error.status)
+          return json({ error: bodyResult.error.message }, 400)
         }
 
-        const toolCallId =
-          typeof bodyResult.value.toolCallId === 'string'
-            ? bodyResult.value.toolCallId.trim()
-            : ''
-        const approved =
-          typeof bodyResult.value.approved === 'boolean'
-            ? bodyResult.value.approved
-            : null
-
-        if (!toolCallId || approved === null) {
-          return badRequest('toolCallId and approved are required')
-        }
+        const { approved, toolCallId } = bodyResult.value
 
         const referenceRequestResult = await Result.tryPromise({
           try: async () =>

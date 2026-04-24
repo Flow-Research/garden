@@ -3,6 +3,11 @@ import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
+  issueSearchQuerySchema,
+  parseSearchParams,
+} from '@/lib/server/api-validation'
+import {
+  badRequest,
   requireSession,
   resolveWorkspaceId,
   toIssue,
@@ -19,11 +24,17 @@ export const Route = createFileRoute('/api/issues/search')({
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
         if (!workspaceId) return Response.json({ issues: [], total: 0 })
 
-        const searchParams = new URL(request.url).searchParams
-        const q = searchParams.get('q')?.trim()
-        const limit = Number(searchParams.get('limit') ?? '20')
-        const offset = Number(searchParams.get('offset') ?? '0')
-        const includeClosed = searchParams.get('include_closed') === 'true'
+        const searchResult = parseSearchParams(
+          request,
+          issueSearchQuerySchema,
+          'Invalid issue search query',
+        )
+        if (searchResult.isErr()) return badRequest(searchResult.error.message)
+
+        const q = searchResult.value.q
+        const limit = searchResult.value.limit ?? 20
+        const offset = searchResult.value.offset ?? 0
+        const includeClosed = searchResult.value.include_closed ?? false
 
         if (!q) {
           return Response.json({ issues: [], total: 0 })

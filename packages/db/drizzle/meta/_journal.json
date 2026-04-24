@@ -50,6 +50,13 @@
       "when": 1776962400000,
       "tag": "0006_skill_bundle_source",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1776991200000,
+      "tag": "0007_issue_priority_check",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,10 @@ import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
+  createChatThreadBodySchema,
+  parseJsonBody,
+} from '@/lib/server/api-validation'
+import {
   buildPrimaryAgentName,
   ensurePrimaryControlPlaneAgent,
   ensureChatThreadAgent,
@@ -57,12 +61,14 @@ export const Route = createFileRoute('/api/chat/threads')({
           return Response.json({ error: 'Workspace not found' }, { status: 404 })
         }
 
-        const body = (await request.json().catch(() => null)) as Record<
-          string,
-          unknown
-        > | null
-        const requestedTitle =
-          typeof body?.title === 'string' ? body.title.trim() : ''
+        const bodyResult = await parseJsonBody(
+          request,
+          createChatThreadBodySchema,
+          'Invalid chat thread payload',
+        )
+        if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
+        const body = bodyResult.value
+        const requestedTitle = typeof body.title === 'string' ? body.title : ''
         const title = requestedTitle || 'New Chat'
         if (!title) {
           return badRequest('Chat title is required')

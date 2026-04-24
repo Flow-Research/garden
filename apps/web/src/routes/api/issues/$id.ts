@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
+import { parseJsonBody, updateIssueBodySchema } from '@/lib/server/api-validation'
 import {
   badRequest,
   notFound,
@@ -40,21 +41,23 @@ export const Route = createFileRoute('/api/issues/$id')({
         return Response.json(toIssue(issue))
       },
       PUT: async ({ request, params }) => {
-        const body = (await request.json().catch(() => null)) as Record<
-          string,
-          unknown
-        > | null
+        const bodyResult = await parseJsonBody(
+          request,
+          updateIssueBodySchema,
+          'Invalid issue payload',
+        )
+        if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
+        const body = bodyResult.value
         const updateValues: Partial<typeof schema.issue.$inferInsert> = {}
 
-        if (typeof body?.title === 'string') updateValues.title = body.title
-        if (typeof body?.description === 'string')
-          updateValues.description = body.description
-        if (typeof body?.status === 'string') updateValues.status = body.status
-        if (typeof body?.priority === 'string')
-          updateValues.priority = body.priority
-        if (body && Object.prototype.hasOwnProperty.call(body, 'assignee_id')) {
-          updateValues.assigneeId =
-            typeof body.assignee_id === 'string' ? body.assignee_id : null
+        if (typeof body.title === 'string') updateValues.title = body.title
+        if (Object.prototype.hasOwnProperty.call(body, 'description')) {
+          updateValues.description = body.description ?? null
+        }
+        if (body.status) updateValues.status = body.status
+        if (body.priority) updateValues.priority = body.priority
+        if (Object.prototype.hasOwnProperty.call(body, 'assignee_id')) {
+          updateValues.assigneeId = body.assignee_id ?? null
           updateValues.assigneeType =
             typeof body.assignee_id === 'string'
               ? body.assignee_type === 'agent'
@@ -62,13 +65,11 @@ export const Route = createFileRoute('/api/issues/$id')({
                 : 'user'
               : null
         }
-        if (body && Object.prototype.hasOwnProperty.call(body, 'parent_issue_id')) {
-          updateValues.parentId =
-            typeof body.parent_issue_id === 'string' ? body.parent_issue_id : null
+        if (Object.prototype.hasOwnProperty.call(body, 'parent_issue_id')) {
+          updateValues.parentId = body.parent_issue_id ?? null
         }
-        if (body && Object.prototype.hasOwnProperty.call(body, 'project_id')) {
-          updateValues.projectId =
-            typeof body.project_id === 'string' ? body.project_id : null
+        if (Object.prototype.hasOwnProperty.call(body, 'project_id')) {
+          updateValues.projectId = body.project_id ?? null
         }
 
         if (Object.keys(updateValues).length === 0) {

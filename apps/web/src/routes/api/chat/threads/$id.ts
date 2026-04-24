@@ -2,6 +2,10 @@ import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { schema } from '@/lib/server/db'
 import {
+  parseJsonBody,
+  updateChatThreadBodySchema,
+} from '@/lib/server/api-validation'
+import {
   deleteChatThreadAgent,
   ensurePrimaryControlPlaneAgent,
   ensureChatThreadAgent,
@@ -37,29 +41,29 @@ export const Route = createFileRoute('/api/chat/threads/$id')({
         const access = await getThreadAccess(request, params.id)
         if (access instanceof Response) return access
 
-        const body = (await request.json().catch(() => null)) as Record<
-          string,
-          unknown
-        > | null
+        const bodyResult = await parseJsonBody(
+          request,
+          updateChatThreadBodySchema,
+          'Invalid chat thread payload',
+        )
+        if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
+        const body = bodyResult.value
         const updateValues: Partial<typeof schema.chatThread.$inferInsert> = {
           updatedAt: new Date(),
         }
 
-        if (typeof body?.title === 'string') {
-          const title = body.title.trim()
-          if (!title) {
-            return badRequest('Chat title is required')
-          }
-          updateValues.title = title
+        if (typeof body.title === 'string') {
+          updateValues.title = body.title
         }
 
-        if (typeof body?.lastMessage === 'string') {
+        if (typeof body.lastMessage === 'string') {
           updateValues.lastMessage = body.lastMessage
         }
 
-        if (body && Object.prototype.hasOwnProperty.call(body, 'archivedAt')) {
-          updateValues.archivedAt =
-            typeof body.archivedAt === 'string' ? new Date(body.archivedAt) : null
+        if (Object.prototype.hasOwnProperty.call(body, 'archivedAt')) {
+          updateValues.archivedAt = body.archivedAt
+            ? new Date(body.archivedAt)
+            : null
         }
 
         const [thread] = await access.db
