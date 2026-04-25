@@ -50,13 +50,13 @@ vi.mock('@garden/core/workspace/hooks', () => ({
   useActorName: () => ({
     getMemberName: (id: string) => (id === 'user-1' ? 'Test User' : 'Unknown'),
     getAgentName: (id: string) =>
-      id === 'agent-1' ? 'Claude Agent' : 'Unknown Agent',
+      id === 'agent-1' ? 'Garden Agent' : 'Unknown Agent',
     getActorName: (type: string, id: string) => {
       if (type === 'member' && id === 'user-1') return 'Test User'
-      if (type === 'agent' && id === 'agent-1') return 'Claude Agent'
+      if (type === 'agent' && id === 'agent-1') return 'Garden Agent'
       return 'Unknown'
     },
-    getActorInitials: (type: string) => (type === 'member' ? 'TU' : 'CA'),
+    getActorInitials: (type: string) => (type === 'member' ? 'TU' : 'GA'),
     getActorAvatarUrl: () => null,
   }),
 }))

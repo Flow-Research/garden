@@ -44,6 +44,3 @@ export function Markdown(props: MarkdownProps): React.JSX.Element {
     />
   )
 }
-
-export const MemoizedMarkdown = React.memo(Markdown)
-MemoizedMarkdown.displayName = 'MemoizedMarkdown'

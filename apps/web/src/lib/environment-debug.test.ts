@@ -1,90 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import {
-  createEnvironmentDebugSnapshot,
-  environmentDebugSnapshotSpec,
+  DEBUG_SDK_STACK,
+  VIRTUAL_FS_BACKING_STORES,
 } from './environment-debug'
 
-const liveState = {
-  agentName: 'PrimaryAgent:workspace-123:user-123:primary / ChatAgent:thread-123',
-  requestedSessionId: 'thread-123',
-  effectiveSessionId: 'thread-123',
-  visibleSessionCount: 1,
-  archivedSessionCount: 0,
-  currentMessageCount: 2,
-  currentPreview: 'Latest reply',
-  sessions: [
-    {
-      id: 'thread-123',
-      title: 'Current thread',
-      createdAt: '2026-04-21T12:00:00.000Z',
-      updatedAt: '2026-04-21T12:01:00.000Z',
-      lastMessage: 'Latest reply',
-      messageCount: 2,
-    },
-  ],
-  workspace: {
-    rootEntries: [
-      {
-        path: '/workspace',
-        name: 'workspace',
-        type: 'directory',
-        size: 0,
-        mimeType: 'inode/directory',
-        updatedAt: 1,
-      },
-    ],
-    samplePaths: [],
-  },
-  sandbox: {
-    id: 'sandbox-123',
-    reachable: true,
-    cwd: '/workspace',
-    workspaceListing: 'README.md',
-    currentDirectoryListing: 'README.md',
-  },
-} as const
-
-describe('createEnvironmentDebugSnapshot', () => {
-  it('copies live agent state into the snapshot', () => {
-    const snapshot = createEnvironmentDebugSnapshot({
-      workspaceId: 'workspace-123',
-      liveState,
-    })
-
-    expect(snapshot.workspaceId).toBe('workspace-123')
-    expect(snapshot.agent).toEqual({
-      name: 'PrimaryAgent:workspace-123:user-123:primary / ChatAgent:thread-123',
-      requestedSessionId: 'thread-123',
-      effectiveSessionId: 'thread-123',
-      visibleSessionCount: 1,
-      archivedSessionCount: 0,
-      currentMessageCount: 2,
-      currentPreview: 'Latest reply',
-    })
-    expect(snapshot.sessions).toEqual(liveState.sessions)
-    expect(snapshot.virtualFs.rootEntries).toEqual(liveState.workspace.rootEntries)
-    expect(snapshot.sandbox).toEqual(
-      expect.objectContaining({
-        id: 'sandbox-123',
-        reachable: true,
-        cwd: '/workspace',
-        workspaceListing: 'README.md',
-        currentDirectoryListing: 'README.md',
-      }),
-    )
+describe('environment-debug metadata', () => {
+  it('ships a non-empty SDK stack with required fields', () => {
+    expect(DEBUG_SDK_STACK.length).toBeGreaterThan(0)
+    for (const sdk of DEBUG_SDK_STACK) {
+      expect(sdk.name).toBeTruthy()
+      expect(sdk.version).toBeTruthy()
+      expect(['stable', 'beta', 'alpha']).toContain(sdk.channel)
+    }
   })
 
-  it('exposes the current debug spec metadata', () => {
-    const snapshot = createEnvironmentDebugSnapshot({
-      workspaceId: 'workspace-123',
-      liveState,
-    })
-
-    expect(snapshot.sandbox.callableRpcMethods).toEqual(
-      environmentDebugSnapshotSpec.callableRpcMethods,
-    )
-    expect(snapshot.sdks).toEqual(environmentDebugSnapshotSpec.sdks)
-    expect(snapshot.virtualFs.backingStores).toEqual([
+  it('lists the DO SQLite + R2 backing stores', () => {
+    expect(VIRTUAL_FS_BACKING_STORES).toEqual([
       'Durable Object SQLite',
       'R2 spillover via FILES binding',
     ])

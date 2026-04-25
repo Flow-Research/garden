@@ -3,13 +3,12 @@ import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
-  buildPrimaryAgentName,
-  ensurePrimaryControlPlaneAgent,
+  buildAgentHostName,
+  ensureAgentRow,
   ensureChatThreadAgent,
   ensureChatThreadAgents,
 } from '@/lib/server/chat-agents'
 import {
-  badRequest,
   requireSession,
   resolveWorkspaceId,
   toChatThread,
@@ -26,16 +25,24 @@ export const Route = createFileRoute('/api/chat/threads')({
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
         if (!workspaceId) return Response.json([])
 
-        await ensurePrimaryControlPlaneAgent({
+        const hostName = buildAgentHostName(workspaceId, session.user.id)
+        await ensureAgentRow({
           workspaceId,
           ownerUserId: session.user.id,
-          agentName: buildPrimaryAgentName(workspaceId, session.user.id),
+          hostName,
         })
 
         const db = getDb(appEnv)
         const rows = await db
-          .select()
+          .select({
+            thread: schema.chatThread,
+            hostName: schema.agent.hostName,
+          })
           .from(schema.chatThread)
+          .innerJoin(
+            schema.agent,
+            eq(schema.agent.id, schema.chatThread.agentId),
+          )
           .where(
             and(
               eq(schema.chatThread.workspaceId, workspaceId),
@@ -44,9 +51,20 @@ export const Route = createFileRoute('/api/chat/threads')({
           )
           .orderBy(desc(schema.chatThread.updatedAt))
 
-        await ensureChatThreadAgents(rows)
+        const usableRows = rows.flatMap((row) =>
+          row.hostName ? [{ thread: row.thread, hostName: row.hostName }] : [],
+        )
 
-        return Response.json(rows.map(toChatThread))
+        await ensureChatThreadAgents(
+          usableRows.map((row) => ({
+            id: row.thread.id,
+            hostName: row.hostName,
+          })),
+        )
+
+        return Response.json(
+          usableRows.map((row) => toChatThread(row.thread, row.hostName)),
+        )
       },
       POST: async ({ request }) => {
         const session = await requireSession(request)
@@ -64,19 +82,16 @@ export const Route = createFileRoute('/api/chat/threads')({
         const requestedTitle =
           typeof body?.title === 'string' ? body.title.trim() : ''
         const title = requestedTitle || 'New Chat'
-        if (!title) {
-          return badRequest('Chat title is required')
-        }
 
         const id = crypto.randomUUID()
-        const agentName = buildPrimaryAgentName(workspaceId, session.user.id)
+        const hostName = buildAgentHostName(workspaceId, session.user.id)
         const now = new Date()
         const db = getDb(appEnv)
 
-        await ensurePrimaryControlPlaneAgent({
+        const agentRow = await ensureAgentRow({
           workspaceId,
           ownerUserId: session.user.id,
-          agentName,
+          hostName,
         })
 
         const [thread] = await db
@@ -85,8 +100,8 @@ export const Route = createFileRoute('/api/chat/threads')({
             id,
             workspaceId,
             ownerUserId: session.user.id,
+            agentId: agentRow.id,
             title,
-            agentName,
             lastMessage: '',
             createdAt: now,
             updatedAt: now,
@@ -95,10 +110,10 @@ export const Route = createFileRoute('/api/chat/threads')({
 
         await ensureChatThreadAgent({
           threadId: thread.id,
-          agentName: thread.agentName,
+          hostName,
         })
 
-        return Response.json(toChatThread(thread), { status: 201 })
+        return Response.json(toChatThread(thread, hostName), { status: 201 })
       },
     },
   },

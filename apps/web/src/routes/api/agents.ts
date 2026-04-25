@@ -44,6 +44,8 @@ export const Route = createFileRoute('/api/agents')({
           name: body.name,
           roleTitle:
             typeof body.description === 'string' ? body.description : null,
+          instructions:
+            typeof body.instructions === 'string' ? body.instructions : null,
           persona: body.runtime_config
             ? JSON.stringify(body.runtime_config)
             : null,

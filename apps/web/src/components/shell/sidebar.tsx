@@ -1,12 +1,15 @@
 'use client'
 
 import { useCallback, useMemo } from 'react'
+import { Result } from 'better-result'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { IconBook2, IconMessage2Plus } from '@tabler/icons-react'
-import { Plug } from 'lucide-react'
+import { Bot, Plug } from 'lucide-react'
 import { Icon as IconifyIcon } from '@iconify/react'
 import { BrandIcon } from '@garden/ui/components/common/brand-icon'
 import type { ConnectorId } from '@garden/connectors/registry'
+import type { Agent } from '@garden/core/types'
+import { agentListOptions } from '@garden/core/workspace/queries'
 import {
   Sidebar,
   SidebarContent,
@@ -43,6 +46,7 @@ import { toast } from 'sonner'
 type RailContext =
   | 'home'
   | 'chats'
+  | 'agents'
   | 'skills'
   | 'connections'
 
@@ -67,6 +71,12 @@ const railItems: RailItem[] = [
     defaultPanel: { kind: 'chat', title: 'New Chat' },
   },
   {
+    id: 'agents',
+    label: 'Agents',
+    icon: RailAgentsIcon,
+    defaultPanel: { kind: 'agents', title: 'Agents' },
+  },
+  {
     id: 'skills',
     label: 'Skills',
     icon: RailSkillsIcon,
@@ -84,6 +94,9 @@ function contextFromPanel(kind: WorkspacePanelKind | null): RailContext {
   switch (kind) {
     case 'chat':
       return 'chats'
+    case 'agents':
+    case 'agent-detail':
+      return 'agents'
     case 'skill-editor':
       return 'skills'
     case 'capabilities':
@@ -108,6 +121,10 @@ function RailHomeIcon({ className }: { className?: string }) {
 
 function RailChatsIcon({ className }: { className?: string }) {
   return <IconifyIcon icon="hugeicons:bubble-chat" className={className} />
+}
+
+function RailAgentsIcon({ className }: { className?: string }) {
+  return <IconifyIcon icon="hugeicons:robot-01" className={className} />
 }
 
 function RailSkillsIcon({ className }: { className?: string }) {
@@ -192,7 +209,7 @@ export function WorkspaceSidebar() {
   const queryClient = useQueryClient()
   const { replace } = useNavigation()
   const { activePanel, openPanel } = useWorkspaceDock()
-  const { createSession, sessions } = useAgentSessions()
+  const { claimWarmSession, sessions } = useAgentSessions()
   const { setOpen } = useSidebar()
   const workspace = useWorkspaceStore((state) => state.workspace)
   const clearWorkspace = useWorkspaceStore((state) => state.clearWorkspace)
@@ -250,11 +267,19 @@ export function WorkspaceSidebar() {
           return
         }
 
-        void createSession.mutateAsync('New Chat').then((session) => {
+        void Result.tryPromise(() => claimWarmSession()).then((result) => {
+          if (Result.isError(result)) {
+            toast.error(
+              result.error instanceof Error
+                ? result.error.message
+                : 'Failed to start chat',
+            )
+            return
+          }
           openPanel({
             kind: 'chat',
-            title: session.title,
-            entityId: session.id,
+            title: result.value.title,
+            entityId: result.value.id,
           })
         })
         return
@@ -262,29 +287,33 @@ export function WorkspaceSidebar() {
 
       openPanel(item.defaultPanel)
     },
-    [createSession, openPanel, revealExplorer, sessions],
+    [claimWarmSession, openPanel, revealExplorer, sessions],
   )
 
   const handleLogout = useCallback(async () => {
-    try {
-      await logout()
-      queryClient.clear()
-      clearWorkspace()
-      toast.success('Signed out')
-      replace('/login')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to sign out')
+    const result = await Result.tryPromise(() => logout())
+    if (Result.isError(result)) {
+      toast.error(
+        result.error instanceof Error
+          ? result.error.message
+          : 'Failed to sign out',
+      )
+      return
     }
+    queryClient.clear()
+    clearWorkspace()
+    toast.success('Signed out')
+    replace('/login')
   }, [clearWorkspace, logout, queryClient, replace])
 
   return (
     <Sidebar
       collapsible="icon"
-      className="overflow-hidden border-r-0 *:data-[sidebar=sidebar]:flex-row"
+      className="overflow-hidden border-r-0 border-t border-sidebar-border/70 *:data-[sidebar=sidebar]:flex-row"
     >
       <Sidebar
-        collapsible="none"
-        className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r-[3px] border-sidebar-border"
+      collapsible="none"
+      className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r border-sidebar-border/70"
       >
         <SidebarHeader className="p-0">
           <SidebarMenu>
@@ -412,13 +441,23 @@ export function WorkspaceSidebar() {
                   icon={IconMessage2Plus}
                   active={activeType === 'chat'}
                   onClick={() => {
-                    void createSession.mutateAsync('New Chat').then((session) => {
-                      openPanel({
-                        kind: 'chat',
-                        title: session.title,
-                        entityId: session.id,
-                      })
-                    })
+                    void Result.tryPromise(() => claimWarmSession()).then(
+                      (result) => {
+                        if (Result.isError(result)) {
+                          toast.error(
+                            result.error instanceof Error
+                              ? result.error.message
+                              : 'Failed to start chat',
+                          )
+                          return
+                        }
+                        openPanel({
+                          kind: 'chat',
+                          title: result.value.title,
+                          entityId: result.value.id,
+                        })
+                      },
+                    )
                   }}
                 />
               </SidebarMenu>
@@ -434,6 +473,26 @@ export function WorkspaceSidebar() {
                 />
               </div>
             </ExplorerSection>
+          ) : null}
+
+          {activeRailId === 'agents' ? (
+            <AgentsExplorer
+              workspaceId={workspaceId}
+              activeType={activeType}
+              activeEntityId={
+                activeType === 'agent-detail' ? activeEntityId : null
+              }
+              onOpenList={() =>
+                openPanel({ kind: 'agents', title: 'Agents' })
+              }
+              onOpenAgent={(agent) =>
+                openPanel({
+                  kind: 'agent-detail',
+                  title: agent.name,
+                  entityId: agent.id,
+                })
+              }
+            />
           ) : null}
 
           {activeRailId === 'skills' ? (
@@ -521,6 +580,84 @@ function connectorDotColor(status: ConnectionRowData['status']) {
     default:
       return 'bg-zinc-500'
   }
+}
+
+const AGENT_STATUS_COLOR: Record<Agent['status'], string> = {
+  idle: 'bg-zinc-400',
+  working: 'bg-emerald-500',
+  blocked: 'bg-amber-500',
+  error: 'bg-red-500',
+  offline: 'bg-zinc-300',
+}
+
+function AgentsExplorer({
+  workspaceId,
+  activeType,
+  activeEntityId,
+  onOpenList,
+  onOpenAgent,
+}: {
+  workspaceId: string
+  activeType: WorkspacePanelKind | null
+  activeEntityId: string | null
+  onOpenList: () => void
+  onOpenAgent: (agent: Agent) => void
+}) {
+  const agentsQuery = useQuery({
+    ...agentListOptions(workspaceId),
+    enabled: !!workspaceId,
+  })
+
+  const live = useMemo(
+    () => (agentsQuery.data ?? []).filter((agent) => !agent.archived_at),
+    [agentsQuery.data],
+  )
+
+  return (
+    <>
+      <ExplorerSection>
+        <SidebarMenu>
+          <ExplorerActionRow
+            label="All agents"
+            icon={Bot}
+            active={activeType === 'agents'}
+            onClick={onOpenList}
+          />
+        </SidebarMenu>
+      </ExplorerSection>
+      {live.length > 0 ? (
+        <ExplorerSection label="Workspace" count={live.length}>
+          <SidebarMenu>
+            {live.map((agent) => {
+              const active = activeEntityId === agent.id
+              return (
+                <SidebarMenuItem key={agent.id}>
+                  <SidebarMenuButton
+                    isActive={active}
+                    className="rounded-[2px] px-3"
+                    onClick={() => onOpenAgent(agent)}
+                  >
+                    <Bot className="size-4" />
+                    <span className="flex-1 truncate">{agent.name}</span>
+                    <span
+                      className={`size-2 shrink-0 rounded-full ring-2 ring-sidebar ${AGENT_STATUS_COLOR[agent.status]}`}
+                      aria-hidden="true"
+                      title={agent.status}
+                    />
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )
+            })}
+          </SidebarMenu>
+        </ExplorerSection>
+      ) : null}
+      {agentsQuery.isLoading && !agentsQuery.data ? (
+        <div className="px-4 py-3 text-xs text-muted-foreground">
+          Loading agents…
+        </div>
+      ) : null}
+    </>
+  )
 }
 
 function ConnectionsExplorer({

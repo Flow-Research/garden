@@ -1,7 +1,8 @@
 'use client'
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Result } from 'better-result'
 import { useAuthStore } from '@garden/core/auth'
 import { useWorkspaceStore } from '@garden/core/workspace'
 
@@ -10,7 +11,8 @@ export interface AgentChatSession {
   workspaceId: string
   ownerUserId: string
   title: string
-  agentName: string
+  agentId: string
+  hostName: string
   createdAt: string
   updatedAt: string
   lastMessage: string
@@ -27,39 +29,51 @@ function sortSessions(sessions: AgentChatSession[]) {
   )
 }
 
-async function fetchChatThreads(workspaceId: string) {
+function isWarmSession(session: AgentChatSession | null | undefined) {
+  if (!session) return false
+  return (
+    session.title.trim().toLowerCase() === 'new chat' &&
+    session.lastMessage.trim().length === 0 &&
+    session.status === 'idle' &&
+    !session.archivedAt
+  )
+}
+
+type ChatThreadRow = {
+  id: string
+  workspaceId: string
+  ownerUserId: string
+  title: string
+  agentId: string
+  hostName: string
+  createdAt: string
+  updatedAt: string
+  lastMessage: string
+  archivedAt: string | null
+}
+
+async function fetchChatThreadsRaw(workspaceId: string) {
   const url = new URL('/api/chat/threads', window.location.origin)
   url.searchParams.set('workspace_id', workspaceId)
 
-  const response = await fetch(url.toString(), {
-    credentials: 'include',
-  })
-
+  const response = await fetch(url.toString(), { credentials: 'include' })
   if (!response.ok) {
     throw new Error('Failed to load chat threads')
   }
+  return (await response.json()) as ChatThreadRow[]
+}
 
-  const rows = (await response.json()) as Array<{
-    id: string
-    workspaceId: string
-    ownerUserId: string
-    title: string
-    agentName: string
-    createdAt: string
-    updatedAt: string
-    lastMessage: string
-    archivedAt: string | null
-  }>
+function rowToSession(row: ChatThreadRow): AgentChatSession {
+  return {
+    ...row,
+    status: row.archivedAt ? ('archived' as const) : ('idle' as const),
+    unread: false,
+  }
+}
 
-  return sortSessions(
-    rows
-      .filter((row) => !row.archivedAt)
-      .map((row) => ({
-        ...row,
-        status: 'idle' as const,
-        unread: false,
-      })),
-  )
+async function fetchChatThreads(workspaceId: string) {
+  const rows = await fetchChatThreadsRaw(workspaceId)
+  return sortSessions(rows.filter((row) => !row.archivedAt).map(rowToSession))
 }
 
 async function createChatThread(workspaceId: string, title?: string) {
@@ -69,9 +83,7 @@ async function createChatThread(workspaceId: string, title?: string) {
   const response = await fetch(url.toString(), {
     method: 'POST',
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title }),
   })
 
@@ -79,23 +91,7 @@ async function createChatThread(workspaceId: string, title?: string) {
     throw new Error('Failed to create chat thread')
   }
 
-  const row = (await response.json()) as {
-    id: string
-    workspaceId: string
-    ownerUserId: string
-    title: string
-    agentName: string
-    createdAt: string
-    updatedAt: string
-    lastMessage: string
-    archivedAt: string | null
-  }
-
-  return {
-    ...row,
-    status: 'idle' as const,
-    unread: false,
-  } satisfies AgentChatSession
+  return rowToSession((await response.json()) as ChatThreadRow)
 }
 
 async function updateChatThread(
@@ -105,9 +101,7 @@ async function updateChatThread(
   const response = await fetch(`/api/chat/threads/${threadId}`, {
     method: 'PATCH',
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
 
@@ -115,23 +109,7 @@ async function updateChatThread(
     throw new Error('Failed to update chat thread')
   }
 
-  const row = (await response.json()) as {
-    id: string
-    workspaceId: string
-    ownerUserId: string
-    title: string
-    agentName: string
-    createdAt: string
-    updatedAt: string
-    lastMessage: string
-    archivedAt: string | null
-  }
-
-  return {
-    ...row,
-    status: row.archivedAt ? ('archived' as const) : ('idle' as const),
-    unread: false,
-  } satisfies AgentChatSession
+  return rowToSession((await response.json()) as ChatThreadRow)
 }
 
 async function deleteChatThread(threadId: string) {
@@ -161,6 +139,9 @@ export function useAgentSessions() {
     enabled: !!workspaceId && !!user?.id,
     queryFn: () => fetchChatThreads(workspaceId as string),
     staleTime: 10_000,
+    // Never flash empty while refetching — keep prior data until next payload
+    // lands. This is the "don't surface stale fetch" guarantee for warm chats.
+    placeholderData: (prev) => prev,
   })
 
   const createSession = useMutation({
@@ -168,7 +149,6 @@ export function useAgentSessions() {
       if (!workspaceId) {
         throw new Error('Missing workspace identity')
       }
-
       return createChatThread(workspaceId, title)
     },
     onSuccess: (created) => {
@@ -228,74 +208,145 @@ export function useAgentSessions() {
     },
   })
 
-  const updateSessionPreview = (input: {
-    sessionId: string
-    title?: string
-    lastMessage?: string
-    status?: AgentChatSession['status']
-    unread?: boolean
-    updatedAt?: string
-  }) => {
-    qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>
-      sortSessions(
-        current.map((session) =>
-          session.id === input.sessionId
-            ? {
-                ...session,
-                ...(input.title ? { title: input.title } : {}),
-                ...(input.lastMessage !== undefined
-                  ? { lastMessage: input.lastMessage }
-                  : {}),
-                ...(input.status ? { status: input.status } : {}),
-                ...(input.unread !== undefined ? { unread: input.unread } : {}),
-                updatedAt: input.updatedAt ?? new Date().toISOString(),
-              }
-            : session,
+  const updateSessionPreview = useCallback(
+    (input: {
+      sessionId: string
+      title?: string
+      lastMessage?: string
+      status?: AgentChatSession['status']
+      unread?: boolean
+      updatedAt?: string
+      persist?: boolean
+    }) => {
+      const updatedAt = input.updatedAt ?? new Date().toISOString()
+
+      qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>
+        sortSessions(
+          current.map((session) =>
+            session.id === input.sessionId
+              ? {
+                  ...session,
+                  ...(input.title ? { title: input.title } : {}),
+                  ...(input.lastMessage !== undefined
+                    ? { lastMessage: input.lastMessage }
+                    : {}),
+                  ...(input.status ? { status: input.status } : {}),
+                  ...(input.unread !== undefined ? { unread: input.unread } : {}),
+                  updatedAt,
+                }
+              : session,
+          ),
         ),
-      ),
-    )
+      )
 
-    void updateChatThread(input.sessionId, {
-      ...(input.title ? { title: input.title } : {}),
-      ...(input.lastMessage !== undefined
-        ? { lastMessage: input.lastMessage }
-        : {}),
-      updatedAt: input.updatedAt ?? new Date().toISOString(),
-    })
-  }
+      // Only persist to the server when explicitly requested. Transient UI
+      // states like 'submitted' or 'error' stay client-side so we don't
+      // overwrite server truth with client clock or status noise.
+      if (!input.persist) return
 
-  const reorderSessions = (orderedIds: string[]) => {
-    qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) => {
-      const byId = new Map(current.map((session) => [session.id, session]))
-      const ordered = orderedIds.flatMap((id) => {
-        const session = byId.get(id)
-        return session ? [session] : []
+      void Result.tryPromise(() =>
+        updateChatThread(input.sessionId, {
+          ...(input.title ? { title: input.title } : {}),
+          ...(input.lastMessage !== undefined
+            ? { lastMessage: input.lastMessage }
+            : {}),
+          updatedAt,
+        }),
+      ).then((result) => {
+        if (Result.isError(result)) {
+          console.warn('[chat.sessions] failed to persist preview', result.error)
+        }
       })
-      const remainder = current.filter((session) => !orderedIds.includes(session.id))
-      return [...ordered, ...remainder]
+    },
+    [qc, queryKey],
+  )
+
+  const reorderSessions = useCallback(
+    (orderedIds: string[]) => {
+      qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) => {
+        const byId = new Map(current.map((session) => [session.id, session]))
+        const ordered = orderedIds.flatMap((id) => {
+          const session = byId.get(id)
+          return session ? [session] : []
+        })
+        const remainder = current.filter(
+          (session) => !orderedIds.includes(session.id),
+        )
+        return [...ordered, ...remainder]
+      })
+    },
+    [qc, queryKey],
+  )
+
+  const sessions = sessionsQuery.data ?? []
+
+  // Warm-chat guarantee: always keep exactly one idle "New Chat" ahead of the
+  // user. When they consume it (first turn), a replacement spins up in the
+  // background so the next "new chat" click is instant.
+  const warmSession = useMemo(
+    () => sessions.find((session) => isWarmSession(session)) ?? null,
+    [sessions],
+  )
+
+  const warmingRef = useRef(false)
+  useEffect(() => {
+    if (!workspaceId || !user?.id) return
+    if (sessionsQuery.isPending) return
+    if (warmSession) return
+    if (warmingRef.current) return
+    warmingRef.current = true
+    void Result.tryPromise(() =>
+      createSession.mutateAsync(NEW_SESSION_TITLE),
+    ).then((result) => {
+      warmingRef.current = false
+      if (Result.isError(result)) {
+        console.warn('[chat.sessions] failed to warm idle session', result.error)
+      }
     })
-  }
+    // createSession intentionally excluded — its identity is stable per hook
+    // instance and including it would re-run on every mutation state change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId, user?.id, sessionsQuery.isPending, warmSession?.id])
 
-  const ensureIdleSession = useCallback(async () => {
-    return createSession.mutateAsync(NEW_SESSION_TITLE)
-  }, [createSession])
+  // Claim the warm session (user is about to use it). Kicks off a background
+  // replacement so we stay one ahead. Callers that open a chat panel should
+  // prefer this over createSession.mutateAsync.
+  const claimWarmSession = useCallback(async () => {
+    if (warmSession) {
+      void Result.tryPromise(() =>
+        createSession.mutateAsync(NEW_SESSION_TITLE),
+      ).then((result) => {
+        if (Result.isError(result)) {
+          console.warn(
+            '[chat.sessions] failed to replenish warm session',
+            result.error,
+          )
+        }
+      })
+      return warmSession
+    }
 
-  const getNextIdleSession = useCallback(async () => {
+    // No warm session available — create synchronously and skip replenish
+    // (the useEffect above will spin one up once this lands in cache).
     return createSession.mutateAsync(NEW_SESSION_TITLE)
-  }, [createSession])
+  }, [createSession, warmSession])
 
   return {
     agent: null,
-    agentName: null,
+    hostName: null,
     createSession,
     archiveSession,
     deleteSession,
-    ensureIdleSession,
-    getNextIdleSession,
+    // Legacy aliases preserved for call sites that haven't migrated to
+    // `claimWarmSession`. Both route to the warm-chat claim path.
+    ensureIdleSession: claimWarmSession,
+    getNextIdleSession: claimWarmSession,
+    claimWarmSession,
     renameSession,
     reorderSessions,
-    sessions: sessionsQuery.data ?? [],
+    sessions,
     sessionsQuery,
     updateSessionPreview,
+    warmSession,
   }
 }

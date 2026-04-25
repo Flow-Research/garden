@@ -3,8 +3,8 @@ import { createFileRoute } from '@tanstack/react-router'
 import { schema } from '@/lib/server/db'
 import {
   deleteChatThreadAgent,
-  ensurePrimaryControlPlaneAgent,
-  ensureChatThreadAgent,
+  ensureAgentRow,
+  getChatThreadMessages,
 } from '@/lib/server/chat-agents'
 import {
   badRequest,
@@ -20,18 +20,27 @@ export const Route = createFileRoute('/api/chat/threads/$id')({
         const access = await getThreadAccess(request, params.id)
         if (access instanceof Response) return access
 
-        await ensurePrimaryControlPlaneAgent({
-          workspaceId: access.thread.workspaceId,
-          ownerUserId: access.session.user.id,
-          agentName: access.thread.agentName,
-        })
+        // Ensure-and-fetch in parallel where possible: the DB upsert for the
+        // agent control-plane row is independent of the DO facet. The DO
+        // call also provisions the facet (subAgent is idempotent) and returns
+        // the current message log in the same RPC, collapsing what used to
+        // be ensure + getMessages into one round trip from the client.
+        const [, messages] = await Promise.all([
+          ensureAgentRow({
+            workspaceId: access.thread.workspaceId,
+            ownerUserId: access.session.user.id,
+            hostName: access.hostName,
+          }),
+          getChatThreadMessages({
+            threadId: access.thread.id,
+            hostName: access.hostName,
+          }),
+        ])
 
-        await ensureChatThreadAgent({
-          threadId: access.thread.id,
-          agentName: access.thread.agentName,
+        return Response.json({
+          thread: toChatThread(access.thread, access.hostName),
+          messages,
         })
-
-        return Response.json(toChatThread(access.thread))
       },
       PATCH: async ({ request, params }) => {
         const access = await getThreadAccess(request, params.id)
@@ -41,8 +50,19 @@ export const Route = createFileRoute('/api/chat/threads/$id')({
           string,
           unknown
         > | null
+
+        // Prefer caller-supplied updatedAt when provided. Clients attach it
+        // to keep sidebar ordering monotonic across optimistic updates and
+        // server round-trips; fall back to now when absent.
+        const clientUpdatedAt =
+          typeof body?.updatedAt === 'string'
+            ? new Date(body.updatedAt)
+            : null
         const updateValues: Partial<typeof schema.chatThread.$inferInsert> = {
-          updatedAt: new Date(),
+          updatedAt:
+            clientUpdatedAt && !Number.isNaN(clientUpdatedAt.getTime())
+              ? clientUpdatedAt
+              : new Date(),
         }
 
         if (typeof body?.title === 'string') {
@@ -75,7 +95,7 @@ export const Route = createFileRoute('/api/chat/threads/$id')({
           .returning()
 
         if (!thread) return notFound('Chat thread not found')
-        return Response.json(toChatThread(thread))
+        return Response.json(toChatThread(thread, access.hostName))
       },
       DELETE: async ({ request, params }) => {
         const access = await getThreadAccess(request, params.id)
@@ -83,7 +103,7 @@ export const Route = createFileRoute('/api/chat/threads/$id')({
 
         await deleteChatThreadAgent({
           threadId: access.thread.id,
-          agentName: access.thread.agentName,
+          hostName: access.hostName,
         })
 
         await access.db.delete(schema.chatThread).where(

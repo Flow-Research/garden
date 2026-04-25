@@ -1,7 +1,9 @@
 export const SKILL_COMMAND = '/skill'
 
-const SKILL_TRIGGER_PATTERN =
-  /(?:^|\s)(\/skill(?:\s+([a-zA-Z0-9_-]*))?)$/
+// Slash command menu fires when the user is typing `/` followed by
+// an optional slug. We keep the `/skill <slug>` invocation format on
+// insertion so the runtime parser stays unchanged.
+const SKILL_TRIGGER_PATTERN = /(?:^|\s)\/([a-zA-Z0-9_-]*)$/
 const EXPLICIT_SKILL_PATTERN = /(?:^|\s)\/skill\s+([a-zA-Z0-9_-]+)/g
 
 export type SkillTriggerMatch = {
@@ -22,12 +24,12 @@ export function detectSkillTrigger(
   const match = SKILL_TRIGGER_PATTERN.exec(prefix)
   if (!match) return null
 
-  const command = match[1] ?? ''
-  const token = match[2] ?? ''
-  const rangeStart = prefix.length - command.length
+  const query = match[1] ?? ''
+  // The captured command is `/` + query; its length is query.length + 1.
+  const rangeStart = prefix.length - (query.length + 1)
 
   return {
-    query: token,
+    query,
     rangeStart,
     rangeEnd: cursor,
   }

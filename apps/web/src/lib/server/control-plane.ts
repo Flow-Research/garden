@@ -253,7 +253,7 @@ export function toAgent(record: typeof schema.agent.$inferSelect) {
     runtime_id: '',
     name: record.name,
     description: record.roleTitle ?? '',
-    instructions: '',
+    instructions: record.instructions ?? '',
     avatar_url: null,
     runtime_mode: 'cloud',
     runtime_config: record.persona ? JSON.parse(record.persona) : {},
@@ -272,7 +272,10 @@ export function toAgent(record: typeof schema.agent.$inferSelect) {
   }
 }
 
-export function toChatThread(record: typeof schema.chatThread.$inferSelect) {
+export function toChatThread(
+  record: typeof schema.chatThread.$inferSelect,
+  hostName: string,
+) {
   const createdAt = record.createdAt
     ? new Date(record.createdAt).toISOString()
     : new Date().toISOString()
@@ -285,7 +288,8 @@ export function toChatThread(record: typeof schema.chatThread.$inferSelect) {
     workspaceId: record.workspaceId,
     ownerUserId: record.ownerUserId,
     title: record.title,
-    agentName: record.agentName,
+    agentId: record.agentId,
+    hostName,
     lastMessage: record.lastMessage,
     archivedAt: record.archivedAt
       ? new Date(record.archivedAt).toISOString()

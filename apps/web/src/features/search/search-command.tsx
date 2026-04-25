@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useMemo } from 'react'
+import { Result } from 'better-result'
+import { toast } from 'sonner'
 import {
   IconBook,
   IconLayoutDashboard,
@@ -158,7 +160,7 @@ const ITEM_CLASS = 'mx-2 rounded-lg py-2.5'
 
 export function SearchCommand() {
   const { openPanel } = useWorkspaceDock()
-  const { createSession } = useAgentSessions()
+  const { claimWarmSession } = useAgentSessions()
   const openSettingsDialog = useSettingsDialogStore((s) => s.openSettings)
   const open = useSearchStore((s) => s.open)
   const setOpen = useSearchStore((s) => s.setOpen)
@@ -239,18 +241,26 @@ export function SearchCommand() {
     (page: NavPage) => {
       setOpen(false)
       if (page.kind === 'chat') {
-        void createSession.mutateAsync('New Chat').then((session) => {
+        void Result.tryPromise(() => claimWarmSession()).then((result) => {
+          if (Result.isError(result)) {
+            toast.error(
+              result.error instanceof Error
+                ? result.error.message
+                : 'Failed to start chat',
+            )
+            return
+          }
           openPanel({
             kind: 'chat',
-            title: session.title,
-            entityId: session.id,
+            title: result.value.title,
+            entityId: result.value.id,
           })
         })
         return
       }
       openPanel({ kind: page.kind, title: page.title })
     },
-    [createSession, openPanel, setOpen],
+    [claimWarmSession, openPanel, setOpen],
   )
 
   const quickActions: QuickAction[] = useMemo(
@@ -262,11 +272,19 @@ export function SearchCommand() {
         shortcut: ['C'],
         onSelect: ({ setOpen }) => {
           setOpen(false)
-          void createSession.mutateAsync('New Chat').then((session) => {
+          void Result.tryPromise(() => claimWarmSession()).then((result) => {
+            if (Result.isError(result)) {
+              toast.error(
+                result.error instanceof Error
+                  ? result.error.message
+                  : 'Failed to start chat',
+              )
+              return
+            }
             openPanel({
               kind: 'chat',
-              title: session.title,
-              entityId: session.id,
+              title: result.value.title,
+              entityId: result.value.id,
             })
           })
         },
@@ -282,7 +300,7 @@ export function SearchCommand() {
         },
       },
     ],
-    [createSession, openPanel, openSettingsDialog],
+    [claimWarmSession, openPanel, openSettingsDialog],
   )
 
   return (

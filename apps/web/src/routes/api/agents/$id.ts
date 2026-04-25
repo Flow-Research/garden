@@ -1,5 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import { refreshChatThreadPromptConfig } from '@/lib/server/chat-agents'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
@@ -20,6 +21,9 @@ export const Route = createFileRoute('/api/agents/$id')({
         if (typeof body?.name === 'string') updateValues.name = body.name
         if (typeof body?.description === 'string')
           updateValues.roleTitle = body.description
+        if (typeof body?.instructions === 'string') {
+          updateValues.instructions = body.instructions
+        }
         if (
           body &&
           Object.prototype.hasOwnProperty.call(body, 'runtime_config')
@@ -28,7 +32,10 @@ export const Route = createFileRoute('/api/agents/$id')({
         }
         const db = getDb(appEnv)
         const [existingAgent] = await db
-          .select({ workspaceId: schema.agent.workspaceId })
+          .select({
+            workspaceId: schema.agent.workspaceId,
+            hostName: schema.agent.hostName,
+          })
           .from(schema.agent)
           .where(eq(schema.agent.id, params.id))
         if (!existingAgent) return notFound('Agent not found')
@@ -50,6 +57,26 @@ export const Route = createFileRoute('/api/agents/$id')({
           )
           .returning()
         if (!agent) return notFound('Agent not found')
+
+        if (existingAgent.hostName) {
+          const hostName = existingAgent.hostName
+          const threads = await db
+            .select({
+              id: schema.chatThread.id,
+            })
+            .from(schema.chatThread)
+            .where(eq(schema.chatThread.agentId, params.id))
+
+          await Promise.all(
+            threads.map((thread) =>
+              refreshChatThreadPromptConfig({
+                threadId: thread.id,
+                hostName,
+              }),
+            ),
+          )
+        }
+
         return Response.json(toAgent(agent))
       },
     },

@@ -1,5 +1,8 @@
+import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { createAuth } from '@/lib/auth'
+import { refreshChatThreadPromptConfig } from '@/lib/server/chat-agents'
+import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   notFound,
@@ -93,6 +96,32 @@ export const Route = createFileRoute('/api/workspaces/$id')({
         const role =
           organization.members.find((member) => member.userId === session.user.id)
             ?.role ?? 'member'
+
+        const db = getDb(appEnv)
+        const threads = await db
+          .select({
+            id: schema.chatThread.id,
+            hostName: schema.agent.hostName,
+          })
+          .from(schema.chatThread)
+          .innerJoin(
+            schema.agent,
+            eq(schema.agent.id, schema.chatThread.agentId),
+          )
+          .where(eq(schema.chatThread.workspaceId, params.id))
+
+        await Promise.all(
+          threads.flatMap((thread) =>
+            thread.hostName
+              ? [
+                  refreshChatThreadPromptConfig({
+                    threadId: thread.id,
+                    hostName: thread.hostName,
+                  }),
+                ]
+              : [],
+          ),
+        )
 
         return Response.json(toWorkspaceFromOrganization(organization, role))
       },

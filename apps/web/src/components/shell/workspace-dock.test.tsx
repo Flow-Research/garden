@@ -17,7 +17,12 @@ vi.mock('nuqs', () => ({
 
 vi.mock('@garden/core/chat', () => ({
   useChatStore: Object.assign(
-    (selector?: (state: { activeSessionId: string | null; setActiveSession: (id: string | null) => void }) => unknown) => {
+    (
+      selector?: (state: {
+        activeSessionId: string | null
+        setActiveSession: (id: string | null) => void
+      }) => unknown,
+    ) => {
       const state = {
         activeSessionId: null,
         setActiveSession: vi.fn(),
@@ -45,10 +50,7 @@ vi.mock('@garden/ui/components/common/theme-provider', () => ({
 }))
 
 vi.mock('@garden/ui/components/ui/button', () => ({
-  Button: ({
-    children,
-    ...props
-  }: ButtonHTMLAttributes<HTMLButtonElement>) => (
+  Button: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => (
     <button type="button" {...props}>
       {children}
     </button>
@@ -229,41 +231,44 @@ class FakeDockApi {
   > = []
   private groupCounter = 0
 
-  toJSON = vi.fn(() => ({
-    grid: {
-      root: {
-        type: 'branch',
-        data: this.groups.map((group) => ({
-          type: 'leaf',
-          data: {
-            id: group.id,
-            views: group.panels.map((panel) => panel.id),
-            activeView: group.activePanel?.id ?? null,
+  toJSON = vi.fn(
+    () =>
+      ({
+        grid: {
+          root: {
+            type: 'branch',
+            data: this.groups.map((group) => ({
+              type: 'leaf',
+              data: {
+                id: group.id,
+                views: group.panels.map((panel) => panel.id),
+                activeView: group.activePanel?.id ?? null,
+              },
+            })),
           },
-        })),
-      },
-      height: 0,
-      width: 0,
-      orientation: 'horizontal',
-    },
-    panels: Object.fromEntries(
-      this.groups.flatMap((group) =>
-        group.panels.map((panel) => {
-          const params = panel.params
-          return [
-            panel.id,
-            {
-              id: panel.id,
-              contentComponent: params.kind,
-              title: panel.api.title,
-              params,
-            } satisfies FakeSerializedPanel,
-          ]
-        }),
-      ),
-    ),
-    activeGroup: this.activeGroup?.id ?? null,
-  } satisfies FakeSerializedDock))
+          height: 0,
+          width: 0,
+          orientation: 'horizontal',
+        },
+        panels: Object.fromEntries(
+          this.groups.flatMap((group) =>
+            group.panels.map((panel) => {
+              const params = panel.params
+              return [
+                panel.id,
+                {
+                  id: panel.id,
+                  contentComponent: params.kind,
+                  title: panel.api.title,
+                  params,
+                } satisfies FakeSerializedPanel,
+              ]
+            }),
+          ),
+        ),
+        activeGroup: this.activeGroup?.id ?? null,
+      }) satisfies FakeSerializedDock,
+  )
 
   hasMaximizedGroup() {
     return false
@@ -469,9 +474,7 @@ class FakeDockApi {
         id: params.id,
         title: params.title,
         getParameters: () =>
-          panel.initialApiParametersVisible
-            ? { ...panel.params }
-            : {},
+          panel.initialApiParametersVisible ? { ...panel.params } : {},
         setActive: () => this.setActivePanel(panel),
         close: () => {},
       },
@@ -485,10 +488,7 @@ class FakeDockApi {
   }
 }
 
-import {
-  WorkspaceDockProvider,
-  useWorkspaceDock,
-} from './workspace-dock'
+import { WorkspaceDockProvider, useWorkspaceDock } from './workspace-dock'
 
 let capturedDock: ReturnType<typeof useWorkspaceDock> | null = null
 
@@ -572,7 +572,35 @@ describe('WorkspaceDockProvider', () => {
     })
   })
 
-  it('restores a saved layout with no active group by selecting the first non-blank panel', async () => {
+  it('opens a new blank tab from the dock action', async () => {
+    const api = new FakeDockApi()
+
+    render(
+      <WorkspaceDockProvider workspaceId="workspace-1">
+        <DockContextCapture />
+      </WorkspaceDockProvider>,
+    )
+
+    await act(async () => {
+      capturedDock?.handleReady({ api } as never)
+    })
+
+    await act(async () => {
+      capturedDock?.openNewTab()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dock-state')).toHaveAttribute(
+        'data-panel',
+        'blank',
+      )
+    })
+
+    expect(api.panels.at(-1)?.params.kind).toBe('blank')
+    expect(api.panels.at(-1)?.api.title).toBe('New Tab')
+  })
+
+  it('restores a saved layout with no active group by selecting the first real panel', async () => {
     const api = new FakeDockApi()
 
     window.localStorage.setItem(
@@ -609,7 +637,7 @@ describe('WorkspaceDockProvider', () => {
     })
   })
 
-  it('does not steal focus when backfilling an empty group with a blank panel', async () => {
+  it('drops empty saved groups instead of reviving them with blank tabs', async () => {
     const api = new FakeDockApi()
 
     window.localStorage.setItem(
@@ -654,7 +682,7 @@ describe('WorkspaceDockProvider', () => {
       'data-panel',
       'chat',
     )
-    expect(api.getGroup('group-2')?.panels).toHaveLength(1)
+    expect(api.getGroup('group-2')).toBeUndefined()
   })
 
   it('follows the active group panel when dockview keeps a stale container activePanel', async () => {

@@ -1,21 +1,6 @@
 'use client'
 
 import { useMemo } from 'react'
-import {
-  DndContext,
-  PointerSensor,
-  closestCenter,
-  type DragEndEvent,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
-import {
-  SortableContext,
-  arrayMove,
-  rectSortingStrategy,
-  useSortable,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import { Archive, MoreHorizontal, Pencil } from 'lucide-react'
 import { useChatStore } from '@garden/core/chat'
 import { Button } from '@garden/ui/components/ui/button'
@@ -52,17 +37,6 @@ function formatTimeAgo(dateStr: string) {
   return date.toLocaleDateString()
 }
 
-function reorderSessions(
-  sessions: AgentChatSession[],
-  fromId: string,
-  toId: string,
-) {
-  const fromIndex = sessions.findIndex((session) => session.id === fromId)
-  const toIndex = sessions.findIndex((session) => session.id === toId)
-  if (fromIndex === -1 || toIndex === -1) return sessions
-  return arrayMove(sessions, fromIndex, toIndex)
-}
-
 function SessionStatusDot({ session }: { session: AgentChatSession }) {
   const className =
     session.status === 'streaming'
@@ -91,15 +65,6 @@ function SessionRow({
   onSelect: () => void
   onRename: () => void
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: session.id })
-
   const menuItems = (
     <>
       <ContextMenuItem onClick={onRename}>
@@ -115,20 +80,7 @@ function SessionRow({
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger
-        render={
-          <div
-            ref={setNodeRef}
-            style={{
-              transform: CSS.Transform.toString(transform),
-              transition,
-            }}
-            className={cn(isDragging && 'opacity-60')}
-            {...attributes}
-            {...listeners}
-          />
-        }
-      >
+      <ContextMenuTrigger render={<div className="w-full" />}>
         <div
           role="button"
           tabIndex={0}
@@ -198,19 +150,9 @@ export function ChatSessionExplorer({
   onActivate?: (session: AgentChatSession) => void
 }) {
   const activeSessionId = useChatStore((state) => state.activeSessionId)
-  const {
-    archiveSession,
-    renameSession,
-    reorderSessions: persistOrder,
-    sessions,
-  } = useAgentSessions()
+  const { archiveSession, renameSession, sessions } = useAgentSessions()
 
   const activeSessions = useMemo(() => sessions, [sessions])
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
-    }),
-  )
 
   const handleSelect = (session: AgentChatSession) => {
     onActivate?.(session)
@@ -228,40 +170,21 @@ export function ChatSessionExplorer({
     await archiveSession.mutateAsync(sessionId)
   }
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const fromId = String(event.active.id)
-    const toId = event.over ? String(event.over.id) : null
-    if (!toId || fromId === toId) return
-    const next = reorderSessions(activeSessions, fromId, toId)
-    persistOrder(next.map((session) => session.id))
-  }
-
   return (
     <div>
       {activeSessions.length > 0 ? (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={activeSessions.map((session) => session.id)}
-            strategy={rectSortingStrategy}
-          >
-            <div className="space-y-1 px-3">
-              {activeSessions.map((session) => (
-                <SessionRow
-                  key={session.id}
-                  session={session}
-                  active={session.id === activeSessionId}
-                  onArchive={() => void handleArchive(session.id)}
-                  onSelect={() => handleSelect(session)}
-                  onRename={() => void handleRename(session.id)}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+        <div className="space-y-1 px-3">
+          {activeSessions.map((session) => (
+            <SessionRow
+              key={session.id}
+              session={session}
+              active={session.id === activeSessionId}
+              onArchive={() => void handleArchive(session.id)}
+              onSelect={() => handleSelect(session)}
+              onRename={() => void handleRename(session.id)}
+            />
+          ))}
+        </div>
       ) : (
         <div className="px-3 py-2 text-[12px] text-muted-foreground">
           Start a chat to create your first session.

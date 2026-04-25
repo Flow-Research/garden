@@ -3,24 +3,28 @@ import { env } from 'cloudflare:workers'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 
-export function buildPrimaryAgentName(workspaceId: string, userId: string) {
+// Server-side helpers for managing AgentHost DOs + their WorkspaceAgent
+// thread facets. The `agent` table row carries the persona/config; the host
+// DO runs the runtime; each thread is a facet keyed by threadId.
+
+export function buildAgentHostName(workspaceId: string, userId: string) {
   return `${workspaceId}:${userId}:primary`
 }
 
-async function getPrimaryAgentStub(agentName: string) {
-  const stub = env.PrimaryAgent.get(env.PrimaryAgent.idFromName(agentName))
+async function getAgentHostStub(hostName: string) {
+  const stub = env.AgentHost.get(env.AgentHost.idFromName(hostName))
 
   if ('setName' in stub && typeof stub.setName === 'function') {
-    await stub.setName(agentName)
+    await stub.setName(hostName)
   }
 
   return stub
 }
 
-export async function ensurePrimaryControlPlaneAgent(input: {
+export async function ensureAgentRow(input: {
   workspaceId: string
   ownerUserId: string
-  agentName: string
+  hostName: string
 }) {
   const db = getDb(appEnv)
   const [existingAgent] = await db
@@ -30,7 +34,7 @@ export async function ensurePrimaryControlPlaneAgent(input: {
       and(
         eq(schema.agent.workspaceId, input.workspaceId),
         eq(schema.agent.ownerUserId, input.ownerUserId),
-        eq(schema.agent.doId, input.agentName),
+        eq(schema.agent.hostName, input.hostName),
       ),
     )
 
@@ -44,10 +48,10 @@ export async function ensurePrimaryControlPlaneAgent(input: {
       id: crypto.randomUUID(),
       workspaceId: input.workspaceId,
       ownerUserId: input.ownerUserId,
-      name: 'Primary Agent',
-      roleTitle: 'Chat agent',
+      name: 'Agent',
+      roleTitle: null,
       status: 'active',
-      doId: input.agentName,
+      hostName: input.hostName,
     })
     .returning()
 
@@ -56,23 +60,36 @@ export async function ensurePrimaryControlPlaneAgent(input: {
 
 export async function ensureChatThreadAgent(input: {
   threadId: string
-  agentName: string
+  hostName: string
 }) {
-  const stub = await getPrimaryAgentStub(input.agentName)
+  const stub = await getAgentHostStub(input.hostName)
   await stub.ensureThread(input.threadId)
+}
+
+/**
+ * Ensure-and-fetch: provisions the thread facet (idempotent) and returns its
+ * current message log in a single DO RPC. Used by the thread GET endpoint to
+ * collapse two RTTs into one for the chat loader.
+ */
+export async function getChatThreadMessages(input: {
+  threadId: string
+  hostName: string
+}) {
+  const stub = await getAgentHostStub(input.hostName)
+  return stub.getChatMessages(input.threadId)
 }
 
 export async function ensureChatThreadAgents(
   threads: Array<{
     id: string
-    agentName: string
+    hostName: string
   }>,
 ) {
   await Promise.all(
     threads.map((thread) =>
       ensureChatThreadAgent({
         threadId: thread.id,
-        agentName: thread.agentName,
+        hostName: thread.hostName,
       }),
     ),
   )
@@ -80,24 +97,64 @@ export async function ensureChatThreadAgents(
 
 export async function deleteChatThreadAgent(input: {
   threadId: string
-  agentName: string
+  hostName: string
 }) {
-  const stub = await getPrimaryAgentStub(input.agentName)
+  const stub = await getAgentHostStub(input.hostName)
   await stub.deleteThread(input.threadId)
 }
 
 export async function refreshChatThreadSkillInventory(input: {
   threadId: string
-  agentName: string
+  hostName: string
 }) {
-  const stub = await getPrimaryAgentStub(input.agentName)
+  const stub = await getAgentHostStub(input.hostName)
   await stub.refreshThreadSkills(input.threadId)
 }
 
-export async function debugChatThreadAgent(input: {
+export async function refreshChatThreadPromptConfig(input: {
   threadId: string
-  agentName: string
+  hostName: string
 }) {
-  const stub = await getPrimaryAgentStub(input.agentName)
-  return stub.debugThread(input.threadId)
+  const stub = await getAgentHostStub(input.hostName)
+  await stub.refreshThreadPrompt(input.threadId)
+}
+
+export async function debugChatThreadMeta(input: {
+  threadId: string
+  hostName: string
+}) {
+  const stub = await getAgentHostStub(input.hostName)
+  return stub.debugThreadMeta(input.threadId)
+}
+
+export async function debugChatThreadWorkspace(input: {
+  threadId: string
+  hostName: string
+}) {
+  const stub = await getAgentHostStub(input.hostName)
+  return stub.debugThreadWorkspace(input.threadId)
+}
+
+export async function debugChatThreadSandbox(input: {
+  threadId: string
+  hostName: string
+}) {
+  const stub = await getAgentHostStub(input.hostName)
+  return stub.debugThreadSandbox(input.threadId)
+}
+
+export async function debugChatThreadTools(input: {
+  threadId: string
+  hostName: string
+}) {
+  const stub = await getAgentHostStub(input.hostName)
+  return stub.debugThreadTools(input.threadId)
+}
+
+export async function debugChatThreadPrompt(input: {
+  threadId: string
+  hostName: string
+}) {
+  const stub = await getAgentHostStub(input.hostName)
+  return stub.debugThreadPrompt(input.threadId)
 }

@@ -19,21 +19,130 @@
   width: 100%;
   height: var(--garden-titlebar-height);
   background: color-mix(in srgb, var(--muted) 82%, var(--background));
-  border-bottom: 1px solid
-    color-mix(in srgb, var(--border) 84%, transparent);
 }
 
 .garden-titlebar__fallback {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   width: 100%;
   min-width: 0;
   height: 100%;
-  padding: 0 0.375rem 0 0.25rem;
+  padding: 0 0.3125rem 0 0.3125rem;
+}
+
+.garden-titlebar__fallback::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: color-mix(in srgb, var(--border) 84%, transparent);
+  pointer-events: none;
+}
+
+.garden-titlebar__divider {
+  position: relative;
+  z-index: 1;
+  width: 1px;
+  align-self: stretch;
+  flex-shrink: 0;
+  margin-left: 0.125rem;
+  background: color-mix(in srgb, var(--border) 78%, transparent);
+}
+
+.garden-titlebar__tabs {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 0.106875rem;
+  padding: 0 0.11875rem;
+}
+
+.garden-titlebar__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.garden-titlebar__tab-divider {
+  width: 1px;
+  height: 1rem;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--border) 78%, transparent);
+}
+
+.garden-titlebar__tab {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3375rem;
+  min-width: 0;
+  max-width: 17rem;
+  height: calc(100% - 8px);
+  margin: 4px 0;
+  padding: 0 0.375rem 0 0.5rem;
+  border-radius: 6px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--foreground) 68%, transparent);
+  cursor: pointer;
+}
+
+.garden-titlebar__tab--active {
+  z-index: 2;
+  background: var(--background);
+  color: var(--foreground);
+  height: calc(100% - 4px);
+  margin: 4px 0 0;
+  border-radius: 6px 6px 0 0;
+}
+
+.garden-titlebar__tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.garden-titlebar__tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: color-mix(in srgb, var(--foreground) 54%, transparent);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.garden-titlebar__tab:hover .garden-titlebar__tab-close,
+.garden-titlebar__tab:focus-within .garden-titlebar__tab-close {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.garden-titlebar__tab-close:hover,
+.garden-titlebar__tab-close:focus-visible {
+  background: transparent;
+  color: var(--foreground);
 }
 
 .garden-titlebar__copy {
+  position: relative;
+  z-index: 1;
   min-width: 0;
 }
 
@@ -79,23 +188,12 @@
 }
 
 /*
- * Dockview renders one tabs/header row per group. Hide them by default, then
- * hoist only the active group's row into the global title-bar strip so the top
- * chrome tracks whichever group currently has focus.
+ * Dockview still renders a header row per group, but Garden owns the shell
+ * title bar itself. Hide every group header and render one flat top strip from
+ * dock state instead.
  */
 .garden-dockview .dv-groupview > .dv-tabs-and-actions-container {
   display: none;
-}
-
-.garden-dockview .dv-groupview.dv-active-group > .dv-tabs-and-actions-container {
-  display: flex;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: var(--garden-titlebar-height);
-  z-index: 40;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
 }
 
 .garden-dockview .dv-pre-actions-container {
@@ -156,7 +254,11 @@
     transparent
   );
   --dv-sash-color: color-mix(in srgb, var(--border) 70%, transparent);
-  --dv-active-sash-color: color-mix(in srgb, var(--foreground) 40%, transparent);
+  --dv-active-sash-color: color-mix(
+    in srgb,
+    var(--foreground) 40%,
+    transparent
+  );
   /*
    * Dockview defaults the hover feedback to transition-delay: 0.5s — that
    * makes the sash feel dead for half a second when you finally land on it.
@@ -178,20 +280,25 @@
  * subtle resting line so the divider is visible, and use !important on the
  * hover/active override to beat dockview's transition-delay'd rule.
  */
-.garden-dockview .dv-split-view-container.dv-horizontal
+.garden-dockview
+  .dv-split-view-container.dv-horizontal
   > .dv-sash-container
   > .dv-sash:not(.dv-disabled) {
   background-color: var(--dv-sash-color);
 }
 
-.garden-dockview .dv-split-view-container.dv-vertical
+.garden-dockview
+  .dv-split-view-container.dv-vertical
   > .dv-sash-container
   > .dv-sash:not(.dv-disabled) {
   background-color: var(--dv-sash-color);
 }
 
 .garden-dockview .dv-split-view-container > .dv-sash-container > .dv-sash:hover,
-.garden-dockview .dv-split-view-container > .dv-sash-container > .dv-sash:active {
+.garden-dockview
+  .dv-split-view-container
+  > .dv-sash-container
+  > .dv-sash:active {
   background-color: var(--dv-active-sash-color) !important;
 }
 
@@ -240,7 +347,8 @@
   align-items: center;
   height: 100%;
   gap: 0.125rem;
-  padding-right: 0.25rem;
+  padding-left: 0.0625rem;
+  padding-right: 0.1875rem;
 }
 
 .garden-dock-tabstrip-actions {

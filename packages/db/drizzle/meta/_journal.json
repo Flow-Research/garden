@@ -50,6 +50,20 @@
       "when": 1776962400000,
       "tag": "0006_skill_bundle_source",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1777046400000,
+      "tag": "0007_agent_instructions",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1777132800000,
+      "tag": "0008_agent_host_rename",
+      "breakpoints": true
     }
   ]
 }

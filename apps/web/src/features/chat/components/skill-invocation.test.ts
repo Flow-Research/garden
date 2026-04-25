@@ -12,11 +12,19 @@ describe('skill invocation helpers', () => {
     )
   })
 
-  it('detects slash skill triggers while typing', () => {
-    expect(detectSkillTrigger('/skill plan', '/skill plan'.length)).toEqual({
+  it('detects slash triggers while typing', () => {
+    expect(detectSkillTrigger('/plan', '/plan'.length)).toEqual({
       query: 'plan',
       rangeStart: 0,
-      rangeEnd: '/skill plan'.length,
+      rangeEnd: '/plan'.length,
+    })
+  })
+
+  it('opens the menu on a bare slash', () => {
+    expect(detectSkillTrigger('/', 1)).toEqual({
+      query: '',
+      rangeStart: 0,
+      rangeEnd: 1,
     })
   })
 
