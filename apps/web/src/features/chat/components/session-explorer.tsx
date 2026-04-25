@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { Archive, MoreHorizontal, Pencil } from 'lucide-react'
 import { useChatStore } from '@garden/core/chat'
 import { Button } from '@garden/ui/components/ui/button'
@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@garden/ui/components/ui/dropdown-menu'
 import { cn } from '@garden/ui/lib/utils'
+import { useWorkspaceDock } from '@/components/shell/workspace-dock'
 import {
   useAgentSessions,
   type AgentChatSession,
@@ -65,13 +66,26 @@ function SessionRow({
   onSelect: () => void
   onRename: () => void
 }) {
+  // Menu items live inside the row's click-handling div, so React's synthetic
+  // event tree bubbles their onClick up to `onSelect`. That made clicking
+  // "Archive" also activate the chat panel — which was the source of "the
+  // archive button shouldn't have to open the chat first." Stop propagation
+  // explicitly on every menu item so the row activation only happens on a
+  // genuine row click.
+  const stop =
+    (handler: () => void) =>
+    (event: React.MouseEvent | React.KeyboardEvent) => {
+      event.stopPropagation()
+      handler()
+    }
+
   const menuItems = (
     <>
-      <ContextMenuItem onClick={onRename}>
+      <ContextMenuItem onClick={stop(onRename)}>
         <Pencil className="size-4" />
         Rename
       </ContextMenuItem>
-      <ContextMenuItem onClick={onArchive}>
+      <ContextMenuItem onClick={stop(onArchive)}>
         <Archive className="size-4" />
         Archive
       </ContextMenuItem>
@@ -127,11 +141,11 @@ function SessionRow({
               <MoreHorizontal className="size-3.5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuItem onClick={onRename}>
+              <DropdownMenuItem onClick={stop(onRename)}>
                 <Pencil className="size-4" />
                 Rename
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={onArchive}>
+              <DropdownMenuItem onClick={stop(onArchive)}>
                 <Archive className="size-4" />
                 Archive
               </DropdownMenuItem>
@@ -150,6 +164,7 @@ export function ChatSessionExplorer({
   onActivate?: (session: AgentChatSession) => void
 }) {
   const activeSessionId = useChatStore((state) => state.activeSessionId)
+  const { closePanel } = useWorkspaceDock()
   const { archiveSession, renameSession, sessions, sessionsQuery } =
     useAgentSessions()
 
@@ -170,9 +185,17 @@ export function ChatSessionExplorer({
     await renameSession.mutateAsync({ sessionId, title: next })
   }
 
-  const handleArchive = async (sessionId: string) => {
-    await archiveSession.mutateAsync(sessionId)
-  }
+  const handleArchive = useCallback(
+    async (sessionId: string) => {
+      // Close the open chat panel for this session BEFORE archiving so the
+      // user doesn't see a stale "no chat" frame after the row disappears
+      // from the list. Panel id format is `chat:${sessionId}` (see
+      // workspace-dock `getCanonicalPanelId`).
+      closePanel(`chat:${sessionId}`)
+      await archiveSession.mutateAsync(sessionId)
+    },
+    [archiveSession, closePanel],
+  )
 
   return (
     <div>

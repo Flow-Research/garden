@@ -1,24 +1,19 @@
 'use client'
 
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Result } from 'better-result'
 import { useAuthStore } from '@garden/core/auth'
 import { useWorkspaceStore } from '@garden/core/workspace'
 
-// Module-scoped warm-chat in-flight latch, keyed by workspace ID.
+// Module-scoped in-flight latch for the "claim warm session" replenish,
+// keyed by workspace ID.
 //
 // `useAgentSessions` is called from ~6 places (sidebar, agent screen,
-// session explorer, chat-prefetch, search-command, debug drawer). Each
-// instance has its own React state — but the warm-chat replenish must be
-// a singleton per workspace, otherwise N consumers all see "no warm
-// session" on the same render and N parallel mutations fire, flooding
-// the thread list with empty New Chat rows.
-//
-// One Set, shared by all hook instances, gates by workspace ID. Whoever
-// arrives first wins the right to spawn the warm chat; everyone else
-// no-ops. The latch clears in finally() so a failed mutation doesn't
-// permanently block future replenishment.
+// session explorer, chat-prefetch, search-command, debug drawer). When a
+// user clicks "new chat" the resulting cascade can re-render multiple
+// consumers in the same tick. We need exactly one replenish per claim,
+// not N. This Set is the singleton gate.
 const warmInFlight = new Set<string>()
 
 export interface AgentChatSession {
@@ -295,42 +290,24 @@ export function useAgentSessions() {
 
   const sessions = sessionsQuery.data ?? []
 
-  // Warm-chat guarantee: always keep exactly one idle "New Chat" ahead of the
-  // user. When they consume it (first turn), a replacement spins up in the
-  // background so the next "new chat" click is instant.
+  // Compute the warm session synchronously from the current list — pure
+  // derivation, no effect. If the user happens to have an idle "New Chat"
+  // sitting at the top, claim that one; otherwise create on demand.
   const warmSession = useMemo(
     () => sessions.find((session) => isWarmSession(session)) ?? null,
     [sessions],
   )
 
-  useEffect(() => {
-    if (!workspaceId || !user?.id) return
-    if (sessionsQuery.isPending) return
-    if (warmSession) return
-    if (warmInFlight.has(workspaceId)) return
-    warmInFlight.add(workspaceId)
-    void Result.tryPromise(() =>
-      createSession.mutateAsync(NEW_SESSION_TITLE),
-    ).then((result) => {
-      warmInFlight.delete(workspaceId)
-      if (Result.isError(result)) {
-        console.warn('[chat.sessions] failed to warm idle session', result.error)
-      }
-    })
-    // createSession intentionally excluded — its identity is stable per hook
-    // instance and including it would re-run on every mutation state change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, user?.id, sessionsQuery.isPending, warmSession?.id])
-
-  // Claim the warm session (user is about to use it). Kicks off a background
-  // replacement so we stay one ahead. Callers that open a chat panel should
-  // prefer this over createSession.mutateAsync.
+  // Claim a session for "new chat" actions. If a warm one already exists in
+  // the list (e.g. a previously-created idle thread), return it directly and
+  // start an opportunistic background replenish so the *next* claim is
+  // instant. Otherwise create one synchronously.
+  //
+  // No proactive warming via useEffect — that pattern fires once per
+  // workspace mount, can race with N concurrent hook instances, and
+  // creates threads the user never asked for. Demand-driven only.
   const claimWarmSession = useCallback(async () => {
     if (warmSession) {
-      // Replenish, but only if no other consumer has already started one.
-      // Without this gate, multiple components reacting to the same claim
-      // (e.g. sidebar click → opens panel → screen mounts) would each
-      // spawn a replacement.
       if (workspaceId && !warmInFlight.has(workspaceId)) {
         warmInFlight.add(workspaceId)
         void Result.tryPromise(() =>
@@ -348,8 +325,6 @@ export function useAgentSessions() {
       return warmSession
     }
 
-    // No warm session available — create synchronously and skip replenish
-    // (the useEffect above will spin one up once this lands in cache).
     return createSession.mutateAsync(NEW_SESSION_TITLE)
   }, [createSession, warmSession, workspaceId])
 
