@@ -11,6 +11,7 @@ from pathlib import Path
 
 SKILLS = ("pdf", "docx", "xlsx", "pptx")
 BUCKET = os.environ.get("BUILTIN_SKILLS_BUCKET", "garden-files-dev")
+DOWNLOAD_BASE_URL = os.environ.get("BUILTIN_SKILLS_DOWNLOAD_BASE_URL")
 PREFIX = "builtin-skills"
 
 
@@ -42,8 +43,11 @@ def main() -> None:
 
 
 def download_bundle(slug: str) -> dict:
+    if not DOWNLOAD_BASE_URL:
+        raise RuntimeError("BUILTIN_SKILLS_DOWNLOAD_BASE_URL is required")
+
     with urllib.request.urlopen(
-        f"https://skills.sh/api/download/anthropics/skills/{slug}"
+        f"{DOWNLOAD_BASE_URL.rstrip('/')}/{slug}"
     ) as response:
         return json.load(response)
 

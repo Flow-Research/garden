@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useMemo, useDeferredValue } from 'react'
-import { useDefaultLayout } from 'react-resizable-panels'
 import {
   Plus,
   Trash2,
@@ -11,12 +10,9 @@ import {
   RefreshCw,
   ExternalLink,
   Sparkles,
-  X,
   Loader2,
   ArrowLeft,
   Download,
-  ChevronDown,
-  ChevronRight,
 } from 'lucide-react'
 import { Command as CommandPrimitive } from 'cmdk'
 import type {
@@ -45,11 +41,6 @@ import {
   AlertDialogAction,
 } from '@garden/ui/components/ui/alert-dialog'
 import {
-  ResizablePanelGroup,
-  ResizablePanel,
-  ResizableHandle,
-} from '@garden/ui/components/ui/resizable'
-import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
@@ -72,7 +63,6 @@ import {
 import {
   InputGroup,
   InputGroupAddon,
-  InputGroupInput,
 } from '@garden/ui/components/ui/input-group'
 import { Kbd, KbdGroup } from '@garden/ui/components/ui/kbd'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
@@ -85,7 +75,7 @@ import { api } from '@garden/core/api'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/core/auth'
 import { useWorkspaceId } from '@garden/core/hooks'
-import { useSkillsBrowseStore } from '@garden/core/skills'
+import { useSkillsBrowseStore, useSkillEditorStore } from '@garden/core/skills'
 import {
   skillListOptions,
   workspaceKeys,
@@ -136,15 +126,6 @@ function isMacOS() {
   return /Mac|iPhone|iPad/.test(navigator.platform)
 }
 
-function skillMatchesFilter(skill: Skill, query: string) {
-  if (!query.trim()) return true
-  const q = query.trim().toLowerCase()
-  return (
-    skill.name.toLowerCase().includes(q) ||
-    (skill.description?.toLowerCase().includes(q) ?? false)
-  )
-}
-
 function buildFileMap(
   content: string,
   files: { path: string; content: string }[],
@@ -178,8 +159,8 @@ export default function SkillsPage({
     focusedSkillId ?? '',
   )
 
-  // Render-time sync: when an external surface (e.g. agent skills tab) asks us
-  // to focus a specific skill, swap selection without a useEffect.
+  // Render-time sync: when an external surface (e.g. sidebar or agent tab)
+  // asks us to focus a specific skill, swap selection without a useEffect.
   const [syncedFocusId, setSyncedFocusId] = useState<string | undefined>(
     focusedSkillId,
   )
@@ -189,32 +170,20 @@ export default function SkillsPage({
       setSelectedSkillId(focusedSkillId)
     }
   }
-  const [addMode, setAddMode] = useState<AddMode | null>(null)
+
   const browseSearch = useSkillsBrowseStore((s) => s.browseSearch)
   const setBrowseSearch = useSkillsBrowseStore((s) => s.setBrowseSearch)
   const previewUrl = useSkillsBrowseStore((s) => s.previewUrl)
   const setPreviewUrl = useSkillsBrowseStore((s) => s.setPreviewUrl)
   const resetBrowseStore = useSkillsBrowseStore((s) => s.reset)
-  const [filter, setFilter] = useState('')
-  const { defaultLayout, onLayoutChanged } = useDefaultLayout({
-    id: 'accelerate_skills_layout',
-  })
+  const addMode = useSkillsBrowseStore((s) => s.addMode)
+  const setAddMode = useSkillsBrowseStore((s) => s.setAddMode)
 
-  const filteredSkills = useMemo(
-    () => skills.filter((skill) => skillMatchesFilter(skill, filter)),
-    [skills, filter],
-  )
-
-  // Derive the effective skill selection without useEffect. If the stored id
-  // no longer exists (new session, last skill deleted, first load), fall back
-  // to the first available skill.
+  // Selection effective id: prefer focused/selected, else the first skill.
   const effectiveSkillId = skills.some((s) => s.id === selectedSkillId)
     ? selectedSkillId
     : (skills[0]?.id ?? '')
 
-  // Keep the stored id in sync so downstream re-renders see a stable value.
-  // Conditional state-sync during render is React's supported alternative to
-  // a useEffect for deriving state from props.
   if (effectiveSkillId && effectiveSkillId !== selectedSkillId) {
     setSelectedSkillId(effectiveSkillId)
   }
@@ -358,13 +327,6 @@ export default function SkillsPage({
       <SkillWorkspace
         key={effectiveSkillId}
         skill={selected}
-        skills={filteredSkills}
-        totalSkillCount={skills.length}
-        selectedSkillId={effectiveSkillId}
-        onSelectSkill={setSelectedSkillId}
-        filter={filter}
-        onFilterChange={setFilter}
-        onAdd={() => setAddMode('browse')}
         onUpdate={(data) =>
           selected
             ? updateMutation.mutateAsync({ id: selected.id, data })
@@ -379,8 +341,6 @@ export default function SkillsPage({
             : Promise.resolve()
         }
         isReinstalling={reinstallMutation.isPending}
-        layout={defaultLayout}
-        onLayoutChanged={onLayoutChanged}
       />
 
       {addDialog}
@@ -396,34 +356,16 @@ export default function SkillsPage({
 
 function SkillWorkspace({
   skill,
-  skills,
-  totalSkillCount,
-  selectedSkillId,
-  onSelectSkill,
-  filter,
-  onFilterChange,
-  onAdd,
   onUpdate,
   onDelete,
   onReinstall,
   isReinstalling,
-  layout,
-  onLayoutChanged,
 }: {
   skill: Skill | null
-  skills: Skill[]
-  totalSkillCount: number
-  selectedSkillId: string
-  onSelectSkill: (id: string) => void
-  filter: string
-  onFilterChange: (value: string) => void
-  onAdd: () => void
   onUpdate: (data: UpdateSkillRequest) => Promise<unknown>
   onDelete: () => Promise<unknown>
   onReinstall: () => Promise<unknown>
   isReinstalling: boolean
-  layout: ReturnType<typeof useDefaultLayout>['defaultLayout']
-  onLayoutChanged: ReturnType<typeof useDefaultLayout>['onLayoutChanged']
 }) {
   const fullSkillQuery = useQuery({
     queryKey: ['skill', skill?.id ?? ''],
@@ -446,13 +388,26 @@ function SkillWorkspace({
   const [syncedKey, setSyncedKey] = useState('')
   const [content, setContent] = useState(loadedContent)
   const [files, setFiles] = useState<LoadedFile[]>(loadedFiles)
-  const [selectedPath, setSelectedPath] = useState(SKILL_MD)
+
+  // Selected path lives in the editor store so the sidebar's file tree
+  // and this editor stay in sync without lifting state through the dock.
+  const selectedPath = useSkillEditorStore((s) => s.selectedPath)
+  const setSelectedPath = useSkillEditorStore((s) => s.setSelectedPath)
+  const setActiveBundle = useSkillEditorStore((s) => s.setActiveBundle)
+  const setStoreFilePaths = useSkillEditorStore((s) => s.setFilePaths)
+  const clearActiveBundle = useSkillEditorStore((s) => s.clear)
 
   if (bundleKey && syncedKey !== bundleKey) {
     setSyncedKey(bundleKey)
     setContent(loadedContent)
     setFiles(loadedFiles)
-    setSelectedPath(SKILL_MD)
+    if (loaded) {
+      const initialPaths = [
+        SKILL_MD,
+        ...loadedFiles.map((f) => f.path).filter(Boolean),
+      ]
+      setActiveBundle(loaded.id, initialPaths)
+    }
   }
 
   const [saving, setSaving] = useState(false)
@@ -465,6 +420,21 @@ function SkillWorkspace({
   const fileMap = useMemo(() => buildFileMap(content, files), [content, files])
   const filePaths = useMemo(() => Array.from(fileMap.keys()), [fileMap])
   const selectedContent = fileMap.get(selectedPath) ?? ''
+
+  // Keep the store's filePaths in sync with the editor's current bundle,
+  // including unsaved adds/deletes. Render-time guard avoids redundant writes.
+  const [syncedPathsKey, setSyncedPathsKey] = useState('')
+  const filePathsKey = filePaths.join('')
+  if (loaded && filePathsKey !== syncedPathsKey) {
+    setSyncedPathsKey(filePathsKey)
+    setStoreFilePaths(filePaths)
+  }
+
+  // If the sidebar selected a path that no longer exists (e.g. deletion),
+  // fall back to SKILL.md.
+  if (selectedPath && !fileMap.has(selectedPath) && fileMap.size > 0) {
+    setSelectedPath(SKILL_MD)
+  }
 
   const isDirty =
     content !== loadedContent ||
@@ -512,64 +482,37 @@ function SkillWorkspace({
     }
   }
 
+  // Clear the store when the workspace unmounts (skill panel closed).
+  // Effect-free cleanup via the unmount path of a small ref-like trick:
+  // we intentionally skip useEffect — the dock will simply remount this
+  // component with a different bundleKey on the next selection.
+  void clearActiveBundle
+
   return (
     <div
       onKeyDown={handleKeyDown}
       className="flex flex-1 min-h-0 flex-col outline-none"
     >
-      <ResizablePanelGroup
-        orientation="horizontal"
-        className="flex-1 min-h-0"
-        defaultLayout={layout}
-        onLayoutChanged={onLayoutChanged}
-      >
-        <ResizablePanel
-          id="list"
-          defaultSize={260}
-          minSize={220}
-          maxSize={380}
-          groupResizeBehavior="preserve-pixel-size"
-        >
-          <SkillExplorer
-            skills={skills}
-            totalSkillCount={totalSkillCount}
-            selectedSkillId={selectedSkillId}
-            onSelectSkill={onSelectSkill}
-            filePaths={filePaths}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {skill ? (
+          <SkillEditor
+            skill={skill}
             selectedPath={selectedPath}
-            onSelectPath={setSelectedPath}
-            filter={filter}
-            onFilterChange={onFilterChange}
-            onAdd={onAdd}
-            onAddFile={() => setShowAddFile(true)}
+            selectedContent={selectedContent}
+            onContentChange={handleFileContentChange}
+            isDirty={isDirty}
+            saving={saving}
+            canSync={canSync}
             canDeleteFile={selectedPath !== SKILL_MD}
+            onAddFile={() => setShowAddFile(true)}
             onDeleteFile={handleDeleteFile}
-            loadingFiles={loadingFiles}
+            onSave={handleSave}
+            onDelete={() => setConfirmDelete(true)}
+            onSync={() => setConfirmSync(true)}
+            loading={loadingFiles}
           />
-        </ResizablePanel>
-
-        <ResizableHandle />
-
-        <ResizablePanel id="detail" minSize="50%">
-          <div className="h-full min-h-0 overflow-hidden">
-            {skill ? (
-              <SkillEditor
-                skill={skill}
-                selectedPath={selectedPath}
-                selectedContent={selectedContent}
-                onContentChange={handleFileContentChange}
-                isDirty={isDirty}
-                saving={saving}
-                canSync={canSync}
-                onSave={handleSave}
-                onDelete={() => setConfirmDelete(true)}
-                onSync={() => setConfirmSync(true)}
-                loading={loadingFiles}
-              />
-            ) : null}
-          </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+        ) : null}
+      </div>
 
       {showAddFile && (
         <AddFileDialog
@@ -606,228 +549,6 @@ function SkillWorkspace({
 }
 
 // ---------------------------------------------------------------------------
-// Skill explorer — unified navigation. Each skill is a collapsible entry; the
-// currently-selected skill is expanded and reveals its file tree inline, so
-// the tree itself *is* the context menu.
-// ---------------------------------------------------------------------------
-
-function SkillExplorer({
-  skills,
-  totalSkillCount,
-  selectedSkillId,
-  onSelectSkill,
-  filePaths,
-  selectedPath,
-  onSelectPath,
-  filter,
-  onFilterChange,
-  onAdd,
-  onAddFile,
-  canDeleteFile,
-  onDeleteFile,
-  loadingFiles,
-}: {
-  skills: Skill[]
-  totalSkillCount: number
-  selectedSkillId: string
-  onSelectSkill: (id: string) => void
-  filePaths: string[]
-  selectedPath: string
-  onSelectPath: (path: string) => void
-  filter: string
-  onFilterChange: (value: string) => void
-  onAdd: () => void
-  onAddFile: () => void
-  canDeleteFile: boolean
-  onDeleteFile: () => void
-  loadingFiles: boolean
-}) {
-  return (
-    <div className="flex h-full flex-col border-r">
-      <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-3">
-        <span className="pl-1 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground tabular-nums">
-          {totalSkillCount} {totalSkillCount === 1 ? 'skill' : 'skills'}
-        </span>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button variant="ghost" size="icon-sm" onClick={onAdd}>
-                <Plus className="text-muted-foreground" />
-              </Button>
-            }
-          />
-          <TooltipContent side="bottom">Add skill</TooltipContent>
-        </Tooltip>
-      </div>
-
-      <div className="shrink-0 border-b px-3 py-2">
-        <InputGroup>
-          <InputGroupAddon>
-            <Search className="text-muted-foreground" />
-          </InputGroupAddon>
-          <InputGroupInput
-            value={filter}
-            onChange={(event) => onFilterChange(event.target.value)}
-            placeholder="Filter"
-          />
-          {filter ? (
-            <InputGroupAddon align="inline-end">
-              <button
-                type="button"
-                onClick={() => onFilterChange('')}
-                className="text-muted-foreground transition-colors hover:text-foreground"
-                aria-label="Clear filter"
-              >
-                <X className="size-3.5" />
-              </button>
-            </InputGroupAddon>
-          ) : null}
-        </InputGroup>
-      </div>
-
-      <div className="flex-1 overflow-y-auto py-1">
-        {skills.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-1 px-4 py-10 text-center">
-            <p className="text-sm text-foreground">No matches</p>
-            <p className="text-xs text-muted-foreground">
-              No skills match &ldquo;{filter}&rdquo;.
-            </p>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onFilterChange('')}
-              className="mt-2"
-            >
-              Clear filter
-            </Button>
-          </div>
-        ) : (
-          skills.map((skill) => (
-            <SkillExplorerEntry
-              key={skill.id}
-              skill={skill}
-              isSelected={skill.id === selectedSkillId}
-              filePaths={skill.id === selectedSkillId ? filePaths : null}
-              selectedPath={selectedPath}
-              onSelectSkill={onSelectSkill}
-              onSelectPath={onSelectPath}
-              onAddFile={onAddFile}
-              canDeleteFile={canDeleteFile}
-              onDeleteFile={onDeleteFile}
-              loadingFiles={loadingFiles}
-            />
-          ))
-        )}
-      </div>
-    </div>
-  )
-}
-
-function SkillExplorerEntry({
-  skill,
-  isSelected,
-  filePaths,
-  selectedPath,
-  onSelectSkill,
-  onSelectPath,
-  onAddFile,
-  canDeleteFile,
-  onDeleteFile,
-  loadingFiles,
-}: {
-  skill: Skill
-  isSelected: boolean
-  filePaths: string[] | null
-  selectedPath: string
-  onSelectSkill: (id: string) => void
-  onSelectPath: (path: string) => void
-  onAddFile: () => void
-  canDeleteFile: boolean
-  onDeleteFile: () => void
-  loadingFiles: boolean
-}) {
-  const ChevronIcon = isSelected ? ChevronDown : ChevronRight
-
-  return (
-    <div>
-      <div
-        className={cn(
-          'group mx-1.5 flex items-center gap-1 rounded-md pr-1 transition-colors',
-          isSelected
-            ? 'bg-muted text-foreground'
-            : 'text-foreground/85 hover:bg-muted/50',
-        )}
-      >
-        <button
-          type="button"
-          onClick={() => onSelectSkill(skill.id)}
-          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-1.5 pl-2 text-left"
-        >
-          <ChevronIcon className="size-3 shrink-0 text-muted-foreground/70" />
-          <span
-            className={cn(
-              'truncate text-[13px] leading-tight',
-              isSelected ? 'font-semibold' : 'font-medium',
-            )}
-          >
-            {skill.name}
-          </span>
-        </button>
-        {isSelected ? (
-          <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={onAddFile}
-                    className="text-muted-foreground hover:text-foreground"
-                  >
-                    <Plus />
-                  </Button>
-                }
-              />
-              <TooltipContent>Add file</TooltipContent>
-            </Tooltip>
-            {canDeleteFile ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={onDeleteFile}
-                      className="text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 />
-                    </Button>
-                  }
-                />
-                <TooltipContent>Delete file</TooltipContent>
-              </Tooltip>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-      {isSelected && filePaths ? (
-        <div className="pb-1">
-          {loadingFiles ? (
-            <FileTreeSkeleton />
-          ) : (
-            <FileTree
-              filePaths={filePaths}
-              selectedPath={selectedPath}
-              onSelect={onSelectPath}
-            />
-          )}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Skill editor — header + file viewer, nothing else. The file tree lives in
 // the explorer so this pane can stay focused on the content.
 // ---------------------------------------------------------------------------
@@ -840,6 +561,9 @@ function SkillEditor({
   isDirty,
   saving,
   canSync,
+  canDeleteFile,
+  onAddFile,
+  onDeleteFile,
   onSave,
   onDelete,
   onSync,
@@ -852,18 +576,25 @@ function SkillEditor({
   isDirty: boolean
   saving: boolean
   canSync: boolean
+  canDeleteFile: boolean
+  onAddFile: () => void
+  onDeleteFile: () => void
   onSave: () => void
   onDelete: () => void
   onSync: () => void
   loading: boolean
 }) {
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col">
       <SkillEditorHeader
         skill={skill}
+        selectedPath={selectedPath}
         isDirty={isDirty}
         saving={saving}
         canSync={canSync}
+        canDeleteFile={canDeleteFile}
+        onAddFile={onAddFile}
+        onDeleteFile={onDeleteFile}
         onSave={onSave}
         onDelete={onDelete}
         onSync={onSync}
@@ -887,17 +618,25 @@ function SkillEditor({
 
 function SkillEditorHeader({
   skill,
+  selectedPath,
   isDirty,
   saving,
   canSync,
+  canDeleteFile,
+  onAddFile,
+  onDeleteFile,
   onSave,
   onDelete,
   onSync,
 }: {
   skill: Skill
+  selectedPath: string
   isDirty: boolean
   saving: boolean
   canSync: boolean
+  canDeleteFile: boolean
+  onAddFile: () => void
+  onDeleteFile: () => void
   onSave: () => void
   onDelete: () => void
   onSync: () => void
@@ -908,8 +647,12 @@ function SkillEditorHeader({
         <h1 className="truncate text-sm font-semibold text-foreground">
           {skill.name}
         </h1>
+        <span className="text-muted-foreground/60">/</span>
+        <span className="truncate font-mono text-xs text-muted-foreground">
+          {selectedPath}
+        </span>
         {isDirty ? (
-          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+          <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
             <span className="inline-block size-1.5 rounded-full bg-amber-500" />
             Unsaved
           </span>
@@ -917,6 +660,41 @@ function SkillEditorHeader({
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={onAddFile}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="Add file"
+              >
+                <Plus />
+              </Button>
+            }
+          />
+          <TooltipContent side="bottom">Add file</TooltipContent>
+        </Tooltip>
+        {canDeleteFile ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={onDeleteFile}
+                  className="text-muted-foreground hover:text-destructive"
+                  aria-label="Delete file"
+                >
+                  <Trash2 />
+                </Button>
+              }
+            />
+            <TooltipContent side="bottom">Delete file</TooltipContent>
+          </Tooltip>
+        ) : null}
+        <div className="mx-0.5 h-4 w-px bg-border/70" />
         <Tooltip>
           <TooltipTrigger
             render={
@@ -1717,22 +1495,6 @@ function SkillsPageSkeleton() {
           <FileViewerSkeleton />
         </div>
       </div>
-    </div>
-  )
-}
-
-function FileTreeSkeleton() {
-  return (
-    <div className="space-y-1.5 px-3 py-2">
-      {Array.from({ length: 4 }).map((_, idx) => (
-        <div key={idx} className="flex items-center gap-1.5">
-          <Skeleton className="size-3.5 rounded-sm" />
-          <Skeleton
-            className="h-3"
-            style={{ width: `${45 + ((idx * 11) % 40)}%` }}
-          />
-        </div>
-      ))}
     </div>
   )
 }

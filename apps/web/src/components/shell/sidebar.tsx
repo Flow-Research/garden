@@ -3,13 +3,24 @@
 import { useCallback, useMemo } from 'react'
 import { Result } from 'better-result'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { IconBook2, IconMessage2Plus } from '@tabler/icons-react'
-import { Bot, Plug } from 'lucide-react'
+import { IconMessage2Plus } from '@tabler/icons-react'
+import { BookOpenText, Bot, Plug, Plus, Search, X } from 'lucide-react'
 import { Icon as IconifyIcon } from '@iconify/react'
 import { BrandIcon } from '@garden/ui/components/common/brand-icon'
 import type { ConnectorId } from '@garden/connectors/registry'
-import type { Agent } from '@garden/core/types'
-import { agentListOptions } from '@garden/core/workspace/queries'
+import type { Agent, Skill } from '@garden/core/types'
+import {
+  agentListOptions,
+  skillListOptions,
+} from '@garden/core/workspace/queries'
+import { useSkillsBrowseStore, useSkillEditorStore } from '@garden/core/skills'
+import { FileTree } from '@/features/skills/components/file-tree'
+import { Button } from '@garden/ui/components/ui/button'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@garden/ui/components/ui/input-group'
 import {
   Sidebar,
   SidebarContent,
@@ -496,18 +507,22 @@ export function WorkspaceSidebar() {
           ) : null}
 
           {activeRailId === 'skills' ? (
-            <ExplorerSection>
-              <SidebarMenu>
-                <ExplorerActionRow
-                  label="Library"
-                  icon={IconBook2}
-                  active={activeType === 'skill-editor'}
-                  onClick={() =>
-                    openPanel({ kind: 'skill-editor', title: 'Library' })
-                  }
-                />
-              </SidebarMenu>
-            </ExplorerSection>
+            <SkillsRailExplorer
+              workspaceId={workspaceId}
+              activeEntityId={
+                activeType === 'skill-editor' ? activeEntityId : null
+              }
+              onOpenSkill={(skill) =>
+                openPanel({
+                  kind: 'skill-editor',
+                  title: 'Library',
+                  entityId: skill.id,
+                })
+              }
+              onOpenLibrary={() =>
+                openPanel({ kind: 'skill-editor', title: 'Library' })
+              }
+            />
           ) : null}
 
           {activeRailId === 'connections' ? (
@@ -657,6 +672,150 @@ function AgentsExplorer({
         </div>
       ) : null}
     </>
+  )
+}
+
+function SkillsRailExplorer({
+  workspaceId,
+  activeEntityId,
+  onOpenSkill,
+  onOpenLibrary,
+}: {
+  workspaceId: string
+  activeEntityId: string | null
+  onOpenSkill: (skill: Skill) => void
+  onOpenLibrary: () => void
+}) {
+  const skillsQuery = useQuery({
+    ...skillListOptions(workspaceId),
+    enabled: !!workspaceId,
+  })
+  const filter = useSkillsBrowseStore((s) => s.listFilter)
+  const setFilter = useSkillsBrowseStore((s) => s.setListFilter)
+  const setAddMode = useSkillsBrowseStore((s) => s.setAddMode)
+  const editorActiveId = useSkillEditorStore((s) => s.activeSkillId)
+  const editorFilePaths = useSkillEditorStore((s) => s.filePaths)
+  const editorSelectedPath = useSkillEditorStore((s) => s.selectedPath)
+  const setEditorSelectedPath = useSkillEditorStore((s) => s.setSelectedPath)
+
+  const skills = skillsQuery.data ?? []
+  const visible = useMemo(() => {
+    const q = filter.trim().toLowerCase()
+    return skills.filter(
+      (s) =>
+        !q ||
+        s.name.toLowerCase().includes(q) ||
+        (s.description?.toLowerCase().includes(q) ?? false),
+    )
+  }, [skills, filter])
+
+  const handleAdd = () => {
+    onOpenLibrary()
+    setAddMode('browse')
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-2">
+        <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground tabular-nums">
+          {skills.length} {skills.length === 1 ? 'skill' : 'skills'}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={handleAdd}
+          aria-label="Add skill"
+        >
+          <Plus className="text-muted-foreground" />
+        </Button>
+      </div>
+      <div className="shrink-0 px-3 pb-2">
+        <InputGroup>
+          <InputGroupAddon>
+            <Search className="text-muted-foreground" />
+          </InputGroupAddon>
+          <InputGroupInput
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder="Filter"
+          />
+          {filter ? (
+            <InputGroupAddon align="inline-end">
+              <button
+                type="button"
+                onClick={() => setFilter('')}
+                className="text-muted-foreground transition-colors hover:text-foreground"
+                aria-label="Clear filter"
+              >
+                <X className="size-3.5" />
+              </button>
+            </InputGroupAddon>
+          ) : null}
+        </InputGroup>
+      </div>
+      <div className="flex-1 overflow-y-auto pb-2">
+        {skillsQuery.isLoading && !skillsQuery.data ? (
+          <div className="px-4 py-3 text-xs text-muted-foreground">
+            Loading skills…
+          </div>
+        ) : skills.length === 0 ? (
+          <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+            <p className="text-foreground">No skills yet</p>
+            <button
+              type="button"
+              onClick={handleAdd}
+              className="mt-2 text-xs underline-offset-2 hover:text-foreground hover:underline"
+            >
+              Add the first one
+            </button>
+          </div>
+        ) : visible.length === 0 ? (
+          <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+            <p className="text-foreground">No matches</p>
+            <button
+              type="button"
+              onClick={() => setFilter('')}
+              className="mt-2 text-xs underline-offset-2 hover:text-foreground hover:underline"
+            >
+              Clear filter
+            </button>
+          </div>
+        ) : (
+          <SidebarMenu>
+            {visible.map((skill) => {
+              const active = activeEntityId === skill.id
+              const showTree =
+                active &&
+                editorActiveId === skill.id &&
+                editorFilePaths.length > 0
+              return (
+                <div key={skill.id}>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      isActive={active}
+                      className="rounded-[2px] px-3"
+                      onClick={() => onOpenSkill(skill)}
+                    >
+                      <BookOpenText className="size-4" />
+                      <span className="flex-1 truncate">{skill.name}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  {showTree ? (
+                    <div className="mb-1 ml-3 border-l border-sidebar-border/60">
+                      <FileTree
+                        filePaths={editorFilePaths}
+                        selectedPath={editorSelectedPath}
+                        onSelect={setEditorSelectedPath}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+          </SidebarMenu>
+        )}
+      </div>
+    </div>
   )
 }
 
