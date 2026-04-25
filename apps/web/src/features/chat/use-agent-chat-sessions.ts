@@ -3,7 +3,9 @@
 import { useCallback, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Result } from 'better-result'
+import { toast } from 'sonner'
 import { useAuthStore } from '@garden/core/auth'
+import { useChatStore } from '@garden/core/chat'
 import { useWorkspaceStore } from '@garden/core/workspace'
 
 // Module-scoped in-flight latch for the "claim warm session" replenish,
@@ -194,15 +196,51 @@ export function useAgentSessions() {
     },
   })
 
+  // Optimistic remove + draft cleanup, with snapshot for rollback. Used by
+  // both archive and delete since their on-success effect on the list is
+  // identical: the row is gone, and any stashed composer draft for that
+  // session is no longer reachable so we drop it from the persisted store
+  // (otherwise it leaks into garden_chat_drafts forever).
+  const optimisticRemoveSession = (sessionId: string) => {
+    const previousSessions = qc.getQueryData<AgentChatSession[]>(queryKey)
+    const previousDraft =
+      useChatStore.getState().inputDrafts[sessionId] ?? null
+
+    qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>
+      current.filter((session) => session.id !== sessionId),
+    )
+    useChatStore.getState().clearInputDraft(sessionId)
+
+    return { previousSessions, previousDraft, sessionId }
+  }
+
+  const rollbackRemoveSession = (
+    context:
+      | {
+          previousSessions: AgentChatSession[] | undefined
+          previousDraft: string | null
+          sessionId: string
+        }
+      | undefined,
+  ) => {
+    if (!context) return
+    if (context.previousSessions) {
+      qc.setQueryData(queryKey, context.previousSessions)
+    }
+    if (context.previousDraft !== null) {
+      useChatStore.getState().setInputDraft(context.sessionId, context.previousDraft)
+    }
+  }
+
   const deleteSession = useMutation({
     mutationFn: async (sessionId: string) => {
       await deleteChatThread(sessionId)
       return sessionId
     },
-    onMutate: async (sessionId) => {
-      qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>
-        current.filter((session) => session.id !== sessionId),
-      )
+    onMutate: async (sessionId) => optimisticRemoveSession(sessionId),
+    onError: (_err, _sessionId, context) => {
+      rollbackRemoveSession(context)
+      toast.error('Failed to delete chat')
     },
   })
 
@@ -211,10 +249,10 @@ export function useAgentSessions() {
       updateChatThread(sessionId, {
         archivedAt: new Date().toISOString(),
       }),
-    onMutate: async (sessionId) => {
-      qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>
-        current.filter((session) => session.id !== sessionId),
-      )
+    onMutate: async (sessionId) => optimisticRemoveSession(sessionId),
+    onError: (_err, _sessionId, context) => {
+      rollbackRemoveSession(context)
+      toast.error('Failed to archive chat')
     },
   })
 
