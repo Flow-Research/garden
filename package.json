@@ -8,6 +8,7 @@
     "dev:web": "turbo run dev --filter=@garden/web",
     "dev:web:containers": "pnpm --filter @garden/web dev:containers",
     "build": "turbo run build",
+    "deploy": "pnpm --filter @garden/mcp-proxy deploy && pnpm --filter @garden/web deploy",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "lint": "turbo run lint",

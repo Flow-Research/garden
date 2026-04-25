@@ -1,5 +1,4 @@
 import { and, eq } from 'drizzle-orm'
-import { env } from 'cloudflare:workers'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 
@@ -12,7 +11,7 @@ export function buildAgentHostName(workspaceId: string, userId: string) {
 }
 
 async function getAgentHostStub(hostName: string) {
-  const stub = env.AgentHost.get(env.AgentHost.idFromName(hostName))
+  const stub = appEnv.AgentHost.get(appEnv.AgentHost.idFromName(hostName))
 
   if ('setName' in stub && typeof stub.setName === 'function') {
     await stub.setName(hostName)

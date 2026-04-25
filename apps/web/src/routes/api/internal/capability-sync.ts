@@ -59,10 +59,8 @@ export const Route = createFileRoute('/api/internal/capability-sync')({
                 status:
                   error.code === 'connector_not_found'
                     ? 404
-                    : error.code === 'proxy_not_configured'
-                      ? 503
-                      : error.code === 'sync_agent_not_found' ||
-                          error.code === 'unclassified_tool'
+                    : error.code === 'sync_agent_not_found' ||
+                        error.code === 'unclassified_tool'
                         ? 409
                         : 500,
               },
