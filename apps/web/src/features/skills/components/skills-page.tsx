@@ -76,10 +76,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/core/auth'
 import { useWorkspaceId } from '@garden/core/hooks'
 import { useSkillsBrowseStore, useSkillEditorStore } from '@garden/core/skills'
-import {
-  skillListOptions,
-  workspaceKeys,
-} from '@garden/core/workspace/queries'
+import { skillListOptions, workspaceKeys } from '@garden/core/workspace/queries'
 
 import { FileTree } from './file-tree'
 import { FileViewer } from './file-viewer'
@@ -261,8 +258,7 @@ export default function SkillsPage({
     },
   })
 
-  const selected =
-    skills.find((s) => s.id === effectiveSkillId) ?? null
+  const selected = skills.find((s) => s.id === effectiveSkillId) ?? null
 
   const isLoading = isAuthLoading || isSkillsLoading
   const isEmpty = !isLoading && skills.length === 0
@@ -336,9 +332,7 @@ export default function SkillsPage({
           selected ? deleteMutation.mutateAsync(selected.id) : Promise.resolve()
         }
         onReinstall={() =>
-          selected
-            ? reinstallMutation.mutateAsync(selected)
-            : Promise.resolve()
+          selected ? reinstallMutation.mutateAsync(selected) : Promise.resolve()
         }
         isReinstalling={reinstallMutation.isPending}
       />
@@ -695,27 +689,28 @@ function SkillEditorHeader({
           </Tooltip>
         ) : null}
         <div className="mx-0.5 h-4 w-px bg-border/70" />
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                size="xs"
-                variant={isDirty ? 'default' : 'outline'}
-                onClick={onSave}
-                disabled={!isDirty || saving}
-              >
-                {saving ? <Loader2 className="animate-spin" /> : <Save />}
-                {saving ? 'Saving' : 'Save'}
-              </Button>
-            }
-          />
-          <TooltipContent side="bottom">
-            <KbdGroup>
-              <Kbd>{isMacOS() ? '⌘' : 'Ctrl'}</Kbd>
-              <Kbd>S</Kbd>
-            </KbdGroup>
-          </TooltipContent>
-        </Tooltip>
+        {isDirty || saving ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  size="xs"
+                  onClick={onSave}
+                  disabled={!isDirty || saving}
+                >
+                  {saving ? <Loader2 className="animate-spin" /> : <Save />}
+                  {saving ? 'Saving' : 'Save'}
+                </Button>
+              }
+            />
+            <TooltipContent side="bottom">
+              <KbdGroup>
+                <Kbd>{isMacOS() ? '⌘' : 'Ctrl'}</Kbd>
+                <Kbd>S</Kbd>
+              </KbdGroup>
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
 
         <DropdownMenu>
           <DropdownMenuTrigger
@@ -907,9 +902,7 @@ function BrowseSearchScreen({
 
             {searchQuery.length < 2 && !directTarget ? (
               <div className="flex h-full flex-col items-center justify-center gap-1 px-6 py-12 text-center">
-                <p className="text-sm text-foreground">
-                  Search to find skills
-                </p>
+                <p className="text-sm text-foreground">Search to find skills</p>
                 <p className="text-xs text-muted-foreground">
                   Try &ldquo;code review&rdquo;, &ldquo;bug triage&rdquo;, or
                   &ldquo;changelog&rdquo;.
@@ -1476,9 +1469,15 @@ function SkillsPageSkeleton() {
         </div>
         <div className="flex-1 space-y-1 px-1.5 py-2">
           {Array.from({ length: 6 }).map((_, idx) => (
-            <div key={idx} className="flex items-center gap-2 rounded-md px-2 py-2">
+            <div
+              key={idx}
+              className="flex items-center gap-2 rounded-md px-2 py-2"
+            >
               <Skeleton className="size-3 rounded-sm" />
-              <Skeleton className="h-3" style={{ width: `${45 + ((idx * 11) % 35)}%` }} />
+              <Skeleton
+                className="h-3"
+                style={{ width: `${45 + ((idx * 11) % 35)}%` }}
+              />
             </div>
           ))}
         </div>

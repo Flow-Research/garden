@@ -7,6 +7,7 @@ import {
   MergedSkillCatalog,
   buildBuiltinSkillObjectKey,
   buildBuiltinSkillManifestObjectKey,
+  materializeSkillCatalog,
   type RuntimeSkillRecord,
   type SkillBundleStore,
   type SkillCatalog,
@@ -262,7 +263,9 @@ describe('AssignedSkillProvider session integration', () => {
     })
 
     expect(loaded).toContain('/.agents/skills/pdf/forms.md')
-    expect(workspace.files.get('/.agents/skills/pdf/forms.md')).toBe('# PDF Forms')
+    expect(workspace.files.get('/.agents/skills/pdf/forms.md')).toBe(
+      '# PDF Forms',
+    )
   })
 
   it('renders enabled assigned skills into the cached prompt inventory once per skill', async () => {
@@ -329,7 +332,8 @@ describe('AssignedSkillProvider session integration', () => {
         skillName: 'Planning With Files',
         skillDescription: 'Plan and track multi-step work',
         skillBody: '# Planning With Files\nUse the templates.',
-        sourceUrl: 'https://skills.sh/othmanadi/planning-with-files/planning-with-files',
+        sourceUrl:
+          'https://skills.sh/othmanadi/planning-with-files/planning-with-files',
         bundleHash: 'hash',
         filePath: 'templates/report.md',
         fileR2Key: 'skills/ws/skill-1/hash/templates/report.md',
@@ -341,7 +345,8 @@ describe('AssignedSkillProvider session integration', () => {
         skillName: 'Planning With Files',
         skillDescription: 'Plan and track multi-step work',
         skillBody: '# Planning With Files\nUse the templates.',
-        sourceUrl: 'https://skills.sh/othmanadi/planning-with-files/planning-with-files',
+        sourceUrl:
+          'https://skills.sh/othmanadi/planning-with-files/planning-with-files',
         bundleHash: 'hash',
         filePath: 'references/checklist.md',
         fileR2Key: 'skills/ws/skill-1/hash/references/checklist.md',
@@ -373,17 +378,110 @@ describe('AssignedSkillProvider session integration', () => {
     expect(loaded).toContain(
       '/.agents/skills/planning-with-files/templates/report.md',
     )
-    expect(workspace.files.get('/.agents/skills/planning-with-files/SKILL.md')).toContain(
-      '# Planning With Files',
-    )
     expect(
-      workspace.files.get('/.agents/skills/planning-with-files/templates/report.md'),
+      workspace.files.get('/.agents/skills/planning-with-files/SKILL.md'),
+    ).toContain('# Planning With Files')
+    expect(
+      workspace.files.get(
+        '/.agents/skills/planning-with-files/templates/report.md',
+      ),
     ).toBe('# Report template')
     expect(
       workspace.files.get(
         '/.agents/skills/planning-with-files/references/checklist.md',
       ),
     ).toBe('# Checklist')
+  })
+
+  it('materializes all assigned skills into the workspace without load_context', async () => {
+    const catalog = new MutableSkillCatalog()
+    const workspace = new MemorySkillWorkspace()
+    const bundleStore = new MemorySkillBundleStore(
+      new Map([['skills/ws/skill-2/hash/references/brief.md', '# Brief']]),
+    )
+    const agentRuntimeName = 'workspace:user:primary'
+    catalog.replace(agentRuntimeName, [
+      createSkillRecord({
+        agentId: 'agent-1',
+        skillId: 'skill-1',
+        skillSlug: 'code-review',
+        skillName: 'Code Review',
+        skillDescription: 'Review code for correctness',
+        skillBody: '# Code Review\nCheck for regressions.',
+      }),
+      createSkillRecord({
+        agentId: 'agent-1',
+        skillId: 'skill-2',
+        skillSlug: 'research',
+        skillName: 'Research',
+        skillDescription: 'Research current context',
+        skillBody: '# Research\nRead sources.',
+        bundleHash: 'hash',
+        filePath: 'references/brief.md',
+        fileR2Key: 'skills/ws/skill-2/hash/references/brief.md',
+      }),
+    ])
+
+    const materialized = await materializeSkillCatalog({
+      agentRuntimeName,
+      catalog,
+      workspace,
+      bundleStore,
+    })
+
+    expect(materialized).toEqual(['code-review', 'research'])
+    expect(workspace.files.get('/.agents/skills/code-review/SKILL.md')).toBe(
+      '# Code Review\nCheck for regressions.',
+    )
+    expect(workspace.files.get('/.agents/skills/research/SKILL.md')).toBe(
+      '# Research\nRead sources.',
+    )
+    expect(
+      workspace.files.get('/.agents/skills/research/references/brief.md'),
+    ).toBe('# Brief')
+  })
+
+  it('rewrites materialized skill files when the assigned skill changes', async () => {
+    const catalog = new MutableSkillCatalog()
+    const workspace = new MemorySkillWorkspace()
+    const bundleStore = new MemorySkillBundleStore()
+    const agentRuntimeName = 'workspace:user:primary'
+    catalog.replace(agentRuntimeName, [
+      createSkillRecord({
+        agentId: 'agent-1',
+        skillId: 'skill-1',
+        skillSlug: 'code-review',
+        skillName: 'Code Review',
+        skillBody: '# Code Review\nOriginal body.',
+      }),
+    ])
+
+    await materializeSkillCatalog({
+      agentRuntimeName,
+      catalog,
+      workspace,
+      bundleStore,
+    })
+    catalog.replace(agentRuntimeName, [
+      createSkillRecord({
+        agentId: 'agent-1',
+        skillId: 'skill-1',
+        skillSlug: 'code-review',
+        skillName: 'Code Review',
+        skillBody: '# Code Review\nUpdated body.',
+      }),
+    ])
+
+    await materializeSkillCatalog({
+      agentRuntimeName,
+      catalog,
+      workspace,
+      bundleStore,
+    })
+
+    expect(workspace.files.get('/.agents/skills/code-review/SKILL.md')).toBe(
+      '# Code Review\nUpdated body.',
+    )
   })
 
   it('keeps the frozen prompt stable after load_context and unload_context', async () => {

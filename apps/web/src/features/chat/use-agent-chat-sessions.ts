@@ -88,7 +88,11 @@ async function fetchChatThreads(workspaceId: string) {
   return sortSessions(rows.filter((row) => !row.archivedAt).map(rowToSession))
 }
 
-async function createChatThread(workspaceId: string, title?: string) {
+async function createChatThread(
+  workspaceId: string,
+  title?: string,
+  agentId?: string | null,
+) {
   const url = new URL('/api/chat/threads', window.location.origin)
   url.searchParams.set('workspace_id', workspaceId)
 
@@ -96,7 +100,7 @@ async function createChatThread(workspaceId: string, title?: string) {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title }),
+    body: JSON.stringify({ title, agent_id: agentId ?? undefined }),
   })
 
   if (!response.ok) {
@@ -139,6 +143,7 @@ export function useAgentSessions() {
   const qc = useQueryClient()
   const user = useAuthStore((state) => state.user)
   const workspace = useWorkspaceStore((state) => state.workspace)
+  const selectedAgentId = useChatStore((state) => state.selectedAgentId)
   const workspaceId = workspace?.id ?? null
 
   const queryKey = useMemo(
@@ -161,7 +166,7 @@ export function useAgentSessions() {
       if (!workspaceId) {
         throw new Error('Missing workspace identity')
       }
-      return createChatThread(workspaceId, title)
+      return createChatThread(workspaceId, title, selectedAgentId)
     },
     onSuccess: (created) => {
       qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>
@@ -203,8 +208,7 @@ export function useAgentSessions() {
   // (otherwise it leaks into garden_chat_drafts forever).
   const optimisticRemoveSession = (sessionId: string) => {
     const previousSessions = qc.getQueryData<AgentChatSession[]>(queryKey)
-    const previousDraft =
-      useChatStore.getState().inputDrafts[sessionId] ?? null
+    const previousDraft = useChatStore.getState().inputDrafts[sessionId] ?? null
 
     qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>
       current.filter((session) => session.id !== sessionId),
@@ -228,7 +232,9 @@ export function useAgentSessions() {
       qc.setQueryData(queryKey, context.previousSessions)
     }
     if (context.previousDraft !== null) {
-      useChatStore.getState().setInputDraft(context.sessionId, context.previousDraft)
+      useChatStore
+        .getState()
+        .setInputDraft(context.sessionId, context.previousDraft)
     }
   }
 
@@ -279,7 +285,9 @@ export function useAgentSessions() {
                     ? { lastMessage: input.lastMessage }
                     : {}),
                   ...(input.status ? { status: input.status } : {}),
-                  ...(input.unread !== undefined ? { unread: input.unread } : {}),
+                  ...(input.unread !== undefined
+                    ? { unread: input.unread }
+                    : {}),
                   updatedAt,
                 }
               : session,
@@ -302,7 +310,10 @@ export function useAgentSessions() {
         }),
       ).then((result) => {
         if (Result.isError(result)) {
-          console.warn('[chat.sessions] failed to persist preview', result.error)
+          console.warn(
+            '[chat.sessions] failed to persist preview',
+            result.error,
+          )
         }
       })
     },
@@ -332,8 +343,13 @@ export function useAgentSessions() {
   // derivation, no effect. If the user happens to have an idle "New Chat"
   // sitting at the top, claim that one; otherwise create on demand.
   const warmSession = useMemo(
-    () => sessions.find((session) => isWarmSession(session)) ?? null,
-    [sessions],
+    () =>
+      sessions.find(
+        (session) =>
+          isWarmSession(session) &&
+          (!selectedAgentId || session.agentId === selectedAgentId),
+      ) ?? null,
+    [selectedAgentId, sessions],
   )
 
   // Claim a session for "new chat" actions. If a warm one already exists in

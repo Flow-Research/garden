@@ -1,5 +1,10 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import {
+  bindExistingCapabilitiesToAgent,
+  bindExistingSkillsToAgent,
+} from '@/lib/server/agent-bindings'
+import { buildAgentHostName } from '@/lib/server/chat-agents'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
@@ -37,6 +42,7 @@ export const Route = createFileRoute('/api/agents')({
         > | null
         if (typeof body?.name !== 'string')
           return badRequest('Invalid agent payload')
+        const hostName = buildAgentHostName(workspaceId, session.user.id)
         const agentValues = {
           id: crypto.randomUUID(),
           workspaceId,
@@ -50,12 +56,25 @@ export const Route = createFileRoute('/api/agents')({
             ? JSON.stringify(body.runtime_config)
             : null,
           status: 'active',
+          hostName,
         } as typeof schema.agent.$inferInsert
         const db = getDb(appEnv)
         const [agent] = await db
           .insert(schema.agent)
           .values(agentValues)
           .returning()
+        await bindExistingSkillsToAgent({
+          db,
+          schema,
+          agentId: agent.id,
+          workspaceId,
+        })
+        await bindExistingCapabilitiesToAgent({
+          db,
+          schema,
+          agentId: agent.id,
+          grantedBy: session.user.id,
+        })
         return Response.json(toAgent(agent), { status: 201 })
       },
     },

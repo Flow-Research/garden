@@ -1,5 +1,9 @@
 import { and, desc, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import {
+  bindExistingCapabilitiesToAgent,
+  bindExistingSkillsToAgent,
+} from '@/lib/server/agent-bindings'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
@@ -9,6 +13,7 @@ import {
   ensureChatThreadAgents,
 } from '@/lib/server/chat-agents'
 import {
+  forbidden,
   requireSession,
   resolveWorkspaceId,
   toChatThread,
@@ -72,7 +77,10 @@ export const Route = createFileRoute('/api/chat/threads')({
 
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
         if (!workspaceId) {
-          return Response.json({ error: 'Workspace not found' }, { status: 404 })
+          return Response.json(
+            { error: 'Workspace not found' },
+            { status: 404 },
+          )
         }
 
         const body = (await request.json().catch(() => null)) as Record<
@@ -88,10 +96,46 @@ export const Route = createFileRoute('/api/chat/threads')({
         const now = new Date()
         const db = getDb(appEnv)
 
-        const agentRow = await ensureAgentRow({
+        const defaultAgentRow = await ensureAgentRow({
           workspaceId,
           ownerUserId: session.user.id,
           hostName,
+        })
+        const requestedAgentId =
+          typeof body?.agent_id === 'string' ? body.agent_id.trim() : ''
+
+        const agentRow = requestedAgentId
+          ? (
+              await db
+                .select()
+                .from(schema.agent)
+                .where(eq(schema.agent.id, requestedAgentId))
+                .limit(1)
+            )[0]
+          : defaultAgentRow
+
+        if (!agentRow || agentRow.workspaceId !== workspaceId) {
+          return forbidden('Agent access denied')
+        }
+
+        const agentHostName = agentRow.hostName ?? hostName
+        if (!agentRow.hostName) {
+          await db
+            .update(schema.agent)
+            .set({ hostName: agentHostName })
+            .where(eq(schema.agent.id, agentRow.id))
+        }
+        await bindExistingSkillsToAgent({
+          db,
+          schema,
+          agentId: agentRow.id,
+          workspaceId,
+        })
+        await bindExistingCapabilitiesToAgent({
+          db,
+          schema,
+          agentId: agentRow.id,
+          grantedBy: session.user.id,
         })
 
         const [thread] = await db
@@ -110,10 +154,12 @@ export const Route = createFileRoute('/api/chat/threads')({
 
         await ensureChatThreadAgent({
           threadId: thread.id,
-          hostName,
+          hostName: agentHostName,
         })
 
-        return Response.json(toChatThread(thread, hostName), { status: 201 })
+        return Response.json(toChatThread(thread, agentHostName), {
+          status: 201,
+        })
       },
     },
   },

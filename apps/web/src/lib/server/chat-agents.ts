@@ -1,4 +1,8 @@
 import { and, eq } from 'drizzle-orm'
+import {
+  bindExistingCapabilitiesToAgent,
+  bindExistingSkillsToAgent,
+} from './agent-bindings'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 
@@ -38,6 +42,18 @@ export async function ensureAgentRow(input: {
     )
 
   if (existingAgent) {
+    await bindExistingSkillsToAgent({
+      db,
+      schema,
+      agentId: existingAgent.id,
+      workspaceId: input.workspaceId,
+    })
+    await bindExistingCapabilitiesToAgent({
+      db,
+      schema,
+      agentId: existingAgent.id,
+      grantedBy: input.ownerUserId,
+    })
     return existingAgent
   }
 
@@ -53,6 +69,19 @@ export async function ensureAgentRow(input: {
       hostName: input.hostName,
     })
     .returning()
+
+  await bindExistingSkillsToAgent({
+    db,
+    schema,
+    agentId: createdAgent.id,
+    workspaceId: input.workspaceId,
+  })
+  await bindExistingCapabilitiesToAgent({
+    db,
+    schema,
+    agentId: createdAgent.id,
+    grantedBy: input.ownerUserId,
+  })
 
   return createdAgent
 }
