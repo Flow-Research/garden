@@ -150,9 +150,13 @@ export function ChatSessionExplorer({
   onActivate?: (session: AgentChatSession) => void
 }) {
   const activeSessionId = useChatStore((state) => state.activeSessionId)
-  const { archiveSession, renameSession, sessions } = useAgentSessions()
+  const { archiveSession, renameSession, sessions, sessionsQuery } =
+    useAgentSessions()
 
   const activeSessions = useMemo(() => sessions, [sessions])
+  // Distinguish "loading" from "loaded but empty" so we don't flash the
+  // "Start a chat" empty-state while the first fetch is still in flight.
+  const isInitialLoad = sessionsQuery.isPending && activeSessions.length === 0
 
   const handleSelect = (session: AgentChatSession) => {
     onActivate?.(session)
@@ -183,6 +187,18 @@ export function ChatSessionExplorer({
               onSelect={() => handleSelect(session)}
               onRename={() => void handleRename(session.id)}
             />
+          ))}
+        </div>
+      ) : isInitialLoad ? (
+        <div className="space-y-1 px-3" aria-hidden="true">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="flex h-8 w-full items-center gap-2 rounded-md px-2"
+            >
+              <span className="size-2 shrink-0 animate-pulse rounded-full bg-muted-foreground/20" />
+              <span className="h-3 flex-1 animate-pulse rounded bg-muted-foreground/15" />
+            </div>
           ))}
         </div>
       ) : (
