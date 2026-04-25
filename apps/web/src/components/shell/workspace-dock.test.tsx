@@ -69,6 +69,19 @@ vi.mock('@/features/skills/components', () => ({
   SkillsPage: () => <div>Skills page</div>,
 }))
 
+vi.mock('@/features/dashboard', () => ({
+  DashboardPage: () => <div>Dashboard page</div>,
+}))
+
+vi.mock('@/features/connections', () => ({
+  ConnectionsPage: () => <div>Connections page</div>,
+}))
+
+vi.mock('@/features/agents/components', () => ({
+  AgentsPage: () => <div>Agents page</div>,
+  AgentDetail: ({ agentId }: { agentId: string }) => <div>{agentId}</div>,
+}))
+
 vi.mock('@/features/issues/components', () => ({
   IssuesPage: () => <div>Issues page</div>,
   IssueDetail: ({ issueId }: { issueId: string }) => <div>{issueId}</div>,
@@ -191,6 +204,7 @@ type FakePanel = {
   api: {
     id: string
     title: string
+    renderer?: string
     getParameters: () => {
       kind?: FakePanelKind
       title?: string
@@ -198,6 +212,7 @@ type FakePanel = {
       canonicalId?: string
     }
     setActive: () => void
+    setRenderer: (renderer: string) => void
     close: () => void
   }
 }
@@ -473,9 +488,13 @@ class FakeDockApi {
       api: {
         id: params.id,
         title: params.title,
+        renderer: undefined,
         getParameters: () =>
           panel.initialApiParametersVisible ? { ...panel.params } : {},
         setActive: () => this.setActivePanel(panel),
+        setRenderer: (renderer: string) => {
+          panel.api.renderer = renderer
+        },
         close: () => {},
       },
     } satisfies FakePanel
@@ -772,12 +791,12 @@ describe('WorkspaceDockProvider', () => {
         panels: {
           'panel-1': {
             id: 'panel-1',
-            contentComponent: 'agent-detail',
+            contentComponent: 'not-a-panel',
             title: 'Agent',
             params: {
-              kind: 'agent-detail',
+              kind: 'not-a-panel',
               title: 'Agent',
-              canonicalId: 'agent-detail:singleton',
+              canonicalId: 'not-a-panel:singleton',
             },
           },
         },
