@@ -4,7 +4,7 @@ import { useCallback, useMemo } from 'react'
 import { Result } from 'better-result'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { IconMessage2Plus } from '@tabler/icons-react'
-import { BookOpenText, Bot, Plug, Plus, Search, X } from 'lucide-react'
+import { Bot, Plug, Plus, Search, X } from 'lucide-react'
 import { Icon as IconifyIcon } from '@iconify/react'
 import { BrandIcon } from '@garden/ui/components/common/brand-icon'
 import type { ConnectorId } from '@garden/connectors/registry'
@@ -54,12 +54,7 @@ import {
 } from './workspace-dock'
 import { toast } from 'sonner'
 
-type RailContext =
-  | 'home'
-  | 'chats'
-  | 'agents'
-  | 'skills'
-  | 'connections'
+type RailContext = 'home' | 'chats' | 'agents' | 'skills' | 'connections'
 
 type RailItem = {
   id: RailContext
@@ -156,7 +151,10 @@ function HomeTasksIcon({ className }: { className?: string }) {
 
 function HomeInboxIcon({ className }: { className?: string }) {
   return (
-    <IconifyIcon icon="material-symbols:inbox-outline-sharp" className={className} />
+    <IconifyIcon
+      icon="material-symbols:inbox-outline-sharp"
+      className={className}
+    />
   )
 }
 
@@ -230,7 +228,8 @@ export function WorkspaceSidebar() {
   const activeType = activePanel?.kind ?? null
   const activeEntityId = activePanel?.entityId ?? null
   const activeRailId = contextFromPanel(activeType)
-  const activeRail = railItems.find((item) => item.id === activeRailId) ?? railItems[0]
+  const activeRail =
+    railItems.find((item) => item.id === activeRailId) ?? railItems[0]
   const workspaceId = workspace?.id ?? ''
 
   const { data: rawInboxItems = [] } = useQuery({
@@ -323,8 +322,8 @@ export function WorkspaceSidebar() {
       className="overflow-hidden border-r-0 border-t border-sidebar-border/70 *:data-[sidebar=sidebar]:flex-row"
     >
       <Sidebar
-      collapsible="none"
-      className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r border-sidebar-border/70"
+        collapsible="none"
+        className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r border-sidebar-border/70"
       >
         <SidebarHeader className="p-0">
           <SidebarMenu>
@@ -408,7 +407,7 @@ export function WorkspaceSidebar() {
       >
         <SidebarHeader className="gap-3 p-2">
           <div className="px-2">
-            <span className="text-sm font-medium text-foreground">
+            <span className="text-xs font-medium text-foreground">
               {activeRail.label}
             </span>
           </div>
@@ -493,9 +492,7 @@ export function WorkspaceSidebar() {
               activeEntityId={
                 activeType === 'agent-detail' ? activeEntityId : null
               }
-              onOpenList={() =>
-                openPanel({ kind: 'agents', title: 'Agents' })
-              }
+              onOpenList={() => openPanel({ kind: 'agents', title: 'Agents' })}
               onOpenAgent={(agent) =>
                 openPanel({
                   kind: 'agent-detail',
@@ -541,7 +538,6 @@ export function WorkspaceSidebar() {
               }
             />
           ) : null}
-
         </SidebarContent>
       </Sidebar>
     </Sidebar>
@@ -796,7 +792,6 @@ function SkillsRailExplorer({
                       className="rounded-[2px] px-3"
                       onClick={() => onOpenSkill(skill)}
                     >
-                      <BookOpenText className="size-4" />
                       <span className="flex-1 truncate">{skill.name}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -835,8 +830,12 @@ function ConnectionsExplorer({
   const { connected, available } = useMemo(() => {
     const list = snapshotQuery.data?.connectors ?? []
     return {
-      connected: list.filter((c) => c.status === 'connected' || c.status === 'degraded'),
-      available: list.filter((c) => c.status !== 'connected' && c.status !== 'degraded'),
+      connected: list.filter(
+        (c) => c.status === 'connected' || c.status === 'degraded',
+      ),
+      available: list.filter(
+        (c) => c.status !== 'connected' && c.status !== 'degraded',
+      ),
     }
   }, [snapshotQuery.data])
 
