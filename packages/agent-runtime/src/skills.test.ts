@@ -534,6 +534,86 @@ describe('AssignedSkillProvider session integration', () => {
     expect(frozenAfterUnload).toBe(frozenBeforeLoad)
   })
 
+  it('refreshes the same live session after assigned skills change', async () => {
+    const catalog = new MutableSkillCatalog()
+    const workspace = new MemorySkillWorkspace()
+    const agentRuntimeName = 'workspace:user:primary'
+    const bundleStore = new MemorySkillBundleStore()
+
+    catalog.replace(agentRuntimeName, [
+      createSkillRecord({
+        agentId: 'agent-1',
+        skillId: 'skill-1',
+        skillSlug: 'code-review',
+        skillName: 'Code Review',
+        skillDescription: 'Review code for correctness',
+        skillBody: '# Code Review\nCheck for regressions.',
+      }),
+    ])
+
+    const createProvider = () =>
+      new AssignedSkillProvider(catalog, {
+        agentRuntimeName,
+        workspace,
+        bundleStore,
+      })
+
+    const session = new Session(stubProvider, {
+      context: [
+        {
+          label: 'skills',
+          provider: createProvider(),
+        },
+      ],
+    })
+
+    const initial = await session.freezeSystemPrompt()
+    expect(initial).toContain('code-review')
+    expect(initial).not.toContain('planning-with-files')
+
+    catalog.replace(agentRuntimeName, [
+      createSkillRecord({
+        agentId: 'agent-1',
+        skillId: 'skill-1',
+        skillSlug: 'code-review',
+        skillName: 'Code Review',
+        skillDescription: 'Review code for correctness',
+        skillBody: '# Code Review\nCheck for regressions.',
+      }),
+      createSkillRecord({
+        agentId: 'agent-1',
+        skillId: 'skill-2',
+        skillSlug: 'planning-with-files',
+        skillName: 'Planning With Files',
+        skillDescription: 'Plan and track work in files',
+        skillBody: '# Planning With Files\nWrite plans to disk.',
+      }),
+    ])
+
+    expect(await session.refreshSystemPrompt()).toBe(initial)
+
+    session.removeContext('skills')
+    await session.addContext('skills', {
+      description: 'Enabled skills assigned to this agent.',
+      provider: createProvider(),
+    })
+    const refreshed = await session.refreshSystemPrompt()
+
+    expect(refreshed).toContain('code-review')
+    expect(refreshed).toContain('planning-with-files')
+
+    const loadTool = (await session.tools()).load_context as unknown as LoadToolFn
+    const loaded = await loadTool.execute({
+      label: 'skills',
+      key: 'planning-with-files',
+    })
+
+    expect(loaded).toContain('# Planning With Files')
+    expect(workspace.files.get('/.agents/skills/planning-with-files/SKILL.md')).toBe(
+      '# Planning With Files\nWrite plans to disk.',
+    )
+  })
+
   it('prefers assigned workspace skills over hidden built-ins when slugs collide', async () => {
     const assignedCatalog = new MutableSkillCatalog()
     const builtinBundles: BuiltinSkillManifest[] = [

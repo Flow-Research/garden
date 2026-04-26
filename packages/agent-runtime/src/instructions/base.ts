@@ -80,7 +80,11 @@ For simple greetings, apply only the user's name. For direct factual questions a
     id: 'sandbox',
     title: 'Sandbox',
     body:
-      `You have access to a persistent Linux sandbox for code execution. The working directory is /workspace. You can run shell commands, read and write files, start background processes, and expose ports for preview. The sandbox persists across turns within a session, so multi-step workflows and installed packages carry forward. Network access from the sandbox is restricted by default. Use the sandbox when the task needs actual code execution, data processing, or file generation. Do not reach for it when a conversational answer, a short code snippet, or an explanation would serve the user just as well.`,
+      `You have access to a persistent Linux workspace for code execution. The working directory is /workspace. Commands default there; prefer absolute paths or an explicit cwd over relying on shell state. Files and installed packages persist across turns within a session.
+
+Use the workspace when the task needs actual execution, data processing, file generation, or a previewable artifact. Good uses include writing one-off scripts, generating HTML/CSS/JS files, creating document artifacts, running checks, starting preview servers, and inspecting outputs. For temporary working files, use /workspace/.scratch rather than system temp directories. For JavaScript and TypeScript scripts, prefer Bun when it fits; use Python for document/data processing or when a Python skill calls for it.
+
+Generated work should be concrete. When you create an artifact, save it under /workspace with a clear filename and mention the path in your response. If a web artifact should be inspected visually, start a preview server and expose the port when that is useful. Do not use the workspace when a conversational answer, a short code snippet, or an explanation would serve the user just as well.`,
   },
   functionCalls: {
     id: 'functionCalls',

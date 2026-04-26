@@ -11,7 +11,13 @@ import { appEnv } from '@/lib/server/env'
 // DO runs the runtime; each thread is a facet keyed by threadId.
 
 export function buildAgentHostName(workspaceId: string, userId: string) {
-  return `${workspaceId}:${userId}:primary`
+  return `primary.${toBase64Url(workspaceId)}.${toBase64Url(userId)}`
+}
+
+function toBase64Url(value: string) {
+  const bytes = new TextEncoder().encode(value)
+  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('')
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
 }
 
 async function getAgentHostStub(hostName: string) {
