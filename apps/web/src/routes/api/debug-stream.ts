@@ -10,6 +10,11 @@ import {
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
+  parseSearchParams,
+  threadDebugQuerySchema,
+} from '@/lib/server/api-validation'
+import {
+  badRequest,
   requireSession,
   resolveWorkspaceId,
   unauthorized,
@@ -37,11 +42,15 @@ export const Route = createFileRoute('/api/debug-stream')({
           )
         }
 
-        const url = new URL(request.url)
+        const searchResult = parseSearchParams(
+          request,
+          threadDebugQuerySchema,
+          'Invalid debug query',
+        )
+        if (searchResult.isErr()) return badRequest(searchResult.error.message)
+
         const threadId =
-          url.searchParams.get('thread_id')?.trim() ||
-          url.searchParams.get('session_id')?.trim() ||
-          undefined
+          searchResult.value.thread_id ?? searchResult.value.session_id ?? undefined
 
         if (!threadId) {
           return new Response(null, { status: 204 })

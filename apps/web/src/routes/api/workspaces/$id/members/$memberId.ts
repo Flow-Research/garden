@@ -1,7 +1,15 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { createAuth } from '@/lib/auth'
 import { appEnv } from '@/lib/server/env'
-import { requireSession, unauthorized } from '@/lib/server/control-plane'
+import {
+  badRequest,
+  requireSession,
+  unauthorized,
+} from '@/lib/server/control-plane'
+import {
+  parseJsonBody,
+  updateWorkspaceMemberBodySchema,
+} from '@/lib/server/api-validation'
 
 export const Route = createFileRoute('/api/workspaces/$id/members/$memberId')({
   server: {
@@ -9,15 +17,13 @@ export const Route = createFileRoute('/api/workspaces/$id/members/$memberId')({
       PATCH: async ({ request, params }) => {
         const session = await requireSession(request)
         if (!session) return unauthorized()
-        const body = (await request.json().catch(() => null)) as {
-          role?: unknown
-        } | null
-        if (typeof body?.role !== 'string') {
-          return Response.json(
-            { error: 'Invalid member payload' },
-            { status: 400 },
-          )
-        }
+        const bodyResult = await parseJsonBody(
+          request,
+          updateWorkspaceMemberBodySchema,
+          'Invalid member payload',
+        )
+        if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
+        const body = bodyResult.value
         const auth = createAuth(appEnv)
         await auth.api.updateMemberRole({
           headers: request.headers,

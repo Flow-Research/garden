@@ -4,6 +4,10 @@ import {
   bindExistingCapabilitiesToAgent,
   bindExistingSkillsToAgent,
 } from '@/lib/server/agent-bindings'
+import {
+  createAgentBodySchema,
+  parseJsonBody,
+} from '@/lib/server/api-validation'
 import { buildAgentHostName } from '@/lib/server/chat-agents'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
@@ -36,12 +40,15 @@ export const Route = createFileRoute('/api/agents')({
         if (!session) return unauthorized()
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
         if (!workspaceId) return notFound('Workspace not found')
-        const body = (await request.json().catch(() => null)) as Record<
-          string,
-          unknown
-        > | null
-        if (typeof body?.name !== 'string')
-          return badRequest('Invalid agent payload')
+
+        const bodyResult = await parseJsonBody(
+          request,
+          createAgentBodySchema,
+          'Invalid agent payload',
+        )
+        if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
+        const body = bodyResult.value
+
         const hostName = buildAgentHostName(workspaceId, session.user.id)
         const agentValues = {
           id: crypto.randomUUID(),
@@ -52,9 +59,10 @@ export const Route = createFileRoute('/api/agents')({
             typeof body.description === 'string' ? body.description : null,
           instructions:
             typeof body.instructions === 'string' ? body.instructions : null,
-          persona: body.runtime_config
-            ? JSON.stringify(body.runtime_config)
-            : null,
+          persona:
+            body.runtime_config && typeof body.runtime_config === 'object'
+              ? JSON.stringify(body.runtime_config)
+              : null,
           status: 'active',
           hostName,
         } as typeof schema.agent.$inferInsert

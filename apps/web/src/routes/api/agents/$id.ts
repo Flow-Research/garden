@@ -1,9 +1,14 @@
 import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import {
+  parseJsonBody,
+  updateAgentBodySchema,
+} from '@/lib/server/api-validation'
 import { refreshChatThreadPromptConfig } from '@/lib/server/chat-agents'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
+  badRequest,
   notFound,
   requireWorkspaceAccess,
   toAgent,
@@ -26,23 +31,29 @@ export const Route = createFileRoute('/api/agents/$id')({
         return Response.json(toAgent(agent))
       },
       PUT: async ({ request, params }) => {
-        const body = (await request.json().catch(() => null)) as Record<
-          string,
-          unknown
-        > | null
+        const bodyResult = await parseJsonBody(
+          request,
+          updateAgentBodySchema,
+          'Invalid agent payload',
+        )
+        if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
+        const body = bodyResult.value
+
         const updateValues: Partial<typeof schema.agent.$inferInsert> = {}
-        if (typeof body?.name === 'string') updateValues.name = body.name
-        if (typeof body?.description === 'string')
+        if (typeof body.name === 'string') updateValues.name = body.name
+        if (typeof body.description === 'string') {
           updateValues.roleTitle = body.description
-        if (typeof body?.instructions === 'string') {
+        }
+        if (typeof body.instructions === 'string') {
           updateValues.instructions = body.instructions
         }
-        if (
-          body &&
-          Object.prototype.hasOwnProperty.call(body, 'runtime_config')
-        ) {
-          updateValues.persona = JSON.stringify(body.runtime_config)
+        if (Object.prototype.hasOwnProperty.call(body, 'runtime_config')) {
+          updateValues.persona =
+            body.runtime_config && typeof body.runtime_config === 'object'
+              ? JSON.stringify(body.runtime_config)
+              : null
         }
+
         const db = getDb(appEnv)
         const [existingAgent] = await db
           .select({
@@ -58,6 +69,9 @@ export const Route = createFileRoute('/api/agents/$id')({
           existingAgent.workspaceId,
         )
         if (access instanceof Response) return access
+        if (Object.keys(updateValues).length === 0) {
+          return badRequest('No valid agent changes submitted')
+        }
 
         const [agent] = await db
           .update(schema.agent)

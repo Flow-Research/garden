@@ -2,6 +2,10 @@ import { Result, TaggedError } from 'better-result'
 import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import {
+  connectionGrantBodySchema,
+  parseJsonBody,
+} from '@/lib/server/api-validation'
+import {
   badRequest,
   json,
   notFound,
@@ -20,39 +24,23 @@ class ConnectionGrantRouteError extends TaggedError('ConnectionGrantRouteError')
 }>() {}
 
 async function parseGrantPayload(request: Request) {
-  const bodyResult = await Result.tryPromise({
-    try: async () => (await request.json()) as Record<string, unknown>,
-    catch: () =>
-      new ConnectionGrantRouteError({
-        status: 400,
-        message: 'Invalid permission grant payload',
-      }),
-  })
+  const bodyResult = await parseJsonBody(
+    request,
+    connectionGrantBodySchema,
+    'Invalid permission grant payload',
+  )
   if (bodyResult.isErr()) {
-    return bodyResult
-  }
-
-  const agentId =
-    typeof bodyResult.value.agentId === 'string'
-      ? bodyResult.value.agentId.trim()
-      : ''
-  const trustLevel = bodyResult.value.trustLevel
-
-  if (
-    !agentId ||
-    (trustLevel !== 'auto' && trustLevel !== 'allow' && trustLevel !== 'ask')
-  ) {
     return Result.err(
       new ConnectionGrantRouteError({
         status: 400,
-        message: 'agentId and trustLevel are required',
+        message: bodyResult.error.message,
       }),
     )
   }
 
   return Result.ok({
-    agentId,
-    trustLevel,
+    agentId: bodyResult.value.agentId,
+    trustLevel: bodyResult.value.trustLevel,
   } satisfies {
     agentId: string
     trustLevel: PermissionTrustLevel

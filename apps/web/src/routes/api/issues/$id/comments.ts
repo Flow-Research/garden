@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
+import { commentBodySchema, parseJsonBody } from '@/lib/server/api-validation'
 import {
   badRequest,
   notFound,
@@ -51,12 +52,13 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
         return Response.json(comments.map(toComment))
       },
       POST: async ({ request, params }) => {
-        const body = (await request.json().catch(() => null)) as {
-          content?: unknown
-        } | null
-        if (typeof body?.content !== 'string' || !body.content.trim()) {
-          return badRequest('Comment content is required')
-        }
+        const bodyResult = await parseJsonBody(
+          request,
+          commentBodySchema,
+          'Comment content is required',
+        )
+        if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
+        const body = bodyResult.value
 
         const db = getDb(appEnv)
         const [existingIssue] = await db
@@ -78,7 +80,7 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
             issueId: params.id,
             authorType: 'user',
             authorId: access.session.user.id,
-            body: body.content.trim(),
+            body: body.content,
           })
           .returning()
 

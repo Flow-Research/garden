@@ -64,6 +64,13 @@
       "when": 1777132800000,
       "tag": "0008_agent_host_rename",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1777050000000,
+      "tag": "0009_issue_priority_check",
+      "breakpoints": true
     }
   ]
 }

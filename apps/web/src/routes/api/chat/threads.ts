@@ -4,15 +4,20 @@ import {
   bindExistingCapabilitiesToAgent,
   bindExistingSkillsToAgent,
 } from '@/lib/server/agent-bindings'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import {
+  createChatThreadBodySchema,
+  parseJsonBody,
+} from '@/lib/server/api-validation'
 import {
   buildAgentHostName,
   ensureAgentRow,
   ensureChatThreadAgent,
   ensureChatThreadAgents,
 } from '@/lib/server/chat-agents'
+import { getDb, schema } from '@/lib/server/db'
+import { appEnv } from '@/lib/server/env'
 import {
+  badRequest,
   forbidden,
   requireSession,
   resolveWorkspaceId,
@@ -83,14 +88,16 @@ export const Route = createFileRoute('/api/chat/threads')({
           )
         }
 
-        const body = (await request.json().catch(() => null)) as Record<
-          string,
-          unknown
-        > | null
-        const requestedTitle =
-          typeof body?.title === 'string' ? body.title.trim() : ''
-        const title = requestedTitle || 'New Chat'
+        const bodyResult = await parseJsonBody(
+          request,
+          createChatThreadBodySchema,
+          'Invalid chat thread payload',
+        )
+        if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
+        const body = bodyResult.value
 
+        const requestedTitle = body.title ?? ''
+        const title = requestedTitle || 'New Chat'
         const id = crypto.randomUUID()
         const hostName = buildAgentHostName(workspaceId, session.user.id)
         const now = new Date()
@@ -101,8 +108,7 @@ export const Route = createFileRoute('/api/chat/threads')({
           ownerUserId: session.user.id,
           hostName,
         })
-        const requestedAgentId =
-          typeof body?.agent_id === 'string' ? body.agent_id.trim() : ''
+        const requestedAgentId = body.agent_id ?? ''
 
         const agentRow = requestedAgentId
           ? (

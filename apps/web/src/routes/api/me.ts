@@ -5,6 +5,7 @@ import {
   requireSession,
   unauthorized,
 } from '@/lib/server/control-plane'
+import { parseJsonBody, updateMeBodySchema } from '@/lib/server/api-validation'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { toCoreUser } from '@/lib/server/session'
@@ -39,23 +40,21 @@ export const Route = createFileRoute('/api/me')({
         const session = await requireSession(request)
         if (!session) return unauthorized()
 
-        const body = (await request.json().catch(() => null)) as {
-          name?: unknown
-          avatar_url?: unknown
-        } | null
+        const bodyResult = await parseJsonBody(
+          request,
+          updateMeBodySchema,
+          'Invalid profile payload',
+        )
+        if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
+        const body = bodyResult.value
 
         const updateValues: Partial<typeof schema.user.$inferInsert> = {}
 
-        if (typeof body?.name === 'string') {
-          const trimmed = body.name.trim()
-          if (!trimmed) return badRequest('Name is required')
-          updateValues.name = trimmed
+        if (typeof body.name === 'string') {
+          updateValues.name = body.name
         }
 
-        if (body && Object.prototype.hasOwnProperty.call(body, 'avatar_url')) {
-          if (body.avatar_url !== null && typeof body.avatar_url !== 'string') {
-            return badRequest('Invalid avatar')
-          }
+        if (Object.prototype.hasOwnProperty.call(body, 'avatar_url')) {
           updateValues.avatarUrl = body.avatar_url ?? null
         }
 
