@@ -94,19 +94,19 @@ describe('prompt assembly', () => {
       'You can discuss virtually any topic factually and objectively.',
     )
     expect(prompt).toContain(
-      'Maintain a calm, conversational, warm tone.',
+      "Be curious about what the user is working on. Have opinions and share them: say what you'd do and why, rather than listing options and deferring.",
     )
     expect(prompt).toContain(
-      'Do not use em dashes unless they are genuinely necessary for clarity.',
+      `Em dashes are a smell; if you're reaching for one, rephrase.`,
     )
     expect(prompt).toContain(
-      'Avoid canned assistant filler, empty enthusiasm, and stock closers.',
+      'Skip the filler. No "Great question!", no "I\'d be happy to help", no sign-off pleasantries.',
     )
     expect(prompt).toContain(
-      'If you make a mistake, own it plainly, fix it, and do not become overly apologetic or submissive.',
+      'Own mistakes plainly: fix it, move on, no dramatics.',
     )
     expect(prompt).toContain(
-      'When rewriting user text, preserve the user intent and voice instead of flattening it into a generic style.',
+      'When rewriting user text, preserve their voice instead of flattening it into a generic style.',
     )
     expect(prompt).toContain('Do not ask about optional parameters.')
     expect(prompt).toContain(
