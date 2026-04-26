@@ -1,9 +1,17 @@
 import { env } from 'cloudflare:workers'
 
-export type AppEnv = Pick<
-  Env,
-  'DATABASE_URL' | 'BETTER_AUTH_SECRET' | 'BETTER_AUTH_URL' | 'OPENCODE_GO_API_KEY'
-> & {
+type RequiredEnvBinding<Key extends keyof Env> = NonNullable<Env[Key]>
+
+export type AppEnv = {
+  DATABASE_URL: RequiredEnvBinding<'DATABASE_URL'>
+  BETTER_AUTH_SECRET: RequiredEnvBinding<'BETTER_AUTH_SECRET'>
+  BETTER_AUTH_URL: RequiredEnvBinding<'BETTER_AUTH_URL'>
+  OPENCODE_GO_API_KEY: RequiredEnvBinding<'OPENCODE_GO_API_KEY'>
+  FILES: RequiredEnvBinding<'FILES'>
+  LOADER: RequiredEnvBinding<'LOADER'>
+  SANDBOX_TRANSPORT: RequiredEnvBinding<'SANDBOX_TRANSPORT'>
+  AgentHost: RequiredEnvBinding<'AgentHost'>
+  Sandbox: RequiredEnvBinding<'Sandbox'>
   GITHUB_CLIENT_ID?: string
   GITHUB_CLIENT_SECRET?: string
   GOOGLE_CLIENT_ID?: string

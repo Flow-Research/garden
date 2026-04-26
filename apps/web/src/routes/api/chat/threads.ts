@@ -1,19 +1,24 @@
 import { and, desc, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import {
+  bindExistingCapabilitiesToAgent,
+  bindExistingSkillsToAgent,
+} from '@/lib/server/agent-bindings'
 import {
   createChatThreadBodySchema,
   parseJsonBody,
 } from '@/lib/server/api-validation'
 import {
-  buildPrimaryAgentName,
-  ensurePrimaryControlPlaneAgent,
+  buildAgentHostName,
+  ensureAgentRow,
   ensureChatThreadAgent,
   ensureChatThreadAgents,
 } from '@/lib/server/chat-agents'
+import { getDb, schema } from '@/lib/server/db'
+import { appEnv } from '@/lib/server/env'
 import {
   badRequest,
+  forbidden,
   requireSession,
   resolveWorkspaceId,
   toChatThread,
@@ -30,16 +35,24 @@ export const Route = createFileRoute('/api/chat/threads')({
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
         if (!workspaceId) return Response.json([])
 
-        await ensurePrimaryControlPlaneAgent({
+        const hostName = buildAgentHostName(workspaceId, session.user.id)
+        await ensureAgentRow({
           workspaceId,
           ownerUserId: session.user.id,
-          agentName: buildPrimaryAgentName(workspaceId, session.user.id),
+          hostName,
         })
 
         const db = getDb(appEnv)
         const rows = await db
-          .select()
+          .select({
+            thread: schema.chatThread,
+            hostName: schema.agent.hostName,
+          })
           .from(schema.chatThread)
+          .innerJoin(
+            schema.agent,
+            eq(schema.agent.id, schema.chatThread.agentId),
+          )
           .where(
             and(
               eq(schema.chatThread.workspaceId, workspaceId),
@@ -48,9 +61,20 @@ export const Route = createFileRoute('/api/chat/threads')({
           )
           .orderBy(desc(schema.chatThread.updatedAt))
 
-        await ensureChatThreadAgents(rows)
+        const usableRows = rows.flatMap((row) =>
+          row.hostName ? [{ thread: row.thread, hostName: row.hostName }] : [],
+        )
 
-        return Response.json(rows.map(toChatThread))
+        await ensureChatThreadAgents(
+          usableRows.map((row) => ({
+            id: row.thread.id,
+            hostName: row.hostName,
+          })),
+        )
+
+        return Response.json(
+          usableRows.map((row) => toChatThread(row.thread, row.hostName)),
+        )
       },
       POST: async ({ request }) => {
         const session = await requireSession(request)
@@ -58,7 +82,10 @@ export const Route = createFileRoute('/api/chat/threads')({
 
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
         if (!workspaceId) {
-          return Response.json({ error: 'Workspace not found' }, { status: 404 })
+          return Response.json(
+            { error: 'Workspace not found' },
+            { status: 404 },
+          )
         }
 
         const bodyResult = await parseJsonBody(
@@ -68,18 +95,53 @@ export const Route = createFileRoute('/api/chat/threads')({
         )
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
-        const requestedTitle = typeof body.title === 'string' ? body.title : ''
-        const title = requestedTitle || 'New Chat'
 
+        const requestedTitle = body.title ?? ''
+        const title = requestedTitle || 'New Chat'
         const id = crypto.randomUUID()
-        const agentName = buildPrimaryAgentName(workspaceId, session.user.id)
+        const hostName = buildAgentHostName(workspaceId, session.user.id)
         const now = new Date()
         const db = getDb(appEnv)
 
-        await ensurePrimaryControlPlaneAgent({
+        const defaultAgentRow = await ensureAgentRow({
           workspaceId,
           ownerUserId: session.user.id,
-          agentName,
+          hostName,
+        })
+        const requestedAgentId = body.agent_id ?? ''
+
+        const agentRow = requestedAgentId
+          ? (
+              await db
+                .select()
+                .from(schema.agent)
+                .where(eq(schema.agent.id, requestedAgentId))
+                .limit(1)
+            )[0]
+          : defaultAgentRow
+
+        if (!agentRow || agentRow.workspaceId !== workspaceId) {
+          return forbidden('Agent access denied')
+        }
+
+        const agentHostName = agentRow.hostName ?? hostName
+        if (!agentRow.hostName) {
+          await db
+            .update(schema.agent)
+            .set({ hostName: agentHostName })
+            .where(eq(schema.agent.id, agentRow.id))
+        }
+        await bindExistingSkillsToAgent({
+          db,
+          schema,
+          agentId: agentRow.id,
+          workspaceId,
+        })
+        await bindExistingCapabilitiesToAgent({
+          db,
+          schema,
+          agentId: agentRow.id,
+          grantedBy: session.user.id,
         })
 
         const [thread] = await db
@@ -88,8 +150,8 @@ export const Route = createFileRoute('/api/chat/threads')({
             id,
             workspaceId,
             ownerUserId: session.user.id,
+            agentId: agentRow.id,
             title,
-            agentName,
             lastMessage: '',
             createdAt: now,
             updatedAt: now,
@@ -98,10 +160,12 @@ export const Route = createFileRoute('/api/chat/threads')({
 
         await ensureChatThreadAgent({
           threadId: thread.id,
-          agentName: thread.agentName,
+          hostName: agentHostName,
         })
 
-        return Response.json(toChatThread(thread), { status: 201 })
+        return Response.json(toChatThread(thread, agentHostName), {
+          status: 201,
+        })
       },
     },
   },

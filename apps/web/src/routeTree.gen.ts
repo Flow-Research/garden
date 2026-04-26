@@ -21,13 +21,14 @@ import { Route as ApiMeRouteImport } from './routes/api/me'
 import { Route as ApiIssuesRouteImport } from './routes/api/issues'
 import { Route as ApiInvitationsRouteImport } from './routes/api/invitations'
 import { Route as ApiInboxRouteImport } from './routes/api/inbox'
+import { Route as ApiDebugStreamRouteImport } from './routes/api/debug-stream'
 import { Route as ApiConnectionsRouteImport } from './routes/api/connections'
-import { Route as ApiConfigRouteImport } from './routes/api/config'
 import { Route as ApiBootstrapRouteImport } from './routes/api/bootstrap'
 import { Route as ApiAgentsRouteImport } from './routes/api/agents'
 import { Route as AuthenticatedWorkspaceRouteImport } from './routes/_authenticated/workspace'
 import { Route as ApiWorkspacesIdRouteImport } from './routes/api/workspaces/$id'
 import { Route as ApiSkillsSearchRouteImport } from './routes/api/skills/search'
+import { Route as ApiSkillsPreviewRouteImport } from './routes/api/skills/preview'
 import { Route as ApiSkillsImportRouteImport } from './routes/api/skills/import'
 import { Route as ApiSkillsIdRouteImport } from './routes/api/skills/$id'
 import { Route as ApiIssuesSearchRouteImport } from './routes/api/issues/search'
@@ -122,14 +123,14 @@ const ApiInboxRoute = ApiInboxRouteImport.update({
   path: '/api/inbox',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiDebugStreamRoute = ApiDebugStreamRouteImport.update({
+  id: '/api/debug-stream',
+  path: '/api/debug-stream',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiConnectionsRoute = ApiConnectionsRouteImport.update({
   id: '/api/connections',
   path: '/api/connections',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiConfigRoute = ApiConfigRouteImport.update({
-  id: '/api/config',
-  path: '/api/config',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiBootstrapRoute = ApiBootstrapRouteImport.update({
@@ -155,6 +156,11 @@ const ApiWorkspacesIdRoute = ApiWorkspacesIdRouteImport.update({
 const ApiSkillsSearchRoute = ApiSkillsSearchRouteImport.update({
   id: '/search',
   path: '/search',
+  getParentRoute: () => ApiSkillsRoute,
+} as any)
+const ApiSkillsPreviewRoute = ApiSkillsPreviewRouteImport.update({
+  id: '/preview',
+  path: '/preview',
   getParentRoute: () => ApiSkillsRoute,
 } as any)
 const ApiSkillsImportRoute = ApiSkillsImportRouteImport.update({
@@ -343,8 +349,8 @@ export interface FileRoutesByFullPath {
   '/workspace': typeof AuthenticatedWorkspaceRoute
   '/api/agents': typeof ApiAgentsRouteWithChildren
   '/api/bootstrap': typeof ApiBootstrapRoute
-  '/api/config': typeof ApiConfigRoute
   '/api/connections': typeof ApiConnectionsRouteWithChildren
+  '/api/debug-stream': typeof ApiDebugStreamRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
   '/api/invitations': typeof ApiInvitationsRouteWithChildren
   '/api/issues': typeof ApiIssuesRouteWithChildren
@@ -366,6 +372,7 @@ export interface FileRoutesByFullPath {
   '/api/issues/search': typeof ApiIssuesSearchRoute
   '/api/skills/$id': typeof ApiSkillsIdRoute
   '/api/skills/import': typeof ApiSkillsImportRoute
+  '/api/skills/preview': typeof ApiSkillsPreviewRoute
   '/api/skills/search': typeof ApiSkillsSearchRoute
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
@@ -397,8 +404,8 @@ export interface FileRoutesByTo {
   '/workspace': typeof AuthenticatedWorkspaceRoute
   '/api/agents': typeof ApiAgentsRouteWithChildren
   '/api/bootstrap': typeof ApiBootstrapRoute
-  '/api/config': typeof ApiConfigRoute
   '/api/connections': typeof ApiConnectionsRouteWithChildren
+  '/api/debug-stream': typeof ApiDebugStreamRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
   '/api/invitations': typeof ApiInvitationsRouteWithChildren
   '/api/issues': typeof ApiIssuesRouteWithChildren
@@ -420,6 +427,7 @@ export interface FileRoutesByTo {
   '/api/issues/search': typeof ApiIssuesSearchRoute
   '/api/skills/$id': typeof ApiSkillsIdRoute
   '/api/skills/import': typeof ApiSkillsImportRoute
+  '/api/skills/preview': typeof ApiSkillsPreviewRoute
   '/api/skills/search': typeof ApiSkillsSearchRoute
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
@@ -453,8 +461,8 @@ export interface FileRoutesById {
   '/_authenticated/workspace': typeof AuthenticatedWorkspaceRoute
   '/api/agents': typeof ApiAgentsRouteWithChildren
   '/api/bootstrap': typeof ApiBootstrapRoute
-  '/api/config': typeof ApiConfigRoute
   '/api/connections': typeof ApiConnectionsRouteWithChildren
+  '/api/debug-stream': typeof ApiDebugStreamRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
   '/api/invitations': typeof ApiInvitationsRouteWithChildren
   '/api/issues': typeof ApiIssuesRouteWithChildren
@@ -476,6 +484,7 @@ export interface FileRoutesById {
   '/api/issues/search': typeof ApiIssuesSearchRoute
   '/api/skills/$id': typeof ApiSkillsIdRoute
   '/api/skills/import': typeof ApiSkillsImportRoute
+  '/api/skills/preview': typeof ApiSkillsPreviewRoute
   '/api/skills/search': typeof ApiSkillsSearchRoute
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
@@ -509,8 +518,8 @@ export interface FileRouteTypes {
     | '/workspace'
     | '/api/agents'
     | '/api/bootstrap'
-    | '/api/config'
     | '/api/connections'
+    | '/api/debug-stream'
     | '/api/inbox'
     | '/api/invitations'
     | '/api/issues'
@@ -532,6 +541,7 @@ export interface FileRouteTypes {
     | '/api/issues/search'
     | '/api/skills/$id'
     | '/api/skills/import'
+    | '/api/skills/preview'
     | '/api/skills/search'
     | '/api/workspaces/$id'
     | '/api/agents/$id/archive'
@@ -563,8 +573,8 @@ export interface FileRouteTypes {
     | '/workspace'
     | '/api/agents'
     | '/api/bootstrap'
-    | '/api/config'
     | '/api/connections'
+    | '/api/debug-stream'
     | '/api/inbox'
     | '/api/invitations'
     | '/api/issues'
@@ -586,6 +596,7 @@ export interface FileRouteTypes {
     | '/api/issues/search'
     | '/api/skills/$id'
     | '/api/skills/import'
+    | '/api/skills/preview'
     | '/api/skills/search'
     | '/api/workspaces/$id'
     | '/api/agents/$id/archive'
@@ -618,8 +629,8 @@ export interface FileRouteTypes {
     | '/_authenticated/workspace'
     | '/api/agents'
     | '/api/bootstrap'
-    | '/api/config'
     | '/api/connections'
+    | '/api/debug-stream'
     | '/api/inbox'
     | '/api/invitations'
     | '/api/issues'
@@ -641,6 +652,7 @@ export interface FileRouteTypes {
     | '/api/issues/search'
     | '/api/skills/$id'
     | '/api/skills/import'
+    | '/api/skills/preview'
     | '/api/skills/search'
     | '/api/workspaces/$id'
     | '/api/agents/$id/archive'
@@ -673,8 +685,8 @@ export interface RootRouteChildren {
   SignupRoute: typeof SignupRoute
   ApiAgentsRoute: typeof ApiAgentsRouteWithChildren
   ApiBootstrapRoute: typeof ApiBootstrapRoute
-  ApiConfigRoute: typeof ApiConfigRoute
   ApiConnectionsRoute: typeof ApiConnectionsRouteWithChildren
+  ApiDebugStreamRoute: typeof ApiDebugStreamRoute
   ApiInboxRoute: typeof ApiInboxRouteWithChildren
   ApiInvitationsRoute: typeof ApiInvitationsRouteWithChildren
   ApiIssuesRoute: typeof ApiIssuesRouteWithChildren
@@ -775,18 +787,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInboxRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/debug-stream': {
+      id: '/api/debug-stream'
+      path: '/api/debug-stream'
+      fullPath: '/api/debug-stream'
+      preLoaderRoute: typeof ApiDebugStreamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/connections': {
       id: '/api/connections'
       path: '/api/connections'
       fullPath: '/api/connections'
       preLoaderRoute: typeof ApiConnectionsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/config': {
-      id: '/api/config'
-      path: '/api/config'
-      fullPath: '/api/config'
-      preLoaderRoute: typeof ApiConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/bootstrap': {
@@ -822,6 +834,13 @@ declare module '@tanstack/react-router' {
       path: '/search'
       fullPath: '/api/skills/search'
       preLoaderRoute: typeof ApiSkillsSearchRouteImport
+      parentRoute: typeof ApiSkillsRoute
+    }
+    '/api/skills/preview': {
+      id: '/api/skills/preview'
+      path: '/preview'
+      fullPath: '/api/skills/preview'
+      preLoaderRoute: typeof ApiSkillsPreviewRouteImport
       parentRoute: typeof ApiSkillsRoute
     }
     '/api/skills/import': {
@@ -1215,12 +1234,14 @@ const ApiIssuesRouteWithChildren = ApiIssuesRoute._addFileChildren(
 interface ApiSkillsRouteChildren {
   ApiSkillsIdRoute: typeof ApiSkillsIdRoute
   ApiSkillsImportRoute: typeof ApiSkillsImportRoute
+  ApiSkillsPreviewRoute: typeof ApiSkillsPreviewRoute
   ApiSkillsSearchRoute: typeof ApiSkillsSearchRoute
 }
 
 const ApiSkillsRouteChildren: ApiSkillsRouteChildren = {
   ApiSkillsIdRoute: ApiSkillsIdRoute,
   ApiSkillsImportRoute: ApiSkillsImportRoute,
+  ApiSkillsPreviewRoute: ApiSkillsPreviewRoute,
   ApiSkillsSearchRoute: ApiSkillsSearchRoute,
 }
 
@@ -1325,8 +1346,8 @@ const rootRouteChildren: RootRouteChildren = {
   SignupRoute: SignupRoute,
   ApiAgentsRoute: ApiAgentsRouteWithChildren,
   ApiBootstrapRoute: ApiBootstrapRoute,
-  ApiConfigRoute: ApiConfigRoute,
   ApiConnectionsRoute: ApiConnectionsRouteWithChildren,
+  ApiDebugStreamRoute: ApiDebugStreamRoute,
   ApiInboxRoute: ApiInboxRouteWithChildren,
   ApiInvitationsRoute: ApiInvitationsRouteWithChildren,
   ApiIssuesRoute: ApiIssuesRouteWithChildren,

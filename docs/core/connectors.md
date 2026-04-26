@@ -31,7 +31,7 @@ Tier 2 (full custom `McpAgent` Worker per connector) is not implemented. It's th
 
 We ship with the bloat. A workspace with many connectors loads all their tool schemas into context each turn. We accept this until it hurts.
 
-**Not using:** Anthropic's server-side Tool Search (paid API feature). Vector tool routers (extra infra we don't need yet).
+**Not using:** server-side paid tool search products. Vector tool routers (extra infra we don't need yet).
 
 ## Code Mode — future escape hatch
 
@@ -104,7 +104,7 @@ Defaults by risk class: `read → auto`, `write → allow`, `send_external → a
 - Inline tool implementations.
 - Tier 2 full custom Workers.
 - MCP Elicitation (mid-call server→client prompts).
-- Anthropic Tool Search.
+- paid hosted tool search products.
 - Code Mode (documented future escape hatch, not built).
 - Vector/semantic tool routers.
 - Public connector marketplace beyond the `connectors/` directory.

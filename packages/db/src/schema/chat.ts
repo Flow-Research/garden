@@ -8,9 +8,13 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core'
+import { agent } from './agents.js'
 import { user } from './users.js'
 import { organization } from './workspaces.js'
 
+// Threads bind to a specific `agent` row by id. The host DO name is derived
+// from the agent row at the API edge (so the wire still carries a stable
+// host identifier without duplicating it in this table).
 export const chatThread = pgTable(
   'chat_thread',
   {
@@ -23,8 +27,10 @@ export const chatThread = pgTable(
     ownerUserId: uuid('owner_user_id')
       .notNull()
       .references(() => user.id),
+    agentId: uuid('agent_id')
+      .notNull()
+      .references(() => agent.id),
     title: text('title').notNull(),
-    agentName: text('agent_name').notNull(),
     lastMessage: text('last_message').notNull().default(''),
     messages: jsonb('messages').notNull().default(sql`'[]'::jsonb`),
     archivedAt: timestamp('archived_at', { mode: 'date' }),
@@ -40,6 +46,7 @@ export const chatThread = pgTable(
       table.workspaceId,
       table.updatedAt,
     ),
+    index('chat_thread_agent_idx').on(table.agentId),
     check(
       'chat_thread_title_nonempty',
       sql`char_length(trim(${table.title})) > 0`,

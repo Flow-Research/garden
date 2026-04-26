@@ -77,6 +77,9 @@ function getFileIcon(name: string) {
 // Tree node renderer
 // ---------------------------------------------------------------------------
 
+const INDENT_PX = 10
+const LEAF_OFFSET_PX = 12
+
 function TreeNodeItem({
   node,
   selectedPath,
@@ -98,15 +101,16 @@ function TreeNodeItem({
     return (
       <div>
         <button
+          type="button"
           onClick={() => setExpanded(!expanded)}
-          className="flex w-full items-center gap-1.5 py-1 text-left text-xs hover:bg-accent/50 rounded-sm"
-          style={{ paddingLeft: `${depth * 12 + 8}px` }}
+          className="flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left text-[12px] transition-colors hover:bg-muted/50"
+          style={{ paddingLeft: `${depth * INDENT_PX + 10}px` }}
         >
-          <ChevronIcon className="h-3 w-3 shrink-0 text-muted-foreground" />
-          <FolderIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate">{node.name}</span>
+          <ChevronIcon className="size-3 shrink-0 text-muted-foreground/70" />
+          <FolderIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate text-foreground/80">{node.name}</span>
         </button>
-        {expanded && (
+        {expanded ? (
           <div>
             {node.children.map((child) => (
               <TreeNodeItem
@@ -118,7 +122,7 @@ function TreeNodeItem({
               />
             ))}
           </div>
-        )}
+        ) : null}
       </div>
     )
   }
@@ -127,14 +131,24 @@ function TreeNodeItem({
 
   return (
     <button
+      type="button"
       onClick={() => onSelect(node.path)}
       className={cn(
-        'flex w-full items-center gap-1.5 py-1 text-left text-xs rounded-sm',
-        isSelected ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50',
+        'flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left text-[12px] transition-colors',
+        isSelected
+          ? 'bg-muted font-medium text-foreground'
+          : 'text-foreground/75 hover:bg-muted/50 hover:text-foreground',
       )}
-      style={{ paddingLeft: `${depth * 12 + 8 + 16}px` }}
+      style={{
+        paddingLeft: `${depth * INDENT_PX + 10 + LEAF_OFFSET_PX}px`,
+      }}
     >
-      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <Icon
+        className={cn(
+          'size-3.5 shrink-0',
+          isSelected ? 'text-foreground' : 'text-muted-foreground',
+        )}
+      />
       <span className="truncate">{node.name}</span>
     </button>
   )
@@ -157,15 +171,15 @@ export function FileTree({
 
   if (tree.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-        <FolderOpen className="h-5 w-5 text-muted-foreground/40" />
-        <p className="mt-2 text-xs">No files</p>
+      <div className="flex flex-col items-center justify-center gap-1 px-4 py-10 text-muted-foreground">
+        <FolderOpen className="size-5 text-muted-foreground/40" />
+        <p className="text-xs">No files</p>
       </div>
     )
   }
 
   return (
-    <div className="py-1 px-1">
+    <div className="px-1.5 py-2">
       {tree.map((node) => (
         <TreeNodeItem
           key={node.path}

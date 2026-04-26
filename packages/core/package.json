@@ -49,6 +49,7 @@
     "./realtime": "./realtime/index.ts",
     "./navigation": "./navigation/index.ts",
     "./modals": "./modals/index.ts",
+    "./skills": "./skills/index.ts",
     "./hooks": "./hooks.tsx",
     "./hooks/*": "./hooks/*.ts",
     "./query-client": "./query-client.ts",

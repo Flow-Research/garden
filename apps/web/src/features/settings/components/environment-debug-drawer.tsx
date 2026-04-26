@@ -1,27 +1,26 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import {
   Bug,
+  ChevronRight,
   Cloud,
-  Database,
+  FileText,
   HardDrive,
-  LoaderCircle,
   MessagesSquare,
+  Radio,
   Server,
+  Terminal as TerminalIcon,
   Wrench,
 } from 'lucide-react'
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@garden/ui/components/ui/card'
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@garden/ui/components/ui/collapsible'
 import {
   Drawer,
   DrawerContent,
@@ -29,168 +28,382 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from '@garden/ui/components/ui/drawer'
-import type {
-  EnvironmentDebugSnapshot,
-  SdkVersionInfo,
-  WorkspaceStateEntry,
+import { cn } from '@garden/ui/lib/utils'
+import {
+  DEBUG_SDK_STACK,
+  VIRTUAL_FS_BACKING_STORES,
+  type DebugMetaPayload,
+  type DebugPromptPayload,
+  type DebugSandboxPayload,
+  type DebugToolsPayload,
+  type DebugWorkspacePayload,
+  type ToolGroup,
+  type ToolInventoryEntry,
+  type WorkspaceStateEntry,
 } from '@/lib/environment-debug'
 import { useAgentSessions } from '@/features/chat/use-agent-chat-sessions'
+import { useDebugStream, type DebugSection } from './use-debug-stream'
 
-async function loadRuntimeStateSnapshot({
-  workspaceId,
-  sessionId,
-}: {
-  workspaceId: string
-  sessionId: string | null
-}) {
-  if (!workspaceId || !sessionId) {
-    return null
-  }
+// ---------- primitives ----------
 
-  const url = new URL('/api/config', window.location.origin)
-  url.searchParams.set('workspace_id', workspaceId)
-  url.searchParams.set('session_id', sessionId)
-
-  const response = await fetch(url.toString(), {
-    credentials: 'include',
-  })
-
-  if (response.status === 204) {
-    return null
-  }
-
-  if (!response.ok) {
-    throw new Error('Failed to load agent runtime state')
-  }
-
-  return (await response.json()) as EnvironmentDebugSnapshot
-}
-
-function StatusBadge({ available }: { available: boolean }) {
-  return (
-    <Badge variant={available ? 'secondary' : 'outline'}>
-      {available ? 'live' : 'inactive'}
-    </Badge>
-  )
-}
-
-function WorkspaceEntryList({
+function Panel({
+  icon,
   title,
-  description,
-  entries,
+  right,
+  loading,
+  error,
+  empty,
+  children,
 }: {
+  icon: React.ReactNode
   title: string
-  description: string
-  entries: WorkspaceStateEntry[]
+  right?: React.ReactNode
+  loading?: boolean
+  error?: string
+  empty?: boolean
+  children?: React.ReactNode
 }) {
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {entries.length === 0 ? (
-          <div className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">
-            No entries yet.
-          </div>
+    <section className="rounded-lg border bg-card">
+      <header className="flex items-center justify-between gap-2 border-b px-3 py-2">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <span className="text-muted-foreground">{icon}</span>
+          <span>{title}</span>
+          {loading ? <LiveDot /> : null}
+        </div>
+        {right ? <div className="flex items-center gap-1">{right}</div> : null}
+      </header>
+      <div className="p-3">
+        {error ? <SectionError message={error} /> : null}
+        {loading && !children ? (
+          <SkeletonRows />
+        ) : empty ? (
+          <div className="text-xs text-muted-foreground">Nothing to show.</div>
         ) : (
-          entries.map((entry) => (
-            <div
-              key={entry.path}
-              className="flex items-start justify-between gap-3 rounded-lg border px-3 py-2"
-            >
-              <div className="min-w-0 space-y-1">
-                <div className="font-medium text-foreground">{entry.path}</div>
-                <div className="text-sm text-muted-foreground">
-                  {entry.type} · {entry.size} bytes · {entry.mimeType}
-                </div>
-              </div>
-              <Badge variant="outline">{entry.type}</Badge>
-            </div>
-          ))
+          children
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 
-function SdkCard({ sdk }: { sdk: SdkVersionInfo }) {
+function LiveDot() {
   return (
-    <div className="rounded-lg border px-3 py-2">
-      <div className="flex items-center justify-between gap-3">
-        <div className="font-medium text-foreground">{sdk.name}</div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline">{sdk.channel}</Badge>
-          <Badge variant="secondary">{sdk.version}</Badge>
-        </div>
-      </div>
-      <div className="mt-1 text-sm text-muted-foreground">{sdk.role}</div>
+    <span className="relative inline-flex size-1.5" aria-hidden>
+      <span className="absolute inline-flex size-1.5 animate-ping rounded-full bg-sky-400 opacity-75" />
+      <span className="relative inline-flex size-1.5 rounded-full bg-sky-500" />
+    </span>
+  )
+}
+
+function SkeletonRows({ rows = 2 }: { rows?: number }) {
+  return (
+    <div className="space-y-1.5">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className="h-4 animate-pulse rounded bg-muted/60"
+          style={{ width: `${60 + ((i * 17) % 35)}%` }}
+        />
+      ))}
     </div>
   )
 }
 
-function TerminalBlock({
-  title,
-  body,
-}: {
-  title: string
-  body: string | null | undefined
-}) {
+function KV({ k, v }: { k: string; v: React.ReactNode }) {
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <pre className="max-h-72 overflow-auto rounded-lg border bg-muted/30 p-3 text-xs leading-5 whitespace-pre-wrap text-foreground">
-          {body?.trim() || 'No output.'}
-        </pre>
-      </CardContent>
-    </Card>
+    <div className="flex items-baseline justify-between gap-3 border-b py-1 text-xs last:border-0">
+      <span className="text-muted-foreground">{k}</span>
+      <span className="truncate text-right font-mono text-foreground">{v}</span>
+    </div>
   )
 }
 
+function SectionError({ message }: { message: string }) {
+  return (
+    <div className="mb-2 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs text-destructive">
+      {message}
+    </div>
+  )
+}
+
+function Terminal({ body }: { body: string | null | undefined }) {
+  return (
+    <pre className="max-h-56 overflow-auto rounded-md border bg-muted/30 p-2 text-[11px] leading-4 whitespace-pre-wrap text-foreground">
+      {body?.trim() || '—'}
+    </pre>
+  )
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`
+}
+
+// ---------- tools ----------
+
+const GROUP_ORDER: ToolGroup[] = [
+  'workspace',
+  'custom',
+  'session',
+  'extension',
+  'mcp',
+]
+
+const GROUP_LABEL: Record<ToolGroup, string> = {
+  workspace: 'Workspace',
+  custom: 'Custom',
+  session: 'Session',
+  extension: 'Extensions',
+  mcp: 'MCP',
+}
+
+const GROUP_DESC: Record<ToolGroup, string> = {
+  workspace: 'createWorkspaceTools(workspace) — read/write/edit/list/find/grep/delete',
+  custom: 'From this agent’s getTools()',
+  session: 'session.tools() — set_context / load_context',
+  extension: 'Loaded sandboxed extension workers',
+  mcp: 'MCP client manager (mcp.getAITools())',
+}
+
+function ToolsPanel({
+  tools,
+  loading,
+  error,
+}: {
+  tools: DebugToolsPayload | null
+  loading: boolean
+  error?: string
+}) {
+  const grouped = useMemo(() => {
+    const map = new Map<ToolGroup, ToolInventoryEntry[]>()
+    for (const t of tools?.inventory ?? []) {
+      const arr = map.get(t.group) ?? []
+      arr.push(t)
+      map.set(t.group, arr)
+    }
+    return map
+  }, [tools])
+
+  const counts = tools?.counts
+
+  return (
+    <Panel
+      icon={<Wrench className="size-3.5" />}
+      title="Tools"
+      loading={loading}
+      error={error}
+      right={
+        counts ? (
+          <Badge variant="secondary" className="text-[10px]">
+            {counts.total} LLM · {counts.rpc} RPC
+          </Badge>
+        ) : null
+      }
+    >
+      {tools ? (
+        <div className="space-y-3">
+          {GROUP_ORDER.map((group) => {
+            const entries = grouped.get(group)
+            if (!entries || entries.length === 0) return null
+            return (
+              <div key={group}>
+                <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                  <div className="text-xs font-medium">
+                    {GROUP_LABEL[group]}{' '}
+                    <span className="text-muted-foreground">
+                      · {entries.length}
+                    </span>
+                  </div>
+                  <div className="truncate text-[10px] text-muted-foreground">
+                    {GROUP_DESC[group]}
+                  </div>
+                </div>
+                <ul className="space-y-1">
+                  {entries.map((entry) => (
+                    <li
+                      key={`${entry.group}:${entry.key}`}
+                      className="rounded-md border px-2 py-1.5"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-xs text-foreground">
+                              {entry.key}
+                            </span>
+                            {entry.source ? (
+                              <span className="text-[10px] text-muted-foreground">
+                                ({entry.source})
+                              </span>
+                            ) : null}
+                          </div>
+                          {entry.description ? (
+                            <div className="mt-0.5 text-[11px] text-muted-foreground">
+                              {entry.description}
+                            </div>
+                          ) : null}
+                          {entry.inputKeys.length > 0 ? (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {entry.inputKeys.map((k) => (
+                                <span
+                                  key={k}
+                                  className="rounded-sm bg-muted/60 px-1 font-mono text-[10px] text-muted-foreground"
+                                >
+                                  {k}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                        {!entry.hasExecute ? (
+                          <Badge
+                            variant="outline"
+                            className="shrink-0 text-[10px]"
+                            title="Tool has no execute() — decorative only"
+                          >
+                            no exec
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })}
+
+          {tools.extensions.length > 0 ? (
+            <div>
+              <div className="mb-1.5 text-xs font-medium">
+                Loaded extensions{' '}
+                <span className="text-muted-foreground">
+                  · {tools.extensions.length}
+                </span>
+              </div>
+              <ul className="space-y-1">
+                {tools.extensions.map((ext) => (
+                  <li
+                    key={ext.name}
+                    className="rounded-md border px-2 py-1.5 text-xs"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono">
+                        {ext.name}@{ext.version}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {ext.tools.length} tools ·{' '}
+                        {ext.contextLabels.length} ctx
+                      </span>
+                    </div>
+                    {ext.description ? (
+                      <div className="mt-0.5 text-[11px] text-muted-foreground">
+                        {ext.description}
+                      </div>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          <div>
+            <div className="mb-1.5 flex items-baseline justify-between gap-2">
+              <div className="text-xs font-medium">
+                @callable RPC{' '}
+                <span className="text-muted-foreground">
+                  · {tools.rpcMethods.length}
+                </span>
+              </div>
+              <div className="text-[10px] text-muted-foreground">
+                From agent.getCallableMethods()
+              </div>
+            </div>
+            <ul className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+              {tools.rpcMethods.map((m) => (
+                <li
+                  key={m.name}
+                  className="rounded-md border px-2 py-1 text-xs"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono">{m.name}</span>
+                    {m.streaming ? (
+                      <Badge variant="outline" className="text-[10px]">
+                        stream
+                      </Badge>
+                    ) : null}
+                  </div>
+                  {m.description ? (
+                    <div className="text-[10px] text-muted-foreground">
+                      {m.description}
+                    </div>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : null}
+    </Panel>
+  )
+}
+
+// ---------- entries ----------
+
+function EntryList({ entries }: { entries: WorkspaceStateEntry[] }) {
+  if (entries.length === 0) {
+    return <div className="text-xs text-muted-foreground">No entries.</div>
+  }
+  return (
+    <ul className="space-y-1">
+      {entries.map((entry) => (
+        <li
+          key={entry.path}
+          className="flex items-center justify-between gap-3 rounded-md border px-2 py-1"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-mono text-xs text-foreground">
+              {entry.path}
+            </div>
+            <div className="text-[10px] text-muted-foreground">
+              {entry.type} · {formatBytes(entry.size)} · {entry.mimeType}
+            </div>
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// ---------- main ----------
+
 interface EnvironmentDebugDrawerProps {
-  /** Session id this drawer should inspect. */
   sessionId: string | null
-  /** Optional button label (defaults to "Agent State"). */
   label?: string
 }
 
 export function EnvironmentDebugDrawer({
   sessionId,
-  label = 'Agent State',
+  label = 'Agent debug',
 }: EnvironmentDebugDrawerProps) {
   const [open, setOpen] = useState(false)
   const workspaceId = useWorkspaceStore((state) => state.workspace?.id ?? null)
   const { sessions: uiSessions } = useAgentSessions()
 
-  const queryKey = useMemo(
-    () => ['agent-runtime-state', workspaceId, sessionId],
-    [workspaceId, sessionId],
+  const state = useDebugStream({ open, workspaceId, sessionId })
+
+  const activeUiStatus = useMemo(() => {
+    if (!sessionId) return null
+    return uiSessions.find((s) => s.id === sessionId)?.status ?? null
+  }, [uiSessions, sessionId])
+
+  const activeUiSession = useMemo(
+    () => uiSessions.find((s) => s.id === sessionId) ?? null,
+    [uiSessions, sessionId],
   )
 
-  const snapshotQuery = useQuery({
-    queryKey,
-    queryFn: () =>
-      loadRuntimeStateSnapshot({
-        workspaceId: workspaceId as string,
-        sessionId,
-      }),
-    enabled: open && !!workspaceId && !!sessionId,
-    staleTime: 15_000,
-  })
-
-  const snapshot = snapshotQuery.data ?? null
-  const sessionStatusMap = useMemo(
-    () => new Map(uiSessions.map((session) => [session.id, session.status])),
-    [uiSessions],
-  )
-  const activeUiStatus =
-    (sessionId ? sessionStatusMap.get(sessionId) : null) ?? null
-  const activeUiSession =
-    uiSessions.find((session) => session.id === sessionId) ?? null
+  const loading = (k: DebugSection) => state.pending.has(k)
 
   return (
     <>
@@ -205,345 +418,609 @@ export function EnvironmentDebugDrawer({
       </Button>
 
       <Drawer open={open} onOpenChange={setOpen} direction="right">
-        <DrawerContent className="data-[vaul-drawer-direction=right]:w-full data-[vaul-drawer-direction=right]:sm:max-w-4xl">
+        <DrawerContent className="data-[vaul-drawer-direction=right]:w-full data-[vaul-drawer-direction=right]:sm:max-w-2xl">
           <DrawerHeader className="border-b">
-            <DrawerTitle>Live Agent State</DrawerTitle>
+            <div className="flex items-center gap-2">
+              <DrawerTitle>Agent debug</DrawerTitle>
+              {!state.done && state.openAt ? <LiveDot /> : null}
+            </div>
             <DrawerDescription>
-              Actual Durable Object, session, virtual filesystem, and sandbox
-              state for the current workspace.
+              Live state from the Durable Object — each section streams in as
+              it resolves.
             </DrawerDescription>
           </DrawerHeader>
 
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto">
             {!workspaceId ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>No workspace selected</CardTitle>
-                  <CardDescription>
-                    Open a workspace first so the panel can query its live
-                    agent object.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-            ) : null}
-
-            {workspaceId && !sessionId ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>No active chat selected</CardTitle>
-                  <CardDescription>
-                    Open a chat thread first so the panel can query its live
-                    agent object.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-            ) : null}
-
-            {snapshotQuery.isLoading ? (
-              <div className="flex min-h-40 items-center justify-center gap-2 text-muted-foreground">
-                <LoaderCircle className="size-4 animate-spin" />
-                Loading live agent state
+              <EmptyState title="No workspace selected" />
+            ) : !sessionId ? (
+              <EmptyState title="No active chat" />
+            ) : state.fatal ? (
+              <div className="p-4">
+                <SectionError message={state.fatal} />
               </div>
-            ) : null}
-
-            {snapshotQuery.isError ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>State unavailable</CardTitle>
-                  <CardDescription>
-                    {snapshotQuery.error instanceof Error
-                      ? snapshotQuery.error.message
-                      : 'Failed to load live agent state.'}
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-            ) : null}
-
-            {snapshot ? (
-              <div className="space-y-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Server className="size-4" />
-                      Durable object
-                    </CardTitle>
-                    <CardDescription>
-                      Snapshot generated {new Date(snapshot.generatedAt).toLocaleString()}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="grid gap-3 md:grid-cols-3">
-                    <div className="rounded-lg border px-3 py-2">
-                      <div className="text-xs text-muted-foreground">
-                        Workspace
-                      </div>
-                      <div className="font-medium">{snapshot.workspaceId}</div>
-                    </div>
-                    <div className="rounded-lg border px-3 py-2">
-                      <div className="text-xs text-muted-foreground">
-                        Agent object
-                      </div>
-                      <div className="font-medium">{snapshot.agent.name}</div>
-                    </div>
-                    <div className="rounded-lg border px-3 py-2">
-                      <div className="text-xs text-muted-foreground">
-                        Effective session
-                      </div>
-                      <div className="font-medium">
-                        {snapshot.agent.effectiveSessionId}
-                      </div>
-                    </div>
-                    <div className="rounded-lg border px-3 py-2">
-                      <div className="text-xs text-muted-foreground">
-                        Agent status
-                      </div>
-                      <div className="mt-1 flex items-center gap-2">
-                        <Badge variant="secondary">
-                          {activeUiStatus ?? 'unknown'}
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="rounded-lg border px-3 py-2">
-                      <div className="text-xs text-muted-foreground">
-                        Requested session
-                      </div>
-                      <div className="font-medium">
-                        {snapshot.agent.requestedSessionId ?? 'none'}
-                      </div>
-                    </div>
-                    <div className="rounded-lg border px-3 py-2">
-                      <div className="text-xs text-muted-foreground">
-                        Visible sessions
-                      </div>
-                      <div className="font-medium">
-                        {snapshot.agent.visibleSessionCount}
-                      </div>
-                    </div>
-                    <div className="rounded-lg border px-3 py-2">
-                      <div className="text-xs text-muted-foreground">
-                        Archived sessions
-                      </div>
-                      <div className="font-medium">
-                        {snapshot.agent.archivedSessionCount}
-                      </div>
-                    </div>
-                    <div className="rounded-lg border px-3 py-2 md:col-span-3">
-                      <div className="text-xs text-muted-foreground">
-                        Current preview
-                      </div>
-                      <div className="mt-1 text-sm text-foreground">
-                        {snapshot.agent.currentPreview || 'No messages yet.'}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+            ) : (
+              <div className="space-y-3 p-3">
+                <StatusStrip
+                  meta={state.meta}
+                  sandbox={state.sandbox}
+                  tools={state.tools}
+                  uiStatus={activeUiStatus}
+                  generatedAt={state.openAt}
+                />
 
                 {activeUiStatus === 'error' ? (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Current error</CardTitle>
-                      <CardDescription>
-                        Active UI session is in an error state.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <pre className="overflow-auto rounded-lg border bg-muted/30 p-3 text-xs leading-5 whitespace-pre-wrap text-foreground">
-                        {activeUiSession?.lastMessage || 'No error message captured.'}
-                      </pre>
-                    </CardContent>
-                  </Card>
+                  <Panel
+                    icon={<Server className="size-3.5" />}
+                    title="Current UI error"
+                  >
+                    <Terminal
+                      body={activeUiSession?.lastMessage || 'No error captured.'}
+                    />
+                  </Panel>
                 ) : null}
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <MessagesSquare className="size-4" />
-                      Sessions
-                    </CardTitle>
-                    <CardDescription>
-                      Live session list from the current agent object.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {snapshot.sessions.length === 0 ? (
-                      <div className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">
-                        No visible sessions.
-                      </div>
-                    ) : (
-                      snapshot.sessions.map((session) => (
-                        <div
-                          key={session.id}
-                          className="rounded-lg border px-3 py-2"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 space-y-1">
-                              <div className="font-medium text-foreground">
-                                {session.title}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {session.id}
-                              </div>
-                            <div className="text-sm text-muted-foreground">
-                              {session.lastMessage || 'No messages yet.'}
-                            </div>
-                          </div>
-                            <div className="flex flex-col items-end gap-2">
-                              <Badge variant="secondary">
-                                {session.messageCount} msgs
-                              </Badge>
-                              <Badge variant="outline">
-                                {sessionStatusMap.get(session.id) ?? 'unknown'}
-                              </Badge>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </CardContent>
-                </Card>
+                <ToolsPanel
+                  tools={state.tools}
+                  loading={loading('tools')}
+                  error={state.errors.tools}
+                />
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <HardDrive className="size-4" />
-                      Virtual filesystem
-                    </CardTitle>
-                    <CardDescription>
-                      Current workspace state from the agent’s DO-backed
-                      filesystem.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="rounded-lg border px-3 py-2">
-                      <div className="text-xs text-muted-foreground">
-                        Backing stores
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {snapshot.virtualFs.backingStores.map((store) => (
-                          <Badge key={store} variant="outline">
-                            {store}
-                          </Badge>
-                        ))}
-                        <Badge variant="secondary">
-                          execute tool uses workspace state
-                        </Badge>
-                      </div>
-                    </div>
+                <PromptPanel
+                  prompt={state.prompt}
+                  loading={loading('prompt')}
+                  error={state.errors.prompt}
+                />
 
-                    <WorkspaceEntryList
-                      title="Root entries"
-                      description="Top-level files and directories in the current workspace."
-                      entries={snapshot.virtualFs.rootEntries}
-                    />
+                <SessionsPanel
+                  meta={state.meta}
+                  loading={loading('meta')}
+                  error={state.errors.meta}
+                />
 
-                    <WorkspaceEntryList
-                      title="Sample paths"
-                      description="A live sample of paths currently present in the workspace."
-                      entries={snapshot.virtualFs.samplePaths}
-                    />
-                  </CardContent>
-                </Card>
+                <WorkspacePanel
+                  workspace={state.workspace}
+                  loading={loading('workspace')}
+                  error={state.errors.workspace}
+                />
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Cloud className="size-4" />
-                      Sandbox
-                    </CardTitle>
-                    <CardDescription>
-                      Current explicit Sandbox DO state for the selected session.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid gap-3 md:grid-cols-3">
-                      <div className="rounded-lg border px-3 py-2">
-                        <div className="text-xs text-muted-foreground">
-                          Sandbox id
-                        </div>
-                        <div className="font-medium">{snapshot.sandbox.id}</div>
-                      </div>
-                      <div className="rounded-lg border px-3 py-2">
-                        <div className="text-xs text-muted-foreground">
-                          Reachable
-                        </div>
-                        <div className="mt-1">
-                          <StatusBadge available={snapshot.sandbox.reachable} />
-                        </div>
-                      </div>
-                      <div className="rounded-lg border px-3 py-2">
-                        <div className="text-xs text-muted-foreground">cwd</div>
-                        <div className="font-medium">
-                          {snapshot.sandbox.cwd ?? 'unknown'}
-                        </div>
-                      </div>
-                    </div>
+                <SandboxPanel
+                  sandbox={state.sandbox}
+                  loading={loading('sandbox')}
+                  error={state.errors.sandbox}
+                />
 
-                    <TerminalBlock
-                      title="/workspace listing"
-                      body={snapshot.sandbox.workspaceListing}
-                    />
-
-                    <TerminalBlock
-                      title="Current directory listing"
-                      body={snapshot.sandbox.currentDirectoryListing}
-                    />
-
-                    <div className="rounded-lg border px-3 py-2">
-                      <div className="text-xs text-muted-foreground">
-                        First-class callable surface today
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {snapshot.sandbox.callableRpcMethods.map((method) => (
-                          <Badge key={method} variant="secondary">
-                            {method}
-                          </Badge>
-                        ))}
-                        <Badge variant="outline">
-                          explicit Sandbox DO is not model-visible yet
-                        </Badge>
-                        <Badge variant="outline">
-                          @cloudflare/think sandbox tools still stubbed
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Wrench className="size-4" />
-                      SDK stack
-                    </CardTitle>
-                    <CardDescription>
-                      Secondary context: the packages currently backing this
-                      agent path.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {snapshot.sdks.map((sdk) => (
-                      <SdkCard key={sdk.name} sdk={sdk} />
-                    ))}
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Database className="size-4" />
-                      Current read
-                    </CardTitle>
-                    <CardDescription>
-                      The live agent object already owns a real VFS and a real
-                      explicit Sandbox DO. What is still missing is first-class
-                      model tooling for that explicit Sandbox DO.
-                    </CardDescription>
-                  </CardHeader>
-                </Card>
+                <SdkStrip />
               </div>
-            ) : null}
+            )}
           </div>
         </DrawerContent>
       </Drawer>
     </>
+  )
+}
+
+function EmptyState({ title }: { title: string }) {
+  return (
+    <div className="flex min-h-40 items-center justify-center p-6 text-sm text-muted-foreground">
+      {title}
+    </div>
+  )
+}
+
+function StatusStrip({
+  meta,
+  sandbox,
+  tools,
+  uiStatus,
+  generatedAt,
+}: {
+  meta: DebugMetaPayload | null
+  sandbox: DebugSandboxPayload | null
+  tools: DebugToolsPayload | null
+  uiStatus: string | null
+  generatedAt: string | null
+}) {
+  return (
+    <div className="rounded-lg border bg-muted/20 p-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <StatusCell
+          label="UI"
+          value={uiStatus ?? 'idle'}
+          tone={uiStatus === 'error' ? 'danger' : 'default'}
+        />
+        <StatusCell
+          label="Messages"
+          value={meta?.currentMessageCount ?? '—'}
+        />
+        <StatusCell
+          label="Sandbox"
+          value={
+            sandbox
+              ? sandbox.reachable
+                ? sandbox.pingMessage ?? 'live'
+                : 'offline'
+              : '…'
+          }
+          tone={sandbox && !sandbox.reachable ? 'danger' : 'default'}
+        />
+        <StatusCell
+          label="Tools"
+          value={
+            tools?.counts
+              ? `${tools.counts.total}+${tools.counts.rpc}`
+              : '…'
+          }
+          hint="LLM tools + callable RPC"
+        />
+      </div>
+      {meta ? (
+        <div className="mt-2 space-y-0 border-t pt-2">
+          <KV k="agent" v={meta.agentName} />
+          <KV k="session" v={meta.effectiveSessionId} />
+          {generatedAt ? (
+            <KV
+              k="generated"
+              v={new Date(generatedAt).toLocaleTimeString()}
+            />
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function StatusCell({
+  label,
+  value,
+  tone = 'default',
+  hint,
+}: {
+  label: string
+  value: React.ReactNode
+  tone?: 'default' | 'danger'
+  hint?: string
+}) {
+  return (
+    <div
+      className={cn(
+        'rounded-md border bg-background px-2 py-1.5',
+        tone === 'danger' && 'border-destructive/30 text-destructive',
+      )}
+      title={hint}
+    >
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className="truncate text-sm font-medium">{value}</div>
+    </div>
+  )
+}
+
+// ---------- prompt panel ----------
+
+function PromptPanel({
+  prompt,
+  loading,
+  error,
+}: {
+  prompt: DebugPromptPayload | null
+  loading: boolean
+  error?: string
+}) {
+  const [openPrompt, setOpenPrompt] = useState(false)
+  return (
+    <Panel
+      icon={<FileText className="size-3.5" />}
+      title="System prompt"
+      loading={loading}
+      error={error}
+      right={
+        prompt ? (
+          <Badge variant="outline" className="text-[10px]">
+            {prompt.charCount} chars · {prompt.lineCount} lines
+          </Badge>
+        ) : null
+      }
+    >
+      {prompt ? (
+        <div className="space-y-2">
+          {prompt.contextBlocks.length > 0 ? (
+            <div>
+              <div className="mb-1 text-[11px] font-medium text-muted-foreground">
+                Context blocks ({prompt.contextBlocks.length})
+              </div>
+              <ul className="space-y-1">
+                {prompt.contextBlocks.map((block) => (
+                  <li
+                    key={block.label}
+                    className="rounded-md border px-2 py-1.5 text-xs"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono">{block.label}</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {block.contentLength} chars
+                        {block.truncated ? ' · truncated' : ''}
+                      </span>
+                    </div>
+                    {block.preview ? (
+                      <pre className="mt-1 max-h-24 overflow-auto rounded bg-muted/30 p-1 text-[10px] leading-3 whitespace-pre-wrap">
+                        {block.preview}
+                      </pre>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {prompt.loadedSkillKeys.length > 0 ? (
+            <div>
+              <div className="mb-1 text-[11px] font-medium text-muted-foreground">
+                Loaded skills ({prompt.loadedSkillKeys.length})
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {prompt.loadedSkillKeys.map((key) => (
+                  <Badge
+                    key={key}
+                    variant="secondary"
+                    className="font-mono text-[10px]"
+                  >
+                    {key}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <Collapsible open={openPrompt} onOpenChange={setOpenPrompt}>
+            <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 rounded-md border px-2 py-1 text-left text-[11px] hover:bg-muted/20">
+              <span className="flex items-center gap-2">
+                <ChevronRight
+                  className={cn(
+                    'size-3 transition-transform',
+                    openPrompt && 'rotate-90',
+                  )}
+                />
+                <span className="font-medium">Frozen system prompt</span>
+              </span>
+              <span className="text-muted-foreground">
+                {prompt.charCount} chars
+              </span>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <Terminal body={prompt.prompt} />
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      ) : null}
+    </Panel>
+  )
+}
+
+// ---------- sessions panel ----------
+
+function SessionsPanel({
+  meta,
+  loading,
+  error,
+}: {
+  meta: DebugMetaPayload | null
+  loading: boolean
+  error?: string
+}) {
+  return (
+    <Panel
+      icon={<MessagesSquare className="size-3.5" />}
+      title="Sessions"
+      loading={loading}
+      error={error}
+      right={
+        meta ? (
+          <Badge variant="outline" className="text-[10px]">
+            {meta.visibleSessionCount}
+          </Badge>
+        ) : null
+      }
+    >
+      {meta ? (
+        meta.sessions.length === 0 ? (
+          <div className="text-xs text-muted-foreground">No sessions.</div>
+        ) : (
+          <ul className="space-y-1">
+            {meta.sessions.map((session) => (
+              <li key={session.id} className="rounded-md border px-2 py-1.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xs font-medium">
+                      {session.title}
+                    </div>
+                    <div className="truncate font-mono text-[10px] text-muted-foreground">
+                      {session.id}
+                    </div>
+                    <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                      {session.lastMessage || '—'}
+                    </div>
+                  </div>
+                  <Badge
+                    variant="secondary"
+                    className="shrink-0 text-[10px]"
+                  >
+                    {session.messageCount} msgs
+                  </Badge>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : null}
+    </Panel>
+  )
+}
+
+// ---------- workspace panel ----------
+
+function WorkspacePanel({
+  workspace,
+  loading,
+  error,
+}: {
+  workspace: DebugWorkspacePayload | null
+  loading: boolean
+  error?: string
+}) {
+  return (
+    <Panel
+      icon={<HardDrive className="size-3.5" />}
+      title="Virtual filesystem"
+      loading={loading}
+      error={error}
+      right={
+        workspace?.stats ? (
+          <Badge variant="outline" className="text-[10px]">
+            {workspace.stats.fileCount} files · {formatBytes(workspace.stats.totalBytes)}
+          </Badge>
+        ) : null
+      }
+    >
+      {workspace ? (
+        <div className="space-y-2">
+          {workspace.stats ? (
+            <div className="grid grid-cols-2 gap-1 sm:grid-cols-4">
+              <StatusCell label="Files" value={workspace.stats.fileCount} />
+              <StatusCell label="Dirs" value={workspace.stats.directoryCount} />
+              <StatusCell
+                label="Total"
+                value={formatBytes(workspace.stats.totalBytes)}
+              />
+              <StatusCell label="R2" value={workspace.stats.r2FileCount} />
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap gap-1">
+            {VIRTUAL_FS_BACKING_STORES.map((store) => (
+              <Badge
+                key={store}
+                variant="outline"
+                className="text-[10px]"
+              >
+                {store}
+              </Badge>
+            ))}
+          </div>
+          <div>
+            <div className="mb-1 text-[11px] font-medium text-muted-foreground">
+              Root ({workspace.rootEntries.length})
+            </div>
+            <EntryList entries={workspace.rootEntries} />
+          </div>
+          {workspace.samplePathCount > workspace.samplePaths.length ? (
+            <div className="text-[10px] text-muted-foreground">
+              Showing {workspace.samplePaths.length} of{' '}
+              {workspace.samplePathCount} matched paths
+            </div>
+          ) : null}
+          {workspace.samplePaths.length > 0 ? (
+            <div>
+              <div className="mb-1 text-[11px] font-medium text-muted-foreground">
+                Sample paths ({workspace.samplePaths.length})
+              </div>
+              <EntryList entries={workspace.samplePaths} />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </Panel>
+  )
+}
+
+// ---------- sandbox panel ----------
+
+function SandboxPanel({
+  sandbox,
+  loading,
+  error,
+}: {
+  sandbox: DebugSandboxPayload | null
+  loading: boolean
+  error?: string
+}) {
+  const [openCmds, setOpenCmds] = useState(false)
+  return (
+    <Panel
+      icon={<Cloud className="size-3.5" />}
+      title="Sandbox"
+      loading={loading}
+      error={error}
+      right={
+        sandbox ? (
+          <Badge
+            variant={sandbox.reachable ? 'secondary' : 'outline'}
+            className="text-[10px]"
+          >
+            <Radio className="mr-1 size-2.5" />
+            {sandbox.reachable ? 'live' : 'offline'}
+          </Badge>
+        ) : null
+      }
+    >
+      {sandbox ? (
+        <div className="space-y-2">
+          <div className="space-y-0">
+            <KV k="id" v={sandbox.id} />
+            <KV k="cwd" v={sandbox.cwd ?? '—'} />
+            <KV
+              k="ping"
+              v={
+                sandbox.pingMessage
+                  ? sandbox.pingUptimeMs !== null
+                    ? `${sandbox.pingMessage} · ${Math.round(sandbox.pingUptimeMs / 1000)}s up`
+                    : sandbox.pingMessage
+                  : '—'
+              }
+            />
+          </div>
+
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <div className="text-[11px] font-medium text-muted-foreground">
+                Processes ({sandbox.processes.length})
+              </div>
+              {sandbox.processError ? (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] text-destructive"
+                  title={sandbox.processError}
+                >
+                  listProcesses failed
+                </Badge>
+              ) : null}
+            </div>
+            {sandbox.processes.length === 0 ? (
+              <div className="text-xs text-muted-foreground">
+                No running processes.
+              </div>
+            ) : (
+              <ul className="space-y-1">
+                {sandbox.processes.map((proc) => (
+                  <li
+                    key={proc.id || proc.command}
+                    className="rounded-md border px-2 py-1 text-xs"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate font-mono">
+                        {proc.command || proc.id}
+                      </span>
+                      <Badge variant="outline" className="text-[10px]">
+                        {proc.status}
+                      </Badge>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {proc.pid !== null ? `pid ${proc.pid}` : ''}
+                      {proc.startTime
+                        ? ` · ${new Date(proc.startTime).toLocaleTimeString()}`
+                        : ''}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div>
+            <div className="mb-1 flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+              <TerminalIcon className="size-3" />
+              /workspace
+            </div>
+            <Terminal body={sandbox.workspaceListing} />
+          </div>
+          <div>
+            <div className="mb-1 flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+              <TerminalIcon className="size-3" />
+              cwd listing
+            </div>
+            <Terminal body={sandbox.currentDirectoryListing} />
+          </div>
+
+          {sandbox.availableCommands ? (
+            <Collapsible open={openCmds} onOpenChange={setOpenCmds}>
+              <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 rounded-md border px-2 py-1 text-left text-[11px] hover:bg-muted/20">
+                <span className="flex items-center gap-2">
+                  <ChevronRight
+                    className={cn(
+                      'size-3 transition-transform',
+                      openCmds && 'rotate-90',
+                    )}
+                  />
+                  <span className="font-medium">Available commands</span>
+                </span>
+                <span className="text-muted-foreground">
+                  {sandbox.availableCommands.length}
+                </span>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="mt-1 flex flex-wrap gap-1 rounded-md border bg-muted/20 p-1.5">
+                  {sandbox.availableCommands.map((cmd) => (
+                    <span
+                      key={cmd}
+                      className="rounded-sm bg-background px-1 font-mono text-[10px]"
+                    >
+                      {cmd}
+                    </span>
+                  ))}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          ) : sandbox.commandsError ? (
+            <div className="text-[10px] text-muted-foreground">
+              getCommands failed: {sandbox.commandsError}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </Panel>
+  )
+}
+
+// ---------- sdk strip ----------
+
+function SdkStrip() {
+  const [open, setOpen] = useState(false)
+  const headline = DEBUG_SDK_STACK.slice(0, 3)
+    .map((s) => `${s.name}@${s.version}`)
+    .join(' · ')
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 rounded-lg border bg-muted/10 px-3 py-2 text-left text-xs hover:bg-muted/20">
+        <span className="flex items-center gap-2">
+          <ChevronRight
+            className={cn('size-3 transition-transform', open && 'rotate-90')}
+          />
+          <span className="font-medium">SDK stack</span>
+          <span className="text-muted-foreground">
+            {DEBUG_SDK_STACK.length} · {headline}
+            {DEBUG_SDK_STACK.length > 3 ? ' …' : ''}
+          </span>
+        </span>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="mt-2 grid grid-cols-1 gap-1 rounded-lg border bg-card p-2 sm:grid-cols-2">
+          {DEBUG_SDK_STACK.map((sdk) => (
+            <div
+              key={sdk.name}
+              className="rounded-md border px-2 py-1 text-[11px]"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono">{sdk.name}</span>
+                <span className="text-muted-foreground">{sdk.version}</span>
+              </div>
+              <div className="truncate text-[10px] text-muted-foreground">
+                {sdk.role}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }

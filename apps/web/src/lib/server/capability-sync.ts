@@ -12,7 +12,6 @@ import { appEnv } from './env'
 export class CapabilitySyncError extends TaggedError('CapabilitySyncError')<{
   code:
     | 'connector_not_found'
-    | 'proxy_not_configured'
     | 'sync_agent_not_found'
     | 'tool_list_failed'
     | 'unclassified_tool'
@@ -38,6 +37,10 @@ function canonicalizeJson(value: unknown): unknown {
 
 function canonicalJsonString(value: unknown) {
   return JSON.stringify(canonicalizeJson(value ?? null))
+}
+
+function resolveProxyBaseUrl() {
+  return appEnv.MCP_PROXY_URL?.trim() || new URL('/api/mcp-proxy/', appEnv.BETTER_AUTH_URL).toString()
 }
 
 async function sha256Hex(value: string) {
@@ -365,15 +368,6 @@ export async function syncCapabilities(
     )
   }
 
-  if (!appEnv.MCP_PROXY_URL) {
-    return Result.err(
-      new CapabilitySyncError({
-        code: 'proxy_not_configured',
-        message: 'MCP_PROXY_URL must be configured before syncing capabilities',
-      }),
-    )
-  }
-
   const syncAgentIdResult = await resolveSyncAgentId(userId, workspaceId)
   if (syncAgentIdResult.isErr()) return syncAgentIdResult
 
@@ -399,7 +393,7 @@ export async function syncCapabilities(
 
   const toolsResult = await listConnectorTools({
     connectorId,
-    proxyBaseUrl: appEnv.MCP_PROXY_URL,
+    proxyBaseUrl: resolveProxyBaseUrl(),
     bearerToken: tokenResult.value,
     transport: connector.upstream.transport,
   })

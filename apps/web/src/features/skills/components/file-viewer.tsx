@@ -62,19 +62,26 @@ function parseFrontmatter(raw: string): {
 // ---------------------------------------------------------------------------
 
 function FrontmatterCard({ data }: { data: Frontmatter }) {
+  // Only surface the fields that actually matter when reading a skill. The
+  // raw YAML block adds noise (type, version, metadata, etc.) that users
+  // don't need in the rendered view.
+  const visible = (['name', 'description'] as const)
+    .map((key) => [key, data[key]] as const)
+    .filter(([, value]) => typeof value === 'string' && value.length > 0)
+
+  if (visible.length === 0) return null
+
   return (
-    <div className="mb-4 rounded-lg border bg-muted/30 px-4 py-3">
-      <div className="grid gap-1.5">
-        {Object.entries(data).map(([key, value]) => (
-          <div key={key} className="flex gap-2 text-xs">
-            <span className="shrink-0 font-medium text-muted-foreground min-w-[80px]">
-              {key}
-            </span>
-            <span className="text-foreground">{value}</span>
-          </div>
-        ))}
-      </div>
-    </div>
+    <dl className="mb-6 space-y-1 border-l-2 border-border/60 pl-3">
+      {visible.map(([key, value]) => (
+        <div key={key} className="text-[13px] leading-snug">
+          <dt className="inline text-muted-foreground">
+            {key}:{' '}
+          </dt>
+          <dd className="inline text-foreground">{value}</dd>
+        </div>
+      ))}
+    </dl>
   )
 }
 
@@ -86,13 +93,17 @@ export function FileViewer({
   path,
   content,
   onChange,
+  readOnly = false,
 }: {
   path: string
   content: string
-  onChange: (content: string) => void
+  onChange?: (content: string) => void
+  readOnly?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const isMd = isMarkdown(path)
+  const canEdit = !readOnly
+  const isEditing = canEdit && editing
 
   const { frontmatter, body } = useMemo(
     () =>
@@ -103,48 +114,49 @@ export function FileViewer({
   return (
     <div className="flex h-full flex-col">
       {/* File header */}
-      <div className="flex h-10 items-center justify-between border-b px-4">
-        <span className="text-xs font-mono text-muted-foreground truncate">
+      <div className="flex h-10 shrink-0 items-center justify-between border-b px-4">
+        <span className="truncate font-mono text-[11px] text-muted-foreground">
           {path}
         </span>
         <div className="flex items-center gap-1">
-          {isMd && (
+          {isMd && canEdit ? (
             <Tooltip>
               <TooltipTrigger
                 render={
                   <Button
                     variant="ghost"
-                    size="icon-sm"
-                    onClick={() => setEditing(!editing)}
+                    size="icon-xs"
+                    onClick={() => setEditing((v) => !v)}
                     className="text-muted-foreground"
                   >
-                    {editing ? (
-                      <Eye className="h-3.5 w-3.5" />
-                    ) : (
-                      <Pencil className="h-3.5 w-3.5" />
-                    )}
+                    {isEditing ? <Eye /> : <Pencil />}
                   </Button>
                 }
               />
-              <TooltipContent>{editing ? 'Preview' : 'Edit'}</TooltipContent>
+              <TooltipContent>{isEditing ? 'Preview' : 'Edit'}</TooltipContent>
             </Tooltip>
-          )}
+          ) : null}
         </div>
       </div>
 
       {/* File content */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        {isMd && !editing ? (
-          <div className="p-6">
-            {frontmatter && <FrontmatterCard data={frontmatter} />}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {isMd && !isEditing ? (
+          <div className="mx-auto max-w-3xl px-6 py-6">
+            {frontmatter ? <FrontmatterCard data={frontmatter} /> : null}
             <Markdown mode="full">{body || '*No content yet*'}</Markdown>
           </div>
         ) : (
           <Textarea
             value={content}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={isMd ? 'Write markdown content...' : 'File content...'}
-            className="h-full min-h-full resize-none rounded-none border-0 font-mono text-sm leading-relaxed focus-visible:ring-0"
+            readOnly={readOnly}
+            onChange={
+              readOnly
+                ? undefined
+                : (event) => onChange?.(event.target.value)
+            }
+            placeholder={isMd ? 'Write markdown content…' : 'File content…'}
+            className="h-full min-h-full resize-none rounded-none border-0 bg-transparent px-6 py-5 font-mono text-sm leading-relaxed focus-visible:ring-0"
           />
         )}
       </div>

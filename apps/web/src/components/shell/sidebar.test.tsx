@@ -10,7 +10,7 @@ const mockQueryClear = vi.hoisted(() => vi.fn())
 const mockCreateSession = vi.hoisted(() => ({
   mutateAsync: vi.fn().mockResolvedValue({ id: 'session-new', title: 'New Chat' }),
 }))
-const mockGetNextIdleSession = vi.hoisted(() =>
+const mockClaimWarmSession = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ id: 'session-new', title: 'New Chat' }),
 )
 const mockSetActiveSession = vi.hoisted(() => vi.fn())
@@ -155,7 +155,7 @@ vi.mock('@/features/chat', () => ({
 vi.mock('@/features/chat/use-agent-chat-sessions', () => ({
   useAgentSessions: () => ({
     createSession: mockCreateSession,
-    getNextIdleSession: mockGetNextIdleSession,
+    claimWarmSession: mockClaimWarmSession,
     sessions: [],
   }),
 }))
@@ -205,7 +205,7 @@ describe('WorkspaceSidebar', () => {
 
     expect(mockSetOpen).toHaveBeenCalledWith(true)
     await waitFor(() => {
-      expect(mockCreateSession.mutateAsync).toHaveBeenCalledWith('New Chat')
+      expect(mockClaimWarmSession).toHaveBeenCalled()
     })
     expect(mockOpenPanel).toHaveBeenCalledWith({
       kind: 'chat',

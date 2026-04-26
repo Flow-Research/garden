@@ -13,18 +13,28 @@ export async function getThreadAccess(request: Request, threadId: string) {
   if (!session) return unauthorized()
 
   const db = getDb(appEnv)
-  const [thread] = await db
-    .select()
+  const [row] = await db
+    .select({
+      thread: schema.chatThread,
+      hostName: schema.agent.hostName,
+    })
     .from(schema.chatThread)
+    .innerJoin(schema.agent, eq(schema.agent.id, schema.chatThread.agentId))
     .where(eq(schema.chatThread.id, threadId))
 
-  if (!thread) return notFound('Chat thread not found')
-  if (thread.ownerUserId !== session.user.id) {
+  if (!row) return notFound('Chat thread not found')
+  if (row.thread.ownerUserId !== session.user.id) {
     return notFound('Chat thread not found')
   }
+  if (!row.hostName) return notFound('Chat thread agent host missing')
 
-  const access = await requireWorkspaceAccess(request, thread.workspaceId)
+  const access = await requireWorkspaceAccess(request, row.thread.workspaceId)
   if (access instanceof Response) return access
 
-  return { db, session, thread }
+  return {
+    db,
+    session,
+    thread: row.thread,
+    hostName: row.hostName,
+  }
 }

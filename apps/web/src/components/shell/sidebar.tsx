@@ -1,12 +1,26 @@
 'use client'
 
 import { useCallback, useMemo } from 'react'
+import { Result } from 'better-result'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { IconBook2, IconMessage2Plus } from '@tabler/icons-react'
-import { Plug } from 'lucide-react'
+import { IconMessage2Plus } from '@tabler/icons-react'
+import { Bot, Plug, Plus, Search, X } from 'lucide-react'
 import { Icon as IconifyIcon } from '@iconify/react'
 import { BrandIcon } from '@garden/ui/components/common/brand-icon'
 import type { ConnectorId } from '@garden/connectors/registry'
+import type { Agent, Skill } from '@garden/core/types'
+import {
+  agentListOptions,
+  skillListOptions,
+} from '@garden/core/workspace/queries'
+import { useSkillsBrowseStore, useSkillEditorStore } from '@garden/core/skills'
+import { FileTree } from '@/features/skills/components/file-tree'
+import { Button } from '@garden/ui/components/ui/button'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@garden/ui/components/ui/input-group'
 import {
   Sidebar,
   SidebarContent,
@@ -40,11 +54,7 @@ import {
 } from './workspace-dock'
 import { toast } from 'sonner'
 
-type RailContext =
-  | 'home'
-  | 'chats'
-  | 'skills'
-  | 'connections'
+type RailContext = 'home' | 'chats' | 'agents' | 'skills' | 'connections'
 
 type RailItem = {
   id: RailContext
@@ -67,6 +77,12 @@ const railItems: RailItem[] = [
     defaultPanel: { kind: 'chat', title: 'New Chat' },
   },
   {
+    id: 'agents',
+    label: 'Agents',
+    icon: RailAgentsIcon,
+    defaultPanel: { kind: 'agents', title: 'Agents' },
+  },
+  {
     id: 'skills',
     label: 'Skills',
     icon: RailSkillsIcon,
@@ -84,6 +100,9 @@ function contextFromPanel(kind: WorkspacePanelKind | null): RailContext {
   switch (kind) {
     case 'chat':
       return 'chats'
+    case 'agents':
+    case 'agent-detail':
+      return 'agents'
     case 'skill-editor':
       return 'skills'
     case 'capabilities':
@@ -110,6 +129,10 @@ function RailChatsIcon({ className }: { className?: string }) {
   return <IconifyIcon icon="hugeicons:bubble-chat" className={className} />
 }
 
+function RailAgentsIcon({ className }: { className?: string }) {
+  return <IconifyIcon icon="hugeicons:robot-01" className={className} />
+}
+
 function RailSkillsIcon({ className }: { className?: string }) {
   return <IconifyIcon icon="hugeicons:book-open-01" className={className} />
 }
@@ -128,7 +151,10 @@ function HomeTasksIcon({ className }: { className?: string }) {
 
 function HomeInboxIcon({ className }: { className?: string }) {
   return (
-    <IconifyIcon icon="material-symbols:inbox-outline-sharp" className={className} />
+    <IconifyIcon
+      icon="material-symbols:inbox-outline-sharp"
+      className={className}
+    />
   )
 }
 
@@ -192,7 +218,7 @@ export function WorkspaceSidebar() {
   const queryClient = useQueryClient()
   const { replace } = useNavigation()
   const { activePanel, openPanel } = useWorkspaceDock()
-  const { createSession, sessions } = useAgentSessions()
+  const { claimWarmSession, sessions } = useAgentSessions()
   const { setOpen } = useSidebar()
   const workspace = useWorkspaceStore((state) => state.workspace)
   const clearWorkspace = useWorkspaceStore((state) => state.clearWorkspace)
@@ -202,7 +228,8 @@ export function WorkspaceSidebar() {
   const activeType = activePanel?.kind ?? null
   const activeEntityId = activePanel?.entityId ?? null
   const activeRailId = contextFromPanel(activeType)
-  const activeRail = railItems.find((item) => item.id === activeRailId) ?? railItems[0]
+  const activeRail =
+    railItems.find((item) => item.id === activeRailId) ?? railItems[0]
   const workspaceId = workspace?.id ?? ''
 
   const { data: rawInboxItems = [] } = useQuery({
@@ -250,11 +277,19 @@ export function WorkspaceSidebar() {
           return
         }
 
-        void createSession.mutateAsync('New Chat').then((session) => {
+        void Result.tryPromise(() => claimWarmSession()).then((result) => {
+          if (Result.isError(result)) {
+            toast.error(
+              result.error instanceof Error
+                ? result.error.message
+                : 'Failed to start chat',
+            )
+            return
+          }
           openPanel({
             kind: 'chat',
-            title: session.title,
-            entityId: session.id,
+            title: result.value.title,
+            entityId: result.value.id,
           })
         })
         return
@@ -262,29 +297,33 @@ export function WorkspaceSidebar() {
 
       openPanel(item.defaultPanel)
     },
-    [createSession, openPanel, revealExplorer, sessions],
+    [claimWarmSession, openPanel, revealExplorer, sessions],
   )
 
   const handleLogout = useCallback(async () => {
-    try {
-      await logout()
-      queryClient.clear()
-      clearWorkspace()
-      toast.success('Signed out')
-      replace('/login')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to sign out')
+    const result = await Result.tryPromise(() => logout())
+    if (Result.isError(result)) {
+      toast.error(
+        result.error instanceof Error
+          ? result.error.message
+          : 'Failed to sign out',
+      )
+      return
     }
+    queryClient.clear()
+    clearWorkspace()
+    toast.success('Signed out')
+    replace('/login')
   }, [clearWorkspace, logout, queryClient, replace])
 
   return (
     <Sidebar
       collapsible="icon"
-      className="overflow-hidden border-r-0 *:data-[sidebar=sidebar]:flex-row"
+      className="overflow-hidden border-r-0 border-t border-sidebar-border/70 *:data-[sidebar=sidebar]:flex-row"
     >
       <Sidebar
         collapsible="none"
-        className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r-[3px] border-sidebar-border"
+        className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r border-sidebar-border/70"
       >
         <SidebarHeader className="p-0">
           <SidebarMenu>
@@ -368,7 +407,7 @@ export function WorkspaceSidebar() {
       >
         <SidebarHeader className="gap-3 p-2">
           <div className="px-2">
-            <span className="text-sm font-medium text-foreground">
+            <span className="text-xs font-medium text-foreground">
               {activeRail.label}
             </span>
           </div>
@@ -412,13 +451,23 @@ export function WorkspaceSidebar() {
                   icon={IconMessage2Plus}
                   active={activeType === 'chat'}
                   onClick={() => {
-                    void createSession.mutateAsync('New Chat').then((session) => {
-                      openPanel({
-                        kind: 'chat',
-                        title: session.title,
-                        entityId: session.id,
-                      })
-                    })
+                    void Result.tryPromise(() => claimWarmSession()).then(
+                      (result) => {
+                        if (Result.isError(result)) {
+                          toast.error(
+                            result.error instanceof Error
+                              ? result.error.message
+                              : 'Failed to start chat',
+                          )
+                          return
+                        }
+                        openPanel({
+                          kind: 'chat',
+                          title: result.value.title,
+                          entityId: result.value.id,
+                        })
+                      },
+                    )
                   }}
                 />
               </SidebarMenu>
@@ -436,19 +485,41 @@ export function WorkspaceSidebar() {
             </ExplorerSection>
           ) : null}
 
+          {activeRailId === 'agents' ? (
+            <AgentsExplorer
+              workspaceId={workspaceId}
+              activeType={activeType}
+              activeEntityId={
+                activeType === 'agent-detail' ? activeEntityId : null
+              }
+              onOpenList={() => openPanel({ kind: 'agents', title: 'Agents' })}
+              onOpenAgent={(agent) =>
+                openPanel({
+                  kind: 'agent-detail',
+                  title: agent.name,
+                  entityId: agent.id,
+                })
+              }
+            />
+          ) : null}
+
           {activeRailId === 'skills' ? (
-            <ExplorerSection>
-              <SidebarMenu>
-                <ExplorerActionRow
-                  label="Library"
-                  icon={IconBook2}
-                  active={activeType === 'skill-editor'}
-                  onClick={() =>
-                    openPanel({ kind: 'skill-editor', title: 'Library' })
-                  }
-                />
-              </SidebarMenu>
-            </ExplorerSection>
+            <SkillsRailExplorer
+              workspaceId={workspaceId}
+              activeEntityId={
+                activeType === 'skill-editor' ? activeEntityId : null
+              }
+              onOpenSkill={(skill) =>
+                openPanel({
+                  kind: 'skill-editor',
+                  title: 'Library',
+                  entityId: skill.id,
+                })
+              }
+              onOpenLibrary={() =>
+                openPanel({ kind: 'skill-editor', title: 'Library' })
+              }
+            />
           ) : null}
 
           {activeRailId === 'connections' ? (
@@ -467,7 +538,6 @@ export function WorkspaceSidebar() {
               }
             />
           ) : null}
-
         </SidebarContent>
       </Sidebar>
     </Sidebar>
@@ -523,6 +593,227 @@ function connectorDotColor(status: ConnectionRowData['status']) {
   }
 }
 
+const AGENT_STATUS_COLOR: Record<Agent['status'], string> = {
+  idle: 'bg-zinc-400',
+  working: 'bg-emerald-500',
+  blocked: 'bg-amber-500',
+  error: 'bg-red-500',
+  offline: 'bg-zinc-300',
+}
+
+function AgentsExplorer({
+  workspaceId,
+  activeType,
+  activeEntityId,
+  onOpenList,
+  onOpenAgent,
+}: {
+  workspaceId: string
+  activeType: WorkspacePanelKind | null
+  activeEntityId: string | null
+  onOpenList: () => void
+  onOpenAgent: (agent: Agent) => void
+}) {
+  const agentsQuery = useQuery({
+    ...agentListOptions(workspaceId),
+    enabled: !!workspaceId,
+  })
+
+  const live = useMemo(
+    () => (agentsQuery.data ?? []).filter((agent) => !agent.archived_at),
+    [agentsQuery.data],
+  )
+
+  return (
+    <>
+      <ExplorerSection>
+        <SidebarMenu>
+          <ExplorerActionRow
+            label="All agents"
+            icon={Bot}
+            active={activeType === 'agents'}
+            onClick={onOpenList}
+          />
+        </SidebarMenu>
+      </ExplorerSection>
+      {live.length > 0 ? (
+        <ExplorerSection label="Workspace" count={live.length}>
+          <SidebarMenu>
+            {live.map((agent) => {
+              const active = activeEntityId === agent.id
+              return (
+                <SidebarMenuItem key={agent.id}>
+                  <SidebarMenuButton
+                    isActive={active}
+                    className="rounded-[2px] px-3"
+                    onClick={() => onOpenAgent(agent)}
+                  >
+                    <Bot className="size-4" />
+                    <span className="flex-1 truncate">{agent.name}</span>
+                    <span
+                      className={`size-2 shrink-0 rounded-full ring-2 ring-sidebar ${AGENT_STATUS_COLOR[agent.status]}`}
+                      aria-hidden="true"
+                      title={agent.status}
+                    />
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )
+            })}
+          </SidebarMenu>
+        </ExplorerSection>
+      ) : null}
+      {agentsQuery.isLoading && !agentsQuery.data ? (
+        <div className="px-4 py-3 text-xs text-muted-foreground">
+          Loading agents…
+        </div>
+      ) : null}
+    </>
+  )
+}
+
+function SkillsRailExplorer({
+  workspaceId,
+  activeEntityId,
+  onOpenSkill,
+  onOpenLibrary,
+}: {
+  workspaceId: string
+  activeEntityId: string | null
+  onOpenSkill: (skill: Skill) => void
+  onOpenLibrary: () => void
+}) {
+  const skillsQuery = useQuery({
+    ...skillListOptions(workspaceId),
+    enabled: !!workspaceId,
+  })
+  const filter = useSkillsBrowseStore((s) => s.listFilter)
+  const setFilter = useSkillsBrowseStore((s) => s.setListFilter)
+  const setAddMode = useSkillsBrowseStore((s) => s.setAddMode)
+  const editorActiveId = useSkillEditorStore((s) => s.activeSkillId)
+  const editorFilePaths = useSkillEditorStore((s) => s.filePaths)
+  const editorSelectedPath = useSkillEditorStore((s) => s.selectedPath)
+  const setEditorSelectedPath = useSkillEditorStore((s) => s.setSelectedPath)
+
+  const skills = skillsQuery.data ?? []
+  const visible = useMemo(() => {
+    const q = filter.trim().toLowerCase()
+    return skills.filter(
+      (s) =>
+        !q ||
+        s.name.toLowerCase().includes(q) ||
+        (s.description?.toLowerCase().includes(q) ?? false),
+    )
+  }, [skills, filter])
+
+  const handleAdd = () => {
+    onOpenLibrary()
+    setAddMode('browse')
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-2">
+        <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground tabular-nums">
+          {skills.length} {skills.length === 1 ? 'skill' : 'skills'}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={handleAdd}
+          aria-label="Add skill"
+        >
+          <Plus className="text-muted-foreground" />
+        </Button>
+      </div>
+      <div className="shrink-0 px-3 pb-2">
+        <InputGroup>
+          <InputGroupAddon>
+            <Search className="text-muted-foreground" />
+          </InputGroupAddon>
+          <InputGroupInput
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder="Filter"
+          />
+          {filter ? (
+            <InputGroupAddon align="inline-end">
+              <button
+                type="button"
+                onClick={() => setFilter('')}
+                className="text-muted-foreground transition-colors hover:text-foreground"
+                aria-label="Clear filter"
+              >
+                <X className="size-3.5" />
+              </button>
+            </InputGroupAddon>
+          ) : null}
+        </InputGroup>
+      </div>
+      <div className="flex-1 overflow-y-auto pb-2">
+        {skillsQuery.isLoading && !skillsQuery.data ? (
+          <div className="px-4 py-3 text-xs text-muted-foreground">
+            Loading skills…
+          </div>
+        ) : skills.length === 0 ? (
+          <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+            <p className="text-foreground">No skills yet</p>
+            <button
+              type="button"
+              onClick={handleAdd}
+              className="mt-2 text-xs underline-offset-2 hover:text-foreground hover:underline"
+            >
+              Add the first one
+            </button>
+          </div>
+        ) : visible.length === 0 ? (
+          <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+            <p className="text-foreground">No matches</p>
+            <button
+              type="button"
+              onClick={() => setFilter('')}
+              className="mt-2 text-xs underline-offset-2 hover:text-foreground hover:underline"
+            >
+              Clear filter
+            </button>
+          </div>
+        ) : (
+          <SidebarMenu>
+            {visible.map((skill) => {
+              const active = activeEntityId === skill.id
+              const showTree =
+                active &&
+                editorActiveId === skill.id &&
+                editorFilePaths.length > 0
+              return (
+                <div key={skill.id}>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      isActive={active}
+                      className="rounded-[2px] px-3"
+                      onClick={() => onOpenSkill(skill)}
+                    >
+                      <span className="flex-1 truncate">{skill.name}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  {showTree ? (
+                    <div className="mb-1 ml-3 border-l border-sidebar-border/60">
+                      <FileTree
+                        filePaths={editorFilePaths}
+                        selectedPath={editorSelectedPath}
+                        onSelect={setEditorSelectedPath}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+          </SidebarMenu>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function ConnectionsExplorer({
   activeEntityId,
   onOpenConnector,
@@ -539,8 +830,12 @@ function ConnectionsExplorer({
   const { connected, available } = useMemo(() => {
     const list = snapshotQuery.data?.connectors ?? []
     return {
-      connected: list.filter((c) => c.status === 'connected' || c.status === 'degraded'),
-      available: list.filter((c) => c.status !== 'connected' && c.status !== 'degraded'),
+      connected: list.filter(
+        (c) => c.status === 'connected' || c.status === 'degraded',
+      ),
+      available: list.filter(
+        (c) => c.status !== 'connected' && c.status !== 'degraded',
+      ),
     }
   }, [snapshotQuery.data])
 

@@ -36,7 +36,7 @@ describe('redactSecrets', () => {
     expect(result).toContain('[REDACTED GITLAB TOKEN]')
   })
 
-  it('redacts OpenAI/Anthropic API keys', () => {
+  it('redacts model-provider API keys', () => {
     const result = redactSecrets('sk-proj-abc123def456ghi789jkl012mno345')
     expect(result).not.toContain('sk-proj')
     expect(result).toContain('[REDACTED API KEY]')

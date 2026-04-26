@@ -1,21 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
-import {
-  DndContext,
-  PointerSensor,
-  closestCenter,
-  type DragEndEvent,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
-import {
-  SortableContext,
-  arrayMove,
-  rectSortingStrategy,
-  useSortable,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
+import { useCallback, useMemo } from 'react'
 import { Archive, MoreHorizontal, Pencil } from 'lucide-react'
 import { useChatStore } from '@garden/core/chat'
 import { Button } from '@garden/ui/components/ui/button'
@@ -32,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@garden/ui/components/ui/dropdown-menu'
 import { cn } from '@garden/ui/lib/utils'
+import { useWorkspaceDock } from '@/components/shell/workspace-dock'
 import {
   useAgentSessions,
   type AgentChatSession,
@@ -50,17 +36,6 @@ function formatTimeAgo(dateStr: string) {
   if (diffHours < 24) return `${diffHours}h`
   if (diffDays < 7) return `${diffDays}d`
   return date.toLocaleDateString()
-}
-
-function reorderSessions(
-  sessions: AgentChatSession[],
-  fromId: string,
-  toId: string,
-) {
-  const fromIndex = sessions.findIndex((session) => session.id === fromId)
-  const toIndex = sessions.findIndex((session) => session.id === toId)
-  if (fromIndex === -1 || toIndex === -1) return sessions
-  return arrayMove(sessions, fromIndex, toIndex)
 }
 
 function SessionStatusDot({ session }: { session: AgentChatSession }) {
@@ -91,22 +66,26 @@ function SessionRow({
   onSelect: () => void
   onRename: () => void
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: session.id })
+  // Menu items live inside the row's click-handling div, so React's synthetic
+  // event tree bubbles their onClick up to `onSelect`. That made clicking
+  // "Archive" also activate the chat panel — which was the source of "the
+  // archive button shouldn't have to open the chat first." Stop propagation
+  // explicitly on every menu item so the row activation only happens on a
+  // genuine row click.
+  const stop =
+    (handler: () => void) =>
+    (event: React.MouseEvent | React.KeyboardEvent) => {
+      event.stopPropagation()
+      handler()
+    }
 
   const menuItems = (
     <>
-      <ContextMenuItem onClick={onRename}>
+      <ContextMenuItem onClick={stop(onRename)}>
         <Pencil className="size-4" />
         Rename
       </ContextMenuItem>
-      <ContextMenuItem onClick={onArchive}>
+      <ContextMenuItem onClick={stop(onArchive)}>
         <Archive className="size-4" />
         Archive
       </ContextMenuItem>
@@ -115,20 +94,7 @@ function SessionRow({
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger
-        render={
-          <div
-            ref={setNodeRef}
-            style={{
-              transform: CSS.Transform.toString(transform),
-              transition,
-            }}
-            className={cn(isDragging && 'opacity-60')}
-            {...attributes}
-            {...listeners}
-          />
-        }
-      >
+      <ContextMenuTrigger render={<div className="w-full" />}>
         <div
           role="button"
           tabIndex={0}
@@ -175,11 +141,11 @@ function SessionRow({
               <MoreHorizontal className="size-3.5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuItem onClick={onRename}>
+              <DropdownMenuItem onClick={stop(onRename)}>
                 <Pencil className="size-4" />
                 Rename
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={onArchive}>
+              <DropdownMenuItem onClick={stop(onArchive)}>
                 <Archive className="size-4" />
                 Archive
               </DropdownMenuItem>
@@ -198,19 +164,14 @@ export function ChatSessionExplorer({
   onActivate?: (session: AgentChatSession) => void
 }) {
   const activeSessionId = useChatStore((state) => state.activeSessionId)
-  const {
-    archiveSession,
-    renameSession,
-    reorderSessions: persistOrder,
-    sessions,
-  } = useAgentSessions()
+  const { closePanel } = useWorkspaceDock()
+  const { archiveSession, renameSession, sessions, sessionsQuery } =
+    useAgentSessions()
 
   const activeSessions = useMemo(() => sessions, [sessions])
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
-    }),
-  )
+  // Distinguish "loading" from "loaded but empty" so we don't flash the
+  // "Start a chat" empty-state while the first fetch is still in flight.
+  const isInitialLoad = sessionsQuery.isPending && activeSessions.length === 0
 
   const handleSelect = (session: AgentChatSession) => {
     onActivate?.(session)
@@ -224,44 +185,45 @@ export function ChatSessionExplorer({
     await renameSession.mutateAsync({ sessionId, title: next })
   }
 
-  const handleArchive = async (sessionId: string) => {
-    await archiveSession.mutateAsync(sessionId)
-  }
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const fromId = String(event.active.id)
-    const toId = event.over ? String(event.over.id) : null
-    if (!toId || fromId === toId) return
-    const next = reorderSessions(activeSessions, fromId, toId)
-    persistOrder(next.map((session) => session.id))
-  }
+  const handleArchive = useCallback(
+    async (sessionId: string) => {
+      // Close the open chat panel for this session BEFORE archiving so the
+      // user doesn't see a stale "no chat" frame after the row disappears
+      // from the list. Panel id format is `chat:${sessionId}` (see
+      // workspace-dock `getCanonicalPanelId`).
+      closePanel(`chat:${sessionId}`)
+      await archiveSession.mutateAsync(sessionId)
+    },
+    [archiveSession, closePanel],
+  )
 
   return (
     <div>
       {activeSessions.length > 0 ? (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={activeSessions.map((session) => session.id)}
-            strategy={rectSortingStrategy}
-          >
-            <div className="space-y-1 px-3">
-              {activeSessions.map((session) => (
-                <SessionRow
-                  key={session.id}
-                  session={session}
-                  active={session.id === activeSessionId}
-                  onArchive={() => void handleArchive(session.id)}
-                  onSelect={() => handleSelect(session)}
-                  onRename={() => void handleRename(session.id)}
-                />
-              ))}
+        <div className="space-y-1 px-3">
+          {activeSessions.map((session) => (
+            <SessionRow
+              key={session.id}
+              session={session}
+              active={session.id === activeSessionId}
+              onArchive={() => void handleArchive(session.id)}
+              onSelect={() => handleSelect(session)}
+              onRename={() => void handleRename(session.id)}
+            />
+          ))}
+        </div>
+      ) : isInitialLoad ? (
+        <div className="space-y-1 px-3" aria-hidden="true">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="flex h-8 w-full items-center gap-2 rounded-md px-2"
+            >
+              <span className="size-2 shrink-0 animate-pulse rounded-full bg-muted-foreground/20" />
+              <span className="h-3 flex-1 animate-pulse rounded bg-muted-foreground/15" />
             </div>
-          </SortableContext>
-        </DndContext>
+          ))}
+        </div>
       ) : (
         <div className="px-3 py-2 text-[12px] text-muted-foreground">
           Start a chat to create your first session.

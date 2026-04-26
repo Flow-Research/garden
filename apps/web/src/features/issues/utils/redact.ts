@@ -26,7 +26,7 @@ const patterns: { re: RegExp; replacement: string }[] = [
     re: /\bglpat-[A-Za-z0-9_-]{20,}\b/g,
     replacement: '[REDACTED GITLAB TOKEN]',
   },
-  // OpenAI / Anthropic API keys
+  // Common model-provider API keys
   { re: /\bsk-[A-Za-z0-9_-]{20,}\b/g, replacement: '[REDACTED API KEY]' },
   // Slack tokens
   {

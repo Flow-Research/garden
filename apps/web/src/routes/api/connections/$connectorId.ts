@@ -21,8 +21,6 @@ function syncErrorStatus(code: string) {
   switch (code) {
     case 'connector_not_found':
       return 404
-    case 'proxy_not_configured':
-      return 503
     case 'sync_agent_not_found':
     case 'unclassified_tool':
       return 409

@@ -1,14 +1,35 @@
 import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import {
+  parseJsonBody,
+  updateAgentBodySchema,
+} from '@/lib/server/api-validation'
 import { refreshChatThreadPromptConfig } from '@/lib/server/chat-agents'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import { badRequest, notFound, requireWorkspaceAccess, toAgent } from '@/lib/server/control-plane'
-import { parseJsonBody, updateAgentBodySchema } from '@/lib/server/api-validation'
+import {
+  badRequest,
+  notFound,
+  requireWorkspaceAccess,
+  toAgent,
+} from '@/lib/server/control-plane'
 
 export const Route = createFileRoute('/api/agents/$id')({
   server: {
     handlers: {
+      GET: async ({ request, params }) => {
+        const db = getDb(appEnv)
+        const [agent] = await db
+          .select()
+          .from(schema.agent)
+          .where(eq(schema.agent.id, params.id))
+        if (!agent) return notFound('Agent not found')
+
+        const access = await requireWorkspaceAccess(request, agent.workspaceId)
+        if (access instanceof Response) return access
+
+        return Response.json(toAgent(agent))
+      },
       PUT: async ({ request, params }) => {
         const bodyResult = await parseJsonBody(
           request,
@@ -20,8 +41,9 @@ export const Route = createFileRoute('/api/agents/$id')({
 
         const updateValues: Partial<typeof schema.agent.$inferInsert> = {}
         if (typeof body.name === 'string') updateValues.name = body.name
-        if (typeof body.description === 'string')
+        if (typeof body.description === 'string') {
           updateValues.roleTitle = body.description
+        }
         if (typeof body.instructions === 'string') {
           updateValues.instructions = body.instructions
         }
@@ -31,11 +53,12 @@ export const Route = createFileRoute('/api/agents/$id')({
               ? JSON.stringify(body.runtime_config)
               : null
         }
+
         const db = getDb(appEnv)
         const [existingAgent] = await db
           .select({
             workspaceId: schema.agent.workspaceId,
-            doId: schema.agent.doId,
+            hostName: schema.agent.hostName,
           })
           .from(schema.agent)
           .where(eq(schema.agent.id, params.id))
@@ -62,20 +85,20 @@ export const Route = createFileRoute('/api/agents/$id')({
           .returning()
         if (!agent) return notFound('Agent not found')
 
-        if (existingAgent.doId) {
+        if (existingAgent.hostName) {
+          const hostName = existingAgent.hostName
           const threads = await db
             .select({
               id: schema.chatThread.id,
-              agentName: schema.chatThread.agentName,
             })
             .from(schema.chatThread)
-            .where(eq(schema.chatThread.agentName, existingAgent.doId))
+            .where(eq(schema.chatThread.agentId, params.id))
 
           await Promise.all(
             threads.map((thread) =>
               refreshChatThreadPromptConfig({
                 threadId: thread.id,
-                agentName: thread.agentName,
+                hostName,
               }),
             ),
           )

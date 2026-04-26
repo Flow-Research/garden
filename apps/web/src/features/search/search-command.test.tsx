@@ -95,7 +95,7 @@ vi.mock('@/components/shell/workspace-dock', () => ({
 
 vi.mock('@/features/chat/use-agent-chat-sessions', () => ({
   useAgentSessions: () => ({
-    getNextIdleSession: mockGetNextIdleSession,
+    claimWarmSession: mockGetNextIdleSession,
   }),
 }))
 

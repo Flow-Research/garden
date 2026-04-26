@@ -1,19 +1,19 @@
 import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { schema } from '@/lib/server/db'
 import {
   parseJsonBody,
   updateChatThreadBodySchema,
 } from '@/lib/server/api-validation'
 import {
   deleteChatThreadAgent,
-  ensurePrimaryControlPlaneAgent,
-  ensureChatThreadAgent,
+  ensureAgentRow,
+  getChatThreadMessages,
 } from '@/lib/server/chat-agents'
+import { schema } from '@/lib/server/db'
 import {
   badRequest,
-  toChatThread,
   notFound,
+  toChatThread,
 } from '@/lib/server/control-plane'
 import { getThreadAccess } from '@/lib/server/chat-threads'
 
@@ -24,18 +24,22 @@ export const Route = createFileRoute('/api/chat/threads/$id')({
         const access = await getThreadAccess(request, params.id)
         if (access instanceof Response) return access
 
-        await ensurePrimaryControlPlaneAgent({
-          workspaceId: access.thread.workspaceId,
-          ownerUserId: access.session.user.id,
-          agentName: access.thread.agentName,
-        })
+        const [, messages] = await Promise.all([
+          ensureAgentRow({
+            workspaceId: access.thread.workspaceId,
+            ownerUserId: access.session.user.id,
+            hostName: access.hostName,
+          }),
+          getChatThreadMessages({
+            threadId: access.thread.id,
+            hostName: access.hostName,
+          }),
+        ])
 
-        await ensureChatThreadAgent({
-          threadId: access.thread.id,
-          agentName: access.thread.agentName,
+        return Response.json({
+          thread: toChatThread(access.thread, access.hostName),
+          messages,
         })
-
-        return Response.json(toChatThread(access.thread))
       },
       PATCH: async ({ request, params }) => {
         const access = await getThreadAccess(request, params.id)
@@ -49,6 +53,9 @@ export const Route = createFileRoute('/api/chat/threads/$id')({
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
 
+        // Prefer caller-supplied updatedAt when provided. Clients attach it
+        // to keep sidebar ordering monotonic across optimistic updates and
+        // server round-trips; fall back to now when absent.
         const clientUpdatedAt =
           typeof body.updatedAt === 'string' ? new Date(body.updatedAt) : null
         const updateValues: Partial<typeof schema.chatThread.$inferInsert> = {
@@ -85,7 +92,7 @@ export const Route = createFileRoute('/api/chat/threads/$id')({
           .returning()
 
         if (!thread) return notFound('Chat thread not found')
-        return Response.json(toChatThread(thread))
+        return Response.json(toChatThread(thread, access.hostName))
       },
       DELETE: async ({ request, params }) => {
         const access = await getThreadAccess(request, params.id)
@@ -93,7 +100,7 @@ export const Route = createFileRoute('/api/chat/threads/$id')({
 
         await deleteChatThreadAgent({
           threadId: access.thread.id,
-          agentName: access.thread.agentName,
+          hostName: access.hostName,
         })
 
         await access.db.delete(schema.chatThread).where(
