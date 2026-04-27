@@ -187,11 +187,6 @@
   contain: none !important;
 }
 
-/*
- * Dockview still renders a header row per group, but Garden owns the shell
- * title bar itself. Hide every group header and render one flat top strip from
- * dock state instead.
- */
 .garden-dockview .dv-groupview > .dv-tabs-and-actions-container {
   display: none;
 }

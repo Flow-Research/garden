@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   bindExistingCapabilitiesToAgent,
@@ -11,8 +11,6 @@ import {
 import {
   buildAgentHostName,
   ensureAgentRow,
-  ensureChatThreadAgent,
-  ensureChatThreadAgents,
 } from '@/lib/server/chat-agents'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
@@ -24,6 +22,8 @@ import {
   toChatThread,
   unauthorized,
 } from '@/lib/server/control-plane'
+
+const NEW_CHAT_TITLE = 'New Chat'
 
 export const Route = createFileRoute('/api/chat/threads')({
   server: {
@@ -65,13 +65,6 @@ export const Route = createFileRoute('/api/chat/threads')({
           row.hostName ? [{ thread: row.thread, hostName: row.hostName }] : [],
         )
 
-        await ensureChatThreadAgents(
-          usableRows.map((row) => ({
-            id: row.thread.id,
-            hostName: row.hostName,
-          })),
-        )
-
         return Response.json(
           usableRows.map((row) => toChatThread(row.thread, row.hostName)),
         )
@@ -97,7 +90,8 @@ export const Route = createFileRoute('/api/chat/threads')({
         const body = bodyResult.value
 
         const requestedTitle = body.title ?? ''
-        const title = requestedTitle || 'New Chat'
+        const title = requestedTitle || NEW_CHAT_TITLE
+        const shouldClaimWarmThread = title === NEW_CHAT_TITLE
         const id = crypto.randomUUID()
         const hostName = buildAgentHostName(workspaceId, session.user.id)
         const now = new Date()
@@ -144,23 +138,48 @@ export const Route = createFileRoute('/api/chat/threads')({
           grantedBy: session.user.id,
         })
 
-        const [thread] = await db
-          .insert(schema.chatThread)
-          .values({
-            id,
-            workspaceId,
-            ownerUserId: session.user.id,
-            agentId: agentRow.id,
-            title,
-            lastMessage: '',
-            createdAt: now,
-            updatedAt: now,
-          })
-          .returning()
+        const thread = await db.transaction(async (tx) => {
+          await tx.execute(sql`
+            select pg_advisory_xact_lock(
+              hashtext(${`${workspaceId}:${session.user.id}:${agentRow.id}:warm-chat`})
+            )
+          `)
 
-        await ensureChatThreadAgent({
-          threadId: thread.id,
-          hostName: agentHostName,
+          if (shouldClaimWarmThread) {
+            const [existingThread] = await tx
+              .select()
+              .from(schema.chatThread)
+              .where(
+                and(
+                  eq(schema.chatThread.workspaceId, workspaceId),
+                  eq(schema.chatThread.ownerUserId, session.user.id),
+                  eq(schema.chatThread.agentId, agentRow.id),
+                  eq(schema.chatThread.title, NEW_CHAT_TITLE),
+                  eq(schema.chatThread.lastMessage, ''),
+                  isNull(schema.chatThread.archivedAt),
+                ),
+              )
+              .orderBy(desc(schema.chatThread.updatedAt))
+              .limit(1)
+
+            if (existingThread) return existingThread
+          }
+
+          const [createdThread] = await tx
+            .insert(schema.chatThread)
+            .values({
+              id,
+              workspaceId,
+              ownerUserId: session.user.id,
+              agentId: agentRow.id,
+              title,
+              lastMessage: '',
+              createdAt: now,
+              updatedAt: now,
+            })
+            .returning()
+
+          return createdThread
         })
 
         return Response.json(toChatThread(thread, agentHostName), {

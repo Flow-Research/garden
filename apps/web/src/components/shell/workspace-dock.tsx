@@ -131,6 +131,7 @@ type WorkspaceDockContextValue = {
   dockTheme: DockviewTheme
   dockPanels: WorkspaceDockTabState[]
   groupCount: number
+  getDockApi: () => DockviewApi | null
   handleReady: (event: DockviewReadyEvent) => void
   isReady: boolean
   activatePanel: (panelId: string) => void
@@ -138,6 +139,12 @@ type WorkspaceDockContextValue = {
   openPanel: (
     panel: WorkspacePanelInput,
     options?: { position?: AddPanelPositionOptions; forceNew?: boolean },
+  ) => string | null
+  openPanelAt: (
+    panel: WorkspacePanelInput,
+    targetPanelId: string,
+    direction: 'within' | 'right',
+    index?: number,
   ) => string | null
   openNewTab: () => string | null
   splitActivePanel: () => void
@@ -155,6 +162,60 @@ type WorkspaceDockContextValue = {
 const WorkspaceDockContext = createContext<WorkspaceDockContextValue | null>(
   null,
 )
+
+const dockPanelDragType = 'application/garden-dock-panel'
+export const chatSessionDragType = 'application/garden-chat-session'
+
+type ChatSessionDragPayload = {
+  id: string
+  title: string
+}
+
+function parseChatSessionDragPayload(
+  dataTransfer: DataTransfer,
+): ChatSessionDragPayload | null {
+  const raw = dataTransfer.getData(chatSessionDragType)
+  if (!raw) return null
+  const parsed = Result.try(() => JSON.parse(raw) as unknown)
+  if (Result.isError(parsed)) return null
+  const value = parsed.value
+  if (!value || typeof value !== 'object') return null
+  const session = value as { id?: unknown; title?: unknown }
+  if (typeof session.id !== 'string' || typeof session.title !== 'string') {
+    return null
+  }
+  return { id: session.id, title: session.title }
+}
+
+function getDockPanelDragId(dataTransfer: DataTransfer) {
+  return dataTransfer.getData(dockPanelDragType) || null
+}
+
+function hasDockDropData(dataTransfer: DataTransfer) {
+  return Array.from(dataTransfer.types).some(
+    (type) => type === dockPanelDragType || type === chatSessionDragType,
+  )
+}
+
+function getTabDropIndex(
+  event: React.DragEvent<HTMLElement>,
+  targetIndex: number,
+) {
+  const rect = event.currentTarget.getBoundingClientRect()
+  return event.clientX > rect.left + rect.width / 2
+    ? targetIndex + 1
+    : targetIndex
+}
+
+function normalizeMoveIndex(input: {
+  draggedIndex: number
+  insertIndex: number
+}) {
+  const { draggedIndex, insertIndex } = input
+  return draggedIndex >= 0 && draggedIndex < insertIndex
+    ? insertIndex - 1
+    : insertIndex
+}
 
 const singletonKinds = new Set<WorkspacePanelKind>([
   'dashboard',
@@ -313,20 +374,13 @@ function getPreferredPanelAfterRestore(api: DockviewApi) {
 /**
  * Per-panel mount strategy.
  *
- * Chat panels own a live WebSocket via `useAgent` (see
- * `agent-interaction-screen.tsx`). Dockview's default `onlyWhenVisible`
- * renderer unmounts hidden tabs, which would tear down that WS and force a
- * full reconnect every time the user switches between two chat tabs.
+ * Chat panels read from the workspace-mounted chat runtime registry. Keeping
+ * chat panels mounted still preserves local UI affordances like drafts,
+ * sidebar state, debug drawer state, and scroll position across tab switches.
  *
- * Setting `renderer: 'always'` keeps the panel DOM (and therefore the agents
- * SDK socket) mounted across tab switches. We pay one connection per open
- * chat tab — closing the tab still disposes everything cleanly.
- *
- * NOTE: We considered a workspace-level WS registry that would multiplex one
- * AgentHost socket across every thread, but the agents SDK doesn't support
- * that — `useAgent`'s `sub: [...]` chain is fixed at hook construction time
- * (see `node_modules/agents/dist/react.js` `buildSubPath`). One WS per active
- * tab is the right MVP shape.
+ * The SDK socket itself now lives above Dockview; `useAgent` still needs one
+ * fixed `sub` chain per thread, so the hoist is a workspace-level registry of
+ * child thread runtimes rather than one multiplexed parent socket.
  */
 function getPanelRenderer(
   kind: WorkspacePanelKind,
@@ -400,6 +454,7 @@ function WorkspaceDockTab(
   } = props
   const shouldHideClose = hideClose
   const isPinned = ctx?.isPanelPinned(api.id) ?? false
+  const targetIndex = api.group.panels.findIndex((panel) => panel.id === api.id)
 
   const handleClose = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -423,6 +478,23 @@ function WorkspaceDockTab(
             onPointerDown={onPointerDown}
             onPointerUp={onPointerUp}
             onPointerLeave={onPointerLeave}
+            onDragOver={(event) => {
+              if (!hasDockDropData(event.dataTransfer)) return
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'move'
+            }}
+            onDrop={(event) => {
+              const session = parseChatSessionDragPayload(event.dataTransfer)
+              if (!session || !ctx) return
+              event.preventDefault()
+              event.stopPropagation()
+              ctx.openPanelAt(
+                { kind: 'chat', title: session.title, entityId: session.id },
+                api.id,
+                'within',
+                getTabDropIndex(event, targetIndex >= 0 ? targetIndex : 0),
+              )
+            }}
           />
         }
       >
@@ -625,8 +697,8 @@ export function WorkspaceDockTabStripActions(
 }
 
 export function WorkspaceDockTitlebar({
-  title: _title,
-  subtitle: _subtitle,
+  title,
+  subtitle,
 }: {
   title?: string
   subtitle?: string
@@ -646,6 +718,84 @@ export function WorkspaceDockTitlebar({
   }
 
   const hasActivePanel = Boolean(ctx.activePanel)
+  const handleTabDrop = (
+    event: React.DragEvent<HTMLDivElement>,
+    targetPanelId: string,
+  ) => {
+    if (!hasDockDropData(event.dataTransfer)) return
+    event.preventDefault()
+    event.stopPropagation()
+
+    const api = ctx.getDockApi()
+    const targetPanel = api?.getPanel(targetPanelId)
+    if (!api || !targetPanel) return
+    const targetIndex = targetPanel.group.panels.findIndex(
+      (panel) => panel.id === targetPanel.id,
+    )
+    const insertIndex = getTabDropIndex(
+      event,
+      targetIndex >= 0 ? targetIndex : 0,
+    )
+
+    const draggedPanelId = getDockPanelDragId(event.dataTransfer)
+    if (draggedPanelId) {
+      const draggedPanel = api.getPanel(draggedPanelId)
+      if (!draggedPanel || draggedPanel.id === targetPanelId) return
+      const draggedIndex = targetPanel.group.panels.findIndex(
+        (panel) => panel.id === draggedPanel.id,
+      )
+      draggedPanel.api.moveTo({
+        group: targetPanel.group,
+        index: normalizeMoveIndex({ draggedIndex, insertIndex }),
+      })
+      draggedPanel.api.setActive()
+      return
+    }
+
+    const session = parseChatSessionDragPayload(event.dataTransfer)
+    if (!session) return
+    ctx.openPanelAt(
+      { kind: 'chat', title: session.title, entityId: session.id },
+      targetPanelId,
+      'within',
+      insertIndex,
+    )
+  }
+
+  const handleTabBarDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!hasDockDropData(event.dataTransfer)) return
+    event.preventDefault()
+    event.stopPropagation()
+
+    const api = ctx.getDockApi()
+    const targetPanel = api?.activeGroup?.activePanel ?? api?.activePanel
+    if (!api || !targetPanel) return
+    const insertIndex = targetPanel.group.panels.length
+
+    const draggedPanelId = getDockPanelDragId(event.dataTransfer)
+    if (draggedPanelId) {
+      const draggedPanel = api.getPanel(draggedPanelId)
+      if (!draggedPanel) return
+      const draggedIndex = targetPanel.group.panels.findIndex(
+        (panel) => panel.id === draggedPanel.id,
+      )
+      draggedPanel.api.moveTo({
+        group: targetPanel.group,
+        index: normalizeMoveIndex({ draggedIndex, insertIndex }),
+      })
+      draggedPanel.api.setActive()
+      return
+    }
+
+    const session = parseChatSessionDragPayload(event.dataTransfer)
+    if (!session) return
+    ctx.openPanelAt(
+      { kind: 'chat', title: session.title, entityId: session.id },
+      targetPanel.id,
+      'within',
+      insertIndex,
+    )
+  }
 
   return (
     <div className="garden-titlebar">
@@ -669,61 +819,117 @@ export function WorkspaceDockTitlebar({
         />
         <div className="garden-titlebar__divider" aria-hidden="true" />
         {ctx.dockPanels.length > 0 ? (
-          <div className="garden-titlebar__tabs">
+          <div
+            className="garden-titlebar__tabs"
+            onDragOver={(event) => {
+              if (!hasDockDropData(event.dataTransfer)) return
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'move'
+            }}
+            onDrop={handleTabBarDrop}
+          >
             {ctx.dockPanels.map((tab, index) => {
               const Icon = panelIcons[tab.kind]
 
               return (
                 <Fragment key={tab.id}>
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    className={cn(
-                      'garden-titlebar__tab',
-                      tab.isActive && 'garden-titlebar__tab--active',
-                    )}
-                    onClick={() => {
-                      ctx.activatePanel(tab.id)
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        ctx.activatePanel(tab.id)
-                      }
-                    }}
-                    title={tab.title}
-                  >
-                    <span className="garden-titlebar__tab-label">
-                      <Icon className="size-3 shrink-0" />
-                      {tab.isPinned ? (
-                        <Pin className="garden-dock-tab__pin size-3 shrink-0" />
-                      ) : null}
-                      <span className="truncate">{tab.title}</span>
-                    </span>
-                    <button
-                      type="button"
-                      role="button"
-                      tabIndex={-1}
-                      className="garden-titlebar__tab-close"
-                      onPointerDown={(event) => {
-                        event.preventDefault()
-                        event.stopPropagation()
-                      }}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        ctx.closePanel(tab.id)
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
+                  <ContextMenu>
+                    <ContextMenuTrigger render={<div className="contents" />}>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        draggable
+                        className={cn(
+                          'garden-titlebar__tab',
+                          tab.isActive && 'garden-titlebar__tab--active',
+                        )}
+                        onClick={() => {
+                          ctx.activatePanel(tab.id)
+                        }}
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = 'move'
+                          event.dataTransfer.setData(dockPanelDragType, tab.id)
+                        }}
+                        onDragOver={(event) => {
+                          if (!hasDockDropData(event.dataTransfer)) return
                           event.preventDefault()
-                          event.stopPropagation()
+                          event.dataTransfer.dropEffect = 'move'
+                        }}
+                        onDrop={(event) => handleTabDrop(event, tab.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            ctx.activatePanel(tab.id)
+                          }
+                        }}
+                        title={tab.title}
+                      >
+                        <span className="garden-titlebar__tab-label">
+                          <Icon className="size-3 shrink-0" />
+                          {tab.isPinned ? (
+                            <Pin className="garden-dock-tab__pin size-3 shrink-0" />
+                          ) : null}
+                          <span className="truncate">{tab.title}</span>
+                        </span>
+                        <button
+                          type="button"
+                          role="button"
+                          tabIndex={-1}
+                          className="garden-titlebar__tab-close"
+                          onPointerDown={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                          }}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            ctx.closePanel(tab.id)
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              ctx.closePanel(tab.id)
+                            }
+                          }}
+                        >
+                          <X className="size-3" strokeWidth={2.2} />
+                        </button>
+                      </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent side="bottom">
+                      <ContextMenuItem
+                        onClick={() => {
+                          ctx.togglePanelPinned(tab.id)
+                        }}
+                      >
+                        {tab.isPinned ? (
+                          <PinOff className="size-4" />
+                        ) : (
+                          <Pin className="size-4" />
+                        )}
+                        {tab.isPinned ? 'Unpin tab' : 'Pin tab'}
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem
+                        disabled={!ctx.canSplitPanels}
+                        onClick={() => {
+                          ctx.splitPanel(tab.id)
+                        }}
+                      >
+                        <Columns2 className="size-4" />
+                        Create split right
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem
+                        onClick={() => {
                           ctx.closePanel(tab.id)
-                        }
-                      }}
-                    >
-                      <X className="size-3" strokeWidth={2.2} />
-                    </button>
-                  </div>
+                        }}
+                      >
+                        <X className="size-4" />
+                        Close tab
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
                   {index < ctx.dockPanels.length - 1 ? (
                     <div
                       className="garden-titlebar__tab-divider"
@@ -746,7 +952,12 @@ export function WorkspaceDockTitlebar({
             </button>
           </div>
         ) : (
-          <div className="flex-1" />
+          <div className="garden-titlebar__copy">
+            <div className="garden-titlebar__title">{title}</div>
+            {subtitle ? (
+              <div className="garden-titlebar__subtitle">{subtitle}</div>
+            ) : null}
+          </div>
         )}
       </div>
     </div>
@@ -763,9 +974,64 @@ function WorkspacePanelFrame({
   const ctx = useContext(WorkspaceDockContext)
   const isExpanded = panelId ? (ctx?.isPanelExpanded(panelId) ?? false) : false
   const canExpand = Boolean(ctx && panelId && ctx.groupCount > 1 && !isExpanded)
+  const [isDragOver, setIsDragOver] = useState(false)
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!hasDockDropData(event.dataTransfer)) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    setIsDragOver(true)
+  }
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!ctx || !panelId || !hasDockDropData(event.dataTransfer)) return
+    event.preventDefault()
+    event.stopPropagation()
+    setIsDragOver(false)
+
+    const draggedPanelId = getDockPanelDragId(event.dataTransfer)
+    if (draggedPanelId && draggedPanelId !== panelId) {
+      const api = ctx.getDockApi()
+      const draggedPanel = api?.getPanel(draggedPanelId)
+      const targetPanel = api?.getPanel(panelId)
+      if (draggedPanel && targetPanel) {
+        draggedPanel.api.moveTo({ group: targetPanel.group })
+      }
+      return
+    }
+
+    const session = parseChatSessionDragPayload(event.dataTransfer)
+    if (!session) return
+    ctx.openPanelAt(
+      { kind: 'chat', title: session.title, entityId: session.id },
+      panelId,
+      'within',
+    )
+  }
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
+    <div
+      className={cn(
+        'relative flex h-full min-h-0 flex-col overflow-hidden',
+        isDragOver && 'ring-2 ring-primary/45 ring-inset',
+      )}
+      onDragEnter={(event) => {
+        if (!hasDockDropData(event.dataTransfer)) return
+        setIsDragOver(true)
+      }}
+      onDragOver={handleDragOver}
+      onDragLeave={(event) => {
+        const nextTarget = event.relatedTarget
+        if (
+          nextTarget instanceof Node &&
+          event.currentTarget.contains(nextTarget)
+        ) {
+          return
+        }
+        setIsDragOver(false)
+      }}
+      onDrop={handleDrop}
+    >
       {canExpand ? (
         <div className="pointer-events-none absolute top-3 right-3 z-20">
           <Button
@@ -1052,6 +1318,7 @@ function ChatDockPanel({
   return (
     <WorkspacePanelFrame panelId={api.id}>
       <AgentInteractionScreen
+        key={params.entityId ?? api.id}
         className="flex h-full min-h-0 flex-col bg-background"
         panelTitle={params.title}
         sessionId={params.entityId ?? null}
@@ -1276,6 +1543,7 @@ export function WorkspaceDockProvider({
 
   const writePanelToQueryState = useCallback(
     (nextPanel: WorkspacePanelInput | null) => {
+      if (nextPanel?.kind === 'chat') return
       const queryPanel = nextPanel?.kind === 'blank' ? null : nextPanel
       if (
         panel === (queryPanel?.kind ?? null) &&
@@ -1297,8 +1565,9 @@ export function WorkspaceDockProvider({
     (api: DockviewApi) => {
       const activePanelId =
         api.activeGroup?.activePanel?.id ?? api.activePanel?.id
+      const orderedPanels = api.groups.flatMap((group) => group.panels)
       setDockPanels(
-        api.panels.map((panel) => {
+        orderedPanels.map((panel) => {
           const params = getPanelParams(panel)
           const title = panel.title ?? panel.api.title ?? params.title
           return {
@@ -1476,6 +1745,46 @@ export function WorkspaceDockProvider({
   const openNewTab = useCallback(() => {
     return openPanel({ kind: 'blank', title: 'New Tab' }, { forceNew: true })
   }, [openPanel])
+
+  const openPanelAt = useCallback(
+    (
+      panel: WorkspacePanelInput,
+      targetPanelId: string,
+      direction: 'within' | 'right',
+      index?: number,
+    ) => {
+      const api = apiRef.current
+      const target = api?.getPanel(targetPanelId)
+      if (!api || !target) return null
+      const canonicalId = getCanonicalPanelId(panel)
+      const existing = api.panels.find((candidate) => {
+        const params = getPanelParams(candidate)
+        return params?.canonicalId === canonicalId
+      })
+      if (existing) {
+        const existingIndex = target.group.panels.findIndex(
+          (candidate) => candidate.id === existing.id,
+        )
+        existing.api.moveTo({
+          group: target.group,
+          index:
+            index === undefined
+              ? undefined
+              : normalizeMoveIndex({
+                  draggedIndex: existingIndex,
+                  insertIndex: index,
+                }),
+        })
+        existing.api.setActive()
+        commitActiveDockState(api)
+        return existing.id
+      }
+      return openPanel(panel, {
+        position: { referencePanel: target, direction, index },
+      })
+    },
+    [commitActiveDockState, openPanel],
+  )
 
   const canSplitPanels = groupCount < 2
 
@@ -1757,12 +2066,14 @@ export function WorkspaceDockProvider({
       closePanel,
       dockTheme,
       dockPanels,
+      getDockApi: () => apiRef.current,
       groupCount,
       handleReady,
       isReady,
       isPanelExpanded,
       openNewTab,
       openPanel,
+      openPanelAt,
       splitActivePanel: duplicateActivePanel,
       splitPanel,
       maximizeActivePanel,
@@ -1794,6 +2105,7 @@ export function WorkspaceDockProvider({
       maximizeActivePanel,
       openNewTab,
       openPanel,
+      openPanelAt,
       splitPanel,
       togglePanelExpanded,
       toggleActivePanelPinned,

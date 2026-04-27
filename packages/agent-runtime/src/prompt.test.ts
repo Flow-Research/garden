@@ -64,7 +64,7 @@ describe('prompt assembly', () => {
       workspaceContext: 'We are shipping an MVP quickly.',
     })
     const promptContexts = createPromptContextProviders({
-      agentRuntimeName: 'workspace:user:primary',
+      agentRuntimeName: 'primary.workspace.user',
       catalog,
     })
     const session = new Session(stubProvider, {
@@ -140,7 +140,7 @@ describe('prompt assembly', () => {
       workspaceContext: 'Current priority is prompt assembly.',
     })
     const promptContexts = createPromptContextProviders({
-      agentRuntimeName: 'workspace:user:primary',
+      agentRuntimeName: 'primary.workspace.user',
       catalog,
     })
     const session = new Session(stubProvider, {
@@ -176,7 +176,7 @@ describe('prompt assembly', () => {
     session.removeContext('agent')
     session.removeContext('workspace')
     const reloadedPromptContexts = createPromptContextProviders({
-      agentRuntimeName: 'workspace:user:primary',
+      agentRuntimeName: 'primary.workspace.user',
       catalog,
     })
     await session.addContext('agent', reloadedPromptContexts.agent)

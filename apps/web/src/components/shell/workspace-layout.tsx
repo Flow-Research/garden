@@ -1,15 +1,3 @@
-// TODO(ws-hoist): open the AgentHost WS here, not inside individual chat tabs.
-// Plan:
-//   1. Add <AgentHostProvider workspaceId={...} userId={...}> below
-//      WorkspaceIdProvider. It calls useAgent({ agent: 'AgentHost', name }).
-//   2. Provider populates a zustand registry with the live agent connection +
-//      a map of thread facets keyed by threadId. Tabs read from the registry
-//      instead of mounting their own useAgent.
-//   3. On mount, the provider batch-ensures all known threads (one RPC) so
-//      tab opens never block on onBeforeSubAgent 404s.
-//   4. Sidebar pre-fetches initial messages into React Query cache so tab
-//      open paints from cache.
-// See primary-agent.ts header for the full architecture.
 import { useLayoutEffect, useMemo, useState } from 'react'
 import { useAuthStore } from '@garden/core/auth'
 import { WorkspaceIdProvider } from '@garden/core/hooks'
@@ -21,7 +9,7 @@ import {
 } from '@garden/ui/components/ui/sidebar'
 import { Spinner } from '@garden/ui/components/ui/spinner'
 import { SearchCommand } from '@/features/search'
-import { ChatThreadsPrefetcher } from '@/features/chat/chat-prefetch'
+import { ChatRuntimeProvider } from '@/features/chat/chat-runtime-provider'
 import { OnboardingOverlay } from '@/features/onboarding'
 import { useOnboardingStore } from '@/features/onboarding'
 import { SettingsDialog } from '@/features/settings'
@@ -90,28 +78,22 @@ export function WorkspaceLayout() {
       >
         {activeWorkspaceId ? (
           <WorkspaceIdProvider wsId={activeWorkspaceId}>
-            {/*
-              Hydrate chat thread loaders into React Query before any chat
-              tab mounts. Open dockview chat panels (and recent sidebar
-              entries) then paint instantly from cache — Suspense never
-              triggers, no flash. This is the lighter-weight precursor to
-              the AgentHost WS hoist documented at the top of this file.
-            */}
-            <ChatThreadsPrefetcher />
-            <WorkspaceDockTitlebar
-              title={headerTitle}
-              subtitle={workspace?.id ? 'Workspace' : 'Restoring workspace'}
-            />
-            <div className="relative flex min-h-0 flex-1 overflow-hidden bg-background">
-              <WorkspaceSidebar />
-              <SidebarInset className="relative overflow-hidden">
-                <div className="relative flex min-h-0 flex-1 overflow-hidden">
-                  <WorkspaceDockView />
-                </div>
-              </SidebarInset>
-              <SearchCommand />
-            </div>
-            <SettingsDialog />
+            <ChatRuntimeProvider>
+              <WorkspaceDockTitlebar
+                title={headerTitle}
+                subtitle={workspace?.id ? 'Workspace' : 'Restoring workspace'}
+              />
+              <div className="relative flex min-h-0 flex-1 overflow-hidden bg-background">
+                <WorkspaceSidebar />
+                <SidebarInset className="relative overflow-hidden">
+                  <div className="relative flex min-h-0 flex-1 overflow-hidden">
+                    <WorkspaceDockView />
+                  </div>
+                </SidebarInset>
+                <SearchCommand />
+              </div>
+              <SettingsDialog />
+            </ChatRuntimeProvider>
           </WorkspaceIdProvider>
         ) : (
           <>

@@ -2,7 +2,6 @@ import { sql } from 'drizzle-orm'
 import {
   check,
   index,
-  jsonb,
   pgTable,
   text,
   timestamp,
@@ -32,7 +31,6 @@ export const chatThread = pgTable(
       .references(() => agent.id),
     title: text('title').notNull(),
     lastMessage: text('last_message').notNull().default(''),
-    messages: jsonb('messages').notNull().default(sql`'[]'::jsonb`),
     archivedAt: timestamp('archived_at', { mode: 'date' }),
     createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
     updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),

@@ -121,7 +121,7 @@ function createSkillRecord(input: {
 describe('AssignedSkillProvider session integration', () => {
   it('includes hidden built-in document skills in the cached inventory', async () => {
     const workspace = new MemorySkillWorkspace()
-    const agentRuntimeName = 'workspace:user:primary'
+    const agentRuntimeName = 'primary.workspace.user'
     const session = new Session(stubProvider, {
       context: [
         {
@@ -145,7 +145,7 @@ describe('AssignedSkillProvider session integration', () => {
 
   it('loads a hidden built-in skill through the same load_context path', async () => {
     const workspace = new MemorySkillWorkspace()
-    const agentRuntimeName = 'workspace:user:primary'
+    const agentRuntimeName = 'primary.workspace.user'
     const bundleHash = 'builtin-hash'
     const bundleStore = new MemorySkillBundleStore(
       new Map([
@@ -200,7 +200,7 @@ describe('AssignedSkillProvider session integration', () => {
 
   it('mounts built-in supporting files from the bundle store on load_context', async () => {
     const workspace = new MemorySkillWorkspace()
-    const agentRuntimeName = 'workspace:user:primary'
+    const agentRuntimeName = 'primary.workspace.user'
     const bundleHash = 'builtin-hash'
     const bundleStore = new MemorySkillBundleStore(
       new Map([
@@ -271,7 +271,7 @@ describe('AssignedSkillProvider session integration', () => {
   it('renders enabled assigned skills into the cached prompt inventory once per skill', async () => {
     const catalog = new MutableSkillCatalog()
     const workspace = new MemorySkillWorkspace()
-    const agentRuntimeName = 'workspace:user:primary'
+    const agentRuntimeName = 'primary.workspace.user'
     catalog.replace(agentRuntimeName, [
       createSkillRecord({
         agentId: 'agent-1',
@@ -323,7 +323,7 @@ describe('AssignedSkillProvider session integration', () => {
         ['skills/ws/skill-1/hash/references/checklist.md', '# Checklist'],
       ]),
     )
-    const agentRuntimeName = 'workspace:user:primary'
+    const agentRuntimeName = 'primary.workspace.user'
     catalog.replace(agentRuntimeName, [
       createSkillRecord({
         agentId: 'agent-1',
@@ -399,7 +399,7 @@ describe('AssignedSkillProvider session integration', () => {
     const bundleStore = new MemorySkillBundleStore(
       new Map([['skills/ws/skill-2/hash/references/brief.md', '# Brief']]),
     )
-    const agentRuntimeName = 'workspace:user:primary'
+    const agentRuntimeName = 'primary.workspace.user'
     catalog.replace(agentRuntimeName, [
       createSkillRecord({
         agentId: 'agent-1',
@@ -445,7 +445,7 @@ describe('AssignedSkillProvider session integration', () => {
     const catalog = new MutableSkillCatalog()
     const workspace = new MemorySkillWorkspace()
     const bundleStore = new MemorySkillBundleStore()
-    const agentRuntimeName = 'workspace:user:primary'
+    const agentRuntimeName = 'primary.workspace.user'
     catalog.replace(agentRuntimeName, [
       createSkillRecord({
         agentId: 'agent-1',
@@ -487,7 +487,7 @@ describe('AssignedSkillProvider session integration', () => {
   it('keeps the frozen prompt stable after load_context and unload_context', async () => {
     const catalog = new MutableSkillCatalog()
     const workspace = new MemorySkillWorkspace()
-    const agentRuntimeName = 'workspace:user:primary'
+    const agentRuntimeName = 'primary.workspace.user'
     catalog.replace(agentRuntimeName, [
       createSkillRecord({
         agentId: 'agent-1',
@@ -537,7 +537,7 @@ describe('AssignedSkillProvider session integration', () => {
   it('refreshes the same live session after assigned skills change', async () => {
     const catalog = new MutableSkillCatalog()
     const workspace = new MemorySkillWorkspace()
-    const agentRuntimeName = 'workspace:user:primary'
+    const agentRuntimeName = 'primary.workspace.user'
     const bundleStore = new MemorySkillBundleStore()
 
     catalog.replace(agentRuntimeName, [
@@ -625,7 +625,7 @@ describe('AssignedSkillProvider session integration', () => {
         bundleHash: 'builtin-hash',
       },
     ]
-    assignedCatalog.replace('workspace:user:primary', [
+    assignedCatalog.replace('primary.workspace.user', [
       createSkillRecord({
         agentId: 'agent-1',
         skillId: 'skill-1',
@@ -642,10 +642,10 @@ describe('AssignedSkillProvider session integration', () => {
     ])
 
     const listed = await mergedCatalog.listAssignedSkills({
-      agentRuntimeName: 'workspace:user:primary',
+      agentRuntimeName: 'primary.workspace.user',
     })
     const loaded = await mergedCatalog.getAssignedSkill({
-      agentRuntimeName: 'workspace:user:primary',
+      agentRuntimeName: 'primary.workspace.user',
       skillKey: 'pdf',
     })
 
@@ -667,7 +667,7 @@ describe('AssignedSkillProvider session integration', () => {
       },
     ]
 
-    assignedCatalog.replace('workspace:user:primary', [
+    assignedCatalog.replace('primary.workspace.user', [
       createSkillRecord({
         agentId: 'agent-1',
         skillId: 'skill-1',
@@ -688,7 +688,7 @@ describe('AssignedSkillProvider session integration', () => {
               assignedCatalog,
             ]),
             {
-              agentRuntimeName: 'workspace:user:primary',
+              agentRuntimeName: 'primary.workspace.user',
               workspace,
               bundleStore: new MemorySkillBundleStore(
                 new Map([

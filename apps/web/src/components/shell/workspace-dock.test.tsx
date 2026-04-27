@@ -560,7 +560,7 @@ describe('WorkspaceDockProvider', () => {
     })
   })
 
-  it('commits active panel immediately when opening chat', async () => {
+  it('keeps chat focus out of query panel state', async () => {
     const api = new FakeDockApi()
 
     render(
@@ -584,7 +584,7 @@ describe('WorkspaceDockProvider', () => {
       )
     })
 
-    expect(mockSetQueryState).toHaveBeenLastCalledWith({
+    expect(mockSetQueryState).not.toHaveBeenLastCalledWith({
       panel: 'chat',
       panelTitle: 'New Chat',
       panelEntityId: null,
