@@ -128,7 +128,10 @@ async function deleteChatThread(threadId: string) {
   }
 }
 
-export function useAgentSessions() {
+export function useAgentSessions(
+  options: { ensureWarmSession?: boolean } = {},
+) {
+  const ensureWarmSession = options.ensureWarmSession ?? true
   const qc = useQueryClient()
   const user = useAuthStore((state) => state.user)
   const workspace = useWorkspaceStore((state) => state.workspace)
@@ -348,6 +351,7 @@ export function useAgentSessions() {
 
   useEffect(() => {
     if (
+      !ensureWarmSession ||
       !workspaceId ||
       !user?.id ||
       sessionsQuery.status !== 'success' ||
@@ -369,6 +373,7 @@ export function useAgentSessions() {
     })
   }, [
     createSession,
+    ensureWarmSession,
     sessionsQuery.status,
     user?.id,
     warmSession,

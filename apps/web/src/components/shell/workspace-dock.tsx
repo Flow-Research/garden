@@ -374,20 +374,13 @@ function getPreferredPanelAfterRestore(api: DockviewApi) {
 /**
  * Per-panel mount strategy.
  *
- * Chat panels own a live WebSocket via `useAgent` (see
- * `agent-interaction-screen.tsx`). Dockview's default `onlyWhenVisible`
- * renderer unmounts hidden tabs, which would tear down that WS and force a
- * full reconnect every time the user switches between two chat tabs.
+ * Chat panels read from the workspace-mounted chat runtime registry. Keeping
+ * chat panels mounted still preserves local UI affordances like drafts,
+ * sidebar state, debug drawer state, and scroll position across tab switches.
  *
- * Setting `renderer: 'always'` keeps the panel DOM (and therefore the agents
- * SDK socket) mounted across tab switches. We pay one connection per open
- * chat tab — closing the tab still disposes everything cleanly.
- *
- * NOTE: We considered a workspace-level WS registry that would multiplex one
- * AgentHost socket across every thread, but the agents SDK doesn't support
- * that — `useAgent`'s `sub: [...]` chain is fixed at hook construction time
- * (see `node_modules/agents/dist/react.js` `buildSubPath`). One WS per active
- * tab is the right MVP shape.
+ * The SDK socket itself now lives above Dockview; `useAgent` still needs one
+ * fixed `sub` chain per thread, so the hoist is a workspace-level registry of
+ * child thread runtimes rather than one multiplexed parent socket.
  */
 function getPanelRenderer(
   kind: WorkspacePanelKind,
