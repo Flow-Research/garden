@@ -71,6 +71,13 @@
       "when": 1777050000000,
       "tag": "0009_issue_priority_check",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1777250228375,
+      "tag": "0010_drop_chat_thread_messages",
+      "breakpoints": true
     }
   ]
 }
