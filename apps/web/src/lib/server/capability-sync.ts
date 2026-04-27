@@ -272,8 +272,8 @@ function buildProxyTransport(args: {
 }) {
   const url =
     args.transport === 'streamable-http'
-      ? new URL(`/${args.connectorId}/mcp`, args.proxyBaseUrl)
-      : new URL(`/${args.connectorId}/sse`, args.proxyBaseUrl)
+      ? new URL(`${args.connectorId}/mcp`, args.proxyBaseUrl)
+      : new URL(`${args.connectorId}/sse`, args.proxyBaseUrl)
 
   const requestInit = {
     headers: {

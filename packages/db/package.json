@@ -5,8 +5,9 @@
   "dependencies": {
     "@garden/env": "workspace:*",
     "@neondatabase/serverless": "^1.0.1",
-    "drizzle-orm": "^0.44.6",
-    "drizzle-zod": "^0.8.3"
+    "drizzle-orm": "catalog:",
+    "drizzle-zod": "^0.8.3",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/pg": "^8.15.5",
@@ -17,6 +18,7 @@
     "vitest": "catalog:"
   },
   "scripts": {
+    "typecheck": "tsc --noEmit",
     "lint": "oxlint -c ../../.oxlintrc.json .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix .",
     "test": "vitest run",

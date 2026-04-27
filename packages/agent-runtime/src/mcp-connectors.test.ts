@@ -4,6 +4,10 @@ import {
   extractThreadIdFromAgentName,
   MCP_PROXY_JWT_REFRESH_WINDOW_MS,
 } from './mcp-connectors'
+import {
+  buildConnectorProxyMcpUrl,
+  resolveProxyBaseUrl,
+} from './primary-agent-mcp'
 
 describe('extractThreadIdFromAgentName', () => {
   it('extracts the thread id from chat agent names', () => {
@@ -95,5 +99,49 @@ describe('buildConnectorSyncPlan', () => {
       { connectorId: 'google-drive', accountId: 'account-4' },
       { connectorId: 'exa-search', accountId: null },
     ])
+  })
+})
+
+describe('resolveProxyBaseUrl', () => {
+  it('uses an explicit proxy URL when configured', () => {
+    expect(
+      resolveProxyBaseUrl({
+        BETTER_AUTH_SECRET: 'secret',
+        BETTER_AUTH_URL: 'http://localhost:3000',
+        DATABASE_URL: 'postgres://example',
+        MCP_PROXY_URL: 'http://127.0.0.1:9999/',
+      }),
+    ).toBe('http://127.0.0.1:9999/')
+  })
+
+  it('uses the web service-binding route during local web dev', () => {
+    expect(
+      resolveProxyBaseUrl({
+        BETTER_AUTH_SECRET: 'secret',
+        BETTER_AUTH_URL: 'http://localhost:3000',
+        DATABASE_URL: 'postgres://example',
+      }),
+    ).toBe('http://localhost:3000/api/mcp-proxy/')
+  })
+
+  it('uses the web service-binding route for deployed origins', () => {
+    expect(
+      resolveProxyBaseUrl({
+        BETTER_AUTH_SECRET: 'secret',
+        BETTER_AUTH_URL: 'https://garden.example.com',
+        DATABASE_URL: 'postgres://example',
+      }),
+    ).toBe('https://garden.example.com/api/mcp-proxy/')
+  })
+})
+
+describe('buildConnectorProxyMcpUrl', () => {
+  it('preserves the proxy base path when joining connector routes', () => {
+    expect(
+      buildConnectorProxyMcpUrl(
+        'exa-search',
+        'http://localhost:3000/api/mcp-proxy/',
+      ),
+    ).toBe('http://localhost:3000/api/mcp-proxy/exa-search/mcp')
   })
 })

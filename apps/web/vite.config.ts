@@ -20,6 +20,11 @@ const config = defineConfig({
     cloudflare({
       viteEnvironment: { name: 'ssr' },
       configPath: cloudflareConfigPath,
+      persistState: {
+        path:
+          process.env.GARDEN_WRANGLER_STATE_PATH ??
+          '../../../.garden-wrangler-state',
+      },
     }),
     agents(),
     tailwindcss(),
