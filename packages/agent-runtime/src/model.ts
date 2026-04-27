@@ -8,5 +8,5 @@ export function createAgentHostModel(apiKey: string): LanguageModel {
     apiKey,
   })
 
-  return opencodeGo('kimi-k2.5')
+  return opencodeGo('kimi-k2.6')
 }
