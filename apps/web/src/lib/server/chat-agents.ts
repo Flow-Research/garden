@@ -100,19 +100,6 @@ export async function ensureChatThreadAgent(input: {
   await stub.ensureThread(input.threadId)
 }
 
-/**
- * Ensure-and-fetch: provisions the thread facet (idempotent) and returns its
- * current message log in a single DO RPC. Used by the thread GET endpoint to
- * collapse two RTTs into one for the chat loader.
- */
-export async function getChatThreadMessages(input: {
-  threadId: string
-  hostName: string
-}) {
-  const stub = await getAgentHostStub(input.hostName)
-  return stub.getChatMessages(input.threadId)
-}
-
 export async function ensureChatThreadAgents(
   threads: Array<{
     id: string

@@ -4,11 +4,7 @@ import {
   parseJsonBody,
   updateChatThreadBodySchema,
 } from '@/lib/server/api-validation'
-import {
-  deleteChatThreadAgent,
-  ensureAgentRow,
-  getChatThreadMessages,
-} from '@/lib/server/chat-agents'
+import { deleteChatThreadAgent } from '@/lib/server/chat-agents'
 import { schema } from '@/lib/server/db'
 import {
   badRequest,
@@ -20,27 +16,6 @@ import { getThreadAccess } from '@/lib/server/chat-threads'
 export const Route = createFileRoute('/api/chat/threads/$id')({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
-        const access = await getThreadAccess(request, params.id)
-        if (access instanceof Response) return access
-
-        const [, messages] = await Promise.all([
-          ensureAgentRow({
-            workspaceId: access.thread.workspaceId,
-            ownerUserId: access.session.user.id,
-            hostName: access.hostName,
-          }),
-          getChatThreadMessages({
-            threadId: access.thread.id,
-            hostName: access.hostName,
-          }),
-        ])
-
-        return Response.json({
-          thread: toChatThread(access.thread, access.hostName),
-          messages,
-        })
-      },
       PATCH: async ({ request, params }) => {
         const access = await getThreadAccess(request, params.id)
         if (access instanceof Response) return access

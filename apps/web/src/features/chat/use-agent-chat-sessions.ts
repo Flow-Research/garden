@@ -1,22 +1,12 @@
 'use client'
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Result } from 'better-result'
 import { toast } from 'sonner'
 import { useAuthStore } from '@garden/core/auth'
 import { useChatStore } from '@garden/core/chat'
 import { useWorkspaceStore } from '@garden/core/workspace'
-
-// Module-scoped in-flight latch for the "claim warm session" replenish,
-// keyed by workspace ID.
-//
-// `useAgentSessions` is called from ~6 places (sidebar, agent screen,
-// session explorer, chat-prefetch, search-command, debug drawer). When a
-// user clicks "new chat" the resulting cascade can re-render multiple
-// consumers in the same tick. We need exactly one replenish per claim,
-// not N. This Set is the singleton gate.
-const warmInFlight = new Set<string>()
 
 export interface AgentChatSession {
   id: string
@@ -38,16 +28,6 @@ export const NEW_SESSION_TITLE = 'New Chat'
 function sortSessions(sessions: AgentChatSession[]) {
   return [...sessions].sort(
     (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
-  )
-}
-
-function isWarmSession(session: AgentChatSession | null | undefined) {
-  if (!session) return false
-  return (
-    session.title.trim().toLowerCase() === 'new chat' &&
-    session.lastMessage.trim().length === 0 &&
-    session.status === 'idle' &&
-    !session.archivedAt
   )
 }
 
@@ -81,6 +61,15 @@ function rowToSession(row: ChatThreadRow): AgentChatSession {
     status: row.archivedAt ? ('archived' as const) : ('idle' as const),
     unread: false,
   }
+}
+
+function isWarmSession(session: AgentChatSession) {
+  return (
+    !session.archivedAt &&
+    session.status === 'idle' &&
+    session.title.trim().toLowerCase() === NEW_SESSION_TITLE.toLowerCase() &&
+    session.lastMessage.trim().length === 0
+  )
 }
 
 async function fetchChatThreads(workspaceId: string) {
@@ -145,6 +134,7 @@ export function useAgentSessions() {
   const workspace = useWorkspaceStore((state) => state.workspace)
   const selectedAgentId = useChatStore((state) => state.selectedAgentId)
   const workspaceId = workspace?.id ?? null
+  const warmCreateInFlightRef = useRef(false)
 
   const queryKey = useMemo(
     () => ['chat-threads', workspaceId, user?.id ?? null] as const,
@@ -339,9 +329,8 @@ export function useAgentSessions() {
 
   const sessions = sessionsQuery.data ?? []
 
-  // Compute the warm session synchronously from the current list — pure
-  // derivation, no effect. If the user happens to have an idle "New Chat"
-  // sitting at the top, claim that one; otherwise create on demand.
+  // Keep exactly one warm empty chat per workspace/agent. Used only for the
+  // snappy first click path; non-empty chats are never recycled.
   const warmSession = useMemo(
     () =>
       sessions.find(
@@ -352,35 +341,39 @@ export function useAgentSessions() {
     [selectedAgentId, sessions],
   )
 
-  // Claim a session for "new chat" actions. If a warm one already exists in
-  // the list (e.g. a previously-created idle thread), return it directly and
-  // start an opportunistic background replenish so the *next* claim is
-  // instant. Otherwise create one synchronously.
-  //
-  // No proactive warming via useEffect — that pattern fires once per
-  // workspace mount, can race with N concurrent hook instances, and
-  // creates threads the user never asked for. Demand-driven only.
   const claimWarmSession = useCallback(async () => {
-    if (warmSession) {
-      if (workspaceId && !warmInFlight.has(workspaceId)) {
-        warmInFlight.add(workspaceId)
-        void Result.tryPromise(() =>
-          createSession.mutateAsync(NEW_SESSION_TITLE),
-        ).then((result) => {
-          warmInFlight.delete(workspaceId)
-          if (Result.isError(result)) {
-            console.warn(
-              '[chat.sessions] failed to replenish warm session',
-              result.error,
-            )
-          }
-        })
-      }
-      return warmSession
+    if (warmSession) return warmSession
+    return createSession.mutateAsync(NEW_SESSION_TITLE)
+  }, [createSession, warmSession])
+
+  useEffect(() => {
+    if (
+      !workspaceId ||
+      !user?.id ||
+      sessionsQuery.status !== 'success' ||
+      warmSession ||
+      createSession.isPending ||
+      warmCreateInFlightRef.current
+    ) {
+      return
     }
 
-    return createSession.mutateAsync(NEW_SESSION_TITLE)
-  }, [createSession, warmSession, workspaceId])
+    warmCreateInFlightRef.current = true
+    void Result.tryPromise(() =>
+      createSession.mutateAsync(NEW_SESSION_TITLE),
+    ).then((result) => {
+      warmCreateInFlightRef.current = false
+      if (Result.isError(result)) {
+        console.warn('[chat.sessions] failed to create warm chat', result.error)
+      }
+    })
+  }, [
+    createSession,
+    sessionsQuery.status,
+    user?.id,
+    warmSession,
+    workspaceId,
+  ])
 
   return {
     agent: null,
