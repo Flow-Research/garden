@@ -381,15 +381,9 @@ export function useAgentSessions(
   ])
 
   return {
-    agent: null,
-    hostName: null,
     createSession,
     archiveSession,
     deleteSession,
-    // Legacy aliases preserved for call sites that haven't migrated to
-    // `claimWarmSession`. Both route to the warm-chat claim path.
-    ensureIdleSession: claimWarmSession,
-    getNextIdleSession: claimWarmSession,
     claimWarmSession,
     renameSession,
     reorderSessions,
