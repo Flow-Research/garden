@@ -53,33 +53,45 @@ export function SettingsPage({
       className="min-h-0 flex-1 gap-0"
     >
       {/* Left nav */}
-      <aside className="flex w-56 shrink-0 flex-col gap-6 overflow-y-auto bg-muted/30 px-3 py-6">
+      <aside className="flex w-64 shrink-0 flex-col gap-6 overflow-y-auto bg-muted/30 px-4 py-6">
         <TabsList
           variant="line"
-          className="flex-col items-stretch gap-0.5 px-1"
+          className="w-full flex-col items-stretch gap-1 px-1"
         >
-          <span className="px-2 pb-1 text-xs font-medium text-muted-foreground">
+          <span className="px-3 pb-1 text-xs font-semibold tracking-[0.02em] text-muted-foreground">
             Account
           </span>
           {accountTabs.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value}>
-              <tab.icon className="h-4 w-4" />
+            <TabsTrigger
+              key={tab.value}
+              value={tab.value}
+              className="min-h-11 w-full cursor-pointer justify-start gap-3 rounded-xl px-3 py-2 text-[0.95rem] font-medium text-foreground/70 hover:bg-background/70 hover:text-foreground data-active:bg-background data-active:text-foreground data-active:shadow-sm data-active:after:opacity-0 dark:data-active:bg-background/80"
+            >
+              <tab.icon className="size-[18px]" />
               {tab.label}
             </TabsTrigger>
           ))}
           {extraAccountTabs?.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value}>
-              <tab.icon className="h-4 w-4" />
+            <TabsTrigger
+              key={tab.value}
+              value={tab.value}
+              className="min-h-11 w-full cursor-pointer justify-start gap-3 rounded-xl px-3 py-2 text-[0.95rem] font-medium text-foreground/70 hover:bg-background/70 hover:text-foreground data-active:bg-background data-active:text-foreground data-active:shadow-sm data-active:after:opacity-0 dark:data-active:bg-background/80"
+            >
+              <tab.icon className="size-[18px]" />
               {tab.label}
             </TabsTrigger>
           ))}
 
-          <span className="truncate px-2 pt-4 pb-1 text-xs font-medium text-muted-foreground">
+          <span className="truncate px-3 pt-5 pb-1 text-xs font-semibold tracking-[0.02em] text-muted-foreground">
             {workspaceName ?? 'Workspace'}
           </span>
           {workspaceTabs.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value}>
-              <tab.icon className="h-4 w-4" />
+            <TabsTrigger
+              key={tab.value}
+              value={tab.value}
+              className="min-h-11 w-full cursor-pointer justify-start gap-3 rounded-xl px-3 py-2 text-[0.95rem] font-medium text-foreground/70 hover:bg-background/70 hover:text-foreground data-active:bg-background data-active:text-foreground data-active:shadow-sm data-active:after:opacity-0 dark:data-active:bg-background/80"
+            >
+              <tab.icon className="size-[18px]" />
               {tab.label}
             </TabsTrigger>
           ))}
