@@ -8,6 +8,7 @@ import {
   useRef,
   type ReactNode,
 } from 'react'
+import { Result } from 'better-result'
 import { useAgent } from 'agents/react'
 import { useAgentChat } from '@cloudflare/ai-chat/react'
 import type { UIMessage } from 'ai'
@@ -43,6 +44,8 @@ export type ChatRuntime = {
   addToolApprovalResponse: AgentChatApi['addToolApprovalResponse']
   addToolOutput: AgentChatApi['addToolOutput']
   error: AgentChatApi['error']
+  isServerStreaming: AgentChatApi['isServerStreaming']
+  isStreaming: AgentChatApi['isStreaming']
   loadRuntimeSkills: () => Promise<ComposerSkill[]>
   markTurnError: (err: Error) => void
   messages: ChatUiMessage[]
@@ -100,6 +103,23 @@ function buildSessionPreview(message: ChatUiMessage | undefined) {
     : ''
 }
 
+function getAgentStreamEvent(data: unknown) {
+  if (!data || typeof data !== 'object') return null
+  const event = data as {
+    done?: unknown
+    error?: unknown
+    id?: unknown
+    type?: unknown
+  }
+  if (typeof event.type !== 'string') return null
+  return {
+    done: event.done === true,
+    error: Boolean(event.error),
+    id: typeof event.id === 'string' ? event.id : null,
+    type: event.type,
+  }
+}
+
 export function useChatRuntime(sessionId: string) {
   return useChatRuntimeStore((state) => state.runtimes[sessionId] ?? null)
 }
@@ -138,6 +158,7 @@ function ChatRuntimeConnection({
   >['updateSessionPreview']
 }) {
   const pendingTurnRef = useRef<PendingTurn | null>(null)
+  const activeStreamIdsRef = useRef(new Set<string>())
   const setRuntime = useChatRuntimeStore((state) => state.setRuntime)
   const removeRuntime = useChatRuntimeStore((state) => state.removeRuntime)
   const agent = useAgent({
@@ -168,6 +189,8 @@ function ChatRuntimeConnection({
   const {
     addToolApprovalResponse,
     addToolOutput,
+    isServerStreaming,
+    isStreaming,
     messages,
     sendMessage,
     status,
@@ -193,11 +216,77 @@ function ChatRuntimeConnection({
     experimental_throttle: 50,
   })
 
+  useEffect(() => {
+    const onAgentMessage = (event: MessageEvent) => {
+      if (typeof event.data !== 'string') return
+      const parsed = Result.try(() => JSON.parse(event.data) as unknown)
+      if (Result.isError(parsed)) return
+      const streamEvent = getAgentStreamEvent(parsed.value)
+      if (!streamEvent) return
+
+      if (streamEvent.type === 'cf_agent_chat_clear') {
+        activeStreamIdsRef.current.clear()
+        return
+      }
+
+      if (
+        streamEvent.type !== 'cf_agent_stream_resuming' &&
+        streamEvent.type !== 'cf_agent_use_chat_response'
+      ) {
+        return
+      }
+
+      if (!streamEvent.id) return
+      if (streamEvent.done || streamEvent.error) {
+        activeStreamIdsRef.current.delete(streamEvent.id)
+        return
+      }
+      activeStreamIdsRef.current.add(streamEvent.id)
+    }
+
+    agent.addEventListener('message', onAgentMessage)
+    return () => {
+      agent.removeEventListener('message', onAgentMessage)
+      activeStreamIdsRef.current.clear()
+    }
+  }, [agent])
+
+  const stopCurrentTurn = useCallback(async () => {
+    const streamIds = [...activeStreamIdsRef.current]
+    activeStreamIdsRef.current.clear()
+
+    streamIds.forEach((id) => {
+      const sendResult = Result.try(() =>
+        agent.send(
+          JSON.stringify({
+            id,
+            type: 'cf_agent_chat_request_cancel',
+          }),
+        ),
+      )
+      if (Result.isError(sendResult)) {
+        console.warn('[chat.runtime] failed to send stream cancel', {
+          id,
+          error: sendResult.error,
+        })
+      }
+    })
+
+    const stopResult = await Result.tryPromise(() => stop())
+    if (Result.isError(stopResult)) {
+      console.warn('[chat.runtime] failed to stop active chat turn', {
+        error: stopResult.error,
+      })
+    }
+  }, [agent, stop])
+
   const runtime = useMemo<ChatRuntime>(
     () => ({
       addToolApprovalResponse,
       addToolOutput,
       error,
+      isServerStreaming,
+      isStreaming,
       loadRuntimeSkills,
       markTurnError,
       messages,
@@ -206,18 +295,20 @@ function ChatRuntimeConnection({
         pendingTurnRef.current = pending
       },
       status: status as RealtimeStatus,
-      stop,
+      stop: stopCurrentTurn,
     }),
     [
       addToolApprovalResponse,
       addToolOutput,
       error,
+      isServerStreaming,
+      isStreaming,
       loadRuntimeSkills,
       markTurnError,
       messages,
       sendMessage,
       status,
-      stop,
+      stopCurrentTurn,
     ],
   )
 

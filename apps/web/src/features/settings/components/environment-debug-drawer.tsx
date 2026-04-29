@@ -868,17 +868,9 @@ function SandboxPanel({
         <div className="space-y-2">
           <div className="space-y-0">
             <KV k="id" v={sandbox.id} />
+            <KV k="placement" v={sandbox.containerPlacementId ?? '—'} />
             <KV k="cwd" v={sandbox.cwd ?? '—'} />
-            <KV
-              k="ping"
-              v={
-                sandbox.pingMessage
-                  ? sandbox.pingUptimeMs !== null
-                    ? `${sandbox.pingMessage} · ${Math.round(sandbox.pingUptimeMs / 1000)}s up`
-                    : sandbox.pingMessage
-                  : '—'
-              }
-            />
+            <KV k="ping" v={sandbox.pingMessage ?? '—'} />
           </div>
 
           <div>
