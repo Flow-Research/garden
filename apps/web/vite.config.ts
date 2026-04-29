@@ -14,7 +14,10 @@ const cloudflareConfigPath =
 
 const config = defineConfig({
   clearScreen: false,
-  resolve: { tsconfigPaths: true },
+  resolve: {
+    tsconfigPaths: true,
+    dedupe: ['react', 'react-dom'],
+  },
   plugins: [
     ...(enableDevtools ? [devtools()] : []),
     cloudflare({
