@@ -93,9 +93,9 @@ export interface DebugWorkspacePayload {
 
 export interface DebugSandboxPayload {
   id: string
+  containerPlacementId: string | null
   reachable: boolean
   pingMessage: string | null
-  pingUptimeMs: number | null
   cwd: string | null
   workspaceListing: string
   currentDirectoryListing: string
@@ -143,31 +143,31 @@ export interface LiveAgentStatePayload extends DebugMetaPayload {
 export const DEBUG_SDK_STACK: readonly SdkVersionInfo[] = [
   {
     name: 'agents',
-    version: '0.11.5',
+    version: '0.11.9',
     channel: 'stable',
     role: 'Durable agent runtime, routeAgentRequest, useAgent, @callable RPCs',
   },
   {
     name: '@cloudflare/ai-chat',
-    version: '0.5.1',
+    version: '0.5.4',
     channel: 'stable',
     role: 'Chat transport hook on top of agents',
   },
   {
     name: '@cloudflare/think',
-    version: '0.4.0',
+    version: '0.4.2',
     channel: 'stable',
     role: 'Think agent base, workspace tools, execute tool',
   },
   {
     name: '@cloudflare/sandbox',
-    version: '0.9.0',
+    version: '0.9.2',
     channel: 'stable',
     role: 'Explicit Sandbox DO, fs/process API',
   },
   {
     name: '@cloudflare/shell',
-    version: '0.3.3',
+    version: '0.3.5',
     channel: 'stable',
     role: 'VFS over DO SQLite + R2 spillover',
   },
