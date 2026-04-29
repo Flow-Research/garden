@@ -18,6 +18,20 @@ const config = defineConfig({
     tsconfigPaths: true,
     dedupe: ['react', 'react-dom'],
   },
+  environments: {
+    ssr: {
+      optimizeDeps: {
+        include: [
+          'react',
+          'react/jsx-runtime',
+          'react/jsx-dev-runtime',
+          'react-dom',
+          'react-dom/server',
+          '@tanstack/react-router > @tanstack/react-store',
+        ],
+      },
+    },
+  },
   plugins: [
     ...(enableDevtools ? [devtools()] : []),
     cloudflare({
