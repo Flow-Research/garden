@@ -179,3 +179,42 @@ export async function debugChatThreadPrompt(input: {
   const stub = await getAgentHostStub(input.hostName)
   return stub.debugThreadPrompt(input.threadId)
 }
+
+export async function uploadChatThreadDocument(input: {
+  base64: string
+  filename: string
+  hostName: string
+  mediaType?: string | null
+  threadId: string
+}) {
+  const stub = await getAgentHostStub(input.hostName)
+  return stub.uploadThreadDocument(input.threadId, {
+    base64: input.base64,
+    filename: input.filename,
+    mediaType: input.mediaType ?? null,
+  })
+}
+
+export async function readChatThreadDocumentBytes(input: {
+  documentId: string
+  hostName: string
+  threadId: string
+}) {
+  const stub = await getAgentHostStub(input.hostName)
+  return stub.readThreadDocumentBytes(input.threadId, input.documentId)
+}
+
+export async function resolveChatThreadDocumentEdit(input: {
+  action: 'accept' | 'reject'
+  documentId: string
+  editId: string
+  hostName: string
+  threadId: string
+}) {
+  const stub = await getAgentHostStub(input.hostName)
+  return stub.resolveThreadDocumentEdit(input.threadId, {
+    action: input.action,
+    documentId: input.documentId,
+    editId: input.editId,
+  })
+}

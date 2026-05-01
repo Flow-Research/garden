@@ -1,0 +1,1025 @@
+import { Buffer } from 'node:buffer'
+import type { WorkspaceFsLike } from '@cloudflare/shell'
+import { and, desc, eq, max } from 'drizzle-orm'
+import { drizzle } from 'drizzle-orm/neon-serverless'
+import {
+  AlignmentType,
+  BorderStyle,
+  Document,
+  HeadingLevel,
+  Packer,
+  PageBreak,
+  PageOrientation,
+  Paragraph,
+  Table,
+  TableCell,
+  TableRow,
+  TextRun,
+  WidthType,
+} from 'docx'
+import { Result, TaggedError } from 'better-result'
+import * as schema from '@garden/db/schema'
+import {
+  applyTrackedEdits,
+  extractDocxBodyText,
+  resolveTrackedChange,
+  type EditInput,
+} from './docx-tracked-changes'
+import {
+  documentDownloadUrl,
+  versionStorageKey,
+} from './document-storage'
+
+export class DocumentToolError extends TaggedError('DocumentToolError')<{
+  message: string
+}>() {}
+
+export type DocumentToolContext = {
+  databaseUrl: string
+  workspace: WorkspaceFsLike
+  threadId: string
+}
+
+type DocumentSection = {
+  heading?: string
+  level?: number
+  content?: string
+  pageBreak?: boolean
+  table?: { headers: string[]; rows: string[][] }
+}
+
+export type EditAnnotation = {
+  kind: 'edit'
+  edit_id: string
+  document_id: string
+  version_id: string
+  version_number: number
+  change_id: string
+  del_w_id?: string
+  ins_w_id?: string
+  deleted_text: string
+  inserted_text: string
+  context_before: string
+  context_after: string
+  reason?: string
+  status: 'pending'
+}
+
+function getDb(databaseUrl: string) {
+  return drizzle(databaseUrl, { schema })
+}
+
+function contentTypeForFileType(fileType: string) {
+  switch (fileType) {
+    case 'docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    case 'doc':
+      return 'application/msword'
+    case 'pdf':
+      return 'application/pdf'
+    case 'txt':
+    case 'md':
+      return 'text/plain; charset=utf-8'
+    case 'json':
+      return 'application/json'
+    case 'csv':
+      return 'text/csv'
+    default:
+      return 'application/octet-stream'
+  }
+}
+
+function normalizeWorkspaceFilename(filename: string) {
+  const trimmed = filename.trim() || 'document'
+  return trimmed.replace(/[\x00-\x1F\x7F]/g, '_').replace(/[\\/]/g, '_')
+}
+
+function buildArtifact(args: {
+  documentId: string
+  filename: string
+  fileType: string
+  versionNumber: number
+}) {
+  return {
+    kind: 'document' as const,
+    id: args.documentId,
+    filename: args.filename,
+    mediaType: contentTypeForFileType(args.fileType),
+    url: documentDownloadUrl(args.documentId, args.filename),
+    content: null,
+    versionNumber: args.versionNumber,
+  }
+}
+
+async function loadThreadContext(context: DocumentToolContext) {
+  const db = getDb(context.databaseUrl)
+  const rowResult = await Result.tryPromise({
+    try: async () => {
+      const [row] = await db
+        .select({
+          workspaceId: schema.chatThread.workspaceId,
+          ownerUserId: schema.chatThread.ownerUserId,
+        })
+        .from(schema.chatThread)
+        .where(eq(schema.chatThread.id, context.threadId))
+        .limit(1)
+      return row ?? null
+    },
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+  if (rowResult.isErr()) return rowResult
+  if (!rowResult.value) {
+    return Result.err(
+      new DocumentToolError({ message: 'Chat thread not found.' }),
+    )
+  }
+  return Result.ok({ db, ...rowResult.value })
+}
+
+export async function listDocuments(context: DocumentToolContext) {
+  const threadContext = await loadThreadContext(context)
+  if (threadContext.isErr()) return { ok: false, error: threadContext.error.message }
+  const { db, workspaceId, ownerUserId } = threadContext.value
+  const rowsResult = await Result.tryPromise({
+    try: async () =>
+      await db
+        .select({
+          id: schema.document.id,
+          filename: schema.document.filename,
+          fileType: schema.document.fileType,
+          currentVersionId: schema.document.currentVersionId,
+          createdAt: schema.document.createdAt,
+        })
+        .from(schema.document)
+        .where(
+          and(
+            eq(schema.document.workspaceId, workspaceId),
+            eq(schema.document.ownerUserId, ownerUserId),
+          ),
+        )
+        .orderBy(desc(schema.document.createdAt)),
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+  if (rowsResult.isErr()) return { ok: false, error: rowsResult.error.message }
+  return { ok: true, documents: rowsResult.value }
+}
+
+export async function generateDocx(args: {
+  context: DocumentToolContext
+  title: string
+  sections: DocumentSection[]
+  landscape?: boolean
+}) {
+  const threadContext = await loadThreadContext(args.context)
+  if (threadContext.isErr()) return { ok: false, error: threadContext.error.message }
+  const { db, workspaceId, ownerUserId } = threadContext.value
+
+  const FONT = 'Times New Roman'
+  const SIZE = 22
+  type DocChild = InstanceType<typeof Paragraph> | InstanceType<typeof Table>
+  const children: DocChild[] = [
+    new Paragraph({
+      heading: HeadingLevel.TITLE,
+      spacing: { after: 200 },
+      alignment: AlignmentType.CENTER,
+      children: [
+        new TextRun({
+          text: args.title.toUpperCase(),
+          color: '000000',
+          font: FONT,
+          size: SIZE,
+          bold: true,
+        }),
+      ],
+    }),
+  ]
+
+  const cellBorder = {
+    top: { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC' },
+    bottom: { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC' },
+    left: { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC' },
+    right: { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC' },
+  }
+  const headingLevels = [
+    HeadingLevel.HEADING_1,
+    HeadingLevel.HEADING_2,
+    HeadingLevel.HEADING_3,
+    HeadingLevel.HEADING_4,
+  ]
+  const counters = [0, 0, 0, 0]
+
+  for (const section of args.sections) {
+    if (section.pageBreak) {
+      children.push(new Paragraph({ children: [new PageBreak()] }))
+    }
+    if (section.heading) {
+      const idx = Math.min((section.level ?? 1) - 1, 3)
+      counters[idx] = (counters[idx] ?? 0) + 1
+      for (let i = idx + 1; i < 4; i++) counters[i] = 0
+      const prefix = counters.slice(0, idx + 1).join('.')
+      const headingText = `${prefix}. ${idx === 0 ? section.heading.toUpperCase() : section.heading}`
+      const headingLevel = headingLevels[idx] ?? HeadingLevel.HEADING_1
+      children.push(
+        new Paragraph({
+          heading: headingLevel,
+          spacing: { after: 160 },
+          children: [
+            new TextRun({
+              text: headingText,
+              color: '000000',
+              font: FONT,
+              size: SIZE,
+              bold: true,
+            }),
+          ],
+        }),
+      )
+    }
+    if (section.table) {
+      const { headers, rows } = section.table
+      const colCount = headers.length
+      const tableRows: InstanceType<typeof TableRow>[] = [
+        new TableRow({
+          tableHeader: true,
+          children: headers.map(
+            (header) =>
+              new TableCell({
+                borders: cellBorder,
+                shading: { fill: 'F2F2F2' },
+                children: [
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: header,
+                        bold: true,
+                        font: FONT,
+                        size: SIZE,
+                      }),
+                    ],
+                    alignment: AlignmentType.LEFT,
+                  }),
+                ],
+              }),
+          ),
+        }),
+      ]
+      for (const rawRow of rows) {
+        const normalized = Array.from({ length: colCount }, (_, index) =>
+          typeof rawRow[index] === 'string' ? rawRow[index] : '',
+        )
+        tableRows.push(
+          new TableRow({
+            children: normalized.map(
+              (cell) =>
+                new TableCell({
+                  borders: cellBorder,
+                  children: [
+                    new Paragraph({
+                      children: [
+                        new TextRun({ text: cell, font: FONT, size: SIZE }),
+                      ],
+                    }),
+                  ],
+                }),
+            ),
+          }),
+        )
+      }
+      children.push(
+        new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          rows: tableRows,
+        }),
+      )
+      children.push(new Paragraph({ text: '' }))
+    }
+    if (section.content) {
+      for (const line of section.content.split('\n')) {
+        const trimmed = line.trim()
+        if (!trimmed) continue
+        const bulletMatch = trimmed.match(/^[-*]\s+(.+)/)
+        children.push(
+          bulletMatch
+            ? new Paragraph({
+                bullet: { level: 0 },
+                spacing: { after: 120 },
+                children: [
+                  new TextRun({
+                    text: bulletMatch[1],
+                    font: FONT,
+                    size: SIZE,
+                  }),
+                ],
+              })
+            : new Paragraph({
+                spacing: { after: 120 },
+                children: [new TextRun({ text: trimmed, font: FONT, size: SIZE })],
+              }),
+        )
+      }
+    }
+  }
+
+  const doc = new Document({
+    sections: [
+      {
+        properties: args.landscape
+          ? { page: { size: { orientation: PageOrientation.LANDSCAPE } } }
+          : {},
+        children,
+      },
+    ],
+  })
+  const packResult = await Result.tryPromise({
+    try: async () => await Packer.toBuffer(doc),
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+  if (packResult.isErr()) return { ok: false, error: packResult.error.message }
+
+  const documentId = crypto.randomUUID()
+  const safeTitle =
+    args.title
+      .replace(/[^a-zA-Z0-9 -]/g, '')
+      .trim()
+      .slice(0, 64) || 'document'
+  const filename = `${safeTitle}.docx`
+  const workspacePath = `/documents/${documentId}/versions/v1/${filename}`
+  const writeResult = await Result.tryPromise({
+    try: async () =>
+      await args.context.workspace.writeFileBytes(
+        workspacePath,
+        packResult.value,
+        contentTypeForFileType('docx'),
+      ),
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+  if (writeResult.isErr()) return { ok: false, error: writeResult.error.message }
+
+  const insertResult = await Result.tryPromise({
+    try: async () => {
+      const [docRow] = await db
+        .insert(schema.document)
+        .values({
+          id: documentId,
+          workspaceId,
+          ownerUserId,
+          threadId: args.context.threadId,
+          filename,
+          fileType: 'docx',
+          sizeBytes: packResult.value.byteLength,
+          status: 'ready',
+        })
+        .returning({ id: schema.document.id })
+      if (!docRow) {
+        throw new Error('Failed to record generated document.')
+      }
+      const [versionRow] = await db
+        .insert(schema.documentVersion)
+        .values({
+          documentId: docRow.id,
+          storagePath: workspacePath,
+          source: 'generated',
+          versionNumber: 1,
+          displayName: filename,
+        })
+        .returning({ id: schema.documentVersion.id })
+      if (!versionRow) {
+        throw new Error('Failed to record generated document version.')
+      }
+      await db
+        .update(schema.document)
+        .set({ currentVersionId: versionRow.id, updatedAt: new Date() })
+        .where(eq(schema.document.id, docRow.id))
+      return { documentId: docRow.id, versionId: versionRow.id }
+    },
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+  if (insertResult.isErr()) return { ok: false, error: insertResult.error.message }
+
+  return {
+    ok: true,
+    filename,
+    document_id: insertResult.value.documentId,
+    version_id: insertResult.value.versionId,
+    version_number: 1,
+    download_url: documentDownloadUrl(insertResult.value.documentId, filename),
+    artifact: buildArtifact({
+      documentId: insertResult.value.documentId,
+      filename,
+      fileType: 'docx',
+      versionNumber: 1,
+    }),
+  }
+}
+
+async function loadActiveDocument(context: DocumentToolContext, documentId: string) {
+  const db = getDb(context.databaseUrl)
+  const rowResult = await Result.tryPromise({
+    try: async () => {
+      const [row] = await db
+        .select({
+          id: schema.document.id,
+          filename: schema.document.filename,
+          fileType: schema.document.fileType,
+          ownerUserId: schema.document.ownerUserId,
+          storagePath: schema.documentVersion.storagePath,
+          versionId: schema.documentVersion.id,
+          versionNumber: schema.documentVersion.versionNumber,
+        })
+        .from(schema.document)
+        .innerJoin(
+          schema.documentVersion,
+          eq(schema.document.currentVersionId, schema.documentVersion.id),
+        )
+        .where(eq(schema.document.id, documentId))
+        .limit(1)
+      return row ?? null
+    },
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+  return rowResult
+}
+
+export async function readDocument(args: {
+  context: DocumentToolContext
+  documentId: string
+}) {
+  const rowResult = await loadActiveDocument(args.context, args.documentId)
+  if (rowResult.isErr()) return { ok: false, error: rowResult.error.message }
+  if (!rowResult.value) return { ok: false, error: 'Document not found.' }
+  const bytesResult = await readWorkspaceBytes(
+    args.context.workspace,
+    rowResult.value.storagePath,
+  )
+  if (bytesResult.isErr()) return { ok: false, error: bytesResult.error.message }
+  const textResult = await extractDocumentText(bytesResult.value, rowResult.value.fileType)
+  if (textResult.isErr()) return { ok: false, error: textResult.error.message }
+  return {
+    ok: true,
+    document_id: rowResult.value.id,
+    filename: rowResult.value.filename,
+    version_id: rowResult.value.versionId,
+    version_number: rowResult.value.versionNumber,
+    text: textResult.value,
+  }
+}
+
+export async function findInDocument(args: {
+  context: DocumentToolContext
+  documentId: string
+  query: string
+  maxResults?: number
+  contextChars?: number
+}) {
+  const readResult = await readDocument({
+    context: args.context,
+    documentId: args.documentId,
+  })
+  if (!readResult.ok || typeof readResult.text !== 'string') return readResult
+  const text = readResult.text
+  const { norm, origIdx } = normalizeWithMap(text)
+  const needle = normalizeQuery(args.query)
+  const maxResults = args.maxResults ?? 20
+  const contextChars = args.contextChars ?? 80
+  const hits: { index: number; excerpt: string; context: string }[] = []
+  let from = 0
+  while (from <= norm.length - needle.length && hits.length < maxResults) {
+    const pos = norm.indexOf(needle, from)
+    if (pos < 0) break
+    const endNormPos = pos + needle.length
+    const origStart = origIdx[pos] ?? 0
+    const origEnd =
+      endNormPos - 1 < origIdx.length
+        ? (origIdx[endNormPos - 1] ?? text.length - 1) + 1
+        : text.length
+    const ctxStart = Math.max(0, origStart - contextChars)
+    const ctxEnd = Math.min(text.length, origEnd + contextChars)
+    hits.push({
+      index: hits.length,
+      excerpt: text.slice(origStart, origEnd),
+      context:
+        (ctxStart > 0 ? '...' : '') +
+        text.slice(ctxStart, ctxEnd).replace(/\s+/g, ' ').trim() +
+        (ctxEnd < text.length ? '...' : ''),
+    })
+    from = pos + Math.max(1, needle.length)
+  }
+  return {
+    ok: true,
+    filename: readResult.filename,
+    query: args.query,
+    returned: hits.length,
+    hits,
+  }
+}
+
+export async function editDocument(args: {
+  context: DocumentToolContext
+  documentId: string
+  edits: EditInput[]
+}) {
+  const activeResult = await loadActiveDocument(args.context, args.documentId)
+  if (activeResult.isErr()) return { ok: false, error: activeResult.error.message }
+  if (!activeResult.value) return { ok: false, error: 'Document not found.' }
+  if (activeResult.value.fileType !== 'docx') {
+    return { ok: false, error: 'Tracked edits are only supported for .docx documents.' }
+  }
+  const activeDocument = activeResult.value
+
+  const bytesResult = await readWorkspaceBytes(
+    args.context.workspace,
+    activeDocument.storagePath,
+  )
+  if (bytesResult.isErr()) return { ok: false, error: bytesResult.error.message }
+  const editResult = await Result.tryPromise({
+    try: async () =>
+      await applyTrackedEdits(bytesResult.value, args.edits, {
+        author: 'Garden',
+      }),
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+  if (editResult.isErr()) return { ok: false, error: editResult.error.message }
+  if (editResult.value.changes.length === 0) {
+    return {
+      ok: false,
+      error:
+        editResult.value.errors[0]?.reason ??
+        'No edits could be applied. Refine context_before/context_after and retry.',
+      errors: editResult.value.errors,
+    }
+  }
+
+  const db = getDb(args.context.databaseUrl)
+  const versionSlug = crypto.randomUUID()
+  const newPath = versionStorageKey(
+    activeResult.value.ownerUserId,
+    args.documentId,
+    versionSlug,
+    activeResult.value.filename,
+  )
+  const writeBytesResult = await Result.tryPromise({
+    try: async () =>
+      await args.context.workspace.writeFileBytes(
+        newPath,
+        editResult.value.bytes,
+        contentTypeForFileType('docx'),
+      ),
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+  if (writeBytesResult.isErr()) {
+    return { ok: false, error: writeBytesResult.error.message }
+  }
+
+  const writeResult = await Result.tryPromise({
+    try: async () => {
+      const [maxRow] = await db
+        .select({ value: max(schema.documentVersion.versionNumber) })
+        .from(schema.documentVersion)
+        .where(eq(schema.documentVersion.documentId, args.documentId))
+      const versionNumber = (maxRow?.value ?? 1) + 1
+      const [versionRow] = await db
+        .insert(schema.documentVersion)
+        .values({
+          documentId: args.documentId,
+          storagePath: newPath,
+          source: 'assistant_edit',
+          versionNumber,
+          displayName: activeDocument.filename,
+        })
+        .returning({ id: schema.documentVersion.id })
+      if (!versionRow) {
+        throw new Error('Failed to record document edit version.')
+      }
+      const insertedEdits = await db
+        .insert(schema.documentEdit)
+        .values(
+          editResult.value.changes.map((change) => ({
+            documentId: args.documentId,
+            versionId: versionRow.id,
+            chatThreadId: args.context.threadId,
+            changeId: change.id,
+            delWId: change.delId ?? null,
+            insWId: change.insId ?? null,
+            deletedText: change.deletedText,
+            insertedText: change.insertedText,
+            contextBefore: change.contextBefore ?? '',
+            contextAfter: change.contextAfter ?? '',
+            status: 'pending',
+          })),
+        )
+        .returning({
+          id: schema.documentEdit.id,
+          changeId: schema.documentEdit.changeId,
+          deletedText: schema.documentEdit.deletedText,
+          insertedText: schema.documentEdit.insertedText,
+          contextBefore: schema.documentEdit.contextBefore,
+          contextAfter: schema.documentEdit.contextAfter,
+        })
+      await db
+        .update(schema.document)
+        .set({ currentVersionId: versionRow.id, updatedAt: new Date() })
+        .where(eq(schema.document.id, args.documentId))
+      return { versionId: versionRow.id, versionNumber, insertedEdits }
+    },
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+  if (writeResult.isErr()) return { ok: false, error: writeResult.error.message }
+
+  const annotations: EditAnnotation[] = writeResult.value.insertedEdits.map((row) => {
+    const sourceChange = editResult.value.changes.find(
+      (change) => change.id === row.changeId,
+    )
+    return {
+      kind: 'edit',
+      edit_id: row.id,
+      document_id: args.documentId,
+      version_id: writeResult.value.versionId,
+      version_number: writeResult.value.versionNumber,
+      change_id: row.changeId,
+      del_w_id: sourceChange?.delId,
+      ins_w_id: sourceChange?.insId,
+      deleted_text: row.deletedText,
+      inserted_text: row.insertedText,
+      context_before: row.contextBefore,
+      context_after: row.contextAfter,
+      reason: sourceChange?.reason,
+      status: 'pending',
+    }
+  })
+
+  return {
+    ok: true,
+    filename: activeDocument.filename,
+    document_id: args.documentId,
+    version_id: writeResult.value.versionId,
+    version_number: writeResult.value.versionNumber,
+    download_url: documentDownloadUrl(args.documentId, activeDocument.filename),
+    annotations,
+    errors: editResult.value.errors,
+    artifact: buildArtifact({
+      documentId: args.documentId,
+      filename: activeDocument.filename,
+      fileType: 'docx',
+      versionNumber: writeResult.value.versionNumber,
+    }),
+  }
+}
+
+export async function registerUploadedDocument(args: {
+  context: DocumentToolContext
+  filename: string
+  mediaType?: string | null
+  bytes: Uint8Array | ArrayBuffer
+}) {
+  const threadContext = await loadThreadContext(args.context)
+  if (threadContext.isErr()) return { ok: false, error: threadContext.error.message }
+  const { db, workspaceId, ownerUserId } = threadContext.value
+  const documentId = crypto.randomUUID()
+  const filename = normalizeWorkspaceFilename(args.filename)
+  const fileType = fileTypeFromFilename(filename, args.mediaType)
+  const versionPath = `/documents/${documentId}/versions/v1/${filename}`
+  const byteArray =
+    args.bytes instanceof Uint8Array ? args.bytes : new Uint8Array(args.bytes)
+  const writeResult = await Result.tryPromise({
+    try: async () =>
+      await args.context.workspace.writeFileBytes(
+        versionPath,
+        byteArray,
+        args.mediaType ?? contentTypeForFileType(fileType),
+      ),
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+  if (writeResult.isErr()) return { ok: false, error: writeResult.error.message }
+
+  const insertResult = await Result.tryPromise({
+    try: async () => {
+      const [docRow] = await db
+        .insert(schema.document)
+        .values({
+          id: documentId,
+          workspaceId,
+          ownerUserId,
+          threadId: args.context.threadId,
+          filename,
+          fileType,
+          sizeBytes: byteArray.byteLength,
+          status: 'ready',
+        })
+        .returning({ id: schema.document.id })
+      if (!docRow) throw new Error('Failed to record uploaded document.')
+      const [versionRow] = await db
+        .insert(schema.documentVersion)
+        .values({
+          documentId: docRow.id,
+          storagePath: versionPath,
+          source: 'upload',
+          versionNumber: 1,
+          displayName: filename,
+        })
+        .returning({ id: schema.documentVersion.id })
+      if (!versionRow) {
+        throw new Error('Failed to record uploaded document version.')
+      }
+      await db
+        .update(schema.document)
+        .set({ currentVersionId: versionRow.id, updatedAt: new Date() })
+        .where(eq(schema.document.id, docRow.id))
+      return { documentId: docRow.id, versionId: versionRow.id }
+    },
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+  if (insertResult.isErr()) return { ok: false, error: insertResult.error.message }
+
+  return {
+    ok: true,
+    filename,
+    document_id: insertResult.value.documentId,
+    version_id: insertResult.value.versionId,
+    version_number: 1,
+    workspace_path: versionPath,
+    download_url: documentDownloadUrl(insertResult.value.documentId, filename),
+    artifact: buildArtifact({
+      documentId: insertResult.value.documentId,
+      filename,
+      fileType,
+      versionNumber: 1,
+    }),
+  }
+}
+
+export async function getDocumentBytes(args: {
+  context: DocumentToolContext
+  documentId: string
+}) {
+  const activeResult = await loadActiveDocument(args.context, args.documentId)
+  if (activeResult.isErr()) return { ok: false, error: activeResult.error.message }
+  if (!activeResult.value) return { ok: false, error: 'Document not found.' }
+  const bytesResult = await readWorkspaceBytes(
+    args.context.workspace,
+    activeResult.value.storagePath,
+  )
+  if (bytesResult.isErr()) return { ok: false, error: bytesResult.error.message }
+  return {
+    ok: true,
+    filename: activeResult.value.filename,
+    file_type: activeResult.value.fileType,
+    media_type: contentTypeForFileType(activeResult.value.fileType),
+    bytes: bytesResult.value,
+  }
+}
+
+export async function resolveDocumentEdit(args: {
+  context: DocumentToolContext
+  documentId: string
+  editId: string
+  action: 'accept' | 'reject'
+}) {
+  const db = getDb(args.context.databaseUrl)
+  const rowResult = await Result.tryPromise({
+    try: async () => {
+      const [row] = await db
+        .select({
+          currentVersionId: schema.document.currentVersionId,
+          storagePath: schema.documentVersion.storagePath,
+          changeId: schema.documentEdit.changeId,
+          status: schema.documentEdit.status,
+        })
+        .from(schema.documentEdit)
+        .innerJoin(
+          schema.document,
+          eq(schema.documentEdit.documentId, schema.document.id),
+        )
+        .innerJoin(
+          schema.documentVersion,
+          eq(schema.document.currentVersionId, schema.documentVersion.id),
+        )
+        .where(
+          and(
+            eq(schema.document.id, args.documentId),
+            eq(schema.documentEdit.id, args.editId),
+          ),
+        )
+        .limit(1)
+      return row ?? null
+    },
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+  if (rowResult.isErr()) return { ok: false, error: rowResult.error.message }
+  if (!rowResult.value) return { ok: false, error: 'Document edit not found.' }
+  if (rowResult.value.status !== 'pending') {
+    return {
+      ok: true,
+      status: rowResult.value.status,
+      remaining_pending: null,
+    }
+  }
+  const editRow = rowResult.value
+
+  const bytesResult = await readWorkspaceBytes(
+    args.context.workspace,
+    editRow.storagePath,
+  )
+  if (bytesResult.isErr()) return { ok: false, error: bytesResult.error.message }
+  const resolvedResult = await Result.tryPromise({
+    try: async () =>
+      await resolveTrackedChange(
+        bytesResult.value,
+        [editRow.changeId],
+        args.action,
+      ),
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+  if (resolvedResult.isErr()) return { ok: false, error: resolvedResult.error.message }
+
+  const writeResult = await Result.tryPromise({
+    try: async () => {
+      await args.context.workspace.writeFileBytes(
+        editRow.storagePath,
+        resolvedResult.value.bytes,
+        contentTypeForFileType('docx'),
+      )
+      await db
+        .update(schema.documentEdit)
+        .set({
+          status: args.action === 'accept' ? 'accepted' : 'rejected',
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.documentEdit.id, args.editId))
+      if (!editRow.currentVersionId) return 0
+      const remaining = await db
+        .select({ id: schema.documentEdit.id })
+        .from(schema.documentEdit)
+        .where(
+          and(
+            eq(schema.documentEdit.documentId, args.documentId),
+            eq(schema.documentEdit.versionId, editRow.currentVersionId),
+            eq(schema.documentEdit.status, 'pending'),
+          ),
+        )
+      return remaining.length
+    },
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+  if (writeResult.isErr()) return { ok: false, error: writeResult.error.message }
+  return {
+    ok: true,
+    status: args.action === 'accept' ? 'accepted' : 'rejected',
+    remaining_pending: writeResult.value,
+  }
+}
+
+async function extractDocumentText(bytes: Buffer, fileType: string) {
+  if (fileType === 'docx') {
+    const primary = await Result.tryPromise({
+      try: async () => await extractDocxBodyText(bytes),
+      catch: (error) =>
+        new DocumentToolError({
+          message: error instanceof Error ? error.message : String(error),
+        }),
+    })
+    if (primary.isOk() && primary.value) return primary
+    return Result.tryPromise({
+      try: async () => {
+        const mammoth = await import('mammoth')
+        const result = await mammoth.extractRawText({ buffer: bytes })
+        return result.value
+      },
+      catch: (error) =>
+        new DocumentToolError({
+          message: error instanceof Error ? error.message : String(error),
+        }),
+    })
+  }
+  if (fileType === 'pdf') return extractPdfText(bytes)
+  if (fileType === 'txt' || fileType === 'md' || fileType === 'json' || fileType === 'csv') {
+    return Result.ok(bytes.toString('utf8'))
+  }
+  return Result.err(
+    new DocumentToolError({ message: `Unsupported document type: ${fileType}` }),
+  )
+}
+
+async function readWorkspaceBytes(workspace: WorkspaceFsLike, path: string) {
+  return Result.tryPromise({
+    try: async () => {
+      const bytes = await workspace.readFileBytes(path)
+      if (!bytes) throw new Error(`Document bytes not found: ${path}`)
+      return Buffer.from(bytes)
+    },
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+}
+
+function fileTypeFromFilename(filename: string, mediaType?: string | null) {
+  const lower = filename.toLowerCase()
+  if (mediaType === 'application/pdf' || lower.endsWith('.pdf')) return 'pdf'
+  if (
+    mediaType ===
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    lower.endsWith('.docx')
+  ) {
+    return 'docx'
+  }
+  if (mediaType === 'application/msword' || lower.endsWith('.doc')) return 'doc'
+  if (lower.endsWith('.txt')) return 'txt'
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'md'
+  if (mediaType === 'application/json' || lower.endsWith('.json')) return 'json'
+  if (mediaType === 'text/csv' || lower.endsWith('.csv')) return 'csv'
+  return 'unknown'
+}
+
+async function extractPdfText(bytes: Buffer) {
+  return Result.tryPromise({
+    try: async () => {
+      const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
+      const pdf = await pdfjsLib.getDocument({
+        data: new Uint8Array(bytes),
+      }).promise
+      const parts: string[] = []
+      for (let i = 1; i <= pdf.numPages; i += 1) {
+        const page = await pdf.getPage(i)
+        const textContent = await page.getTextContent()
+        parts.push(
+          `[Page ${i}]\n${textContent.items
+            .map((item) => ('str' in item ? item.str : ''))
+            .join(' ')}`,
+        )
+      }
+      return parts.join('\n\n')
+    },
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+}
+
+function normalizeWithMap(text: string): { norm: string; origIdx: number[] } {
+  const norm: string[] = []
+  const origIdx: number[] = []
+  let prevSpace = false
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i] ?? ''
+    if (/\s/.test(ch)) {
+      if (!prevSpace) {
+        norm.push(' ')
+        origIdx.push(i)
+        prevSpace = true
+      }
+    } else {
+      norm.push(ch.toLowerCase())
+      origIdx.push(i)
+      prevSpace = false
+    }
+  }
+  return { norm: norm.join(''), origIdx }
+}
+
+function normalizeQuery(query: string): string {
+  return query.trim().replace(/\s+/g, ' ').toLowerCase()
+}

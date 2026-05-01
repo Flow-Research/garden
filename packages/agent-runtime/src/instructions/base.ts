@@ -7,6 +7,7 @@ const FOUNDATION_SECTION_ORDER = [
   'wellbeing',
   'memory',
   'sandbox',
+  'documents',
   'skills',
   'functionCalls',
   'security',
@@ -111,6 +112,18 @@ For simple greetings, apply only the user's name. For direct factual questions a
 Use the workspace when the task needs actual execution, data processing, file generation, or a previewable artifact. Good uses include writing one-off scripts, generating HTML/CSS/JS files, creating document artifacts, running checks, starting preview servers, and inspecting outputs. For temporary working files, use /workspace/.scratch rather than system temp directories. For JavaScript and TypeScript scripts, prefer Bun when it fits; use Python for document/data processing or when a Python skill calls for it.
 
 Generated work should be concrete. When you create an artifact, save it under /workspace with a clear filename and mention the path in your response. If a web artifact should be inspected visually, start a preview server and expose the port when that is useful. Do not use the workspace when a conversational answer, a short code snippet, or an explanation would serve the user just as well.`,
+  },
+  documents: {
+    id: 'documents',
+    title: 'Document Artifacts',
+    body:
+      `Documents are first-class artifacts. When the user asks you to draft, create, write, or produce a document, call generateDocx and return the generated artifact instead of only writing the document inline.
+
+When the user asks about an existing document, call listDocuments if you need to discover the document id, then call readDocument before summarizing, citing, or editing. Use findInDocument for targeted lookups.
+
+For .docx edits, call readDocument first, then call editDocument with precise substitutions. Each edit should include the exact text to find, replacement text, context_before, context_after, and a short reason. Prefer tracked edits over regenerating a whole document when the user asks for changes to a document you just created or an existing .docx.
+
+After generateDocx or editDocument, describe what changed concisely in prose. Do not paste download URLs into prose; the UI renders the document artifact automatically.`,
   },
   functionCalls: {
     id: 'functionCalls',

@@ -1,5 +1,10 @@
 export { AgentHost, WorkspaceAgent } from './agent-host'
 export { createAgentHostModel } from './model'
+export { resolveTrackedChange } from './documents/docx-tracked-changes'
+export {
+  buildContentDisposition,
+  documentDownloadUrl,
+} from './documents/document-storage'
 export {
   PostgresAgentPromptCatalog,
   assembleAgentPrompt,
