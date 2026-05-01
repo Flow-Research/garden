@@ -320,7 +320,7 @@ export function WorkspaceSidebar() {
     >
       <Sidebar
         collapsible="none"
-        className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r border-sidebar-border/70"
+        className="w-[calc(var(--sidebar-width-icon)+1px)]! shrink-0 border-r border-sidebar-border/70"
       >
         <SidebarHeader className="p-0">
           <SidebarMenu>
@@ -400,7 +400,7 @@ export function WorkspaceSidebar() {
 
       <Sidebar
         collapsible="none"
-        className="hidden flex-1 md:flex group-data-[state=collapsed]:md:hidden"
+        className="hidden min-w-0 flex-1 md:flex group-data-[state=collapsed]:md:hidden"
       >
         <SidebarHeader className="gap-3 p-2">
           <div className="px-2">
