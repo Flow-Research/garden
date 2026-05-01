@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildConnectorSyncPlan,
+  hasWarmStoredConnectorServers,
   extractThreadIdFromAgentName,
   MCP_PROXY_JWT_REFRESH_WINDOW_MS,
 } from './mcp-connectors'
@@ -99,6 +100,88 @@ describe('buildConnectorSyncPlan', () => {
       { connectorId: 'google-drive', accountId: 'account-4' },
       { connectorId: 'exa-search', accountId: null },
     ])
+  })
+})
+
+describe('hasWarmStoredConnectorServers', () => {
+  it('returns true when every stored connector is registered and unexpired', () => {
+    const now = Date.UTC(2026, 3, 23, 10, 0, 0)
+    const future = new Date(
+      now + MCP_PROXY_JWT_REFRESH_WINDOW_MS + 5 * 60 * 1000,
+    ).toISOString()
+
+    expect(
+      hasWarmStoredConnectorServers({
+        registeredServerIds: ['github', 'exa-search'],
+        storedRows: [
+          {
+            connectorId: 'github',
+            serverId: 'github',
+            accountId: 'account-1',
+            jwtExpiresAt: future,
+            toolsSignature: null,
+          },
+          {
+            connectorId: 'exa-search',
+            serverId: 'exa-search',
+            accountId: null,
+            jwtExpiresAt: future,
+            toolsSignature: null,
+          },
+        ],
+        now,
+      }),
+    ).toBe(true)
+  })
+
+  it('returns false when storage is empty, missing a server, or near expiry', () => {
+    const now = Date.UTC(2026, 3, 23, 10, 0, 0)
+    const future = new Date(
+      now + MCP_PROXY_JWT_REFRESH_WINDOW_MS + 5 * 60 * 1000,
+    ).toISOString()
+    const nearExpiry = new Date(
+      now + MCP_PROXY_JWT_REFRESH_WINDOW_MS,
+    ).toISOString()
+
+    expect(
+      hasWarmStoredConnectorServers({
+        registeredServerIds: ['github'],
+        storedRows: [],
+        now,
+      }),
+    ).toBe(false)
+
+    expect(
+      hasWarmStoredConnectorServers({
+        registeredServerIds: [],
+        storedRows: [
+          {
+            connectorId: 'github',
+            serverId: 'github',
+            accountId: 'account-1',
+            jwtExpiresAt: future,
+            toolsSignature: null,
+          },
+        ],
+        now,
+      }),
+    ).toBe(false)
+
+    expect(
+      hasWarmStoredConnectorServers({
+        registeredServerIds: ['github'],
+        storedRows: [
+          {
+            connectorId: 'github',
+            serverId: 'github',
+            accountId: 'account-1',
+            jwtExpiresAt: nearExpiry,
+            toolsSignature: null,
+          },
+        ],
+        now,
+      }),
+    ).toBe(false)
   })
 })
 

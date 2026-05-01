@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useState } from 'react'
+import { useLayoutEffect, useState } from 'react'
 import { useAuthStore } from '@garden/core/auth'
 import { WorkspaceIdProvider } from '@garden/core/hooks'
 import { defaultStorage } from '@garden/core/platform'
@@ -7,6 +7,7 @@ import {
   SidebarInset,
   SidebarProvider,
 } from '@garden/ui/components/ui/sidebar'
+import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { Spinner } from '@garden/ui/components/ui/spinner'
 import { SearchCommand } from '@/features/search'
 import { ChatRuntimeProvider } from '@/features/chat/chat-runtime-provider'
@@ -66,10 +67,17 @@ export function WorkspaceLayout() {
   }, [])
 
   const activeWorkspaceId = workspace?.id ?? preferredWorkspaceId
-  const headerTitle = useMemo(() => {
-    if (workspace?.name) return workspace.name
-    return 'Garden'
-  }, [workspace?.name])
+  const hasWorkspace = Boolean(workspace?.id)
+  const titleNode = hasWorkspace ? (
+    (workspace?.name ?? null)
+  ) : (
+    <Skeleton className="h-3.5 w-28" aria-label="Loading workspace name" />
+  )
+  const subtitleNode = hasWorkspace ? (
+    'Workspace'
+  ) : (
+    <Skeleton className="mt-1 h-2.5 w-16" aria-hidden="true" />
+  )
 
   return (
     <SidebarProvider className="h-svh flex-col">
@@ -80,8 +88,8 @@ export function WorkspaceLayout() {
           <WorkspaceIdProvider wsId={activeWorkspaceId}>
             <ChatRuntimeProvider>
               <WorkspaceDockTitlebar
-                title={headerTitle}
-                subtitle={workspace?.id ? 'Workspace' : 'Restoring workspace'}
+                title={titleNode}
+                subtitle={subtitleNode}
               />
               <div className="relative flex min-h-0 flex-1 overflow-hidden bg-background">
                 <WorkspaceSidebar />
@@ -98,8 +106,8 @@ export function WorkspaceLayout() {
         ) : (
           <>
             <WorkspaceDockTitlebar
-              title={headerTitle}
-              subtitle={isRestoringWorkspace ? 'Restoring workspace' : 'Workspace setup'}
+              title={titleNode}
+              subtitle={subtitleNode}
             />
             {isRestoringWorkspace ? (
               <div className="relative flex min-h-0 flex-1 overflow-hidden bg-background">

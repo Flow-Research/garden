@@ -13,6 +13,7 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "verify:connectors": "node --experimental-strip-types scripts/verify-connector-coverage.ts",
+    "check:github-mcp": "node --experimental-strip-types scripts/check-github-mcp.ts",
     "format": "oxfmt -c ./.oxfmtrc.json --check apps packages",
     "format:write": "oxfmt -c ./.oxfmtrc.json --write apps packages",
     "clean": "turbo run clean"

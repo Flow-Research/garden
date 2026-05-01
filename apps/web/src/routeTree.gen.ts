@@ -37,6 +37,9 @@ import { Route as ApiIssuesIdRouteImport } from './routes/api/issues/$id'
 import { Route as ApiInvitationsIdRouteImport } from './routes/api/invitations/$id'
 import { Route as ApiInternalCapabilitySyncRouteImport } from './routes/api/internal/capability-sync'
 import { Route as ApiInboxUnreadCountRouteImport } from './routes/api/inbox/unread-count'
+import { Route as ApiGithubSetupRouteImport } from './routes/api/github/setup'
+import { Route as ApiGithubInstallRouteImport } from './routes/api/github/install'
+import { Route as ApiGithubCallbackRouteImport } from './routes/api/github/callback'
 import { Route as ApiConnectionsConnectorIdRouteImport } from './routes/api/connections/$connectorId'
 import { Route as ApiCommentsIdRouteImport } from './routes/api/comments/$id'
 import { Route as ApiChatThreadsRouteImport } from './routes/api/chat/threads'
@@ -204,6 +207,21 @@ const ApiInboxUnreadCountRoute = ApiInboxUnreadCountRouteImport.update({
   path: '/unread-count',
   getParentRoute: () => ApiInboxRoute,
 } as any)
+const ApiGithubSetupRoute = ApiGithubSetupRouteImport.update({
+  id: '/api/github/setup',
+  path: '/api/github/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGithubInstallRoute = ApiGithubInstallRouteImport.update({
+  id: '/api/github/install',
+  path: '/api/github/install',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGithubCallbackRoute = ApiGithubCallbackRouteImport.update({
+  id: '/api/github/callback',
+  path: '/api/github/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiConnectionsConnectorIdRoute =
   ApiConnectionsConnectorIdRouteImport.update({
     id: '/$connectorId',
@@ -364,6 +382,9 @@ export interface FileRoutesByFullPath {
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
   '/api/comments/$id': typeof ApiCommentsIdRouteWithChildren
   '/api/connections/$connectorId': typeof ApiConnectionsConnectorIdRouteWithChildren
+  '/api/github/callback': typeof ApiGithubCallbackRoute
+  '/api/github/install': typeof ApiGithubInstallRoute
+  '/api/github/setup': typeof ApiGithubSetupRoute
   '/api/inbox/unread-count': typeof ApiInboxUnreadCountRoute
   '/api/internal/capability-sync': typeof ApiInternalCapabilitySyncRoute
   '/api/invitations/$id': typeof ApiInvitationsIdRouteWithChildren
@@ -419,6 +440,9 @@ export interface FileRoutesByTo {
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
   '/api/comments/$id': typeof ApiCommentsIdRouteWithChildren
   '/api/connections/$connectorId': typeof ApiConnectionsConnectorIdRouteWithChildren
+  '/api/github/callback': typeof ApiGithubCallbackRoute
+  '/api/github/install': typeof ApiGithubInstallRoute
+  '/api/github/setup': typeof ApiGithubSetupRoute
   '/api/inbox/unread-count': typeof ApiInboxUnreadCountRoute
   '/api/internal/capability-sync': typeof ApiInternalCapabilitySyncRoute
   '/api/invitations/$id': typeof ApiInvitationsIdRouteWithChildren
@@ -476,6 +500,9 @@ export interface FileRoutesById {
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
   '/api/comments/$id': typeof ApiCommentsIdRouteWithChildren
   '/api/connections/$connectorId': typeof ApiConnectionsConnectorIdRouteWithChildren
+  '/api/github/callback': typeof ApiGithubCallbackRoute
+  '/api/github/install': typeof ApiGithubInstallRoute
+  '/api/github/setup': typeof ApiGithubSetupRoute
   '/api/inbox/unread-count': typeof ApiInboxUnreadCountRoute
   '/api/internal/capability-sync': typeof ApiInternalCapabilitySyncRoute
   '/api/invitations/$id': typeof ApiInvitationsIdRouteWithChildren
@@ -533,6 +560,9 @@ export interface FileRouteTypes {
     | '/api/chat/threads'
     | '/api/comments/$id'
     | '/api/connections/$connectorId'
+    | '/api/github/callback'
+    | '/api/github/install'
+    | '/api/github/setup'
     | '/api/inbox/unread-count'
     | '/api/internal/capability-sync'
     | '/api/invitations/$id'
@@ -588,6 +618,9 @@ export interface FileRouteTypes {
     | '/api/chat/threads'
     | '/api/comments/$id'
     | '/api/connections/$connectorId'
+    | '/api/github/callback'
+    | '/api/github/install'
+    | '/api/github/setup'
     | '/api/inbox/unread-count'
     | '/api/internal/capability-sync'
     | '/api/invitations/$id'
@@ -644,6 +677,9 @@ export interface FileRouteTypes {
     | '/api/chat/threads'
     | '/api/comments/$id'
     | '/api/connections/$connectorId'
+    | '/api/github/callback'
+    | '/api/github/install'
+    | '/api/github/setup'
     | '/api/inbox/unread-count'
     | '/api/internal/capability-sync'
     | '/api/invitations/$id'
@@ -698,6 +734,9 @@ export interface RootRouteChildren {
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiChatThreadsRoute: typeof ApiChatThreadsRouteWithChildren
   ApiCommentsIdRoute: typeof ApiCommentsIdRouteWithChildren
+  ApiGithubCallbackRoute: typeof ApiGithubCallbackRoute
+  ApiGithubInstallRoute: typeof ApiGithubInstallRoute
+  ApiGithubSetupRoute: typeof ApiGithubSetupRoute
   ApiInternalCapabilitySyncRoute: typeof ApiInternalCapabilitySyncRoute
 }
 
@@ -898,6 +937,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/inbox/unread-count'
       preLoaderRoute: typeof ApiInboxUnreadCountRouteImport
       parentRoute: typeof ApiInboxRoute
+    }
+    '/api/github/setup': {
+      id: '/api/github/setup'
+      path: '/api/github/setup'
+      fullPath: '/api/github/setup'
+      preLoaderRoute: typeof ApiGithubSetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/github/install': {
+      id: '/api/github/install'
+      path: '/api/github/install'
+      fullPath: '/api/github/install'
+      preLoaderRoute: typeof ApiGithubInstallRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/github/callback': {
+      id: '/api/github/callback'
+      path: '/api/github/callback'
+      fullPath: '/api/github/callback'
+      preLoaderRoute: typeof ApiGithubCallbackRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/connections/$connectorId': {
       id: '/api/connections/$connectorId'
@@ -1359,6 +1419,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiChatThreadsRoute: ApiChatThreadsRouteWithChildren,
   ApiCommentsIdRoute: ApiCommentsIdRouteWithChildren,
+  ApiGithubCallbackRoute: ApiGithubCallbackRoute,
+  ApiGithubInstallRoute: ApiGithubInstallRoute,
+  ApiGithubSetupRoute: ApiGithubSetupRoute,
   ApiInternalCapabilitySyncRoute: ApiInternalCapabilitySyncRoute,
 }
 export const routeTree = rootRouteImport

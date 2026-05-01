@@ -1,10 +1,16 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { format, formatDistanceToNowStrict } from 'date-fns'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon as IconifyIcon } from '@iconify/react'
-import { ChevronDown, ChevronRight, Loader2, MoreHorizontal, Plug } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+  MoreHorizontal,
+  Plug,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { getConnectorById } from '@garden/connectors'
 import type { ConnectorId } from '@garden/connectors/registry'
@@ -87,11 +93,21 @@ type ConnectionAction = 'disconnect' | 'resync'
 
 type ToolGroupKey = 'read' | 'write' | 'interactive'
 
-const TOOL_GROUPS: Array<{ key: ToolGroupKey; label: string; risks: RiskClass[] }> = [
+const TOOL_GROUPS: Array<{
+  key: ToolGroupKey
+  label: string
+  risks: RiskClass[]
+}> = [
   { key: 'read', label: 'Read-only tools', risks: ['read'] },
-  { key: 'write', label: 'Write / delete tools', risks: ['write', 'destructive'] },
+  {
+    key: 'write',
+    label: 'Write / delete tools',
+    risks: ['write', 'destructive'],
+  },
   { key: 'interactive', label: 'Interactive tools', risks: ['send_external'] },
 ]
+
+const GRANT_UPDATE_DEBOUNCE_MS = 450
 
 async function loadConnectionsSnapshot() {
   const response = await fetch('/api/connections', { credentials: 'include' })
@@ -131,7 +147,8 @@ async function mutateToolGrant(args: {
       }),
     },
   )
-  if (!response.ok) throw new Error(`Failed to update trust for ${args.toolName}`)
+  if (!response.ok)
+    throw new Error(`Failed to update trust for ${args.toolName}`)
   return response.json()
 }
 
@@ -140,7 +157,8 @@ async function loadConnectorActivity(connectorId: ConnectorId) {
     `/api/connections/${encodeURIComponent(connectorId)}/activity`,
     { credentials: 'include' },
   )
-  if (!response.ok) throw new Error(`Failed to load activity for ${connectorId}`)
+  if (!response.ok)
+    throw new Error(`Failed to load activity for ${connectorId}`)
   return (await response.json()) as ConnectionActivityResponse
 }
 
@@ -148,6 +166,24 @@ function currentCallbackUrl() {
   return typeof window === 'undefined'
     ? '/workspace'
     : `${window.location.pathname}${window.location.search}`
+}
+
+function startGitHubAppInstall() {
+  window.location.href = '/api/github/install'
+}
+
+function consumeGitHubSetupStatus() {
+  if (typeof window === 'undefined') return null
+
+  const url = new URL(window.location.href)
+  if (url.searchParams.get('panelEntityId') !== 'github') return null
+
+  const status = url.searchParams.get('github_setup')
+  if (!status) return null
+
+  url.searchParams.delete('github_setup')
+  window.history.replaceState(window.history.state, '', url.toString())
+  return status
 }
 
 const CONNECTOR_ICON_ID: Record<ConnectorId, string | null> = {
@@ -231,6 +267,46 @@ function bulkValueForTools(
   return first
 }
 
+function countGrants(tools: ConnectionTool[]) {
+  const grants = { auto: 0, allow: 0, ask: 0 }
+  for (const tool of tools) {
+    for (const trustLevel of Object.values(tool.grantsByAgent)) {
+      grants[trustLevel] += 1
+    }
+  }
+  return grants
+}
+
+function updateSnapshotToolGrant(
+  snapshot: ConnectionsSnapshot,
+  args: Parameters<typeof mutateToolGrant>[0],
+): ConnectionsSnapshot {
+  return {
+    ...snapshot,
+    connectors: snapshot.connectors.map((connector) => {
+      if (connector.id !== args.connectorId) return connector
+
+      const tools = connector.tools.map((tool) =>
+        tool.name === args.toolName
+          ? {
+              ...tool,
+              grantsByAgent: {
+                ...tool.grantsByAgent,
+                [args.agentId]: args.trustLevel,
+              },
+            }
+          : tool,
+      )
+
+      return {
+        ...connector,
+        grants: countGrants(tools),
+        tools,
+      }
+    }),
+  }
+}
+
 function pickDefaultConnector(
   connectors: ConnectionItem[],
   focusedId?: ConnectorId,
@@ -251,12 +327,33 @@ export function ConnectionsPage({
 } = {}) {
   const queryClient = useQueryClient()
   const [activityOpen, setActivityOpen] = useState(false)
+  const pendingGrantUpdates = useRef<
+    Map<
+      string,
+      {
+        timeout: ReturnType<typeof setTimeout>
+        args: Parameters<typeof mutateToolGrant>[0]
+      }
+    >
+  >(new Map())
 
   const snapshotQuery = useQuery({
     queryKey: ['workspace-connections'],
     queryFn: loadConnectionsSnapshot,
-    staleTime: 20_000,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   })
+
+  useEffect(() => {
+    const status = consumeGitHubSetupStatus()
+    if (!status) return
+
+    void snapshotQuery.refetch()
+    if (status === 'connected') {
+      toast.success('GitHub connected')
+    }
+  }, [snapshotQuery.refetch])
   const connectionMutation = useMutation({
     mutationFn: ({
       connectorId,
@@ -273,12 +370,50 @@ export function ConnectionsPage({
   })
   const grantMutation = useMutation({
     mutationFn: mutateToolGrant,
-    onSuccess: async () => {
+    onError: async (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Failed to update tool permission',
+      )
       await queryClient.invalidateQueries({
         queryKey: ['workspace-connections'],
       })
     },
   })
+
+  useEffect(
+    () => () => {
+      for (const pending of pendingGrantUpdates.current.values()) {
+        clearTimeout(pending.timeout)
+      }
+      pendingGrantUpdates.current.clear()
+    },
+    [],
+  )
+
+  const updateToolGrant = useCallback(
+    (args: Parameters<typeof mutateToolGrant>[0]) => {
+      queryClient.setQueryData<ConnectionsSnapshot>(
+        ['workspace-connections'],
+        (current) => (current ? updateSnapshotToolGrant(current, args) : current),
+      )
+
+      const key = `${args.connectorId}:${args.agentId}:${args.toolName}`
+      const pending = pendingGrantUpdates.current.get(key)
+      if (pending) clearTimeout(pending.timeout)
+
+      const timeout = setTimeout(() => {
+        const latest = pendingGrantUpdates.current.get(key)
+        if (!latest) return
+        pendingGrantUpdates.current.delete(key)
+        grantMutation.mutate(latest.args)
+      }, GRANT_UPDATE_DEBOUNCE_MS)
+
+      pendingGrantUpdates.current.set(key, { timeout, args })
+    },
+    [grantMutation, queryClient],
+  )
 
   const snapshot = snapshotQuery.data
   const connector = useMemo(
@@ -324,6 +459,7 @@ export function ConnectionsPage({
   const connectorSpec = getConnectorById(connector.id)
   const isConnected = connector.status === 'connected'
   const isManaged = !connectorSpec?.oauth
+  const canConfigureTools = isConnected && connector.tools.length > 0
   const statusLabel = isConnected
     ? 'Connected'
     : connector.status === 'degraded'
@@ -340,7 +476,7 @@ export function ConnectionsPage({
     for (const tool of groupTools) {
       const current = tool.grantsByAgent[selectedAgent.id] ?? 'auto'
       if (current === value) continue
-      grantMutation.mutate({
+      updateToolGrant({
         connectorId: connector.id,
         toolName: tool.name,
         agentId: selectedAgent.id,
@@ -370,6 +506,9 @@ export function ConnectionsPage({
               >
                 {statusLabel}
               </span>
+              {snapshotQuery.isFetching ? (
+                <Loader2 className="size-3 animate-spin text-muted-foreground" />
+              ) : null}
             </div>
             <p className="mt-1 max-w-prose text-xs text-muted-foreground">
               {connector.description}
@@ -397,8 +536,15 @@ export function ConnectionsPage({
             <Button
               size="sm"
               className="h-7 text-xs"
-              disabled={connectionMutation.isPending || !connectorSpec?.oauth}
+              disabled={
+                connectionMutation.isPending ||
+                (connector.id !== 'github' && !connectorSpec?.oauth)
+              }
               onClick={async () => {
+                if (connector.id === 'github') {
+                  startGitHubAppInstall()
+                  return
+                }
                 if (!connectorSpec?.oauth) return
                 const response = await authClient.oauth2.link({
                   providerId: connectorSpec.oauth.providerId,
@@ -418,7 +564,13 @@ export function ConnectionsPage({
                 }
               }}
             >
-              {connector.status === 'degraded' ? 'Reconnect' : 'Connect'}
+              {connector.id === 'github'
+                ? connector.status === 'degraded'
+                  ? 'Reconnect GitHub App'
+                  : 'Install GitHub App'
+                : connector.status === 'degraded'
+                  ? 'Reconnect'
+                  : 'Connect'}
             </Button>
           ) : null}
 
@@ -479,17 +631,23 @@ export function ConnectionsPage({
             Tool permissions
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Choose when {selectedAgent?.name ?? 'your agent'} is allowed to use these tools.
+            Choose when {selectedAgent?.name ?? 'your agent'} is allowed to use
+            these tools.
           </p>
 
-          {connector.tools.length === 0 ? (
+          {!isConnected ? (
             <div className="mt-10 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
               <Plug className="size-5 opacity-60" />
-              {isConnected
-                ? 'No tools discovered yet. Try resyncing.'
-                : isManaged
-                  ? 'Sync this provider to load its tools.'
+              {isManaged
+                ? 'Sync this provider to load its tools.'
+                : connector.id === 'github'
+                  ? 'Install the GitHub App to enable repository tools.'
                   : 'Connect this provider to load its tools.'}
+            </div>
+          ) : !canConfigureTools ? (
+            <div className="mt-10 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Plug className="size-5 opacity-60" />
+              No tools discovered yet. Try resyncing.
             </div>
           ) : (
             <div className="mt-6 space-y-6">
@@ -504,7 +662,7 @@ export function ConnectionsPage({
                     agentId={selectedAgent?.id ?? null}
                     onToolChange={(toolName, value) => {
                       if (!selectedAgent) return
-                      grantMutation.mutate({
+                      updateToolGrant({
                         connectorId: connector.id,
                         toolName,
                         agentId: selectedAgent.id,
@@ -564,18 +722,13 @@ function ToolGroup({
           <ChevronIcon className="size-3" />
           {label}
         </button>
-        <BulkSelect
-          value={bulk}
-          onChange={onBulkChange}
-          disabled={disabled}
-        />
+        <BulkSelect value={bulk} onChange={onBulkChange} disabled={disabled} />
       </div>
 
       {expanded ? (
         <ul className="mt-2">
           {tools.map((tool) => {
-            const value =
-              (agentId && tool.grantsByAgent[agentId]) || 'auto'
+            const value = (agentId && tool.grantsByAgent[agentId]) || 'auto'
             return (
               <li
                 key={tool.name}
@@ -755,7 +908,10 @@ function ActivityDrawerBody({ connector }: { connector: ConnectionItem }) {
                 </span>
                 <span
                   className="w-24 shrink-0 text-right text-xs text-muted-foreground"
-                  title={format(new Date(entry.timestamp), "MMM d, yyyy 'at' h:mm a")}
+                  title={format(
+                    new Date(entry.timestamp),
+                    "MMM d, yyyy 'at' h:mm a",
+                  )}
                 >
                   {formatDistanceToNowStrict(new Date(entry.timestamp), {
                     addSuffix: true,

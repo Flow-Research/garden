@@ -78,6 +78,27 @@
       "when": 1777250228375,
       "tag": "0010_drop_chat_thread_messages",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1777499880000,
+      "tag": "0011_github_app_installation",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1777670400000,
+      "tag": "0012_github_installation_per_workspace",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1777674000000,
+      "tag": "0013_drop_github_app_accounts",
+      "breakpoints": true
     }
   ]
 }

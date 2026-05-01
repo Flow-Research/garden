@@ -3,6 +3,7 @@
 import {
   Fragment,
   createContext,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -374,18 +375,22 @@ function getPreferredPanelAfterRestore(api: DockviewApi) {
 /**
  * Per-panel mount strategy.
  *
- * Chat panels read from the workspace-mounted chat runtime registry. Keeping
- * chat panels mounted still preserves local UI affordances like drafts,
- * sidebar state, debug drawer state, and scroll position across tab switches.
+ * Everything renders only while it's the active tab (`onlyWhenVisible`).
  *
- * The SDK socket itself now lives above Dockview; `useAgent` still needs one
- * fixed `sub` chain per thread, so the hoist is a workspace-level registry of
- * child thread runtimes rather than one multiplexed parent socket.
+ * Chat used to use `renderer: 'always'` so it stayed mounted across tab
+ * switches. The cost was a Dockview `.dv-render-overlay` (absolute, z-index 1)
+ * sitting in the gridview at all times — and that overlay leaked over the
+ * left rail's chat-list explore menu, especially during sidebar collapse
+ * animations where Dockview's RAF position recalc lagged behind the CSS
+ * transition. The runtime/socket already lives above Dockview in
+ * `ChatRuntimeProvider`, drafts are persisted in `chat-store`, so unmounting
+ * the chat panel only loses scroll position — an acceptable trade for not
+ * having a stray overlay paint over the sidebar.
  */
 function getPanelRenderer(
-  kind: WorkspacePanelKind,
+  _kind: WorkspacePanelKind,
 ): DockviewPanelRenderer | undefined {
-  return kind === 'chat' ? 'always' : undefined
+  return undefined
 }
 
 function getPanelConstraints(kind: WorkspacePanelKind) {
@@ -700,8 +705,8 @@ export function WorkspaceDockTitlebar({
   title,
   subtitle,
 }: {
-  title?: string
-  subtitle?: string
+  title?: ReactNode
+  subtitle?: ReactNode
 }) {
   const ctx = useContext(WorkspaceDockContext)
   const hasActiveGroup = Boolean(ctx?.activeGroupId)
@@ -1983,13 +1988,15 @@ export function WorkspaceDockProvider({
           window.localStorage.removeItem(storageKey)
         }
 
-        // Upgrade any restored chat panels to `renderer: 'always'`. Saved
-        // layouts from before we set this on add need to opt into mounted-
-        // while-hidden so their `useAgent` socket survives tab switches.
+        // Reconcile saved-layout renderers with the current strategy. Older
+        // layouts persisted chat panels as `renderer: 'always'`, which left
+        // a stray `.dv-render-overlay` painting over the sidebar's chat-list
+        // explore menu. Downgrade those (and any other stale 'always' panel)
+        // to the default `onlyWhenVisible`.
         for (const panel of api.panels) {
           const params = getPanelParams(panel)
-          const desired = getPanelRenderer(params.kind)
-          if (desired && panel.api.renderer !== desired) {
+          const desired = getPanelRenderer(params.kind) ?? 'onlyWhenVisible'
+          if (panel.api.renderer !== desired) {
             panel.api.setRenderer(desired)
           }
         }

@@ -161,12 +161,16 @@ async function requireDashboardAccess(workspaceId: string) {
 
 async function loadDashboardConnections(workspaceId: string) {
   const { db } = await requireDashboardAccess(workspaceId)
-  const [connections, capabilities, permissionGrants, toolCallAudits] =
+  const [connections, githubInstallations, capabilities, permissionGrants, toolCallAudits] =
     await Promise.all([
       db
         .select()
         .from(schema.account)
         .where(eq(schema.account.workspaceId, workspaceId)),
+      db
+        .select()
+        .from(schema.githubAppInstallation)
+        .where(eq(schema.githubAppInstallation.workspaceId, workspaceId)),
       db.select().from(schema.capability),
       db.select().from(schema.permissionGrant),
       db
@@ -178,6 +182,7 @@ async function loadDashboardConnections(workspaceId: string) {
   return buildConnectionSurface({
     agentIds: [],
     connections,
+    githubInstallations,
     capabilities,
     permissionGrants,
     toolCallAudits,

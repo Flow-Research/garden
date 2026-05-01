@@ -27,8 +27,13 @@ export const Route = createFileRoute('/api/connections')({
           .from(schema.agent)
           .where(eq(schema.agent.workspaceId, workspaceId))
         const agentIds = agents.map((agent) => agent.id)
-        const [connections, capabilities, permissionGrants, toolCallAudits] =
-          await Promise.all([
+        const [
+          connections,
+          githubInstallations,
+          capabilities,
+          permissionGrants,
+          toolCallAudits,
+        ] = await Promise.all([
             db
               .select()
               .from(schema.account)
@@ -38,6 +43,10 @@ export const Route = createFileRoute('/api/connections')({
                   isNotNull(schema.account.connectorType),
                 ),
               ),
+            db
+              .select()
+              .from(schema.githubAppInstallation)
+              .where(eq(schema.githubAppInstallation.workspaceId, workspaceId)),
             db.select().from(schema.capability),
             agentIds.length > 0
               ? db
@@ -56,6 +65,7 @@ export const Route = createFileRoute('/api/connections')({
         const connectors = buildConnectionSurface({
           agentIds,
           connections,
+          githubInstallations,
           capabilities,
           permissionGrants,
           toolCallAudits,

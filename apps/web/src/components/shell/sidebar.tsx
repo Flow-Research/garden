@@ -33,7 +33,6 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
 } from '@garden/ui/components/ui/sidebar'
 import {
   deduplicateInboxItems,
@@ -219,7 +218,6 @@ export function WorkspaceSidebar() {
   const { replace } = useNavigation()
   const { activePanel, openPanel } = useWorkspaceDock()
   const { claimWarmSession, sessions } = useAgentSessions()
-  const { setOpen } = useSidebar()
   const workspace = useWorkspaceStore((state) => state.workspace)
   const clearWorkspace = useWorkspaceStore((state) => state.clearWorkspace)
   const user = useAuthStore((state) => state.user)
@@ -243,10 +241,6 @@ export function WorkspaceSidebar() {
   )
   const unreadCount = inboxItems.filter((item) => !item.read).length
 
-  const revealExplorer = useCallback(() => {
-    setOpen(true)
-  }, [setOpen])
-
   const openInbox = useCallback(() => {
     openPanel({ kind: 'inbox', title: 'Inbox' })
   }, [openPanel])
@@ -265,7 +259,10 @@ export function WorkspaceSidebar() {
 
   const openRailContext = useCallback(
     (item: RailItem) => {
-      revealExplorer()
+      // Switching rail context only swaps the active dock panel — it must NOT
+      // toggle the sidebar's open/closed state. Auto-expanding here was making
+      // the sidebar pop back open the moment the user clicked any rail icon,
+      // which fought with their explicit collapse.
       if (item.id === 'chats') {
         const latestThread = sessions[0] ?? null
         if (latestThread) {
@@ -297,7 +294,7 @@ export function WorkspaceSidebar() {
 
       openPanel(item.defaultPanel)
     },
-    [claimWarmSession, openPanel, revealExplorer, sessions],
+    [claimWarmSession, openPanel, sessions],
   )
 
   const handleLogout = useCallback(async () => {
@@ -824,7 +821,9 @@ function ConnectionsExplorer({
   const snapshotQuery = useQuery({
     queryKey: ['workspace-connections'],
     queryFn: loadConnectionsForSidebar,
-    staleTime: 20_000,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   })
 
   const { connected, available } = useMemo(() => {

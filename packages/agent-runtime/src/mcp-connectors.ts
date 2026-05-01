@@ -18,6 +18,12 @@ export type ConnectorSyncPlan = {
   bindingsToRefresh: ActiveConnectorBinding[]
 }
 
+export type WarmConnectorServerCheck = {
+  registeredServerIds: string[]
+  storedRows: StoredConnectorServerRow[]
+  now?: number
+}
+
 export function extractThreadIdFromAgentName(agentName: string) {
   const normalized = agentName.trim()
   if (!normalized) return null
@@ -66,4 +72,20 @@ export function buildConnectorSyncPlan(args: {
       }),
     ),
   }
+}
+
+export function hasWarmStoredConnectorServers(args: WarmConnectorServerCheck) {
+  if (args.storedRows.length === 0) return false
+
+  const now = args.now ?? Date.now()
+  const registeredServerIds = new Set(args.registeredServerIds)
+
+  return args.storedRows.every((row) => {
+    if (!registeredServerIds.has(row.serverId)) return false
+
+    return (
+      Date.parse(row.jwtExpiresAt) - now >
+      MCP_PROXY_JWT_REFRESH_WINDOW_MS
+    )
+  })
 }

@@ -14,6 +14,9 @@ const cloudflareConfigPath =
 
 const config = defineConfig({
   clearScreen: false,
+  server: {
+    allowedHosts: ['.ngrok-free.app'],
+  },
   resolve: {
     tsconfigPaths: true,
     dedupe: ['react', 'react-dom'],

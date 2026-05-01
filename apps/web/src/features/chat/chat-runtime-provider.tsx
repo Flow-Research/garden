@@ -13,6 +13,7 @@ import { useAgent } from 'agents/react'
 import { useAgentChat } from '@cloudflare/ai-chat/react'
 import type { UIMessage } from 'ai'
 import { create } from 'zustand'
+import { useChatStore } from '@garden/core/chat'
 import {
   useAgentSessions,
   type AgentChatSession,
@@ -172,6 +173,57 @@ function ChatRuntimeConnection({
     [agent],
   )
 
+  const prepareRuntime = useCallback(
+    async (cancelled: () => boolean) => {
+      await agent.ready
+      if (cancelled()) return null
+      return (await agent.stub.prepareRuntime()) as
+        | { ok: true }
+        | { ok: false; error: string }
+    },
+    [agent],
+  )
+
+  useEffect(() => {
+    let cancelled = false
+
+    const runPrepareRuntime = () => {
+      void Result.tryPromise(() =>
+        prepareRuntime(() => cancelled),
+      ).then((result) => {
+        if (cancelled) return
+        if (Result.isError(result)) {
+          console.warn('[chat.runtime] runtime prewarm failed', result.error)
+          return
+        }
+        if (result.value && !result.value.ok) {
+          console.warn(
+            '[chat.runtime] runtime prewarm failed',
+            result.value.error,
+          )
+        }
+      })
+    }
+
+    const onConnectionsChanged = () => runPrepareRuntime()
+
+    runPrepareRuntime()
+    window.addEventListener('garden:connections-changed', onConnectionsChanged)
+
+    return () => {
+      cancelled = true
+      window.removeEventListener(
+        'garden:connections-changed',
+        onConnectionsChanged,
+      )
+    }
+  }, [prepareRuntime, session.id])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(new Event('garden:connections-changed'))
+  }, [session.id])
+
   const markTurnError = useCallback(
     (err: Error) => {
       pendingTurnRef.current = null
@@ -182,6 +234,13 @@ function ChatRuntimeConnection({
         unread: false,
         updatedAt: new Date().toISOString(),
       })
+      // Persist the error knowledge to the chat store. `status: 'error'`
+      // above is cache-only and gets wiped by the next refetch; the store
+      // flag is the durable signal `useAgentSessions` reads when picking a
+      // warm session. Without it, a refetched errored chat looks `idle` +
+      // placeholder-titled = warm, and `claimWarmSession` will hand the
+      // broken thread back as the user's next "New Chat".
+      useChatStore.getState().setSessionErrored(session.id, true)
     },
     [session.id, updateSessionPreview],
   )
@@ -211,6 +270,9 @@ function ChatRuntimeConnection({
         updatedAt: new Date().toISOString(),
         persist: true,
       })
+      // A successful turn recovers the chat — clear any prior errored mark
+      // so it's once again a normal, non-errored chat.
+      useChatStore.getState().setSessionErrored(session.id, false)
     },
     onError: markTurnError,
     experimental_throttle: 50,

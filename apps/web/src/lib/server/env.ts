@@ -12,8 +12,13 @@ export type AppEnv = {
   SANDBOX_TRANSPORT: RequiredEnvBinding<'SANDBOX_TRANSPORT'>
   AgentHost: RequiredEnvBinding<'AgentHost'>
   Sandbox: RequiredEnvBinding<'Sandbox'>
+  ENVIRONMENT?: 'development' | 'test' | 'production'
   GITHUB_CLIENT_ID?: string
   GITHUB_CLIENT_SECRET?: string
+  GITHUB_APP_ID?: string
+  GITHUB_APP_SLUG?: string
+  GITHUB_APP_PRIVATE_KEY?: string
+  GITHUB_WEBHOOK_SECRET?: string
   GOOGLE_CLIENT_ID?: string
   GOOGLE_CLIENT_SECRET?: string
   MCP_PROXY_URL?: string

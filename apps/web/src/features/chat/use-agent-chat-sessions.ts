@@ -67,6 +67,24 @@ function isWarmSession(session: AgentChatSession) {
   return (
     !session.archivedAt &&
     session.status === 'idle' &&
+    isPendingFirstTurn(session)
+  )
+}
+
+/**
+ * A chat is "pending its first turn" while it still has the placeholder title
+ * AND no stored lastMessage. We use this to keep pre-warmed (and just-claimed)
+ * chats out of the sidebar listing — they only become real entries once the
+ * first turn finishes and `onFinish` writes a real title + lastMessage with a
+ * fresh updatedAt, which then sorts the chat to the top of the list.
+ *
+ * Status is intentionally NOT considered: while a chat is `submitted` /
+ * `streaming` after the user hits send, the persisted title/lastMessage are
+ * still placeholders, and showing a row labelled "New Chat" mid-stream is the
+ * exact UX bug we're fixing.
+ */
+export function isPendingFirstTurn(session: AgentChatSession) {
+  return (
     session.title.trim().toLowerCase() === NEW_SESSION_TITLE.toLowerCase() &&
     session.lastMessage.trim().length === 0
   )
@@ -136,6 +154,11 @@ export function useAgentSessions(
   const user = useAuthStore((state) => state.user)
   const workspace = useWorkspaceStore((state) => state.workspace)
   const selectedAgentId = useChatStore((state) => state.selectedAgentId)
+  // Persisted bookkeeping: ids whose first turn errored. We exclude these
+  // from the warm pool so a refetch can never re-promote a broken thread to
+  // "next New Chat" status (the cache `status: 'error'` flag is transient and
+  // gets wiped by refetch — this set survives).
+  const erroredSessionIds = useChatStore((state) => state.erroredSessionIds)
   const workspaceId = workspace?.id ?? null
   const warmCreateInFlightRef = useRef(false)
 
@@ -198,17 +221,22 @@ export function useAgentSessions(
   // both archive and delete since their on-success effect on the list is
   // identical: the row is gone, and any stashed composer draft for that
   // session is no longer reachable so we drop it from the persisted store
-  // (otherwise it leaks into garden_chat_drafts forever).
+  // (otherwise it leaks into garden_chat_drafts forever). Same reasoning
+  // for the errored-session bookkeeping — once the row is gone, leaving the
+  // id in `erroredSessionIds` would be persistent dead weight.
   const optimisticRemoveSession = (sessionId: string) => {
     const previousSessions = qc.getQueryData<AgentChatSession[]>(queryKey)
     const previousDraft = useChatStore.getState().inputDrafts[sessionId] ?? null
+    const previouslyErrored =
+      sessionId in useChatStore.getState().erroredSessionIds
 
     qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>
       current.filter((session) => session.id !== sessionId),
     )
     useChatStore.getState().clearInputDraft(sessionId)
+    useChatStore.getState().setSessionErrored(sessionId, false)
 
-    return { previousSessions, previousDraft, sessionId }
+    return { previousSessions, previousDraft, previouslyErrored, sessionId }
   }
 
   const rollbackRemoveSession = (
@@ -216,6 +244,7 @@ export function useAgentSessions(
       | {
           previousSessions: AgentChatSession[] | undefined
           previousDraft: string | null
+          previouslyErrored: boolean
           sessionId: string
         }
       | undefined,
@@ -228,6 +257,9 @@ export function useAgentSessions(
       useChatStore
         .getState()
         .setInputDraft(context.sessionId, context.previousDraft)
+    }
+    if (context.previouslyErrored) {
+      useChatStore.getState().setSessionErrored(context.sessionId, true)
     }
   }
 
@@ -333,15 +365,19 @@ export function useAgentSessions(
   const sessions = sessionsQuery.data ?? []
 
   // Keep exactly one warm empty chat per workspace/agent. Used only for the
-  // snappy first click path; non-empty chats are never recycled.
+  // snappy first click path; non-empty chats are never recycled. Errored ids
+  // are excluded so a thread whose first turn failed can never be re-served
+  // as the next "New Chat" — even after a refetch resets cache status to
+  // 'idle' and the row would otherwise look pristine again.
   const warmSession = useMemo(
     () =>
       sessions.find(
         (session) =>
           isWarmSession(session) &&
+          !(session.id in erroredSessionIds) &&
           (!selectedAgentId || session.agentId === selectedAgentId),
       ) ?? null,
-    [selectedAgentId, sessions],
+    [erroredSessionIds, selectedAgentId, sessions],
   )
 
   const claimWarmSession = useCallback(async () => {

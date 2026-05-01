@@ -203,7 +203,9 @@ describe('WorkspaceSidebar', () => {
 
     await user.click(screen.getByRole('button', { name: /chats/i }))
 
-    expect(mockSetOpen).toHaveBeenCalledWith(true)
+    // Clicking a rail icon must NOT toggle the sidebar's open state — the
+    // user's explicit collapse should be respected when they switch contexts.
+    expect(mockSetOpen).not.toHaveBeenCalled()
     await waitFor(() => {
       expect(mockClaimWarmSession).toHaveBeenCalled()
     })

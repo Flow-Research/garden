@@ -341,6 +341,25 @@ export const MessageResponse = memo(
 
 MessageResponse.displayName = "MessageResponse";
 
+export type MessageFooterProps = HTMLAttributes<HTMLDivElement>;
+
+export const MessageFooter = ({
+  className,
+  children,
+  ...props
+}: MessageFooterProps) => (
+  <div
+    className={cn(
+      "flex items-center gap-1",
+      "group-[.is-user]:ml-auto",
+      className
+    )}
+    {...props}
+  >
+    {children}
+  </div>
+);
+
 export type MessageToolbarProps = ComponentProps<"div">;
 
 export const MessageToolbar = ({

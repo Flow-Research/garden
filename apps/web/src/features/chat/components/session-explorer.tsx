@@ -22,6 +22,7 @@ import {
   useWorkspaceDock,
 } from '@/components/shell/workspace-dock'
 import {
+  isPendingFirstTurn,
   useAgentSessions,
   type AgentChatSession,
 } from '../use-agent-chat-sessions'
@@ -179,7 +180,16 @@ export function ChatSessionExplorer({
   const { archiveSession, renameSession, sessions, sessionsQuery } =
     useAgentSessions()
 
-  const activeSessions = useMemo(() => sessions, [sessions])
+  // Hide chats that haven't completed their first turn yet — that covers the
+  // pre-warmed "New Chat" we keep ready in the background, the warm chat the
+  // user just clicked into but hasn't messaged, and the in-flight chat that
+  // is still streaming its first reply (title/lastMessage land at onFinish,
+  // not at send). They reappear at the top of the list automatically once
+  // `onFinish` writes a real title + lastMessage with a fresh updatedAt.
+  const activeSessions = useMemo(
+    () => sessions.filter((session) => !isPendingFirstTurn(session)),
+    [sessions],
+  )
   // Distinguish "loading" from "loaded but empty" so we don't flash the
   // "Start a chat" empty-state while the first fetch is still in flight.
   const isInitialLoad = sessionsQuery.isPending && activeSessions.length === 0
