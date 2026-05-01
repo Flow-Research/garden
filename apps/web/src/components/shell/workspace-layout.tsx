@@ -8,7 +8,6 @@ import {
   SidebarProvider,
 } from '@garden/ui/components/ui/sidebar'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
-import { Spinner } from '@garden/ui/components/ui/spinner'
 import { SearchCommand } from '@/features/search'
 import { ChatRuntimeProvider } from '@/features/chat/chat-runtime-provider'
 import { OnboardingOverlay } from '@/features/onboarding'
@@ -21,23 +20,38 @@ import {
   WorkspaceDockView,
 } from './workspace-dock'
 
-function EmptyWorkspaceState({
-  loading,
-}: {
-  loading: boolean
-}) {
+function WorkspaceLoadingSkeleton() {
+  return (
+    <section
+      className="flex h-full flex-1 flex-col gap-3 p-4"
+      aria-label="Loading workspace"
+      aria-busy="true"
+    >
+      <div className="flex items-center gap-3">
+        <Skeleton className="size-7 rounded-md" />
+        <Skeleton className="h-3 w-40" />
+      </div>
+      <Skeleton className="h-9 w-full rounded-md" />
+      <div className="flex flex-1 flex-col gap-2">
+        <Skeleton className="h-4 w-full rounded-md" />
+        <Skeleton className="h-4 w-11/12 rounded-md" />
+        <Skeleton className="h-4 w-10/12 rounded-md" />
+        <Skeleton className="h-4 w-9/12 rounded-md" />
+      </div>
+    </section>
+  )
+}
+
+function WorkspaceSetupState() {
   return (
     <section className="flex h-full flex-1 items-center justify-center px-6">
       <div className="flex max-w-sm flex-col items-center gap-3 text-center">
-        {loading ? <Spinner className="size-5" /> : null}
         <div className="space-y-1">
           <h2 className="text-sm font-medium text-foreground">
-            {loading ? 'Restoring workspace' : 'Finish workspace setup'}
+            Finish workspace setup
           </h2>
           <p className="text-sm text-muted-foreground">
-            {loading
-              ? 'Restoring your workspace and tabs.'
-              : 'Create or choose a workspace to start working.'}
+            Create or choose a workspace to start working.
           </p>
         </div>
       </div>
@@ -109,23 +123,17 @@ export function WorkspaceLayout() {
               title={titleNode}
               subtitle={subtitleNode}
             />
-            {isRestoringWorkspace ? (
-              <div className="relative flex min-h-0 flex-1 overflow-hidden bg-background">
-                <SidebarInset className="relative overflow-hidden">
-                  <div className="relative flex min-h-0 flex-1 overflow-hidden">
-                    <EmptyWorkspaceState loading />
-                  </div>
-                </SidebarInset>
-              </div>
-            ) : (
-              <div className="relative flex min-h-0 flex-1 overflow-hidden bg-background">
-                <SidebarInset className="relative overflow-hidden">
-                  <div className="relative flex min-h-0 flex-1 overflow-hidden">
-                    <EmptyWorkspaceState loading={false} />
-                  </div>
-                </SidebarInset>
-              </div>
-            )}
+            <div className="relative flex min-h-0 flex-1 overflow-hidden bg-background">
+              <SidebarInset className="relative overflow-hidden">
+                <div className="relative flex min-h-0 flex-1 overflow-hidden">
+                  {isRestoringWorkspace ? (
+                    <WorkspaceLoadingSkeleton />
+                  ) : (
+                    <WorkspaceSetupState />
+                  )}
+                </div>
+              </SidebarInset>
+            </div>
           </>
         )}
       </WorkspaceDockProvider>
