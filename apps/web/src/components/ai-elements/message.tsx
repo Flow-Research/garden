@@ -350,7 +350,7 @@ export const MessageFooter = ({
 }: MessageFooterProps) => (
   <div
     className={cn(
-      "flex items-center gap-1",
+      "flex items-center gap-1 mt-0.5",
       "group-[.is-user]:ml-auto",
       className
     )}
