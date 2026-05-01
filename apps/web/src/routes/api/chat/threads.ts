@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull, notInArray, sql } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   bindExistingCapabilitiesToAgent,
@@ -146,6 +146,12 @@ export const Route = createFileRoute('/api/chat/threads')({
           `)
 
           if (shouldClaimWarmThread) {
+            // Exclude any thread the caller has already disqualified — e.g.,
+            // a previous turn errored and the client doesn't want the same
+            // broken row recycled as the next warm thread. Without this, the
+            // client-side `erroredSessionIds` bookkeeping is undone here at
+            // the API edge.
+            const excludeIds = body.exclude_thread_ids ?? []
             const [existingThread] = await tx
               .select()
               .from(schema.chatThread)
@@ -157,6 +163,9 @@ export const Route = createFileRoute('/api/chat/threads')({
                   eq(schema.chatThread.title, NEW_CHAT_TITLE),
                   eq(schema.chatThread.lastMessage, ''),
                   isNull(schema.chatThread.archivedAt),
+                  ...(excludeIds.length > 0
+                    ? [notInArray(schema.chatThread.id, excludeIds)]
+                    : []),
                 ),
               )
               .orderBy(desc(schema.chatThread.updatedAt))

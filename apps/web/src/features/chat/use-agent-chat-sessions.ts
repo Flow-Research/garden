@@ -99,6 +99,7 @@ async function createChatThread(
   workspaceId: string,
   title?: string,
   agentId?: string | null,
+  excludeThreadIds?: string[],
 ) {
   const url = new URL('/api/chat/threads', window.location.origin)
   url.searchParams.set('workspace_id', workspaceId)
@@ -107,7 +108,16 @@ async function createChatThread(
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, agent_id: agentId ?? undefined }),
+    body: JSON.stringify({
+      title,
+      agent_id: agentId ?? undefined,
+      // Pass-through the client's errored bookkeeping so the server's
+      // warm-claim doesn't recycle a thread we've already disqualified.
+      exclude_thread_ids:
+        excludeThreadIds && excludeThreadIds.length > 0
+          ? excludeThreadIds
+          : undefined,
+    }),
   })
 
   if (!response.ok) {
@@ -182,7 +192,12 @@ export function useAgentSessions(
       if (!workspaceId) {
         throw new Error('Missing workspace identity')
       }
-      return createChatThread(workspaceId, title, selectedAgentId)
+      return createChatThread(
+        workspaceId,
+        title,
+        selectedAgentId,
+        Object.keys(erroredSessionIds),
+      )
     },
     onSuccess: (created) => {
       qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>
