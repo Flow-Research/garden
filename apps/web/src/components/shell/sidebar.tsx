@@ -42,7 +42,10 @@ import { useAuthStore } from '@garden/core/auth'
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { SearchTrigger } from '@/features/search'
 import { ChatSessionExplorer } from '@/features/chat'
-import { useAgentSessions } from '@/features/chat/use-agent-chat-sessions'
+import {
+  isPendingFirstTurn,
+  useAgentSessions,
+} from '@/features/chat/use-agent-chat-sessions'
 import { useNavigation } from '@/features/navigation'
 import { useSettingsDialogStore } from '@/features/settings'
 import { NavUser } from '@/components/nav-user'
@@ -225,6 +228,13 @@ export function WorkspaceSidebar() {
   const openSettingsDialog = useSettingsDialogStore((s) => s.openSettings)
   const activeType = activePanel?.kind ?? null
   const activeEntityId = activePanel?.entityId ?? null
+  const activeSession = sessions.find(
+    (session) => session.id === activeEntityId,
+  )
+  const activeIsPendingNewChat =
+    activeType === 'chat' && activeSession
+      ? isPendingFirstTurn(activeSession)
+      : false
   const activeRailId = contextFromPanel(activeType)
   const activeRail =
     railItems.find((item) => item.id === activeRailId) ?? railItems[0]
@@ -264,7 +274,8 @@ export function WorkspaceSidebar() {
       // the sidebar pop back open the moment the user clicked any rail icon,
       // which fought with their explicit collapse.
       if (item.id === 'chats') {
-        const latestThread = sessions[0] ?? null
+        const latestThread =
+          sessions.find((session) => !isPendingFirstTurn(session)) ?? null
         if (latestThread) {
           openPanel({
             kind: 'chat',
@@ -446,7 +457,7 @@ export function WorkspaceSidebar() {
                 <ExplorerActionRow
                   label="New Chat"
                   icon={IconMessage2Plus}
-                  active={activeType === 'chat'}
+                  active={activeIsPendingNewChat}
                   onClick={() => {
                     void Result.tryPromise(() => claimWarmSession()).then(
                       (result) => {
@@ -477,9 +488,7 @@ export function WorkspaceSidebar() {
                       entityId: session.id,
                     })
                   }
-                  onArchive={(sessionId) =>
-                    closePanel(`chat:${sessionId}`)
-                  }
+                  onArchive={(sessionId) => closePanel(`chat:${sessionId}`)}
                 />
               </div>
             </ExplorerSection>

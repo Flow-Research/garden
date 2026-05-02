@@ -8,10 +8,7 @@ import {
   createChatThreadBodySchema,
   parseJsonBody,
 } from '@/lib/server/api-validation'
-import {
-  buildAgentHostName,
-  ensureAgentRow,
-} from '@/lib/server/chat-agents'
+import { buildAgentHostName, ensureAgentRow } from '@/lib/server/chat-agents'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {

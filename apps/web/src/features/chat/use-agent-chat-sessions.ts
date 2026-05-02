@@ -251,7 +251,12 @@ export function useAgentSessions(
     useChatStore.getState().clearInputDraft(sessionId)
     useChatStore.getState().setSessionErrored(sessionId, false)
 
-    return { previousSessions, previousDraft, previouslyErrored, sessionId }
+    return {
+      previousSessions,
+      previousDraft,
+      previouslyErrored,
+      sessionId,
+    }
   }
 
   const rollbackRemoveSession = (
@@ -334,7 +339,6 @@ export function useAgentSessions(
           ),
         ),
       )
-
       // Only persist to the server when explicitly requested. Transient UI
       // states like 'submitted' or 'error' stay client-side so we don't
       // overwrite server truth with client clock or status noise.
