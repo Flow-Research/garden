@@ -31,6 +31,12 @@ export function normalizeGardenArtifact(value: unknown): GardenArtifactData | nu
   }
 }
 
-export function GardenArtifact({ data }: { data: GardenArtifactData }) {
-  return <DocumentArtifact data={data} />
+export function GardenArtifact({
+  chrome,
+  data,
+}: {
+  chrome?: boolean
+  data: GardenArtifactData
+}) {
+  return <DocumentArtifact chrome={chrome} data={data} />
 }
