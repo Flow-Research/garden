@@ -1294,6 +1294,7 @@ function ChatDockPanel({
   api,
   params,
 }: IDockviewPanelProps<WorkspacePanelParams>) {
+  const setActiveSession = useChatStore((state) => state.setActiveSession)
   const handleSessionChange = useCallback(
     (session: { id: string; title: string }) => {
       const nextTitle = session.title.trim() || 'New Chat'
@@ -1302,6 +1303,7 @@ function ChatDockPanel({
         title: nextTitle,
         entityId: session.id,
       })
+      setActiveSession(session.id)
       if (
         params.entityId === session.id &&
         params.title === nextTitle &&
@@ -1317,7 +1319,7 @@ function ChatDockPanel({
         canonicalId: nextCanonicalId,
       })
     },
-    [api, params],
+    [api, params, setActiveSession],
   )
 
   return (
