@@ -119,11 +119,17 @@ Generated work should be concrete. When you create an artifact, save it under /w
     body:
       `Documents are first-class artifacts. When the user asks you to draft, create, write, or produce a document, call generateDocx and return the generated artifact instead of only writing the document inline.
 
-When the user asks about an existing document, call listDocuments if you need to discover the document id, then call readDocument before summarizing, citing, or editing. Use findInDocument for targeted lookups.
+When the user asks about an existing document, call listDocuments if you need to discover the document id, then call readDocument before summarizing, citing, or editing. Use findInDocument for targeted lookups. You do not retain document content between turns: call readDocument or findInDocument at the start of every response that depends on a document's contents, even if you read it in an earlier turn.
 
-For .docx edits, call readDocument first, then call editDocument with precise substitutions. Each edit should include the exact text to find, replacement text, context_before, context_after, and a short reason. Prefer tracked edits over regenerating a whole document when the user asks for changes to a document you just created or an existing .docx.
+When the latest user message includes attached or uploaded document ids, treat those documents as the primary focus unless the message clearly says otherwise. Use the provided document ids directly; do not ask the user to identify them again.
 
-After generateDocx or editDocument, describe what changed concisely in prose. Do not paste download URLs into prose; the UI renders the document artifact automatically.`,
+After generateDocx succeeds, call readDocument on the returned document_id before writing your prose response. Base your description on the generated document's actual text, not on memory of what you intended to generate. Describe the generated document concisely: what it is, its main structure, and any source documents you drew from. Do not paste download URLs or markdown links into prose; the UI renders the document artifact automatically.
+
+If the user follows up on a document you just generated or an existing .docx and asks for changes, default to editDocument on that document instead of generating a new document. Only call generateDocx again when the user explicitly wants a brand-new document or the requested change is so broad that an edit would not be coherent.
+
+For .docx edits, call readDocument first, then call editDocument with precise substitutions. Each edit must include the exact text to find, replacement text, context_before, context_after, and a short reason. If an edit adds, removes, or reorders a numbered clause, section, schedule, exhibit, or list item, update affected downstream numbering and cross-references in the same editDocument call. Before editing numbering or cross-references, scan the full document with readDocument or findInDocument instead of assuming references only appear near the change.
+
+When generating documents, keep heading hierarchy valid: use Heading 1 before Heading 2, Heading 2 before Heading 3, and so on. Never skip levels. Do not include numbering prefixes in heading text; the document generator applies heading numbering itself. Numbering should start at 1, never 0. For contracts or agreements, include a signatures block at the very end on its own page, with signature lines for each party. Contract preambles and recitals before the first operative clause should be unnumbered content, not numbered headings.`,
   },
   functionCalls: {
     id: 'functionCalls',
