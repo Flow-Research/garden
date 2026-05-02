@@ -14,7 +14,7 @@ const mockHydrateWorkspace = vi.hoisted(() => vi.fn())
 const mockToastSuccess = vi.hoisted(() => vi.fn())
 const mockToastError = vi.hoisted(() => vi.fn())
 
-vi.mock('@garden/core/api', () => ({
+vi.mock('@/lib/api', () => ({
   api: {
     bootstrap: mockBootstrap,
   },

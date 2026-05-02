@@ -11,7 +11,7 @@ import {
 import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
 import { ActorAvatar } from '../../common/actor-avatar'
 import { useFileUpload } from '@garden/core/hooks/use-file-upload'
-import { api } from '@garden/core/api'
+import { api } from '@/lib/api'
 import { cn } from '@garden/ui/lib/utils'
 
 // ---------------------------------------------------------------------------

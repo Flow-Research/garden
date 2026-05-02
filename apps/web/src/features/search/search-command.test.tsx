@@ -27,7 +27,7 @@ const {
   mockSetActiveSession: vi.fn(),
 }))
 
-vi.mock('@garden/core/api', () => ({
+vi.mock('@/lib/api', () => ({
   api: {
     searchIssues: mockSearchIssues,
     searchProjects: mockSearchProjects,

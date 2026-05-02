@@ -1,3 +1,5 @@
+import type { SkillsShSearchResult } from '@garden/core/types'
+
 const SKILLS_SH_ORIGIN = 'https://skills.sh'
 const SKILLS_SH_SEARCH_PATH = '/api/search'
 const SKILLS_SH_DOWNLOAD_PATH = '/api/download'
@@ -12,14 +14,6 @@ export type SkillsShSkillRef = {
   skill: string
   source: string
   canonicalUrl: string
-}
-
-export type SkillsShSearchResult = {
-  id: string
-  skill_id: string
-  name: string
-  installs: number
-  source: string
 }
 
 type SkillsShSearchResponse = {

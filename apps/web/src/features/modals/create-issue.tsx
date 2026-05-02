@@ -47,7 +47,7 @@ import { useWorkspaceStore } from '@garden/core/workspace'
 import { useIssueDraftStore } from '@garden/core/issues/stores/draft-store'
 import { useCreateIssue, useUpdateIssue } from '@garden/core/issues/mutations'
 import { useFileUpload } from '@garden/core/hooks/use-file-upload'
-import { api } from '@garden/core/api'
+import { api } from '@/lib/api'
 import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
 
 // ---------------------------------------------------------------------------

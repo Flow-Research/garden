@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@garden/core/api'
+import { api } from '@/lib/api'
 import { useAuthStore } from '@garden/core/auth'
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { useActorName } from '@garden/core/workspace/hooks'

@@ -56,7 +56,7 @@ vi.mock('@garden/core/hooks/use-file-upload', () => ({
   useFileUpload: () => ({ uploadWithToast: vi.fn() }),
 }))
 
-vi.mock('@garden/core/api', () => ({
+vi.mock('@/lib/api', () => ({
   api: {},
 }))
 

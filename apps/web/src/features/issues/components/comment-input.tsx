@@ -11,7 +11,7 @@ import {
 } from '../../editor'
 import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
 import { useFileUpload } from '@garden/core/hooks/use-file-upload'
-import { api } from '@garden/core/api'
+import { api } from '@/lib/api'
 
 interface CommentInputProps {
   issueId: string

@@ -14,6 +14,19 @@ import {
 import { toast } from 'sonner'
 import { getConnectorById } from '@garden/connectors'
 import type { ConnectorId } from '@garden/connectors/registry'
+import {
+  getConnectorActivity,
+  listConnections,
+  mutateConnection,
+  updateToolGrant as updateConnectionToolGrant,
+  type ConnectionAction,
+  type ConnectionActivityItem,
+  type ConnectionItem,
+  type ConnectionTool,
+  type ConnectionsSnapshot,
+  type PermissionTrustLevel,
+  type RiskClass,
+} from '@/lib/api'
 import { Button } from '@garden/ui/components/ui/button'
 import {
   Drawer,
@@ -37,60 +50,6 @@ import {
 } from '@garden/ui/components/ui/select'
 import { authClient } from '@/lib/auth/client'
 
-type PermissionTrustLevel = 'auto' | 'allow' | 'ask'
-type RiskClass = 'read' | 'write' | 'send_external' | 'destructive'
-
-type ConnectionTool = {
-  name: string
-  description: string
-  riskClass: RiskClass
-  invocationCount: number
-  grantsByAgent: Record<string, PermissionTrustLevel>
-}
-
-type ConnectionItem = {
-  id: ConnectorId
-  label: string
-  description: string
-  status: 'available' | 'connected' | 'degraded' | 'disconnected'
-  scopes: string[]
-  connectedAt: string | null
-  toolCount: number
-  recentInvocations: number
-  grants: { auto: number; allow: number; ask: number }
-  tools: ConnectionTool[]
-}
-
-type ConnectionsSnapshot = {
-  summary: {
-    connectorCount: number
-    connectedCount: number
-    toolCount: number
-    recentInvocations: number
-    agentCount: number
-  }
-  agents: Array<{ id: string; name: string; status: string }>
-  connectors: ConnectionItem[]
-}
-
-type ConnectionActivityItem = {
-  id: string
-  toolCallId: string
-  toolName: string
-  resultStatus: 'success' | 'error' | 'denied' | 'timeout'
-  durationMs: number
-  timestamp: string
-  error: string | null
-  agent: { id: string; name: string }
-}
-
-type ConnectionActivityResponse = {
-  connectorId: ConnectorId
-  activity: ConnectionActivityItem[]
-}
-
-type ConnectionAction = 'disconnect' | 'resync'
-
 type ToolGroupKey = 'read' | 'write' | 'interactive'
 
 const TOOL_GROUPS: Array<{
@@ -110,56 +69,7 @@ const TOOL_GROUPS: Array<{
 const GRANT_UPDATE_DEBOUNCE_MS = 450
 
 async function loadConnectionsSnapshot() {
-  const response = await fetch('/api/connections', { credentials: 'include' })
-  if (!response.ok) throw new Error('Failed to load connections')
-  return (await response.json()) as ConnectionsSnapshot
-}
-
-async function mutateConnection(
-  connectorId: ConnectorId,
-  action: ConnectionAction,
-) {
-  const response = await fetch(`/api/connections/${connectorId}`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ action }),
-  })
-  if (!response.ok) throw new Error(`Failed to ${action} ${connectorId}`)
-  return response.json()
-}
-
-async function mutateToolGrant(args: {
-  connectorId: ConnectorId
-  toolName: string
-  agentId: string
-  trustLevel: PermissionTrustLevel
-}) {
-  const response = await fetch(
-    `/api/connections/${encodeURIComponent(args.connectorId)}/tools/${encodeURIComponent(args.toolName)}/grant`,
-    {
-      method: 'PATCH',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        agentId: args.agentId,
-        trustLevel: args.trustLevel,
-      }),
-    },
-  )
-  if (!response.ok)
-    throw new Error(`Failed to update trust for ${args.toolName}`)
-  return response.json()
-}
-
-async function loadConnectorActivity(connectorId: ConnectorId) {
-  const response = await fetch(
-    `/api/connections/${encodeURIComponent(connectorId)}/activity`,
-    { credentials: 'include' },
-  )
-  if (!response.ok)
-    throw new Error(`Failed to load activity for ${connectorId}`)
-  return (await response.json()) as ConnectionActivityResponse
+  return listConnections()
 }
 
 function currentCallbackUrl() {
@@ -279,7 +189,7 @@ function countGrants(tools: ConnectionTool[]) {
 
 function updateSnapshotToolGrant(
   snapshot: ConnectionsSnapshot,
-  args: Parameters<typeof mutateToolGrant>[0],
+  args: Parameters<typeof updateConnectionToolGrant>[0],
 ): ConnectionsSnapshot {
   return {
     ...snapshot,
@@ -332,7 +242,7 @@ export function ConnectionsPage({
       string,
       {
         timeout: ReturnType<typeof setTimeout>
-        args: Parameters<typeof mutateToolGrant>[0]
+        args: Parameters<typeof updateToolGrant>[0]
       }
     >
   >(new Map())
@@ -369,7 +279,7 @@ export function ConnectionsPage({
     },
   })
   const grantMutation = useMutation({
-    mutationFn: mutateToolGrant,
+    mutationFn: updateConnectionToolGrant,
     onError: async (error) => {
       toast.error(
         error instanceof Error
@@ -393,7 +303,7 @@ export function ConnectionsPage({
   )
 
   const updateToolGrant = useCallback(
-    (args: Parameters<typeof mutateToolGrant>[0]) => {
+    (args: Parameters<typeof updateConnectionToolGrant>[0]) => {
       queryClient.setQueryData<ConnectionsSnapshot>(
         ['workspace-connections'],
         (current) => (current ? updateSnapshotToolGrant(current, args) : current),
@@ -856,7 +766,7 @@ function PermissionSegment({
 function ActivityDrawerBody({ connector }: { connector: ConnectionItem }) {
   const activityQuery = useQuery({
     queryKey: ['connector-activity', connector.id],
-    queryFn: () => loadConnectorActivity(connector.id),
+    queryFn: () => getConnectorActivity(connector.id),
     staleTime: 15_000,
   })
   const activity = useMemo(

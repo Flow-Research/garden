@@ -8,6 +8,7 @@ import { Bot, Plug, Plus, Search, X } from 'lucide-react'
 import { Icon as IconifyIcon } from '@iconify/react'
 import { BrandIcon } from '@garden/ui/components/common/brand-icon'
 import type { ConnectorId } from '@garden/connectors/registry'
+import { listConnections } from '@/lib/api'
 import type { Agent, Skill } from '@garden/core/types'
 import {
   agentListOptions,
@@ -564,9 +565,8 @@ type ConnectionsSnapshotLite = {
 }
 
 async function loadConnectionsForSidebar(): Promise<ConnectionsSnapshotLite> {
-  const response = await fetch('/api/connections', { credentials: 'include' })
-  if (!response.ok) throw new Error('Failed to load connections')
-  return (await response.json()) as ConnectionsSnapshotLite
+  const snapshot = await listConnections()
+  return { connectors: snapshot.connectors }
 }
 
 const CONNECTOR_ROW_ICON: Record<ConnectorId, string | null> = {

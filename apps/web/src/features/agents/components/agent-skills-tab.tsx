@@ -9,7 +9,7 @@ import type {
   AgentSkillAssignment,
   Skill,
 } from '@garden/core/types'
-import { api } from '@garden/core/api'
+import { api } from '@/lib/api'
 import { useWorkspaceId } from '@garden/core/hooks'
 import {
   agentSkillListOptions,

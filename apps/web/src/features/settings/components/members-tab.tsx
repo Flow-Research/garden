@@ -58,7 +58,7 @@ import {
   invitationListOptions,
   workspaceKeys,
 } from '@garden/core/workspace/queries'
-import { api } from '@garden/core/api'
+import { api } from '@/lib/api'
 
 const roleConfig: Record<
   MemberRole,

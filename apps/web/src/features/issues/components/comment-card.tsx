@@ -56,7 +56,7 @@ import {
 } from '../../editor'
 import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
 import { useFileUpload } from '@garden/core/hooks/use-file-upload'
-import { api } from '@garden/core/api'
+import { api } from '@/lib/api'
 import { ReplyInput } from './reply-input'
 import type { TimelineEntry, Attachment } from '@garden/core/types'
 

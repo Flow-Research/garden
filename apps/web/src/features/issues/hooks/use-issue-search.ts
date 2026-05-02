@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api } from '@garden/core/api'
+import { api } from '@/lib/api'
 import type { SearchIssueResult } from '@garden/core/types'
 
 type UseIssueSearchOptions = {

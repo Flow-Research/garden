@@ -4,64 +4,22 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Result } from 'better-result'
 import { toast } from 'sonner'
+import {
+  createChatThread,
+  deleteChatThread,
+  isPendingFirstTurn,
+  listChatThreads,
+  NEW_SESSION_TITLE,
+  sortSessions,
+  updateChatThread,
+  type AgentChatSession,
+} from '@/lib/api'
 import { useAuthStore } from '@garden/core/auth'
 import { useChatStore } from '@garden/core/chat'
 import { useWorkspaceStore } from '@garden/core/workspace'
 
-export interface AgentChatSession {
-  id: string
-  workspaceId: string
-  ownerUserId: string
-  title: string
-  agentId: string
-  hostName: string
-  createdAt: string
-  updatedAt: string
-  lastMessage: string
-  status: 'idle' | 'submitted' | 'streaming' | 'error' | 'archived'
-  unread: boolean
-  archivedAt: string | null
-}
-
-export const NEW_SESSION_TITLE = 'New Chat'
-
-function sortSessions(sessions: AgentChatSession[]) {
-  return [...sessions].sort(
-    (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
-  )
-}
-
-type ChatThreadRow = {
-  id: string
-  workspaceId: string
-  ownerUserId: string
-  title: string
-  agentId: string
-  hostName: string
-  createdAt: string
-  updatedAt: string
-  lastMessage: string
-  archivedAt: string | null
-}
-
-async function fetchChatThreadsRaw(workspaceId: string) {
-  const url = new URL('/api/chat/threads', window.location.origin)
-  url.searchParams.set('workspace_id', workspaceId)
-
-  const response = await fetch(url.toString(), { credentials: 'include' })
-  if (!response.ok) {
-    throw new Error('Failed to load chat threads')
-  }
-  return (await response.json()) as ChatThreadRow[]
-}
-
-function rowToSession(row: ChatThreadRow): AgentChatSession {
-  return {
-    ...row,
-    status: row.archivedAt ? ('archived' as const) : ('idle' as const),
-    unread: false,
-  }
-}
+export type { AgentChatSession }
+export { isPendingFirstTurn, NEW_SESSION_TITLE, sortSessions }
 
 function isWarmSession(session: AgentChatSession) {
   return (
@@ -69,91 +27,6 @@ function isWarmSession(session: AgentChatSession) {
     session.status === 'idle' &&
     isPendingFirstTurn(session)
   )
-}
-
-/**
- * A chat is "pending its first turn" while it still has the placeholder title
- * AND no stored lastMessage. We use this to keep pre-warmed (and just-claimed)
- * chats out of the sidebar listing — they only become real entries once the
- * first turn finishes and `onFinish` writes a real title + lastMessage with a
- * fresh updatedAt, which then sorts the chat to the top of the list.
- *
- * Status is intentionally NOT considered: while a chat is `submitted` /
- * `streaming` after the user hits send, the persisted title/lastMessage are
- * still placeholders, and showing a row labelled "New Chat" mid-stream is the
- * exact UX bug we're fixing.
- */
-export function isPendingFirstTurn(session: AgentChatSession) {
-  return (
-    session.title.trim().toLowerCase() === NEW_SESSION_TITLE.toLowerCase() &&
-    session.lastMessage.trim().length === 0
-  )
-}
-
-async function fetchChatThreads(workspaceId: string) {
-  const rows = await fetchChatThreadsRaw(workspaceId)
-  return sortSessions(rows.filter((row) => !row.archivedAt).map(rowToSession))
-}
-
-async function createChatThread(
-  workspaceId: string,
-  title?: string,
-  agentId?: string | null,
-  excludeThreadIds?: string[],
-) {
-  const url = new URL('/api/chat/threads', window.location.origin)
-  url.searchParams.set('workspace_id', workspaceId)
-
-  const response = await fetch(url.toString(), {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      title,
-      agent_id: agentId ?? undefined,
-      // Pass-through the client's errored bookkeeping so the server's
-      // warm-claim doesn't recycle a thread we've already disqualified.
-      exclude_thread_ids:
-        excludeThreadIds && excludeThreadIds.length > 0
-          ? excludeThreadIds
-          : undefined,
-    }),
-  })
-
-  if (!response.ok) {
-    throw new Error('Failed to create chat thread')
-  }
-
-  return rowToSession((await response.json()) as ChatThreadRow)
-}
-
-async function updateChatThread(
-  threadId: string,
-  body: Record<string, unknown>,
-) {
-  const response = await fetch(`/api/chat/threads/${threadId}`, {
-    method: 'PATCH',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-
-  if (!response.ok) {
-    throw new Error('Failed to update chat thread')
-  }
-
-  return rowToSession((await response.json()) as ChatThreadRow)
-}
-
-async function deleteChatThread(threadId: string) {
-  const response = await fetch(`/api/chat/threads/${threadId}`, {
-    method: 'DELETE',
-    credentials: 'include',
-  })
-
-  if (!response.ok) {
-    throw new Error('Failed to delete chat thread')
-  }
 }
 
 export function useAgentSessions(
@@ -180,7 +53,7 @@ export function useAgentSessions(
   const sessionsQuery = useQuery({
     queryKey,
     enabled: !!workspaceId && !!user?.id,
-    queryFn: () => fetchChatThreads(workspaceId as string),
+    queryFn: () => listChatThreads(workspaceId as string),
     staleTime: 10_000,
     // Never flash empty while refetching — keep prior data until next payload
     // lands. This is the "don't surface stale fetch" guarantee for warm chats.
@@ -192,12 +65,12 @@ export function useAgentSessions(
       if (!workspaceId) {
         throw new Error('Missing workspace identity')
       }
-      return createChatThread(
+      return createChatThread({
         workspaceId,
         title,
-        selectedAgentId,
-        Object.keys(erroredSessionIds),
-      )
+        agentId: selectedAgentId,
+        excludeThreadIds: Object.keys(erroredSessionIds),
+      })
     },
     onSuccess: (created) => {
       qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>

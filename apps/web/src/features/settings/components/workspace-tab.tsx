@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Result } from 'better-result'
 import { Save } from 'lucide-react'
 import { Input } from '@garden/ui/components/ui/input'
 import { Textarea } from '@garden/ui/components/ui/textarea'
@@ -29,7 +30,7 @@ import {
   memberListOptions,
   workspaceKeys,
 } from '@garden/core/workspace/queries'
-import { api } from '@garden/core/api'
+import { api } from '@/lib/api'
 import type { Workspace } from '@garden/core/types'
 
 export function WorkspaceTab() {
@@ -68,43 +69,50 @@ export function WorkspaceTab() {
   const handleSave = async () => {
     if (!workspace) return
     setSaving(true)
-    try {
-      const updated = await api.updateWorkspace(workspace.id, {
-        name,
-        description,
-        context,
-      })
+    const result = await Result.tryPromise({
+      try: async () =>
+        await api.updateWorkspace(workspace.id, {
+          name,
+          description,
+          context,
+        }),
+      catch: (error) =>
+        error instanceof Error ? error : new Error(String(error)),
+    })
+    if (result.isOk()) {
+      const updated = result.value
       updateWorkspace(updated)
       qc.setQueryData(workspaceKeys.list(), (old: Workspace[] | undefined) =>
         old?.map((ws) => (ws.id === updated.id ? updated : ws)),
       )
       toast.success('Workspace settings saved')
-    } catch (e) {
-      toast.error(
-        e instanceof Error ? e.message : 'Failed to save workspace settings',
-      )
-    } finally {
-      setSaving(false)
+    } else {
+      toast.error(result.error.message)
     }
+    setSaving(false)
   }
 
   const handleLeaveWorkspace = () => {
-    if (!workspace) return
+    if (!workspace || !currentMember) return
     setConfirmAction({
       title: 'Leave workspace',
       description: `Leave ${workspace.name}? You will lose access until re-invited.`,
       variant: 'destructive',
       onConfirm: async () => {
         setActionId('leave')
-        try {
-          await leaveWorkspace.mutateAsync(workspace.id)
-        } catch (e) {
-          toast.error(
-            e instanceof Error ? e.message : 'Failed to leave workspace',
-          )
-        } finally {
-          setActionId(null)
+        const result = await Result.tryPromise({
+          try: async () =>
+            await leaveWorkspace.mutateAsync({
+              memberId: currentMember.id,
+              workspaceId: workspace.id,
+            }),
+          catch: (error) =>
+            error instanceof Error ? error : new Error(String(error)),
+        })
+        if (result.isErr()) {
+          toast.error(result.error.message)
         }
+        setActionId(null)
       },
     })
   }
@@ -117,15 +125,15 @@ export function WorkspaceTab() {
       variant: 'destructive',
       onConfirm: async () => {
         setActionId('delete-workspace')
-        try {
-          await deleteWorkspace.mutateAsync(workspace.id)
-        } catch (e) {
-          toast.error(
-            e instanceof Error ? e.message : 'Failed to delete workspace',
-          )
-        } finally {
-          setActionId(null)
+        const result = await Result.tryPromise({
+          try: async () => await deleteWorkspace.mutateAsync(workspace.id),
+          catch: (error) =>
+            error instanceof Error ? error : new Error(String(error)),
+        })
+        if (result.isErr()) {
+          toast.error(result.error.message)
         }
+        setActionId(null)
       },
     })
   }

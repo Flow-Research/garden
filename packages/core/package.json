@@ -13,9 +13,6 @@
     ".": "./index.ts",
     "./types": "./types/index.ts",
     "./types/*": "./types/*.ts",
-    "./api": "./api/index.ts",
-    "./api/client": "./api/client.ts",
-    "./api/ws-client": "./api/ws-client.ts",
     "./config": "./config/index.ts",
     "./auth": "./auth/index.ts",
     "./workspace": "./workspace/index.ts",
@@ -62,6 +59,7 @@
   "dependencies": {
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-query-devtools": "^5.96.2",
+    "better-result": "^2.8.2",
     "zustand": "catalog:"
   },
   "peerDependencies": {

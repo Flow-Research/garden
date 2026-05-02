@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { api } from '@garden/core/api'
+import { api } from '@/lib/api'
 import { useAuthStore } from '@garden/core/auth'
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { workspaceKeys } from '@garden/core/workspace/queries'
