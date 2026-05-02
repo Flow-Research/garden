@@ -224,7 +224,7 @@ export function ChatSessionExplorer({
   )
 
   return (
-    <div>
+    <div className="min-w-0 overflow-hidden">
       {activeSessions.length > 0 ? (
         <div className="space-y-1 px-3">
           {activeSessions.map((session) => (
