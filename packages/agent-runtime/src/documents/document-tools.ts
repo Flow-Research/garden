@@ -1020,6 +1020,7 @@ export async function resolveDocumentEdit(args: {
 
   const writeResult = await Result.tryPromise({
     try: async () => {
+      const resolvedAt = new Date()
       await args.context.workspace.writeFileBytes(
         editRow.storagePath,
         resolvedResult.value.bytes,
@@ -1029,10 +1030,11 @@ export async function resolveDocumentEdit(args: {
         .update(schema.documentEdit)
         .set({
           status: args.action === 'accept' ? 'accepted' : 'rejected',
-          updatedAt: new Date(),
+          resolvedAt,
+          updatedAt: resolvedAt,
         })
         .where(eq(schema.documentEdit.id, args.editId))
-      if (!editRow.currentVersionId) return 0
+      if (!editRow.currentVersionId) return { remaining: 0, resolvedAt }
       const remaining = await db
         .select({ id: schema.documentEdit.id })
         .from(schema.documentEdit)
@@ -1043,7 +1045,7 @@ export async function resolveDocumentEdit(args: {
             eq(schema.documentEdit.status, 'pending'),
           ),
         )
-      return remaining.length
+      return { remaining: remaining.length, resolvedAt }
     },
     catch: (error) =>
       new DocumentToolError({
@@ -1054,8 +1056,9 @@ export async function resolveDocumentEdit(args: {
     return { ok: false, error: writeResult.error.message }
   return {
     ok: true,
+    resolved_at: writeResult.value.resolvedAt.toISOString(),
     status: args.action === 'accept' ? 'accepted' : 'rejected',
-    remaining_pending: writeResult.value,
+    remaining_pending: writeResult.value.remaining,
   }
 }
 

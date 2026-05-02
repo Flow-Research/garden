@@ -71,7 +71,7 @@ export function normalizeGardenArtifact(
         ? candidate.versionNumber
         : typeof candidate.version_number === 'number'
           ? candidate.version_number
-        : null,
+          : null,
   }
 }
 
@@ -79,25 +79,31 @@ export function GardenArtifact({
   chrome,
   data,
   highlight,
+  onWarningDismiss,
   optimisticResolution,
   quotes,
   refreshKey,
+  warning,
 }: {
   chrome?: boolean
   data: GardenArtifactData
   highlight?: GardenArtifactHighlight | null
+  onWarningDismiss?: () => void
   optimisticResolution?: GardenArtifactOptimisticResolution | null
   quotes?: GardenCitationQuote[]
   refreshKey?: number
+  warning?: string | null
 }) {
   return (
     <DocumentArtifact
       chrome={chrome}
       data={data}
       highlight={highlight}
+      onWarningDismiss={onWarningDismiss}
       optimisticResolution={optimisticResolution}
       quotes={quotes}
       refreshKey={refreshKey}
+      warning={warning}
     />
   )
 }

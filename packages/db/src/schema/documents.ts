@@ -105,6 +105,7 @@ export const documentEdit = pgTable(
     contextBefore: text('context_before').notNull().default(''),
     contextAfter: text('context_after').notNull().default(''),
     status: text('status').notNull().default('pending'),
+    resolvedAt: timestamp('resolved_at', { mode: 'date' }),
     createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
     updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
   },
