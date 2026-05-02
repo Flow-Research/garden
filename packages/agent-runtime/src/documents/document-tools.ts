@@ -95,6 +95,7 @@ function buildArtifact(args: {
   documentId: string
   filename: string
   fileType: string
+  versionId: string
   versionNumber: number
 }) {
   return {
@@ -104,6 +105,7 @@ function buildArtifact(args: {
     mediaType: contentTypeForFileType(args.fileType),
     url: documentDownloadUrl(args.documentId, args.filename),
     content: null,
+    versionId: args.versionId,
     versionNumber: args.versionNumber,
   }
 }
@@ -425,6 +427,7 @@ export async function generateDocx(args: {
       documentId: insertResult.value.documentId,
       filename,
       fileType: 'docx',
+      versionId: insertResult.value.versionId,
       versionNumber: 1,
     }),
   }
@@ -710,6 +713,7 @@ export async function editDocument(args: {
       documentId: args.documentId,
       filename: activeDocument.filename,
       fileType: 'docx',
+      versionId: writeResult.value.versionId,
       versionNumber: writeResult.value.versionNumber,
     }),
   }
@@ -801,6 +805,7 @@ export async function registerUploadedDocument(args: {
       documentId: insertResult.value.documentId,
       filename,
       fileType,
+      versionId: insertResult.value.versionId,
       versionNumber: 1,
     }),
   }

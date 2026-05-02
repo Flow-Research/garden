@@ -54,12 +54,23 @@ export function normalizeGardenArtifact(
           ? candidate.version_id
           : null,
     mediaType:
-      typeof candidate.mediaType === 'string' ? candidate.mediaType : null,
-    url: typeof candidate.url === 'string' ? candidate.url : null,
+      typeof candidate.mediaType === 'string'
+        ? candidate.mediaType
+        : typeof candidate.media_type === 'string'
+          ? candidate.media_type
+          : null,
+    url:
+      typeof candidate.url === 'string'
+        ? candidate.url
+        : typeof candidate.download_url === 'string'
+          ? candidate.download_url
+          : null,
     content: typeof candidate.content === 'string' ? candidate.content : null,
     versionNumber:
       typeof candidate.versionNumber === 'number'
         ? candidate.versionNumber
+        : typeof candidate.version_number === 'number'
+          ? candidate.version_number
         : null,
   }
 }
