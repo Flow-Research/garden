@@ -1,81 +1,23 @@
 import { Buffer } from 'node:buffer'
-import { and, eq } from 'drizzle-orm'
-import { Result, TaggedError } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
 import { buildContentDisposition } from '@garden/agent-runtime'
-import { readChatThreadDocumentBytes } from '@/lib/server/chat-agents'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
-import {
-  forbidden,
-  notFound,
-  requireSession,
-  unauthorized,
-} from '@/lib/server/control-plane'
-
-class DocumentDownloadError extends TaggedError('DocumentDownloadError')<{
-  message: string
-}>() {}
+import { readChatThreadDocumentVersionBytes } from '@/lib/server/chat-agents'
+import { getChatDocumentAccess } from '@/lib/server/document-access'
 
 export const Route = createFileRoute('/api/documents/$id/docx')({
   server: {
     handlers: {
       GET: async ({ request, params }) => {
         const routeParams = params as { id: string }
-        const session = await requireSession(request)
-        if (!session) return unauthorized()
+        const access = await getChatDocumentAccess(request, routeParams.id)
+        if (access instanceof Response) return access
 
-        const db = getDb(appEnv)
-        const rowResult = await Result.tryPromise({
-          try: async () => {
-            const [row] = await db
-              .select({
-                workspaceId: schema.document.workspaceId,
-                ownerUserId: schema.document.ownerUserId,
-                filename: schema.document.filename,
-                fileType: schema.document.fileType,
-                threadId: schema.document.threadId,
-                hostName: schema.agent.hostName,
-              })
-              .from(schema.document)
-              .innerJoin(schema.chatThread, eq(schema.document.threadId, schema.chatThread.id))
-              .innerJoin(schema.agent, eq(schema.chatThread.agentId, schema.agent.id))
-              .where(eq(schema.document.id, routeParams.id))
-              .limit(1)
-            return row ?? null
-          },
-          catch: (error) =>
-            new DocumentDownloadError({
-              message: error instanceof Error ? error.message : String(error),
-            }),
-        })
-        if (rowResult.isErr()) {
-          return Response.json({ error: rowResult.error.message }, { status: 500 })
-        }
-        if (!rowResult.value) return notFound('Document not found')
-
-        const membership = await db
-          .select({ id: schema.member.id })
-          .from(schema.member)
-          .where(
-            and(
-              eq(schema.member.organizationId, rowResult.value.workspaceId),
-              eq(schema.member.userId, session.user.id),
-            ),
-          )
-          .limit(1)
-        if (!membership[0] && rowResult.value.ownerUserId !== session.user.id) {
-          return forbidden('Document access denied')
-        }
-
-        if (!rowResult.value.threadId || !rowResult.value.hostName) {
-          return notFound('Document agent workspace not found')
-        }
-
-        const bytesResult = (await readChatThreadDocumentBytes({
-          threadId: rowResult.value.threadId,
-          hostName: rowResult.value.hostName,
+        const url = new URL(request.url)
+        const bytesResult = (await readChatThreadDocumentVersionBytes({
+          threadId: access.row.threadId,
+          hostName: access.row.hostName,
           documentId: routeParams.id,
+          versionId: url.searchParams.get('version_id'),
         })) as
           | {
               ok: true
@@ -93,12 +35,14 @@ export const Route = createFileRoute('/api/documents/$id/docx')({
         const bytes = Buffer.from(bytesResult.base64, 'base64')
 
         const filename =
-          new URL(request.url).searchParams.get('filename') ??
+          url.searchParams.get('filename') ??
           bytesResult.filename ??
-          rowResult.value.filename
+          access.row.filename
         return new Response(bytes, {
           headers: {
-            'Content-Type': bytesResult.media_type ?? contentTypeForFileType(rowResult.value.fileType),
+            'Content-Type':
+              bytesResult.media_type ??
+              contentTypeForFileType(access.row.fileType),
             'Content-Disposition': buildContentDisposition(
               'attachment',
               filename,

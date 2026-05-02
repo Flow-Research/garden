@@ -25,10 +25,7 @@ import {
   resolveTrackedChange,
   type EditInput,
 } from './docx-tracked-changes'
-import {
-  documentDownloadUrl,
-  versionStorageKey,
-} from './document-storage'
+import { documentDownloadUrl, versionStorageKey } from './document-storage'
 
 export class DocumentToolError extends TaggedError('DocumentToolError')<{
   message: string
@@ -141,7 +138,8 @@ async function loadThreadContext(context: DocumentToolContext) {
 
 export async function listDocuments(context: DocumentToolContext) {
   const threadContext = await loadThreadContext(context)
-  if (threadContext.isErr()) return { ok: false, error: threadContext.error.message }
+  if (threadContext.isErr())
+    return { ok: false, error: threadContext.error.message }
   const { db, workspaceId, ownerUserId } = threadContext.value
   const rowsResult = await Result.tryPromise({
     try: async () =>
@@ -177,7 +175,8 @@ export async function generateDocx(args: {
   landscape?: boolean
 }) {
   const threadContext = await loadThreadContext(args.context)
-  if (threadContext.isErr()) return { ok: false, error: threadContext.error.message }
+  if (threadContext.isErr())
+    return { ok: false, error: threadContext.error.message }
   const { db, workspaceId, ownerUserId } = threadContext.value
 
   const FONT = 'Times New Roman'
@@ -319,7 +318,9 @@ export async function generateDocx(args: {
               })
             : new Paragraph({
                 spacing: { after: 120 },
-                children: [new TextRun({ text: trimmed, font: FONT, size: SIZE })],
+                children: [
+                  new TextRun({ text: trimmed, font: FONT, size: SIZE }),
+                ],
               }),
         )
       }
@@ -365,7 +366,8 @@ export async function generateDocx(args: {
         message: error instanceof Error ? error.message : String(error),
       }),
   })
-  if (writeResult.isErr()) return { ok: false, error: writeResult.error.message }
+  if (writeResult.isErr())
+    return { ok: false, error: writeResult.error.message }
 
   const insertResult = await Result.tryPromise({
     try: async () => {
@@ -409,7 +411,8 @@ export async function generateDocx(args: {
         message: error instanceof Error ? error.message : String(error),
       }),
   })
-  if (insertResult.isErr()) return { ok: false, error: insertResult.error.message }
+  if (insertResult.isErr())
+    return { ok: false, error: insertResult.error.message }
 
   return {
     ok: true,
@@ -427,7 +430,10 @@ export async function generateDocx(args: {
   }
 }
 
-async function loadActiveDocument(context: DocumentToolContext, documentId: string) {
+async function loadActiveDocument(
+  context: DocumentToolContext,
+  documentId: string,
+) {
   const db = getDb(context.databaseUrl)
   const rowResult = await Result.tryPromise({
     try: async () => {
@@ -446,7 +452,12 @@ async function loadActiveDocument(context: DocumentToolContext, documentId: stri
           schema.documentVersion,
           eq(schema.document.currentVersionId, schema.documentVersion.id),
         )
-        .where(eq(schema.document.id, documentId))
+        .where(
+          and(
+            eq(schema.document.id, documentId),
+            eq(schema.document.threadId, context.threadId),
+          ),
+        )
         .limit(1)
       return row ?? null
     },
@@ -469,8 +480,12 @@ export async function readDocument(args: {
     args.context.workspace,
     rowResult.value.storagePath,
   )
-  if (bytesResult.isErr()) return { ok: false, error: bytesResult.error.message }
-  const textResult = await extractDocumentText(bytesResult.value, rowResult.value.fileType)
+  if (bytesResult.isErr())
+    return { ok: false, error: bytesResult.error.message }
+  const textResult = await extractDocumentText(
+    bytesResult.value,
+    rowResult.value.fileType,
+  )
   if (textResult.isErr()) return { ok: false, error: textResult.error.message }
   return {
     ok: true,
@@ -537,10 +552,14 @@ export async function editDocument(args: {
   edits: EditInput[]
 }) {
   const activeResult = await loadActiveDocument(args.context, args.documentId)
-  if (activeResult.isErr()) return { ok: false, error: activeResult.error.message }
+  if (activeResult.isErr())
+    return { ok: false, error: activeResult.error.message }
   if (!activeResult.value) return { ok: false, error: 'Document not found.' }
   if (activeResult.value.fileType !== 'docx') {
-    return { ok: false, error: 'Tracked edits are only supported for .docx documents.' }
+    return {
+      ok: false,
+      error: 'Tracked edits are only supported for .docx documents.',
+    }
   }
   const activeDocument = activeResult.value
 
@@ -548,7 +567,8 @@ export async function editDocument(args: {
     args.context.workspace,
     activeDocument.storagePath,
   )
-  if (bytesResult.isErr()) return { ok: false, error: bytesResult.error.message }
+  if (bytesResult.isErr())
+    return { ok: false, error: bytesResult.error.message }
   const editResult = await Result.tryPromise({
     try: async () =>
       await applyTrackedEdits(bytesResult.value, args.edits, {
@@ -650,29 +670,32 @@ export async function editDocument(args: {
         message: error instanceof Error ? error.message : String(error),
       }),
   })
-  if (writeResult.isErr()) return { ok: false, error: writeResult.error.message }
+  if (writeResult.isErr())
+    return { ok: false, error: writeResult.error.message }
 
-  const annotations: EditAnnotation[] = writeResult.value.insertedEdits.map((row) => {
-    const sourceChange = editResult.value.changes.find(
-      (change) => change.id === row.changeId,
-    )
-    return {
-      kind: 'edit',
-      edit_id: row.id,
-      document_id: args.documentId,
-      version_id: writeResult.value.versionId,
-      version_number: writeResult.value.versionNumber,
-      change_id: row.changeId,
-      del_w_id: sourceChange?.delId,
-      ins_w_id: sourceChange?.insId,
-      deleted_text: row.deletedText,
-      inserted_text: row.insertedText,
-      context_before: row.contextBefore,
-      context_after: row.contextAfter,
-      reason: sourceChange?.reason,
-      status: 'pending',
-    }
-  })
+  const annotations: EditAnnotation[] = writeResult.value.insertedEdits.map(
+    (row) => {
+      const sourceChange = editResult.value.changes.find(
+        (change) => change.id === row.changeId,
+      )
+      return {
+        kind: 'edit',
+        edit_id: row.id,
+        document_id: args.documentId,
+        version_id: writeResult.value.versionId,
+        version_number: writeResult.value.versionNumber,
+        change_id: row.changeId,
+        del_w_id: sourceChange?.delId,
+        ins_w_id: sourceChange?.insId,
+        deleted_text: row.deletedText,
+        inserted_text: row.insertedText,
+        context_before: row.contextBefore,
+        context_after: row.contextAfter,
+        reason: sourceChange?.reason,
+        status: 'pending',
+      }
+    },
+  )
 
   return {
     ok: true,
@@ -699,7 +722,8 @@ export async function registerUploadedDocument(args: {
   bytes: Uint8Array | ArrayBuffer
 }) {
   const threadContext = await loadThreadContext(args.context)
-  if (threadContext.isErr()) return { ok: false, error: threadContext.error.message }
+  if (threadContext.isErr())
+    return { ok: false, error: threadContext.error.message }
   const { db, workspaceId, ownerUserId } = threadContext.value
   const documentId = crypto.randomUUID()
   const filename = normalizeWorkspaceFilename(args.filename)
@@ -719,7 +743,8 @@ export async function registerUploadedDocument(args: {
         message: error instanceof Error ? error.message : String(error),
       }),
   })
-  if (writeResult.isErr()) return { ok: false, error: writeResult.error.message }
+  if (writeResult.isErr())
+    return { ok: false, error: writeResult.error.message }
 
   const insertResult = await Result.tryPromise({
     try: async () => {
@@ -761,7 +786,8 @@ export async function registerUploadedDocument(args: {
         message: error instanceof Error ? error.message : String(error),
       }),
   })
-  if (insertResult.isErr()) return { ok: false, error: insertResult.error.message }
+  if (insertResult.isErr())
+    return { ok: false, error: insertResult.error.message }
 
   return {
     ok: true,
@@ -784,20 +810,135 @@ export async function getDocumentBytes(args: {
   context: DocumentToolContext
   documentId: string
 }) {
-  const activeResult = await loadActiveDocument(args.context, args.documentId)
-  if (activeResult.isErr()) return { ok: false, error: activeResult.error.message }
-  if (!activeResult.value) return { ok: false, error: 'Document not found.' }
+  return getDocumentVersionBytes({
+    context: args.context,
+    documentId: args.documentId,
+  })
+}
+
+export async function getDocumentVersionBytes(args: {
+  context: DocumentToolContext
+  documentId: string
+  preferPdf?: boolean
+  versionId?: string | null
+}) {
+  const db = getDb(args.context.databaseUrl)
+  const versionResult = await Result.tryPromise({
+    try: async () => {
+      const [row] = await db
+        .select({
+          createdAt: schema.documentVersion.createdAt,
+          displayName: schema.documentVersion.displayName,
+          filename: schema.document.filename,
+          fileType: schema.document.fileType,
+          pdfStoragePath: schema.documentVersion.pdfStoragePath,
+          source: schema.documentVersion.source,
+          storagePath: schema.documentVersion.storagePath,
+          versionId: schema.documentVersion.id,
+          versionNumber: schema.documentVersion.versionNumber,
+        })
+        .from(schema.document)
+        .innerJoin(
+          schema.documentVersion,
+          args.versionId
+            ? eq(schema.documentVersion.id, args.versionId)
+            : eq(schema.document.currentVersionId, schema.documentVersion.id),
+        )
+        .where(
+          and(
+            eq(schema.document.id, args.documentId),
+            eq(schema.document.threadId, args.context.threadId),
+          ),
+        )
+        .limit(1)
+      return row ?? null
+    },
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+  if (versionResult.isErr())
+    return { ok: false, error: versionResult.error.message }
+  if (!versionResult.value) return { ok: false, error: 'Document not found.' }
+  const version = versionResult.value
+  const storagePath =
+    args.preferPdf && version.pdfStoragePath
+      ? version.pdfStoragePath
+      : version.storagePath
   const bytesResult = await readWorkspaceBytes(
     args.context.workspace,
-    activeResult.value.storagePath,
+    storagePath,
   )
-  if (bytesResult.isErr()) return { ok: false, error: bytesResult.error.message }
+  if (bytesResult.isErr())
+    return { ok: false, error: bytesResult.error.message }
+  const fileType =
+    args.preferPdf && version.pdfStoragePath ? 'pdf' : version.fileType
   return {
     ok: true,
-    filename: activeResult.value.filename,
-    file_type: activeResult.value.fileType,
-    media_type: contentTypeForFileType(activeResult.value.fileType),
+    created_at: version.createdAt?.toISOString() ?? null,
+    display_name: version.displayName,
+    filename: version.filename,
+    file_type: fileType,
+    media_type: contentTypeForFileType(fileType),
+    source: version.source,
+    version_id: version.versionId,
+    version_number: version.versionNumber,
     bytes: bytesResult.value,
+  }
+}
+
+export async function listDocumentVersions(args: {
+  context: DocumentToolContext
+  documentId: string
+}) {
+  const db = getDb(args.context.databaseUrl)
+  const result = await Result.tryPromise({
+    try: async () => {
+      const [documentRow] = await db
+        .select({ currentVersionId: schema.document.currentVersionId })
+        .from(schema.document)
+        .where(
+          and(
+            eq(schema.document.id, args.documentId),
+            eq(schema.document.threadId, args.context.threadId),
+          ),
+        )
+        .limit(1)
+      if (!documentRow) return null
+      const rows = await db
+        .select({
+          createdAt: schema.documentVersion.createdAt,
+          displayName: schema.documentVersion.displayName,
+          id: schema.documentVersion.id,
+          source: schema.documentVersion.source,
+          versionNumber: schema.documentVersion.versionNumber,
+        })
+        .from(schema.documentVersion)
+        .where(eq(schema.documentVersion.documentId, args.documentId))
+        .orderBy(schema.documentVersion.versionNumber)
+      return {
+        currentVersionId: documentRow.currentVersionId,
+        versions: rows,
+      }
+    },
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+  if (result.isErr()) return { ok: false, error: result.error.message }
+  if (!result.value) return { ok: false, error: 'Document not found.' }
+  return {
+    ok: true,
+    current_version_id: result.value.currentVersionId,
+    versions: result.value.versions.map((row) => ({
+      created_at: row.createdAt?.toISOString() ?? null,
+      display_name: row.displayName,
+      id: row.id,
+      source: row.source,
+      version_number: row.versionNumber,
+    })),
   }
 }
 
@@ -855,7 +996,8 @@ export async function resolveDocumentEdit(args: {
     args.context.workspace,
     editRow.storagePath,
   )
-  if (bytesResult.isErr()) return { ok: false, error: bytesResult.error.message }
+  if (bytesResult.isErr())
+    return { ok: false, error: bytesResult.error.message }
   const resolvedResult = await Result.tryPromise({
     try: async () =>
       await resolveTrackedChange(
@@ -868,7 +1010,8 @@ export async function resolveDocumentEdit(args: {
         message: error instanceof Error ? error.message : String(error),
       }),
   })
-  if (resolvedResult.isErr()) return { ok: false, error: resolvedResult.error.message }
+  if (resolvedResult.isErr())
+    return { ok: false, error: resolvedResult.error.message }
 
   const writeResult = await Result.tryPromise({
     try: async () => {
@@ -902,7 +1045,8 @@ export async function resolveDocumentEdit(args: {
         message: error instanceof Error ? error.message : String(error),
       }),
   })
-  if (writeResult.isErr()) return { ok: false, error: writeResult.error.message }
+  if (writeResult.isErr())
+    return { ok: false, error: writeResult.error.message }
   return {
     ok: true,
     status: args.action === 'accept' ? 'accepted' : 'rejected',
@@ -933,11 +1077,18 @@ async function extractDocumentText(bytes: Buffer, fileType: string) {
     })
   }
   if (fileType === 'pdf') return extractPdfText(bytes)
-  if (fileType === 'txt' || fileType === 'md' || fileType === 'json' || fileType === 'csv') {
+  if (
+    fileType === 'txt' ||
+    fileType === 'md' ||
+    fileType === 'json' ||
+    fileType === 'csv'
+  ) {
     return Result.ok(bytes.toString('utf8'))
   }
   return Result.err(
-    new DocumentToolError({ message: `Unsupported document type: ${fileType}` }),
+    new DocumentToolError({
+      message: `Unsupported document type: ${fileType}`,
+    }),
   )
 }
 

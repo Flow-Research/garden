@@ -17,7 +17,10 @@ export function buildAgentHostName(workspaceId: string, userId: string) {
 function toBase64Url(value: string) {
   const bytes = new TextEncoder().encode(value)
   const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('')
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '')
 }
 
 async function getAgentHostStub(hostName: string) {
@@ -202,6 +205,30 @@ export async function readChatThreadDocumentBytes(input: {
 }) {
   const stub = await getAgentHostStub(input.hostName)
   return stub.readThreadDocumentBytes(input.threadId, input.documentId)
+}
+
+export async function readChatThreadDocumentVersionBytes(input: {
+  documentId: string
+  hostName: string
+  preferPdf?: boolean
+  threadId: string
+  versionId?: string | null
+}) {
+  const stub = await getAgentHostStub(input.hostName)
+  return stub.readThreadDocumentVersionBytes(input.threadId, {
+    documentId: input.documentId,
+    preferPdf: input.preferPdf,
+    versionId: input.versionId ?? null,
+  })
+}
+
+export async function listChatThreadDocumentVersions(input: {
+  documentId: string
+  hostName: string
+  threadId: string
+}) {
+  const stub = await getAgentHostStub(input.hostName)
+  return stub.listThreadDocumentVersions(input.threadId, input.documentId)
 }
 
 export async function resolveChatThreadDocumentEdit(input: {

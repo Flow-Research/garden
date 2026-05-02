@@ -56,7 +56,10 @@ import { Route as ApiIssuesIdReactionsRouteImport } from './routes/api/issues/$i
 import { Route as ApiIssuesIdCommentsRouteImport } from './routes/api/issues/$id/comments'
 import { Route as ApiInvitationsIdDeclineRouteImport } from './routes/api/invitations/$id/decline'
 import { Route as ApiInvitationsIdAcceptRouteImport } from './routes/api/invitations/$id/accept'
+import { Route as ApiDocumentsIdVersionsRouteImport } from './routes/api/documents/$id/versions'
+import { Route as ApiDocumentsIdTrackedChangeIdsRouteImport } from './routes/api/documents/$id/tracked-change-ids'
 import { Route as ApiDocumentsIdDocxRouteImport } from './routes/api/documents/$id/docx'
+import { Route as ApiDocumentsIdDisplayRouteImport } from './routes/api/documents/$id/display'
 import { Route as ApiConnectionsConnectorIdActivityRouteImport } from './routes/api/connections/$connectorId/activity'
 import { Route as ApiCommentsIdReactionsRouteImport } from './routes/api/comments/$id/reactions'
 import { Route as ApiChatThreadsIdRouteImport } from './routes/api/chat/threads/$id'
@@ -307,9 +310,25 @@ const ApiInvitationsIdAcceptRoute = ApiInvitationsIdAcceptRouteImport.update({
   path: '/accept',
   getParentRoute: () => ApiInvitationsIdRoute,
 } as any)
+const ApiDocumentsIdVersionsRoute = ApiDocumentsIdVersionsRouteImport.update({
+  id: '/api/documents/$id/versions',
+  path: '/api/documents/$id/versions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDocumentsIdTrackedChangeIdsRoute =
+  ApiDocumentsIdTrackedChangeIdsRouteImport.update({
+    id: '/api/documents/$id/tracked-change-ids',
+    path: '/api/documents/$id/tracked-change-ids',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiDocumentsIdDocxRoute = ApiDocumentsIdDocxRouteImport.update({
   id: '/api/documents/$id/docx',
   path: '/api/documents/$id/docx',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDocumentsIdDisplayRoute = ApiDocumentsIdDisplayRouteImport.update({
+  id: '/api/documents/$id/display',
+  path: '/api/documents/$id/display',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiConnectionsConnectorIdActivityRoute =
@@ -422,7 +441,10 @@ export interface FileRoutesByFullPath {
   '/api/chat/threads/$id': typeof ApiChatThreadsIdRouteWithChildren
   '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
   '/api/connections/$connectorId/activity': typeof ApiConnectionsConnectorIdActivityRoute
+  '/api/documents/$id/display': typeof ApiDocumentsIdDisplayRoute
   '/api/documents/$id/docx': typeof ApiDocumentsIdDocxRoute
+  '/api/documents/$id/tracked-change-ids': typeof ApiDocumentsIdTrackedChangeIdsRoute
+  '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
   '/api/invitations/$id/accept': typeof ApiInvitationsIdAcceptRoute
   '/api/invitations/$id/decline': typeof ApiInvitationsIdDeclineRoute
   '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
@@ -483,7 +505,10 @@ export interface FileRoutesByTo {
   '/api/chat/threads/$id': typeof ApiChatThreadsIdRouteWithChildren
   '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
   '/api/connections/$connectorId/activity': typeof ApiConnectionsConnectorIdActivityRoute
+  '/api/documents/$id/display': typeof ApiDocumentsIdDisplayRoute
   '/api/documents/$id/docx': typeof ApiDocumentsIdDocxRoute
+  '/api/documents/$id/tracked-change-ids': typeof ApiDocumentsIdTrackedChangeIdsRoute
+  '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
   '/api/invitations/$id/accept': typeof ApiInvitationsIdAcceptRoute
   '/api/invitations/$id/decline': typeof ApiInvitationsIdDeclineRoute
   '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
@@ -546,7 +571,10 @@ export interface FileRoutesById {
   '/api/chat/threads/$id': typeof ApiChatThreadsIdRouteWithChildren
   '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
   '/api/connections/$connectorId/activity': typeof ApiConnectionsConnectorIdActivityRoute
+  '/api/documents/$id/display': typeof ApiDocumentsIdDisplayRoute
   '/api/documents/$id/docx': typeof ApiDocumentsIdDocxRoute
+  '/api/documents/$id/tracked-change-ids': typeof ApiDocumentsIdTrackedChangeIdsRoute
+  '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
   '/api/invitations/$id/accept': typeof ApiInvitationsIdAcceptRoute
   '/api/invitations/$id/decline': typeof ApiInvitationsIdDeclineRoute
   '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
@@ -609,7 +637,10 @@ export interface FileRouteTypes {
     | '/api/chat/threads/$id'
     | '/api/comments/$id/reactions'
     | '/api/connections/$connectorId/activity'
+    | '/api/documents/$id/display'
     | '/api/documents/$id/docx'
+    | '/api/documents/$id/tracked-change-ids'
+    | '/api/documents/$id/versions'
     | '/api/invitations/$id/accept'
     | '/api/invitations/$id/decline'
     | '/api/issues/$id/comments'
@@ -670,7 +701,10 @@ export interface FileRouteTypes {
     | '/api/chat/threads/$id'
     | '/api/comments/$id/reactions'
     | '/api/connections/$connectorId/activity'
+    | '/api/documents/$id/display'
     | '/api/documents/$id/docx'
+    | '/api/documents/$id/tracked-change-ids'
+    | '/api/documents/$id/versions'
     | '/api/invitations/$id/accept'
     | '/api/invitations/$id/decline'
     | '/api/issues/$id/comments'
@@ -732,7 +766,10 @@ export interface FileRouteTypes {
     | '/api/chat/threads/$id'
     | '/api/comments/$id/reactions'
     | '/api/connections/$connectorId/activity'
+    | '/api/documents/$id/display'
     | '/api/documents/$id/docx'
+    | '/api/documents/$id/tracked-change-ids'
+    | '/api/documents/$id/versions'
     | '/api/invitations/$id/accept'
     | '/api/invitations/$id/decline'
     | '/api/issues/$id/comments'
@@ -776,7 +813,10 @@ export interface RootRouteChildren {
   ApiGithubInstallRoute: typeof ApiGithubInstallRoute
   ApiGithubSetupRoute: typeof ApiGithubSetupRoute
   ApiInternalCapabilitySyncRoute: typeof ApiInternalCapabilitySyncRoute
+  ApiDocumentsIdDisplayRoute: typeof ApiDocumentsIdDisplayRoute
   ApiDocumentsIdDocxRoute: typeof ApiDocumentsIdDocxRoute
+  ApiDocumentsIdTrackedChangeIdsRoute: typeof ApiDocumentsIdTrackedChangeIdsRoute
+  ApiDocumentsIdVersionsRoute: typeof ApiDocumentsIdVersionsRoute
   ApiDocumentsDocumentIdEditsEditIdActionRoute: typeof ApiDocumentsDocumentIdEditsEditIdActionRoute
 }
 
@@ -1111,11 +1151,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInvitationsIdAcceptRouteImport
       parentRoute: typeof ApiInvitationsIdRoute
     }
+    '/api/documents/$id/versions': {
+      id: '/api/documents/$id/versions'
+      path: '/api/documents/$id/versions'
+      fullPath: '/api/documents/$id/versions'
+      preLoaderRoute: typeof ApiDocumentsIdVersionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/documents/$id/tracked-change-ids': {
+      id: '/api/documents/$id/tracked-change-ids'
+      path: '/api/documents/$id/tracked-change-ids'
+      fullPath: '/api/documents/$id/tracked-change-ids'
+      preLoaderRoute: typeof ApiDocumentsIdTrackedChangeIdsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/documents/$id/docx': {
       id: '/api/documents/$id/docx'
       path: '/api/documents/$id/docx'
       fullPath: '/api/documents/$id/docx'
       preLoaderRoute: typeof ApiDocumentsIdDocxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/documents/$id/display': {
+      id: '/api/documents/$id/display'
+      path: '/api/documents/$id/display'
+      fullPath: '/api/documents/$id/display'
+      preLoaderRoute: typeof ApiDocumentsIdDisplayRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/connections/$connectorId/activity': {
@@ -1486,7 +1547,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGithubInstallRoute: ApiGithubInstallRoute,
   ApiGithubSetupRoute: ApiGithubSetupRoute,
   ApiInternalCapabilitySyncRoute: ApiInternalCapabilitySyncRoute,
+  ApiDocumentsIdDisplayRoute: ApiDocumentsIdDisplayRoute,
   ApiDocumentsIdDocxRoute: ApiDocumentsIdDocxRoute,
+  ApiDocumentsIdTrackedChangeIdsRoute: ApiDocumentsIdTrackedChangeIdsRoute,
+  ApiDocumentsIdVersionsRoute: ApiDocumentsIdVersionsRoute,
   ApiDocumentsDocumentIdEditsEditIdActionRoute:
     ApiDocumentsDocumentIdEditsEditIdActionRoute,
 }

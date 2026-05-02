@@ -14,6 +14,21 @@ export type GardenArtifactHighlight = {
   key: string
 }
 
+export type GardenCitationQuote = {
+  page?: number | string | null
+  quote: string
+}
+
+export type GardenArtifactOptimisticResolution = {
+  action: 'accept' | 'reject'
+  deletedText?: string
+  delWId?: string | null
+  insertedText?: string
+  insWId?: string | null
+  key: string
+  nonce: number
+}
+
 export function normalizeGardenArtifact(
   value: unknown,
 ): GardenArtifactData | null {
@@ -32,6 +47,12 @@ export function normalizeGardenArtifact(
     id: typeof candidate.id === 'string' ? candidate.id : null,
     filename: candidate.filename,
     title: typeof candidate.title === 'string' ? candidate.title : undefined,
+    versionId:
+      typeof candidate.versionId === 'string'
+        ? candidate.versionId
+        : typeof candidate.version_id === 'string'
+          ? candidate.version_id
+          : null,
     mediaType:
       typeof candidate.mediaType === 'string' ? candidate.mediaType : null,
     url: typeof candidate.url === 'string' ? candidate.url : null,
@@ -47,11 +68,15 @@ export function GardenArtifact({
   chrome,
   data,
   highlight,
+  optimisticResolution,
+  quotes,
   refreshKey,
 }: {
   chrome?: boolean
   data: GardenArtifactData
   highlight?: GardenArtifactHighlight | null
+  optimisticResolution?: GardenArtifactOptimisticResolution | null
+  quotes?: GardenCitationQuote[]
   refreshKey?: number
 }) {
   return (
@@ -59,6 +84,8 @@ export function GardenArtifact({
       chrome={chrome}
       data={data}
       highlight={highlight}
+      optimisticResolution={optimisticResolution}
+      quotes={quotes}
       refreshKey={refreshKey}
     />
   )

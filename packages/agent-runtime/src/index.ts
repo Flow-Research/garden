@@ -1,6 +1,9 @@
 export { AgentHost, WorkspaceAgent } from './agent-host'
 export { createAgentHostModel } from './model'
-export { resolveTrackedChange } from './documents/docx-tracked-changes'
+export {
+  extractTrackedChangeIds,
+  resolveTrackedChange,
+} from './documents/docx-tracked-changes'
 export {
   buildContentDisposition,
   documentDownloadUrl,
@@ -33,4 +36,7 @@ export type {
   SkillCatalog,
   SkillWorkspace,
 } from './skills'
-export type { AgentPromptCatalog, AgentPromptCatalog as PromptCatalog } from './prompt'
+export type {
+  AgentPromptCatalog,
+  AgentPromptCatalog as PromptCatalog,
+} from './prompt'
