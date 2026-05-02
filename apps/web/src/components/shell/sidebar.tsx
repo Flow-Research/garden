@@ -216,7 +216,7 @@ function ExplorerActionRow({
 export function WorkspaceSidebar() {
   const queryClient = useQueryClient()
   const { replace } = useNavigation()
-  const { activePanel, openPanel } = useWorkspaceDock()
+  const { activePanel, closePanel, openPanel } = useWorkspaceDock()
   const { claimWarmSession, sessions } = useAgentSessions()
   const workspace = useWorkspaceStore((state) => state.workspace)
   const clearWorkspace = useWorkspaceStore((state) => state.clearWorkspace)
@@ -476,6 +476,9 @@ export function WorkspaceSidebar() {
                       title: session.title,
                       entityId: session.id,
                     })
+                  }
+                  onArchive={(sessionId) =>
+                    closePanel(`chat:${sessionId}`)
                   }
                 />
               </div>

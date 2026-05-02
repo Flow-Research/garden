@@ -3,6 +3,7 @@ import {
   detectSkillTrigger,
   extractExplicitSkillSlugs,
   formatSkillInvocation,
+  stripExplicitSkills,
 } from './skill-invocation'
 
 describe('skill invocation helpers', () => {
@@ -38,5 +39,23 @@ describe('skill invocation helpers', () => {
 
   it('ignores deprecated dollar-prefixed tokens', () => {
     expect(extractExplicitSkillSlugs('Use $planning-with-files instead')).toEqual([])
+  })
+
+  it('strips explicit skill invocations and returns slugs plus cleaned text', () => {
+    expect(
+      stripExplicitSkills(
+        'Use /skill planning-with-files then /skill humanizer before reply',
+      ),
+    ).toEqual({
+      slugs: ['planning-with-files', 'humanizer'],
+      cleaned: 'Use then before reply',
+    })
+  })
+
+  it('returns empty slugs and original text when no skills are present', () => {
+    expect(stripExplicitSkills('Hello world')).toEqual({
+      slugs: [],
+      cleaned: 'Hello world',
+    })
   })
 })

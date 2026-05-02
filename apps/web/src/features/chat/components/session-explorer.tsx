@@ -17,10 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@garden/ui/components/ui/dropdown-menu'
 import { cn } from '@garden/ui/lib/utils'
-import {
-  chatSessionDragType,
-  useWorkspaceDock,
-} from '@/components/shell/workspace-dock'
+import { chatSessionDragType } from '@/components/shell/workspace-dock'
 import {
   isPendingFirstTurn,
   useAgentSessions,
@@ -43,18 +40,28 @@ function formatTimeAgo(dateStr: string) {
 }
 
 function SessionStatusDot({ session }: { session: AgentChatSession }) {
-  const className =
+  // Idle sessions show no dot at all.
+  if (
+    session.status !== 'streaming' &&
+    session.status !== 'submitted' &&
+    session.status !== 'error' &&
+    !session.unread
+  ) {
+    return null
+  }
+
+  const dotClass =
     session.status === 'streaming'
-      ? 'bg-emerald-400 shadow-[0_0_0_4px_rgba(52,211,153,0.16)]'
+      ? 'bg-blue-400 shadow-[0_0_0_4px_rgba(96,165,250,0.18)]'
       : session.status === 'submitted'
-        ? 'bg-amber-400'
+        ? 'bg-orange-400'
         : session.status === 'error'
           ? 'bg-destructive'
           : session.unread
-            ? 'bg-primary'
-            : 'bg-muted-foreground/35'
+            ? 'bg-emerald-400'
+            : ''
 
-  return <span className={cn('size-2 rounded-full', className)} />
+  return <span className={cn('size-1.5 shrink-0 rounded-full', dotClass)} />
 }
 
 function SessionRow({
@@ -86,11 +93,11 @@ function SessionRow({
   const menuItems = (
     <>
       <ContextMenuItem onClick={stop(onRename)}>
-        <Pencil className="size-4" />
+        <Pencil className="size-3.5" />
         Rename
       </ContextMenuItem>
       <ContextMenuItem onClick={stop(onArchive)}>
-        <Archive className="size-4" />
+        <Archive className="size-3.5" />
         Archive
       </ContextMenuItem>
     </>
@@ -118,7 +125,7 @@ function SessionRow({
             }
           }}
           className={cn(
-            'group relative flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors',
+            'group relative flex h-7 w-full items-center gap-1.5 rounded-md px-2 text-left text-xs transition-colors',
             active
               ? 'bg-accent text-accent-foreground'
               : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
@@ -128,7 +135,7 @@ function SessionRow({
           <span className="min-w-0 flex-1 truncate">{session.title}</span>
           <span
             className={cn(
-              'shrink-0 text-[11px] tabular-nums text-muted-foreground/70 transition-opacity',
+              'shrink-0 text-[10px] tabular-nums text-muted-foreground/70 transition-opacity',
               'group-hover:opacity-0 group-focus-within:opacity-0',
             )}
           >
@@ -144,39 +151,40 @@ function SessionRow({
                   onClick={(event) => event.stopPropagation()}
                   onKeyDown={(event) => event.stopPropagation()}
                   className={cn(
-                    'absolute right-1 size-6 opacity-0 transition-opacity',
+                    'absolute right-0.5 size-5 opacity-0 transition-opacity',
                     'group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100',
                   )}
                 />
               }
             >
-              <MoreHorizontal className="size-3.5" />
+              <MoreHorizontal className="size-3" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuContent align="start" side="right" sideOffset={4} className="min-w-28">
               <DropdownMenuItem onClick={stop(onRename)}>
-                <Pencil className="size-4" />
+                <Pencil className="size-3.5" />
                 Rename
               </DropdownMenuItem>
               <DropdownMenuItem onClick={stop(onArchive)}>
-                <Archive className="size-4" />
+                <Archive className="size-3.5" />
                 Archive
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent>{menuItems}</ContextMenuContent>
+      <ContextMenuContent side="right" sideOffset={4} className="min-w-28">{menuItems}</ContextMenuContent>
     </ContextMenu>
   )
 }
 
 export function ChatSessionExplorer({
   onActivate,
+  onArchive: onArchiveExternal,
 }: {
   onActivate?: (session: AgentChatSession) => void
+  onArchive?: (sessionId: string) => void
 }) {
   const activeSessionId = useChatStore((state) => state.activeSessionId)
-  const { closePanel } = useWorkspaceDock()
   const { archiveSession, renameSession, sessions, sessionsQuery } =
     useAgentSessions()
 
@@ -208,14 +216,11 @@ export function ChatSessionExplorer({
 
   const handleArchive = useCallback(
     async (sessionId: string) => {
-      // Close the open chat panel for this session BEFORE archiving so the
-      // user doesn't see a stale "no chat" frame after the row disappears
-      // from the list. Panel id format is `chat:${sessionId}` (see
-      // workspace-dock `getCanonicalPanelId`).
-      closePanel(`chat:${sessionId}`)
+      // Let the parent close the dock panel before the row disappears.
+      onArchiveExternal?.(sessionId)
       await archiveSession.mutateAsync(sessionId)
     },
-    [archiveSession, closePanel],
+    [archiveSession, onArchiveExternal],
   )
 
   return (
@@ -238,10 +243,10 @@ export function ChatSessionExplorer({
           {[0, 1, 2, 3].map((i) => (
             <div
               key={i}
-              className="flex h-8 w-full items-center gap-2 rounded-md px-2"
+              className="flex h-7 w-full items-center gap-1.5 rounded-md px-2"
             >
-              <span className="size-2 shrink-0 animate-pulse rounded-full bg-muted-foreground/20" />
-              <span className="h-3 flex-1 animate-pulse rounded bg-muted-foreground/15" />
+              <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-muted-foreground/20" />
+              <span className="h-2.5 flex-1 animate-pulse rounded bg-muted-foreground/15" />
             </div>
           ))}
         </div>

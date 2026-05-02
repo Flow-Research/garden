@@ -4,7 +4,7 @@ export const SKILL_COMMAND = '/skill'
 // an optional slug. We keep the `/skill <slug>` invocation format on
 // insertion so the runtime parser stays unchanged.
 const SKILL_TRIGGER_PATTERN = /(?:^|\s)\/([a-zA-Z0-9_-]*)$/
-const EXPLICIT_SKILL_PATTERN = /(?:^|\s)\/skill\s+([a-zA-Z0-9_-]+)/g
+export const EXPLICIT_SKILL_PATTERN = /(?:^|\s)\/skill\s+([a-zA-Z0-9_-]+)/g
 
 export type SkillTriggerMatch = {
   query: string
@@ -43,4 +43,16 @@ export function extractExplicitSkillSlugs(input: string) {
       ),
     ),
   )
+}
+
+export function stripExplicitSkills(input: string): {
+  slugs: string[]
+  cleaned: string
+} {
+  const slugs = extractExplicitSkillSlugs(input)
+  const cleaned = input
+    .replace(EXPLICIT_SKILL_PATTERN, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return { slugs, cleaned }
 }
