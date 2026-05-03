@@ -1,9 +1,9 @@
 'use client'
 
 import {
-  Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   type ReactNode,
@@ -15,6 +15,7 @@ import type { UIMessage } from 'ai'
 import { create } from 'zustand'
 import { useChatStore } from '@garden/core/chat'
 import {
+  isPendingFirstTurn,
   useAgentSessions,
   type AgentChatSession,
 } from './use-agent-chat-sessions'
@@ -156,23 +157,37 @@ export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
     () => sessions.filter((session) => !session.archivedAt),
     [sessions],
   )
+  const messagePreloadOrder = useMemo(() => {
+    const orderedSessionIds = new Map<string, number>()
+    sessions
+      .filter(
+        (session) => !session.archivedAt && !isPendingFirstTurn(session),
+      )
+      .slice(0, MESSAGE_PRELOAD_LIMIT)
+      .forEach((session, index) => {
+        orderedSessionIds.set(session.id, index)
+      })
+    return orderedSessionIds
+  }, [sessions])
 
   return (
     <>
-      {runtimeSessions.map((session, index) => (
-        <Suspense key={session.id} fallback={null}>
+      {runtimeSessions.map((session) => {
+        const preloadIndex = messagePreloadOrder.get(session.id)
+        return (
           <ChatRuntimeConnection
+            key={session.id}
             hydrateMessages={session.id === activeSessionId}
-            preloadDelayMs={index * MESSAGE_PRELOAD_STAGGER_MS}
-            preloadMessages={index < MESSAGE_PRELOAD_LIMIT}
+            preloadDelayMs={(preloadIndex ?? 0) * MESSAGE_PRELOAD_STAGGER_MS}
+            preloadMessages={preloadIndex !== undefined}
             prewarmRuntime={
               session.id === activeSessionId || session.id === warmSession?.id
             }
             session={session}
             updateSessionPreview={updateSessionPreview}
           />
-        </Suspense>
-      ))}
+        )
+      })}
       {children}
     </>
   )
@@ -299,8 +314,7 @@ function ChatRuntimeConnection({
     error,
   } = useAgentChat<unknown, ChatUiMessage>({
     agent,
-    getInitialMessages:
-      hydrateMessages && cachedMessages === undefined ? undefined : null,
+    getInitialMessages: null,
     messages: cachedMessages,
     onFinish: ({ message }) => {
       const pending = pendingTurnRef.current
@@ -322,6 +336,7 @@ function ChatRuntimeConnection({
     onError: markTurnError,
     experimental_throttle: 50,
   })
+  const registerRuntimeBeforePaint = hydrateMessages || prewarmRuntime
 
   useEffect(() => {
     if (cachedMessages === undefined) return
@@ -330,13 +345,7 @@ function ChatRuntimeConnection({
   }, [cachedMessages, messages.length, setMessages])
 
   useEffect(() => {
-    if (
-      !hydrateMessages &&
-      cachedMessages === undefined &&
-      messages.length === 0
-    ) {
-      return
-    }
+    if (cachedMessages === undefined && messages.length === 0) return
     if (
       cachedMessages !== undefined &&
       cachedMessages.length > 0 &&
@@ -347,33 +356,34 @@ function ChatRuntimeConnection({
     setCachedMessages(session.id, messages)
   }, [
     cachedMessages,
-    hydrateMessages,
     messages,
     session.id,
     setCachedMessages,
   ])
 
   useEffect(() => {
-    if (!preloadMessages || hydrateMessages || cachedMessages !== undefined) {
-      return
-    }
+    if (cachedMessages !== undefined) return
+    if (!hydrateMessages && !preloadMessages) return
     if (typeof window === 'undefined') return
 
     let cancelled = false
     const timeoutId = window.setTimeout(() => {
-      const messagesUrlResult = Result.try(() => {
-        const messagesUrl = new URL(agent.getHttpUrl())
-        messagesUrl.searchParams.delete('_pk')
-        messagesUrl.pathname += '/get-messages'
-        return messagesUrl.toString()
-      })
-      if (Result.isError(messagesUrlResult)) return
-
       void Result.tryPromise(async () => {
+        await agent.ready
+        if (cancelled) return null
+
+        const messagesUrlResult = Result.try(() => {
+          const messagesUrl = new URL(agent.getHttpUrl())
+          messagesUrl.searchParams.delete('_pk')
+          messagesUrl.pathname += '/get-messages'
+          return messagesUrl.toString()
+        })
+        if (Result.isError(messagesUrlResult)) throw messagesUrlResult.error
+
         const response = await fetch(messagesUrlResult.value)
         if (!response.ok) {
           throw new Error(
-            `Failed to preload chat messages: ${response.status} ${response.statusText}`,
+            `Failed to load chat messages: ${response.status} ${response.statusText}`,
           )
         }
         const text = await response.text()
@@ -386,7 +396,10 @@ function ChatRuntimeConnection({
       }).then((result) => {
         if (cancelled) return
         if (Result.isError(result)) {
-          console.warn('[chat.runtime] message preload failed', result.error)
+          console.warn('[chat.runtime] message load failed', result.error)
+          return
+        }
+        if (result.value === null) {
           return
         }
         if (
@@ -397,7 +410,7 @@ function ChatRuntimeConnection({
         }
         setCachedMessages(session.id, result.value)
       })
-    }, preloadDelayMs)
+    }, hydrateMessages ? 0 : preloadDelayMs)
 
     return () => {
       cancelled = true
@@ -508,9 +521,15 @@ function ChatRuntimeConnection({
     ],
   )
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!registerRuntimeBeforePaint) return
     setRuntime(session.id, runtime)
-  }, [runtime, session.id, setRuntime])
+  }, [registerRuntimeBeforePaint, runtime, session.id, setRuntime])
+
+  useEffect(() => {
+    if (registerRuntimeBeforePaint) return
+    setRuntime(session.id, runtime)
+  }, [registerRuntimeBeforePaint, runtime, session.id, setRuntime])
 
   useEffect(
     () => () => {
