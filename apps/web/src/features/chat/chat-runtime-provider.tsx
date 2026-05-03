@@ -47,7 +47,6 @@ export type ChatRuntime = {
   error: AgentChatApi['error']
   isServerStreaming: AgentChatApi['isServerStreaming']
   isStreaming: AgentChatApi['isStreaming']
-  loadRuntimeSkills: () => Promise<ComposerSkill[]>
   markTurnError: (err: Error) => void
   messages: ChatUiMessage[]
   sendMessage: AgentChatApi['sendMessage']
@@ -167,11 +166,6 @@ function ChatRuntimeConnection({
     name: session.hostName,
     sub: [{ agent: 'WorkspaceAgent', name: session.id }],
   })
-
-  const loadRuntimeSkills = useCallback(
-    async () => (await agent.stub.listRuntimeSkills()) as ComposerSkill[],
-    [agent],
-  )
 
   const prepareRuntime = useCallback(
     async (cancelled: () => boolean) => {
@@ -349,7 +343,6 @@ function ChatRuntimeConnection({
       error,
       isServerStreaming,
       isStreaming,
-      loadRuntimeSkills,
       markTurnError,
       messages,
       sendMessage,
@@ -365,7 +358,6 @@ function ChatRuntimeConnection({
       error,
       isServerStreaming,
       isStreaming,
-      loadRuntimeSkills,
       markTurnError,
       messages,
       sendMessage,
