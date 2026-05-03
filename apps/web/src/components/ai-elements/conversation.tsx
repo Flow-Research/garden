@@ -2,36 +2,114 @@
 
 import { Button } from '@garden/ui/components/ui/button'
 import { cn } from '@garden/ui/lib/utils'
+import { LegendList, type LegendListRef } from '@legendapp/list/react'
 import type { UIMessage } from 'ai'
-import { ArrowDownIcon, DownloadIcon } from 'lucide-react'
-import type { ComponentProps } from 'react'
-import { useCallback } from 'react'
-import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom'
+import { ChevronDownIcon, DownloadIcon } from 'lucide-react'
+import type { ComponentProps, ReactElement, ReactNode } from 'react'
+import {
+  Children,
+  createContext,
+  isValidElement,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
-export type ConversationProps = ComponentProps<typeof StickToBottom>
+type ConversationContextValue = {
+  isAtBottom: boolean
+  scrollToBottom: () => void
+}
 
-export const Conversation = ({ className, ...props }: ConversationProps) => (
-  <StickToBottom
-    className={cn('relative flex-1 overflow-y-hidden', className)}
-    initial="smooth"
-    resize="smooth"
-    role="log"
-    {...props}
-  />
-)
+const ConversationContext = createContext<ConversationContextValue | null>(null)
 
-export type ConversationContentProps = ComponentProps<
-  typeof StickToBottom.Content
->
+function useConversationContext() {
+  const context = useContext(ConversationContext)
+  if (!context) {
+    throw new Error('Conversation components must be used within Conversation')
+  }
+  return context
+}
+
+export type ConversationProps = ComponentProps<'div'>
+
+export const Conversation = ({
+  children,
+  className,
+  ...props
+}: ConversationProps) => {
+  const listRef = useRef<LegendListRef | null>(null)
+  const [isAtBottom, setIsAtBottom] = useState(true)
+
+  const updateStickiness = useCallback(() => {
+    const state = listRef.current?.getState?.()
+    if (state) setIsAtBottom(state.isAtEnd)
+  }, [])
+
+  const scrollToBottom = useCallback(() => {
+    listRef.current?.scrollToEnd?.({ animated: true })
+    setIsAtBottom(true)
+  }, [])
+
+  const { contentItems, overlayItems } = useMemo(() => {
+    const allChildren = Children.toArray(children)
+    const content: ReactElement<ConversationContentProps>[] = []
+    const overlay: ReactNode[] = []
+
+    allChildren.forEach((child) => {
+      if (isValidElement<ConversationContentProps>(child)) {
+        if (child.type === ConversationContent) {
+          content.push(child)
+          return
+        }
+      }
+      overlay.push(child)
+    })
+
+    return { contentItems: content, overlayItems: overlay }
+  }, [children])
+
+  const renderItem = useCallback(
+    ({ item }: { item: ReactElement<ConversationContentProps> }) => item,
+    [],
+  )
+
+  return (
+    <ConversationContext.Provider
+      value={{ isAtBottom, scrollToBottom }}
+    >
+      <div
+        role="log"
+        {...props}
+        className={cn('relative min-h-0 flex-1 overflow-hidden', className)}
+      >
+        <LegendList<ReactElement<ConversationContentProps>>
+          ref={listRef}
+          data={contentItems}
+          keyExtractor={(_, index) => `conversation-content-${index}`}
+          renderItem={renderItem}
+          estimatedItemSize={520}
+          initialScrollAtEnd
+          maintainScrollAtEnd
+          maintainScrollAtEndThreshold={0.1}
+          maintainVisibleContentPosition
+          onScroll={updateStickiness}
+          className="h-full overflow-x-hidden overscroll-y-contain"
+        />
+        {overlayItems}
+      </div>
+    </ConversationContext.Provider>
+  )
+}
+
+export type ConversationContentProps = ComponentProps<'div'>
 
 export const ConversationContent = ({
   className,
   ...props
 }: ConversationContentProps) => (
-  <StickToBottom.Content
-    className={cn('flex flex-col gap-8 p-4', className)}
-    {...props}
-  />
+  <div {...props} className={cn('flex flex-col gap-8 p-4', className)} />
 )
 
 export type ConversationEmptyStateProps = ComponentProps<'div'> & {
@@ -72,10 +150,11 @@ export const ConversationEmptyState = ({
 export type ConversationScrollButtonProps = ComponentProps<typeof Button>
 
 export const ConversationScrollButton = ({
+  children,
   className,
   ...props
 }: ConversationScrollButtonProps) => {
-  const { isAtBottom, scrollToBottom } = useStickToBottomContext()
+  const { isAtBottom, scrollToBottom } = useConversationContext()
 
   const handleScrollToBottom = useCallback(() => {
     scrollToBottom()
@@ -85,16 +164,21 @@ export const ConversationScrollButton = ({
     !isAtBottom && (
       <Button
         className={cn(
-          'absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full dark:bg-background dark:hover:bg-muted',
+          'absolute bottom-4 left-[50%] z-10 h-7 translate-x-[-50%] gap-1.5 rounded-full border-border/60 bg-card px-3 text-muted-foreground text-xs shadow-sm hover:border-border hover:text-foreground dark:bg-background dark:hover:bg-muted',
           className,
         )}
         onClick={handleScrollToBottom}
-        size="icon"
+        size="sm"
         type="button"
         variant="outline"
         {...props}
       >
-        <ArrowDownIcon className="size-4" />
+        {children ?? (
+          <>
+            <ChevronDownIcon className="size-3.5" />
+            Scroll to bottom
+          </>
+        )}
       </Button>
     )
   )
