@@ -5,17 +5,30 @@ import { cn } from '@garden/ui/lib/utils'
 import { LegendList, type LegendListRef } from '@legendapp/list/react'
 import type { UIMessage } from 'ai'
 import { ChevronDownIcon, DownloadIcon } from 'lucide-react'
-import type { ComponentProps, ReactElement, ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import {
   Children,
   createContext,
   isValidElement,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react'
+
+type ConversationRow<TItem = ReactNode> =
+  | {
+      key: string
+      kind: 'node'
+      node: ReactNode
+    }
+  | {
+      item: TItem
+      key: string
+      kind: 'data'
+    }
 
 type ConversationContextValue = {
   isAtBottom: boolean
@@ -32,14 +45,24 @@ function useConversationContext() {
   return context
 }
 
-export type ConversationProps = ComponentProps<'div'>
+export type ConversationProps<TItem = ReactNode> = ComponentProps<'div'> & {
+  data?: readonly TItem[]
+  estimateItemSize?: number
+  getItemKey?: (item: TItem, index: number) => string
+  renderItem?: (args: { index: number; item: TItem }) => ReactNode
+}
 
-export const Conversation = ({
+export function Conversation<TItem = ReactNode>({
   children,
   className,
+  data,
+  estimateItemSize = 140,
+  getItemKey,
+  renderItem: renderDataItem,
   ...props
-}: ConversationProps) => {
+}: ConversationProps<TItem>) {
   const listRef = useRef<LegendListRef | null>(null)
+  const previousRowCountRef = useRef(0)
   const [isAtBottom, setIsAtBottom] = useState(true)
 
   const updateStickiness = useCallback(() => {
@@ -52,28 +75,81 @@ export const Conversation = ({
     setIsAtBottom(true)
   }, [])
 
-  const { contentItems, overlayItems } = useMemo(() => {
+  const { rows: rawRows, overlayItems } = useMemo<{
+    overlayItems: ReactNode[]
+    rows: ConversationRow<TItem>[]
+  }>(() => {
+    if (data && renderDataItem && getItemKey) {
+      return {
+        overlayItems: Children.toArray(children),
+        rows: data.map((item, index) => ({
+          item,
+          key: getItemKey(item, index),
+          kind: 'data',
+        })),
+      }
+    }
+
     const allChildren = Children.toArray(children)
-    const content: ReactElement<ConversationContentProps>[] = []
+    const content: ReactNode[] = []
     const overlay: ReactNode[] = []
 
     allChildren.forEach((child) => {
       if (isValidElement<ConversationContentProps>(child)) {
         if (child.type === ConversationContent) {
-          content.push(child)
+          content.push(...Children.toArray(child.props.children))
           return
         }
       }
       overlay.push(child)
     })
 
-    return { contentItems: content, overlayItems: overlay }
-  }, [children])
+    const listRows = content.map((node, index) => ({
+      key:
+        isValidElement(node) && node.key != null
+          ? String(node.key)
+          : `conversation-row-${index}`,
+      kind: 'node' as const,
+      node,
+    }))
+
+    return { rows: listRows, overlayItems: overlay }
+  }, [children, data, getItemKey, renderDataItem])
+  const rows = useStableConversationRows(rawRows)
 
   const renderItem = useCallback(
-    ({ item }: { item: ReactElement<ConversationContentProps> }) => item,
-    [],
+    ({ index, item }: { index: number; item: ConversationRow<TItem> }) => (
+      <div
+        className={cn(
+          'mx-auto w-full max-w-2xl px-4',
+          index === 0 ? 'pt-4 pb-4' : 'pb-4',
+        )}
+      >
+        {item.kind === 'data' && renderDataItem
+          ? renderDataItem({ index, item: item.item })
+          : item.kind === 'node'
+            ? item.node
+            : null}
+      </div>
+    ),
+    [renderDataItem],
   )
+
+  useEffect(() => {
+    const previousRowCount = previousRowCountRef.current
+    previousRowCountRef.current = rows.length
+
+    if (previousRowCount > 0 || rows.length === 0) return
+
+    setIsAtBottom(true)
+    const frameId = window.requestAnimationFrame(() => {
+      listRef.current?.scrollToEnd?.({ animated: false })
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [rows.length])
 
   return (
     <ConversationContext.Provider
@@ -84,12 +160,13 @@ export const Conversation = ({
         {...props}
         className={cn('relative min-h-0 flex-1 overflow-hidden', className)}
       >
-        <LegendList<ReactElement<ConversationContentProps>>
+        <LegendList<ConversationRow<TItem>>
           ref={listRef}
-          data={contentItems}
-          keyExtractor={(_, index) => `conversation-content-${index}`}
+          data={rows}
+          keyExtractor={(item) => item.key}
           renderItem={renderItem}
-          estimatedItemSize={520}
+          estimatedItemSize={estimateItemSize}
+          alignItemsAtEnd
           initialScrollAtEnd
           maintainScrollAtEnd
           maintainScrollAtEndThreshold={0.1}
@@ -101,6 +178,53 @@ export const Conversation = ({
       </div>
     </ConversationContext.Provider>
   )
+}
+
+function useStableConversationRows<TItem>(
+  rows: ConversationRow<TItem>[],
+): ConversationRow<TItem>[] {
+  const previousRowsRef = useRef<{
+    byKey: Map<string, ConversationRow<TItem>>
+    result: ConversationRow<TItem>[]
+  }>({
+    byKey: new Map(),
+    result: [],
+  })
+
+  return useMemo(() => {
+    const previous = previousRowsRef.current
+    const byKey = new Map<string, ConversationRow<TItem>>()
+    let changed = rows.length !== previous.result.length
+
+    const result = rows.map((row, index) => {
+      const previousRow = previous.byKey.get(row.key)
+      const nextRow =
+        previousRow && conversationRowsEqual(previousRow, row)
+          ? previousRow
+          : row
+      byKey.set(row.key, nextRow)
+      if (!changed && previous.result[index] !== nextRow) changed = true
+      return nextRow
+    })
+
+    const next = changed ? { byKey, result } : previous
+    previousRowsRef.current = next
+    return next.result
+  }, [rows])
+}
+
+function conversationRowsEqual<TItem>(
+  left: ConversationRow<TItem>,
+  right: ConversationRow<TItem>,
+) {
+  if (left.kind !== right.kind || left.key !== right.key) return false
+  if (left.kind === 'data' && right.kind === 'data') {
+    return left.item === right.item
+  }
+  if (left.kind === 'node' && right.kind === 'node') {
+    return left.node === right.node
+  }
+  return false
 }
 
 export type ConversationContentProps = ComponentProps<'div'>

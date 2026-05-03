@@ -39,6 +39,9 @@ type PendingTurn = {
   preview: string
 }
 
+const MESSAGE_PRELOAD_LIMIT = 10
+const MESSAGE_PRELOAD_STAGGER_MS = 250
+
 type AgentChatApi = ReturnType<typeof useAgentChat<unknown, ChatUiMessage>>
 
 export type ChatRuntime = {
@@ -56,13 +59,26 @@ export type ChatRuntime = {
 }
 
 type ChatRuntimeStore = {
+  cachedMessages: Record<string, ChatUiMessage[] | undefined>
   removeRuntime: (sessionId: string) => void
   runtimes: Record<string, ChatRuntime | undefined>
+  setCachedMessages: (sessionId: string, messages: ChatUiMessage[]) => void
   setRuntime: (sessionId: string, runtime: ChatRuntime) => void
 }
 
 const useChatRuntimeStore = create<ChatRuntimeStore>((set) => ({
+  cachedMessages: {},
   runtimes: {},
+  setCachedMessages: (sessionId, messages) =>
+    set((state) => {
+      if (state.cachedMessages[sessionId] === messages) return state
+      return {
+        cachedMessages: {
+          ...state.cachedMessages,
+          [sessionId]: messages,
+        },
+      }
+    }),
   setRuntime: (sessionId, runtime) =>
     set((state) => ({
       runtimes: {
@@ -72,10 +88,17 @@ const useChatRuntimeStore = create<ChatRuntimeStore>((set) => ({
     })),
   removeRuntime: (sessionId) =>
     set((state) => {
-      if (!state.runtimes[sessionId]) return state
+      if (
+        !state.runtimes[sessionId] &&
+        state.cachedMessages[sessionId] === undefined
+      ) {
+        return state
+      }
       const next = { ...state.runtimes }
+      const cachedMessages = { ...state.cachedMessages }
       delete next[sessionId]
-      return { runtimes: next }
+      delete cachedMessages[sessionId]
+      return { cachedMessages, runtimes: next }
     }),
 }))
 
@@ -125,9 +148,10 @@ export function useChatRuntime(sessionId: string) {
 }
 
 export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
-  const { sessions, updateSessionPreview } = useAgentSessions({
+  const { sessions, updateSessionPreview, warmSession } = useAgentSessions({
     ensureWarmSession: false,
   })
+  const activeSessionId = useChatStore((state) => state.activeSessionId)
   const runtimeSessions = useMemo(
     () => sessions.filter((session) => !session.archivedAt),
     [sessions],
@@ -135,9 +159,15 @@ export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
 
   return (
     <>
-      {runtimeSessions.map((session) => (
+      {runtimeSessions.map((session, index) => (
         <Suspense key={session.id} fallback={null}>
           <ChatRuntimeConnection
+            hydrateMessages={session.id === activeSessionId}
+            preloadDelayMs={index * MESSAGE_PRELOAD_STAGGER_MS}
+            preloadMessages={index < MESSAGE_PRELOAD_LIMIT}
+            prewarmRuntime={
+              session.id === activeSessionId || session.id === warmSession?.id
+            }
             session={session}
             updateSessionPreview={updateSessionPreview}
           />
@@ -149,9 +179,17 @@ export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
 }
 
 function ChatRuntimeConnection({
+  hydrateMessages,
+  preloadDelayMs,
+  preloadMessages,
+  prewarmRuntime,
   session,
   updateSessionPreview,
 }: {
+  hydrateMessages: boolean
+  preloadDelayMs: number
+  preloadMessages: boolean
+  prewarmRuntime: boolean
   session: AgentChatSession
   updateSessionPreview: ReturnType<
     typeof useAgentSessions
@@ -159,6 +197,12 @@ function ChatRuntimeConnection({
 }) {
   const pendingTurnRef = useRef<PendingTurn | null>(null)
   const activeStreamIdsRef = useRef(new Set<string>())
+  const cachedMessages = useChatRuntimeStore(
+    (state) => state.cachedMessages[session.id],
+  )
+  const setCachedMessages = useChatRuntimeStore(
+    (state) => state.setCachedMessages,
+  )
   const setRuntime = useChatRuntimeStore((state) => state.setRuntime)
   const removeRuntime = useChatRuntimeStore((state) => state.removeRuntime)
   const agent = useAgent({
@@ -179,6 +223,8 @@ function ChatRuntimeConnection({
   )
 
   useEffect(() => {
+    if (!prewarmRuntime) return
+
     let cancelled = false
 
     const runPrepareRuntime = () => {
@@ -211,12 +257,13 @@ function ChatRuntimeConnection({
         onConnectionsChanged,
       )
     }
-  }, [prepareRuntime, session.id])
+  }, [prepareRuntime, prewarmRuntime, session.id])
 
   useEffect(() => {
+    if (!prewarmRuntime) return
     if (typeof window === 'undefined') return
     window.dispatchEvent(new Event('garden:connections-changed'))
-  }, [session.id])
+  }, [prewarmRuntime, session.id])
 
   const markTurnError = useCallback(
     (err: Error) => {
@@ -246,11 +293,15 @@ function ChatRuntimeConnection({
     isStreaming,
     messages,
     sendMessage,
+    setMessages,
     status,
     stop,
     error,
   } = useAgentChat<unknown, ChatUiMessage>({
     agent,
+    getInitialMessages:
+      hydrateMessages && cachedMessages === undefined ? undefined : null,
+    messages: cachedMessages,
     onFinish: ({ message }) => {
       const pending = pendingTurnRef.current
       pendingTurnRef.current = null
@@ -273,6 +324,96 @@ function ChatRuntimeConnection({
   })
 
   useEffect(() => {
+    if (cachedMessages === undefined) return
+    if (cachedMessages.length === 0 || messages.length > 0) return
+    setMessages(cachedMessages)
+  }, [cachedMessages, messages.length, setMessages])
+
+  useEffect(() => {
+    if (
+      !hydrateMessages &&
+      cachedMessages === undefined &&
+      messages.length === 0
+    ) {
+      return
+    }
+    if (
+      cachedMessages !== undefined &&
+      cachedMessages.length > 0 &&
+      messages.length === 0
+    ) {
+      return
+    }
+    setCachedMessages(session.id, messages)
+  }, [
+    cachedMessages,
+    hydrateMessages,
+    messages,
+    session.id,
+    setCachedMessages,
+  ])
+
+  useEffect(() => {
+    if (!preloadMessages || hydrateMessages || cachedMessages !== undefined) {
+      return
+    }
+    if (typeof window === 'undefined') return
+
+    let cancelled = false
+    const timeoutId = window.setTimeout(() => {
+      const messagesUrlResult = Result.try(() => {
+        const messagesUrl = new URL(agent.getHttpUrl())
+        messagesUrl.searchParams.delete('_pk')
+        messagesUrl.pathname += '/get-messages'
+        return messagesUrl.toString()
+      })
+      if (Result.isError(messagesUrlResult)) return
+
+      void Result.tryPromise(async () => {
+        const response = await fetch(messagesUrlResult.value)
+        if (!response.ok) {
+          throw new Error(
+            `Failed to preload chat messages: ${response.status} ${response.statusText}`,
+          )
+        }
+        const text = await response.text()
+        if (!text.trim()) return [] as ChatUiMessage[]
+        const parsed = Result.try(
+          () => JSON.parse(text) as ChatUiMessage[],
+        )
+        if (Result.isError(parsed)) throw parsed.error
+        return parsed.value
+      }).then((result) => {
+        if (cancelled) return
+        if (Result.isError(result)) {
+          console.warn('[chat.runtime] message preload failed', result.error)
+          return
+        }
+        if (
+          useChatRuntimeStore.getState().cachedMessages[session.id] !==
+          undefined
+        ) {
+          return
+        }
+        setCachedMessages(session.id, result.value)
+      })
+    }, preloadDelayMs)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeoutId)
+    }
+  }, [
+    agent,
+    cachedMessages,
+    hydrateMessages,
+    preloadDelayMs,
+    preloadMessages,
+    session.id,
+    setCachedMessages,
+  ])
+
+  useEffect(() => {
     const onAgentMessage = (event: MessageEvent) => {
       if (typeof event.data !== 'string') return
       const parsed = Result.try(() => JSON.parse(event.data) as unknown)
@@ -282,6 +423,7 @@ function ChatRuntimeConnection({
 
       if (streamEvent.type === 'cf_agent_chat_clear') {
         activeStreamIdsRef.current.clear()
+        setCachedMessages(session.id, [])
         return
       }
 
@@ -305,7 +447,7 @@ function ChatRuntimeConnection({
       agent.removeEventListener('message', onAgentMessage)
       activeStreamIdsRef.current.clear()
     }
-  }, [agent])
+  }, [agent, session.id, setCachedMessages])
 
   const stopCurrentTurn = useCallback(async () => {
     const streamIds = [...activeStreamIdsRef.current]
