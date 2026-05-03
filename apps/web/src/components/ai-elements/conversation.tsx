@@ -43,8 +43,10 @@ function useConversationContext() {
 
 export type ConversationProps<TItem> = ComponentProps<'div'> & {
   data: readonly TItem[]
+  drawDistance?: number
   estimateItemSize?: number
   getItemKey: (item: TItem, index: number) => string
+  initialContainerPoolRatio?: number
   initialScrollKey?: string
   renderItem: (args: { index: number; item: TItem }) => ReactNode
 }
@@ -53,8 +55,10 @@ export function Conversation<TItem>({
   children,
   className,
   data,
-  estimateItemSize = 140,
+  drawDistance,
+  estimateItemSize = 90,
   getItemKey,
+  initialContainerPoolRatio,
   initialScrollKey,
   onTouchStart,
   onWheel,
@@ -211,7 +215,9 @@ export function Conversation<TItem>({
           data={rows}
           keyExtractor={(item) => item.key}
           renderItem={renderItem}
+          drawDistance={drawDistance}
           estimatedItemSize={estimateItemSize}
+          initialContainerPoolRatio={initialContainerPoolRatio}
           alignItemsAtEnd
           initialScrollAtEnd
           maintainScrollAtEnd={{
