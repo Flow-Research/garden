@@ -47,7 +47,7 @@ vi.mock('@garden/core', () => ({
   useWorkspaceId: () => 'ws-test',
 }))
 
-vi.mock('@garden/core/issues/queries', () => ({
+vi.mock('@/lib/issues/queries', () => ({
   issueListOptions: () => ({
     queryKey: ['issues', 'ws-test', 'list'],
     enabled: false,

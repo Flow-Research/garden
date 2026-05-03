@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Bot, Search } from 'lucide-react'
 import type { Agent } from '@garden/core/types'
-import { agentListOptions } from '@garden/core/workspace/queries'
+import { agentListOptions } from '@/lib/workspace/queries'
 import { useWorkspaceId } from '@garden/core/hooks'
 import {
   Avatar,

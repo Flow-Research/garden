@@ -4,7 +4,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import {
   connectionGrantBodySchema,
   parseJsonBody,
-} from '@/lib/server/api-validation'
+} from '@/lib/server/validation/connections'
 import {
   badRequest,
   json,

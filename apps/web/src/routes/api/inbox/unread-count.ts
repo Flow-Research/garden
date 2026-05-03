@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import { buildInboxItemsFromIssues } from '@/lib/server/workspace-surfaces'
+import { buildInboxItemsFromIssues } from '@/lib/server/inbox-surface'
 import {
   requireSession,
   resolveWorkspaceId,

@@ -45,8 +45,8 @@ vi.mock('@garden/core/workspace', () => ({
   registerWorkspaceStore: vi.fn(),
 }))
 
-// Mock @garden/core/workspace/hooks
-vi.mock('@garden/core/workspace/hooks', () => ({
+// Mock @/lib/workspace/hooks
+vi.mock('@/lib/workspace/hooks', () => ({
   useActorName: () => ({
     getMemberName: (id: string) => (id === 'user-1' ? 'Test User' : 'Unknown'),
     getAgentName: (id: string) =>
@@ -62,7 +62,7 @@ vi.mock('@garden/core/workspace/hooks', () => ({
 }))
 
 // Mock workspace queries
-vi.mock('@garden/core/workspace/queries', () => ({
+vi.mock('@/lib/workspace/queries', () => ({
   memberListOptions: () => ({
     queryKey: ['workspaces', 'ws-1', 'members'],
     queryFn: () =>

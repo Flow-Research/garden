@@ -2,7 +2,7 @@ import { Result, TaggedError } from 'better-result'
 import { and, eq, inArray } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { schema } from '@/lib/server/db'
-import { parseJsonBody, toolApprovalBodySchema } from '@/lib/server/api-validation'
+import { parseJsonBody, toolApprovalBodySchema } from '@/lib/server/validation/chat'
 import { json, notFound } from '@/lib/server/control-plane'
 import { getThreadAccess } from '@/lib/server/chat-threads'
 

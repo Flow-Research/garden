@@ -3,7 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import {
   parseJsonBody,
   updateChatThreadBodySchema,
-} from '@/lib/server/api-validation'
+} from '@/lib/server/validation/chat'
 import { deleteChatThreadAgent } from '@/lib/server/chat-agents'
 import { schema } from '@/lib/server/db'
 import {

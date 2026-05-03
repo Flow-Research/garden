@@ -4,7 +4,7 @@ import { createAuth } from '@/lib/auth'
 import {
   parseJsonBody,
   updateWorkspaceBodySchema,
-} from '@/lib/server/api-validation'
+} from '@/lib/server/validation/workspaces'
 import { refreshChatThreadPromptConfig } from '@/lib/server/chat-agents'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'

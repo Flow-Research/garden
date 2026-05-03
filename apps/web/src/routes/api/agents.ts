@@ -7,7 +7,7 @@ import {
 import {
   createAgentBodySchema,
   parseJsonBody,
-} from '@/lib/server/api-validation'
+} from '@/lib/server/validation/agents'
 import { buildAgentHostName } from '@/lib/server/chat-agents'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'

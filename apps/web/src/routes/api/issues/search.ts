@@ -5,7 +5,7 @@ import { appEnv } from '@/lib/server/env'
 import {
   issueSearchQuerySchema,
   parseSearchParams,
-} from '@/lib/server/api-validation'
+} from '@/lib/server/validation/issues'
 import {
   badRequest,
   requireSession,

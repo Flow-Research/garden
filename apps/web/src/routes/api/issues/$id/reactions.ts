@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { parseJsonBody, reactionBodySchema } from '@/lib/server/api-validation'
+import { parseJsonBody, reactionBodySchema } from '@/lib/server/validation/issues'
 import {
   badRequest,
   requireSession,

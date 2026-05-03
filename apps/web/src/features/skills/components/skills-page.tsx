@@ -76,7 +76,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/core/auth'
 import { useWorkspaceId } from '@garden/core/hooks'
 import { useSkillsBrowseStore, useSkillEditorStore } from '@garden/core/skills'
-import { skillListOptions, workspaceKeys } from '@garden/core/workspace/queries'
+import { skillListOptions, workspaceKeys } from '@/lib/workspace/queries'
 
 import { FileTree } from './file-tree'
 import { FileViewer } from './file-viewer'

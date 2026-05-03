@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   issueListOptions,
   issueDetailOptions,
-} from '@garden/core/issues/queries'
+} from '@/lib/issues/queries'
 import { useWorkspaceId } from '@garden/core/hooks'
 import { StatusIcon } from './status-icon'
 

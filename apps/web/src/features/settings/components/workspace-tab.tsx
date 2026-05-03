@@ -24,12 +24,12 @@ import { useWorkspaceStore } from '@garden/core/workspace'
 import {
   useLeaveWorkspace,
   useDeleteWorkspace,
-} from '@garden/core/workspace/mutations'
+} from '@/lib/workspace/mutations'
 import { useWorkspaceId } from '@garden/core/hooks'
 import {
   memberListOptions,
   workspaceKeys,
-} from '@garden/core/workspace/queries'
+} from '@/lib/workspace/queries'
 import { api } from '@/lib/api'
 import type { Workspace } from '@garden/core/types'
 

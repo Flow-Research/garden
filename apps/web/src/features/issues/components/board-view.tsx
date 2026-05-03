@@ -18,7 +18,7 @@ import { arrayMove } from '@dnd-kit/sortable'
 import { Eye, MoreHorizontal } from 'lucide-react'
 import type { Issue, IssueStatus } from '@garden/core/types'
 import { Button } from '@garden/ui/components/ui/button'
-import { useLoadMoreDoneIssues } from '@garden/core/issues/mutations'
+import { useLoadMoreDoneIssues } from '@/lib/issues/mutations'
 import {
   DropdownMenu,
   DropdownMenuTrigger,

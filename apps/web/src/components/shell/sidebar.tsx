@@ -13,7 +13,7 @@ import type { Agent, Skill } from '@garden/core/types'
 import {
   agentListOptions,
   skillListOptions,
-} from '@garden/core/workspace/queries'
+} from '@/lib/workspace/queries'
 import { useSkillsBrowseStore, useSkillEditorStore } from '@garden/core/skills'
 import { FileTree } from '@/features/skills/components/file-tree'
 import { Button } from '@garden/ui/components/ui/button'
@@ -38,7 +38,7 @@ import {
 import {
   deduplicateInboxItems,
   inboxListOptions,
-} from '@garden/core/inbox/queries'
+} from '@/lib/inbox/queries'
 import { useAuthStore } from '@garden/core/auth'
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { SearchTrigger } from '@/features/search'

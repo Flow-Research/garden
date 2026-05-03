@@ -1,7 +1,7 @@
 'use client'
 
 import { ActorAvatar as ActorAvatarBase } from '@garden/ui/components/common/actor-avatar'
-import { useActorName } from '@garden/core/workspace/hooks'
+import { useActorName } from '@/lib/workspace/hooks'
 
 interface ActorAvatarProps {
   actorType: string

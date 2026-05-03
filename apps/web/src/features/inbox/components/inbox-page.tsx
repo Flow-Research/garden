@@ -7,7 +7,7 @@ import { useWorkspaceId } from '@garden/core/hooks'
 import {
   inboxListOptions,
   deduplicateInboxItems,
-} from '@garden/core/inbox/queries'
+} from '@/lib/inbox/queries'
 import {
   useMarkInboxRead,
   useArchiveInbox,
@@ -15,8 +15,8 @@ import {
   useArchiveAllInbox,
   useArchiveAllReadInbox,
   useArchiveCompletedInbox,
-} from '@garden/core/inbox/mutations'
-import { useActorName } from '@garden/core/workspace/hooks'
+} from '@/lib/inbox/mutations'
+import { useActorName } from '@/lib/workspace/hooks'
 import { IssueDetail } from '../../issues/components'
 import { useNavigation } from '../../navigation'
 import { toast } from 'sonner'

@@ -43,7 +43,7 @@ vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ clear: mockQueryClear }),
 }))
 
-vi.mock('@garden/core/inbox/queries', () => ({
+vi.mock('@/lib/inbox/queries', () => ({
   deduplicateInboxItems: (items: unknown[]) => items,
   inboxListOptions: () => ({ queryKey: ['inbox'], queryFn: vi.fn() }),
 }))

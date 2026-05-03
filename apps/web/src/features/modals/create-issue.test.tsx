@@ -47,7 +47,7 @@ vi.mock('@garden/core/issues/stores/draft-store', () => ({
   ),
 }))
 
-vi.mock('@garden/core/issues/mutations', () => ({
+vi.mock('@/lib/issues/mutations', () => ({
   useCreateIssue: () => ({ mutateAsync: mockCreateIssue }),
   useUpdateIssue: () => ({ mutate: vi.fn() }),
 }))

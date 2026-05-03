@@ -3,7 +3,7 @@ import { createAuth } from '@/lib/auth'
 import {
   createWorkspaceMemberBodySchema,
   parseJsonBody,
-} from '@/lib/server/api-validation'
+} from '@/lib/server/validation/workspaces'
 import {
   requireSession,
   toInvitation,

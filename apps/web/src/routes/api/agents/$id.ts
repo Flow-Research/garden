@@ -3,7 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import {
   parseJsonBody,
   updateAgentBodySchema,
-} from '@/lib/server/api-validation'
+} from '@/lib/server/validation/agents'
 import { refreshChatThreadPromptConfig } from '@/lib/server/chat-agents'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'

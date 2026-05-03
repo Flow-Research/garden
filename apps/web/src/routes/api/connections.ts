@@ -2,7 +2,7 @@ import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import { buildConnectionSurface } from '@/lib/server/workspace-surfaces'
+import { buildConnectionSurface } from '@/lib/server/connection-surface'
 import {
   requireSession,
   resolveWorkspaceId,

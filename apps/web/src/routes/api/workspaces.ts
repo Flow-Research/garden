@@ -4,7 +4,7 @@ import { createAuth } from '@/lib/auth'
 import {
   createWorkspaceBodySchema,
   parseJsonBody,
-} from '@/lib/server/api-validation'
+} from '@/lib/server/validation/workspaces'
 import {
   badRequest,
   requireSession,

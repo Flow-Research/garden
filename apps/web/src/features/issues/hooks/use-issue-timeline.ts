@@ -15,14 +15,14 @@ import type {
   ReactionAddedPayload,
   ReactionRemovedPayload,
 } from '@garden/core/types'
-import { issueTimelineOptions, issueKeys } from '@garden/core/issues/queries'
+import { issueTimelineOptions, issueKeys } from '@/lib/issues/queries'
 import {
   useCreateComment,
   useUpdateComment,
   useDeleteComment,
   useToggleCommentReaction,
   type ToggleCommentReactionVars,
-} from '@garden/core/issues/mutations'
+} from '@/lib/issues/mutations'
 import { useWSEvent, useWSReconnect } from '@garden/core/realtime'
 import { toast } from 'sonner'
 

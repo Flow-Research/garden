@@ -44,7 +44,7 @@ import { ActorAvatar } from '../../common/actor-avatar'
 import { ReactionBar } from '@garden/ui/components/common/reaction-bar'
 import { QuickEmojiPicker } from '@garden/ui/components/common/quick-emoji-picker'
 import { cn } from '@garden/ui/lib/utils'
-import { useActorName } from '@garden/core/workspace/hooks'
+import { useActorName } from '@/lib/workspace/hooks'
 import { timeAgo } from '@garden/core/utils'
 import {
   ContentEditor,

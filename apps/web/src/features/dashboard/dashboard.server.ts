@@ -3,10 +3,10 @@ import { getRequest } from '@tanstack/react-start/server'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
-  buildConnectionSurface,
   buildInboxItemsFromIssues,
   sortIssuesByUpdatedAt,
-} from '@/lib/server/workspace-surfaces'
+} from '@/lib/server/inbox-surface'
+import { buildConnectionSurface } from '@/lib/server/connection-surface'
 import { requireSession } from '@/lib/server/control-plane'
 import type { IssuePriority, IssueStatus } from '@garden/core/types'
 

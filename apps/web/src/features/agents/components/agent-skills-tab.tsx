@@ -15,7 +15,7 @@ import {
   agentSkillListOptions,
   skillListOptions,
   workspaceKeys,
-} from '@garden/core/workspace/queries'
+} from '@/lib/workspace/queries'
 import { Button } from '@garden/ui/components/ui/button'
 import {
   Dialog,

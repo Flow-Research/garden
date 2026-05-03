@@ -45,7 +45,7 @@ import { BacklogAgentHintContent } from '../issues/components/backlog-agent-hint
 import { ProjectPicker } from '../projects/components/project-picker'
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { useIssueDraftStore } from '@garden/core/issues/stores/draft-store'
-import { useCreateIssue, useUpdateIssue } from '@garden/core/issues/mutations'
+import { useCreateIssue, useUpdateIssue } from '@/lib/issues/mutations'
 import { useFileUpload } from '@garden/core/hooks/use-file-upload'
 import { api } from '@/lib/api'
 import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'

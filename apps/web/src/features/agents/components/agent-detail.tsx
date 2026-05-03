@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Bot, Loader2 } from 'lucide-react'
 import type { Agent } from '@garden/core/types'
-import { agentDetailOptions } from '@garden/core/workspace/queries'
+import { agentDetailOptions } from '@/lib/workspace/queries'
 import {
   Avatar,
   AvatarFallback,

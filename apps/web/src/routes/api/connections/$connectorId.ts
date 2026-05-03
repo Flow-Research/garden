@@ -5,7 +5,7 @@ import { getConnectorById } from '@garden/connectors'
 import {
   connectionActionBodySchema,
   parseJsonBody,
-} from '@/lib/server/api-validation'
+} from '@/lib/server/validation/connections'
 import { syncCapabilities } from '@/lib/server/capability-sync'
 import {
   badRequest,

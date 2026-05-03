@@ -2,7 +2,7 @@
 
 import { cn } from '@garden/ui/lib/utils'
 import { Archive } from 'lucide-react'
-import { useActorName } from '@garden/core/workspace/hooks'
+import { useActorName } from '@/lib/workspace/hooks'
 import type { InboxItem } from '@garden/core/types'
 import { InboxDetailLabel, typeLabels } from './inbox-detail-label'
 

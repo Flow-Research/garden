@@ -10,7 +10,7 @@ import {
 } from '@garden/ui/components/ui/tooltip'
 import { Button } from '@garden/ui/components/ui/button'
 import type { Issue, IssueStatus } from '@garden/core/types'
-import { useLoadMoreDoneIssues } from '@garden/core/issues/mutations'
+import { useLoadMoreDoneIssues } from '@/lib/issues/mutations'
 import { STATUS_CONFIG } from '@garden/core/issues/config'
 import { useModalStore } from '@garden/core/modals'
 import { useViewStore } from '@garden/core/issues/stores/view-store-context'

@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import { parseJsonBody, updateIssueBodySchema } from '@/lib/server/api-validation'
+import { parseJsonBody, updateIssueBodySchema } from '@/lib/server/validation/issues'
 import {
   badRequest,
   notFound,

@@ -12,7 +12,7 @@ import { appEnv } from '@/lib/server/env'
 import {
   parseSearchParams,
   threadDebugQuerySchema,
-} from '@/lib/server/api-validation'
+} from '@/lib/server/validation/chat'
 import {
   badRequest,
   requireSession,

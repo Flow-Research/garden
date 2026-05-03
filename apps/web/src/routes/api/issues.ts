@@ -7,7 +7,7 @@ import {
   issuesListSearchSchema,
   parseJsonBody,
   parseSearchParams,
-} from '@/lib/server/api-validation'
+} from '@/lib/server/validation/issues'
 import {
   badRequest,
   notFound,

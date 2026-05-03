@@ -10,8 +10,8 @@ import type {
 import {
   issueSubscribersOptions,
   issueKeys,
-} from '@garden/core/issues/queries'
-import { useToggleIssueSubscriber } from '@garden/core/issues/mutations'
+} from '@/lib/issues/queries'
+import { useToggleIssueSubscriber } from '@/lib/issues/mutations'
 import { useWSEvent, useWSReconnect } from '@garden/core/realtime'
 
 export function useIssueSubscribers(issueId: string, userId?: string) {

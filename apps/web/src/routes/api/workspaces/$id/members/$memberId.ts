@@ -9,7 +9,7 @@ import {
 import {
   parseJsonBody,
   updateWorkspaceMemberBodySchema,
-} from '@/lib/server/api-validation'
+} from '@/lib/server/validation/workspaces'
 
 export const Route = createFileRoute('/api/workspaces/$id/members/$memberId')({
   server: {

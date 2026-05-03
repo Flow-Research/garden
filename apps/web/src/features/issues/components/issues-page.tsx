@@ -19,8 +19,8 @@ import { useWorkspaceId } from '@garden/core/hooks'
 import {
   issueListOptions,
   childIssueProgressOptions,
-} from '@garden/core/issues/queries'
-import { useUpdateIssue } from '@garden/core/issues/mutations'
+} from '@/lib/issues/queries'
+import { useUpdateIssue } from '@/lib/issues/mutations'
 import { useIssueSelectionStore } from '@garden/core/issues/stores/selection-store'
 import { PageHeader } from '../../layout/page-header'
 import { IssuesHeader } from './issues-header'

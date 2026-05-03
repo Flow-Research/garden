@@ -5,28 +5,28 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@garden/core/auth'
 import { useWorkspaceStore } from '@garden/core/workspace'
-import { useActorName } from '@garden/core/workspace/hooks'
+import { useActorName } from '@/lib/workspace/hooks'
 import { useWorkspaceId } from '@garden/core/hooks'
 import {
   issueListOptions,
   issueDetailOptions,
   childIssuesOptions,
   issueUsageOptions,
-} from '@garden/core/issues/queries'
+} from '@/lib/issues/queries'
 import {
   memberListOptions,
   agentListOptions,
-} from '@garden/core/workspace/queries'
+} from '@/lib/workspace/queries'
 import { useRecentIssuesStore } from '@garden/core/issues/stores'
 import { useIssueTimeline } from './use-issue-timeline'
 import { useIssueReactions } from './use-issue-reactions'
 import { useIssueSubscribers } from './use-issue-subscribers'
 import { useFileUpload } from '@garden/core/hooks/use-file-upload'
-import { pinListOptions, useCreatePin, useDeletePin } from '@garden/core/pins'
+import { pinListOptions, useCreatePin, useDeletePin } from '@/lib/pins'
 import {
   useDeleteIssue,
   useUpdateIssue,
-} from '@garden/core/issues/mutations'
+} from '@/lib/issues/mutations'
 
 export function useIssueDetailData(issueId: string) {
   const user = useAuthStore((state) => state.user)

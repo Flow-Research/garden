@@ -7,7 +7,7 @@ import {
 import {
   githubSetupQuerySchema,
   parseSearchParams,
-} from '@/lib/server/api-validation'
+} from '@/lib/server/validation/github'
 import { syncCapabilities } from '@/lib/server/capability-sync'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'

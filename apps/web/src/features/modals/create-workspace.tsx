@@ -16,7 +16,7 @@ import {
   DialogDescription,
 } from '@garden/ui/components/ui/dialog'
 import { Card, CardContent } from '@garden/ui/components/ui/card'
-import { useCreateWorkspace } from '@garden/core/workspace/mutations'
+import { useCreateWorkspace } from '@/lib/workspace/mutations'
 import {
   WORKSPACE_SLUG_CONFLICT_ERROR,
   WORKSPACE_SLUG_FORMAT_ERROR,

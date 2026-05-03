@@ -5,7 +5,7 @@ import {
   requireSession,
   unauthorized,
 } from '@/lib/server/control-plane'
-import { parseJsonBody, updateMeBodySchema } from '@/lib/server/api-validation'
+import { parseJsonBody, updateMeBodySchema } from '@/lib/server/validation/me'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { toCoreUser } from '@/lib/server/session'

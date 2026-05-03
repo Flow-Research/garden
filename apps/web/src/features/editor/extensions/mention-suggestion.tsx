@@ -12,8 +12,8 @@ import { ReactRenderer } from '@tiptap/react'
 import { computePosition, offset, flip, shift } from '@floating-ui/dom'
 import type { QueryClient } from '@tanstack/react-query'
 import { useWorkspaceStore } from '@garden/core/workspace'
-import { issueKeys } from '@garden/core/issues/queries'
-import { workspaceKeys } from '@garden/core/workspace/queries'
+import { issueKeys } from '@/lib/issues/queries'
+import { workspaceKeys } from '@/lib/workspace/queries'
 import type {
   Issue,
   ListIssuesResponse,
