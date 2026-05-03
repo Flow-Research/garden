@@ -5,11 +5,14 @@ import { cn } from '@garden/ui/lib/utils'
 import { LegendList, type LegendListRef } from '@legendapp/list/react'
 import type { UIMessage } from 'ai'
 import { ChevronDownIcon, DownloadIcon } from 'lucide-react'
-import type { ComponentProps, ReactNode } from 'react'
+import type {
+  ComponentProps,
+  ReactNode,
+  TouchEvent as ReactTouchEvent,
+  WheelEvent as ReactWheelEvent,
+} from 'react'
 import {
-  Children,
   createContext,
-  isValidElement,
   useCallback,
   useContext,
   useEffect,
@@ -18,17 +21,10 @@ import {
   useState,
 } from 'react'
 
-type ConversationRow<TItem = ReactNode> =
-  | {
-      key: string
-      kind: 'node'
-      node: ReactNode
-    }
-  | {
-      item: TItem
-      key: string
-      kind: 'data'
-    }
+type ConversationRow<TItem> = {
+  item: TItem
+  key: string
+}
 
 type ConversationContextValue = {
   isAtBottom: boolean
@@ -45,24 +41,30 @@ function useConversationContext() {
   return context
 }
 
-export type ConversationProps<TItem = ReactNode> = ComponentProps<'div'> & {
-  data?: readonly TItem[]
+export type ConversationProps<TItem> = ComponentProps<'div'> & {
+  data: readonly TItem[]
   estimateItemSize?: number
-  getItemKey?: (item: TItem, index: number) => string
-  renderItem?: (args: { index: number; item: TItem }) => ReactNode
+  getItemKey: (item: TItem, index: number) => string
+  initialScrollKey?: string
+  renderItem: (args: { index: number; item: TItem }) => ReactNode
 }
 
-export function Conversation<TItem = ReactNode>({
+export function Conversation<TItem>({
   children,
   className,
   data,
   estimateItemSize = 140,
   getItemKey,
+  initialScrollKey,
+  onTouchStart,
+  onWheel,
   renderItem: renderDataItem,
   ...props
 }: ConversationProps<TItem>) {
   const listRef = useRef<LegendListRef | null>(null)
-  const previousRowCountRef = useRef(0)
+  const initialScrollFrameRef = useRef<number | null>(null)
+  const initialScrollTargetKeyRef = useRef<string | null>(null)
+  const previousInitialScrollKeyRef = useRef<string | null>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
 
   const updateStickiness = useCallback(() => {
@@ -75,47 +77,51 @@ export function Conversation<TItem = ReactNode>({
     setIsAtBottom(true)
   }, [])
 
-  const { rows: rawRows, overlayItems } = useMemo<{
-    overlayItems: ReactNode[]
-    rows: ConversationRow<TItem>[]
-  }>(() => {
-    if (data && renderDataItem && getItemKey) {
-      return {
-        overlayItems: Children.toArray(children),
-        rows: data.map((item, index) => ({
-          item,
-          key: getItemKey(item, index),
-          kind: 'data',
-        })),
-      }
+  const rawRows = useMemo(
+    () =>
+      data.map((item, index) => ({
+        item,
+        key: getItemKey(item, index),
+      })),
+    [data, getItemKey],
+  )
+  const rows = useStableConversationRows(rawRows)
+
+  const cancelInitialScroll = useCallback(() => {
+    if (initialScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(initialScrollFrameRef.current)
+      initialScrollFrameRef.current = null
     }
+  }, [])
 
-    const allChildren = Children.toArray(children)
-    const content: ReactNode[] = []
-    const overlay: ReactNode[] = []
+  const scheduleInitialScrollToEnd = useCallback(
+    (targetKey: string) => {
+      cancelInitialScroll()
 
-    allChildren.forEach((child) => {
-      if (isValidElement<ConversationContentProps>(child)) {
-        if (child.type === ConversationContent) {
-          content.push(...Children.toArray(child.props.children))
+      let frameCount = 0
+      const scrollStep = () => {
+        if (initialScrollTargetKeyRef.current !== targetKey) return
+
+        frameCount += 1
+        listRef.current?.scrollToEnd?.({ animated: false })
+        setIsAtBottom(true)
+
+        const state = listRef.current?.getState?.()
+        if ((frameCount >= 4 && state?.isAtEnd) || frameCount >= 60) {
+          initialScrollFrameRef.current = null
+          initialScrollTargetKeyRef.current = null
           return
         }
+
+        initialScrollFrameRef.current =
+          window.requestAnimationFrame(scrollStep)
       }
-      overlay.push(child)
-    })
 
-    const listRows = content.map((node, index) => ({
-      key:
-        isValidElement(node) && node.key != null
-          ? String(node.key)
-          : `conversation-row-${index}`,
-      kind: 'node' as const,
-      node,
-    }))
-
-    return { rows: listRows, overlayItems: overlay }
-  }, [children, data, getItemKey, renderDataItem])
-  const rows = useStableConversationRows(rawRows)
+      initialScrollFrameRef.current =
+        window.requestAnimationFrame(scrollStep)
+    },
+    [cancelInitialScroll],
+  )
 
   const renderItem = useCallback(
     ({ index, item }: { index: number; item: ConversationRow<TItem> }) => (
@@ -125,31 +131,69 @@ export function Conversation<TItem = ReactNode>({
           index === 0 ? 'pt-4 pb-4' : 'pb-4',
         )}
       >
-        {item.kind === 'data' && renderDataItem
-          ? renderDataItem({ index, item: item.item })
-          : item.kind === 'node'
-            ? item.node
-            : null}
+        {renderDataItem({ index, item: item.item })}
       </div>
     ),
     [renderDataItem],
   )
 
   useEffect(() => {
-    const previousRowCount = previousRowCountRef.current
-    previousRowCountRef.current = rows.length
+    if (rows.length === 0) return
 
-    if (previousRowCount > 0 || rows.length === 0) return
+    const targetKey = rows[rows.length - 1]?.key
+    if (!targetKey) return
+    const nextInitialScrollKey = initialScrollKey ?? targetKey
+    if (previousInitialScrollKeyRef.current === nextInitialScrollKey) return
 
+    previousInitialScrollKeyRef.current = nextInitialScrollKey
+    initialScrollTargetKeyRef.current = targetKey
     setIsAtBottom(true)
-    const frameId = window.requestAnimationFrame(() => {
-      listRef.current?.scrollToEnd?.({ animated: false })
-    })
+    scheduleInitialScrollToEnd(targetKey)
 
     return () => {
-      window.cancelAnimationFrame(frameId)
+      cancelInitialScroll()
     }
-  }, [rows.length])
+  }, [
+    cancelInitialScroll,
+    initialScrollKey,
+    rows,
+    rows.length,
+    scheduleInitialScrollToEnd,
+  ])
+
+  const handleInitialLayoutShift = useCallback(() => {
+    const targetKey = initialScrollTargetKeyRef.current
+    if (!targetKey) return
+    scheduleInitialScrollToEnd(targetKey)
+  }, [scheduleInitialScrollToEnd])
+
+  const cancelInitialScrollFromUserInput = useCallback(() => {
+    initialScrollTargetKeyRef.current = null
+    cancelInitialScroll()
+  }, [cancelInitialScroll])
+
+  const handleWheel = useCallback(
+    (event: ReactWheelEvent<HTMLDivElement>) => {
+      cancelInitialScrollFromUserInput()
+      onWheel?.(event)
+    },
+    [cancelInitialScrollFromUserInput, onWheel],
+  )
+
+  const handleTouchStart = useCallback(
+    (event: ReactTouchEvent<HTMLDivElement>) => {
+      cancelInitialScrollFromUserInput()
+      onTouchStart?.(event)
+    },
+    [cancelInitialScrollFromUserInput, onTouchStart],
+  )
+
+  useEffect(
+    () => () => {
+      cancelInitialScroll()
+    },
+    [cancelInitialScroll],
+  )
 
   return (
     <ConversationContext.Provider
@@ -158,6 +202,8 @@ export function Conversation<TItem = ReactNode>({
       <div
         role="log"
         {...props}
+        onTouchStart={handleTouchStart}
+        onWheel={handleWheel}
         className={cn('relative min-h-0 flex-1 overflow-hidden', className)}
       >
         <LegendList<ConversationRow<TItem>>
@@ -168,13 +214,19 @@ export function Conversation<TItem = ReactNode>({
           estimatedItemSize={estimateItemSize}
           alignItemsAtEnd
           initialScrollAtEnd
-          maintainScrollAtEnd
+          maintainScrollAtEnd={{
+            animated: false,
+            on: { dataChange: true, itemLayout: true, layout: true },
+          }}
           maintainScrollAtEndThreshold={0.1}
           maintainVisibleContentPosition
+          onItemSizeChanged={handleInitialLayoutShift}
+          onLoad={handleInitialLayoutShift}
+          onMetricsChange={handleInitialLayoutShift}
           onScroll={updateStickiness}
           className="h-full overflow-x-hidden overscroll-y-contain"
         />
-        {overlayItems}
+        {children}
       </div>
     </ConversationContext.Provider>
   )
@@ -217,24 +269,8 @@ function conversationRowsEqual<TItem>(
   left: ConversationRow<TItem>,
   right: ConversationRow<TItem>,
 ) {
-  if (left.kind !== right.kind || left.key !== right.key) return false
-  if (left.kind === 'data' && right.kind === 'data') {
-    return left.item === right.item
-  }
-  if (left.kind === 'node' && right.kind === 'node') {
-    return left.node === right.node
-  }
-  return false
+  return left.key === right.key && left.item === right.item
 }
-
-export type ConversationContentProps = ComponentProps<'div'>
-
-export const ConversationContent = ({
-  className,
-  ...props
-}: ConversationContentProps) => (
-  <div {...props} className={cn('flex flex-col gap-8 p-4', className)} />
-)
 
 export type ConversationEmptyStateProps = ComponentProps<'div'> & {
   title?: string
