@@ -80,6 +80,7 @@ export const permissionRequest = pgTable(
     agentId: uuid('agent_id')
       .notNull()
       .references(() => agent.id),
+    kind: text('kind').notNull().default('connector_write'),
     capabilityId: uuid('capability_id')
       .notNull()
       .references(() => capability.id),
@@ -98,6 +99,10 @@ export const permissionRequest = pgTable(
     check(
       'permission_request_status_check',
       sql`${table.status} in ('pending', 'approved', 'denied')`,
+    ),
+    check(
+      'permission_request_kind_check',
+      sql`${table.kind} in ('connector_write', 'agent_proposal')`,
     ),
   ],
 )

@@ -113,6 +113,20 @@
       "when": 1777681800000,
       "tag": "0015_document_edit_resolved_at",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1777904984398,
+      "tag": "0016_issue_flow_phase_1",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1777908569681,
+      "tag": "0017_issue_flow_runs",
+      "breakpoints": true
     }
   ]
 }

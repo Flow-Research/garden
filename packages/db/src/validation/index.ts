@@ -30,7 +30,6 @@ export const invitationStatusSchema = z.enum(invitationStatusValues)
 
 export const agentRecordStatusValues = [
   'active',
-  'paused',
   'pending_approval',
   'archived',
 ] as const
@@ -50,6 +49,7 @@ export const issueStatusValues = [
   'in_review',
   'done',
   'blocked',
+  'cancelled',
 ] as const
 export const issueStatusSchema = z.enum(issueStatusValues)
 
@@ -285,3 +285,5 @@ export const accountUpdateSchema = createUpdateSchema(account, {
   workspaceId: () => uuidSchema,
   status: () => accountStatusSchema,
 })
+
+export * from './issue-runs.js'

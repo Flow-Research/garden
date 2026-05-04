@@ -214,6 +214,14 @@ export function toInvitation(record: InvitationRecord) {
 }
 
 export function toIssue(record: typeof schema.issue.$inferSelect) {
+  const sourceSummary = record.sourceSummary
+    ? {
+        connector_id: 'manual',
+        display_ref: record.sourceSummary,
+        external_url: null,
+      }
+    : null
+
   return {
     id: record.id,
     workspace_id: record.workspaceId,
@@ -230,8 +238,10 @@ export function toIssue(record: typeof schema.issue.$inferSelect) {
     creator_id: record.createdBy,
     parent_issue_id: record.parentId ?? null,
     project_id: record.projectId ?? null,
-    position: 0,
-    due_date: null,
+    position: record.position,
+    due_date: record.dueDate ? new Date(record.dueDate).toISOString() : null,
+    active_run_id: record.activeRunId ?? null,
+    source_summary: sourceSummary,
     reactions: [],
     created_at: record.createdAt
       ? new Date(record.createdAt).toISOString()
@@ -262,6 +272,8 @@ export function toAgent(record: typeof schema.agent.$inferSelect) {
     custom_env_redacted: false,
     visibility: 'workspace',
     status: record.status === 'archived' ? 'offline' : 'idle',
+    record_status: record.status,
+    is_default: record.isDefault,
     max_concurrent_tasks: 1,
     owner_id: record.ownerUserId ?? null,
     skills: [],
