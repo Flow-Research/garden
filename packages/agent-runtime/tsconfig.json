@@ -5,7 +5,7 @@
     "lib": ["ES2022", "WebWorker"],
     "types": ["@cloudflare/workers-types", "node"],
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": "../..",
     "allowImportingTsExtensions": true,
     "declaration": false,
     "declarationMap": false

@@ -1,4 +1,3 @@
-import { Buffer } from 'node:buffer'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { tool } from 'ai'
 import { and, eq, inArray, sql } from 'drizzle-orm'
@@ -64,14 +63,6 @@ function getDb(databaseUrl: string) {
 
 function dbErrorMessage(cause: unknown, fallback: string) {
   return cause instanceof Error ? cause.message : fallback
-}
-
-function toBase64Url(value: string) {
-  return Buffer.from(value, 'utf8').toString('base64url')
-}
-
-function buildAgentHostName(workspaceId: string, userId: string) {
-  return `primary.${toBase64Url(workspaceId)}.${toBase64Url(userId)}`
 }
 
 function uniqueSkillSlugs(skills: string[] | undefined) {
@@ -238,7 +229,7 @@ async function proposeAgent(
             ${description},
             'pending_approval',
             'workspace-agent',
-            ${buildAgentHostName(identity.workspaceId, identity.ownerUserId)}
+            ${pendingAgentId}
           )
         `)
 

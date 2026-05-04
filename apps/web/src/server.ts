@@ -1,26 +1,26 @@
 import handler from '@tanstack/react-start/server-entry'
 import { routeAgentRequest } from 'agents'
-import { AgentHost, IssueRunAgent, WorkspaceAgent } from '@garden/agent-runtime'
+import { AgentDO, ChatSubAgent, IssueRunSubAgent } from '@garden/agent-runtime'
 import { proxyToSandbox, Sandbox } from '@cloudflare/sandbox'
 import { Result } from 'better-result'
-import { and, eq } from 'drizzle-orm'
 import { createAuth } from '@/lib/auth'
-import { getDb, schema } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
+import { requireAgentAccess } from '@/lib/server/agent-do-router'
 import { reconcile } from '@/lib/server/issue-run-reconciler'
 
-export { AgentHost }
-export { IssueRunAgent }
-export { WorkspaceAgent }
+export { AgentDO }
+export { ChatSubAgent }
+export { IssueRunSubAgent }
 export { Sandbox }
 
 type ServerEnv = AppEnv & {
   MCP_PROXY?: Fetcher
 }
 
-const AGENT_HOST_AUTH_CACHE_TTL_MS = 60_000
-const agentHostAuthCache = new Map<string, number>()
-const AGENT_HOST_NAME_PATTERN = /^[A-Za-z0-9._-]+$/
+const AGENT_DO_AUTH_CACHE_TTL_MS = 60_000
+const agentDoAuthCache = new Map<string, number>()
+const AGENT_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function responseFromCaughtError(args: {
   event: string
@@ -45,20 +45,20 @@ function responseFromCaughtError(args: {
   )
 }
 
-function getAgentHostNameFromRequest(request: Request) {
+function getAgentIdFromRequest(request: Request) {
   const url = new URL(request.url)
   const parts = url.pathname.split('/').filter(Boolean)
-  if (parts[0] !== 'agents' || parts[1] !== 'agent-host') return null
+  if (parts[0] !== 'agents' || parts[1] !== 'agent-do') return null
 
-  const hostName = parts[2] ?? ''
-  if (!hostName || !AGENT_HOST_NAME_PATTERN.test(hostName)) return null
+  const agentId = parts[2] ?? ''
+  if (!agentId || !AGENT_ID_PATTERN.test(agentId)) return null
 
-  return hostName
+  return agentId
 }
 
 async function authorizeAgentRequest(request: Request, env: ServerEnv) {
-  const hostName = getAgentHostNameFromRequest(request)
-  if (!hostName) {
+  const agentId = getAgentIdFromRequest(request)
+  if (!agentId) {
     return { request, response: new Response('Not found', { status: 404 }) }
   }
 
@@ -68,27 +68,21 @@ async function authorizeAgentRequest(request: Request, env: ServerEnv) {
     return { request, response: new Response('Unauthorized', { status: 401 }) }
   }
 
-  const cacheKey = `${session.user.id}:${hostName}`
-  const cachedUntil = agentHostAuthCache.get(cacheKey) ?? 0
+  const cacheKey = `${session.user.id}:${agentId}`
+  const cachedUntil = agentDoAuthCache.get(cacheKey) ?? 0
   const now = Date.now()
   if (cachedUntil <= now) {
-    const db = getDb(env)
-    const [row] = await db
-      .select({ id: schema.agent.id })
-      .from(schema.agent)
-      .where(
-        and(
-          eq(schema.agent.hostName, hostName),
-          eq(schema.agent.ownerUserId, session.user.id),
-        ),
-      )
-      .limit(1)
-
-    if (!row) {
+    const accessResult = await requireAgentAccess(
+      env,
+      agentId,
+      session,
+      'connect',
+    )
+    if (accessResult.isErr()) {
       return { request, response: new Response('Not found', { status: 404 }) }
     }
 
-    agentHostAuthCache.set(cacheKey, now + AGENT_HOST_AUTH_CACHE_TTL_MS)
+    agentDoAuthCache.set(cacheKey, now + AGENT_DO_AUTH_CACHE_TTL_MS)
   }
 
   return { request, response: null }

@@ -27,7 +27,7 @@ export async function getChatDocumentAccess(
         .select({
           filename: schema.document.filename,
           fileType: schema.document.fileType,
-          hostName: schema.agent.hostName,
+          hostName: schema.agent.id,
           ownerUserId: schema.document.ownerUserId,
           threadId: schema.document.threadId,
           workspaceId: schema.document.workspaceId,

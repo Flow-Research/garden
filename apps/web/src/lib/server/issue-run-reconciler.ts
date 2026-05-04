@@ -347,7 +347,7 @@ async function restartWakeup(args: {
           workspaceId: args.row.workspace_id,
           issueId: args.row.issue_id,
           agentId: args.row.agent_id,
-          hostName: args.row.host_name,
+          hostName: args.row.agent_id,
           wakeupId: args.row.wakeup_id,
           status: 'queued',
           contextSnapshot: {
@@ -388,7 +388,7 @@ async function restartWakeup(args: {
 
   const enqueueResult = await enqueueIssueRunRuntime({
     env: args.env,
-    hostName: args.row.host_name,
+    agentId: args.row.agent_id,
     runId,
     issueId: args.row.issue_id,
   })

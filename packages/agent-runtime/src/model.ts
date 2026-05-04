@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { LanguageModel } from 'ai'
 
-export function createAgentHostModel(apiKey: string): LanguageModel {
+export function createAgentModel(apiKey: string): LanguageModel {
   const opencodeGo = createOpenAICompatible({
     name: 'opencode-go',
     baseURL: 'https://opencode.ai/zen/go/v1',

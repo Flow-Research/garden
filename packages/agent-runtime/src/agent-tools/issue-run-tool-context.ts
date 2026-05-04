@@ -10,16 +10,16 @@ import type {
 } from '@garden/core/types'
 import * as schema from '@garden/db/schema'
 
-export type AgentHostRpcStub = {
+export type AgentDoRpcStub = {
   setName?: (name: string) => Promise<void>
   enqueueIssueRun: (input: { runId: string; issueId: string }) => Promise<void>
   resumeIssueRun: (input: { runId: string; issueId: string }) => Promise<void>
   cancelIssueRun: (input: { runId: string; issueId: string }) => Promise<void>
 }
 
-export type AgentHostNamespace = {
+export type AgentDoNamespace = {
   idFromName: (name: string) => DurableObjectId
-  get: (id: DurableObjectId) => AgentHostRpcStub
+  get: (id: DurableObjectId) => AgentDoRpcStub
 }
 
 export type IssueRunToolEnv = {
@@ -27,7 +27,7 @@ export type IssueRunToolEnv = {
   BETTER_AUTH_URL: string
   DATABASE_URL: string
   MCP_PROXY_URL?: string
-  AgentHost?: AgentHostNamespace
+  AGENT_DO?: AgentDoNamespace
 }
 
 export type IssueRunToolState = {

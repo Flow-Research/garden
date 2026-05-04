@@ -58,7 +58,7 @@ export const Route = createFileRoute('/api/agents/$id')({
         const [existingAgent] = await db
           .select({
             workspaceId: schema.agent.workspaceId,
-            hostName: schema.agent.hostName,
+            hostName: schema.agent.id,
           })
           .from(schema.agent)
           .where(eq(schema.agent.id, params.id))

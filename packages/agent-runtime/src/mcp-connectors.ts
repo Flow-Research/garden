@@ -24,6 +24,16 @@ export type WarmConnectorServerCheck = {
   now?: number
 }
 
+const CONNECTOR_ID_ALIASES: Record<string, string> = {
+  exa_search: 'exa-search',
+  google_drive: 'google-drive',
+}
+
+export function normalizeMcpConnectorId(connectorId: string) {
+  const normalized = connectorId.trim()
+  return CONNECTOR_ID_ALIASES[normalized] ?? normalized
+}
+
 export function extractThreadIdFromAgentName(agentName: string) {
   const normalized = agentName.trim()
   if (!normalized) return null

@@ -8,7 +8,7 @@ import {
   createChatThreadBodySchema,
   parseJsonBody,
 } from '@/lib/server/validation/chat'
-import { buildAgentHostName, ensureAgentRow } from '@/lib/server/chat-agents'
+import { ensureAgentRow } from '@/lib/server/chat-agents'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
@@ -32,18 +32,16 @@ export const Route = createFileRoute('/api/chat/threads')({
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
         if (!workspaceId) return Response.json([])
 
-        const hostName = buildAgentHostName(workspaceId, session.user.id)
         await ensureAgentRow({
           workspaceId,
           ownerUserId: session.user.id,
-          hostName,
         })
 
         const db = getDb(appEnv)
         const rows = await db
           .select({
             thread: schema.chatThread,
-            hostName: schema.agent.hostName,
+            agentId: schema.agent.id,
           })
           .from(schema.chatThread)
           .innerJoin(
@@ -58,12 +56,8 @@ export const Route = createFileRoute('/api/chat/threads')({
           )
           .orderBy(desc(schema.chatThread.updatedAt))
 
-        const usableRows = rows.flatMap((row) =>
-          row.hostName ? [{ thread: row.thread, hostName: row.hostName }] : [],
-        )
-
         return Response.json(
-          usableRows.map((row) => toChatThread(row.thread, row.hostName)),
+          rows.map((row) => toChatThread(row.thread, row.agentId)),
         )
       },
       POST: async ({ request }) => {
@@ -90,14 +84,12 @@ export const Route = createFileRoute('/api/chat/threads')({
         const title = requestedTitle || NEW_CHAT_TITLE
         const shouldClaimWarmThread = title === NEW_CHAT_TITLE
         const id = crypto.randomUUID()
-        const hostName = buildAgentHostName(workspaceId, session.user.id)
         const now = new Date()
         const db = getDb(appEnv)
 
         const defaultAgentRow = await ensureAgentRow({
           workspaceId,
           ownerUserId: session.user.id,
-          hostName,
         })
         const requestedAgentId = body.agent_id ?? ''
 
@@ -115,11 +107,11 @@ export const Route = createFileRoute('/api/chat/threads')({
           return forbidden('Agent access denied')
         }
 
-        const agentHostName = agentRow.hostName ?? hostName
-        if (!agentRow.hostName) {
+        const agentRuntimeName = agentRow.id
+        if (agentRow.hostName !== agentRuntimeName) {
           await db
             .update(schema.agent)
-            .set({ hostName: agentHostName })
+            .set({ hostName: agentRuntimeName })
             .where(eq(schema.agent.id, agentRow.id))
         }
         await bindExistingSkillsToAgent({
@@ -188,7 +180,7 @@ export const Route = createFileRoute('/api/chat/threads')({
           return createdThread
         })
 
-        return Response.json(toChatThread(thread, agentHostName), {
+        return Response.json(toChatThread(thread, agentRuntimeName), {
           status: 201,
         })
       },

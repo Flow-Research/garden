@@ -16,7 +16,7 @@ export async function getThreadAccess(request: Request, threadId: string) {
   const [row] = await db
     .select({
       thread: schema.chatThread,
-      hostName: schema.agent.hostName,
+      agentId: schema.agent.id,
     })
     .from(schema.chatThread)
     .innerJoin(schema.agent, eq(schema.agent.id, schema.chatThread.agentId))
@@ -26,8 +26,6 @@ export async function getThreadAccess(request: Request, threadId: string) {
   if (row.thread.ownerUserId !== session.user.id) {
     return notFound('Chat thread not found')
   }
-  if (!row.hostName) return notFound('Chat thread agent host missing')
-
   const access = await requireWorkspaceAccess(request, row.thread.workspaceId)
   if (access instanceof Response) return access
 
@@ -35,6 +33,6 @@ export async function getThreadAccess(request: Request, threadId: string) {
     db,
     session,
     thread: row.thread,
-    hostName: row.hostName,
+    hostName: row.agentId,
   }
 }

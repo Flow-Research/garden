@@ -3,40 +3,23 @@ import {
   bindExistingCapabilitiesToAgent,
   bindExistingSkillsToAgent,
 } from './agent-bindings'
+import { getAgentDoStub } from './agent-do-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 
-// Server-side helpers for managing AgentHost DOs + their WorkspaceAgent
-// thread facets. The `agent` table row carries the persona/config; the host
-// DO runs the runtime; each thread is a facet keyed by threadId.
+// Server-side helpers for managing AgentDOs + their ChatSubAgent thread
+// facets. The API response still exposes `hostName`; after Slice 6 the value
+// is the agent UUID used to address AGENT_DO.
 
-export function buildAgentHostName(workspaceId: string, userId: string) {
-  return `primary.${toBase64Url(workspaceId)}.${toBase64Url(userId)}`
-}
-
-function toBase64Url(value: string) {
-  const bytes = new TextEncoder().encode(value)
-  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('')
-  return btoa(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/g, '')
-}
-
-async function getAgentHostStub(hostName: string) {
-  const stub = appEnv.AgentHost.get(appEnv.AgentHost.idFromName(hostName))
-
-  if ('setName' in stub && typeof stub.setName === 'function') {
-    await stub.setName(hostName)
-  }
-
-  return stub
+function getAgentRuntimeStub(agentId: string) {
+  const stubResult = getAgentDoStub(appEnv, agentId)
+  if (stubResult.isErr()) throw stubResult.error
+  return stubResult.value
 }
 
 export async function ensureAgentRow(input: {
   workspaceId: string
   ownerUserId: string
-  hostName: string
 }) {
   const db = getDb(appEnv)
   const [existingAgent] = await db
@@ -45,8 +28,7 @@ export async function ensureAgentRow(input: {
     .where(
       and(
         eq(schema.agent.workspaceId, input.workspaceId),
-        eq(schema.agent.ownerUserId, input.ownerUserId),
-        eq(schema.agent.hostName, input.hostName),
+        eq(schema.agent.isDefault, true),
       ),
     )
 
@@ -66,16 +48,18 @@ export async function ensureAgentRow(input: {
     return existingAgent
   }
 
+  const agentId = crypto.randomUUID()
   const [createdAgent] = await db
     .insert(schema.agent)
     .values({
-      id: crypto.randomUUID(),
+      id: agentId,
       workspaceId: input.workspaceId,
       ownerUserId: input.ownerUserId,
-      name: 'Agent',
+      name: 'Garden',
       roleTitle: null,
+      isDefault: true,
       status: 'active',
-      hostName: input.hostName,
+      hostName: agentId,
     })
     .returning()
 
@@ -99,7 +83,7 @@ export async function ensureChatThreadAgent(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = await getAgentHostStub(input.hostName)
+  const stub = getAgentRuntimeStub(input.hostName)
   await stub.ensureThread(input.threadId)
 }
 
@@ -123,7 +107,7 @@ export async function deleteChatThreadAgent(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = await getAgentHostStub(input.hostName)
+  const stub = getAgentRuntimeStub(input.hostName)
   await stub.deleteThread(input.threadId)
 }
 
@@ -131,7 +115,7 @@ export async function refreshChatThreadSkillInventory(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = await getAgentHostStub(input.hostName)
+  const stub = getAgentRuntimeStub(input.hostName)
   await stub.refreshThreadSkills(input.threadId)
 }
 
@@ -139,7 +123,7 @@ export async function refreshChatThreadPromptConfig(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = await getAgentHostStub(input.hostName)
+  const stub = getAgentRuntimeStub(input.hostName)
   await stub.refreshThreadPrompt(input.threadId)
 }
 
@@ -147,7 +131,7 @@ export async function debugChatThreadMeta(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = await getAgentHostStub(input.hostName)
+  const stub = getAgentRuntimeStub(input.hostName)
   return stub.debugThreadMeta(input.threadId)
 }
 
@@ -155,7 +139,7 @@ export async function debugChatThreadWorkspace(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = await getAgentHostStub(input.hostName)
+  const stub = getAgentRuntimeStub(input.hostName)
   return stub.debugThreadWorkspace(input.threadId)
 }
 
@@ -163,7 +147,7 @@ export async function debugChatThreadSandbox(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = await getAgentHostStub(input.hostName)
+  const stub = getAgentRuntimeStub(input.hostName)
   return stub.debugThreadSandbox(input.threadId)
 }
 
@@ -171,7 +155,7 @@ export async function debugChatThreadTools(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = await getAgentHostStub(input.hostName)
+  const stub = getAgentRuntimeStub(input.hostName)
   return stub.debugThreadTools(input.threadId)
 }
 
@@ -179,7 +163,7 @@ export async function debugChatThreadPrompt(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = await getAgentHostStub(input.hostName)
+  const stub = getAgentRuntimeStub(input.hostName)
   return stub.debugThreadPrompt(input.threadId)
 }
 
@@ -190,7 +174,7 @@ export async function uploadChatThreadDocument(input: {
   mediaType?: string | null
   threadId: string
 }) {
-  const stub = await getAgentHostStub(input.hostName)
+  const stub = getAgentRuntimeStub(input.hostName)
   return stub.uploadThreadDocument(input.threadId, {
     base64: input.base64,
     filename: input.filename,
@@ -203,7 +187,7 @@ export async function readChatThreadDocumentBytes(input: {
   hostName: string
   threadId: string
 }) {
-  const stub = await getAgentHostStub(input.hostName)
+  const stub = getAgentRuntimeStub(input.hostName)
   return stub.readThreadDocumentBytes(input.threadId, input.documentId)
 }
 
@@ -214,7 +198,7 @@ export async function readChatThreadDocumentVersionBytes(input: {
   threadId: string
   versionId?: string | null
 }) {
-  const stub = await getAgentHostStub(input.hostName)
+  const stub = getAgentRuntimeStub(input.hostName)
   return stub.readThreadDocumentVersionBytes(input.threadId, {
     documentId: input.documentId,
     preferPdf: input.preferPdf,
@@ -227,7 +211,7 @@ export async function listChatThreadDocumentVersions(input: {
   hostName: string
   threadId: string
 }) {
-  const stub = await getAgentHostStub(input.hostName)
+  const stub = getAgentRuntimeStub(input.hostName)
   return stub.listThreadDocumentVersions(input.threadId, input.documentId)
 }
 
@@ -238,7 +222,7 @@ export async function resolveChatThreadDocumentEdit(input: {
   hostName: string
   threadId: string
 }) {
-  const stub = await getAgentHostStub(input.hostName)
+  const stub = getAgentRuntimeStub(input.hostName)
   return stub.resolveThreadDocumentEdit(input.threadId, {
     action: input.action,
     documentId: input.documentId,

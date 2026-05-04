@@ -8,7 +8,6 @@ import {
   createAgentBodySchema,
   parseJsonBody,
 } from '@/lib/server/validation/agents'
-import { buildAgentHostName } from '@/lib/server/chat-agents'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
@@ -49,9 +48,9 @@ export const Route = createFileRoute('/api/agents')({
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
 
-        const hostName = buildAgentHostName(workspaceId, session.user.id)
+        const agentId = crypto.randomUUID()
         const agentValues = {
-          id: crypto.randomUUID(),
+          id: agentId,
           workspaceId,
           ownerUserId: session.user.id,
           name: body.name,
@@ -64,7 +63,7 @@ export const Route = createFileRoute('/api/agents')({
               ? JSON.stringify(body.runtime_config)
               : null,
           status: 'active',
-          hostName,
+          hostName: agentId,
         } as typeof schema.agent.$inferInsert
         const db = getDb(appEnv)
         const [agent] = await db

@@ -1,5 +1,6 @@
-export { AgentHost, WorkspaceAgent } from './agent-host'
-export { createAgentHostModel } from './model'
+export { AgentDO, ChatSubAgent } from './agent-do'
+export { IssueRunSubAgent } from './issue-run-sub-agent'
+export { createAgentModel } from './model'
 export {
   extractTrackedChangeIds,
   resolveTrackedChange,
