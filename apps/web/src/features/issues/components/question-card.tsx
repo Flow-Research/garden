@@ -66,7 +66,7 @@ export function QuestionCard({
   submitting = false,
   compact = false,
   pulseOnMount = false,
-  agentName = 'Bot',
+  agentName = 'the agent',
 }: QuestionCardProps) {
   const [draft, setDraft] = useState<StructuredQuestionDraft>({})
   const [isPulsing, setIsPulsing] = useState(pulseOnMount)

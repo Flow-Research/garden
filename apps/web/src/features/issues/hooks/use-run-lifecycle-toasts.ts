@@ -166,7 +166,7 @@ export function useRunLifecycleToasts({
 
 /** Fire one toast of each lifecycle kind, sequenced ~1s apart. */
 export function fireLifecycleToastDemo({
-  agentName = 'Bot',
+  agentName = 'Garden',
   issueIdentifier = 'ACC-43',
   issueTitle = 'Add OAuth callback for GitHub',
   onNavigate,

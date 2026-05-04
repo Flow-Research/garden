@@ -16,7 +16,8 @@ import type { StructuredQuestion } from '@garden/core/chat'
 import { cn } from '@garden/ui/lib/utils'
 import { Alert, AlertDescription } from '@garden/ui/components/ui/alert'
 import { Button } from '@garden/ui/components/ui/button'
-import { BotPresence, type BotPresenceKind } from './bot-presence'
+import { AgentPresence, type AgentPresenceKind } from './agent-presence'
+import { ApprovalCard, ConnectorWriteBody } from './approval-card'
 import { LiveDot } from './live-dot'
 import { QuestionCard } from './question-card'
 
@@ -67,9 +68,9 @@ export interface ActiveRunPanelProps {
    * "Bot is reading source", etc. Surfaces under the header row when set.
    * Real-time WS feed is deferred (Assumption 10); for MVP the server-side
    * polling derives this from the latest `issue_run_event` payload. The dev
-   * showcase wires `useDemoBotPresence` for animation without a backend.
+   * showcase wires `useDemoAgentPresence` for animation without a backend.
    */
-  presence?: { kind: BotPresenceKind; detail?: string | null; label?: string } | null
+  presence?: { kind: AgentPresenceKind; detail?: string | null; label?: string } | null
   onStop?: () => void
   onApprove?: () => void
   onDeny?: () => void
@@ -383,8 +384,9 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
           {/* Presence cue — only while running */}
           {isLive && presence && presence.kind !== 'idle' && (
             <div className="border-t border-info/15 bg-info/[0.015] px-3 py-1.5">
-              <BotPresence
+              <AgentPresence
                 kind={presence.kind}
+                agentName={agent.name}
                 label={presence.label}
                 detail={presence.detail ?? undefined}
                 compact
