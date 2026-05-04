@@ -1,12 +1,14 @@
 import type {
   AssigneeFrequencyEntry,
-  AgentTask,
   Comment,
   CreateIssueRequest,
   Issue,
   IssueReaction,
+  IssueRun,
+  IssueRunEvent,
   IssueSubscriber,
   IssueUsageSummary,
+  IssueWorkProduct,
   ListIssuesParams,
   ListIssuesResponse,
   Reaction,
@@ -215,30 +217,44 @@ export function unsubscribeFromIssue(
   })
 }
 
-export function listTasksByIssue(issueId: string) {
-  return getApiTransport().request<AgentTask[]>(`/api/issues/${issueId}/task-runs`)
+export function listRuns(issueId: string) {
+  return getApiTransport().request<IssueRun[]>(`/api/issues/${issueId}/runs`)
 }
 
-export async function getActiveTasksForIssue(
+export function manualRun(
   issueId: string,
-): Promise<{ tasks: AgentTask[] }> {
-  const tasks = await listTasksByIssue(issueId)
-  return {
-    tasks: tasks.filter((task) =>
-      ['queued', 'dispatched', 'running'].includes(task.status),
-    ),
-  }
+) {
+  return getApiTransport().request(`/api/issues/${issueId}/runs`, {
+    method: 'POST',
+  })
+}
+
+export function getActiveRun(issueId: string): Promise<{
+  run: IssueRun | null
+  work_products: IssueWorkProduct[]
+  events: IssueRunEvent[]
+}> {
+  return getApiTransport().request(`/api/issues/${issueId}/active-run`)
+}
+
+export function getRunEvents(
+  issueId: string,
+  params?: { run_id?: string; after?: number; limit?: number },
+): Promise<IssueRunEvent[]> {
+  const search = new URLSearchParams()
+  if (params?.run_id) search.set('run_id', params.run_id)
+  if (params?.after !== undefined) search.set('after', String(params.after))
+  if (params?.limit !== undefined) search.set('limit', String(params.limit))
+  const suffix = search.size > 0 ? `?${search}` : ''
+  return getApiTransport().request(`/api/issues/${issueId}/events${suffix}`)
+}
+
+export function cancelRun(issueId: string) {
+  return getApiTransport().request(`/api/issues/${issueId}/cancel`, {
+    method: 'POST',
+  })
 }
 
 export function getIssueUsage(issueId: string): Promise<IssueUsageSummary> {
   return getApiTransport().request(`/api/issues/${issueId}/usage`)
-}
-
-export function cancelTask(issueId: string, taskId: string) {
-  return getApiTransport().request<AgentTask>(
-    `/api/issues/${issueId}/tasks/${taskId}/cancel`,
-    {
-      method: 'POST',
-    },
-  )
 }

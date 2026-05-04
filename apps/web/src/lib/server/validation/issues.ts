@@ -1,4 +1,5 @@
 import {
+  issueSourceBindingInsertSchema,
   issuePrioritySchema,
   issueStatusSchema,
   uuidSchema,
@@ -21,6 +22,11 @@ const issueApiAssigneeTypeSchema = z.enum(['member', 'agent'])
 export const commentBodySchema = z
   .object({
     content: z.string().trim().min(1),
+    type: z
+      .enum(['comment', 'status_change', 'progress_update', 'system'])
+      .optional(),
+    parent_id: uuidSchema.optional().nullable(),
+    attachment_ids: z.array(uuidSchema).optional(),
   })
   .strict()
 
@@ -86,6 +92,15 @@ export const updateIssueBodySchema = z
     (value) => Object.keys(value).length > 0,
     'No valid issue changes submitted',
   )
+
+export const sourceBindingBodySchema = z
+  .object({
+    connector_id: issueSourceBindingInsertSchema.shape.connectorId,
+    source_kind: issueSourceBindingInsertSchema.shape.sourceKind,
+    external_id: issueSourceBindingInsertSchema.shape.externalId,
+    external_url: z.string().trim().min(1).optional().nullable(),
+  })
+  .strict()
 
 export const issueSearchQuerySchema = z.object({
   q: z.string().trim().min(1).optional(),

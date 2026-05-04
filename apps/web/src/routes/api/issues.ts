@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
+import { createIssue } from '@/lib/server/issues'
 import {
   createIssueBodySchema,
   issuesListSearchSchema,
@@ -96,17 +97,10 @@ export const Route = createFileRoute('/api/issues')({
         )
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
-        const db = getDb(appEnv)
-        const numbers = await db
-          .select({ number: schema.issue.number })
-          .from(schema.issue)
-          .where(eq(schema.issue.workspaceId, workspaceId))
-        const nextNumber =
-          numbers.reduce((max, row) => Math.max(max, row.number), 0) + 1
-        const issueValues = {
-          id: crypto.randomUUID(),
+
+        const issueResult = await createIssue({
+          databaseUrl: appEnv.DATABASE_URL,
           workspaceId,
-          number: nextNumber,
           title: body.title,
           description:
             typeof body.description === 'string' ? body.description : null,
@@ -122,12 +116,10 @@ export const Route = createFileRoute('/api/issues')({
           assigneeId: body.assignee_id ?? null,
           parentId: body.parent_issue_id ?? null,
           projectId: body.project_id ?? null,
-        } as typeof schema.issue.$inferInsert
-        const [issue] = await db
-          .insert(schema.issue)
-          .values(issueValues)
-          .returning()
-        return Response.json(toIssue(issue), { status: 201 })
+          dueDate: body.due_date ? new Date(body.due_date) : null,
+        })
+        if (issueResult.isErr()) return badRequest(issueResult.error.message)
+        return Response.json(issueResult.value, { status: 201 })
       },
     },
   },
