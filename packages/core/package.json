@@ -16,7 +16,9 @@
     "./config": "./config/index.ts",
     "./auth": "./auth/index.ts",
     "./workspace": "./workspace/index.ts",
+    "./webhooks": "./webhooks/index.ts",
     "./issues": "./issues/index.ts",
+    "./issues/triggers": "./issues/triggers.ts",
     "./issues/ws-updaters": "./issues/ws-updaters.ts",
     "./issues/config": "./issues/config/index.ts",
     "./issues/config/status": "./issues/config/status.ts",
@@ -28,6 +30,7 @@
     "./inbox/ws-updaters": "./inbox/ws-updaters.ts",
     "./chat": "./chat/index.ts",
     "./chat/queries": "./chat/queries.ts",
+    "./chat/structured-input": "./chat/structured-input.ts",
     "./runtimes": "./runtimes/index.ts",
     "./projects": "./projects/index.ts",
     "./pins": "./pins/index.ts",
@@ -41,13 +44,17 @@
     "./provider": "./provider.tsx",
     "./logger": "./logger.ts",
     "./utils": "./utils.ts",
+    "./pricing": "./pricing.ts",
+    "./connectors/errors": "./connectors/errors.ts",
     "./constants/*": "./constants/*.ts",
     "./platform": "./platform/index.ts"
   },
   "dependencies": {
+    "@garden/db": "workspace:*",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-query-devtools": "^5.96.2",
     "better-result": "^2.8.2",
+    "zod": "^4.3.6",
     "zustand": "catalog:"
   },
   "peerDependencies": {

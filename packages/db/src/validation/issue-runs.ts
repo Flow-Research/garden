@@ -42,6 +42,7 @@ export const issueWakeupSourceValues = [
   'scheduled',
   'connector_event',
   'reconciler_retry',
+  'hire_approval',
 ] as const
 export const issueWakeupSourceSchema = z.enum(issueWakeupSourceValues)
 
