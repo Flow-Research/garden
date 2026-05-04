@@ -9,6 +9,7 @@ import {
   requireWorkspaceAccess,
   toIssue,
 } from '@/lib/server/control-plane'
+import { cancelIssueRun, startIssueRun } from '@/lib/server/issue-run'
 
 export const Route = createFileRoute('/api/issues/$id')({
   server: {
@@ -56,6 +57,10 @@ export const Route = createFileRoute('/api/issues/$id')({
         }
         if (body.status) updateValues.status = body.status
         if (body.priority) updateValues.priority = body.priority
+        if (typeof body.position === 'number') updateValues.position = body.position
+        if (Object.prototype.hasOwnProperty.call(body, 'due_date')) {
+          updateValues.dueDate = body.due_date ? new Date(body.due_date) : null
+        }
         if (Object.prototype.hasOwnProperty.call(body, 'assignee_id')) {
           updateValues.assigneeId = body.assignee_id ?? null
           updateValues.assigneeType =
@@ -80,7 +85,12 @@ export const Route = createFileRoute('/api/issues/$id')({
 
         const db = getDb(appEnv)
         const [existingIssue] = await db
-          .select({ workspaceId: schema.issue.workspaceId })
+          .select({
+            workspaceId: schema.issue.workspaceId,
+            assigneeType: schema.issue.assigneeType,
+            assigneeId: schema.issue.assigneeId,
+            activeRunId: schema.issue.activeRunId,
+          })
           .from(schema.issue)
           .where(eq(schema.issue.id, params.id))
         if (!existingIssue) return notFound('Issue not found')
@@ -103,6 +113,36 @@ export const Route = createFileRoute('/api/issues/$id')({
           .returning()
 
         if (!issue) return notFound('Issue not found')
+        const assigneeChanged =
+          Object.prototype.hasOwnProperty.call(body, 'assignee_id') &&
+          (existingIssue.assigneeType !== issue.assigneeType ||
+            existingIssue.assigneeId !== issue.assigneeId)
+
+        if (assigneeChanged && existingIssue.activeRunId) {
+          const cancelResult = await cancelIssueRun(appEnv, {
+            workspaceId: existingIssue.workspaceId,
+            runId: existingIssue.activeRunId,
+            actor: { type: 'member', id: access.session.user.id },
+            reason: 'assignee_changed',
+          })
+          if (cancelResult.isErr()) console.error(cancelResult.error.message)
+        }
+
+        if (
+          assigneeChanged &&
+          issue.assigneeType === 'agent' &&
+          issue.assigneeId &&
+          issue.status !== 'backlog'
+        ) {
+          const startResult = await startIssueRun(appEnv, {
+            workspaceId: existingIssue.workspaceId,
+            issueId: issue.id,
+            agentId: issue.assigneeId,
+            source: 'assignment',
+            actor: { type: 'member', id: access.session.user.id },
+          })
+          if (startResult.isErr()) console.error(startResult.error.message)
+        }
         return Response.json(toIssue(issue))
       },
       DELETE: async ({ request, params }) => {

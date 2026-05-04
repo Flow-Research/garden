@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Result } from 'better-result'
 import { Skeleton as BoneyardSkeleton } from 'boneyard-js/react'
 import { useDefaultLayout, usePanelRef } from 'react-resizable-panels'
 import { AppLink } from '../../navigation'
@@ -88,7 +90,9 @@ import type {
   IssuePriority,
   TimelineEntry,
   Issue,
+  IssueRunEvent,
 } from '@garden/core/types'
+import type { StructuredQuestion } from '@garden/core/chat'
 import {
   ALL_STATUSES,
   STATUS_CONFIG,
@@ -107,7 +111,8 @@ import {
 import { ProjectPicker } from '../../projects/components/project-picker'
 import { CommentCard } from './comment-card'
 import { CommentInput } from './comment-input'
-import { AgentLiveCard, TaskRunHistory } from './agent-live-card'
+import { ActiveRunPanel, LastRunSummary } from './active-run-panel'
+import { WorkProductList } from './work-product-card'
 import { BacklogAgentHintDialog } from './backlog-agent-hint-dialog'
 import { ReactionBar } from '@garden/ui/components/common/reaction-bar'
 import { useModalStore } from '@garden/core/modals'
@@ -115,6 +120,8 @@ import { timeAgo } from '@garden/core/utils'
 import { cn } from '@garden/ui/lib/utils'
 import { useIssueSearch } from '../hooks/use-issue-search'
 import { useIssueDetailData } from '../hooks/use-issue-detail-data'
+import { api } from '@/lib/api'
+import { issueActiveRunOptions, issueKeys } from '@/lib/issues/queries'
 
 import { ProgressRing } from './progress-ring'
 
@@ -485,6 +492,9 @@ interface IssueDetailProps {
   layoutId?: string
   /** When set, the issue detail will auto-scroll to this comment and briefly highlight it. */
   highlightCommentId?: string
+  hideRightSidebar?: boolean
+  onToggleContextRail?: () => void
+  contextRailOpen?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -497,6 +507,7 @@ export function IssueDetail({
   defaultSidebarOpen = true,
   layoutId = 'accelerate_issue_detail_layout',
   highlightCommentId,
+  hideRightSidebar = false,
 }: IssueDetailProps) {
   const id = issueId
   const router = useNavigation()
@@ -629,15 +640,22 @@ export function IssueDetail({
 
   const handleDelete = async () => {
     setDeleting(true)
-    try {
-      await deleteIssueMutation.mutateAsync(issue!.id)
+    const deleteResult = await Result.tryPromise({
+      try: async () => {
+        await deleteIssueMutation.mutateAsync(issue!.id)
+      },
+      catch: (error) => error,
+    })
+
+    if (deleteResult.isOk()) {
       toast.success('Issue deleted')
       if (onDelete) onDelete()
       else router.push('/issues')
-    } catch {
-      toast.error('Failed to delete issue')
-      setDeleting(false)
+      return
     }
+
+    toast.error('Failed to delete issue')
+    setDeleting(false)
   }
 
   const sidebarContent = issue ? (
@@ -1620,14 +1638,7 @@ export function IssueDetail({
                   </div>
                 </div>
 
-                {/* Agent live output — sticky inside the Activity section so it
-                stays pinned while scrolling through TaskRunHistory + comments. */}
-                <AgentLiveCard issueId={id} />
-
-                {/* Agent execution history */}
-                <div className="mt-3">
-                  <TaskRunHistory issueId={id} />
-                </div>
+                <IssueFlowSurface issue={issue} />
 
                 {/* Timeline entries */}
                 <div className="mt-4 flex flex-col gap-3">
@@ -1814,8 +1825,8 @@ export function IssueDetail({
           </div>
         </div>
           </ResizablePanel>
-          {!isMobile && <ResizableHandle />}
-          {!isMobile && (
+          {!isMobile && !hideRightSidebar && <ResizableHandle />}
+          {!isMobile && !hideRightSidebar && (
             <ResizablePanel
               id="sidebar"
               defaultSize={defaultSidebarOpen ? 320 : 0}
@@ -1831,7 +1842,7 @@ export function IssueDetail({
               </div>
             </ResizablePanel>
           )}
-          {isMobile && (
+          {isMobile && !hideRightSidebar && (
             <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
               <SheetContent
                 side="right"
@@ -1859,5 +1870,154 @@ export function IssueDetail({
         </div>
       ) : null}
     </BoneyardSkeleton>
+  )
+}
+
+function payloadObject(event: IssueRunEvent | undefined) {
+  return event?.payload &&
+    typeof event.payload === 'object' &&
+    !Array.isArray(event.payload)
+    ? event.payload
+    : null
+}
+
+function pendingQuestionFromEvents(
+  events: IssueRunEvent[],
+): StructuredQuestion | null {
+  const event = [...events]
+    .reverse()
+    .find((candidate) => candidate.event_type === 'issue_run:input_requested')
+  const payload = payloadObject(event)
+  if (!payload || typeof payload.question !== 'string') return null
+
+  const options = Array.isArray(payload.options)
+    ? payload.options
+        .filter(
+          (option): option is { label: string; description?: string } =>
+            option !== null &&
+            typeof option === 'object' &&
+            'label' in option &&
+            typeof option.label === 'string',
+        )
+        .map((option) => ({
+          label: option.label,
+          ...(typeof option.description === 'string'
+            ? { description: option.description }
+            : {}),
+        }))
+    : []
+
+  return {
+    id:
+      typeof payload.id === 'string' ? payload.id : event?.run_id ?? 'question',
+    question: payload.question,
+    options,
+    ...(typeof payload.header === 'string' ? { header: payload.header } : {}),
+    ...(typeof payload.multiSelect === 'boolean'
+      ? { multiSelect: payload.multiSelect }
+      : {}),
+  }
+}
+
+function pendingApprovalFromEvents(events: IssueRunEvent[]) {
+  const event = [...events]
+    .reverse()
+    .find((candidate) => candidate.event_type === 'issue_run:approval_requested')
+  const payload = payloadObject(event)
+  if (!payload || typeof payload.title !== 'string') return null
+  return {
+    title: payload.title,
+    body: typeof payload.body === 'string' ? payload.body : '',
+    ...(typeof payload.targetLabel === 'string'
+      ? { targetLabel: payload.targetLabel }
+      : {}),
+  }
+}
+
+function latestEventSummary(events: IssueRunEvent[]) {
+  const event = events[events.length - 1]
+  if (!event) return null
+  return event.message?.trim() || event.event_type
+}
+
+function IssueFlowSurface({ issue }: { issue: Issue }) {
+  const queryClient = useQueryClient()
+  const { searchParams } = useNavigation()
+  const { data } = useQuery(issueActiveRunOptions(issue.id))
+  const focus = searchParams.get('focus') ?? ''
+  const [focusKind, focusId] = focus.split(':')
+  const run = data?.run ?? null
+  const events = data?.events ?? []
+  const pendingQuestion = pendingQuestionFromEvents(events)
+  const pendingApprovalPreview = pendingApprovalFromEvents(events)
+  const cancelMutation = useMutation({
+    mutationFn: () => api.cancelRun(issue.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: issueKeys.activeRun(issue.id) })
+      queryClient.invalidateQueries({
+        queryKey: issueKeys.detail(issue.workspace_id, issue.id),
+      })
+      queryClient.invalidateQueries({ queryKey: issueKeys.timeline(issue.id) })
+    },
+    onError: () => toast.error('Failed to stop run'),
+  })
+
+  const pulseFocus =
+    Boolean(run) &&
+    ((focusKind === 'question' &&
+      (!focusId || focusId === run?.id || focusId === pendingQuestion?.id)) ||
+      focusKind === 'approval')
+  const showActive =
+    run &&
+    run.status !== 'succeeded' &&
+    run.status !== 'cancelled' &&
+    run.status !== 'failed' &&
+    run.status !== 'blocked'
+  const showLastRun =
+    run &&
+    (run.status === 'succeeded' ||
+      run.status === 'cancelled' ||
+      run.status === 'failed' ||
+      run.status === 'blocked')
+
+  return (
+    <div className="space-y-3">
+      {showActive && run && (
+        <ActiveRunPanel
+          agent={{ name: 'Garden' }}
+          run={{ ...run, usage: run.usage ?? null }}
+          lastEventSummary={latestEventSummary(events)}
+          pendingQuestion={pendingQuestion}
+          pendingApprovalPreview={pendingApprovalPreview}
+          pulseFocus={pulseFocus}
+          onStop={() => cancelMutation.mutate()}
+          onApprove={() => {}}
+          onDeny={() => {}}
+          onEditApprove={() => {}}
+        />
+      )}
+
+      {showLastRun && run && (
+        <div className="rounded-lg border bg-card px-3 py-2">
+          <LastRunSummary
+            lastRun={{
+              status: run.status,
+              finished_at: run.finished_at,
+              usage: run.usage ?? null,
+            }}
+          />
+        </div>
+      )}
+
+      {data && data.work_products.length > 0 && (
+        <WorkProductList
+          workProducts={data.work_products}
+          connectorId={issue.source_summary?.connector_id ?? null}
+          onApprove={() => {}}
+          onRequestChanges={() => {}}
+          onApply={() => {}}
+        />
+      )}
+    </div>
   )
 }
