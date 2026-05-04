@@ -12,8 +12,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Result } from 'better-result'
 import { useQueryClient } from '@tanstack/react-query'
+import { useAuthStore } from '@garden/core/auth'
 import { useChatStore } from '@garden/core/chat'
 import { useWorkspaceStore } from '@garden/core/workspace'
+import { motion, AnimatePresence } from 'motion/react'
 import { Alert, AlertDescription, AlertTitle } from '@garden/ui/components/ui/alert'
 import { Button } from '@garden/ui/components/ui/button'
 import { cn } from '@garden/ui/lib/utils'
@@ -104,6 +106,7 @@ export function ConnectedChatPanelInteraction({
   const debugModeEnabled = useDevSettingsStore((s) => s.debugMode)
   const activeSessionId = useChatStore((s) => s.activeSessionId)
   const workspaceId = useWorkspaceStore((s) => s.workspace?.id ?? null)
+  const user = useAuthStore((s) => s.user)
   usePrefetchDebugStream({
     enabled: debugModeEnabled,
     workspaceId,
@@ -513,57 +516,98 @@ export function ConnectedChatPanelInteraction({
               </Alert>
             </div>
           ) : null}
-          <ChatTimeline
-            debugMode={debugModeEnabled}
-            initialScrollKey={timelineInitialScrollKey}
-            sessionId={sessionId}
-            messages={visibleMessages}
-            error={error ?? null}
-            status={status}
-            onOpenDocument={openDocumentArtifact}
-            onOpenEdit={openDocumentEdit}
-            onOpenCitation={openDocumentCitation}
-            onDocumentEditResolveError={handleDocumentEditResolveError}
-            onDocumentEditResolveStart={handleDocumentEditResolveStart}
-            onDocumentEditResolved={handleDocumentEditResolved}
-            onResolveToolApproval={handleResolveToolApproval}
-            resolvedDocumentEditStatuses={resolvedDocumentEditStatuses}
-            resolvingToolCallIds={resolvingToolCallIds}
-            onRetry={handleRetry}
-            isRetrying={isRetrying}
-            forcePendingActivity={optimisticPendingTurn}
-          />
-          {visibleMessages.length === 0 && normalizeStatus(status) === 'idle' ? (
-            <div className="shrink-0 px-4 pb-2">
-              <div className="mx-auto max-w-2xl">
-                <Suggestions>
-                  <SuggestionChip
-                    suggestion="Summarize recent documents"
-                    onClick={(s) => setInput(s)}
-                  />
-                  <SuggestionChip
-                    suggestion="Help me draft a document"
-                    onClick={(s) => setInput(s)}
-                  />
-                  <SuggestionChip
-                    suggestion="What can you help me with?"
-                    onClick={(s) => setInput(s)}
-                  />
-                </Suggestions>
-              </div>
-            </div>
+          {!(visibleMessages.length === 0 && normalizeStatus(status) === 'idle') ? (
+            <ChatTimeline
+              debugMode={debugModeEnabled}
+              initialScrollKey={timelineInitialScrollKey}
+              sessionId={sessionId}
+              messages={visibleMessages}
+              error={error ?? null}
+              status={status}
+              onOpenDocument={openDocumentArtifact}
+              onOpenEdit={openDocumentEdit}
+              onOpenCitation={openDocumentCitation}
+              onDocumentEditResolveError={handleDocumentEditResolveError}
+              onDocumentEditResolveStart={handleDocumentEditResolveStart}
+              onDocumentEditResolved={handleDocumentEditResolved}
+              onResolveToolApproval={handleResolveToolApproval}
+              resolvedDocumentEditStatuses={resolvedDocumentEditStatuses}
+              resolvingToolCallIds={resolvingToolCallIds}
+              onRetry={handleRetry}
+              isRetrying={isRetrying}
+              forcePendingActivity={optimisticPendingTurn}
+            />
           ) : null}
-          <Composer
-            agentId={activeSession.agentId}
-            isStreaming={isStreaming}
-            status={status}
-            input={input}
-            onInputChange={setInput}
-            onSend={handleSend}
-            onStop={stop}
-            pendingQuestions={pendingStructuredInput?.questions}
-            onSubmitAnswers={handleSubmitAnswers}
-          />
+          <motion.div
+            layout
+            transition={{ type: 'spring', stiffness: 280, damping: 28 }}
+            className={cn(
+              visibleMessages.length === 0 && normalizeStatus(status) === 'idle'
+                ? 'flex flex-1 flex-col justify-center'
+                : 'shrink-0',
+            )}
+          >
+            <AnimatePresence>
+              {visibleMessages.length === 0 && normalizeStatus(status) === 'idle' ? (
+                <motion.div
+                  key="garden-greeting"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -12 }}
+                  transition={{ duration: 0.35, ease: 'easeOut' }}
+                  className="mb-6 text-center"
+                >
+                  <h2 className="text-2xl font-light tracking-tight text-foreground/80">
+                    Step into the garden
+                  </h2>
+                  <p className="mt-1.5 text-sm text-muted-foreground">
+                    Welcome back
+                    {user?.name ? `, ${user.name}` : ''}
+                  </p>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+            <AnimatePresence>
+              {visibleMessages.length === 0 && normalizeStatus(status) === 'idle' ? (
+                <motion.div
+                  key="suggestions"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.25 }}
+                  className="shrink-0 px-4 pb-2"
+                >
+                  <div className="mx-auto max-w-2xl">
+                    <Suggestions>
+                      <SuggestionChip
+                        suggestion="Summarize recent documents"
+                        onClick={(s) => setInput(s)}
+                      />
+                      <SuggestionChip
+                        suggestion="Help me draft a document"
+                        onClick={(s) => setInput(s)}
+                      />
+                      <SuggestionChip
+                        suggestion="What can you help me with?"
+                        onClick={(s) => setInput(s)}
+                      />
+                    </Suggestions>
+                  </div>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+            <Composer
+              agentId={activeSession.agentId}
+              isStreaming={isStreaming}
+              status={status}
+              input={input}
+              onInputChange={setInput}
+              onSend={handleSend}
+              onStop={stop}
+              pendingQuestions={pendingStructuredInput?.questions}
+              onSubmitAnswers={handleSubmitAnswers}
+            />
+          </motion.div>
         </div>
         <DocumentSidePanel
           onClose={closeDocumentPanel}
