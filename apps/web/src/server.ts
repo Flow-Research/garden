@@ -1,6 +1,6 @@
 import handler from '@tanstack/react-start/server-entry'
 import { routeAgentRequest } from 'agents'
-import { AgentHost, WorkspaceAgent } from '@garden/agent-runtime'
+import { AgentHost, IssueRunAgent, WorkspaceAgent } from '@garden/agent-runtime'
 import { proxyToSandbox, Sandbox } from '@cloudflare/sandbox'
 import { Result } from 'better-result'
 import { and, eq } from 'drizzle-orm'
@@ -10,6 +10,7 @@ import type { AppEnv } from '@/lib/server/env'
 import { reconcile } from '@/lib/server/issue-run-reconciler'
 
 export { AgentHost }
+export { IssueRunAgent }
 export { WorkspaceAgent }
 export { Sandbox }
 

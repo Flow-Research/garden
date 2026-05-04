@@ -12,7 +12,9 @@ import * as schema from '@garden/db/schema'
 
 export type AgentHostRpcStub = {
   setName?: (name: string) => Promise<void>
-  enqueueIssueRun: (runId: string) => Promise<{ ok: boolean }>
+  enqueueIssueRun: (input: { runId: string; issueId: string }) => Promise<void>
+  resumeIssueRun: (input: { runId: string; issueId: string }) => Promise<void>
+  cancelIssueRun: (input: { runId: string; issueId: string }) => Promise<void>
 }
 
 export type AgentHostNamespace = {
@@ -38,6 +40,24 @@ export type IssueRunToolState = {
   wakeupId: string
 }
 
+export type IssueRunMcpToolRecord = {
+  name: string
+  description?: string | null
+  inputSchema?: unknown
+  outputSchema?: unknown
+  serverId: string
+}
+
+export type IssueRunMcpBridge = {
+  ensureConnections: () => Promise<ResultValue<void, IssueRunToolError>>
+  listTools: (filter?: { serverId?: string | string[] }) => IssueRunMcpToolRecord[]
+  callTool: (params: {
+    serverId: string
+    name: string
+    arguments?: Record<string, unknown>
+  }) => Promise<unknown>
+}
+
 export type IssueRunResolutionAction =
   | 'ask_question'
   | 'create_work_product'
@@ -50,6 +70,7 @@ export type IssueRunToolContext = {
   storageSql: SqlStorage
   getRunState: () => IssueRunToolState | null
   recordResolution: (action: IssueRunResolutionAction) => void
+  mcp?: IssueRunMcpBridge
 }
 
 export class IssueRunToolError extends TaggedError('IssueRunToolError')<{
