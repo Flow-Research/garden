@@ -154,7 +154,7 @@ export function ConnectorWriteBody({ text }: { text: string }) {
 export interface AgentProposalBodyProps {
   name: string
   role: string
-  voice_blurb?: string | null
+  description?: string | null
   skills?: string[]
   source_issue_identifier?: string | null
 }
@@ -162,7 +162,7 @@ export interface AgentProposalBodyProps {
 export function AgentProposalBody({
   name,
   role,
-  voice_blurb,
+  description,
   skills,
   source_issue_identifier,
 }: AgentProposalBodyProps) {
@@ -173,11 +173,11 @@ export function AgentProposalBody({
         <span className="text-foreground">{name}</span>
         <span className="font-mono text-muted-foreground/70">Role</span>
         <span className="text-foreground">{role}</span>
-        {voice_blurb && (
+        {description && (
           <>
             <span className="font-mono text-muted-foreground/70">Voice</span>
             <span className="text-foreground/85 leading-relaxed">
-              {voice_blurb}
+              {description}
             </span>
           </>
         )}

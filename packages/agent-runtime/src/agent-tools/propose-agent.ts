@@ -18,7 +18,7 @@ export const proposeAgentInputSchema = z
   .object({
     name: agentInputSchema.shape.name.describe('Proposed display name.'),
     role: z.string().trim().min(1).describe('One-line role description.'),
-    voice_blurb: z.string().trim().max(500).optional(),
+    description: z.string().trim().max(500).optional(),
     skills: z
       .array(skillInputSchema.shape.slug)
       .optional()
@@ -161,11 +161,11 @@ async function proposeAgent(
   const pendingAgentId = crypto.randomUUID()
   const permissionRequestId = crypto.randomUUID()
   const skillSlugs = uniqueSkillSlugs(input.skills)
-  const voiceBlurb = input.voice_blurb?.trim() || null
+  const description = input.description?.trim() || null
   const payload = {
     name: input.name,
     role: input.role,
-    voice_blurb: voiceBlurb,
+    description: description,
     skills: skillSlugs,
     source_issue_id: input.source_issue_id ?? null,
   }
@@ -224,7 +224,7 @@ async function proposeAgent(
             owner_user_id,
             name,
             role_title,
-            voice_blurb,
+            description,
             status,
             adapter_type,
             host_name
@@ -235,7 +235,7 @@ async function proposeAgent(
             ${identity.ownerUserId}::uuid,
             ${input.name},
             ${input.role},
-            ${voiceBlurb},
+            ${description},
             'pending_approval',
             'workspace-agent',
             ${buildAgentHostName(identity.workspaceId, identity.ownerUserId)}

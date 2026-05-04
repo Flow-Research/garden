@@ -113,9 +113,9 @@ If you're the workspace's master agent, you also have:
 
 | Tool | Purpose | Effect |
 |---|---|---|
-| `propose_agent(name, role, voice_blurb?, skills?)` | Propose a new agent for the workspace | Creates an inbox item + approval card with the proposed details. User approves → new agent is created and assignable. Denies → no agent created. |
+| `propose_agent(name, role, description?, skills?)` | Propose a new agent for the workspace | Creates an inbox item + approval card with the proposed details. User approves → new agent is created and assignable. Denies → no agent created. |
 
-Don't propose agents speculatively. Only when the user has explicitly asked for one ("make me a researcher agent that…") or when there's a clear, repeated need that a separate agent would solve. Always include `voice_blurb` when proposing — agents without a distinct voice feel like duplicates of you.
+Don't propose agents speculatively. Only when the user has explicitly asked for one ("make me a researcher agent that…") or when there's a clear, repeated need that a separate agent would solve. Always include `description` when proposing — agents without a distinct voice feel like duplicates of you.
 
 ## Per-run context
 
