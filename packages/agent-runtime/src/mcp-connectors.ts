@@ -35,30 +35,44 @@ export function extractThreadIdFromAgentName(agentName: string) {
 
 function shouldRefreshStoredBinding(args: {
   binding: ActiveConnectorBinding
+  registeredServerIds?: Set<string>
   stored: StoredConnectorServerRow | undefined
   now: number
+  refreshWindowMs: number
 }) {
   if (!args.stored) return true
   if (args.stored.accountId !== args.binding.accountId) return true
+  if (
+    args.registeredServerIds &&
+    !args.registeredServerIds.has(args.stored.serverId)
+  ) {
+    return true
+  }
 
   return (
-    Date.parse(args.stored.jwtExpiresAt) - args.now <=
-    MCP_PROXY_JWT_REFRESH_WINDOW_MS
+    Date.parse(args.stored.jwtExpiresAt) - args.now <= args.refreshWindowMs
   )
 }
 
 export function buildConnectorSyncPlan(args: {
   bindings: ActiveConnectorBinding[]
+  registeredServerIds?: string[]
   storedRows: StoredConnectorServerRow[]
   now?: number
+  refreshWindowMs?: number
 }): ConnectorSyncPlan {
   const now = args.now ?? Date.now()
+  const refreshWindowMs =
+    args.refreshWindowMs ?? MCP_PROXY_JWT_REFRESH_WINDOW_MS
   const activeConnectorIds = new Set(
     args.bindings.map((binding) => binding.connectorId),
   )
   const storedByConnector = new Map(
     args.storedRows.map((row) => [row.connectorId, row]),
   )
+  const registeredServerIds = args.registeredServerIds
+    ? new Set(args.registeredServerIds)
+    : undefined
 
   return {
     connectorIdsToRemove: args.storedRows
@@ -67,8 +81,10 @@ export function buildConnectorSyncPlan(args: {
     bindingsToRefresh: args.bindings.filter((binding) =>
       shouldRefreshStoredBinding({
         binding,
+        registeredServerIds,
         stored: storedByConnector.get(binding.connectorId),
         now,
+        refreshWindowMs,
       }),
     ),
   }

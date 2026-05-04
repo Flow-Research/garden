@@ -65,6 +65,33 @@ describe('buildConnectorSyncPlan', () => {
     expect(plan.bindingsToRefresh).toEqual([])
   })
 
+  it('refreshes stored bindings whose server is not registered in memory', () => {
+    const now = Date.UTC(2026, 3, 23, 10, 0, 0)
+    const future = new Date(
+      now + MCP_PROXY_JWT_REFRESH_WINDOW_MS + 5 * 60 * 1000,
+    ).toISOString()
+
+    const plan = buildConnectorSyncPlan({
+      bindings: [{ connectorId: 'exa-search', accountId: null }],
+      registeredServerIds: [],
+      storedRows: [
+        {
+          connectorId: 'exa-search',
+          serverId: 'exa-search',
+          accountId: null,
+          jwtExpiresAt: future,
+          toolsSignature: null,
+        },
+      ],
+      now,
+    })
+
+    expect(plan.connectorIdsToRemove).toEqual([])
+    expect(plan.bindingsToRefresh).toEqual([
+      { connectorId: 'exa-search', accountId: null },
+    ])
+  })
+
   it('refreshes bindings whose jwt is near expiry or account changed', () => {
     const now = Date.UTC(2026, 3, 23, 10, 0, 0)
     const nearExpiry = new Date(
