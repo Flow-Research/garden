@@ -2,8 +2,11 @@ import { and, desc, eq, sql } from 'drizzle-orm'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import type { AppEnv } from '@/lib/server/env'
 import { getDb, schema } from '@/lib/server/db'
-import { appendIssueRunEvent, startIssueRun } from './issue-run'
-import { enqueueIssueRunStub } from './issue-run-stub'
+import {
+  appendIssueRunEvent,
+  enqueueIssueRunRuntime,
+  startIssueRun,
+} from './issue-run'
 
 const SILENT_RUN_MS = 120_000
 const MAX_WAKEUP_ATTEMPTS = 3
@@ -383,7 +386,12 @@ async function restartWakeup(args: {
   })
   if (createResult.isErr()) return Result.err(createResult.error)
 
-  const enqueueResult = await enqueueIssueRunStub(args.env, { runId })
+  const enqueueResult = await enqueueIssueRunRuntime({
+    env: args.env,
+    hostName: args.row.host_name,
+    runId,
+    issueId: args.row.issue_id,
+  })
   if (enqueueResult.isErr()) {
     const failedResult = await markRunFailed({
       env: args.env,
@@ -703,24 +711,49 @@ async function sweepStaleApprovals(
 export async function reconcile(
   env: AppEnv,
 ): Promise<ResultValue<ReconcileReport, IssueRunReconcilerError>> {
+  // Each pass is best-effort and independent. Don't short-circuit — a stuck
+  // row in one pass shouldn't block the others for the next minute. Log per
+  // pass; the next tick retries.
   const now = new Date()
+
   const silentResult = await reapSilentRuns(env, now)
-  if (silentResult.isErr()) return Result.err(silentResult.error)
+  if (silentResult.isErr()) {
+    console.error('[reconcile] reapSilentRuns:', silentResult.error.message)
+  }
 
   const wakeupsResult = await restartClaimedWakeups(env, now)
-  if (wakeupsResult.isErr()) return Result.err(wakeupsResult.error)
+  if (wakeupsResult.isErr()) {
+    console.error(
+      '[reconcile] restartClaimedWakeups:',
+      wakeupsResult.error.message,
+    )
+  }
 
   const recurrenceResult = await fanOutRecurrences(env, now)
-  if (recurrenceResult.isErr()) return Result.err(recurrenceResult.error)
+  if (recurrenceResult.isErr()) {
+    console.error(
+      '[reconcile] fanOutRecurrences:',
+      recurrenceResult.error.message,
+    )
+  }
 
   const approvalsResult = await sweepStaleApprovals(env, now)
-  if (approvalsResult.isErr()) return Result.err(approvalsResult.error)
+  if (approvalsResult.isErr()) {
+    console.error(
+      '[reconcile] sweepStaleApprovals:',
+      approvalsResult.error.message,
+    )
+  }
 
   return Result.ok({
-    silentRunsReaped: silentResult.value,
-    wakeupsRestarted: wakeupsResult.value.restarted,
-    wakeupsFailed: wakeupsResult.value.failed,
-    recurrencesFannedOut: recurrenceResult.value,
-    approvalsExpired: approvalsResult.value,
+    silentRunsReaped: silentResult.isOk() ? silentResult.value : 0,
+    wakeupsRestarted: wakeupsResult.isOk()
+      ? wakeupsResult.value.restarted
+      : 0,
+    wakeupsFailed: wakeupsResult.isOk() ? wakeupsResult.value.failed : 0,
+    recurrencesFannedOut: recurrenceResult.isOk()
+      ? recurrenceResult.value
+      : 0,
+    approvalsExpired: approvalsResult.isOk() ? approvalsResult.value : 0,
   })
 }
