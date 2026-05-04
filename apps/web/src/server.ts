@@ -2,10 +2,12 @@ import handler from '@tanstack/react-start/server-entry'
 import { routeAgentRequest } from 'agents'
 import { AgentHost, WorkspaceAgent } from '@garden/agent-runtime'
 import { proxyToSandbox, Sandbox } from '@cloudflare/sandbox'
+import { Result } from 'better-result'
 import { and, eq } from 'drizzle-orm'
 import { createAuth } from '@/lib/auth'
 import { getDb, schema } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
+import { reconcile } from '@/lib/server/issue-run-reconciler'
 
 export { AgentHost }
 export { WorkspaceAgent }
@@ -18,6 +20,29 @@ type ServerEnv = AppEnv & {
 const AGENT_HOST_AUTH_CACHE_TTL_MS = 60_000
 const agentHostAuthCache = new Map<string, number>()
 const AGENT_HOST_NAME_PATTERN = /^[A-Za-z0-9._-]+$/
+
+function responseFromCaughtError(args: {
+  event: string
+  status: number
+  fallback: string
+  cause: unknown
+}) {
+  const message = args.cause instanceof Error ? args.cause.message : args.fallback
+  console.error({
+    event: args.event,
+    message,
+  })
+
+  return Response.json(
+    {
+      error: args.fallback,
+    },
+    {
+      status:
+        args.status >= 200 && args.status <= 599 ? args.status : 500,
+    },
+  )
+}
 
 function getAgentHostNameFromRequest(request: Request) {
   const url = new URL(request.url)
@@ -69,6 +94,23 @@ async function authorizeAgentRequest(request: Request, env: ServerEnv) {
 }
 
 export default {
+  async scheduled(
+    _controller: ScheduledController,
+    env: ServerEnv,
+    ctx: ExecutionContext,
+  ) {
+    ctx.waitUntil(
+      reconcile(env).then((result) => {
+        if (result.isErr()) {
+          console.error({
+            event: 'issue_run_reconcile_failed',
+            message: result.error.message,
+          })
+        }
+      }),
+    )
+  },
+
   async fetch(request: Request, env: ServerEnv) {
     const sandboxResponse = await proxyToSandbox(request, env)
     if (sandboxResponse) return sandboxResponse
@@ -85,17 +127,53 @@ export default {
         `${upstreamPath}${url.search}`,
         'https://garden-mcp-proxy.internal',
       )
-      return env.MCP_PROXY.fetch(new Request(upstreamUrl, request))
+      const proxyResponse = await Result.tryPromise({
+        try: async () => env.MCP_PROXY!.fetch(new Request(upstreamUrl, request)),
+        catch: (cause) => cause,
+      })
+
+      return proxyResponse.isOk()
+        ? proxyResponse.value
+        : responseFromCaughtError({
+            event: 'mcp_proxy_service_binding_failed',
+            status: 502,
+            fallback: 'MCP proxy request failed',
+            cause: proxyResponse.error,
+          })
     }
 
     if (url.pathname.startsWith('/agents/')) {
       const agentAuth = await authorizeAgentRequest(request, env)
       if (agentAuth.response) return agentAuth.response
 
-      const response = await routeAgentRequest(agentAuth.request, env)
-      if (response) return response
+      const agentResponse = await Result.tryPromise({
+        try: async () => routeAgentRequest(agentAuth.request, env),
+        catch: (cause) => cause,
+      })
+      if (agentResponse.isErr()) {
+        return responseFromCaughtError({
+          event: 'agent_route_request_failed',
+          status: 502,
+          fallback: 'Agent request failed',
+          cause: agentResponse.error,
+        })
+      }
+
+      if (agentResponse.value) return agentResponse.value
     }
 
-    return handler.fetch(request)
+    const appResponse = await Result.tryPromise({
+      try: async () => handler.fetch(request),
+      catch: (cause) => cause,
+    })
+
+    return appResponse.isOk()
+      ? appResponse.value
+      : responseFromCaughtError({
+          event: 'web_handler_failed',
+          status: 500,
+          fallback: 'Application request failed',
+          cause: appResponse.error,
+        })
   },
 } satisfies ExportedHandler<ServerEnv>
