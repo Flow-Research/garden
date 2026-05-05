@@ -38,11 +38,11 @@ import { createUpdatePlanTool, readIssueRunPlan } from './agent-tools/update-pla
 import { assembleFoundationPrompt } from './prompt'
 import { createAgentModel } from './model'
 import {
-  PrimaryAgentMcpError,
-  PrimaryAgentMcpController,
+  RuntimeMcpError,
+  RuntimeMcpController,
   type McpHost,
   type ThreadRuntimeIdentity,
-} from './primary-agent-mcp'
+} from './runtime-mcp-controller'
 import {
   MCP_PROXY_JWT_PERIODIC_REFRESH_WINDOW_MS,
   mcpRuntimeConfig,
@@ -1580,16 +1580,16 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       removeMcpServer: this.removeMcpServer.bind(this),
       resolveRuntimeIdentity: async () => await this.resolveIssueMcpIdentity(),
     }
-    return new PrimaryAgentMcpController(host)
+    return new RuntimeMcpController(host)
   }
 
   private async resolveIssueMcpIdentity(): Promise<
-    ResultValue<ThreadRuntimeIdentity, PrimaryAgentMcpError>
+    ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
   > {
     const runId = this.currentRunId
     if (!runId) {
       return Result.err(
-        new PrimaryAgentMcpError({
+        new RuntimeMcpError({
           code: 'thread_not_found',
           message: 'Issue MCP identity requested outside an active run.',
         }),
@@ -1614,7 +1614,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     })
     if (result.isErr()) {
       return Result.err(
-        new PrimaryAgentMcpError({
+        new RuntimeMcpError({
           code: 'database_failed',
           message:
             result.error instanceof Error
@@ -1625,7 +1625,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     }
     if (!result.value) {
       return Result.err(
-        new PrimaryAgentMcpError({
+        new RuntimeMcpError({
           code: 'thread_not_found',
           message: 'Issue run not found for MCP identity.',
         }),

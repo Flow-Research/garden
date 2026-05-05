@@ -8,7 +8,7 @@ import {
 import {
   buildConnectorProxyMcpUrl,
   resolveProxyBaseUrl,
-} from './primary-agent-mcp'
+} from './runtime-mcp-controller'
 
 describe('extractThreadIdFromAgentName', () => {
   it('extracts the thread id from chat agent names', () => {

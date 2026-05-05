@@ -16,8 +16,8 @@
 | 5 connector manifests | `connectors/github/`, `connectors/gmail/`, `connectors/google-drive/`, `connectors/slack/`, `connectors/exa-search/` each with `connector.ts` |
 | MCP proxy Worker | `workers/mcp-proxy/src/` — `index.ts`, `auth.ts`, `permission.ts`, `session.ts`, `audit.ts` |
 | OAuth connect flow via Better Auth `genericOAuth` | `connectors/oauth.ts` + `workers/mcp-proxy/src/auth.ts` |
-| Agent runtime consumes MCP tools | `packages/agent-runtime/src/primary-agent-mcp.ts` — `McpClientFacade`, `getAITools()` |
-| HITL approval flow (Agents SDK `needsApproval`) | `packages/agent-runtime/src/primary-agent-mcp.ts` — `needsApproval()` wrapping, `ensureMcpToolNeedsApproval()` |
+| Agent runtime consumes MCP tools | `packages/agent-runtime/src/runtime-mcp-controller.ts` — `McpClientFacade`, `getAITools()` |
+| HITL approval flow (Agents SDK `needsApproval`) | `packages/agent-runtime/src/runtime-mcp-controller.ts` — `needsApproval()` wrapping, `ensureMcpToolNeedsApproval()` |
 | Permission management UI (segmented Auto/Allow/Ask toggles) | `apps/web/src/features/connections/components/connections-page.tsx` lines 718-720 |
 | `tool_call_audit` table | `packages/db/src/schema/audit.ts` — toolCallId, resultStatus, durationMs |
 | `capability` table with risk classes | `packages/db/src/schema/capabilities.ts` — connectorType, riskClass, requiredScopes, inputSchema |

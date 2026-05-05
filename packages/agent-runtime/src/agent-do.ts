@@ -47,7 +47,7 @@ import {
   PostgresAgentPromptCatalog,
   createPromptContextProviders,
 } from './prompt'
-import { PrimaryAgentMcpController, type McpHost } from './primary-agent-mcp'
+import { RuntimeMcpController, type McpHost } from './runtime-mcp-controller'
 import {
   MCP_PROXY_JWT_PERIODIC_REFRESH_WINDOW_MS,
   mcpRuntimeConfig,
@@ -1320,7 +1320,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       mcp: this.mcp,
       removeMcpServer: this.removeMcpServer.bind(this),
     }
-    return new PrimaryAgentMcpController(host)
+    return new RuntimeMcpController(host)
   }
 
   private async ensureProxyMcpConnectionsForTurn() {
