@@ -41,6 +41,12 @@
       "sourceType": "github",
       "computedHash": "72efa2277fea08f43b393c74abaacc9fa575e20bc63bdc9d46829b8a39352852"
     },
+    "image-gen": {
+      "source": "Konan69/skills",
+      "sourceType": "github",
+      "skillPath": "skills/image-gen/SKILL.md",
+      "computedHash": "dd9e69d12eb4336382c5dddca81f4bfc1763767a46af45fb2e17990f680666a3"
+    },
     "neon-postgres": {
       "source": "neondatabase/agent-skills",
       "sourceType": "github",
