@@ -49,6 +49,9 @@ const config = defineConfig({
     tsconfigPaths: true,
     dedupe: ['react', 'react-dom'],
   },
+  optimizeDeps: {
+    exclude: ['shiki'],
+  },
   environments: {
     ssr: {
       optimizeDeps: {
