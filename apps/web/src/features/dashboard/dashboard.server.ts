@@ -53,7 +53,6 @@ export type DashboardOverviewSnapshot = {
     skillCount: number
     connectedCount: number
     connectionCount: number
-    unreadCount: number
   }
 }
 
@@ -159,23 +158,28 @@ async function requireDashboardAccess(workspaceId: string) {
 
 async function loadDashboardConnections(workspaceId: string) {
   const { db } = await requireDashboardAccess(workspaceId)
-  const [connections, githubInstallations, capabilities, permissionGrants, toolCallAudits] =
-    await Promise.all([
-      db
-        .select()
-        .from(schema.account)
-        .where(eq(schema.account.workspaceId, workspaceId)),
-      db
-        .select()
-        .from(schema.githubAppInstallation)
-        .where(eq(schema.githubAppInstallation.workspaceId, workspaceId)),
-      db.select().from(schema.capability),
-      db.select().from(schema.permissionGrant),
-      db
-        .select()
-        .from(schema.toolCallAudit)
-        .where(eq(schema.toolCallAudit.workspaceId, workspaceId)),
-    ])
+  const [
+    connections,
+    githubInstallations,
+    capabilities,
+    permissionGrants,
+    toolCallAudits,
+  ] = await Promise.all([
+    db
+      .select()
+      .from(schema.account)
+      .where(eq(schema.account.workspaceId, workspaceId)),
+    db
+      .select()
+      .from(schema.githubAppInstallation)
+      .where(eq(schema.githubAppInstallation.workspaceId, workspaceId)),
+    db.select().from(schema.capability),
+    db.select().from(schema.permissionGrant),
+    db
+      .select()
+      .from(schema.toolCallAudit)
+      .where(eq(schema.toolCallAudit.workspaceId, workspaceId)),
+  ])
 
   return buildConnectionSurface({
     agentIds: [],
@@ -197,20 +201,29 @@ async function loadDashboardIssues(workspaceId: string) {
 }
 
 export async function getDashboardOverviewSnapshot(workspaceId: string) {
-  const { db, session } = await requireDashboardAccess(workspaceId)
-  const [issues, agents, skills, connectionSurface, inbox] = await Promise.all([
-    db.select().from(schema.issue).where(eq(schema.issue.workspaceId, workspaceId)),
-    db.select().from(schema.agent).where(eq(schema.agent.workspaceId, workspaceId)),
-    db.select().from(schema.skill).where(eq(schema.skill.workspaceId, workspaceId)),
+  const { db } = await requireDashboardAccess(workspaceId)
+  const [issues, agents, skills, connectionSurface] = await Promise.all([
+    db
+      .select()
+      .from(schema.issue)
+      .where(eq(schema.issue.workspaceId, workspaceId)),
+    db
+      .select()
+      .from(schema.agent)
+      .where(eq(schema.agent.workspaceId, workspaceId)),
+    db
+      .select()
+      .from(schema.skill)
+      .where(eq(schema.skill.workspaceId, workspaceId)),
     loadDashboardConnections(workspaceId),
-    computeInboxItems({ workspaceId, userId: session.user.id }),
   ])
 
   return {
     summary: {
       totalIssues: issues.length,
       openIssues: issues.filter((issue) => issue.status !== 'done').length,
-      blockedIssues: issues.filter((issue) => issue.status === 'blocked').length,
+      blockedIssues: issues.filter((issue) => issue.status === 'blocked')
+        .length,
       completedIssues: issues.filter((issue) => issue.status === 'done').length,
       agentCount: agents.length,
       skillCount: skills.length,
@@ -218,7 +231,6 @@ export async function getDashboardOverviewSnapshot(workspaceId: string) {
         (connector) => connector.status === 'connected',
       ).length,
       connectionCount: connectionSurface.length,
-      unreadCount: inbox.filter((item) => !item.read).length,
     },
   } satisfies DashboardOverviewSnapshot
 }
@@ -274,8 +286,13 @@ export async function getDashboardActivitySnapshot(workspaceId: string) {
       title: issue.title,
       status: toIssueStatus(issue.status),
       priority: toIssuePriority(issue.priority),
-      updatedAt: (issue.updatedAt ?? issue.createdAt ?? new Date()).toISOString(),
-      assigneeType: issue.assigneeType === 'user' ? 'member' : issue.assigneeType,
+      updatedAt: (
+        issue.updatedAt ??
+        issue.createdAt ??
+        new Date()
+      ).toISOString(),
+      assigneeType:
+        issue.assigneeType === 'user' ? 'member' : issue.assigneeType,
     }))
 
   return {
@@ -295,8 +312,14 @@ export async function getDashboardActivitySnapshot(workspaceId: string) {
 export async function getDashboardResourcesSnapshot(workspaceId: string) {
   const { db } = await requireDashboardAccess(workspaceId)
   const [issues, agents, connectionSurface] = await Promise.all([
-    db.select().from(schema.issue).where(eq(schema.issue.workspaceId, workspaceId)),
-    db.select().from(schema.agent).where(eq(schema.agent.workspaceId, workspaceId)),
+    db
+      .select()
+      .from(schema.issue)
+      .where(eq(schema.issue.workspaceId, workspaceId)),
+    db
+      .select()
+      .from(schema.agent)
+      .where(eq(schema.agent.workspaceId, workspaceId)),
     loadDashboardConnections(workspaceId),
   ])
 

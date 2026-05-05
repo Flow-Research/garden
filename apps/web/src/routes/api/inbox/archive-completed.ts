@@ -18,7 +18,7 @@ export const Route = createFileRoute('/api/inbox/archive-completed')({
           workspaceId,
           userId: session.user.id,
           predicate: (item) =>
-            item.issue_status === 'done' || item.issue_status === 'cancelled',
+            item.issueStatus === 'done' || item.issueStatus === 'cancelled',
         })
         return Response.json({ count })
       },

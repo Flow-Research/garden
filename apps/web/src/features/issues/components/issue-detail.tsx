@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Link2,
+  MessageSquare,
   MoreHorizontal,
   PanelLeft,
   PanelRight,
@@ -563,6 +564,31 @@ export function IssueDetail({
   const [sidebarOpen, setSidebarOpen] = useState(defaultSidebarOpen)
   const debugMode = useDevSettingsStore((s) => s.debugMode)
   const contextRailIsOpen = contextRailOpen ?? true
+
+  // "Open chat" — creates a chat thread with this issue's assigned agent and
+  // pins the issue as the thread's primary. Navigates to the new thread.
+  const openChatMutation = useMutation({
+    mutationFn: async () => {
+      if (!issue) throw new Error('Issue not loaded')
+      if (issue.assignee_type !== 'agent' || !issue.assignee_id) {
+        throw new Error(
+          'Open chat is only available for agent-assigned issues',
+        )
+      }
+      return api.openChatForIssue({
+        workspaceId: issue.workspace_id,
+        issueId: issue.id,
+        issueTitle: issue.title,
+        agentId: issue.assignee_id,
+      })
+    },
+    onSuccess: (session) => {
+      router.push(`/chat?session=${session.id}`)
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : 'Failed to open chat')
+    },
+  })
 
   useEffect(() => {
     if (isMobile) {
@@ -1135,6 +1161,21 @@ export function IssueDetail({
                     </DropdownMenuSub>
 
                     <DropdownMenuSeparator />
+
+                    {/* Open chat — switches the user from background-watching
+                        to an active conversation with this issue's assigned
+                        agent. Only available when the assignee is an agent. */}
+                    {issue.assignee_type === 'agent' && issue.assignee_id ? (
+                      <DropdownMenuItem
+                        onClick={() => openChatMutation.mutate()}
+                        disabled={openChatMutation.isPending}
+                      >
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        {openChatMutation.isPending
+                          ? 'Opening chat…'
+                          : 'Open chat'}
+                      </DropdownMenuItem>
+                    ) : null}
 
                     {/* Create sub-issue */}
                     <DropdownMenuItem

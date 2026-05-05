@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import { computeInboxItems } from './inbox-compute'
+import { computeVisibleInboxItemKeys } from './inbox-compute'
 
 type DismissArgs = {
   workspaceId: string
@@ -63,14 +63,13 @@ export async function dismissInboxItems(args: {
 export async function dismissAllVisible(args: {
   workspaceId: string
   userId: string
-  predicate?: (item: { read: boolean; issue_status: string | null }) => boolean
+  predicate?: (item: { read: boolean; issueStatus: string | null }) => boolean
 }): Promise<number> {
-  const items = await computeInboxItems({
+  const keys = await computeVisibleInboxItemKeys({
     workspaceId: args.workspaceId,
     userId: args.userId,
+    predicate: args.predicate,
   })
-  const filtered = args.predicate ? items.filter(args.predicate) : items
-  const keys = filtered.map((item) => item.id)
   return dismissInboxItems({
     workspaceId: args.workspaceId,
     userId: args.userId,

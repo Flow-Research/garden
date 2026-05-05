@@ -50,6 +50,7 @@ export async function listChatThreads(workspaceId: string) {
 export async function createChatThread(args: {
   agentId?: string | null
   excludeThreadIds?: string[]
+  primaryIssueId?: string | null
   title?: string
   workspaceId: string
 }) {
@@ -65,6 +66,7 @@ export async function createChatThread(args: {
           args.excludeThreadIds && args.excludeThreadIds.length > 0
             ? args.excludeThreadIds
             : undefined,
+        primary_issue_id: args.primaryIssueId ?? undefined,
       }),
     },
   )
@@ -88,6 +90,34 @@ export async function updateChatThread(
 export function deleteChatThread(threadId: string): Promise<void> {
   return getApiTransport().request(`/api/chat/threads/${threadId}`, {
     method: 'DELETE',
+  })
+}
+
+export async function setChatThreadPrimaryIssue(
+  threadId: string,
+  issueId: string | null,
+) {
+  const row = await getApiTransport().request<ChatThreadRow>(
+    `/api/chat/threads/${threadId}/primary-issue`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ issue_id: issueId }),
+    },
+  )
+  return rowToSession(row)
+}
+
+export async function openChatForIssue(args: {
+  workspaceId: string
+  issueId: string
+  issueTitle: string
+  agentId: string | null
+}): Promise<AgentChatSession> {
+  return createChatThread({
+    workspaceId: args.workspaceId,
+    agentId: args.agentId,
+    title: args.issueTitle,
+    primaryIssueId: args.issueId,
   })
 }
 

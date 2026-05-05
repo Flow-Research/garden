@@ -79,6 +79,7 @@ import {
   IconLayoutSidebarLeftExpand,
 } from '@tabler/icons-react'
 import { HeaderAttachmentsMenu } from './chat-message-files'
+import { IssueMentionCard } from '@/features/issues/components/issue-mention-card'
 
 const EMPTY_CHAT_INTROS = [
   {
@@ -652,6 +653,7 @@ export function ConnectedChatPanelInteraction({
       className={className}
       panelTitle={currentTitle}
       panelDescription={panelDescription}
+      primaryIssueId={activeSession.primary_issue_id ?? null}
       onClose={onClose}
       sessionId={sessionId}
       sidebarState={sidebarState}
@@ -786,6 +788,7 @@ function ShellFrame({
   onToggleSidebar,
   panelDescription,
   panelTitle,
+  primaryIssueId = null,
   sessionId = null,
   sidebarState,
 }: {
@@ -797,6 +800,7 @@ function ShellFrame({
   onToggleSidebar: () => void
   panelDescription?: string | null
   panelTitle: string
+  primaryIssueId?: string | null
   sessionId?: string | null
   sidebarState: 'collapsed' | 'expanded'
 }) {
@@ -835,6 +839,9 @@ function ShellFrame({
                 <div className="truncate text-sm font-semibold">
                   {panelTitle}
                 </div>
+                {primaryIssueId ? (
+                  <IssueMentionCard issueId={primaryIssueId} />
+                ) : null}
                 <HeaderAttachmentsMenu
                   attachments={attachments}
                   onOpenAttachment={onOpenAttachment}

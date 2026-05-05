@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, ne, or } from 'drizzle-orm'
+import { and, desc, eq, inArray, ne, or, sql } from 'drizzle-orm'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import type {
@@ -57,6 +57,10 @@ function commentMentionsUser(mentions: unknown, userId: string): boolean {
   if (!mentions || typeof mentions !== 'object') return false
   const users = (mentions as { users?: unknown }).users
   return Array.isArray(users) && users.includes(userId)
+}
+
+function commentMentionsUserSql(userId: string) {
+  return sql`${schema.issueComment.mentions} @> ${JSON.stringify({ users: [userId] })}::jsonb`
 }
 
 function actorFromComment(row: CommentRow): {
@@ -261,7 +265,31 @@ function buildFailedRunSource(run: RunRow, issue: IssueRow): SourceItem {
 }
 
 function userIsResponsible(issue: IssueRow, userId: string): boolean {
-  return issue.createdBy === userId || issue.assigneeId === userId
+  return (
+    issue.createdBy === userId ||
+    (issue.assigneeType === 'user' && issue.assigneeId === userId)
+  )
+}
+
+type InboxCandidate = {
+  key: string
+  read: boolean
+  issueStatus: IssueStatus | null
+}
+
+type InboxPredicate = (item: InboxCandidate) => boolean
+
+function toInboxCandidate(
+  source: SourceItem,
+  dismissedAt: Date | null,
+): InboxCandidate {
+  return {
+    key: source.key,
+    read: dismissedAt
+      ? dismissedAt.getTime() >= source.activityAt.getTime()
+      : false,
+    issueStatus: source.issueStatus,
+  }
 }
 
 function toInboxItem(
@@ -295,12 +323,14 @@ function toInboxItem(
   }
 }
 
-export async function computeInboxItems(args: {
+async function computeInboxSourceItems(args: {
   workspaceId: string
   userId: string
   limit?: number
-}): Promise<InboxItem[]> {
-  const limit = args.limit ?? 100
+}): Promise<{
+  sources: SourceItem[]
+  dismissalsByKey: Map<string, Date>
+}> {
   const db = getDb(appEnv)
   const { workspaceId, userId } = args
 
@@ -333,17 +363,52 @@ export async function computeInboxItems(args: {
         and(
           eq(schema.issue.workspaceId, workspaceId),
           or(
-            ne(schema.issueComment.authorType, 'user'),
-            ne(schema.issueComment.authorId, userId),
+            eq(schema.issueComment.authorType, 'agent'),
+            and(
+              eq(schema.issueComment.authorType, 'user'),
+              ne(schema.issueComment.authorId, userId),
+            ),
+          ),
+          or(
+            commentMentionsUserSql(userId),
+            eq(schema.issue.createdBy, userId),
+            and(
+              eq(schema.issue.assigneeType, 'user'),
+              eq(schema.issue.assigneeId, userId),
+            ),
           ),
         ),
       )
       .orderBy(desc(schema.issueComment.createdAt))
       .limit(300),
     db
-      .select()
+      .select({
+        id: schema.permissionRequest.id,
+        agentId: schema.permissionRequest.agentId,
+        kind: schema.permissionRequest.kind,
+        capabilityId: schema.permissionRequest.capabilityId,
+        context: schema.permissionRequest.context,
+        issueId: schema.permissionRequest.issueId,
+        runId: schema.permissionRequest.runId,
+        argsJson: schema.permissionRequest.argsJson,
+        toolCallId: schema.permissionRequest.toolCallId,
+        requestedAt: schema.permissionRequest.requestedAt,
+        status: schema.permissionRequest.status,
+        resolvedBy: schema.permissionRequest.resolvedBy,
+        resolvedAt: schema.permissionRequest.resolvedAt,
+        expiresAt: schema.permissionRequest.expiresAt,
+      })
       .from(schema.permissionRequest)
-      .where(eq(schema.permissionRequest.status, 'pending'))
+      .innerJoin(
+        schema.agent,
+        eq(schema.agent.id, schema.permissionRequest.agentId),
+      )
+      .where(
+        and(
+          eq(schema.permissionRequest.status, 'pending'),
+          eq(schema.agent.workspaceId, workspaceId),
+        ),
+      )
       .orderBy(desc(schema.permissionRequest.requestedAt))
       .limit(50),
     db
@@ -464,11 +529,28 @@ export async function computeInboxItems(args: {
     sources.push(buildFailedRunSource(run, issue))
   }
 
+  return {
+    sources: sources
+      .sort(
+        (left, right) => right.activityAt.getTime() - left.activityAt.getTime(),
+      )
+      .slice(0, args.limit ?? 100),
+    dismissalsByKey,
+  }
+}
+
+export async function computeInboxItems(args: {
+  workspaceId: string
+  userId: string
+  limit?: number
+}): Promise<InboxItem[]> {
+  const { workspaceId, userId } = args
+  const { sources, dismissalsByKey } = await computeInboxSourceItems(args)
+
   return sources
     .sort(
       (left, right) => right.activityAt.getTime() - left.activityAt.getTime(),
     )
-    .slice(0, limit)
     .map((source) =>
       toInboxItem(source, {
         workspaceId,
@@ -476,6 +558,20 @@ export async function computeInboxItems(args: {
         dismissedAt: dismissalsByKey.get(source.key) ?? null,
       }),
     )
+}
+
+export async function computeVisibleInboxItemKeys(args: {
+  workspaceId: string
+  userId: string
+  predicate?: InboxPredicate
+}): Promise<string[]> {
+  const { sources, dismissalsByKey } = await computeInboxSourceItems(args)
+  return sources
+    .map((source) =>
+      toInboxCandidate(source, dismissalsByKey.get(source.key) ?? null),
+    )
+    .filter((item) => (args.predicate ? args.predicate(item) : true))
+    .map((item) => item.key)
 }
 
 export async function computeInboxUnreadCount(args: {

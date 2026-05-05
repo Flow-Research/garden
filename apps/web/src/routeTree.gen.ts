@@ -50,7 +50,6 @@ import { Route as ApiCommentsIdRouteImport } from './routes/api/comments/$id'
 import { Route as ApiChatThreadsRouteImport } from './routes/api/chat/threads'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiAgentsIdRouteImport } from './routes/api/agents/$id'
-import { Route as AuthenticatedDevIssueFlowRouteImport } from './routes/_authenticated/dev/issue-flow'
 import { Route as ApiWorkspacesIdMembersRouteImport } from './routes/api/workspaces/$id/members'
 import { Route as ApiWorkspacesIdInvitationsRouteImport } from './routes/api/workspaces/$id/invitations'
 import { Route as ApiWorkProductsIdReviewRouteImport } from './routes/api/work-products/$id/review'
@@ -84,6 +83,7 @@ import { Route as ApiWorkspacesIdMembersMemberIdRouteImport } from './routes/api
 import { Route as ApiWorkspacesIdInvitationsInvitationIdRouteImport } from './routes/api/workspaces/$id/invitations/$invitationId'
 import { Route as ApiIssuesIdSourceBindingsBindingIdRouteImport } from './routes/api/issues/$id/source-bindings/$bindingId'
 import { Route as ApiChatThreadsIdToolApprovalRouteImport } from './routes/api/chat/threads/$id/tool-approval'
+import { Route as ApiChatThreadsIdPrimaryIssueRouteImport } from './routes/api/chat/threads/$id/primary-issue'
 import { Route as ApiChatThreadsIdDocumentsRouteImport } from './routes/api/chat/threads/$id/documents'
 import { Route as ApiDocumentsDocumentIdEditsEditIdActionRouteImport } from './routes/api/documents/$documentId/edits/$editId/$action'
 import { Route as ApiConnectionsConnectorIdToolsNameGrantRouteImport } from './routes/api/connections/$connectorId/tools/$name/grant'
@@ -295,12 +295,6 @@ const ApiAgentsIdRoute = ApiAgentsIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => ApiAgentsRoute,
 } as any)
-const AuthenticatedDevIssueFlowRoute =
-  AuthenticatedDevIssueFlowRouteImport.update({
-    id: '/dev/issue-flow',
-    path: '/dev/issue-flow',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
 const ApiWorkspacesIdMembersRoute = ApiWorkspacesIdMembersRouteImport.update({
   id: '/members',
   path: '/members',
@@ -474,6 +468,12 @@ const ApiChatThreadsIdToolApprovalRoute =
     path: '/tool-approval',
     getParentRoute: () => ApiChatThreadsIdRoute,
   } as any)
+const ApiChatThreadsIdPrimaryIssueRoute =
+  ApiChatThreadsIdPrimaryIssueRouteImport.update({
+    id: '/primary-issue',
+    path: '/primary-issue',
+    getParentRoute: () => ApiChatThreadsIdRoute,
+  } as any)
 const ApiChatThreadsIdDocumentsRoute =
   ApiChatThreadsIdDocumentsRouteImport.update({
     id: '/documents',
@@ -510,7 +510,6 @@ export interface FileRoutesByFullPath {
   '/api/runtimes': typeof ApiRuntimesRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
-  '/dev/issue-flow': typeof AuthenticatedDevIssueFlowRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
@@ -565,6 +564,7 @@ export interface FileRoutesByFullPath {
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
   '/api/chat/threads/$id/documents': typeof ApiChatThreadsIdDocumentsRoute
+  '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
   '/api/issues/$id/source-bindings/$bindingId': typeof ApiIssuesIdSourceBindingsBindingIdRoute
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
@@ -589,7 +589,6 @@ export interface FileRoutesByTo {
   '/api/runtimes': typeof ApiRuntimesRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
-  '/dev/issue-flow': typeof AuthenticatedDevIssueFlowRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
@@ -644,6 +643,7 @@ export interface FileRoutesByTo {
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
   '/api/chat/threads/$id/documents': typeof ApiChatThreadsIdDocumentsRoute
+  '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
   '/api/issues/$id/source-bindings/$bindingId': typeof ApiIssuesIdSourceBindingsBindingIdRoute
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
@@ -670,7 +670,6 @@ export interface FileRoutesById {
   '/api/runtimes': typeof ApiRuntimesRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
-  '/_authenticated/dev/issue-flow': typeof AuthenticatedDevIssueFlowRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
@@ -725,6 +724,7 @@ export interface FileRoutesById {
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
   '/api/chat/threads/$id/documents': typeof ApiChatThreadsIdDocumentsRoute
+  '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
   '/api/issues/$id/source-bindings/$bindingId': typeof ApiIssuesIdSourceBindingsBindingIdRoute
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
@@ -751,7 +751,6 @@ export interface FileRouteTypes {
     | '/api/runtimes'
     | '/api/skills'
     | '/api/workspaces'
-    | '/dev/issue-flow'
     | '/api/agents/$id'
     | '/api/auth/$'
     | '/api/chat/threads'
@@ -806,6 +805,7 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
     | '/api/chat/threads/$id/documents'
+    | '/api/chat/threads/$id/primary-issue'
     | '/api/chat/threads/$id/tool-approval'
     | '/api/issues/$id/source-bindings/$bindingId'
     | '/api/workspaces/$id/invitations/$invitationId'
@@ -830,7 +830,6 @@ export interface FileRouteTypes {
     | '/api/runtimes'
     | '/api/skills'
     | '/api/workspaces'
-    | '/dev/issue-flow'
     | '/api/agents/$id'
     | '/api/auth/$'
     | '/api/chat/threads'
@@ -885,6 +884,7 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
     | '/api/chat/threads/$id/documents'
+    | '/api/chat/threads/$id/primary-issue'
     | '/api/chat/threads/$id/tool-approval'
     | '/api/issues/$id/source-bindings/$bindingId'
     | '/api/workspaces/$id/invitations/$invitationId'
@@ -910,7 +910,6 @@ export interface FileRouteTypes {
     | '/api/runtimes'
     | '/api/skills'
     | '/api/workspaces'
-    | '/_authenticated/dev/issue-flow'
     | '/api/agents/$id'
     | '/api/auth/$'
     | '/api/chat/threads'
@@ -965,6 +964,7 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
     | '/api/chat/threads/$id/documents'
+    | '/api/chat/threads/$id/primary-issue'
     | '/api/chat/threads/$id/tool-approval'
     | '/api/issues/$id/source-bindings/$bindingId'
     | '/api/workspaces/$id/invitations/$invitationId'
@@ -1295,13 +1295,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAgentsIdRouteImport
       parentRoute: typeof ApiAgentsRoute
     }
-    '/_authenticated/dev/issue-flow': {
-      id: '/_authenticated/dev/issue-flow'
-      path: '/dev/issue-flow'
-      fullPath: '/dev/issue-flow'
-      preLoaderRoute: typeof AuthenticatedDevIssueFlowRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/api/workspaces/$id/members': {
       id: '/api/workspaces/$id/members'
       path: '/members'
@@ -1533,6 +1526,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatThreadsIdToolApprovalRouteImport
       parentRoute: typeof ApiChatThreadsIdRoute
     }
+    '/api/chat/threads/$id/primary-issue': {
+      id: '/api/chat/threads/$id/primary-issue'
+      path: '/primary-issue'
+      fullPath: '/api/chat/threads/$id/primary-issue'
+      preLoaderRoute: typeof ApiChatThreadsIdPrimaryIssueRouteImport
+      parentRoute: typeof ApiChatThreadsIdRoute
+    }
     '/api/chat/threads/$id/documents': {
       id: '/api/chat/threads/$id/documents'
       path: '/documents'
@@ -1559,12 +1559,10 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteChildren {
   AuthenticatedWorkspaceRoute: typeof AuthenticatedWorkspaceRoute
-  AuthenticatedDevIssueFlowRoute: typeof AuthenticatedDevIssueFlowRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedWorkspaceRoute: AuthenticatedWorkspaceRoute,
-  AuthenticatedDevIssueFlowRoute: AuthenticatedDevIssueFlowRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
@@ -1818,11 +1816,13 @@ const ApiWorkspacesRouteWithChildren = ApiWorkspacesRoute._addFileChildren(
 
 interface ApiChatThreadsIdRouteChildren {
   ApiChatThreadsIdDocumentsRoute: typeof ApiChatThreadsIdDocumentsRoute
+  ApiChatThreadsIdPrimaryIssueRoute: typeof ApiChatThreadsIdPrimaryIssueRoute
   ApiChatThreadsIdToolApprovalRoute: typeof ApiChatThreadsIdToolApprovalRoute
 }
 
 const ApiChatThreadsIdRouteChildren: ApiChatThreadsIdRouteChildren = {
   ApiChatThreadsIdDocumentsRoute: ApiChatThreadsIdDocumentsRoute,
+  ApiChatThreadsIdPrimaryIssueRoute: ApiChatThreadsIdPrimaryIssueRoute,
   ApiChatThreadsIdToolApprovalRoute: ApiChatThreadsIdToolApprovalRoute,
 }
 
@@ -1889,3 +1889,12 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
