@@ -1228,6 +1228,8 @@ async function listWorkspaceInventoryFromChat(
         sections,
         omitted_sections: omittedSections,
         guidance: [
+          "Use current_agent_id when the current agent is an appropriate assignee for a generic or follow-up task.",
+          "Prefer assigning to an existing active agent from this inventory. Propose a new agent only when the task calls for a reusable role that is not already represented.",
           includeConnectors
             ? "Connector/MCP capabilities are included. They are separate from skills; do not require a skill slug for connector tools."
             : "Connector/MCP capabilities were not requested. Do not conclude a capability is unavailable from skills/agents alone; call list_workspace_inventory with include:['connectors'] and a query when connector capability matters.",
@@ -1390,7 +1392,8 @@ export function createChatSubAgentTools({
     create_issue: tool({
       description:
         "Create a Garden issue from chat. Optionally assign it to an agent and bind it to an external source. " +
-        "Use assignee_agent_id when the user asks for an agent to do the work; assigned issues start immediately in todo.",
+        "Use assignee_agent_id when the user asks for an agent to do the work; assigned issues start immediately in todo. " +
+        "Before assigning, list workspace agents and choose an existing active agent; the current agent is a valid assignee when it is the right owner.",
       inputSchema: createIssueInputSchema,
       execute: async (input) => {
         const context = chatIssueContext();
@@ -1408,7 +1411,8 @@ export function createChatSubAgentTools({
     assign_issue: tool({
       description:
         "Assign an existing Garden issue to an active workspace agent and start that agent immediately. " +
-        "Use this when the user says to assign, start, hand off, or wake an agent for an issue that already exists.",
+        "Use this when the user says to assign, start, hand off, or wake an agent for an issue that already exists. " +
+        "Before assigning, list workspace agents and choose an existing active agent; the current agent is a valid assignee when it is the right owner.",
       inputSchema: assignIssueInputSchema,
       execute: async (input) => {
         const context = chatIssueContext();
@@ -1426,7 +1430,8 @@ export function createChatSubAgentTools({
     list_workspace_inventory: tool({
       description:
         "List bounded current workspace inventory. Defaults to agents only; request skills/connectors only when needed. " +
-        "Use before assigning work, proposing an agent, or mentioning skills/connectors when the current workspace inventory matters.",
+        "Use before assigning work, proposing an agent, or mentioning skills/connectors when the current workspace inventory matters. " +
+        "Use current_agent_id for self-assignment when appropriate.",
       inputSchema: listWorkspaceInventoryInputSchema,
       execute: async (input) => {
         const context = chatIssueContext();
