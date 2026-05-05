@@ -259,7 +259,17 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   @callable()
   async deleteThread(threadId: string): Promise<RuntimeOkPayload> {
     await this.requireThreadAccess(threadId)
-    this.deleteSubAgent(ChatSubAgent, threadId)
+    const thread = await this.subAgent(ChatSubAgent, threadId)
+    await thread.pauseRuntime('delete-thread')
+    await this.deleteSubAgent(ChatSubAgent, threadId)
+    return { ok: true }
+  }
+
+  @callable()
+  async pauseThread(threadId: string): Promise<RuntimeOkPayload> {
+    await this.requireThreadAccess(threadId)
+    const thread = await this.subAgent(ChatSubAgent, threadId)
+    await thread.pauseRuntime('archive-thread')
     return { ok: true }
   }
 
@@ -787,6 +797,11 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         result.error,
       )
     }
+  }
+
+  async pauseRuntime(reason: string): Promise<RuntimeOkPayload> {
+    await this.pauseMcpRuntime(reason)
+    return { ok: true }
   }
 
   override async beforeTurn(ctx: TurnContext) {
@@ -1478,6 +1493,11 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         return Result.ok(undefined)
       }
 
+      if (connectionResult.error.code === 'thread_not_found') {
+        await this.pauseMcpRuntime(reason, mcpController)
+        return Result.ok(undefined)
+      }
+
       lastError = connectionResult.error.message
       console.warn('[agent-runtime] MCP connector refresh failed', {
         reason,
@@ -1487,6 +1507,68 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     }
 
     return Result.err(lastError)
+  }
+
+  private async pauseMcpRuntime(
+    reason: string,
+    mcpController = this.getMcpController(),
+  ) {
+    const resetResult = await mcpController.resetProxyMcpServers()
+    if (resetResult.isErr()) {
+      console.warn(
+        '[agent-runtime] failed to reset MCP connectors for paused chat facet',
+        {
+          reason,
+          agentName: this.name,
+          error: resetResult.error,
+        },
+      )
+    }
+
+    const schedulesResult = await Result.tryPromise({
+      try: async () => await this.listSchedules(),
+      catch: (cause) =>
+        cause instanceof Error ? cause.message : String(cause),
+    })
+    if (schedulesResult.isErr()) {
+      console.warn(
+        '[agent-runtime] failed to inspect schedules for paused chat facet',
+        {
+          reason,
+          agentName: this.name,
+          error: schedulesResult.error,
+        },
+      )
+      return
+    }
+
+    const refreshSchedules = schedulesResult.value.filter(
+      (schedule) => schedule.callback === 'refreshProxyMcpJwts',
+    )
+    for (const schedule of refreshSchedules) {
+      const cancelResult = await Result.tryPromise({
+        try: async () => await this.cancelSchedule(schedule.id),
+        catch: (cause) =>
+          cause instanceof Error ? cause.message : String(cause),
+      })
+      if (cancelResult.isErr()) {
+        console.warn(
+          '[agent-runtime] failed to cancel paused chat MCP refresh schedule',
+          {
+            reason,
+            agentName: this.name,
+            scheduleId: schedule.id,
+            error: cancelResult.error,
+          },
+        )
+      }
+    }
+
+    console.warn('[agent-runtime] paused MCP refresh for chat facet', {
+      reason,
+      agentName: this.name,
+      cancelledSchedules: refreshSchedules.length,
+    })
   }
 
   private async waitForMcpConnectionsReady(

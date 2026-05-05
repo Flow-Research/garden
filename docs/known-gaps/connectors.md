@@ -6,6 +6,7 @@
 |-----|--------|----------|
 | Capability catalog sync from upstream `tools/list` not automated | Implementation plan Phase 5 | Medium |
 | Connector audit UI / "Recent activity" drawer not built | Implementation plan Phase 11 | Medium |
+| MCP runtime session state is split between Postgres truth and per-DO warm cache; archive/delete cleanup is now guarded, but connector sessions need a clearer single-source-of-truth model | `packages/agent-runtime/src/runtime-mcp-controller.ts`, `packages/agent-runtime/src/agent-do.ts` | Medium |
 | `GITHUB_TOKEN` not plumbed for skills.sh import API headroom | `apps/web/src/lib/server/skills-sh.ts:7` | Low |
 | Contributor CLI scaffolds tools with `TODO: classify` stubs | `packages/create-garden-connector/src/upstream-tools.ts:104` | By design (scaffold) |
 
@@ -33,6 +34,13 @@
 | Context bloat from loading all tool schemas per turn — accepted until it hurts | `docs/core/connectors.md` |
 | Code Mode (sandbox execution escape hatch) documented but not built | `docs/core/connectors.md` |
 | MCP Elicitation (mid-call prompts) not supported | `docs/core/connectors.md` non-goals |
+
+## Session State Notes
+
+- Postgres is the authority for connector accounts, capability grants, agents, chat threads, and issue runs.
+- Durable Object state should be treated as warm cache: registered MCP servers, minted proxy JWTs, tool signatures, and refresh schedules.
+- Delete should destroy runtime cache for the thread. Archive should only pause background refresh and live connector registrations so unarchive can rebuild cheaply.
+- The current code has a defensive orphan guard for missing chat threads and pauses archived chat runtimes, but a broader cleanup pass is still needed for agent archive, issue-run terminal states, and workspace deletion.
 
 ## Code TODOs
 

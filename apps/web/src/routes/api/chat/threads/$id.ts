@@ -1,10 +1,14 @@
 import { and, eq } from 'drizzle-orm'
+import { Result } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   parseJsonBody,
   updateChatThreadBodySchema,
 } from '@/lib/server/validation/chat'
-import { deleteChatThreadAgent } from '@/lib/server/chat-agents'
+import {
+  deleteChatThreadAgent,
+  pauseChatThreadAgent,
+} from '@/lib/server/chat-agents'
 import { schema } from '@/lib/server/db'
 import {
   badRequest,
@@ -67,6 +71,25 @@ export const Route = createFileRoute('/api/chat/threads/$id')({
           .returning()
 
         if (!thread) return notFound('Chat thread not found')
+
+        if (updateValues.archivedAt) {
+          const pauseResult = await Result.tryPromise({
+            try: async () =>
+              await pauseChatThreadAgent({
+                threadId: access.thread.id,
+                hostName: access.hostName,
+              }),
+            catch: (cause) =>
+              cause instanceof Error ? cause.message : String(cause),
+          })
+          if (pauseResult.isErr()) {
+            console.warn('[chat] failed to pause archived thread runtime', {
+              threadId: access.thread.id,
+              error: pauseResult.error,
+            })
+          }
+        }
+
         return Response.json(toChatThread(thread, access.hostName))
       },
       DELETE: async ({ request, params }) => {

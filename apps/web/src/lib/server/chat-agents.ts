@@ -114,6 +114,14 @@ export async function deleteChatThreadAgent(input: {
   await stub.deleteThread(input.threadId)
 }
 
+export async function pauseChatThreadAgent(input: {
+  threadId: string
+  hostName: string
+}) {
+  const stub = getAgentRuntimeStub(input.hostName)
+  await stub.pauseThread(input.threadId)
+}
+
 export async function refreshChatThreadSkillInventory(input: {
   threadId: string
   hostName: string
