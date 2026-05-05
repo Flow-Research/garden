@@ -13,6 +13,9 @@ SET
 WHERE "primary_issue_id" IS NOT NULL;
 
 ALTER TABLE "chat_thread"
+ALTER COLUMN "runtime_key" SET NOT NULL;
+
+ALTER TABLE "chat_thread"
 ADD CONSTRAINT "chat_thread_runtime_kind_check"
 CHECK ("runtime_kind" in ('chat', 'issue_run'));
 

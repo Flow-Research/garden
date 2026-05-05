@@ -173,7 +173,7 @@ export const chatThreadSelectSchema = createSelectSchema(chatThread, {
   ownerUserId: () => uuidSchema,
   primaryIssueId: () => uuidSchema.nullable(),
   runtimeKind: (schema) => schema.refine((value) => value === 'chat' || value === 'issue_run'),
-  runtimeKey: () => uuidSchema.nullable(),
+  runtimeKey: () => uuidSchema,
   title: (schema) => schema.trim().min(1),
 })
 
@@ -183,7 +183,7 @@ export const chatThreadInsertSchema = createInsertSchema(chatThread, {
   ownerUserId: () => uuidSchema,
   primaryIssueId: () => uuidSchema.optional().nullable(),
   runtimeKind: (schema) => schema.optional().refine((value) => value === undefined || value === 'chat' || value === 'issue_run'),
-  runtimeKey: () => uuidSchema.optional().nullable(),
+  runtimeKey: () => uuidSchema.optional(),
   title: (schema) => schema.trim().min(1),
 })
 
@@ -193,7 +193,7 @@ export const chatThreadUpdateSchema = createUpdateSchema(chatThread, {
   ownerUserId: () => uuidSchema,
   primaryIssueId: () => uuidSchema.optional().nullable(),
   runtimeKind: (schema) => schema.optional().refine((value) => value === undefined || value === 'chat' || value === 'issue_run'),
-  runtimeKey: () => uuidSchema.optional().nullable(),
+  runtimeKey: () => uuidSchema.optional(),
   title: (schema) => schema.trim().min(1),
 })
 

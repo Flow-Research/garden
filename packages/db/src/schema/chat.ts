@@ -34,7 +34,7 @@ export const chatThread = pgTable(
       onDelete: 'set null',
     }),
     runtimeKind: text('runtime_kind').notNull().default('chat'),
-    runtimeKey: uuid('runtime_key'),
+    runtimeKey: uuid('runtime_key').notNull(),
     title: text('title').notNull(),
     lastMessage: text('last_message').notNull().default(''),
     archivedAt: timestamp('archived_at', { mode: 'date' }),
