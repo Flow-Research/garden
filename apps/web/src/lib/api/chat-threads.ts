@@ -128,14 +128,18 @@ export async function openChatForIssue(args: {
 export function resolveToolApproval(args: {
   approved: boolean
   threadId: string
-  toolCallId: string
+  toolCallId?: string
+  permissionRequestId?: string
 }): Promise<{ toolCallIds?: unknown[] }> {
   return getApiTransport().request(
     `/api/chat/threads/${args.threadId}/tool-approval`,
     {
       method: 'POST',
       body: JSON.stringify({
-        toolCallId: args.toolCallId,
+        ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
+        ...(args.permissionRequestId
+          ? { permission_request_id: args.permissionRequestId }
+          : {}),
         approved: args.approved,
       }),
     },

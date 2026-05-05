@@ -267,6 +267,7 @@ export function ConnectedChatPanelInteraction({
   )
   const [approvalError, setApprovalError] = useState<string | null>(null)
   const [resolvingToolCallIds, setResolvingToolCallIds] = useState<string[]>([])
+  const [resolvedApprovalIds, setResolvedApprovalIds] = useState<string[]>([])
   const [isRetrying, setIsRetrying] = useState(false)
   const [documentPanelView, setDocumentPanelView] =
     useState<DocumentPanelView | null>(null)
@@ -430,7 +431,9 @@ export function ConnectedChatPanelInteraction({
       const result = await resolveToolApproval({
         approved,
         threadId: sessionId,
-        toolCallId: group.toolCallIds[0] ?? '',
+        ...(group.permissionRequestId
+          ? { permissionRequestId: group.permissionRequestId }
+          : { toolCallId: group.toolCallIds[0] ?? '' }),
       }).catch((cause: unknown) => {
         const message =
           cause instanceof Error ? cause.message : 'Failed to resolve approval'
@@ -439,6 +442,9 @@ export function ConnectedChatPanelInteraction({
       })
 
       if (result) {
+        setResolvedApprovalIds((current) => [
+          ...new Set([...current, ...group.approvalIds]),
+        ])
         const resolvedToolCallIds = new Set(result.toolCallIds)
         group.toolCallIds.forEach((toolCallId, index) => {
           if (
@@ -686,6 +692,7 @@ export function ConnectedChatPanelInteraction({
               onDocumentEditResolved={handleDocumentEditResolved}
               onResolveToolApproval={handleResolveToolApproval}
               resolvedDocumentEditStatuses={resolvedDocumentEditStatuses}
+              resolvedApprovalIds={resolvedApprovalIds}
               resolvingToolCallIds={resolvingToolCallIds}
               onRetry={handleRetry}
               isRetrying={isRetrying}

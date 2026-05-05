@@ -1,14 +1,19 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { Result } from 'better-result'
 import {
   Bug,
+  Check,
   ChevronRight,
   Cloud,
+  Copy,
   FileText,
   HardDrive,
   MessagesSquare,
+  Plug,
   Radio,
+  RefreshCw,
   Server,
   Terminal as TerminalIcon,
   Wrench,
@@ -43,7 +48,11 @@ import {
   type WorkspaceStateEntry,
 } from '@/lib/environment-debug'
 import { useAgentSessions } from '@/features/chat/use-agent-chat-sessions'
-import { useDebugStream, type DebugSection } from './use-debug-stream'
+import {
+  refreshDebugPrompt,
+  useDebugStream,
+  type DebugSection,
+} from './use-debug-stream'
 
 // ---------- primitives ----------
 
@@ -65,8 +74,8 @@ function Panel({
   children?: React.ReactNode
 }) {
   return (
-    <section className="rounded-lg border bg-card">
-      <header className="flex items-center justify-between gap-2 border-b px-3 py-2">
+    <section className="border-b">
+      <header className="flex items-center justify-between gap-2 px-1 py-2">
         <div className="flex items-center gap-2 text-sm font-medium">
           <span className="text-muted-foreground">{icon}</span>
           <span>{title}</span>
@@ -74,7 +83,7 @@ function Panel({
         </div>
         {right ? <div className="flex items-center gap-1">{right}</div> : null}
       </header>
-      <div className="p-3">
+      <div className="pb-3">
         {error ? <SectionError message={error} /> : null}
         {loading && !children ? (
           <SkeletonRows />
@@ -111,11 +120,53 @@ function SkeletonRows({ rows = 2 }: { rows?: number }) {
   )
 }
 
-function KV({ k, v }: { k: string; v: React.ReactNode }) {
+function CopyValue({
+  value,
+  label = 'Copy',
+}: {
+  value: string
+  label?: string
+}) {
+  const [copied, setCopied] = useState(false)
   return (
-    <div className="flex items-baseline justify-between gap-3 border-b py-1 text-xs last:border-0">
+    <button
+      type="button"
+      className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-colors group-hover/copy:opacity-100 hover:bg-muted hover:text-foreground focus:opacity-100"
+      aria-label={label}
+      title={label}
+      onClick={() => {
+        void navigator.clipboard.writeText(value).then(
+          () => {
+            setCopied(true)
+            window.setTimeout(() => setCopied(false), 900)
+          },
+          () => setCopied(false),
+        )
+      }}
+    >
+      {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+    </button>
+  )
+}
+
+function KV({
+  k,
+  v,
+  copyValue,
+}: {
+  k: string
+  v: React.ReactNode
+  copyValue?: string | null
+}) {
+  return (
+    <div className="group/copy flex items-baseline justify-between gap-3 border-b py-1 text-xs last:border-0">
       <span className="text-muted-foreground">{k}</span>
-      <span className="truncate text-right font-mono text-foreground">{v}</span>
+      <span className="flex min-w-0 items-center justify-end gap-1 text-right font-mono text-foreground">
+        <span className="truncate">{v}</span>
+        {copyValue ? (
+          <CopyValue value={copyValue} label={`Copy ${k}`} />
+        ) : null}
+      </span>
     </div>
   )
 }
@@ -155,7 +206,6 @@ const GROUP_ORDER: ToolGroup[] = [
   'custom',
   'session',
   'extension',
-  'mcp',
 ]
 
 const GROUP_LABEL: Record<ToolGroup, string> = {
@@ -168,11 +218,11 @@ const GROUP_LABEL: Record<ToolGroup, string> = {
 
 const GROUP_DESC: Record<ToolGroup, string> = {
   workspace:
-    'createWorkspaceTools(workspace) — read/write/edit/list/find/grep/delete',
-  custom: 'From this agent’s getTools()',
-  session: 'session.tools() — set_context / load_context',
+    'createWorkspaceTools(workspace): read/write/edit/list/find/grep/delete',
+  custom: 'Agent getTools()',
+  session: 'session.tools(): set_context / load_context',
   extension: 'Loaded sandboxed extension workers',
-  mcp: 'MCP client manager (mcp.getAITools())',
+  mcp: 'Connector MCP tools, rendered in the connector section below',
 }
 
 function ToolsPanel({
@@ -195,6 +245,13 @@ function ToolsPanel({
   }, [tools])
 
   const counts = tools?.counts
+  const connectorCapabilities = tools?.connectorCapabilities ?? []
+  const exposedConnectorToolCount = connectorCapabilities.reduce(
+    (count, connector) =>
+      count + connector.tools.filter((tool) => tool.exposed).length,
+    0,
+  )
+  const visibleLlmToolCount = counts ? counts.total - counts.mcp : 0
 
   return (
     <Panel
@@ -205,7 +262,8 @@ function ToolsPanel({
       right={
         counts ? (
           <Badge variant="secondary" className="text-[10px]">
-            {counts.total} LLM · {counts.rpc} RPC
+            {visibleLlmToolCount} local · {exposedConnectorToolCount}{' '}
+            connector · {counts.rpc} RPC
           </Badge>
         ) : null
       }
@@ -228,18 +286,22 @@ function ToolsPanel({
                     {GROUP_DESC[group]}
                   </div>
                 </div>
-                <ul className="space-y-1">
+                <ul>
                   {entries.map((entry) => (
                     <li
                       key={`${entry.group}:${entry.key}`}
-                      className="rounded-md border px-2 py-1.5"
+                      className="border-t py-1.5 first:border-t-0"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
+                          <div className="group/copy flex items-center gap-1.5">
                             <span className="font-mono text-xs text-foreground">
                               {entry.key}
                             </span>
+                            <CopyValue
+                              value={entry.key}
+                              label={`Copy ${entry.key}`}
+                            />
                             {entry.source ? (
                               <span className="text-[10px] text-muted-foreground">
                                 ({entry.source})
@@ -281,6 +343,81 @@ function ToolsPanel({
             )
           })}
 
+          {connectorCapabilities.length > 0 ? (
+            <div>
+              <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-medium">
+                  <Plug className="size-3 text-muted-foreground" />
+                  Connector MCP{' '}
+                  <span className="text-muted-foreground">
+                    · {connectorCapabilities.length}
+                  </span>
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  Exposed tools + permission catalog
+                </div>
+              </div>
+              <div>
+                {connectorCapabilities.map((connector) => (
+                  <div
+                    key={connector.id}
+                    className="border-t py-2 first:border-t-0"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="group/copy flex min-w-0 items-center gap-1.5">
+                        <span className="truncate text-xs font-medium">
+                          {connector.label}
+                        </span>
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {connector.id}
+                        </span>
+                        <CopyValue
+                          value={connector.id}
+                          label={`Copy ${connector.label} connector id`}
+                        />
+                      </div>
+                      <Badge
+                        variant={
+                          connector.connected ? 'secondary' : 'outline'
+                        }
+                        className="shrink-0 text-[10px]"
+                      >
+                        {connector.exposed
+                          ? 'exposed'
+                          : (connector.status ??
+                            (connector.connected ? 'connected' : 'catalog'))}
+                      </Badge>
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {connector.tools.map((tool) => (
+                        <span
+                          key={`${connector.id}:${tool.name}`}
+                          className="group/copy inline-flex max-w-full items-center gap-1 rounded-sm bg-muted/50 px-1.5 py-0.5 text-[10px]"
+                          title={tool.description ?? undefined}
+                        >
+                          <span className="truncate font-mono">
+                            {tool.name}
+                          </span>
+                          <span className="text-muted-foreground">
+                            {tool.riskClass}
+                            {tool.trustLevel ? `/${tool.trustLevel}` : ''}
+                            {tool.exposed ? '/exposed' : ''}
+                          </span>
+                          {tool.runtimeKey ? (
+                            <CopyValue
+                              value={tool.runtimeKey}
+                              label={`Copy ${tool.runtimeKey}`}
+                            />
+                          ) : null}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           {tools.extensions.length > 0 ? (
             <div>
               <div className="mb-1.5 text-xs font-medium">
@@ -289,11 +426,11 @@ function ToolsPanel({
                   · {tools.extensions.length}
                 </span>
               </div>
-              <ul className="space-y-1">
+              <ul>
                 {tools.extensions.map((ext) => (
                   <li
                     key={ext.name}
-                    className="rounded-md border px-2 py-1.5 text-xs"
+                    className="border-t py-1.5 text-xs first:border-t-0"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-mono">
@@ -327,11 +464,11 @@ function ToolsPanel({
                 From agent.getCallableMethods()
               </div>
             </div>
-            <ul className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+            <ul className="grid grid-cols-1 sm:grid-cols-2">
               {tools.rpcMethods.map((m) => (
                 <li
                   key={m.name}
-                  className="rounded-md border px-2 py-1 text-xs"
+                  className="border-t py-1 text-xs sm:px-2"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono">{m.name}</span>
@@ -363,11 +500,11 @@ function EntryList({ entries }: { entries: WorkspaceStateEntry[] }) {
     return <div className="text-xs text-muted-foreground">No entries.</div>
   }
   return (
-    <ul className="space-y-1">
+    <ul>
       {entries.map((entry) => (
         <li
           key={entry.path}
-          className="flex items-center justify-between gap-3 rounded-md border px-2 py-1"
+          className="flex items-center justify-between gap-3 border-t py-1 first:border-t-0"
         >
           <div className="min-w-0 flex-1">
             <div className="truncate font-mono text-xs text-foreground">
@@ -395,6 +532,8 @@ export function EnvironmentDebugDrawer({
   label = 'Agent debug',
 }: EnvironmentDebugDrawerProps) {
   const [open, setOpen] = useState(false)
+  const [refreshingPrompt, setRefreshingPrompt] = useState(false)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
   const workspaceId = useWorkspaceStore((state) => state.workspace?.id ?? null)
   const { sessions: uiSessions } = useAgentSessions({
     ensureWarmSession: false,
@@ -413,6 +552,18 @@ export function EnvironmentDebugDrawer({
   )
 
   const loading = (k: DebugSection) => state.pending.has(k)
+
+  const handleRefreshPrompt = async () => {
+    setRefreshingPrompt(true)
+    setRefreshError(null)
+    const result = await Result.tryPromise({
+      try: async () => await refreshDebugPrompt(workspaceId, sessionId),
+      catch: (cause) =>
+        cause instanceof Error ? cause.message : String(cause),
+    })
+    if (result.isErr()) setRefreshError(result.error)
+    setRefreshingPrompt(false)
+  }
 
   return (
     <>
@@ -434,7 +585,7 @@ export function EnvironmentDebugDrawer({
               {!state.done && state.openAt ? <LiveDot /> : null}
             </div>
             <DrawerDescription>
-              Live state from the Durable Object — each section streams in as it
+              Warmed from the chat tab; sections update as the debug stream
               resolves.
             </DrawerDescription>
           </DrawerHeader>
@@ -449,7 +600,7 @@ export function EnvironmentDebugDrawer({
                 <SectionError message={state.fatal} />
               </div>
             ) : (
-              <div className="space-y-3 p-3">
+              <div className="px-4 pb-4">
                 <StatusStrip
                   meta={state.meta}
                   sandbox={state.sandbox}
@@ -479,8 +630,11 @@ export function EnvironmentDebugDrawer({
 
                 <PromptPanel
                   prompt={state.prompt}
-                  loading={loading('prompt')}
-                  error={state.errors.prompt}
+                  loading={loading('prompt') || refreshingPrompt}
+                  error={refreshError ?? state.errors.prompt}
+                  onRefreshPrompt={handleRefreshPrompt}
+                  canRefresh={Boolean(workspaceId && sessionId)}
+                  refreshing={refreshingPrompt}
                 />
 
                 <SessionsPanel
@@ -533,7 +687,7 @@ function StatusStrip({
   generatedAt: string | null
 }) {
   return (
-    <div className="rounded-lg border bg-muted/20 p-2">
+    <div className="border-b py-3">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <StatusCell
           label="UI"
@@ -562,8 +716,12 @@ function StatusStrip({
       </div>
       {meta ? (
         <div className="mt-2 space-y-0 border-t pt-2">
-          <KV k="agent" v={meta.agentName} />
-          <KV k="session" v={meta.effectiveSessionId} />
+          <KV k="runtime path" v={meta.agentName} copyValue={meta.agentName} />
+          <KV
+            k="thread id"
+            v={meta.effectiveSessionId}
+            copyValue={meta.effectiveSessionId}
+          />
           {generatedAt ? (
             <KV k="generated" v={new Date(generatedAt).toLocaleTimeString()} />
           ) : null}
@@ -587,7 +745,7 @@ function StatusCell({
   return (
     <div
       className={cn(
-        'rounded-md border bg-background px-2 py-1.5',
+        'border-l px-2 py-1',
         tone === 'danger' && 'border-destructive/30 text-destructive',
       )}
       title={hint}
@@ -606,10 +764,16 @@ function PromptPanel({
   prompt,
   loading,
   error,
+  onRefreshPrompt,
+  canRefresh,
+  refreshing,
 }: {
   prompt: DebugPromptPayload | null
   loading: boolean
   error?: string
+  onRefreshPrompt: () => void
+  canRefresh: boolean
+  refreshing: boolean
 }) {
   const [openPrompt, setOpenPrompt] = useState(false)
   return (
@@ -619,11 +783,26 @@ function PromptPanel({
       loading={loading}
       error={error}
       right={
-        prompt ? (
-          <Badge variant="outline" className="text-[10px]">
-            {prompt.charCount} chars · {prompt.lineCount} lines
-          </Badge>
-        ) : null
+        <>
+          {prompt ? (
+            <Badge variant="outline" className="text-[10px]">
+              {prompt.charCount} chars · {prompt.lineCount} lines
+            </Badge>
+          ) : null}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onRefreshPrompt}
+            disabled={!canRefresh || refreshing}
+            aria-label="Refresh system prompt"
+            title="Refresh system prompt"
+          >
+            <RefreshCw
+              className={cn('size-3.5', refreshing && 'animate-spin')}
+            />
+          </Button>
+        </>
       }
     >
       {prompt ? (
@@ -738,8 +917,12 @@ function SessionsPanel({
                     <div className="truncate text-xs font-medium">
                       {session.title}
                     </div>
-                    <div className="truncate font-mono text-[10px] text-muted-foreground">
-                      {session.id}
+                    <div className="group/copy flex min-w-0 items-center gap-1 font-mono text-[10px] text-muted-foreground">
+                      <span className="truncate">{session.id}</span>
+                      <CopyValue
+                        value={session.id}
+                        label={`Copy ${session.title} id`}
+                      />
                     </div>
                     <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
                       {session.lastMessage || '—'}
@@ -864,8 +1047,12 @@ function SandboxPanel({
       {sandbox ? (
         <div className="space-y-2">
           <div className="space-y-0">
-            <KV k="id" v={sandbox.id} />
-            <KV k="placement" v={sandbox.containerPlacementId ?? '—'} />
+            <KV k="sandbox id" v={sandbox.id} copyValue={sandbox.id} />
+            <KV
+              k="placement"
+              v={sandbox.containerPlacementId ?? '—'}
+              copyValue={sandbox.containerPlacementId}
+            />
             <KV k="cwd" v={sandbox.cwd ?? '—'} />
             <KV k="ping" v={sandbox.pingMessage ?? '—'} />
           </div>
@@ -962,7 +1149,7 @@ function SandboxPanel({
             </Collapsible>
           ) : sandbox.commandsError ? (
             <div className="text-[10px] text-muted-foreground">
-              getCommands failed: {sandbox.commandsError}
+              Sandbox utils.getCommands unavailable: {sandbox.commandsError}
             </div>
           ) : null}
         </div>

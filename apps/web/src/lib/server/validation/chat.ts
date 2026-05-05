@@ -49,3 +49,9 @@ export const threadDebugQuerySchema = z.object({
   thread_id: uuidSchema.optional(),
   session_id: uuidSchema.optional(),
 })
+
+export const refreshThreadDebugBodySchema = z
+  .object({
+    action: z.literal('refresh_prompt'),
+  })
+  .strict()

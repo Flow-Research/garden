@@ -1,99 +1,103 @@
-import { and, desc, eq, inArray, ne, or, sql } from 'drizzle-orm'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { and, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { getDb, schema } from "@/lib/server/db";
+import { appEnv } from "@/lib/server/env";
 import type {
   InboxItem,
   InboxItemType,
   InboxSeverity,
   IssueStatus,
-} from '@garden/core/types'
+} from "@garden/core/types";
 
-type IssueRow = typeof schema.issue.$inferSelect
-type CommentRow = typeof schema.issueComment.$inferSelect
-type RunRow = typeof schema.issueRun.$inferSelect
-type WorkProductRow = typeof schema.issueWorkProduct.$inferSelect
-type PermissionRequestRow = typeof schema.permissionRequest.$inferSelect
+type IssueRow = typeof schema.issue.$inferSelect;
+type CommentRow = typeof schema.issueComment.$inferSelect;
+type RunRow = typeof schema.issueRun.$inferSelect;
+type WorkProductRow = typeof schema.issueWorkProduct.$inferSelect;
+type PermissionRequestRow = typeof schema.permissionRequest.$inferSelect;
 
 type SourceItem = {
-  key: string
-  type: InboxItemType
-  severity: InboxSeverity
-  issueId: string | null
-  title: string
-  body: string | null
-  issueStatus: IssueStatus | null
-  actorType: 'member' | 'agent' | null
-  actorId: string | null
-  activityAt: Date
-  details: Record<string, string>
-}
+  key: string;
+  type: InboxItemType;
+  severity: InboxSeverity;
+  issueId: string | null;
+  title: string;
+  body: string | null;
+  issueStatus: IssueStatus | null;
+  actorType: "member" | "agent" | null;
+  actorId: string | null;
+  activityAt: Date;
+  details: Record<string, string>;
+};
 
-const TRUNCATE_BODY = 200
+const TRUNCATE_BODY = 200;
 
 function truncate(value: string | null | undefined): string | null {
-  if (!value) return null
-  const trimmed = value.trim()
-  if (trimmed.length <= TRUNCATE_BODY) return trimmed
-  return `${trimmed.slice(0, TRUNCATE_BODY - 1)}…`
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (trimmed.length <= TRUNCATE_BODY) return trimmed;
+  return `${trimmed.slice(0, TRUNCATE_BODY - 1)}…`;
 }
 
 function pickIssueStatus(value: string | null): IssueStatus | null {
-  if (!value) return null
-  return value as IssueStatus
+  if (!value) return null;
+  return value as IssueStatus;
+}
+
+function isTerminalIssue(issue: IssueRow): boolean {
+  return issue.status === "done" || issue.status === "cancelled";
 }
 
 function preferDate(...values: Array<Date | null | undefined>): Date {
   for (const value of values) {
-    if (value) return value
+    if (value) return value;
   }
-  return new Date()
+  return new Date();
 }
 
 function indexById<T extends { id: string }>(rows: T[]): Map<string, T> {
-  return new Map(rows.map((row) => [row.id, row]))
+  return new Map(rows.map((row) => [row.id, row]));
 }
 
 function commentMentionsUser(mentions: unknown, userId: string): boolean {
-  if (!mentions || typeof mentions !== 'object') return false
-  const users = (mentions as { users?: unknown }).users
-  return Array.isArray(users) && users.includes(userId)
+  if (!mentions || typeof mentions !== "object") return false;
+  const users = (mentions as { users?: unknown }).users;
+  return Array.isArray(users) && users.includes(userId);
 }
 
 function commentMentionsUserSql(userId: string) {
-  return sql`${schema.issueComment.mentions} @> ${JSON.stringify({ users: [userId] })}::jsonb`
+  return sql`${schema.issueComment.mentions} @> ${JSON.stringify({ users: [userId] })}::jsonb`;
 }
 
 function actorFromComment(row: CommentRow): {
-  actorType: 'member' | 'agent' | null
-  actorId: string | null
+  actorType: "member" | "agent" | null;
+  actorId: string | null;
 } {
   const type =
-    row.authorType === 'user'
-      ? 'member'
-      : row.authorType === 'agent'
-        ? 'agent'
-        : null
-  return { actorType: type, actorId: type ? row.authorId : null }
+    row.authorType === "user"
+      ? "member"
+      : row.authorType === "agent"
+        ? "agent"
+        : null;
+  return { actorType: type, actorId: type ? row.authorId : null };
 }
 
 function actorFromAgentId(agentId: string | null): {
-  actorType: 'member' | 'agent' | null
-  actorId: string | null
+  actorType: "member" | "agent" | null;
+  actorId: string | null;
 } {
-  if (!agentId) return { actorType: null, actorId: null }
-  return { actorType: 'agent', actorId: agentId }
+  if (!agentId) return { actorType: null, actorId: null };
+  return { actorType: "agent", actorId: agentId };
 }
 
 function buildAssignedSource(
   issue: IssueRow,
   userId: string,
 ): SourceItem | null {
-  if (issue.assigneeType !== 'user' || issue.assigneeId !== userId) return null
-  const activityAt = preferDate(issue.updatedAt, issue.createdAt)
+  if (issue.assigneeType !== "user" || issue.assigneeId !== userId) return null;
+  const activityAt = preferDate(issue.updatedAt, issue.createdAt);
   return {
     key: `assigned:${issue.id}`,
-    type: 'issue_assigned',
-    severity: 'action_required',
+    type: "issue_assigned",
+    severity: "action_required",
     issueId: issue.id,
     title: `You were assigned to ${issue.title}`,
     body: truncate(issue.description),
@@ -103,23 +107,23 @@ function buildAssignedSource(
     activityAt,
     details: {
       issue_number: String(issue.number),
-      priority: issue.priority ?? 'medium',
-      status: issue.status ?? 'backlog',
+      priority: issue.priority ?? "medium",
+      status: issue.status ?? "backlog",
     },
-  }
+  };
 }
 
 function buildBlockedSource(issue: IssueRow): SourceItem | null {
-  if (issue.status !== 'blocked') return null
-  const activityAt = preferDate(issue.updatedAt, issue.createdAt)
+  if (issue.status !== "blocked") return null;
+  const activityAt = preferDate(issue.updatedAt, issue.createdAt);
   const actor =
-    issue.assigneeType === 'agent'
+    issue.assigneeType === "agent"
       ? actorFromAgentId(issue.assigneeId)
-      : { actorType: null, actorId: null }
+      : { actorType: null, actorId: null };
   return {
     key: `blocked:${issue.id}`,
-    type: 'agent_blocked',
-    severity: 'action_required',
+    type: "agent_blocked",
+    severity: "action_required",
     issueId: issue.id,
     title: `${issue.title} is blocked`,
     body: truncate(issue.description),
@@ -128,18 +132,18 @@ function buildBlockedSource(issue: IssueRow): SourceItem | null {
     activityAt,
     details: {
       issue_number: String(issue.number),
-      status: issue.status ?? 'blocked',
+      status: issue.status ?? "blocked",
     },
-  }
+  };
 }
 
 function buildMentionSource(comment: CommentRow, issue: IssueRow): SourceItem {
-  const activityAt = preferDate(comment.createdAt)
-  const { actorType, actorId } = actorFromComment(comment)
+  const activityAt = preferDate(comment.createdAt);
+  const { actorType, actorId } = actorFromComment(comment);
   return {
     key: `mention:${comment.id}`,
-    type: 'mentioned',
-    severity: 'action_required',
+    type: "mentioned",
+    severity: "action_required",
     issueId: issue.id,
     title: `Mentioned on ${issue.title}`,
     body: truncate(comment.body),
@@ -151,16 +155,16 @@ function buildMentionSource(comment: CommentRow, issue: IssueRow): SourceItem {
       issue_number: String(issue.number),
       comment_id: comment.id,
     },
-  }
+  };
 }
 
 function buildCommentSource(comment: CommentRow, issue: IssueRow): SourceItem {
-  const activityAt = preferDate(comment.createdAt)
-  const { actorType, actorId } = actorFromComment(comment)
+  const activityAt = preferDate(comment.createdAt);
+  const { actorType, actorId } = actorFromComment(comment);
   return {
     key: `comment:${comment.id}`,
-    type: 'new_comment',
-    severity: 'attention',
+    type: "new_comment",
+    severity: "attention",
     issueId: issue.id,
     title: `New comment on ${issue.title}`,
     body: truncate(comment.body),
@@ -172,20 +176,20 @@ function buildCommentSource(comment: CommentRow, issue: IssueRow): SourceItem {
       issue_number: String(issue.number),
       comment_id: comment.id,
     },
-  }
+  };
 }
 
 function buildApprovalSource(
   request: PermissionRequestRow,
   issue: IssueRow | undefined,
 ): SourceItem | null {
-  if (request.status !== 'pending') return null
-  const activityAt = preferDate(request.requestedAt)
-  const titleSuffix = issue ? ` on ${issue.title}` : ''
+  if (request.status !== "pending") return null;
+  const activityAt = preferDate(request.requestedAt);
+  const titleSuffix = issue ? ` on ${issue.title}` : "";
   return {
     key: `approval:${request.id}`,
-    type: 'review_requested',
-    severity: 'action_required',
+    type: "review_requested",
+    severity: "action_required",
     issueId: issue?.id ?? null,
     title: `Approval needed${titleSuffix}`,
     body: truncate(request.context ?? null),
@@ -193,19 +197,19 @@ function buildApprovalSource(
     ...actorFromAgentId(request.agentId),
     activityAt,
     details: {
-      kind: 'approval',
+      kind: "approval",
       request_id: request.id,
       ...(issue ? { issue_number: String(issue.number) } : {}),
     },
-  }
+  };
 }
 
 function buildWaitingForInputSource(run: RunRow, issue: IssueRow): SourceItem {
-  const activityAt = preferDate(run.updatedAt, run.startedAt, run.createdAt)
+  const activityAt = preferDate(run.updatedAt, run.startedAt, run.createdAt);
   return {
     key: `waiting_for_input:${run.id}`,
-    type: 'waiting_for_input',
-    severity: 'action_required',
+    type: "waiting_for_input",
+    severity: "action_required",
     issueId: issue.id,
     title: `Garden is waiting on you on ${issue.title}`,
     body: truncate(run.error ?? null),
@@ -213,23 +217,23 @@ function buildWaitingForInputSource(run: RunRow, issue: IssueRow): SourceItem {
     ...actorFromAgentId(run.agentId),
     activityAt,
     details: {
-      kind: 'waiting_for_input',
+      kind: "waiting_for_input",
       run_id: run.id,
       issue_number: String(issue.number),
     },
-  }
+  };
 }
 
 function buildWorkProductReviewSource(
   wp: WorkProductRow,
   issue: IssueRow,
 ): SourceItem {
-  const activityAt = preferDate(wp.updatedAt, wp.createdAt)
-  const title = wp.title?.trim() || `${wp.type} ready`
+  const activityAt = preferDate(wp.updatedAt, wp.createdAt);
+  const title = wp.title?.trim() || `${wp.type} ready`;
   return {
     key: `wp_review:${wp.id}`,
-    type: 'wp_review',
-    severity: 'action_required',
+    type: "wp_review",
+    severity: "action_required",
     issueId: issue.id,
     title: `${title} on ${issue.title}`,
     body: truncate(wp.body),
@@ -237,20 +241,20 @@ function buildWorkProductReviewSource(
     ...actorFromAgentId(wp.agentId),
     activityAt,
     details: {
-      kind: 'wp_review',
+      kind: "wp_review",
       work_product_id: wp.id,
       work_product_type: wp.type,
       issue_number: String(issue.number),
     },
-  }
+  };
 }
 
 function buildFailedRunSource(run: RunRow, issue: IssueRow): SourceItem {
-  const activityAt = preferDate(run.finishedAt, run.updatedAt, run.createdAt)
+  const activityAt = preferDate(run.finishedAt, run.updatedAt, run.createdAt);
   return {
     key: `failed_run:${run.id}`,
-    type: 'task_failed',
-    severity: 'attention',
+    type: "task_failed",
+    severity: "attention",
     issueId: issue.id,
     title: `A run failed on ${issue.title}`,
     body: truncate(run.error ?? null),
@@ -261,23 +265,23 @@ function buildFailedRunSource(run: RunRow, issue: IssueRow): SourceItem {
       run_id: run.id,
       issue_number: String(issue.number),
     },
-  }
+  };
 }
 
 function userIsResponsible(issue: IssueRow, userId: string): boolean {
   return (
     issue.createdBy === userId ||
-    (issue.assigneeType === 'user' && issue.assigneeId === userId)
-  )
+    (issue.assigneeType === "user" && issue.assigneeId === userId)
+  );
 }
 
 type InboxCandidate = {
-  key: string
-  read: boolean
-  issueStatus: IssueStatus | null
-}
+  key: string;
+  read: boolean;
+  issueStatus: IssueStatus | null;
+};
 
-type InboxPredicate = (item: InboxCandidate) => boolean
+type InboxPredicate = (item: InboxCandidate) => boolean;
 
 function toInboxCandidate(
   source: SourceItem,
@@ -289,24 +293,24 @@ function toInboxCandidate(
       ? dismissedAt.getTime() >= source.activityAt.getTime()
       : false,
     issueStatus: source.issueStatus,
-  }
+  };
 }
 
 function toInboxItem(
   source: SourceItem,
   args: {
-    workspaceId: string
-    userId: string
-    dismissedAt: Date | null
+    workspaceId: string;
+    userId: string;
+    dismissedAt: Date | null;
   },
 ): InboxItem {
   const dismissed = args.dismissedAt
     ? args.dismissedAt.getTime() >= source.activityAt.getTime()
-    : false
+    : false;
   return {
     id: source.key,
     workspace_id: args.workspaceId,
-    recipient_type: 'member',
+    recipient_type: "member",
     recipient_id: args.userId,
     actor_type: source.actorType,
     actor_id: source.actorId,
@@ -320,19 +324,19 @@ function toInboxItem(
     archived: dismissed,
     created_at: source.activityAt.toISOString(),
     details: source.details,
-  }
+  };
 }
 
 async function computeInboxSourceItems(args: {
-  workspaceId: string
-  userId: string
-  limit?: number
+  workspaceId: string;
+  userId: string;
+  limit?: number;
 }): Promise<{
-  sources: SourceItem[]
-  dismissalsByKey: Map<string, Date>
+  sources: SourceItem[];
+  dismissalsByKey: Map<string, Date>;
 }> {
-  const db = getDb(appEnv)
-  const { workspaceId, userId } = args
+  const db = getDb(appEnv);
+  const { workspaceId, userId } = args;
 
   const [
     workspaceIssues,
@@ -363,9 +367,9 @@ async function computeInboxSourceItems(args: {
         and(
           eq(schema.issue.workspaceId, workspaceId),
           or(
-            eq(schema.issueComment.authorType, 'agent'),
+            eq(schema.issueComment.authorType, "agent"),
             and(
-              eq(schema.issueComment.authorType, 'user'),
+              eq(schema.issueComment.authorType, "user"),
               ne(schema.issueComment.authorId, userId),
             ),
           ),
@@ -373,7 +377,7 @@ async function computeInboxSourceItems(args: {
             commentMentionsUserSql(userId),
             eq(schema.issue.createdBy, userId),
             and(
-              eq(schema.issue.assigneeType, 'user'),
+              eq(schema.issue.assigneeType, "user"),
               eq(schema.issue.assigneeId, userId),
             ),
           ),
@@ -405,7 +409,7 @@ async function computeInboxSourceItems(args: {
       )
       .where(
         and(
-          eq(schema.permissionRequest.status, 'pending'),
+          eq(schema.permissionRequest.status, "pending"),
           eq(schema.agent.workspaceId, workspaceId),
         ),
       )
@@ -417,8 +421,8 @@ async function computeInboxSourceItems(args: {
       .where(
         and(
           eq(schema.issueWorkProduct.workspaceId, workspaceId),
-          eq(schema.issueWorkProduct.status, 'review'),
-          eq(schema.issueWorkProduct.reviewState, 'pending'),
+          eq(schema.issueWorkProduct.status, "review"),
+          eq(schema.issueWorkProduct.reviewState, "pending"),
         ),
       )
       .orderBy(desc(schema.issueWorkProduct.updatedAt))
@@ -429,7 +433,7 @@ async function computeInboxSourceItems(args: {
       .where(
         and(
           eq(schema.issueRun.workspaceId, workspaceId),
-          eq(schema.issueRun.status, 'waiting_for_input'),
+          eq(schema.issueRun.status, "waiting_for_input"),
         ),
       )
       .orderBy(desc(schema.issueRun.updatedAt))
@@ -440,7 +444,7 @@ async function computeInboxSourceItems(args: {
       .where(
         and(
           eq(schema.issueRun.workspaceId, workspaceId),
-          eq(schema.issueRun.status, 'failed'),
+          eq(schema.issueRun.status, "failed"),
         ),
       )
       .orderBy(desc(schema.issueRun.finishedAt))
@@ -454,40 +458,42 @@ async function computeInboxSourceItems(args: {
           eq(schema.inboxDismissal.userId, userId),
         ),
       ),
-  ])
+  ]);
 
-  const issuesById = indexById(workspaceIssues)
+  const issuesById = indexById(workspaceIssues);
   const dismissalsByKey = new Map(
     dismissalRows.map((row) => [row.itemKey, row.dismissedAt ?? new Date()]),
-  )
+  );
 
-  const sources: SourceItem[] = []
+  const sources: SourceItem[] = [];
 
   for (const issue of workspaceIssues) {
-    const assigned = buildAssignedSource(issue, userId)
-    if (assigned) sources.push(assigned)
-    if (issue.status === 'blocked' && userIsResponsible(issue, userId)) {
-      const blocked = buildBlockedSource(issue)
-      if (blocked) sources.push(blocked)
+    if (isTerminalIssue(issue)) continue;
+    const assigned = buildAssignedSource(issue, userId);
+    if (assigned) sources.push(assigned);
+    if (issue.status === "blocked" && userIsResponsible(issue, userId)) {
+      const blocked = buildBlockedSource(issue);
+      if (blocked) sources.push(blocked);
     }
   }
 
   for (const comment of workspaceComments) {
-    const issue = issuesById.get(comment.issueId)
-    if (!issue) continue
-    const row = comment as CommentRow
+    const issue = issuesById.get(comment.issueId);
+    if (!issue) continue;
+    if (isTerminalIssue(issue)) continue;
+    const row = comment as CommentRow;
     if (commentMentionsUser(row.mentions, userId)) {
-      sources.push(buildMentionSource(row, issue))
-      continue
+      sources.push(buildMentionSource(row, issue));
+      continue;
     }
     if (userIsResponsible(issue, userId)) {
-      sources.push(buildCommentSource(row, issue))
+      sources.push(buildCommentSource(row, issue));
     }
   }
 
   const approvalIssueIds = approvalRows
     .map((row) => row.issueId)
-    .filter((id): id is string => Boolean(id))
+    .filter((id): id is string => Boolean(id));
   const approvalIssues =
     approvalIssueIds.length === 0
       ? new Map<string, IssueRow>()
@@ -501,32 +507,36 @@ async function computeInboxSourceItems(args: {
                 inArray(schema.issue.id, approvalIssueIds),
               ),
             ),
-        )
+        );
   for (const request of approvalRows) {
     const issue = request.issueId
       ? approvalIssues.get(request.issueId)
-      : undefined
-    if (request.issueId && !issue) continue
-    const item = buildApprovalSource(request, issue)
-    if (item) sources.push(item)
+      : undefined;
+    if (request.issueId && !issue) continue;
+    if (issue && isTerminalIssue(issue)) continue;
+    const item = buildApprovalSource(request, issue);
+    if (item) sources.push(item);
   }
 
   for (const wp of pendingWorkProducts) {
-    const issue = issuesById.get(wp.issueId)
-    if (!issue) continue
-    sources.push(buildWorkProductReviewSource(wp, issue))
+    const issue = issuesById.get(wp.issueId);
+    if (!issue) continue;
+    if (isTerminalIssue(issue)) continue;
+    sources.push(buildWorkProductReviewSource(wp, issue));
   }
 
   for (const run of pausedRuns) {
-    const issue = issuesById.get(run.issueId)
-    if (!issue || !userIsResponsible(issue, userId)) continue
-    sources.push(buildWaitingForInputSource(run, issue))
+    const issue = issuesById.get(run.issueId);
+    if (!issue || !userIsResponsible(issue, userId)) continue;
+    if (isTerminalIssue(issue)) continue;
+    sources.push(buildWaitingForInputSource(run, issue));
   }
 
   for (const run of failedRuns) {
-    const issue = issuesById.get(run.issueId)
-    if (!issue || !userIsResponsible(issue, userId)) continue
-    sources.push(buildFailedRunSource(run, issue))
+    const issue = issuesById.get(run.issueId);
+    if (!issue || !userIsResponsible(issue, userId)) continue;
+    if (isTerminalIssue(issue)) continue;
+    sources.push(buildFailedRunSource(run, issue));
   }
 
   return {
@@ -536,16 +546,16 @@ async function computeInboxSourceItems(args: {
       )
       .slice(0, args.limit ?? 100),
     dismissalsByKey,
-  }
+  };
 }
 
 export async function computeInboxItems(args: {
-  workspaceId: string
-  userId: string
-  limit?: number
+  workspaceId: string;
+  userId: string;
+  limit?: number;
 }): Promise<InboxItem[]> {
-  const { workspaceId, userId } = args
-  const { sources, dismissalsByKey } = await computeInboxSourceItems(args)
+  const { workspaceId, userId } = args;
+  const { sources, dismissalsByKey } = await computeInboxSourceItems(args);
 
   return sources
     .sort(
@@ -557,27 +567,27 @@ export async function computeInboxItems(args: {
         userId,
         dismissedAt: dismissalsByKey.get(source.key) ?? null,
       }),
-    )
+    );
 }
 
 export async function computeVisibleInboxItemKeys(args: {
-  workspaceId: string
-  userId: string
-  predicate?: InboxPredicate
+  workspaceId: string;
+  userId: string;
+  predicate?: InboxPredicate;
 }): Promise<string[]> {
-  const { sources, dismissalsByKey } = await computeInboxSourceItems(args)
+  const { sources, dismissalsByKey } = await computeInboxSourceItems(args);
   return sources
     .map((source) =>
       toInboxCandidate(source, dismissalsByKey.get(source.key) ?? null),
     )
     .filter((item) => (args.predicate ? args.predicate(item) : true))
-    .map((item) => item.key)
+    .map((item) => item.key);
 }
 
 export async function computeInboxUnreadCount(args: {
-  workspaceId: string
-  userId: string
+  workspaceId: string;
+  userId: string;
 }): Promise<number> {
-  const items = await computeInboxItems(args)
-  return items.filter((item) => !item.read).length
+  const items = await computeInboxItems(args);
+  return items.filter((item) => !item.read).length;
 }

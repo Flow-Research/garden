@@ -280,7 +280,8 @@ export function productToolLabel(toolName: string, input: unknown, output?: unkn
 export async function resolveToolApproval(args: {
   approved: boolean
   threadId: string
-  toolCallId: string
+  toolCallId?: string
+  permissionRequestId?: string
 }) {
   const payload = await resolveToolApprovalRequest(args)
   return {
@@ -290,6 +291,26 @@ export async function resolveToolApproval(args: {
         )
       : [],
   }
+}
+
+function getToolOutput(part: ChatUiMessage['parts'][number]) {
+  const record = part as unknown as Record<string, unknown>
+  return record.output ?? record.result
+}
+
+function getAgentProposalApproval(part: ChatUiMessage['parts'][number]) {
+  const output = getToolOutput(part)
+  if (!output || typeof output !== 'object') return null
+  const record = output as Record<string, unknown>
+  const permissionRequestId = record.permission_request_id
+  const pendingAgentId = record.pending_agent_id
+  if (
+    typeof permissionRequestId !== 'string' ||
+    typeof pendingAgentId !== 'string'
+  ) {
+    return null
+  }
+  return { permissionRequestId, pendingAgentId }
 }
 
 export function extractApprovalDescription(input: unknown): string | null {
@@ -308,16 +329,40 @@ export function MessageToolApprovals({
   debugMode,
   message,
   onResolve,
+  resolvedApprovalIds,
   resolvingToolCallIds,
 }: {
   debugMode: boolean
   message: ChatUiMessage
   onResolve: (group: ApprovalGroup, approved: boolean) => Promise<void>
+  resolvedApprovalIds: string[]
   resolvingToolCallIds: string[]
 }) {
   const groups = message.parts.reduce<ApprovalGroup[]>((acc, part) => {
     if (!isToolUIPart(part)) {
       return acc
+    }
+
+    const toolName = getToolName(part)
+    const toolCallId = getToolCallId(part)
+    const input = getToolInput(part)
+    const agentProposal =
+      toolName === 'propose_agent' ? getAgentProposalApproval(part) : null
+    if (agentProposal) {
+      if (resolvedApprovalIds.includes(agentProposal.permissionRequestId)) {
+        return acc
+      }
+      return [
+        ...acc,
+        {
+          approvalIds: [agentProposal.permissionRequestId],
+          input,
+          key: `${toolName}:${agentProposal.permissionRequestId}`,
+          permissionRequestId: agentProposal.permissionRequestId,
+          toolCallIds: [toolCallId],
+          toolName,
+        },
+      ]
     }
 
     if (getToolPartState(part) !== 'waiting-approval') {
@@ -329,9 +374,6 @@ export function MessageToolApprovals({
       return acc
     }
 
-    const toolName = getToolName(part)
-    const toolCallId = getToolCallId(part)
-    const input = getToolInput(part)
     const key = `${toolName}:${canonicalJsonString(input)}`
     const existingGroup = acc.find((candidate) => candidate.key === key)
     if (existingGroup) {

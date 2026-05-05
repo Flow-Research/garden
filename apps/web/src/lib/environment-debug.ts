@@ -39,6 +39,26 @@ export interface ToolInventoryEntry {
   source: string | null
 }
 
+export interface ConnectorCapabilityToolEntry {
+  name: string
+  description: string | null
+  riskClass: string
+  trustLevel: string | null
+  requiredScopes: string[]
+  source: 'synced' | 'registry'
+  exposed: boolean
+  runtimeKey: string | null
+}
+
+export interface ConnectorCapabilityEntry {
+  id: string
+  label: string
+  connected: boolean
+  exposed: boolean
+  status: string | null
+  tools: ConnectorCapabilityToolEntry[]
+}
+
 export interface RpcMethodEntry {
   name: string
   description: string | null
@@ -108,6 +128,7 @@ export interface DebugSandboxPayload {
 export interface DebugToolsPayload {
   registeredToolKeys: string[]
   inventory: ToolInventoryEntry[]
+  connectorCapabilities: ConnectorCapabilityEntry[]
   rpcMethods: RpcMethodEntry[]
   extensions: ExtensionEntry[]
   counts: {

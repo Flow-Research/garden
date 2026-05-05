@@ -22,7 +22,15 @@ export const proposeAgentInputSchema = z
     skills: z
       .array(skillInputSchema.shape.slug)
       .optional()
-      .describe('Skill slugs from the workspace catalog.'),
+      .describe(
+        'Exact skill slugs from Available workspace skills. Do not invent skill slugs for connectors or capabilities.',
+      ),
+    connector_requirements: z
+      .array(z.string().trim().min(1))
+      .optional()
+      .describe(
+        'Connector or capability needs in plain text, such as exa-search.search. Use this for connector tools instead of inventing skill slugs.',
+      ),
     source_issue_id: z.string().uuid().optional(),
   })
   .strict()
@@ -77,6 +85,39 @@ function pendingAgentContext(pendingAgentId: string) {
 function pendingAgentIdFromContext(value: string | null) {
   const prefix = 'agent_proposal:'
   return value?.startsWith(prefix) ? value.slice(prefix.length) : null
+}
+
+async function ensureAgentProposalCapability(
+  tx: Parameters<Parameters<ReturnType<typeof getDb>['transaction']>[0]>[0],
+) {
+  const [capability] = await tx
+    .insert(schema.capability)
+    .values({
+      id: crypto.randomUUID(),
+      connectorType: 'garden',
+      name: 'agent_proposal',
+      description: 'Approve creation of a workspace agent.',
+      schemaHash: 'garden.agent_proposal.v1',
+      riskClass: 'write',
+    })
+    .onConflictDoUpdate({
+      target: [schema.capability.connectorType, schema.capability.name],
+      set: {
+        description: 'Approve creation of a workspace agent.',
+        schemaHash: 'garden.agent_proposal.v1',
+        riskClass: 'write',
+      },
+    })
+    .returning({ id: schema.capability.id })
+
+  if (!capability) {
+    throw new ProposeAgentToolError({
+      code: 'database_failed',
+      message: 'Failed to create agent proposal capability.',
+    })
+  }
+
+  return capability
 }
 
 async function loadRuntimeIdentity(
@@ -159,6 +200,7 @@ async function proposeAgent(
     role: input.role,
     description: description,
     skills: skillSlugs,
+    connector_requirements: input.connector_requirements ?? [],
     source_issue_id: input.source_issue_id ?? null,
   }
 
@@ -246,11 +288,14 @@ async function proposeAgent(
           )
         }
 
+        const proposalCapability = await ensureAgentProposalCapability(tx)
+
         await tx.execute(sql`
           insert into permission_request (
             id,
             agent_id,
             kind,
+            capability_id,
             context,
             issue_id,
             payload_json,
@@ -262,6 +307,7 @@ async function proposeAgent(
             ${permissionRequestId}::uuid,
             ${identity.agentId}::uuid,
             'agent_proposal',
+            ${proposalCapability.id}::uuid,
             ${pendingAgentContext(pendingAgentId)},
             ${input.source_issue_id ?? null}::uuid,
             ${JSON.stringify(payload)}::jsonb,
@@ -303,7 +349,7 @@ export function createProposeAgentTool(context: ProposeAgentContext) {
   return tool({
     description:
       'Propose a new workspace agent for user approval. Only the default Garden agent can use this. ' +
-      'Creates a pending agent and an agent_proposal permission request.',
+      'Creates a pending agent and an agent_proposal permission request. Only pass exact known skill slugs; put connector/tool needs in connector_requirements.',
     inputSchema: proposeAgentInputSchema,
     execute: async (input) => {
       const result = await proposeAgent(context, input)

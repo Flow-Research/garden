@@ -121,6 +121,7 @@ export type ApprovalGroup = {
   approvalIds: string[]
   input: unknown
   key: string
+  permissionRequestId?: string
   toolCallIds: string[]
   toolName: string
 }

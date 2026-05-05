@@ -1682,9 +1682,9 @@ export function WorkspaceDockProvider({
       setActivePanel((current) =>
         arePanelsEqual(current, nextPanel) ? current : nextPanel,
       )
-      setActiveSession(
-        nextPanel?.kind === 'chat' ? (nextPanel.entityId ?? null) : null,
-      )
+      if (nextPanel?.kind === 'chat') {
+        setActiveSession(nextPanel.entityId ?? null)
+      }
       syncDockPanels(api)
       writePanelToQueryState(nextPanel)
       return nextPanel

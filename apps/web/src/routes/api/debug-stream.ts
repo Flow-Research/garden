@@ -6,11 +6,14 @@ import {
   debugChatThreadSandbox,
   debugChatThreadTools,
   debugChatThreadWorkspace,
+  refreshChatThreadPromptConfig,
 } from '@/lib/server/chat-agents'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
+  parseJsonBody,
   parseSearchParams,
+  refreshThreadDebugBodySchema,
   threadDebugQuerySchema,
 } from '@/lib/server/validation/chat'
 import {
@@ -30,6 +33,74 @@ import {
 export const Route = createFileRoute('/api/debug-stream')({
   server: {
     handlers: {
+      POST: async ({ request }) => {
+        const session = await requireSession(request)
+        if (!session) return unauthorized()
+
+        const workspaceId = await resolveWorkspaceId(request, session.user.id)
+        if (!workspaceId) {
+          return Response.json(
+            { error: 'Workspace not found' },
+            { status: 404 },
+          )
+        }
+
+        const bodyResult = await parseJsonBody(
+          request,
+          refreshThreadDebugBodySchema,
+          'Invalid debug refresh payload',
+        )
+        if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
+
+        const searchResult = parseSearchParams(
+          request,
+          threadDebugQuerySchema,
+          'Invalid debug query',
+        )
+        if (searchResult.isErr()) return badRequest(searchResult.error.message)
+
+        const threadId =
+          searchResult.value.thread_id ??
+          searchResult.value.session_id ??
+          undefined
+
+        if (!threadId) return badRequest('Chat thread is required')
+
+        const db = getDb(appEnv)
+        const [thread] = await db
+          .select({
+            hostName: schema.agent.hostName,
+            ownerUserId: schema.chatThread.ownerUserId,
+            workspaceId: schema.chatThread.workspaceId,
+          })
+          .from(schema.chatThread)
+          .innerJoin(
+            schema.agent,
+            eq(schema.agent.id, schema.chatThread.agentId),
+          )
+          .where(eq(schema.chatThread.id, threadId))
+
+        if (
+          !thread ||
+          thread.ownerUserId !== session.user.id ||
+          thread.workspaceId !== workspaceId ||
+          !thread.hostName
+        ) {
+          return Response.json(
+            { error: 'Chat thread not found' },
+            { status: 404 },
+          )
+        }
+
+        if (bodyResult.value.action === 'refresh_prompt') {
+          await refreshChatThreadPromptConfig({
+            threadId,
+            hostName: thread.hostName,
+          })
+        }
+
+        return Response.json({ ok: true })
+      },
       GET: async ({ request }) => {
         const session = await requireSession(request)
         if (!session) return unauthorized()

@@ -7,6 +7,7 @@ import type {
   DebugToolsPayload,
   DebugWorkspacePayload,
 } from '@/lib/environment-debug'
+import { getApiTransport } from '@/lib/api/state'
 
 /**
  * SSE consumer for `/api/debug-stream`. Exposes two entry points:
@@ -68,20 +69,58 @@ type CacheEntry = {
   snapshot: DebugState
   completedAt: number | null
   inFlight: AbortController | null
+  subscribers: Set<() => void>
 }
 
-const CACHE_TTL_MS = 60_000
+const CACHE_TTL_MS = 5 * 60_000
 const snapshotCache = new Map<string, CacheEntry>()
 
 function cacheKey(workspaceId: string, sessionId: string) {
   return `${workspaceId}:${sessionId}`
 }
 
+function createCacheEntry(): CacheEntry {
+  return {
+    snapshot: makeInitialState(),
+    completedAt: null,
+    inFlight: null,
+    subscribers: new Set(),
+  }
+}
+
+function getCacheEntry(key: string): CacheEntry {
+  const existing = snapshotCache.get(key)
+  if (existing) return existing
+  const entry = createCacheEntry()
+  snapshotCache.set(key, entry)
+  return entry
+}
+
+function notifyCacheEntry(entry: CacheEntry) {
+  for (const subscriber of entry.subscribers) subscriber()
+}
+
 function readCache(key: string): DebugState | null {
   const entry = snapshotCache.get(key)
-  if (!entry || !entry.completedAt) return null
+  if (!entry) return null
+  if (entry.inFlight) return entry.snapshot
+  if (!entry.completedAt) return null
   if (Date.now() - entry.completedAt > CACHE_TTL_MS) return null
   return entry.snapshot
+}
+
+function shouldRefresh(entry: CacheEntry) {
+  if (entry.inFlight) return false
+  if (!entry.completedAt) return true
+  return Date.now() - entry.completedAt > CACHE_TTL_MS
+}
+
+function resetCacheEntry(entry: CacheEntry) {
+  entry.inFlight?.abort()
+  entry.snapshot = makeInitialState()
+  entry.completedAt = null
+  entry.inFlight = null
+  notifyCacheEntry(entry)
 }
 
 // ---------- frame handling ----------
@@ -221,26 +260,46 @@ export function prefetchDebugStream(
 ): void {
   if (!workspaceId || !sessionId) return
   const key = cacheKey(workspaceId, sessionId)
-  const existing = snapshotCache.get(key)
-  if (existing?.inFlight) return
-  if (existing?.completedAt && Date.now() - existing.completedAt < CACHE_TTL_MS) {
-    return
-  }
+  const entry = getCacheEntry(key)
+  if (!shouldRefresh(entry)) return
 
   const ctl = new AbortController()
-  const entry: CacheEntry = {
-    snapshot: makeInitialState(),
-    completedAt: null,
-    inFlight: ctl,
-  }
-  snapshotCache.set(key, entry)
+  entry.snapshot = makeInitialState()
+  entry.completedAt = null
+  entry.inFlight = ctl
+  notifyCacheEntry(entry)
 
   void consumeStream(workspaceId, sessionId, ctl.signal, (reducer) => {
     entry.snapshot = reducer(entry.snapshot)
+    notifyCacheEntry(entry)
   }).finally(() => {
+    if (entry.inFlight !== ctl) return
     entry.inFlight = null
     entry.completedAt = Date.now()
+    notifyCacheEntry(entry)
   })
+}
+
+export async function refreshDebugPrompt(
+  workspaceId: string | null,
+  sessionId: string | null,
+): Promise<void> {
+  if (!workspaceId || !sessionId) return
+
+  const search = new URLSearchParams({
+    workspace_id: workspaceId,
+    session_id: sessionId,
+  })
+
+  await getApiTransport().request(`/api/debug-stream?${search}`, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'refresh_prompt' }),
+  })
+
+  const key = cacheKey(workspaceId, sessionId)
+  const entry = getCacheEntry(key)
+  resetCacheEntry(entry)
+  prefetchDebugStream(workspaceId, sessionId)
 }
 
 // ---------- live hook ----------
@@ -263,27 +322,18 @@ export function useDebugStream({
     if (!open || !workspaceId || !sessionId) return
 
     const key = cacheKey(workspaceId, sessionId)
+    const entry = getCacheEntry(key)
+    const syncFromCache = () => setState(entry.snapshot)
+    entry.subscribers.add(syncFromCache)
+
     const cached = readCache(key)
     setState(cached ?? makeInitialState())
 
-    const ctl = new AbortController()
-    void consumeStream(workspaceId, sessionId, ctl.signal, (reducer) => {
-      setState((s) => {
-        const next = reducer(s)
-        const entry = snapshotCache.get(key)
-        if (entry) entry.snapshot = next
-        return next
-      })
-    }).finally(() => {
-      if (ctl.signal.aborted) return
-      const entry = snapshotCache.get(key)
-      if (entry) {
-        entry.inFlight = null
-        entry.completedAt = Date.now()
-      }
-    })
+    prefetchDebugStream(workspaceId, sessionId)
 
-    return () => ctl.abort()
+    return () => {
+      entry.subscribers.delete(syncFromCache)
+    }
   }, [open, workspaceId, sessionId])
 
   return state
