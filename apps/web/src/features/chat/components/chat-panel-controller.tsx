@@ -9,14 +9,24 @@
  * focused on the bare AgentInteractionScreen scaffold + ShellFrame chrome.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { Result } from 'better-result'
 import { useQueryClient } from '@tanstack/react-query'
-import { useAuthStore } from '@garden/core/auth'
 import { useChatStore } from '@garden/core/chat'
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { motion, AnimatePresence } from 'motion/react'
-import { Alert, AlertDescription, AlertTitle } from '@garden/ui/components/ui/alert'
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from '@garden/ui/components/ui/alert'
 import { Button } from '@garden/ui/components/ui/button'
 import { cn } from '@garden/ui/lib/utils'
 import { EnvironmentDebugDrawer } from '@/features/settings/components/environment-debug-drawer'
@@ -27,10 +37,7 @@ import {
   type AgentChatSession,
   NEW_SESSION_TITLE,
 } from '../use-agent-chat-sessions'
-import {
-  makeSessionTitle,
-  type ChatRuntime,
-} from '../chat-runtime-provider'
+import { makeSessionTitle, type ChatRuntime } from '../chat-runtime-provider'
 import {
   DocumentSidePanel,
   withDocumentVersionUrl,
@@ -60,10 +67,7 @@ import type {
   StructuredQuestionAnswers,
 } from '@garden/core/chat'
 import { isToolUIPart, getToolName } from 'ai'
-import {
-  getToolCallId,
-  getToolInput,
-} from '@cloudflare/ai-chat/react'
+import { getToolCallId, getToolInput } from '@cloudflare/ai-chat/react'
 import {
   Suggestions,
   Suggestion as SuggestionChip,
@@ -75,6 +79,138 @@ import {
   IconLayoutSidebarLeftExpand,
 } from '@tabler/icons-react'
 import { HeaderAttachmentsMenu } from './chat-message-files'
+
+const EMPTY_CHAT_INTROS = [
+  {
+    direction: 'up',
+    rest: 'with context.',
+    slot: 'Ask',
+    slotPosition: 'start',
+    subtitle:
+      "Attach a file or share the thread. I'll keep the answer grounded.",
+  },
+  {
+    direction: 'down',
+    rest: 'Turn rough notes into',
+    slot: 'next steps.',
+    slotPosition: 'end',
+    subtitle: "Bring the messy version. We'll shape it into something usable.",
+  },
+  {
+    direction: 'up',
+    rest: 'from what you have.',
+    slot: 'Draft',
+    slotPosition: 'start',
+    subtitle: "Paste the source material. I'll help make it clear.",
+  },
+] as const
+
+function EmptyChatIntroSlot({
+  direction,
+  position,
+  value,
+}: {
+  direction: (typeof EMPTY_CHAT_INTROS)[number]['direction']
+  position: (typeof EMPTY_CHAT_INTROS)[number]['slotPosition']
+  value: string
+}) {
+  const offset = direction === 'up' ? 18 : -18
+
+  return (
+    <span
+      className={cn(
+        'relative inline-grid h-[1.15em] overflow-hidden align-baseline',
+        position === 'start' ? 'min-w-[4.5ch]' : 'min-w-[9.5ch]',
+      )}
+    >
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.span
+          key={value}
+          initial={{ opacity: 0, y: offset }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -offset }}
+          transition={{
+            duration: 0.72,
+            ease: [0.16, 1, 0.3, 1],
+          }}
+          className="col-start-1 row-start-1 block text-left"
+        >
+          {value}
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  )
+}
+
+function EmptyChatIntroText({
+  intro,
+}: {
+  intro: (typeof EMPTY_CHAT_INTROS)[number]
+}) {
+  return (
+    <div className="w-full">
+      <h2 className="mx-auto flex max-w-xl flex-wrap items-baseline justify-center gap-x-2 text-balance font-medium text-2xl leading-tight text-foreground sm:text-3xl lg:text-[2.35rem]">
+        {intro.slotPosition === 'start' ? (
+          <>
+            <EmptyChatIntroSlot
+              direction={intro.direction}
+              position={intro.slotPosition}
+              value={intro.slot}
+            />
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={intro.rest}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.32, ease: 'easeOut' }}
+              >
+                {intro.rest}
+              </motion.span>
+            </AnimatePresence>
+          </>
+        ) : (
+          <>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={intro.rest}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.32, ease: 'easeOut' }}
+              >
+                {intro.rest}
+              </motion.span>
+            </AnimatePresence>
+            <EmptyChatIntroSlot
+              direction={intro.direction}
+              position={intro.slotPosition}
+              value={intro.slot}
+            />
+          </>
+        )}
+      </h2>
+      <div className="mx-auto mt-3 grid min-h-12 max-w-lg place-items-start">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.p
+            key={intro.subtitle}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{
+              delay: 0.12,
+              duration: 0.46,
+              ease: [0.16, 1, 0.3, 1],
+            }}
+            className="col-start-1 row-start-1 text-balance text-muted-foreground text-sm leading-6 sm:text-base"
+          >
+            {intro.subtitle}
+          </motion.p>
+        </AnimatePresence>
+      </div>
+    </div>
+  )
+}
 
 export function ConnectedChatPanelInteraction({
   activeSession,
@@ -106,7 +242,6 @@ export function ConnectedChatPanelInteraction({
   const debugModeEnabled = useDevSettingsStore((s) => s.debugMode)
   const activeSessionId = useChatStore((s) => s.activeSessionId)
   const workspaceId = useWorkspaceStore((s) => s.workspace?.id ?? null)
-  const user = useAuthStore((s) => s.user)
   usePrefetchDebugStream({
     enabled: debugModeEnabled,
     workspaceId,
@@ -370,9 +505,26 @@ export function ConnectedChatPanelInteraction({
 
   const sessionIsFresh =
     isUnusedIdleSession(activeSession) && messages.length === 0
+  const visibleMessages = sessionIsFresh ? [] : messages
+  const normalizedStatus = normalizeStatus(status)
+  const showEmptyChatState = sessionIsFresh && normalizedStatus === 'idle'
+  const [emptyIntroIndex, setEmptyIntroIndex] = useState(0)
+
+  useEffect(() => {
+    if (!showEmptyChatState) {
+      setEmptyIntroIndex(0)
+      return
+    }
+
+    const interval = window.setInterval(() => {
+      setEmptyIntroIndex((current) => (current + 1) % EMPTY_CHAT_INTROS.length)
+    }, 9000)
+
+    return () => window.clearInterval(interval)
+  }, [showEmptyChatState])
 
   const currentTitle = sessionIsFresh ? panelTitle : activeSession.title
-  const visibleMessages = sessionIsFresh ? [] : messages
+  const emptyIntro = EMPTY_CHAT_INTROS[emptyIntroIndex] ?? EMPTY_CHAT_INTROS[0]
   const headerAttachments = useMemo(() => {
     const seenDocuments = new Set(
       documentAttachments.map((attachment) => attachment.id),
@@ -516,7 +668,7 @@ export function ConnectedChatPanelInteraction({
               </Alert>
             </div>
           ) : null}
-          {!(visibleMessages.length === 0 && normalizeStatus(status) === 'idle') ? (
+          {showEmptyChatState ? null : (
             <ChatTimeline
               debugMode={debugModeEnabled}
               initialScrollKey={timelineInitialScrollKey}
@@ -537,38 +689,34 @@ export function ConnectedChatPanelInteraction({
               isRetrying={isRetrying}
               forcePendingActivity={optimisticPendingTurn}
             />
-          ) : null}
+          )}
           <motion.div
             layout
             transition={{ type: 'spring', stiffness: 280, damping: 28 }}
             className={cn(
-              visibleMessages.length === 0 && normalizeStatus(status) === 'idle'
-                ? 'flex flex-1 flex-col justify-center'
+              showEmptyChatState
+                ? 'flex min-h-0 flex-1 flex-col justify-start pt-[clamp(3.75rem,14vh,7rem)]'
                 : 'shrink-0',
             )}
           >
             <AnimatePresence>
-              {visibleMessages.length === 0 && normalizeStatus(status) === 'idle' ? (
+              {showEmptyChatState ? (
                 <motion.div
                   key="garden-greeting"
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -12 }}
                   transition={{ duration: 0.35, ease: 'easeOut' }}
-                  className="mb-6 text-center"
+                  className="mb-7 px-4 text-center"
                 >
-                  <h2 className="text-2xl font-light tracking-tight text-foreground/80">
-                    Step into the garden
-                  </h2>
-                  <p className="mt-1.5 text-sm text-muted-foreground">
-                    Welcome back
-                    {user?.name ? `, ${user.name}` : ''}
-                  </p>
+                  <div className="mx-auto grid min-h-[6.75rem] w-full max-w-2xl place-items-center overflow-visible sm:min-h-[7.5rem]">
+                    <EmptyChatIntroText intro={emptyIntro} />
+                  </div>
                 </motion.div>
               ) : null}
             </AnimatePresence>
             <AnimatePresence>
-              {visibleMessages.length === 0 && normalizeStatus(status) === 'idle' ? (
+              {showEmptyChatState ? (
                 <motion.div
                   key="suggestions"
                   initial={{ opacity: 0 }}
@@ -578,7 +726,7 @@ export function ConnectedChatPanelInteraction({
                   className="shrink-0 px-4 pb-2"
                 >
                   <div className="mx-auto max-w-2xl">
-                    <Suggestions>
+                    <Suggestions className="mx-auto justify-center">
                       <SuggestionChip
                         suggestion="Summarize recent documents"
                         onClick={(s) => setInput(s)}
@@ -715,4 +863,3 @@ function ShellFrame({
     </section>
   )
 }
-
