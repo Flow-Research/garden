@@ -52,17 +52,12 @@ export function buildInboxItemsFromIssues(args: {
 }) {
   const { issues, userId, workspaceId } = args
 
-  return sortIssuesByUpdatedAt(
-    issues.filter(
-      (issue) => issue.assigneeId === userId || issue.createdBy === userId,
-    ),
-  )
-    .slice(0, 24)
+  return sortIssuesByUpdatedAt(issues)
     .map((issue) => {
       let type: InboxSurfaceItem['type'] = 'status_changed'
       let severity: InboxSurfaceItem['severity'] = 'info'
 
-      if (issue.assigneeId === userId) {
+      if (issue.assigneeId) {
         type = 'issue_assigned'
         severity = 'attention'
       }
@@ -98,6 +93,15 @@ export function buildInboxItemsFromIssues(args: {
           issue_number: String(issue.number),
           priority: issue.priority ?? 'medium',
           status: issue.status ?? 'backlog',
+          ...(issue.assigneeId
+            ? {
+                new_assignee_type:
+                  issue.assigneeType === 'user'
+                    ? 'member'
+                    : (issue.assigneeType ?? 'agent'),
+                new_assignee_id: issue.assigneeId,
+              }
+            : {}),
         },
       }
     })

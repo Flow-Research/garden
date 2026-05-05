@@ -1,13 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useDefaultLayout } from 'react-resizable-panels'
 import { useQuery } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/core/hooks'
-import {
-  inboxListOptions,
-  deduplicateInboxItems,
-} from '@/lib/inbox/queries'
+import { inboxListOptions, deduplicateInboxItems } from '@/lib/inbox/queries'
 import {
   useMarkInboxRead,
   useArchiveInbox,
@@ -17,8 +13,8 @@ import {
   useArchiveCompletedInbox,
 } from '@/lib/inbox/mutations'
 import { useActorName } from '@/lib/workspace/hooks'
-import { IssueDetail } from '../../issues/components'
 import { useNavigation } from '../../navigation'
+import { useWorkspaceDock } from '@/components/shell/workspace-dock'
 import { toast } from 'sonner'
 import {
   MoreHorizontal,
@@ -28,17 +24,13 @@ import {
   BookCheck,
   ListChecks,
   ArrowLeft,
+  ExternalLink,
 } from 'lucide-react'
 import type { InboxItem } from '@garden/core/types'
 import { Button } from '@garden/ui/components/ui/button'
 import { Input } from '@garden/ui/components/ui/input'
 import { Label } from '@garden/ui/components/ui/label'
 import { Switch } from '@garden/ui/components/ui/switch'
-import {
-  ResizablePanelGroup,
-  ResizablePanel,
-  ResizableHandle,
-} from '@garden/ui/components/ui/resizable'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -48,7 +40,8 @@ import {
 } from '@garden/ui/components/ui/dropdown-menu'
 import { useIsMobile } from '@garden/ui/hooks/use-mobile'
 import { InboxListItem, timeAgo } from './inbox-list-item'
-import { typeLabels } from './inbox-detail-label'
+import { InboxDetailLabel, typeLabels } from './inbox-detail-label'
+import { getMockInboxItemsForWorkspace } from '../../issues/preview/fixtures'
 
 // ---------------------------------------------------------------------------
 // List pane header + search — sidebar-09 style
@@ -144,13 +137,7 @@ function InboxListHeader({
 // Empty state — centered full-pane
 // ---------------------------------------------------------------------------
 
-function InboxEmptyState({
-  title,
-  body,
-}: {
-  title: string
-  body: string
-}) {
+function InboxEmptyState({ title, body }: { title: string; body: string }) {
   return (
     <div className="flex h-full w-full items-center justify-center px-6">
       <div className="flex max-w-sm flex-col items-center text-center">
@@ -168,35 +155,153 @@ function InboxEmptyState({
   )
 }
 
+function focusForInboxItem(item: InboxItem): string | null {
+  const details = item.details ?? {}
+
+  if (
+    (item.type === 'new_comment' ||
+      item.type === 'mentioned' ||
+      item.type === 'reaction_added') &&
+    details.comment_id
+  ) {
+    return `comment:${details.comment_id}`
+  }
+
+  if (item.type === 'review_requested') {
+    return `approval:${details.approval_id ?? details.request_id ?? details.run_id ?? item.issue_id ?? item.id}`
+  }
+
+  if (item.type === 'task_failed') {
+    return `failed_run:${details.run_id ?? item.issue_id ?? item.id}`
+  }
+
+  if (item.type === 'agent_blocked') {
+    return `blocked:${details.run_id ?? item.issue_id ?? item.id}`
+  }
+
+  if (item.type === 'task_completed' && details.run_id) {
+    return `run:${details.run_id}`
+  }
+
+  return null
+}
+
+function InboxNotificationDetail({
+  item,
+  onArchive,
+  onOpenIssue,
+}: {
+  item: InboxItem
+  onArchive: () => void
+  onOpenIssue: () => void
+}) {
+  const { getActorName } = useActorName()
+  const actorName =
+    getActorName(
+      item.actor_type ?? item.recipient_type,
+      item.actor_id ?? item.recipient_id,
+    ) || typeLabels[item.type]
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto">
+      <div className="shrink-0 border-b px-6 py-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 space-y-1">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              {!item.read && (
+                <span className="size-1.5 rounded-full bg-brand" />
+              )}
+              <span>{typeLabels[item.type]}</span>
+              <span>·</span>
+              <span>{timeAgo(item.created_at)}</span>
+            </div>
+            <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">
+              {item.title}
+            </h2>
+            <p className="text-sm text-muted-foreground">{actorName}</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={onArchive}>
+            <Archive className="mr-1.5 h-3.5 w-3.5" />
+            Archive
+          </Button>
+        </div>
+      </div>
+
+      <div className="w-full max-w-3xl space-y-5 p-6">
+        <div className="rounded-lg border bg-card p-4">
+          <div className="text-sm leading-relaxed text-foreground">
+            <InboxDetailLabel item={item} />
+          </div>
+          {item.body && (
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+              {item.body}
+            </p>
+          )}
+        </div>
+
+        {item.issue_id && (
+          <Button size="sm" onClick={onOpenIssue}>
+            <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+            Open issue
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
 export function InboxPage() {
   const { searchParams, replace } = useNavigation()
-  const urlIssue = searchParams.get('issue') ?? ''
+  const dock = useWorkspaceDock()
+  const urlItem = searchParams.get('item') ?? ''
 
-  const [selectedKey, setSelectedKeyState] = useState(() => urlIssue)
+  const [selectedKey, setSelectedKeyState] = useState(() => urlItem)
   const [search, setSearch] = useState('')
   const [unreadsOnly, setUnreadsOnly] = useState(false)
 
   // Sync from URL when searchParams change (e.g. navigation)
   useEffect(() => {
-    setSelectedKeyState(urlIssue)
-  }, [urlIssue])
+    setSelectedKeyState(urlItem)
+  }, [urlItem])
 
   const setSelectedKey = useCallback(
-    (key: string) => {
+    (key: string, item?: InboxItem | null) => {
       setSelectedKeyState(key)
-      const url = key ? `/inbox?issue=${key}` : '/inbox'
-      replace(url)
+      // Persist selection in the search params on whatever route we're on so
+      // we don't trigger a TanStack Router 404 (no `/inbox` route exists —
+      // the inbox is a dock panel, not a path).
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href)
+        if (key) url.searchParams.set('item', key)
+        else url.searchParams.delete('item')
+
+        if (item?.issue_id) url.searchParams.set('issue', item.issue_id)
+        else url.searchParams.delete('issue')
+
+        const focus = item ? focusForInboxItem(item) : null
+        if (focus) url.searchParams.set('focus', focus)
+        else url.searchParams.delete('focus')
+        replace(`${url.pathname}${url.search}`)
+      }
     },
     [replace],
   )
 
   const wsId = useWorkspaceId()
   const { data: rawItems = [] } = useQuery(inboxListOptions(wsId))
-  const allItems = useMemo(() => deduplicateInboxItems(rawItems), [rawItems])
+  const demoItems = useMemo(
+    () => getMockInboxItemsForWorkspace(wsId, 'mem_alice'),
+    [wsId],
+  )
+
+  const allItems = useMemo(
+    () => deduplicateInboxItems([...demoItems, ...rawItems]),
+    [demoItems, rawItems],
+  )
 
   const { getActorName } = useActorName()
 
@@ -222,14 +327,10 @@ export function InboxPage() {
     })
   }, [allItems, search, unreadsOnly, getActorName])
 
-  const { defaultLayout, onLayoutChanged } = useDefaultLayout({
-    id: 'accelerate_inbox_layout',
-  })
-
   const isMobile = useIsMobile()
   const selected =
-    items.find((i) => (i.issue_id ?? i.id) === selectedKey) ??
-    allItems.find((i) => (i.issue_id ?? i.id) === selectedKey) ??
+    items.find((i) => i.id === selectedKey) ??
+    allItems.find((i) => i.id === selectedKey) ??
     null
   const unreadCount = allItems.filter((i) => !i.read).length
 
@@ -242,7 +343,7 @@ export function InboxPage() {
 
   // Click-to-read: select + auto-mark-read
   const handleSelect = (item: InboxItem) => {
-    setSelectedKey(item.issue_id ?? item.id)
+    setSelectedKey(item.id, item)
     if (!item.read) {
       markReadMutation.mutate(item.id, {
         onError: () => toast.error('Failed to mark as read'),
@@ -252,8 +353,7 @@ export function InboxPage() {
 
   const handleArchive = (id: string) => {
     const archived = allItems.find((i) => i.id === id)
-    if (archived && (archived.issue_id ?? archived.id) === selectedKey)
-      setSelectedKey('')
+    if (archived && archived.id === selectedKey) setSelectedKey('')
     archiveMutation.mutate(id, {
       onError: () => toast.error('Failed to archive'),
     })
@@ -274,9 +374,7 @@ export function InboxPage() {
   }
 
   const handleArchiveAllRead = () => {
-    const readKeys = allItems
-      .filter((i) => i.read)
-      .map((i) => i.issue_id ?? i.id)
+    const readKeys = allItems.filter((i) => i.read).map((i) => i.id)
     if (readKeys.includes(selectedKey)) setSelectedKey('')
     archiveAllReadMutation.mutate(undefined, {
       onError: () => toast.error('Failed to archive read items'),
@@ -289,6 +387,19 @@ export function InboxPage() {
       onError: () => toast.error('Failed to archive completed'),
     })
   }
+
+  const handleOpenIssue = useCallback(
+    (item: InboxItem) => {
+      if (!item.issue_id) return
+      setSelectedKey(item.id, item)
+      dock?.openPanel({
+        kind: 'issue-detail',
+        title: item.title,
+        entityId: item.issue_id,
+      })
+    },
+    [dock, setSelectedKey],
+  )
 
   // -- Shared sub-components --------------------------------------------------
 
@@ -329,7 +440,7 @@ export function InboxPage() {
           <InboxListItem
             key={item.id}
             item={item}
-            isSelected={(item.issue_id ?? item.id) === selectedKey}
+            isSelected={item.id === selectedKey}
             onClick={() => handleSelect(item)}
             onArchive={() => handleArchive(item.id)}
           />
@@ -337,39 +448,12 @@ export function InboxPage() {
       </div>
     )
 
-  const detailContent = selected?.issue_id ? (
-    <IssueDetail
-      key={selected.id}
-      issueId={selected.issue_id}
-      defaultSidebarOpen={false}
-      layoutId="accelerate_inbox_issue_detail_layout"
-      highlightCommentId={selected.details?.comment_id ?? undefined}
-      onDelete={() => {
-        handleArchive(selected.id)
-      }}
+  const detailContent = selected ? (
+    <InboxNotificationDetail
+      item={selected}
+      onArchive={() => handleArchive(selected.id)}
+      onOpenIssue={() => handleOpenIssue(selected)}
     />
-  ) : selected ? (
-    <div className="p-6">
-      <h2 className="text-lg font-semibold">{selected.title}</h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {typeLabels[selected.type]} · {timeAgo(selected.created_at)}
-      </p>
-      {selected.body && (
-        <div className="mt-4 text-sm leading-relaxed whitespace-pre-wrap text-foreground/80">
-          {selected.body}
-        </div>
-      )}
-      <div className="mt-4">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => handleArchive(selected.id)}
-        >
-          <Archive className="mr-1.5 h-3.5 w-3.5" />
-          Archive
-        </Button>
-      </div>
-    </div>
   ) : null
 
   // -- Mobile layout: list / detail toggle -----------------------------------
@@ -398,31 +482,23 @@ export function InboxPage() {
     )
   }
 
-  // -- Desktop layout: resizable two-panel -----------------------------------
+  // -- Desktop layout: list (collapsible, animated) + detail -----------------
 
   return (
-    <ResizablePanelGroup
-      orientation="horizontal"
-      className="flex-1 min-h-0"
-      defaultLayout={defaultLayout}
-      onLayoutChanged={onLayoutChanged}
-    >
-      <ResizablePanel
-        id="list"
-        defaultSize={320}
-        minSize={280}
-        maxSize={480}
-        groupResizeBehavior="preserve-pixel-size"
-      >
-        <div className="flex h-full flex-col border-r">
+    <div className="flex flex-1 min-h-0">
+      {/* Same mechanism the explore menu uses: animate width with a CSS
+          transition. `minWidth: 0` overrides the flex default that would stop
+          the panel at its content's intrinsic width; `overflow-hidden` clips
+          the fixed-width inner content as the outer width animates to 0. */}
+      <div className="w-[320px] shrink-0 overflow-hidden border-r">
+        <div className="flex h-full w-[320px] flex-col">
           {listHeader}
           <div className="flex-1 min-h-0 overflow-y-auto">{listBody}</div>
         </div>
-      </ResizablePanel>
-      <ResizableHandle />
-      <ResizablePanel id="detail" minSize="40%">
-        <div className="flex h-full min-h-0 flex-col">{detailContent}</div>
-      </ResizablePanel>
-    </ResizablePanelGroup>
+      </div>
+      <div className="flex flex-1 min-w-0 min-h-0 flex-col">
+        {detailContent}
+      </div>
+    </div>
   )
 }

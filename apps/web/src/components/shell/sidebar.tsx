@@ -10,10 +10,7 @@ import { BrandIcon } from '@garden/ui/components/common/brand-icon'
 import type { ConnectorId } from '@garden/connectors/registry'
 import { listConnections } from '@/lib/api'
 import type { Agent, Skill } from '@garden/core/types'
-import {
-  agentListOptions,
-  skillListOptions,
-} from '@/lib/workspace/queries'
+import { agentListOptions, skillListOptions } from '@/lib/workspace/queries'
 import { useSkillsBrowseStore, useSkillEditorStore } from '@garden/core/skills'
 import { FileTree } from '@/features/skills/components/file-tree'
 import { Button } from '@garden/ui/components/ui/button'
@@ -35,10 +32,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@garden/ui/components/ui/sidebar'
-import {
-  deduplicateInboxItems,
-  inboxListOptions,
-} from '@/lib/inbox/queries'
+import { deduplicateInboxItems, inboxListOptions } from '@/lib/inbox/queries'
 import { useAuthStore } from '@garden/core/auth'
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { SearchTrigger } from '@/features/search'
@@ -220,8 +214,21 @@ function ExplorerActionRow({
 export function WorkspaceSidebar() {
   const queryClient = useQueryClient()
   const { replace } = useNavigation()
-  const { activePanel, closePanel, openPanel } = useWorkspaceDock()
-  const { claimWarmSession, sessions } = useAgentSessions()
+  const dock = useWorkspaceDock()
+  const activePanel = dock?.activePanel ?? null
+  const openPanel = useCallback(
+    (panel: WorkspacePanelInput) => dock?.openPanel(panel),
+    [dock],
+  )
+  const closePanel = useCallback(
+    (panelId: string) => {
+      dock?.closePanel(panelId)
+    },
+    [dock],
+  )
+  const { claimWarmSession, sessions } = useAgentSessions({
+    ensureWarmSession: false,
+  })
   const workspace = useWorkspaceStore((state) => state.workspace)
   const clearWorkspace = useWorkspaceStore((state) => state.clearWorkspace)
   const user = useAuthStore((state) => state.user)
@@ -831,7 +838,7 @@ function ConnectionsExplorer({
   onOpenConnector: (connector: ConnectionRowData) => void
 }) {
   const snapshotQuery = useQuery({
-    queryKey: ['workspace-connections'],
+    queryKey: ['workspace-connections-sidebar'],
     queryFn: loadConnectionsForSidebar,
     staleTime: 0,
     refetchOnMount: 'always',

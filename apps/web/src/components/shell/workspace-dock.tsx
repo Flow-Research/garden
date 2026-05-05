@@ -7,6 +7,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -48,6 +49,7 @@ import { Result } from 'better-result'
 import { useChatStore } from '@garden/core/chat'
 import { useTheme } from '@garden/ui/components/common/theme-provider'
 import { Button } from '@garden/ui/components/ui/button'
+import { useSidebar } from '@garden/ui/components/ui/sidebar'
 import { cn } from '@garden/ui/lib/utils'
 import {
   ContextMenu,
@@ -1203,6 +1205,8 @@ function IssueDetailDockPanel({
   params,
   api,
 }: IDockviewPanelProps<WorkspacePanelParams>) {
+  const workspaceSidebar = useSidebar()
+
   if (!params.entityId) {
     return (
       <section className="flex h-full items-center justify-center px-6 text-sm text-muted-foreground">
@@ -1225,7 +1229,11 @@ function IssueDetailDockPanel({
 
   return (
     <WorkspacePanelFrame panelId={api.id}>
-      <IssueDetail issueId={params.entityId} />
+      <IssueDetail
+        issueId={params.entityId}
+        onToggleContextRail={workspaceSidebar.toggleSidebar}
+        contextRailOpen={workspaceSidebar.state === 'expanded'}
+      />
     </WorkspacePanelFrame>
   )
 }
@@ -1295,6 +1303,12 @@ function ChatDockPanel({
   params,
 }: IDockviewPanelProps<WorkspacePanelParams>) {
   const setActiveSession = useChatStore((state) => state.setActiveSession)
+
+  useLayoutEffect(() => {
+    if (!params.entityId) return
+    setActiveSession(params.entityId)
+  }, [params.entityId, setActiveSession])
+
   const handleSessionChange = useCallback(
     (session: { id: string; title: string }) => {
       const nextTitle = session.title.trim() || 'New Chat'
@@ -1503,6 +1517,10 @@ export function WorkspaceDockProvider({
     })
   const { resolvedTheme } = useTheme()
   const apiRef = useRef<DockviewApi | null>(null)
+  const pendingOpenPanelRef = useRef<{
+    panel: WorkspacePanelInput
+    options?: { position?: AddPanelPositionOptions; forceNew?: boolean }
+  } | null>(null)
   const readyCleanupRef = useRef<(() => void) | null>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
@@ -1696,7 +1714,10 @@ export function WorkspaceDockProvider({
       options?: { position?: AddPanelPositionOptions; forceNew?: boolean },
     ) => {
       const api = apiRef.current
-      if (!api) return null
+      if (!api) {
+        pendingOpenPanelRef.current = { panel, options }
+        return null
+      }
 
       const canonicalId = getCanonicalPanelId(panel)
       const existing =
@@ -2020,6 +2041,13 @@ export function WorkspaceDockProvider({
       commitActiveDockState(api)
       writePanelToQueryState(settledPanel)
 
+      const pendingOpenPanel = pendingOpenPanelRef.current
+      if (pendingOpenPanel) {
+        pendingOpenPanelRef.current = null
+        openPanel(pendingOpenPanel.panel, pendingOpenPanel.options)
+        writePanelToQueryState(getPanelInputFromApi(api))
+      }
+
       const disposeActive = api.onDidActivePanelChange(() => {
         commitActiveDockState(api)
       })
@@ -2129,18 +2157,37 @@ export function WorkspaceDockProvider({
   )
 }
 
+/**
+ * Read the workspace dock context. Returns null when no provider is mounted
+ * (dev showcases, isolated tests). Callers that perform navigation should
+ * optional-chain on the returned methods so they no-op when no dock exists,
+ * rather than crash. Use `useRequiredWorkspaceDock` when the dock must exist.
+ */
 export function useWorkspaceDock() {
+  return useContext(WorkspaceDockContext)
+}
+
+/**
+ * Strict variant — throws when no provider. Use inside surfaces that are only
+ * reachable from the real workspace shell (workspace dock view, headers,
+ * shell-level controls).
+ */
+export function useRequiredWorkspaceDock() {
   const ctx = useContext(WorkspaceDockContext)
   if (!ctx) {
     throw new Error(
-      'useWorkspaceDock must be used inside the workspace dock provider',
+      'useRequiredWorkspaceDock must be used inside the workspace dock provider',
     )
   }
   return ctx
 }
 
 export function WorkspaceDockView() {
-  const { dockTheme, handleReady } = useWorkspaceDock()
+  const dock = useWorkspaceDock()
+
+  if (!dock) return null
+
+  const { dockTheme, handleReady } = dock
 
   return (
     <DockviewReact
