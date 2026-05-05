@@ -5,7 +5,14 @@ import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { decideWakeups } from '@garden/core/issues'
+import { createLogger } from '@garden/core/logger'
 import type { IssueStatus } from '@garden/core/types'
+
+const logger = createLogger('work-products')
+import {
+  classifyConnectorError,
+  type ConnectorError,
+} from '@garden/core/connectors/errors'
 import { getConnectorById } from '@garden/connectors'
 import { mintMcpProxyJwt } from '@garden/connectors/proxy-jwt'
 import {
@@ -37,15 +44,6 @@ export const workProductReviewBodySchema = z
 export type WorkProductReviewInput = z.infer<
   typeof workProductReviewBodySchema
 >
-
-// TODO: replace when Slice 2 lands the canonical export from packages/core/connectors/errors.ts.
-export type ConnectorError =
-  | { kind: 'transient'; retryable: true; detail: string }
-  | { kind: 'auth_expired'; reconnect_url: string }
-  | { kind: 'permission_denied'; required_scope?: string }
-  | { kind: 'rate_limited'; retry_after_ms?: number }
-  | { kind: 'not_found'; external_ref: string }
-  | { kind: 'unknown'; raw: unknown }
 
 export class WorkProductReviewError extends TaggedError(
   'WorkProductReviewError',
@@ -283,7 +281,7 @@ function resolveWritebackInvocation(args: {
     args.workProduct.type === 'connector_reply'
   ) {
     const refResult = resolveGithubIssueRef(args.binding)
-    if (refResult.isErr()) return refResult
+    if (refResult.isErr()) return Result.err(refResult.error)
 
     const ref = refResult.value
     return Result.ok({
@@ -336,27 +334,7 @@ function buildProxyTransport(args: {
 }
 
 function connectorErrorFromCause(cause: unknown): ConnectorError {
-  const message = cause instanceof Error ? cause.message : String(cause)
-  const lower = message.toLowerCase()
-
-  if (lower.includes('rate limit') || lower.includes('429')) {
-    return { kind: 'rate_limited' }
-  }
-
-  if (
-    lower.includes('unauthorized') ||
-    lower.includes('forbidden') ||
-    lower.includes('expired') ||
-    lower.includes('401')
-  ) {
-    return { kind: 'auth_expired', reconnect_url: '/settings/connections' }
-  }
-
-  if (lower.includes('not found') || lower.includes('404')) {
-    return { kind: 'not_found', external_ref: message }
-  }
-
-  return { kind: 'unknown', raw: cause }
+  return classifyConnectorError(cause)
 }
 
 function textFromMcpResult(result: unknown) {
@@ -425,22 +403,12 @@ function findExternalId(value: unknown): string | null {
 
 function connectorErrorFromMcpError(result: unknown): ConnectorError {
   const meta = gardenMeta(result)
-  const code = stringValue(meta?.code)
   const message = textFromMcpResult(result) ?? 'Connector write failed'
-
-  if (code === 'reauth_required') {
-    return { kind: 'auth_expired', reconnect_url: '/settings/connections' }
-  }
-
-  if (code === 'permission_error' || code === 'unclassified_tool') {
-    return { kind: 'permission_denied' }
-  }
-
-  if (message.toLowerCase().includes('rate limit')) {
-    return { kind: 'rate_limited' }
-  }
-
-  return { kind: 'unknown', raw: { code, message } }
+  return classifyConnectorError({
+    _meta: { garden: meta },
+    message,
+    raw: result,
+  })
 }
 
 async function callConnectorTool(args: {
@@ -661,6 +629,9 @@ async function approveWorkProduct(args: {
             ),
           )
 
+        await tx.execute(sql`
+          select pg_advisory_xact_lock(hashtextextended(${workProduct.runId as string}::text, 0))
+        `)
         const [{ nextSeq }] = await tx
           .select({
             nextSeq: sql<number>`cast(coalesce(max(${schema.issueRunEvent.seq}), 0) + 1 as int)`,
@@ -800,7 +771,8 @@ async function requestWorkProductChanges(args: {
       trigger: { commentId },
       actor: { type: 'member', id: args.actorUserId },
     })
-    if (startResult.isErr()) console.error(startResult.error.message)
+    if (startResult.isErr())
+      logger.error('startIssueRun failed', startResult.error.message)
   }
 
   return Result.ok({
@@ -831,7 +803,7 @@ async function loadSourceBinding(args: {
         .limit(1),
     catch: (cause) => dbError('Failed to load issue source binding', cause),
   })
-  if (result.isErr()) return result
+  if (result.isErr()) return Result.err(result.error)
 
   const binding = result.value[0]
   if (!binding) {
@@ -888,6 +860,9 @@ async function markWorkProductApplied(args: {
             ),
           )
 
+        await tx.execute(sql`
+          select pg_advisory_xact_lock(hashtextextended(${args.workProduct.runId as string}::text, 0))
+        `)
         const [{ nextSeq }] = await tx
           .select({
             nextSeq: sql<number>`cast(coalesce(max(${schema.issueRunEvent.seq}), 0) + 1 as int)`,

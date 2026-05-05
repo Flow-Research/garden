@@ -40,7 +40,8 @@ import {
 } from '@garden/ui/components/ui/dropdown-menu'
 import { useIsMobile } from '@garden/ui/hooks/use-mobile'
 import { InboxListItem, timeAgo } from './inbox-list-item'
-import { InboxDetailLabel, typeLabels } from './inbox-detail-label'
+import { typeLabels } from './inbox-detail-label'
+import { InboxItemPreviewCard, ctaForInboxItem } from './inbox-item-preview'
 import { getMockInboxItemsForWorkspace } from '../../issues/preview/fixtures'
 
 // ---------------------------------------------------------------------------
@@ -167,6 +168,14 @@ function focusForInboxItem(item: InboxItem): string | null {
     return `comment:${details.comment_id}`
   }
 
+  if (item.type === 'waiting_for_input') {
+    return `question:${details.run_id ?? item.issue_id ?? item.id}`
+  }
+
+  if (item.type === 'wp_review') {
+    return `wp_review:${details.work_product_id ?? item.id}`
+  }
+
   if (item.type === 'review_requested') {
     return `approval:${details.approval_id ?? details.request_id ?? details.run_id ?? item.issue_id ?? item.id}`
   }
@@ -201,6 +210,8 @@ function InboxNotificationDetail({
       item.actor_type ?? item.recipient_type,
       item.actor_id ?? item.recipient_id,
     ) || typeLabels[item.type]
+  const issueNumber = item.details?.issue_number
+  const cta = ctaForInboxItem(item)
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto">
@@ -214,13 +225,19 @@ function InboxNotificationDetail({
               <span>{typeLabels[item.type]}</span>
               <span>·</span>
               <span>{timeAgo(item.created_at)}</span>
+              {issueNumber && (
+                <>
+                  <span>·</span>
+                  <span className="font-mono">#{issueNumber}</span>
+                </>
+              )}
             </div>
             <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">
               {item.title}
             </h2>
             <p className="text-sm text-muted-foreground">{actorName}</p>
           </div>
-          <Button variant="outline" size="sm" onClick={onArchive}>
+          <Button variant="ghost" size="sm" onClick={onArchive}>
             <Archive className="mr-1.5 h-3.5 w-3.5" />
             Archive
           </Button>
@@ -228,21 +245,11 @@ function InboxNotificationDetail({
       </div>
 
       <div className="w-full max-w-3xl space-y-5 p-6">
-        <div className="rounded-lg border bg-card p-4">
-          <div className="text-sm leading-relaxed text-foreground">
-            <InboxDetailLabel item={item} />
-          </div>
-          {item.body && (
-            <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-              {item.body}
-            </p>
-          )}
-        </div>
-
+        <InboxItemPreviewCard item={item} />
         {item.issue_id && (
           <Button size="sm" onClick={onOpenIssue}>
             <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-            Open issue
+            {cta}
           </Button>
         )}
       </div>

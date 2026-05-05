@@ -2,10 +2,8 @@ import { and, eq } from 'drizzle-orm'
 import { getRequest } from '@tanstack/react-start/server'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import {
-  buildInboxItemsFromIssues,
-  sortIssuesByUpdatedAt,
-} from '@/lib/server/inbox-surface'
+import { computeInboxItems } from '@/lib/server/inbox-compute'
+import { sortIssuesByUpdatedAt } from '@/lib/server/inbox-surface'
 import { buildConnectionSurface } from '@/lib/server/connection-surface'
 import { requireSession } from '@/lib/server/control-plane'
 import type { IssuePriority, IssueStatus } from '@garden/core/types'
@@ -200,18 +198,13 @@ async function loadDashboardIssues(workspaceId: string) {
 
 export async function getDashboardOverviewSnapshot(workspaceId: string) {
   const { db, session } = await requireDashboardAccess(workspaceId)
-  const [issues, agents, skills, connectionSurface] = await Promise.all([
+  const [issues, agents, skills, connectionSurface, inbox] = await Promise.all([
     db.select().from(schema.issue).where(eq(schema.issue.workspaceId, workspaceId)),
     db.select().from(schema.agent).where(eq(schema.agent.workspaceId, workspaceId)),
     db.select().from(schema.skill).where(eq(schema.skill.workspaceId, workspaceId)),
     loadDashboardConnections(workspaceId),
+    computeInboxItems({ workspaceId, userId: session.user.id }),
   ])
-
-  const inbox = buildInboxItemsFromIssues({
-    issues,
-    userId: session.user.id,
-    workspaceId,
-  })
 
   return {
     summary: {
@@ -225,7 +218,7 @@ export async function getDashboardOverviewSnapshot(workspaceId: string) {
         (connector) => connector.status === 'connected',
       ).length,
       connectionCount: connectionSurface.length,
-      unreadCount: inbox.length,
+      unreadCount: inbox.filter((item) => !item.read).length,
     },
   } satisfies DashboardOverviewSnapshot
 }
@@ -269,12 +262,10 @@ export async function getDashboardDistributionSnapshot(workspaceId: string) {
 
 export async function getDashboardActivitySnapshot(workspaceId: string) {
   const { session } = await requireDashboardAccess(workspaceId)
-  const issues = await loadDashboardIssues(workspaceId)
-  const inbox = buildInboxItemsFromIssues({
-    issues,
-    userId: session.user.id,
-    workspaceId,
-  })
+  const [issues, inbox] = await Promise.all([
+    loadDashboardIssues(workspaceId),
+    computeInboxItems({ workspaceId, userId: session.user.id }),
+  ])
 
   const recentIssues = sortIssuesByUpdatedAt(issues)
     .slice(0, 8)
@@ -288,9 +279,16 @@ export async function getDashboardActivitySnapshot(workspaceId: string) {
     }))
 
   return {
-    unreadCount: inbox.length,
+    unreadCount: inbox.filter((item) => !item.read).length,
     recentIssues,
-    inbox: inbox.slice(0, 6),
+    inbox: inbox.slice(0, 6).map((item) => ({
+      id: item.id,
+      title: item.title,
+      issue_id: item.issue_id ?? '',
+      type: item.type,
+      severity: item.severity,
+      created_at: item.created_at,
+    })),
   } satisfies DashboardActivitySnapshot
 }
 

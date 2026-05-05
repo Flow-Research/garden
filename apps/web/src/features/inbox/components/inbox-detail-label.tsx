@@ -19,7 +19,9 @@ const typeLabels: Record<InboxItemType, string> = {
   due_date_changed: 'Due date changed',
   new_comment: 'New comment',
   mentioned: 'Mentioned',
-  review_requested: 'Review requested',
+  review_requested: 'Approval needed',
+  waiting_for_input: 'Question waiting',
+  wp_review: 'Ready for review',
   task_completed: 'Task completed',
   task_failed: 'Task failed',
   agent_blocked: 'Agent blocked',
@@ -108,6 +110,25 @@ export function InboxDetailLabel({ item }: { item: InboxItem }) {
       if (item.body) return <span>{item.body}</span>
       return <span>{typeLabels[item.type]}</span>
     }
+    case 'mentioned': {
+      if (item.body) return <span>{item.body}</span>
+      return <span>{typeLabels[item.type]}</span>
+    }
+    case 'waiting_for_input':
+      return <span>{item.body ?? 'Garden is paused on a question.'}</span>
+    case 'wp_review': {
+      const wpType = details.work_product_type
+      const noun = wpType ? wpType.replaceAll('_', ' ') : 'Draft'
+      return <span>{`${noun.charAt(0).toUpperCase()}${noun.slice(1)} ready for review`}</span>
+    }
+    case 'review_requested':
+      return <span>{item.body ?? 'A capability needs your approval to run.'}</span>
+    case 'task_failed':
+      return <span>{item.body ?? 'A run failed. Check the timeline for details.'}</span>
+    case 'agent_blocked':
+      return <span>{item.body ?? 'This issue needs a decision before work can resume.'}</span>
+    case 'task_completed':
+      return <span>{item.body ?? typeLabels[item.type]}</span>
     case 'reaction_added': {
       const emoji = details.emoji
       if (emoji) return <span>Reacted {emoji} to your comment</span>

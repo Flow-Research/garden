@@ -1,8 +1,5 @@
-import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
-import { buildInboxItemsFromIssues } from '@/lib/server/inbox-surface'
+import { computeInboxUnreadCount } from '@/lib/server/inbox-compute'
 import {
   requireSession,
   resolveWorkspaceId,
@@ -19,19 +16,11 @@ export const Route = createFileRoute('/api/inbox/unread-count')({
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
         if (!workspaceId) return Response.json({ count: 0 })
 
-        const db = getDb(appEnv)
-        const issues = await db
-          .select()
-          .from(schema.issue)
-          .where(eq(schema.issue.workspaceId, workspaceId))
-
-        return Response.json({
-          count: buildInboxItemsFromIssues({
-            issues,
-            userId: session.user.id,
-            workspaceId,
-          }).length,
+        const count = await computeInboxUnreadCount({
+          workspaceId,
+          userId: session.user.id,
         })
+        return Response.json({ count })
       },
     },
   },

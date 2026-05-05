@@ -52,7 +52,7 @@ import {
   MCP_PROXY_JWT_PERIODIC_REFRESH_WINDOW_MS,
   mcpRuntimeConfig,
 } from './mcp-runtime-config'
-import { createChatSubAgentTools } from './workspace-agent-tools'
+import { createChatSubAgentTools } from './chat-sub-agent-tools'
 import {
   getDocumentBytes,
   getDocumentVersionBytes,

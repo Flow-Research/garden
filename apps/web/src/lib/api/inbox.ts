@@ -6,13 +6,17 @@ export function listInbox(): Promise<InboxItem[]> {
 }
 
 export function markInboxRead(id: string): Promise<InboxItem> {
-  return getApiTransport().request(`/api/inbox/${id}/read`, { method: 'POST' })
+  return getApiTransport().request(
+    `/api/inbox/${encodeURIComponent(id)}/read`,
+    { method: 'POST' },
+  )
 }
 
 export function archiveInbox(id: string): Promise<InboxItem> {
-  return getApiTransport().request(`/api/inbox/${id}/archive`, {
-    method: 'POST',
-  })
+  return getApiTransport().request(
+    `/api/inbox/${encodeURIComponent(id)}/archive`,
+    { method: 'POST' },
+  )
 }
 
 export function markAllInboxRead(): Promise<{ count: number }> {

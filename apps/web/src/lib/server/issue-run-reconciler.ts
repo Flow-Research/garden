@@ -1,5 +1,6 @@
 import { and, desc, eq, sql } from 'drizzle-orm'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
+import { createLogger } from '@garden/core/logger'
 import type { AppEnv } from '@/lib/server/env'
 import { getDb, schema } from '@/lib/server/db'
 import {
@@ -7,6 +8,8 @@ import {
   enqueueIssueRunRuntime,
   startIssueRun,
 } from './issue-run'
+
+const logger = createLogger('issue-run-reconciler')
 
 const SILENT_RUN_MS = 120_000
 const MAX_WAKEUP_ATTEMPTS = 3
@@ -66,6 +69,8 @@ type ApprovalRow = {
   id: string
   agent_id: string
   issue_id: string | null
+  kind: string
+  context: string | null
 }
 
 function reconcilerError(args: {
@@ -100,6 +105,11 @@ function nextMinuteBoundary(from: Date) {
   return next
 }
 
+function pendingAgentIdFromContext(value: string | null) {
+  const prefix = 'agent_proposal:'
+  return value?.startsWith(prefix) ? value.slice(prefix.length) : null
+}
+
 function nextFireFromCron(
   cron: string,
   from: Date,
@@ -115,7 +125,12 @@ function nextFireFromCron(
   }
 
   const [minute, hour, dayOfMonth, month, dayOfWeek] = parts
-  if (hour !== '*' || dayOfMonth !== '*' || month !== '*' || dayOfWeek !== '*') {
+  if (
+    hour !== '*' ||
+    dayOfMonth !== '*' ||
+    month !== '*' ||
+    dayOfWeek !== '*'
+  ) {
     return Result.err(
       reconcilerError({
         code: 'invalid_cron',
@@ -146,11 +161,7 @@ function nextFireFromCron(
   }
 
   const fixedMinute = Number(minute)
-  if (
-    Number.isInteger(fixedMinute) &&
-    fixedMinute >= 0 &&
-    fixedMinute <= 59
-  ) {
+  if (Number.isInteger(fixedMinute) && fixedMinute >= 0 && fixedMinute <= 59) {
     const candidate = new Date(from)
     candidate.setSeconds(0, 0)
     candidate.setMinutes(fixedMinute)
@@ -280,7 +291,7 @@ async function reapSilentRuns(
       const rows = await db.execute<SilentRunRow>(sql`
         select r.id
         from issue_run r
-        where r.status = 'running'
+        where r.status in ('queued', 'running')
           and not exists (
             select 1
             from issue_run_event e
@@ -347,7 +358,7 @@ async function restartWakeup(args: {
           workspaceId: args.row.workspace_id,
           issueId: args.row.issue_id,
           agentId: args.row.agent_id,
-          hostName: args.row.agent_id,
+          hostName: args.row.host_name,
           wakeupId: args.row.wakeup_id,
           status: 'queued',
           contextSnapshot: {
@@ -388,7 +399,7 @@ async function restartWakeup(args: {
 
   const enqueueResult = await enqueueIssueRunRuntime({
     env: args.env,
-    agentId: args.row.agent_id,
+    agentRuntimeName: args.row.host_name,
     runId,
     issueId: args.row.issue_id,
   })
@@ -415,7 +426,9 @@ async function restartWakeup(args: {
 async function restartClaimedWakeups(
   env: AppEnv,
   now: Date,
-): Promise<ResultValue<{ restarted: number; failed: number }, IssueRunReconcilerError>> {
+): Promise<
+  ResultValue<{ restarted: number; failed: number }, IssueRunReconcilerError>
+> {
   const db = getDb(env)
   const rowsResult = await Result.tryPromise({
     try: async () => {
@@ -556,7 +569,23 @@ async function fanOutRecurrences(
   let count = 0
   for (const row of rowsResult.value) {
     const nextFireResult = nextFireFromCron(row.cron, now)
-    if (nextFireResult.isErr()) return Result.err(nextFireResult.error)
+    if (nextFireResult.isErr()) {
+      const disableResult = await Result.tryPromise({
+        try: async () => {
+          await db
+            .update(schema.issueRecurrence)
+            .set({ enabled: false, updatedAt: now })
+            .where(eq(schema.issueRecurrence.id, row.id))
+        },
+        catch: (cause) => dbError('disable invalid issue recurrence', cause),
+      })
+      if (disableResult.isErr()) return Result.err(disableResult.error)
+      logger.error(
+        'disabled invalid issue recurrence',
+        nextFireResult.error.message,
+      )
+      continue
+    }
 
     const updateResult = await Result.tryPromise({
       try: async () => {
@@ -623,6 +652,8 @@ async function sweepStaleApprovals(
           id: schema.permissionRequest.id,
           agent_id: schema.permissionRequest.agentId,
           issue_id: schema.permissionRequest.issueId,
+          kind: schema.permissionRequest.kind,
+          context: schema.permissionRequest.context,
         })
       return rows
     },
@@ -631,6 +662,27 @@ async function sweepStaleApprovals(
   if (rowsResult.isErr()) return Result.err(rowsResult.error)
 
   for (const row of rowsResult.value as ApprovalRow[]) {
+    if (row.kind === 'agent_proposal') {
+      const pendingAgentId = pendingAgentIdFromContext(row.context)
+      if (pendingAgentId) {
+        const archiveResult = await Result.tryPromise({
+          try: async () => {
+            await db
+              .update(schema.agent)
+              .set({ status: 'archived' })
+              .where(
+                and(
+                  eq(schema.agent.id, pendingAgentId),
+                  eq(schema.agent.status, 'pending_approval'),
+                ),
+              )
+          },
+          catch: (cause) => dbError('archive stale proposed agent', cause),
+        })
+        if (archiveResult.isErr()) return Result.err(archiveResult.error)
+      }
+    }
+
     const issueId = row.issue_id
     if (!issueId) continue
     const runsResult = await Result.tryPromise({
@@ -718,42 +770,29 @@ export async function reconcile(
 
   const silentResult = await reapSilentRuns(env, now)
   if (silentResult.isErr()) {
-    console.error('[reconcile] reapSilentRuns:', silentResult.error.message)
+    logger.error('reapSilentRuns failed', silentResult.error.message)
   }
 
   const wakeupsResult = await restartClaimedWakeups(env, now)
   if (wakeupsResult.isErr()) {
-    console.error(
-      '[reconcile] restartClaimedWakeups:',
-      wakeupsResult.error.message,
-    )
+    logger.error('restartClaimedWakeups failed', wakeupsResult.error.message)
   }
 
   const recurrenceResult = await fanOutRecurrences(env, now)
   if (recurrenceResult.isErr()) {
-    console.error(
-      '[reconcile] fanOutRecurrences:',
-      recurrenceResult.error.message,
-    )
+    logger.error('fanOutRecurrences failed', recurrenceResult.error.message)
   }
 
   const approvalsResult = await sweepStaleApprovals(env, now)
   if (approvalsResult.isErr()) {
-    console.error(
-      '[reconcile] sweepStaleApprovals:',
-      approvalsResult.error.message,
-    )
+    logger.error('sweepStaleApprovals failed', approvalsResult.error.message)
   }
 
   return Result.ok({
     silentRunsReaped: silentResult.isOk() ? silentResult.value : 0,
-    wakeupsRestarted: wakeupsResult.isOk()
-      ? wakeupsResult.value.restarted
-      : 0,
+    wakeupsRestarted: wakeupsResult.isOk() ? wakeupsResult.value.restarted : 0,
     wakeupsFailed: wakeupsResult.isOk() ? wakeupsResult.value.failed : 0,
-    recurrencesFannedOut: recurrenceResult.isOk()
-      ? recurrenceResult.value
-      : 0,
+    recurrencesFannedOut: recurrenceResult.isOk() ? recurrenceResult.value : 0,
     approvalsExpired: approvalsResult.isOk() ? approvalsResult.value : 0,
   })
 }

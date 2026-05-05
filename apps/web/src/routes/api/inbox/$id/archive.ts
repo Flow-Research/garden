@@ -1,26 +1,25 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { computeInboxItems } from '@/lib/server/inbox-compute'
+import { dismissInboxItem } from '@/lib/server/inbox-dismissal'
 import {
   requireSession,
   resolveWorkspaceId,
   unauthorized,
 } from '@/lib/server/control-plane'
 
-export const Route = createFileRoute('/api/inbox')({
+export const Route = createFileRoute('/api/inbox/$id/archive')({
   server: {
     handlers: {
-      GET: async ({ request }) => {
+      POST: async ({ request, params }) => {
         const session = await requireSession(request)
         if (!session) return unauthorized()
-
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
-        if (!workspaceId) return Response.json([])
-
-        const items = await computeInboxItems({
+        if (!workspaceId) return unauthorized()
+        await dismissInboxItem({
           workspaceId,
           userId: session.user.id,
+          itemKey: decodeURIComponent(params.id),
         })
-        return Response.json(items)
+        return Response.json({ ok: true })
       },
     },
   },
