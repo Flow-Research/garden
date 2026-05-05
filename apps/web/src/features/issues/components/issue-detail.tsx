@@ -118,8 +118,13 @@ import { timeAgo } from '@garden/core/utils'
 import { cn } from '@garden/ui/lib/utils'
 import { useIssueSearch } from '../hooks/use-issue-search'
 import { useIssueDetailData } from '../hooks/use-issue-detail-data'
-import { api } from '@/lib/api'
+import {
+  api,
+  sortSessions,
+  type AgentChatSession,
+} from '@/lib/api'
 import { issueActiveRunOptions, issueKeys } from '@/lib/issues/queries'
+import { useWorkspaceDock } from '@/components/shell/workspace-dock'
 
 import { ProgressRing } from './progress-ring'
 
@@ -127,6 +132,10 @@ const ISSUE_DETAIL_PAGE_SKELETON = 'issue-detail-page'
 const ISSUE_DETAIL_REACTIONS_SKELETON = 'issue-detail-reactions'
 const ISSUE_DETAIL_SUBSCRIBERS_SKELETON = 'issue-detail-subscribers'
 const ISSUE_DETAIL_TIMELINE_SKELETON = 'issue-detail-timeline'
+
+function chatThreadsQueryKey(workspaceId: string, userId: string) {
+  return ['chat-threads', workspaceId, userId] as const
+}
 
 function shortDate(date: string | null): string {
   if (!date) return '—'
@@ -561,34 +570,139 @@ export function IssueDetail({
     deleteIssueMutation,
   } = useIssueDetailData(id)
   const isMobile = useIsMobile()
+  const dock = useWorkspaceDock()
+  const queryClient = useQueryClient()
   const [sidebarOpen, setSidebarOpen] = useState(defaultSidebarOpen)
   const debugMode = useDevSettingsStore((s) => s.debugMode)
   const contextRailIsOpen = contextRailOpen ?? true
 
-  // "Open chat" — creates a chat thread with this issue's assigned agent and
-  // pins the issue as the thread's primary. Navigates to the new thread.
   const openChatMutation = useMutation({
-    mutationFn: async () => {
-      if (!issue) throw new Error('Issue not loaded')
-      if (issue.assignee_type !== 'agent' || !issue.assignee_id) {
-        throw new Error(
-          'Open chat is only available for agent-assigned issues',
+    mutationFn: async (input: {
+      agentId: string
+      optimisticThreadId: string
+      workspaceId: string
+    }) =>
+      api.openChatForIssue({
+        workspaceId: input.workspaceId,
+        issueId: id,
+        issueTitle: issue?.title ?? 'Issue chat',
+        agentId: input.agentId,
+        threadId: input.optimisticThreadId,
+      }),
+    onMutate: async (input) => {
+      if (!issue || !user?.id) return null
+
+      const queryKey = chatThreadsQueryKey(input.workspaceId, user.id)
+      const previousSessions =
+        queryClient.getQueryData<AgentChatSession[]>(queryKey)
+
+      const now = new Date().toISOString()
+      const optimisticSession: AgentChatSession = {
+        id: input.optimisticThreadId,
+        workspaceId: input.workspaceId,
+        ownerUserId: user.id,
+        title: issue.title,
+        agentId: input.agentId,
+        hostName: input.agentId,
+        primary_issue_id: issue.id,
+        runtime_kind: 'issue_run',
+        runtime_key: issue.id,
+        primaryIssue: {
+          id: issue.id,
+          identifier: issue.identifier,
+          title: issue.title,
+          status: issue.status,
+        },
+        createdAt: now,
+        updatedAt: now,
+        lastMessage: '',
+        archivedAt: null,
+        status: 'idle',
+        unread: false,
+        optimistic: true,
+      }
+
+      queryClient.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>
+        sortSessions([
+          optimisticSession,
+          ...current.filter((session) => session.id !== optimisticSession.id),
+        ]),
+      )
+
+      dock?.openPanel({
+        kind: 'chat',
+        title: optimisticSession.title,
+        entityId: optimisticSession.id,
+      })
+
+      return {
+        optimisticThreadId: optimisticSession.id,
+        previousSessions,
+        queryKey,
+      }
+    },
+    onSuccess: (session, _input, context) => {
+      if (context) {
+        queryClient.setQueryData<AgentChatSession[]>(
+          context.queryKey,
+          (current = []) =>
+            sortSessions([
+              session,
+              ...current.filter(
+                (item) =>
+                  item.id !== context.optimisticThreadId &&
+                  item.id !== session.id,
+              ),
+            ]),
         )
       }
-      return api.openChatForIssue({
-        workspaceId: issue.workspace_id,
-        issueId: issue.id,
-        issueTitle: issue.title,
-        agentId: issue.assignee_id,
+
+      dock?.openPanel({
+        kind: 'chat',
+        title: session.title,
+        entityId: session.id,
       })
     },
-    onSuccess: (session) => {
-      router.push(`/chat?session=${session.id}`)
-    },
-    onError: (err) => {
+    onError: (err, _input, context) => {
+      if (context) {
+        queryClient.setQueryData(context.queryKey, context.previousSessions)
+      }
       toast.error(err instanceof Error ? err.message : 'Failed to open chat')
     },
   })
+
+  const handleOpenChat = useCallback(() => {
+    if (!issue) return
+    if (issue.assignee_type !== 'agent' || !issue.assignee_id) {
+      toast.error('Open chat is only available for agent-assigned issues')
+      return
+    }
+
+    if (!user?.id) return
+
+    const queryKey = chatThreadsQueryKey(issue.workspace_id, user.id)
+    const cachedSessions =
+      queryClient.getQueryData<AgentChatSession[]>(queryKey) ?? []
+    const existingSession = cachedSessions.find(
+      (session) =>
+        !session.archivedAt && session.primary_issue_id === issue.id,
+    )
+
+    if (existingSession) {
+      dock?.openPanel({
+        kind: 'chat',
+        title: existingSession.title,
+        entityId: existingSession.id,
+      })
+      return
+    }
+
+    openChatMutation.mutate({
+      agentId: issue.assignee_id,
+      optimisticThreadId: issue.id,
+      workspaceId: issue.workspace_id,
+    })
+  }, [dock, issue, openChatMutation, queryClient, user?.id])
 
   useEffect(() => {
     if (isMobile) {
@@ -1167,7 +1281,7 @@ export function IssueDetail({
                         agent. Only available when the assignee is an agent. */}
                     {issue.assignee_type === 'agent' && issue.assignee_id ? (
                       <DropdownMenuItem
-                        onClick={() => openChatMutation.mutate()}
+                        onClick={handleOpenChat}
                         disabled={openChatMutation.isPending}
                       >
                         <MessageSquare className="h-3.5 w-3.5" />

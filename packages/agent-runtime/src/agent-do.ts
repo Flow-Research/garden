@@ -29,7 +29,7 @@ import { createWorkspaceTools } from '@cloudflare/think/tools/workspace'
 import { Workspace } from '@cloudflare/shell'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { drizzle } from 'drizzle-orm/neon-serverless'
-import { and, eq, or, type SQL } from 'drizzle-orm'
+import { and, asc, eq, or, type SQL } from 'drizzle-orm'
 import { Result, type Result as ResultValue } from 'better-result'
 import * as schema from '@garden/db/schema'
 import {
@@ -605,14 +605,18 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       .from(schema.chatThread)
       .where(
         and(
-          eq(schema.chatThread.id, threadId),
           eq(schema.chatThread.agentId, agentId),
+          or(
+            eq(schema.chatThread.id, threadId),
+            eq(schema.chatThread.runtimeKey, threadId),
+          ),
         ),
       )
       .limit(1)
 
     if (!row) return false
 
+    this.authorizedThreadIds.add(row.id)
     this.authorizedThreadIds.add(threadId)
     return true
   }
@@ -777,6 +781,10 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     }
   }
 
+  private getDb() {
+    return drizzle(this.env.DATABASE_URL, { schema })
+  }
+
   override async onStart() {
     await this.scheduleEvery(
       mcpRuntimeConfig.proxyJwtRefreshIntervalSeconds,
@@ -920,7 +928,66 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
 
   @callable()
   async loadMessages(): Promise<UIMessage[]> {
-    return [...this.messages]
+    const messages = [...this.messages]
+    if (messages.length > 0) return messages
+
+    return this.loadPrimaryIssueMessages()
+  }
+
+  private async loadPrimaryIssueMessages(): Promise<UIMessage[]> {
+    const db = this.getDb()
+    const [thread] = await db
+      .select({ primaryIssueId: schema.chatThread.primaryIssueId })
+      .from(schema.chatThread)
+      .where(
+        or(
+          eq(schema.chatThread.id, this.name),
+          eq(schema.chatThread.runtimeKey, this.name),
+        ),
+      )
+      .limit(1)
+
+    if (!thread?.primaryIssueId) return []
+
+    const events = await db
+      .select({
+        id: schema.issueRunEvent.id,
+        eventType: schema.issueRunEvent.eventType,
+        message: schema.issueRunEvent.message,
+        stream: schema.issueRunEvent.stream,
+        createdAt: schema.issueRunEvent.createdAt,
+      })
+      .from(schema.issueRunEvent)
+      .where(eq(schema.issueRunEvent.issueId, thread.primaryIssueId))
+      .orderBy(asc(schema.issueRunEvent.createdAt), asc(schema.issueRunEvent.seq))
+
+    return events.flatMap((event) => {
+      const text = event.message?.trim()
+      if (!text) return []
+      if (
+        event.eventType !== 'issue_run:started' &&
+        event.eventType !== 'issue_run:message' &&
+        event.eventType !== 'issue_run:failed' &&
+        event.eventType !== 'issue_run:succeeded' &&
+        event.eventType !== 'issue_run:cancelled' &&
+        event.eventType !== 'issue_run:blocked'
+      ) {
+        return []
+      }
+
+      return [
+        {
+          id: `issue-run-event:${event.id}`,
+          role: event.stream === 'system' ? 'system' : 'assistant',
+          parts: [{ type: 'text' as const, text }],
+          metadata: {
+            createdAt: event.createdAt?.toISOString() ?? null,
+            eventType: event.eventType,
+            source: 'issue_run',
+          },
+        } satisfies UIMessage,
+      ]
+    })
   }
 
   private async prepareRuntimeWithRetries(

@@ -149,7 +149,8 @@ export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
   })
   const activeSessionId = useChatStore((state) => state.activeSessionId)
   const runtimeSessions = useMemo(
-    () => sessions.filter((session) => !session.archivedAt),
+    () =>
+      sessions.filter((session) => !session.archivedAt && !session.optimistic),
     [sessions],
   )
   const messagePreloadOrder = useMemo(() => {
@@ -220,7 +221,7 @@ function ChatRuntimeConnection({
     agent: 'AgentDO',
     connectionTimeout: 30_000,
     name: session.hostName,
-    sub: [{ agent: 'ChatSubAgent', name: session.id }],
+    sub: [{ agent: 'ChatSubAgent', name: session.runtime_key }],
   })
 
   const prepareRuntime = useCallback(

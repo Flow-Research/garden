@@ -9,6 +9,7 @@ import {
   issueComment,
   member,
   organization,
+  permissionRequest,
   skill,
   skillFile,
   user,
@@ -67,6 +68,13 @@ export const issueDbAssigneeTypeSchema = z.enum(issueDbAssigneeTypeValues)
 
 export const skillSourceTypeValues = ['manual', 'skills.sh'] as const
 export const skillSourceTypeSchema = z.enum(skillSourceTypeValues)
+
+export const issueCommentMentionsSchema = z
+  .object({
+    agents: z.array(uuidSchema),
+    users: z.array(uuidSchema),
+  })
+  .strict()
 
 export const userSelectSchema = createSelectSchema(user, {
   id: () => uuidSchema,
@@ -133,6 +141,7 @@ export const agentSelectSchema = createSelectSchema(agent, {
   reportsTo: () => uuidSchema,
   name: (schema) => schema.trim().min(1),
   roleTitle: (schema) => schema.trim().min(1),
+  permissions: () => jsonObjectSchema.nullable(),
   status: () => agentRecordStatusSchema,
 })
 
@@ -143,6 +152,7 @@ export const agentInsertSchema = createInsertSchema(agent, {
   reportsTo: () => uuidSchema,
   name: (schema) => schema.trim().min(1),
   roleTitle: (schema) => schema.trim().min(1),
+  permissions: () => jsonObjectSchema.optional().nullable(),
   status: () => agentRecordStatusSchema,
 })
 
@@ -153,6 +163,7 @@ export const agentUpdateSchema = createUpdateSchema(agent, {
   reportsTo: () => uuidSchema,
   name: (schema) => schema.trim().min(1),
   roleTitle: (schema) => schema.trim().min(1),
+  permissions: () => jsonObjectSchema.optional().nullable(),
   status: () => agentRecordStatusSchema,
 })
 
@@ -160,6 +171,9 @@ export const chatThreadSelectSchema = createSelectSchema(chatThread, {
   id: () => uuidSchema,
   workspaceId: () => uuidSchema,
   ownerUserId: () => uuidSchema,
+  primaryIssueId: () => uuidSchema.nullable(),
+  runtimeKind: (schema) => schema.refine((value) => value === 'chat' || value === 'issue_run'),
+  runtimeKey: () => uuidSchema.nullable(),
   title: (schema) => schema.trim().min(1),
 })
 
@@ -167,6 +181,9 @@ export const chatThreadInsertSchema = createInsertSchema(chatThread, {
   id: () => uuidSchema,
   workspaceId: () => uuidSchema,
   ownerUserId: () => uuidSchema,
+  primaryIssueId: () => uuidSchema.optional().nullable(),
+  runtimeKind: (schema) => schema.optional().refine((value) => value === undefined || value === 'chat' || value === 'issue_run'),
+  runtimeKey: () => uuidSchema.optional().nullable(),
   title: (schema) => schema.trim().min(1),
 })
 
@@ -174,6 +191,9 @@ export const chatThreadUpdateSchema = createUpdateSchema(chatThread, {
   id: () => uuidSchema,
   workspaceId: () => uuidSchema,
   ownerUserId: () => uuidSchema,
+  primaryIssueId: () => uuidSchema.optional().nullable(),
+  runtimeKind: (schema) => schema.optional().refine((value) => value === undefined || value === 'chat' || value === 'issue_run'),
+  runtimeKey: () => uuidSchema.optional().nullable(),
   title: (schema) => schema.trim().min(1),
 })
 
@@ -187,6 +207,7 @@ export const issueSelectSchema = createSelectSchema(issue, {
   assigneeId: () => uuidSchema,
   parentId: () => uuidSchema,
   projectId: () => uuidSchema,
+  permissionsOverride: () => jsonObjectSchema.nullable(),
   createdBy: () => uuidSchema,
 })
 
@@ -200,6 +221,7 @@ export const issueInsertSchema = createInsertSchema(issue, {
   assigneeId: () => uuidSchema,
   parentId: () => uuidSchema,
   projectId: () => uuidSchema,
+  permissionsOverride: () => jsonObjectSchema.optional().nullable(),
   createdBy: () => uuidSchema,
 })
 
@@ -213,6 +235,7 @@ export const issueUpdateSchema = createUpdateSchema(issue, {
   assigneeId: () => uuidSchema,
   parentId: () => uuidSchema,
   projectId: () => uuidSchema,
+  permissionsOverride: () => jsonObjectSchema.optional().nullable(),
   createdBy: () => uuidSchema,
 })
 
@@ -222,6 +245,7 @@ export const issueCommentSelectSchema = createSelectSchema(issueComment, {
   authorId: () => uuidSchema,
   authorType: z.enum(['user', 'agent']),
   body: (schema) => schema.trim().min(1),
+  mentions: () => issueCommentMentionsSchema.nullable(),
 })
 
 export const issueCommentInsertSchema = createInsertSchema(issueComment, {
@@ -230,6 +254,7 @@ export const issueCommentInsertSchema = createInsertSchema(issueComment, {
   authorId: () => uuidSchema,
   authorType: z.enum(['user', 'agent']),
   body: (schema) => schema.trim().min(1),
+  mentions: () => issueCommentMentionsSchema.nullable(),
 })
 
 export const issueCommentUpdateSchema = createUpdateSchema(issueComment, {
@@ -238,7 +263,38 @@ export const issueCommentUpdateSchema = createUpdateSchema(issueComment, {
   authorId: () => uuidSchema,
   authorType: z.enum(['user', 'agent']),
   body: (schema) => schema.trim().min(1),
+  mentions: () => issueCommentMentionsSchema.nullable(),
 })
+
+export const permissionRequestStatusValues = [
+  'pending',
+  'approved',
+  'denied',
+] as const
+export const permissionRequestStatusSchema = z.enum(
+  permissionRequestStatusValues,
+)
+
+export const permissionRequestKindValues = [
+  'connector_write',
+  'agent_proposal',
+] as const
+export const permissionRequestKindSchema = z.enum(permissionRequestKindValues)
+
+export const permissionRequestSelectSchema = createSelectSchema(
+  permissionRequest,
+  {
+    id: () => uuidSchema,
+    agentId: () => uuidSchema,
+    capabilityId: () => uuidSchema,
+    issueId: () => uuidSchema,
+    runId: () => uuidSchema,
+    argsJson: () => jsonObjectSchema,
+    status: () => permissionRequestStatusSchema,
+    kind: () => permissionRequestKindSchema,
+    resolvedBy: () => uuidSchema,
+  },
+)
 
 export const skillSelectSchema = createSelectSchema(skill, {
   id: () => uuidSchema,

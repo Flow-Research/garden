@@ -1,10 +1,6 @@
 import { and, desc, eq, isNull, notInArray, sql } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import {
-  bindExistingCapabilitiesToAgent,
-  bindExistingSkillsToAgent,
-} from '@/lib/server/agent-bindings'
-import {
   createChatThreadBodySchema,
   parseJsonBody,
 } from '@/lib/server/validation/chat'
@@ -42,11 +38,21 @@ export const Route = createFileRoute('/api/chat/threads')({
           .select({
             thread: schema.chatThread,
             hostName: schema.agent.hostName,
+            primaryIssue: {
+              id: schema.issue.id,
+              number: schema.issue.number,
+              title: schema.issue.title,
+              status: schema.issue.status,
+            },
           })
           .from(schema.chatThread)
           .innerJoin(
             schema.agent,
             eq(schema.agent.id, schema.chatThread.agentId),
+          )
+          .leftJoin(
+            schema.issue,
+            eq(schema.issue.id, schema.chatThread.primaryIssueId),
           )
           .where(
             and(
@@ -59,7 +65,9 @@ export const Route = createFileRoute('/api/chat/threads')({
 
         return Response.json(
           rows.flatMap((row) =>
-            row.hostName ? [toChatThread(row.thread, row.hostName)] : [],
+            row.hostName
+              ? [toChatThread(row.thread, row.hostName, row.primaryIssue)]
+              : [],
           ),
         )
       },
@@ -85,8 +93,12 @@ export const Route = createFileRoute('/api/chat/threads')({
 
         const requestedTitle = body.title ?? ''
         const title = requestedTitle || NEW_CHAT_TITLE
-        const shouldClaimWarmThread = title === NEW_CHAT_TITLE
-        const id = crypto.randomUUID()
+        const primaryIssueId = body.primary_issue_id ?? null
+        const shouldClaimWarmThread =
+          title === NEW_CHAT_TITLE && !primaryIssueId
+        const id = body.id ?? crypto.randomUUID()
+        const runtimeKind = primaryIssueId ? 'issue_run' : 'chat'
+        const runtimeKey = primaryIssueId ?? id
         const now = new Date()
         const db = getDb(appEnv)
 
@@ -94,17 +106,64 @@ export const Route = createFileRoute('/api/chat/threads')({
           workspaceId,
           ownerUserId: session.user.id,
         })
-        const requestedAgentId = body.agent_id ?? ''
 
-        const agentRow = requestedAgentId
-          ? (
-              await db
-                .select()
-                .from(schema.agent)
-                .where(eq(schema.agent.id, requestedAgentId))
-                .limit(1)
-            )[0]
-          : defaultAgentRow
+        let primaryIssue: {
+          id: string
+          number: number
+          title: string
+          status: string | null
+        } | null = null
+        if (primaryIssueId) {
+          const [issue] = await db
+            .select({
+              id: schema.issue.id,
+              number: schema.issue.number,
+              title: schema.issue.title,
+              status: schema.issue.status,
+            })
+            .from(schema.issue)
+            .where(
+              and(
+                eq(schema.issue.id, primaryIssueId),
+                eq(schema.issue.workspaceId, workspaceId),
+              ),
+            )
+            .limit(1)
+
+          if (!issue) return forbidden('Issue access denied')
+          primaryIssue = issue
+        }
+
+        let issueRuntimeAgentId: string | null = null
+        if (primaryIssueId) {
+          const [run] = await db
+            .select({ agentId: schema.issueRun.agentId })
+            .from(schema.issueRun)
+            .where(
+              and(
+                eq(schema.issueRun.workspaceId, workspaceId),
+                eq(schema.issueRun.issueId, primaryIssueId),
+              ),
+            )
+            .orderBy(desc(schema.issueRun.createdAt))
+            .limit(1)
+
+          issueRuntimeAgentId = run?.agentId ?? null
+        }
+
+        const requestedAgentId =
+          issueRuntimeAgentId ?? body.agent_id ?? defaultAgentRow.id
+
+        const agentRow =
+          requestedAgentId === defaultAgentRow.id
+            ? defaultAgentRow
+            : (
+                await db
+                  .select()
+                  .from(schema.agent)
+                  .where(eq(schema.agent.id, requestedAgentId))
+                  .limit(1)
+              )[0]
 
         if (!agentRow || agentRow.workspaceId !== workspaceId) {
           return forbidden('Agent access denied')
@@ -117,25 +176,45 @@ export const Route = createFileRoute('/api/chat/threads')({
             .set({ hostName: agentRuntimeName })
             .where(eq(schema.agent.id, agentRow.id))
         }
-        await bindExistingSkillsToAgent({
-          db,
-          schema,
-          agentId: agentRow.id,
-          workspaceId,
-        })
-        await bindExistingCapabilitiesToAgent({
-          db,
-          schema,
-          agentId: agentRow.id,
-          grantedBy: session.user.id,
-        })
 
         const thread = await db.transaction(async (tx) => {
           await tx.execute(sql`
             select pg_advisory_xact_lock(
-              hashtext(${`${workspaceId}:${session.user.id}:${agentRow.id}:warm-chat`})
+              hashtext(${`${workspaceId}:${session.user.id}:${primaryIssueId ? `issue-chat:${primaryIssueId}` : `${agentRow.id}:warm-chat`}`})
             )
           `)
+
+          if (primaryIssueId) {
+            const [existingIssueThread] = await tx
+              .select()
+              .from(schema.chatThread)
+              .where(
+                and(
+                  eq(schema.chatThread.workspaceId, workspaceId),
+                  eq(schema.chatThread.ownerUserId, session.user.id),
+                  eq(schema.chatThread.primaryIssueId, primaryIssueId),
+                ),
+              )
+              .orderBy(desc(schema.chatThread.updatedAt))
+              .limit(1)
+
+            if (existingIssueThread) {
+              const [reopenedThread] = await tx
+                .update(schema.chatThread)
+                .set({
+                  agentId: agentRow.id,
+                  archivedAt: null,
+                  runtimeKind,
+                  runtimeKey,
+                  updatedAt: now,
+                })
+                .where(eq(schema.chatThread.id, existingIssueThread.id))
+                .returning()
+
+              if (reopenedThread) return reopenedThread
+              return existingIssueThread
+            }
+          }
 
           if (shouldClaimWarmThread) {
             // Exclude any thread the caller has already disqualified — e.g.,
@@ -175,6 +254,9 @@ export const Route = createFileRoute('/api/chat/threads')({
               agentId: agentRow.id,
               title,
               lastMessage: '',
+              primaryIssueId,
+              runtimeKind,
+              runtimeKey,
               createdAt: now,
               updatedAt: now,
             })
@@ -183,9 +265,12 @@ export const Route = createFileRoute('/api/chat/threads')({
           return createdThread
         })
 
-        return Response.json(toChatThread(thread, agentRuntimeName), {
-          status: 201,
-        })
+        return Response.json(
+          toChatThread(thread, agentRuntimeName, primaryIssue),
+          {
+            status: 201,
+          },
+        )
       },
     },
   },

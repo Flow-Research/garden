@@ -314,6 +314,8 @@ export function toChatThread(
     agentId: record.agentId,
     hostName,
     primary_issue_id: record.primaryIssueId ?? null,
+    runtime_kind: record.runtimeKind as 'chat' | 'issue_run',
+    runtime_key: record.runtimeKey ?? record.id,
     primaryIssue: primaryIssue
       ? {
           id: primaryIssue.id,

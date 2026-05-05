@@ -9,6 +9,8 @@ import {
   type TurnConfig,
   type TurnContext,
 } from '@cloudflare/think'
+import { Workspace } from '@cloudflare/shell'
+import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import type { LanguageModel, ToolSet, UIMessage } from 'ai'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
@@ -59,6 +61,7 @@ import {
   MCP_PROXY_JWT_PERIODIC_REFRESH_WINDOW_MS,
   mcpRuntimeConfig,
 } from './mcp-runtime-config'
+import { createChatSubAgentTools } from './chat-sub-agent-tools'
 
 type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_SECRET: string
@@ -68,6 +71,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   OPENCODE_GO_API_KEY: string
   FILES: R2Bucket
   LOADER: WorkerLoader
+  Sandbox: DurableObjectNamespace<SandboxDO>
 }
 
 type RuntimePrepareResult = ResultValue<void, string>
@@ -221,6 +225,11 @@ function retryDelayMs(attemptCount: number) {
 }
 
 export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
+  override workspace = new Workspace({
+    sql: this.ctx.storage.sql,
+    r2: this.env.FILES,
+    name: () => this.name,
+  })
   private currentRunState: IssueRunToolState | null = null
   private currentRunId: string | null = null
   private currentTriggerReason = ''
@@ -266,6 +275,13 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   override getTools(): ToolSet {
     const context = this.getIssueToolContext()
     return {
+      ...createChatSubAgentTools({
+        databaseUrl: this.env.DATABASE_URL,
+        threadId: this.name,
+        workspace: this.workspace,
+        loader: this.env.LOADER,
+        getSandbox: () => this.getAgentSandbox(),
+      }),
       update_plan: createUpdatePlanTool(context),
       post_comment: createPostCommentTool(context),
       ask_question: createAskQuestionTool(context),
@@ -674,6 +690,55 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
 
   private getDb() {
     return drizzle(this.env.DATABASE_URL, { schema })
+  }
+
+  private getSandboxId() {
+    const pathKey = this.selfPath.map((segment) => segment.name).join('-')
+    const candidate = pathKey || this.name
+    if (candidate.length <= 63) {
+      return candidate
+    }
+
+    return [
+      this.compactSandboxSegment(
+        this.parentPath.at(-1)?.name || 'agent-do',
+        20,
+      ),
+      this.compactSandboxSegment(this.name, 20),
+      this.hashSandboxId(candidate),
+    ].join('-')
+  }
+
+  private compactSandboxSegment(value: string, maxLength: number) {
+    const normalized = value
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+
+    if (!normalized) {
+      return 'sandbox'
+    }
+
+    return normalized.slice(0, maxLength)
+  }
+
+  private hashSandboxId(value: string) {
+    let hash = 2166136261
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index)
+      hash = Math.imul(hash, 16777619)
+    }
+
+    return (hash >>> 0).toString(16)
+  }
+
+  private getAgentSandbox() {
+    return getSandbox(this.env.Sandbox, this.getSandboxId(), {
+      normalizeId: true,
+      sleepAfter: '5m',
+      transport: 'rpc',
+    })
   }
 
   private connectorToolForName(toolName: string) {

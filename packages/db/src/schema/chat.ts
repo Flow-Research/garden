@@ -33,6 +33,8 @@ export const chatThread = pgTable(
     primaryIssueId: uuid('primary_issue_id').references(() => issue.id, {
       onDelete: 'set null',
     }),
+    runtimeKind: text('runtime_kind').notNull().default('chat'),
+    runtimeKey: uuid('runtime_key'),
     title: text('title').notNull(),
     lastMessage: text('last_message').notNull().default(''),
     archivedAt: timestamp('archived_at', { mode: 'date' }),
@@ -50,6 +52,11 @@ export const chatThread = pgTable(
     ),
     index('chat_thread_agent_idx').on(table.agentId),
     index('chat_thread_primary_issue_idx').on(table.primaryIssueId),
+    index('chat_thread_runtime_idx').on(table.runtimeKind, table.runtimeKey),
+    check(
+      'chat_thread_runtime_kind_check',
+      sql`${table.runtimeKind} in ('chat', 'issue_run')`,
+    ),
     check(
       'chat_thread_title_nonempty',
       sql`char_length(trim(${table.title})) > 0`,

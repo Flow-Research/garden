@@ -11,9 +11,11 @@ export { parseJsonBody, parseSearchParams }
 
 export const createChatThreadBodySchema = z
   .object({
+    id: uuidSchema.optional(),
     title: z.string().trim().optional(),
     agent_id: uuidSchema.optional(),
     exclude_thread_ids: z.array(uuidSchema).optional(),
+    primary_issue_id: uuidSchema.optional(),
   })
   .strict()
 

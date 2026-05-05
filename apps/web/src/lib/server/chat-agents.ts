@@ -35,18 +35,6 @@ export async function ensureAgentRow(input: {
     )
 
   if (existingAgent) {
-    await bindExistingSkillsToAgent({
-      db,
-      schema,
-      agentId: existingAgent.id,
-      workspaceId: input.workspaceId,
-    })
-    await bindExistingCapabilitiesToAgent({
-      db,
-      schema,
-      agentId: existingAgent.id,
-      grantedBy: input.ownerUserId,
-    })
     return existingAgent
   }
 

@@ -50,6 +50,7 @@ export async function listChatThreads(workspaceId: string) {
 export async function createChatThread(args: {
   agentId?: string | null
   excludeThreadIds?: string[]
+  id?: string
   primaryIssueId?: string | null
   title?: string
   workspaceId: string
@@ -60,6 +61,7 @@ export async function createChatThread(args: {
     {
       method: 'POST',
       body: JSON.stringify({
+        id: args.id,
         title: args.title,
         agent_id: args.agentId ?? undefined,
         exclude_thread_ids:
@@ -112,8 +114,10 @@ export async function openChatForIssue(args: {
   issueId: string
   issueTitle: string
   agentId: string | null
+  threadId?: string
 }): Promise<AgentChatSession> {
   return createChatThread({
+    id: args.threadId,
     workspaceId: args.workspaceId,
     agentId: args.agentId,
     title: args.issueTitle,
