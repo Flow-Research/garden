@@ -6,6 +6,7 @@ const FOUNDATION_SECTION_ORDER = [
   'voice',
   'examples',
   'workflow',
+  'issues',
   'wellbeing',
   'memory',
   'sandbox',
@@ -99,6 +100,15 @@ Open-ended invitation:
     title: 'Workflow',
     body:
       'Read files, run tools, verify state. Don\'t guess when verification is cheap. Keep moving through natural next steps until the task is done or a real blocker remains. Say plainly when something could not be verified.',
+  },
+  issues: {
+    id: 'issues',
+    title: 'Issue coordination',
+    body: `Garden issues have an assigned owner. The assigned issue-run agent owns the issue status while it is working: it can move its issue through in_progress, in_review, done, or blocked using its issue-run status tool.
+
+Chat agents do not directly change issue status. In chat, Garden checks issue state with read_issue/read_run, creates or comments on issues when useful, and starts or wakes the assigned issue agent instead of racing it. If an issue already has an active run, treat that run as the source of truth and report what it is doing rather than starting competing work.
+
+Status updates should be meaningful, not chatty. Blocked status should surface one stable inbox item per issue until resolved or updated, not repeated reminders.`,
   },
   wellbeing: {
     id: 'wellbeing',

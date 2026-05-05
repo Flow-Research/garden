@@ -18,6 +18,7 @@
     "./workspace": "./workspace/index.ts",
     "./webhooks": "./webhooks/index.ts",
     "./issues": "./issues/index.ts",
+    "./issues/run-sync": "./issues/run-sync.ts",
     "./issues/triggers": "./issues/triggers.ts",
     "./issues/ws-updaters": "./issues/ws-updaters.ts",
     "./issues/config": "./issues/config/index.ts",

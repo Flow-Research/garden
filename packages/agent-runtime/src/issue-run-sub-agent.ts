@@ -34,7 +34,11 @@ import { createMarkBlockedTool } from './agent-tools/mark-blocked'
 import { createPostCommentTool } from './agent-tools/post-comment'
 import { createReadSourceTool } from './agent-tools/read-source'
 import { createReviseWorkProductTool } from './agent-tools/revise-work-product'
-import { createUpdatePlanTool, readIssueRunPlan } from './agent-tools/update-plan'
+import { createUpdateIssueStatusTool } from './agent-tools/update-issue-status'
+import {
+  createUpdatePlanTool,
+  readIssueRunPlan,
+} from './agent-tools/update-plan'
 import { assembleFoundationPrompt } from './prompt'
 import { createAgentModel } from './model'
 import {
@@ -257,6 +261,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       ask_question: createAskQuestionTool(context),
       create_work_product: createCreateWorkProductTool(context),
       revise_work_product: createReviseWorkProductTool(context),
+      update_issue_status: createUpdateIssueStatusTool(context),
       mark_blocked: createMarkBlockedTool(context),
       create_child_issue: createCreateChildIssueTool(context),
       attach_source_binding: createAttachSourceBindingTool(context),

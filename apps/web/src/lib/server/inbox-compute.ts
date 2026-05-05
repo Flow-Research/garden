@@ -108,6 +108,10 @@ function buildAssignedSource(
 function buildBlockedSource(issue: IssueRow): SourceItem | null {
   if (issue.status !== 'blocked') return null
   const activityAt = preferDate(issue.updatedAt, issue.createdAt)
+  const actor =
+    issue.assigneeType === 'agent'
+      ? actorFromAgentId(issue.assigneeId)
+      : { actorType: null, actorId: null }
   return {
     key: `blocked:${issue.id}`,
     type: 'agent_blocked',
@@ -116,8 +120,7 @@ function buildBlockedSource(issue: IssueRow): SourceItem | null {
     title: `${issue.title} is blocked`,
     body: truncate(issue.description),
     issueStatus: pickIssueStatus(issue.status),
-    actorType: null,
-    actorId: null,
+    ...actor,
     activityAt,
     details: {
       issue_number: String(issue.number),
