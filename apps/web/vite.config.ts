@@ -52,14 +52,14 @@ const config = defineConfig({
   environments: {
     ssr: {
       optimizeDeps: {
-        include: [
+        exclude: [
           'react',
           'react/jsx-runtime',
           'react/jsx-dev-runtime',
           'react-dom',
           'react-dom/server',
-          '@tanstack/react-router > @tanstack/react-store',
         ],
+        include: ['@tanstack/react-router > @tanstack/react-store'],
       },
     },
   },
