@@ -1,15 +1,15 @@
 import {
+  issueInsertSchema,
   issueSourceBindingInsertSchema,
   issuePrioritySchema,
   issueStatusSchema,
+  issueUpdateSchema,
   uuidSchema,
 } from '@garden/db/validation'
 import { z } from 'zod'
 import {
   datetimeStringSchema,
-  nonEmptyStringSchema,
   nonNegativeQueryIntSchema,
-  nullableOptionalString,
   parseJsonBody,
   parseSearchParams,
   positiveQueryIntSchema,
@@ -18,6 +18,10 @@ import {
 export { parseJsonBody, parseSearchParams }
 
 const issueApiAssigneeTypeSchema = z.enum(['member', 'agent'])
+const issueDueDateApiSchema = z.union([
+  datetimeStringSchema,
+  issueInsertSchema.shape.dueDate,
+])
 
 export const commentBodySchema = z
   .object({
@@ -61,31 +65,31 @@ export const issuesListSearchSchema = z.object({
 
 export const createIssueBodySchema = z
   .object({
-    title: nonEmptyStringSchema,
-    description: nullableOptionalString,
-    status: issueStatusSchema.optional(),
-    priority: issuePrioritySchema.optional(),
+    title: issueInsertSchema.shape.title,
+    description: issueInsertSchema.shape.description.optional().nullable(),
+    status: issueInsertSchema.shape.status.optional(),
+    priority: issueInsertSchema.shape.priority.optional(),
     assignee_type: issueApiAssigneeTypeSchema.optional().nullable(),
-    assignee_id: uuidSchema.optional().nullable(),
-    parent_issue_id: uuidSchema.optional().nullable(),
-    project_id: uuidSchema.optional().nullable(),
-    due_date: datetimeStringSchema.optional().nullable(),
+    assignee_id: issueInsertSchema.shape.assigneeId.optional().nullable(),
+    parent_issue_id: issueInsertSchema.shape.parentId.optional().nullable(),
+    project_id: issueInsertSchema.shape.projectId.optional().nullable(),
+    due_date: issueDueDateApiSchema.optional().nullable(),
     attachment_ids: z.array(uuidSchema).optional(),
   })
   .strict()
 
 export const updateIssueBodySchema = z
   .object({
-    title: nonEmptyStringSchema.optional(),
-    description: nullableOptionalString,
-    status: issueStatusSchema.optional(),
-    priority: issuePrioritySchema.optional(),
+    title: issueUpdateSchema.shape.title.optional(),
+    description: issueUpdateSchema.shape.description.optional().nullable(),
+    status: issueUpdateSchema.shape.status.optional(),
+    priority: issueUpdateSchema.shape.priority.optional(),
     assignee_type: issueApiAssigneeTypeSchema.optional().nullable(),
-    assignee_id: uuidSchema.optional().nullable(),
-    parent_issue_id: uuidSchema.optional().nullable(),
-    project_id: uuidSchema.optional().nullable(),
-    position: z.number().finite().optional(),
-    due_date: datetimeStringSchema.optional().nullable(),
+    assignee_id: issueUpdateSchema.shape.assigneeId.optional().nullable(),
+    parent_issue_id: issueUpdateSchema.shape.parentId.optional().nullable(),
+    project_id: issueUpdateSchema.shape.projectId.optional().nullable(),
+    position: issueUpdateSchema.shape.position.optional(),
+    due_date: issueDueDateApiSchema.optional().nullable(),
   })
   .strict()
   .refine(

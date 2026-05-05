@@ -119,8 +119,12 @@ export function useUpdateIssue() {
   const qc = useQueryClient()
   const wsId = useWorkspaceId()
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string } & UpdateIssueRequest) =>
-      api.updateIssue(id, data),
+    mutationFn: async ({
+      id,
+      ...data
+    }: { id: string } & UpdateIssueRequest) => {
+      return api.updateIssue(id, data)
+    },
     onMutate: ({ id, ...data }) => {
       // Fire-and-forget cancelQueries — keeps onMutate synchronous so the
       // cache update happens in the same tick as mutate(). Awaiting would
@@ -175,6 +179,8 @@ export function useUpdateIssue() {
     onSettled: (_data, _err, vars, ctx) => {
       qc.invalidateQueries({ queryKey: issueKeys.detail(wsId, vars.id) })
       qc.invalidateQueries({ queryKey: issueKeys.list(wsId) })
+      qc.invalidateQueries({ queryKey: issueKeys.activeRun(vars.id) })
+      qc.invalidateQueries({ queryKey: issueKeys.runEvents(vars.id) })
       // Invalidate old parent's children cache
       if (ctx?.parentId) {
         qc.invalidateQueries({

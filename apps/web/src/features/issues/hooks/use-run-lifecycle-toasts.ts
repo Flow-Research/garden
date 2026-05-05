@@ -162,66 +162,6 @@ export function useRunLifecycleToasts({
   ])
 }
 
-// ─── Demo trigger (used in /dev/issue-flow showcase) ─────────────────────────
-
-/** Fire one toast of each lifecycle kind, sequenced ~1s apart. */
-export function fireLifecycleToastDemo({
-  agentName = 'Garden',
-  issueIdentifier = 'ACC-43',
-  issueTitle = 'Add OAuth callback for GitHub',
-  onNavigate,
-}: {
-  agentName?: string
-  issueIdentifier?: string
-  issueTitle?: string
-  onNavigate?: (issueIdentifier: string, focusKey: string) => void
-} = {}) {
-  const subject = `${issueIdentifier} · ${issueTitle}`
-  const sequence: Array<() => void> = [
-    () =>
-      toast.warning(`${agentName} has a question`, {
-        description: subject,
-        action: {
-          label: 'Reply',
-          onClick: () => onNavigate?.(issueIdentifier, 'question:demo'),
-        },
-      }),
-    () =>
-      toast.warning(`${agentName} wants your approval`, {
-        description: subject,
-        action: {
-          label: 'Review',
-          onClick: () => onNavigate?.(issueIdentifier, 'approval:demo'),
-        },
-      }),
-    () =>
-      toast.error(`${agentName} is blocked`, {
-        description: subject,
-        action: {
-          label: 'Open',
-          onClick: () => onNavigate?.(issueIdentifier, 'blocked:demo'),
-        },
-      }),
-    () =>
-      toast(`${agentName} hit an error`, {
-        description: subject,
-        action: {
-          label: 'Open',
-          onClick: () => onNavigate?.(issueIdentifier, 'failed_run:demo'),
-        },
-      }),
-    () =>
-      toast.success(`${agentName} finished`, {
-        description: subject,
-        action: {
-          label: 'View',
-          onClick: () => onNavigate?.(issueIdentifier, 'succeeded:demo'),
-        },
-      }),
-  ]
-  sequence.forEach((fn, i) => setTimeout(fn, i * 900))
-}
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function truncate(text: string, max: number): string {

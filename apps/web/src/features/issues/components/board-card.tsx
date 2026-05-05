@@ -1,13 +1,13 @@
 'use client'
 
 import { useCallback, memo } from 'react'
-import { AppLink } from '../../navigation'
 import { useSortable, defaultAnimateLayoutChanges } from '@dnd-kit/sortable'
 import type { AnimateLayoutChanges } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { toast } from 'sonner'
 import type { Issue, UpdateIssueRequest } from '@garden/core/types'
 import { CalendarDays } from 'lucide-react'
+import { Badge } from '@garden/ui/components/ui/badge'
 import { ActorAvatar } from '../../common/actor-avatar'
 import { useUpdateIssue } from '@/lib/issues/mutations'
 import { PriorityIcon } from './priority-icon'
@@ -16,6 +16,27 @@ import { PRIORITY_CONFIG } from '@garden/core/issues/config'
 import { useViewStore } from '@garden/core/issues/stores/view-store-context'
 import { ProgressRing } from './progress-ring'
 import type { ChildProgress } from './list-row'
+import { LiveDot } from './live-dot'
+import { ConnectorIcon } from './connector-icon'
+import { useWorkspaceDock } from '@/components/shell/workspace-dock'
+
+/**
+ * Hook variant of `useUpdateIssue` for editable cards. Centralized here so the
+ * presentational `BoardCardContent` stays decoupled from query-client / workspace
+ * context — preview surfaces don't pay the cost.
+ */
+function useBoardCardUpdate(issueId: string) {
+  const updateIssueMutation = useUpdateIssue()
+  return useCallback(
+    (updates: Partial<UpdateIssueRequest>) => {
+      updateIssueMutation.mutate(
+        { id: issueId, ...updates },
+        { onError: () => toast.error('Failed to update issue') },
+      )
+    },
+    [issueId, updateIssueMutation],
+  )
+}
 
 function formatDate(date: string): string {
   return new Date(date).toLocaleDateString('en-US', {
@@ -41,23 +62,26 @@ export const BoardCardContent = memo(function BoardCardContent({
   issue,
   editable = false,
   childProgress,
+  onUpdate,
 }: {
   issue: Issue
   editable?: boolean
   childProgress?: ChildProgress
+  /** Mutation handler for editable pickers. Required when `editable` is true.
+   * Caller wires this (typically via `useUpdateIssue`); previews can omit it
+   * and pass `editable={false}` to render in read-only mode without touching
+   * any query / workspace context. */
+  onUpdate?: (updates: Partial<UpdateIssueRequest>) => void
 }) {
   const storeProperties = useViewStore((s) => s.cardProperties)
   const priorityCfg = PRIORITY_CONFIG[issue.priority]
 
-  const updateIssueMutation = useUpdateIssue()
+  // Read-only safe default — pickers receive a no-op when not editable.
   const handleUpdate = useCallback(
     (updates: Partial<UpdateIssueRequest>) => {
-      updateIssueMutation.mutate(
-        { id: issue.id, ...updates },
-        { onError: () => toast.error('Failed to update issue') },
-      )
+      onUpdate?.(updates)
     },
-    [issue.id, updateIssueMutation],
+    [onUpdate],
   )
 
   const showPriority = storeProperties.priority
@@ -66,28 +90,44 @@ export const BoardCardContent = memo(function BoardCardContent({
     storeProperties.assignee && issue.assignee_type && issue.assignee_id
   const showDueDate = storeProperties.dueDate && issue.due_date
 
+  const liveVariant: React.ComponentProps<typeof LiveDot>['variant'] | null =
+    issue.active_run_id
+      ? 'running'
+      : issue.status === 'blocked'
+        ? 'blocked'
+        : null
+
   return (
     <div className="rounded-lg border bg-card p-3.5 shadow-[0_1px_2px_0_rgba(0,0,0,0.03)] transition-shadow group-hover:shadow-sm">
-      {/* Row 1: Identifier */}
-      <p className="text-xs text-muted-foreground">{issue.identifier}</p>
+      {/* Row 1: Identifier + live indicators */}
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        {issue.source_summary && (
+          <ConnectorIcon
+            connectorId={issue.source_summary.connector_id}
+            size={11}
+          />
+        )}
+        <span>{issue.identifier}</span>
+        {liveVariant && <LiveDot variant={liveVariant} className="ml-0.5" />}
+      </div>
 
-      {/* Row 2: Title */}
       <p className="mt-1 text-sm font-medium leading-snug line-clamp-2">
         {issue.title}
       </p>
 
       {/* Sub-issue progress */}
       {childProgress && (
-        <div className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-muted/60 px-1.5 py-0.5">
+        <Badge
+          variant="secondary"
+          className="mt-1.5 rounded-full bg-muted/60 px-1.5 text-[11px] font-medium tabular-nums text-muted-foreground"
+        >
           <ProgressRing
             done={childProgress.done}
             total={childProgress.total}
             size={14}
           />
-          <span className="text-[11px] text-muted-foreground tabular-nums font-medium">
-            {childProgress.done}/{childProgress.total}
-          </span>
-        </div>
+          {childProgress.done}/{childProgress.total}
+        </Badge>
       )}
 
       {/* Description */}
@@ -130,8 +170,8 @@ export const BoardCardContent = memo(function BoardCardContent({
                   priority={issue.priority}
                   onUpdate={handleUpdate}
                   trigger={
-                    <span
-                      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${priorityCfg.badgeBg} ${priorityCfg.badgeText}`}
+                    <Badge
+                      className={`rounded px-1.5 ${priorityCfg.badgeBg} ${priorityCfg.badgeText}`}
                     >
                       <PriorityIcon
                         priority={issue.priority}
@@ -139,13 +179,13 @@ export const BoardCardContent = memo(function BoardCardContent({
                         inheritColor
                       />
                       {priorityCfg.label}
-                    </span>
+                    </Badge>
                   }
                 />
               </PickerWrapper>
             ) : (
-              <span
-                className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${priorityCfg.badgeBg} ${priorityCfg.badgeText}`}
+              <Badge
+                className={`rounded px-1.5 ${priorityCfg.badgeBg} ${priorityCfg.badgeText}`}
               >
                 <PriorityIcon
                   priority={issue.priority}
@@ -153,7 +193,7 @@ export const BoardCardContent = memo(function BoardCardContent({
                   inheritColor
                 />
                 {priorityCfg.label}
-              </span>
+              </Badge>
             ))}
           {showDueDate && (
             <div className="ml-auto">
@@ -227,6 +267,22 @@ export const DraggableBoardCard = memo(function DraggableBoardCard({
     transition,
   }
 
+  const dock = useWorkspaceDock()
+  const handleUpdate = useBoardCardUpdate(issue.id)
+
+  const handleOpen = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      if (isDragging) return
+      dock?.openPanel({
+        kind: 'issue-detail',
+        title: issue.title,
+        entityId: issue.id,
+      })
+    },
+    [dock, issue.id, issue.title, isDragging],
+  )
+
   return (
     <div
       ref={setNodeRef}
@@ -235,16 +291,18 @@ export const DraggableBoardCard = memo(function DraggableBoardCard({
       {...listeners}
       className={isDragging ? 'opacity-30' : ''}
     >
-      <AppLink
+      <a
         href={`/issues/${issue.id}`}
-        className={`group block transition-colors ${isDragging ? 'pointer-events-none' : ''}`}
+        onClick={handleOpen}
+        className={`group block transition-colors cursor-pointer ${isDragging ? 'pointer-events-none' : ''}`}
       >
         <BoardCardContent
           issue={issue}
           editable
           childProgress={childProgress}
+          onUpdate={handleUpdate}
         />
-      </AppLink>
+      </a>
     </div>
   )
 })
