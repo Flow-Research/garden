@@ -148,6 +148,34 @@
       "when": 1777919369681,
       "tag": "0020_dedupe_agent_host_names",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1777922969681,
+      "tag": "0022_organization_issue_prefix",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1777926569681,
+      "tag": "0023_chat_thread_primary_issue_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1777930169681,
+      "tag": "0024_permission_request_run_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1777933769681,
+      "tag": "0025_chat_thread_runtime_binding",
+      "breakpoints": true
     }
   ]
 }

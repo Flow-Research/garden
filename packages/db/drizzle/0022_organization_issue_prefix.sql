@@ -1,5 +1,5 @@
 ALTER TABLE "organization"
-ADD COLUMN "issue_prefix" text NOT NULL DEFAULT 'ISS';
+ADD COLUMN IF NOT EXISTS "issue_prefix" text NOT NULL DEFAULT 'ISS';
 
 WITH derived AS (
   SELECT
@@ -32,6 +32,13 @@ SET "issue_prefix" = left(
 FROM derived
 WHERE "organization".id = derived.id;
 
-ALTER TABLE "organization"
-ADD CONSTRAINT "organization_issue_prefix_format"
-CHECK ("issue_prefix" ~ '^[A-Z0-9]{2,8}$');
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'organization_issue_prefix_format'
+  ) THEN
+    ALTER TABLE "organization"
+    ADD CONSTRAINT "organization_issue_prefix_format"
+    CHECK ("issue_prefix" ~ '^[A-Z0-9]{2,8}$');
+  END IF;
+END $$;
