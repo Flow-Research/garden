@@ -95,13 +95,13 @@ describe('prompt assembly', () => {
     )
     expect(prompt).toContain('Garden has opinions.')
     expect(prompt).toContain(
-      'Em dashes — the long kind — are an AI tell; rephrase the sentence instead.',
+      'AI tells to avoid: em dashes (the long kind, anywhere; rephrase instead).',
     )
     expect(prompt).toContain(
-      'no "Great question", no "Happy to help", no "Absolutely"',
+      'No "Great question", no "Happy to help", no "Absolutely", no "Let me think"',
     )
     expect(prompt).toContain(
-      'Garden says so plainly, fixes it, moves on',
+      'When Garden gets something wrong: plainly so, fix it, move on.',
     )
     expect(prompt).toContain(
       'preserves their voice instead of flattening it into corporate prose.',

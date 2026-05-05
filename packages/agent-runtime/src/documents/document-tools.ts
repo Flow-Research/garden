@@ -6,9 +6,12 @@ import {
   AlignmentType,
   BorderStyle,
   Document,
+  Footer,
+  Header,
   HeadingLevel,
   Packer,
   PageBreak,
+  PageNumber,
   PageOrientation,
   Paragraph,
   Table,
@@ -43,6 +46,56 @@ type DocumentSection = {
   content?: string
   pageBreak?: boolean
   table?: { headers: string[]; rows: string[][] }
+}
+
+export type GenerateDocxPageSize = 'letter' | 'a4'
+
+export type GenerateDocxOptions = {
+  pageSize?: GenerateDocxPageSize
+  font?: string
+  header?: string
+  footer?: string
+  pageNumbers?: boolean
+}
+
+const PAGE_DIMENSIONS_DXA = {
+  letter: { width: 12240, height: 15840 },
+  a4: { width: 11906, height: 16838 },
+} as const
+
+const DEFAULT_FONT = 'Times New Roman'
+
+function parseInlineRuns(
+  text: string,
+  baseRun: { font: string; size: number },
+): InstanceType<typeof TextRun>[] {
+  if (!text) return []
+  const runs: InstanceType<typeof TextRun>[] = []
+  const pattern = /(\*\*[^*]+\*\*|\*[^*]+\*)/g
+  let cursor = 0
+  for (const match of text.matchAll(pattern)) {
+    const start = match.index ?? 0
+    if (start > cursor) {
+      runs.push(
+        new TextRun({ text: text.slice(cursor, start), ...baseRun }),
+      )
+    }
+    const token = match[0]
+    if (token.startsWith('**')) {
+      runs.push(
+        new TextRun({ text: token.slice(2, -2), bold: true, ...baseRun }),
+      )
+    } else {
+      runs.push(
+        new TextRun({ text: token.slice(1, -1), italics: true, ...baseRun }),
+      )
+    }
+    cursor = start + token.length
+  }
+  if (cursor < text.length) {
+    runs.push(new TextRun({ text: text.slice(cursor), ...baseRun }))
+  }
+  return runs
 }
 
 export type EditAnnotation = {
@@ -175,13 +228,14 @@ export async function generateDocx(args: {
   title: string
   sections: DocumentSection[]
   landscape?: boolean
+  options?: GenerateDocxOptions
 }) {
   const threadContext = await loadThreadContext(args.context)
   if (threadContext.isErr())
     return { ok: false, error: threadContext.error.message }
   const { db, workspaceId, ownerUserId } = threadContext.value
 
-  const FONT = 'Times New Roman'
+  const FONT = args.options?.font?.trim() || DEFAULT_FONT
   const SIZE = 22
   type DocChild = InstanceType<typeof Paragraph> | InstanceType<typeof Table>
   const children: DocChild[] = [
@@ -305,40 +359,109 @@ export async function generateDocx(args: {
         const trimmed = line.trim()
         if (!trimmed) continue
         const bulletMatch = trimmed.match(/^[-*]\s+(.+)/)
+        const bodyText = bulletMatch ? bulletMatch[1] : trimmed
+        const inlineRuns = parseInlineRuns(bodyText ?? '', {
+          font: FONT,
+          size: SIZE,
+        })
         children.push(
           bulletMatch
             ? new Paragraph({
                 bullet: { level: 0 },
                 spacing: { after: 120 },
-                children: [
-                  new TextRun({
-                    text: bulletMatch[1],
-                    font: FONT,
-                    size: SIZE,
-                  }),
-                ],
+                children: inlineRuns,
               })
             : new Paragraph({
                 spacing: { after: 120 },
-                children: [
-                  new TextRun({ text: trimmed, font: FONT, size: SIZE }),
-                ],
+                children: inlineRuns,
               }),
         )
       }
     }
   }
 
-  const doc = new Document({
-    sections: [
-      {
-        properties: args.landscape
-          ? { page: { size: { orientation: PageOrientation.LANDSCAPE } } }
-          : {},
-        children,
+  const pageSize = args.options?.pageSize ?? 'letter'
+  const dimensions = PAGE_DIMENSIONS_DXA[pageSize]
+  const pageProperties = {
+    page: {
+      size: {
+        width: dimensions.width,
+        height: dimensions.height,
+        ...(args.landscape
+          ? { orientation: PageOrientation.LANDSCAPE }
+          : {}),
       },
-    ],
-  })
+      margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
+    },
+  }
+
+  const headerText = args.options?.header?.trim()
+  const footerText = args.options?.footer?.trim()
+  const showPageNumbers = args.options?.pageNumbers === true
+
+  const sectionConfig: {
+    properties: typeof pageProperties
+    headers?: { default: InstanceType<typeof Header> }
+    footers?: { default: InstanceType<typeof Footer> }
+    children: typeof children
+  } = { properties: pageProperties, children }
+
+  if (headerText) {
+    sectionConfig.headers = {
+      default: new Header({
+        children: [
+          new Paragraph({
+            alignment: AlignmentType.LEFT,
+            children: [
+              new TextRun({ text: headerText, font: FONT, size: SIZE - 4 }),
+            ],
+          }),
+        ],
+      }),
+    }
+  }
+
+  if (footerText || showPageNumbers) {
+    const footerChildren: InstanceType<typeof TextRun>[] = []
+    if (footerText) {
+      footerChildren.push(
+        new TextRun({ text: footerText, font: FONT, size: SIZE - 4 }),
+      )
+    }
+    if (showPageNumbers) {
+      if (footerText) {
+        footerChildren.push(
+          new TextRun({ text: '   ', font: FONT, size: SIZE - 4 }),
+        )
+      }
+      footerChildren.push(
+        new TextRun({
+          children: ['Page ', PageNumber.CURRENT],
+          font: FONT,
+          size: SIZE - 4,
+        }),
+        new TextRun({
+          children: [' of ', PageNumber.TOTAL_PAGES],
+          font: FONT,
+          size: SIZE - 4,
+        }),
+      )
+    }
+    sectionConfig.footers = {
+      default: new Footer({
+        children: [
+          new Paragraph({
+            alignment: showPageNumbers
+              ? AlignmentType.RIGHT
+              : AlignmentType.LEFT,
+            children: footerChildren,
+          }),
+        ],
+      }),
+    }
+  }
+
+  const doc = new Document({ sections: [sectionConfig] })
   const packResult = await Result.tryPromise({
     try: async () => await Packer.toBuffer(doc),
     catch: (error) =>
