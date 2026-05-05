@@ -74,8 +74,8 @@ import {
   useState,
 } from 'react'
 
-type DropdownMenuSelectEvent = Parameters<
-  NonNullable<ComponentProps<typeof DropdownMenuItem>['onSelect']>
+type DropdownMenuClickEvent = Parameters<
+  NonNullable<ComponentProps<typeof DropdownMenuItem>['onClick']>
 >[0]
 type InputGroupButtonClickEvent = Parameters<
   NonNullable<ComponentProps<typeof InputGroupButton>['onClick']>
@@ -426,16 +426,15 @@ export const PromptInputActionAddAttachments = ({
 }: PromptInputActionAddAttachmentsProps) => {
   const attachments = usePromptInputAttachments()
 
-  const handleSelect = useCallback(
-    (e: DropdownMenuSelectEvent) => {
-      e.preventDefault()
+  const handleClick = useCallback(
+    (_event: DropdownMenuClickEvent) => {
       attachments.openFileDialog()
     },
     [attachments],
   )
 
   return (
-    <DropdownMenuItem {...props} onSelect={handleSelect}>
+    <DropdownMenuItem {...props} onClick={handleClick}>
       <ImageIcon className="mr-2 size-4" /> {label}
     </DropdownMenuItem>
   )
@@ -449,14 +448,14 @@ export type PromptInputActionAddScreenshotProps = ComponentProps<
 
 export const PromptInputActionAddScreenshot = ({
   label = 'Take screenshot',
-  onSelect,
+  onClick,
   ...props
 }: PromptInputActionAddScreenshotProps) => {
   const attachments = usePromptInputAttachments()
 
-  const handleSelect = useCallback(
-    async (event: DropdownMenuSelectEvent) => {
-      onSelect?.(event)
+  const handleClick = useCallback(
+    async (event: DropdownMenuClickEvent) => {
+      onClick?.(event)
       if (event.defaultPrevented) {
         return
       }
@@ -476,11 +475,11 @@ export const PromptInputActionAddScreenshot = ({
         throw error
       }
     },
-    [onSelect, attachments],
+    [onClick, attachments],
   )
 
   return (
-    <DropdownMenuItem {...props} onSelect={handleSelect}>
+    <DropdownMenuItem {...props} onClick={handleClick}>
       <Monitor className="mr-2 size-4" />
       {label}
     </DropdownMenuItem>

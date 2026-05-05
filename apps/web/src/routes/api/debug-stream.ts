@@ -50,7 +50,9 @@ export const Route = createFileRoute('/api/debug-stream')({
         if (searchResult.isErr()) return badRequest(searchResult.error.message)
 
         const threadId =
-          searchResult.value.thread_id ?? searchResult.value.session_id ?? undefined
+          searchResult.value.thread_id ??
+          searchResult.value.session_id ??
+          undefined
 
         if (!threadId) {
           return new Response(null, { status: 204 })
@@ -120,15 +122,11 @@ export const Route = createFileRoute('/api/debug-stream')({
             }
 
             const tasks = [
-              wrap('meta', () =>
-                debugChatThreadMeta({ threadId, hostName }),
-              ),
+              wrap('meta', () => debugChatThreadMeta({ threadId, hostName })),
               wrap('prompt', () =>
                 debugChatThreadPrompt({ threadId, hostName }),
               ),
-              wrap('tools', () =>
-                debugChatThreadTools({ threadId, hostName }),
-              ),
+              wrap('tools', () => debugChatThreadTools({ threadId, hostName })),
               wrap('workspace', () =>
                 debugChatThreadWorkspace({ threadId, hostName }),
               ),

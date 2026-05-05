@@ -393,6 +393,7 @@ function CommentCard({
   const { uploadWithToast } = useFileUpload(api)
   const [open, setOpen] = useState(true)
   const [editing, setEditing] = useState(false)
+  const [replyOpen, setReplyOpen] = useState(false)
   const editEditorRef = useRef<ContentEditorRef>(null)
   const cancelledRef = useRef(false)
   const { isDragOver: parentDragOver, dropZoneProps: parentDropZoneProps } =
@@ -465,7 +466,7 @@ function CommentCard({
     >
       <Collapsible open={open} onOpenChange={setOpen}>
         {/* Header — always visible, acts as toggle */}
-        <div className="px-4 py-3">
+        <div className="px-3.5 py-2.5">
           <div className="flex items-center gap-2.5">
             <CollapsibleTrigger className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
               <ChevronRight
@@ -568,7 +569,7 @@ function CommentCard({
         {/* Collapsible body */}
         <CollapsibleContent>
           {/* Parent comment body */}
-          <div className="px-4 pb-3">
+          <div className="px-3.5 pb-2.5">
             {editing ? (
               <div
                 {...parentDropZoneProps}
@@ -614,14 +615,24 @@ function CommentCard({
                   className="mt-1.5 pl-10"
                 />
                 {!isTemp && (
-                  <ReactionBar
-                    reactions={reactions}
-                    currentUserId={currentUserId}
-                    onToggle={(emoji) => onToggleReaction(entry.id, emoji)}
-                    getActorName={getActorName}
-                    hideAddButton={!isLongContent}
-                    className="mt-1.5 pl-10"
-                  />
+                  <div className="mt-1.5 pl-10 flex items-center gap-2">
+                    <ReactionBar
+                      reactions={reactions}
+                      currentUserId={currentUserId}
+                      onToggle={(emoji) => onToggleReaction(entry.id, emoji)}
+                      getActorName={getActorName}
+                      hideAddButton={!isLongContent}
+                    />
+                    {!replyOpen && allNestedReplies.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setReplyOpen(true)}
+                        className="ml-auto text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Reply
+                      </button>
+                    )}
+                  </div>
                 )}
               </>
             )}
@@ -648,19 +659,31 @@ function CommentCard({
             </div>
           ))}
 
-          {/* Reply input */}
-          <div className="border-t border-border/50 px-4 py-2.5">
-            <ReplyInput
-              issueId={issueId}
-              placeholder="Leave a reply..."
-              size="sm"
-              avatarType="member"
-              avatarId={currentUserId ?? ''}
-              onSubmit={(content, attachmentIds) =>
-                onReply(entry.id, content, attachmentIds)
-              }
-            />
-          </div>
+          {/* Reply input — only shown when there are replies or the user
+          clicked Reply. Otherwise the comment ends at its body, keeping the
+          activity stream quiet when threads are empty. */}
+          {(replyOpen || allNestedReplies.length > 0) && (
+            <div className="border-t border-border/50 px-4 py-2.5">
+              <ReplyInput
+                issueId={issueId}
+                placeholder="Leave a reply..."
+                size="sm"
+                avatarType="member"
+                avatarId={currentUserId ?? ''}
+                submitOnEnter
+                autoFocus={replyOpen}
+                onCancel={
+                  allNestedReplies.length === 0
+                    ? () => setReplyOpen(false)
+                    : undefined
+                }
+                onSubmit={async (content, attachmentIds) => {
+                  await onReply(entry.id, content, attachmentIds)
+                  setReplyOpen(false)
+                }}
+              />
+            </div>
+          )}
         </CollapsibleContent>
       </Collapsible>
     </Card>

@@ -53,6 +53,7 @@ export const issueRunEventTypeValues = [
   'issue_run:tool_started',
   'issue_run:tool_finished',
   'issue_run:work_product_created',
+  'issue_run:source_binding_added',
   'issue_run:input_requested',
   'issue_run:approval_requested',
   'issue_run:blocked',

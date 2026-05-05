@@ -10,6 +10,7 @@ import {
   AvatarFallback,
   AvatarImage,
 } from '@garden/ui/components/ui/avatar'
+import { Badge } from '@garden/ui/components/ui/badge'
 import {
   Tabs,
   TabsContent,
@@ -113,10 +114,13 @@ export function AgentDetail({
 
 function StatusPill({ status }: { status: Agent['status'] }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/40 px-2 py-0.5 text-[11px] font-medium text-muted-foreground capitalize">
+    <Badge
+      variant="outline"
+      className="rounded-full border-border/70 bg-muted/40 text-[11px] text-muted-foreground capitalize"
+    >
       <span className={cn('size-1.5 rounded-full', STATUS_COLOR[status])} />
       {status}
-    </span>
+    </Badge>
   )
 }
 

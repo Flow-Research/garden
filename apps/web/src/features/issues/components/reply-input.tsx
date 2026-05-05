@@ -8,6 +8,7 @@ import {
   useFileDropZone,
   FileDropOverlay,
 } from '../../editor'
+import { Button } from '@garden/ui/components/ui/button'
 import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
 import { ActorAvatar } from '../../common/actor-avatar'
 import { useFileUpload } from '@garden/core/hooks/use-file-upload'
@@ -24,7 +25,11 @@ interface ReplyInputProps {
   avatarType: string
   avatarId: string
   onSubmit: (content: string, attachmentIds?: string[]) => Promise<void>
+  onCancel?: () => void
   size?: 'sm' | 'default'
+  /** When true, bare Enter submits the reply (chat-style). Default true for replies. */
+  submitOnEnter?: boolean
+  autoFocus?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -37,7 +42,10 @@ function ReplyInput({
   avatarType,
   avatarId,
   onSubmit,
+  onCancel,
   size = 'default',
+  submitOnEnter = true,
+  autoFocus = false,
 }: ReplyInputProps) {
   const editorRef = useRef<ContentEditorRef>(null)
   const measureRef = useRef<HTMLDivElement>(null)
@@ -60,6 +68,14 @@ function ReplyInput({
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
+
+  useEffect(() => {
+    if (autoFocus) {
+      // Defer to next tick so the editor has mounted and is ready to focus.
+      const id = requestAnimationFrame(() => editorRef.current?.focus())
+      return () => cancelAnimationFrame(id)
+    }
+  }, [autoFocus])
 
   const handleUpload = async (file: File) => {
     const result = await uploadWithToast(file, { issueId })
@@ -115,6 +131,7 @@ function ReplyInput({
               onUpdate={(md) => setIsEmpty(!md.trim())}
               onSubmit={handleSubmit}
               onUploadFile={handleUpload}
+              submitOnEnter={submitOnEnter}
               debounceMs={100}
             />
           </div>
@@ -124,18 +141,26 @@ function ReplyInput({
             size="sm"
             onSelect={(file) => editorRef.current?.uploadFile(file)}
           />
-          <button
-            type="button"
+          {onCancel && (
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={onCancel}
+              className="px-1.5 text-[11px] text-muted-foreground"
+            >
+              Cancel
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon-xs"
             disabled={isEmpty || submitting}
             onClick={handleSubmit}
-            className="inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
+            className="size-6 rounded-full text-muted-foreground"
+            aria-label={submitting ? 'Submitting reply' : 'Submit reply'}
           >
-            {submitting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <ArrowUp className="h-3.5 w-3.5" />
-            )}
-          </button>
+            {submitting ? <Loader2 className="animate-spin" /> : <ArrowUp />}
+          </Button>
         </div>
         {isDragOver && <FileDropOverlay />}
       </div>

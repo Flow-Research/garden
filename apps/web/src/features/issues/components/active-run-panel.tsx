@@ -60,7 +60,11 @@ export interface ActiveRunPanelProps {
    */
   pendingQuestion?: StructuredQuestion | string | null
   /** When `waiting_for_approval`, a preview of what Bot wants to do. */
-  pendingApprovalPreview?: { title: string; body: string; targetLabel?: string } | null
+  pendingApprovalPreview?: {
+    title: string
+    body: string
+    targetLabel?: string
+  } | null
   /** Pulse the question/approval card on mount — for inbox deep-link arrivals. */
   pulseFocus?: boolean
   /**
@@ -70,7 +74,11 @@ export interface ActiveRunPanelProps {
    * polling derives this from the latest `issue_run_event` payload. The dev
    * showcase wires `useDemoAgentPresence` for animation without a backend.
    */
-  presence?: { kind: AgentPresenceKind; detail?: string | null; label?: string } | null
+  presence?: {
+    kind: AgentPresenceKind
+    detail?: string | null
+    label?: string
+  } | null
   onStop?: () => void
   onApprove?: () => void
   onDeny?: () => void
@@ -157,7 +165,9 @@ function buildDebugErrorDetail({
     duration ? `duration: ${duration}` : null,
     run.error ? `error: ${run.error}` : 'error: null',
     lastEventSummary ? `last_event: ${lastEventSummary}` : null,
-    run.usage?.step_count != null ? `step_count: ${run.usage.step_count}` : null,
+    run.usage?.step_count != null
+      ? `step_count: ${run.usage.step_count}`
+      : null,
     tokens ? `tokens: ${tokens}` : null,
     cost ? `estimated_cost: ${cost}` : null,
     run.usage?.model ? `model: ${run.usage.model}` : null,
@@ -177,7 +187,12 @@ function StopConfirm({
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground">
       <span>Stop? Bot exits on the next turn.</span>
-      <Button size="sm" variant="destructive" className="h-6 px-2" onClick={onConfirm}>
+      <Button
+        size="sm"
+        variant="destructive"
+        className="h-6 px-2"
+        onClick={onConfirm}
+      >
         Stop
       </Button>
       <Button size="sm" variant="ghost" className="h-6 px-2" onClick={onCancel}>
@@ -293,14 +308,18 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
   const [elapsedLabel, setElapsedLabel] = useState('')
 
   const isLive = run.status === 'queued' || run.status === 'running'
-  const isWaiting = run.status === 'waiting_for_input' || run.status === 'waiting_for_approval'
+  const isWaiting =
+    run.status === 'waiting_for_input' || run.status === 'waiting_for_approval'
 
   // Tick elapsed label every second while live or waiting.
   useEffect(() => {
     if (!run.started_at) return
     setElapsedLabel(elapsed(run.started_at))
     if (!isLive && !isWaiting) return
-    const id = setInterval(() => setElapsedLabel(elapsed(run.started_at!)), 1000)
+    const id = setInterval(
+      () => setElapsedLabel(elapsed(run.started_at!)),
+      1000,
+    )
     return () => clearInterval(id)
   }, [run.started_at, isLive, isWaiting])
 
@@ -372,7 +391,11 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
               aria-expanded={open}
               aria-label={open ? 'Collapse details' : 'Expand details'}
             >
-              {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              {open ? (
+                <ChevronUp className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5" />
+              )}
             </Button>
           )}
         </div>
@@ -406,30 +429,16 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
           )}
 
           {run.status === 'waiting_for_approval' && pendingApprovalPreview && (
-            <div className="border-t border-warning/15 px-3 py-2.5 space-y-2">
-              <div className="text-xs font-medium text-foreground">
-                {pendingApprovalPreview.title}
-              </div>
-              {pendingApprovalPreview.targetLabel && (
-                <div className="text-[11px] text-muted-foreground">
-                  → {pendingApprovalPreview.targetLabel}
-                </div>
-              )}
-              <div className="text-xs text-muted-foreground line-clamp-3">
-                {pendingApprovalPreview.body}
-              </div>
-              <div className="flex items-center gap-2 pt-1">
-                <Button size="sm" className="h-7" onClick={onApprove}>
-                  Approve
-                </Button>
-                <Button size="sm" variant="outline" className="h-7" onClick={onEditApprove}>
-                  Edit & approve
-                </Button>
-                <Button size="sm" variant="ghost" className="h-7 text-muted-foreground" onClick={onDeny}>
-                  Deny
-                </Button>
-              </div>
-            </div>
+            <ApprovalCard
+              kind="connector_write"
+              title={pendingApprovalPreview.title}
+              targetLabel={pendingApprovalPreview.targetLabel}
+              body={<ConnectorWriteBody text={pendingApprovalPreview.body} />}
+              pulseOnMount={pulseFocus}
+              onApprove={() => onApprove?.()}
+              onDeny={() => onDeny?.()}
+              onEditApprove={onEditApprove ? () => onEditApprove() : undefined}
+            />
           )}
 
           {run.status === 'blocked' && run.error && (
@@ -470,8 +479,7 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
         </>
       )}
 
-      {/* Footer row: tokens, cost, model — debug only. Users don't care about
-      the model name or token count by default; surface in debug mode. */}
+      {/* Footer row: debug-only runtime metadata. */}
       {debugMode && (tokens || cost) && (
         <div className="flex items-center gap-2 border-t border-border/40 px-3 py-1.5 text-[11px] text-muted-foreground">
           {tokens && <span className="tabular-nums">{tokens} tokens</span>}
@@ -536,10 +544,14 @@ export function LastRunSummary({
         : `${Math.floor(finishedSec / 3600)}h ago`
   return (
     <div className="text-xs text-muted-foreground">
-      Last run: <span className="font-medium text-foreground/80">{lastRun.status}</span> · {ago}
+      Last run:{' '}
+      <span className="font-medium text-foreground/80">{lastRun.status}</span> ·{' '}
+      {ago}
       {debugMode && lastRun.usage && (
         <>
-          {' '}· {formatTokens(lastRun.usage.total_tokens)} tokens · {lastRun.usage.model}
+          {' '}
+          · {formatTokens(lastRun.usage.total_tokens)} tokens ·{' '}
+          {lastRun.usage.model}
         </>
       )}
     </div>

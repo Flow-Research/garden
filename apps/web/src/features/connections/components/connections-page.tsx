@@ -230,6 +230,11 @@ function pickDefaultConnector(
   return connectors[0] ?? null
 }
 
+function notifyConnectionsChanged() {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new Event('garden:connections-changed'))
+}
+
 export function ConnectionsPage({
   focusedConnectorId,
 }: {
@@ -261,6 +266,7 @@ export function ConnectionsPage({
 
     void snapshotQuery.refetch()
     if (status === 'connected') {
+      notifyConnectionsChanged()
       toast.success('GitHub connected')
     }
   }, [snapshotQuery.refetch])
@@ -273,9 +279,15 @@ export function ConnectionsPage({
       action: ConnectionAction
     }) => mutateConnection(connectorId, action),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ['workspace-connections'],
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['workspace-connections'],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['workspace-connections-sidebar'],
+        }),
+      ])
+      notifyConnectionsChanged()
     },
   })
   const grantMutation = useMutation({
@@ -286,9 +298,14 @@ export function ConnectionsPage({
           ? error.message
           : 'Failed to update tool permission',
       )
-      await queryClient.invalidateQueries({
-        queryKey: ['workspace-connections'],
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['workspace-connections'],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['workspace-connections-sidebar'],
+        }),
+      ])
     },
   })
 
@@ -306,7 +323,8 @@ export function ConnectionsPage({
     (args: Parameters<typeof updateConnectionToolGrant>[0]) => {
       queryClient.setQueryData<ConnectionsSnapshot>(
         ['workspace-connections'],
-        (current) => (current ? updateSnapshotToolGrant(current, args) : current),
+        (current) =>
+          current ? updateSnapshotToolGrant(current, args) : current,
       )
 
       const key = `${args.connectorId}:${args.agentId}:${args.toolName}`
@@ -326,15 +344,15 @@ export function ConnectionsPage({
   )
 
   const snapshot = snapshotQuery.data
+  const connectors = snapshot?.connectors ?? []
+  const agents = snapshot?.agents ?? []
   const connector = useMemo(
     () =>
-      snapshot
-        ? pickDefaultConnector(snapshot.connectors, focusedConnectorId)
-        : null,
-    [snapshot, focusedConnectorId],
+      snapshot ? pickDefaultConnector(connectors, focusedConnectorId) : null,
+    [connectors, focusedConnectorId, snapshot],
   )
 
-  const selectedAgent = snapshot?.agents[0] ?? null
+  const selectedAgent = agents[0] ?? null
 
   const toolsByGroup = useMemo(() => {
     const map: Record<ToolGroupKey, ConnectionTool[]> = {
@@ -690,8 +708,11 @@ function BulkSelect({
 
   return (
     <Select
-      value={value === 'mixed' ? '' : value}
-      onValueChange={(v) => onChange(v as PermissionTrustLevel)}
+      value={value === 'mixed' ? null : value}
+      onValueChange={(v) => {
+        if (!v) return
+        onChange(v as PermissionTrustLevel)
+      }}
       disabled={disabled}
     >
       <SelectTrigger

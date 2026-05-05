@@ -14,6 +14,7 @@ import {
   Wrench,
 } from 'lucide-react'
 import { useWorkspaceStore } from '@garden/core/workspace'
+import { Alert, AlertDescription } from '@garden/ui/components/ui/alert'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'
 import {
@@ -121,9 +122,14 @@ function KV({ k, v }: { k: string; v: React.ReactNode }) {
 
 function SectionError({ message }: { message: string }) {
   return (
-    <div className="mb-2 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs text-destructive">
-      {message}
-    </div>
+    <Alert
+      variant="destructive"
+      className="mb-2 border-destructive/30 bg-destructive/5 px-2 py-1.5"
+    >
+      <AlertDescription className="text-xs text-destructive">
+        {message}
+      </AlertDescription>
+    </Alert>
   )
 }
 
@@ -161,7 +167,8 @@ const GROUP_LABEL: Record<ToolGroup, string> = {
 }
 
 const GROUP_DESC: Record<ToolGroup, string> = {
-  workspace: 'createWorkspaceTools(workspace) — read/write/edit/list/find/grep/delete',
+  workspace:
+    'createWorkspaceTools(workspace) — read/write/edit/list/find/grep/delete',
   custom: 'From this agent’s getTools()',
   session: 'session.tools() — set_context / load_context',
   extension: 'Loaded sandboxed extension workers',
@@ -293,8 +300,8 @@ function ToolsPanel({
                         {ext.name}@{ext.version}
                       </span>
                       <span className="text-[10px] text-muted-foreground">
-                        {ext.tools.length} tools ·{' '}
-                        {ext.contextLabels.length} ctx
+                        {ext.tools.length} tools · {ext.contextLabels.length}{' '}
+                        ctx
                       </span>
                     </div>
                     {ext.description ? (
@@ -389,7 +396,9 @@ export function EnvironmentDebugDrawer({
 }: EnvironmentDebugDrawerProps) {
   const [open, setOpen] = useState(false)
   const workspaceId = useWorkspaceStore((state) => state.workspace?.id ?? null)
-  const { sessions: uiSessions } = useAgentSessions()
+  const { sessions: uiSessions } = useAgentSessions({
+    ensureWarmSession: false,
+  })
 
   const state = useDebugStream({ open, workspaceId, sessionId })
 
@@ -425,8 +434,8 @@ export function EnvironmentDebugDrawer({
               {!state.done && state.openAt ? <LiveDot /> : null}
             </div>
             <DrawerDescription>
-              Live state from the Durable Object — each section streams in as
-              it resolves.
+              Live state from the Durable Object — each section streams in as it
+              resolves.
             </DrawerDescription>
           </DrawerHeader>
 
@@ -455,7 +464,9 @@ export function EnvironmentDebugDrawer({
                     title="Current UI error"
                   >
                     <Terminal
-                      body={activeUiSession?.lastMessage || 'No error captured.'}
+                      body={
+                        activeUiSession?.lastMessage || 'No error captured.'
+                      }
                     />
                   </Panel>
                 ) : null}
@@ -529,16 +540,13 @@ function StatusStrip({
           value={uiStatus ?? 'idle'}
           tone={uiStatus === 'error' ? 'danger' : 'default'}
         />
-        <StatusCell
-          label="Messages"
-          value={meta?.currentMessageCount ?? '—'}
-        />
+        <StatusCell label="Messages" value={meta?.currentMessageCount ?? '—'} />
         <StatusCell
           label="Sandbox"
           value={
             sandbox
               ? sandbox.reachable
-                ? sandbox.pingMessage ?? 'live'
+                ? (sandbox.pingMessage ?? 'live')
                 : 'offline'
               : '…'
           }
@@ -547,9 +555,7 @@ function StatusStrip({
         <StatusCell
           label="Tools"
           value={
-            tools?.counts
-              ? `${tools.counts.total}+${tools.counts.rpc}`
-              : '…'
+            tools?.counts ? `${tools.counts.total}+${tools.counts.rpc}` : '…'
           }
           hint="LLM tools + callable RPC"
         />
@@ -559,10 +565,7 @@ function StatusStrip({
           <KV k="agent" v={meta.agentName} />
           <KV k="session" v={meta.effectiveSessionId} />
           {generatedAt ? (
-            <KV
-              k="generated"
-              v={new Date(generatedAt).toLocaleTimeString()}
-            />
+            <KV k="generated" v={new Date(generatedAt).toLocaleTimeString()} />
           ) : null}
         </div>
       ) : null}
@@ -742,10 +745,7 @@ function SessionsPanel({
                       {session.lastMessage || '—'}
                     </div>
                   </div>
-                  <Badge
-                    variant="secondary"
-                    className="shrink-0 text-[10px]"
-                  >
+                  <Badge variant="secondary" className="shrink-0 text-[10px]">
                     {session.messageCount} msgs
                   </Badge>
                 </div>
@@ -778,7 +778,8 @@ function WorkspacePanel({
       right={
         workspace?.stats ? (
           <Badge variant="outline" className="text-[10px]">
-            {workspace.stats.fileCount} files · {formatBytes(workspace.stats.totalBytes)}
+            {workspace.stats.fileCount} files ·{' '}
+            {formatBytes(workspace.stats.totalBytes)}
           </Badge>
         ) : null
       }
@@ -799,11 +800,7 @@ function WorkspacePanel({
 
           <div className="flex flex-wrap gap-1">
             {VIRTUAL_FS_BACKING_STORES.map((store) => (
-              <Badge
-                key={store}
-                variant="outline"
-                className="text-[10px]"
-              >
+              <Badge key={store} variant="outline" className="text-[10px]">
                 {store}
               </Badge>
             ))}

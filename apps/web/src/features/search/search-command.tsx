@@ -39,7 +39,10 @@ import {
 } from '@garden/ui/components/ui/dialog'
 import { Kbd, KbdGroup } from '@garden/ui/components/ui/kbd'
 import { Loader2 } from 'lucide-react'
-import { useWorkspaceDock, type WorkspacePanelKind } from '@/components/shell/workspace-dock'
+import {
+  useWorkspaceDock,
+  type WorkspacePanelKind,
+} from '@/components/shell/workspace-dock'
 import { useAgentSessions } from '@/features/chat/use-agent-chat-sessions'
 import { useSettingsDialogStore } from '@/features/settings'
 import { useSearchStore } from './search-store'
@@ -159,8 +162,15 @@ interface QuickAction {
 const ITEM_CLASS = 'mx-2 rounded-lg py-2.5'
 
 export function SearchCommand() {
-  const { openPanel } = useWorkspaceDock()
-  const { claimWarmSession } = useAgentSessions()
+  const dock = useWorkspaceDock()
+  const openPanel = useCallback(
+    (...args: Parameters<NonNullable<typeof dock>['openPanel']>) =>
+      dock?.openPanel(...args) ?? null,
+    [dock],
+  )
+  const { claimWarmSession } = useAgentSessions({
+    ensureWarmSession: false,
+  })
   const openSettingsDialog = useSettingsDialogStore((s) => s.openSettings)
   const open = useSearchStore((s) => s.open)
   const setOpen = useSearchStore((s) => s.setOpen)

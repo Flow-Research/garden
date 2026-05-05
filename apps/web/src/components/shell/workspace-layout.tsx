@@ -1,15 +1,11 @@
-import { useLayoutEffect, useState } from 'react'
 import { useAuthStore } from '@garden/core/auth'
 import { WorkspaceIdProvider } from '@garden/core/hooks'
-import { defaultStorage } from '@garden/core/platform'
 import { useWorkspaceStore } from '@garden/core/workspace'
-import {
-  SidebarInset,
-  SidebarProvider,
-} from '@garden/ui/components/ui/sidebar'
+import { SidebarInset, SidebarProvider } from '@garden/ui/components/ui/sidebar'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { SearchCommand } from '@/features/search'
 import { ChatRuntimeProvider } from '@/features/chat/chat-runtime-provider'
+import { ModalRegistry } from '@/features/modals/registry'
 import { OnboardingOverlay } from '@/features/onboarding'
 import { useOnboardingStore } from '@/features/onboarding'
 import { SettingsDialog } from '@/features/settings'
@@ -72,15 +68,7 @@ export function WorkspaceLayout() {
   const needsOnboarding =
     !authLoading && hasSession && !workspace?.id && !onboardingCompleted
   const isRestoringWorkspace = authLoading || (hasSession && !needsOnboarding)
-  const [preferredWorkspaceId, setPreferredWorkspaceId] = useState<
-    string | null
-  >(null)
-
-  useLayoutEffect(() => {
-    setPreferredWorkspaceId(defaultStorage.getItem('accelerate_workspace_id'))
-  }, [])
-
-  const activeWorkspaceId = workspace?.id ?? preferredWorkspaceId
+  const activeWorkspaceId = workspace?.id ?? null
   const hasWorkspace = Boolean(workspace?.id)
   const titleNode = hasWorkspace ? (
     (workspace?.name ?? null)
@@ -115,14 +103,12 @@ export function WorkspaceLayout() {
                 <SearchCommand />
               </div>
               <SettingsDialog />
+              <ModalRegistry />
             </ChatRuntimeProvider>
           </WorkspaceIdProvider>
         ) : (
           <>
-            <WorkspaceDockTitlebar
-              title={titleNode}
-              subtitle={subtitleNode}
-            />
+            <WorkspaceDockTitlebar title={titleNode} subtitle={subtitleNode} />
             <div className="relative flex min-h-0 flex-1 overflow-hidden bg-background">
               <SidebarInset className="relative overflow-hidden">
                 <div className="relative flex min-h-0 flex-1 overflow-hidden">

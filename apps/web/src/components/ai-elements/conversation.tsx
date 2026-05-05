@@ -22,9 +22,9 @@ import {
   useState,
 } from 'react'
 
-const INITIAL_SCROLL_REVEAL_FRAME = 2
 const INITIAL_SCROLL_MIN_FRAMES = 30
 const INITIAL_SCROLL_MAX_FRAMES = 90
+const DEFAULT_ESTIMATED_LIST_SIZE = { height: 640, width: 720 }
 
 type ConversationRow<TItem> = {
   item: TItem
@@ -49,6 +49,7 @@ function useConversationContext() {
 export type ConversationProps<TItem> = ComponentProps<'div'> & {
   data: readonly TItem[]
   drawDistance?: number
+  estimatedListSize?: { height: number; width: number }
   estimateItemSize?: number
   getItemKey: (item: TItem, index: number) => string
   initialContainerPoolRatio?: number
@@ -61,6 +62,7 @@ export function Conversation<TItem>({
   className,
   data,
   drawDistance,
+  estimatedListSize = DEFAULT_ESTIMATED_LIST_SIZE,
   estimateItemSize = 90,
   getItemKey,
   initialContainerPoolRatio,
@@ -75,8 +77,6 @@ export function Conversation<TItem>({
   const initialScrollTargetKeyRef = useRef<string | null>(null)
   const previousInitialScrollKeyRef = useRef<string | null>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
-  const [isInitialScrollSettling, setIsInitialScrollSettling] =
-    useState(false)
 
   const updateStickiness = useCallback(() => {
     const state = listRef.current?.getState?.()
@@ -107,7 +107,15 @@ export function Conversation<TItem>({
 
   const scheduleInitialScrollToEnd = useCallback(
     (targetKey: string) => {
+      if (
+        initialScrollTargetKeyRef.current === targetKey &&
+        initialScrollFrameRef.current !== null
+      ) {
+        return
+      }
+
       cancelInitialScroll()
+      initialScrollTargetKeyRef.current = targetKey
 
       let frameCount = 0
       const scrollStep = () => {
@@ -117,26 +125,19 @@ export function Conversation<TItem>({
         listRef.current?.scrollToEnd?.({ animated: false })
         setIsAtBottom(true)
 
-        if (frameCount >= INITIAL_SCROLL_REVEAL_FRAME) {
-          setIsInitialScrollSettling(false)
-        }
-
         const state = listRef.current?.getState?.()
         const canRelease =
           frameCount >= INITIAL_SCROLL_MIN_FRAMES && state?.isAtEnd
         if (canRelease || frameCount >= INITIAL_SCROLL_MAX_FRAMES) {
           initialScrollFrameRef.current = null
           initialScrollTargetKeyRef.current = null
-          setIsInitialScrollSettling(false)
           return
         }
 
-        initialScrollFrameRef.current =
-          window.requestAnimationFrame(scrollStep)
+        initialScrollFrameRef.current = window.requestAnimationFrame(scrollStep)
       }
 
-      initialScrollFrameRef.current =
-        window.requestAnimationFrame(scrollStep)
+      initialScrollFrameRef.current = window.requestAnimationFrame(scrollStep)
     },
     [cancelInitialScroll],
   )
@@ -156,10 +157,7 @@ export function Conversation<TItem>({
   )
 
   useLayoutEffect(() => {
-    if (rows.length === 0) {
-      setIsInitialScrollSettling(false)
-      return
-    }
+    if (rows.length === 0) return
 
     const targetKey = rows[rows.length - 1]?.key
     if (!targetKey) return
@@ -167,9 +165,8 @@ export function Conversation<TItem>({
     if (previousInitialScrollKeyRef.current === nextInitialScrollKey) return
 
     previousInitialScrollKeyRef.current = nextInitialScrollKey
-    initialScrollTargetKeyRef.current = targetKey
-    setIsInitialScrollSettling(true)
     setIsAtBottom(true)
+    listRef.current?.scrollToEnd?.({ animated: false })
     scheduleInitialScrollToEnd(targetKey)
 
     return () => {
@@ -191,7 +188,6 @@ export function Conversation<TItem>({
 
   const cancelInitialScrollFromUserInput = useCallback(() => {
     initialScrollTargetKeyRef.current = null
-    setIsInitialScrollSettling(false)
     cancelInitialScroll()
   }, [cancelInitialScroll])
 
@@ -223,9 +219,7 @@ export function Conversation<TItem>({
   }`
 
   return (
-    <ConversationContext.Provider
-      value={{ isAtBottom, scrollToBottom }}
-    >
+    <ConversationContext.Provider value={{ isAtBottom, scrollToBottom }}>
       <div
         role="log"
         {...props}
@@ -240,6 +234,7 @@ export function Conversation<TItem>({
           keyExtractor={(item) => item.key}
           renderItem={renderItem}
           drawDistance={drawDistance}
+          estimatedListSize={estimatedListSize}
           estimatedItemSize={estimateItemSize}
           initialContainerPoolRatio={initialContainerPoolRatio}
           alignItemsAtEnd
@@ -255,8 +250,8 @@ export function Conversation<TItem>({
           onMetricsChange={handleInitialLayoutShift}
           onScroll={updateStickiness}
           className={cn(
-            'h-full overflow-x-hidden overscroll-y-contain opacity-100 motion-safe:transition-opacity motion-safe:duration-100 motion-safe:ease-out',
-            isInitialScrollSettling && rows.length > 0 && 'opacity-0',
+            'h-full overflow-x-hidden overscroll-y-contain',
+            'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-100',
           )}
         />
         {children}

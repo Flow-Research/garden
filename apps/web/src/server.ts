@@ -5,7 +5,10 @@ import { proxyToSandbox, Sandbox } from '@cloudflare/sandbox'
 import { Result } from 'better-result'
 import { createAuth } from '@/lib/auth'
 import type { AppEnv } from '@/lib/server/env'
-import { requireAgentAccess } from '@/lib/server/agent-do-router'
+import {
+  isAgentRuntimeName,
+  requireAgentAccess,
+} from '@/lib/server/agent-do-router'
 import { reconcile } from '@/lib/server/issue-run-reconciler'
 
 export { AgentDO }
@@ -19,8 +22,6 @@ type ServerEnv = AppEnv & {
 
 const AGENT_DO_AUTH_CACHE_TTL_MS = 60_000
 const agentDoAuthCache = new Map<string, number>()
-const AGENT_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function responseFromCaughtError(args: {
   event: string
@@ -28,7 +29,8 @@ function responseFromCaughtError(args: {
   fallback: string
   cause: unknown
 }) {
-  const message = args.cause instanceof Error ? args.cause.message : args.fallback
+  const message =
+    args.cause instanceof Error ? args.cause.message : args.fallback
   console.error({
     event: args.event,
     message,
@@ -39,26 +41,27 @@ function responseFromCaughtError(args: {
       error: args.fallback,
     },
     {
-      status:
-        args.status >= 200 && args.status <= 599 ? args.status : 500,
+      status: args.status >= 200 && args.status <= 599 ? args.status : 500,
     },
   )
 }
 
-function getAgentIdFromRequest(request: Request) {
+function getAgentRuntimeNameFromRequest(request: Request) {
   const url = new URL(request.url)
   const parts = url.pathname.split('/').filter(Boolean)
-  if (parts[0] !== 'agents' || parts[1] !== 'agent-do') return null
+  if (parts[0] !== 'agents' || !parts[1]) return null
 
-  const agentId = parts[2] ?? ''
-  if (!agentId || !AGENT_ID_PATTERN.test(agentId)) return null
+  const agentRuntimeName = decodeURIComponent(parts[2] ?? '')
+  if (!agentRuntimeName || !isAgentRuntimeName(agentRuntimeName)) {
+    return null
+  }
 
-  return agentId
+  return agentRuntimeName
 }
 
 async function authorizeAgentRequest(request: Request, env: ServerEnv) {
-  const agentId = getAgentIdFromRequest(request)
-  if (!agentId) {
+  const agentRuntimeName = getAgentRuntimeNameFromRequest(request)
+  if (!agentRuntimeName) {
     return { request, response: new Response('Not found', { status: 404 }) }
   }
 
@@ -68,13 +71,13 @@ async function authorizeAgentRequest(request: Request, env: ServerEnv) {
     return { request, response: new Response('Unauthorized', { status: 401 }) }
   }
 
-  const cacheKey = `${session.user.id}:${agentId}`
+  const cacheKey = `${session.user.id}:${agentRuntimeName}`
   const cachedUntil = agentDoAuthCache.get(cacheKey) ?? 0
   const now = Date.now()
   if (cachedUntil <= now) {
     const accessResult = await requireAgentAccess(
       env,
-      agentId,
+      agentRuntimeName,
       session,
       'connect',
     )
@@ -114,7 +117,9 @@ export default {
 
     if (url.pathname.startsWith('/api/mcp-proxy/')) {
       if (!env.MCP_PROXY) {
-        return new Response('MCP proxy binding is not configured', { status: 503 })
+        return new Response('MCP proxy binding is not configured', {
+          status: 503,
+        })
       }
 
       const upstreamPath = url.pathname.replace('/api/mcp-proxy', '')
@@ -123,7 +128,8 @@ export default {
         'https://garden-mcp-proxy.internal',
       )
       const proxyResponse = await Result.tryPromise({
-        try: async () => env.MCP_PROXY!.fetch(new Request(upstreamUrl, request)),
+        try: async () =>
+          env.MCP_PROXY!.fetch(new Request(upstreamUrl, request)),
         catch: (cause) => cause,
       })
 

@@ -20,7 +20,7 @@
     "format": "oxfmt -c ../../.oxfmtrc.json --check .",
     "format:write": "oxfmt -c ../../.oxfmtrc.json --write .",
     "deploy": "pnpm run build && wrangler deploy --env production",
-    "clean": "rm -rf .tanstack .output dist",
+    "clean": "rm -rf .tanstack .output dist .turbo node_modules/.vite",
     "ui:add": "pnpm dlx shadcn@latest add --cwd ../../packages/ui --path components/ui",
     "ui:diff": "pnpm dlx shadcn@latest diff --cwd ../../packages/ui",
     "auth:generate": "bash -c 'set -a && source .dev.vars && pnpm dlx @better-auth/cli@latest generate --config src/auth.ts'",

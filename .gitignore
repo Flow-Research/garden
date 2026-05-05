@@ -1,6 +1,7 @@
 node_modules/
 .turbo/
 .wrangler/
+.deepsec/
 **/.wrangler/
 .env
 .env.*

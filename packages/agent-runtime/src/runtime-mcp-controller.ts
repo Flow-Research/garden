@@ -50,6 +50,8 @@ export type ThreadRuntimeIdentity = {
   workspaceId: string
   userId: string
   agentId: string
+  issueId?: string
+  runId?: string
 }
 
 type StoredConnectorServerRowRecord = {
@@ -169,6 +171,13 @@ export class RuntimeMcpController {
   wrapGetAITools(
     rawGetMcpAiTools: (filter?: MCPServerFilter) => ToolSet,
     filter?: MCPServerFilter,
+    wrapOptions?: {
+      shouldAutoApprove?: (input: {
+        connectorId: string
+        toolName: string
+        riskClass: string
+      }) => boolean
+    },
   ) {
     const rawTools = rawGetMcpAiTools(filter)
     const wrappedTools = this.host.mcp
@@ -205,6 +214,7 @@ export class RuntimeMcpController {
               toolName: tool.name,
               toolCallId: options.toolCallId,
               toolArgs: input,
+              shouldAutoApprove: wrapOptions?.shouldAutoApprove,
             })
             if (approvalResult.isErr()) {
               throw approvalResult.error
@@ -227,6 +237,11 @@ export class RuntimeMcpController {
     toolName: string
     toolCallId: string
     toolArgs: unknown
+    shouldAutoApprove?: (input: {
+      connectorId: string
+      toolName: string
+      riskClass: string
+    }) => boolean
   }) {
     const identityResult = await this.resolveRuntimeIdentity()
     if (identityResult.isErr()) return identityResult
@@ -237,6 +252,7 @@ export class RuntimeMcpController {
         db
           .select({
             id: schema.capability.id,
+            riskClass: schema.capability.riskClass,
           })
           .from(schema.capability)
           .where(
@@ -259,6 +275,15 @@ export class RuntimeMcpController {
 
     const capability = capabilityResult.value[0]
     if (!capability) {
+      return Result.ok(false)
+    }
+    if (
+      args.shouldAutoApprove?.({
+        connectorId: args.connectorId,
+        toolName: args.toolName,
+        riskClass: capability.riskClass,
+      })
+    ) {
       return Result.ok(false)
     }
 
@@ -389,7 +414,10 @@ export class RuntimeMcpController {
           id: crypto.randomUUID(),
           agentId: identityResult.value.agentId,
           capabilityId: capability.id,
+          // Source: docs/research/issue-flow-plan.md, "Approval pause".
+          runId: identityResult.value.runId ?? null,
           context: `${args.connectorId}.${args.toolName}`,
+          issueId: identityResult.value.issueId ?? null,
           argsJson: args.toolArgs as object,
           toolCallId: args.toolCallId,
           status: 'pending',
@@ -517,7 +545,9 @@ export class RuntimeMcpController {
     })
   }
 
-  private async resolveThreadRuntimeIdentity() {
+  private async resolveThreadRuntimeIdentity(): Promise<
+    ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
+  > {
     const threadId = extractThreadIdFromAgentName(this.host.name)
     if (!threadId) {
       return Result.err(
@@ -549,7 +579,7 @@ export class RuntimeMcpController {
               : `Failed to load chat thread ${threadId}`,
         }),
     })
-    if (threadResult.isErr()) return threadResult
+    if (threadResult.isErr()) return Result.err(threadResult.error)
 
     const thread = threadResult.value[0]
     if (!thread) {
@@ -569,7 +599,9 @@ export class RuntimeMcpController {
     } satisfies ThreadRuntimeIdentity)
   }
 
-  private async resolveRuntimeIdentity() {
+  private async resolveRuntimeIdentity(): Promise<
+    ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
+  > {
     return this.host.resolveRuntimeIdentity
       ? await this.host.resolveRuntimeIdentity()
       : await this.resolveThreadRuntimeIdentity()
@@ -873,6 +905,8 @@ export class RuntimeMcpController {
           workspaceId: identity.workspaceId,
           agentId: identity.agentId,
           connectorId: connector.id,
+          ...(identity.issueId ? { issueId: identity.issueId } : {}),
+          ...(identity.runId ? { runId: identity.runId } : {}),
           ttlSeconds: mcpRuntimeConfig.proxyJwtTtlSeconds,
         }),
       catch: (cause) =>

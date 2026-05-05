@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { ChevronRight, Plus } from 'lucide-react'
 import { Accordion } from '@base-ui/react/accordion'
 import {
@@ -15,6 +15,7 @@ import { STATUS_CONFIG } from '@garden/core/issues/config'
 import { useModalStore } from '@garden/core/modals'
 import { useViewStore } from '@garden/core/issues/stores/view-store-context'
 import { useIssueSelectionStore } from '@garden/core/issues/stores/selection-store'
+import { useWorkspaceDock } from '@/components/shell/workspace-dock'
 import { sortIssues } from '../utils/sort'
 import { StatusIcon } from './status-icon'
 import { ListRow, type ChildProgress } from './list-row'
@@ -34,6 +35,17 @@ export function ListView({
   /** Override the done-group count (e.g. with a server-filtered total). */
   doneTotal?: number
 }) {
+  const dock = useWorkspaceDock()
+  const handleOpenIssue = useCallback(
+    (issue: Issue) => {
+      dock?.openPanel({
+        kind: 'issue-detail',
+        title: issue.title,
+        entityId: issue.id,
+      })
+    },
+    [dock],
+  )
   const sortBy = useViewStore((s) => s.sortBy)
   const sortDirection = useViewStore((s) => s.sortDirection)
   const listCollapsedStatuses = useViewStore((s) => s.listCollapsedStatuses)
@@ -156,6 +168,7 @@ export function ListView({
                         key={issue.id}
                         issue={issue}
                         childProgress={childProgressMap.get(issue.id)}
+                        onOpen={handleOpenIssue}
                       />
                     ))}
                     {status === 'done' && hasMore && (

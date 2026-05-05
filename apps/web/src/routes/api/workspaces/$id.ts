@@ -52,8 +52,9 @@ export const Route = createFileRoute('/api/workspaces/$id')({
         if (!organization) return notFound('Workspace not found')
 
         const role =
-          organization.members.find((member) => member.userId === session.user.id)
-            ?.role ?? 'member'
+          organization.members.find(
+            (member) => member.userId === session.user.id,
+          )?.role ?? 'member'
 
         return Response.json(toWorkspaceFromOrganization(organization, role))
       },
@@ -99,8 +100,9 @@ export const Route = createFileRoute('/api/workspaces/$id')({
         if (!organization) return notFound('Workspace not found')
 
         const role =
-          organization.members.find((member) => member.userId === session.user.id)
-            ?.role ?? 'member'
+          organization.members.find(
+            (member) => member.userId === session.user.id,
+          )?.role ?? 'member'
 
         const db = getDb(appEnv)
         const threads = await db

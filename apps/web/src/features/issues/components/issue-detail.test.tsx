@@ -187,8 +187,12 @@ const mockApiObj = vi.hoisted(() => ({
   listIssueSubscribers: vi.fn().mockResolvedValue([]),
   subscribeToIssue: vi.fn().mockResolvedValue(undefined),
   unsubscribeFromIssue: vi.fn().mockResolvedValue(undefined),
-  getActiveTasksForIssue: vi.fn().mockResolvedValue({ tasks: [] }),
-  listTasksByIssue: vi.fn().mockResolvedValue([]),
+  getActiveRun: vi.fn().mockResolvedValue({
+    run: null,
+    work_products: [],
+    events: [],
+  }),
+  getRunEvents: vi.fn().mockResolvedValue([]),
   listChildIssues: vi.fn().mockResolvedValue({ issues: [] }),
   listIssues: vi.fn().mockResolvedValue({ issues: [], total: 0 }),
   uploadFile: vi.fn(),
@@ -486,8 +490,12 @@ describe('IssueDetail (shared)', () => {
     mockApiObj.listIssueSubscribers.mockResolvedValue([])
     mockApiObj.listChildIssues.mockResolvedValue({ issues: [] })
     mockApiObj.listIssues.mockResolvedValue({ issues: [], total: 0 })
-    mockApiObj.getActiveTasksForIssue.mockResolvedValue({ tasks: [] })
-    mockApiObj.listTasksByIssue.mockResolvedValue([])
+    mockApiObj.getActiveRun.mockResolvedValue({
+      run: null,
+      work_products: [],
+      events: [],
+    })
+    mockApiObj.getRunEvents.mockResolvedValue([])
     mockApiObj.listMembers.mockResolvedValue([
       {
         user_id: 'user-1',

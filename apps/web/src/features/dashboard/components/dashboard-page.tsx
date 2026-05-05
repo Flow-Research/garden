@@ -1,6 +1,6 @@
 'use client'
 
-import { Component, Suspense, useMemo } from 'react'
+import { Component, Suspense, useCallback, useMemo } from 'react'
 import { Skeleton as BoneyardSkeleton } from 'boneyard-js/react'
 import {
   useQueryErrorResetBoundary,
@@ -18,8 +18,20 @@ import {
   ShieldAlert,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from '@garden/ui/components/ui/alert'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@garden/ui/components/ui/empty'
 import { cn } from '@garden/ui/lib/utils'
 import { useWorkspaceId } from '@garden/core/hooks'
 import { STATUS_CONFIG } from '@garden/core/issues/config'
@@ -31,9 +43,7 @@ import {
   dashboardOverviewOptions,
   dashboardResourcesOptions,
 } from '../dashboard.queries'
-import type {
-  DashboardBucket,
-} from '../dashboard.server'
+import type { DashboardBucket } from '../dashboard.server'
 
 const DASHBOARD_PAGE_SKELETON = 'dashboard-page'
 
@@ -181,11 +191,7 @@ function DistributionBars({
   )
 }
 
-function SectionPlaceholder({
-  className,
-}: {
-  className?: string
-}) {
+function SectionPlaceholder({ className }: { className?: string }) {
   return <div className={cn('rounded-md bg-muted/60', className)} />
 }
 
@@ -218,7 +224,10 @@ function DashboardChartSectionFallback() {
           <SectionPlaceholder className="h-2 w-20" />
           <div className="space-y-3 pt-2">
             {Array.from({ length: 3 }).map((__, rowIndex) => (
-              <div key={`chart-row-${index}-${rowIndex}`} className="space-y-1.5">
+              <div
+                key={`chart-row-${index}-${rowIndex}`}
+                className="space-y-1.5"
+              >
                 <div className="flex items-center justify-between gap-2">
                   <SectionPlaceholder className="h-3 w-20" />
                   <SectionPlaceholder className="h-3 w-6" />
@@ -233,11 +242,7 @@ function DashboardChartSectionFallback() {
   )
 }
 
-function DashboardListSectionFallback({
-  title,
-}: {
-  title: string
-}) {
+function DashboardListSectionFallback({ title }: { title: string }) {
   return (
     <div className="min-w-0">
       <div className="mb-3 flex items-center justify-between">
@@ -258,11 +263,7 @@ function DashboardListSectionFallback({
   )
 }
 
-function DashboardResourceSectionFallback({
-  title,
-}: {
-  title: string
-}) {
+function DashboardResourceSectionFallback({ title }: { title: string }) {
   return (
     <div className="min-w-0">
       <div className="mb-3 flex items-center justify-between">
@@ -434,27 +435,27 @@ function DashboardPageFixture() {
             <h3 className="text-xs font-medium text-muted-foreground">
               Recent Issues
             </h3>
-            {['Refine inbox filters', 'Wire issue comments', 'Ship auth gate'].map(
-              (title) => (
-                <div
-                  key={title}
-                  className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Updated a moment ago
-                    </p>
-                  </div>
-                  <div className="h-2 w-2 rounded-full bg-emerald-500" />
+            {[
+              'Refine inbox filters',
+              'Wire issue comments',
+              'Ship auth gate',
+            ].map((title) => (
+              <div
+                key={title}
+                className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Updated a moment ago
+                  </p>
                 </div>
-              ),
-            )}
+                <div className="h-2 w-2 rounded-full bg-emerald-500" />
+              </div>
+            ))}
           </div>
           <div className="space-y-3 rounded-lg border border-border p-4">
-            <h3 className="text-xs font-medium text-muted-foreground">
-              Inbox
-            </h3>
+            <h3 className="text-xs font-medium text-muted-foreground">Inbox</h3>
             {[
               '3 agent replies need review',
               '2 connection failures need fixes',
@@ -504,21 +505,20 @@ function DashboardOverviewSection({
   return (
     <>
       {!hasAgents ? (
-        <div className="flex items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-500/25 dark:bg-amber-950/60">
-          <div className="flex items-center gap-2.5">
-            <Bot className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-            <p className="text-sm text-amber-900 dark:text-amber-100">
-              You have no agents.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={openConnections}
-            className="shrink-0 text-sm font-medium text-amber-700 underline underline-offset-2 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100"
-          >
-            Set one up
-          </button>
-        </div>
+        <Alert className="border-warning/30 bg-warning/5 text-warning">
+          <Bot />
+          <AlertTitle className="text-warning">You have no agents.</AlertTitle>
+          <AlertDescription>
+            <Button
+              variant="link"
+              size="sm"
+              onClick={openConnections}
+              className="h-auto p-0 text-warning underline underline-offset-2 hover:text-warning/80"
+            >
+              Set one up
+            </Button>
+          </AlertDescription>
+        </Alert>
       ) : null}
 
       <div className="grid grid-cols-2 gap-1 sm:gap-2 xl:grid-cols-4">
@@ -529,7 +529,8 @@ function DashboardOverviewSection({
           onClick={openIssues}
           description={
             <span>
-              {data.summary.totalIssues} total, {data.summary.completedIssues} done
+              {data.summary.totalIssues} total, {data.summary.completedIssues}{' '}
+              done
             </span>
           }
         />
@@ -559,7 +560,8 @@ function DashboardOverviewSection({
           onClick={openConnections}
           description={
             <span>
-              {data.summary.connectionCount - data.summary.connectedCount} pending
+              {data.summary.connectionCount - data.summary.connectedCount}{' '}
+              pending
             </span>
           }
         />
@@ -568,11 +570,7 @@ function DashboardOverviewSection({
   )
 }
 
-function DashboardChartsSection({
-  wsId,
-}: {
-  wsId: string
-}) {
+function DashboardChartsSection({ wsId }: { wsId: string }) {
   const { data } = useSuspenseQuery(dashboardDistributionOptions(wsId))
   const statusBuckets = useMemo(
     () => data.issueStatus.filter((entry) => entry.value > 0),
@@ -595,7 +593,10 @@ function DashboardChartsSection({
         title="Issues by Priority"
         subtitle={`${data.summary.openIssues} open`}
       >
-        <DistributionBars entries={priorityBuckets} emptyLabel="No issues yet" />
+        <DistributionBars
+          entries={priorityBuckets}
+          emptyLabel="No issues yet"
+        />
       </ChartCard>
     </div>
   )
@@ -622,20 +623,26 @@ function DashboardActivitySection({
             Recent Activity
           </h3>
           {data.unreadCount > 0 ? (
-            <button
-              type="button"
+            <Button
+              variant="link"
+              size="sm"
               onClick={openInbox}
-              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+              className="h-auto p-0 text-xs text-muted-foreground"
             >
               {data.unreadCount} in inbox
-            </button>
+            </Button>
           ) : null}
         </div>
         {data.inbox.length === 0 ? (
-          <div className="flex items-center gap-2 border border-border p-4 text-sm text-muted-foreground">
-            <InboxIcon className="h-4 w-4 shrink-0" />
-            Inbox is clear.
-          </div>
+          <Empty className="border p-4">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <InboxIcon />
+              </EmptyMedia>
+              <EmptyTitle>Inbox is clear</EmptyTitle>
+              <EmptyDescription>You're all caught up.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
           <div className="divide-y divide-border overflow-hidden border border-border">
             {data.inbox.map((item) => (
@@ -670,18 +677,21 @@ function DashboardActivitySection({
           <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Recent Tasks
           </h3>
-          <button
-            type="button"
+          <Button
+            variant="link"
+            size="sm"
             onClick={openIssues}
-            className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+            className="h-auto p-0 text-xs text-muted-foreground"
           >
             View all
-          </button>
+          </Button>
         </div>
         {data.recentIssues.length === 0 ? (
-          <div className="border border-border p-4">
-            <p className="text-sm text-muted-foreground">No tasks yet.</p>
-          </div>
+          <Empty className="border p-4">
+            <EmptyHeader>
+              <EmptyTitle>No tasks yet</EmptyTitle>
+            </EmptyHeader>
+          </Empty>
         ) : (
           <div className="divide-y divide-border overflow-hidden border border-border">
             {data.recentIssues.slice(0, 10).map((issue) => (
@@ -765,13 +775,14 @@ function DashboardResourcesSection({
             <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Connections
             </h3>
-            <button
-              type="button"
+            <Button
+              variant="link"
+              size="sm"
               onClick={openConnections}
-              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+              className="h-auto p-0 text-xs text-muted-foreground"
             >
               Manage
-            </button>
+            </Button>
           </div>
           <div className="divide-y divide-border overflow-hidden border border-border">
             {data.connections.map((connection) => {
@@ -785,14 +796,18 @@ function DashboardResourcesSection({
                 >
                   <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{connection.label}</div>
+                    <div className="truncate font-medium">
+                      {connection.label}
+                    </div>
                     <div className="truncate text-xs text-muted-foreground">
                       {connection.toolCount} tools
                     </div>
                   </div>
                   <Badge
                     variant={
-                      connection.status === 'connected' ? 'secondary' : 'outline'
+                      connection.status === 'connected'
+                        ? 'secondary'
+                        : 'outline'
                     }
                     className="capitalize"
                   >
@@ -810,18 +825,29 @@ function DashboardResourcesSection({
 
 export function DashboardPage() {
   const wsId = useWorkspaceId()
-  const { openPanel } = useWorkspaceDock()
+  const dock = useWorkspaceDock()
 
-  const openIssues = () => openPanel({ kind: 'issues', title: 'Tasks' })
-  const openInbox = () => openPanel({ kind: 'inbox', title: 'Inbox' })
-  const openConnections = () =>
-    openPanel({ kind: 'capabilities', title: 'Connections' })
-  const openIssueDetail = (issue: { id: string; title: string }) =>
-    openPanel({
-      kind: 'issue-detail',
-      title: issue.title,
-      entityId: issue.id,
-    })
+  const openIssues = useCallback(
+    () => dock?.openPanel({ kind: 'issues', title: 'Tasks' }),
+    [dock],
+  )
+  const openInbox = useCallback(
+    () => dock?.openPanel({ kind: 'inbox', title: 'Inbox' }),
+    [dock],
+  )
+  const openConnections = useCallback(
+    () => dock?.openPanel({ kind: 'capabilities', title: 'Connections' }),
+    [dock],
+  )
+  const openIssueDetail = useCallback(
+    (issue: { id: string; title: string }) =>
+      dock?.openPanel({
+        kind: 'issue-detail',
+        title: issue.title,
+        entityId: issue.id,
+      }),
+    [dock],
+  )
 
   return (
     <div className="h-full min-h-0 overflow-y-auto">

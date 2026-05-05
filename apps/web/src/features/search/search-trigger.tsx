@@ -2,6 +2,7 @@
 
 import { cn } from '@garden/ui/lib/utils'
 import { IconSearch } from '@tabler/icons-react'
+import { Kbd, KbdGroup } from '@garden/ui/components/ui/kbd'
 import { SidebarMenuButton } from '@garden/ui/components/ui/sidebar'
 import { useSearchStore } from './search-store'
 
@@ -17,9 +18,10 @@ export function SearchTrigger({ className }: { className?: string } = {}) {
     >
       <IconSearch className="size-4" />
       <span className="group-data-[collapsible=icon]:hidden">Search...</span>
-      <kbd className="pointer-events-none ml-auto inline-flex h-5 select-none items-center gap-0.5 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground group-data-[collapsible=icon]:hidden">
-        <span className="text-xs">⌘</span>K
-      </kbd>
+      <KbdGroup className="ml-auto group-data-[collapsible=icon]:hidden">
+        <Kbd>⌘</Kbd>
+        <Kbd>K</Kbd>
+      </KbdGroup>
     </SidebarMenuButton>
   )
 }

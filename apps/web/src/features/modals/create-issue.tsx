@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react'
 import { useNavigation } from '../navigation'
+import { useWorkspaceDock } from '@/components/shell/workspace-dock'
 import {
   Check,
   ChevronRight,
@@ -58,19 +59,20 @@ function PillButton({
   children,
   className,
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+}: React.ComponentProps<typeof Button>) {
   return (
-    <button
+    <Button
       type="button"
+      variant="outline"
+      size="sm"
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs',
-        'hover:bg-accent/60 transition-colors cursor-pointer',
+        'h-auto rounded-full px-2.5 py-1 text-xs hover:bg-accent/60',
         className,
       )}
       {...props}
     >
       {children}
-    </button>
+    </Button>
   )
 }
 
@@ -86,6 +88,8 @@ export function CreateIssueModal({
   data?: Record<string, unknown> | null
 }) {
   const router = useNavigation()
+  void router
+  const dock = useWorkspaceDock()
   const workspaceName = useWorkspaceStore((s) => s.workspace?.name)
 
   const draft = useIssueDraftStore((s) => s.draft)
@@ -207,7 +211,11 @@ export function CreateIssueModal({
                 type="button"
                 className="ml-7 mt-2 text-sm text-primary hover:underline cursor-pointer"
                 onClick={() => {
-                  router.push(`/issues/${issue.id}`)
+                  dock?.openPanel({
+                    kind: 'issue-detail',
+                    title: issue.title,
+                    entityId: issue.id,
+                  })
                   toast.dismiss(t)
                 }}
               >

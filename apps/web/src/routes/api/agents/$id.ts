@@ -13,6 +13,10 @@ import {
   requireWorkspaceAccess,
   toAgent,
 } from '@/lib/server/control-plane'
+import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
 
 export const Route = createFileRoute('/api/agents/$id')({
   server: {
@@ -58,7 +62,7 @@ export const Route = createFileRoute('/api/agents/$id')({
         const [existingAgent] = await db
           .select({
             workspaceId: schema.agent.workspaceId,
-            hostName: schema.agent.id,
+            hostName: schema.agent.hostName,
           })
           .from(schema.agent)
           .where(eq(schema.agent.id, params.id))
@@ -69,6 +73,12 @@ export const Route = createFileRoute('/api/agents/$id')({
           existingAgent.workspaceId,
         )
         if (access instanceof Response) return access
+        const permission = await requireWorkspacePermission({
+          request,
+          workspaceId: existingAgent.workspaceId,
+          permissions: workspacePermissions.agentManage,
+        })
+        if (permission) return permission
         if (Object.keys(updateValues).length === 0) {
           return badRequest('No valid agent changes submitted')
         }

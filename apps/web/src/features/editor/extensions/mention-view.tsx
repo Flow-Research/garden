@@ -21,12 +21,10 @@
 import { NodeViewWrapper } from '@tiptap/react'
 import type { NodeViewProps } from '@tiptap/react'
 import { useQuery } from '@tanstack/react-query'
-import {
-  issueListOptions,
-  issueDetailOptions,
-} from '@/lib/issues/queries'
+import { issueListOptions, issueDetailOptions } from '@/lib/issues/queries'
 import { useWorkspaceId } from '@garden/core/hooks'
-import { useNavigation } from '../../navigation'
+import { useWorkspaceDock } from '@/components/shell/workspace-dock'
+import { Badge } from '@garden/ui/components/ui/badge'
 import { StatusIcon } from '../../issues/components/status-icon'
 
 export function MentionView({ node }: NodeViewProps) {
@@ -56,7 +54,7 @@ function IssueMention({
 }) {
   const wsId = useWorkspaceId()
   const { data: issues = [] } = useQuery(issueListOptions(wsId))
-  const { push, openInNewTab } = useNavigation()
+  const dock = useWorkspaceDock()
   const listIssue = issues.find((i) => i.id === issueId)
 
   const { data: detailIssue } = useQuery({
@@ -65,45 +63,44 @@ function IssueMention({
   })
 
   const issue = listIssue ?? detailIssue
-
-  const issuePath = `/issues/${issueId}`
-  const tabTitle = issue ? `${issue.identifier}: ${issue.title}` : undefined
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    if (e.metaKey || e.ctrlKey || e.shiftKey) {
-      if (openInNewTab) {
-        openInNewTab(issuePath, tabTitle)
-      }
-      return
-    }
-    push(issuePath)
+    dock?.openPanel({
+      kind: 'issue-detail',
+      title: issue?.title ?? fallbackLabel ?? issueId,
+      entityId: issueId,
+    })
   }
 
   const cardClass =
-    'issue-mention inline-flex items-center gap-1.5 rounded-md border mx-0.5 px-2 py-0.5 text-xs hover:bg-accent transition-colors cursor-pointer max-w-72'
+    'issue-mention mx-0.5 max-w-72 cursor-pointer rounded-md text-xs hover:bg-accent'
 
   if (!issue) {
     return (
-      <a
-        href={`/issues/${issueId}`}
-        onClick={handleClick}
+      <Badge
+        variant="outline"
         className={cardClass}
+        render={<a href={`/issues/${issueId}`} onClick={handleClick} />}
       >
         <span className="font-medium text-muted-foreground">
           {fallbackLabel ?? issueId.slice(0, 8)}
         </span>
-      </a>
+      </Badge>
     )
   }
 
   return (
-    <a href={`/issues/${issueId}`} onClick={handleClick} className={cardClass}>
+    <Badge
+      variant="outline"
+      className={cardClass}
+      render={<a href={`/issues/${issueId}`} onClick={handleClick} />}
+    >
       <StatusIcon status={issue.status} className="h-3.5 w-3.5 shrink-0" />
       <span className="font-medium text-muted-foreground shrink-0">
         {issue.identifier}
       </span>
       <span className="text-foreground truncate">{issue.title}</span>
-    </a>
+    </Badge>
   )
 }

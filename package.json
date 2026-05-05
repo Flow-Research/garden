@@ -31,7 +31,8 @@
     },
     "onlyBuiltDependencies": [
       "esbuild",
-      "lightningcss"
+      "lightningcss",
+      "workerd"
     ],
     "patchedDependencies": {
       "@cloudflare/vite-plugin@1.35.0": "patches/@cloudflare__vite-plugin@1.35.0.patch"
