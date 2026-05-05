@@ -89,17 +89,12 @@ const useChatRuntimeStore = create<ChatRuntimeStore>((set) => ({
     })),
   removeRuntime: (sessionId) =>
     set((state) => {
-      if (
-        !state.runtimes[sessionId] &&
-        state.cachedMessages[sessionId] === undefined
-      ) {
+      if (!state.runtimes[sessionId]) {
         return state
       }
       const next = { ...state.runtimes }
-      const cachedMessages = { ...state.cachedMessages }
       delete next[sessionId]
-      delete cachedMessages[sessionId]
-      return { cachedMessages, runtimes: next }
+      return { runtimes: next }
     }),
 }))
 
@@ -220,10 +215,12 @@ function ChatRuntimeConnection({
   )
   const setRuntime = useChatRuntimeStore((state) => state.setRuntime)
   const removeRuntime = useChatRuntimeStore((state) => state.removeRuntime)
+
   const agent = useAgent({
-    agent: 'AgentHost',
+    agent: 'AgentDO',
+    connectionTimeout: 30_000,
     name: session.hostName,
-    sub: [{ agent: 'WorkspaceAgent', name: session.id }],
+    sub: [{ agent: 'ChatSubAgent', name: session.id }],
   })
 
   const prepareRuntime = useCallback(
@@ -243,21 +240,21 @@ function ChatRuntimeConnection({
     let cancelled = false
 
     const runPrepareRuntime = () => {
-      void Result.tryPromise(() =>
-        prepareRuntime(() => cancelled),
-      ).then((result) => {
-        if (cancelled) return
-        if (Result.isError(result)) {
-          console.warn('[chat.runtime] runtime prewarm failed', result.error)
-          return
-        }
-        if (result.value && !result.value.ok) {
-          console.warn(
-            '[chat.runtime] runtime prewarm failed',
-            result.value.error,
-          )
-        }
-      })
+      void Result.tryPromise(() => prepareRuntime(() => cancelled)).then(
+        (result) => {
+          if (cancelled) return
+          if (Result.isError(result)) {
+            console.warn('[chat.runtime] runtime prewarm failed', result.error)
+            return
+          }
+          if (result.value && !result.value.ok) {
+            console.warn(
+              '[chat.runtime] runtime prewarm failed',
+              result.value.error,
+            )
+          }
+        },
+      )
     }
 
     const onConnectionsChanged = () => runPrepareRuntime()
@@ -338,7 +335,7 @@ function ChatRuntimeConnection({
   })
   const registerRuntimeBeforePaint = hydrateMessages || prewarmRuntime
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (cachedMessages === undefined) return
     if (cachedMessages.length === 0 || messages.length > 0) return
     setMessages(cachedMessages)
@@ -371,37 +368,14 @@ function ChatRuntimeConnection({
       void Result.tryPromise(async () => {
         await agent.ready
         if (cancelled) return null
-
-        const messagesUrlResult = Result.try(() => {
-          const messagesUrl = new URL(agent.getHttpUrl())
-          messagesUrl.searchParams.delete('_pk')
-          messagesUrl.pathname += '/get-messages'
-          return messagesUrl.toString()
-        })
-        if (Result.isError(messagesUrlResult)) throw messagesUrlResult.error
-
-        const response = await fetch(messagesUrlResult.value)
-        if (!response.ok) {
-          throw new Error(
-            `Failed to load chat messages: ${response.status} ${response.statusText}`,
-          )
-        }
-        const text = await response.text()
-        if (!text.trim()) return [] as ChatUiMessage[]
-        const parsed = Result.try(
-          () => JSON.parse(text) as ChatUiMessage[],
-        )
-        if (Result.isError(parsed)) throw parsed.error
-        return parsed.value
+        return (await agent.stub.loadMessages()) as ChatUiMessage[]
       }).then((result) => {
         if (cancelled) return
         if (Result.isError(result)) {
           console.warn('[chat.runtime] message load failed', result.error)
           return
         }
-        if (result.value === null) {
-          return
-        }
+        if (result.value === null) return
         if (
           useChatRuntimeStore.getState().cachedMessages[session.id] !==
           undefined

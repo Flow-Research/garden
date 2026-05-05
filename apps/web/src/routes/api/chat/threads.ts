@@ -41,7 +41,7 @@ export const Route = createFileRoute('/api/chat/threads')({
         const rows = await db
           .select({
             thread: schema.chatThread,
-            agentId: schema.agent.id,
+            hostName: schema.agent.hostName,
           })
           .from(schema.chatThread)
           .innerJoin(
@@ -52,12 +52,15 @@ export const Route = createFileRoute('/api/chat/threads')({
             and(
               eq(schema.chatThread.workspaceId, workspaceId),
               eq(schema.chatThread.ownerUserId, session.user.id),
+              isNull(schema.chatThread.archivedAt),
             ),
           )
           .orderBy(desc(schema.chatThread.updatedAt))
 
         return Response.json(
-          rows.map((row) => toChatThread(row.thread, row.agentId)),
+          rows.flatMap((row) =>
+            row.hostName ? [toChatThread(row.thread, row.hostName)] : [],
+          ),
         )
       },
       POST: async ({ request }) => {
@@ -107,8 +110,8 @@ export const Route = createFileRoute('/api/chat/threads')({
           return forbidden('Agent access denied')
         }
 
-        const agentRuntimeName = agentRow.id
-        if (agentRow.hostName !== agentRuntimeName) {
+        const agentRuntimeName = agentRow.hostName ?? agentRow.id
+        if (!agentRow.hostName) {
           await db
             .update(schema.agent)
             .set({ hostName: agentRuntimeName })

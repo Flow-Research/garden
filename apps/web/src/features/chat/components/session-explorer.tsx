@@ -186,7 +186,7 @@ export function ChatSessionExplorer({
 }) {
   const activeSessionId = useChatStore((state) => state.activeSessionId)
   const { archiveSession, renameSession, sessions, sessionsQuery } =
-    useAgentSessions()
+    useAgentSessions({ ensureWarmSession: false })
 
   // Hide chats that haven't completed their first turn yet — that covers the
   // pre-warmed "New Chat" we keep ready in the background, the warm chat the

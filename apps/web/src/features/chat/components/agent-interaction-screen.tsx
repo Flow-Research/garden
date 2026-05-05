@@ -101,9 +101,14 @@ export function AgentInteractionScreen({
     warmSession,
   } = useAgentSessions()
 
-  const activeSession =
-    sessions.find((session) => session.id === sessionId) ??
-    (!sessionId ? warmSession : null)
+  const requestedSession = sessionId
+    ? sessions.find((session) => session.id === sessionId)
+    : null
+  const replacementSession =
+    sessionId && sessionsQuery.status === 'success'
+      ? (warmSession ?? sessions[0] ?? null)
+      : null
+  const activeSession = requestedSession ?? replacementSession ?? warmSession
 
   const onSessionChangeRef = useRef(onSessionChange)
   const lastPublishedSessionRef = useRef<string | null>(null)
@@ -199,4 +204,3 @@ function ChatPanelInteraction({
     />
   )
 }
-

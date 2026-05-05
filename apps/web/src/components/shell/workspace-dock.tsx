@@ -7,7 +7,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -1304,11 +1303,6 @@ function ChatDockPanel({
 }: IDockviewPanelProps<WorkspacePanelParams>) {
   const setActiveSession = useChatStore((state) => state.setActiveSession)
 
-  useLayoutEffect(() => {
-    if (!params.entityId) return
-    setActiveSession(params.entityId)
-  }, [params.entityId, setActiveSession])
-
   const handleSessionChange = useCallback(
     (session: { id: string; title: string }) => {
       const nextTitle = session.title.trim() || 'New Chat'
@@ -1317,7 +1311,9 @@ function ChatDockPanel({
         title: nextTitle,
         entityId: session.id,
       })
-      setActiveSession(session.id)
+      if (api.isActive) {
+        setActiveSession(session.id)
+      }
       if (
         params.entityId === session.id &&
         params.title === nextTitle &&
@@ -1389,6 +1385,8 @@ const dockComponents = {
 type StoredDockviewPanelState = {
   contentComponent?: unknown
   params?: {
+    canonicalId?: unknown
+    entityId?: unknown
     kind?: unknown
   }
 }
@@ -1501,6 +1499,66 @@ function readStoredDockviewLayout(storageKey: string) {
     })
 }
 
+function activatePanelInStoredLayout(
+  layout: StoredDockviewLayout | null,
+  panel: WorkspacePanelInput | null,
+) {
+  if (!layout) return null
+  if (!panel) return layout
+
+  const canonicalId = getCanonicalPanelId(panel)
+  const targetPanelId = Object.entries(layout.panels).find(([, value]) => {
+    const storedPanel = value as StoredDockviewPanelState
+    return (
+      storedPanel.params?.canonicalId === canonicalId ||
+      (storedPanel.params?.kind === panel.kind &&
+        storedPanel.params?.entityId === panel.entityId)
+    )
+  })?.[0]
+
+  if (!targetPanelId) return layout
+
+  const rootData = layout.grid.root.data
+  if (!Array.isArray(rootData)) return layout
+
+  let activeGroup: string | null = null
+  const nextRootData = rootData.map((group) => {
+    const data = group.data
+    if (
+      !data ||
+      Array.isArray(data) ||
+      typeof data.id !== 'string' ||
+      !Array.isArray(data.views) ||
+      !data.views.includes(targetPanelId)
+    ) {
+      return group
+    }
+
+    activeGroup = data.id
+    return {
+      ...group,
+      data: {
+        ...data,
+        activeView: targetPanelId,
+      },
+    }
+  })
+
+  if (!activeGroup) return layout
+
+  return {
+    ...layout,
+    activeGroup,
+    grid: {
+      ...layout.grid,
+      root: {
+        ...layout.grid.root,
+        data: nextRootData,
+      },
+    },
+  }
+}
+
 export function WorkspaceDockProvider({
   workspaceId,
   children,
@@ -1509,8 +1567,9 @@ export function WorkspaceDockProvider({
   children: React.ReactNode
 }) {
   const setActiveSession = useChatStore((state) => state.setActiveSession)
-  const [{ panel, panelEntityId, panelTitle }, setPanelQueryState] =
+  const [{ chat, panel, panelEntityId, panelTitle }, setPanelQueryState] =
     useQueryStates({
+      chat: parseAsString,
       panel: parseAsString,
       panelTitle: parseAsString,
       panelEntityId: parseAsString,
@@ -1568,22 +1627,26 @@ export function WorkspaceDockProvider({
 
   const writePanelToQueryState = useCallback(
     (nextPanel: WorkspacePanelInput | null) => {
-      if (nextPanel?.kind === 'chat') return
       const queryPanel = nextPanel?.kind === 'blank' ? null : nextPanel
+      const chatId = queryPanel?.kind === 'chat' ? queryPanel.entityId : null
+      const queryPanelTitle =
+        queryPanel?.kind === 'chat' ? null : (queryPanel?.title ?? null)
       if (
+        chat === chatId &&
         panel === (queryPanel?.kind ?? null) &&
-        panelTitle === (queryPanel?.title ?? null) &&
+        panelTitle === queryPanelTitle &&
         panelEntityId === (queryPanel?.entityId ?? null)
       ) {
         return
       }
       void setPanelQueryState({
+        chat: chatId ?? null,
         panel: queryPanel?.kind ?? null,
-        panelTitle: queryPanel?.title ?? null,
+        panelTitle: queryPanelTitle,
         panelEntityId: queryPanel?.entityId ?? null,
       })
     },
-    [panel, panelEntityId, panelTitle, setPanelQueryState],
+    [chat, panel, panelEntityId, panelTitle, setPanelQueryState],
   )
 
   const syncDockPanels = useCallback(
@@ -1687,6 +1750,7 @@ export function WorkspaceDockProvider({
       const api = apiRef.current
       const panel = api?.getPanel(panelId)
       if (!api || !panel) return
+      panel.group.api.setActive()
       panel.api.setActive()
       commitActiveDockState(api)
     },
@@ -1743,6 +1807,7 @@ export function WorkspaceDockProvider({
             existing.api.setTitle(panel.title)
           }
         }
+        existing.group.api.setActive()
         existing.api.setActive()
         commitActiveDockState(api)
         return existing.id
@@ -1763,6 +1828,7 @@ export function WorkspaceDockProvider({
         position: options?.position,
       })
 
+      created.group.api.setActive()
       created.api.setActive()
       commitActiveDockState(api)
       return created.id
@@ -1803,6 +1869,7 @@ export function WorkspaceDockProvider({
                   insertIndex: index,
                 }),
         })
+        existing.group.api.setActive()
         existing.api.setActive()
         commitActiveDockState(api)
         return existing.id
@@ -2002,7 +2069,18 @@ export function WorkspaceDockProvider({
         }, 150)
       }
 
-      const savedLayout = readStoredDockviewLayout(storageKey)
+      const searchPanel = chat
+        ? { kind: 'chat' as const, title: 'Chat', entityId: chat }
+        : readPanelFromQueryState({
+            panel,
+            panelTitle,
+            panelEntityId,
+          })
+      const storedLayout = readStoredDockviewLayout(storageKey)
+      const savedLayout = activatePanelInStoredLayout(
+        storedLayout,
+        searchPanel,
+      )
       const hasSavedLayout = Boolean(savedLayout)
       if (savedLayout) {
         api.fromJSON(savedLayout)
@@ -2025,19 +2103,30 @@ export function WorkspaceDockProvider({
         }
       }
 
-      const searchPanel = readPanelFromQueryState({
-        panel,
-        panelTitle,
-        panelEntityId,
-      })
+      let requestedPanelId: string | null = null
       if (searchPanel) {
-        openPanel(searchPanel)
+        requestedPanelId = openPanel(searchPanel)
       } else if (!hasSavedLayout || api.panels.length === 0) {
         openPanel({ kind: 'inbox', title: 'Inbox' })
       }
 
       syncDockLayoutState(api)
-      const settledPanel = ensureActivePanel()
+      if (requestedPanelId) {
+        const requestedPanel = api.getPanel(requestedPanelId)
+        requestedPanel?.group.api.setActive()
+        requestedPanel?.api.setActive()
+        window.requestAnimationFrame(() => {
+          const currentRequestedPanel = api.getPanel(requestedPanelId)
+          if (!currentRequestedPanel) return
+          currentRequestedPanel.group.api.setActive()
+          currentRequestedPanel.api.setActive()
+          const active = commitActiveDockState(api)
+          writePanelToQueryState(active)
+        })
+      }
+      const settledPanel = requestedPanelId
+        ? getPanelInputFromApi(api)
+        : ensureActivePanel()
       commitActiveDockState(api)
       writePanelToQueryState(settledPanel)
 
@@ -2056,7 +2145,7 @@ export function WorkspaceDockProvider({
       })
       const disposeLayout = api.onDidLayoutChange(() => {
         syncDockLayoutState(api)
-        syncActiveDockState()
+        syncDockPanels(api)
         saveLayout()
       })
       // Veto the top/bottom overlays during drag so horizontal stacking is
@@ -2081,8 +2170,10 @@ export function WorkspaceDockProvider({
     },
     [
       commitActiveDockState,
+      chat,
       getPanelInputFromApi,
       syncDockLayoutState,
+      syncDockPanels,
       panel,
       panelEntityId,
       panelTitle,

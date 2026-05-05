@@ -1,8 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Per-agent Durable Object + multi-agent data-driven personas
 // ─────────────────────────────────────────────────────────────────────────────
-// One `AgentDO` per agent UUID. Inside, `ChatSubAgent` facets are keyed by
-// threadId and `IssueRunSubAgent` facets are keyed by issueId. Per-agent
+// One `AgentDO` per agent runtime name. New agents use their UUID as that
+// name; migrated chat agents can keep their saved `agent.host_name` so their
+// Durable Object storage remains addressable. Inside, `ChatSubAgent` facets
+// are keyed by threadId and `IssueRunSubAgent` facets are keyed by issueId. Per-agent
 // personality (name, role, skills, instructions, runtimeConfig, permissions)
 // comes from `agent` rows in Postgres.
 //
@@ -27,7 +29,7 @@ import { createWorkspaceTools } from '@cloudflare/think/tools/workspace'
 import { Workspace } from '@cloudflare/shell'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { drizzle } from 'drizzle-orm/neon-serverless'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, or, type SQL } from 'drizzle-orm'
 import { Result, type Result as ResultValue } from 'better-result'
 import * as schema from '@garden/db/schema'
 import {
@@ -43,7 +45,6 @@ import {
 } from './skills'
 import {
   PostgresAgentPromptCatalog,
-  assembleFoundationPrompt,
   createPromptContextProviders,
 } from './prompt'
 import { PrimaryAgentMcpController, type McpHost } from './primary-agent-mcp'
@@ -228,6 +229,8 @@ const MCP_CONNECTION_WAIT_TIMEOUT_MS = 10_000
 const THINK_TURN_TIMEOUT_MS = 60_000
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.workspace-agent.turn'
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 type LiveAgentStatePayload = DebugMetaPayload & {
   workspace: DebugWorkspacePayload
@@ -237,9 +240,14 @@ type LiveAgentStatePayload = DebugMetaPayload & {
 }
 
 export class AgentDO extends Agent<AgentRuntimeEnv> {
+  static override options = {
+    sendIdentityOnConnect: false,
+  }
+
   private readonly authorizedThreadIds = new Set<string>()
   private readonly authorizedIssueIds = new Set<string>()
   private identitySyncedAt = 0
+  private runtimeAgentIdValue: string | undefined
 
   @callable()
   async ensureThread(threadId: string): Promise<RuntimeOkPayload> {
@@ -389,21 +397,30 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   }
 
   @callable()
-  async enqueueIssueRun(input: { runId: string; issueId: string }): Promise<void> {
+  async enqueueIssueRun(input: {
+    runId: string
+    issueId: string
+  }): Promise<void> {
     await this.requireIssueAccess(input.issueId)
     const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId)
     await issueAgent.startTurn(input)
   }
 
   @callable()
-  async resumeIssueRun(input: { runId: string; issueId: string }): Promise<void> {
+  async resumeIssueRun(input: {
+    runId: string
+    issueId: string
+  }): Promise<void> {
     await this.requireIssueAccess(input.issueId)
     const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId)
     await issueAgent.resumeTurn(input)
   }
 
   @callable()
-  async cancelIssueRun(input: { runId: string; issueId: string }): Promise<void> {
+  async cancelIssueRun(input: {
+    runId: string
+    issueId: string
+  }): Promise<void> {
     await this.requireIssueAccess(input.issueId)
     const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId)
     await issueAgent.requestCancel(input)
@@ -443,8 +460,32 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return drizzle(this.env.DATABASE_URL, { schema })
   }
 
-  private runtimeAgentId() {
-    return this.name
+  private agentRuntimeWhere(): SQL {
+    if (!UUID_PATTERN.test(this.name)) {
+      return eq(schema.agent.hostName, this.name)
+    }
+
+    const condition = or(
+      eq(schema.agent.id, this.name),
+      eq(schema.agent.hostName, this.name),
+    )
+    return condition ?? eq(schema.agent.hostName, this.name)
+  }
+
+  private async resolveRuntimeAgentId() {
+    if (this.runtimeAgentIdValue) return this.runtimeAgentIdValue
+
+    const [row] = await this.getDb()
+      .select({ id: schema.agent.id })
+      .from(schema.agent)
+      .where(this.agentRuntimeWhere())
+      .limit(1)
+
+    if (row) {
+      this.runtimeAgentIdValue = row.id
+    }
+
+    return this.runtimeAgentIdValue ?? this.name
   }
 
   private async syncAgentIdentityState() {
@@ -464,10 +505,11 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
         status: schema.agent.status,
       })
       .from(schema.agent)
-      .where(eq(schema.agent.id, this.runtimeAgentId()))
+      .where(this.agentRuntimeWhere())
       .limit(1)
 
     if (!row) return
+    this.runtimeAgentIdValue = row.id
 
     const runtimeConfig =
       row.runtimeConfig &&
@@ -532,7 +574,9 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       row.roleTitle,
       row.instructions ?? row.roleTitle ?? '',
       JSON.stringify(runtimeConfig.learned_patterns ?? []),
-      JSON.stringify(permissions.hire_history ?? runtimeConfig.hire_history ?? []),
+      JSON.stringify(
+        permissions.hire_history ?? runtimeConfig.hire_history ?? [],
+      ),
       row.status,
       new Date(now).toISOString(),
     )
@@ -544,6 +588,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       return true
     }
     await this.syncAgentIdentityState()
+    const agentId = await this.resolveRuntimeAgentId()
 
     const [row] = await this.getDb()
       .select({ id: schema.chatThread.id })
@@ -551,7 +596,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       .where(
         and(
           eq(schema.chatThread.id, threadId),
-          eq(schema.chatThread.agentId, this.runtimeAgentId()),
+          eq(schema.chatThread.agentId, agentId),
         ),
       )
       .limit(1)
@@ -572,6 +617,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       return true
     }
     await this.syncAgentIdentityState()
+    const agentId = await this.resolveRuntimeAgentId()
 
     const [row] = await this.getDb()
       .select({ id: schema.issueRun.id })
@@ -579,7 +625,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       .where(
         and(
           eq(schema.issueRun.issueId, issueId),
-          eq(schema.issueRun.agentId, this.runtimeAgentId()),
+          eq(schema.issueRun.agentId, agentId),
         ),
       )
       .limit(1)
@@ -610,10 +656,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
 
   getModel(): LanguageModel {
     return createAgentModel(this.env.OPENCODE_GO_API_KEY)
-  }
-
-  override getSystemPrompt(): string {
-    return assembleFoundationPrompt()
   }
 
   override async configureSession(session: Session) {
@@ -859,6 +901,11 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     return prepareResult.isOk()
       ? { ok: true }
       : { ok: false, error: prepareResult.error }
+  }
+
+  @callable()
+  async loadMessages(): Promise<UIMessage[]> {
+    return [...this.messages]
   }
 
   private async prepareRuntimeWithRetries(
@@ -1215,9 +1262,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   async debugPrompt(): Promise<DebugPromptPayload> {
-    const prompt = await this.session
-      .freezeSystemPrompt()
-      .catch(() => this.getSystemPrompt())
+    const prompt = await this.session.freezeSystemPrompt()
 
     const blocks = this.session.getContextBlocks() ?? []
     const contextBlocks: ContextBlockEntry[] = blocks.map((block) => {
@@ -1319,7 +1364,8 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       )
     }
 
-    const readyResult = await this.ensureProxyMcpConnectionsLoaded('before-turn')
+    const readyResult =
+      await this.ensureProxyMcpConnectionsLoaded('before-turn')
     if (readyResult.isErr()) {
       throw new Error(`MCP tools are not ready: ${readyResult.error}`)
     }
@@ -1391,9 +1437,8 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       }
 
       const mcpController = this.getMcpController()
-      const connectionResult = await mcpController.ensureProxyMcpConnections(
-        options,
-      )
+      const connectionResult =
+        await mcpController.ensureProxyMcpConnections(options)
       if (connectionResult.isOk()) {
         const readinessResult = await this.waitForMcpConnectionsReady(reason)
         if (readinessResult.isErr()) {
