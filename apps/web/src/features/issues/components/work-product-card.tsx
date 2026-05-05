@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Check,
   CheckCircle2,
@@ -61,6 +61,8 @@ export interface WorkProductCardProps {
   }
   /** When set, shows an Apply button + connector icon. */
   connectorId?: string | null
+  /** When true, the card briefly pulses on mount — used by ?focus=wp_review deep links. */
+  pulseOnMount?: boolean
   onApprove?: () => void
   onRequestChanges?: () => void
   onApply?: () => void
@@ -130,12 +132,15 @@ function MarkdownBody({ body, expanded }: { body: string; expanded: boolean }) {
 export function WorkProductCard({
   workProduct,
   connectorId,
+  pulseOnMount = false,
   onApprove,
   onRequestChanges,
   onApply,
   onShowDiff,
 }: WorkProductCardProps) {
   const [expanded, setExpanded] = useState(false)
+  const [pulse, setPulse] = useState(false)
+  const ref = useRef<HTMLDivElement | null>(null)
   const TypeIcon = TYPE_ICON[workProduct.type]
   const isSuperseded = workProduct.status === 'superseded'
 
@@ -145,15 +150,27 @@ export function WorkProductCard({
     !workProduct.applied_external_url &&
     connectorId
 
+  useEffect(() => {
+    if (!pulseOnMount) return
+    setPulse(true)
+    const node = ref.current
+    if (node) node.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const timer = setTimeout(() => setPulse(false), 1800)
+    return () => clearTimeout(timer)
+  }, [pulseOnMount])
+
   return (
     <div
+      ref={ref}
+      id={`work-product-${workProduct.id}`}
       className={cn(
-        'rounded-lg border transition-colors',
+        'rounded-lg border transition-shadow',
         isSuperseded && 'opacity-60 border-dashed',
         workProduct.status === 'review' && 'border-warning/30 bg-warning/[0.03]',
         workProduct.status === 'approved' && 'border-info/20 bg-info/[0.03]',
         workProduct.status === 'applied' && 'border-success/20 bg-success/[0.03]',
         (workProduct.status === 'draft' || workProduct.status === 'superseded') && 'border-border bg-card',
+        pulse && 'ring-2 ring-brand/60 ring-offset-2 ring-offset-background',
       )}
     >
       {/* Header */}
@@ -256,6 +273,8 @@ export function WorkProductCard({
 interface WorkProductListProps {
   workProducts: WorkProductCardProps['workProduct'][]
   connectorId?: string | null
+  /** ID of the card to pulse on mount (e.g. from `?focus=wp_review:<id>`). */
+  pulseId?: string | null
   onApprove?: (id: string) => void
   onRequestChanges?: (id: string) => void
   onApply?: (id: string) => void
@@ -264,6 +283,7 @@ interface WorkProductListProps {
 export function WorkProductList({
   workProducts,
   connectorId,
+  pulseId,
   onApprove,
   onRequestChanges,
   onApply,
@@ -277,6 +297,7 @@ export function WorkProductList({
           key={wp.id}
           workProduct={wp}
           connectorId={connectorId}
+          pulseOnMount={pulseId === wp.id}
           onApprove={() => onApprove?.(wp.id)}
           onRequestChanges={() => onRequestChanges?.(wp.id)}
           onApply={() => onApply?.(wp.id)}

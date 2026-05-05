@@ -404,9 +404,13 @@ export function createReadSourceTool(context: IssueRunToolContext) {
         )
       }
 
+      const sourceResults = await Promise.all(
+        bindingsResult.value.map((binding) =>
+          readBindingSource({ binding, context }),
+        ),
+      )
       const sources: ReadSourceResult[] = []
-      for (const binding of bindingsResult.value) {
-        const sourceResult = await readBindingSource({ binding, context })
+      for (const sourceResult of sourceResults) {
         if (sourceResult.isErr()) return toolErrorResult(sourceResult.error)
         sources.push(sourceResult.value)
       }

@@ -191,7 +191,7 @@ async function loadMatchingPendingRequests(args: {
         cause,
       }),
   })
-  if (requestsResult.isErr()) return requestsResult
+  if (requestsResult.isErr()) return Result.err(requestsResult.error)
 
   const referenceArgsSignature = canonicalJsonString(
     args.referenceRequest.argsJson,
@@ -225,7 +225,7 @@ async function writeDenialAuditRows(args: {
   const auditRows: Array<typeof schema.toolCallAudit.$inferInsert> = []
   for (const request of args.requests) {
     const argsHashResult = await hashToolArgs(request.argsJson)
-    if (argsHashResult.isErr()) return argsHashResult
+    if (argsHashResult.isErr()) return Result.err(argsHashResult.error)
 
     auditRows.push({
       id: crypto.randomUUID(),

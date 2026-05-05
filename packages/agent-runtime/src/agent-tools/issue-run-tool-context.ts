@@ -7,7 +7,7 @@ import type {
   IssueRunEventStream,
   IssueRunEventType,
   IssueRunStatus,
-} from '@garden/core/types'
+} from '@garden/core/types/issue-run'
 import * as schema from '@garden/db/schema'
 
 export type AgentDoRpcStub = {
@@ -27,7 +27,7 @@ export type IssueRunToolEnv = {
   BETTER_AUTH_URL: string
   DATABASE_URL: string
   MCP_PROXY_URL?: string
-  AGENT_DO?: AgentDoNamespace
+  AgentDO?: AgentDoNamespace
 }
 
 export type IssueRunToolState = {
@@ -50,7 +50,9 @@ export type IssueRunMcpToolRecord = {
 
 export type IssueRunMcpBridge = {
   ensureConnections: () => Promise<ResultValue<void, IssueRunToolError>>
-  listTools: (filter?: { serverId?: string | string[] }) => IssueRunMcpToolRecord[]
+  listTools: (filter?: {
+    serverId?: string | string[]
+  }) => IssueRunMcpToolRecord[]
   callTool: (params: {
     serverId: string
     name: string
@@ -149,6 +151,9 @@ export async function appendIssueRunEvent(args: {
   const result = await Result.tryPromise({
     try: async () => {
       await args.db.transaction(async (tx) => {
+        await tx.execute(sql`
+          select pg_advisory_xact_lock(hashtextextended(${args.run.runId}::text, 0))
+        `)
         const [{ nextSeq }] = (await tx
           .select({
             nextSeq: sql<number>`cast(coalesce(max(${schema.issueRunEvent.seq}), 0) + 1 as int)`,

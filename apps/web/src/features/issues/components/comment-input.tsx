@@ -16,9 +16,17 @@ import { api } from '@/lib/api'
 interface CommentInputProps {
   issueId: string
   onSubmit: (content: string, attachmentIds?: string[]) => Promise<void>
+  placeholder?: string
+  /** Adds a brand-tinted ring; used by the redirect mode of ContextualComposer. */
+  accent?: 'default' | 'redirect'
 }
 
-function CommentInput({ issueId, onSubmit }: CommentInputProps) {
+function CommentInput({
+  issueId,
+  onSubmit,
+  placeholder = 'Leave a comment...',
+  accent = 'default',
+}: CommentInputProps) {
   const editorRef = useRef<ContentEditorRef>(null)
   const [isEmpty, setIsEmpty] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -59,12 +67,16 @@ function CommentInput({ issueId, onSubmit }: CommentInputProps) {
   return (
     <div
       {...dropZoneProps}
-      className="relative flex max-h-56 flex-col rounded-lg bg-card pb-8 ring-1 ring-border"
+      className={
+        accent === 'redirect'
+          ? 'relative flex max-h-56 flex-col rounded-lg bg-card pb-8 ring-1 ring-brand/40'
+          : 'relative flex max-h-56 flex-col rounded-lg bg-card pb-8 ring-1 ring-border'
+      }
     >
       <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
         <ContentEditor
           ref={editorRef}
-          placeholder="Leave a comment..."
+          placeholder={placeholder}
           onUpdate={(md) => setIsEmpty(!md.trim())}
           onSubmit={handleSubmit}
           onUploadFile={handleUpload}

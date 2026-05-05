@@ -6,10 +6,12 @@ import {
 import { getAgentDoStub } from './agent-do-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
+import { DEFAULT_AGENT_PERMISSIONS } from '@garden/core/agents/permissions'
 
 // Server-side helpers for managing AgentDOs + their ChatSubAgent thread
-// facets. The API response still exposes `hostName`; after Slice 6 the value
-// is the agent UUID used to address AGENT_DO.
+// facets. The API response exposes `hostName`, the saved AgentDO runtime name.
+// New agents use their UUID; migrated chat agents may keep the older runtime
+// name that owns their Durable Object storage.
 
 function getAgentRuntimeStub(agentId: string) {
   const stubResult = getAgentDoStub(appEnv, agentId)
@@ -60,6 +62,7 @@ export async function ensureAgentRow(input: {
       isDefault: true,
       status: 'active',
       hostName: agentId,
+      permissions: DEFAULT_AGENT_PERMISSIONS,
     })
     .returning()
 

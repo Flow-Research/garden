@@ -83,7 +83,10 @@ export const Route = createFileRoute('/api/issues')({
           ? query.limit(safeLimit).offset(safeOffset)
           : query.offset(safeOffset))
 
-        return Response.json({ issues: rows.map(toIssue), total: count })
+        return Response.json({
+          issues: rows.map((row) => toIssue(row)),
+          total: count,
+        })
       },
       POST: async ({ request }) => {
         const session = await requireSession(request)

@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import { DEFAULT_AGENT_PERMISSIONS } from '@garden/core/agents/permissions'
 import {
   bindExistingCapabilitiesToAgent,
   bindExistingSkillsToAgent,
@@ -64,6 +65,7 @@ export const Route = createFileRoute('/api/agents')({
               : null,
           status: 'active',
           hostName: agentId,
+          permissions: DEFAULT_AGENT_PERMISSIONS,
         } as typeof schema.agent.$inferInsert
         const db = getDb(appEnv)
         const [agent] = await db

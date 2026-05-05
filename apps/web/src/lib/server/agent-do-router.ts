@@ -1,5 +1,5 @@
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, or } from 'drizzle-orm'
 import type { AgentDO } from '@garden/agent-runtime'
 import { agentSelectSchema, uuidSchema } from '@garden/db/validation'
 import { getDb, schema } from '@/lib/server/db'
@@ -21,7 +21,7 @@ export type AgentAccessAction =
 export type AgentDoRpcStub = DurableObjectStub<AgentDO>
 type AgentDoNamespace = DurableObjectNamespace<AgentDO>
 
-type AgentDoEnv = Pick<AppEnv, 'AGENT_DO' | 'DATABASE_URL'>
+type AgentDoEnv = Pick<AppEnv, 'AgentDO' | 'DATABASE_URL'>
 type AgentSession = { user?: { id?: string | null } | null } | null | undefined
 
 const agentAccessRecordSchema = agentSelectSchema.pick({
@@ -29,6 +29,11 @@ const agentAccessRecordSchema = agentSelectSchema.pick({
   workspaceId: true,
   status: true,
 })
+const AGENT_RUNTIME_NAME_PATTERN = /^[A-Za-z0-9._:-]+$/
+
+export function isAgentRuntimeName(value: string) {
+  return AGENT_RUNTIME_NAME_PATTERN.test(value)
+}
 
 function dbError(operation: string, cause: unknown) {
   const message = cause instanceof Error ? cause.message : String(cause)
@@ -40,20 +45,19 @@ function dbError(operation: string, cause: unknown) {
 }
 
 export function getAgentDoStub(
-  env: { AGENT_DO?: AgentDoNamespace },
-  agentId: string,
+  env: { AgentDO?: AgentDoNamespace },
+  agentRuntimeName: string,
 ): ResultValue<AgentDoRpcStub, AgentDoRouterError> {
-  const parsedAgentId = uuidSchema.safeParse(agentId)
-  if (!parsedAgentId.success) {
+  if (!agentRuntimeName || !isAgentRuntimeName(agentRuntimeName)) {
     return Result.err(
       new AgentDoRouterError({
         code: 'invalid_agent_id',
-        message: 'Agent id is invalid.',
+        message: 'Agent runtime name is invalid.',
       }),
     )
   }
 
-  if (!env.AGENT_DO) {
+  if (!env.AgentDO) {
     return Result.err(
       new AgentDoRouterError({
         code: 'not_configured',
@@ -62,15 +66,17 @@ export function getAgentDoStub(
     )
   }
 
-  return Result.ok(env.AGENT_DO.get(env.AGENT_DO.idFromName(parsedAgentId.data)))
+  return Result.ok(env.AgentDO.get(env.AgentDO.idFromName(agentRuntimeName)))
 }
 
 export async function requireAgentAccess(
   env: AgentDoEnv,
-  agentId: string,
+  agentRuntimeName: string,
   session: AgentSession,
   action: AgentAccessAction,
-): Promise<ResultValue<{ agentId: string; workspaceId: string }, AgentDoRouterError>> {
+): Promise<
+  ResultValue<{ agentId: string; workspaceId: string }, AgentDoRouterError>
+> {
   const userId = session?.user?.id ?? null
   if (!userId) {
     return Result.err(
@@ -81,15 +87,15 @@ export async function requireAgentAccess(
     )
   }
 
-  const parsedAgentId = uuidSchema.safeParse(agentId)
-  if (!parsedAgentId.success) {
+  if (!agentRuntimeName || !isAgentRuntimeName(agentRuntimeName)) {
     return Result.err(
       new AgentDoRouterError({
         code: 'invalid_agent_id',
-        message: 'Agent id is invalid.',
+        message: 'Agent runtime name is invalid.',
       }),
     )
   }
+  const parsedAgentId = uuidSchema.safeParse(agentRuntimeName)
 
   const result = await Result.tryPromise({
     try: async () => {
@@ -103,7 +109,14 @@ export async function requireAgentAccess(
             eq(schema.member.userId, userId),
           ),
         )
-        .where(eq(schema.agent.id, parsedAgentId.data))
+        .where(
+          parsedAgentId.success
+            ? or(
+                eq(schema.agent.id, parsedAgentId.data),
+                eq(schema.agent.hostName, agentRuntimeName),
+              )
+            : eq(schema.agent.hostName, agentRuntimeName),
+        )
         .limit(1)
       return row?.agent ?? null
     },

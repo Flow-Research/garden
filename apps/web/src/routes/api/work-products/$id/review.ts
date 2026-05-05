@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
+import type { ConnectorError } from '@garden/core/connectors/errors'
 import { appEnv } from '@/lib/server/env'
 import { json, requireWorkspaceAccess } from '@/lib/server/control-plane'
 import { parseJsonBody } from '@/lib/server/validation/common'
 import {
-  type ConnectorError,
   isConnectorError,
   loadWorkProductWorkspace,
   reviewWorkProduct,

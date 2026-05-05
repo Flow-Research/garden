@@ -7,9 +7,10 @@ import { createExecuteTool } from '@cloudflare/think/tools/execute'
 import type { Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { Result, type Result as ResultValue } from 'better-result'
 import { tool, type ToolSet } from 'ai'
-import { eq, sql, type SQLWrapper } from 'drizzle-orm'
+import { and, eq, isNull, sql, type SQLWrapper } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/neon-serverless'
 import { z } from 'zod'
+import { formatIssueIdentifier } from '@garden/core/issues/identifier'
 import * as schema from '@garden/db/schema'
 import {
   issueCommentInsertSchema,
@@ -63,7 +64,7 @@ const readRunInputSchema = z.object({
   run_id_or_issue_identifier: z
     .string()
     .min(1)
-    .describe('Issue identifier like ACC-43, or a specific issue_run UUID.'),
+    .describe('Issue identifier like ISS-43, or a specific issue_run UUID.'),
 })
 
 const issueSourceToolInputSchema = z
@@ -109,7 +110,7 @@ const readIssueInputSchema = z
     issue_id_or_identifier: z
       .string()
       .min(1)
-      .describe('Issue identifier like ACC-43, or an issue UUID.'),
+      .describe('Issue identifier like ISS-43, or an issue UUID.'),
   })
   .strict()
 
@@ -138,7 +139,7 @@ const postIssueCommentInputSchema = z
     issue_id_or_identifier: z
       .string()
       .min(1)
-      .describe('Issue identifier like ACC-43, or an issue UUID.'),
+      .describe('Issue identifier like ISS-43, or an issue UUID.'),
     body: issueCommentInsertSchema.shape.body.describe(
       'Comment body to post as the chat user.',
     ),
@@ -248,7 +249,7 @@ function readRunErr<T>(error: string): ResultValue<T, string> {
 }
 
 function parseIssueIdentifier(value: string) {
-  const match = /^ACC-(\d+)$/i.exec(value.trim())
+  const match = /^[A-Z0-9]{2,8}-(\d+)$/i.exec(value.trim())
   const numberText = match?.[1]
   if (!numberText) return null
   const issueNumber = Number(numberText)
@@ -288,16 +289,27 @@ async function loadReadRunWorkspace(context: ReadRunToolContext): Promise<
     {
       db: ReadRunDb
       workspaceId: string
+      issuePrefix: string
     },
     string
   >
 > {
   const db = getReadRunDb(context.databaseUrl)
-  const rowResult = await Result.tryPromise<{ workspaceId: string } | null, string>({
+  const rowResult = await Result.tryPromise<
+    { workspaceId: string; issuePrefix: string } | null,
+    string
+  >({
     try: async () => {
       const [row] = await db
-        .select({ workspaceId: schema.chatThread.workspaceId })
+        .select({
+          workspaceId: schema.chatThread.workspaceId,
+          issuePrefix: schema.organization.issuePrefix,
+        })
         .from(schema.chatThread)
+        .innerJoin(
+          schema.organization,
+          eq(schema.organization.id, schema.chatThread.workspaceId),
+        )
         .where(eq(schema.chatThread.id, context.threadId))
         .limit(1)
       return row ?? null
@@ -306,7 +318,11 @@ async function loadReadRunWorkspace(context: ReadRunToolContext): Promise<
   })
   if (rowResult.isErr()) return readRunErr(rowResult.error)
   if (!rowResult.value) return readRunErr('read_run: chat thread not found.')
-  return Result.ok({ db, workspaceId: rowResult.value.workspaceId })
+  return Result.ok({
+    db,
+    workspaceId: rowResult.value.workspaceId,
+    issuePrefix: rowResult.value.issuePrefix,
+  })
 }
 
 function issueToolErr<T>(error: string): ResultValue<T, string> {
@@ -341,6 +357,7 @@ async function loadChatIssueIdentity(
 async function resolveIssueRun(args: {
   db: ReadRunDb
   workspaceId: string
+  issuePrefix: string
   runIdOrIssueIdentifier: string
 }): Promise<ResultValue<IssueRunRow, string>> {
   const issueNumber = parseIssueIdentifier(args.runIdOrIssueIdentifier)
@@ -366,13 +383,15 @@ async function resolveIssueRun(args: {
     const [run] = rowsResult.value
     return run
       ? Result.ok(run)
-      : readRunErr(`read_run: no run found for ACC-${issueNumber}`)
+      : readRunErr(
+          `read_run: no run found for ${formatIssueIdentifier(args.issuePrefix, issueNumber)}`,
+        )
   }
 
   const runId = z.string().uuid().safeParse(args.runIdOrIssueIdentifier.trim())
   if (!runId.success) {
     return readRunErr(
-      'read_run: expected an issue identifier like ACC-43 or a run UUID.',
+      'read_run: expected an issue identifier like ISS-43 or a run UUID.',
     )
   }
 
@@ -483,11 +502,12 @@ async function readRun(
 ): Promise<ResultValue<ReadRunToolResult, string>> {
   const workspaceResult = await loadReadRunWorkspace(context)
   if (workspaceResult.isErr()) return readRunErr(workspaceResult.error)
-  const { db, workspaceId } = workspaceResult.value
+  const { db, workspaceId, issuePrefix } = workspaceResult.value
 
   const runResult = await resolveIssueRun({
     db,
     workspaceId,
+    issuePrefix,
     runIdOrIssueIdentifier,
   })
   if (runResult.isErr()) return readRunErr(runResult.error)
@@ -579,6 +599,23 @@ async function createIssueFromChat(
   if (issueResult.isErr()) return issueToolErr(issueResult.error.message)
 
   const issue = issueResult.value
+  const db = getReadRunDb(context.databaseUrl)
+  const linkResult = await Result.tryPromise<void, string>({
+    try: async () => {
+      await db
+        .update(schema.chatThread)
+        .set({ primaryIssueId: issue.id, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.chatThread.id, context.threadId),
+            isNull(schema.chatThread.primaryIssueId),
+          ),
+        )
+    },
+    catch: errorMessage,
+  })
+  if (linkResult.isErr()) return issueToolErr(linkResult.error)
+
   if (input.assignee_agent_id) {
     const startResult = await startIssueRun(
       { DATABASE_URL: context.databaseUrl },
@@ -727,7 +764,7 @@ export function createChatSubAgentTools({
 
     read_issue: tool({
       description:
-        'Read a Garden issue summary for an issue identifier like ACC-43 or an issue UUID. ' +
+        'Read a Garden issue summary for an issue identifier like ISS-43 or an issue UUID. ' +
         'Use this when the user asks what is happening with an issue or what an assigned agent is doing.',
       inputSchema: readIssueInputSchema,
       execute: async ({ issue_id_or_identifier }) => {
@@ -779,12 +816,12 @@ export function createChatSubAgentTools({
       },
     }),
 
-    // Example: "What's happening with ACC-43?"
-    // → read_run("ACC-43")
+    // Example: "What's happening with ISS-43?"
+    // → read_run("ISS-43")
     // → "Garden is on turn 3. It's waiting on you for one question: 'Should multi-org users get tenant filtering?' Drafted brief is up for review."
     read_run: tool({
       description:
-        'Read live issue-run state for an issue identifier like ACC-43, or for a specific issue_run UUID. ' +
+        'Read live issue-run state for an issue identifier like ISS-43, or for a specific issue_run UUID. ' +
         'Use this when the user asks what is happening with an issue, whether an agent is blocked, or what is waiting on them.',
       inputSchema: readRunInputSchema,
       execute: async ({ run_id_or_issue_identifier }) => {

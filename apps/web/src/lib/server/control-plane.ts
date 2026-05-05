@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
+import { formatIssueIdentifier } from '@garden/core/issues/identifier'
 import { getAuthSession, toCoreUser } from '@/lib/server/session'
 import type { MemberRole } from '@garden/core/types'
 
@@ -213,7 +214,10 @@ export function toInvitation(record: InvitationRecord) {
   }
 }
 
-export function toIssue(record: typeof schema.issue.$inferSelect) {
+export function toIssue(
+  record: typeof schema.issue.$inferSelect,
+  options: { issuePrefix?: string } = {},
+) {
   const sourceSummary = record.sourceSummary
     ? {
         connector_id: 'manual',
@@ -221,12 +225,13 @@ export function toIssue(record: typeof schema.issue.$inferSelect) {
         external_url: null,
       }
     : null
+  const prefix = options.issuePrefix ?? 'ISS'
 
   return {
     id: record.id,
     workspace_id: record.workspaceId,
     number: record.number,
-    identifier: `ACC-${record.number}`,
+    identifier: formatIssueIdentifier(prefix, record.number),
     title: record.title,
     description: record.description ?? null,
     status: record.status,
@@ -287,6 +292,12 @@ export function toAgent(record: typeof schema.agent.$inferSelect) {
 export function toChatThread(
   record: typeof schema.chatThread.$inferSelect,
   hostName: string,
+  primaryIssue?: {
+    id: string
+    number: number
+    title: string
+    status: string | null
+  } | null,
 ) {
   const createdAt = record.createdAt
     ? new Date(record.createdAt).toISOString()
@@ -302,6 +313,15 @@ export function toChatThread(
     title: record.title,
     agentId: record.agentId,
     hostName,
+    primary_issue_id: record.primaryIssueId ?? null,
+    primaryIssue: primaryIssue
+      ? {
+          id: primaryIssue.id,
+          identifier: formatIssueIdentifier('ISS', primaryIssue.number),
+          title: primaryIssue.title,
+          status: primaryIssue.status ?? 'backlog',
+        }
+      : null,
     lastMessage: record.lastMessage,
     archivedAt: record.archivedAt
       ? new Date(record.archivedAt).toISOString()

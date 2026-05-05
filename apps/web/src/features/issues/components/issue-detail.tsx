@@ -106,7 +106,8 @@ import {
 } from '.'
 import { ProjectPicker } from '../../projects/components/project-picker'
 import { CommentCard } from './comment-card'
-import { CommentInput } from './comment-input'
+import { ContextualComposer } from './contextual-composer'
+import { AgentStatusEntry } from './agent-status-entry'
 import { ActiveRunPanel, LastRunSummary } from './active-run-panel'
 import { WorkProductList } from './work-product-card'
 import { BacklogAgentHintDialog } from './backlog-agent-hint-dialog'
@@ -1767,6 +1768,19 @@ export function IssueDetail({
                             return groups.map((group) => {
                               if (group.type === 'comment') {
                                 const entry = group.entries[0]!
+                                if (entry.actor_type === 'agent') {
+                                  return (
+                                    <div
+                                      key={entry.id}
+                                      className="mb-3 last:mb-0"
+                                    >
+                                      <AgentStatusEntry
+                                        entry={entry}
+                                        highlighted={highlightedId === entry.id}
+                                      />
+                                    </div>
+                                  )
+                                }
                                 return (
                                   <div
                                     key={entry.id}
@@ -1879,9 +1893,9 @@ export function IssueDetail({
                     </BoneyardSkeleton>
                   </div>
 
-                  {/* Bottom comment input — no avatar, full width */}
+                  {/* Bottom composer — contextual, mode swaps by run state */}
                   <div className="mt-4">
-                    <CommentInput issueId={id} onSubmit={submitComment} />
+                    <ContextualComposer issueId={id} onSubmit={submitComment} />
                   </div>
                 </div>
               </div>
@@ -1999,6 +2013,37 @@ function pendingApprovalFromEvents(events: IssueRunEvent[]) {
   }
 }
 
+function LastRunSummaryShell({
+  pulse,
+  children,
+}: {
+  pulse: boolean
+  children: React.ReactNode
+}) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const [active, setActive] = useState(false)
+  useEffect(() => {
+    if (!pulse) return
+    setActive(true)
+    if (ref.current) {
+      ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+    const timer = setTimeout(() => setActive(false), 1800)
+    return () => clearTimeout(timer)
+  }, [pulse])
+  return (
+    <div
+      ref={ref}
+      className={cn(
+        'rounded-lg border bg-card px-3 py-2 transition-shadow',
+        active && 'ring-2 ring-brand/60 ring-offset-2 ring-offset-background',
+      )}
+    >
+      {children}
+    </div>
+  )
+}
+
 function latestEventSummary(events: IssueRunEvent[]) {
   const event = events[events.length - 1]
   if (!event) return null
@@ -2034,7 +2079,14 @@ function IssueFlowSurface({ issue }: { issue: Issue }) {
     Boolean(run) &&
     ((focusKind === 'question' &&
       (!focusId || focusId === run?.id || focusId === pendingQuestion?.id)) ||
-      focusKind === 'approval')
+      focusKind === 'approval' ||
+      (focusKind === 'run' && (!focusId || focusId === run?.id)))
+  const pulseLastRun =
+    Boolean(run) &&
+    (focusKind === 'failed_run' || focusKind === 'blocked') &&
+    (!focusId || focusId === run?.id)
+  const pulseWorkProductId =
+    focusKind === 'wp_review' && focusId ? focusId : null
   const showActive =
     run &&
     run.status !== 'succeeded' &&
@@ -2067,7 +2119,7 @@ function IssueFlowSurface({ issue }: { issue: Issue }) {
       )}
 
       {showLastRun && run && (
-        <div className="rounded-lg border bg-card px-3 py-2">
+        <LastRunSummaryShell pulse={pulseLastRun}>
           <LastRunSummary
             debugMode={debugMode}
             lastRun={{
@@ -2076,13 +2128,14 @@ function IssueFlowSurface({ issue }: { issue: Issue }) {
               usage: run.usage ?? null,
             }}
           />
-        </div>
+        </LastRunSummaryShell>
       )}
 
       {data && data.work_products.length > 0 && (
         <WorkProductList
           workProducts={data.work_products}
           connectorId={issue.source_summary?.connector_id ?? null}
+          pulseId={pulseWorkProductId}
           onApprove={() => {}}
           onRequestChanges={() => {}}
           onApply={() => {}}

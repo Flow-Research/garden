@@ -129,10 +129,7 @@ function buildBlockedSource(issue: IssueRow): SourceItem | null {
   }
 }
 
-function buildMentionSource(
-  comment: CommentRow,
-  issue: IssueRow,
-): SourceItem {
+function buildMentionSource(comment: CommentRow, issue: IssueRow): SourceItem {
   const activityAt = preferDate(comment.createdAt)
   const { actorType, actorId } = actorFromComment(comment)
   return {
@@ -153,10 +150,7 @@ function buildMentionSource(
   }
 }
 
-function buildCommentSource(
-  comment: CommentRow,
-  issue: IssueRow,
-): SourceItem {
+function buildCommentSource(comment: CommentRow, issue: IssueRow): SourceItem {
   const activityAt = preferDate(comment.createdAt)
   const { actorType, actorId } = actorFromComment(comment)
   return {
@@ -202,10 +196,7 @@ function buildApprovalSource(
   }
 }
 
-function buildWaitingForInputSource(
-  run: RunRow,
-  issue: IssueRow,
-): SourceItem {
+function buildWaitingForInputSource(run: RunRow, issue: IssueRow): SourceItem {
   const activityAt = preferDate(run.updatedAt, run.startedAt, run.createdAt)
   return {
     key: `waiting_for_input:${run.id}`,
@@ -250,10 +241,7 @@ function buildWorkProductReviewSource(
   }
 }
 
-function buildFailedRunSource(
-  run: RunRow,
-  issue: IssueRow,
-): SourceItem {
+function buildFailedRunSource(run: RunRow, issue: IssueRow): SourceItem {
   const activityAt = preferDate(run.finishedAt, run.updatedAt, run.createdAt)
   return {
     key: `failed_run:${run.id}`,
@@ -340,10 +328,7 @@ export async function computeInboxItems(args: {
         createdAt: schema.issueComment.createdAt,
       })
       .from(schema.issueComment)
-      .innerJoin(
-        schema.issue,
-        eq(schema.issue.id, schema.issueComment.issueId),
-      )
+      .innerJoin(schema.issue, eq(schema.issue.id, schema.issueComment.issueId))
       .where(
         and(
           eq(schema.issue.workspaceId, workspaceId),
@@ -453,7 +438,9 @@ export async function computeInboxItems(args: {
             ),
         )
   for (const request of approvalRows) {
-    const issue = request.issueId ? approvalIssues.get(request.issueId) : undefined
+    const issue = request.issueId
+      ? approvalIssues.get(request.issueId)
+      : undefined
     if (request.issueId && !issue) continue
     const item = buildApprovalSource(request, issue)
     if (item) sources.push(item)

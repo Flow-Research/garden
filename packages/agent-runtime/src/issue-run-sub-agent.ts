@@ -11,10 +11,18 @@ import {
 } from '@cloudflare/think'
 import type { LanguageModel, ToolSet, UIMessage } from 'ai'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/neon-serverless'
 import { classifyConnectorError } from '@garden/core/connectors/errors'
-import type { IssueRunUsage } from '@garden/core/types'
+import {
+  derivePermissions,
+  type AgentPermissions,
+} from '@garden/core/agents/permissions'
+import { formatIssueIdentifier } from '@garden/core/issues/identifier'
+import { nextIssueStatusForRunStatus } from '@garden/core/issues/run-sync'
+import type { IssueStatus } from '@garden/core/types/issue'
+import type { IssueRunUsage } from '@garden/core/types/issue-run'
+import { connectorRegistry } from '@garden/connectors'
 import * as schema from '@garden/db/schema'
 import issueInteractionSkillMarkdown from './skills/issue-interaction/SKILL.md?raw'
 import { createAskQuestionTool } from './agent-tools/ask-question'
@@ -73,6 +81,8 @@ type StartTurnInput = {
 
 type LoadedTurnContext = {
   contextBlock: string
+  issue: typeof schema.issue.$inferSelect
+  permissions: AgentPermissions
   run: typeof schema.issueRun.$inferSelect
   runState: IssueRunToolState
 }
@@ -86,6 +96,7 @@ type ResolutionGuardRow = {
 const THINK_TURN_TIMEOUT_MS = 60_000
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.issue-run.turn'
+const WAKEUP_BACKOFF_MS = [5_000, 10_000, 20_000] as const
 const ACTIVE_RUN_STATUSES = [
   'queued',
   'running',
@@ -104,11 +115,7 @@ const VALID_RESOLUTION_ACTIONS = new Set<IssueRunResolutionAction>([
 let cachedIssueInteractionSkillMarkdown: string | null = null
 
 class IssueRunSubAgentError extends TaggedError('IssueRunSubAgentError')<{
-  code:
-    | 'database_failed'
-    | 'invalid_state'
-    | 'not_found'
-    | 'runtime_failed'
+  code: 'database_failed' | 'invalid_state' | 'not_found' | 'runtime_failed'
   message: string
   cause?: unknown
 }>() {}
@@ -143,8 +150,10 @@ function stringValue(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
-function issueIdentifier(number: number) {
-  return `ACC-${number}`
+function issueIdentifier(number: number, prefix: string = 'ISS') {
+  // Falls back to 'ISS' when the workspace prefix isn't loaded into the
+  // turn context yet. Prompt-display only — real routing uses the UUID.
+  return formatIssueIdentifier(prefix, number)
 }
 
 function stripSkillFrontmatter(markdown: string) {
@@ -181,11 +190,7 @@ function renderSection(title: string, body: string) {
 }
 
 function usageTotal(usage: IssueRunUsage) {
-  return (
-    usage.input_tokens +
-    usage.output_tokens +
-    usage.cached_input_tokens
-  )
+  return usage.input_tokens + usage.output_tokens + usage.cached_input_tokens
 }
 
 function emptyUsage(ctx: StepContext): IssueRunUsage {
@@ -207,11 +212,20 @@ function isActiveRunStatus(status: string) {
   )
 }
 
+function retryDelayMs(attemptCount: number) {
+  const index = Math.min(
+    Math.max(attemptCount - 1, 0),
+    WAKEUP_BACKOFF_MS.length - 1,
+  )
+  return WAKEUP_BACKOFF_MS[index] ?? WAKEUP_BACKOFF_MS[0]
+}
+
 export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   private currentRunState: IssueRunToolState | null = null
   private currentRunId: string | null = null
   private currentTriggerReason = ''
   private resolutionActions = new Set<IssueRunResolutionAction>()
+  private currentPermissions: AgentPermissions | null = null
   private aggUsage: IssueRunUsage | null = null
   private lastProxyMcpFullSyncAt = 0
   private proxyMcpRefreshInFlight: Promise<RuntimePrepareResult> | null = null
@@ -220,10 +234,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
 
   getModel(): LanguageModel {
     return createAgentModel(this.env.OPENCODE_GO_API_KEY)
-  }
-
-  override getSystemPrompt(): string {
-    return assembleFoundationPrompt()
   }
 
   override async configureSession(session: Session) {
@@ -286,6 +296,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
 
     this.currentRunId = runId
     this.currentRunState = loadedResult.value.runState
+    this.currentPermissions = loadedResult.value.permissions
     this.resolutionActions.clear()
     this.aggUsage = null
 
@@ -315,13 +326,23 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       sendReasoning: true,
       system: `${ctx.system}\n\n${loadedResult.value.contextBlock}`,
       timeout: THINK_TURN_TIMEOUT_MS,
-      tools: mcpController.wrapGetAITools(this.mcp.getAITools.bind(this.mcp)),
+      tools: mcpController.wrapGetAITools(
+        this.mcp.getAITools.bind(this.mcp),
+        undefined,
+        {
+          shouldAutoApprove: ({ riskClass }) =>
+            this.shouldAutoApproveRiskClass(riskClass),
+        },
+      ),
     } satisfies TurnConfig
   }
 
   override async beforeToolCall(ctx: ToolCallContext) {
     const run = this.currentRunState
     if (!run) return undefined
+
+    const gateResult = this.assertToolAllowed(ctx.toolName)
+    if (gateResult.isErr()) throw gateResult.error
 
     const db = getIssueRunDb(this.env.DATABASE_URL)
     const eventResult = await appendIssueRunEvent({
@@ -366,12 +387,11 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         tool_call_id: ctx.toolCallId,
         ok,
         duration_ms: ctx.durationMs,
-        error:
-          ctx.success
-            ? stringValue(output?.error)
-            : ctx.error instanceof Error
-              ? ctx.error.message
-              : String(ctx.error),
+        error: ctx.success
+          ? stringValue(output?.error)
+          : ctx.error instanceof Error
+            ? ctx.error.message
+            : String(ctx.error),
         error_class: ctx.success ? (output?.error_class ?? null) : null,
       },
     })
@@ -555,10 +575,13 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
           result.error.message,
         )
         if (failedResult.isErr()) {
-          console.warn('[agent-runtime] failed to close issue run fiber error', {
-            error: failedResult.error.message,
-            runId: input.runId,
-          })
+          console.warn(
+            '[agent-runtime] failed to close issue run fiber error',
+            {
+              error: failedResult.error.message,
+              runId: input.runId,
+            },
+          )
         }
       }
     })
@@ -571,9 +594,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     const loadedResult = await this.loadTurnContext(input.runId)
     if (loadedResult.isErr()) return Result.err(loadedResult.error)
 
-    const boundaryResult = await this.applyRunBoundaryGuards(
-      loadedResult.value,
-    )
+    const boundaryResult = await this.applyRunBoundaryGuards(loadedResult.value)
     if (boundaryResult.isErr()) return Result.err(boundaryResult.error)
     if (boundaryResult.value !== 'continue') return Result.ok()
 
@@ -587,6 +608,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
 
     this.currentRunId = input.runId
     this.currentRunState = loadedResult.value.runState
+    this.currentPermissions = loadedResult.value.permissions
     this.setProgrammaticBody({
       run_id: input.runId,
       issue_id: input.issueId,
@@ -654,6 +676,66 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     return drizzle(this.env.DATABASE_URL, { schema })
   }
 
+  private connectorToolForName(toolName: string) {
+    for (const connector of connectorRegistry) {
+      const prefix = `tool_${connector.id.replace(/-/g, '')}_`
+      if (toolName.startsWith(prefix)) {
+        return {
+          connectorId: connector.id,
+          toolName: toolName.slice(prefix.length),
+        }
+      }
+    }
+    return null
+  }
+
+  private assertToolAllowed(
+    runtimeToolName: string,
+  ): ResultValue<void, IssueRunSubAgentError> {
+    const permissions = this.currentPermissions
+    if (!permissions || permissions.full_access) return Result.ok()
+
+    const connectorTool = this.connectorToolForName(runtimeToolName)
+    const toolName = connectorTool?.toolName ?? runtimeToolName
+
+    if (
+      permissions.allowed_tools.length > 0 &&
+      !permissions.allowed_tools.includes(toolName) &&
+      !permissions.allowed_tools.includes(runtimeToolName)
+    ) {
+      return Result.err(
+        new IssueRunSubAgentError({
+          code: 'runtime_failed',
+          message: `Tool ${toolName} is not allowed for this agent.`,
+        }),
+      )
+    }
+
+    if (
+      connectorTool &&
+      permissions.allowed_connectors.length > 0 &&
+      !permissions.allowed_connectors.includes(connectorTool.connectorId)
+    ) {
+      return Result.err(
+        new IssueRunSubAgentError({
+          code: 'runtime_failed',
+          message: `Connector ${connectorTool.connectorId} is not allowed for this agent.`,
+        }),
+      )
+    }
+
+    return Result.ok()
+  }
+
+  private shouldAutoApproveRiskClass(riskClass: string) {
+    const permissions = this.currentPermissions
+    if (!permissions) return false
+    if (riskClass !== 'send_external' && riskClass !== 'destructive') {
+      return false
+    }
+    return permissions.approval_overrides[riskClass] === 'auto'
+  }
+
   private async loadRunState(
     runId: string,
   ): Promise<ResultValue<IssueRunToolState, IssueRunSubAgentError>> {
@@ -705,6 +787,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
               roleTitle: schema.agent.roleTitle,
               ownerUserId: schema.agent.ownerUserId,
               runTimeoutSec: schema.agent.runTimeoutSec,
+              permissions: schema.agent.permissions,
             },
             wakeup: schema.issueWakeup,
           })
@@ -839,6 +922,11 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     this.currentTriggerReason = triggerReason
 
     return Result.ok({
+      issue: row.runRow.issue,
+      permissions: derivePermissions({
+        agent: row.runRow.agent,
+        issue: row.runRow.issue,
+      }),
       run: row.runRow.run,
       runState,
       contextBlock: this.renderContextBlock({
@@ -878,7 +966,8 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     if (input.source === 'reconciler_retry') {
       return 'The reconciler retried this issue after a failed or silent run.'
     }
-    if (input.source === 'scheduled') return 'A scheduled wakeup started this run.'
+    if (input.source === 'scheduled')
+      return 'A scheduled wakeup started this run.'
     if (input.source === 'connector_event') {
       return 'A connector event started this run.'
     }
@@ -889,9 +978,10 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         users: input.users,
         agents: input.agents,
       })
-      const body = comment.body.length > 500
-        ? `${comment.body.slice(0, 500).trimEnd()}...`
-        : comment.body
+      const body =
+        comment.body.length > 500
+          ? `${comment.body.slice(0, 500).trimEnd()}...`
+          : comment.body
       return input.source === 'mention'
         ? `${authorName} mentioned you in a comment: "${body}"`
         : `${authorName} replied: "${body}"`
@@ -910,6 +1000,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       roleTitle: string | null
       ownerUserId: string
       runTimeoutSec: number
+      permissions?: unknown
     }
     wakeup: typeof schema.issueWakeup.$inferSelect
     comments: Array<typeof schema.issueComment.$inferSelect>
@@ -924,7 +1015,11 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       assigneeType: string | null
       assigneeId: string | null
     }>
-    availableAgents: Array<{ id: string; name: string; roleTitle: string | null }>
+    availableAgents: Array<{
+      id: string
+      name: string
+      roleTitle: string | null
+    }>
     users: Array<{ id: string; name: string | null }>
     agents: Array<{ id: string; name: string }>
   }) {
@@ -1007,14 +1102,17 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       '',
       input.triggerReason,
       '',
-      renderSection('Current run', renderJson({
-        id: input.run.id,
-        status: input.run.status,
-        started_at: dateToIso(input.run.startedAt),
-        cancel_requested_at: dateToIso(input.run.cancelRequestedAt),
-        wakeup_source: input.wakeup.source,
-        run_timeout_sec: input.agent.runTimeoutSec,
-      })),
+      renderSection(
+        'Current run',
+        renderJson({
+          id: input.run.id,
+          status: input.run.status,
+          started_at: dateToIso(input.run.startedAt),
+          cancel_requested_at: dateToIso(input.run.cancelRequestedAt),
+          wakeup_source: input.wakeup.source,
+          run_timeout_sec: input.agent.runTimeoutSec,
+        }),
+      ),
       renderSection('Issue', renderJson(issue)),
       renderSection('Comments', renderJson(comments)),
       renderSection('Prior runs', renderJson(priorRuns)),
@@ -1046,11 +1144,16 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
 
   private async applyRunBoundaryGuards(
     loaded: LoadedTurnContext,
-  ): Promise<ResultValue<'continue' | 'cancelled' | 'timeout', IssueRunSubAgentError>> {
+  ): Promise<
+    ResultValue<'continue' | 'cancelled' | 'timeout', IssueRunSubAgentError>
+  > {
     if (!isActiveRunStatus(loaded.run.status)) return Result.ok('cancelled')
 
     if (loaded.run.cancelRequestedAt) {
-      const cancelResult = await this.finishCancelled(loaded.runState, 'cancelled')
+      const cancelResult = await this.finishCancelled(
+        loaded.runState,
+        'cancelled',
+      )
       if (cancelResult.isErr()) return Result.err(cancelResult.error)
       return Result.ok('cancelled')
     }
@@ -1060,7 +1163,10 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     const startedAt = loaded.run.startedAt ?? loaded.run.createdAt
     const elapsedMs = startedAt ? Date.now() - startedAt.getTime() : 0
     if (elapsedMs > timeoutSec.value * 1000) {
-      const cancelResult = await this.setCancelRequested(loaded.run.id, 'timeout')
+      const cancelResult = await this.setCancelRequested(
+        loaded.run.id,
+        'timeout',
+      )
       if (cancelResult.isErr()) return Result.err(cancelResult.error)
       const failedResult = await this.forceCloseFailed(loaded.run.id, 'timeout')
       if (failedResult.isErr()) return Result.err(failedResult.error)
@@ -1106,7 +1212,11 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
           await tx
             .update(schema.issue)
             .set({
-              status: sql`case when ${schema.issue.status} in ('todo', 'backlog') then 'in_progress' else ${schema.issue.status} end`,
+              status:
+                nextIssueStatusForRunStatus(
+                  'running',
+                  (loaded.issue.status ?? 'backlog') as IssueStatus,
+                ) ?? loaded.issue.status,
               updatedAt: now,
             })
             .where(eq(schema.issue.id, loaded.run.issueId))
@@ -1420,9 +1530,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       stream: 'system',
       level: reason === 'timeout' ? 'error' : 'warn',
       message:
-        reason === 'timeout'
-          ? 'Run timeout reached'
-          : 'Cancellation requested',
+        reason === 'timeout' ? 'Run timeout reached' : 'Cancellation requested',
       payload: { reason },
     })
     if (eventResult.isErr()) {
@@ -1505,6 +1613,23 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
 
     const run = runStateResult.value
     const db = this.getDb()
+    const now = new Date()
+    const wakeupResult = await Result.tryPromise({
+      try: async () => {
+        const [wakeup] = await db
+          .select({ attemptCount: schema.issueWakeup.attemptCount })
+          .from(schema.issueWakeup)
+          .where(eq(schema.issueWakeup.id, run.wakeupId))
+          .limit(1)
+        return wakeup ?? null
+      },
+      catch: (cause) => dbError('load failed run wakeup', cause),
+    })
+    if (wakeupResult.isErr()) return Result.err(wakeupResult.error)
+    const nextAttemptAt = new Date(
+      now.getTime() + retryDelayMs(wakeupResult.value?.attemptCount ?? 1),
+    )
+
     const writeResult = await Result.tryPromise({
       try: async () => {
         await db.transaction(async (tx) => {
@@ -1514,20 +1639,19 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
               status: 'failed',
               error: reason,
               resultJson: { resolution: 'failed', reason },
-              finishedAt: new Date(),
-              updatedAt: new Date(),
+              finishedAt: now,
+              updatedAt: now,
             })
             .where(eq(schema.issueRun.id, runId))
           await tx
             .update(schema.issue)
-            .set({ activeRunId: null, updatedAt: new Date() })
+            .set({ activeRunId: null, updatedAt: now })
             .where(eq(schema.issue.id, run.issueId))
           await tx
             .update(schema.issueWakeup)
             .set({
-              status: 'failed',
-              completedAt: new Date(),
-              updatedAt: new Date(),
+              nextAttemptAt,
+              updatedAt: now,
             })
             .where(eq(schema.issueWakeup.id, run.wakeupId))
         })
@@ -1544,7 +1668,10 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       stream: 'system',
       level: 'error',
       message: 'Run failed',
-      payload: { reason },
+      payload: {
+        reason,
+        retry_after_ms: retryDelayMs(wakeupResult.value?.attemptCount ?? 1),
+      },
     })
     if (eventResult.isErr()) {
       return Result.err(
@@ -1571,6 +1698,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   private clearTurnState() {
     this.currentRunId = null
     this.currentRunState = null
+    this.currentPermissions = null
     this.currentTriggerReason = ''
     this.resolutionActions.clear()
     this.aggUsage = null
@@ -1606,6 +1734,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         const [row] = await this.getDb()
           .select({
             workspaceId: schema.issueRun.workspaceId,
+            issueId: schema.issueRun.issueId,
             userId: schema.agent.ownerUserId,
             agentId: schema.issueRun.agentId,
           })
@@ -1642,6 +1771,8 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       workspaceId: result.value.workspaceId,
       userId: result.value.userId,
       agentId: result.value.agentId,
+      issueId: result.value.issueId,
+      runId,
     })
   }
 
@@ -1721,9 +1852,8 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       }
 
       const mcpController = this.getMcpController()
-      const connectionResult = await mcpController.ensureProxyMcpConnections(
-        options,
-      )
+      const connectionResult =
+        await mcpController.ensureProxyMcpConnections(options)
       if (connectionResult.isOk()) {
         this.lastProxyMcpFullSyncAt = Date.now()
         return Result.ok(undefined)

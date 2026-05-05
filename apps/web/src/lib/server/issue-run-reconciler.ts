@@ -100,8 +100,8 @@ function retryDelayMs(attemptCount: number) {
 
 function nextMinuteBoundary(from: Date) {
   const next = new Date(from)
-  next.setSeconds(0, 0)
-  next.setMinutes(next.getMinutes() + 1)
+  next.setUTCSeconds(0, 0)
+  next.setUTCMinutes(next.getUTCMinutes() + 1)
   return next
 }
 
@@ -110,7 +110,56 @@ function pendingAgentIdFromContext(value: string | null) {
   return value?.startsWith(prefix) ? value.slice(prefix.length) : null
 }
 
-function nextFireFromCron(
+function parseCronField(input: string, min: number, max: number) {
+  const values = new Set<number>()
+  const parts = input.split(',')
+  for (const part of parts) {
+    if (!part) return null
+    const stepParts = part.split('/')
+    if (stepParts.length > 2) return null
+    const [rangePart, stepPart] = stepParts
+    const step = stepPart === undefined ? 1 : Number(stepPart)
+    if (!Number.isInteger(step) || step < 1) return null
+
+    let start = min
+    let end = max
+    if (rangePart !== '*') {
+      const rangeParts = rangePart.split('-')
+      if (rangeParts.length === 1) {
+        start = Number(rangeParts[0])
+        end = start
+      } else if (rangeParts.length === 2) {
+        start = Number(rangeParts[0])
+        end = Number(rangeParts[1])
+      } else {
+        return null
+      }
+    }
+
+    if (
+      !Number.isInteger(start) ||
+      !Number.isInteger(end) ||
+      start < min ||
+      end > max ||
+      start > end
+    ) {
+      return null
+    }
+
+    for (let value = start; value <= end; value += step) {
+      values.add(value)
+    }
+  }
+
+  return values
+}
+
+function cronDayOfWeek(date: Date) {
+  return date.getUTCDay()
+}
+
+// Source: docs/research/issue-flow-plan.md, "Cloudflare-first runtime" scheduled wakeups.
+export function nextFireFromCron(
   cron: string,
   from: Date,
 ): ResultValue<Date, IssueRunReconcilerError> {
@@ -125,54 +174,54 @@ function nextFireFromCron(
   }
 
   const [minute, hour, dayOfMonth, month, dayOfWeek] = parts
+  const parsed = {
+    minute: parseCronField(minute, 0, 59),
+    hour: parseCronField(hour, 0, 23),
+    dayOfMonth: parseCronField(dayOfMonth, 1, 31),
+    month: parseCronField(month, 1, 12),
+    dayOfWeek: parseCronField(dayOfWeek, 0, 7),
+  }
+
   if (
-    hour !== '*' ||
-    dayOfMonth !== '*' ||
-    month !== '*' ||
-    dayOfWeek !== '*'
+    !parsed.minute ||
+    !parsed.hour ||
+    !parsed.dayOfMonth ||
+    !parsed.month ||
+    !parsed.dayOfWeek
   ) {
     return Result.err(
       reconcilerError({
         code: 'invalid_cron',
-        message: `Only minute-level recurrence cron is supported: "${cron}".`,
+        message: `Unsupported recurrence cron "${cron}".`,
       }),
     )
   }
 
-  if (minute === '*') return Result.ok(nextMinuteBoundary(from))
+  let candidate = nextMinuteBoundary(from)
+  const end = new Date(from)
+  end.setFullYear(end.getFullYear() + 5)
 
-  const stepMatch = minute.match(/^\*\/([1-9]\d*)$/)
-  if (stepMatch) {
-    const step = Number(stepMatch[1])
-    if (!Number.isFinite(step) || step < 1 || step > 59) {
-      return Result.err(
-        reconcilerError({
-          code: 'invalid_cron',
-          message: `Unsupported recurrence minute step "${minute}".`,
-        }),
-      )
+  while (candidate <= end) {
+    const dow = cronDayOfWeek(candidate)
+    const normalizedDowMatches =
+      parsed.dayOfWeek.has(dow) || (dow === 0 && parsed.dayOfWeek.has(7))
+    if (
+      parsed.minute.has(candidate.getUTCMinutes()) &&
+      parsed.hour.has(candidate.getUTCHours()) &&
+      parsed.dayOfMonth.has(candidate.getUTCDate()) &&
+      parsed.month.has(candidate.getUTCMonth() + 1) &&
+      normalizedDowMatches
+    ) {
+      return Result.ok(candidate)
     }
 
-    let candidate = nextMinuteBoundary(from)
-    for (let i = 0; i < 120; i += 1) {
-      if (candidate.getMinutes() % step === 0) return Result.ok(candidate)
-      candidate = new Date(candidate.getTime() + 60_000)
-    }
-  }
-
-  const fixedMinute = Number(minute)
-  if (Number.isInteger(fixedMinute) && fixedMinute >= 0 && fixedMinute <= 59) {
-    const candidate = new Date(from)
-    candidate.setSeconds(0, 0)
-    candidate.setMinutes(fixedMinute)
-    if (candidate <= from) candidate.setHours(candidate.getHours() + 1)
-    return Result.ok(candidate)
+    candidate = new Date(candidate.getTime() + 60_000)
   }
 
   return Result.err(
     reconcilerError({
       code: 'invalid_cron',
-      message: `Unsupported recurrence minute field "${minute}".`,
+      message: `No fire time found for recurrence cron "${cron}".`,
     }),
   )
 }

@@ -27,6 +27,44 @@ function toTimelineComment(
   }
 }
 
+function toTimelineRunEvent(row: {
+  event: typeof schema.issueRunEvent.$inferSelect
+  agentId: string
+}) {
+  return {
+    type: 'activity' as const,
+    id: row.event.id,
+    actor_type: 'agent',
+    actor_id: row.agentId,
+    action: row.event.eventType,
+    details:
+      row.event.payload &&
+      typeof row.event.payload === 'object' &&
+      !Array.isArray(row.event.payload)
+        ? (row.event.payload as Record<string, unknown>)
+        : {},
+    created_at: (row.event.createdAt ?? new Date()).toISOString(),
+    event: {
+      id: row.event.id,
+      workspace_id: row.event.workspaceId,
+      issue_id: row.event.issueId,
+      run_id: row.event.runId,
+      seq: row.event.seq,
+      event_type: row.event.eventType,
+      stream: row.event.stream,
+      level: row.event.level,
+      message: row.event.message ?? null,
+      payload:
+        row.event.payload &&
+        typeof row.event.payload === 'object' &&
+        !Array.isArray(row.event.payload)
+          ? (row.event.payload as Record<string, unknown>)
+          : null,
+      created_at: (row.event.createdAt ?? new Date()).toISOString(),
+    },
+  }
+}
+
 export const Route = createFileRoute('/api/issues/$id/timeline')({
   server: {
     handlers: {
@@ -54,7 +92,19 @@ export const Route = createFileRoute('/api/issues/$id/timeline')({
           .from(schema.issueComment)
           .where(eq(schema.issueComment.issueId, params.id))
 
-        return Response.json([
+        const runEvents = await db
+          .select({
+            event: schema.issueRunEvent,
+            agentId: schema.issueRun.agentId,
+          })
+          .from(schema.issueRunEvent)
+          .innerJoin(
+            schema.issueRun,
+            eq(schema.issueRun.id, schema.issueRunEvent.runId),
+          )
+          .where(eq(schema.issueRunEvent.issueId, params.id))
+
+        const entries = [
           {
             type: 'activity',
             id: `created:${existingIssue.id}`,
@@ -65,7 +115,13 @@ export const Route = createFileRoute('/api/issues/$id/timeline')({
             created_at: (existingIssue.createdAt ?? new Date()).toISOString(),
           },
           ...comments.map(toTimelineComment),
-        ])
+          ...runEvents.map(toTimelineRunEvent),
+        ].sort(
+          (a, b) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        )
+
+        return Response.json(entries)
       },
     },
   },

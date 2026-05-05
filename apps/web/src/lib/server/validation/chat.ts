@@ -33,10 +33,15 @@ export const updateChatThreadBodySchema = z
 
 export const toolApprovalBodySchema = z
   .object({
-    toolCallId: z.string().trim().min(1),
+    toolCallId: z.string().trim().min(1).optional(),
+    permission_request_id: uuidSchema.optional(),
     approved: z.boolean(),
   })
   .strict()
+  .refine(
+    (value) => Boolean(value.toolCallId) !== Boolean(value.permission_request_id),
+    'Exactly one approval identifier is required',
+  )
 
 export const threadDebugQuerySchema = z.object({
   thread_id: uuidSchema.optional(),

@@ -42,7 +42,6 @@ import { useIsMobile } from '@garden/ui/hooks/use-mobile'
 import { InboxListItem, timeAgo } from './inbox-list-item'
 import { typeLabels } from './inbox-detail-label'
 import { InboxItemPreviewCard, ctaForInboxItem } from './inbox-item-preview'
-import { getMockInboxItemsForWorkspace } from '../../issues/preview/fixtures'
 
 // ---------------------------------------------------------------------------
 // List pane header + search — sidebar-09 style
@@ -300,15 +299,7 @@ export function InboxPage() {
 
   const wsId = useWorkspaceId()
   const { data: rawItems = [] } = useQuery(inboxListOptions(wsId))
-  const demoItems = useMemo(
-    () => getMockInboxItemsForWorkspace(wsId, 'mem_alice'),
-    [wsId],
-  )
-
-  const allItems = useMemo(
-    () => deduplicateInboxItems([...demoItems, ...rawItems]),
-    [demoItems, rawItems],
-  )
+  const allItems = useMemo(() => deduplicateInboxItems(rawItems), [rawItems])
 
   const { getActorName } = useActorName()
 

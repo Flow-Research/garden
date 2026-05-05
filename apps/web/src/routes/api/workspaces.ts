@@ -1,9 +1,10 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { Result, TaggedError } from 'better-result'
+import { DEFAULT_AGENT_PERMISSIONS } from '@garden/core/agents/permissions'
+import { deriveIssuePrefix } from '@garden/core/issues/identifier'
 import { appEnv } from '@/lib/server/env'
 import { createAuth } from '@/lib/auth'
-import { buildAgentHostName } from '@/lib/server/chat-agents'
 import { getDb, schema } from '@/lib/server/db'
 import {
   createWorkspaceBodySchema,
@@ -16,6 +17,7 @@ import {
   toWorkspaceFromOrganization,
   unauthorized,
 } from '@/lib/server/control-plane'
+import { seedBuiltinSkills } from '@/lib/server/builtin-skills'
 
 const GARDEN_DESCRIPTION =
   'Garden powers chat, can read across the workspace, and can propose new agents for specialised work.'
@@ -57,13 +59,14 @@ async function createWorkspaceWithGarden(input: CreateWorkspaceInput) {
 
         const now = new Date()
         const workspaceId = crypto.randomUUID()
-        const hostName = buildAgentHostName(workspaceId, input.userId)
+        const agentId = crypto.randomUUID()
         const [workspace] = await tx
           .insert(schema.organization)
           .values({
             id: workspaceId,
             name: input.name,
             slug: input.slug,
+            issuePrefix: deriveIssuePrefix(input.name),
             description: input.description ?? null,
             context: input.context ?? null,
             createdAt: now,
@@ -80,16 +83,22 @@ async function createWorkspaceWithGarden(input: CreateWorkspaceInput) {
         })
 
         await tx.insert(schema.agent).values({
-          id: crypto.randomUUID(),
+          id: agentId,
           workspaceId,
           ownerUserId: input.userId,
           name: 'Garden',
           roleTitle: GARDEN_DESCRIPTION,
           isDefault: true,
           status: 'active',
-          hostName,
+          hostName: agentId,
+          permissions: DEFAULT_AGENT_PERMISSIONS,
           createdAt: now,
         })
+
+        await seedBuiltinSkills(
+          workspaceId,
+          tx as unknown as ReturnType<typeof getDb>,
+        )
 
         await tx
           .update(schema.session)

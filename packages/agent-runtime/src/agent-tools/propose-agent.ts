@@ -4,6 +4,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/neon-serverless'
 import { createInsertSchema } from 'drizzle-zod'
 import { z } from 'zod'
+import { DEFAULT_AGENT_PERMISSIONS } from '@garden/core/agents/permissions'
 import * as schema from '@garden/db/schema'
 
 const agentInputSchema = createInsertSchema(schema.agent, {
@@ -216,6 +217,7 @@ async function proposeAgent(
             name,
             role_title,
             description,
+            permissions,
             status,
             adapter_type,
             host_name
@@ -227,6 +229,7 @@ async function proposeAgent(
             ${input.name},
             ${input.role},
             ${description},
+            ${JSON.stringify(DEFAULT_AGENT_PERMISSIONS)}::jsonb,
             'pending_approval',
             'workspace-agent',
             ${pendingAgentId}

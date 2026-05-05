@@ -8,6 +8,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core'
 import { agent } from './agents.js'
+import { issue } from './issues.js'
 import { user } from './users.js'
 import { organization } from './workspaces.js'
 
@@ -29,6 +30,9 @@ export const chatThread = pgTable(
     agentId: uuid('agent_id')
       .notNull()
       .references(() => agent.id),
+    primaryIssueId: uuid('primary_issue_id').references(() => issue.id, {
+      onDelete: 'set null',
+    }),
     title: text('title').notNull(),
     lastMessage: text('last_message').notNull().default(''),
     archivedAt: timestamp('archived_at', { mode: 'date' }),
@@ -45,6 +49,7 @@ export const chatThread = pgTable(
       table.updatedAt,
     ),
     index('chat_thread_agent_idx').on(table.agentId),
+    index('chat_thread_primary_issue_idx').on(table.primaryIssueId),
     check(
       'chat_thread_title_nonempty',
       sql`char_length(trim(${table.title})) > 0`,

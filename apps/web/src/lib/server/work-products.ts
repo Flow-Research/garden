@@ -278,7 +278,9 @@ function resolveWritebackInvocation(args: {
 
   if (
     args.binding.connectorId === 'github' &&
-    args.workProduct.type === 'connector_reply'
+    (args.workProduct.type === 'connector_reply' ||
+      (args.workProduct.type === 'pull_request' &&
+        args.binding.sourceKind === 'pull_request'))
   ) {
     const refResult = resolveGithubIssueRef(args.binding)
     if (refResult.isErr()) return Result.err(refResult.error)
@@ -286,6 +288,7 @@ function resolveWritebackInvocation(args: {
     const ref = refResult.value
     return Result.ok({
       connectorId: 'github',
+      // Source: docs/research/issue-flow-plan.md, "Slice 4".
       toolName: 'add_issue_comment',
       toolArgs: {
         owner: ref.owner,
@@ -416,6 +419,7 @@ async function callConnectorTool(args: {
   connectorId: string
   env: AppEnv
   issueId: string
+  runId?: string | null
   toolArgs: Record<string, unknown>
   toolName: string
   userId: string
@@ -446,6 +450,7 @@ async function callConnectorTool(args: {
         agentId: args.agentId,
         connectorId: args.connectorId,
         issueId: args.issueId,
+        ...(args.runId ? { runId: args.runId } : {}),
       }),
     catch: connectorErrorFromCause,
   })
@@ -900,6 +905,7 @@ async function callWritebackWithApproval(args: {
   env: AppEnv
   invocation: WritebackInvocation
   issueId: string
+  runId?: string | null
   workspaceId: string
 }): Promise<
   ResultValue<ConnectorToolSuccess, ConnectorError | WorkProductReviewError>
@@ -909,6 +915,7 @@ async function callWritebackWithApproval(args: {
     connectorId: args.invocation.connectorId,
     env: args.env,
     issueId: args.issueId,
+    runId: args.runId,
     toolArgs: args.invocation.toolArgs,
     toolName: args.invocation.toolName,
     userId: args.actorUserId,
@@ -946,6 +953,7 @@ async function callWritebackWithApproval(args: {
     connectorId: args.invocation.connectorId,
     env: args.env,
     issueId: args.issueId,
+    runId: args.runId,
     toolArgs: args.invocation.toolArgs,
     toolName: args.invocation.toolName,
     userId: args.actorUserId,
@@ -1012,6 +1020,7 @@ async function applyWorkProduct(args: {
     env: args.env,
     invocation: invocationResult.value,
     issueId: issue.id,
+    runId: workProduct.runId,
     workspaceId: args.workspaceId,
   })
   if (callResult.isErr()) return Result.err(callResult.error)

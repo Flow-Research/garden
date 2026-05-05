@@ -1,5 +1,6 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import type { IssueStatus } from '@garden/core/types/issue'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { parseJsonBody, updateIssueBodySchema } from '@/lib/server/validation/issues'
@@ -10,6 +11,9 @@ import {
   toIssue,
 } from '@/lib/server/control-plane'
 import { cancelIssueRun, startIssueRun } from '@/lib/server/issue-run'
+import {
+  cancelLiveRunsOnIssueChange,
+} from '@/lib/server/issue-run-sync'
 
 export const Route = createFileRoute('/api/issues/$id')({
   server: {
@@ -87,6 +91,7 @@ export const Route = createFileRoute('/api/issues/$id')({
         const [existingIssue] = await db
           .select({
             workspaceId: schema.issue.workspaceId,
+            status: schema.issue.status,
             assigneeType: schema.issue.assigneeType,
             assigneeId: schema.issue.assigneeId,
             activeRunId: schema.issue.activeRunId,
@@ -113,26 +118,55 @@ export const Route = createFileRoute('/api/issues/$id')({
           .returning()
 
         if (!issue) return notFound('Issue not found')
-        const assigneeChanged =
-          Object.prototype.hasOwnProperty.call(body, 'assignee_id') &&
-          (existingIssue.assigneeType !== issue.assigneeType ||
-            existingIssue.assigneeId !== issue.assigneeId)
+        const syncDecision = cancelLiveRunsOnIssueChange({
+          currentStatus: (existingIssue.status ?? 'backlog') as IssueStatus,
+          nextStatus: (issue.status ?? 'backlog') as IssueStatus,
+          currentAssigneeType: existingIssue.assigneeType as
+            | 'user'
+            | 'member'
+            | 'agent'
+            | null,
+          currentAssigneeId: existingIssue.assigneeId,
+          nextAssigneeType: issue.assigneeType as
+            | 'user'
+            | 'member'
+            | 'agent'
+            | null,
+          nextAssigneeId: issue.assigneeId,
+        })
 
-        if (assigneeChanged && existingIssue.activeRunId) {
-          const cancelResult = await cancelIssueRun(appEnv, {
-            workspaceId: existingIssue.workspaceId,
-            runId: existingIssue.activeRunId,
-            actor: { type: 'member', id: access.session.user.id },
-            reason: 'assignee_changed',
-          })
-          if (cancelResult.isErr()) console.error(cancelResult.error.message)
+        if (syncDecision.cancelLiveRuns) {
+          const liveRuns = await db
+            .select({ id: schema.issueRun.id })
+            .from(schema.issueRun)
+            .where(
+              and(
+                eq(schema.issueRun.issueId, issue.id),
+                inArray(schema.issueRun.status, [
+                  'queued',
+                  'running',
+                  'waiting_for_input',
+                  'waiting_for_approval',
+                ]),
+                ...(syncDecision.cancelAgentId
+                  ? [eq(schema.issueRun.agentId, syncDecision.cancelAgentId)]
+                  : []),
+              ),
+            )
+          for (const run of liveRuns) {
+            const cancelResult = await cancelIssueRun(appEnv, {
+              workspaceId: existingIssue.workspaceId,
+              runId: run.id,
+              actor: { type: 'member', id: access.session.user.id },
+              reason: 'issue_changed',
+            })
+            if (cancelResult.isErr()) console.error(cancelResult.error.message)
+          }
         }
 
         if (
-          assigneeChanged &&
-          issue.assigneeType === 'agent' &&
-          issue.assigneeId &&
-          issue.status !== 'backlog'
+          syncDecision.shouldWakeAgent &&
+          issue.assigneeId
         ) {
           const startResult = await startIssueRun(appEnv, {
             workspaceId: existingIssue.workspaceId,

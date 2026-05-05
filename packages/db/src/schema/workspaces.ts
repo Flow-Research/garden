@@ -20,6 +20,7 @@ export const organization = pgTable('organization', {
   metadata: text('metadata'),
   description: text('description'),
   context: text('context'),
+  issuePrefix: text('issue_prefix').notNull().default('ISS'),
   settings: jsonb('settings')
     .$type<Record<string, unknown>>()
     .notNull()
@@ -27,7 +28,12 @@ export const organization = pgTable('organization', {
   plan: text('plan').default('free'),
   createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
   updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
-})
+}, (table) => [
+  check(
+    'organization_issue_prefix_format',
+    sql`${table.issuePrefix} ~ '^[A-Z0-9]{2,8}$'`,
+  ),
+])
 
 export const member = pgTable(
   'member',

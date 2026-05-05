@@ -9,6 +9,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core'
 import { agent } from './agents.js'
+import { issue, issueRun } from './issues.js'
 import { user } from './users.js'
 
 export const capability = pgTable(
@@ -85,7 +86,13 @@ export const permissionRequest = pgTable(
       .notNull()
       .references(() => capability.id),
     context: text('context'),
-    issueId: uuid('issue_id'),
+    issueId: uuid('issue_id').references(() => issue.id, {
+      onDelete: 'set null',
+    }),
+    // Source: docs/research/issue-flow-plan.md, "Approval pause".
+    runId: uuid('run_id').references(() => issueRun.id, {
+      onDelete: 'set null',
+    }),
     argsJson: jsonb('args_json'),
     toolCallId: text('tool_call_id').notNull().default(''),
     requestedAt: timestamp('requested_at', { mode: 'date' })
@@ -94,6 +101,7 @@ export const permissionRequest = pgTable(
     status: text('status').notNull().default('pending'),
     resolvedBy: uuid('resolved_by'),
     resolvedAt: timestamp('resolved_at', { mode: 'date' }),
+    expiresAt: timestamp('expires_at', { mode: 'date' }),
   },
   (table) => [
     check(
