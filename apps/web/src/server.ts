@@ -5,6 +5,7 @@ import { proxyToSandbox, Sandbox } from '@cloudflare/sandbox'
 import { Result } from 'better-result'
 import { createAuth } from '@/lib/auth'
 import type { AppEnv } from '@/lib/server/env'
+import { bindAppEnv } from '@/lib/server/env'
 import {
   isAgentRuntimeName,
   requireAgentAccess,
@@ -21,7 +22,27 @@ type ServerEnv = AppEnv & {
 }
 
 const AGENT_DO_AUTH_CACHE_TTL_MS = 60_000
+const RECONCILE_ON_FETCH_INTERVAL_MS = 5_000
 const agentDoAuthCache = new Map<string, number>()
+let lastFetchReconcileAt = 0
+
+function scheduleFetchReconcile(env: ServerEnv, ctx?: ExecutionContext) {
+  const now = Date.now()
+  if (now - lastFetchReconcileAt < RECONCILE_ON_FETCH_INTERVAL_MS) return
+  lastFetchReconcileAt = now
+
+  const task = reconcile(env).then((result) => {
+    if (result.isErr()) {
+      console.error({
+        event: 'issue_run_reconcile_failed',
+        message: result.error.message,
+      })
+    }
+  })
+  if (ctx) {
+    ctx.waitUntil(task)
+  }
+}
 
 function responseFromCaughtError(args: {
   event: string
@@ -97,6 +118,8 @@ export default {
     env: ServerEnv,
     ctx: ExecutionContext,
   ) {
+    bindAppEnv(env)
+
     ctx.waitUntil(
       reconcile(env).then((result) => {
         if (result.isErr()) {
@@ -109,7 +132,10 @@ export default {
     )
   },
 
-  async fetch(request: Request, env: ServerEnv) {
+  async fetch(request: Request, env: ServerEnv, ctx?: ExecutionContext) {
+    bindAppEnv(env)
+    scheduleFetchReconcile(env, ctx)
+
     const sandboxResponse = await proxyToSandbox(request, env)
     if (sandboxResponse) return sandboxResponse
 

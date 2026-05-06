@@ -1,6 +1,6 @@
 import { Result } from 'better-result'
 import { tool } from 'ai'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import {
   issueWorkProductTypeSchema,
@@ -64,6 +64,18 @@ export function createCreateWorkProductTool(context: IssueRunToolContext) {
               body: input.body,
               payload: input.payload ?? null,
             })
+            await tx
+              .update(schema.issue)
+              .set({
+                status: 'in_review',
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(schema.issue.id, run.issueId),
+                  sql`${schema.issue.status} not in ('done', 'cancelled')`,
+                ),
+              )
           })
         },
         catch: (cause) => dbError('create issue work product', cause),

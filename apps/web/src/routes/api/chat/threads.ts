@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, notInArray, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   createChatThreadBodySchema,
@@ -94,8 +94,6 @@ export const Route = createFileRoute('/api/chat/threads')({
         const requestedTitle = body.title ?? ''
         const title = requestedTitle || NEW_CHAT_TITLE
         const primaryIssueId = body.primary_issue_id ?? null
-        const shouldClaimWarmThread =
-          title === NEW_CHAT_TITLE && !primaryIssueId
         const id = body.id ?? crypto.randomUUID()
         const runtimeKind = primaryIssueId ? 'issue_run' : 'chat'
         const runtimeKey = primaryIssueId ?? id
@@ -214,35 +212,6 @@ export const Route = createFileRoute('/api/chat/threads')({
               if (reopenedThread) return reopenedThread
               return existingIssueThread
             }
-          }
-
-          if (shouldClaimWarmThread) {
-            // Exclude any thread the caller has already disqualified — e.g.,
-            // a previous turn errored and the client doesn't want the same
-            // broken row recycled as the next warm thread. Without this, the
-            // client-side `erroredSessionIds` bookkeeping is undone here at
-            // the API edge.
-            const excludeIds = body.exclude_thread_ids ?? []
-            const [existingThread] = await tx
-              .select()
-              .from(schema.chatThread)
-              .where(
-                and(
-                  eq(schema.chatThread.workspaceId, workspaceId),
-                  eq(schema.chatThread.ownerUserId, session.user.id),
-                  eq(schema.chatThread.agentId, agentRow.id),
-                  eq(schema.chatThread.title, NEW_CHAT_TITLE),
-                  eq(schema.chatThread.lastMessage, ''),
-                  isNull(schema.chatThread.archivedAt),
-                  ...(excludeIds.length > 0
-                    ? [notInArray(schema.chatThread.id, excludeIds)]
-                    : []),
-                ),
-              )
-              .orderBy(desc(schema.chatThread.updatedAt))
-              .limit(1)
-
-            if (existingThread) return existingThread
           }
 
           const [createdThread] = await tx

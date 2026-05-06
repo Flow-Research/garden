@@ -717,6 +717,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       workspace: this.workspace,
       loader: this.env.LOADER,
       getSandbox: () => this.getAgentSandbox(),
+      issueRunEnv: this.env,
       cancelIssueRun: async (input) => {
         const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId);
         await issueAgent.requestCancel(input);
@@ -1645,7 +1646,10 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     const readyResult =
       await this.ensureProxyMcpConnectionsLoaded("before-turn");
     if (readyResult.isErr()) {
-      throw new Error(`MCP tools are not ready: ${readyResult.error}`);
+      console.warn("[agent-runtime] continuing without ready MCP connectors", {
+        reason: "before-turn",
+        error: readyResult.error,
+      });
     }
 
     return mcpController;

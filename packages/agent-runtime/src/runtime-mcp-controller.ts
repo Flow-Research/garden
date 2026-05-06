@@ -833,18 +833,35 @@ export class RuntimeMcpController {
     for (const connectorId of plan.connectorIdsToRemove) {
       const removalResult = await this.removeConnectorServer(connectorId);
       if (removalResult.isErr()) {
-        return removalResult;
+        console.warn("[agent-runtime] failed to remove stale MCP connector", {
+          connectorId,
+          error: removalResult.error,
+        });
       }
     }
 
+    const failedRefreshes: Array<{ connectorId: string; error: string }> = [];
     for (const binding of plan.bindingsToRefresh) {
       const refreshResult = await this.refreshConnectorServer(
         identityResult.value,
         binding,
       );
       if (refreshResult.isErr()) {
-        return refreshResult;
+        failedRefreshes.push({
+          connectorId: binding.connectorId,
+          error: refreshResult.error.message,
+        });
+        console.warn("[agent-runtime] MCP connector refresh failed", {
+          connectorId: binding.connectorId,
+          error: refreshResult.error,
+        });
       }
+    }
+
+    if (failedRefreshes.length > 0) {
+      console.warn("[agent-runtime] continuing after MCP connector failures", {
+        failedRefreshes,
+      });
     }
 
     return Result.ok(undefined);

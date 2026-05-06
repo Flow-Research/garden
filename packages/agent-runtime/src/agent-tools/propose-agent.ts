@@ -261,7 +261,7 @@ async function proposeAgent(
             owner_user_id,
             name,
             role_title,
-            description,
+            instructions,
             permissions,
             status,
             adapter_type,
@@ -301,7 +301,7 @@ async function proposeAgent(
             capability_id,
             context,
             issue_id,
-            payload_json,
+            args_json,
             tool_call_id,
             status,
             requested_at

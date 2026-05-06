@@ -2,6 +2,8 @@ import { betterAuth } from 'better-auth'
 import { createAuthMiddleware } from 'better-auth/api'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { and, eq } from 'drizzle-orm'
+import { createAccessControl } from 'better-auth/plugins/access'
+import { defaultStatements } from 'better-auth/plugins/organization/access'
 import { organization } from 'better-auth/plugins'
 import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import { connectorRegistry } from '@garden/connectors'
@@ -65,6 +67,50 @@ const authSchema = {
   member: memberTable,
   invitation,
 }
+
+const gardenAccessControl = createAccessControl({
+  ...defaultStatements,
+  agent: ['create', 'update', 'delete'],
+  connection: ['update'],
+  issue: ['update'],
+  permission: ['approve', 'grant'],
+  skill: ['create', 'update', 'delete'],
+})
+
+const gardenOwnerRole = gardenAccessControl.newRole({
+  ...defaultStatements,
+  agent: ['create', 'update', 'delete'],
+  connection: ['update'],
+  issue: ['update'],
+  permission: ['approve', 'grant'],
+  skill: ['create', 'update', 'delete'],
+})
+
+const gardenAdminRole = gardenAccessControl.newRole({
+  organization: ['update'],
+  member: ['create', 'update', 'delete'],
+  invitation: ['create', 'cancel'],
+  team: ['create', 'update', 'delete'],
+  ac: ['create', 'read', 'update', 'delete'],
+  agent: ['create', 'update', 'delete'],
+  connection: ['update'],
+  issue: ['update'],
+  permission: ['approve', 'grant'],
+  skill: ['create', 'update', 'delete'],
+})
+
+const gardenMemberRole = gardenAccessControl.newRole({
+  organization: [],
+  member: [],
+  invitation: [],
+  team: [],
+  ac: ['read'],
+  agent: [],
+  connection: [],
+  issue: [],
+  permission: [],
+  skill: [],
+})
 
 function getConnectorByProviderId(providerId: string | null | undefined) {
   return connectorRegistry.find(
@@ -189,6 +235,12 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
     },
     plugins: [
       organization({
+        ac: gardenAccessControl,
+        roles: {
+          owner: gardenOwnerRole,
+          admin: gardenAdminRole,
+          member: gardenMemberRole,
+        },
         schema: {
           session: {
             fields: {

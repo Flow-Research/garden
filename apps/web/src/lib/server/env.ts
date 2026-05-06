@@ -26,4 +26,12 @@ export type AppEnv = {
   SLACK_CLIENT_SECRET?: string
 }
 
-export const appEnv = env as AppEnv
+// The custom Worker entry receives the authoritative Cloudflare bindings as the
+// `env` argument. `cloudflare:workers` can be incomplete while TanStack Start
+// route modules are loaded through the wrapped handler, so server.ts refreshes
+// this live binding at the start of each Worker request.
+export let appEnv = env as AppEnv
+
+export function bindAppEnv(nextEnv: AppEnv) {
+  appEnv = nextEnv
+}

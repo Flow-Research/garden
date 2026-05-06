@@ -28,9 +28,8 @@ export function issueActiveRunOptions(issueId: string) {
         try: async () => api.getActiveRun(issueId),
         catch: (e) => (e instanceof Error ? e : new Error(String(e))),
       })
-      return realCall.isOk()
-        ? realCall.value
-        : { run: null, work_products: [], events: [] }
+      if (realCall.isOk()) return realCall.value
+      throw realCall.error
     },
     refetchInterval: (query) => (query.state.data?.run ? 2000 : false),
     refetchOnWindowFocus: true,

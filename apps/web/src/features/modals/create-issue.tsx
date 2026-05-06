@@ -118,6 +118,7 @@ export function CreateIssueModal({
   const [projectId, setProjectId] = useState<string | undefined>(
     (data?.project_id as string) || undefined,
   )
+  const [autoStart, setAutoStart] = useState(true)
   const [isExpanded, setIsExpanded] = useState(false)
   const [backlogHintIssueId, setBacklogHintIssueId] = useState<string | null>(
     null,
@@ -172,6 +173,7 @@ export function CreateIssueModal({
         assignee_id: assigneeId,
         due_date: dueDate || undefined,
         attachment_ids: attachmentIds.length > 0 ? attachmentIds : undefined,
+        auto_start: autoStart,
         parent_issue_id: (data?.parent_issue_id as string) || undefined,
         project_id: projectId,
       })
@@ -423,13 +425,30 @@ export function CreateIssueModal({
               <FileUploadButton
                 onSelect={(file) => descEditorRef.current?.uploadFile(file)}
               />
-              <Button
-                size="sm"
-                onClick={handleSubmit}
-                disabled={!title.trim() || submitting}
-              >
-                {submitting ? 'Creating...' : 'Create Issue'}
-              </Button>
+              <div className="flex items-center gap-3">
+                {assigneeType === 'agent' &&
+                assigneeId &&
+                !['backlog', 'blocked', 'done', 'cancelled'].includes(
+                  status,
+                ) ? (
+                  <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={autoStart}
+                      onChange={(event) => setAutoStart(event.target.checked)}
+                      className="size-3.5 accent-primary"
+                    />
+                    Auto start
+                  </label>
+                ) : null}
+                <Button
+                  size="sm"
+                  onClick={handleSubmit}
+                  disabled={!title.trim() || submitting}
+                >
+                  {submitting ? 'Creating...' : 'Create Issue'}
+                </Button>
+              </div>
             </div>
           </>
         )}

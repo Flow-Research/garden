@@ -38,7 +38,10 @@ import {
   readIssue as readIssueService,
   type IssueSummary,
 } from "../../../apps/web/src/lib/server/issues";
-import { startIssueRun } from "../../../apps/web/src/lib/server/issue-run";
+import {
+  startIssueRun,
+  type IssueRunEnv,
+} from "../../../apps/web/src/lib/server/issue-run";
 
 type ChatSubAgentToolsInput = {
   databaseUrl?: string;
@@ -46,6 +49,7 @@ type ChatSubAgentToolsInput = {
   workspace: WorkspaceFsLike;
   loader: WorkerLoader;
   getSandbox: () => SandboxDO;
+  issueRunEnv: IssueRunEnv;
   cancelIssueRun?: (input: { issueId: string; runId: string }) => Promise<void>;
 };
 
@@ -335,6 +339,7 @@ type ReadRunToolContext = {
 type ChatIssueToolContext = {
   databaseUrl: string;
   threadId: string;
+  issueRunEnv: IssueRunEnv;
 };
 
 const COMPACT_EXECUTE_DESCRIPTION =
@@ -848,16 +853,13 @@ async function createIssueFromChat(
   if (linkResult.isErr()) return issueToolErr(linkResult.error);
 
   if (input.assignee_agent_id) {
-    const startResult = await startIssueRun(
-      { DATABASE_URL: context.databaseUrl },
-      {
-        workspaceId: identity.workspaceId,
-        issueId: issue.id,
-        agentId: input.assignee_agent_id,
-        source: "manual",
-        actor: { type: "agent", id: identity.agentId },
-      },
-    );
+    const startResult = await startIssueRun(context.issueRunEnv, {
+      workspaceId: identity.workspaceId,
+      issueId: issue.id,
+      agentId: input.assignee_agent_id,
+      source: "manual",
+      actor: { type: "agent", id: identity.agentId },
+    });
     if (startResult.isErr()) return issueToolErr(startResult.error.message);
   }
 
@@ -921,16 +923,13 @@ async function assignIssueFromChat(
   });
   if (updateResult.isErr()) return issueToolErr(updateResult.error);
 
-  const startResult = await startIssueRun(
-    { DATABASE_URL: context.databaseUrl },
-    {
-      workspaceId: identity.workspaceId,
-      issueId: issue.id,
-      agentId: assigneeAgentId,
-      source: "manual",
-      actor: { type: "agent", id: identity.agentId },
-    },
-  );
+  const startResult = await startIssueRun(context.issueRunEnv, {
+    workspaceId: identity.workspaceId,
+    issueId: issue.id,
+    agentId: assigneeAgentId,
+    source: "manual",
+    actor: { type: "agent", id: identity.agentId },
+  });
   if (startResult.isErr()) return issueToolErr(startResult.error.message);
 
   const summaryResult = await readIssueService({
@@ -1311,6 +1310,7 @@ async function postIssueCommentFromChat(
 
   const commentResult = await postIssueCommentService({
     databaseUrl: context.databaseUrl,
+    issueRunEnv: context.issueRunEnv,
     workspaceId: identity.workspaceId,
     issueIdOrIdentifier: input.issue_id_or_identifier,
     authorUserId: identity.ownerUserId,
@@ -1326,6 +1326,7 @@ export function createChatSubAgentTools({
   workspace,
   loader,
   getSandbox,
+  issueRunEnv,
   cancelIssueRun,
 }: ChatSubAgentToolsInput): ToolSet {
   const documentContext = (): DocumentToolContext | null =>
@@ -1333,7 +1334,9 @@ export function createChatSubAgentTools({
   const readRunContext = (): ReadRunToolContext | null =>
     databaseUrl && threadId ? { databaseUrl, threadId } : null;
   const chatIssueContext = (): ChatIssueToolContext | null =>
-    databaseUrl && threadId ? { databaseUrl, threadId } : null;
+    databaseUrl && threadId && issueRunEnv
+      ? { databaseUrl, threadId, issueRunEnv }
+      : null;
 
   return {
     execute: createExecuteTool({

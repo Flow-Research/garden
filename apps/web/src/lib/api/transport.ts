@@ -70,7 +70,8 @@ export class ApiTransport {
 
   async request<T>(path: string, init?: ApiRequestInit): Promise<T> {
     const rid = createRequestId()
-    const contentType = init?.contentType ?? 'application/json'
+    const contentType =
+      init && 'contentType' in init ? init.contentType : 'application/json'
     const headers: Record<string, string> = {
       ...(contentType ? { 'Content-Type': contentType } : {}),
       'X-Request-ID': rid,

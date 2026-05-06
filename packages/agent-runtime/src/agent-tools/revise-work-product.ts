@@ -80,6 +80,20 @@ export function createReviseWorkProductTool(context: IssueRunToolContext) {
             })
             .where(eq(schema.issueWorkProduct.id, input.id))
             .returning()
+          if (updated) {
+            await db
+              .update(schema.issue)
+              .set({
+                status: 'in_review',
+                updatedAt: now,
+              })
+              .where(
+                and(
+                  eq(schema.issue.id, run.issueId),
+                  sql`${schema.issue.status} not in ('done', 'cancelled')`,
+                ),
+              )
+          }
           return updated ?? null
         },
         catch: (cause) => dbError('revise issue work product', cause),

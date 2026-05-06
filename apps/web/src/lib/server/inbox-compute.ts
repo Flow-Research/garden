@@ -14,6 +14,19 @@ type RunRow = typeof schema.issueRun.$inferSelect;
 type WorkProductRow = typeof schema.issueWorkProduct.$inferSelect;
 type PermissionRequestRow = typeof schema.permissionRequest.$inferSelect;
 
+type RunEventLite = {
+  runId: string;
+  eventType: string;
+  message: string | null;
+  payload: unknown;
+};
+
+type FailedRunEventInfo = {
+  latestEvent?: RunEventLite;
+  failedEvent?: RunEventLite;
+  latestToolStarted?: RunEventLite;
+};
+
 type SourceItem = {
   key: string;
   type: InboxItemType;
@@ -249,21 +262,81 @@ function buildWorkProductReviewSource(
   };
 }
 
-function buildFailedRunSource(run: RunRow, issue: IssueRow): SourceItem {
+function payloadValue(payload: unknown, key: string): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = (payload as Record<string, unknown>)[key];
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return null;
+}
+
+function payloadError(payload: unknown): string | null {
+  return (
+    payloadValue(payload, "error") ??
+    payloadValue(payload, "reason") ??
+    payloadValue(payload, "message")
+  );
+}
+
+function failedRunBody(run: RunRow, info: FailedRunEventInfo | undefined) {
+  const latestTool = info?.latestToolStarted
+    ? payloadValue(info.latestToolStarted.payload, "tool")
+    : null;
+  const eventError =
+    payloadError(info?.failedEvent?.payload) ??
+    payloadError(info?.latestEvent?.payload) ??
+    info?.failedEvent?.message ??
+    info?.latestEvent?.message ??
+    null;
+  const error = run.error?.trim() || eventError;
+
+  if (run.error === "tool_timeout") {
+    return truncate(
+      latestTool
+        ? `Tool timed out: ${latestTool}. The run failed because that tool did not return before the recovery deadline.`
+        : "A tool timed out before returning a result.",
+    );
+  }
+
+  if (error) return truncate(error);
+  return "The run failed without a recorded error message.";
+}
+
+function buildFailedRunSource(
+  run: RunRow,
+  issue: IssueRow,
+  info?: FailedRunEventInfo,
+): SourceItem {
   const activityAt = preferDate(run.finishedAt, run.updatedAt, run.createdAt);
+  const latestEvent = info?.latestEvent;
+  const latestTool = info?.latestToolStarted
+    ? payloadValue(info.latestToolStarted.payload, "tool")
+    : null;
+  const eventError =
+    payloadError(info?.failedEvent?.payload) ??
+    payloadError(latestEvent?.payload) ??
+    info?.failedEvent?.message ??
+    latestEvent?.message ??
+    null;
   return {
     key: `failed_run:${run.id}`,
     type: "task_failed",
     severity: "attention",
     issueId: issue.id,
     title: `A run failed on ${issue.title}`,
-    body: truncate(run.error ?? null),
+    body: failedRunBody(run, info),
     issueStatus: pickIssueStatus(issue.status),
     ...actorFromAgentId(run.agentId),
     activityAt,
     details: {
       run_id: run.id,
       issue_number: String(issue.number),
+      ...(run.error ? { error: run.error } : {}),
+      ...(eventError ? { event_error: eventError } : {}),
+      ...(latestEvent ? { latest_event: latestEvent.eventType } : {}),
+      ...(latestTool ? { latest_tool: latestTool } : {}),
     },
   };
 }
@@ -345,6 +418,7 @@ async function computeInboxSourceItems(args: {
     pendingWorkProducts,
     pausedRuns,
     failedRuns,
+    succeededRuns,
     dismissalRows,
   ] = await Promise.all([
     db
@@ -451,6 +525,17 @@ async function computeInboxSourceItems(args: {
       .limit(100),
     db
       .select()
+      .from(schema.issueRun)
+      .where(
+        and(
+          eq(schema.issueRun.workspaceId, workspaceId),
+          eq(schema.issueRun.status, "succeeded"),
+        ),
+      )
+      .orderBy(desc(schema.issueRun.finishedAt))
+      .limit(100),
+    db
+      .select()
       .from(schema.inboxDismissal)
       .where(
         and(
@@ -466,6 +551,80 @@ async function computeInboxSourceItems(args: {
   );
 
   const sources: SourceItem[] = [];
+  const latestSuccessfulRunByIssueId = new Map<string, RunRow>();
+  for (const run of succeededRuns) {
+    const existing = latestSuccessfulRunByIssueId.get(run.issueId);
+    const runAt = preferDate(run.finishedAt, run.updatedAt, run.createdAt);
+    const existingAt = existing
+      ? preferDate(existing.finishedAt, existing.updatedAt, existing.createdAt)
+      : null;
+    if (!existing || (existingAt && runAt.getTime() > existingAt.getTime())) {
+      latestSuccessfulRunByIssueId.set(run.issueId, run);
+    }
+  }
+  const latestPendingWorkProductByIssueId = new Map<string, WorkProductRow>();
+  for (const wp of pendingWorkProducts) {
+    const existing = latestPendingWorkProductByIssueId.get(wp.issueId);
+    const wpAt = preferDate(wp.updatedAt, wp.createdAt);
+    const existingAt = existing
+      ? preferDate(existing.updatedAt, existing.createdAt)
+      : null;
+    if (!existing || (existingAt && wpAt.getTime() > existingAt.getTime())) {
+      latestPendingWorkProductByIssueId.set(wp.issueId, wp);
+    }
+  }
+  const hasNewerResolutionForIssue = (
+    issueId: string,
+    activityAt: Date,
+  ): boolean => {
+    const latestSuccessfulRun = latestSuccessfulRunByIssueId.get(issueId);
+    if (
+      latestSuccessfulRun &&
+      preferDate(
+        latestSuccessfulRun.finishedAt,
+        latestSuccessfulRun.updatedAt,
+        latestSuccessfulRun.createdAt,
+      ).getTime() >= activityAt.getTime()
+    ) {
+      return true;
+    }
+
+    const latestPendingWorkProduct = latestPendingWorkProductByIssueId.get(issueId);
+    return Boolean(
+      latestPendingWorkProduct &&
+        preferDate(
+          latestPendingWorkProduct.updatedAt,
+          latestPendingWorkProduct.createdAt,
+        ).getTime() >= activityAt.getTime(),
+    );
+  };
+  const failedRunIds = failedRuns.map((run) => run.id);
+  const failedRunEvents =
+    failedRunIds.length === 0
+      ? []
+      : await db
+          .select({
+            runId: schema.issueRunEvent.runId,
+            eventType: schema.issueRunEvent.eventType,
+            message: schema.issueRunEvent.message,
+            payload: schema.issueRunEvent.payload,
+          })
+          .from(schema.issueRunEvent)
+          .where(inArray(schema.issueRunEvent.runId, failedRunIds))
+          .orderBy(desc(schema.issueRunEvent.createdAt), desc(schema.issueRunEvent.seq))
+          .limit(failedRunIds.length * 20);
+  const failedRunEventInfoByRunId = new Map<string, FailedRunEventInfo>();
+  for (const event of failedRunEvents) {
+    const info = failedRunEventInfoByRunId.get(event.runId) ?? {};
+    if (!info.latestEvent) info.latestEvent = event;
+    if (!info.failedEvent && event.eventType === "issue_run:failed") {
+      info.failedEvent = event;
+    }
+    if (!info.latestToolStarted && event.eventType === "issue_run:tool_started") {
+      info.latestToolStarted = event;
+    }
+    failedRunEventInfoByRunId.set(event.runId, info);
+  }
 
   for (const issue of workspaceIssues) {
     if (isTerminalIssue(issue)) continue;
@@ -482,6 +641,13 @@ async function computeInboxSourceItems(args: {
     if (!issue) continue;
     if (isTerminalIssue(issue)) continue;
     const row = comment as CommentRow;
+    const commentAt = preferDate(row.createdAt);
+    if (
+      row.authorType === "agent" &&
+      hasNewerResolutionForIssue(issue.id, commentAt)
+    ) {
+      continue;
+    }
     if (commentMentionsUser(row.mentions, userId)) {
       sources.push(buildMentionSource(row, issue));
       continue;
@@ -536,7 +702,29 @@ async function computeInboxSourceItems(args: {
     const issue = issuesById.get(run.issueId);
     if (!issue || !userIsResponsible(issue, userId)) continue;
     if (isTerminalIssue(issue)) continue;
-    sources.push(buildFailedRunSource(run, issue));
+    const failedAt = preferDate(run.finishedAt, run.updatedAt, run.createdAt);
+    const newerSuccess = latestSuccessfulRunByIssueId.get(run.issueId);
+    const newerWorkProduct = latestPendingWorkProductByIssueId.get(run.issueId);
+    if (
+      newerSuccess &&
+      preferDate(
+        newerSuccess.finishedAt,
+        newerSuccess.updatedAt,
+        newerSuccess.createdAt,
+      ).getTime() >= failedAt.getTime()
+    ) {
+      continue;
+    }
+    if (
+      newerWorkProduct &&
+      preferDate(newerWorkProduct.updatedAt, newerWorkProduct.createdAt).getTime() >=
+        failedAt.getTime()
+    ) {
+      continue;
+    }
+    sources.push(
+      buildFailedRunSource(run, issue, failedRunEventInfoByRunId.get(run.id)),
+    );
   }
 
   return {

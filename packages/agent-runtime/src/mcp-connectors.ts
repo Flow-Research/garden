@@ -1,4 +1,4 @@
-export const MCP_PROXY_JWT_REFRESH_WINDOW_MS = 60 * 1000
+export const MCP_PROXY_JWT_REFRESH_WINDOW_MS = 10 * 60 * 1000
 
 export type ActiveConnectorBinding = {
   connectorId: string

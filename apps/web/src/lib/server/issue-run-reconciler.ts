@@ -11,8 +11,8 @@ import {
 
 const logger = createLogger('issue-run-reconciler')
 
-const SILENT_RUN_MS = 120_000
-const MAX_WAKEUP_ATTEMPTS = 3
+const DEFAULT_MAX_WAKEUP_ATTEMPTS = 3
+const RUNTIME_RECOVERY_MAX_WAKEUP_ATTEMPTS = 12
 const WAKEUP_BACKOFF_MS = [5_000, 10_000, 20_000] as const
 const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000
 
@@ -41,6 +41,7 @@ export class IssueRunReconcilerError extends TaggedError(
 
 type SilentRunRow = {
   id: string
+  reason: string
 }
 
 type WakeupCandidateRow = {
@@ -54,6 +55,7 @@ type WakeupCandidateRow = {
   trigger_source_id: string | null
   correlation_id: string | null
   attempt_count: number
+  latest_run_error: string | null
 }
 
 type RecurrenceRow = {
@@ -96,6 +98,37 @@ function retryDelayMs(attemptCount: number) {
     WAKEUP_BACKOFF_MS.length - 1,
   )
   return WAKEUP_BACKOFF_MS[index]
+}
+
+function maxWakeupAttemptsForError(error: string | null) {
+  switch (error) {
+    case 'fiber_recovered':
+    case 'silent_timeout':
+    case 'tool_timeout':
+    case 'enqueue_failed':
+      return RUNTIME_RECOVERY_MAX_WAKEUP_ATTEMPTS
+    case 'no_resolution':
+      return 2
+    default:
+      return DEFAULT_MAX_WAKEUP_ATTEMPTS
+  }
+}
+
+function exhaustedWakeupComment(reason: string) {
+  switch (reason) {
+    case 'attempts_exhausted:fiber_recovered':
+      return 'Garden automatically retried this run after runtime recovery failures, but the execution kept disappearing before a work product was produced. Moving the issue to blocked so it is visible for intervention.'
+    case 'attempts_exhausted:silent_timeout':
+      return 'Garden automatically retried this run after it stopped making observable progress, but the retries still went silent before a work product was produced. Moving the issue to blocked so it is visible for intervention.'
+    case 'attempts_exhausted:tool_timeout':
+      return 'Garden automatically retried this run after a tool call stopped returning, but the retries still could not produce a work product. Moving the issue to blocked so it is visible for intervention.'
+    case 'attempts_exhausted:enqueue_failed':
+      return 'Garden automatically retried this run after enqueue failures, but the runtime could not be started reliably. Moving the issue to blocked so it is visible for intervention.'
+    case 'attempts_exhausted:no_resolution':
+      return 'Garden retried this run after it ended without a work product, but the retry still did not produce an output. Moving the issue to blocked so it is visible for intervention.'
+    default:
+      return `Garden automatically retried this run, but it exhausted recovery attempts (${reason}). Moving the issue to blocked so it is visible for intervention.`
+  }
 }
 
 function nextMinuteBoundary(from: Date) {
@@ -334,20 +367,45 @@ async function reapSilentRuns(
   now: Date,
 ): Promise<ResultValue<number, IssueRunReconcilerError>> {
   const db = getDb(env)
-  const silentBefore = new Date(now.getTime() - SILENT_RUN_MS)
   const rowsResult = await Result.tryPromise({
     try: async () => {
       const rows = await db.execute<SilentRunRow>(sql`
-        select r.id
-        from issue_run r
-        where r.status in ('queued', 'running')
+        with stale_runs as (
+          select r.id, 'silent_timeout'::text as reason
+          from issue_run r
+          where (
+            (
+              r.status = 'running'
+              and r.started_at < ((now() at time zone 'utc') - interval '2 hours')
+            )
+            or (
+              r.status = 'queued'
+              and r.created_at < ((now() at time zone 'utc') - interval '2 minutes')
+            )
+          )
           and not exists (
             select 1
             from issue_run_event e
             where e.run_id = r.id
-              and e.created_at > ${silentBefore}
+              and e.created_at > ((now() at time zone 'utc') - interval '2 minutes')
           )
-        order by r.updated_at
+          union all
+          select r.id, 'tool_timeout'::text as reason
+          from issue_run r
+          join lateral (
+            select e.event_type, e.created_at
+            from issue_run_event e
+            where e.run_id = r.id
+            order by e.seq desc
+            limit 1
+          ) latest_event on true
+          where r.status = 'running'
+            and latest_event.event_type = 'issue_run:tool_started'
+            and latest_event.created_at < ((now() at time zone 'utc') - interval '3 minutes')
+        )
+        select distinct on (id) id, reason
+        from stale_runs
+        order by id, reason
         limit 50
       `)
       return rows.rows
@@ -361,7 +419,7 @@ async function reapSilentRuns(
     const failedResult = await markRunFailed({
       env,
       runId: row.id,
-      reason: 'silent_timeout',
+      reason: row.reason,
       now,
     })
     if (failedResult.isErr()) return Result.err(failedResult.error)
@@ -375,13 +433,16 @@ async function restartWakeup(args: {
   env: AppEnv
   row: WakeupCandidateRow
   now: Date
-}): Promise<ResultValue<'restarted' | 'failed', IssueRunReconcilerError>> {
+}): Promise<
+  ResultValue<'restarted' | 'failed' | 'skipped', IssueRunReconcilerError>
+> {
   const db = getDb(args.env)
-  if (args.row.attempt_count >= MAX_WAKEUP_ATTEMPTS) {
+  const maxAttempts = maxWakeupAttemptsForError(args.row.latest_run_error)
+  if (args.row.attempt_count >= maxAttempts) {
     const failResult = await failWakeupAndBlockIssue({
       env: args.env,
       wakeupId: args.row.wakeup_id,
-      reason: 'attempts_exhausted',
+      reason: `attempts_exhausted:${args.row.latest_run_error ?? 'unknown'}`,
       now: args.now,
     })
     if (failResult.isErr()) return Result.err(failResult.error)
@@ -392,7 +453,20 @@ async function restartWakeup(args: {
   const nextAttemptCount = args.row.attempt_count + 1
   const createResult = await Result.tryPromise({
     try: async () => {
-      await db.transaction(async (tx) => {
+      return await db.transaction(async (tx) => {
+        const [activeRun] = await tx
+          .select({ id: schema.issueRun.id })
+          .from(schema.issueRun)
+          .where(
+            and(
+              eq(schema.issueRun.wakeupId, args.row.wakeup_id),
+              sql`${schema.issueRun.status} in ('queued', 'running', 'waiting_for_input', 'waiting_for_approval')`,
+            ),
+          )
+          .limit(1)
+
+        if (activeRun) return false
+
         await tx
           .update(schema.issueWakeup)
           .set({
@@ -412,6 +486,7 @@ async function restartWakeup(args: {
           status: 'queued',
           contextSnapshot: {
             source: args.row.source,
+            retryReason: args.row.latest_run_error ?? 'reconciler_retry',
             trigger: {
               commentId: args.row.trigger_comment_id,
               sourceBindingId: args.row.trigger_source_id,
@@ -440,11 +515,13 @@ async function restartWakeup(args: {
             source: args.row.source,
           },
         })
+        return true
       })
     },
     catch: (cause) => dbError('restart issue wakeup', cause),
   })
   if (createResult.isErr()) return Result.err(createResult.error)
+  if (!createResult.value) return Result.ok('skipped')
 
   const enqueueResult = await enqueueIssueRunRuntime({
     env: args.env,
@@ -492,8 +569,16 @@ async function restartClaimedWakeups(
           w.trigger_comment_id,
           w.trigger_source_id,
           w.correlation_id,
-          w.attempt_count
+          w.attempt_count,
+          latest_run.error as latest_run_error
         from issue_wakeup w
+        left join lateral (
+          select r.error
+          from issue_run r
+          where r.wakeup_id = w.id
+          order by r.created_at desc
+          limit 1
+        ) latest_run on true
         where w.status = 'claimed'
           and (w.next_attempt_at is null or w.next_attempt_at <= ${now})
           and not exists (
@@ -581,7 +666,7 @@ async function failWakeupAndBlockIssue(args: {
           issueId: row.issueId,
           authorType: 'agent',
           authorId: row.agentId,
-          body: `Agent run blocked by reconciler: ${args.reason}.`,
+          body: exhaustedWakeupComment(args.reason),
           mentions: null,
         })
       })

@@ -11,7 +11,7 @@ import {
 } from '@cloudflare/think'
 import { Workspace } from '@cloudflare/shell'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
-import type { LanguageModel, ToolSet, UIMessage } from 'ai'
+import type { LanguageModel, ModelMessage, ToolSet, UIMessage } from 'ai'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/neon-serverless'
@@ -76,7 +76,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
 
 type RuntimePrepareResult = ResultValue<void, string>
 
-type TurnMode = 'start' | 'resume' | 'nudge'
+type TurnMode = 'start' | 'resume'
 
 type StartTurnInput = {
   runId: string
@@ -97,7 +97,7 @@ type ResolutionGuardRow = {
   updated_at: string
 }
 
-const THINK_TURN_TIMEOUT_MS = 60_000
+const DEFAULT_ISSUE_RUN_TIMEOUT_SEC = 2 * 60 * 60
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.issue-run.turn'
 const WAKEUP_BACKOFF_MS = [5_000, 10_000, 20_000] as const
@@ -182,6 +182,69 @@ function makeUserMessage(text: string): UIMessage {
     id: crypto.randomUUID(),
     role: 'user',
     parts: [{ type: 'text', text }],
+  }
+}
+
+function partType(part: unknown) {
+  return objectOrNull(part)?.type
+}
+
+function partToolCallId(part: unknown) {
+  const value = objectOrNull(part)
+  return stringValue(value?.toolCallId) ?? stringValue(value?.tool_call_id)
+}
+
+function collectToolResultIds(messages: ModelMessage[]) {
+  const ids = new Set<string>()
+  for (const message of messages) {
+    if (message.role !== 'tool' || !Array.isArray(message.content)) continue
+    for (const part of message.content) {
+      const id = partToolCallId(part)
+      if (id) ids.add(id)
+    }
+  }
+  return ids
+}
+
+function sanitizeRecoveredToolTranscript(messages: ModelMessage[]) {
+  const toolResultIds = collectToolResultIds(messages)
+  let removed = 0
+  const sanitized: ModelMessage[] = []
+
+  for (const message of messages) {
+    if (message.role !== 'assistant' || !Array.isArray(message.content)) {
+      sanitized.push(message)
+      continue
+    }
+
+    const content = message.content.filter((part) => {
+      const type = partType(part)
+      if (type !== 'tool-call') return true
+      const id = partToolCallId(part)
+      const keep = Boolean(id && toolResultIds.has(id))
+      if (!keep) removed += 1
+      return keep
+    })
+
+    if (content.length === message.content.length) {
+      sanitized.push(message)
+    } else if (content.length > 0) {
+      sanitized.push({ ...message, content } as ModelMessage)
+    }
+  }
+
+  if (removed === 0) return { messages, removed }
+
+  return {
+    messages: [
+      ...sanitized,
+      {
+        role: 'user',
+        content:
+          'Runtime recovery removed orphaned tool-call records from a previous interrupted turn. Continue from the current issue context and recorded tool events. If enough source material exists, synthesize it into a work product instead of repeating raw results.',
+      } satisfies ModelMessage,
+    ],
+    removed,
   }
 }
 
@@ -281,6 +344,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         workspace: this.workspace,
         loader: this.env.LOADER,
         getSandbox: () => this.getAgentSandbox(),
+        issueRunEnv: this.env,
       }),
       update_plan: createUpdatePlanTool(context),
       post_comment: createPostCommentTool(context),
@@ -324,6 +388,13 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         observedChangesResult.error,
       )
     }
+    const transcript = sanitizeRecoveredToolTranscript(ctx.messages)
+    if (transcript.removed > 0) {
+      console.warn('[agent-runtime] sanitized orphaned issue tool calls', {
+        runId,
+        removed: transcript.removed,
+      })
+    }
 
     return {
       experimental_telemetry: {
@@ -339,9 +410,9 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       },
       maxRetries: THINK_TURN_MAX_RETRIES,
       maxSteps: this.maxSteps,
+      messages: transcript.messages,
       sendReasoning: true,
       system: `${ctx.system}\n\n${loadedResult.value.contextBlock}`,
-      timeout: THINK_TURN_TIMEOUT_MS,
       tools: mcpController.wrapGetAITools(
         this.mcp.getAITools.bind(this.mcp),
         undefined,
@@ -356,6 +427,21 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   override async beforeToolCall(ctx: ToolCallContext) {
     const run = this.currentRunState
     if (!run) return undefined
+
+    if (this.resolutionActions.size > 0) {
+      return {
+        action: 'substitute',
+        output: {
+          ok: true,
+          skipped: true,
+          reason:
+            'A resolution action already completed this issue run. No further tool calls are needed.',
+        },
+      } as const
+    }
+
+    const activeResult = await this.assertRunActiveForTool(run.runId)
+    if (activeResult.isErr()) throw activeResult.error
 
     const gateResult = this.assertToolAllowed(ctx.toolName)
     if (gateResult.isErr()) throw gateResult.error
@@ -512,12 +598,55 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     const runId = stringValue(snapshot?.runId)
     if (!runId) return
 
-    const failedResult = await this.forceCloseFailed(runId, 'fiber_recovered')
-    if (failedResult.isErr()) {
-      console.warn('[agent-runtime] failed to mark recovered fiber failed', {
-        error: failedResult.error.message,
+    const runResult = await Result.tryPromise({
+      try: async () => {
+        const [run] = await this.getDb()
+          .select({
+            id: schema.issueRun.id,
+            issueId: schema.issueRun.issueId,
+            agentId: schema.issueRun.agentId,
+            status: schema.issueRun.status,
+            createdAt: schema.issueRun.createdAt,
+            startedAt: schema.issueRun.startedAt,
+          })
+          .from(schema.issueRun)
+          .where(eq(schema.issueRun.id, runId))
+          .limit(1)
+        return run ?? null
+      },
+      catch: (cause) => dbError('load recovered issue run', cause),
+    })
+    if (runResult.isErr()) {
+      console.warn('[agent-runtime] failed to load recovered issue run', {
+        error: runResult.error.message,
         runId,
       })
+      return
+    }
+
+    const run = runResult.value
+    if (!run || !isActiveRunStatus(run.status ?? '')) {
+      return
+    }
+
+    const timeoutSec = await this.loadRunTimeoutSec(run.agentId)
+    if (timeoutSec.isErr()) {
+      console.warn('[agent-runtime] failed to load recovered run timeout', {
+        error: timeoutSec.error.message,
+        runId,
+      })
+      return
+    }
+    const startedAt = run.startedAt ?? run.createdAt
+    const elapsedMs = startedAt ? Date.now() - startedAt.getTime() : 0
+    if (elapsedMs > timeoutSec.value * 1000) {
+      const failedResult = await this.forceCloseFailed(runId, 'timeout')
+      if (failedResult.isErr()) {
+        console.warn('[agent-runtime] failed to timeout recovered fiber', {
+          error: failedResult.error.message,
+          runId,
+        })
+      }
       return
     }
 
@@ -527,10 +656,10 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     const eventResult = await appendIssueRunEvent({
       db,
       run: runStateResult.value,
-      eventType: 'issue_run:failed',
+      eventType: 'issue_run:message',
       stream: 'system',
-      level: 'error',
-      message: 'Run failed after fiber recovery',
+      level: 'warn',
+      message: 'Run fiber recovered; resuming issue run',
       payload: {
         reason: 'fiber_recovered',
         fiber_id: ctx.id,
@@ -545,6 +674,8 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         runId,
       })
     }
+
+    this.startIssueRunFiber('resume', { runId, issueId: run.issueId })
   }
 
   async refreshProxyMcpJwts() {
@@ -799,6 +930,39 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       return false
     }
     return permissions.approval_overrides[riskClass] === 'auto'
+  }
+
+  private async assertRunActiveForTool(
+    runId: string,
+  ): Promise<ResultValue<void, IssueRunSubAgentError>> {
+    const result = await Result.tryPromise({
+      try: async () => {
+        const [row] = await this.getDb()
+          .select({ status: schema.issueRun.status })
+          .from(schema.issueRun)
+          .where(eq(schema.issueRun.id, runId))
+          .limit(1)
+        return row ?? null
+      },
+      catch: (cause) => dbError('load issue run status before tool call', cause),
+    })
+    if (result.isErr()) return Result.err(result.error)
+    const status = result.value?.status
+    if (
+      status === 'queued' ||
+      status === 'running' ||
+      status === 'waiting_for_input' ||
+      status === 'waiting_for_approval'
+    ) {
+      return Result.ok()
+    }
+
+    return Result.err(
+      new IssueRunSubAgentError({
+        code: 'invalid_state',
+        message: `Issue run is no longer active (${status ?? 'missing'}).`,
+      }),
+    )
   }
 
   private async loadRunState(
@@ -1251,7 +1415,10 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
           .from(schema.agent)
           .where(eq(schema.agent.id, agentId))
           .limit(1)
-        return agent?.runTimeoutSec ?? 1800
+        return Math.max(
+          agent?.runTimeoutSec ?? DEFAULT_ISSUE_RUN_TIMEOUT_SEC,
+          DEFAULT_ISSUE_RUN_TIMEOUT_SEC,
+        )
       },
       catch: (cause) => dbError('load agent run timeout', cause),
     })
@@ -1376,8 +1543,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     runId: string,
   ): Promise<ResultValue<void, IssueRunSubAgentError>> {
     if (this.resolutionActions.size > 0) {
-      const clearResult = this.clearResolutionGuard(runId)
-      return clearResult.isErr() ? Result.err(clearResult.error) : Result.ok()
+      return Result.ok()
     }
 
     const runStateResult = await this.loadRunState(runId)
@@ -1397,42 +1563,44 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       const writeResult = this.writeResolutionGuard(runId, 1)
       if (writeResult.isErr()) return Result.err(writeResult.error)
 
-      const db = getIssueRunDb(this.env.DATABASE_URL)
-      const eventResult = await appendIssueRunEvent({
-        db,
-        run: runStateResult.value,
-        eventType: 'issue_run:message',
-        stream: 'system',
-        level: 'warn',
-        message: 'Resolution required',
-        payload: {
-          reason:
-            'Produce a work product, ask one focused question, mark blocked, or create child issues.',
-        },
-      })
-      if (eventResult.isErr()) {
-        return Result.err(
-          new IssueRunSubAgentError({
-            code: 'database_failed',
-            message: eventResult.error.message,
-            cause: eventResult.error,
-          }),
-        )
-      }
-
       this.currentRunId = runId
       this.currentRunState = runStateResult.value
       this.setProgrammaticBody({
         run_id: runId,
         issue_id: runStateResult.value.issueId,
-        mode: 'nudge',
+        mode: 'resume',
+        guard: 'missing_resolution',
       })
+      const nudgeMessage = makeUserMessage(
+        'The previous turn ended without a resolution. Synthesize the gathered context into a useful work product now. Do not expose raw search results as the output; create or revise the issue work product. Only ask a question or mark blocked if a synthesized work product is impossible.',
+      )
+      const saveResult = await Result.tryPromise({
+        try: async () => {
+          await this.saveMessages([nudgeMessage])
+        },
+        catch: (cause) => cause,
+      })
+      if (saveResult.isErr()) {
+        if (saveResult.error instanceof IssueRunTurnStopped) {
+          return Result.ok()
+        }
+        return Result.err(
+          new IssueRunSubAgentError({
+            code: 'runtime_failed',
+            message:
+              saveResult.error instanceof Error
+                ? saveResult.error.message
+                : String(saveResult.error),
+            cause: saveResult.error,
+          }),
+        )
+      }
       const continueResult = await Result.tryPromise({
         try: async () =>
           await this.continueLastTurn({
             run_id: runId,
             issue_id: runStateResult.value.issueId,
-            mode: 'nudge',
+            mode: 'resume',
           }),
         catch: (cause) => cause,
       })
@@ -1539,32 +1707,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
             cause instanceof Error
               ? cause.message
               : 'Failed to write issue run resolution guard.',
-          cause,
-        }),
-    })
-  }
-
-  private clearResolutionGuard(runId: string) {
-    const tableResult = this.ensureResolutionGuardTable()
-    if (tableResult.isErr()) return Result.err(tableResult.error)
-
-    return Result.try({
-      try: () => {
-        this.ctx.storage.sql.exec(
-          `
-            DELETE FROM issue_run_resolution_guard
-            WHERE run_id = ?
-          `,
-          runId,
-        )
-      },
-      catch: (cause) =>
-        new IssueRunSubAgentError({
-          code: 'database_failed',
-          message:
-            cause instanceof Error
-              ? cause.message
-              : 'Failed to clear issue run resolution guard.',
           cause,
         }),
     })
@@ -1869,7 +2011,10 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
 
     const readyResult = await this.ensureProxyMcpConnectionsLoaded('issue-turn')
     if (readyResult.isErr()) {
-      throw new Error(`MCP tools are not ready: ${readyResult.error}`)
+      console.warn('[agent-runtime] continuing issue run without ready MCP connectors', {
+        reason: 'issue-turn',
+        error: readyResult.error,
+      })
     }
 
     return mcpController
@@ -1921,6 +2066,10 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         await mcpController.ensureProxyMcpConnections(options)
       if (connectionResult.isOk()) {
         this.lastProxyMcpFullSyncAt = Date.now()
+        return Result.ok(undefined)
+      }
+
+      if (connectionResult.error.code === 'thread_not_found') {
         return Result.ok(undefined)
       }
 

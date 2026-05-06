@@ -75,6 +75,7 @@ export const createIssueBodySchema = z
     project_id: issueInsertSchema.shape.projectId.optional().nullable(),
     due_date: issueDueDateApiSchema.optional().nullable(),
     attachment_ids: z.array(uuidSchema).optional(),
+    auto_start: z.boolean().optional(),
   })
   .strict()
 

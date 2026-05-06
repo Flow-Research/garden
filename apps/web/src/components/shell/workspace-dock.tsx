@@ -21,6 +21,7 @@ import {
   LayoutList,
   Maximize2,
   Minimize2,
+  PanelLeft,
   MessageSquare,
   Pin,
   PinOff,
@@ -242,6 +243,17 @@ const panelIcons: Record<
   capabilities: Plug,
   agents: Users,
   'agent-detail': Bot,
+}
+
+function panelUsesContextRail(kind: WorkspacePanelKind | null | undefined) {
+  return (
+    kind === 'dashboard' ||
+    kind === 'chat' ||
+    kind === 'skill-editor' ||
+    kind === 'agents' ||
+    kind === 'agent-detail' ||
+    kind === 'capabilities'
+  )
 }
 
 let dockPanelCounter = 0
@@ -710,6 +722,7 @@ export function WorkspaceDockTitlebar({
   subtitle?: ReactNode
 }) {
   const ctx = useContext(WorkspaceDockContext)
+  const workspaceSidebar = useSidebar()
   const hasActiveGroup = Boolean(ctx?.activeGroupId)
 
   if (!ctx) {
@@ -724,6 +737,7 @@ export function WorkspaceDockTitlebar({
   }
 
   const hasActivePanel = Boolean(ctx.activePanel)
+  const canUseContextRail = panelUsesContextRail(ctx.activePanel?.kind)
   const handleTabDrop = (
     event: React.DragEvent<HTMLDivElement>,
     targetPanelId: string,
@@ -823,6 +837,33 @@ export function WorkspaceDockTitlebar({
               : undefined
           }
         />
+        <button
+          type="button"
+          className={[
+            'garden-dock-actions__button',
+            workspaceSidebar.state === 'expanded'
+              ? 'garden-dock-actions__button--active'
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          disabled={!canUseContextRail}
+          onClick={workspaceSidebar.toggleSidebar}
+          title={
+            canUseContextRail
+              ? workspaceSidebar.state === 'expanded'
+                ? 'Collapse context rail'
+                : 'Open context rail'
+              : 'No context rail for this page'
+          }
+          aria-label={
+            workspaceSidebar.state === 'expanded'
+              ? 'Collapse context rail'
+              : 'Open context rail'
+          }
+        >
+          <PanelLeft className="size-3.5" />
+        </button>
         <div className="garden-titlebar__divider" aria-hidden="true" />
         {ctx.dockPanels.length > 0 ? (
           <div
@@ -1204,8 +1245,6 @@ function IssueDetailDockPanel({
   params,
   api,
 }: IDockviewPanelProps<WorkspacePanelParams>) {
-  const workspaceSidebar = useSidebar()
-
   if (!params.entityId) {
     return (
       <section className="flex h-full items-center justify-center px-6 text-sm text-muted-foreground">
@@ -1228,11 +1267,7 @@ function IssueDetailDockPanel({
 
   return (
     <WorkspacePanelFrame panelId={api.id}>
-      <IssueDetail
-        issueId={params.entityId}
-        onToggleContextRail={workspaceSidebar.toggleSidebar}
-        contextRailOpen={workspaceSidebar.state === 'expanded'}
-      />
+      <IssueDetail issueId={params.entityId} />
     </WorkspacePanelFrame>
   )
 }

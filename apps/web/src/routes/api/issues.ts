@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { createIssue } from '@/lib/server/issues'
+import { startIssueRun } from '@/lib/server/issue-run'
 import {
   createIssueBodySchema,
   issuesListSearchSchema,
@@ -122,7 +123,27 @@ export const Route = createFileRoute('/api/issues')({
           dueDate: body.due_date ? new Date(body.due_date) : null,
         })
         if (issueResult.isErr()) return badRequest(issueResult.error.message)
-        return Response.json(issueResult.value, { status: 201 })
+        const issue = issueResult.value
+        if (
+          body.auto_start !== false &&
+          issue.assignee_type === 'agent' &&
+          issue.assignee_id &&
+          issue.status !== 'backlog' &&
+          issue.status !== 'blocked' &&
+          issue.status !== 'done' &&
+          issue.status !== 'cancelled'
+        ) {
+          void startIssueRun(appEnv, {
+            workspaceId,
+            issueId: issue.id,
+            agentId: issue.assignee_id,
+            source: 'assignment',
+            actor: { type: 'member', id: session.user.id },
+          }).then((startResult) => {
+            if (startResult.isErr()) console.error(startResult.error.message)
+          })
+        }
+        return Response.json(issue, { status: 201 })
       },
     },
   },
