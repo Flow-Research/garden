@@ -1,6 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from 'react'
 import { Result } from 'better-result'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { IconMessage2Plus } from '@tabler/icons-react'
@@ -66,6 +72,11 @@ type RailItem = {
   label: string
   icon: React.ComponentType<{ className?: string }>
   defaultPanel: WorkspacePanelInput
+}
+
+type PendingRail = {
+  id: RailContext
+  from: RailContext
 }
 
 const railItems: RailItem[] = [
@@ -254,14 +265,7 @@ export function WorkspaceSidebar() {
     [dock],
   )
   const openContextRail = useCallback(() => {
-    if (workspaceSidebar.open) {
-      workspaceSidebar.setOpen(true)
-      return
-    }
-
-    window.requestAnimationFrame(() => {
-      workspaceSidebar.setOpen(true)
-    })
+    workspaceSidebar.setOpen(true)
   }, [workspaceSidebar])
   const closePanel = useCallback(
     (panelId: string) => {
@@ -287,10 +291,10 @@ export function WorkspaceSidebar() {
       ? isPendingFirstTurn(activeSession)
       : false
   const activeRailId = contextFromPanel(activeType)
-  const [pendingRailId, setPendingRailId] = useState<RailContext | null>(null)
+  const [pendingRail, setPendingRail] = useState<PendingRail | null>(null)
   const effectiveRailId =
-    pendingRailId && railUsesContextRail(pendingRailId)
-      ? pendingRailId
+    pendingRail && activeRailId === pendingRail.from
+      ? pendingRail.id
       : activeRailId
   const activeRail =
     railItems.find((item) => item.id === effectiveRailId) ?? railItems[0]
@@ -308,12 +312,12 @@ export function WorkspaceSidebar() {
   const unreadCount = inboxItems.filter((item) => !item.read).length
 
   useEffect(() => {
-    if (pendingRailId && pendingRailId === activeRailId) {
-      setPendingRailId(null)
+    if (pendingRail && activeRailId !== pendingRail.from) {
+      setPendingRail(null)
     }
-  }, [activeRailId, pendingRailId])
+  }, [activeRailId, pendingRail])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!railUsesContextRail(activeRailId) && workspaceSidebar.open) {
       workspaceSidebar.setOpen(false)
     }
@@ -329,9 +333,10 @@ export function WorkspaceSidebar() {
 
   const openRailContext = useCallback(
     (item: RailItem) => {
-      setPendingRailId(railUsesContextRail(item.id) ? item.id : null)
-      // Mount the next explorer content before expanding the sidebar, otherwise
-      // the explorer appears partway through the width animation.
+      const nextUsesContextRail = railUsesContextRail(item.id)
+      setPendingRail(
+        nextUsesContextRail ? null : { id: item.id, from: activeRailId },
+      )
       if (item.id === 'chats') {
         openContextRail()
         const latestThread =
@@ -347,6 +352,7 @@ export function WorkspaceSidebar() {
 
         void Result.tryPromise(() => claimWarmSession()).then((result) => {
           if (Result.isError(result)) {
+            setPendingRail(null)
             toast.error(
               result.error instanceof Error
                 ? result.error.message
@@ -363,12 +369,21 @@ export function WorkspaceSidebar() {
         return
       }
 
-      if (railUsesContextRail(item.id)) {
+      if (nextUsesContextRail) {
         openContextRail()
+      } else {
+        workspaceSidebar.setOpen(false)
       }
       openPanel(item.defaultPanel)
     },
-    [claimWarmSession, openContextRail, openPanel, sessions],
+    [
+      activeRailId,
+      claimWarmSession,
+      openContextRail,
+      openPanel,
+      sessions,
+      workspaceSidebar,
+    ],
   )
 
   const handleLogout = useCallback(async () => {
@@ -390,6 +405,7 @@ export function WorkspaceSidebar() {
   return (
     <Sidebar
       collapsible="icon"
+      disableTransition
       className="overflow-hidden border-r-0 border-t border-sidebar-border/70 *:data-[sidebar=sidebar]:flex-row"
     >
       <Sidebar

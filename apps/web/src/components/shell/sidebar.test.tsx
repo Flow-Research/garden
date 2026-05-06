@@ -216,7 +216,7 @@ describe('WorkspaceSidebar', () => {
       title: 'New Chat',
       entityId: 'session-new',
     })
-    expect(screen.getByText('Chat session explorer')).toBeInTheDocument()
+    expect(screen.queryByText('Chat session explorer')).not.toBeInTheDocument()
 
     mockDockState.activePanel = {
       kind: 'chat',
@@ -232,7 +232,7 @@ describe('WorkspaceSidebar', () => {
     expect(screen.queryByText('No active work yet.')).not.toBeInTheDocument()
   })
 
-  it('keeps the previous explorer mounted until a no-explorer screen is active', async () => {
+  it('hides the explorer immediately when switching to a no-explorer rail item', async () => {
     mockDockState.activePanel = {
       kind: 'chat',
       title: 'New Chat',
@@ -247,7 +247,8 @@ describe('WorkspaceSidebar', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /inbox/i }))
 
-    expect(screen.getByText('Chat session explorer')).toBeInTheDocument()
+    expect(screen.queryByText('Chat session explorer')).not.toBeInTheDocument()
+    expect(mockSetOpen).toHaveBeenCalledWith(false)
 
     mockDockState.activePanel = {
       kind: 'inbox',
@@ -263,22 +264,26 @@ describe('WorkspaceSidebar', () => {
     expect(screen.queryByText('Chat session explorer')).not.toBeInTheDocument()
   })
 
-  it('mounts explorer content before reopening a collapsed context rail', async () => {
+  it('reopens a collapsed context rail without showing stale explorer content', async () => {
     mockSidebarState.open = false
     const user = userEvent.setup()
 
-    render(<WorkspaceSidebar />)
+    const { rerender } = render(<WorkspaceSidebar />)
 
     await user.click(screen.getByRole('button', { name: /chats/i }))
 
-    expect(screen.getByText('Chat session explorer')).toBeInTheDocument()
-    expect(mockSetOpen).not.toHaveBeenCalled()
-
-    await new Promise<void>((resolve) => {
-      window.requestAnimationFrame(() => resolve())
-    })
-
+    expect(screen.queryByText('Chat session explorer')).not.toBeInTheDocument()
     expect(mockSetOpen).toHaveBeenCalledWith(true)
+
+    mockDockState.activePanel = {
+      kind: 'chat',
+      title: 'New Chat',
+      entityId: undefined,
+    }
+
+    rerender(<WorkspaceSidebar />)
+
+    expect(screen.getByText('Chat session explorer')).toBeInTheDocument()
   })
 
   it('does not render an agent rail entry', () => {
