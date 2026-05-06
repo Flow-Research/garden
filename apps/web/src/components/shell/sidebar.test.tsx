@@ -4,6 +4,9 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const mockSetOpen = vi.hoisted(() => vi.fn())
+const mockSidebarState = vi.hoisted(() => ({
+  open: true,
+}))
 const mockOpenPanel = vi.hoisted(() => vi.fn())
 const mockReplace = vi.hoisted(() => vi.fn())
 const mockQueryClear = vi.hoisted(() => vi.fn())
@@ -131,6 +134,7 @@ vi.mock('@garden/ui/components/ui/sidebar', () => ({
     <div>{children}</div>
   ),
   useSidebar: () => ({
+    open: mockSidebarState.open,
     setOpen: mockSetOpen,
   }),
 }))
@@ -191,21 +195,19 @@ describe('WorkspaceSidebar', () => {
       title: 'Inbox',
       entityId: undefined,
     }
+    mockSidebarState.open = true
   })
 
   it('switches explorer content from the selected rail context', async () => {
     const user = userEvent.setup()
     const { rerender } = render(<WorkspaceSidebar />)
 
-    expect(screen.getByRole('button', { name: /dashboard/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /tasks/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /inbox/i })).toBeInTheDocument()
+    expect(screen.queryByText('Chat session explorer')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /chats/i }))
 
-    // Clicking a rail icon must NOT toggle the sidebar's open state — the
-    // user's explicit collapse should be respected when they switch contexts.
-    expect(mockSetOpen).not.toHaveBeenCalled()
     await waitFor(() => {
       expect(mockClaimWarmSession).toHaveBeenCalled()
     })
@@ -214,8 +216,7 @@ describe('WorkspaceSidebar', () => {
       title: 'New Chat',
       entityId: 'session-new',
     })
-    expect(screen.getByRole('button', { name: /dashboard/i })).toBeInTheDocument()
-    expect(screen.queryByText('Chat session explorer')).not.toBeInTheDocument()
+    expect(screen.getByText('Chat session explorer')).toBeInTheDocument()
 
     mockDockState.activePanel = {
       kind: 'chat',
@@ -231,7 +232,7 @@ describe('WorkspaceSidebar', () => {
     expect(screen.queryByText('No active work yet.')).not.toBeInTheDocument()
   })
 
-  it('keeps the explorer synced with the active screen', async () => {
+  it('keeps the previous explorer mounted until a no-explorer screen is active', async () => {
     mockDockState.activePanel = {
       kind: 'chat',
       title: 'New Chat',
@@ -243,6 +244,10 @@ describe('WorkspaceSidebar', () => {
     await waitFor(() => {
       expect(screen.getByText('Chat session explorer')).toBeInTheDocument()
     })
+
+    await userEvent.click(screen.getByRole('button', { name: /inbox/i }))
+
+    expect(screen.getByText('Chat session explorer')).toBeInTheDocument()
 
     mockDockState.activePanel = {
       kind: 'inbox',
@@ -256,6 +261,24 @@ describe('WorkspaceSidebar', () => {
       expect(screen.getByRole('button', { name: /tasks/i })).toBeInTheDocument()
     })
     expect(screen.queryByText('Chat session explorer')).not.toBeInTheDocument()
+  })
+
+  it('mounts explorer content before reopening a collapsed context rail', async () => {
+    mockSidebarState.open = false
+    const user = userEvent.setup()
+
+    render(<WorkspaceSidebar />)
+
+    await user.click(screen.getByRole('button', { name: /chats/i }))
+
+    expect(screen.getByText('Chat session explorer')).toBeInTheDocument()
+    expect(mockSetOpen).not.toHaveBeenCalled()
+
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => resolve())
+    })
+
+    expect(mockSetOpen).toHaveBeenCalledWith(true)
   })
 
   it('does not render an agent rail entry', () => {

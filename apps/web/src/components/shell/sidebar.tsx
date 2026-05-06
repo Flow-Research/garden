@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Result } from 'better-result'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { IconMessage2Plus } from '@tabler/icons-react'
@@ -31,6 +31,7 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from '@garden/ui/components/ui/sidebar'
 import { deduplicateInboxItems, inboxListOptions } from '@/lib/inbox/queries'
 import { useAuthStore } from '@garden/core/auth'
@@ -51,7 +52,14 @@ import {
 } from './workspace-dock'
 import { toast } from 'sonner'
 
-type RailContext = 'home' | 'chats' | 'agents' | 'skills' | 'connections'
+type RailContext =
+  | 'home'
+  | 'chats'
+  | 'tasks'
+  | 'inbox'
+  | 'agents'
+  | 'skills'
+  | 'connections'
 
 type RailItem = {
   id: RailContext
@@ -72,6 +80,18 @@ const railItems: RailItem[] = [
     label: 'Chats',
     icon: RailChatsIcon,
     defaultPanel: { kind: 'chat', title: 'New Chat' },
+  },
+  {
+    id: 'tasks',
+    label: 'Tasks',
+    icon: HomeTasksIcon,
+    defaultPanel: { kind: 'issues', title: 'Tasks' },
+  },
+  {
+    id: 'inbox',
+    label: 'Inbox',
+    icon: HomeInboxIcon,
+    defaultPanel: { kind: 'inbox', title: 'Inbox' },
   },
   {
     id: 'agents',
@@ -97,6 +117,11 @@ function contextFromPanel(kind: WorkspacePanelKind | null): RailContext {
   switch (kind) {
     case 'chat':
       return 'chats'
+    case 'issues':
+    case 'issue-detail':
+      return 'tasks'
+    case 'inbox':
+      return 'inbox'
     case 'agents':
     case 'agent-detail':
       return 'agents'
@@ -106,9 +131,6 @@ function contextFromPanel(kind: WorkspacePanelKind | null): RailContext {
       return 'connections'
     case 'blank':
     case 'dashboard':
-    case 'inbox':
-    case 'issues':
-    case 'issue-detail':
     default:
       return 'home'
   }
@@ -116,6 +138,16 @@ function contextFromPanel(kind: WorkspacePanelKind | null): RailContext {
 
 function HomeDashboardIcon({ className }: { className?: string }) {
   return <IconifyIcon icon="ic:sharp-dashboard" className={className} />
+}
+
+function railUsesContextRail(rail: RailContext): boolean {
+  return (
+    rail === 'home' ||
+    rail === 'chats' ||
+    rail === 'skills' ||
+    rail === 'agents' ||
+    rail === 'connections'
+  )
 }
 
 function RailHomeIcon({ className }: { className?: string }) {
@@ -213,6 +245,7 @@ function ExplorerActionRow({
 
 export function WorkspaceSidebar() {
   const queryClient = useQueryClient()
+  const workspaceSidebar = useSidebar()
   const { replace } = useNavigation()
   const dock = useWorkspaceDock()
   const activePanel = dock?.activePanel ?? null
@@ -220,6 +253,16 @@ export function WorkspaceSidebar() {
     (panel: WorkspacePanelInput) => dock?.openPanel(panel),
     [dock],
   )
+  const openContextRail = useCallback(() => {
+    if (workspaceSidebar.open) {
+      workspaceSidebar.setOpen(true)
+      return
+    }
+
+    window.requestAnimationFrame(() => {
+      workspaceSidebar.setOpen(true)
+    })
+  }, [workspaceSidebar])
   const closePanel = useCallback(
     (panelId: string) => {
       dock?.closePanel(panelId)
@@ -244,8 +287,13 @@ export function WorkspaceSidebar() {
       ? isPendingFirstTurn(activeSession)
       : false
   const activeRailId = contextFromPanel(activeType)
+  const [pendingRailId, setPendingRailId] = useState<RailContext | null>(null)
+  const effectiveRailId =
+    pendingRailId && railUsesContextRail(pendingRailId)
+      ? pendingRailId
+      : activeRailId
   const activeRail =
-    railItems.find((item) => item.id === activeRailId) ?? railItems[0]
+    railItems.find((item) => item.id === effectiveRailId) ?? railItems[0]
   const workspaceId = workspace?.id ?? ''
 
   const { data: rawInboxItems = [] } = useQuery({
@@ -259,16 +307,20 @@ export function WorkspaceSidebar() {
   )
   const unreadCount = inboxItems.filter((item) => !item.read).length
 
-  const openInbox = useCallback(() => {
-    openPanel({ kind: 'inbox', title: 'Inbox' })
-  }, [openPanel])
+  useEffect(() => {
+    if (pendingRailId && pendingRailId === activeRailId) {
+      setPendingRailId(null)
+    }
+  }, [activeRailId, pendingRailId])
+
+  useEffect(() => {
+    if (!railUsesContextRail(activeRailId) && workspaceSidebar.open) {
+      workspaceSidebar.setOpen(false)
+    }
+  }, [activeRailId, workspaceSidebar])
 
   const openDashboard = useCallback(() => {
     openPanel({ kind: 'dashboard', title: 'Dashboard' })
-  }, [openPanel])
-
-  const openTasks = useCallback(() => {
-    openPanel({ kind: 'issues', title: 'Tasks' })
   }, [openPanel])
 
   const openSettings = useCallback(() => {
@@ -277,11 +329,11 @@ export function WorkspaceSidebar() {
 
   const openRailContext = useCallback(
     (item: RailItem) => {
-      // Switching rail context only swaps the active dock panel — it must NOT
-      // toggle the sidebar's open/closed state. Auto-expanding here was making
-      // the sidebar pop back open the moment the user clicked any rail icon,
-      // which fought with their explicit collapse.
+      setPendingRailId(railUsesContextRail(item.id) ? item.id : null)
+      // Mount the next explorer content before expanding the sidebar, otherwise
+      // the explorer appears partway through the width animation.
       if (item.id === 'chats') {
+        openContextRail()
         const latestThread =
           sessions.find((session) => !isPendingFirstTurn(session)) ?? null
         if (latestThread) {
@@ -311,9 +363,12 @@ export function WorkspaceSidebar() {
         return
       }
 
+      if (railUsesContextRail(item.id)) {
+        openContextRail()
+      }
       openPanel(item.defaultPanel)
     },
-    [claimWarmSession, openPanel, sessions],
+    [claimWarmSession, openContextRail, openPanel, sessions],
   )
 
   const handleLogout = useCallback(async () => {
@@ -380,6 +435,11 @@ export function WorkspaceSidebar() {
                     >
                       <item.icon className="!size-[22px] shrink-0" />
                     </SidebarMenuButton>
+                    {item.id === 'inbox' && unreadCount > 0 ? (
+                      <SidebarMenuBadge>
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </SidebarMenuBadge>
+                    ) : null}
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
@@ -419,10 +479,14 @@ export function WorkspaceSidebar() {
 
       <Sidebar
         collapsible="none"
-        className="hidden min-w-0 flex-1 md:flex group-data-[state=collapsed]:md:hidden"
+        className={
+          !railUsesContextRail(effectiveRailId)
+            ? 'hidden'
+            : 'hidden min-w-0 flex-1 md:flex'
+        }
       >
         <SidebarHeader className="gap-3 p-2">
-          <div className="px-2">
+          <div className="flex items-center gap-2 px-2">
             <span className="text-xs font-medium text-foreground">
               {activeRail.label}
             </span>
@@ -431,35 +495,7 @@ export function WorkspaceSidebar() {
         </SidebarHeader>
 
         <SidebarContent>
-          {activeRailId === 'home' ? (
-            <>
-              <ExplorerSection label="Home">
-                <SidebarMenu>
-                  <ExplorerActionRow
-                    label="Dashboard"
-                    icon={HomeDashboardIcon}
-                    active={activeType === 'dashboard'}
-                    onClick={openDashboard}
-                  />
-                  <ExplorerActionRow
-                    label="Tasks"
-                    icon={HomeTasksIcon}
-                    active={activeType === 'issues'}
-                    onClick={openTasks}
-                  />
-                  <ExplorerActionRow
-                    label="Inbox"
-                    icon={HomeInboxIcon}
-                    active={activeType === 'inbox'}
-                    badge={unreadCount}
-                    onClick={openInbox}
-                  />
-                </SidebarMenu>
-              </ExplorerSection>
-            </>
-          ) : null}
-
-          {activeRailId === 'chats' ? (
+          {effectiveRailId === 'chats' ? (
             <ExplorerSection>
               <SidebarMenu>
                 <ExplorerActionRow
@@ -502,7 +538,20 @@ export function WorkspaceSidebar() {
             </ExplorerSection>
           ) : null}
 
-          {activeRailId === 'agents' ? (
+          {effectiveRailId === 'home' ? (
+            <ExplorerSection label="Home">
+              <SidebarMenu>
+                <ExplorerActionRow
+                  label="Dashboard"
+                  icon={HomeDashboardIcon}
+                  active={activeType === 'dashboard'}
+                  onClick={openDashboard}
+                />
+              </SidebarMenu>
+            </ExplorerSection>
+          ) : null}
+
+          {effectiveRailId === 'agents' ? (
             <AgentsExplorer
               workspaceId={workspaceId}
               activeType={activeType}
@@ -520,7 +569,7 @@ export function WorkspaceSidebar() {
             />
           ) : null}
 
-          {activeRailId === 'skills' ? (
+          {effectiveRailId === 'skills' ? (
             <SkillsRailExplorer
               workspaceId={workspaceId}
               activeEntityId={
@@ -539,7 +588,7 @@ export function WorkspaceSidebar() {
             />
           ) : null}
 
-          {activeRailId === 'connections' ? (
+          {effectiveRailId === 'connections' ? (
             <ConnectionsExplorer
               activeEntityId={
                 activeType === 'capabilities'
