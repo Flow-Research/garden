@@ -11,6 +11,7 @@ import {
   ArrowDown,
   ArrowUp,
   Calendar,
+  CircleAlert,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -110,7 +111,7 @@ import { CommentCard } from './comment-card'
 import { ContextualComposer } from './contextual-composer'
 import { AgentStatusEntry } from './agent-status-entry'
 import { ActiveRunPanel, LastRunSummary } from './active-run-panel'
-import { WorkProductList } from './work-product-card'
+import { WorkProductList, WorkProductListEmpty } from './work-product-card'
 import { BacklogAgentHintDialog } from './backlog-agent-hint-dialog'
 import { ReactionBar } from '@garden/ui/components/common/reaction-bar'
 import { useModalStore } from '@garden/core/modals'
@@ -124,6 +125,7 @@ import {
   type AgentChatSession,
 } from '@/lib/api'
 import { issueActiveRunOptions, issueKeys } from '@/lib/issues/queries'
+import { inboxKeys } from '@/lib/inbox/queries'
 import { useWorkspaceDock } from '@/components/shell/workspace-dock'
 
 import { ProgressRing } from './progress-ring'
@@ -157,49 +159,106 @@ function formatActivity(
   entry: TimelineEntry,
   resolveActorName?: (type: string, id: string) => string,
 ): string {
-  const details = (entry.details ?? {}) as Record<string, string>
+  const details = (entry.details ?? {}) as Record<string, unknown>
+  const detailString = (key: string) =>
+    typeof details[key] === 'string' ? details[key] : null
   switch (entry.action) {
     case 'created':
       return 'created this issue'
     case 'status_changed':
-      return `changed status from ${statusLabel(details.from ?? '?')} to ${statusLabel(details.to ?? '?')}`
+      return `changed status from ${statusLabel(detailString('from') ?? '?')} to ${statusLabel(detailString('to') ?? '?')}`
     case 'priority_changed':
-      return `changed priority from ${priorityLabel(details.from ?? '?')} to ${priorityLabel(details.to ?? '?')}`
+      return `changed priority from ${priorityLabel(detailString('from') ?? '?')} to ${priorityLabel(detailString('to') ?? '?')}`
     case 'assignee_changed': {
       const isSelfAssign =
         details.to_type === entry.actor_type && details.to_id === entry.actor_id
       if (isSelfAssign) return 'self-assigned this issue'
       const toName =
-        details.to_id && details.to_type && resolveActorName
-          ? resolveActorName(details.to_type, details.to_id)
+        detailString('to_id') && detailString('to_type') && resolveActorName
+          ? resolveActorName(detailString('to_type')!, detailString('to_id')!)
           : null
       if (toName) return `assigned to ${toName}`
       if (details.from_id && !details.to_id) return 'removed assignee'
       return 'changed assignee'
     }
     case 'due_date_changed': {
-      if (!details.to) return 'removed due date'
-      const formatted = new Date(details.to).toLocaleDateString('en-US', {
+      const to = detailString('to')
+      if (!to) return 'removed due date'
+      const formatted = new Date(to).toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
       })
       return `set due date to ${formatted}`
     }
     case 'title_changed':
-      return `renamed this issue from "${details.from ?? '?'}" to "${details.to ?? '?'}"`
+      return `renamed this issue from "${detailString('from') ?? '?'}" to "${detailString('to') ?? '?'}"`
     case 'description_updated':
       return 'updated the description'
     case 'task_completed':
       return 'completed the task'
     case 'task_failed':
       return 'task failed'
+    case 'issue_run:queued':
+      return 'queued an agent run'
+    case 'issue_run:failed': {
+      const error =
+        detailString('error') ??
+        detailString('message') ??
+        entry.event?.message ??
+        'Agent run failed'
+      return `agent run failed: ${error}`
+    }
     default:
-      return entry.action ?? ''
+      return entry.event?.message ?? entry.action ?? ''
   }
 }
 
 function isRunEventAction(action: string | undefined): boolean {
   return Boolean(action && action.startsWith('issue_run:'))
+}
+
+function isUserVisibleRunEventAction(action: string | undefined): boolean {
+  return action === 'issue_run:failed'
+}
+
+function stringifyDebugValue(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+  return JSON.stringify(value, null, 2)
+}
+
+function RunEventDebugDetails({ entry }: { entry: TimelineEntry }) {
+  if (!entry.event || !isRunEventAction(entry.action)) return null
+  const payload = entry.event.payload ?? entry.details ?? {}
+  const payloadEntries = Object.entries(payload).filter(
+    ([, value]) => value !== null && value !== undefined && value !== '',
+  )
+
+  return (
+    <div className="ml-6 mt-1 rounded-md border bg-muted/25 px-2.5 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        <span>seq={entry.event.seq}</span>
+        <span>stream={entry.event.stream}</span>
+        <span>level={entry.event.level}</span>
+        <span>type={entry.event.event_type}</span>
+      </div>
+      {payloadEntries.length > 0 && (
+        <dl className="mt-1.5 grid gap-1">
+          {payloadEntries.map(([key, value]) => (
+            <div key={key} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2">
+              <dt className="truncate text-muted-foreground/75">{key}</dt>
+              <dd className="min-w-0 whitespace-pre-wrap break-words">
+                {stringifyDebugValue(value)}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </div>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -1852,12 +1911,14 @@ export function IssueDetail({
                         ? (() => {
                             const topLevel = timeline
                               .filter((e) => e.type === 'activity' || !e.parent_id)
-                              // Run events (`issue_run:*`) are debug-only. Real users
-                              // see comments + status changes; engineers turn on
-                              // debug mode in settings to see tool calls.
+                              // Most run events are noisy runtime telemetry.
+                              // Failures are product-visible because they tell
+                              // the user why assigned agent work did not start.
                               .filter(
                                 (e) =>
-                                  !isRunEventAction(e.action) || debugMode,
+                                  !isRunEventAction(e.action) ||
+                                  debugMode ||
+                                  isUserVisibleRunEventAction(e.action),
                               )
                             const repliesByParent = new Map<
                               string,
@@ -1876,10 +1937,14 @@ export function IssueDetail({
                             const COALESCE_MS = 2 * 60 * 1000
                             const coalesced: TimelineEntry[] = []
                             for (const entry of topLevel) {
+                              const keepSeparateForDebug =
+                                debugMode && isRunEventAction(entry.action)
                               if (entry.type === 'activity') {
                                 const prev = coalesced[coalesced.length - 1]
                                 if (
+                                  !keepSeparateForDebug &&
                                   prev?.type === 'activity' &&
+                                  !(debugMode && isRunEventAction(prev.action)) &&
                                   prev.action === entry.action &&
                                   prev.actor_type === entry.actor_type &&
                                   prev.actor_id === entry.actor_id &&
@@ -1971,9 +2036,15 @@ export function IssueDetail({
                                       entry.action === 'priority_changed'
                                     const isDueDateChange =
                                       entry.action === 'due_date_changed'
+                                    const isRunFailure =
+                                      entry.action === 'issue_run:failed'
 
                                     let leadIcon: React.ReactNode
-                                    if (isStatusChange && details.to) {
+                                    if (isRunFailure) {
+                                      leadIcon = (
+                                        <CircleAlert className="h-4 w-4 shrink-0 text-destructive" />
+                                      )
+                                    } else if (isStatusChange && details.to) {
                                       leadIcon = (
                                         <StatusIcon
                                           status={details.to as IssueStatus}
@@ -2002,41 +2073,48 @@ export function IssueDetail({
                                     }
 
                                     return (
-                                      <div
-                                        key={entry.id}
-                                        className="flex items-center text-xs text-muted-foreground"
-                                      >
-                                        <div className="mr-2 flex w-4 shrink-0 justify-center">
-                                          {leadIcon}
+                                      <div key={entry.id}>
+                                        <div
+                                          className={cn(
+                                            'flex items-center text-xs text-muted-foreground',
+                                            isRunFailure && 'text-destructive',
+                                          )}
+                                        >
+                                          <div className="mr-2 flex w-4 shrink-0 justify-center">
+                                            {leadIcon}
+                                          </div>
+                                          <div className="flex min-w-0 flex-1 items-center gap-1">
+                                            <span className="shrink-0 font-medium">
+                                              {getActorName(
+                                                entry.actor_type,
+                                                entry.actor_id,
+                                              )}
+                                            </span>
+                                            <span className="truncate">
+                                              {formatActivity(
+                                                entry,
+                                                getActorName,
+                                              )}
+                                            </span>
+                                            <Tooltip>
+                                              <TooltipTrigger
+                                                render={
+                                                  <span className="ml-auto shrink-0 cursor-default">
+                                                    {timeAgo(entry.created_at)}
+                                                  </span>
+                                                }
+                                              />
+                                              <TooltipContent side="top">
+                                                {new Date(
+                                                  entry.created_at,
+                                                ).toLocaleString()}
+                                              </TooltipContent>
+                                            </Tooltip>
+                                          </div>
                                         </div>
-                                        <div className="flex min-w-0 flex-1 items-center gap-1">
-                                          <span className="shrink-0 font-medium">
-                                            {getActorName(
-                                              entry.actor_type,
-                                              entry.actor_id,
-                                            )}
-                                          </span>
-                                          <span className="truncate">
-                                            {formatActivity(
-                                              entry,
-                                              getActorName,
-                                            )}
-                                          </span>
-                                          <Tooltip>
-                                            <TooltipTrigger
-                                              render={
-                                                <span className="ml-auto shrink-0 cursor-default">
-                                                  {timeAgo(entry.created_at)}
-                                                </span>
-                                              }
-                                            />
-                                            <TooltipContent side="top">
-                                              {new Date(
-                                                entry.created_at,
-                                              ).toLocaleString()}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </div>
+                                        {debugMode && (
+                                          <RunEventDebugDetails entry={entry} />
+                                        )}
                                       </div>
                                     )
                                   })}
@@ -2049,7 +2127,7 @@ export function IssueDetail({
                   </div>
 
                   {/* Bottom composer — contextual, mode swaps by run state */}
-                  <div className="mt-4">
+                  <div className="sticky bottom-0 z-20 -mx-6 mt-4 px-6 pb-5 pt-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
                     <ContextualComposer issueId={id} onSubmit={submitComment} />
                   </div>
                 </div>
@@ -2205,6 +2283,14 @@ function latestEventSummary(events: IssueRunEvent[]) {
   return event.message?.trim() || event.event_type
 }
 
+function OutputSection({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return <section>{children}</section>
+}
+
 function IssueFlowSurface({ issue }: { issue: Issue }) {
   const queryClient = useQueryClient()
   const { searchParams } = useNavigation()
@@ -2214,6 +2300,24 @@ function IssueFlowSurface({ issue }: { issue: Issue }) {
   const [focusKind, focusId] = focus.split(':')
   const run = data?.run ?? null
   const events = data?.events ?? []
+  const latestSeq = events.at(-1)?.seq ?? 0
+  const latestRunStatus = run?.status ?? 'idle'
+  useEffect(() => {
+    if (!run) return
+    queryClient.invalidateQueries({ queryKey: issueKeys.timeline(issue.id) })
+    queryClient.invalidateQueries({
+      queryKey: issueKeys.detail(issue.workspace_id, issue.id),
+    })
+    queryClient.invalidateQueries({ queryKey: issueKeys.list(issue.workspace_id) })
+    queryClient.invalidateQueries({ queryKey: inboxKeys.list(issue.workspace_id) })
+  }, [
+    issue.id,
+    issue.workspace_id,
+    latestRunStatus,
+    latestSeq,
+    queryClient,
+    run,
+  ])
   const pendingQuestion = pendingQuestionFromEvents(events)
   const pendingApprovalPreview = pendingApprovalFromEvents(events)
   const cancelMutation = useMutation({
@@ -2254,9 +2358,37 @@ function IssueFlowSurface({ issue }: { issue: Issue }) {
       run.status === 'cancelled' ||
       run.status === 'failed' ||
       run.status === 'blocked')
+  const hasWorkProducts = Boolean(data && data.work_products.length > 0)
+  const showOutputEmpty =
+    Boolean(data) && !hasWorkProducts && Boolean(showActive || showLastRun)
 
   return (
     <div className="space-y-3">
+      {hasWorkProducts && data && (
+        <OutputSection>
+          <WorkProductList
+            workProducts={data.work_products}
+            connectorId={issue.source_summary?.connector_id ?? null}
+            pulseId={pulseWorkProductId}
+            onApprove={() => {}}
+            onRequestChanges={() => {}}
+            onApply={() => {}}
+          />
+        </OutputSection>
+      )}
+
+      {showOutputEmpty && (
+        <OutputSection>
+          <WorkProductListEmpty
+            message={
+              showActive
+                ? 'Garden is synthesizing a work product for this issue.'
+                : 'This run ended before Garden produced a work product.'
+            }
+          />
+        </OutputSection>
+      )}
+
       {showActive && run && (
         <ActiveRunPanel
           agent={{ name: 'Garden' }}
@@ -2286,16 +2418,6 @@ function IssueFlowSurface({ issue }: { issue: Issue }) {
         </LastRunSummaryShell>
       )}
 
-      {data && data.work_products.length > 0 && (
-        <WorkProductList
-          workProducts={data.work_products}
-          connectorId={issue.source_summary?.connector_id ?? null}
-          pulseId={pulseWorkProductId}
-          onApprove={() => {}}
-          onRequestChanges={() => {}}
-          onApply={() => {}}
-        />
-      )}
     </div>
   )
 }
