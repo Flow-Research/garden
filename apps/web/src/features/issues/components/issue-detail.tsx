@@ -111,6 +111,7 @@ import { CommentCard } from './comment-card'
 import { ContextualComposer } from './contextual-composer'
 import { AgentStatusEntry } from './agent-status-entry'
 import { ActiveRunPanel, LastRunSummary } from './active-run-panel'
+import { RunPlanCard, type RunPlanTodo } from './run-plan-card'
 import { WorkProductList, WorkProductListEmpty } from './work-product-card'
 import { BacklogAgentHintDialog } from './backlog-agent-hint-dialog'
 import { ReactionBar } from '@garden/ui/components/common/reaction-bar'
@@ -1345,8 +1346,8 @@ export function IssueDetail({
                       >
                         <MessageSquare className="h-3.5 w-3.5" />
                         {openChatMutation.isPending
-                          ? 'Opening chat…'
-                          : 'Open chat'}
+                          ? 'Opening in chat…'
+                          : 'Open in chat'}
                       </DropdownMenuItem>
                     ) : null}
 
@@ -1616,9 +1617,26 @@ export function IssueDetail({
                         descEditorRef.current?.uploadFile(file)
                       }
                     />
+                    {issue.assignee_type === 'agent' && issue.assignee_id ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={handleOpenChat}
+                        disabled={openChatMutation.isPending}
+                        className="ml-auto h-7 gap-1.5 border-info/30 bg-info/5 text-info hover:bg-info/10 hover:text-info"
+                      >
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        {openChatMutation.isPending
+                          ? 'Opening in chat…'
+                          : 'Open in chat'}
+                      </Button>
+                    ) : null}
                   </div>
                   {descDragOver && <FileDropOverlay />}
                 </div>
+
+                <IssueFlowSurface issue={issue} timeline={timeline} />
 
                 {/* Sub-issues — Linear-style */}
                 {childIssues.length === 0 && (
@@ -1898,8 +1916,6 @@ export function IssueDetail({
                     </div>
                   </div>
 
-                  <IssueFlowSurface issue={issue} />
-
                   {/* Timeline entries */}
                   <div>
                     <BoneyardSkeleton
@@ -2128,7 +2144,16 @@ export function IssueDetail({
 
                   {/* Bottom composer — contextual, mode swaps by run state */}
                   <div className="sticky bottom-0 z-20 -mx-6 mt-4 px-6 pb-5 pt-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-                    <ContextualComposer issueId={id} onSubmit={submitComment} />
+                    <ContextualComposer
+                      issueId={id}
+                      onSubmit={submitComment}
+                      onOpenChat={
+                        issue.assignee_type === 'agent' && issue.assignee_id
+                          ? handleOpenChat
+                          : undefined
+                      }
+                      openChatPending={openChatMutation.isPending}
+                    />
                   </div>
                 </div>
               </div>
@@ -2229,6 +2254,53 @@ function pendingQuestionFromEvents(
   }
 }
 
+function timelineRunEvents(timeline: TimelineEntry[]): IssueRunEvent[] {
+  const out: IssueRunEvent[] = []
+  for (const entry of timeline) {
+    if (entry.type === 'activity' && entry.event) out.push(entry.event)
+  }
+  return out
+}
+
+function latestPlanFromEvents(events: IssueRunEvent[]): RunPlanTodo[] | null {
+  const event = [...events]
+    .reverse()
+    .find(
+      (candidate) =>
+        candidate.event_type === 'issue_run:tool_started' &&
+        payloadObject(candidate)?.tool === 'update_plan',
+    )
+  const payload = payloadObject(event)
+  if (!payload) return null
+  const input = payload.input
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
+  const todosRaw = (input as Record<string, unknown>).todos
+  if (!Array.isArray(todosRaw)) return null
+  const todos: RunPlanTodo[] = []
+  for (const item of todosRaw) {
+    if (
+      item &&
+      typeof item === 'object' &&
+      'content' in item &&
+      typeof (item as { content: unknown }).content === 'string' &&
+      'status' in item &&
+      ((item as { status: unknown }).status === 'pending' ||
+        (item as { status: unknown }).status === 'in_progress' ||
+        (item as { status: unknown }).status === 'completed') &&
+      'activeForm' in item &&
+      typeof (item as { activeForm: unknown }).activeForm === 'string'
+    ) {
+      const cast = item as RunPlanTodo
+      todos.push({
+        content: cast.content,
+        status: cast.status,
+        activeForm: cast.activeForm,
+      })
+    }
+  }
+  return todos.length > 0 ? todos : null
+}
+
 function pendingApprovalFromEvents(events: IssueRunEvent[]) {
   const event = [...events]
     .reverse()
@@ -2288,10 +2360,21 @@ function OutputSection({
 }: {
   children: React.ReactNode
 }) {
-  return <section>{children}</section>
+  return (
+    <section className="mt-8 space-y-2">
+      <h2 className="text-base font-semibold">Output</h2>
+      {children}
+    </section>
+  )
 }
 
-function IssueFlowSurface({ issue }: { issue: Issue }) {
+function IssueFlowSurface({
+  issue,
+  timeline,
+}: {
+  issue: Issue
+  timeline: TimelineEntry[]
+}) {
   const queryClient = useQueryClient()
   const { searchParams } = useNavigation()
   const { data } = useQuery(issueActiveRunOptions(issue.id))
@@ -2300,6 +2383,7 @@ function IssueFlowSurface({ issue }: { issue: Issue }) {
   const [focusKind, focusId] = focus.split(':')
   const run = data?.run ?? null
   const events = data?.events ?? []
+  const persistedRunEvents = timelineRunEvents(timeline)
   const latestSeq = events.at(-1)?.seq ?? 0
   const latestRunStatus = run?.status ?? 'idle'
   useEffect(() => {
@@ -2320,6 +2404,9 @@ function IssueFlowSurface({ issue }: { issue: Issue }) {
   ])
   const pendingQuestion = pendingQuestionFromEvents(events)
   const pendingApprovalPreview = pendingApprovalFromEvents(events)
+  const plan = latestPlanFromEvents(
+    persistedRunEvents.length > 0 ? persistedRunEvents : events,
+  )
   const cancelMutation = useMutation({
     mutationFn: () => api.cancelRun(issue.id),
     onSuccess: () => {
@@ -2403,6 +2490,10 @@ function IssueFlowSurface({ issue }: { issue: Issue }) {
           onDeny={() => {}}
           onEditApprove={() => {}}
         />
+      )}
+
+      {plan && (
+        <RunPlanCard todos={plan} streaming={Boolean(showActive)} />
       )}
 
       {showLastRun && run && (

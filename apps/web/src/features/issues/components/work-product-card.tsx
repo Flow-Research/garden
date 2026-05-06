@@ -175,31 +175,35 @@ export function WorkProductCard({
     >
       {/* Header */}
       <div className="flex items-start gap-3 px-4 pt-3.5 pb-2">
-        <TypeIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        <TypeIcon
+          aria-label={TYPE_LABEL[workProduct.type]}
+          className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
+        />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              {TYPE_LABEL[workProduct.type]}
-            </span>
+          <div className="flex items-start gap-2">
+            <h4 className="flex-1 min-w-0 text-sm font-semibold text-foreground leading-snug">
+              {workProduct.title}
+            </h4>
             <StatusPill status={workProduct.status} />
-            {workProduct.previous_versions_count > 0 && (
-              <Button
-                size="xs"
-                variant="ghost"
-                onClick={onShowDiff}
-                className="h-4 px-1 text-[10px] text-muted-foreground"
-              >
-                <History />
-                v{workProduct.previous_versions_count + 1} ({workProduct.previous_versions_count} prev)
-              </Button>
-            )}
-            {connectorId && (
-              <ConnectorIcon connectorId={connectorId} className="text-muted-foreground" />
-            )}
           </div>
-          <h4 className="mt-1 text-sm font-semibold text-foreground leading-snug">
-            {workProduct.title}
-          </h4>
+          {(workProduct.previous_versions_count > 0 || connectorId) && (
+            <div className="mt-1 flex items-center gap-2 flex-wrap">
+              {workProduct.previous_versions_count > 0 && (
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onClick={onShowDiff}
+                  className="h-4 px-1 text-[10px] text-muted-foreground"
+                >
+                  <History />
+                  v{workProduct.previous_versions_count + 1} ({workProduct.previous_versions_count} prev)
+                </Button>
+              )}
+              {connectorId && (
+                <ConnectorIcon connectorId={connectorId} className="text-muted-foreground" />
+              )}
+            </div>
+          )}
         </div>
       </div>
 

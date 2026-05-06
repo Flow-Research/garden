@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { ArrowDown, MessageSquare, RotateCw } from 'lucide-react'
+import { Button } from '@garden/ui/components/ui/button'
 import { CommentInput } from './comment-input'
 import { issueActiveRunOptions } from '@/lib/issues/queries'
 
@@ -46,9 +47,14 @@ const MODE_COPY: Record<
 export function ContextualComposer({
   issueId,
   onSubmit,
+  onOpenChat,
+  openChatPending = false,
 }: {
   issueId: string
   onSubmit: (content: string, attachmentIds?: string[]) => Promise<void>
+  /** When provided, renders an inline "Open chat" CTA next to the composer. */
+  onOpenChat?: () => void
+  openChatPending?: boolean
 }) {
   const { data } = useQuery(issueActiveRunOptions(issueId))
   const mode = modeForRunStatus(data?.run?.status ?? null)
@@ -75,6 +81,19 @@ export function ContextualComposer({
       <div className="flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground">
         <Icon className="h-3 w-3" />
         <span>{caption}</span>
+        {onOpenChat ? (
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            onClick={onOpenChat}
+            disabled={openChatPending}
+            className="ml-auto h-5 gap-1 px-1.5 text-[11px] text-info hover:bg-info/10 hover:text-info"
+          >
+            <MessageSquare className="h-3 w-3" />
+            {openChatPending ? 'Opening…' : 'Open in chat'}
+          </Button>
+        ) : null}
       </div>
     </div>
   )
