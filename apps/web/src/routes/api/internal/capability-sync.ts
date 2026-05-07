@@ -47,25 +47,22 @@ export const Route = createFileRoute('/api/internal/capability-sync')({
           bodyResult.value.workspaceId,
         )
 
-        return syncResult.match({
-          ok: () => Response.json({ ok: true }),
-          err: (error) =>
-            Response.json(
-              {
-                error: error.message,
-                code: error.code,
-              },
-              {
-                status:
-                  error.code === 'connector_not_found'
-                    ? 404
-                    : error.code === 'sync_agent_not_found' ||
-                        error.code === 'unclassified_tool'
-                        ? 409
-                        : 500,
-              },
-            ),
-        })
+        if (syncResult.isErr()) {
+          const error = syncResult.error
+          const status =
+            error.code === 'connector_not_found'
+              ? 404
+              : error.code === 'sync_agent_not_found' ||
+                  error.code === 'unclassified_tool'
+                ? 409
+                : 500
+          return Response.json(
+            { error: error.message, code: error.code },
+            { status },
+          )
+        }
+
+        return Response.json({ ok: true })
       },
     },
   },

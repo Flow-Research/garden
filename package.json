@@ -39,6 +39,6 @@
     }
   },
   "dependencies": {
-    "better-result": "^2.8.2"
+    "better-result": "^2.9.2"
   }
 }
