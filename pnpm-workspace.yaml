@@ -9,13 +9,13 @@ packages:
 catalog:
   # Cloudflare
   "@cloudflare/ai-chat": "0.6.2"
-  "@cloudflare/sandbox": "0.9.2"
+  "@cloudflare/sandbox": "0.9.4"
   "@cloudflare/shell": "0.3.6"
   "@cloudflare/think": "0.5.3"
-  "@cloudflare/vite-plugin": "1.35.0"
-  "@cloudflare/workers-types": "4.20260502.1"
+  "@cloudflare/vite-plugin": "1.36.0"
+  "@cloudflare/workers-types": "4.20260507.1"
   agents: "0.12.3"
-  wrangler: "4.87.0"
+  wrangler: "4.88.0"
 
   # Database
   drizzle-orm: "^0.45.2"
