@@ -120,11 +120,7 @@ import { timeAgo } from '@garden/core/utils'
 import { cn } from '@garden/ui/lib/utils'
 import { useIssueSearch } from '../hooks/use-issue-search'
 import { useIssueDetailData } from '../hooks/use-issue-detail-data'
-import {
-  api,
-  sortSessions,
-  type AgentChatSession,
-} from '@/lib/api'
+import { api, sortSessions, type AgentChatSession } from '@/lib/api'
 import { issueActiveRunOptions, issueKeys } from '@/lib/issues/queries'
 import { inboxKeys } from '@/lib/inbox/queries'
 import { useWorkspaceDock } from '@/components/shell/workspace-dock'
@@ -249,7 +245,10 @@ function RunEventDebugDetails({ entry }: { entry: TimelineEntry }) {
       {payloadEntries.length > 0 && (
         <dl className="mt-1.5 grid gap-1">
           {payloadEntries.map(([key, value]) => (
-            <div key={key} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2">
+            <div
+              key={key}
+              className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2"
+            >
               <dt className="truncate text-muted-foreground/75">{key}</dt>
               <dd className="min-w-0 whitespace-pre-wrap break-words">
                 {stringifyDebugValue(value)}
@@ -740,23 +739,6 @@ export function IssueDetail({
 
     if (!user?.id) return
 
-    const queryKey = chatThreadsQueryKey(issue.workspace_id, user.id)
-    const cachedSessions =
-      queryClient.getQueryData<AgentChatSession[]>(queryKey) ?? []
-    const existingSession = cachedSessions.find(
-      (session) =>
-        !session.archivedAt && session.primary_issue_id === issue.id,
-    )
-
-    if (existingSession) {
-      dock?.openPanel({
-        kind: 'chat',
-        title: existingSession.title,
-        entityId: existingSession.id,
-      })
-      return
-    }
-
     openChatMutation.mutate({
       agentId: issue.assignee_id,
       optimisticThreadId: issue.id,
@@ -785,6 +767,7 @@ export function IssueDetail({
   const {
     timeline,
     loading: timelineLoading,
+    submitting: commentSubmitting,
     submitComment,
     submitReply,
     editComment,
@@ -1636,7 +1619,17 @@ export function IssueDetail({
                   {descDragOver && <FileDropOverlay />}
                 </div>
 
-                <IssueFlowSurface issue={issue} timeline={timeline} />
+                <IssueFlowSurface
+                  issue={issue}
+                  timeline={timeline}
+                  onAnswerQuestion={(answer) => {
+                    const content = Array.isArray(answer)
+                      ? answer.join('\n')
+                      : answer
+                    void submitComment(content)
+                  }}
+                  answeringQuestion={commentSubmitting}
+                />
 
                 {/* Sub-issues — Linear-style */}
                 {childIssues.length === 0 && (
@@ -1926,7 +1919,9 @@ export function IssueDetail({
                       {!timelineLoading
                         ? (() => {
                             const topLevel = timeline
-                              .filter((e) => e.type === 'activity' || !e.parent_id)
+                              .filter(
+                                (e) => e.type === 'activity' || !e.parent_id,
+                              )
                               // Most run events are noisy runtime telemetry.
                               // Failures are product-visible because they tell
                               // the user why assigned agent work did not start.
@@ -1960,7 +1955,9 @@ export function IssueDetail({
                                 if (
                                   !keepSeparateForDebug &&
                                   prev?.type === 'activity' &&
-                                  !(debugMode && isRunEventAction(prev.action)) &&
+                                  !(
+                                    debugMode && isRunEventAction(prev.action)
+                                  ) &&
                                   prev.action === entry.action &&
                                   prev.actor_type === entry.actor_type &&
                                   prev.actor_id === entry.actor_id &&
@@ -2355,11 +2352,7 @@ function latestEventSummary(events: IssueRunEvent[]) {
   return event.message?.trim() || event.event_type
 }
 
-function OutputSection({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+function OutputSection({ children }: { children: React.ReactNode }) {
   return (
     <section className="mt-8 space-y-2">
       <h2 className="text-base font-semibold">Output</h2>
@@ -2371,9 +2364,13 @@ function OutputSection({
 function IssueFlowSurface({
   issue,
   timeline,
+  onAnswerQuestion,
+  answeringQuestion = false,
 }: {
   issue: Issue
   timeline: TimelineEntry[]
+  onAnswerQuestion?: (answer: string | string[]) => void
+  answeringQuestion?: boolean
 }) {
   const queryClient = useQueryClient()
   const { searchParams } = useNavigation()
@@ -2392,8 +2389,12 @@ function IssueFlowSurface({
     queryClient.invalidateQueries({
       queryKey: issueKeys.detail(issue.workspace_id, issue.id),
     })
-    queryClient.invalidateQueries({ queryKey: issueKeys.list(issue.workspace_id) })
-    queryClient.invalidateQueries({ queryKey: inboxKeys.list(issue.workspace_id) })
+    queryClient.invalidateQueries({
+      queryKey: issueKeys.list(issue.workspace_id),
+    })
+    queryClient.invalidateQueries({
+      queryKey: inboxKeys.list(issue.workspace_id),
+    })
   }, [
     issue.id,
     issue.workspace_id,
@@ -2489,12 +2490,12 @@ function IssueFlowSurface({
           onApprove={() => {}}
           onDeny={() => {}}
           onEditApprove={() => {}}
+          onAnswerQuestion={onAnswerQuestion}
+          answering={answeringQuestion}
         />
       )}
 
-      {plan && (
-        <RunPlanCard todos={plan} streaming={Boolean(showActive)} />
-      )}
+      {plan && <RunPlanCard todos={plan} streaming={Boolean(showActive)} />}
 
       {showLastRun && run && (
         <LastRunSummaryShell pulse={pulseLastRun}>
@@ -2508,7 +2509,6 @@ function IssueFlowSurface({
           />
         </LastRunSummaryShell>
       )}
-
     </div>
   )
 }

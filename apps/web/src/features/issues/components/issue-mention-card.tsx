@@ -5,17 +5,40 @@ import { issueListOptions, issueDetailOptions } from '@/lib/issues/queries'
 import { useWorkspaceId } from '@garden/core/hooks'
 import { useWorkspaceDock } from '@/components/shell/workspace-dock'
 import { Badge } from '@garden/ui/components/ui/badge'
+import type { IssueStatus } from '@garden/core/types'
 import { StatusIcon } from './status-icon'
 
 interface IssueMentionCardProps {
   issueId: string
   /** Fallback text when issue is not in store (e.g. "MUL-7") */
   fallbackLabel?: string
+  issue?: {
+    id: string
+    identifier: string
+    title: string
+    status: string
+  } | null
+}
+
+function normalizeIssueStatus(status: string): IssueStatus {
+  if (
+    status === 'backlog' ||
+    status === 'todo' ||
+    status === 'in_progress' ||
+    status === 'in_review' ||
+    status === 'done' ||
+    status === 'blocked' ||
+    status === 'cancelled'
+  ) {
+    return status
+  }
+  return 'backlog'
 }
 
 export function IssueMentionCard({
   issueId,
   fallbackLabel,
+  issue: providedIssue,
 }: IssueMentionCardProps) {
   const wsId = useWorkspaceId()
   const { data: issues = [] } = useQuery(issueListOptions(wsId))
@@ -29,7 +52,7 @@ export function IssueMentionCard({
     enabled: !listIssue,
   })
 
-  const issue = listIssue ?? detailIssue
+  const issue = providedIssue ?? listIssue ?? detailIssue
   const handleOpen = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -60,7 +83,10 @@ export function IssueMentionCard({
       className="issue-mention mx-0.5 max-w-72 cursor-pointer rounded-md text-xs hover:bg-accent"
       render={<a href={`/issues/${issueId}`} onClick={handleOpen} />}
     >
-      <StatusIcon status={issue.status} className="h-3.5 w-3.5 shrink-0" />
+      <StatusIcon
+        status={normalizeIssueStatus(issue.status)}
+        className="h-3.5 w-3.5 shrink-0"
+      />
       <span className="font-medium text-muted-foreground shrink-0">
         {issue.identifier}
       </span>

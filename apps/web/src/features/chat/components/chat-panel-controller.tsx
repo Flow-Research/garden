@@ -660,6 +660,7 @@ export function ConnectedChatPanelInteraction({
       panelTitle={currentTitle}
       panelDescription={panelDescription}
       primaryIssueId={activeSession.primary_issue_id ?? null}
+      primaryIssue={activeSession.primaryIssue}
       onClose={onClose}
       sessionId={sessionId}
       sidebarState={sidebarState}
@@ -796,6 +797,7 @@ function ShellFrame({
   panelDescription,
   panelTitle,
   primaryIssueId = null,
+  primaryIssue = null,
   sessionId = null,
   sidebarState,
 }: {
@@ -808,6 +810,7 @@ function ShellFrame({
   panelDescription?: string | null
   panelTitle: string
   primaryIssueId?: string | null
+  primaryIssue?: AgentChatSession['primaryIssue']
   sessionId?: string | null
   sidebarState: 'collapsed' | 'expanded'
 }) {
@@ -847,7 +850,10 @@ function ShellFrame({
                   {panelTitle}
                 </div>
                 {primaryIssueId ? (
-                  <IssueMentionCard issueId={primaryIssueId} />
+                  <IssueMentionCard
+                    issueId={primaryIssueId}
+                    issue={primaryIssue}
+                  />
                 ) : null}
                 <HeaderAttachmentsMenu
                   attachments={attachments}

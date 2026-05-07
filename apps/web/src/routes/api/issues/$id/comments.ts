@@ -1,10 +1,13 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { decideWakeups } from '@garden/core/issues'
 import type { IssueStatus } from '@garden/core/types'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import { commentBodySchema, parseJsonBody } from '@/lib/server/validation/issues'
+import {
+  commentBodySchema,
+  parseJsonBody,
+} from '@/lib/server/validation/issues'
 import {
   badRequest,
   notFound,
@@ -16,7 +19,6 @@ const MENTION_PATTERN = /@([A-Za-z0-9._-]+)/g
 const ACTIVE_RUN_STATUSES = [
   'queued',
   'running',
-  'waiting_for_input',
   'waiting_for_approval',
 ] as const
 
@@ -24,7 +26,10 @@ function normalizeMention(value: string) {
   return value.trim().toLowerCase()
 }
 
-function mentionAliases(value: { name?: string | null; email?: string | null }) {
+function mentionAliases(value: {
+  name?: string | null
+  email?: string | null
+}) {
   const aliases = new Set<string>()
   if (value.name) {
     aliases.add(normalizeMention(value.name))
@@ -59,7 +64,8 @@ async function resolveMentions(args: {
   content: string
 }) {
   const tokens = extractMentionTokens(args.content)
-  if (tokens.size === 0) return { agents: [] as string[], users: [] as string[] }
+  if (tokens.size === 0)
+    return { agents: [] as string[], users: [] as string[] }
 
   const [agentRows, memberRows] = await Promise.all([
     args.db
@@ -86,7 +92,9 @@ async function resolveMentions(args: {
   ])
 
   const agents = agentRows
-    .filter((agent) => hasMentionToken(mentionAliases({ name: agent.name }), tokens))
+    .filter((agent) =>
+      hasMentionToken(mentionAliases({ name: agent.name }), tokens),
+    )
     .map((agent) => agent.id)
   const users = memberRows
     .filter((member) =>
@@ -168,6 +176,7 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
             status: schema.issue.status,
             assigneeType: schema.issue.assigneeType,
             assigneeId: schema.issue.assigneeId,
+            activeRunId: schema.issue.activeRunId,
           })
           .from(schema.issue)
           .where(eq(schema.issue.id, params.id))
@@ -211,26 +220,42 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
               )
               .limit(1)
           : []
-        const [pendingWakeups, runningRuns] = await Promise.all([
-          db
-            .select({ agentId: schema.issueWakeup.agentId })
-            .from(schema.issueWakeup)
-            .where(
-              and(
-                eq(schema.issueWakeup.issueId, params.id),
-                inArray(schema.issueWakeup.status, ['pending', 'claimed']),
+        const [pendingWakeups, runningRuns, activeWaitingRun] =
+          await Promise.all([
+            db
+              .select({ agentId: schema.issueWakeup.agentId })
+              .from(schema.issueWakeup)
+              .where(
+                and(
+                  eq(schema.issueWakeup.issueId, params.id),
+                  inArray(schema.issueWakeup.status, ['pending', 'claimed']),
+                ),
               ),
-            ),
-          db
-            .select({ agentId: schema.issueRun.agentId })
-            .from(schema.issueRun)
-            .where(
-              and(
-                eq(schema.issueRun.issueId, params.id),
-                inArray(schema.issueRun.status, ACTIVE_RUN_STATUSES),
+            db
+              .select({ agentId: schema.issueRun.agentId })
+              .from(schema.issueRun)
+              .where(
+                and(
+                  eq(schema.issueRun.issueId, params.id),
+                  inArray(schema.issueRun.status, ACTIVE_RUN_STATUSES),
+                ),
               ),
-            ),
-        ])
+            db
+              .select({
+                id: schema.issueRun.id,
+                agentId: schema.issueRun.agentId,
+              })
+              .from(schema.issueRun)
+              .where(
+                and(
+                  eq(schema.issueRun.issueId, params.id),
+                  eq(schema.issueRun.status, 'waiting_for_input'),
+                ),
+              )
+              .orderBy(desc(schema.issueRun.createdAt))
+              .limit(1)
+              .then((rows) => rows[0] ?? null),
+          ])
         const decisions = decideWakeups({
           issue: {
             id: existingIssue.id,
@@ -261,8 +286,22 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
           runningRuns,
           mentionedAgentIds: mentions.agents,
         })
+        const startedAgentIds = new Set<string>()
+        if (activeWaitingRun) {
+          const startResult = await startIssueRun(appEnv, {
+            workspaceId: existingIssue.workspaceId,
+            issueId: existingIssue.id,
+            agentId: activeWaitingRun.agentId,
+            source: 'comment',
+            trigger: { commentId: comment.id },
+            actor: { type: 'member', id: access.session.user.id },
+          })
+          startedAgentIds.add(activeWaitingRun.agentId)
+          if (startResult.isErr()) console.error(startResult.error.message)
+        }
         for (const decision of decisions) {
           if (decision.kind !== 'enqueue') continue
+          if (startedAgentIds.has(decision.agentId)) continue
           const startResult = await startIssueRun(appEnv, {
             workspaceId: existingIssue.workspaceId,
             issueId: existingIssue.id,

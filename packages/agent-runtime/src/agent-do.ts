@@ -961,9 +961,14 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   @callable()
   async loadMessages(): Promise<UIMessage[]> {
     const messages = [...this.messages];
-    if (messages.length > 0) return messages;
+    const issueMessages = await this.loadPrimaryIssueMessages();
+    if (issueMessages.length === 0) return messages;
 
-    return this.loadPrimaryIssueMessages();
+    const issueMessageIds = new Set(issueMessages.map((message) => message.id));
+    return [
+      ...issueMessages,
+      ...messages.filter((message) => !issueMessageIds.has(message.id)),
+    ];
   }
 
   private async loadPrimaryIssueMessages(): Promise<UIMessage[]> {
@@ -1002,6 +1007,11 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       if (
         event.eventType !== "issue_run:started" &&
         event.eventType !== "issue_run:message" &&
+        event.eventType !== "issue_run:tool_started" &&
+        event.eventType !== "issue_run:tool_finished" &&
+        event.eventType !== "issue_run:input_requested" &&
+        event.eventType !== "issue_run:approval_requested" &&
+        event.eventType !== "issue_run:work_product_created" &&
         event.eventType !== "issue_run:failed" &&
         event.eventType !== "issue_run:succeeded" &&
         event.eventType !== "issue_run:cancelled" &&

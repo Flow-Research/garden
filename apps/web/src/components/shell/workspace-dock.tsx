@@ -2001,6 +2001,29 @@ export function WorkspaceDockProvider({
     togglePanelExpanded(current.id)
   }, [togglePanelExpanded])
 
+  useEffect(() => {
+    if (!isReady) return
+
+    const queryPanel = chat
+      ? { kind: 'chat' as const, title: 'Chat', entityId: chat }
+      : readPanelFromQueryState({
+          panel,
+          panelTitle,
+          panelEntityId,
+        })
+    if (!queryPanel || arePanelsEqual(activePanel, queryPanel)) return
+
+    openPanel(queryPanel)
+  }, [
+    activePanel,
+    chat,
+    isReady,
+    openPanel,
+    panel,
+    panelEntityId,
+    panelTitle,
+  ])
+
   const activePanelIsPinned = useMemo(() => {
     const panelId = apiRef.current?.activePanel?.id
     return panelId ? isPanelPinned(panelId) : false

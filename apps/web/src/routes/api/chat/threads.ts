@@ -182,7 +182,7 @@ export const Route = createFileRoute('/api/chat/threads')({
             )
           `)
 
-          if (primaryIssueId) {
+          if (primaryIssueId && !body.id) {
             const [existingIssueThread] = await tx
               .select()
               .from(schema.chatThread)
@@ -201,6 +201,7 @@ export const Route = createFileRoute('/api/chat/threads')({
                 .update(schema.chatThread)
                 .set({
                   agentId: agentRow.id,
+                  title,
                   archivedAt: null,
                   runtimeKind,
                   runtimeKey,
