@@ -54,6 +54,7 @@ import { Route as ApiWorkspacesIdMembersRouteImport } from './routes/api/workspa
 import { Route as ApiWorkspacesIdInvitationsRouteImport } from './routes/api/workspaces/$id/invitations'
 import { Route as ApiWorkProductsIdReviewRouteImport } from './routes/api/work-products/$id/review'
 import { Route as ApiPermissionRequestsIdResolveRouteImport } from './routes/api/permission-requests/$id/resolve'
+import { Route as ApiIssuesIdWorkProductsRouteImport } from './routes/api/issues/$id/work-products'
 import { Route as ApiIssuesIdUsageRouteImport } from './routes/api/issues/$id/usage'
 import { Route as ApiIssuesIdUnsubscribeRouteImport } from './routes/api/issues/$id/unsubscribe'
 import { Route as ApiIssuesIdTimelineRouteImport } from './routes/api/issues/$id/timeline'
@@ -318,6 +319,11 @@ const ApiPermissionRequestsIdResolveRoute =
     path: '/api/permission-requests/$id/resolve',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiIssuesIdWorkProductsRoute = ApiIssuesIdWorkProductsRouteImport.update({
+  id: '/work-products',
+  path: '/work-products',
+  getParentRoute: () => ApiIssuesIdRoute,
+} as any)
 const ApiIssuesIdUsageRoute = ApiIssuesIdUsageRouteImport.update({
   id: '/usage',
   path: '/usage',
@@ -567,6 +573,7 @@ export interface FileRoutesByFullPath {
   '/api/issues/$id/timeline': typeof ApiIssuesIdTimelineRoute
   '/api/issues/$id/unsubscribe': typeof ApiIssuesIdUnsubscribeRoute
   '/api/issues/$id/usage': typeof ApiIssuesIdUsageRoute
+  '/api/issues/$id/work-products': typeof ApiIssuesIdWorkProductsRoute
   '/api/permission-requests/$id/resolve': typeof ApiPermissionRequestsIdResolveRoute
   '/api/work-products/$id/review': typeof ApiWorkProductsIdReviewRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
@@ -647,6 +654,7 @@ export interface FileRoutesByTo {
   '/api/issues/$id/timeline': typeof ApiIssuesIdTimelineRoute
   '/api/issues/$id/unsubscribe': typeof ApiIssuesIdUnsubscribeRoute
   '/api/issues/$id/usage': typeof ApiIssuesIdUsageRoute
+  '/api/issues/$id/work-products': typeof ApiIssuesIdWorkProductsRoute
   '/api/permission-requests/$id/resolve': typeof ApiPermissionRequestsIdResolveRoute
   '/api/work-products/$id/review': typeof ApiWorkProductsIdReviewRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
@@ -729,6 +737,7 @@ export interface FileRoutesById {
   '/api/issues/$id/timeline': typeof ApiIssuesIdTimelineRoute
   '/api/issues/$id/unsubscribe': typeof ApiIssuesIdUnsubscribeRoute
   '/api/issues/$id/usage': typeof ApiIssuesIdUsageRoute
+  '/api/issues/$id/work-products': typeof ApiIssuesIdWorkProductsRoute
   '/api/permission-requests/$id/resolve': typeof ApiPermissionRequestsIdResolveRoute
   '/api/work-products/$id/review': typeof ApiWorkProductsIdReviewRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
@@ -811,6 +820,7 @@ export interface FileRouteTypes {
     | '/api/issues/$id/timeline'
     | '/api/issues/$id/unsubscribe'
     | '/api/issues/$id/usage'
+    | '/api/issues/$id/work-products'
     | '/api/permission-requests/$id/resolve'
     | '/api/work-products/$id/review'
     | '/api/workspaces/$id/invitations'
@@ -891,6 +901,7 @@ export interface FileRouteTypes {
     | '/api/issues/$id/timeline'
     | '/api/issues/$id/unsubscribe'
     | '/api/issues/$id/usage'
+    | '/api/issues/$id/work-products'
     | '/api/permission-requests/$id/resolve'
     | '/api/work-products/$id/review'
     | '/api/workspaces/$id/invitations'
@@ -972,6 +983,7 @@ export interface FileRouteTypes {
     | '/api/issues/$id/timeline'
     | '/api/issues/$id/unsubscribe'
     | '/api/issues/$id/usage'
+    | '/api/issues/$id/work-products'
     | '/api/permission-requests/$id/resolve'
     | '/api/work-products/$id/review'
     | '/api/workspaces/$id/invitations'
@@ -1336,6 +1348,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/permission-requests/$id/resolve'
       preLoaderRoute: typeof ApiPermissionRequestsIdResolveRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/api/issues/$id/work-products': {
+      id: '/api/issues/$id/work-products'
+      path: '/work-products'
+      fullPath: '/api/issues/$id/work-products'
+      preLoaderRoute: typeof ApiIssuesIdWorkProductsRouteImport
+      parentRoute: typeof ApiIssuesIdRoute
     }
     '/api/issues/$id/usage': {
       id: '/api/issues/$id/usage'
@@ -1725,6 +1744,7 @@ interface ApiIssuesIdRouteChildren {
   ApiIssuesIdTimelineRoute: typeof ApiIssuesIdTimelineRoute
   ApiIssuesIdUnsubscribeRoute: typeof ApiIssuesIdUnsubscribeRoute
   ApiIssuesIdUsageRoute: typeof ApiIssuesIdUsageRoute
+  ApiIssuesIdWorkProductsRoute: typeof ApiIssuesIdWorkProductsRoute
 }
 
 const ApiIssuesIdRouteChildren: ApiIssuesIdRouteChildren = {
@@ -1740,6 +1760,7 @@ const ApiIssuesIdRouteChildren: ApiIssuesIdRouteChildren = {
   ApiIssuesIdTimelineRoute: ApiIssuesIdTimelineRoute,
   ApiIssuesIdUnsubscribeRoute: ApiIssuesIdUnsubscribeRoute,
   ApiIssuesIdUsageRoute: ApiIssuesIdUsageRoute,
+  ApiIssuesIdWorkProductsRoute: ApiIssuesIdWorkProductsRoute,
 }
 
 const ApiIssuesIdRouteWithChildren = ApiIssuesIdRoute._addFileChildren(

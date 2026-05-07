@@ -13,6 +13,8 @@ export const issueKeys = {
     [...issueKeys.all(wsId), 'child-progress'] as const,
   timeline: (issueId: string) => ['issues', 'timeline', issueId] as const,
   activeRun: (issueId: string) => ['issues', 'active-run', issueId] as const,
+  workProducts: (issueId: string) =>
+    ['issues', 'work-products', issueId] as const,
   runEvents: (issueId: string, runId?: string | null) =>
     ['issues', 'run-events', issueId, runId ?? 'active'] as const,
   reactions: (issueId: string) => ['issues', 'reactions', issueId] as const,
@@ -51,6 +53,21 @@ export function issueRunEventsOptions(issueId: string, runId?: string | null) {
       return realCall.isOk() ? realCall.value : []
     },
     refetchInterval: runId ? 2000 : false,
+    refetchOnWindowFocus: true,
+  })
+}
+
+export function issueWorkProductsOptions(issueId: string) {
+  return queryOptions({
+    queryKey: issueKeys.workProducts(issueId),
+    queryFn: async () => {
+      const realCall = await Result.tryPromise({
+        try: async () => api.listIssueWorkProducts(issueId),
+        catch: (e) => (e instanceof Error ? e : new Error(String(e))),
+      })
+      if (realCall.isOk()) return realCall.value
+      throw realCall.error
+    },
     refetchOnWindowFocus: true,
   })
 }

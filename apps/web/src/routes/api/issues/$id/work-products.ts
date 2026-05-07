@@ -8,8 +8,7 @@ import {
   requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
 import {
-  getActiveIssueRun,
-  listIssueRunEvents,
+  listIssueWorkProducts,
   type IssueRunServiceError,
 } from '@/lib/server/issue-run'
 
@@ -17,7 +16,7 @@ function runError(error: IssueRunServiceError) {
   return badRequest(error.message)
 }
 
-export const Route = createFileRoute('/api/issues/$id/active-run')({
+export const Route = createFileRoute('/api/issues/$id/work-products')({
   server: {
     handlers: {
       GET: async ({ request, params }) => {
@@ -32,30 +31,14 @@ export const Route = createFileRoute('/api/issues/$id/active-run')({
         const access = await requireWorkspaceAccess(request, issue.workspaceId)
         if (access instanceof Response) return access
 
-        const runResult = await getActiveIssueRun({
+        const workProductsResult = await listIssueWorkProducts({
           env: appEnv,
           workspaceId: issue.workspaceId,
           issueId: params.id,
         })
-        if (runResult.isErr()) return runError(runResult.error)
+        if (workProductsResult.isErr()) return runError(workProductsResult.error)
 
-        const eventsResult = runResult.value
-          ? await listIssueRunEvents({
-              env: appEnv,
-              workspaceId: issue.workspaceId,
-              issueId: params.id,
-              runId: runResult.value.id,
-              limit: 50,
-            })
-          : null
-        if (eventsResult?.isErr()) return runError(eventsResult.error)
-        const events = eventsResult?.isOk() ? eventsResult.value : []
-
-        return Response.json({
-          run: runResult.value,
-          work_products: [],
-          events,
-        })
+        return Response.json(workProductsResult.value)
       },
     },
   },

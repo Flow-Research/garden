@@ -243,6 +243,14 @@ export function getActiveRun(
   )
 }
 
+export function listIssueWorkProducts(
+  issueId: string,
+): Promise<IssueWorkProduct[]> {
+  return getApiTransport().request(
+    `/api/issues/${issueId}/work-products`,
+  )
+}
+
 export function getRunEvents(
   issueId: string,
   params?: { run_id?: string; after?: number; limit?: number },

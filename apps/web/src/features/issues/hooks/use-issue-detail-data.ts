@@ -43,8 +43,7 @@ export function useIssueDetailData(issueId: string) {
   const { data: issue = null, isLoading: issueLoading } = useQuery({
     ...issueDetailOptions(wsId, issueId),
     initialData: () => {
-      const cached = allIssues.find((candidate) => candidate.id === issueId)
-      return cached?.description != null ? cached : undefined
+      return allIssues.find((candidate) => candidate.id === issueId)
     },
   })
 

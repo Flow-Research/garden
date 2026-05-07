@@ -116,7 +116,7 @@ import { ContextualComposer } from './contextual-composer'
 import { AgentStatusEntry } from './agent-status-entry'
 import { ActiveRunPanel, LastRunSummary } from './active-run-panel'
 import { RunPlanCard, type RunPlanTodo } from './run-plan-card'
-import { WorkProductList, WorkProductListEmpty } from './work-product-card'
+import { WorkProductList } from './work-product-card'
 import { BacklogAgentHintDialog } from './backlog-agent-hint-dialog'
 import { ReactionBar } from '@garden/ui/components/common/reaction-bar'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
@@ -126,7 +126,11 @@ import { cn } from '@garden/ui/lib/utils'
 import { useIssueSearch } from '../hooks/use-issue-search'
 import { useIssueDetailData } from '../hooks/use-issue-detail-data'
 import { api, sortSessions, type AgentChatSession } from '@/lib/api'
-import { issueActiveRunOptions, issueKeys } from '@/lib/issues/queries'
+import {
+  issueActiveRunOptions,
+  issueKeys,
+  issueWorkProductsOptions,
+} from '@/lib/issues/queries'
 import { inboxKeys } from '@/lib/inbox/queries'
 import { useWorkspaceDock } from '@/components/shell/workspace-dock'
 
@@ -1629,19 +1633,24 @@ export function IssueDetail({
                   {descDragOver && <FileDropOverlay />}
                 </div>
 
-                <Suspense fallback={<IssueFlowSurfaceFallback />}>
-                  <IssueFlowSurface
-                    issue={issue}
-                    timeline={timeline}
-                    onAnswerQuestion={(answer) => {
-                      const content = Array.isArray(answer)
-                        ? answer.join('\n')
-                        : answer
-                      void submitComment(content)
-                    }}
-                    answeringQuestion={commentSubmitting}
-                  />
-                </Suspense>
+                <div className="space-y-3">
+                  <Suspense fallback={<IssueOutputSurfaceFallback />}>
+                    <IssueOutputSurface issue={issue} />
+                  </Suspense>
+                  <Suspense fallback={<IssueRunSurfaceFallback />}>
+                    <IssueRunSurface
+                      issue={issue}
+                      timeline={timeline}
+                      onAnswerQuestion={(answer) => {
+                        const content = Array.isArray(answer)
+                          ? answer.join('\n')
+                          : answer
+                        void submitComment(content)
+                      }}
+                      answeringQuestion={commentSubmitting}
+                    />
+                  </Suspense>
+                </div>
 
                 {/* Sub-issues — Linear-style */}
                 {childIssues.length === 0 && (
@@ -2368,15 +2377,22 @@ function OutputSection({ children }: { children: React.ReactNode }) {
   return <section className="mt-8 space-y-2">{children}</section>
 }
 
-function IssueFlowSurfaceFallback() {
+function IssueOutputSurfaceFallback() {
   return (
-    <section className="mt-8 space-y-3">
+    <section className="mt-8">
       <div className="rounded-lg border bg-card p-3">
         <Skeleton className="h-4 w-44" />
         <Skeleton className="mt-3 h-3 w-full" />
         <Skeleton className="mt-2 h-3 w-5/6" />
         <Skeleton className="mt-2 h-3 w-2/3" />
       </div>
+    </section>
+  )
+}
+
+function IssueRunSurfaceFallback() {
+  return (
+    <section className="space-y-3">
       <div className="rounded-lg border bg-card p-3">
         <div className="flex items-center justify-between">
           <Skeleton className="h-4 w-32" />
@@ -2388,7 +2404,33 @@ function IssueFlowSurfaceFallback() {
   )
 }
 
-function IssueFlowSurface({
+function IssueOutputSurface({ issue }: { issue: Issue }) {
+  const { searchParams } = useNavigation()
+  const focus = searchParams.get('focus') ?? ''
+  const [focusKind, focusId] = focus.split(':')
+  const pulseWorkProductId =
+    focusKind === 'wp_review' && focusId ? focusId : null
+  const { data: workProducts } = useSuspenseQuery(
+    issueWorkProductsOptions(issue.id),
+  )
+
+  if (workProducts.length === 0) return null
+
+  return (
+    <OutputSection>
+      <WorkProductList
+        workProducts={workProducts}
+        connectorId={issue.source_summary?.connector_id ?? null}
+        pulseId={pulseWorkProductId}
+        onApprove={() => {}}
+        onRequestChanges={() => {}}
+        onApply={() => {}}
+      />
+    </OutputSection>
+  )
+}
+
+function IssueRunSurface({
   issue,
   timeline,
   onAnswerQuestion,
@@ -2459,8 +2501,6 @@ function IssueFlowSurface({
     Boolean(run) &&
     (focusKind === 'failed_run' || focusKind === 'blocked') &&
     (!focusId || focusId === run?.id)
-  const pulseWorkProductId =
-    focusKind === 'wp_review' && focusId ? focusId : null
   const showActive =
     run &&
     run.status !== 'succeeded' &&
@@ -2473,37 +2513,9 @@ function IssueFlowSurface({
       run.status === 'cancelled' ||
       run.status === 'failed' ||
       run.status === 'blocked')
-  const hasWorkProducts = Boolean(data && data.work_products.length > 0)
-  const showOutputEmpty =
-    Boolean(data) && !hasWorkProducts && Boolean(showActive || showLastRun)
 
   return (
     <div className="space-y-3">
-      {hasWorkProducts && data && (
-        <OutputSection>
-          <WorkProductList
-            workProducts={data.work_products}
-            connectorId={issue.source_summary?.connector_id ?? null}
-            pulseId={pulseWorkProductId}
-            onApprove={() => {}}
-            onRequestChanges={() => {}}
-            onApply={() => {}}
-          />
-        </OutputSection>
-      )}
-
-      {showOutputEmpty && (
-        <OutputSection>
-          <WorkProductListEmpty
-            message={
-              showActive
-                ? 'Garden is synthesizing a work product for this issue.'
-                : 'This run ended before Garden produced a work product.'
-            }
-          />
-        </OutputSection>
-      )}
-
       {showActive && run && (
         <ActiveRunPanel
           agent={{ name: 'Garden' }}
