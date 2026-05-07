@@ -38,3 +38,19 @@ export function archiveCompletedInbox(): Promise<{ count: number }> {
     method: 'POST',
   })
 }
+
+export function resolvePermissionRequest(args: {
+  id: string
+  approved: boolean
+}): Promise<{
+  ok: true
+  invalidations: string[]
+}> {
+  return getApiTransport().request(
+    `/api/permission-requests/${encodeURIComponent(args.id)}/resolve`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ approved: args.approved }),
+    },
+  )
+}

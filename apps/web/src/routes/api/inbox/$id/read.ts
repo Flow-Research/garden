@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { dismissInboxItem } from '@/lib/server/inbox-dismissal'
+import { markInboxItemRead } from '@/lib/server/inbox-dismissal'
 import {
   requireSession,
   resolveWorkspaceId,
@@ -14,7 +14,7 @@ export const Route = createFileRoute('/api/inbox/$id/read')({
         if (!session) return unauthorized()
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
         if (!workspaceId) return unauthorized()
-        await dismissInboxItem({
+        await markInboxItemRead({
           workspaceId,
           userId: session.user.id,
           itemKey: decodeURIComponent(params.id),

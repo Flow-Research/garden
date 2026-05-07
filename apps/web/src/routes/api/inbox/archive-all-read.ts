@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { dismissAllVisible } from '@/lib/server/inbox-dismissal'
+import { archiveAllVisible } from '@/lib/server/inbox-dismissal'
 import {
   requireSession,
   resolveWorkspaceId,
@@ -14,7 +14,7 @@ export const Route = createFileRoute('/api/inbox/archive-all-read')({
         if (!session) return unauthorized()
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
         if (!workspaceId) return Response.json({ count: 0 })
-        const count = await dismissAllVisible({
+        const count = await archiveAllVisible({
           workspaceId,
           userId: session.user.id,
           predicate: (item) => item.read,

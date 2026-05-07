@@ -1,4 +1,6 @@
-import { and, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, desc, eq, inArray, ne, notInArray, or, sql } from "drizzle-orm";
+import { Result } from "better-result";
 import { getDb, schema } from "@/lib/server/db";
 import { appEnv } from "@/lib/server/env";
 import type {
@@ -13,6 +15,7 @@ type CommentRow = typeof schema.issueComment.$inferSelect;
 type RunRow = typeof schema.issueRun.$inferSelect;
 type WorkProductRow = typeof schema.issueWorkProduct.$inferSelect;
 type PermissionRequestRow = typeof schema.permissionRequest.$inferSelect;
+type InboxItemRow = typeof schema.inboxItem.$inferSelect;
 
 type RunEventLite = {
   runId: string;
@@ -356,30 +359,40 @@ type InboxCandidate = {
 
 type InboxPredicate = (item: InboxCandidate) => boolean;
 
-function toInboxCandidate(
-  source: SourceItem,
-  dismissedAt: Date | null,
-): InboxCandidate {
+function detailsRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry === "string") out[key] = entry;
+  }
+  return out;
+}
+
+function rowToInboxItem(row: InboxItemRow): InboxItem {
   return {
-    key: source.key,
-    read: dismissedAt
-      ? dismissedAt.getTime() >= source.activityAt.getTime()
-      : false,
-    issueStatus: source.issueStatus,
+    id: row.itemKey,
+    workspace_id: row.workspaceId,
+    recipient_type: row.recipientType as "member" | "agent",
+    recipient_id: row.recipientId,
+    actor_type: row.actorType as "member" | "agent" | null,
+    actor_id: row.actorId,
+    type: row.type as InboxItemType,
+    severity: row.severity as InboxSeverity,
+    issue_id: row.issueId,
+    title: row.title,
+    body: row.body,
+    issue_status: pickIssueStatus(row.issueStatus),
+    read: row.read,
+    archived: row.archived,
+    created_at: row.activityAt.toISOString(),
+    details: detailsRecord(row.details),
   };
 }
 
-function toInboxItem(
+function sourceToInboxItem(
   source: SourceItem,
-  args: {
-    workspaceId: string;
-    userId: string;
-    dismissedAt: Date | null;
-  },
+  args: { workspaceId: string; userId: string },
 ): InboxItem {
-  const dismissed = args.dismissedAt
-    ? args.dismissedAt.getTime() >= source.activityAt.getTime()
-    : false;
   return {
     id: source.key,
     workspace_id: args.workspaceId,
@@ -393,8 +406,8 @@ function toInboxItem(
     title: source.title,
     body: source.body,
     issue_status: source.issueStatus,
-    read: dismissed,
-    archived: dismissed,
+    read: false,
+    archived: false,
     created_at: source.activityAt.toISOString(),
     details: source.details,
   };
@@ -406,7 +419,6 @@ async function computeInboxSourceItems(args: {
   limit?: number;
 }): Promise<{
   sources: SourceItem[];
-  dismissalsByKey: Map<string, Date>;
 }> {
   const db = getDb(appEnv);
   const { workspaceId, userId } = args;
@@ -419,7 +431,6 @@ async function computeInboxSourceItems(args: {
     pausedRuns,
     failedRuns,
     succeededRuns,
-    dismissalRows,
   ] = await Promise.all([
     db
       .select()
@@ -534,21 +545,9 @@ async function computeInboxSourceItems(args: {
       )
       .orderBy(desc(schema.issueRun.finishedAt))
       .limit(100),
-    db
-      .select()
-      .from(schema.inboxDismissal)
-      .where(
-        and(
-          eq(schema.inboxDismissal.workspaceId, workspaceId),
-          eq(schema.inboxDismissal.userId, userId),
-        ),
-      ),
   ]);
 
   const issuesById = indexById(workspaceIssues);
-  const dismissalsByKey = new Map(
-    dismissalRows.map((row) => [row.itemKey, row.dismissedAt ?? new Date()]),
-  );
 
   const sources: SourceItem[] = [];
   const latestSuccessfulRunByIssueId = new Map<string, RunRow>();
@@ -728,13 +727,101 @@ async function computeInboxSourceItems(args: {
   }
 
   return {
-    sources: sources
-      .sort(
-        (left, right) => right.activityAt.getTime() - left.activityAt.getTime(),
-      )
-      .slice(0, args.limit ?? 100),
-    dismissalsByKey,
+    sources: sources.sort(
+      (left, right) => right.activityAt.getTime() - left.activityAt.getTime(),
+    ),
   };
+}
+
+async function persistInboxSourceItems(args: {
+  workspaceId: string;
+  userId: string;
+  sources: SourceItem[];
+  limit?: number;
+}): Promise<InboxItem[]> {
+  const db = getDb(appEnv);
+  const now = new Date();
+  const sourceKeys = args.sources.map((source) => source.key);
+
+  if (args.sources.length > 0) {
+    await db
+      .insert(schema.inboxItem)
+      .values(
+        args.sources.map((source) => ({
+          id: randomUUID(),
+          workspaceId: args.workspaceId,
+          recipientType: "member",
+          recipientId: args.userId,
+          itemKey: source.key,
+          actorType: source.actorType,
+          actorId: source.actorId,
+          type: source.type,
+          severity: source.severity,
+          issueId: source.issueId,
+          issueStatus: source.issueStatus,
+          title: source.title,
+          body: source.body,
+          details: source.details,
+          activityAt: source.activityAt,
+          updatedAt: now,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: [
+          schema.inboxItem.workspaceId,
+          schema.inboxItem.recipientType,
+          schema.inboxItem.recipientId,
+          schema.inboxItem.itemKey,
+        ],
+        set: {
+          actorType: sql`excluded.actor_type`,
+          actorId: sql`excluded.actor_id`,
+          type: sql`excluded.type`,
+          severity: sql`excluded.severity`,
+          issueId: sql`excluded.issue_id`,
+          issueStatus: sql`excluded.issue_status`,
+          title: sql`excluded.title`,
+          body: sql`excluded.body`,
+          details: sql`excluded.details`,
+          read: sql`case when excluded.activity_at > ${schema.inboxItem.activityAt} then false else ${schema.inboxItem.read} end`,
+          archived: sql`case when excluded.activity_at > ${schema.inboxItem.activityAt} then false else ${schema.inboxItem.archived} end`,
+          activityAt: sql`greatest(${schema.inboxItem.activityAt}, excluded.activity_at)`,
+          updatedAt: now,
+        },
+      });
+  }
+
+  const visibleFilter = and(
+    eq(schema.inboxItem.workspaceId, args.workspaceId),
+    eq(schema.inboxItem.recipientType, "member"),
+    eq(schema.inboxItem.recipientId, args.userId),
+    eq(schema.inboxItem.archived, false),
+  );
+  const staleFilter =
+    sourceKeys.length > 0
+      ? and(visibleFilter, notInArray(schema.inboxItem.itemKey, sourceKeys))
+      : visibleFilter;
+
+  await db
+    .update(schema.inboxItem)
+    .set({ archived: true, read: true, updatedAt: now })
+    .where(staleFilter);
+
+  const rows = await db
+    .select()
+    .from(schema.inboxItem)
+    .where(
+      and(
+        eq(schema.inboxItem.workspaceId, args.workspaceId),
+        eq(schema.inboxItem.recipientType, "member"),
+        eq(schema.inboxItem.recipientId, args.userId),
+        eq(schema.inboxItem.archived, false),
+      ),
+    )
+    .orderBy(desc(schema.inboxItem.activityAt))
+    .limit(args.limit ?? 100);
+
+  return rows.map(rowToInboxItem);
 }
 
 export async function computeInboxItems(args: {
@@ -742,20 +829,26 @@ export async function computeInboxItems(args: {
   userId: string;
   limit?: number;
 }): Promise<InboxItem[]> {
-  const { workspaceId, userId } = args;
-  const { sources, dismissalsByKey } = await computeInboxSourceItems(args);
-
-  return sources
-    .sort(
-      (left, right) => right.activityAt.getTime() - left.activityAt.getTime(),
-    )
-    .map((source) =>
-      toInboxItem(source, {
-        workspaceId,
-        userId,
-        dismissedAt: dismissalsByKey.get(source.key) ?? null,
+  const { sources } = await computeInboxSourceItems(args);
+  const persisted = await Result.tryPromise({
+    try: async () =>
+      persistInboxSourceItems({
+        workspaceId: args.workspaceId,
+        userId: args.userId,
+        sources,
+        limit: args.limit,
       }),
-    );
+    catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+  });
+
+  if (persisted.isOk()) return persisted.value;
+
+  console.warn("[inbox] falling back to computed inbox items", {
+    error: persisted.error.message,
+  });
+  return sources
+    .slice(0, args.limit ?? 100)
+    .map((source) => sourceToInboxItem(source, args));
 }
 
 export async function computeVisibleInboxItemKeys(args: {
@@ -763,11 +856,13 @@ export async function computeVisibleInboxItemKeys(args: {
   userId: string;
   predicate?: InboxPredicate;
 }): Promise<string[]> {
-  const { sources, dismissalsByKey } = await computeInboxSourceItems(args);
-  return sources
-    .map((source) =>
-      toInboxCandidate(source, dismissalsByKey.get(source.key) ?? null),
-    )
+  const items = await computeInboxItems(args);
+  return items
+    .map((item) => ({
+      key: item.id,
+      read: item.read,
+      issueStatus: item.issue_status,
+    }))
     .filter((item) => (args.predicate ? args.predicate(item) : true))
     .map((item) => item.key);
 }

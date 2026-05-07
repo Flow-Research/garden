@@ -176,6 +176,13 @@
       "when": 1777933769681,
       "tag": "0025_chat_thread_runtime_binding",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1778144674322,
+      "tag": "0026_persist_inbox_items",
+      "breakpoints": true
     }
   ]
 }

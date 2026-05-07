@@ -229,12 +229,18 @@ export function manualRun(
   })
 }
 
-export function getActiveRun(issueId: string): Promise<{
+export function getActiveRun(
+  issueId: string,
+  options?: { signal?: AbortSignal },
+): Promise<{
   run: IssueRun | null
   work_products: IssueWorkProduct[]
   events: IssueRunEvent[]
 }> {
-  return getApiTransport().request(`/api/issues/${issueId}/active-run`)
+  return getApiTransport().request(
+    `/api/issues/${issueId}/active-run`,
+    options?.signal ? { signal: options.signal } : undefined,
+  )
 }
 
 export function getRunEvents(
@@ -257,4 +263,17 @@ export function cancelRun(issueId: string) {
 
 export function getIssueUsage(issueId: string): Promise<IssueUsageSummary> {
   return getApiTransport().request(`/api/issues/${issueId}/usage`)
+}
+
+export function reviewWorkProduct(
+  workProductId: string,
+  data: {
+    action: 'approve' | 'request_changes' | 'apply'
+    note?: string
+  },
+): Promise<IssueWorkProduct> {
+  return getApiTransport().request(`/api/work-products/${workProductId}/review`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
 }

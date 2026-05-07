@@ -42,6 +42,7 @@ import { useIsMobile } from '@garden/ui/hooks/use-mobile'
 import { InboxListItem, timeAgo } from './inbox-list-item'
 import { typeLabels } from './inbox-detail-label'
 import { InboxItemPreviewCard, ctaForInboxItem } from './inbox-item-preview'
+import { InboxControlPlane } from './inbox-control-plane'
 
 // ---------------------------------------------------------------------------
 // List pane header + search — sidebar-09 style
@@ -245,6 +246,7 @@ function InboxNotificationDetail({
 
       <div className="w-full max-w-3xl space-y-5 p-6">
         <InboxItemPreviewCard item={item} />
+        <InboxControlPlane item={item} />
         {item.issue_id && (
           <Button size="sm" onClick={onOpenIssue}>
             <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
