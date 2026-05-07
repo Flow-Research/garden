@@ -90,7 +90,7 @@
     "agents": "catalog:",
     "ai": "6.0.175",
     "ansi-to-react": "^6.2.6",
-    "better-auth": "^1.4.18",
+    "better-auth": "^1.6.9",
     "better-result": "^2.9.2",
     "boneyard-js": "^1.7.7",
     "class-variance-authority": "catalog:",
