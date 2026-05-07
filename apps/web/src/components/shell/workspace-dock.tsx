@@ -165,7 +165,6 @@ const WorkspaceDockContext = createContext<WorkspaceDockContextValue | null>(
   null,
 )
 
-const dockPanelDragType = 'application/garden-dock-panel'
 export const chatSessionDragType = 'application/garden-chat-session'
 
 type ChatSessionDragPayload = {
@@ -189,14 +188,8 @@ function parseChatSessionDragPayload(
   return { id: session.id, title: session.title }
 }
 
-function getDockPanelDragId(dataTransfer: DataTransfer) {
-  return dataTransfer.getData(dockPanelDragType) || null
-}
-
-function hasDockDropData(dataTransfer: DataTransfer) {
-  return Array.from(dataTransfer.types).some(
-    (type) => type === dockPanelDragType || type === chatSessionDragType,
-  )
+function hasChatSessionDragData(dataTransfer: DataTransfer) {
+  return Array.from(dataTransfer.types).includes(chatSessionDragType)
 }
 
 function getTabDropIndex(
@@ -468,7 +461,7 @@ function WorkspaceDockTab(
             onPointerUp={onPointerUp}
             onPointerLeave={onPointerLeave}
             onDragOver={(event) => {
-              if (!hasDockDropData(event.dataTransfer)) return
+              if (!hasChatSessionDragData(event.dataTransfer)) return
               event.preventDefault()
               event.dataTransfer.dropEffect = 'move'
             }}
@@ -711,28 +704,17 @@ function WorkspacePanelFrame({
   const [isDragOver, setIsDragOver] = useState(false)
 
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    if (!hasDockDropData(event.dataTransfer)) return
+    if (!hasChatSessionDragData(event.dataTransfer)) return
     event.preventDefault()
     event.dataTransfer.dropEffect = 'move'
     setIsDragOver(true)
   }
 
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
-    if (!ctx || !panelId || !hasDockDropData(event.dataTransfer)) return
+    if (!ctx || !panelId || !hasChatSessionDragData(event.dataTransfer)) return
     event.preventDefault()
     event.stopPropagation()
     setIsDragOver(false)
-
-    const draggedPanelId = getDockPanelDragId(event.dataTransfer)
-    if (draggedPanelId && draggedPanelId !== panelId) {
-      const api = ctx.getDockApi()
-      const draggedPanel = api?.getPanel(draggedPanelId)
-      const targetPanel = api?.getPanel(panelId)
-      if (draggedPanel && targetPanel) {
-        draggedPanel.api.moveTo({ group: targetPanel.group })
-      }
-      return
-    }
 
     const session = parseChatSessionDragPayload(event.dataTransfer)
     if (!session) return
@@ -750,7 +732,7 @@ function WorkspacePanelFrame({
         isDragOver && 'ring-2 ring-primary/45 ring-inset',
       )}
       onDragEnter={(event) => {
-        if (!hasDockDropData(event.dataTransfer)) return
+        if (!hasChatSessionDragData(event.dataTransfer)) return
         setIsDragOver(true)
       }}
       onDragOver={handleDragOver}
