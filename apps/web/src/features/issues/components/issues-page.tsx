@@ -1,11 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useMemo } from 'react'
+import { Suspense, useCallback, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import { ChevronRight } from 'lucide-react'
 import type { IssueStatus } from '@garden/core/types'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
-import { useQuery } from '@tanstack/react-query'
+import { useSuspenseQueries } from '@tanstack/react-query'
 import {
   useIssueViewStore,
   initFilterWorkspaceSync,
@@ -29,11 +29,105 @@ import { ListView } from './list-view'
 import { BatchActionToolbar } from './batch-action-toolbar'
 import { useIssuesPageViewState } from '../hooks/use-issues-view-state'
 
-export function IssuesPage() {
-  const wsId = useWorkspaceId()
-  const { data: allIssues = [], isLoading: loading } = useQuery(
-    issueListOptions(wsId),
+function IssuesPageSkeleton({ viewMode }: { viewMode: 'board' | 'list' }) {
+  return (
+    <div className="flex flex-1 min-h-0 flex-col">
+      <PageHeader className="gap-1.5">
+        <Skeleton className="h-6 w-6 rounded-md" />
+        <Skeleton className="h-4 w-24" />
+        <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
+        <Skeleton className="h-4 w-12" />
+      </PageHeader>
+
+      <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
+        <div className="flex items-center gap-1.5">
+          <Skeleton className="h-7 w-14 rounded-md" />
+          <Skeleton className="h-7 w-20 rounded-md" />
+          <Skeleton className="h-7 w-20 rounded-md" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-8 w-28 rounded-md" />
+          <Skeleton className="h-8 w-9 rounded-md" />
+          <Skeleton className="h-8 w-24 rounded-md" />
+        </div>
+      </div>
+
+      {viewMode === 'board' ? (
+        <div className="flex flex-1 min-h-0 gap-4 overflow-hidden p-4">
+          {Array.from({ length: 5 }).map((_, columnIndex) => (
+            <div
+              key={columnIndex}
+              className="flex min-w-[240px] flex-1 flex-col gap-2"
+            >
+              <div className="flex h-8 items-center justify-between px-1">
+                <Skeleton className="h-5 w-24 rounded" />
+                <Skeleton className="h-4 w-6 rounded" />
+              </div>
+              {Array.from({ length: columnIndex === 0 ? 3 : 2 }).map(
+                (_, cardIndex) => (
+                  <div
+                    key={cardIndex}
+                    className="rounded-lg border bg-card p-3 shadow-sm"
+                  >
+                    <Skeleton className="h-4 w-4/5" />
+                    <Skeleton className="mt-2 h-3 w-full" />
+                    <Skeleton className="mt-1.5 h-3 w-2/3" />
+                    <div className="mt-4 flex items-center justify-between">
+                      <Skeleton className="h-5 w-16 rounded" />
+                      <Skeleton className="h-6 w-6 rounded-full" />
+                    </div>
+                  </div>
+                ),
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 space-y-2 overflow-hidden p-2">
+          {Array.from({ length: 5 }).map((_, groupIndex) => (
+            <div key={groupIndex} className="rounded-lg">
+              <div className="flex h-10 items-center gap-3 rounded-lg bg-muted/40 px-3">
+                <Skeleton className="h-4 w-4 rounded" />
+                <Skeleton className="h-5 w-28 rounded" />
+                <Skeleton className="h-4 w-6 rounded" />
+              </div>
+              {Array.from({ length: groupIndex === 0 ? 3 : 2 }).map(
+                (_, rowIndex) => (
+                  <div
+                    key={rowIndex}
+                    className="mt-1 flex h-12 items-center gap-3 rounded-md border bg-card px-3"
+                  >
+                    <Skeleton className="h-4 w-4 rounded" />
+                    <Skeleton className="h-4 flex-1" />
+                    <Skeleton className="h-5 w-16 rounded" />
+                    <Skeleton className="h-6 w-6 rounded-full" />
+                  </div>
+                ),
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
+}
+
+export function IssuesPage() {
+  const { viewMode } = useIssuesPageViewState()
+
+  return (
+    <Suspense fallback={<IssuesPageSkeleton viewMode={viewMode} />}>
+      <IssuesPageContent />
+    </Suspense>
+  )
+}
+
+function IssuesPageContent() {
+  const wsId = useWorkspaceId()
+  const [{ data: allIssues }, { data: childProgressMap }] =
+    useSuspenseQueries({
+      queries: [issueListOptions(wsId), childIssueProgressOptions(wsId)],
+    })
 
   const workspace = useWorkspaceStore((s) => s.workspace)
   const {
@@ -90,12 +184,6 @@ export function IssuesPage() {
     ],
   )
 
-  // Fetch sub-issue progress from the backend so counts are accurate
-  // regardless of client-side pagination or filtering of done issues.
-  const { data: childProgressMap = new Map() } = useQuery(
-    childIssueProgressOptions(wsId),
-  )
-
   const visibleStatuses = useMemo(() => {
     if (statusFilters.length > 0)
       return BOARD_STATUSES.filter((s) => statusFilters.includes(s))
@@ -128,30 +216,6 @@ export function IssuesPage() {
     },
     [updateIssueMutation],
   )
-
-  if (loading) {
-    return (
-      <div className="flex flex-1 min-h-0 flex-col">
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
-          <Skeleton className="h-5 w-5 rounded" />
-          <Skeleton className="h-4 w-32" />
-        </div>
-        <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
-          <Skeleton className="h-5 w-24" />
-          <Skeleton className="h-8 w-24" />
-        </div>
-        <div className="flex flex-1 min-h-0 gap-4 overflow-x-auto p-4">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="flex min-w-52 flex-1 flex-col gap-2">
-              <Skeleton className="h-4 w-20" />
-              <Skeleton className="h-24 w-full rounded-lg" />
-              <Skeleton className="h-24 w-full rounded-lg" />
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="flex flex-1 min-h-0 flex-col">

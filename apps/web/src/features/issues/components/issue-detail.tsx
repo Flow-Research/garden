@@ -1,7 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
+import {
+  useMutation,
+  useQueryClient,
+  useSuspenseQuery,
+} from '@tanstack/react-query'
 import { Result } from 'better-result'
 import { Skeleton as BoneyardSkeleton } from 'boneyard-js/react'
 import { useDevSettingsStore } from '@/features/settings/dev-settings-store'
@@ -115,6 +119,7 @@ import { RunPlanCard, type RunPlanTodo } from './run-plan-card'
 import { WorkProductList, WorkProductListEmpty } from './work-product-card'
 import { BacklogAgentHintDialog } from './backlog-agent-hint-dialog'
 import { ReactionBar } from '@garden/ui/components/common/reaction-bar'
+import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { useModalStore } from '@garden/core/modals'
 import { timeAgo } from '@garden/core/utils'
 import { cn } from '@garden/ui/lib/utils'
@@ -746,6 +751,10 @@ export function IssueDetail({
     })
   }, [dock, issue, openChatMutation, queryClient, user?.id])
 
+  const handleOpenIssues = useCallback(() => {
+    dock?.openPanel({ kind: 'issues', title: 'Tasks' })
+  }, [dock])
+
   useEffect(() => {
     if (isMobile) {
       setSidebarOpen(false)
@@ -858,7 +867,7 @@ export function IssueDetail({
     if (deleteResult.isOk()) {
       toast.success('Issue deleted')
       if (onDelete) onDelete()
-      else router.push('/issues')
+      else handleOpenIssues()
       return
     }
 
@@ -1010,7 +1019,7 @@ export function IssueDetail({
                   {formatTokenCount(usage.total_input_tokens)}
                 </span>
               </PropRow>
-              <PropRow label="Output">
+              <PropRow label="Generated">
                 <span className="text-muted-foreground">
                   {formatTokenCount(usage.total_output_tokens)}
                 </span>
@@ -1072,12 +1081,13 @@ export function IssueDetail({
               <div className="flex flex-1 items-center gap-1.5 min-w-0">
                 {workspace && (
                   <>
-                    <AppLink
-                      href="/issues"
+                    <button
+                      type="button"
+                      onClick={handleOpenIssues}
                       className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
                     >
                       {workspace.name}
-                    </AppLink>
+                    </button>
                     <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
                   </>
                 )}
@@ -1619,17 +1629,19 @@ export function IssueDetail({
                   {descDragOver && <FileDropOverlay />}
                 </div>
 
-                <IssueFlowSurface
-                  issue={issue}
-                  timeline={timeline}
-                  onAnswerQuestion={(answer) => {
-                    const content = Array.isArray(answer)
-                      ? answer.join('\n')
-                      : answer
-                    void submitComment(content)
-                  }}
-                  answeringQuestion={commentSubmitting}
-                />
+                <Suspense fallback={<IssueFlowSurfaceFallback />}>
+                  <IssueFlowSurface
+                    issue={issue}
+                    timeline={timeline}
+                    onAnswerQuestion={(answer) => {
+                      const content = Array.isArray(answer)
+                        ? answer.join('\n')
+                        : answer
+                      void submitComment(content)
+                    }}
+                    answeringQuestion={commentSubmitting}
+                  />
+                </Suspense>
 
                 {/* Sub-issues — Linear-style */}
                 {childIssues.length === 0 && (
@@ -2191,7 +2203,7 @@ export function IssueDetail({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => router.push('/issues')}
+              onClick={handleOpenIssues}
             >
               <ChevronLeft className="mr-1 h-3.5 w-3.5" />
               Back to Issues
@@ -2353,10 +2365,25 @@ function latestEventSummary(events: IssueRunEvent[]) {
 }
 
 function OutputSection({ children }: { children: React.ReactNode }) {
+  return <section className="mt-8 space-y-2">{children}</section>
+}
+
+function IssueFlowSurfaceFallback() {
   return (
-    <section className="mt-8 space-y-2">
-      <h2 className="text-base font-semibold">Output</h2>
-      {children}
+    <section className="mt-8 space-y-3">
+      <div className="rounded-lg border bg-card p-3">
+        <Skeleton className="h-4 w-44" />
+        <Skeleton className="mt-3 h-3 w-full" />
+        <Skeleton className="mt-2 h-3 w-5/6" />
+        <Skeleton className="mt-2 h-3 w-2/3" />
+      </div>
+      <div className="rounded-lg border bg-card p-3">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-6 w-20 rounded-md" />
+        </div>
+        <Skeleton className="mt-3 h-2 w-full" />
+      </div>
     </section>
   )
 }
@@ -2374,7 +2401,7 @@ function IssueFlowSurface({
 }) {
   const queryClient = useQueryClient()
   const { searchParams } = useNavigation()
-  const { data } = useQuery(issueActiveRunOptions(issue.id))
+  const { data } = useSuspenseQuery(issueActiveRunOptions(issue.id))
   const debugMode = useDevSettingsStore((s) => s.debugMode)
   const focus = searchParams.get('focus') ?? ''
   const [focusKind, focusId] = focus.split(':')
