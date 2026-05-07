@@ -10,11 +10,7 @@ import { OnboardingOverlay } from '@/features/onboarding'
 import { useOnboardingStore } from '@/features/onboarding'
 import { SettingsDialog } from '@/features/settings'
 import { WorkspaceSidebar } from './sidebar'
-import {
-  WorkspaceDockProvider,
-  WorkspaceDockTitlebar,
-  WorkspaceDockView,
-} from './workspace-dock'
+import { WorkspaceDockProvider, WorkspaceDockView } from './workspace-dock'
 
 function WorkspaceLoadingSkeleton() {
   return (
@@ -69,58 +65,36 @@ export function WorkspaceLayout() {
     !authLoading && hasSession && !workspace?.id && !onboardingCompleted
   const isRestoringWorkspace = authLoading || (hasSession && !needsOnboarding)
   const activeWorkspaceId = workspace?.id ?? null
-  const hasWorkspace = Boolean(workspace?.id)
-  const titleNode = hasWorkspace ? (
-    (workspace?.name ?? null)
-  ) : (
-    <Skeleton className="h-3.5 w-28" aria-label="Loading workspace name" />
-  )
-  const subtitleNode = hasWorkspace ? (
-    'Workspace'
-  ) : (
-    <Skeleton className="mt-1 h-2.5 w-16" aria-hidden="true" />
-  )
 
   return (
-    <SidebarProvider className="h-svh flex-col">
+    <SidebarProvider className="h-svh">
       <WorkspaceDockProvider
         workspaceId={activeWorkspaceId ?? 'workspace-shell'}
       >
         {activeWorkspaceId ? (
           <WorkspaceIdProvider wsId={activeWorkspaceId}>
             <ChatRuntimeProvider>
-              <WorkspaceDockTitlebar
-                title={titleNode}
-                subtitle={subtitleNode}
-              />
-              <div className="relative flex min-h-0 flex-1 overflow-hidden bg-background">
-                <WorkspaceSidebar />
-                <SidebarInset className="relative overflow-hidden">
-                  <div className="relative flex min-h-0 flex-1 overflow-hidden">
-                    <WorkspaceDockView />
-                  </div>
-                </SidebarInset>
-                <SearchCommand />
-              </div>
+              <WorkspaceSidebar />
+              <SidebarInset className="relative overflow-hidden">
+                <div className="relative flex min-h-0 flex-1 overflow-hidden">
+                  <WorkspaceDockView />
+                </div>
+              </SidebarInset>
+              <SearchCommand />
               <SettingsDialog />
               <ModalRegistry />
             </ChatRuntimeProvider>
           </WorkspaceIdProvider>
         ) : (
-          <>
-            <WorkspaceDockTitlebar title={titleNode} subtitle={subtitleNode} />
-            <div className="relative flex min-h-0 flex-1 overflow-hidden bg-background">
-              <SidebarInset className="relative overflow-hidden">
-                <div className="relative flex min-h-0 flex-1 overflow-hidden">
-                  {isRestoringWorkspace ? (
-                    <WorkspaceLoadingSkeleton />
-                  ) : (
-                    <WorkspaceSetupState />
-                  )}
-                </div>
-              </SidebarInset>
+          <SidebarInset className="relative overflow-hidden">
+            <div className="relative flex min-h-0 flex-1 overflow-hidden">
+              {isRestoringWorkspace ? (
+                <WorkspaceLoadingSkeleton />
+              ) : (
+                <WorkspaceSetupState />
+              )}
             </div>
-          </>
+          </SidebarInset>
         )}
       </WorkspaceDockProvider>
 

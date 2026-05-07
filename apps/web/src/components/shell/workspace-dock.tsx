@@ -1,9 +1,7 @@
 'use client'
 
 import {
-  Fragment,
   createContext,
-  type ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -47,6 +45,7 @@ import {
 import type { SerializedDockview } from 'dockview-core'
 import { Result } from 'better-result'
 import { useChatStore } from '@garden/core/chat'
+import { useWorkspaceStore } from '@garden/core/workspace'
 import { useTheme } from '@garden/ui/components/common/theme-provider'
 import { Button } from '@garden/ui/components/ui/button'
 import { useSidebar } from '@garden/ui/components/ui/sidebar'
@@ -408,46 +407,18 @@ function getPanelRenderer(
 
 function getPanelConstraints(kind: WorkspacePanelKind) {
   switch (kind) {
-    case 'issues':
-      return {
-        minimumWidth: 540,
-        minimumHeight: 320,
-      }
     case 'dashboard':
-      return {
-        minimumWidth: 820,
-        minimumHeight: 460,
-      }
+      return { minimumWidth: 420, minimumHeight: 280 }
     case 'issue-detail':
-      return {
-        minimumWidth: 760,
-        minimumHeight: 420,
-      }
     case 'skill-editor':
-      return {
-        minimumWidth: 760,
-        minimumHeight: 420,
-      }
-    case 'capabilities':
-      return {
-        minimumWidth: 640,
-        minimumHeight: 360,
-      }
     case 'agents':
-      return {
-        minimumWidth: 720,
-        minimumHeight: 420,
-      }
     case 'agent-detail':
-      return {
-        minimumWidth: 720,
-        minimumHeight: 420,
-      }
+    case 'capabilities':
+      return { minimumWidth: 320, minimumHeight: 220 }
+    case 'issues':
+      return { minimumWidth: 280, minimumHeight: 200 }
     default:
-      return {
-        minimumWidth: 420,
-        minimumHeight: 280,
-      }
+      return { minimumWidth: 240, minimumHeight: 180 }
   }
 }
 
@@ -582,77 +553,11 @@ function WorkspaceDockTab(
   )
 }
 
-type WorkspaceDockControlsProps = {
-  activePanelIsExpanded?: boolean
-  activePanelIsPinned?: boolean
-  canSplitPanels?: boolean
-  disabledAll?: boolean
-  onMaximize?: () => void
-  onTogglePinned?: () => void
-  onSplitRight?: () => void
-}
-
-function WorkspaceDockControls({
-  activePanelIsExpanded = false,
-  activePanelIsPinned = false,
-  canSplitPanels = true,
-  disabledAll = false,
-  onMaximize,
-  onTogglePinned,
-  onSplitRight,
-}: WorkspaceDockControlsProps) {
-  const isDisabled = (handler?: () => void) => disabledAll || !handler
-
-  return (
-    <div className="garden-dock-actions">
-      <button
-        type="button"
-        className="garden-dock-actions__button"
-        disabled={disabledAll || !onSplitRight || !canSplitPanels}
-        onClick={onSplitRight}
-        title="Split right"
-      >
-        <Columns2 className="size-3.5" />
-      </button>
-      <button
-        type="button"
-        className="garden-dock-actions__button"
-        disabled={isDisabled(onMaximize)}
-        onClick={onMaximize}
-        title={activePanelIsExpanded ? 'Restore split' : 'Expand tab'}
-      >
-        {activePanelIsExpanded ? (
-          <Minimize2 className="size-3.5" />
-        ) : (
-          <Maximize2 className="size-3.5" />
-        )}
-      </button>
-      <button
-        type="button"
-        className={[
-          'garden-dock-actions__button',
-          activePanelIsPinned ? 'garden-dock-actions__button--active' : '',
-        ]
-          .filter(Boolean)
-          .join(' ')}
-        disabled={isDisabled(onTogglePinned)}
-        onClick={onTogglePinned}
-        title={activePanelIsPinned ? 'Unpin tab' : 'Pin tab'}
-      >
-        {activePanelIsPinned ? (
-          <PinOff className="size-3.5" />
-        ) : (
-          <Pin className="size-3.5" />
-        )}
-      </button>
-    </div>
-  )
-}
-
 export function WorkspaceDockControlsStrip(
   _props?: IDockviewHeaderActionsProps,
 ) {
   const ctx = useContext(WorkspaceDockContext)
+  const workspaceSidebar = useSidebar()
 
   if (!ctx) {
     return null
@@ -669,20 +574,70 @@ export function WorkspaceDockControlsStrip(
   } = ctx
   const hasActiveGroup = Boolean(activeGroupId)
   const hasActivePanel = Boolean(ctx.activePanel)
+  const canUseContextRail = panelUsesContextRail(ctx.activePanel?.kind)
+  const railOpen = workspaceSidebar.state === 'expanded'
+  const canSplit = hasActivePanel && canSplitPanels
 
   return (
-    <WorkspaceDockControls
-      activePanelIsExpanded={activePanelIsExpanded}
-      activePanelIsPinned={activePanelIsPinned}
-      canSplitPanels={canSplitPanels}
-      onMaximize={hasActiveGroup ? () => maximizeActivePanel() : undefined}
-      onTogglePinned={
-        hasActivePanel ? () => toggleActivePanelPinned() : undefined
-      }
-      onSplitRight={
-        hasActivePanel && canSplitPanels ? () => splitActivePanel() : undefined
-      }
-    />
+    <div className="garden-dock-actions">
+      <button
+        type="button"
+        className={cn(
+          'garden-dock-actions__button',
+          railOpen && 'garden-dock-actions__button--active',
+        )}
+        disabled={!canUseContextRail}
+        onClick={workspaceSidebar.toggleSidebar}
+        title={
+          canUseContextRail
+            ? railOpen
+              ? 'Collapse context rail'
+              : 'Open context rail'
+            : 'No context rail for this page'
+        }
+        aria-label={railOpen ? 'Collapse context rail' : 'Open context rail'}
+      >
+        <PanelLeft className="size-3.5" />
+      </button>
+      <button
+        type="button"
+        className="garden-dock-actions__button"
+        disabled={!canSplit}
+        onClick={canSplit ? () => splitActivePanel() : undefined}
+        title="Split right"
+      >
+        <Columns2 className="size-3.5" />
+      </button>
+      <button
+        type="button"
+        className="garden-dock-actions__button"
+        disabled={!hasActiveGroup}
+        onClick={hasActiveGroup ? () => maximizeActivePanel() : undefined}
+        title={activePanelIsExpanded ? 'Restore split' : 'Expand tab'}
+      >
+        {activePanelIsExpanded ? (
+          <Minimize2 className="size-3.5" />
+        ) : (
+          <Maximize2 className="size-3.5" />
+        )}
+      </button>
+      <button
+        type="button"
+        className={cn(
+          'garden-dock-actions__button',
+          activePanelIsPinned && 'garden-dock-actions__button--active',
+        )}
+        disabled={!hasActivePanel}
+        onClick={hasActivePanel ? () => toggleActivePanelPinned() : undefined}
+        title={activePanelIsPinned ? 'Unpin tab' : 'Pin tab'}
+      >
+        {activePanelIsPinned ? (
+          <PinOff className="size-3.5" />
+        ) : (
+          <Pin className="size-3.5" />
+        )}
+      </button>
+    </div>
   )
 }
 
@@ -714,299 +669,31 @@ export function WorkspaceDockTabStripActions(
   )
 }
 
-export function WorkspaceDockTitlebar({
-  title,
-  subtitle,
-}: {
-  title?: ReactNode
-  subtitle?: ReactNode
-}) {
+function WorkspaceDockWatermark() {
+  const workspace = useWorkspaceStore((state) => state.workspace)
   const ctx = useContext(WorkspaceDockContext)
-  const workspaceSidebar = useSidebar()
   const hasActiveGroup = Boolean(ctx?.activeGroupId)
 
-  if (!ctx) {
-    return (
-      <div className="garden-titlebar">
-        <div className="garden-titlebar__fallback">
-          <WorkspaceDockControls disabledAll />
-          <div className="flex-1" />
-        </div>
-      </div>
-    )
-  }
-
-  const hasActivePanel = Boolean(ctx.activePanel)
-  const canUseContextRail = panelUsesContextRail(ctx.activePanel?.kind)
-  const handleTabDrop = (
-    event: React.DragEvent<HTMLDivElement>,
-    targetPanelId: string,
-  ) => {
-    if (!hasDockDropData(event.dataTransfer)) return
-    event.preventDefault()
-    event.stopPropagation()
-
-    const api = ctx.getDockApi()
-    const targetPanel = api?.getPanel(targetPanelId)
-    if (!api || !targetPanel) return
-    const targetIndex = targetPanel.group.panels.findIndex(
-      (panel) => panel.id === targetPanel.id,
-    )
-    const insertIndex = getTabDropIndex(
-      event,
-      targetIndex >= 0 ? targetIndex : 0,
-    )
-
-    const draggedPanelId = getDockPanelDragId(event.dataTransfer)
-    if (draggedPanelId) {
-      const draggedPanel = api.getPanel(draggedPanelId)
-      if (!draggedPanel || draggedPanel.id === targetPanelId) return
-      const draggedIndex = targetPanel.group.panels.findIndex(
-        (panel) => panel.id === draggedPanel.id,
-      )
-      draggedPanel.api.moveTo({
-        group: targetPanel.group,
-        index: normalizeMoveIndex({ draggedIndex, insertIndex }),
-      })
-      draggedPanel.api.setActive()
-      return
-    }
-
-    const session = parseChatSessionDragPayload(event.dataTransfer)
-    if (!session) return
-    ctx.openPanelAt(
-      { kind: 'chat', title: session.title, entityId: session.id },
-      targetPanelId,
-      'within',
-      insertIndex,
-    )
-  }
-
-  const handleTabBarDrop = (event: React.DragEvent<HTMLDivElement>) => {
-    if (!hasDockDropData(event.dataTransfer)) return
-    event.preventDefault()
-    event.stopPropagation()
-
-    const api = ctx.getDockApi()
-    const targetPanel = api?.activeGroup?.activePanel ?? api?.activePanel
-    if (!api || !targetPanel) return
-    const insertIndex = targetPanel.group.panels.length
-
-    const draggedPanelId = getDockPanelDragId(event.dataTransfer)
-    if (draggedPanelId) {
-      const draggedPanel = api.getPanel(draggedPanelId)
-      if (!draggedPanel) return
-      const draggedIndex = targetPanel.group.panels.findIndex(
-        (panel) => panel.id === draggedPanel.id,
-      )
-      draggedPanel.api.moveTo({
-        group: targetPanel.group,
-        index: normalizeMoveIndex({ draggedIndex, insertIndex }),
-      })
-      draggedPanel.api.setActive()
-      return
-    }
-
-    const session = parseChatSessionDragPayload(event.dataTransfer)
-    if (!session) return
-    ctx.openPanelAt(
-      { kind: 'chat', title: session.title, entityId: session.id },
-      targetPanel.id,
-      'within',
-      insertIndex,
-    )
-  }
-
   return (
-    <div className="garden-titlebar">
-      <div className="garden-titlebar__fallback">
-        <WorkspaceDockControls
-          activePanelIsExpanded={ctx.activePanelIsExpanded}
-          activePanelIsPinned={ctx.activePanelIsPinned}
-          canSplitPanels={ctx.canSplitPanels}
-          disabledAll={!hasActiveGroup}
-          onMaximize={
-            hasActiveGroup ? () => ctx.maximizeActivePanel() : undefined
-          }
-          onTogglePinned={
-            hasActivePanel ? () => ctx.toggleActivePanelPinned() : undefined
-          }
-          onSplitRight={
-            hasActivePanel && ctx.canSplitPanels
-              ? () => ctx.splitActivePanel()
-              : undefined
-          }
-        />
-        <button
-          type="button"
-          className={[
-            'garden-dock-actions__button',
-            workspaceSidebar.state === 'expanded'
-              ? 'garden-dock-actions__button--active'
-              : '',
-          ]
-            .filter(Boolean)
-            .join(' ')}
-          disabled={!canUseContextRail}
-          onClick={workspaceSidebar.toggleSidebar}
-          title={
-            canUseContextRail
-              ? workspaceSidebar.state === 'expanded'
-                ? 'Collapse context rail'
-                : 'Open context rail'
-              : 'No context rail for this page'
-          }
-          aria-label={
-            workspaceSidebar.state === 'expanded'
-              ? 'Collapse context rail'
-              : 'Open context rail'
-          }
-        >
-          <PanelLeft className="size-3.5" />
-        </button>
-        <div className="garden-titlebar__divider" aria-hidden="true" />
-        {ctx.dockPanels.length > 0 ? (
-          <div
-            className="garden-titlebar__tabs"
-            onDragOver={(event) => {
-              if (!hasDockDropData(event.dataTransfer)) return
-              event.preventDefault()
-              event.dataTransfer.dropEffect = 'move'
-            }}
-            onDrop={handleTabBarDrop}
-          >
-            {ctx.dockPanels.map((tab, index) => {
-              const Icon = panelIcons[tab.kind]
-
-              return (
-                <Fragment key={tab.id}>
-                  <ContextMenu>
-                    <ContextMenuTrigger render={<div className="contents" />}>
-                      <div
-                        role="button"
-                        tabIndex={0}
-                        draggable
-                        className={cn(
-                          'garden-titlebar__tab',
-                          tab.isActive && 'garden-titlebar__tab--active',
-                        )}
-                        onClick={() => {
-                          ctx.activatePanel(tab.id)
-                        }}
-                        onDragStart={(event) => {
-                          event.dataTransfer.effectAllowed = 'move'
-                          event.dataTransfer.setData(dockPanelDragType, tab.id)
-                        }}
-                        onDragOver={(event) => {
-                          if (!hasDockDropData(event.dataTransfer)) return
-                          event.preventDefault()
-                          event.dataTransfer.dropEffect = 'move'
-                        }}
-                        onDrop={(event) => handleTabDrop(event, tab.id)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault()
-                            ctx.activatePanel(tab.id)
-                          }
-                        }}
-                        title={tab.title}
-                      >
-                        <span className="garden-titlebar__tab-label">
-                          <Icon className="size-3 shrink-0" />
-                          {tab.isPinned ? (
-                            <Pin className="garden-dock-tab__pin size-3 shrink-0" />
-                          ) : null}
-                          <span className="truncate">{tab.title}</span>
-                        </span>
-                        <button
-                          type="button"
-                          role="button"
-                          tabIndex={-1}
-                          className="garden-titlebar__tab-close"
-                          onPointerDown={(event) => {
-                            event.preventDefault()
-                            event.stopPropagation()
-                          }}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            ctx.closePanel(tab.id)
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault()
-                              event.stopPropagation()
-                              ctx.closePanel(tab.id)
-                            }
-                          }}
-                        >
-                          <X className="size-3" strokeWidth={2.2} />
-                        </button>
-                      </div>
-                    </ContextMenuTrigger>
-                    <ContextMenuContent side="bottom">
-                      <ContextMenuItem
-                        onClick={() => {
-                          ctx.togglePanelPinned(tab.id)
-                        }}
-                      >
-                        {tab.isPinned ? (
-                          <PinOff className="size-4" />
-                        ) : (
-                          <Pin className="size-4" />
-                        )}
-                        {tab.isPinned ? 'Unpin tab' : 'Pin tab'}
-                      </ContextMenuItem>
-                      <ContextMenuSeparator />
-                      <ContextMenuItem
-                        disabled={!ctx.canSplitPanels}
-                        onClick={() => {
-                          ctx.splitPanel(tab.id)
-                        }}
-                      >
-                        <Columns2 className="size-4" />
-                        Create split right
-                      </ContextMenuItem>
-                      <ContextMenuSeparator />
-                      <ContextMenuItem
-                        onClick={() => {
-                          ctx.closePanel(tab.id)
-                        }}
-                      >
-                        <X className="size-4" />
-                        Close tab
-                      </ContextMenuItem>
-                    </ContextMenuContent>
-                  </ContextMenu>
-                  {index < ctx.dockPanels.length - 1 ? (
-                    <div
-                      className="garden-titlebar__tab-divider"
-                      aria-hidden="true"
-                    />
-                  ) : null}
-                </Fragment>
-              )
-            })}
-            <button
-              type="button"
-              className="garden-dock-tabstrip-actions__button shrink-0"
-              disabled={!hasActiveGroup}
-              onClick={() => {
-                ctx.openNewTab()
-              }}
-              title="New tab"
-            >
-              <Plus className="size-3.5" />
-            </button>
-          </div>
-        ) : (
-          <div className="garden-titlebar__copy">
-            <div className="garden-titlebar__title">{title}</div>
-            {subtitle ? (
-              <div className="garden-titlebar__subtitle">{subtitle}</div>
-            ) : null}
-          </div>
-        )}
+    <div className="garden-dock-watermark">
+      <div className="garden-dock-watermark__copy">
+        <span className="garden-dock-watermark__eyebrow">Workspace</span>
+        <h2>{workspace?.name ?? 'Garden'}</h2>
+        <p>Open a tab from the rail or use the new-tab button above.</p>
       </div>
+      {hasActiveGroup && ctx ? (
+        <div className="garden-dock-watermark__actions">
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            onClick={() => ctx.openNewTab()}
+          >
+            <Plus className="size-3.5" />
+            New tab
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -2345,6 +2032,8 @@ export function WorkspaceDockView() {
       defaultTabComponent={WorkspaceDockTab}
       leftHeaderActionsComponent={WorkspaceDockTabStripActions}
       prefixHeaderActionsComponent={WorkspaceDockControlsStrip}
+      watermarkComponent={WorkspaceDockWatermark}
+      disableFloatingGroups
       onReady={handleReady}
       singleTabMode="default"
       scrollbars="custom"
