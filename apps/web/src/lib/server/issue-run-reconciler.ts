@@ -7,7 +7,6 @@ import { getDb, schema } from '@/lib/server/db'
 import {
   appendIssueRunEvent,
   enqueueIssueRunRuntime,
-  startIssueRun,
 } from '@garden/core/issues/run-service'
 
 const logger = createLogger('issue-run-reconciler')
@@ -28,7 +27,6 @@ export type ReconcileReport = {
   silentRunsReaped: number
   wakeupsRestarted: number
   wakeupsFailed: number
-  recurrencesFannedOut: number
   approvalsExpired: number
 }
 
@@ -39,10 +37,8 @@ export class IssueRunReconcilerError extends TaggedError(
     | 'approval_sweep_failed'
     | 'db_error'
     | 'enqueue_failed'
-    | 'invalid_cron'
     | 'reconcile_failed'
     | 'run_not_found'
-    | 'start_failed'
   message: string
   cause?: unknown
 }>() {}
@@ -64,15 +60,6 @@ type WakeupCandidateRow = {
   correlation_id: string | null
   attempt_count: number
   latest_run_error: string | null
-}
-
-type RecurrenceRow = {
-  id: string
-  workspace_id: string
-  issue_id: string
-  agent_id: string
-  cron: string
-  next_fire_at: Date | string | null
 }
 
 type ApprovalRow = {
@@ -139,132 +126,9 @@ function exhaustedWakeupComment(reason: string) {
   }
 }
 
-function nextMinuteBoundary(from: Date) {
-  const next = new Date(from)
-  next.setUTCSeconds(0, 0)
-  next.setUTCMinutes(next.getUTCMinutes() + 1)
-  return next
-}
-
 function pendingAgentIdFromContext(value: string | null) {
   const prefix = 'agent_proposal:'
   return value?.startsWith(prefix) ? value.slice(prefix.length) : null
-}
-
-function parseCronField(input: string, min: number, max: number) {
-  const values = new Set<number>()
-  const parts = input.split(',')
-  for (const part of parts) {
-    if (!part) return null
-    const stepParts = part.split('/')
-    if (stepParts.length > 2) return null
-    const [rangePart, stepPart] = stepParts
-    const step = stepPart === undefined ? 1 : Number(stepPart)
-    if (!Number.isInteger(step) || step < 1) return null
-
-    let start = min
-    let end = max
-    if (rangePart !== '*') {
-      const rangeParts = rangePart.split('-')
-      if (rangeParts.length === 1) {
-        start = Number(rangeParts[0])
-        end = start
-      } else if (rangeParts.length === 2) {
-        start = Number(rangeParts[0])
-        end = Number(rangeParts[1])
-      } else {
-        return null
-      }
-    }
-
-    if (
-      !Number.isInteger(start) ||
-      !Number.isInteger(end) ||
-      start < min ||
-      end > max ||
-      start > end
-    ) {
-      return null
-    }
-
-    for (let value = start; value <= end; value += step) {
-      values.add(value)
-    }
-  }
-
-  return values
-}
-
-function cronDayOfWeek(date: Date) {
-  return date.getUTCDay()
-}
-
-// Source: docs/research/issue-flow-plan.md, "Cloudflare-first runtime" scheduled wakeups.
-export function nextFireFromCron(
-  cron: string,
-  from: Date,
-): ResultValue<Date, IssueRunReconcilerError> {
-  const parts = cron.trim().split(/\s+/)
-  if (parts.length !== 5) {
-    return Result.err(
-      reconcilerError({
-        code: 'invalid_cron',
-        message: `Unsupported recurrence cron "${cron}".`,
-      }),
-    )
-  }
-
-  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts
-  const parsed = {
-    minute: parseCronField(minute, 0, 59),
-    hour: parseCronField(hour, 0, 23),
-    dayOfMonth: parseCronField(dayOfMonth, 1, 31),
-    month: parseCronField(month, 1, 12),
-    dayOfWeek: parseCronField(dayOfWeek, 0, 7),
-  }
-
-  if (
-    !parsed.minute ||
-    !parsed.hour ||
-    !parsed.dayOfMonth ||
-    !parsed.month ||
-    !parsed.dayOfWeek
-  ) {
-    return Result.err(
-      reconcilerError({
-        code: 'invalid_cron',
-        message: `Unsupported recurrence cron "${cron}".`,
-      }),
-    )
-  }
-
-  let candidate = nextMinuteBoundary(from)
-  const end = new Date(from)
-  end.setFullYear(end.getFullYear() + 5)
-
-  while (candidate <= end) {
-    const dow = cronDayOfWeek(candidate)
-    const normalizedDowMatches =
-      parsed.dayOfWeek.has(dow) || (dow === 0 && parsed.dayOfWeek.has(7))
-    if (
-      parsed.minute.has(candidate.getUTCMinutes()) &&
-      parsed.hour.has(candidate.getUTCHours()) &&
-      parsed.dayOfMonth.has(candidate.getUTCDate()) &&
-      parsed.month.has(candidate.getUTCMonth() + 1) &&
-      normalizedDowMatches
-    ) {
-      return Result.ok(candidate)
-    }
-
-    candidate = new Date(candidate.getTime() + 60_000)
-  }
-
-  return Result.err(
-    reconcilerError({
-      code: 'invalid_cron',
-      message: `No fire time found for recurrence cron "${cron}".`,
-    }),
-  )
 }
 
 async function markRunFailed(args: {
@@ -686,89 +550,6 @@ async function failWakeupAndBlockIssue(args: {
   return Result.ok()
 }
 
-async function fanOutRecurrences(
-  env: AppEnv,
-  now: Date,
-): Promise<ResultValue<number, IssueRunReconcilerError>> {
-  const db = getDb(env)
-  const rowsResult = await Result.tryPromise({
-    try: async () => {
-      const rows = await db.execute<RecurrenceRow>(sql`
-        select id, workspace_id, issue_id, agent_id, cron, next_fire_at
-        from issue_recurrence
-        where enabled = true
-          and next_fire_at is not null
-          and next_fire_at <= ${now}
-        order by next_fire_at
-        limit 50
-      `)
-      return rows.rows
-    },
-    catch: (cause) => dbError('load due issue recurrences', cause),
-  })
-  if (rowsResult.isErr()) return Result.err(rowsResult.error)
-
-  let count = 0
-  for (const row of rowsResult.value) {
-    const nextFireResult = nextFireFromCron(row.cron, now)
-    if (nextFireResult.isErr()) {
-      const disableResult = await Result.tryPromise({
-        try: async () => {
-          await db
-            .update(schema.issueRecurrence)
-            .set({ enabled: false, updatedAt: now })
-            .where(eq(schema.issueRecurrence.id, row.id))
-        },
-        catch: (cause) => dbError('disable invalid issue recurrence', cause),
-      })
-      if (disableResult.isErr()) return Result.err(disableResult.error)
-      logger.error(
-        'disabled invalid issue recurrence',
-        nextFireResult.error.message,
-      )
-      continue
-    }
-
-    const updateResult = await Result.tryPromise({
-      try: async () => {
-        await db
-          .update(schema.issueRecurrence)
-          .set({
-            lastFiredAt: now,
-            nextFireAt: nextFireResult.value,
-            updatedAt: now,
-          })
-          .where(eq(schema.issueRecurrence.id, row.id))
-      },
-      catch: (cause) => dbError('advance issue recurrence', cause),
-    })
-    if (updateResult.isErr()) return Result.err(updateResult.error)
-
-    const startResult = await startIssueRun(env, {
-      workspaceId: row.workspace_id,
-      issueId: row.issue_id,
-      agentId: row.agent_id,
-      source: 'scheduled',
-      trigger: {
-        correlationId: `${row.id}:${new Date(row.next_fire_at ?? now).toISOString()}`,
-      },
-      actor: { type: 'system', id: 'reconciler' },
-    })
-    if (startResult.isErr()) {
-      return Result.err(
-        reconcilerError({
-          code: 'start_failed',
-          message: startResult.error.message,
-          cause: startResult.error,
-        }),
-      )
-    }
-    if (startResult.value.kind === 'enqueued') count += 1
-  }
-
-  return Result.ok(count)
-}
-
 async function sweepStaleApprovals(
   env: AppEnv,
   now: Date,
@@ -920,11 +701,6 @@ export async function reconcile(
     logger.error('restartClaimedWakeups failed', wakeupsResult.error.message)
   }
 
-  const recurrenceResult = await fanOutRecurrences(env, now)
-  if (recurrenceResult.isErr()) {
-    logger.error('fanOutRecurrences failed', recurrenceResult.error.message)
-  }
-
   const approvalsResult = await sweepStaleApprovals(env, now)
   if (approvalsResult.isErr()) {
     logger.error('sweepStaleApprovals failed', approvalsResult.error.message)
@@ -934,7 +710,6 @@ export async function reconcile(
     silentRunsReaped: silentResult.isOk() ? silentResult.value : 0,
     wakeupsRestarted: wakeupsResult.isOk() ? wakeupsResult.value.restarted : 0,
     wakeupsFailed: wakeupsResult.isOk() ? wakeupsResult.value.failed : 0,
-    recurrencesFannedOut: recurrenceResult.isOk() ? recurrenceResult.value : 0,
     approvalsExpired: approvalsResult.isOk() ? approvalsResult.value : 0,
   })
 }

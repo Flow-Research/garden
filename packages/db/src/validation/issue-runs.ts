@@ -2,7 +2,6 @@ import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'driz
 import { z } from 'zod'
 import {
   inboxDismissal,
-  issueRecurrence,
   issueRun,
   issueRunEvent,
   issueSourceBinding,
@@ -193,13 +192,6 @@ export const issueSourceBindingInsertSchema = createInsertSchema(
     metadata: () => jsonObjectSchema,
   },
 )
-
-export const issueRecurrenceSelectSchema = createSelectSchema(issueRecurrence, {
-  id: () => uuidSchema,
-  workspaceId: () => uuidSchema,
-  issueId: () => uuidSchema,
-  agentId: () => uuidSchema,
-})
 
 export const inboxDismissalSelectSchema = createSelectSchema(inboxDismissal, {
   id: () => uuidSchema,
