@@ -1,6 +1,7 @@
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { createLogger } from '@garden/core/logger'
+import { LIVE_RUN_STATUSES } from '@garden/core/issues/run-sync'
 import type { AppEnv } from '@/lib/server/env'
 import { getDb, schema } from '@/lib/server/db'
 import {
@@ -15,6 +16,13 @@ const DEFAULT_MAX_WAKEUP_ATTEMPTS = 3
 const RUNTIME_RECOVERY_MAX_WAKEUP_ATTEMPTS = 12
 const WAKEUP_BACKOFF_MS = [5_000, 10_000, 20_000] as const
 const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000
+
+function sqlTextList(values: readonly string[]) {
+  return sql.join(
+    values.map((value) => sql`${value}`),
+    sql`, `,
+  )
+}
 
 export type ReconcileReport = {
   silentRunsReaped: number
@@ -460,7 +468,7 @@ async function restartWakeup(args: {
           .where(
             and(
               eq(schema.issueRun.wakeupId, args.row.wakeup_id),
-              sql`${schema.issueRun.status} in ('queued', 'running', 'waiting_for_input', 'waiting_for_approval')`,
+              inArray(schema.issueRun.status, LIVE_RUN_STATUSES),
             ),
           )
           .limit(1)
@@ -585,7 +593,7 @@ async function restartClaimedWakeups(
             select 1
             from issue_run r
             where r.wakeup_id = w.id
-              and r.status in ('queued', 'running', 'waiting_for_input', 'waiting_for_approval')
+              and r.status in (${sqlTextList(LIVE_RUN_STATUSES)})
           )
         order by w.created_at
         limit 50
