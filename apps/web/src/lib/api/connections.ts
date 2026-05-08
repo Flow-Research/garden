@@ -1,5 +1,5 @@
 import type { ConnectorId } from '@garden/connectors/registry'
-import type { RiskClass } from '@garden/connector-sdk'
+import type { RiskClass } from '@garden/connectors/capabilities'
 import { getApiTransport } from './state'
 
 export type PermissionTrustLevel = 'auto' | 'allow' | 'ask'

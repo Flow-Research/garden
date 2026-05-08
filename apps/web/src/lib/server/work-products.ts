@@ -5,6 +5,7 @@ import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { decideWakeups } from '@garden/core/issues'
+import { LIVE_RUN_STATUSES } from '@garden/core/issues/run-sync'
 import { createLogger } from '@garden/core/logger'
 import type { IssueStatus } from '@garden/core/types'
 
@@ -23,13 +24,6 @@ import type { AppEnv } from './env'
 import { getDb, schema } from './db'
 import { startIssueRun } from './issue-run'
 import { resolveConnectorWritePermissionRequests } from './permission-request'
-
-const ACTIVE_RUN_STATUSES = [
-  'queued',
-  'running',
-  'waiting_for_input',
-  'waiting_for_approval',
-] as const
 
 const URL_PATTERN = /https?:\/\/[^\s"'<>]+/i
 
@@ -738,7 +732,7 @@ async function requestWorkProductChanges(args: {
       .where(
         and(
           eq(schema.issueRun.issueId, issue.id),
-          inArray(schema.issueRun.status, ACTIVE_RUN_STATUSES),
+          inArray(schema.issueRun.status, LIVE_RUN_STATUSES),
         ),
       ),
   ])

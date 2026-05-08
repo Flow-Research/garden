@@ -1,5 +1,6 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import { LIVE_RUN_STATUSES } from '@garden/core/issues/run-sync'
 import type { IssueStatus } from '@garden/core/types/issue'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
@@ -142,12 +143,7 @@ export const Route = createFileRoute('/api/issues/$id')({
             .where(
               and(
                 eq(schema.issueRun.issueId, issue.id),
-                inArray(schema.issueRun.status, [
-                  'queued',
-                  'running',
-                  'waiting_for_input',
-                  'waiting_for_approval',
-                ]),
+                inArray(schema.issueRun.status, LIVE_RUN_STATUSES),
                 ...(syncDecision.cancelAgentId
                   ? [eq(schema.issueRun.agentId, syncDecision.cancelAgentId)]
                   : []),

@@ -4,6 +4,11 @@ import { Result, TaggedError, type Result as ResultValue } from "better-result";
 import { and, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { connectorRegistry, getConnectorById } from "@garden/connectors";
+import {
+  buildMcpAiToolKey,
+  canonicalJsonString,
+  guardedMcpToolDescription,
+} from "@garden/connectors/capabilities";
 import { mintMcpProxyJwt } from "@garden/connectors/proxy-jwt";
 import * as schema from "@garden/db/schema";
 import {
@@ -14,6 +19,8 @@ import {
   type StoredConnectorServerRow,
 } from "./mcp-connectors";
 import { mcpRuntimeConfig } from "./mcp-runtime-config";
+
+export { canonicalJsonString } from "@garden/connectors/capabilities";
 
 export const MCP_CONNECTOR_SERVER_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS mcp_connector_server (
@@ -129,48 +136,6 @@ export function buildConnectorProxyMcpUrl(
   proxyBaseUrl: string,
 ) {
   return new URL(`${connectorId}/mcp`, proxyBaseUrl).toString();
-}
-
-export function canonicalizeJson(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((entry) => canonicalizeJson(entry));
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, canonicalizeJson(entry)]),
-    );
-  }
-
-  return value;
-}
-
-export function canonicalJsonString(value: unknown) {
-  return JSON.stringify(canonicalizeJson(value ?? null));
-}
-
-function buildMcpAiToolKey(connectorId: string, toolName: string) {
-  return `tool_${connectorId.replace(/-/g, "")}_${toolName}`;
-}
-
-function guardedMcpToolDescription(input: {
-  connectorId: string;
-  toolName: string;
-  description?: string | null;
-}) {
-  const base = input.description?.trim() ?? "";
-  const writeLike =
-    /(^|_)(write|create|update|delete|close|merge|comment|send|publish|grant|revoke)($|_)/i.test(
-      input.toolName,
-    );
-  if (!writeLike) return base || undefined;
-
-  const guard =
-    `External ${input.connectorId} write tool. Use only when the user explicitly asks to change ${input.connectorId} or a source-bound external object. ` +
-    "Do not use this for generic Garden issue commands; use Garden issue tools such as update_issue_status instead.";
-  return base ? `${guard}\n\n${base}` : guard;
 }
 
 export class RuntimeMcpController {

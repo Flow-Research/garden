@@ -1,5 +1,6 @@
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { canonicalJsonString } from '@garden/connectors/capabilities'
 import type { getDb } from './db'
 import { schema } from './db'
 
@@ -41,26 +42,6 @@ export type ResolveConnectorWritePermissionOutcome = {
     toolCallId: string
   }>
   toolCallIds: string[]
-}
-
-function canonicalizeJson(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((entry) => canonicalizeJson(entry))
-  }
-
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, canonicalizeJson(entry)]),
-    )
-  }
-
-  return value
-}
-
-function canonicalJsonString(value: unknown) {
-  return JSON.stringify(canonicalizeJson(value ?? null))
 }
 
 async function hashToolArgs(value: unknown) {

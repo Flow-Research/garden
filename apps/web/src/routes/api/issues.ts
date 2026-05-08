@@ -12,21 +12,20 @@ import {
 } from '@/lib/server/validation/issues'
 import {
   badRequest,
-  notFound,
-  requireSession,
-  resolveWorkspaceId,
+  requireWorkspaceContext,
   toIssue,
-  unauthorized,
 } from '@/lib/server/control-plane'
 
 export const Route = createFileRoute('/api/issues')({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const session = await requireSession(request)
-        if (!session) return unauthorized()
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
-        if (!workspaceId) return Response.json({ issues: [], total: 0 })
+        const context = await requireWorkspaceContext(request, {
+          missingWorkspaceResponse: () =>
+            Response.json({ issues: [], total: 0 }),
+        })
+        if (context instanceof Response) return context
+        const { workspaceId } = context
         const searchResult = parseSearchParams(
           request,
           issuesListSearchSchema,
@@ -90,10 +89,9 @@ export const Route = createFileRoute('/api/issues')({
         })
       },
       POST: async ({ request }) => {
-        const session = await requireSession(request)
-        if (!session) return unauthorized()
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
-        if (!workspaceId) return notFound('Workspace not found')
+        const context = await requireWorkspaceContext(request)
+        if (context instanceof Response) return context
+        const { session, workspaceId } = context
         const bodyResult = await parseJsonBody(
           request,
           createIssueBodySchema,

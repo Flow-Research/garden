@@ -1,20 +1,16 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { computeInboxItems } from '@/lib/server/inbox-compute'
-import {
-  requireSession,
-  resolveWorkspaceId,
-  unauthorized,
-} from '@/lib/server/control-plane'
+import { requireWorkspaceContext } from '@/lib/server/control-plane'
 
 export const Route = createFileRoute('/api/inbox')({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const session = await requireSession(request)
-        if (!session) return unauthorized()
-
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
-        if (!workspaceId) return Response.json([])
+        const context = await requireWorkspaceContext(request, {
+          missingWorkspaceResponse: () => Response.json([]),
+        })
+        if (context instanceof Response) return context
+        const { session, workspaceId } = context
 
         const items = await computeInboxItems({
           workspaceId,

@@ -1,7 +1,11 @@
 import { connectorRegistry } from '@garden/connectors'
 import type { ConnectorId } from '@garden/connectors/registry'
+import {
+  defaultTrustLevelForRisk,
+  type PermissionTrustLevel,
+  type RiskClass,
+} from '@garden/connectors/capabilities'
 import { desc } from 'drizzle-orm'
-import type { RiskClass } from '@/lib/api'
 import { schema } from './db'
 
 export type ConnectorStatus =
@@ -15,7 +19,6 @@ type GitHubInstallationRow = typeof schema.githubAppInstallation.$inferSelect
 type CapabilityRow = typeof schema.capability.$inferSelect
 type PermissionGrantRow = typeof schema.permissionGrant.$inferSelect
 type ToolCallAuditRow = typeof schema.toolCallAudit.$inferSelect
-type PermissionTrustLevel = 'auto' | 'allow' | 'ask'
 
 export type ConnectionSurfaceTool = {
   name: string
@@ -177,17 +180,6 @@ export function buildConnectionSurface(args: {
         })),
     }
   })
-}
-
-function defaultTrustLevelForRisk(riskClass: RiskClass): PermissionTrustLevel {
-  switch (riskClass) {
-    case 'read':
-      return 'auto'
-    case 'write':
-      return 'allow'
-    default:
-      return 'ask'
-  }
 }
 
 export const latestInvocationOrder = desc(schema.toolCallAudit.ts)

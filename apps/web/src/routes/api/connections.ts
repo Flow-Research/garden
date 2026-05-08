@@ -3,23 +3,15 @@ import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { buildConnectionSurface } from '@/lib/server/connection-surface'
-import {
-  requireSession,
-  resolveWorkspaceId,
-  unauthorized,
-} from '@/lib/server/control-plane'
+import { requireWorkspaceContext } from '@/lib/server/control-plane'
 
 export const Route = createFileRoute('/api/connections')({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const session = await requireSession(request)
-        if (!session) return unauthorized()
-
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
-        if (!workspaceId) {
-          return Response.json({ error: 'Workspace not found' }, { status: 404 })
-        }
+        const context = await requireWorkspaceContext(request)
+        if (context instanceof Response) return context
+        const { workspaceId } = context
 
         const db = getDb(appEnv)
         const agents = await db

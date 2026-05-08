@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { decideWakeups } from '@garden/core/issues'
+import { WAKEUP_DEDUPING_RUN_STATUSES } from '@garden/core/issues/run-sync'
 import type { IssueStatus } from '@garden/core/types'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
@@ -16,11 +17,6 @@ import {
 import { startIssueRun } from '@/lib/server/issue-run'
 
 const MENTION_PATTERN = /@([A-Za-z0-9._-]+)/g
-const ACTIVE_RUN_STATUSES = [
-  'queued',
-  'running',
-  'waiting_for_approval',
-] as const
 
 function normalizeMention(value: string) {
   return value.trim().toLowerCase()
@@ -237,7 +233,7 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
               .where(
                 and(
                   eq(schema.issueRun.issueId, params.id),
-                  inArray(schema.issueRun.status, ACTIVE_RUN_STATUSES),
+                  inArray(schema.issueRun.status, WAKEUP_DEDUPING_RUN_STATUSES),
                 ),
               ),
             db

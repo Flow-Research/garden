@@ -1,18 +1,8 @@
 import { eq } from 'drizzle-orm'
+import { defaultTrustLevelForRisk } from '@garden/connectors/capabilities'
 import type { getDb, schema } from './db'
 
 type Db = ReturnType<typeof getDb>
-
-function defaultTrustLevelForRisk(riskClass: string | null) {
-  switch (riskClass) {
-    case 'read':
-      return 'auto' as const
-    case 'write':
-      return 'allow' as const
-    default:
-      return 'ask' as const
-  }
-}
 
 export async function bindExistingSkillsToAgent(input: {
   db: Db

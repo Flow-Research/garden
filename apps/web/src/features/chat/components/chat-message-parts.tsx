@@ -34,6 +34,8 @@ import {
   getToolPartState,
 } from '@cloudflare/ai-chat/react'
 import { getToolName, isToolUIPart } from 'ai'
+import { canonicalizeJson } from '@garden/connectors/capabilities'
+export { canonicalJsonString } from '@garden/connectors/capabilities'
 import type {
   Edge as FlowEdge,
   Node as FlowNode,
@@ -340,26 +342,6 @@ function stripLegacyInternalDocumentContext(text: string) {
   return `${text.slice(0, start).trimEnd()}\n\n${text
     .slice(end + 2)
     .trimStart()}`.trim()
-}
-
-function canonicalizeJson(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((entry) => canonicalizeJson(entry))
-  }
-
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, canonicalizeJson(entry)]),
-    )
-  }
-
-  return value
-}
-
-export function canonicalJsonString(value: unknown) {
-  return JSON.stringify(canonicalizeJson(value ?? null))
 }
 
 export function formatApprovalToolName(toolName: string) {

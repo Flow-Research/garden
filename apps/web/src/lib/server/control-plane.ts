@@ -58,6 +58,23 @@ export async function resolveWorkspaceId(request: Request, userId: string) {
   return membership?.organizationId ?? null
 }
 
+export async function requireWorkspaceContext(
+  request: Request,
+  options: { missingWorkspaceResponse?: () => Response } = {},
+) {
+  const session = await requireSession(request)
+  if (!session) return unauthorized()
+
+  const workspaceId = await resolveWorkspaceId(request, session.user.id)
+  if (!workspaceId) {
+    return options.missingWorkspaceResponse
+      ? options.missingWorkspaceResponse()
+      : notFound('Workspace not found')
+  }
+
+  return { session, workspaceId }
+}
+
 export async function requireWorkspaceAccess(
   request: Request,
   workspaceId: string,
@@ -369,8 +386,7 @@ export function toSkill(
       created_at: created,
       updated_at: created,
     })),
-    source_type:
-      record.sourceType === 'skills.sh' ? 'skills.sh' : 'manual',
+    source_type: record.sourceType === 'skills.sh' ? 'skills.sh' : 'manual',
     source_url: record.sourceUrl ?? null,
     bundle_hash: record.bundleHash ?? null,
     created_by: record.authorId ?? null,

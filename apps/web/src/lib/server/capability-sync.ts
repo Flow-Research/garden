@@ -5,6 +5,10 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { Result, TaggedError } from 'better-result'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getConnectorById } from '@garden/connectors'
+import {
+  canonicalJsonString,
+  defaultTrustLevelForRisk,
+} from '@garden/connectors/capabilities'
 import { mintMcpProxyJwt } from '@garden/connectors/proxy-jwt'
 import { getDb, schema } from './db'
 import { appEnv } from './env'
@@ -18,26 +22,6 @@ export class CapabilitySyncError extends TaggedError('CapabilitySyncError')<{
     | 'database_failed'
   message: string
 }>() {}
-
-function canonicalizeJson(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((entry) => canonicalizeJson(entry))
-  }
-
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, canonicalizeJson(entry)]),
-    )
-  }
-
-  return value
-}
-
-function canonicalJsonString(value: unknown) {
-  return JSON.stringify(canonicalizeJson(value ?? null))
-}
 
 function resolveProxyBaseUrl() {
   return appEnv.MCP_PROXY_URL?.trim() || new URL('/api/mcp-proxy/', appEnv.BETTER_AUTH_URL).toString()
@@ -112,17 +96,6 @@ async function resolveSyncAgentId(userId: string, workspaceId: string) {
             'Capability sync requires at least one workspace agent to exist',
         }),
       )
-}
-
-function defaultTrustLevelForRisk(riskClass: string | null) {
-  switch (riskClass) {
-    case 'read':
-      return 'auto' as const
-    case 'write':
-      return 'allow' as const
-    default:
-      return 'ask' as const
-  }
 }
 
 async function seedDefaultPermissionGrants(args: {

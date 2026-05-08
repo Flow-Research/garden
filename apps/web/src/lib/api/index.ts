@@ -20,7 +20,7 @@ export * from './connections'
 export * from './chat-threads'
 export * from './documents'
 export type { AgentChatSession, ChatThreadRow } from '@garden/core/types'
-export type { RiskClass } from '@garden/connector-sdk'
+export type { RiskClass } from '@garden/connectors/capabilities'
 
 import * as auth from './auth'
 import * as issues from './issues'

@@ -21,9 +21,15 @@ import {
   type AgentPermissions,
 } from '@garden/core/agents/permissions'
 import { formatIssueIdentifier } from '@garden/core/issues/identifier'
-import { nextIssueStatusForRunStatus } from '@garden/core/issues/run-sync'
+import {
+  isLiveIssueRunStatus,
+  nextIssueStatusForRunStatus,
+} from '@garden/core/issues/run-sync'
 import type { IssueStatus } from '@garden/core/types/issue'
-import type { IssueRunUsage } from '@garden/core/types/issue-run'
+import type {
+  IssueRunStatus,
+  IssueRunUsage,
+} from '@garden/core/types/issue-run'
 import { connectorRegistry } from '@garden/connectors'
 import * as schema from '@garden/db/schema'
 import issueInteractionSkillMarkdown from './skills/issue-interaction/SKILL.md?raw'
@@ -101,12 +107,6 @@ const DEFAULT_ISSUE_RUN_TIMEOUT_SEC = 2 * 60 * 60
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.issue-run.turn'
 const WAKEUP_BACKOFF_MS = [5_000, 10_000, 20_000] as const
-const ACTIVE_RUN_STATUSES = [
-  'queued',
-  'running',
-  'waiting_for_input',
-  'waiting_for_approval',
-] as const
 
 const VALID_RESOLUTION_ACTIONS = new Set<IssueRunResolutionAction>([
   'ask_question',
@@ -274,9 +274,7 @@ function emptyUsage(ctx: StepContext): IssueRunUsage {
 }
 
 function isActiveRunStatus(status: string) {
-  return ACTIVE_RUN_STATUSES.includes(
-    status as (typeof ACTIVE_RUN_STATUSES)[number],
-  )
+  return isLiveIssueRunStatus(status as IssueRunStatus)
 }
 
 function retryDelayMs(attemptCount: number) {
@@ -948,12 +946,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     })
     if (result.isErr()) return Result.err(result.error)
     const status = result.value?.status
-    if (
-      status === 'queued' ||
-      status === 'running' ||
-      status === 'waiting_for_input' ||
-      status === 'waiting_for_approval'
-    ) {
+    if (status && isLiveIssueRunStatus(status as IssueRunStatus)) {
       return Result.ok()
     }
 

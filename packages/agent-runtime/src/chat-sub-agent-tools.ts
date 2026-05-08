@@ -12,6 +12,10 @@ import { drizzle } from "drizzle-orm/neon-serverless";
 import { z } from "zod";
 import { connectorRegistry } from "@garden/connectors";
 import { formatIssueIdentifier } from "@garden/core/issues/identifier";
+import {
+  isTerminalIssueStatus,
+  LIVE_RUN_STATUSES,
+} from "@garden/core/issues/run-sync";
 import * as schema from "@garden/db/schema";
 import {
   issueCommentInsertSchema,
@@ -65,17 +69,6 @@ const readRunStatusSchema = z.enum([
 ]);
 
 type ReadRunStatus = z.infer<typeof readRunStatusSchema>;
-
-const LIVE_ISSUE_RUN_STATUSES = [
-  "queued",
-  "running",
-  "waiting_for_input",
-  "waiting_for_approval",
-] as const;
-
-function isTerminalIssueStatus(status: string) {
-  return status === "done" || status === "cancelled";
-}
 
 const readRunInputSchema = z.object({
   run_id_or_issue_identifier: z
@@ -992,7 +985,7 @@ async function updateIssueStatusFromChat(
               and(
                 eq(schema.issueRun.workspaceId, identity.workspaceId),
                 eq(schema.issueRun.issueId, issue.id),
-                inArray(schema.issueRun.status, LIVE_ISSUE_RUN_STATUSES),
+                inArray(schema.issueRun.status, LIVE_RUN_STATUSES),
               ),
             ),
         catch: errorMessage,

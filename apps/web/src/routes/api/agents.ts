@@ -13,21 +13,19 @@ import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   badRequest,
-  notFound,
-  requireSession,
-  resolveWorkspaceId,
+  requireWorkspaceContext,
   toAgent,
-  unauthorized,
 } from '@/lib/server/control-plane'
 
 export const Route = createFileRoute('/api/agents')({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const session = await requireSession(request)
-        if (!session) return unauthorized()
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
-        if (!workspaceId) return Response.json([])
+        const context = await requireWorkspaceContext(request, {
+          missingWorkspaceResponse: () => Response.json([]),
+        })
+        if (context instanceof Response) return context
+        const { workspaceId } = context
         const db = getDb(appEnv)
         const rows = await db
           .select()
@@ -36,10 +34,9 @@ export const Route = createFileRoute('/api/agents')({
         return Response.json(rows.map(toAgent))
       },
       POST: async ({ request }) => {
-        const session = await requireSession(request)
-        if (!session) return unauthorized()
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
-        if (!workspaceId) return notFound('Workspace not found')
+        const context = await requireWorkspaceContext(request)
+        if (context instanceof Response) return context
+        const { session, workspaceId } = context
 
         const bodyResult = await parseJsonBody(
           request,

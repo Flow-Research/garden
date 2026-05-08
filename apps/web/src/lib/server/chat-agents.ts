@@ -19,6 +19,16 @@ function getAgentRuntimeStub(agentId: string) {
   return stubResult.value
 }
 
+type AgentRuntimeStub = ReturnType<typeof getAgentRuntimeStub>
+
+async function callChatThreadRuntime<T>(
+  input: { hostName: string; threadId: string },
+  call: (stub: AgentRuntimeStub, threadId: string) => T | Promise<T>,
+): Promise<Awaited<T>> {
+  const stub = getAgentRuntimeStub(input.hostName)
+  return await call(stub, input.threadId)
+}
+
 export async function ensureAgentRow(input: {
   workspaceId: string
   ownerUserId: string
@@ -74,8 +84,9 @@ export async function ensureChatThreadAgent(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = getAgentRuntimeStub(input.hostName)
-  await stub.ensureThread(input.threadId)
+  await callChatThreadRuntime(input, (stub, threadId) =>
+    stub.ensureThread(threadId),
+  )
 }
 
 export async function ensureChatThreadAgents(
@@ -98,72 +109,81 @@ export async function deleteChatThreadAgent(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = getAgentRuntimeStub(input.hostName)
-  await stub.deleteThread(input.threadId)
+  await callChatThreadRuntime(input, (stub, threadId) =>
+    stub.deleteThread(threadId),
+  )
 }
 
 export async function pauseChatThreadAgent(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = getAgentRuntimeStub(input.hostName)
-  await stub.pauseThread(input.threadId)
+  await callChatThreadRuntime(input, (stub, threadId) =>
+    stub.pauseThread(threadId),
+  )
 }
 
 export async function refreshChatThreadSkillInventory(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = getAgentRuntimeStub(input.hostName)
-  await stub.refreshThreadSkills(input.threadId)
+  await callChatThreadRuntime(input, (stub, threadId) =>
+    stub.refreshThreadSkills(threadId),
+  )
 }
 
 export async function refreshChatThreadPromptConfig(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = getAgentRuntimeStub(input.hostName)
-  await stub.refreshThreadPrompt(input.threadId)
+  await callChatThreadRuntime(input, (stub, threadId) =>
+    stub.refreshThreadPrompt(threadId),
+  )
 }
 
 export async function debugChatThreadMeta(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = getAgentRuntimeStub(input.hostName)
-  return stub.debugThreadMeta(input.threadId)
+  return callChatThreadRuntime(input, (stub, threadId) =>
+    stub.debugThreadMeta(threadId),
+  )
 }
 
 export async function debugChatThreadWorkspace(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = getAgentRuntimeStub(input.hostName)
-  return stub.debugThreadWorkspace(input.threadId)
+  return callChatThreadRuntime(input, (stub, threadId) =>
+    stub.debugThreadWorkspace(threadId),
+  )
 }
 
 export async function debugChatThreadSandbox(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = getAgentRuntimeStub(input.hostName)
-  return stub.debugThreadSandbox(input.threadId)
+  return callChatThreadRuntime(input, (stub, threadId) =>
+    stub.debugThreadSandbox(threadId),
+  )
 }
 
 export async function debugChatThreadTools(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = getAgentRuntimeStub(input.hostName)
-  return stub.debugThreadTools(input.threadId)
+  return callChatThreadRuntime(input, (stub, threadId) =>
+    stub.debugThreadTools(threadId),
+  )
 }
 
 export async function debugChatThreadPrompt(input: {
   threadId: string
   hostName: string
 }) {
-  const stub = getAgentRuntimeStub(input.hostName)
-  return stub.debugThreadPrompt(input.threadId)
+  return callChatThreadRuntime(input, (stub, threadId) =>
+    stub.debugThreadPrompt(threadId),
+  )
 }
 
 export async function uploadChatThreadDocument(input: {
