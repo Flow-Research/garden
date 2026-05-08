@@ -1061,3 +1061,237 @@ export class RuntimeMcpController {
     return Result.ok(undefined);
   }
 }
+
+export type RuntimeMcpPrepareResult = ResultValue<void, string>;
+
+type RuntimeMcpReadinessError = { message: string; serverIds: string[] };
+type RuntimeMcpReadinessResult = ResultValue<void, RuntimeMcpReadinessError>;
+
+export type RuntimeMcpServerStates = Record<
+  string,
+  { state: string; error?: string | null }
+>;
+
+type RuntimeMcpConnectionPreparerOptions = {
+  getController: () => RuntimeMcpController;
+  fullSyncIntervalMs: number;
+  waitForConnections?: (timeoutMs: number) => Promise<unknown>;
+  getServerStates?: () => RuntimeMcpServerStates;
+  connectionWaitTimeoutMs?: number;
+  backgroundRefreshFailedMessage: string;
+  refreshFailedMessage: string;
+  continuingWithoutReadyMessage: string;
+  onSuccessfulRefresh?: (controller: RuntimeMcpController) => void;
+  onThreadNotFound?: (
+    reason: string,
+    controller: RuntimeMcpController,
+  ) => Promise<void>;
+};
+
+export class RuntimeMcpConnectionPreparer {
+  private lastFullSyncAt = 0;
+  private refreshInFlight: Promise<RuntimeMcpPrepareResult> | null = null;
+
+  constructor(private readonly options: RuntimeMcpConnectionPreparerOptions) {}
+
+  async ensureForTurn(reason: string) {
+    const controller = this.options.getController();
+    const now = Date.now();
+    const warmResult = controller.hasWarmProxyMcpConnections(now);
+
+    if (
+      warmResult.isOk() &&
+      warmResult.value &&
+      now - this.lastFullSyncAt < this.options.fullSyncIntervalMs
+    ) {
+      if (!this.shouldWaitForReadiness()) return controller;
+
+      const readinessResult = await this.waitForConnectionsReady(reason);
+      if (readinessResult.isOk()) return controller;
+
+      console.warn("[agent-runtime] warm MCP connector state is stale", {
+        error: readinessResult.error.message,
+        serverIds: readinessResult.error.serverIds,
+      });
+
+      const resetResult = await controller.resetProxyMcpServers(
+        readinessResult.error.serverIds.length > 0
+          ? readinessResult.error.serverIds
+          : undefined,
+      );
+      if (resetResult.isErr()) {
+        console.warn(
+          "[agent-runtime] failed to reset stale MCP connector servers",
+          resetResult.error,
+        );
+      }
+    }
+
+    if (warmResult.isErr()) {
+      console.warn(
+        "[agent-runtime] failed to inspect warm MCP connector state",
+        warmResult.error,
+      );
+    }
+
+    const readyResult = await this.ensureLoaded(reason);
+    if (readyResult.isErr()) {
+      console.warn(this.options.continuingWithoutReadyMessage, {
+        reason,
+        error: readyResult.error,
+      });
+    }
+
+    return controller;
+  }
+
+  ensureLoaded(
+    reason: string,
+    options?: { refreshWindowMs?: number },
+  ): Promise<RuntimeMcpPrepareResult> {
+    if (this.refreshInFlight) return this.refreshInFlight;
+
+    this.refreshInFlight = this.refreshWithRetries(reason, options).then(
+      (result) => {
+        this.refreshInFlight = null;
+        return result;
+      },
+      (cause: unknown) => {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        console.warn(this.options.backgroundRefreshFailedMessage, {
+          reason,
+          error: message,
+        });
+        this.refreshInFlight = null;
+        return Result.err(message);
+      },
+    );
+
+    return this.refreshInFlight;
+  }
+
+  private async refreshWithRetries(
+    reason: string,
+    options?: { refreshWindowMs?: number },
+  ): Promise<RuntimeMcpPrepareResult> {
+    const delaysMs = [0, 1_000, 3_000];
+    let lastError = "MCP connector refresh failed";
+
+    for (let attempt = 0; attempt < delaysMs.length; attempt += 1) {
+      const delayMs = delaysMs[attempt] ?? 0;
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+
+      const controller = this.options.getController();
+      const connectionResult =
+        await controller.ensureProxyMcpConnections(options);
+      if (connectionResult.isOk()) {
+        if (this.shouldWaitForReadiness()) {
+          const readinessResult = await this.waitForConnectionsReady(reason);
+          if (readinessResult.isErr()) {
+            lastError = readinessResult.error.message;
+            console.warn(
+              "[agent-runtime] MCP connector readiness check failed",
+              {
+                reason,
+                attempt: attempt + 1,
+                error: readinessResult.error.message,
+                serverIds: readinessResult.error.serverIds,
+              },
+            );
+
+            const resetResult = await controller.resetProxyMcpServers(
+              readinessResult.error.serverIds.length > 0
+                ? readinessResult.error.serverIds
+                : undefined,
+            );
+            if (resetResult.isErr()) {
+              lastError = resetResult.error.message;
+              console.warn(
+                "[agent-runtime] failed to reset stale MCP connector servers",
+                resetResult.error,
+              );
+            }
+            continue;
+          }
+        }
+
+        this.lastFullSyncAt = Date.now();
+        this.options.onSuccessfulRefresh?.(controller);
+        return Result.ok(undefined);
+      }
+
+      if (connectionResult.error.code === "thread_not_found") {
+        await this.options.onThreadNotFound?.(reason, controller);
+        return Result.ok(undefined);
+      }
+
+      lastError = connectionResult.error.message;
+      console.warn(this.options.refreshFailedMessage, {
+        reason,
+        attempt: attempt + 1,
+        error: connectionResult.error,
+      });
+    }
+
+    return Result.err(lastError);
+  }
+
+  private shouldWaitForReadiness() {
+    return Boolean(
+      this.options.waitForConnections && this.options.getServerStates,
+    );
+  }
+
+  private async waitForConnectionsReady(
+    reason: string,
+  ): Promise<RuntimeMcpReadinessResult> {
+    if (!this.options.waitForConnections || !this.options.getServerStates) {
+      return Result.ok(undefined);
+    }
+
+    const waitResult = await Result.tryPromise({
+      try: async () =>
+        await this.options.waitForConnections!(
+          this.options.connectionWaitTimeoutMs ?? 10_000,
+        ),
+      catch: (cause) =>
+        cause instanceof Error
+          ? cause.message
+          : "Failed waiting for MCP connections",
+    });
+    if (waitResult.isErr()) {
+      return Result.err({
+        message: waitResult.error,
+        serverIds: [],
+      });
+    }
+
+    const notReadyServers = Object.entries(
+      this.options.getServerStates(),
+    ).flatMap(([serverId, server]) => {
+      if (server.state === "ready") return [];
+      return [
+        {
+          id: serverId,
+          state: server.state,
+          error: server.error,
+        },
+      ];
+    });
+
+    if (notReadyServers.length === 0) return Result.ok(undefined);
+
+    return Result.err({
+      message: `MCP servers are not ready after ${reason}: ${notReadyServers
+        .map((server) =>
+          server.error
+            ? `${server.id}:${server.state} (${server.error})`
+            : `${server.id}:${server.state}`,
+        )
+        .join(", ")}`,
+      serverIds: notReadyServers.map((server) => server.id),
+    });
+  }
+}

@@ -53,7 +53,12 @@ import {
   PostgresAgentPromptCatalog,
   createPromptContextProviders,
 } from "./prompt";
-import { RuntimeMcpController, type McpHost } from "./runtime-mcp-controller";
+import {
+  RuntimeMcpConnectionPreparer,
+  RuntimeMcpController,
+  type McpHost,
+  type RuntimeMcpServerStates,
+} from "./runtime-mcp-controller";
 import {
   MCP_PROXY_JWT_PERIODIC_REFRESH_WINDOW_MS,
   mcpRuntimeConfig,
@@ -245,12 +250,6 @@ type ThreadDocumentVersionsPayload = Awaited<
 type ThreadDocumentEditPayload = Awaited<
   ReturnType<ChatSubAgent["resolveDocumentEdit"]>
 >;
-type McpConnectionReadinessError = { message: string; serverIds: string[] };
-type McpConnectionReadinessResult = ResultValue<
-  void,
-  McpConnectionReadinessError
->;
-
 const MCP_CONNECTOR_FULL_SYNC_INTERVAL_MS = 60 * 1000;
 const MCP_CONNECTION_WAIT_TIMEOUT_MS = 10_000;
 const THINK_TURN_TIMEOUT_MS = 60_000;
@@ -684,9 +683,32 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
 }
 
 export class ChatSubAgent extends Think<AgentRuntimeEnv> {
-  private lastProxyMcpFullSyncAt = 0;
   private runtimePrepareInFlight: Promise<RuntimePrepareResult> | null = null;
-  private proxyMcpRefreshInFlight: Promise<RuntimePrepareResult> | null = null;
+  private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
+    getController: () => this.getMcpController(),
+    fullSyncIntervalMs: MCP_CONNECTOR_FULL_SYNC_INTERVAL_MS,
+    waitForConnections: async (timeoutMs) =>
+      await this.mcp.waitForConnections({ timeout: timeoutMs }),
+    getServerStates: () =>
+      this.getMcpServers().servers as RuntimeMcpServerStates,
+    connectionWaitTimeoutMs: MCP_CONNECTION_WAIT_TIMEOUT_MS,
+    backgroundRefreshFailedMessage:
+      "[agent-runtime] MCP background refresh failed",
+    refreshFailedMessage: "[agent-runtime] MCP connector refresh failed",
+    continuingWithoutReadyMessage:
+      "[agent-runtime] continuing without ready MCP connectors",
+    onSuccessfulRefresh: (controller) => {
+      const observedChangesResult = controller.captureObservedMcpToolChanges();
+      if (observedChangesResult.isErr()) {
+        console.warn(
+          "[agent-runtime] failed to capture refreshed MCP tool changes",
+          observedChangesResult.error,
+        );
+      }
+    },
+    onThreadNotFound: async (reason, controller) =>
+      await this.pauseMcpRuntime(reason, controller),
+  });
 
   override workspace = new Workspace({
     sql: this.ctx.storage.sql,
@@ -825,7 +847,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   async refreshProxyMcpJwts() {
-    const result = await this.ensureProxyMcpConnectionsLoaded(
+    const result = await this.mcpConnectionPreparer.ensureLoaded(
       "periodic-jwt-refresh",
       {
         refreshWindowMs: MCP_PROXY_JWT_PERIODIC_REFRESH_WINDOW_MS,
@@ -1059,7 +1081,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       return Result.err(skillsResult.error);
     }
 
-    return this.ensureProxyMcpConnectionsLoaded(reason);
+    return this.mcpConnectionPreparer.ensureLoaded(reason);
   }
 
   @callable()
@@ -1280,16 +1302,13 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   async debugTools(): Promise<DebugToolsPayload> {
-    const mcpController = this.getMcpController();
-    const connectionResult = await mcpController.ensureProxyMcpConnections();
+    const connectionResult =
+      await this.mcpConnectionPreparer.ensureLoaded("debug-tools");
     if (connectionResult.isErr()) {
       console.warn(
         "[agent-runtime] failed to attach MCP connector tools for debug inventory",
-        connectionResult.error,
+        { error: connectionResult.error },
       );
-    }
-    if (connectionResult.isOk()) {
-      this.lastProxyMcpFullSyncAt = Date.now();
     }
 
     // Mirror what Think does inside `_runInferenceLoop` — the merged ToolSet
@@ -1613,56 +1632,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   private async ensureProxyMcpConnectionsForTurn() {
-    const mcpController = this.getMcpController();
-    const now = Date.now();
-    const warmResult = mcpController.hasWarmProxyMcpConnections(now);
-
-    if (
-      warmResult.isOk() &&
-      warmResult.value &&
-      now - this.lastProxyMcpFullSyncAt < MCP_CONNECTOR_FULL_SYNC_INTERVAL_MS
-    ) {
-      const readinessResult =
-        await this.waitForMcpConnectionsReady("before-turn");
-      if (readinessResult.isOk()) {
-        return mcpController;
-      }
-
-      console.warn("[agent-runtime] warm MCP connector state is stale", {
-        error: readinessResult.error.message,
-        serverIds: readinessResult.error.serverIds,
-      });
-
-      const resetResult = await mcpController.resetProxyMcpServers(
-        readinessResult.error.serverIds.length > 0
-          ? readinessResult.error.serverIds
-          : undefined,
-      );
-      if (resetResult.isErr()) {
-        console.warn(
-          "[agent-runtime] failed to reset stale MCP connector servers",
-          resetResult.error,
-        );
-      }
-    }
-
-    if (warmResult.isErr()) {
-      console.warn(
-        "[agent-runtime] failed to inspect warm MCP connector state",
-        warmResult.error,
-      );
-    }
-
-    const readyResult =
-      await this.ensureProxyMcpConnectionsLoaded("before-turn");
-    if (readyResult.isErr()) {
-      console.warn("[agent-runtime] continuing without ready MCP connectors", {
-        reason: "before-turn",
-        error: readyResult.error,
-      });
-    }
-
-    return mcpController;
+    return await this.mcpConnectionPreparer.ensureForTurn("before-turn");
   }
 
   private ensureRuntimePrepared(reason: string) {
@@ -1685,105 +1655,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     );
 
     return this.runtimePrepareInFlight;
-  }
-
-  private ensureProxyMcpConnectionsLoaded(
-    reason: string,
-    options?: { refreshWindowMs?: number },
-  ) {
-    if (this.proxyMcpRefreshInFlight) return this.proxyMcpRefreshInFlight;
-
-    this.proxyMcpRefreshInFlight = this.refreshProxyMcpConnectionsWithRetries(
-      reason,
-      options,
-    ).then(
-      (result) => {
-        this.proxyMcpRefreshInFlight = null;
-        return result;
-      },
-      (cause: unknown) => {
-        const message = cause instanceof Error ? cause.message : String(cause);
-        console.warn("[agent-runtime] MCP background refresh failed", {
-          reason,
-          error: message,
-        });
-        this.proxyMcpRefreshInFlight = null;
-        return Result.err(message);
-      },
-    );
-
-    return this.proxyMcpRefreshInFlight;
-  }
-
-  private async refreshProxyMcpConnectionsWithRetries(
-    reason: string,
-    options?: { refreshWindowMs?: number },
-  ): Promise<RuntimePrepareResult> {
-    const delaysMs = [0, 1_000, 3_000];
-    let lastError = "MCP connector refresh failed";
-
-    for (let attempt = 0; attempt < delaysMs.length; attempt += 1) {
-      const delayMs = delaysMs[attempt] ?? 0;
-      if (delayMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-      }
-
-      const mcpController = this.getMcpController();
-      const connectionResult =
-        await mcpController.ensureProxyMcpConnections(options);
-      if (connectionResult.isOk()) {
-        const readinessResult = await this.waitForMcpConnectionsReady(reason);
-        if (readinessResult.isErr()) {
-          lastError = readinessResult.error.message;
-          console.warn("[agent-runtime] MCP connector readiness check failed", {
-            reason,
-            attempt: attempt + 1,
-            error: readinessResult.error.message,
-            serverIds: readinessResult.error.serverIds,
-          });
-
-          const resetResult = await mcpController.resetProxyMcpServers(
-            readinessResult.error.serverIds.length > 0
-              ? readinessResult.error.serverIds
-              : undefined,
-          );
-          if (resetResult.isErr()) {
-            lastError = resetResult.error.message;
-            console.warn(
-              "[agent-runtime] failed to reset stale MCP connector servers",
-              resetResult.error,
-            );
-          }
-          continue;
-        }
-
-        this.lastProxyMcpFullSyncAt = Date.now();
-
-        const observedChangesResult =
-          mcpController.captureObservedMcpToolChanges();
-        if (observedChangesResult.isErr()) {
-          console.warn(
-            "[agent-runtime] failed to capture refreshed MCP tool changes",
-            observedChangesResult.error,
-          );
-        }
-        return Result.ok(undefined);
-      }
-
-      if (connectionResult.error.code === "thread_not_found") {
-        await this.pauseMcpRuntime(reason, mcpController);
-        return Result.ok(undefined);
-      }
-
-      lastError = connectionResult.error.message;
-      console.warn("[agent-runtime] MCP connector refresh failed", {
-        reason,
-        attempt: attempt + 1,
-        error: connectionResult.error,
-      });
-    }
-
-    return Result.err(lastError);
   }
 
   private async pauseMcpRuntime(
@@ -1845,56 +1716,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       reason,
       agentName: this.name,
       cancelledSchedules: refreshSchedules.length,
-    });
-  }
-
-  private async waitForMcpConnectionsReady(
-    reason: string,
-  ): Promise<McpConnectionReadinessResult> {
-    const waitResult = await Result.tryPromise({
-      try: async () =>
-        this.mcp.waitForConnections({
-          timeout: MCP_CONNECTION_WAIT_TIMEOUT_MS,
-        }),
-      catch: (cause) =>
-        cause instanceof Error
-          ? cause.message
-          : "Failed waiting for MCP connections",
-    });
-    if (waitResult.isErr()) {
-      return Result.err({
-        message: waitResult.error,
-        serverIds: [],
-      });
-    }
-
-    const servers = this.getMcpServers().servers;
-    const notReadyServers = Object.entries(servers).flatMap(
-      ([serverId, server]) => {
-        if (server.state === "ready") return [];
-        return [
-          {
-            id: serverId,
-            state: server.state,
-            error: server.error,
-          },
-        ];
-      },
-    );
-
-    if (notReadyServers.length === 0) {
-      return Result.ok(undefined);
-    }
-
-    return Result.err({
-      message: `MCP servers are not ready after ${reason}: ${notReadyServers
-        .map((server) =>
-          server.error
-            ? `${server.id}:${server.state} (${server.error})`
-            : `${server.id}:${server.state}`,
-        )
-        .join(", ")}`,
-      serverIds: notReadyServers.map((server) => server.id),
     });
   }
 

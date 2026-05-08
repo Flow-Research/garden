@@ -58,6 +58,7 @@ import {
 import { assembleFoundationPrompt } from './prompt'
 import { createAgentModel } from './model'
 import {
+  RuntimeMcpConnectionPreparer,
   RuntimeMcpError,
   RuntimeMcpController,
   type McpHost,
@@ -79,8 +80,6 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   LOADER: WorkerLoader
   Sandbox: DurableObjectNamespace<SandboxDO>
 }
-
-type RuntimePrepareResult = ResultValue<void, string>
 
 type TurnMode = 'start' | 'resume'
 
@@ -297,8 +296,16 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   private resolutionActions = new Set<IssueRunResolutionAction>()
   private currentPermissions: AgentPermissions | null = null
   private aggUsage: IssueRunUsage | null = null
-  private lastProxyMcpFullSyncAt = 0
-  private proxyMcpRefreshInFlight: Promise<RuntimePrepareResult> | null = null
+  private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
+    getController: () => this.getMcpController(),
+    fullSyncIntervalMs: 60 * 1000,
+    backgroundRefreshFailedMessage:
+      '[agent-runtime] issue MCP background refresh failed',
+    refreshFailedMessage:
+      '[agent-runtime] issue MCP connector refresh failed',
+    continuingWithoutReadyMessage:
+      '[agent-runtime] continuing issue run without ready MCP connectors',
+  })
 
   maxSteps = 30
 
@@ -677,7 +684,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   async refreshProxyMcpJwts() {
-    const result = await this.ensureProxyMcpConnectionsLoaded(
+    const result = await this.mcpConnectionPreparer.ensureLoaded(
       'issue-periodic-jwt-refresh',
       {
         refreshWindowMs: MCP_PROXY_JWT_PERIODIC_REFRESH_WINDOW_MS,
@@ -1977,7 +1984,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   private async ensureMcpConnectionsForTool() {
-    const result = await this.ensureProxyMcpConnectionsLoaded('read-source')
+    const result = await this.mcpConnectionPreparer.ensureLoaded('read-source')
     if (result.isOk()) return Result.ok(undefined)
 
     return Result.err(
@@ -1990,90 +1997,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   private async ensureProxyMcpConnectionsForTurn() {
-    const mcpController = this.getMcpController()
-    const now = Date.now()
-    const warmResult = mcpController.hasWarmProxyMcpConnections(now)
-
-    if (
-      warmResult.isOk() &&
-      warmResult.value &&
-      now - this.lastProxyMcpFullSyncAt < 60 * 1000
-    ) {
-      return mcpController
-    }
-
-    const readyResult = await this.ensureProxyMcpConnectionsLoaded('issue-turn')
-    if (readyResult.isErr()) {
-      console.warn('[agent-runtime] continuing issue run without ready MCP connectors', {
-        reason: 'issue-turn',
-        error: readyResult.error,
-      })
-    }
-
-    return mcpController
-  }
-
-  private ensureProxyMcpConnectionsLoaded(
-    reason: string,
-    options?: { refreshWindowMs?: number },
-  ) {
-    if (this.proxyMcpRefreshInFlight) return this.proxyMcpRefreshInFlight
-
-    this.proxyMcpRefreshInFlight = this.refreshProxyMcpConnectionsWithRetries(
-      reason,
-      options,
-    ).then(
-      (result) => {
-        this.proxyMcpRefreshInFlight = null
-        return result
-      },
-      (cause: unknown) => {
-        const message = cause instanceof Error ? cause.message : String(cause)
-        console.warn('[agent-runtime] issue MCP background refresh failed', {
-          reason,
-          error: message,
-        })
-        this.proxyMcpRefreshInFlight = null
-        return Result.err(message)
-      },
-    )
-
-    return this.proxyMcpRefreshInFlight
-  }
-
-  private async refreshProxyMcpConnectionsWithRetries(
-    reason: string,
-    options?: { refreshWindowMs?: number },
-  ): Promise<RuntimePrepareResult> {
-    const delaysMs = [0, 1_000, 3_000]
-    let lastError = 'MCP connector refresh failed'
-
-    for (let attempt = 0; attempt < delaysMs.length; attempt += 1) {
-      const delayMs = delaysMs[attempt] ?? 0
-      if (delayMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, delayMs))
-      }
-
-      const mcpController = this.getMcpController()
-      const connectionResult =
-        await mcpController.ensureProxyMcpConnections(options)
-      if (connectionResult.isOk()) {
-        this.lastProxyMcpFullSyncAt = Date.now()
-        return Result.ok(undefined)
-      }
-
-      if (connectionResult.error.code === 'thread_not_found') {
-        return Result.ok(undefined)
-      }
-
-      lastError = connectionResult.error.message
-      console.warn('[agent-runtime] issue MCP connector refresh failed', {
-        reason,
-        attempt: attempt + 1,
-        error: connectionResult.error,
-      })
-    }
-
-    return Result.err(lastError)
+    return await this.mcpConnectionPreparer.ensureForTurn('issue-turn')
   }
 }
