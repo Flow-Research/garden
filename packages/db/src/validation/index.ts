@@ -14,6 +14,19 @@ import {
   skillFile,
   user,
 } from '../schema/index.js'
+import {
+  issueCommentAuthorTypeValues,
+  issueDbAssigneeTypeValues,
+  issuePriorityValues,
+  issueStatusValues,
+} from '../schema/issue-values.js'
+
+export {
+  issueCommentAuthorTypeValues,
+  issueDbAssigneeTypeValues,
+  issuePriorityValues,
+  issueStatusValues,
+} from '../schema/issue-values.js'
 
 export const uuidSchema = z.string().uuid()
 export const jsonObjectSchema = z.record(z.string(), z.unknown())
@@ -43,28 +56,12 @@ export const accountStatusValues = [
 ] as const
 export const accountStatusSchema = z.enum(accountStatusValues)
 
-export const issueStatusValues = [
-  'backlog',
-  'todo',
-  'in_progress',
-  'in_review',
-  'done',
-  'blocked',
-  'cancelled',
-] as const
 export const issueStatusSchema = z.enum(issueStatusValues)
 
-export const issuePriorityValues = [
-  'urgent',
-  'high',
-  'medium',
-  'low',
-  'none',
-] as const
 export const issuePrioritySchema = z.enum(issuePriorityValues)
 
-export const issueDbAssigneeTypeValues = ['user', 'agent'] as const
 export const issueDbAssigneeTypeSchema = z.enum(issueDbAssigneeTypeValues)
+export const issueCommentAuthorTypeSchema = z.enum(issueCommentAuthorTypeValues)
 
 export const skillSourceTypeValues = ['manual', 'skills.sh'] as const
 export const skillSourceTypeSchema = z.enum(skillSourceTypeValues)
@@ -243,7 +240,7 @@ export const issueCommentSelectSchema = createSelectSchema(issueComment, {
   id: () => uuidSchema,
   issueId: () => uuidSchema,
   authorId: () => uuidSchema,
-  authorType: z.enum(['user', 'agent']),
+  authorType: () => issueCommentAuthorTypeSchema,
   body: (schema) => schema.trim().min(1),
   mentions: () => issueCommentMentionsSchema.nullable(),
 })
@@ -252,7 +249,7 @@ export const issueCommentInsertSchema = createInsertSchema(issueComment, {
   id: () => uuidSchema,
   issueId: () => uuidSchema,
   authorId: () => uuidSchema,
-  authorType: z.enum(['user', 'agent']),
+  authorType: () => issueCommentAuthorTypeSchema,
   body: (schema) => schema.trim().min(1),
   mentions: () => issueCommentMentionsSchema.nullable(),
 })
@@ -261,7 +258,7 @@ export const issueCommentUpdateSchema = createUpdateSchema(issueComment, {
   id: () => uuidSchema,
   issueId: () => uuidSchema,
   authorId: () => uuidSchema,
-  authorType: z.enum(['user', 'agent']),
+  authorType: () => issueCommentAuthorTypeSchema,
   body: (schema) => schema.trim().min(1),
   mentions: () => issueCommentMentionsSchema.nullable(),
 })
