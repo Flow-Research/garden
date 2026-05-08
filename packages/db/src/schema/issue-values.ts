@@ -45,6 +45,7 @@ export const issueWakeupSourceValues = [
   'mention',
   'manual',
   'scheduled',
+  'automation',
   'connector_event',
   'reconciler_retry',
   'hire_approval',

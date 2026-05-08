@@ -11,6 +11,7 @@ export type AppEnv = {
   LOADER: RequiredEnvBinding<'LOADER'>
   SANDBOX_TRANSPORT: RequiredEnvBinding<'SANDBOX_TRANSPORT'>
   AgentDO: RequiredEnvBinding<'AgentDO'>
+  AUTOMATION_TRIGGER: RequiredEnvBinding<'AUTOMATION_TRIGGER'>
   Sandbox: RequiredEnvBinding<'Sandbox'>
   ENVIRONMENT?: 'development' | 'test' | 'production'
   GITHUB_CLIENT_ID?: string

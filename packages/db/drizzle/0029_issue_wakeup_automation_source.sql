@@ -1,0 +1,2 @@
+ALTER TABLE "issue_wakeup" DROP CONSTRAINT "issue_wakeup_source_check";--> statement-breakpoint
+ALTER TABLE "issue_wakeup" ADD CONSTRAINT "issue_wakeup_source_check" CHECK ("issue_wakeup"."source" in ('assignment', 'comment', 'mention', 'manual', 'scheduled', 'automation', 'connector_event', 'reconciler_retry', 'hire_approval'));

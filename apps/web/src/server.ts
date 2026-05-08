@@ -1,6 +1,11 @@
 import handler from '@tanstack/react-start/server-entry'
 import { routeAgentRequest } from 'agents'
-import { AgentDO, ChatSubAgent, IssueRunSubAgent } from '@garden/agent-runtime'
+import {
+  AgentDO,
+  AutomationTriggerDO,
+  ChatSubAgent,
+  IssueRunSubAgent,
+} from '@garden/agent-runtime'
 import { proxyToSandbox, Sandbox } from '@cloudflare/sandbox'
 import { Result } from 'better-result'
 import { createAuth } from '@/lib/auth'
@@ -13,6 +18,7 @@ import {
 import { reconcile } from '@/lib/server/issue-run-reconciler'
 
 export { AgentDO }
+export { AutomationTriggerDO }
 export { ChatSubAgent }
 export { IssueRunSubAgent }
 export { Sandbox }
