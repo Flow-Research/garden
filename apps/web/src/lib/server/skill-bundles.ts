@@ -8,6 +8,28 @@ export type SkillBundleFileInput = {
   content: string
 }
 
+export function parseSkillBundleFiles(value: unknown): SkillBundleFileInput[] {
+  if (!Array.isArray(value)) return []
+
+  return value.flatMap((file) => {
+    if (
+      typeof file !== 'object' ||
+      file === null ||
+      typeof file.path !== 'string' ||
+      typeof file.content !== 'string'
+    ) {
+      return []
+    }
+
+    const path = file.path.trim().replace(/\\/g, '/')
+    if (!path || path.startsWith('/')) return []
+    if (path.split('/').some((segment: string) => segment === '..')) return []
+    if (path.toLowerCase() === 'skill.md') return []
+
+    return [{ path, content: file.content }]
+  })
+}
+
 export type StoredSkillBundleFile = {
   id: string
   skillId: string
