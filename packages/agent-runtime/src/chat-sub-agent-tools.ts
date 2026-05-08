@@ -41,11 +41,11 @@ import {
   postIssueComment as postIssueCommentService,
   readIssue as readIssueService,
   type IssueSummary,
-} from "../../../apps/web/src/lib/server/issues";
+} from "@garden/core/issues/server";
 import {
   startIssueRun,
   type IssueRunEnv,
-} from "../../../apps/web/src/lib/server/issue-run";
+} from "@garden/core/issues/run-service";
 
 type ChatSubAgentToolsInput = {
   databaseUrl?: string;
@@ -1313,7 +1313,7 @@ async function postIssueCommentFromChat(
     body: input.body,
   });
   if (commentResult.isErr()) return issueToolErr(commentResult.error.message);
-  return Result.ok(commentResult.value);
+  return Result.ok({ comment_id: commentResult.value.comment_id });
 }
 
 export function createChatSubAgentTools({

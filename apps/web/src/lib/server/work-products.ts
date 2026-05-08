@@ -2,14 +2,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
-import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { decideWakeups } from '@garden/core/issues'
-import { LIVE_RUN_STATUSES } from '@garden/core/issues/run-sync'
-import { createLogger } from '@garden/core/logger'
-import type { IssueStatus } from '@garden/core/types'
+import { wakeAgentsForIssueComment } from '@garden/core/issues/server'
 
-const logger = createLogger('work-products')
 import {
   classifyConnectorError,
   type ConnectorError,
@@ -22,7 +18,6 @@ import {
 } from '@garden/db/validation'
 import type { AppEnv } from './env'
 import { getDb, schema } from './db'
-import { startIssueRun } from './issue-run'
 import { resolveConnectorWritePermissionRequests } from './permission-request'
 
 const URL_PATTERN = /https?:\/\/[^\s"'<>]+/i
@@ -716,38 +711,11 @@ async function requestWorkProductChanges(args: {
   })
   if (updateResult.isErr()) return Result.err(updateResult.error)
 
-  const [pendingWakeups, runningRuns] = await Promise.all([
-    db
-      .select({ agentId: schema.issueWakeup.agentId })
-      .from(schema.issueWakeup)
-      .where(
-        and(
-          eq(schema.issueWakeup.issueId, issue.id),
-          inArray(schema.issueWakeup.status, ['pending', 'claimed']),
-        ),
-      ),
-    db
-      .select({ agentId: schema.issueRun.agentId })
-      .from(schema.issueRun)
-      .where(
-        and(
-          eq(schema.issueRun.issueId, issue.id),
-          inArray(schema.issueRun.status, LIVE_RUN_STATUSES),
-        ),
-      ),
-  ])
-  const decisions = decideWakeups({
-    issue: {
-      id: issue.id,
-      status: (issue.status ?? 'backlog') as IssueStatus,
-      assigneeType:
-        issue.assigneeType === 'agent'
-          ? 'agent'
-          : issue.assigneeType === 'user'
-            ? 'member'
-            : null,
-      assigneeId: issue.assigneeId,
-    },
+  const wakeResult = await wakeAgentsForIssueComment({
+    databaseUrl: args.env.DATABASE_URL,
+    issueRunEnv: args.env,
+    workspaceId: issue.workspaceId,
+    issueId: issue.id,
     comment: {
       id: commentId,
       authorType: 'user',
@@ -755,23 +723,11 @@ async function requestWorkProductChanges(args: {
       body: commentBody,
       parentId: null,
     },
-    parentComment: null,
-    pendingWakeups,
-    runningRuns,
     mentionedAgentIds: [],
+    actor: { type: 'member', id: args.actorUserId },
   })
-  for (const decision of decisions) {
-    if (decision.kind !== 'enqueue') continue
-    const startResult = await startIssueRun(args.env, {
-      workspaceId: issue.workspaceId,
-      issueId: issue.id,
-      agentId: decision.agentId,
-      source: decision.source,
-      trigger: { commentId },
-      actor: { type: 'member', id: args.actorUserId },
-    })
-    if (startResult.isErr())
-      logger.error('startIssueRun failed', startResult.error.message)
+  if (wakeResult.isErr()) {
+    return Result.err(dbError('Failed to wake issue agents', wakeResult.error))
   }
 
   return Result.ok({

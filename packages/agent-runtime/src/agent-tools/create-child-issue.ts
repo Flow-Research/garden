@@ -3,8 +3,8 @@ import { tool } from 'ai'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import * as schema from '@garden/db/schema'
-import { createIssue as createIssueService } from '../../../../apps/web/src/lib/server/issues'
-import { startIssueRun } from '../../../../apps/web/src/lib/server/issue-run'
+import { createIssue as createIssueService } from '@garden/core/issues/server'
+import { startIssueRun } from '@garden/core/issues/run-service'
 import {
   appendIssueRunEvent,
   dbError,

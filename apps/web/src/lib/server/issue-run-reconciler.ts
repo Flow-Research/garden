@@ -7,7 +7,7 @@ import {
   appendIssueRunEvent,
   enqueueIssueRunRuntime,
   startIssueRun,
-} from './issue-run'
+} from '@garden/core/issues/run-service'
 
 const logger = createLogger('issue-run-reconciler')
 

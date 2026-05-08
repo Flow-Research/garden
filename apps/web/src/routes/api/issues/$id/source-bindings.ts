@@ -15,7 +15,7 @@ import {
   attachSourceBinding,
   listIssueSourceBindings,
   type IssueSourceBindingServiceError,
-} from '@/lib/server/issue-source-binding'
+} from '@garden/core/issues/source-binding'
 
 function sourceBindingError(error: IssueSourceBindingServiceError) {
   return error.code === 'binding_not_found'

@@ -11,10 +11,10 @@ import {
   requireWorkspaceAccess,
   toIssue,
 } from '@/lib/server/control-plane'
-import { cancelIssueRun, startIssueRun } from '@/lib/server/issue-run'
+import { cancelIssueRun, startIssueRun } from '@garden/core/issues/run-service'
 import {
   cancelLiveRunsOnIssueChange,
-} from '@/lib/server/issue-run-sync'
+} from '@garden/core/issues/run-sync'
 
 export const Route = createFileRoute('/api/issues/$id')({
   server: {

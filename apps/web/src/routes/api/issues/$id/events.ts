@@ -12,7 +12,7 @@ import { parseSearchParams } from '@/lib/server/validation/issues'
 import {
   listIssueRunEvents,
   type IssueRunServiceError,
-} from '@/lib/server/issue-run'
+} from '@garden/core/issues/run-service'
 
 const eventsSearchSchema = z.object({
   run_id: z.string().uuid().optional(),
