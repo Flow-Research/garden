@@ -564,6 +564,7 @@ describe('WorkspaceDockProvider', () => {
     })
 
     expect(mockSetQueryState).toHaveBeenCalledWith({
+      chat: null,
       panel: 'inbox',
       panelTitle: 'Inbox',
       panelEntityId: null,
@@ -651,6 +652,48 @@ describe('WorkspaceDockProvider', () => {
     })
 
     expect(mockSetQueryState).not.toHaveBeenCalledWith({
+      chat: null,
+      panel: 'dashboard',
+      panelTitle: 'Dashboard',
+      panelEntityId: null,
+    })
+  })
+
+  it('lets local panel opens outrun a stale chat query while the URL write catches up', async () => {
+    const api = new FakeDockApi()
+    mockQueryState.chat = 'thread-1'
+    mockQueryState.panel = 'chat'
+    mockQueryState.panelEntityId = 'thread-1'
+
+    render(
+      <WorkspaceDockProvider workspaceId="workspace-1">
+        <DockContextCapture />
+      </WorkspaceDockProvider>,
+    )
+
+    await act(async () => {
+      capturedDock?.handleReady({ api } as never)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dock-state')).toHaveAttribute(
+        'data-panel',
+        'chat',
+      )
+    })
+
+    await act(async () => {
+      capturedDock?.openPanel({ kind: 'dashboard', title: 'Dashboard' })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dock-state')).toHaveAttribute(
+        'data-panel',
+        'dashboard',
+      )
+    })
+
+    expect(mockSetQueryState).toHaveBeenLastCalledWith({
       chat: null,
       panel: 'dashboard',
       panelTitle: 'Dashboard',
