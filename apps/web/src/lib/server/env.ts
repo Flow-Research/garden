@@ -12,6 +12,7 @@ export type AppEnv = {
   SANDBOX_TRANSPORT: RequiredEnvBinding<'SANDBOX_TRANSPORT'>
   AgentDO: RequiredEnvBinding<'AgentDO'>
   AUTOMATION_TRIGGER: RequiredEnvBinding<'AUTOMATION_TRIGGER'>
+  MCP_SESSION: RequiredEnvBinding<'MCP_SESSION'>
   Sandbox: RequiredEnvBinding<'Sandbox'>
   ENVIRONMENT?: 'development' | 'test' | 'production'
   GITHUB_CLIENT_ID?: string

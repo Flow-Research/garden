@@ -83,6 +83,32 @@ export type McpRegistration =
   | { state: "connected" }
   | { state: "ready" };
 
+export type RpcMcpConnectorProps = {
+  userId: string;
+  workspaceId: string;
+  agentId: string;
+  issueId?: string;
+  runId?: string;
+  connectorId: string;
+  authKind: "oauth" | "api-key" | "none";
+  accountId?: string;
+};
+
+type RpcMcpConnectClient = {
+  connect: (
+    url: string,
+    options: {
+      reconnect: { id: string };
+      transport: {
+        type: "rpc";
+        namespace: DurableObjectNamespace;
+        name: string;
+        props: RpcMcpConnectorProps;
+      };
+    },
+  ) => Promise<{ id: string }>;
+};
+
 export type McpToolRecord = {
   name: string;
   description?: string | null;
@@ -119,18 +145,9 @@ export type McpHost = {
   readonly env: McpHostEnv;
   readonly ctx: { storage: { sql: SqlStorage } };
   readonly mcp: McpClientFacade;
-  connectRpcMcpServer?: (input: {
+  connectRpcMcpServer: (input: {
     connectorId: string;
-    props: {
-      userId: string;
-      workspaceId: string;
-      agentId: string;
-      issueId?: string;
-      runId?: string;
-      connectorId: string;
-      authKind: "oauth" | "api-key" | "none";
-      accountId?: string;
-    };
+    props: RpcMcpConnectorProps;
   }) => Promise<McpRegistration>;
   removeMcpServer: (connectorId: string) => Promise<void>;
   resolveRuntimeIdentity?: () => Promise<
@@ -154,6 +171,28 @@ export function buildConnectorProxyMcpUrl(
 
 export function isMcpDiscoveryCancellation(message: string | undefined) {
   return message === "Discovery was cancelled";
+}
+
+export async function connectRpcMcpConnector(args: {
+  mcp: unknown;
+  namespace: DurableObjectNamespace;
+  connectorId: string;
+  props: RpcMcpConnectorProps;
+}): Promise<McpRegistration> {
+  const client = args.mcp as RpcMcpConnectClient;
+  const result = await client.connect(`rpc://${args.connectorId}`, {
+    reconnect: { id: args.connectorId },
+    transport: {
+      type: "rpc",
+      namespace: args.namespace,
+      name: args.connectorId,
+      props: args.props,
+    },
+  });
+
+  return result.id === args.connectorId
+    ? { state: "connected" }
+    : { state: "failed", error: "RPC MCP id mismatch" };
 }
 
 export class RuntimeMcpController {
@@ -936,6 +975,30 @@ export class RuntimeMcpController {
       .listServers()
       .some((server) => server.id === connector.id);
 
+    const storedRowsResult = this.readConnectorServerRows();
+    if (storedRowsResult.isErr()) return storedRowsResult;
+    const storedRow = storedRowsResult.value.find(
+      (row) => row.connectorId === connector.id,
+    );
+    const hasDiscoveredTools =
+      this.host.mcp.listTools({ serverId: connector.id }).length > 0;
+
+    if (
+      hasRegisteredServer &&
+      hasDiscoveredTools &&
+      storedRow?.accountId === binding.accountId
+    ) {
+      return this.upsertConnectorServerRow({
+        identity,
+        connectorId: connector.id,
+        accountId: binding.accountId,
+        jwtExpiresAt: new Date(
+          Date.now() + mcpRuntimeConfig.proxyJwtTtlSeconds * 1000,
+        ).toISOString(),
+        toolsSignature: this.buildConnectorToolsSignature(connector.id),
+      });
+    }
+
     if (hasRegisteredServer && !options?.allowReplacingRegisteredServers) {
       return Result.ok(undefined);
     }
@@ -945,13 +1008,6 @@ export class RuntimeMcpController {
 
     const connectResult = await Result.tryPromise({
       try: async () => {
-        if (!this.host.connectRpcMcpServer) {
-          throw new RuntimeMcpError({
-            code: "mcp_register_failed",
-            message: `Missing RPC MCP binding for connector ${connector.id}`,
-          });
-        }
-
         const registration = await this.host.connectRpcMcpServer({
           connectorId: connector.id,
           props: {

@@ -61,6 +61,7 @@ import {
   RuntimeMcpConnectionPreparer,
   RuntimeMcpError,
   RuntimeMcpController,
+  connectRpcMcpConnector,
   type McpHost,
   type RuntimeMcpServerStates,
   type ThreadRuntimeIdentity,
@@ -80,7 +81,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   FILES: R2Bucket
   LOADER: WorkerLoader
   Sandbox: DurableObjectNamespace<SandboxDO>
-  MCP_SESSION?: DurableObjectNamespace
+  MCP_SESSION: DurableObjectNamespace
 }
 
 type TurnMode = 'start' | 'resume'
@@ -1925,39 +1926,13 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       env: this.env,
       ctx: this.ctx,
       mcp: this.mcp,
-      ...(this.env.MCP_SESSION
-        ? {
-            connectRpcMcpServer: async ({ connectorId, props }) => {
-              const result = await (
-                this.mcp as unknown as {
-                  connect: (
-                    url: string,
-                    options: {
-                      reconnect: { id: string }
-                      transport: {
-                        type: 'rpc'
-                        namespace: DurableObjectNamespace
-                        name: string
-                        props: typeof props
-                      }
-                    },
-                  ) => Promise<{ id: string }>
-                }
-              ).connect(`rpc://${connectorId}`, {
-                reconnect: { id: connectorId },
-                transport: {
-                  type: 'rpc',
-                  namespace: this.env.MCP_SESSION!,
-                  name: connectorId,
-                  props,
-                },
-              })
-              return result.id === connectorId
-                ? { state: 'connected' as const }
-                : { state: 'failed' as const, error: 'RPC MCP id mismatch' }
-            },
-          }
-        : {}),
+      connectRpcMcpServer: async ({ connectorId, props }) =>
+        await connectRpcMcpConnector({
+          mcp: this.mcp,
+          namespace: this.env.MCP_SESSION,
+          connectorId,
+          props,
+        }),
       removeMcpServer: this.removeMcpServer.bind(this),
       resolveRuntimeIdentity: async () => await this.resolveIssueMcpIdentity(),
     }
