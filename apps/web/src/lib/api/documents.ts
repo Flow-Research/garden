@@ -1,5 +1,13 @@
 import { getApiTransport } from './state'
 
+export type DocumentStructureNode = {
+  id: string
+  title: string
+  level: number
+  page_number: number | null
+  children: DocumentStructureNode[]
+}
+
 export type ThreadDocumentsResponse = {
   ok: boolean
   attachments?: Array<{
@@ -7,9 +15,13 @@ export type ThreadDocumentsResponse = {
     filename?: string
     file_type?: string | null
     status?: string | null
+    size_bytes?: number | null
+    page_count?: number | null
+    structure_tree?: DocumentStructureNode[] | null
     version_id?: string | null
     version_number?: number | null
     download_url?: string | null
+    updated_at?: string | null
   }>
   error?: string
 }
@@ -53,6 +65,25 @@ export function listDocumentVersions(documentId: string): Promise<{
   versions?: DocumentVersionItem[]
 }> {
   return getApiTransport().request(`/api/documents/${documentId}/versions`)
+}
+
+export type DocumentMetadata = {
+  id: string
+  filename: string
+  file_type: string | null
+  size_bytes: number | null
+  page_count: number | null
+  structure_tree: DocumentStructureNode[] | null
+  status: string | null
+  updated_at: string | null
+}
+
+export function getDocumentMetadata(documentId: string): Promise<{
+  error?: string
+  ok?: boolean
+  metadata?: DocumentMetadata
+}> {
+  return getApiTransport().request(`/api/documents/${documentId}/metadata`)
 }
 
 export function resolveDocumentEdit(args: {

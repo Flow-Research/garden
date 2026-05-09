@@ -77,6 +77,7 @@ import { Route as ApiInboxIdReadRouteImport } from './routes/api/inbox/$id/read'
 import { Route as ApiInboxIdArchiveRouteImport } from './routes/api/inbox/$id/archive'
 import { Route as ApiDocumentsIdVersionsRouteImport } from './routes/api/documents/$id/versions'
 import { Route as ApiDocumentsIdTrackedChangeIdsRouteImport } from './routes/api/documents/$id/tracked-change-ids'
+import { Route as ApiDocumentsIdMetadataRouteImport } from './routes/api/documents/$id/metadata'
 import { Route as ApiDocumentsIdDocxRouteImport } from './routes/api/documents/$id/docx'
 import { Route as ApiDocumentsIdDisplayRouteImport } from './routes/api/documents/$id/display'
 import { Route as ApiConnectionsConnectorIdActivityRouteImport } from './routes/api/connections/$connectorId/activity'
@@ -446,6 +447,11 @@ const ApiDocumentsIdTrackedChangeIdsRoute =
     path: '/api/documents/$id/tracked-change-ids',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiDocumentsIdMetadataRoute = ApiDocumentsIdMetadataRouteImport.update({
+  id: '/api/documents/$id/metadata',
+  path: '/api/documents/$id/metadata',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiDocumentsIdDocxRoute = ApiDocumentsIdDocxRouteImport.update({
   id: '/api/documents/$id/docx',
   path: '/api/documents/$id/docx',
@@ -614,6 +620,7 @@ export interface FileRoutesByFullPath {
   '/api/connections/$connectorId/activity': typeof ApiConnectionsConnectorIdActivityRoute
   '/api/documents/$id/display': typeof ApiDocumentsIdDisplayRoute
   '/api/documents/$id/docx': typeof ApiDocumentsIdDocxRoute
+  '/api/documents/$id/metadata': typeof ApiDocumentsIdMetadataRoute
   '/api/documents/$id/tracked-change-ids': typeof ApiDocumentsIdTrackedChangeIdsRoute
   '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
@@ -703,6 +710,7 @@ export interface FileRoutesByTo {
   '/api/connections/$connectorId/activity': typeof ApiConnectionsConnectorIdActivityRoute
   '/api/documents/$id/display': typeof ApiDocumentsIdDisplayRoute
   '/api/documents/$id/docx': typeof ApiDocumentsIdDocxRoute
+  '/api/documents/$id/metadata': typeof ApiDocumentsIdMetadataRoute
   '/api/documents/$id/tracked-change-ids': typeof ApiDocumentsIdTrackedChangeIdsRoute
   '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
@@ -794,6 +802,7 @@ export interface FileRoutesById {
   '/api/connections/$connectorId/activity': typeof ApiConnectionsConnectorIdActivityRoute
   '/api/documents/$id/display': typeof ApiDocumentsIdDisplayRoute
   '/api/documents/$id/docx': typeof ApiDocumentsIdDocxRoute
+  '/api/documents/$id/metadata': typeof ApiDocumentsIdMetadataRoute
   '/api/documents/$id/tracked-change-ids': typeof ApiDocumentsIdTrackedChangeIdsRoute
   '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
@@ -885,6 +894,7 @@ export interface FileRouteTypes {
     | '/api/connections/$connectorId/activity'
     | '/api/documents/$id/display'
     | '/api/documents/$id/docx'
+    | '/api/documents/$id/metadata'
     | '/api/documents/$id/tracked-change-ids'
     | '/api/documents/$id/versions'
     | '/api/inbox/$id/archive'
@@ -974,6 +984,7 @@ export interface FileRouteTypes {
     | '/api/connections/$connectorId/activity'
     | '/api/documents/$id/display'
     | '/api/documents/$id/docx'
+    | '/api/documents/$id/metadata'
     | '/api/documents/$id/tracked-change-ids'
     | '/api/documents/$id/versions'
     | '/api/inbox/$id/archive'
@@ -1064,6 +1075,7 @@ export interface FileRouteTypes {
     | '/api/connections/$connectorId/activity'
     | '/api/documents/$id/display'
     | '/api/documents/$id/docx'
+    | '/api/documents/$id/metadata'
     | '/api/documents/$id/tracked-change-ids'
     | '/api/documents/$id/versions'
     | '/api/inbox/$id/archive'
@@ -1126,6 +1138,7 @@ export interface RootRouteChildren {
   ApiRunsIdRoute: typeof ApiRunsIdRoute
   ApiDocumentsIdDisplayRoute: typeof ApiDocumentsIdDisplayRoute
   ApiDocumentsIdDocxRoute: typeof ApiDocumentsIdDocxRoute
+  ApiDocumentsIdMetadataRoute: typeof ApiDocumentsIdMetadataRoute
   ApiDocumentsIdTrackedChangeIdsRoute: typeof ApiDocumentsIdTrackedChangeIdsRoute
   ApiDocumentsIdVersionsRoute: typeof ApiDocumentsIdVersionsRoute
   ApiPermissionRequestsIdResolveRoute: typeof ApiPermissionRequestsIdResolveRoute
@@ -1609,6 +1622,13 @@ declare module '@tanstack/react-router' {
       path: '/api/documents/$id/tracked-change-ids'
       fullPath: '/api/documents/$id/tracked-change-ids'
       preLoaderRoute: typeof ApiDocumentsIdTrackedChangeIdsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/documents/$id/metadata': {
+      id: '/api/documents/$id/metadata'
+      path: '/api/documents/$id/metadata'
+      fullPath: '/api/documents/$id/metadata'
+      preLoaderRoute: typeof ApiDocumentsIdMetadataRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/documents/$id/docx': {
@@ -2126,6 +2146,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiRunsIdRoute: ApiRunsIdRoute,
   ApiDocumentsIdDisplayRoute: ApiDocumentsIdDisplayRoute,
   ApiDocumentsIdDocxRoute: ApiDocumentsIdDocxRoute,
+  ApiDocumentsIdMetadataRoute: ApiDocumentsIdMetadataRoute,
   ApiDocumentsIdTrackedChangeIdsRoute: ApiDocumentsIdTrackedChangeIdsRoute,
   ApiDocumentsIdVersionsRoute: ApiDocumentsIdVersionsRoute,
   ApiPermissionRequestsIdResolveRoute: ApiPermissionRequestsIdResolveRoute,
