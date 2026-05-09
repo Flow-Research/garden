@@ -12,6 +12,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -285,6 +286,18 @@ export function ConnectedChatPanelInteraction({
     stop,
     isStreaming,
   } = runtime
+
+  useLayoutEffect(() => {
+    setApprovalError(null)
+    setDocumentPanelView(null)
+    setIsRetrying(false)
+    setOptimisticPendingTurn(false)
+    setResolvedApprovalIds([])
+    setResolvedDocumentEditStatuses({})
+    setResolvingToolCallIds([])
+    lastSentTextRef.current = null
+    pendingMessageCountRef.current = null
+  }, [sessionId])
 
   useEffect(() => {
     if (normalizeStatus(status) !== 'idle') {

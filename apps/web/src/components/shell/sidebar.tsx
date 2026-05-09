@@ -42,6 +42,7 @@ import {
 import { deduplicateInboxItems, inboxListOptions } from '@/lib/inbox/queries'
 import { automationListOptions } from '@/features/automations/queries'
 import { useAuthStore } from '@garden/core/auth'
+import { useChatStore } from '@garden/core/chat'
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { SearchTrigger } from '@/features/search'
 import { ChatSessionExplorer } from '@/features/chat'
@@ -271,6 +272,7 @@ export function WorkspaceSidebar() {
   const { replace } = useNavigation()
   const dock = useWorkspaceDock()
   const activePanel = dock?.activePanel ?? null
+  const setActiveSession = useChatStore((state) => state.setActiveSession)
   const openPanel = useCallback(
     (panel: WorkspacePanelInput) => dock?.openPanel(panel),
     [dock],
@@ -568,6 +570,7 @@ export function WorkspaceSidebar() {
                           title: result.value.title,
                           entityId: result.value.id,
                         })
+                        setActiveSession(result.value.id)
                       },
                     )
                   }}
@@ -575,13 +578,14 @@ export function WorkspaceSidebar() {
               </SidebarMenu>
               <div className="mt-2 border-t border-sidebar-border/70 pt-2">
                 <ChatSessionExplorer
-                  onActivate={(session) =>
+                  onActivate={(session) => {
+                    setActiveSession(session.id)
                     openPanel({
                       kind: 'chat',
                       title: session.title,
                       entityId: session.id,
                     })
-                  }
+                  }}
                   onArchive={(sessionId) => closePanel(`chat:${sessionId}`)}
                 />
               </div>

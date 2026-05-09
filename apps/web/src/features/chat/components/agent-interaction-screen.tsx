@@ -157,7 +157,6 @@ export function AgentInteractionScreen({
 
   return (
     <ChatPanelInteraction
-      key={activeSession.id}
       activeSession={activeSession}
       className={className}
       onClose={onClose}
