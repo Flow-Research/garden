@@ -1,6 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -21,6 +22,7 @@ import { getDb, schema } from './db'
 import { resolveConnectorWritePermissionRequests } from './permission-request'
 
 const URL_PATTERN = /https?:\/\/[^\s"'<>]+/i
+const MCP_PROXY_INTERNAL_BASE_URL = 'https://garden-mcp-proxy.internal/'
 
 export const workProductReviewBodySchema = z
   .object({
@@ -296,23 +298,16 @@ function resolveWritebackInvocation(args: {
   )
 }
 
-function resolveProxyBaseUrl(env: AppEnv) {
-  return (
-    env.MCP_PROXY_URL?.trim() ||
-    new URL('/api/mcp-proxy/', env.BETTER_AUTH_URL).toString()
-  )
-}
-
 function buildProxyTransport(args: {
   bearerToken: string
   connectorId: string
-  proxyBaseUrl: string
+  env: AppEnv
   transport: 'streamable-http' | 'sse'
 }) {
   const url =
     args.transport === 'streamable-http'
-      ? new URL(`${args.connectorId}/mcp`, args.proxyBaseUrl)
-      : new URL(`${args.connectorId}/sse`, args.proxyBaseUrl)
+      ? new URL(`${args.connectorId}/mcp`, MCP_PROXY_INTERNAL_BASE_URL)
+      : new URL(`${args.connectorId}/sse`, MCP_PROXY_INTERNAL_BASE_URL)
 
   const requestInit = {
     headers: {
@@ -320,9 +315,12 @@ function buildProxyTransport(args: {
     },
   }
 
+  const fetch: FetchLike = async (input, init) =>
+    args.env.MCP_PROXY.fetch(new Request(input, init))
+
   return args.transport === 'streamable-http'
-    ? new StreamableHTTPClientTransport(url, { requestInit })
-    : new SSEClientTransport(url, { requestInit })
+    ? new StreamableHTTPClientTransport(url, { requestInit, fetch })
+    : new SSEClientTransport(url, { requestInit, fetch })
 }
 
 function connectorErrorFromCause(cause: unknown): ConnectorError {
@@ -455,7 +453,7 @@ async function callConnectorTool(args: {
   const transport = buildProxyTransport({
     bearerToken: tokenResult.value,
     connectorId: args.connectorId,
-    proxyBaseUrl: resolveProxyBaseUrl(args.env),
+    env: args.env,
     transport: connector.upstream.transport,
   })
 

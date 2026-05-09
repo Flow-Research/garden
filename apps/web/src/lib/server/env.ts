@@ -9,6 +9,7 @@ export type AppEnv = {
   OPENCODE_GO_API_KEY: RequiredEnvBinding<'OPENCODE_GO_API_KEY'>
   FILES: RequiredEnvBinding<'FILES'>
   LOADER: RequiredEnvBinding<'LOADER'>
+  MCP_PROXY: RequiredEnvBinding<'MCP_PROXY'>
   SANDBOX_TRANSPORT: RequiredEnvBinding<'SANDBOX_TRANSPORT'>
   AgentDO: RequiredEnvBinding<'AgentDO'>
   AUTOMATION_TRIGGER: RequiredEnvBinding<'AUTOMATION_TRIGGER'>
@@ -23,7 +24,6 @@ export type AppEnv = {
   GITHUB_WEBHOOK_SECRET?: string
   GOOGLE_CLIENT_ID?: string
   GOOGLE_CLIENT_SECRET?: string
-  MCP_PROXY_URL?: string
   SLACK_CLIENT_ID?: string
   SLACK_CLIENT_SECRET?: string
 }

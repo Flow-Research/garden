@@ -23,9 +23,7 @@ export { ChatSubAgent }
 export { IssueRunSubAgent }
 export { Sandbox }
 
-type ServerEnv = AppEnv & {
-  MCP_PROXY?: Fetcher
-}
+type ServerEnv = AppEnv
 
 const AGENT_DO_AUTH_CACHE_TTL_MS = 60_000
 const RECONCILE_ON_FETCH_INTERVAL_MS = 5_000
@@ -146,34 +144,6 @@ export default {
     if (sandboxResponse) return sandboxResponse
 
     const url = new URL(request.url)
-
-    if (url.pathname.startsWith('/api/mcp-proxy/')) {
-      if (!env.MCP_PROXY) {
-        return new Response('MCP proxy binding is not configured', {
-          status: 503,
-        })
-      }
-
-      const upstreamPath = url.pathname.replace('/api/mcp-proxy', '')
-      const upstreamUrl = new URL(
-        `${upstreamPath}${url.search}`,
-        'https://garden-mcp-proxy.internal',
-      )
-      const proxyResponse = await Result.tryPromise({
-        try: async () =>
-          env.MCP_PROXY!.fetch(new Request(upstreamUrl, request)),
-        catch: (cause) => cause,
-      })
-
-      return proxyResponse.isOk()
-        ? proxyResponse.value
-        : responseFromCaughtError({
-            event: 'mcp_proxy_service_binding_failed',
-            status: 502,
-            fallback: 'MCP proxy request failed',
-            cause: proxyResponse.error,
-          })
-    }
 
     if (url.pathname.startsWith('/agents/')) {
       const agentAuth = await authorizeAgentRequest(request, env)

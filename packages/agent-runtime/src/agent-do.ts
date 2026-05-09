@@ -78,7 +78,6 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
   DATABASE_URL: string;
-  MCP_PROXY_URL?: string;
   OPENCODE_GO_API_KEY: string;
   FILES: R2Bucket;
   LOADER: WorkerLoader;

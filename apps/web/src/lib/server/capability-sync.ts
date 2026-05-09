@@ -1,6 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { Result, TaggedError } from 'better-result'
 import { and, eq, inArray } from 'drizzle-orm'
@@ -13,6 +14,8 @@ import { mintMcpProxyJwt } from '@garden/connectors/proxy-jwt'
 import { getDb, schema } from './db'
 import { appEnv } from './env'
 
+const MCP_PROXY_INTERNAL_BASE_URL = 'https://garden-mcp-proxy.internal/'
+
 export class CapabilitySyncError extends TaggedError('CapabilitySyncError')<{
   code:
     | 'connector_not_found'
@@ -22,10 +25,6 @@ export class CapabilitySyncError extends TaggedError('CapabilitySyncError')<{
     | 'database_failed'
   message: string
 }>() {}
-
-function resolveProxyBaseUrl() {
-  return appEnv.MCP_PROXY_URL?.trim() || new URL('/api/mcp-proxy/', appEnv.BETTER_AUTH_URL).toString()
-}
 
 async function sha256Hex(value: string) {
   const digest = await crypto.subtle.digest(
@@ -239,14 +238,13 @@ async function deleteStaleCapabilityDependencies(staleCapabilityIds: string[]) {
 
 function buildProxyTransport(args: {
   connectorId: string
-  proxyBaseUrl: string
   transport: 'streamable-http' | 'sse'
   bearerToken: string
 }) {
   const url =
     args.transport === 'streamable-http'
-      ? new URL(`${args.connectorId}/mcp`, args.proxyBaseUrl)
-      : new URL(`${args.connectorId}/sse`, args.proxyBaseUrl)
+      ? new URL(`${args.connectorId}/mcp`, MCP_PROXY_INTERNAL_BASE_URL)
+      : new URL(`${args.connectorId}/sse`, MCP_PROXY_INTERNAL_BASE_URL)
 
   const requestInit = {
     headers: {
@@ -254,14 +252,16 @@ function buildProxyTransport(args: {
     },
   }
 
+  const fetch: FetchLike = async (input, init) =>
+    appEnv.MCP_PROXY.fetch(new Request(input, init))
+
   return args.transport === 'streamable-http'
-    ? new StreamableHTTPClientTransport(url, { requestInit })
-    : new SSEClientTransport(url, { requestInit })
+    ? new StreamableHTTPClientTransport(url, { requestInit, fetch })
+    : new SSEClientTransport(url, { requestInit, fetch })
 }
 
 async function listConnectorTools(args: {
   connectorId: string
-  proxyBaseUrl: string
   bearerToken: string
   transport: 'streamable-http' | 'sse'
 }) {
@@ -366,7 +366,6 @@ export async function syncCapabilities(
 
   const toolsResult = await listConnectorTools({
     connectorId,
-    proxyBaseUrl: resolveProxyBaseUrl(),
     bearerToken: tokenResult.value,
     transport: connector.upstream.transport,
   })
