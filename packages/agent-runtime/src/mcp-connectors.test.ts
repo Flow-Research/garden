@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { Result } from 'better-result'
+import type { ToolSet } from 'ai'
+import type { MCPServerFilter } from 'agents/mcp/client'
+import { buildMcpAiToolKey } from '@garden/connectors/capabilities'
 import {
   buildConnectorSyncPlan,
   hasWarmStoredConnectorServers,
@@ -8,8 +12,64 @@ import {
 import {
   connectRpcMcpConnector,
   isMcpDiscoveryCancellation,
+  RuntimeMcpController,
+  type McpHost,
+  type McpToolRecord,
   type RpcMcpConnectorProps,
 } from './runtime-mcp-controller'
+
+function createSqlStorageStub() {
+  const rows = new Map<string, Record<string, unknown>>()
+
+  return {
+    exec(sql: string, ...params: unknown[]) {
+      const normalized = sql.trim().toLowerCase()
+
+      if (normalized.startsWith('select')) {
+        return rows.values()
+      }
+
+      if (normalized.startsWith('insert into mcp_connector_server')) {
+        const [
+          connectorId,
+          serverId,
+          accountId,
+          workspaceId,
+          userId,
+          agentId,
+          jwtExpiresAt,
+          toolsSignature,
+        ] = params
+
+        rows.set(String(connectorId), {
+          connector_id: connectorId,
+          server_id: serverId,
+          account_id: accountId,
+          workspace_id: workspaceId,
+          user_id: userId,
+          agent_id: agentId,
+          jwt_expires_at: jwtExpiresAt,
+          tools_signature: toolsSignature,
+        })
+
+        return []
+      }
+
+      if (normalized.startsWith('delete from mcp_connector_server')) {
+        rows.delete(String(params[0]))
+        return []
+      }
+
+      if (normalized.startsWith('update mcp_connector_server')) {
+        const row = rows.get(String(params[2]))
+        if (row) row.tools_signature = params[0]
+        return []
+      }
+
+      return []
+    },
+  } as unknown as SqlStorage
+}
 
 describe('extractThreadIdFromAgentName', () => {
   it('extracts the thread id from chat agent names', () => {
@@ -282,5 +342,127 @@ describe('connectRpcMcpConnector', () => {
       state: 'failed',
       error: 'RPC MCP id mismatch',
     })
+  })
+})
+
+describe('RuntimeMcpController GitHub tools', () => {
+  it('exposes github tools to the agent after the runtime connector is attached', async () => {
+    const githubTools: McpToolRecord[] = [
+      {
+        serverId: 'github',
+        name: 'issue_read',
+        description: 'Read a GitHub issue.',
+        inputSchema: { type: 'object' },
+      },
+      {
+        serverId: 'github',
+        name: 'create_pull_request',
+        description: 'Create a GitHub pull request.',
+        inputSchema: { type: 'object' },
+      },
+    ]
+    const servers: Array<{ id: string }> = []
+    const toolsByServer = new Map<string, McpToolRecord[]>()
+    const connectCalls: RpcMcpConnectorProps[] = []
+    const listTools = (filter?: MCPServerFilter) => {
+      const serverId = filter?.serverId
+      const tools = [...toolsByServer.values()].flat()
+
+      if (Array.isArray(serverId)) {
+        const serverIds = new Set(serverId)
+        return tools.filter((tool) => serverIds.has(tool.serverId))
+      }
+
+      return serverId
+        ? (toolsByServer.get(serverId) ?? [])
+        : tools
+    }
+
+    const mcp = {
+      getAITools: (filter?: MCPServerFilter) =>
+        Object.fromEntries(
+          listTools(filter).map((tool) => [
+            buildMcpAiToolKey(tool.serverId, tool.name),
+            {
+              description: tool.description,
+              inputSchema: { type: 'object' },
+            },
+          ]),
+        ) as unknown as ToolSet,
+      listTools,
+      listServers: () => servers,
+      waitForConnections: async () => undefined,
+      discoverIfConnected: async (serverId: string) =>
+        toolsByServer.get(serverId)?.length
+          ? { success: true }
+          : { success: false, error: 'No tools discovered' },
+    }
+
+    const host: McpHost = {
+      name: 'chat:thread-1',
+      env: {
+        BETTER_AUTH_SECRET: 'secret',
+        BETTER_AUTH_URL: 'https://garden.test',
+        DATABASE_URL: 'postgres://garden.test/db',
+      },
+      ctx: { storage: { sql: createSqlStorageStub() } },
+      mcp,
+      connectRpcMcpServer: async ({ connectorId, props }) => {
+        connectCalls.push(props)
+        servers.push({ id: connectorId })
+        toolsByServer.set(connectorId, githubTools)
+        return { state: 'connected' }
+      },
+      removeMcpServer: async (connectorId) => {
+        const index = servers.findIndex((server) => server.id === connectorId)
+        if (index >= 0) servers.splice(index, 1)
+        toolsByServer.delete(connectorId)
+      },
+      resolveRuntimeIdentity: async () =>
+        Result.ok({
+          threadId: 'thread-1',
+          workspaceId: 'workspace-1',
+          userId: 'user-1',
+          agentId: 'agent-1',
+        }),
+    }
+    const controller = new RuntimeMcpController(host)
+    ;(
+      controller as unknown as {
+        listActiveConnectorBindings: () => Promise<
+          Result<Array<{ connectorId: string; accountId: string | null }>, never>
+        >
+      }
+    ).listActiveConnectorBindings = async () =>
+      Result.ok([{ connectorId: 'github', accountId: null }])
+
+    const result = await controller.ensureProxyMcpConnections()
+
+    expect(result.isOk()).toBe(true)
+    expect(connectCalls).toEqual([
+      {
+        userId: 'user-1',
+        workspaceId: 'workspace-1',
+        agentId: 'agent-1',
+        connectorId: 'github',
+        authKind: 'oauth',
+      },
+    ])
+    expect(host.mcp.listTools({ serverId: 'github' }).map((tool) => tool.name)).toEqual([
+      'issue_read',
+      'create_pull_request',
+    ])
+
+    const aiTools = controller.wrapGetAITools(host.mcp.getAITools)
+    expect(Object.keys(aiTools).sort()).toEqual(
+      [
+        buildMcpAiToolKey('github', 'create_pull_request'),
+        buildMcpAiToolKey('github', 'issue_read'),
+      ].sort(),
+    )
+    expect(
+      aiTools[buildMcpAiToolKey('github', 'create_pull_request')]
+        ?.description,
+    ).toContain('External github write tool')
   })
 })
