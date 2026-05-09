@@ -191,7 +191,6 @@ export function Conversation<TItem>({
           estimatedItemSize={estimateItemSize}
           initialContainerPoolRatio={initialContainerPoolRatio}
           alignItemsAtEnd
-          initialScrollAtEnd
           maintainScrollAtEnd
           maintainScrollAtEndThreshold={0.1}
           maintainVisibleContentPosition
