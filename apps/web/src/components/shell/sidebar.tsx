@@ -53,32 +53,25 @@ import { useNavigation } from '@/features/navigation'
 import { useSettingsDialogStore } from '@/features/settings'
 import { NavUser } from '@/components/nav-user'
 import {
+  getRailContextForPanel,
+  railUsesContextRail,
   useWorkspaceDock,
   type WorkspacePanelKind,
   type WorkspacePanelInput,
+  type WorkspaceRailContext,
 } from './workspace-dock'
 import { toast } from 'sonner'
 
-type RailContext =
-  | 'home'
-  | 'chats'
-  | 'tasks'
-  | 'automations'
-  | 'inbox'
-  | 'agents'
-  | 'skills'
-  | 'connections'
-
 type RailItem = {
-  id: RailContext
+  id: WorkspaceRailContext
   label: string
   icon: React.ComponentType<{ className?: string }>
   defaultPanel: WorkspacePanelInput
 }
 
 type PendingRail = {
-  id: RailContext
-  from: RailContext
+  id: WorkspaceRailContext
+  from: WorkspaceRailContext
 }
 
 const railItems: RailItem[] = [
@@ -132,44 +125,8 @@ const railItems: RailItem[] = [
   },
 ]
 
-function contextFromPanel(kind: WorkspacePanelKind | null): RailContext {
-  switch (kind) {
-    case 'chat':
-      return 'chats'
-    case 'issues':
-    case 'issue-detail':
-      return 'tasks'
-    case 'automations':
-    case 'automation-detail':
-      return 'automations'
-    case 'inbox':
-      return 'inbox'
-    case 'agents':
-    case 'agent-detail':
-      return 'agents'
-    case 'skill-editor':
-      return 'skills'
-    case 'capabilities':
-      return 'connections'
-    case 'blank':
-    case 'dashboard':
-    default:
-      return 'home'
-  }
-}
-
 function HomeDashboardIcon({ className }: { className?: string }) {
   return <IconifyIcon icon="ic:sharp-dashboard" className={className} />
-}
-
-function railUsesContextRail(rail: RailContext): boolean {
-  return (
-    rail === 'home' ||
-    rail === 'chats' ||
-    rail === 'skills' ||
-    rail === 'agents' ||
-    rail === 'connections'
-  )
 }
 
 function RailHomeIcon({ className }: { className?: string }) {
@@ -301,7 +258,7 @@ export function WorkspaceSidebar() {
     activeType === 'chat' && activeSession
       ? isPendingFirstTurn(activeSession)
       : false
-  const activeRailId = contextFromPanel(activeType)
+  const activeRailId = getRailContextForPanel(activeType)
   const [pendingRail, setPendingRail] = useState<PendingRail | null>(null)
   const effectiveRailId =
     pendingRail && activeRailId === pendingRail.from

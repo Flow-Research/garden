@@ -429,6 +429,14 @@ class FakeDockApi {
     this.activePanelListeners.forEach((listener) => listener())
   }
 
+  silentlySetActivePanel(panelId: string) {
+    const panel = this.getPanel(panelId)
+    if (!panel) return
+    this.activeGroup = panel.group
+    this.activePanel = panel
+    panel.group.activePanel = panel
+  }
+
   setVisibleGroupPanel(
     groupId: string,
     panelId: string,
@@ -698,6 +706,59 @@ describe('WorkspaceDockProvider', () => {
       panel: 'dashboard',
       panelTitle: 'Dashboard',
       panelEntityId: null,
+    })
+  })
+
+  it('reads the visible dock panel when react state is stale after a remount', async () => {
+    const api = new FakeDockApi()
+    mockQueryState.chat = 'thread-1'
+    mockQueryState.panel = 'chat'
+    mockQueryState.panelEntityId = 'thread-1'
+
+    const ui = (
+      <WorkspaceDockProvider workspaceId="workspace-1">
+        <DockContextCapture />
+      </WorkspaceDockProvider>
+    )
+    const { rerender } = render(ui)
+
+    await act(async () => {
+      capturedDock?.handleReady({ api } as never)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dock-state')).toHaveAttribute(
+        'data-panel',
+        'chat',
+      )
+    })
+
+    await act(async () => {
+      capturedDock?.openPanel({ kind: 'dashboard', title: 'Dashboard' })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dock-state')).toHaveAttribute(
+        'data-panel',
+        'dashboard',
+      )
+    })
+
+    const chatPanelId = api.panels.find(
+      (panel) => panel.params.kind === 'chat',
+    )?.id
+    expect(chatPanelId).toBeDefined()
+
+    await act(async () => {
+      api.silentlySetActivePanel(chatPanelId ?? '')
+      rerender(ui)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dock-state')).toHaveAttribute(
+        'data-panel',
+        'chat',
+      )
     })
   })
 

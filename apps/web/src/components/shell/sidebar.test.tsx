@@ -42,8 +42,9 @@ const mockAuthState = vi.hoisted(() => ({
 }))
 
 vi.mock('@tanstack/react-query', () => ({
+  queryOptions: (options: unknown) => options,
   useQuery: () => ({ data: [] }),
-  useQueryClient: () => ({ clear: mockQueryClear }),
+  useQueryClient: () => ({ clear: mockQueryClear, prefetchQuery: vi.fn() }),
 }))
 
 vi.mock('@/lib/inbox/queries', () => ({
@@ -175,6 +176,35 @@ vi.mock('@/components/nav-user', () => ({
 }))
 
 vi.mock('./workspace-dock', () => ({
+  getRailContextForPanel: (kind: string | null | undefined) => {
+    switch (kind) {
+      case 'chat':
+        return 'chats'
+      case 'issues':
+      case 'issue-detail':
+        return 'tasks'
+      case 'automations':
+      case 'automation-detail':
+        return 'automations'
+      case 'inbox':
+        return 'inbox'
+      case 'agents':
+      case 'agent-detail':
+        return 'agents'
+      case 'skill-editor':
+        return 'skills'
+      case 'capabilities':
+        return 'connections'
+      default:
+        return 'home'
+    }
+  },
+  railUsesContextRail: (rail: string) =>
+    rail === 'home' ||
+    rail === 'chats' ||
+    rail === 'skills' ||
+    rail === 'agents' ||
+    rail === 'connections',
   useWorkspaceDock: () => mockDockState,
 }))
 

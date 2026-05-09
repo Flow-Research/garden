@@ -81,6 +81,16 @@ export type WorkspacePanelKind =
   | 'agents'
   | 'agent-detail'
 
+export type WorkspaceRailContext =
+  | 'home'
+  | 'chats'
+  | 'tasks'
+  | 'automations'
+  | 'inbox'
+  | 'agents'
+  | 'skills'
+  | 'connections'
+
 export type WorkspacePanelInput = {
   kind: WorkspacePanelKind
   title: string
@@ -254,15 +264,46 @@ const panelIcons: Record<
   'agent-detail': Bot,
 }
 
-function panelUsesContextRail(kind: WorkspacePanelKind | null | undefined) {
+export function getRailContextForPanel(
+  kind: WorkspacePanelKind | null | undefined,
+): WorkspaceRailContext {
+  switch (kind) {
+    case 'chat':
+      return 'chats'
+    case 'issues':
+    case 'issue-detail':
+      return 'tasks'
+    case 'automations':
+    case 'automation-detail':
+      return 'automations'
+    case 'inbox':
+      return 'inbox'
+    case 'agents':
+    case 'agent-detail':
+      return 'agents'
+    case 'skill-editor':
+      return 'skills'
+    case 'capabilities':
+      return 'connections'
+    case 'blank':
+    case 'dashboard':
+    default:
+      return 'home'
+  }
+}
+
+export function railUsesContextRail(rail: WorkspaceRailContext): boolean {
   return (
-    kind === 'dashboard' ||
-    kind === 'chat' ||
-    kind === 'skill-editor' ||
-    kind === 'agents' ||
-    kind === 'agent-detail' ||
-    kind === 'capabilities'
+    rail === 'home' ||
+    rail === 'chats' ||
+    rail === 'skills' ||
+    rail === 'agents' ||
+    rail === 'connections'
   )
+}
+
+function panelUsesContextRail(kind: WorkspacePanelKind | null | undefined) {
+  return railUsesContextRail(getRailContextForPanel(kind))
 }
 
 let dockPanelCounter = 0
@@ -1831,17 +1872,34 @@ export function WorkspaceDockProvider({
     togglePanelExpanded(current.id)
   }, [togglePanelExpanded])
 
+  const dockActivePanel = apiRef.current
+    ? getPanelInputFromApi(apiRef.current)
+    : null
+  const dockActivePanelKey = dockActivePanel
+    ? `${dockActivePanel.kind}:${dockActivePanel.entityId ?? ''}:${dockActivePanel.title}`
+    : null
+  const contextActivePanel = useMemo(
+    () => dockActivePanel ?? activePanel,
+    [activePanel, dockActivePanelKey],
+  )
+
   useEffect(() => {
     if (!isReady) return
 
     const staleSearchPanel = staleSearchPanelRef.current
     if (staleSearchPanel !== undefined) {
-      if (
+      const dockPanel = apiRef.current
+        ? getPanelInputFromApi(apiRef.current)
+        : null
+      if (arePanelSearchTargetsEqual(dockPanel, requestedSearchPanel)) {
+        staleSearchPanelRef.current = undefined
+      } else if (
         arePanelSearchTargetsEqual(staleSearchPanel, requestedSearchPanel)
       ) {
         return
+      } else {
+        staleSearchPanelRef.current = undefined
       }
-      staleSearchPanelRef.current = undefined
     }
 
     const queryPanel = requestedSearchPanel
@@ -1854,6 +1912,7 @@ export function WorkspaceDockProvider({
   }, [
     activePanel,
     commitPanelState,
+    getPanelInputFromApi,
     isReady,
     openPanel,
     requestedSearchPanel,
@@ -2072,7 +2131,7 @@ export function WorkspaceDockProvider({
   const contextValue = useMemo<WorkspaceDockContextValue>(
     () => ({
       activeGroupId,
-      activePanel,
+      activePanel: contextActivePanel,
       activePanelIsExpanded,
       activePanelIsPinned,
       activatePanel,
@@ -2100,7 +2159,7 @@ export function WorkspaceDockProvider({
     }),
     [
       activeGroupId,
-      activePanel,
+      contextActivePanel,
       activePanelIsExpanded,
       activePanelIsPinned,
       activatePanel,
