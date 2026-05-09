@@ -49,21 +49,23 @@ export const Route = createFileRoute('/api/automations')({
           conditions.push(sql`${schema.automation.status} <> 'archived'`)
         }
         const whereClause = and(...conditions)
-        const [{ count }] = await db
-          .select({ count: sql<number>`cast(count(*) as int)` })
-          .from(schema.automation)
-          .where(whereClause)
-        const rows = await db
-          .select()
-          .from(schema.automation)
-          .where(whereClause)
-          .orderBy(desc(schema.automation.updatedAt))
-          .limit(searchResult.value.limit ?? 50)
-          .offset(searchResult.value.offset ?? 0)
+        const [countRows, rows] = await Promise.all([
+          db
+            .select({ count: sql<number>`cast(count(*) as int)` })
+            .from(schema.automation)
+            .where(whereClause),
+          db
+            .select()
+            .from(schema.automation)
+            .where(whereClause)
+            .orderBy(desc(schema.automation.updatedAt))
+            .limit(searchResult.value.limit ?? 50)
+            .offset(searchResult.value.offset ?? 0),
+        ])
 
         return automationOk({
           automations: rows.map(toAutomation),
-          total: count,
+          total: countRows[0]?.count ?? 0,
         })
       },
       POST: async ({ request }) => {

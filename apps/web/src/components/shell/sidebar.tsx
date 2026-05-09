@@ -315,6 +315,10 @@ export function WorkspaceSidebar() {
     ...inboxListOptions(workspaceId),
     enabled: !!workspaceId,
   })
+  useQuery({
+    ...automationListOptions(workspaceId),
+    enabled: !!workspaceId,
+  })
 
   const prefetchRailData = useCallback(
     (item: RailItem) => {
