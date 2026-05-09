@@ -820,6 +820,7 @@ function DocumentEditCardsSection({
 
 export function MessageOrderedParts({
   debugMode,
+  isLatestStreaming,
   message,
   onOpenDocument,
   onOpenEdit,
@@ -829,6 +830,7 @@ export function MessageOrderedParts({
   resolvedStatuses,
 }: {
   debugMode: boolean
+  isLatestStreaming?: boolean
   message: ChatUiMessage
   onOpenDocument?: (artifact: GardenArtifactData) => void
   onOpenEdit?: (
@@ -840,6 +842,7 @@ export function MessageOrderedParts({
   onResolved?: (editId: string, status: 'accepted' | 'rejected') => void
   resolvedStatuses?: DocumentEditStatusMap
 }) {
+  const lastPartIndex = message.parts.length - 1
   const rendered: React.ReactNode[] = []
   let workItems: React.ReactNode[] = []
   let workCount = 0
@@ -889,8 +892,16 @@ export function MessageOrderedParts({
           : (part.text ?? '')
       if (!text.trim()) return
       flushWork()
+      const isAnimatingText =
+        Boolean(isLatestStreaming) &&
+        message.role === 'assistant' &&
+        index === lastPartIndex
       rendered.push(
-        <MessageResponse key={`${message.id}:text:${index}`}>
+        <MessageResponse
+          key={`${message.id}:text:${index}`}
+          isAnimating={isAnimatingText}
+          animated={isAnimatingText ? { animation: 'fadeIn', sep: 'word' } : false}
+        >
           {text}
         </MessageResponse>,
       )
