@@ -182,7 +182,7 @@ export const DEBUG_SDK_STACK: readonly SdkVersionInfo[] = [
   },
   {
     name: '@cloudflare/sandbox',
-    version: '0.9.2',
+    version: '0.9.4',
     channel: 'stable',
     role: 'Explicit Sandbox DO, fs/process API',
   },
