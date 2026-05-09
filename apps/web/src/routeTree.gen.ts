@@ -24,6 +24,7 @@ import { Route as ApiInboxRouteImport } from './routes/api/inbox'
 import { Route as ApiDebugStreamRouteImport } from './routes/api/debug-stream'
 import { Route as ApiConnectionsRouteImport } from './routes/api/connections'
 import { Route as ApiBootstrapRouteImport } from './routes/api/bootstrap'
+import { Route as ApiAutomationsRouteImport } from './routes/api/automations'
 import { Route as ApiAgentsRouteImport } from './routes/api/agents'
 import { Route as AuthenticatedWorkspaceRouteImport } from './routes/_authenticated/workspace'
 import { Route as ApiWorkspacesIdRouteImport } from './routes/api/workspaces/$id'
@@ -48,6 +49,7 @@ import { Route as ApiGithubCallbackRouteImport } from './routes/api/github/callb
 import { Route as ApiConnectionsConnectorIdRouteImport } from './routes/api/connections/$connectorId'
 import { Route as ApiCommentsIdRouteImport } from './routes/api/comments/$id'
 import { Route as ApiChatThreadsRouteImport } from './routes/api/chat/threads'
+import { Route as ApiAutomationsIdRouteImport } from './routes/api/automations/$id'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiAgentsIdRouteImport } from './routes/api/agents/$id'
 import { Route as ApiWorkspacesIdMembersRouteImport } from './routes/api/workspaces/$id/members'
@@ -78,6 +80,9 @@ import { Route as ApiDocumentsIdDisplayRouteImport } from './routes/api/document
 import { Route as ApiConnectionsConnectorIdActivityRouteImport } from './routes/api/connections/$connectorId/activity'
 import { Route as ApiCommentsIdReactionsRouteImport } from './routes/api/comments/$id/reactions'
 import { Route as ApiChatThreadsIdRouteImport } from './routes/api/chat/threads/$id'
+import { Route as ApiAutomationsIdTriggersRouteImport } from './routes/api/automations/$id/triggers'
+import { Route as ApiAutomationsIdTriggerRouteImport } from './routes/api/automations/$id/trigger'
+import { Route as ApiAutomationsIdRunsRouteImport } from './routes/api/automations/$id/runs'
 import { Route as ApiAgentsIdSkillsRouteImport } from './routes/api/agents/$id/skills'
 import { Route as ApiAgentsIdRestoreRouteImport } from './routes/api/agents/$id/restore'
 import { Route as ApiAgentsIdArchiveRouteImport } from './routes/api/agents/$id/archive'
@@ -87,6 +92,7 @@ import { Route as ApiIssuesIdSourceBindingsBindingIdRouteImport } from './routes
 import { Route as ApiChatThreadsIdToolApprovalRouteImport } from './routes/api/chat/threads/$id/tool-approval'
 import { Route as ApiChatThreadsIdPrimaryIssueRouteImport } from './routes/api/chat/threads/$id/primary-issue'
 import { Route as ApiChatThreadsIdDocumentsRouteImport } from './routes/api/chat/threads/$id/documents'
+import { Route as ApiAutomationsIdTriggersTriggerIdRouteImport } from './routes/api/automations/$id/triggers/$triggerId'
 import { Route as ApiDocumentsDocumentIdEditsEditIdActionRouteImport } from './routes/api/documents/$documentId/edits/$editId/$action'
 import { Route as ApiConnectionsConnectorIdToolsNameGrantRouteImport } from './routes/api/connections/$connectorId/tools/$name/grant'
 
@@ -162,6 +168,11 @@ const ApiConnectionsRoute = ApiConnectionsRouteImport.update({
 const ApiBootstrapRoute = ApiBootstrapRouteImport.update({
   id: '/api/bootstrap',
   path: '/api/bootstrap',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAutomationsRoute = ApiAutomationsRouteImport.update({
+  id: '/api/automations',
+  path: '/api/automations',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAgentsRoute = ApiAgentsRouteImport.update({
@@ -286,6 +297,11 @@ const ApiChatThreadsRoute = ApiChatThreadsRouteImport.update({
   id: '/api/chat/threads',
   path: '/api/chat/threads',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAutomationsIdRoute = ApiAutomationsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiAutomationsRoute,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
@@ -442,6 +458,22 @@ const ApiChatThreadsIdRoute = ApiChatThreadsIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => ApiChatThreadsRoute,
 } as any)
+const ApiAutomationsIdTriggersRoute =
+  ApiAutomationsIdTriggersRouteImport.update({
+    id: '/triggers',
+    path: '/triggers',
+    getParentRoute: () => ApiAutomationsIdRoute,
+  } as any)
+const ApiAutomationsIdTriggerRoute = ApiAutomationsIdTriggerRouteImport.update({
+  id: '/trigger',
+  path: '/trigger',
+  getParentRoute: () => ApiAutomationsIdRoute,
+} as any)
+const ApiAutomationsIdRunsRoute = ApiAutomationsIdRunsRouteImport.update({
+  id: '/runs',
+  path: '/runs',
+  getParentRoute: () => ApiAutomationsIdRoute,
+} as any)
 const ApiAgentsIdSkillsRoute = ApiAgentsIdSkillsRouteImport.update({
   id: '/skills',
   path: '/skills',
@@ -493,6 +525,12 @@ const ApiChatThreadsIdDocumentsRoute =
     path: '/documents',
     getParentRoute: () => ApiChatThreadsIdRoute,
   } as any)
+const ApiAutomationsIdTriggersTriggerIdRoute =
+  ApiAutomationsIdTriggersTriggerIdRouteImport.update({
+    id: '/$triggerId',
+    path: '/$triggerId',
+    getParentRoute: () => ApiAutomationsIdTriggersRoute,
+  } as any)
 const ApiDocumentsDocumentIdEditsEditIdActionRoute =
   ApiDocumentsDocumentIdEditsEditIdActionRouteImport.update({
     id: '/api/documents/$documentId/edits/$editId/$action',
@@ -512,6 +550,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/workspace': typeof AuthenticatedWorkspaceRoute
   '/api/agents': typeof ApiAgentsRouteWithChildren
+  '/api/automations': typeof ApiAutomationsRouteWithChildren
   '/api/bootstrap': typeof ApiBootstrapRoute
   '/api/connections': typeof ApiConnectionsRouteWithChildren
   '/api/debug-stream': typeof ApiDebugStreamRoute
@@ -525,6 +564,7 @@ export interface FileRoutesByFullPath {
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/automations/$id': typeof ApiAutomationsIdRouteWithChildren
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
   '/api/comments/$id': typeof ApiCommentsIdRouteWithChildren
   '/api/connections/$connectorId': typeof ApiConnectionsConnectorIdRouteWithChildren
@@ -550,6 +590,9 @@ export interface FileRoutesByFullPath {
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
   '/api/agents/$id/skills': typeof ApiAgentsIdSkillsRoute
+  '/api/automations/$id/runs': typeof ApiAutomationsIdRunsRoute
+  '/api/automations/$id/trigger': typeof ApiAutomationsIdTriggerRoute
+  '/api/automations/$id/triggers': typeof ApiAutomationsIdTriggersRouteWithChildren
   '/api/chat/threads/$id': typeof ApiChatThreadsIdRouteWithChildren
   '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
   '/api/connections/$connectorId/activity': typeof ApiConnectionsConnectorIdActivityRoute
@@ -578,6 +621,7 @@ export interface FileRoutesByFullPath {
   '/api/work-products/$id/review': typeof ApiWorkProductsIdReviewRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
+  '/api/automations/$id/triggers/$triggerId': typeof ApiAutomationsIdTriggersTriggerIdRoute
   '/api/chat/threads/$id/documents': typeof ApiChatThreadsIdDocumentsRoute
   '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
@@ -593,6 +637,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/workspace': typeof AuthenticatedWorkspaceRoute
   '/api/agents': typeof ApiAgentsRouteWithChildren
+  '/api/automations': typeof ApiAutomationsRouteWithChildren
   '/api/bootstrap': typeof ApiBootstrapRoute
   '/api/connections': typeof ApiConnectionsRouteWithChildren
   '/api/debug-stream': typeof ApiDebugStreamRoute
@@ -606,6 +651,7 @@ export interface FileRoutesByTo {
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/automations/$id': typeof ApiAutomationsIdRouteWithChildren
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
   '/api/comments/$id': typeof ApiCommentsIdRouteWithChildren
   '/api/connections/$connectorId': typeof ApiConnectionsConnectorIdRouteWithChildren
@@ -631,6 +677,9 @@ export interface FileRoutesByTo {
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
   '/api/agents/$id/skills': typeof ApiAgentsIdSkillsRoute
+  '/api/automations/$id/runs': typeof ApiAutomationsIdRunsRoute
+  '/api/automations/$id/trigger': typeof ApiAutomationsIdTriggerRoute
+  '/api/automations/$id/triggers': typeof ApiAutomationsIdTriggersRouteWithChildren
   '/api/chat/threads/$id': typeof ApiChatThreadsIdRouteWithChildren
   '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
   '/api/connections/$connectorId/activity': typeof ApiConnectionsConnectorIdActivityRoute
@@ -659,6 +708,7 @@ export interface FileRoutesByTo {
   '/api/work-products/$id/review': typeof ApiWorkProductsIdReviewRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
+  '/api/automations/$id/triggers/$triggerId': typeof ApiAutomationsIdTriggersTriggerIdRoute
   '/api/chat/threads/$id/documents': typeof ApiChatThreadsIdDocumentsRoute
   '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
@@ -676,6 +726,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/_authenticated/workspace': typeof AuthenticatedWorkspaceRoute
   '/api/agents': typeof ApiAgentsRouteWithChildren
+  '/api/automations': typeof ApiAutomationsRouteWithChildren
   '/api/bootstrap': typeof ApiBootstrapRoute
   '/api/connections': typeof ApiConnectionsRouteWithChildren
   '/api/debug-stream': typeof ApiDebugStreamRoute
@@ -689,6 +740,7 @@ export interface FileRoutesById {
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/automations/$id': typeof ApiAutomationsIdRouteWithChildren
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
   '/api/comments/$id': typeof ApiCommentsIdRouteWithChildren
   '/api/connections/$connectorId': typeof ApiConnectionsConnectorIdRouteWithChildren
@@ -714,6 +766,9 @@ export interface FileRoutesById {
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
   '/api/agents/$id/skills': typeof ApiAgentsIdSkillsRoute
+  '/api/automations/$id/runs': typeof ApiAutomationsIdRunsRoute
+  '/api/automations/$id/trigger': typeof ApiAutomationsIdTriggerRoute
+  '/api/automations/$id/triggers': typeof ApiAutomationsIdTriggersRouteWithChildren
   '/api/chat/threads/$id': typeof ApiChatThreadsIdRouteWithChildren
   '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
   '/api/connections/$connectorId/activity': typeof ApiConnectionsConnectorIdActivityRoute
@@ -742,6 +797,7 @@ export interface FileRoutesById {
   '/api/work-products/$id/review': typeof ApiWorkProductsIdReviewRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
+  '/api/automations/$id/triggers/$triggerId': typeof ApiAutomationsIdTriggersTriggerIdRoute
   '/api/chat/threads/$id/documents': typeof ApiChatThreadsIdDocumentsRoute
   '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
@@ -759,6 +815,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/workspace'
     | '/api/agents'
+    | '/api/automations'
     | '/api/bootstrap'
     | '/api/connections'
     | '/api/debug-stream'
@@ -772,6 +829,7 @@ export interface FileRouteTypes {
     | '/api/workspaces'
     | '/api/agents/$id'
     | '/api/auth/$'
+    | '/api/automations/$id'
     | '/api/chat/threads'
     | '/api/comments/$id'
     | '/api/connections/$connectorId'
@@ -797,6 +855,9 @@ export interface FileRouteTypes {
     | '/api/agents/$id/archive'
     | '/api/agents/$id/restore'
     | '/api/agents/$id/skills'
+    | '/api/automations/$id/runs'
+    | '/api/automations/$id/trigger'
+    | '/api/automations/$id/triggers'
     | '/api/chat/threads/$id'
     | '/api/comments/$id/reactions'
     | '/api/connections/$connectorId/activity'
@@ -825,6 +886,7 @@ export interface FileRouteTypes {
     | '/api/work-products/$id/review'
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
+    | '/api/automations/$id/triggers/$triggerId'
     | '/api/chat/threads/$id/documents'
     | '/api/chat/threads/$id/primary-issue'
     | '/api/chat/threads/$id/tool-approval'
@@ -840,6 +902,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/workspace'
     | '/api/agents'
+    | '/api/automations'
     | '/api/bootstrap'
     | '/api/connections'
     | '/api/debug-stream'
@@ -853,6 +916,7 @@ export interface FileRouteTypes {
     | '/api/workspaces'
     | '/api/agents/$id'
     | '/api/auth/$'
+    | '/api/automations/$id'
     | '/api/chat/threads'
     | '/api/comments/$id'
     | '/api/connections/$connectorId'
@@ -878,6 +942,9 @@ export interface FileRouteTypes {
     | '/api/agents/$id/archive'
     | '/api/agents/$id/restore'
     | '/api/agents/$id/skills'
+    | '/api/automations/$id/runs'
+    | '/api/automations/$id/trigger'
+    | '/api/automations/$id/triggers'
     | '/api/chat/threads/$id'
     | '/api/comments/$id/reactions'
     | '/api/connections/$connectorId/activity'
@@ -906,6 +973,7 @@ export interface FileRouteTypes {
     | '/api/work-products/$id/review'
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
+    | '/api/automations/$id/triggers/$triggerId'
     | '/api/chat/threads/$id/documents'
     | '/api/chat/threads/$id/primary-issue'
     | '/api/chat/threads/$id/tool-approval'
@@ -922,6 +990,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/_authenticated/workspace'
     | '/api/agents'
+    | '/api/automations'
     | '/api/bootstrap'
     | '/api/connections'
     | '/api/debug-stream'
@@ -935,6 +1004,7 @@ export interface FileRouteTypes {
     | '/api/workspaces'
     | '/api/agents/$id'
     | '/api/auth/$'
+    | '/api/automations/$id'
     | '/api/chat/threads'
     | '/api/comments/$id'
     | '/api/connections/$connectorId'
@@ -960,6 +1030,9 @@ export interface FileRouteTypes {
     | '/api/agents/$id/archive'
     | '/api/agents/$id/restore'
     | '/api/agents/$id/skills'
+    | '/api/automations/$id/runs'
+    | '/api/automations/$id/trigger'
+    | '/api/automations/$id/triggers'
     | '/api/chat/threads/$id'
     | '/api/comments/$id/reactions'
     | '/api/connections/$connectorId/activity'
@@ -988,6 +1061,7 @@ export interface FileRouteTypes {
     | '/api/work-products/$id/review'
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
+    | '/api/automations/$id/triggers/$triggerId'
     | '/api/chat/threads/$id/documents'
     | '/api/chat/threads/$id/primary-issue'
     | '/api/chat/threads/$id/tool-approval'
@@ -1004,6 +1078,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   ApiAgentsRoute: typeof ApiAgentsRouteWithChildren
+  ApiAutomationsRoute: typeof ApiAutomationsRouteWithChildren
   ApiBootstrapRoute: typeof ApiBootstrapRoute
   ApiConnectionsRoute: typeof ApiConnectionsRouteWithChildren
   ApiDebugStreamRoute: typeof ApiDebugStreamRoute
@@ -1137,6 +1212,13 @@ declare module '@tanstack/react-router' {
       path: '/api/bootstrap'
       fullPath: '/api/bootstrap'
       preLoaderRoute: typeof ApiBootstrapRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/automations': {
+      id: '/api/automations'
+      path: '/api/automations'
+      fullPath: '/api/automations'
+      preLoaderRoute: typeof ApiAutomationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/agents': {
@@ -1306,6 +1388,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/chat/threads'
       preLoaderRoute: typeof ApiChatThreadsRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/api/automations/$id': {
+      id: '/api/automations/$id'
+      path: '/$id'
+      fullPath: '/api/automations/$id'
+      preLoaderRoute: typeof ApiAutomationsIdRouteImport
+      parentRoute: typeof ApiAutomationsRoute
     }
     '/api/auth/$': {
       id: '/api/auth/$'
@@ -1517,6 +1606,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatThreadsIdRouteImport
       parentRoute: typeof ApiChatThreadsRoute
     }
+    '/api/automations/$id/triggers': {
+      id: '/api/automations/$id/triggers'
+      path: '/triggers'
+      fullPath: '/api/automations/$id/triggers'
+      preLoaderRoute: typeof ApiAutomationsIdTriggersRouteImport
+      parentRoute: typeof ApiAutomationsIdRoute
+    }
+    '/api/automations/$id/trigger': {
+      id: '/api/automations/$id/trigger'
+      path: '/trigger'
+      fullPath: '/api/automations/$id/trigger'
+      preLoaderRoute: typeof ApiAutomationsIdTriggerRouteImport
+      parentRoute: typeof ApiAutomationsIdRoute
+    }
+    '/api/automations/$id/runs': {
+      id: '/api/automations/$id/runs'
+      path: '/runs'
+      fullPath: '/api/automations/$id/runs'
+      preLoaderRoute: typeof ApiAutomationsIdRunsRouteImport
+      parentRoute: typeof ApiAutomationsIdRoute
+    }
     '/api/agents/$id/skills': {
       id: '/api/agents/$id/skills'
       path: '/skills'
@@ -1580,6 +1690,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatThreadsIdDocumentsRouteImport
       parentRoute: typeof ApiChatThreadsIdRoute
     }
+    '/api/automations/$id/triggers/$triggerId': {
+      id: '/api/automations/$id/triggers/$triggerId'
+      path: '/$triggerId'
+      fullPath: '/api/automations/$id/triggers/$triggerId'
+      preLoaderRoute: typeof ApiAutomationsIdTriggersTriggerIdRouteImport
+      parentRoute: typeof ApiAutomationsIdTriggersRoute
+    }
     '/api/documents/$documentId/edits/$editId/$action': {
       id: '/api/documents/$documentId/edits/$editId/$action'
       path: '/api/documents/$documentId/edits/$editId/$action'
@@ -1635,6 +1752,48 @@ const ApiAgentsRouteChildren: ApiAgentsRouteChildren = {
 
 const ApiAgentsRouteWithChildren = ApiAgentsRoute._addFileChildren(
   ApiAgentsRouteChildren,
+)
+
+interface ApiAutomationsIdTriggersRouteChildren {
+  ApiAutomationsIdTriggersTriggerIdRoute: typeof ApiAutomationsIdTriggersTriggerIdRoute
+}
+
+const ApiAutomationsIdTriggersRouteChildren: ApiAutomationsIdTriggersRouteChildren =
+  {
+    ApiAutomationsIdTriggersTriggerIdRoute:
+      ApiAutomationsIdTriggersTriggerIdRoute,
+  }
+
+const ApiAutomationsIdTriggersRouteWithChildren =
+  ApiAutomationsIdTriggersRoute._addFileChildren(
+    ApiAutomationsIdTriggersRouteChildren,
+  )
+
+interface ApiAutomationsIdRouteChildren {
+  ApiAutomationsIdRunsRoute: typeof ApiAutomationsIdRunsRoute
+  ApiAutomationsIdTriggerRoute: typeof ApiAutomationsIdTriggerRoute
+  ApiAutomationsIdTriggersRoute: typeof ApiAutomationsIdTriggersRouteWithChildren
+}
+
+const ApiAutomationsIdRouteChildren: ApiAutomationsIdRouteChildren = {
+  ApiAutomationsIdRunsRoute: ApiAutomationsIdRunsRoute,
+  ApiAutomationsIdTriggerRoute: ApiAutomationsIdTriggerRoute,
+  ApiAutomationsIdTriggersRoute: ApiAutomationsIdTriggersRouteWithChildren,
+}
+
+const ApiAutomationsIdRouteWithChildren =
+  ApiAutomationsIdRoute._addFileChildren(ApiAutomationsIdRouteChildren)
+
+interface ApiAutomationsRouteChildren {
+  ApiAutomationsIdRoute: typeof ApiAutomationsIdRouteWithChildren
+}
+
+const ApiAutomationsRouteChildren: ApiAutomationsRouteChildren = {
+  ApiAutomationsIdRoute: ApiAutomationsIdRouteWithChildren,
+}
+
+const ApiAutomationsRouteWithChildren = ApiAutomationsRoute._addFileChildren(
+  ApiAutomationsRouteChildren,
 )
 
 interface ApiConnectionsConnectorIdRouteChildren {
@@ -1901,6 +2060,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   ApiAgentsRoute: ApiAgentsRouteWithChildren,
+  ApiAutomationsRoute: ApiAutomationsRouteWithChildren,
   ApiBootstrapRoute: ApiBootstrapRoute,
   ApiConnectionsRoute: ApiConnectionsRouteWithChildren,
   ApiDebugStreamRoute: ApiDebugStreamRoute,

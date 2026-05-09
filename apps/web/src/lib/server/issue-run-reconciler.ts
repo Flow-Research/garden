@@ -27,6 +27,8 @@ export type ReconcileReport = {
   silentRunsReaped: number
   wakeupsRestarted: number
   wakeupsFailed: number
+  triggersRecovered: number
+  automationRunsSynced: number
   approvalsExpired: number
 }
 
@@ -35,6 +37,8 @@ export class IssueRunReconcilerError extends TaggedError(
 )<{
   code:
     | 'approval_sweep_failed'
+    | 'automation_recovery_failed'
+    | 'automation_sync_failed'
     | 'db_error'
     | 'enqueue_failed'
     | 'reconcile_failed'
@@ -68,6 +72,20 @@ type ApprovalRow = {
   issue_id: string | null
   kind: string
   context: string | null
+}
+
+type StrandedTriggerRow = {
+  trigger_id: string
+  automation_id: string
+  concurrency_policy: string
+  next_run_at: Date
+}
+
+type AutomationRunSyncRow = {
+  automation_run_id: string
+  issue_run_status: string
+  issue_run_error: string | null
+  issue_run_finished_at: Date | null
 }
 
 function reconcilerError(args: {
@@ -201,6 +219,14 @@ async function markRunFailed(args: {
             updatedAt: args.now,
           })
           .where(eq(schema.issueWakeup.id, row.wakeupId))
+        await tx
+          .update(schema.automationRun)
+          .set({
+            status: 'failed',
+            completedAt: args.now,
+            failureReason: args.reason,
+          })
+          .where(eq(schema.automationRun.issueRunId, args.runId))
       })
     },
     catch: (cause) => dbError('mark run failed', cause),
@@ -480,6 +506,148 @@ async function restartClaimedWakeups(
   return Result.ok({ restarted, failed })
 }
 
+async function recoverStrandedTriggers(
+  env: AppEnv,
+  now: Date,
+): Promise<ResultValue<number, IssueRunReconcilerError>> {
+  const db = getDb(env)
+  const strandedBefore = new Date(now.getTime() - 5 * 60 * 1000)
+  const rowsResult = await Result.tryPromise({
+    try: async () => {
+      const rows = await db.execute<StrandedTriggerRow>(sql`
+        select
+          t.id as trigger_id,
+          t.automation_id,
+          a.concurrency_policy,
+          t.next_run_at
+        from automation_trigger t
+        join automation a on a.id = t.automation_id
+        where t.kind = 'schedule'
+          and t.enabled = true
+          and a.status = 'active'
+          and t.next_run_at is not null
+          and t.next_run_at < ${strandedBefore}
+          and (t.last_fired_at is null or t.last_fired_at < t.next_run_at)
+        order by t.next_run_at
+        limit 50
+      `)
+      return rows.rows
+    },
+    catch: (cause) => dbError('load stranded automation triggers', cause),
+  })
+  if (rowsResult.isErr()) return Result.err(rowsResult.error)
+
+  let recovered = 0
+  for (const row of rowsResult.value) {
+    if (row.concurrency_policy === 'queue') continue
+    if (
+      row.concurrency_policy !== 'skip' &&
+      row.concurrency_policy !== 'replace'
+    ) {
+      continue
+    }
+    const concurrencyPolicy = row.concurrency_policy
+
+    const rawResult = await Result.tryPromise({
+      try: async () =>
+        (await env.AUTOMATION_TRIGGER.get(
+          env.AUTOMATION_TRIGGER.idFromName(row.trigger_id),
+        ).install({
+          triggerId: row.trigger_id,
+          automationId: row.automation_id,
+          concurrencyPolicy,
+          nextRunAt: row.next_run_at,
+        })) as unknown,
+      catch: (cause) => dbError('re-arm automation trigger', cause),
+    })
+    if (rawResult.isErr()) return Result.err(rawResult.error)
+
+    const installResult = Result.deserialize<
+      void,
+      { message?: string; code?: string }
+    >(rawResult.value)
+    if (installResult.isErr()) {
+      return Result.err(
+        reconcilerError({
+          code: 'automation_recovery_failed',
+          message: installResult.error.message ?? 'Automation recovery failed.',
+          cause: installResult.error,
+        }),
+      )
+    }
+    recovered += 1
+  }
+
+  return Result.ok(recovered)
+}
+
+function automationStatusForIssueRunStatus(status: string) {
+  if ((LIVE_RUN_STATUSES as readonly string[]).includes(status)) {
+    return 'running' as const
+  }
+  if (status === 'succeeded') return 'completed' as const
+  return 'failed' as const
+}
+
+async function syncAutomationRuns(
+  env: AppEnv,
+  now: Date,
+): Promise<ResultValue<number, IssueRunReconcilerError>> {
+  const db = getDb(env)
+  const rowsResult = await Result.tryPromise({
+    try: async () => {
+      const rows = await db.execute<AutomationRunSyncRow>(sql`
+        select
+          ar.id as automation_run_id,
+          ir.status as issue_run_status,
+          ir.error as issue_run_error,
+          ir.finished_at as issue_run_finished_at
+        from automation_run ar
+        join issue_run ir on ir.id = ar.issue_run_id
+        where ar.issue_run_id is not null
+          and ar.status in ('issue_created', 'running')
+          and (
+            (ir.status in (${sqlTextList(LIVE_RUN_STATUSES)}) and ar.status <> 'running')
+            or ir.status not in (${sqlTextList(LIVE_RUN_STATUSES)})
+          )
+        order by ar.triggered_at
+        limit 100
+      `)
+      return rows.rows
+    },
+    catch: (cause) => dbError('load automation runs for sync', cause),
+  })
+  if (rowsResult.isErr()) return Result.err(rowsResult.error)
+
+  let synced = 0
+  for (const row of rowsResult.value) {
+    const status = automationStatusForIssueRunStatus(row.issue_run_status)
+    const completedAt =
+      status === 'running' ? null : (row.issue_run_finished_at ?? now)
+    const failureReason =
+      status === 'failed'
+        ? (row.issue_run_error ?? `issue_run_${row.issue_run_status}`)
+        : null
+    const updateResult = await Result.tryPromise({
+      try: async () => {
+        await db
+          .update(schema.automationRun)
+          .set({
+            status,
+            completedAt,
+            failureReason,
+          })
+          .where(eq(schema.automationRun.id, row.automation_run_id))
+      },
+      catch: (cause) => dbError('sync automation run state', cause),
+    })
+    if (updateResult.isErr()) return Result.err(updateResult.error)
+    synced += 1
+  }
+
+  return Result.ok(synced)
+}
+
 async function failWakeupAndBlockIssue(args: {
   env: AppEnv
   wakeupId: string
@@ -701,6 +869,19 @@ export async function reconcile(
     logger.error('restartClaimedWakeups failed', wakeupsResult.error.message)
   }
 
+  const triggersResult = await recoverStrandedTriggers(env, now)
+  if (triggersResult.isErr()) {
+    logger.error('recoverStrandedTriggers failed', triggersResult.error.message)
+  }
+
+  const automationRunsResult = await syncAutomationRuns(env, now)
+  if (automationRunsResult.isErr()) {
+    logger.error(
+      'syncAutomationRuns failed',
+      automationRunsResult.error.message,
+    )
+  }
+
   const approvalsResult = await sweepStaleApprovals(env, now)
   if (approvalsResult.isErr()) {
     logger.error('sweepStaleApprovals failed', approvalsResult.error.message)
@@ -710,6 +891,10 @@ export async function reconcile(
     silentRunsReaped: silentResult.isOk() ? silentResult.value : 0,
     wakeupsRestarted: wakeupsResult.isOk() ? wakeupsResult.value.restarted : 0,
     wakeupsFailed: wakeupsResult.isOk() ? wakeupsResult.value.failed : 0,
+    triggersRecovered: triggersResult.isOk() ? triggersResult.value : 0,
+    automationRunsSynced: automationRunsResult.isOk()
+      ? automationRunsResult.value
+      : 0,
     approvalsExpired: approvalsResult.isOk() ? approvalsResult.value : 0,
   })
 }
