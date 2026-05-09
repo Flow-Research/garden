@@ -369,7 +369,7 @@ export function ConnectedChatPanelInteraction({
       })
     }
 
-    const documentContext =
+    const uploadedDocsContext =
       uploadResult.value.length > 0
         ? `The user uploaded these workspace documents for this turn. Internal document handles for this turn follow. Use these handles only in document tool calls. Do not mention handles, ids, or UUIDs to the user; refer to documents by filename:\n${uploadResult.value
             .map(
@@ -382,10 +382,44 @@ export function ConnectedChatPanelInteraction({
             )
             .join('\n')}`
         : ''
+
+    // What the user has open in the side panel — could be a document,
+    // a tracked edit, or a citation. All three carry the underlying
+    // artifact, and the model wants to know about it in every case so
+    // unqualified references like "this" or "the doc" land on the right
+    // file. Mode is included so the prompt can mention edit/citation
+    // context when relevant.
+    const displayedDoc = documentPanelView?.artifact
+      ? {
+          handle: documentPanelView.artifact.id,
+          filename: documentPanelView.artifact.filename,
+          versionId: documentPanelView.artifact.versionId ?? null,
+          versionNumber: documentPanelView.artifact.versionNumber ?? null,
+          mode: documentPanelView.kind,
+        }
+      : null
+
+    const displayedDocContext = displayedDoc
+      ? `The user is currently viewing this document in the side panel${
+          displayedDoc.mode === 'edit'
+            ? ' (reviewing a tracked edit)'
+            : displayedDoc.mode === 'citation'
+              ? ' (looking at a cited passage)'
+              : ''
+        }. Prefer it as the implicit subject when the user says "this", "the doc", or otherwise refers to a document without naming one. Refer to it by filename only — never mention the handle, id, or version UUID:\n- handle: ${displayedDoc.handle}; filename: ${displayedDoc.filename}${
+          displayedDoc.versionNumber ? ` (V${displayedDoc.versionNumber})` : ''
+        }`
+      : ''
+
+    const documentContext = [uploadedDocsContext, displayedDocContext]
+      .filter((part) => part.length > 0)
+      .join('\n\n')
+
     const requestOptions = documentContext
       ? {
           body: {
             document_context: documentContext,
+            displayed_doc: displayedDoc,
           },
         }
       : undefined
