@@ -494,6 +494,11 @@ export async function generateDocx(args: {
   if (writeResult.isErr())
     return { ok: false, error: writeResult.error.message }
 
+  const generatedMetadata = await extractDocumentMetadata(
+    Buffer.from(packResult.value),
+    'docx',
+  )
+
   const insertResult = await Result.tryPromise({
     try: async () => {
       const [docRow] = await db
@@ -506,6 +511,8 @@ export async function generateDocx(args: {
           filename,
           fileType: 'docx',
           sizeBytes: packResult.value.byteLength,
+          pageCount: generatedMetadata.pageCount,
+          structureTree: generatedMetadata.structureTree ?? null,
           status: 'ready',
         })
         .returning({ id: schema.document.id })
@@ -623,6 +630,17 @@ export async function readDocument(args: {
   }
 }
 
+export type CitationAnnotation = {
+  kind: 'citation'
+  document_id: string
+  filename: string
+  quote: string
+  page?: number | null
+  version_id?: string | null
+  version_number?: number | null
+  ref?: number | null
+}
+
 export async function findInDocument(args: {
   context: DocumentToolContext
   documentId: string
@@ -640,7 +658,12 @@ export async function findInDocument(args: {
   const needle = normalizeQuery(args.query)
   const maxResults = args.maxResults ?? 20
   const contextChars = args.contextChars ?? 80
-  const hits: { index: number; excerpt: string; context: string }[] = []
+  const hits: {
+    index: number
+    excerpt: string
+    context: string
+    page: number | null
+  }[] = []
   let from = 0
   while (from <= norm.length - needle.length && hits.length < maxResults) {
     const pos = norm.indexOf(needle, from)
@@ -653,6 +676,7 @@ export async function findInDocument(args: {
         : text.length
     const ctxStart = Math.max(0, origStart - contextChars)
     const ctxEnd = Math.min(text.length, origEnd + contextChars)
+    const page = inferPageNumberAt(text, origStart)
     hits.push({
       index: hits.length,
       excerpt: text.slice(origStart, origEnd),
@@ -660,16 +684,44 @@ export async function findInDocument(args: {
         (ctxStart > 0 ? '...' : '') +
         text.slice(ctxStart, ctxEnd).replace(/\s+/g, ' ').trim() +
         (ctxEnd < text.length ? '...' : ''),
+      page,
     })
     from = pos + Math.max(1, needle.length)
   }
+  const annotations: CitationAnnotation[] = hits.map((hit, i) => ({
+    kind: 'citation',
+    document_id: readResult.document_id ?? args.documentId,
+    filename: readResult.filename ?? 'document',
+    quote: hit.context,
+    page: hit.page,
+    version_id: readResult.version_id ?? null,
+    version_number: readResult.version_number ?? null,
+    ref: i + 1,
+  }))
   return {
     ok: true,
     filename: readResult.filename,
+    document_id: readResult.document_id ?? args.documentId,
+    version_id: readResult.version_id ?? null,
+    version_number: readResult.version_number ?? null,
     query: args.query,
     returned: hits.length,
     hits,
+    annotations,
   }
+}
+
+function inferPageNumberAt(text: string, position: number): number | null {
+  // Our PDF text extractor inserts "[Page N]" markers between pages.
+  // Walk back from `position` to the last marker so each hit gets a page
+  // number when one is available.
+  const slice = text.slice(0, position)
+  const matches = slice.match(/\[Page (\d+)\]/g)
+  if (!matches || matches.length === 0) return null
+  const last = matches[matches.length - 1]
+  if (!last) return null
+  const page = Number(last.replace(/[^\d]/g, ''))
+  return Number.isFinite(page) ? page : null
 }
 
 export async function editDocument(args: {
@@ -719,7 +771,6 @@ export async function editDocument(args: {
   const db = getDb(args.context.databaseUrl)
   const versionSlug = crypto.randomUUID()
   const newPath = versionStorageKey(
-    activeResult.value.ownerUserId,
     args.documentId,
     versionSlug,
     activeResult.value.filename,
@@ -873,6 +924,8 @@ export async function registerUploadedDocument(args: {
   if (writeResult.isErr())
     return { ok: false, error: writeResult.error.message }
 
+  const metadata = await extractDocumentMetadata(Buffer.from(byteArray), fileType)
+
   const insertResult = await Result.tryPromise({
     try: async () => {
       const [docRow] = await db
@@ -885,6 +938,8 @@ export async function registerUploadedDocument(args: {
           filename,
           fileType,
           sizeBytes: byteArray.byteLength,
+          pageCount: metadata.pageCount,
+          structureTree: metadata.structureTree ?? null,
           status: 'ready',
         })
         .returning({ id: schema.document.id })
@@ -1279,6 +1334,90 @@ async function extractPdfText(bytes: Buffer) {
         message: error instanceof Error ? error.message : String(error),
       }),
   })
+}
+
+export type StructureTreeNode = {
+  id: string
+  title: string
+  level: number
+  page_number: number | null
+  children: StructureTreeNode[]
+}
+
+async function countPdfPages(bytes: Uint8Array): Promise<number | null> {
+  const result = await Result.tryPromise(async () => {
+    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
+    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise
+    return pdf.numPages
+  })
+  return result.isOk() ? result.value : null
+}
+
+async function extractStructureTree(
+  bytes: Buffer,
+  fileType: string,
+): Promise<StructureTreeNode[] | null> {
+  const result = await Result.tryPromise(async () => {
+    if (fileType === 'pdf') {
+      const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
+      const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(bytes) })
+        .promise
+      if (pdf.numPages <= 5) return null
+      const outline = (await pdf.getOutline()) as
+        | { title?: string }[]
+        | null
+        | undefined
+      if (outline?.length) {
+        return outline.map<StructureTreeNode>((item, i) => ({
+          id: `h1-${i}`,
+          title: item.title ?? `Item ${i + 1}`,
+          level: 1,
+          page_number: null,
+          children: [],
+        }))
+      }
+      return Array.from(
+        { length: pdf.numPages },
+        (_, i): StructureTreeNode => ({
+          id: `page-${i + 1}`,
+          title: `Page ${i + 1}`,
+          level: 1,
+          page_number: i + 1,
+          children: [],
+        }),
+      )
+    }
+    if (fileType === 'docx' || fileType === 'doc') {
+      const mammoth = await import('mammoth')
+      const extracted = await mammoth.extractRawText({ buffer: bytes })
+      const lines = extracted.value.split('\n').filter((line) => line.trim())
+      if (lines.length === 0) return null
+      return lines.slice(0, 30).map<StructureTreeNode>((line, i) => ({
+        id: `h1-${i}`,
+        title: line.slice(0, 100),
+        level: 1,
+        page_number: null,
+        children: [],
+      }))
+    }
+    return null
+  })
+  return result.isOk() ? result.value : null
+}
+
+export async function extractDocumentMetadata(
+  bytes: Buffer,
+  fileType: string,
+): Promise<{
+  pageCount: number | null
+  structureTree: StructureTreeNode[] | null
+}> {
+  const byteView = new Uint8Array(bytes)
+  const [pageCount, structureTree] = await Promise.all([
+    fileType === 'pdf' ? countPdfPages(byteView) : Promise.resolve(null),
+    extractStructureTree(bytes, fileType),
+  ])
+  return { pageCount, structureTree }
 }
 
 function normalizeWithMap(text: string): { norm: string; origIdx: number[] } {

@@ -30,36 +30,12 @@ export function buildContentDisposition(
   return `${kind}; filename="${sanitizeDispositionFilename(normalized)}"; filename*=UTF-8''${encodeRFC5987(normalized)}`
 }
 
-export function storageKey(
-  userId: string,
-  docId: string,
-  filename: string,
-): string {
-  return `documents/${userId}/${docId}/source${storageExtension(filename, '.bin')}`
-}
-
-export function generatedDocKey(
-  userId: string,
-  docId: string,
-  filename: string,
-): string {
-  return `generated/${userId}/${docId}/generated${storageExtension(filename, '.docx')}`
-}
-
 export function versionStorageKey(
-  _userId: string,
   docId: string,
   versionSlug: string,
   filename: string,
 ): string {
   return `/documents/${docId}/versions/${versionSlug}/${normalizeDownloadFilename(filename)}`
-}
-
-function storageExtension(filename: string, fallback: string): string {
-  const lastDot = filename.lastIndexOf('.')
-  if (lastDot < 0) return fallback
-  const ext = filename.slice(lastDot).toLowerCase()
-  return /^\.[a-z0-9]{1,16}$/.test(ext) ? ext : fallback
 }
 
 export async function uploadFile(
