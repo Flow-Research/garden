@@ -15,7 +15,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -70,8 +69,6 @@ export function Conversation<TItem>({
   ...props
 }: ConversationProps<TItem>) {
   const listRef = useRef<LegendListRef | null>(null)
-  const initialScrollFrameRef = useRef<number | null>(null)
-  const previousInitialScrollKeyRef = useRef<string | null>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
 
   const updateStickiness = useCallback(() => {
@@ -94,13 +91,6 @@ export function Conversation<TItem>({
   )
   const rows = useStableConversationRows(rawRows)
 
-  const cancelInitialScroll = useCallback(() => {
-    if (initialScrollFrameRef.current !== null) {
-      window.cancelAnimationFrame(initialScrollFrameRef.current)
-      initialScrollFrameRef.current = null
-    }
-  }, [])
-
   const renderItem = useCallback(
     ({ index, item }: { index: number; item: ConversationRow<TItem> }) => (
       <div
@@ -115,56 +105,18 @@ export function Conversation<TItem>({
     [renderDataItem],
   )
 
-  useEffect(() => {
-    if (rows.length === 0) return
-
-    const targetKey = rows[rows.length - 1]?.key
-    if (!targetKey) return
-    const nextInitialScrollKey = initialScrollKey ?? targetKey
-    if (previousInitialScrollKeyRef.current === nextInitialScrollKey) return
-
-    previousInitialScrollKeyRef.current = nextInitialScrollKey
-    setIsAtBottom(true)
-    cancelInitialScroll()
-    initialScrollFrameRef.current = window.requestAnimationFrame(() => {
-      listRef.current?.scrollToEnd?.({ animated: false })
-      initialScrollFrameRef.current = null
-    })
-
-    return () => {
-      cancelInitialScroll()
-    }
-  }, [
-    cancelInitialScroll,
-    initialScrollKey,
-    rows.length,
-  ])
-
-  const cancelInitialScrollFromUserInput = useCallback(() => {
-    cancelInitialScroll()
-  }, [cancelInitialScroll])
-
   const handleWheel = useCallback(
     (event: ReactWheelEvent<HTMLDivElement>) => {
-      cancelInitialScrollFromUserInput()
       onWheel?.(event)
     },
-    [cancelInitialScrollFromUserInput, onWheel],
+    [onWheel],
   )
 
   const handleTouchStart = useCallback(
     (event: ReactTouchEvent<HTMLDivElement>) => {
-      cancelInitialScrollFromUserInput()
       onTouchStart?.(event)
     },
-    [cancelInitialScrollFromUserInput, onTouchStart],
-  )
-
-  useEffect(
-    () => () => {
-      cancelInitialScroll()
-    },
-    [cancelInitialScroll],
+    [onTouchStart],
   )
 
   const listBootKey = `${initialScrollKey ?? 'conversation'}:${
@@ -191,6 +143,7 @@ export function Conversation<TItem>({
           estimatedItemSize={estimateItemSize}
           initialContainerPoolRatio={initialContainerPoolRatio}
           alignItemsAtEnd
+          initialScrollAtEnd
           maintainScrollAtEnd
           maintainScrollAtEndThreshold={0.1}
           maintainVisibleContentPosition
