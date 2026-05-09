@@ -9,7 +9,6 @@ import {
   canonicalJsonString,
   guardedMcpToolDescription,
 } from "@garden/connectors/capabilities";
-import { mintMcpProxyJwt } from "@garden/connectors/proxy-jwt";
 import * as schema from "@garden/db/schema";
 import { upsertPermissionRequestInbox } from "@garden/db/inbox";
 import {
@@ -120,6 +119,19 @@ export type McpHost = {
   readonly env: McpHostEnv;
   readonly ctx: { storage: { sql: SqlStorage } };
   readonly mcp: McpClientFacade;
+  connectRpcMcpServer?: (input: {
+    connectorId: string;
+    props: {
+      userId: string;
+      workspaceId: string;
+      agentId: string;
+      issueId?: string;
+      runId?: string;
+      connectorId: string;
+      authKind: "oauth" | "api-key" | "none";
+      accountId?: string;
+    };
+  }) => Promise<McpRegistration>;
   removeMcpServer: (connectorId: string) => Promise<void>;
   resolveRuntimeIdentity?: () => Promise<
     ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
@@ -719,13 +731,6 @@ export class RuntimeMcpController {
     ]);
   }
 
-  private buildConnectorProxyUrl(connectorId: string) {
-    return buildConnectorProxyMcpUrl(
-      connectorId,
-      resolveProxyBaseUrl(this.host.env),
-    );
-  }
-
   private buildConnectorToolsSignature(connectorId: string) {
     return canonicalJsonString(
       this.host.mcp
@@ -938,45 +943,33 @@ export class RuntimeMcpController {
     const cleanupResult = await this.removeConnectorServer(connector.id);
     if (cleanupResult.isErr()) return cleanupResult;
 
-    const jwtResult = await Result.tryPromise({
-      try: async () =>
-        mintMcpProxyJwt({
-          secret: this.host.env.BETTER_AUTH_SECRET,
-          sub: identity.userId,
-          workspaceId: identity.workspaceId,
-          agentId: identity.agentId,
-          connectorId: connector.id,
-          ...(identity.issueId ? { issueId: identity.issueId } : {}),
-          ...(identity.runId ? { runId: identity.runId } : {}),
-          ttlSeconds: mcpRuntimeConfig.proxyJwtTtlSeconds,
-        }),
-      catch: (cause) =>
-        new RuntimeMcpError({
-          code: "jwt_mint_failed",
-          message:
-            cause instanceof Error
-              ? cause.message
-              : `Failed to mint proxy JWT for ${connector.id}`,
-        }),
-    });
-    if (jwtResult.isErr()) return jwtResult;
-
     const connectResult = await Result.tryPromise({
       try: async () => {
-        await this.host.mcp.registerServer(connector.id, {
-          url: this.buildConnectorProxyUrl(connector.id),
-          name: connector.id,
-          transport: {
-            type: connector.upstream.transport,
-            requestInit: {
-              headers: {
-                Authorization: `Bearer ${jwtResult.value}`,
-              },
-            },
+        if (!this.host.connectRpcMcpServer) {
+          throw new RuntimeMcpError({
+            code: "mcp_register_failed",
+            message: `Missing RPC MCP binding for connector ${connector.id}`,
+          });
+        }
+
+        const registration = await this.host.connectRpcMcpServer({
+          connectorId: connector.id,
+          props: {
+            userId: identity.userId,
+            workspaceId: identity.workspaceId,
+            agentId: identity.agentId,
+            ...(identity.issueId ? { issueId: identity.issueId } : {}),
+            ...(identity.runId ? { runId: identity.runId } : {}),
+            connectorId: connector.id,
+            authKind: connector.apiKey
+              ? "api-key"
+              : connector.oauth
+                ? "oauth"
+                : "none",
+            ...(binding.accountId ? { accountId: binding.accountId } : {}),
           },
         });
 
-        const registration = await this.host.mcp.connectToServer(connector.id);
         if (registration.state === "failed") {
           throw new RuntimeMcpError({
             code: "mcp_connect_failed",
@@ -987,7 +980,7 @@ export class RuntimeMcpController {
         if (registration.state === "authenticating") {
           throw new RuntimeMcpError({
             code: "mcp_connect_failed",
-            message: `Unexpected OAuth handshake for proxy connector ${connector.id}`,
+            message: `Unexpected OAuth handshake for RPC connector ${connector.id}`,
           });
         }
 
