@@ -57,6 +57,7 @@ import {
   RuntimeMcpConnectionPreparer,
   RuntimeMcpController,
   connectRpcMcpConnector,
+  enforceRpcOnlyMcpConnectorRestore,
   type McpHost,
   type RuntimeMcpServerStates,
 } from "./runtime-mcp-controller";
@@ -682,6 +683,11 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
 }
 
 export class ChatSubAgent extends Think<AgentRuntimeEnv> {
+  constructor(ctx: DurableObjectState, env: AgentRuntimeEnv) {
+    super(ctx, env);
+    enforceRpcOnlyMcpConnectorRestore(this.mcp);
+  }
+
   waitForMcpConnections = {
     timeout: mcpRuntimeConfig.connectionWaitTimeoutMs,
   };

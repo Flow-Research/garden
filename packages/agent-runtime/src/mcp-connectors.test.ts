@@ -8,9 +8,11 @@ import {
   hasWarmStoredConnectorServers,
   extractThreadIdFromAgentName,
   MCP_PROXY_JWT_REFRESH_WINDOW_MS,
+  type StoredConnectorServerRow,
 } from './mcp-connectors'
 import {
   connectRpcMcpConnector,
+  enforceRpcOnlyMcpConnectorRestore,
   isMcpDiscoveryCancellation,
   RuntimeMcpController,
   type McpHost,
@@ -18,8 +20,21 @@ import {
   type RpcMcpConnectorProps,
 } from './runtime-mcp-controller'
 
-function createSqlStorageStub() {
+function createSqlStorageStub(initialRows: StoredConnectorServerRow[] = []) {
   const rows = new Map<string, Record<string, unknown>>()
+
+  for (const row of initialRows) {
+    rows.set(row.connectorId, {
+      connector_id: row.connectorId,
+      server_id: row.serverId,
+      account_id: row.accountId,
+      workspace_id: 'workspace-1',
+      user_id: 'user-1',
+      agent_id: 'agent-1',
+      jwt_expires_at: row.jwtExpiresAt,
+      tools_signature: row.toolsSignature,
+    })
+  }
 
   return {
     exec(sql: string, ...params: unknown[]) {
@@ -345,6 +360,44 @@ describe('connectRpcMcpConnector', () => {
   })
 })
 
+describe('enforceRpcOnlyMcpConnectorRestore', () => {
+  it('prunes persisted non-rpc garden connector servers before sdk restore', async () => {
+    const servers = [
+      {
+        id: 'github',
+        server_url: 'http://localhost:3000/api/mcp-proxy/github/mcp',
+      },
+      { id: 'exa-search', server_url: 'rpc:exa-search' },
+      { id: 'custom', server_url: 'http://localhost:8788/custom/mcp' },
+    ]
+    const removedServerIds: string[] = []
+    let restoredClientName: string | null = null
+
+    const mcp = {
+      __gardenRpcOnlyRestorePatched: false,
+      getServersFromStorage: () => servers,
+      removeServerFromStorage: (serverId: string) => {
+        removedServerIds.push(serverId)
+        const index = servers.findIndex((server) => server.id === serverId)
+        if (index >= 0) servers.splice(index, 1)
+      },
+      restoreConnectionsFromStorage: async (clientName: string) => {
+        restoredClientName = clientName
+      },
+    }
+
+    enforceRpcOnlyMcpConnectorRestore(mcp)
+    await mcp.restoreConnectionsFromStorage('chat:thread-1')
+
+    expect(restoredClientName).toBe('chat:thread-1')
+    expect(removedServerIds).toEqual(['github'])
+    expect(servers.map((server) => server.id)).toEqual([
+      'exa-search',
+      'custom',
+    ])
+  })
+})
+
 describe('RuntimeMcpController GitHub tools', () => {
   it('exposes github tools to the agent after the runtime connector is attached', async () => {
     const githubTools: McpToolRecord[] = [
@@ -464,5 +517,108 @@ describe('RuntimeMcpController GitHub tools', () => {
       aiTools[buildMcpAiToolKey('github', 'create_pull_request')]
         ?.description,
     ).toContain('External github write tool')
+  })
+
+  it('replaces restored http connector servers before checking warm state', async () => {
+    const now = Date.UTC(2026, 4, 9, 14, 30, 0)
+    const servers: Array<{ id: string; server_url?: string }> = [
+      {
+        id: 'github',
+        server_url: 'http://localhost:3000/api/mcp-proxy/github/mcp',
+      },
+    ]
+    const toolsByServer = new Map<string, McpToolRecord[]>()
+    const removedServerIds: string[] = []
+    const connectedServerIds: string[] = []
+    const githubTools: McpToolRecord[] = [
+      {
+        serverId: 'github',
+        name: 'issue_read',
+        description: 'Read a GitHub issue.',
+        inputSchema: { type: 'object' },
+      },
+    ]
+    const listTools = (filter?: MCPServerFilter) => {
+      const serverId = filter?.serverId
+      if (Array.isArray(serverId)) {
+        const serverIds = new Set(serverId)
+        return [...toolsByServer.values()]
+          .flat()
+          .filter((tool) => serverIds.has(tool.serverId))
+      }
+
+      return serverId
+        ? (toolsByServer.get(serverId) ?? [])
+        : [...toolsByServer.values()].flat()
+    }
+
+    const host: McpHost = {
+      name: 'chat:thread-1',
+      env: {
+        BETTER_AUTH_SECRET: 'secret',
+        BETTER_AUTH_URL: 'https://garden.test',
+        DATABASE_URL: 'postgres://garden.test/db',
+      },
+      ctx: {
+        storage: {
+          sql: createSqlStorageStub([
+            {
+              connectorId: 'github',
+              serverId: 'github',
+              accountId: null,
+              jwtExpiresAt: new Date(
+                now + MCP_PROXY_JWT_REFRESH_WINDOW_MS + 60_000,
+              ).toISOString(),
+              toolsSignature: null,
+            },
+          ]),
+        },
+      },
+      mcp: {
+        getAITools: () => ({}),
+        listTools,
+        listServers: () => servers,
+        waitForConnections: async () => undefined,
+        discoverIfConnected: async (serverId: string) =>
+          toolsByServer.get(serverId)?.length
+            ? { success: true }
+            : { success: false, error: 'No tools discovered' },
+      },
+      connectRpcMcpServer: async ({ connectorId }) => {
+        connectedServerIds.push(connectorId)
+        servers.push({ id: connectorId, server_url: `rpc:${connectorId}` })
+        toolsByServer.set(connectorId, githubTools)
+        return { state: 'connected' }
+      },
+      removeMcpServer: async (connectorId) => {
+        removedServerIds.push(connectorId)
+        const index = servers.findIndex((server) => server.id === connectorId)
+        if (index >= 0) servers.splice(index, 1)
+        toolsByServer.delete(connectorId)
+      },
+      resolveRuntimeIdentity: async () =>
+        Result.ok({
+          threadId: 'thread-1',
+          workspaceId: 'workspace-1',
+          userId: 'user-1',
+          agentId: 'agent-1',
+        }),
+    }
+    const controller = new RuntimeMcpController(host)
+    ;(
+      controller as unknown as {
+        listActiveConnectorBindings: () => Promise<
+          Result<Array<{ connectorId: string; accountId: string | null }>, never>
+        >
+      }
+    ).listActiveConnectorBindings = async () =>
+      Result.ok([{ connectorId: 'github', accountId: null }])
+
+    const result = await controller.ensureProxyMcpConnections()
+
+    expect(result.isOk()).toBe(true)
+    expect(removedServerIds).toEqual(['github'])
+    expect(connectedServerIds).toEqual(['github'])
+    expect(servers).toEqual([{ id: 'github', server_url: 'rpc:github' }])
   })
 })

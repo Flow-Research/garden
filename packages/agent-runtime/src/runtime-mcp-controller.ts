@@ -119,12 +119,27 @@ export type McpToolRecord = {
 export type McpClientFacade = {
   getAITools: (filter?: MCPServerFilter) => ToolSet;
   listTools: (filter?: MCPServerFilter) => McpToolRecord[];
-  listServers: () => Array<{ id: string }>;
+  listServers: () => Array<{
+    id: string;
+    server_url?: string | null;
+  }>;
   waitForConnections?: (options: { timeout: number }) => Promise<unknown>;
   discoverIfConnected: (
     serverId: string,
     options: { timeoutMs: number },
   ) => Promise<{ success: boolean; error?: string } | null | undefined>;
+};
+
+type StoredMcpServerRecord = {
+  id: string;
+  server_url?: string | null;
+};
+
+type RestoreMcpManager = {
+  restoreConnectionsFromStorage?: (clientName: string) => Promise<void>;
+  getServersFromStorage?: () => StoredMcpServerRecord[];
+  removeServerFromStorage?: (serverId: string) => void;
+  __gardenRpcOnlyRestorePatched?: boolean;
 };
 
 export type McpHost = {
@@ -141,6 +156,47 @@ export type McpHost = {
     ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
   >;
 };
+
+function isNonRpcGardenConnectorServer(server: StoredMcpServerRecord) {
+  if (typeof server.server_url !== "string") return false;
+  if (server.server_url.startsWith("rpc:")) return false;
+
+  return Boolean(getConnectorById(server.id));
+}
+
+export function enforceRpcOnlyMcpConnectorRestore(mcp: unknown) {
+  const manager = mcp as RestoreMcpManager;
+  if (manager.__gardenRpcOnlyRestorePatched) return;
+  const {
+    restoreConnectionsFromStorage,
+    getServersFromStorage,
+    removeServerFromStorage,
+  } = manager;
+  if (
+    !restoreConnectionsFromStorage ||
+    !getServersFromStorage ||
+    !removeServerFromStorage
+  ) {
+    return;
+  }
+
+  const restore = restoreConnectionsFromStorage.bind(manager);
+  manager.restoreConnectionsFromStorage = async (clientName: string) => {
+    const staleServers = getServersFromStorage().filter(
+      isNonRpcGardenConnectorServer,
+    );
+
+    for (const server of staleServers) {
+      console.warn("[agent-runtime] pruning non-RPC MCP connector restore", {
+        connectorId: server.id,
+      });
+      removeServerFromStorage(server.id);
+    }
+
+    await restore(clientName);
+  };
+  manager.__gardenRpcOnlyRestorePatched = true;
+}
 
 export function isMcpDiscoveryCancellation(message: string | undefined) {
   return message === "Discovery was cancelled";
@@ -815,6 +871,11 @@ export class RuntimeMcpController {
     );
     if (bindingsResult.isErr()) return bindingsResult;
 
+    const staleTransportResult = await this.removeNonRpcConnectorServers(
+      bindingsResult.value,
+    );
+    if (staleTransportResult.isErr()) return staleTransportResult;
+
     const storedRowsResult = this.readConnectorServerRows();
     if (storedRowsResult.isErr()) return storedRowsResult;
 
@@ -863,6 +924,31 @@ export class RuntimeMcpController {
       console.warn("[agent-runtime] continuing after MCP connector failures", {
         failedRefreshes,
       });
+    }
+
+    return Result.ok(undefined);
+  }
+
+  private async removeNonRpcConnectorServers(bindings: ActiveConnectorBinding[]) {
+    const activeConnectorIds = new Set(
+      bindings.map((binding) => binding.connectorId),
+    );
+    const staleServerIds = this.host.mcp
+      .listServers()
+      .filter((server) => {
+        if (!activeConnectorIds.has(server.id)) return false;
+        if (typeof server.server_url !== "string") return false;
+
+        return !server.server_url.startsWith("rpc:");
+      })
+      .map((server) => server.id);
+
+    for (const connectorId of staleServerIds) {
+      console.warn("[agent-runtime] removing non-RPC MCP connector server", {
+        connectorId,
+      });
+      const removalResult = await this.removeConnectorServer(connectorId);
+      if (removalResult.isErr()) return removalResult;
     }
 
     return Result.ok(undefined);

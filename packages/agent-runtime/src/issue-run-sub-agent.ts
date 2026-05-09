@@ -62,6 +62,7 @@ import {
   RuntimeMcpError,
   RuntimeMcpController,
   connectRpcMcpConnector,
+  enforceRpcOnlyMcpConnectorRestore,
   type McpHost,
   type RuntimeMcpServerStates,
   type ThreadRuntimeIdentity,
@@ -287,6 +288,11 @@ function retryDelayMs(attemptCount: number) {
 }
 
 export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
+  constructor(ctx: DurableObjectState, env: AgentRuntimeEnv) {
+    super(ctx, env)
+    enforceRpcOnlyMcpConnectorRestore(this.mcp)
+  }
+
   waitForMcpConnections = {
     timeout: mcpRuntimeConfig.connectionWaitTimeoutMs,
   }
