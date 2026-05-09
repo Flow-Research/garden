@@ -168,6 +168,25 @@ export function toAutomation(row: AutomationRow) {
     created_by: row.createdBy,
     created_at: dateToIso(row.createdAt),
     updated_at: dateToIso(row.updatedAt),
+
+    system_prompt: row.systemPrompt,
+    input_schema: row.inputSchema,
+    context_sources: row.contextSources,
+    output_config: row.outputConfig,
+    execution_config: row.executionConfig,
+    notification_config: row.notificationConfig,
+    scheduling_config: row.schedulingConfig,
+    tags: row.tags,
+    category: row.category,
+    template_source: row.templateSource,
+    next_run_at: dateToIso(row.nextRunAt),
+    run_count: row.runCount,
+    success_count: row.successCount,
+    failure_count: row.failureCount,
+    skip_count: row.skipCount,
+    avg_duration_ms: row.avgDurationMs,
+    updated_by: row.updatedBy,
+    metadata: row.metadata,
   }
 }
 

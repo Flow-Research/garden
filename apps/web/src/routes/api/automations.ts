@@ -124,6 +124,18 @@ export const Route = createFileRoute('/api/automations')({
               executionMode: 'create_issue',
               concurrencyPolicy: body.concurrency_policy ?? 'skip',
               createdBy: context.session.user.id,
+
+              systemPrompt: body.system_prompt ?? null,
+              inputSchema: body.input_schema ?? null,
+              contextSources: body.context_sources ?? null,
+              outputConfig: body.output_config ?? null,
+              executionConfig: body.execution_config ?? null,
+              notificationConfig: body.notification_config ?? null,
+              schedulingConfig: body.scheduling_config ?? null,
+              tags: body.tags ?? [],
+              category: body.category ?? null,
+              templateSource: body.template_source ?? null,
+              metadata: body.metadata ?? null,
             })
             .returning()
           if (!triggerInput || !triggerId) return [automationRow, null] as const

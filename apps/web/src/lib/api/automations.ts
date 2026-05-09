@@ -30,6 +30,25 @@ export type Automation = {
   created_by: string
   created_at: string | null
   updated_at: string | null
+
+  system_prompt: string | null
+  input_schema: unknown
+  context_sources: unknown
+  output_config: unknown
+  execution_config: unknown
+  notification_config: unknown
+  scheduling_config: unknown
+  tags: string[]
+  category: string | null
+  template_source: string | null
+  next_run_at: string | null
+  run_count: number
+  success_count: number
+  failure_count: number
+  skip_count: number
+  avg_duration_ms: number | null
+  updated_by: string | null
+  metadata: unknown
 }
 
 export type AutomationTrigger = {
@@ -82,6 +101,18 @@ export type CreateAutomationRequest = {
   status?: AutomationStatus
   concurrency_policy?: AutomationConcurrencyPolicy
   trigger?: CreateAutomationTriggerRequest
+
+  system_prompt?: string | null
+  input_schema?: unknown
+  context_sources?: unknown
+  output_config?: unknown
+  execution_config?: unknown
+  notification_config?: unknown
+  scheduling_config?: unknown
+  tags?: string[]
+  category?: string | null
+  template_source?: string | null
+  metadata?: unknown
 }
 
 export type UpdateAutomationRequest = Partial<
@@ -95,6 +126,17 @@ export type UpdateAutomationRequest = Partial<
     | 'project_id'
     | 'status'
     | 'concurrency_policy'
+    | 'system_prompt'
+    | 'input_schema'
+    | 'context_sources'
+    | 'output_config'
+    | 'execution_config'
+    | 'notification_config'
+    | 'scheduling_config'
+    | 'tags'
+    | 'category'
+    | 'template_source'
+    | 'metadata'
   >
 >
 

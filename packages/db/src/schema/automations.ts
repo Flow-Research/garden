@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -61,12 +62,51 @@ export const automation = pgTable(
     updatedAt: timestamp('updated_at', { mode: 'date' })
       .notNull()
       .default(sql`now()`),
+
+    // Prompt & input
+    systemPrompt: text('system_prompt'),
+    inputSchema: jsonb('input_schema'),
+    contextSources: jsonb('context_sources'),
+
+    // Output & execution
+    outputConfig: jsonb('output_config'),
+    executionConfig: jsonb('execution_config'),
+
+    // Operations
+    notificationConfig: jsonb('notification_config'),
+    schedulingConfig: jsonb('scheduling_config'),
+
+    // Organization
+    tags: text('tags')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    category: text('category'),
+    templateSource: text('template_source'),
+
+    // Analytics (denormalized for fast list queries)
+    nextRunAt: timestamp('next_run_at', {
+      mode: 'date',
+      withTimezone: true,
+    }),
+    runCount: integer('run_count').notNull().default(0),
+    successCount: integer('success_count').notNull().default(0),
+    failureCount: integer('failure_count').notNull().default(0),
+    skipCount: integer('skip_count').notNull().default(0),
+    avgDurationMs: integer('avg_duration_ms'),
+
+    // Authorship
+    updatedBy: uuid('updated_by').references(() => user.id),
+    metadata: jsonb('metadata'),
   },
   (table) => [
     index('automation_workspace_status_idx').on(
       table.workspaceId,
       table.status,
     ),
+    index('automation_next_run_idx').on(table.nextRunAt),
+    index('automation_category_idx').on(table.category),
+    index('automation_tags_gin').using('gin', table.tags),
     check(
       'automation_status_check',
       sql`${table.status} in (${sqlValueList(automationStatusValues)})`,

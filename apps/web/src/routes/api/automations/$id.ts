@@ -110,10 +110,43 @@ export const Route = createFileRoute('/api/automations/$id')({
           values.concurrencyPolicy = body.concurrency_policy
         }
 
+        if (Object.prototype.hasOwnProperty.call(body, 'system_prompt')) {
+          values.systemPrompt = body.system_prompt ?? null
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'input_schema')) {
+          values.inputSchema = body.input_schema ?? null
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'context_sources')) {
+          values.contextSources = body.context_sources ?? null
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'output_config')) {
+          values.outputConfig = body.output_config ?? null
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'execution_config')) {
+          values.executionConfig = body.execution_config ?? null
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'notification_config')) {
+          values.notificationConfig = body.notification_config ?? null
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'scheduling_config')) {
+          values.schedulingConfig = body.scheduling_config ?? null
+        }
+        if (body.tags) values.tags = body.tags
+        if (Object.prototype.hasOwnProperty.call(body, 'category')) {
+          values.category = body.category ?? null
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'template_source')) {
+          values.templateSource = body.template_source ?? null
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'metadata')) {
+          values.metadata = body.metadata ?? null
+        }
+
         if (Object.keys(values).length === 0) {
           return automationErr('No valid automation changes submitted')
         }
         values.updatedAt = new Date()
+        values.updatedBy = access.session.user.id
 
         const db = getDb(appEnv)
         const [updated] = await db

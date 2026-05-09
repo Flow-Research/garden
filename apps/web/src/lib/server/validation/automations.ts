@@ -52,6 +52,18 @@ export const createAutomationBodySchema = z
     status: automationStatusSchema.optional(),
     concurrency_policy: automationConcurrencyPolicySchema.optional(),
     trigger: scheduleTriggerInputSchema.optional(),
+
+    system_prompt: nullableOptionalString,
+    input_schema: z.unknown().optional().nullable(),
+    context_sources: z.unknown().optional().nullable(),
+    output_config: z.unknown().optional().nullable(),
+    execution_config: z.unknown().optional().nullable(),
+    notification_config: z.unknown().optional().nullable(),
+    scheduling_config: z.unknown().optional().nullable(),
+    tags: z.array(z.string()).optional(),
+    category: nullableOptionalString,
+    template_source: nullableOptionalString,
+    metadata: z.unknown().optional().nullable(),
   })
   .strict()
 
@@ -65,6 +77,18 @@ export const updateAutomationBodySchema = z
     project_id: uuidSchema.optional().nullable(),
     status: automationStatusSchema.optional(),
     concurrency_policy: automationConcurrencyPolicySchema.optional(),
+
+    system_prompt: nullableOptionalString,
+    input_schema: z.unknown().optional().nullable(),
+    context_sources: z.unknown().optional().nullable(),
+    output_config: z.unknown().optional().nullable(),
+    execution_config: z.unknown().optional().nullable(),
+    notification_config: z.unknown().optional().nullable(),
+    scheduling_config: z.unknown().optional().nullable(),
+    tags: z.array(z.string()).optional(),
+    category: nullableOptionalString,
+    template_source: nullableOptionalString,
+    metadata: z.unknown().optional().nullable(),
   })
   .strict()
 
