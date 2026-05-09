@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { Result } from 'better-result'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/core/auth'
+import { useChatStore } from '@garden/core/chat'
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { listThreadDocuments } from '@/lib/api'
 import { useSidebar } from '@garden/ui/components/ui/sidebar'
@@ -91,6 +92,7 @@ export function AgentInteractionScreen({
   sessionId?: string | null
 }) {
   const user = useAuthStore((state) => state.user)
+  const activeSessionId = useChatStore((state) => state.activeSessionId)
   const workspace = useWorkspaceStore((state) => state.workspace)
   const { state: sidebarState, toggleSidebar } = useSidebar()
   const {
@@ -101,11 +103,12 @@ export function AgentInteractionScreen({
     warmSession,
   } = useAgentSessions()
 
-  const requestedSession = sessionId
-    ? sessions.find((session) => session.id === sessionId)
+  const requestedSessionId = activeSessionId ?? sessionId
+  const requestedSession = requestedSessionId
+    ? sessions.find((session) => session.id === requestedSessionId)
     : null
   const replacementSession =
-    sessionId && sessionsQuery.status === 'success'
+    requestedSessionId && sessionsQuery.status === 'success'
       ? (warmSession ?? sessions[0] ?? null)
       : null
   const activeSession = requestedSession ?? replacementSession ?? warmSession
@@ -129,7 +132,7 @@ export function AgentInteractionScreen({
   }, [activeSession?.id, activeSession?.title])
 
   useEffect(() => {
-    if (sessionId || activeSession || sessionsQuery.status !== 'success') {
+    if (requestedSessionId || activeSession || sessionsQuery.status !== 'success') {
       return
     }
 
@@ -143,7 +146,7 @@ export function AgentInteractionScreen({
         title: result.value.title,
       })
     })
-  }, [activeSession, claimWarmSession, sessionId, sessionsQuery.status])
+  }, [activeSession, claimWarmSession, requestedSessionId, sessionsQuery.status])
 
   if (!user?.id || !workspace?.id) {
     if (sessionId && sessionsQuery.isPending) {
