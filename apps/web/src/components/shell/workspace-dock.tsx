@@ -1634,6 +1634,7 @@ export function WorkspaceDockProvider({
     ) => {
       const api = apiRef.current
       if (!api) {
+        commitPanelState(panel, undefined, { source: options?.source })
         pendingOpenPanelRef.current = { panel, options }
         return null
       }
