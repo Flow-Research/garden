@@ -238,7 +238,6 @@ export function Conversation<TItem>({
           estimatedItemSize={estimateItemSize}
           initialContainerPoolRatio={initialContainerPoolRatio}
           alignItemsAtEnd
-          initialScrollAtEnd
           maintainScrollAtEnd={{
             animated: false,
             on: { dataChange: true, itemLayout: true, layout: true },
