@@ -11,9 +11,10 @@ export function inboxListOptions(wsId: string) {
   return queryOptions({
     queryKey: inboxKeys.list(wsId),
     queryFn: () => api.listInbox(),
-    refetchInterval: 5000,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   })
 }
 

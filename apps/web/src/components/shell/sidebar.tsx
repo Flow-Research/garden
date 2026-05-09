@@ -40,6 +40,7 @@ import {
   useSidebar,
 } from '@garden/ui/components/ui/sidebar'
 import { deduplicateInboxItems, inboxListOptions } from '@/lib/inbox/queries'
+import { automationListOptions } from '@/features/automations/queries'
 import { useAuthStore } from '@garden/core/auth'
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { SearchTrigger } from '@/features/search'
@@ -315,6 +316,21 @@ export function WorkspaceSidebar() {
     enabled: !!workspaceId,
   })
 
+  const prefetchRailData = useCallback(
+    (item: RailItem) => {
+      if (!workspaceId) return
+
+      if (item.id === 'inbox') {
+        void queryClient.prefetchQuery(inboxListOptions(workspaceId))
+      }
+
+      if (item.id === 'automations') {
+        void queryClient.prefetchQuery(automationListOptions(workspaceId))
+      }
+    },
+    [queryClient, workspaceId],
+  )
+
   const inboxItems = useMemo(
     () => deduplicateInboxItems(rawInboxItems).slice(0, 6),
     [rawInboxItems],
@@ -343,6 +359,7 @@ export function WorkspaceSidebar() {
 
   const openRailContext = useCallback(
     (item: RailItem) => {
+      prefetchRailData(item)
       const nextUsesContextRail = railUsesContextRail(item.id)
       setPendingRail(
         nextUsesContextRail ? null : { id: item.id, from: activeRailId },
@@ -391,6 +408,7 @@ export function WorkspaceSidebar() {
       claimWarmSession,
       openContextRail,
       openPanel,
+      prefetchRailData,
       sessions,
       workspaceSidebar,
     ],
@@ -457,6 +475,8 @@ export function WorkspaceSidebar() {
                       aria-label={item.label}
                       isActive={activeRailId === item.id}
                       className="!h-10 !w-full !gap-0 !p-0 justify-center !rounded-none group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-full"
+                      onPointerEnter={() => prefetchRailData(item)}
+                      onFocus={() => prefetchRailData(item)}
                       onClick={() => openRailContext(item)}
                     >
                       <item.icon className="!size-[22px] shrink-0" />
