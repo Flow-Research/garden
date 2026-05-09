@@ -3,6 +3,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockQueryState = vi.hoisted(() => ({
+  chat: null as string | null,
   panel: null as string | null,
   panelTitle: null as string | null,
   panelEntityId: null as string | null,
@@ -93,6 +94,7 @@ vi.mock('@/features/chat/components/agent-interaction-screen', () => ({
 
 type FakePanelKind =
   | 'blank'
+  | 'dashboard'
   | 'inbox'
   | 'issues'
   | 'issue-detail'
@@ -223,6 +225,7 @@ type FakeGroup = {
   activePanel: FakePanel | null
   api: {
     id: string
+    setActive: () => void
     maximize: () => void
   }
 }
@@ -454,15 +457,21 @@ class FakeDockApi {
 
   private createGroup(id?: string): FakeGroup {
     this.groupCounter += 1
-    return {
+    const group: FakeGroup = {
       id: id ?? `group-${this.groupCounter}`,
       panels: [],
       activePanel: null,
       api: {
         id: id ?? `group-${this.groupCounter}`,
+        setActive: () => {
+          this.activeGroup = group
+          this.activePanel = group.activePanel
+          this.activeGroupListeners.forEach((listener) => listener())
+        },
         maximize: () => {},
       },
     }
+    return group
   }
 
   private createPanel(
@@ -527,6 +536,7 @@ describe('WorkspaceDockProvider', () => {
   beforeEach(() => {
     window.localStorage.clear()
     mockSetQueryState.mockClear()
+    mockQueryState.chat = null
     mockQueryState.panel = null
     mockQueryState.panelTitle = null
     mockQueryState.panelEntityId = null
@@ -587,6 +597,63 @@ describe('WorkspaceDockProvider', () => {
     expect(mockSetQueryState).not.toHaveBeenLastCalledWith({
       panel: 'chat',
       panelTitle: 'New Chat',
+      panelEntityId: null,
+    })
+  })
+
+  it('keeps a requested chat panel active while restoring a stale saved layout', async () => {
+    const api = new FakeDockApi()
+    mockQueryState.chat = 'thread-1'
+
+    window.localStorage.setItem(
+      'garden:dockview:workspace-1',
+      JSON.stringify(
+        makeSerializedDock(
+          [
+            {
+              id: 'group-1',
+              activePanelId: 'panel-1',
+              panels: [{ id: 'panel-1', kind: 'dashboard', title: 'Dashboard' }],
+            },
+            {
+              id: 'group-2',
+              activePanelId: 'panel-2',
+              panels: [
+                {
+                  id: 'panel-2',
+                  kind: 'chat',
+                  title: 'Thread 1',
+                  entityId: 'thread-1',
+                },
+              ],
+            },
+          ],
+          'group-1',
+        ),
+      ),
+    )
+
+    render(
+      <WorkspaceDockProvider workspaceId="workspace-1">
+        <DockContextCapture />
+      </WorkspaceDockProvider>,
+    )
+
+    await act(async () => {
+      capturedDock?.handleReady({ api } as never)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dock-state')).toHaveAttribute(
+        'data-panel',
+        'chat',
+      )
+    })
+
+    expect(mockSetQueryState).not.toHaveBeenCalledWith({
+      chat: null,
+      panel: 'dashboard',
+      panelTitle: 'Dashboard',
       panelEntityId: null,
     })
   })

@@ -300,6 +300,17 @@ function readPanelFromQueryState(input: {
   }
 }
 
+function readPanelFromSearchState(input: {
+  chat: string | null
+  panel: string | null
+  panelTitle: string | null
+  panelEntityId: string | null
+}): WorkspacePanelInput | null {
+  return input.chat
+    ? { kind: 'chat', title: 'Chat', entityId: input.chat }
+    : readPanelFromQueryState(input)
+}
+
 function getCanonicalPanelId(panel: WorkspacePanelInput) {
   if (singletonKinds.has(panel.kind)) {
     return `${panel.kind}:singleton`
@@ -1365,7 +1376,13 @@ export function WorkspaceDockProvider({
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [activePanel, setActivePanel] = useState<WorkspacePanelInput | null>(
-    null,
+    () =>
+      readPanelFromSearchState({
+        chat,
+        panel,
+        panelTitle,
+        panelEntityId,
+      }),
   )
   const [groupCount, setGroupCount] = useState(0)
   const [isReady, setIsReady] = useState(false)
@@ -1664,6 +1681,17 @@ export function WorkspaceDockProvider({
 
   const canSplitPanels = groupCount < 2
 
+  const requestedSearchPanel = useMemo(
+    () =>
+      readPanelFromSearchState({
+        chat,
+        panel,
+        panelTitle,
+        panelEntityId,
+      }),
+    [chat, panel, panelEntityId, panelTitle],
+  )
+
   const duplicateActivePanel = useCallback(() => {
     const api = apiRef.current
     const current = api?.activePanel
@@ -1750,17 +1778,11 @@ export function WorkspaceDockProvider({
   useEffect(() => {
     if (!isReady) return
 
-    const queryPanel = chat
-      ? { kind: 'chat' as const, title: 'Chat', entityId: chat }
-      : readPanelFromQueryState({
-          panel,
-          panelTitle,
-          panelEntityId,
-        })
+    const queryPanel = requestedSearchPanel
     if (!queryPanel || arePanelsEqual(activePanel, queryPanel)) return
 
     openPanel(queryPanel)
-  }, [activePanel, chat, isReady, openPanel, panel, panelEntityId, panelTitle])
+  }, [activePanel, isReady, openPanel, requestedSearchPanel])
 
   const activePanelIsPinned = useMemo(() => {
     const panelId = apiRef.current?.activePanel?.id
@@ -1865,13 +1887,7 @@ export function WorkspaceDockProvider({
         }, 150)
       }
 
-      const searchPanel = chat
-        ? { kind: 'chat' as const, title: 'Chat', entityId: chat }
-        : readPanelFromQueryState({
-            panel,
-            panelTitle,
-            panelEntityId,
-          })
+      const searchPanel = requestedSearchPanel
       const storedLayout = readStoredDockviewLayout(storageKey)
       const savedLayout = activatePanelInStoredLayout(storedLayout, searchPanel)
       const hasSavedLayout = Boolean(savedLayout)
@@ -1917,9 +1933,7 @@ export function WorkspaceDockProvider({
           writePanelToQueryState(active)
         })
       }
-      const settledPanel = requestedPanelId
-        ? getPanelInputFromApi(api)
-        : ensureActivePanel()
+      const settledPanel = requestedPanelId ? searchPanel : ensureActivePanel()
       commitActiveDockState(api)
       writePanelToQueryState(settledPanel)
 
@@ -1971,6 +1985,7 @@ export function WorkspaceDockProvider({
       panelEntityId,
       panelTitle,
       openPanel,
+      requestedSearchPanel,
       storageKey,
       writePanelToQueryState,
     ],
@@ -1979,7 +1994,7 @@ export function WorkspaceDockProvider({
   const contextValue = useMemo<WorkspaceDockContextValue>(
     () => ({
       activeGroupId,
-      activePanel,
+      activePanel: activePanel ?? requestedSearchPanel,
       activePanelIsExpanded,
       activePanelIsPinned,
       activatePanel,
@@ -2027,6 +2042,7 @@ export function WorkspaceDockProvider({
       openNewTab,
       openPanel,
       openPanelAt,
+      requestedSearchPanel,
       splitPanel,
       togglePanelExpanded,
       toggleActivePanelPinned,
