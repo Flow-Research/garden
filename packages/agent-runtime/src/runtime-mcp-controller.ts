@@ -1053,11 +1053,12 @@ export class RuntimeMcpController {
   }
 
   private async discoverRegisteredConnectorServer(connectorId: string) {
-    const cancelledDelaysMs = [250, 750, 1_500];
+    const cancelledDelaysMs =
+      mcpRuntimeConfig.connectorDiscoveryCancellationRetryDelaysMs;
 
     for (let attempt = 0; attempt <= cancelledDelaysMs.length; attempt += 1) {
       const discovery = await this.host.mcp.discoverIfConnected(connectorId, {
-        timeoutMs: 30_000,
+        timeoutMs: mcpRuntimeConfig.connectorDiscoveryTimeoutMs,
       });
       if (discovery?.success) return Result.ok(undefined);
 
@@ -1071,7 +1072,9 @@ export class RuntimeMcpController {
         this.host.mcp.listTools({ serverId: connectorId }).length > 0;
       if (hasDiscoveredTools) return Result.ok(undefined);
 
-      await this.host.mcp.waitForConnections?.({ timeout: 30_000 });
+      await this.host.mcp.waitForConnections?.({
+        timeout: mcpRuntimeConfig.connectorDiscoveryWaitTimeoutMs,
+      });
 
       const hasToolsAfterWait =
         this.host.mcp.listTools({ serverId: connectorId }).length > 0;
@@ -1342,7 +1345,8 @@ export class RuntimeMcpConnectionPreparer {
     const waitResult = await Result.tryPromise({
       try: async () =>
         await this.options.waitForConnections!(
-          this.options.connectionWaitTimeoutMs ?? 10_000,
+          this.options.connectionWaitTimeoutMs ??
+            mcpRuntimeConfig.connectionWaitTimeoutMs,
         ),
       catch: (cause) =>
         cause instanceof Error

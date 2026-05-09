@@ -251,8 +251,6 @@ type ThreadDocumentVersionsPayload = Awaited<
 type ThreadDocumentEditPayload = Awaited<
   ReturnType<ChatSubAgent["resolveDocumentEdit"]>
 >;
-const MCP_CONNECTOR_FULL_SYNC_INTERVAL_MS = 60 * 1000;
-const MCP_CONNECTION_WAIT_TIMEOUT_MS = 10_000;
 const THINK_TURN_TIMEOUT_MS = 60_000;
 const THINK_TURN_MAX_RETRIES = 1;
 const THINK_TURN_TELEMETRY_FUNCTION_ID = "garden.workspace-agent.turn";
@@ -684,15 +682,18 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
 }
 
 export class ChatSubAgent extends Think<AgentRuntimeEnv> {
+  waitForMcpConnections = {
+    timeout: mcpRuntimeConfig.connectionWaitTimeoutMs,
+  };
   private runtimePrepareInFlight: Promise<RuntimePrepareResult> | null = null;
   private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
     getController: () => this.getMcpController(),
-    fullSyncIntervalMs: MCP_CONNECTOR_FULL_SYNC_INTERVAL_MS,
+    fullSyncIntervalMs: mcpRuntimeConfig.connectorFullSyncIntervalMs,
     waitForConnections: async (timeoutMs) =>
       await this.mcp.waitForConnections({ timeout: timeoutMs }),
     getServerStates: () =>
       this.getMcpServers().servers as RuntimeMcpServerStates,
-    connectionWaitTimeoutMs: MCP_CONNECTION_WAIT_TIMEOUT_MS,
+    connectionWaitTimeoutMs: mcpRuntimeConfig.connectionWaitTimeoutMs,
     backgroundRefreshFailedMessage:
       "[agent-runtime] MCP background refresh failed",
     refreshFailedMessage: "[agent-runtime] MCP connector refresh failed",

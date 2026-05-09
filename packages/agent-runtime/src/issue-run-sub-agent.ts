@@ -105,7 +105,6 @@ type ResolutionGuardRow = {
 }
 
 const DEFAULT_ISSUE_RUN_TIMEOUT_SEC = 2 * 60 * 60
-const MCP_CONNECTION_WAIT_TIMEOUT_MS = 10_000
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.issue-run.turn'
 const WAKEUP_BACKOFF_MS = [5_000, 10_000, 20_000] as const
@@ -288,6 +287,9 @@ function retryDelayMs(attemptCount: number) {
 }
 
 export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
+  waitForMcpConnections = {
+    timeout: mcpRuntimeConfig.connectionWaitTimeoutMs,
+  }
   override workspace = new Workspace({
     sql: this.ctx.storage.sql,
     r2: this.env.FILES,
@@ -301,12 +303,12 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   private aggUsage: IssueRunUsage | null = null
   private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
     getController: () => this.getMcpController(),
-    fullSyncIntervalMs: 60 * 1000,
+    fullSyncIntervalMs: mcpRuntimeConfig.connectorFullSyncIntervalMs,
     waitForConnections: async (timeoutMs) =>
       await this.mcp.waitForConnections({ timeout: timeoutMs }),
     getServerStates: () =>
       this.getMcpServers().servers as RuntimeMcpServerStates,
-    connectionWaitTimeoutMs: MCP_CONNECTION_WAIT_TIMEOUT_MS,
+    connectionWaitTimeoutMs: mcpRuntimeConfig.connectionWaitTimeoutMs,
     backgroundRefreshFailedMessage:
       '[agent-runtime] issue MCP background refresh failed',
     refreshFailedMessage:
