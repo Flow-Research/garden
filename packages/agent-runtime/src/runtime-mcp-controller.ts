@@ -11,6 +11,7 @@ import {
 } from "@garden/connectors/capabilities";
 import { mintMcpProxyJwt } from "@garden/connectors/proxy-jwt";
 import * as schema from "@garden/db/schema";
+import { upsertPermissionRequestInbox } from "@garden/db/inbox";
 import {
   buildConnectorSyncPlan,
   extractThreadIdFromAgentName,
@@ -399,8 +400,9 @@ export class RuntimeMcpController {
 
     const insertResult = await Result.tryPromise({
       try: async () => {
+        const requestId = crypto.randomUUID();
         await db.insert(schema.permissionRequest).values({
-          id: crypto.randomUUID(),
+          id: requestId,
           agentId: identityResult.value.agentId,
           capabilityId: capability.id,
           // Source: docs/research/issue-flow-plan.md, "Approval pause".
@@ -410,6 +412,11 @@ export class RuntimeMcpController {
           argsJson: args.toolArgs as object,
           toolCallId: args.toolCallId,
           status: "pending",
+        });
+        await upsertPermissionRequestInbox({
+          db,
+          workspaceId: identityResult.value.workspaceId,
+          requestId,
         });
       },
       catch: (cause) =>

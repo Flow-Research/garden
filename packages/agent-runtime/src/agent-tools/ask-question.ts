@@ -3,6 +3,7 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import type { StructuredQuestion } from '@garden/core/chat/structured-input'
 import * as schema from '@garden/db/schema'
+import { upsertWaitingForInputInbox } from '@garden/db/inbox'
 import {
   appendIssueRunEvent,
   dbError,
@@ -55,10 +56,20 @@ export function createAskQuestionTool(context: IssueRunToolContext) {
 
       const writeResult = await Result.tryPromise({
         try: async () => {
+          const activityAt = new Date()
           await db
             .update(schema.issueRun)
-            .set({ status: 'waiting_for_input', updatedAt: new Date() })
+            .set({ status: 'waiting_for_input', updatedAt: activityAt })
             .where(eq(schema.issueRun.id, run.runId))
+          await upsertWaitingForInputInbox({
+            db,
+            workspaceId: run.workspaceId,
+            issueId: run.issueId,
+            runId: run.runId,
+            agentId: run.agentId,
+            error: question.question,
+            activityAt,
+          })
         },
         catch: (cause) => dbError('mark issue run waiting for input', cause),
       })

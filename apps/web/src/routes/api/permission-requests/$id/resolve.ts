@@ -2,6 +2,7 @@ import { Result, TaggedError } from 'better-result'
 import { and, eq, sql } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
+import { archiveInboxItemsByKey } from '@garden/db/inbox'
 import { appEnv } from '@/lib/server/env'
 import { getDb, schema } from '@/lib/server/db'
 import { json, requireWorkspaceAccess } from '@/lib/server/control-plane'
@@ -240,6 +241,11 @@ export const Route = createFileRoute('/api/permission-requests/$id/resolve')({
               proposalResult.error.status,
             )
           }
+          await archiveInboxItemsByKey({
+            db: getDb(appEnv),
+            workspaceId: permissionRequest.workspaceId,
+            itemKeys: [`approval:${permissionRequest.id}`],
+          })
           return Response.json({
             ok: true,
             invalidations: [
@@ -263,6 +269,11 @@ export const Route = createFileRoute('/api/permission-requests/$id/resolve')({
             resolutionResult.error.status,
           )
         }
+        await archiveInboxItemsByKey({
+          db: getDb(appEnv),
+          workspaceId: permissionRequest.workspaceId,
+          itemKeys: [`approval:${permissionRequest.id}`],
+        })
 
         return Response.json({
           ok: true,

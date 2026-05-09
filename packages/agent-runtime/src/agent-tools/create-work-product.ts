@@ -6,6 +6,7 @@ import {
   issueWorkProductTypeSchema,
 } from '@garden/db/validation'
 import * as schema from '@garden/db/schema'
+import { upsertWorkProductReviewInbox } from '@garden/db/inbox'
 import {
   appendIssueRunEvent,
   dbError,
@@ -76,6 +77,11 @@ export function createCreateWorkProductTool(context: IssueRunToolContext) {
                   sql`${schema.issue.status} not in ('done', 'cancelled')`,
                 ),
               )
+          })
+          await upsertWorkProductReviewInbox({
+            db,
+            workspaceId: run.workspaceId,
+            workProductId,
           })
         },
         catch: (cause) => dbError('create issue work product', cause),

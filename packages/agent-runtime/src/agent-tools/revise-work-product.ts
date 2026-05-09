@@ -3,6 +3,7 @@ import { tool } from 'ai'
 import { and, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import * as schema from '@garden/db/schema'
+import { upsertWorkProductReviewInbox } from '@garden/db/inbox'
 import {
   appendIssueRunEvent,
   dbError,
@@ -93,6 +94,11 @@ export function createReviseWorkProductTool(context: IssueRunToolContext) {
                   sql`${schema.issue.status} not in ('done', 'cancelled')`,
                 ),
               )
+            await upsertWorkProductReviewInbox({
+              db,
+              workspaceId: run.workspaceId,
+              workProductId: updated.id,
+            })
           }
           return updated ?? null
         },

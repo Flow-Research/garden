@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { postIssueComment, toIssueComment } from '@garden/core/issues/server'
+import { archiveInboxItemsByKey } from '@garden/db/inbox'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
@@ -51,6 +52,7 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
           .select({
             id: schema.issue.id,
             workspaceId: schema.issue.workspaceId,
+            activeRunId: schema.issue.activeRunId,
           })
           .from(schema.issue)
           .where(eq(schema.issue.id, params.id))
@@ -72,6 +74,13 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
           issueRunEnv: appEnv,
         })
         if (commentResult.isErr()) return badRequest(commentResult.error.message)
+        if (existingIssue.activeRunId) {
+          await archiveInboxItemsByKey({
+            db,
+            workspaceId: existingIssue.workspaceId,
+            itemKeys: [`waiting_for_input:${existingIssue.activeRunId}`],
+          })
+        }
 
         return Response.json(commentResult.value.comment, { status: 201 })
       },

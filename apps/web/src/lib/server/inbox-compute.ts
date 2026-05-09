@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, ne, notInArray, or, sql } from "drizzle-orm";
-import { Result } from "better-result";
+import { and, count, desc, eq, inArray, ne, notInArray, or, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/server/db";
 import { appEnv } from "@/lib/server/env";
 import type {
@@ -386,30 +385,6 @@ function rowToInboxItem(row: InboxItemRow): InboxItem {
     archived: row.archived,
     created_at: row.activityAt.toISOString(),
     details: detailsRecord(row.details),
-  };
-}
-
-function sourceToInboxItem(
-  source: SourceItem,
-  args: { workspaceId: string; userId: string },
-): InboxItem {
-  return {
-    id: source.key,
-    workspace_id: args.workspaceId,
-    recipient_type: "member",
-    recipient_id: args.userId,
-    actor_type: source.actorType,
-    actor_id: source.actorId,
-    type: source.type,
-    severity: source.severity,
-    issue_id: source.issueId,
-    title: source.title,
-    body: source.body,
-    issue_status: source.issueStatus,
-    read: false,
-    archived: false,
-    created_at: source.activityAt.toISOString(),
-    details: source.details,
   };
 }
 
@@ -829,26 +804,36 @@ export async function computeInboxItems(args: {
   userId: string;
   limit?: number;
 }): Promise<InboxItem[]> {
+  const db = getDb(appEnv);
+  const rows = await db
+    .select()
+    .from(schema.inboxItem)
+    .where(
+      and(
+        eq(schema.inboxItem.workspaceId, args.workspaceId),
+        eq(schema.inboxItem.recipientType, "member"),
+        eq(schema.inboxItem.recipientId, args.userId),
+        eq(schema.inboxItem.archived, false),
+      ),
+    )
+    .orderBy(desc(schema.inboxItem.activityAt))
+    .limit(args.limit ?? 100);
+
+  return rows.map(rowToInboxItem);
+}
+
+export async function reconcileInboxItems(args: {
+  workspaceId: string;
+  userId: string;
+  limit?: number;
+}): Promise<InboxItem[]> {
   const { sources } = await computeInboxSourceItems(args);
-  const persisted = await Result.tryPromise({
-    try: async () =>
-      persistInboxSourceItems({
-        workspaceId: args.workspaceId,
-        userId: args.userId,
-        sources,
-        limit: args.limit,
-      }),
-    catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+  return persistInboxSourceItems({
+    workspaceId: args.workspaceId,
+    userId: args.userId,
+    sources,
+    limit: args.limit,
   });
-
-  if (persisted.isOk()) return persisted.value;
-
-  console.warn("[inbox] falling back to computed inbox items", {
-    error: persisted.error.message,
-  });
-  return sources
-    .slice(0, args.limit ?? 100)
-    .map((source) => sourceToInboxItem(source, args));
 }
 
 export async function computeVisibleInboxItemKeys(args: {
@@ -871,6 +856,18 @@ export async function computeInboxUnreadCount(args: {
   workspaceId: string;
   userId: string;
 }): Promise<number> {
-  const items = await computeInboxItems(args);
-  return items.filter((item) => !item.read).length;
+  const db = getDb(appEnv);
+  const [row] = await db
+    .select({ count: count() })
+    .from(schema.inboxItem)
+    .where(
+      and(
+        eq(schema.inboxItem.workspaceId, args.workspaceId),
+        eq(schema.inboxItem.recipientType, "member"),
+        eq(schema.inboxItem.recipientId, args.userId),
+        eq(schema.inboxItem.archived, false),
+        eq(schema.inboxItem.read, false),
+      ),
+    );
+  return row?.count ?? 0;
 }

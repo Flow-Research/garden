@@ -2,6 +2,10 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { LIVE_RUN_STATUSES } from '@garden/core/issues/run-sync'
 import type { IssueStatus } from '@garden/core/types/issue'
+import {
+  archiveTerminalIssueInbox,
+  upsertIssueAssignmentInbox,
+} from '@garden/db/inbox'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { parseJsonBody, updateIssueBodySchema } from '@/lib/server/validation/issues'
@@ -119,6 +123,27 @@ export const Route = createFileRoute('/api/issues/$id')({
           .returning()
 
         if (!issue) return notFound('Issue not found')
+        if (
+          issue.assigneeType === 'user' &&
+          issue.assigneeId &&
+          (existingIssue.assigneeType !== issue.assigneeType ||
+            existingIssue.assigneeId !== issue.assigneeId)
+        ) {
+          await upsertIssueAssignmentInbox({
+            db,
+            workspaceId: existingIssue.workspaceId,
+            issueId: issue.id,
+            actorType: 'member',
+            actorId: access.session.user.id,
+          })
+        }
+        if (issue.status === 'done' || issue.status === 'cancelled') {
+          await archiveTerminalIssueInbox({
+            db,
+            workspaceId: existingIssue.workspaceId,
+            issueId: issue.id,
+          })
+        }
         const syncDecision = cancelLiveRunsOnIssueChange({
           currentStatus: (existingIssue.status ?? 'backlog') as IssueStatus,
           nextStatus: (issue.status ?? 'backlog') as IssueStatus,

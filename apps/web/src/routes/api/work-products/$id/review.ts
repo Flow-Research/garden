@@ -1,6 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 import type { ConnectorError } from '@garden/core/connectors/errors'
+import { archiveInboxItemsByKey } from '@garden/db/inbox'
 import { appEnv } from '@/lib/server/env'
+import { getDb } from '@/lib/server/db'
 import { json, requireWorkspaceAccess } from '@/lib/server/control-plane'
 import { parseJsonBody } from '@/lib/server/validation/common'
 import {
@@ -84,6 +86,11 @@ export const Route = createFileRoute('/api/work-products/$id/review')({
             reviewResult.error.status,
           )
         }
+        await archiveInboxItemsByKey({
+          db: getDb(appEnv),
+          workspaceId: workspaceResult.value.workspaceId,
+          itemKeys: [`wp_review:${params.id}`],
+        })
 
         return Response.json(reviewResult.value)
       },
