@@ -147,10 +147,7 @@ export function Conversation<TItem>({
           maintainScrollAtEndThreshold={0.1}
           maintainVisibleContentPosition
           onScroll={updateStickiness}
-          className={cn(
-            'h-full overflow-x-hidden overscroll-y-contain',
-            'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-100',
-          )}
+          className="h-full overflow-x-hidden overscroll-y-contain"
         />
         {children}
       </div>
