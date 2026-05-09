@@ -5,7 +5,11 @@ import {
   extractThreadIdFromAgentName,
   MCP_PROXY_JWT_REFRESH_WINDOW_MS,
 } from './mcp-connectors'
-import { isMcpDiscoveryCancellation } from './runtime-mcp-controller'
+import {
+  connectRpcMcpConnector,
+  isMcpDiscoveryCancellation,
+  type RpcMcpConnectorProps,
+} from './runtime-mcp-controller'
 
 describe('extractThreadIdFromAgentName', () => {
   it('extracts the thread id from chat agent names', () => {
@@ -214,5 +218,69 @@ describe('isMcpDiscoveryCancellation', () => {
     expect(isMcpDiscoveryCancellation('Discovery was cancelled')).toBe(true)
     expect(isMcpDiscoveryCancellation('Network connection lost.')).toBe(false)
     expect(isMcpDiscoveryCancellation(undefined)).toBe(false)
+  })
+})
+
+describe('connectRpcMcpConnector', () => {
+  it('connects with RPC transport, stable reconnect id, namespace, and props', async () => {
+    const calls: unknown[] = []
+    const namespace = { binding: 'MCP_SESSION' } as unknown as DurableObjectNamespace
+    const props = {
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      agentId: 'agent-1',
+      connectorId: 'github',
+      authKind: 'oauth',
+    } satisfies RpcMcpConnectorProps
+
+    const result = await connectRpcMcpConnector({
+      mcp: {
+        connect: async (...args: unknown[]) => {
+          calls.push(args)
+          return { id: 'github' }
+        },
+      },
+      namespace,
+      connectorId: 'github',
+      props,
+    })
+
+    expect(result).toEqual({ state: 'connected' })
+    expect(calls).toEqual([
+      [
+        'rpc://github',
+        {
+          reconnect: { id: 'github' },
+          transport: {
+            type: 'rpc',
+            namespace,
+            name: 'github',
+            props,
+          },
+        },
+      ],
+    ])
+  })
+
+  it('fails when the MCP client returns an unexpected reconnect id', async () => {
+    const result = await connectRpcMcpConnector({
+      mcp: {
+        connect: async () => ({ id: 'wrong-id' }),
+      },
+      namespace: {} as DurableObjectNamespace,
+      connectorId: 'github',
+      props: {
+        userId: 'user-1',
+        workspaceId: 'workspace-1',
+        agentId: 'agent-1',
+        connectorId: 'github',
+        authKind: 'oauth',
+      },
+    })
+
+    expect(result).toEqual({
+      state: 'failed',
+      error: 'RPC MCP id mismatch',
+    })
   })
 })
