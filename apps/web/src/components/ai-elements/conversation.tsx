@@ -16,14 +16,11 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react'
 
-const INITIAL_SCROLL_MIN_FRAMES = 30
-const INITIAL_SCROLL_MAX_FRAMES = 90
 const DEFAULT_ESTIMATED_LIST_SIZE = { height: 640, width: 720 }
 
 type ConversationRow<TItem> = {
@@ -74,7 +71,6 @@ export function Conversation<TItem>({
 }: ConversationProps<TItem>) {
   const listRef = useRef<LegendListRef | null>(null)
   const initialScrollFrameRef = useRef<number | null>(null)
-  const initialScrollTargetKeyRef = useRef<string | null>(null)
   const previousInitialScrollKeyRef = useRef<string | null>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
 
@@ -105,43 +101,6 @@ export function Conversation<TItem>({
     }
   }, [])
 
-  const scheduleInitialScrollToEnd = useCallback(
-    (targetKey: string) => {
-      if (
-        initialScrollTargetKeyRef.current === targetKey &&
-        initialScrollFrameRef.current !== null
-      ) {
-        return
-      }
-
-      cancelInitialScroll()
-      initialScrollTargetKeyRef.current = targetKey
-
-      let frameCount = 0
-      const scrollStep = () => {
-        if (initialScrollTargetKeyRef.current !== targetKey) return
-
-        frameCount += 1
-        listRef.current?.scrollToEnd?.({ animated: false })
-        setIsAtBottom(true)
-
-        const state = listRef.current?.getState?.()
-        const canRelease =
-          frameCount >= INITIAL_SCROLL_MIN_FRAMES && state?.isAtEnd
-        if (canRelease || frameCount >= INITIAL_SCROLL_MAX_FRAMES) {
-          initialScrollFrameRef.current = null
-          initialScrollTargetKeyRef.current = null
-          return
-        }
-
-        initialScrollFrameRef.current = window.requestAnimationFrame(scrollStep)
-      }
-
-      initialScrollFrameRef.current = window.requestAnimationFrame(scrollStep)
-    },
-    [cancelInitialScroll],
-  )
-
   const renderItem = useCallback(
     ({ index, item }: { index: number; item: ConversationRow<TItem> }) => (
       <div
@@ -156,7 +115,7 @@ export function Conversation<TItem>({
     [renderDataItem],
   )
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (rows.length === 0) return
 
     const targetKey = rows[rows.length - 1]?.key
@@ -166,8 +125,11 @@ export function Conversation<TItem>({
 
     previousInitialScrollKeyRef.current = nextInitialScrollKey
     setIsAtBottom(true)
-    listRef.current?.scrollToEnd?.({ animated: false })
-    scheduleInitialScrollToEnd(targetKey)
+    cancelInitialScroll()
+    initialScrollFrameRef.current = window.requestAnimationFrame(() => {
+      listRef.current?.scrollToEnd?.({ animated: false })
+      initialScrollFrameRef.current = null
+    })
 
     return () => {
       cancelInitialScroll()
@@ -175,19 +137,10 @@ export function Conversation<TItem>({
   }, [
     cancelInitialScroll,
     initialScrollKey,
-    rows,
     rows.length,
-    scheduleInitialScrollToEnd,
   ])
 
-  const handleInitialLayoutShift = useCallback(() => {
-    const targetKey = initialScrollTargetKeyRef.current
-    if (!targetKey) return
-    scheduleInitialScrollToEnd(targetKey)
-  }, [scheduleInitialScrollToEnd])
-
   const cancelInitialScrollFromUserInput = useCallback(() => {
-    initialScrollTargetKeyRef.current = null
     cancelInitialScroll()
   }, [cancelInitialScroll])
 
@@ -238,15 +191,10 @@ export function Conversation<TItem>({
           estimatedItemSize={estimateItemSize}
           initialContainerPoolRatio={initialContainerPoolRatio}
           alignItemsAtEnd
-          maintainScrollAtEnd={{
-            animated: false,
-            on: { dataChange: true, itemLayout: true, layout: true },
-          }}
+          initialScrollAtEnd
+          maintainScrollAtEnd
           maintainScrollAtEndThreshold={0.1}
           maintainVisibleContentPosition
-          onItemSizeChanged={handleInitialLayoutShift}
-          onLoad={handleInitialLayoutShift}
-          onMetricsChange={handleInitialLayoutShift}
           onScroll={updateStickiness}
           className={cn(
             'h-full overflow-x-hidden overscroll-y-contain',
