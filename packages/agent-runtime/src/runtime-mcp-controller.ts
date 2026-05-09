@@ -96,6 +96,7 @@ export type McpClientFacade = {
   getAITools: (filter?: MCPServerFilter) => ToolSet;
   listTools: (filter?: MCPServerFilter) => McpToolRecord[];
   listServers: () => Array<{ id: string }>;
+  waitForConnections?: (options: { timeout: number }) => Promise<unknown>;
   registerServer: (
     serverId: string,
     config: {
@@ -137,6 +138,10 @@ export function buildConnectorProxyMcpUrl(
   proxyBaseUrl: string,
 ) {
   return new URL(`${connectorId}/mcp`, proxyBaseUrl).toString();
+}
+
+export function isMcpDiscoveryCancellation(message: string | undefined) {
+  return message === "Discovery was cancelled";
 }
 
 export class RuntimeMcpController {
@@ -779,7 +784,10 @@ export class RuntimeMcpController {
     return Result.ok(connectorIdsToSync);
   }
 
-  async ensureProxyMcpConnections(options?: { refreshWindowMs?: number }) {
+  async ensureProxyMcpConnections(options?: {
+    refreshWindowMs?: number;
+    allowReplacingRegisteredServers?: boolean;
+  }) {
     this.ensureConnectorServerTable();
 
     const identityResult = await this.resolveRuntimeIdentity();
@@ -817,6 +825,10 @@ export class RuntimeMcpController {
       const refreshResult = await this.refreshConnectorServer(
         identityResult.value,
         binding,
+        {
+          allowReplacingRegisteredServers:
+            options?.allowReplacingRegisteredServers ?? true,
+        },
       );
       if (refreshResult.isErr()) {
         failedRefreshes.push({
@@ -903,6 +915,7 @@ export class RuntimeMcpController {
   private async refreshConnectorServer(
     identity: ThreadRuntimeIdentity,
     binding: ActiveConnectorBinding,
+    options?: { allowReplacingRegisteredServers?: boolean },
   ) {
     const connector = getConnectorById(binding.connectorId);
     if (!connector) {
@@ -912,6 +925,14 @@ export class RuntimeMcpController {
           message: `Unknown connector: ${binding.connectorId}`,
         }),
       );
+    }
+
+    const hasRegisteredServer = this.host.mcp
+      .listServers()
+      .some((server) => server.id === connector.id);
+
+    if (hasRegisteredServer && !options?.allowReplacingRegisteredServers) {
+      return Result.ok(undefined);
     }
 
     const cleanupResult = await this.removeConnectorServer(connector.id);
@@ -970,18 +991,12 @@ export class RuntimeMcpController {
           });
         }
 
-        const discovery = await this.host.mcp.discoverIfConnected(
-          connector.id,
-          {
-            timeoutMs: 15_000,
-          },
-        );
-        if (!discovery?.success) {
+        const discoveryResult =
+          await this.discoverRegisteredConnectorServer(connector.id);
+        if (discoveryResult.isErr()) {
           throw new RuntimeMcpError({
             code: "mcp_discover_failed",
-            message:
-              discovery?.error ||
-              `Failed to discover MCP tools for ${connector.id}`,
+            message: discoveryResult.error,
           });
         }
       },
@@ -1013,6 +1028,39 @@ export class RuntimeMcpController {
     if (persistResult.isErr()) return persistResult;
 
     return Result.ok(undefined);
+  }
+
+  private async discoverRegisteredConnectorServer(connectorId: string) {
+    const cancelledDelaysMs = [250, 750, 1_500];
+
+    for (let attempt = 0; attempt <= cancelledDelaysMs.length; attempt += 1) {
+      const discovery = await this.host.mcp.discoverIfConnected(connectorId, {
+        timeoutMs: 30_000,
+      });
+      if (discovery?.success) return Result.ok(undefined);
+
+      const error =
+        discovery?.error || `Failed to discover MCP tools for ${connectorId}`;
+      if (!isMcpDiscoveryCancellation(error)) {
+        return Result.err(error);
+      }
+
+      const hasDiscoveredTools =
+        this.host.mcp.listTools({ serverId: connectorId }).length > 0;
+      if (hasDiscoveredTools) return Result.ok(undefined);
+
+      await this.host.mcp.waitForConnections?.({ timeout: 30_000 });
+
+      const hasToolsAfterWait =
+        this.host.mcp.listTools({ serverId: connectorId }).length > 0;
+      if (hasToolsAfterWait) return Result.ok(undefined);
+
+      const delayMs = cancelledDelaysMs[attempt];
+      if (delayMs === undefined) return Result.err(error);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    return Result.err(`Failed to discover MCP tools for ${connectorId}`);
   }
 
   private async requestCapabilitySyncForConnectors(connectorIds: string[]) {
@@ -1154,7 +1202,11 @@ export class RuntimeMcpConnectionPreparer {
 
   ensureLoaded(
     reason: string,
-    options?: { refreshWindowMs?: number },
+    options?: {
+      refreshWindowMs?: number;
+      allowReplacingRegisteredServers?: boolean;
+      waitForReadiness?: boolean;
+    },
   ): Promise<RuntimeMcpPrepareResult> {
     if (this.refreshInFlight) return this.refreshInFlight;
 
@@ -1179,7 +1231,11 @@ export class RuntimeMcpConnectionPreparer {
 
   private async refreshWithRetries(
     reason: string,
-    options?: { refreshWindowMs?: number },
+    options?: {
+      refreshWindowMs?: number;
+      allowReplacingRegisteredServers?: boolean;
+      waitForReadiness?: boolean;
+    },
   ): Promise<RuntimeMcpPrepareResult> {
     const delaysMs = [0, 1_000, 3_000];
     let lastError = "MCP connector refresh failed";
@@ -1194,7 +1250,10 @@ export class RuntimeMcpConnectionPreparer {
       const connectionResult =
         await controller.ensureProxyMcpConnections(options);
       if (connectionResult.isOk()) {
-        if (this.shouldWaitForReadiness()) {
+        if (
+          options?.waitForReadiness !== false &&
+          this.shouldWaitForReadiness()
+        ) {
           const readinessResult = await this.waitForConnectionsReady(reason);
           if (readinessResult.isErr()) {
             lastError = readinessResult.error.message;

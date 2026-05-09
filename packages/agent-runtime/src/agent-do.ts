@@ -851,6 +851,8 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       "periodic-jwt-refresh",
       {
         refreshWindowMs: MCP_PROXY_JWT_PERIODIC_REFRESH_WINDOW_MS,
+        allowReplacingRegisteredServers: false,
+        waitForReadiness: false,
       },
     );
     if (result.isErr()) {

@@ -7,6 +7,7 @@ import {
 } from './mcp-connectors'
 import {
   buildConnectorProxyMcpUrl,
+  isMcpDiscoveryCancellation,
   resolveProxyBaseUrl,
 } from './runtime-mcp-controller'
 
@@ -253,5 +254,13 @@ describe('buildConnectorProxyMcpUrl', () => {
         'http://localhost:3000/api/mcp-proxy/',
       ),
     ).toBe('http://localhost:3000/api/mcp-proxy/exa-search/mcp')
+  })
+})
+
+describe('isMcpDiscoveryCancellation', () => {
+  it('matches the Agents MCP cancellation message exactly', () => {
+    expect(isMcpDiscoveryCancellation('Discovery was cancelled')).toBe(true)
+    expect(isMcpDiscoveryCancellation('Network connection lost.')).toBe(false)
+    expect(isMcpDiscoveryCancellation(undefined)).toBe(false)
   })
 })

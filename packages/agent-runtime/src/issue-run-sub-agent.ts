@@ -62,6 +62,7 @@ import {
   RuntimeMcpError,
   RuntimeMcpController,
   type McpHost,
+  type RuntimeMcpServerStates,
   type ThreadRuntimeIdentity,
 } from './runtime-mcp-controller'
 import {
@@ -103,6 +104,7 @@ type ResolutionGuardRow = {
 }
 
 const DEFAULT_ISSUE_RUN_TIMEOUT_SEC = 2 * 60 * 60
+const MCP_CONNECTION_WAIT_TIMEOUT_MS = 10_000
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.issue-run.turn'
 const WAKEUP_BACKOFF_MS = [5_000, 10_000, 20_000] as const
@@ -299,6 +301,11 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
     getController: () => this.getMcpController(),
     fullSyncIntervalMs: 60 * 1000,
+    waitForConnections: async (timeoutMs) =>
+      await this.mcp.waitForConnections({ timeout: timeoutMs }),
+    getServerStates: () =>
+      this.getMcpServers().servers as RuntimeMcpServerStates,
+    connectionWaitTimeoutMs: MCP_CONNECTION_WAIT_TIMEOUT_MS,
     backgroundRefreshFailedMessage:
       '[agent-runtime] issue MCP background refresh failed',
     refreshFailedMessage:
