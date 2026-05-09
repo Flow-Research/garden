@@ -12,7 +12,6 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -241,7 +240,6 @@ export function ConnectedChatPanelInteraction({
   const sessionId = activeSession.id
   const queryClient = useQueryClient()
   const debugModeEnabled = useDevSettingsStore((s) => s.debugMode)
-  const activeSessionId = useChatStore((s) => s.activeSessionId)
   const workspaceId = useWorkspaceStore((s) => s.workspace?.id ?? null)
   usePrefetchDebugStream({
     enabled: debugModeEnabled,
@@ -276,8 +274,6 @@ export function ConnectedChatPanelInteraction({
   const [optimisticPendingTurn, setOptimisticPendingTurn] = useState(false)
   const lastSentTextRef = useRef<string | null>(null)
   const pendingMessageCountRef = useRef<number | null>(null)
-  const wasActiveSessionRef = useRef(false)
-  const [timelineActivationCount, setTimelineActivationCount] = useState(0)
   const {
     addToolApprovalResponse,
     addToolOutput,
@@ -289,16 +285,6 @@ export function ConnectedChatPanelInteraction({
     stop,
     isStreaming,
   } = runtime
-
-  useLayoutEffect(() => {
-    const isActiveSession = activeSessionId === sessionId
-    if (isActiveSession && !wasActiveSessionRef.current) {
-      setTimelineActivationCount((count) => count + 1)
-    }
-    wasActiveSessionRef.current = isActiveSession
-  }, [activeSessionId, sessionId])
-
-  const timelineInitialScrollKey = `${sessionId}:${timelineActivationCount}`
 
   useEffect(() => {
     if (normalizeStatus(status) !== 'idle') {
@@ -680,7 +666,6 @@ export function ConnectedChatPanelInteraction({
           {showEmptyChatState ? null : (
             <ChatTimeline
               debugMode={debugModeEnabled}
-              initialScrollKey={timelineInitialScrollKey}
               sessionId={sessionId}
               messages={visibleMessages}
               error={error ?? null}

@@ -49,7 +49,6 @@ export type ConversationProps<TItem> = ComponentProps<'div'> & {
   estimateItemSize?: number
   getItemKey: (item: TItem, index: number) => string
   initialContainerPoolRatio?: number
-  initialScrollKey?: string
   renderItem: (args: { index: number; item: TItem }) => ReactNode
 }
 
@@ -62,7 +61,6 @@ export function Conversation<TItem>({
   estimateItemSize = 90,
   getItemKey,
   initialContainerPoolRatio,
-  initialScrollKey,
   onTouchStart,
   onWheel,
   renderItem: renderDataItem,
@@ -119,10 +117,6 @@ export function Conversation<TItem>({
     [onTouchStart],
   )
 
-  const listBootKey = `${initialScrollKey ?? 'conversation'}:${
-    rows.length > 0 ? 'ready' : 'empty'
-  }`
-
   return (
     <ConversationContext.Provider value={{ isAtBottom, scrollToBottom }}>
       <div
@@ -133,7 +127,6 @@ export function Conversation<TItem>({
         className={cn('relative min-h-0 flex-1 overflow-hidden', className)}
       >
         <LegendList<ConversationRow<TItem>>
-          key={listBootKey}
           ref={listRef}
           data={rows}
           keyExtractor={(item) => item.key}
