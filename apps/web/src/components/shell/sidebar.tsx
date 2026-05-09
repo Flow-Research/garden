@@ -10,7 +10,7 @@ import {
 import { Result } from 'better-result'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { IconMessage2Plus } from '@tabler/icons-react'
-import { Bot, Plug, Plus, Search, X } from 'lucide-react'
+import { Bot, Plug, Plus, Search, X, Zap } from 'lucide-react'
 import { Icon as IconifyIcon } from '@iconify/react'
 import { BrandIcon } from '@garden/ui/components/common/brand-icon'
 import type { ConnectorId } from '@garden/connectors/registry'
@@ -62,6 +62,7 @@ type RailContext =
   | 'home'
   | 'chats'
   | 'tasks'
+  | 'automations'
   | 'inbox'
   | 'agents'
   | 'skills'
@@ -99,6 +100,12 @@ const railItems: RailItem[] = [
     defaultPanel: { kind: 'issues', title: 'Tasks' },
   },
   {
+    id: 'automations',
+    label: 'Automations',
+    icon: Zap,
+    defaultPanel: { kind: 'automations', title: 'Automations' },
+  },
+  {
     id: 'inbox',
     label: 'Inbox',
     icon: HomeInboxIcon,
@@ -131,6 +138,9 @@ function contextFromPanel(kind: WorkspacePanelKind | null): RailContext {
     case 'issues':
     case 'issue-detail':
       return 'tasks'
+    case 'automations':
+    case 'automation-detail':
+      return 'automations'
     case 'inbox':
       return 'inbox'
     case 'agents':

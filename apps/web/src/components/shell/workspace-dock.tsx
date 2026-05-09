@@ -27,6 +27,7 @@ import {
   Plus,
   BookOpenText,
   Users,
+  Zap,
   X,
 } from 'lucide-react'
 import {
@@ -64,6 +65,7 @@ import { IssueDetail, IssuesPage } from '@/features/issues/components'
 import { AgentInteractionScreen } from '@/features/chat/components/agent-interaction-screen'
 import { DashboardPage } from '@/features/dashboard'
 import { ConnectionsPage } from '@/features/connections'
+import { AutomationDetailPage, AutomationsPage } from '@/features/automations'
 
 export type WorkspacePanelKind =
   | 'blank'
@@ -71,6 +73,8 @@ export type WorkspacePanelKind =
   | 'inbox'
   | 'issues'
   | 'issue-detail'
+  | 'automations'
+  | 'automation-detail'
   | 'chat'
   | 'skill-editor'
   | 'capabilities'
@@ -103,6 +107,8 @@ const workspacePanelKinds = [
   'inbox',
   'issues',
   'issue-detail',
+  'automations',
+  'automation-detail',
   'chat',
   'skill-editor',
   'capabilities',
@@ -216,6 +222,7 @@ const singletonKinds = new Set<WorkspacePanelKind>([
   'dashboard',
   'inbox',
   'issues',
+  'automations',
   'skill-editor',
   'capabilities',
   'agents',
@@ -230,6 +237,8 @@ const panelIcons: Record<
   inbox: Inbox,
   issues: LayoutList,
   'issue-detail': LayoutList,
+  automations: Zap,
+  'automation-detail': Zap,
   chat: MessageSquare,
   'skill-editor': BookOpenText,
   capabilities: Plug,
@@ -273,6 +282,8 @@ function readPanelFromQueryState(input: {
     panel !== 'inbox' &&
     panel !== 'issues' &&
     panel !== 'issue-detail' &&
+    panel !== 'automations' &&
+    panel !== 'automation-detail' &&
     panel !== 'chat' &&
     panel !== 'skill-editor' &&
     panel !== 'capabilities' &&
@@ -403,12 +414,14 @@ function getPanelConstraints(kind: WorkspacePanelKind) {
     case 'dashboard':
       return { minimumWidth: 420, minimumHeight: 280 }
     case 'issue-detail':
+    case 'automation-detail':
     case 'skill-editor':
     case 'agents':
     case 'agent-detail':
     case 'capabilities':
       return { minimumWidth: 320, minimumHeight: 220 }
     case 'issues':
+    case 'automations':
       return { minimumWidth: 280, minimumHeight: 200 }
     default:
       return { minimumWidth: 240, minimumHeight: 180 }
@@ -791,6 +804,11 @@ const blankPanelChoices: BlankPanelChoice[] = [
     description: 'Task list and issue detail flow',
   },
   {
+    kind: 'automations',
+    title: 'Automations',
+    description: 'Recurring schedules for agent work',
+  },
+  {
     kind: 'chat',
     title: 'New Chat',
     description: 'Start a fresh chat tab',
@@ -941,6 +959,63 @@ function IssueDetailDockPanel({
   )
 }
 
+function AutomationsDockPanel({
+  api,
+}: IDockviewPanelProps<WorkspacePanelParams>) {
+  const ctx = useContext(WorkspaceDockContext)
+
+  return (
+    <WorkspacePanelFrame panelId={api.id}>
+      <AutomationsPage
+        onOpenAutomation={(automation) => {
+          ctx?.openPanel({
+            kind: 'automation-detail',
+            title: automation.title,
+            entityId: automation.id,
+          })
+        }}
+      />
+    </WorkspacePanelFrame>
+  )
+}
+
+function AutomationDetailDockPanel({
+  api,
+  params,
+}: IDockviewPanelProps<WorkspacePanelParams>) {
+  const ctx = useContext(WorkspaceDockContext)
+
+  if (!params.entityId) {
+    return (
+      <section className="flex h-full items-center justify-center px-6 text-sm text-muted-foreground">
+        Automation details need an automation id.
+      </section>
+    )
+  }
+
+  return (
+    <WorkspacePanelFrame panelId={api.id}>
+      <AutomationDetailPage
+        automationId={params.entityId}
+        onBack={() =>
+          ctx?.openPanel({ kind: 'automations', title: 'Automations' })
+        }
+        onDeleted={() => {
+          ctx?.openPanel({ kind: 'automations', title: 'Automations' })
+          api.close()
+        }}
+        onOpenIssue={(issueId) => {
+          ctx?.openPanel({
+            kind: 'issue-detail',
+            title: 'Issue',
+            entityId: issueId,
+          })
+        }}
+      />
+    </WorkspacePanelFrame>
+  )
+}
+
 function SkillsDockPanel({
   api,
   params,
@@ -1076,6 +1151,8 @@ const dockComponents = {
   inbox: InboxDockPanel,
   issues: IssuesDockPanel,
   'issue-detail': IssueDetailDockPanel,
+  automations: AutomationsDockPanel,
+  'automation-detail': AutomationDetailDockPanel,
   chat: ChatDockPanel,
   'skill-editor': SkillsDockPanel,
   capabilities: CapabilitiesDockPanel,
@@ -1683,15 +1760,7 @@ export function WorkspaceDockProvider({
     if (!queryPanel || arePanelsEqual(activePanel, queryPanel)) return
 
     openPanel(queryPanel)
-  }, [
-    activePanel,
-    chat,
-    isReady,
-    openPanel,
-    panel,
-    panelEntityId,
-    panelTitle,
-  ])
+  }, [activePanel, chat, isReady, openPanel, panel, panelEntityId, panelTitle])
 
   const activePanelIsPinned = useMemo(() => {
     const panelId = apiRef.current?.activePanel?.id
@@ -1804,10 +1873,7 @@ export function WorkspaceDockProvider({
             panelEntityId,
           })
       const storedLayout = readStoredDockviewLayout(storageKey)
-      const savedLayout = activatePanelInStoredLayout(
-        storedLayout,
-        searchPanel,
-      )
+      const savedLayout = activatePanelInStoredLayout(storedLayout, searchPanel)
       const hasSavedLayout = Boolean(savedLayout)
       if (savedLayout) {
         api.fromJSON(savedLayout)

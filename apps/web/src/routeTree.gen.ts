@@ -27,6 +27,7 @@ import { Route as ApiBootstrapRouteImport } from './routes/api/bootstrap'
 import { Route as ApiAutomationsRouteImport } from './routes/api/automations'
 import { Route as ApiAgentsRouteImport } from './routes/api/agents'
 import { Route as AuthenticatedWorkspaceRouteImport } from './routes/_authenticated/workspace'
+import { Route as AuthenticatedAutomationsIndexRouteImport } from './routes/_authenticated/automations/index'
 import { Route as ApiWorkspacesIdRouteImport } from './routes/api/workspaces/$id'
 import { Route as ApiSkillsSearchRouteImport } from './routes/api/skills/search'
 import { Route as ApiSkillsPreviewRouteImport } from './routes/api/skills/preview'
@@ -52,6 +53,7 @@ import { Route as ApiChatThreadsRouteImport } from './routes/api/chat/threads'
 import { Route as ApiAutomationsIdRouteImport } from './routes/api/automations/$id'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiAgentsIdRouteImport } from './routes/api/agents/$id'
+import { Route as AuthenticatedAutomationsIdRouteImport } from './routes/_authenticated/automations/$id'
 import { Route as ApiWorkspacesIdMembersRouteImport } from './routes/api/workspaces/$id/members'
 import { Route as ApiWorkspacesIdInvitationsRouteImport } from './routes/api/workspaces/$id/invitations'
 import { Route as ApiWorkProductsIdReviewRouteImport } from './routes/api/work-products/$id/review'
@@ -185,6 +187,12 @@ const AuthenticatedWorkspaceRoute = AuthenticatedWorkspaceRouteImport.update({
   path: '/workspace',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedAutomationsIndexRoute =
+  AuthenticatedAutomationsIndexRouteImport.update({
+    id: '/automations/',
+    path: '/automations/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const ApiWorkspacesIdRoute = ApiWorkspacesIdRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -313,6 +321,12 @@ const ApiAgentsIdRoute = ApiAgentsIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => ApiAgentsRoute,
 } as any)
+const AuthenticatedAutomationsIdRoute =
+  AuthenticatedAutomationsIdRouteImport.update({
+    id: '/automations/$id',
+    path: '/automations/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const ApiWorkspacesIdMembersRoute = ApiWorkspacesIdMembersRouteImport.update({
   id: '/members',
   path: '/members',
@@ -562,6 +576,7 @@ export interface FileRoutesByFullPath {
   '/api/runtimes': typeof ApiRuntimesRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
+  '/automations/$id': typeof AuthenticatedAutomationsIdRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/automations/$id': typeof ApiAutomationsIdRouteWithChildren
@@ -587,6 +602,7 @@ export interface FileRoutesByFullPath {
   '/api/skills/preview': typeof ApiSkillsPreviewRoute
   '/api/skills/search': typeof ApiSkillsSearchRoute
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
+  '/automations/': typeof AuthenticatedAutomationsIndexRoute
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
   '/api/agents/$id/skills': typeof ApiAgentsIdSkillsRoute
@@ -649,6 +665,7 @@ export interface FileRoutesByTo {
   '/api/runtimes': typeof ApiRuntimesRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
+  '/automations/$id': typeof AuthenticatedAutomationsIdRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/automations/$id': typeof ApiAutomationsIdRouteWithChildren
@@ -674,6 +691,7 @@ export interface FileRoutesByTo {
   '/api/skills/preview': typeof ApiSkillsPreviewRoute
   '/api/skills/search': typeof ApiSkillsSearchRoute
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
+  '/automations': typeof AuthenticatedAutomationsIndexRoute
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
   '/api/agents/$id/skills': typeof ApiAgentsIdSkillsRoute
@@ -738,6 +756,7 @@ export interface FileRoutesById {
   '/api/runtimes': typeof ApiRuntimesRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
+  '/_authenticated/automations/$id': typeof AuthenticatedAutomationsIdRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/automations/$id': typeof ApiAutomationsIdRouteWithChildren
@@ -763,6 +782,7 @@ export interface FileRoutesById {
   '/api/skills/preview': typeof ApiSkillsPreviewRoute
   '/api/skills/search': typeof ApiSkillsSearchRoute
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
+  '/_authenticated/automations/': typeof AuthenticatedAutomationsIndexRoute
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
   '/api/agents/$id/skills': typeof ApiAgentsIdSkillsRoute
@@ -827,6 +847,7 @@ export interface FileRouteTypes {
     | '/api/runtimes'
     | '/api/skills'
     | '/api/workspaces'
+    | '/automations/$id'
     | '/api/agents/$id'
     | '/api/auth/$'
     | '/api/automations/$id'
@@ -852,6 +873,7 @@ export interface FileRouteTypes {
     | '/api/skills/preview'
     | '/api/skills/search'
     | '/api/workspaces/$id'
+    | '/automations/'
     | '/api/agents/$id/archive'
     | '/api/agents/$id/restore'
     | '/api/agents/$id/skills'
@@ -914,6 +936,7 @@ export interface FileRouteTypes {
     | '/api/runtimes'
     | '/api/skills'
     | '/api/workspaces'
+    | '/automations/$id'
     | '/api/agents/$id'
     | '/api/auth/$'
     | '/api/automations/$id'
@@ -939,6 +962,7 @@ export interface FileRouteTypes {
     | '/api/skills/preview'
     | '/api/skills/search'
     | '/api/workspaces/$id'
+    | '/automations'
     | '/api/agents/$id/archive'
     | '/api/agents/$id/restore'
     | '/api/agents/$id/skills'
@@ -1002,6 +1026,7 @@ export interface FileRouteTypes {
     | '/api/runtimes'
     | '/api/skills'
     | '/api/workspaces'
+    | '/_authenticated/automations/$id'
     | '/api/agents/$id'
     | '/api/auth/$'
     | '/api/automations/$id'
@@ -1027,6 +1052,7 @@ export interface FileRouteTypes {
     | '/api/skills/preview'
     | '/api/skills/search'
     | '/api/workspaces/$id'
+    | '/_authenticated/automations/'
     | '/api/agents/$id/archive'
     | '/api/agents/$id/restore'
     | '/api/agents/$id/skills'
@@ -1235,6 +1261,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWorkspaceRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/automations/': {
+      id: '/_authenticated/automations/'
+      path: '/automations'
+      fullPath: '/automations/'
+      preLoaderRoute: typeof AuthenticatedAutomationsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/api/workspaces/$id': {
       id: '/api/workspaces/$id'
       path: '/$id'
@@ -1409,6 +1442,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/agents/$id'
       preLoaderRoute: typeof ApiAgentsIdRouteImport
       parentRoute: typeof ApiAgentsRoute
+    }
+    '/_authenticated/automations/$id': {
+      id: '/_authenticated/automations/$id'
+      path: '/automations/$id'
+      fullPath: '/automations/$id'
+      preLoaderRoute: typeof AuthenticatedAutomationsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
     '/api/workspaces/$id/members': {
       id: '/api/workspaces/$id/members'
@@ -1716,10 +1756,14 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteChildren {
   AuthenticatedWorkspaceRoute: typeof AuthenticatedWorkspaceRoute
+  AuthenticatedAutomationsIdRoute: typeof AuthenticatedAutomationsIdRoute
+  AuthenticatedAutomationsIndexRoute: typeof AuthenticatedAutomationsIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedWorkspaceRoute: AuthenticatedWorkspaceRoute,
+  AuthenticatedAutomationsIdRoute: AuthenticatedAutomationsIdRoute,
+  AuthenticatedAutomationsIndexRoute: AuthenticatedAutomationsIndexRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

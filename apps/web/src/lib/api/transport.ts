@@ -59,7 +59,13 @@ export class ApiTransport {
     const message =
       payload && typeof payload.error === 'string' && payload.error
         ? payload.error
-        : fallback
+        : payload &&
+            payload.error &&
+            typeof payload.error === 'object' &&
+            'message' in payload.error &&
+            typeof payload.error.message === 'string'
+          ? payload.error.message
+          : fallback
 
     return new ApiError({
       message,
