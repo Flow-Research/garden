@@ -74,7 +74,6 @@ export type McpHostEnv = {
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
   DATABASE_URL: string;
-  MCP_PROXY_URL?: string;
 };
 
 export type McpRegistration =
@@ -122,18 +121,6 @@ export type McpClientFacade = {
   listTools: (filter?: MCPServerFilter) => McpToolRecord[];
   listServers: () => Array<{ id: string }>;
   waitForConnections?: (options: { timeout: number }) => Promise<unknown>;
-  registerServer: (
-    serverId: string,
-    config: {
-      url: string;
-      name: string;
-      transport: {
-        type: "streamable-http" | "sse";
-        requestInit: { headers: Record<string, string> };
-      };
-    },
-  ) => Promise<unknown>;
-  connectToServer: (serverId: string) => Promise<McpRegistration>;
   discoverIfConnected: (
     serverId: string,
     options: { timeoutMs: number },
@@ -154,20 +141,6 @@ export type McpHost = {
     ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
   >;
 };
-
-export function resolveProxyBaseUrl(env: McpHostEnv) {
-  const explicitProxyUrl = env.MCP_PROXY_URL?.trim();
-  if (explicitProxyUrl) return explicitProxyUrl;
-
-  return new URL("/api/mcp-proxy/", env.BETTER_AUTH_URL).toString();
-}
-
-export function buildConnectorProxyMcpUrl(
-  connectorId: string,
-  proxyBaseUrl: string,
-) {
-  return new URL(`${connectorId}/mcp`, proxyBaseUrl).toString();
-}
 
 export function isMcpDiscoveryCancellation(message: string | undefined) {
   return message === "Discovery was cancelled";
