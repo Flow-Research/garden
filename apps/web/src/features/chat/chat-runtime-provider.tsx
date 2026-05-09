@@ -272,6 +272,12 @@ function ChatRuntimeConnection({
     }
   }, [prepareRuntime, prewarmRuntime, session.id])
 
+  useEffect(() => {
+    if (!prewarmRuntime) return
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(new Event('garden:connections-changed'))
+  }, [prewarmRuntime, session.id])
+
   const markTurnError = useCallback(
     (err: Error) => {
       pendingTurnRef.current = null
