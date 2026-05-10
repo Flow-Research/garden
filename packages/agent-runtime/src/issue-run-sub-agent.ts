@@ -726,6 +726,29 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     this.startIssueRunFiber('resume', input)
   }
 
+  /**
+   * Awaitable single-turn driver for RunWorkflow's `step.do` blocks.
+   * Throws on failure so the workflow step can retry; otherwise returns the
+   * run's current status so the workflow can decide to wait, loop, or finish.
+   * See docs/features/agent-runtime-rearchitecture.md.
+   */
+  async executeWorkflowTurn(
+    mode: TurnMode,
+    input: StartTurnInput,
+  ): Promise<{ status: string }> {
+    const driveResult = await this.driveTurn(mode, input)
+    if (driveResult.isErr()) {
+      await this.forceCloseFailed(input.runId, driveResult.error.message)
+      throw new Error(driveResult.error.message)
+    }
+    const [row] = await this.getDb()
+      .select({ status: schema.issueRun.status })
+      .from(schema.issueRun)
+      .where(eq(schema.issueRun.id, input.runId))
+      .limit(1)
+    return { status: row?.status ?? 'unknown' }
+  }
+
   async requestCancel(input: StartTurnInput): Promise<void> {
     const cancelResult = await this.setCancelRequested(input.runId, 'cancelled')
     if (cancelResult.isErr()) {

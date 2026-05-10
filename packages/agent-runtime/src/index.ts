@@ -1,6 +1,13 @@
 export { AgentDO, ChatSubAgent } from './agent-do'
 export { IssueRunSubAgent } from './issue-run-sub-agent'
 export { AutomationTriggerDO } from './automation-trigger-do'
+export {
+  RunWorkflow,
+  RUN_WORKFLOW_CONTROL_EVENT_TYPE,
+  type RunWorkflowControlEvent,
+  type RunWorkflowEnv,
+  type RunWorkflowParams,
+} from './run-workflow'
 export { createAgentModel } from './model'
 export {
   extractTrackedChangeIds,

@@ -5,6 +5,7 @@ import {
   AutomationTriggerDO,
   ChatSubAgent,
   IssueRunSubAgent,
+  RunWorkflow,
 } from '@garden/agent-runtime'
 import { proxyToSandbox, Sandbox } from '@cloudflare/sandbox'
 import { Result } from 'better-result'
@@ -21,6 +22,7 @@ export { AgentDO }
 export { AutomationTriggerDO }
 export { ChatSubAgent }
 export { IssueRunSubAgent }
+export { RunWorkflow }
 export { Sandbox }
 
 type ServerEnv = AppEnv

@@ -57,7 +57,6 @@ import {
   RuntimeMcpConnectionPreparer,
   RuntimeMcpController,
   connectRpcMcpConnector,
-  enforceRpcOnlyMcpConnectorRestore,
   type McpHost,
   type RuntimeMcpServerStates,
 } from "./runtime-mcp-controller";
@@ -462,6 +461,25 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     await issueAgent.requestCancel(input);
   }
 
+  /**
+   * Awaitable per-turn entrypoint for RunWorkflow's `step.do` blocks.
+   * Returns the run's status after the turn so the workflow can decide to
+   * loop, await an event, or finish.
+   */
+  @callable()
+  async executeRunTurn(input: {
+    runId: string;
+    issueId: string;
+    mode: "start" | "resume";
+  }): Promise<{ status: string }> {
+    await this.requireIssueAccess(input.issueId);
+    const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId);
+    return await issueAgent.executeWorkflowTurn(input.mode, {
+      runId: input.runId,
+      issueId: input.issueId,
+    });
+  }
+
   override async onBeforeSubAgent(
     _request: Request,
     child: { className: string; name: string },
@@ -685,7 +703,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
 export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   constructor(ctx: DurableObjectState, env: AgentRuntimeEnv) {
     super(ctx, env);
-    enforceRpcOnlyMcpConnectorRestore(this.mcp);
   }
 
   waitForMcpConnections = {
