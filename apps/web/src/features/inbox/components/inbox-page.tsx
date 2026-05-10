@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/core/hooks'
 import { inboxListOptions, deduplicateInboxItems } from '@/lib/inbox/queries'
@@ -265,36 +265,28 @@ function InboxNotificationDetail({
 export function InboxPage() {
   const { searchParams, replace } = useNavigation()
   const dock = useWorkspaceDock()
-  const urlItem = searchParams.get('item') ?? ''
+  const selectedKey = searchParams.get('item') ?? ''
 
-  const [selectedKey, setSelectedKeyState] = useState(() => urlItem)
   const [search, setSearch] = useState('')
   const [unreadsOnly, setUnreadsOnly] = useState(false)
 
-  // Sync from URL when searchParams change (e.g. navigation)
-  useEffect(() => {
-    setSelectedKeyState(urlItem)
-  }, [urlItem])
-
   const setSelectedKey = useCallback(
     (key: string, item?: InboxItem | null) => {
-      setSelectedKeyState(key)
       // Persist selection in the search params on whatever route we're on so
       // we don't trigger a TanStack Router 404 (no `/inbox` route exists —
       // the inbox is a dock panel, not a path).
-      if (typeof window !== 'undefined') {
-        const url = new URL(window.location.href)
-        if (key) url.searchParams.set('item', key)
-        else url.searchParams.delete('item')
+      if (typeof window === 'undefined') return
+      const url = new URL(window.location.href)
+      if (key) url.searchParams.set('item', key)
+      else url.searchParams.delete('item')
 
-        if (item?.issue_id) url.searchParams.set('issue', item.issue_id)
-        else url.searchParams.delete('issue')
+      if (item?.issue_id) url.searchParams.set('issue', item.issue_id)
+      else url.searchParams.delete('issue')
 
-        const focus = item ? focusForInboxItem(item) : null
-        if (focus) url.searchParams.set('focus', focus)
-        else url.searchParams.delete('focus')
-        replace(`${url.pathname}${url.search}`)
-      }
+      const focus = item ? focusForInboxItem(item) : null
+      if (focus) url.searchParams.set('focus', focus)
+      else url.searchParams.delete('focus')
+      replace(`${url.pathname}${url.search}`)
     },
     [replace],
   )

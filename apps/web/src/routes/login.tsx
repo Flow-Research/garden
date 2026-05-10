@@ -4,6 +4,7 @@ import { sanitizeRedirectTarget } from '@/lib/redirect'
 import { getRouteSession } from '@/lib/server/route-session'
 
 export const Route = createFileRoute('/login')({
+  staleTime: Number.POSITIVE_INFINITY,
   validateSearch: (search) => ({
     redirect:
       typeof search.redirect === 'string'
