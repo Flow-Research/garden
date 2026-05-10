@@ -82,9 +82,15 @@
   background-color: var(--bone) !important;
   color: var(--ink) !important;
   font-weight: 600;
-  /* 1px bone-colored outset shadow at the bottom: visually merges the tab's
-   * bottom edge with the workspace below so they appear as one surface. */
-  box-shadow: 0 1px 0 0 var(--bone);
+  /* Hairline ink border traces the tab's top arch (top + left + right) only
+   * — no bottom — so the active tab reads as a "framed cap" sitting on the
+   * workspace. The 1px bone outset shadow below bridges the bottom edge into
+   * the workspace surface, hiding any seam. */
+  box-shadow:
+    inset 0 1px 0 0 rgba(26, 31, 28, 0.10),
+    inset 1px 0 0 0 rgba(26, 31, 28, 0.10),
+    inset -1px 0 0 0 rgba(26, 31, 28, 0.10),
+    0 1px 0 0 var(--bone);
 }
 
 /*
