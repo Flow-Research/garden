@@ -191,6 +191,8 @@ async function markRunFailed(args: {
   const nextAttemptAt = new Date(
     args.now.getTime() + retryDelayMs(row.wakeupAttemptCount),
   )
+  const issueId = row.issueId
+  const wakeupId = row.wakeupId
   const updateResult = await Result.tryPromise({
     try: async () => {
       await db.transaction(async (tx) => {
@@ -203,22 +205,26 @@ async function markRunFailed(args: {
             updatedAt: args.now,
           })
           .where(eq(schema.issueRun.id, args.runId))
-        await tx
-          .update(schema.issue)
-          .set({ activeRunId: null, updatedAt: args.now })
-          .where(
-            and(
-              eq(schema.issue.id, row.issueId),
-              eq(schema.issue.activeRunId, args.runId),
-            ),
-          )
-        await tx
-          .update(schema.issueWakeup)
-          .set({
-            nextAttemptAt,
-            updatedAt: args.now,
-          })
-          .where(eq(schema.issueWakeup.id, row.wakeupId))
+        if (issueId) {
+          await tx
+            .update(schema.issue)
+            .set({ activeRunId: null, updatedAt: args.now })
+            .where(
+              and(
+                eq(schema.issue.id, issueId),
+                eq(schema.issue.activeRunId, args.runId),
+              ),
+            )
+        }
+        if (wakeupId) {
+          await tx
+            .update(schema.issueWakeup)
+            .set({
+              nextAttemptAt,
+              updatedAt: args.now,
+            })
+            .where(eq(schema.issueWakeup.id, wakeupId))
+        }
         await tx
           .update(schema.automationRun)
           .set({
@@ -233,10 +239,12 @@ async function markRunFailed(args: {
   })
   if (updateResult.isErr()) return Result.err(updateResult.error)
 
+  if (!issueId) return Result.ok()
+
   const eventResult = await appendIssueRunEvent({
     env: args.env,
     workspaceId: row.workspaceId,
-    issueId: row.issueId,
+    issueId,
     runId: args.runId,
     eventType: 'issue_run:failed',
     stream: 'system',
@@ -808,20 +816,24 @@ async function sweepStaleApprovals(
               updatedAt: now,
             })
             .where(eq(schema.issueRun.id, run.id))
-          await tx
-            .update(schema.issue)
-            .set({ activeRunId: null, updatedAt: now })
-            .where(
-              and(
-                eq(schema.issue.id, run.issueId),
-                eq(schema.issue.activeRunId, run.id),
-              ),
-            )
+          if (run.issueId) {
+            await tx
+              .update(schema.issue)
+              .set({ activeRunId: null, updatedAt: now })
+              .where(
+                and(
+                  eq(schema.issue.id, run.issueId),
+                  eq(schema.issue.activeRunId, run.id),
+                ),
+              )
+          }
         })
       },
       catch: (cause) => dbError('fail stale approval run', cause),
     })
     if (updateRunResult.isErr()) return Result.err(updateRunResult.error)
+
+    if (!run.issueId) continue
 
     const eventResult = await appendIssueRunEvent({
       env,

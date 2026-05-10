@@ -38,7 +38,6 @@ type AutomationRow = {
   assigneeAgentId: string
   priority: string
   status: string
-  executionMode: string
   concurrencyPolicy: string
   createdBy: string
 }
@@ -57,7 +56,7 @@ type TriggerScheduleRow = {
 type InFlightRunRow = {
   id: string
   workspaceId: string
-  issueId: string
+  issueId: string | null
   status: string
 }
 
@@ -71,7 +70,6 @@ export class AutomationDoError extends TaggedError('AutomationDoError')<{
     | 'dispatch_failed'
     | 'invalid_config'
     | 'run_not_found'
-    | 'unsupported_execution_mode'
     | 'unsupported_policy'
   message: string
   cause?: unknown
@@ -456,16 +454,6 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
         }),
       )
     }
-    if (automation.executionMode !== 'create_issue') {
-      return await this.recordFailedDispatch({
-        automationId: automation.id,
-        triggerId: args.config.triggerId,
-        source: args.source,
-        payload: args.payload,
-        message: 'Automation run_only execution mode is not implemented.',
-        code: 'unsupported_execution_mode',
-      })
-    }
 
     const policyResult = parseConcurrencyPolicy(automation.concurrencyPolicy)
     if (policyResult.isErr()) return Result.err(policyResult.error)
@@ -568,7 +556,6 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
             assigneeAgentId: schema.automation.assigneeAgentId,
             priority: schema.automation.priority,
             status: schema.automation.status,
-            executionMode: schema.automation.executionMode,
             concurrencyPolicy: schema.automation.concurrencyPolicy,
             createdBy: schema.automation.createdBy,
           })
@@ -608,42 +595,6 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
     if (result.isErr()) return Result.err(result.error)
 
     return Result.ok()
-  }
-
-  private async recordFailedDispatch(args: {
-    automationId: string
-    triggerId: string
-    source: AutomationRunSource
-    payload?: unknown
-    message: string
-    code: AutomationDoError['code']
-  }): Promise<ResultValue<{ runId: string }, AutomationDoError>> {
-    const db = this.db()
-    const runId = crypto.randomUUID()
-    const now = new Date()
-    const result = await Result.tryPromise({
-      try: async () => {
-        await db.insert(schema.automationRun).values({
-          id: runId,
-          automationId: args.automationId,
-          triggerId: args.triggerId,
-          source: args.source,
-          status: 'failed',
-          completedAt: now,
-          failureReason: args.message,
-          triggerPayload: args.payload ?? null,
-        })
-      },
-      catch: (cause) => dbError('record failed automation dispatch', cause),
-    })
-    if (result.isErr()) return Result.err(result.error)
-
-    return Result.err(
-      automationDoError({
-        code: args.code,
-        message: args.message,
-      }),
-    )
   }
 
   private async markRunFailed(args: {

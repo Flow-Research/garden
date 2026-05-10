@@ -79,6 +79,22 @@ export const activeIssueRunStatusValues = [
   'waiting_for_approval',
 ] as const
 
+export const issueRunTriggerSourceValues = [
+  'schedule',
+  'manual',
+  'webhook',
+  'api',
+  'chat',
+  'sub_agent',
+  'comment',
+  'mention',
+  'assignment',
+  'connector_event',
+  'reconciler_retry',
+  'hire_approval',
+  'automation',
+] as const
+
 export const issueRunEventTypeValues = [
   'issue_run:queued',
   'issue_run:started',

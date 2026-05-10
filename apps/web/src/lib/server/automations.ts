@@ -46,7 +46,6 @@ export class AutomationApiError extends TaggedError('AutomationApiError')<{
     | 'dispatch_failed'
     | 'invalid_config'
     | 'runtime_error'
-    | 'unsupported_execution_mode'
     | 'unsupported_policy'
   message: string
   cause?: unknown
@@ -162,7 +161,6 @@ export function toAutomation(row: AutomationRow) {
     assignee_agent_id: row.assigneeAgentId,
     priority: row.priority,
     status: row.status,
-    execution_mode: row.executionMode,
     concurrency_policy: row.concurrencyPolicy,
     last_run_at: dateToIso(row.lastRunAt),
     created_by: row.createdBy,
@@ -568,14 +566,6 @@ export async function dispatchAutomation(
       automationError({
         code: 'invalid_config',
         message: 'Automation is not active.',
-      }),
-    )
-  }
-  if (input.automation.executionMode !== 'create_issue') {
-    return Result.err(
-      automationError({
-        code: 'unsupported_execution_mode',
-        message: 'Automation run_only execution mode is not implemented.',
       }),
     )
   }

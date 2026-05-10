@@ -3,7 +3,6 @@ import { getApiTransport } from './state'
 
 export type AutomationStatus = 'active' | 'paused' | 'archived'
 export type AutomationPriority = 'urgent' | 'high' | 'medium' | 'low' | 'none'
-export type AutomationExecutionMode = 'create_issue' | 'run_only'
 export type AutomationConcurrencyPolicy = 'skip' | 'queue' | 'replace'
 export type AutomationRunSource = 'schedule' | 'manual' | 'webhook' | 'api'
 export type AutomationRunStatus =
@@ -24,7 +23,6 @@ export type Automation = {
   assignee_agent_id: string
   priority: AutomationPriority
   status: AutomationStatus
-  execution_mode: AutomationExecutionMode
   concurrency_policy: AutomationConcurrencyPolicy
   last_run_at: string | null
   created_by: string

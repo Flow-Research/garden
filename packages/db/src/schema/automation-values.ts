@@ -1,8 +1,4 @@
 export const automationStatusValues = ['active', 'paused', 'archived'] as const
-export const automationExecutionModeValues = [
-  'create_issue',
-  'run_only',
-] as const
 export const automationConcurrencyPolicyValues = [
   'skip',
   'queue',

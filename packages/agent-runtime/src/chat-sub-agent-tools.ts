@@ -974,8 +974,8 @@ async function updateIssueStatusFromChat(
 
   const liveRunsResult = shouldCancelRuns
     ? await Result.tryPromise<Array<{ id: string; issueId: string }>, string>({
-        try: async () =>
-          await db
+        try: async () => {
+          const rows = await db
             .select({
               id: schema.issueRun.id,
               issueId: schema.issueRun.issueId,
@@ -987,7 +987,9 @@ async function updateIssueStatusFromChat(
                 eq(schema.issueRun.issueId, issue.id),
                 inArray(schema.issueRun.status, LIVE_RUN_STATUSES),
               ),
-            ),
+            )
+          return rows.map((row) => ({ id: row.id, issueId: issue.id }))
+        },
         catch: errorMessage,
       })
     : Result.ok<Array<{ id: string; issueId: string }>, string>([]);

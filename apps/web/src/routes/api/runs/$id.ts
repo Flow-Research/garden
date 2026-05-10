@@ -8,10 +8,10 @@ import {
   requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
 import {
+  IssueRunServiceError,
   listIssueRunEvents,
   listIssueWorkProducts,
   toIssueRun,
-  type IssueRunServiceError,
 } from '@garden/core/issues/run-service'
 
 function runError(error: IssueRunServiceError) {
@@ -41,17 +41,28 @@ export const Route = createFileRoute('/api/runs/$id')({
         })
         if (eventsResult.isErr()) return runError(eventsResult.error)
 
-        const workProductsResult = await listIssueWorkProducts({
-          env: appEnv,
-          workspaceId: run.workspaceId,
-          issueId: run.issueId,
-        })
-        if (workProductsResult.isErr()) return runError(workProductsResult.error)
+        const workProducts = await (async () => {
+          if (!run.issueId) return []
+          const wpResult = await listIssueWorkProducts({
+            env: appEnv,
+            workspaceId: run.workspaceId,
+            issueId: run.issueId,
+          })
+          return wpResult.isOk() ? wpResult.value : null
+        })()
+        if (workProducts === null) {
+          return runError(
+            new IssueRunServiceError({
+              code: 'db_error',
+              message: 'Failed to load work products.',
+            }),
+          )
+        }
 
         return Response.json({
           run: toIssueRun(run),
           events: eventsResult.value,
-          work_products: workProductsResult.value.filter(
+          work_products: workProducts.filter(
             (workProduct) => workProduct.run_id === run.id,
           ),
         })

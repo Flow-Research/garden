@@ -62,7 +62,6 @@ import {
   RuntimeMcpError,
   RuntimeMcpController,
   connectRpcMcpConnector,
-  enforceRpcOnlyMcpConnectorRestore,
   type McpHost,
   type RuntimeMcpServerStates,
   type ThreadRuntimeIdentity,
@@ -290,7 +289,6 @@ function retryDelayMs(attemptCount: number) {
 export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   constructor(ctx: DurableObjectState, env: AgentRuntimeEnv) {
     super(ctx, env)
-    enforceRpcOnlyMcpConnectorRestore(this.mcp)
   }
 
   waitForMcpConnections = {
@@ -696,6 +694,12 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       })
     }
 
+    if (!run.issueId) {
+      console.warn('[agent-runtime] skipping fiber resume for issueless run', {
+        runId,
+      })
+      return
+    }
     this.startIssueRunFiber('resume', { runId, issueId: run.issueId })
   }
 
@@ -1013,7 +1017,20 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         }),
       )
     }
-    return Result.ok(result.value)
+    if (!result.value.issueId || !result.value.wakeupId) {
+      return Result.err(
+        new IssueRunSubAgentError({
+          code: 'not_found',
+          message:
+            'Issueless runs are not supported by IssueRunSubAgent; use RunWorkflow.',
+        }),
+      )
+    }
+    return Result.ok({
+      ...result.value,
+      issueId: result.value.issueId,
+      wakeupId: result.value.wakeupId,
+    })
   }
 
   private async loadTurnContext(
@@ -1147,6 +1164,15 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     }
 
     const row = result.value
+    if (!row.runRow.run.issueId || !row.runRow.run.wakeupId) {
+      return Result.err(
+        new IssueRunSubAgentError({
+          code: 'not_found',
+          message:
+            'Issueless runs are not yet supported by IssueRunSubAgent; they should run via RunWorkflow.',
+        }),
+      )
+    }
     const runState: IssueRunToolState = {
       runId: row.runRow.run.id,
       workspaceId: row.runRow.run.workspaceId,
@@ -1467,7 +1493,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
                 ) ?? loaded.issue.status,
               updatedAt: now,
             })
-            .where(eq(schema.issue.id, loaded.run.issueId))
+            .where(eq(schema.issue.id, loaded.runState.issueId))
         })
       },
       catch: (cause) => dbError('mark issue run started', cause),
@@ -1481,7 +1507,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       eventType: 'issue_run:started',
       stream: 'system',
       message: 'Run started',
-      payload: { issue_id: loaded.run.issueId },
+      payload: { issue_id: loaded.runState.issueId },
     })
     if (eventResult.isErr()) {
       return Result.err(
@@ -2001,7 +2027,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       workspaceId: result.value.workspaceId,
       userId: result.value.userId,
       agentId: result.value.agentId,
-      issueId: result.value.issueId,
+      issueId: result.value.issueId ?? undefined,
       runId,
     })
   }

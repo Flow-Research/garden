@@ -527,6 +527,7 @@ async function computeInboxSourceItems(args: {
   const sources: SourceItem[] = [];
   const latestSuccessfulRunByIssueId = new Map<string, RunRow>();
   for (const run of succeededRuns) {
+    if (!run.issueId) continue;
     const existing = latestSuccessfulRunByIssueId.get(run.issueId);
     const runAt = preferDate(run.finishedAt, run.updatedAt, run.createdAt);
     const existingAt = existing
@@ -666,6 +667,7 @@ async function computeInboxSourceItems(args: {
   }
 
   for (const run of pausedRuns) {
+    if (!run.issueId) continue;
     const issue = issuesById.get(run.issueId);
     if (!issue || !userIsResponsible(issue, userId)) continue;
     if (isTerminalIssue(issue)) continue;
@@ -673,12 +675,14 @@ async function computeInboxSourceItems(args: {
   }
 
   for (const run of failedRuns) {
-    const issue = issuesById.get(run.issueId);
+    if (!run.issueId) continue;
+    const issueId = run.issueId;
+    const issue = issuesById.get(issueId);
     if (!issue || !userIsResponsible(issue, userId)) continue;
     if (isTerminalIssue(issue)) continue;
     const failedAt = preferDate(run.finishedAt, run.updatedAt, run.createdAt);
-    const newerSuccess = latestSuccessfulRunByIssueId.get(run.issueId);
-    const newerWorkProduct = latestPendingWorkProductByIssueId.get(run.issueId);
+    const newerSuccess = latestSuccessfulRunByIssueId.get(issueId);
+    const newerWorkProduct = latestPendingWorkProductByIssueId.get(issueId);
     if (
       newerSuccess &&
       preferDate(

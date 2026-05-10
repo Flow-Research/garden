@@ -14,7 +14,6 @@ import {
 import { agent } from './agents.js'
 import {
   automationConcurrencyPolicyValues,
-  automationExecutionModeValues,
   automationRunSourceValues,
   automationRunStatusValues,
   automationStatusValues,
@@ -47,7 +46,6 @@ export const automation = pgTable(
       .references(() => agent.id),
     priority: text('priority').notNull().default('medium'),
     status: text('status').notNull().default('active'),
-    executionMode: text('execution_mode').notNull().default('create_issue'),
     concurrencyPolicy: text('concurrency_policy').notNull().default('skip'),
     lastRunAt: timestamp('last_run_at', {
       mode: 'date',
@@ -114,10 +112,6 @@ export const automation = pgTable(
     check(
       'automation_priority_check',
       sql`${table.priority} in (${sqlValueList(issuePriorityValues)})`,
-    ),
-    check(
-      'automation_execution_mode_check',
-      sql`${table.executionMode} in (${sqlValueList(automationExecutionModeValues)})`,
     ),
     check(
       'automation_concurrency_policy_check',

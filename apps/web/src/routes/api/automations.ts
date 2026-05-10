@@ -121,7 +121,6 @@ export const Route = createFileRoute('/api/automations')({
               assigneeAgentId: body.assignee_agent_id,
               priority: body.priority ?? 'medium',
               status: automationStatus,
-              executionMode: 'create_issue',
               concurrencyPolicy: body.concurrency_policy ?? 'skip',
               createdBy: context.session.user.id,
 
