@@ -48,27 +48,25 @@
   --dv-transition-duration: 200ms;
 }
 
-/* Tab silhouette — Chrome-style. Rounded TOP corners only. Inactive tabs use
- * a warm parchment-deep tint (no cold grey). Active tab is solid bone with a
- * hairline ink border on top + sides only (no bottom — opens into workspace).
- * The bottom-corner CONVEX flares are pseudo-elements where the tab's bone
- * color extends outward in a quarter-circle and fades to workspace — smooth
- * curve where the active tab meets the work area, no sharp right angle.
- * Tab fills the strip vertically (align-self: stretch) so the flares' bottom
- * edges sit exactly at the workspace boundary. Tab margin 6px each side gives
- * the 5px flare 1px of breathing room to neighbor tabs. */
+/* Tab silhouette — rounded TOP corners only (sit on top of the workspace).
+ * Inactive tabs use a WARM-tinted wash (parchment-deep at low alpha) so they
+ * read as recessed but never as cold grey. Active tab is solid bone — clearly
+ * the brightest surface — sitting on top of the workspace. Tab spacing of 3px
+ * gives breathing room between tabs. The active tab joins the workspace via
+ * a 1px outset bone shadow at its bottom edge, hiding any visual seam between
+ * tab and content. No pseudo-element curves — those overlapped neighboring
+ * tabs and looked sloppy at small sizes. */
 .garden-dockview .dv-tab {
   border-radius: 8px 8px 0 0 !important;
   padding: 0 14px;
-  height: 36px;
-  align-self: stretch !important;
-  margin: 0 6px !important;
+  height: 30px;
+  align-self: center !important;
+  margin: 3px 1.5px 0 !important;
   background-color: rgba(232, 220, 200, 0.55) !important;
   font-weight: 500;
   font-size: 13px;
   letter-spacing: -0.005em;
   color: var(--gravel) !important;
-  position: relative;
   transition:
     background-color 150ms ease,
     color 150ms ease,
@@ -84,48 +82,15 @@
   background-color: var(--bone) !important;
   color: var(--ink) !important;
   font-weight: 600;
-  overflow: visible;
-  /* Hairline ink border on top + sides. 1px bone outset below the body
-   * bridges the straight seam between tab body and workspace. */
+  /* Hairline ink border traces the tab's top arch (top + left + right) only
+   * — no bottom — so the active tab reads as a "framed cap" sitting on the
+   * workspace. The 1px bone outset shadow below bridges the bottom edge into
+   * the workspace surface, hiding any seam. */
   box-shadow:
     inset 0 1px 0 0 rgba(26, 31, 28, 0.10),
     inset 1px 0 0 0 rgba(26, 31, 28, 0.10),
     inset -1px 0 0 0 rgba(26, 31, 28, 0.10),
     0 1px 0 0 var(--bone);
-}
-
-/* Convex flares at the bottom corners — the tab's bone color protrudes
- * outward in a quarter-circle that fades to the workspace. Each pseudo is
- * 5×5 positioned just outside the tab's bottom corner; the radial gradient
- * paints bone inside the 5px circle centered at the tab corner, transparent
- * beyond. The fade IS the curve — no border on the flare, the soft alpha
- * transition handles the edge. */
-.garden-dockview .dv-tab.dv-active-tab::before,
-.garden-dockview .dv-tab.dv-active-tab::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  width: 5px;
-  height: 5px;
-  pointer-events: none;
-}
-
-.garden-dockview .dv-tab.dv-active-tab::before {
-  left: -5px;
-  background: radial-gradient(
-    circle at top right,
-    var(--bone) 5px,
-    transparent 5.5px
-  );
-}
-
-.garden-dockview .dv-tab.dv-active-tab::after {
-  right: -5px;
-  background: radial-gradient(
-    circle at top left,
-    var(--bone) 5px,
-    transparent 5.5px
-  );
 }
 
 /*
