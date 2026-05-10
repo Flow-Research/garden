@@ -53,25 +53,32 @@ import { useNavigation } from '@/features/navigation'
 import { useSettingsDialogStore } from '@/features/settings'
 import { NavUser } from '@/components/nav-user'
 import {
-  getRailContextForPanel,
-  railUsesContextRail,
   useWorkspaceDock,
   type WorkspacePanelKind,
   type WorkspacePanelInput,
-  type WorkspaceRailContext,
 } from './workspace-dock'
 import { toast } from 'sonner'
 
+type RailContext =
+  | 'home'
+  | 'chats'
+  | 'tasks'
+  | 'automations'
+  | 'inbox'
+  | 'agents'
+  | 'skills'
+  | 'connections'
+
 type RailItem = {
-  id: WorkspaceRailContext
+  id: RailContext
   label: string
   icon: React.ComponentType<{ className?: string }>
   defaultPanel: WorkspacePanelInput
 }
 
 type PendingRail = {
-  id: WorkspaceRailContext
-  from: WorkspaceRailContext
+  id: RailContext
+  from: RailContext
 }
 
 const railItems: RailItem[] = [
@@ -125,8 +132,44 @@ const railItems: RailItem[] = [
   },
 ]
 
+function contextFromPanel(kind: WorkspacePanelKind | null): RailContext {
+  switch (kind) {
+    case 'chat':
+      return 'chats'
+    case 'issues':
+    case 'issue-detail':
+      return 'tasks'
+    case 'automations':
+    case 'automation-detail':
+      return 'automations'
+    case 'inbox':
+      return 'inbox'
+    case 'agents':
+    case 'agent-detail':
+      return 'agents'
+    case 'skill-editor':
+      return 'skills'
+    case 'capabilities':
+      return 'connections'
+    case 'blank':
+    case 'dashboard':
+    default:
+      return 'home'
+  }
+}
+
 function HomeDashboardIcon({ className }: { className?: string }) {
   return <IconifyIcon icon="ic:sharp-dashboard" className={className} />
+}
+
+function railUsesContextRail(rail: RailContext): boolean {
+  return (
+    rail === 'home' ||
+    rail === 'chats' ||
+    rail === 'skills' ||
+    rail === 'agents' ||
+    rail === 'connections'
+  )
 }
 
 function RailHomeIcon({ className }: { className?: string }) {
@@ -178,8 +221,8 @@ function ExplorerSection({
   return (
     <SidebarGroup className="px-0 py-1.5">
       {label ? (
-        <div className="flex items-center gap-2 px-4 pb-1">
-          <SidebarGroupLabel className="h-auto px-0 text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+        <div className="flex items-center gap-2 px-4 pb-1.5">
+          <SidebarGroupLabel className="h-auto px-0 text-[10px] tracking-[0.18em] text-[color:var(--gravel)] uppercase font-medium">
             {label}
           </SidebarGroupLabel>
           {typeof count === 'number' ? (
@@ -209,7 +252,7 @@ function ExplorerActionRow({
     <SidebarMenuItem>
       <SidebarMenuButton
         isActive={active}
-        className="rounded-[2px] px-3"
+        className="rounded-[7px] px-2.5 transition-all duration-150 data-[active=true]:bg-[color:var(--vellum-heavy)] data-[active=true]:text-[color:var(--ink)] data-[active=true]:font-medium data-[active=true]:shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.10)] hover:bg-[color:rgba(26,31,28,0.04)]"
         onClick={onClick}
       >
         <Icon className="size-4" />
@@ -258,7 +301,7 @@ export function WorkspaceSidebar() {
     activeType === 'chat' && activeSession
       ? isPendingFirstTurn(activeSession)
       : false
-  const activeRailId = getRailContextForPanel(activeType)
+  const activeRailId = contextFromPanel(activeType)
   const [pendingRail, setPendingRail] = useState<PendingRail | null>(null)
   const effectiveRailId =
     pendingRail && activeRailId === pendingRail.from
@@ -394,12 +437,13 @@ export function WorkspaceSidebar() {
   return (
     <Sidebar
       collapsible="icon"
+      variant="floating"
       disableTransition
-      className="overflow-hidden border-r-0 border-t border-sidebar-border/70 *:data-[sidebar=sidebar]:flex-row"
+      className="overflow-hidden border-0 [&_[data-slot=sidebar-inner]]:rounded-[14px] [&_[data-slot=sidebar-inner]]:overflow-hidden [&_[data-slot=sidebar-inner]]:backdrop-blur-xl [&_[data-slot=sidebar-inner]]:saturate-110 [&_[data-slot=sidebar-inner]]:shadow-[var(--shadow-hairline)] [&_[data-slot=sidebar-inner]]:ring-0 *:data-[sidebar=sidebar]:flex-row"
     >
       <Sidebar
         collapsible="none"
-        className="w-[calc(var(--sidebar-width-icon)+1px)]! shrink-0 border-r border-sidebar-border/70"
+        className="w-[calc(var(--sidebar-width-icon)+1px)]! shrink-0 border-r border-[color:var(--hairline-soft)] bg-transparent"
       >
         <SidebarHeader className="p-0">
           <SidebarMenu>
@@ -407,15 +451,15 @@ export function WorkspaceSidebar() {
               <SidebarMenuButton
                 size="lg"
                 aria-label={workspace?.name ?? 'Garden'}
-                className="!h-12 !w-full !gap-0 !p-0 justify-center rounded-none group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-full"
+                className="!h-12 !w-full !gap-0 !p-0 justify-center !rounded-[8px] group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-full data-[active=true]:!bg-transparent hover:!bg-transparent"
                 tooltip={{
                   children: workspace?.name ?? 'Garden',
                   hidden: false,
                 }}
                 onClick={openDashboard}
               >
-                <div className="flex size-8 items-center justify-center rounded-[2px] border border-sidebar-border bg-background text-foreground">
-                  <BrandIcon className="size-3.5" noSpin />
+                <div className="flex size-8 items-center justify-center rounded-[8px] bg-[color:var(--bone)] text-[color:var(--ink)] shadow-[var(--shadow-hairline)]">
+                  <BrandIcon className="size-4" noSpin />
                 </div>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -427,7 +471,7 @@ export function WorkspaceSidebar() {
             <SidebarGroupContent>
               <SidebarMenu className="gap-2 py-2">
                 {railItems.map((item) => (
-                  <SidebarMenuItem key={item.id}>
+                  <SidebarMenuItem key={item.id} className="!flex !justify-center">
                     <SidebarMenuButton
                       tooltip={{
                         children: item.label,
@@ -435,12 +479,12 @@ export function WorkspaceSidebar() {
                       }}
                       aria-label={item.label}
                       isActive={activeRailId === item.id}
-                      className="!h-10 !w-full !gap-0 !p-0 justify-center !rounded-none group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-full"
+                      className="!h-8 !w-8 !gap-0 !p-0 justify-center !rounded-[8px] transition-all duration-150 !text-[color:var(--slate)] data-[active=true]:!bg-[color:var(--vellum-heavy)] data-[active=true]:!text-[color:var(--ink)] data-[active=true]:shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.10)] hover:!bg-[color:rgba(26,31,28,0.04)] hover:!text-[color:var(--ink)] group-data-[collapsible=icon]:!h-8 group-data-[collapsible=icon]:!w-8"
                       onPointerEnter={() => prefetchRailData(item)}
                       onFocus={() => prefetchRailData(item)}
                       onClick={() => openRailContext(item)}
                     >
-                      <item.icon className="!size-[22px] shrink-0" />
+                      <item.icon className="!size-[20px] shrink-0" />
                     </SidebarMenuButton>
                     {item.id === 'inbox' && unreadCount > 0 ? (
                       <SidebarMenuBadge>
@@ -456,17 +500,17 @@ export function WorkspaceSidebar() {
 
         <SidebarFooter className="p-0">
           <SidebarMenu className="gap-0">
-            <SidebarMenuItem>
+            <SidebarMenuItem className="!flex !justify-center">
               <SidebarMenuButton
                 tooltip={{
                   children: 'Settings',
                   hidden: false,
                 }}
                 aria-label="Settings"
-                className="!h-10 !w-full !gap-0 !p-0 justify-center !rounded-none group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-full"
+                className="!h-8 !w-8 !gap-0 !p-0 justify-center !rounded-[8px] transition-all duration-150 !text-[color:var(--slate)] hover:!bg-[color:rgba(26,31,28,0.04)] hover:!text-[color:var(--ink)] group-data-[collapsible=icon]:!h-8 group-data-[collapsible=icon]:!w-8"
                 onClick={openSettings}
               >
-                <RailSettingsIcon className="!size-[22px] shrink-0" />
+                <RailSettingsIcon className="!size-[20px] shrink-0" />
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -492,9 +536,9 @@ export function WorkspaceSidebar() {
             : 'hidden min-w-0 flex-1 md:flex'
         }
       >
-        <SidebarHeader className="gap-3 p-2">
-          <div className="flex items-center gap-2 px-2">
-            <span className="text-xs font-medium text-foreground">
+        <SidebarHeader className="gap-3 p-3">
+          <div className="flex items-center gap-2 px-1">
+            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--gravel)]">
               {activeRail.label}
             </span>
           </div>
@@ -717,7 +761,7 @@ function AgentsExplorer({
                 <SidebarMenuItem key={agent.id}>
                   <SidebarMenuButton
                     isActive={active}
-                    className="rounded-[2px] px-3"
+                    className="rounded-[7px] px-2.5 transition-all duration-150 data-[active=true]:bg-[color:var(--vellum-heavy)] data-[active=true]:text-[color:var(--ink)] data-[active=true]:font-medium data-[active=true]:shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.10)] hover:bg-[color:rgba(26,31,28,0.04)]"
                     onClick={() => onOpenAgent(agent)}
                   >
                     <Bot className="size-4" />
@@ -861,7 +905,7 @@ function SkillsRailExplorer({
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       isActive={active}
-                      className="rounded-[2px] px-3"
+                      className="rounded-[7px] px-2.5 transition-all duration-150 data-[active=true]:bg-[color:var(--vellum-heavy)] data-[active=true]:text-[color:var(--ink)] data-[active=true]:font-medium data-[active=true]:shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.10)] hover:bg-[color:rgba(26,31,28,0.04)]"
                       onClick={() => onOpenSkill(skill)}
                     >
                       <span className="flex-1 truncate">{skill.name}</span>
@@ -919,7 +963,7 @@ function ConnectionsExplorer({
       <SidebarMenuItem key={connector.id}>
         <SidebarMenuButton
           isActive={active}
-          className="rounded-[2px] px-3"
+          className="rounded-[7px] px-2.5 transition-all duration-150 data-[active=true]:bg-[color:var(--vellum-heavy)] data-[active=true]:text-[color:var(--ink)] data-[active=true]:font-medium data-[active=true]:shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.10)] hover:bg-[color:rgba(26,31,28,0.04)]"
           onClick={() => onOpenConnector(connector)}
         >
           <ConnectorRowIcon id={connector.id} className="size-4" />

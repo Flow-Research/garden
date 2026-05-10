@@ -88,8 +88,24 @@
   *::-webkit-scrollbar-thumb:hover {
     background: var(--scrollbar-thumb-hover);
   }
+  /* =========================================================================
+   * Atmospheric ground — Garden's signature surface
+   * Just parchment + film grain. No geometric pattern, no gradients.
+   * The grain alone gives the surface tooth — reads as paper, not template.
+   * Fixed-position so it doesn't scroll. No animation.
+   * ========================================================================= */
   body {
-    @apply bg-background text-foreground;
+    color: var(--ink);
+    background-color: var(--parchment);
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.78' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.06'/></svg>");
+    background-size: 220px 220px;
+    background-attachment: fixed;
+    background-repeat: repeat;
+    background-blend-mode: multiply;
+  }
+  /* Dark mode — same grain, slightly stronger to stay visible on dark ground */
+  .dark body {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.78' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.08'/></svg>");
   }
   html {
     @apply font-sans;
@@ -98,4 +114,42 @@
      * Progressive enhancement: browsers that don't support it simply ignore the rule. */
     text-autospace: ideograph-alpha ideograph-numeric;
   }
+}
+
+/* =============================================================================
+ * Vellum glass — the floating panel system
+ * Cards, rails, popovers all use this. Backdrop blur lets atmosphere through.
+ * ============================================================================= */
+.vellum {
+  background-color: var(--vellum);
+  backdrop-filter: blur(14px) saturate(1.05);
+  -webkit-backdrop-filter: blur(14px) saturate(1.05);
+  box-shadow: var(--shadow-hairline);
+}
+
+.vellum-heavy {
+  background-color: var(--vellum-heavy);
+  backdrop-filter: blur(20px) saturate(1.08);
+  -webkit-backdrop-filter: blur(20px) saturate(1.08);
+  box-shadow: var(--shadow-hairline);
+}
+
+.vellum-light {
+  background-color: rgba(255, 252, 247, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Agent prose surface — DM Serif Text rendering for markdown content */
+.prose-agent {
+  font-family: var(--font-prose);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+.prose-agent p { margin: 0.5em 0; }
+.prose-agent code,
+.prose-agent pre {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
 }

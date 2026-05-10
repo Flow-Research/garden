@@ -16,69 +16,74 @@
 }
 
 .garden-dock-theme {
-  --dv-border-radius: 6px;
-  --dv-tab-margin: 0;
-  --dv-tab-font-size: 12px;
-  --dv-tabs-and-actions-container-height: 34px;
+  --dv-border-radius: 7px;
+  --dv-tab-margin: 1px;
+  --dv-tab-font-size: 13px;
+  --dv-tabs-and-actions-container-height: 36px;
   --dv-tabs-container-scrollbar-color: color-mix(
     in srgb,
-    var(--foreground) 22%,
+    var(--ink) 22%,
     transparent
   );
-  --dv-separator-border: color-mix(in srgb, var(--border) 84%, transparent);
-  --dv-group-view-background-color: var(--background);
-  --dv-tabs-and-actions-container-background-color: color-mix(
-    in srgb,
-    var(--muted) 82%,
-    var(--background)
+  --dv-separator-border: transparent;
+  --dv-group-view-background-color: transparent;
+  --dv-tabs-and-actions-container-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-background-color: var(--vellum-heavy);
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: rgba(
+    255,
+    252,
+    247,
+    0.3
   );
-  --dv-activegroup-visiblepanel-tab-background-color: var(--background);
-  --dv-activegroup-hiddenpanel-tab-background-color: color-mix(
-    in srgb,
-    var(--muted) 88%,
-    var(--background)
-  );
-  --dv-inactivegroup-visiblepanel-tab-background-color: var(--background);
-  --dv-inactivegroup-hiddenpanel-tab-background-color: color-mix(
-    in srgb,
-    var(--muted) 92%,
-    var(--background)
-  );
-  --dv-activegroup-visiblepanel-tab-color: var(--foreground);
-  --dv-activegroup-hiddenpanel-tab-color: color-mix(
-    in srgb,
-    var(--foreground) 62%,
-    transparent
-  );
-  --dv-inactivegroup-visiblepanel-tab-color: color-mix(
-    in srgb,
-    var(--foreground) 72%,
-    transparent
-  );
-  --dv-inactivegroup-hiddenpanel-tab-color: color-mix(
-    in srgb,
-    var(--foreground) 48%,
-    transparent
-  );
-  --dv-sash-color: color-mix(in srgb, var(--border) 70%, transparent);
-  --dv-active-sash-color: color-mix(
-    in srgb,
-    var(--foreground) 40%,
-    transparent
-  );
-  /*
-   * Dockview defaults the hover feedback to transition-delay: 0.5s — that
-   * makes the sash feel dead for half a second when you finally land on it.
-   * Zero the delay so the hover/active color shows immediately.
-   */
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-color: var(--ink);
+  --dv-activegroup-hiddenpanel-tab-color: var(--gravel);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--gravel);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--slate);
+  --dv-sash-color: var(--hairline-soft);
+  --dv-active-sash-color: var(--hairline);
   --dv-active-sash-transition-delay: 0s;
   --dv-active-sash-transition-duration: 60ms;
-  /*
-   * Tab drag-reorder smoothness. Dockview's .dv-tab--shifting and
-   * .dv-tab--dragging transitions fall back to 200ms if this isn't set —
-   * snapping to ~150ms feels noticeably crisper during reorder drags.
-   */
-  --dv-transition-duration: 150ms;
+  --dv-transition-duration: 200ms;
+}
+
+/* Tabs fill the strip vertically — no gap above. Inactive tabs are silent
+ * (transparent + gravel text). Active tab is solid bone + hairline ring on
+ * top/left/right, and uses an outset bone-colored bottom shadow to cover the
+ * tab-strip's bottom hairline border at its position — real punch-through.
+ * Top corners of the active tab are sharp (0px) since the dock panel's own
+ * 14px rounded clip handles the outer corners gracefully. */
+.garden-dockview .dv-tab {
+  border-radius: 0 !important;
+  padding: 0 12px;
+  height: 36px;
+  align-self: stretch !important;
+  margin: 0 !important;
+  background-color: transparent !important;
+  font-weight: 500;
+  font-size: 13px;
+  letter-spacing: -0.005em;
+  color: var(--gravel) !important;
+  position: relative;
+  z-index: 0;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    box-shadow 200ms ease;
+}
+
+.garden-dockview .dv-tab:hover:not(.dv-active-tab) {
+  background-color: rgba(26, 31, 28, 0.04) !important;
+  color: var(--ink) !important;
+}
+
+.garden-dockview .dv-tab.dv-active-tab {
+  background-color: rgba(26, 31, 28, 0.05) !important;
+  color: var(--ink) !important;
+  font-weight: 600;
+  /* 2px ink accent at the top edge — clear marker without bottom border. */
+  box-shadow: inset 0 2px 0 0 var(--ink);
 }
 
 /*
@@ -119,17 +124,24 @@
 }
 
 .garden-dockview .dv-groupview {
-  border-radius: 6px;
+  border-radius: 12px;
   overflow: hidden;
 }
 
 .garden-dockview .dv-groupview.dv-active-group {
-  outline: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
-  outline-offset: -1px;
+  outline: none;
 }
 
 .garden-dockview .dv-groupview .dv-content-container {
-  background: var(--background);
+  background: transparent;
+}
+
+/* Tab strip — completely transparent. No bg, no border, no rail line. The
+ * active tab carries all the contrast via its bg fill + accent line. */
+.garden-dockview .dv-tabs-and-actions-container {
+  padding: 0 6px;
+  background: transparent;
+  position: relative;
 }
 
 .garden-dock-tab {
@@ -170,18 +182,21 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1.625rem;
+  height: 1.625rem;
   border: 0;
-  border-radius: 6px;
+  border-radius: 9999px;
   background: transparent;
-  color: var(--muted-foreground);
+  color: var(--gravel);
   cursor: pointer;
+  transition:
+    background-color 200ms ease,
+    color 200ms ease;
 }
 
 .garden-dock-tabstrip-actions__button:hover {
-  background: color-mix(in srgb, var(--muted) 88%, transparent);
-  color: var(--foreground);
+  background: rgba(255, 252, 247, 0.55);
+  color: var(--ink);
 }
 
 .garden-dock-tabstrip-actions__button:disabled {
@@ -198,18 +213,21 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1.625rem;
+  height: 1.625rem;
   border: 0;
-  border-radius: 6px;
+  border-radius: 9999px;
   background: transparent;
-  color: var(--muted-foreground);
+  color: var(--gravel);
   cursor: pointer;
+  transition:
+    background-color 200ms ease,
+    color 200ms ease;
 }
 
 .garden-dock-actions__button:hover {
-  background: color-mix(in srgb, var(--muted) 88%, transparent);
-  color: var(--foreground);
+  background: rgba(255, 252, 247, 0.55);
+  color: var(--ink);
 }
 
 .garden-dock-actions__button:disabled {
@@ -223,8 +241,9 @@
 }
 
 .garden-dock-actions__button--active {
-  color: var(--foreground);
-  background: color-mix(in srgb, var(--muted) 88%, transparent);
+  color: var(--ink);
+  background: rgba(255, 252, 247, 0.72);
+  box-shadow: var(--shadow-hairline-soft);
 }
 
 .garden-dock-watermark {
@@ -267,6 +286,24 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+/* Chat assistant prose — Geist Sans at 14.5px / 1.55 line-height. Code and
+ * pre stay in Geist Mono. (DM Serif Text was tried and dropped.) */
+.is-assistant {
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  line-height: 1.55;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+}
+
+.is-assistant code,
+.is-assistant pre,
+.is-assistant kbd,
+.is-assistant samp {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
 }
 
 /* Chat message markdown — compact spacing */

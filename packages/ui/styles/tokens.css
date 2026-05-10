@@ -1,9 +1,13 @@
-/* Garden design tokens — shared across Web + Desktop */
+/* Garden design tokens — locked vibe (parchment + vellum glass + foliage palette + pill shapes) */
 
 @theme inline {
+  /* Fonts */
   --font-heading: var(--font-sans);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
+  --font-prose: var(--font-prose);
+
+  /* shadcn-named tokens (kept so existing components don't break) */
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -41,100 +45,206 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Garden-specific surface tokens */
+  --color-parchment: var(--parchment);
+  --color-parchment-deep: var(--parchment-deep);
+  --color-vellum: var(--vellum);
+  --color-vellum-heavy: var(--vellum-heavy);
+  --color-bone: var(--bone);
+  --color-ink: var(--ink);
+  --color-gravel: var(--gravel);
+  --color-slate: var(--slate);
+  --color-stone: var(--stone);
+  --color-hairline: var(--hairline);
+  --color-hairline-soft: var(--hairline-soft);
+
+  /* Foliage status palette */
+  --color-moss: var(--moss);
+  --color-sage: var(--sage);
+  --color-amber: var(--amber);
+  --color-clay: var(--clay);
+
+  /* Pastel category tags */
+  --color-lichen: var(--lichen);
+  --color-lavender-mist: var(--lavender-mist);
+  --color-peach: var(--peach);
+  --color-dusk-rose: var(--dusk-rose);
+
+  /* Radii — restrained Linear/Cursor scale. Containers stay soft, not pillow */
+  --radius-sm: 0.375rem;      /* 6px — inputs, small chips */
+  --radius-md: 0.5rem;        /* 8px — buttons, tabs */
+  --radius-lg: 0.625rem;      /* 10px — small cards */
+  --radius-xl: 0.75rem;       /* 12px — cards (default) */
+  --radius-2xl: 0.875rem;     /* 14px — panels / rails */
+  --radius-3xl: 1.125rem;     /* 18px — modals / sheets */
+  --radius-4xl: 1.5rem;       /* 24px — sheets */
+
+  /* Named radii */
+  --radius-input: 0.375rem;
+  --radius-tab: 0.5rem;
+  --radius-button: 0.5rem;
+  --radius-card: 0.75rem;
+  --radius-panel: 0.875rem;
+  --radius-modal: 1.125rem;
+  /* Pill (9999px) is reserved for status chips, badges, avatars — small things only */
+
+  /* Shadows — hairline only */
+  --shadow-hairline: rgba(26, 31, 28, 0.10) 0px 0px 0px 0.5px inset;
+  --shadow-hairline-soft: rgba(26, 31, 28, 0.06) 0px 0px 0px 0.5px inset;
+  --shadow-float-1: rgba(26, 31, 28, 0.06) 0px 0px 0px 0.5px, rgba(26, 31, 28, 0.04) 0px 1px 1px 0px;
+  --shadow-float-2: rgba(26, 31, 28, 0.06) 0px 0px 0px 0.5px, rgba(26, 31, 28, 0.06) 0px 4px 12px 0px;
+
+  /* Shell layout */
+  --shell-rail: 56px;
+  --shell-context-rail: 256px;
+  --shell-titlebar: 44px;
+  --shell-margin: 12px;
+  --shell-gap: 8px;
 }
 
 :root:not([data-theme]),
 :root[data-theme='garden'] {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.21 0.006 285.885);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.705 0.015 286.067);
-  --chart-1: oklch(0.871 0.006 286.286);
-  --chart-2: oklch(0.552 0.016 285.938);
-  --chart-3: oklch(0.442 0.017 285.786);
-  --chart-4: oklch(0.37 0.013 285.805);
-  --chart-5: oklch(0.274 0.006 286.033);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-primary: oklch(0.62 0.16 145);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.95 0.002 286.375);
-  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.705 0.015 286.067);
-  --brand: oklch(0.62 0.16 145);
-  --brand-foreground: oklch(0.985 0 0);
-  --success: oklch(0.55 0.16 145);
-  --warning: oklch(0.75 0.16 85);
-  --info: oklch(0.55 0.18 250);
-  --priority: oklch(0.65 0.18 50);
-  --scrollbar-thumb: oklch(0 0 0 / 10%);
-  --scrollbar-thumb-hover: oklch(0 0 0 / 18%);
+  /* Garden palette — parchment, vellum, foliage */
+  --parchment: #f9f7f2;
+  --parchment-deep: #efebe1;
+  --vellum: rgba(255, 255, 255, 0.74);
+  --vellum-heavy: rgba(255, 255, 255, 0.92);
+  --bone: #ffffff;
+
+  --ink: #1a1f1c;
+  --gravel: #5b554d;
+  --slate: #8a8478;
+  --stone: #a8a195;
+
+  --hairline: rgba(26, 31, 28, 0.10);
+  --hairline-soft: rgba(26, 31, 28, 0.06);
+
+  --moss: #4d7250;
+  --sage: #7a9b6f;
+  --amber: #c89a4a;
+  --clay: #b56b4a;
+
+  --lichen: #a8b89a;
+  --lavender-mist: #c5b8d4;
+  --peach: #e8c8a8;
+  --dusk-rose: #d8b4a8;
+
+  /* shadcn contract — mapped to Garden palette */
+  --background: transparent; /* atmospheric ground lives on body */
+  --foreground: var(--ink);
+  --card: var(--vellum);
+  --card-foreground: var(--ink);
+  --popover: var(--vellum-heavy);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--parchment);
+  --secondary: var(--parchment-deep);
+  --secondary-foreground: var(--ink);
+  --muted: var(--parchment-deep);
+  --muted-foreground: var(--gravel);
+  --accent: var(--parchment-deep);
+  --accent-foreground: var(--ink);
+  --destructive: var(--clay);
+  --border: var(--hairline);
+  --input: var(--hairline);
+  --ring: var(--moss);
+
+  /* Charts — foliage palette instead of grayscale */
+  --chart-1: var(--sage);
+  --chart-2: var(--moss);
+  --chart-3: var(--amber);
+  --chart-4: var(--clay);
+  --chart-5: var(--stone);
+
+  --radius: 0.75rem; /* 12px base — matches --radius-card */
+
+  --sidebar: var(--vellum);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--moss);
+  --sidebar-primary-foreground: var(--parchment);
+  --sidebar-accent: rgba(255, 252, 247, 0.55);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--hairline-soft);
+  --sidebar-ring: var(--moss);
+
+  --brand: var(--moss);
+  --brand-foreground: var(--parchment);
+  --success: var(--sage);
+  --warning: var(--amber);
+  --info: #5b7fa8;
+  --priority: var(--clay);
+
+  --scrollbar-thumb: rgba(26, 31, 28, 0.12);
+  --scrollbar-thumb-hover: rgba(26, 31, 28, 0.22);
   --scrollbar-track: transparent;
 }
 
+/* Dark mode — out of scope this pass; left as legacy so it doesn't crash if toggled */
 :root.dark:not([data-theme]),
 :root.dark[data-theme='garden'] {
-  --background: oklch(0.24 0.02 150);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.28 0.018 150);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.28 0.018 150);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.9 0.03 145);
-  --primary-foreground: oklch(0.28 0.018 150);
-  --secondary: oklch(0.33 0.015 150);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.33 0.015 150);
-  --muted-foreground: oklch(0.82 0.018 150);
-  --accent: oklch(0.33 0.015 150);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(0.5 0.02 150 / 38%);
-  --input: oklch(0.5 0.02 150 / 48%);
-  --ring: oklch(0.62 0.12 145);
-  --chart-1: oklch(0.82 0.05 145);
-  --chart-2: oklch(0.7 0.07 155);
-  --chart-3: oklch(0.58 0.08 165);
-  --chart-4: oklch(0.46 0.06 145);
-  --chart-5: oklch(0.34 0.04 150);
-  --sidebar: oklch(0.28 0.018 150);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.72 0.14 145);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.33 0.015 150);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.5 0.02 150 / 38%);
-  --sidebar-ring: oklch(0.62 0.12 145);
-  --brand: oklch(0.72 0.14 145);
-  --brand-foreground: oklch(0.985 0 0);
-  --success: oklch(0.65 0.15 145);
-  --warning: oklch(0.7 0.16 85);
-  --info: oklch(0.65 0.18 250);
-  --priority: oklch(0.7 0.18 50);
-  --scrollbar-thumb: oklch(1 0 0 / 8%);
-  --scrollbar-thumb-hover: oklch(1 0 0 / 18%);
+  --parchment: #1a1f1c;
+  --parchment-deep: #232a25;
+  --vellum: rgba(40, 48, 42, 0.72);
+  --vellum-heavy: rgba(40, 48, 42, 0.85);
+  --bone: #2a302c;
+  --ink: #f5f1e8;
+  --gravel: #b8b2a8;
+  --slate: #8a8478;
+  --stone: #5b554d;
+  --hairline: rgba(245, 241, 232, 0.10);
+  --hairline-soft: rgba(245, 241, 232, 0.06);
+  --moss: #7a9b6f;
+  --sage: #9bb491;
+  --amber: #d4a865;
+  --clay: #c47c5a;
+  --lichen: #a8b89a;
+  --lavender-mist: #c5b8d4;
+  --peach: #e8c8a8;
+  --dusk-rose: #d8b4a8;
+
+  --background: transparent;
+  --foreground: var(--ink);
+  --card: var(--vellum);
+  --card-foreground: var(--ink);
+  --popover: var(--vellum-heavy);
+  --popover-foreground: var(--ink);
+  --primary: var(--parchment);
+  --primary-foreground: var(--ink);
+  --secondary: var(--parchment-deep);
+  --secondary-foreground: var(--ink);
+  --muted: var(--parchment-deep);
+  --muted-foreground: var(--gravel);
+  --accent: var(--parchment-deep);
+  --accent-foreground: var(--ink);
+  --destructive: var(--clay);
+  --border: var(--hairline);
+  --input: var(--hairline);
+  --ring: var(--moss);
+
+  --chart-1: var(--sage);
+  --chart-2: var(--moss);
+  --chart-3: var(--amber);
+  --chart-4: var(--clay);
+  --chart-5: var(--stone);
+
+  --sidebar: var(--vellum);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--moss);
+  --sidebar-primary-foreground: var(--parchment);
+  --sidebar-accent: rgba(255, 252, 247, 0.10);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--hairline-soft);
+  --sidebar-ring: var(--moss);
+
+  --brand: var(--moss);
+  --brand-foreground: var(--parchment);
+  --success: var(--sage);
+  --warning: var(--amber);
+  --info: #7a96bd;
+  --priority: var(--clay);
+
+  --scrollbar-thumb: rgba(245, 241, 232, 0.12);
+  --scrollbar-thumb-hover: rgba(245, 241, 232, 0.22);
   --scrollbar-track: transparent;
 }

@@ -75,7 +75,7 @@ export function WorkspaceLayout() {
           <WorkspaceIdProvider wsId={activeWorkspaceId}>
             <ChatRuntimeProvider>
               <WorkspaceSidebar />
-              <SidebarInset className="relative overflow-hidden">
+              <SidebarInset className="relative overflow-hidden !my-2 !mr-2 !ml-0 !rounded-[14px] !bg-[color:var(--vellum)] backdrop-blur-xl saturate-110 shadow-[var(--shadow-hairline)]">
                 <div className="relative flex min-h-0 flex-1 overflow-hidden">
                   <WorkspaceDockView />
                 </div>
@@ -86,7 +86,7 @@ export function WorkspaceLayout() {
             </ChatRuntimeProvider>
           </WorkspaceIdProvider>
         ) : (
-          <SidebarInset className="relative overflow-hidden">
+          <SidebarInset className="relative overflow-hidden !my-2 !mr-2 !ml-2 !rounded-[14px] !bg-[color:var(--vellum)] backdrop-blur-xl saturate-110 shadow-[var(--shadow-hairline)]">
             <div className="relative flex min-h-0 flex-1 overflow-hidden">
               {isRestoringWorkspace ? (
                 <WorkspaceLoadingSkeleton />
