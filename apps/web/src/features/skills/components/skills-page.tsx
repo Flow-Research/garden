@@ -73,7 +73,6 @@ import { toast } from 'sonner'
 import { cn } from '@garden/ui/lib/utils'
 import { api } from '@/lib/api'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
-import { useAuthStore } from '@garden/core/auth'
 import { useWorkspaceId } from '@garden/core/hooks'
 import { useSkillsBrowseStore, useSkillEditorStore } from '@garden/core/skills'
 import { skillListOptions, workspaceKeys } from '@/lib/workspace/queries'
@@ -146,7 +145,6 @@ export default function SkillsPage({
 }: {
   focusedSkillId?: string
 } = {}) {
-  const isAuthLoading = useAuthStore((s) => s.isLoading)
   const wsId = useWorkspaceId()
   const qc = useQueryClient()
   const { data: skills = [], isLoading: isSkillsLoading } = useQuery(
@@ -260,7 +258,7 @@ export default function SkillsPage({
 
   const selected = skills.find((s) => s.id === effectiveSkillId) ?? null
 
-  const isLoading = isAuthLoading || isSkillsLoading
+  const isLoading = isSkillsLoading
   const isEmpty = !isLoading && skills.length === 0
 
   const addDialog =

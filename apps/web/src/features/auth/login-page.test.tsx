@@ -5,36 +5,10 @@ import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { LoginPage } from './login-page'
 
-const mockBootstrap = vi.hoisted(() => vi.fn())
 const mockSignIn = vi.hoisted(() => vi.fn())
 const mockSignUp = vi.hoisted(() => vi.fn())
-const mockSetActiveOrganization = vi.hoisted(() => vi.fn())
-const mockSetUser = vi.hoisted(() => vi.fn())
-const mockHydrateWorkspace = vi.hoisted(() => vi.fn())
 const mockToastSuccess = vi.hoisted(() => vi.fn())
 const mockToastError = vi.hoisted(() => vi.fn())
-
-vi.mock('@/lib/api', () => ({
-  api: {
-    bootstrap: mockBootstrap,
-  },
-}))
-
-vi.mock('@garden/core/auth', () => ({
-  useAuthStore: {
-    getState: () => ({
-      setUser: mockSetUser,
-    }),
-  },
-}))
-
-vi.mock('@garden/core/workspace', () => ({
-  useWorkspaceStore: {
-    getState: () => ({
-      hydrateWorkspace: mockHydrateWorkspace,
-    }),
-  },
-}))
 
 vi.mock('@/lib/auth/client', () => ({
   authClient: {
@@ -43,9 +17,6 @@ vi.mock('@/lib/auth/client', () => ({
     },
     signUp: {
       email: mockSignUp,
-    },
-    organization: {
-      setActive: mockSetActiveOrganization,
     },
   },
 }))
@@ -79,20 +50,11 @@ function renderLoginPage(props?: Partial<ComponentProps<typeof LoginPage>>) {
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockHydrateWorkspace.mockReturnValue({ id: 'ws-1', name: 'Garden' })
     mockSignIn.mockResolvedValue({})
     mockSignUp.mockResolvedValue({})
-    mockBootstrap.mockResolvedValue({
-      user: {
-        id: 'user-1',
-        email: 'ada@example.com',
-        name: 'Ada',
-      },
-      workspaces: [{ id: 'ws-1', name: 'Garden' }],
-    })
   })
 
-  it('signs in with Better Auth and bootstraps the workspace shell', async () => {
+  it('signs in with Better Auth and hands off to onSuccess', async () => {
     const user = userEvent.setup()
     const { onSuccess } = renderLoginPage()
 
@@ -104,20 +66,6 @@ describe('LoginPage', () => {
       expect(mockSignIn).toHaveBeenCalledWith({
         email: 'ada@example.com',
         password: 'password123',
-      })
-    })
-
-    await waitFor(() => {
-      expect(mockBootstrap).toHaveBeenCalledTimes(1)
-      expect(mockSetUser).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: 'user-1',
-          email: 'ada@example.com',
-        }),
-      )
-      expect(mockHydrateWorkspace).toHaveBeenCalled()
-      expect(mockSetActiveOrganization).toHaveBeenCalledWith({
-        organizationId: 'ws-1',
       })
       expect(onSuccess).toHaveBeenCalledTimes(1)
     })

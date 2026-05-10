@@ -1,11 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
-import { useAuthStore } from '@garden/core/auth'
-import { useWorkspaceStore } from '@garden/core/workspace'
-import { workspaceKeys } from '@/lib/workspace/queries'
 import { toast } from 'sonner'
 import { authClient } from '@/lib/auth/client'
 import { LoginForm } from '@/components/login-form'
@@ -17,7 +12,6 @@ export function LoginPage({
   onSuccess: () => void
   initialMode?: 'signin' | 'signup'
 }) {
-  const qc = useQueryClient()
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -39,23 +33,7 @@ export function LoginPage({
         throw new Error(result.error.message || 'Authentication failed')
       }
 
-      const { user, workspaces } = await api.bootstrap()
-      useAuthStore.getState().setUser(user)
-      qc.setQueryData(workspaceKeys.list(), workspaces)
-      const activeWorkspace = useWorkspaceStore
-        .getState()
-        .hydrateWorkspace(workspaces)
-      if (activeWorkspace) {
-        void authClient.organization.setActive({
-          organizationId: activeWorkspace.id,
-        })
-      }
-      toast.success(mode === 'signin' ? 'Signed in' : 'Account created', {
-        description:
-          workspaces.length > 0
-            ? 'Redirecting to your workspace.'
-            : "You're in. Set up your first workspace next.",
-      })
+      toast.success(mode === 'signin' ? 'Signed in' : 'Account created')
       onSuccess()
     } catch (err) {
       const message =

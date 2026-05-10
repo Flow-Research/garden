@@ -53,7 +53,6 @@ function WorkspaceSetupState() {
 
 export function WorkspaceLayout() {
   const user = useAuthStore((state) => state.user)
-  const authLoading = useAuthStore((state) => state.isLoading)
   const workspace = useWorkspaceStore((state) => state.workspace)
   const onboardingCompleted = useOnboardingStore((state) => state.completed)
   const markOnboardingCompleted = useOnboardingStore(
@@ -62,8 +61,8 @@ export function WorkspaceLayout() {
 
   const hasSession = Boolean(user)
   const needsOnboarding =
-    !authLoading && hasSession && !workspace?.id && !onboardingCompleted
-  const isRestoringWorkspace = authLoading || (hasSession && !needsOnboarding)
+    hasSession && !workspace?.id && !onboardingCompleted
+  const isRestoringWorkspace = hasSession && !needsOnboarding
   const activeWorkspaceId = workspace?.id ?? null
 
   return (

@@ -38,7 +38,6 @@ import * as documents from './documents'
 import * as automations from './automations'
 import { getBaseUrl, setWorkspaceId } from './state'
 
-export type { BootstrapResponse } from './auth'
 export type {
   ConnectionAction,
   ConnectionActivityItem,

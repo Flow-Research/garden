@@ -23,7 +23,6 @@ import { Route as ApiInvitationsRouteImport } from './routes/api/invitations'
 import { Route as ApiInboxRouteImport } from './routes/api/inbox'
 import { Route as ApiDebugStreamRouteImport } from './routes/api/debug-stream'
 import { Route as ApiConnectionsRouteImport } from './routes/api/connections'
-import { Route as ApiBootstrapRouteImport } from './routes/api/bootstrap'
 import { Route as ApiAutomationsRouteImport } from './routes/api/automations'
 import { Route as ApiAgentsRouteImport } from './routes/api/agents'
 import { Route as AuthenticatedWorkspaceRouteImport } from './routes/_authenticated/workspace'
@@ -166,11 +165,6 @@ const ApiDebugStreamRoute = ApiDebugStreamRouteImport.update({
 const ApiConnectionsRoute = ApiConnectionsRouteImport.update({
   id: '/api/connections',
   path: '/api/connections',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiBootstrapRoute = ApiBootstrapRouteImport.update({
-  id: '/api/bootstrap',
-  path: '/api/bootstrap',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAutomationsRoute = ApiAutomationsRouteImport.update({
@@ -571,7 +565,6 @@ export interface FileRoutesByFullPath {
   '/workspace': typeof AuthenticatedWorkspaceRoute
   '/api/agents': typeof ApiAgentsRouteWithChildren
   '/api/automations': typeof ApiAutomationsRouteWithChildren
-  '/api/bootstrap': typeof ApiBootstrapRoute
   '/api/connections': typeof ApiConnectionsRouteWithChildren
   '/api/debug-stream': typeof ApiDebugStreamRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
@@ -661,7 +654,6 @@ export interface FileRoutesByTo {
   '/workspace': typeof AuthenticatedWorkspaceRoute
   '/api/agents': typeof ApiAgentsRouteWithChildren
   '/api/automations': typeof ApiAutomationsRouteWithChildren
-  '/api/bootstrap': typeof ApiBootstrapRoute
   '/api/connections': typeof ApiConnectionsRouteWithChildren
   '/api/debug-stream': typeof ApiDebugStreamRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
@@ -753,7 +745,6 @@ export interface FileRoutesById {
   '/_authenticated/workspace': typeof AuthenticatedWorkspaceRoute
   '/api/agents': typeof ApiAgentsRouteWithChildren
   '/api/automations': typeof ApiAutomationsRouteWithChildren
-  '/api/bootstrap': typeof ApiBootstrapRoute
   '/api/connections': typeof ApiConnectionsRouteWithChildren
   '/api/debug-stream': typeof ApiDebugStreamRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
@@ -845,7 +836,6 @@ export interface FileRouteTypes {
     | '/workspace'
     | '/api/agents'
     | '/api/automations'
-    | '/api/bootstrap'
     | '/api/connections'
     | '/api/debug-stream'
     | '/api/inbox'
@@ -935,7 +925,6 @@ export interface FileRouteTypes {
     | '/workspace'
     | '/api/agents'
     | '/api/automations'
-    | '/api/bootstrap'
     | '/api/connections'
     | '/api/debug-stream'
     | '/api/inbox'
@@ -1026,7 +1015,6 @@ export interface FileRouteTypes {
     | '/_authenticated/workspace'
     | '/api/agents'
     | '/api/automations'
-    | '/api/bootstrap'
     | '/api/connections'
     | '/api/debug-stream'
     | '/api/inbox'
@@ -1117,7 +1105,6 @@ export interface RootRouteChildren {
   SignupRoute: typeof SignupRoute
   ApiAgentsRoute: typeof ApiAgentsRouteWithChildren
   ApiAutomationsRoute: typeof ApiAutomationsRouteWithChildren
-  ApiBootstrapRoute: typeof ApiBootstrapRoute
   ApiConnectionsRoute: typeof ApiConnectionsRouteWithChildren
   ApiDebugStreamRoute: typeof ApiDebugStreamRoute
   ApiInboxRoute: typeof ApiInboxRouteWithChildren
@@ -1244,13 +1231,6 @@ declare module '@tanstack/react-router' {
       path: '/api/connections'
       fullPath: '/api/connections'
       preLoaderRoute: typeof ApiConnectionsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/bootstrap': {
-      id: '/api/bootstrap'
-      path: '/api/bootstrap'
-      fullPath: '/api/bootstrap'
-      preLoaderRoute: typeof ApiBootstrapRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/automations': {
@@ -2125,7 +2105,6 @@ const rootRouteChildren: RootRouteChildren = {
   SignupRoute: SignupRoute,
   ApiAgentsRoute: ApiAgentsRouteWithChildren,
   ApiAutomationsRoute: ApiAutomationsRouteWithChildren,
-  ApiBootstrapRoute: ApiBootstrapRoute,
   ApiConnectionsRoute: ApiConnectionsRouteWithChildren,
   ApiDebugStreamRoute: ApiDebugStreamRoute,
   ApiInboxRoute: ApiInboxRouteWithChildren,
