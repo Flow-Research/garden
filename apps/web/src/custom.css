@@ -48,25 +48,25 @@
   --dv-transition-duration: 200ms;
 }
 
-/* Tabs fill the strip vertically — no gap above. Inactive tabs are silent
- * (transparent + gravel text). Active tab is solid bone + hairline ring on
- * top/left/right, and uses an outset bone-colored bottom shadow to cover the
- * tab-strip's bottom hairline border at its position — real punch-through.
- * Top corners of the active tab are sharp (0px) since the dock panel's own
- * 14px rounded clip handles the outer corners gracefully. */
+/* Tab silhouette — rounded TOP corners only (sit on top of the workspace).
+ * Inactive tabs use a WARM-tinted wash (parchment-deep at low alpha) so they
+ * read as recessed but never as cold grey. Active tab is solid bone — clearly
+ * the brightest surface — sitting on top of the workspace. Tab spacing of 3px
+ * gives breathing room between tabs. The active tab joins the workspace via
+ * a 1px outset bone shadow at its bottom edge, hiding any visual seam between
+ * tab and content. No pseudo-element curves — those overlapped neighboring
+ * tabs and looked sloppy at small sizes. */
 .garden-dockview .dv-tab {
-  border-radius: 0 !important;
-  padding: 0 12px;
-  height: 36px;
-  align-self: stretch !important;
-  margin: 0 !important;
-  background-color: transparent !important;
+  border-radius: 8px 8px 0 0 !important;
+  padding: 0 14px;
+  height: 30px;
+  align-self: center !important;
+  margin: 3px 1.5px 0 !important;
+  background-color: rgba(232, 220, 200, 0.55) !important;
   font-weight: 500;
   font-size: 13px;
   letter-spacing: -0.005em;
   color: var(--gravel) !important;
-  position: relative;
-  z-index: 0;
   transition:
     background-color 150ms ease,
     color 150ms ease,
@@ -74,16 +74,17 @@
 }
 
 .garden-dockview .dv-tab:hover:not(.dv-active-tab) {
-  background-color: rgba(26, 31, 28, 0.04) !important;
+  background-color: rgba(232, 220, 200, 0.85) !important;
   color: var(--ink) !important;
 }
 
 .garden-dockview .dv-tab.dv-active-tab {
-  background-color: rgba(26, 31, 28, 0.05) !important;
+  background-color: var(--bone) !important;
   color: var(--ink) !important;
   font-weight: 600;
-  /* 2px ink accent at the top edge — clear marker without bottom border. */
-  box-shadow: inset 0 2px 0 0 var(--ink);
+  /* 1px bone-colored outset shadow at the bottom: visually merges the tab's
+   * bottom edge with the workspace below so they appear as one surface. */
+  box-shadow: 0 1px 0 0 var(--bone);
 }
 
 /*
