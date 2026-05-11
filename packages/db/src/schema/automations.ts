@@ -132,14 +132,6 @@ export const automationTrigger = pgTable(
     label: text('label'),
     cronExpression: text('cron_expression'),
     timezone: text('timezone'),
-    nextRunAt: timestamp('next_run_at', {
-      mode: 'date',
-      withTimezone: true,
-    }),
-    lastFiredAt: timestamp('last_fired_at', {
-      mode: 'date',
-      withTimezone: true,
-    }),
     webhookTokenHash: text('webhook_token_hash'),
     createdAt: timestamp('created_at', { mode: 'date' })
       .notNull()
@@ -150,8 +142,8 @@ export const automationTrigger = pgTable(
   },
   (table) => [
     index('automation_trigger_automation_idx').on(table.automationId),
-    index('automation_trigger_due_idx')
-      .on(table.enabled, table.nextRunAt)
+    index('automation_trigger_enabled_idx')
+      .on(table.enabled)
       .where(sql`${table.kind} = 'schedule' and ${table.enabled} = true`),
     uniqueIndex('automation_trigger_webhook_token_unique')
       .on(table.webhookTokenHash)

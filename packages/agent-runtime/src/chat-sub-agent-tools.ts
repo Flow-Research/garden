@@ -228,7 +228,6 @@ type AssignIssueToolResult = {
   run:
     | { kind: "started"; run_id: string }
     | { kind: "resumed"; run_id: string }
-    | { kind: "deduped"; existing_wakeup_id: string }
     | { kind: "skipped"; reason: string };
 };
 
@@ -940,14 +939,9 @@ async function assignIssueFromChat(
     run:
       startResult.value.kind === "enqueued"
         ? { kind: "started", run_id: startResult.value.runId }
-        : startResult.value.kind === "deduped"
-          ? {
-              kind: "deduped",
-              existing_wakeup_id: startResult.value.existingWakeupId,
-            }
-          : startResult.value.kind === "resumed"
-            ? { kind: "resumed", run_id: startResult.value.runId }
-            : { kind: "skipped", reason: startResult.value.reason },
+        : startResult.value.kind === "resumed"
+          ? { kind: "resumed", run_id: startResult.value.runId }
+          : { kind: "skipped", reason: startResult.value.reason },
   });
 }
 

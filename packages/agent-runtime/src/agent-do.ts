@@ -73,6 +73,11 @@ import {
   resolveDocumentEdit,
 } from "./documents/document-tools";
 import { IssueRunSubAgent } from "./issue-run-sub-agent";
+import {
+  enqueueRunDispatch,
+  type RunQueueBinding,
+  type RunWorkflowBinding,
+} from "./run-dispatcher";
 
 type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_SECRET: string;
@@ -83,6 +88,8 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   LOADER: WorkerLoader;
   Sandbox: DurableObjectNamespace<SandboxDO>;
   MCP_SESSION: DurableObjectNamespace;
+  RUN_QUEUE?: RunQueueBinding;
+  RUN_WORKFLOW?: RunWorkflowBinding;
 };
 
 type AgentSessionStateItem = {
@@ -437,8 +444,14 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     issueId: string;
   }): Promise<void> {
     await this.requireIssueAccess(input.issueId);
-    const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId);
-    await issueAgent.startTurn(input);
+    const dispatchResult = await enqueueRunDispatch(this.env, {
+      runId: input.runId,
+      issueId: input.issueId,
+      agentRuntimeName: this.name,
+    });
+    if (dispatchResult.isErr()) {
+      throw dispatchResult.error;
+    }
   }
 
   @callable()
@@ -459,6 +472,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     await this.requireIssueAccess(input.issueId);
     const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId);
     await issueAgent.requestCancel(input);
+    this.abortSubAgent(IssueRunSubAgent, input.issueId);
   }
 
   /**

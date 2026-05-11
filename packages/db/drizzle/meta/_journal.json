@@ -218,6 +218,13 @@
       "when": 1778456303652,
       "tag": "0029_superb_triathlon",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1778457702857,
+      "tag": "0030_round_kang",
+      "breakpoints": true
     }
   ]
 }

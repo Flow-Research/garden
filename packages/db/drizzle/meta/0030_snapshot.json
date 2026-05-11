@@ -1,6 +1,6 @@
 {
-  "id": "f05a244e-577b-4291-b21f-7b0130f1fc35",
-  "prevId": "05f88e54-29ad-4f22-847e-07672491d190",
+  "id": "5f913fd1-9164-4c57-908f-85e544bdeda0",
+  "prevId": "346086f7-57a2-4fe1-a61b-32f7e580c566",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2482,7 +2482,7 @@
           "name": "issue_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "agent_id": {
           "name": "agent_id",
@@ -2500,7 +2500,7 @@
           "name": "wakeup_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "status": {
           "name": "status",
@@ -2508,6 +2508,30 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'queued'"
+        },
+        "trigger_source": {
+          "name": "trigger_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trigger_ref": {
+          "name": "trigger_ref",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "parent_run_id": {
+          "name": "parent_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "workflow_instance_id": {
+          "name": "workflow_instance_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "cancel_requested_at": {
           "name": "cancel_requested_at",
@@ -2625,6 +2649,38 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "issue_run_workflow_idx": {
+          "name": "issue_run_workflow_idx",
+          "columns": [
+            {
+              "expression": "workflow_instance_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"issue_run\".\"workflow_instance_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "issue_run_parent_idx": {
+          "name": "issue_run_parent_idx",
+          "columns": [
+            {
+              "expression": "parent_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"issue_run\".\"parent_run_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -2679,6 +2735,19 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
+        },
+        "issue_run_parent_run_id_issue_run_id_fk": {
+          "name": "issue_run_parent_run_id_issue_run_id_fk",
+          "tableFrom": "issue_run",
+          "tableTo": "issue_run",
+          "columnsFrom": [
+            "parent_run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2688,6 +2757,10 @@
         "issue_run_status_check": {
           "name": "issue_run_status_check",
           "value": "\"issue_run\".\"status\" in ('queued', 'running', 'waiting_for_input', 'waiting_for_approval', 'succeeded', 'failed', 'cancelled', 'blocked')"
+        },
+        "issue_run_trigger_source_check": {
+          "name": "issue_run_trigger_source_check",
+          "value": "\"issue_run\".\"trigger_source\" is null or \"issue_run\".\"trigger_source\" in ('schedule', 'manual', 'webhook', 'api', 'chat', 'sub_agent', 'comment', 'mention', 'assignment', 'connector_event', 'reconciler_retry', 'hire_approval', 'automation')"
         }
       },
       "isRLSEnabled": false
@@ -3576,13 +3649,6 @@
           "notNull": true,
           "default": "'active'"
         },
-        "execution_mode": {
-          "name": "execution_mode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'create_issue'"
-        },
         "concurrency_policy": {
           "name": "concurrency_policy",
           "type": "text",
@@ -3615,119 +3681,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "system_prompt": {
-          "name": "system_prompt",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "input_schema": {
-          "name": "input_schema",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "context_sources": {
-          "name": "context_sources",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "output_config": {
-          "name": "output_config",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "execution_config": {
-          "name": "execution_config",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "notification_config": {
-          "name": "notification_config",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "scheduling_config": {
-          "name": "scheduling_config",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tags": {
-          "name": "tags",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::text[]"
-        },
-        "category": {
-          "name": "category",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "template_source": {
-          "name": "template_source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "next_run_at": {
-          "name": "next_run_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "run_count": {
-          "name": "run_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "success_count": {
-          "name": "success_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "failure_count": {
-          "name": "failure_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "skip_count": {
-          "name": "skip_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "avg_duration_ms": {
-          "name": "avg_duration_ms",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "metadata": {
-          "name": "metadata",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -3750,51 +3703,6 @@
           "isUnique": false,
           "concurrently": false,
           "method": "btree",
-          "with": {}
-        },
-        "automation_next_run_idx": {
-          "name": "automation_next_run_idx",
-          "columns": [
-            {
-              "expression": "next_run_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "automation_category_idx": {
-          "name": "automation_category_idx",
-          "columns": [
-            {
-              "expression": "category",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "automation_tags_gin": {
-          "name": "automation_tags_gin",
-          "columns": [
-            {
-              "expression": "tags",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "gin",
           "with": {}
         }
       },
@@ -3837,19 +3745,6 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "automation_updated_by_user_id_fk": {
-          "name": "automation_updated_by_user_id_fk",
-          "tableFrom": "automation",
-          "tableTo": "user",
-          "columnsFrom": [
-            "updated_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3863,10 +3758,6 @@
         "automation_priority_check": {
           "name": "automation_priority_check",
           "value": "\"automation\".\"priority\" in ('urgent', 'high', 'medium', 'low', 'none')"
-        },
-        "automation_execution_mode_check": {
-          "name": "automation_execution_mode_check",
-          "value": "\"automation\".\"execution_mode\" in ('create_issue', 'run_only')"
         },
         "automation_concurrency_policy_check": {
           "name": "automation_concurrency_policy_check",
@@ -4109,18 +4000,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "next_run_at": {
-          "name": "next_run_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_fired_at": {
-          "name": "last_fired_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "webhook_token_hash": {
           "name": "webhook_token_hash",
           "type": "text",
@@ -4158,17 +4037,11 @@
           "method": "btree",
           "with": {}
         },
-        "automation_trigger_due_idx": {
-          "name": "automation_trigger_due_idx",
+        "automation_trigger_enabled_idx": {
+          "name": "automation_trigger_enabled_idx",
           "columns": [
             {
               "expression": "enabled",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "next_run_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

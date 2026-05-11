@@ -1,4 +1,3 @@
-import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
@@ -82,7 +81,6 @@ export const Route = createFileRoute('/api/automations/$id/triggers')({
             label: body.label ?? null,
             cronExpression: body.cron_expression,
             timezone: body.timezone,
-            nextRunAt: nextRunResult?.isOk() ? nextRunResult.value : null,
           })
           .returning()
 
@@ -93,13 +91,6 @@ export const Route = createFileRoute('/api/automations/$id/triggers')({
           nextRunAt: nextRunResult?.isOk() ? nextRunResult.value : undefined,
         })
         if (installResult.isErr()) return automationErr(installResult.error)
-
-        if (installResult.value) {
-          await db
-            .update(schema.automationTrigger)
-            .set({ nextRunAt: installResult.value, updatedAt: new Date() })
-            .where(eq(schema.automationTrigger.id, trigger.id))
-        }
 
         return automationOk(toAutomationTrigger(trigger), 201)
       },

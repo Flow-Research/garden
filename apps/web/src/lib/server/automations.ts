@@ -197,8 +197,8 @@ export function toAutomationTrigger(row: AutomationTriggerRow) {
     label: row.label,
     cron_expression: row.cronExpression,
     timezone: row.timezone,
-    next_run_at: dateToIso(row.nextRunAt),
-    last_fired_at: dateToIso(row.lastFiredAt),
+    next_run_at: null,
+    last_fired_at: null,
     created_at: dateToIso(row.createdAt),
     updated_at: dateToIso(row.updatedAt),
   }
@@ -388,7 +388,7 @@ export async function uninstallAutomationSchedules(
     try: async () => {
       await db
         .update(schema.automationTrigger)
-        .set({ nextRunAt: null, updatedAt: new Date() })
+        .set({ updatedAt: new Date() })
         .where(
           and(
             eq(schema.automationTrigger.automationId, automationId),
@@ -434,10 +434,10 @@ export async function syncAutomationSchedules(
         try: async () => {
           await db
             .update(schema.automationTrigger)
-            .set({ nextRunAt: installResult.value, updatedAt: new Date() })
+            .set({ updatedAt: new Date() })
             .where(eq(schema.automationTrigger.id, trigger.id))
         },
-        catch: (cause) => dbError('persist schedule next run', cause),
+        catch: (cause) => dbError('touch automation trigger', cause),
       })
       if (updateResult.isErr()) return Result.err(updateResult.error)
     }

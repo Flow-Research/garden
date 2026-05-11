@@ -107,7 +107,6 @@ type ResolutionGuardRow = {
 const DEFAULT_ISSUE_RUN_TIMEOUT_SEC = 2 * 60 * 60
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.issue-run.turn'
-const WAKEUP_BACKOFF_MS = [5_000, 10_000, 20_000] as const
 
 const VALID_RESOLUTION_ACTIONS = new Set<IssueRunResolutionAction>([
   'ask_question',
@@ -276,14 +275,6 @@ function emptyUsage(ctx: StepContext): IssueRunUsage {
 
 function isActiveRunStatus(status: string) {
   return isLiveIssueRunStatus(status as IssueRunStatus)
-}
-
-function retryDelayMs(attemptCount: number) {
-  const index = Math.min(
-    Math.max(attemptCount - 1, 0),
-    WAKEUP_BACKOFF_MS.length - 1,
-  )
-  return WAKEUP_BACKOFF_MS[index] ?? WAKEUP_BACKOFF_MS[0]
 }
 
 export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
@@ -736,17 +727,38 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     mode: TurnMode,
     input: StartTurnInput,
   ): Promise<{ status: string }> {
+    const [runRow] = await this.getDb()
+      .select({
+        cancelRequestedAt: schema.issueRun.cancelRequestedAt,
+        status: schema.issueRun.status,
+      })
+      .from(schema.issueRun)
+      .where(eq(schema.issueRun.id, input.runId))
+      .limit(1)
+
+    if (runRow?.cancelRequestedAt) {
+      const runStateResult = await this.loadRunState(input.runId)
+      if (runStateResult.isErr()) {
+        await this.forceCloseFailed(input.runId, runStateResult.error.message)
+        throw new Error(runStateResult.error.message)
+      }
+      const cancelResult = await this.finishCancelled(
+        runStateResult.value,
+        'cancelled',
+      )
+      if (cancelResult.isErr()) {
+        await this.forceCloseFailed(input.runId, cancelResult.error.message)
+        throw new Error(cancelResult.error.message)
+      }
+      return { status: 'cancelled' }
+    }
+
     const driveResult = await this.driveTurn(mode, input)
     if (driveResult.isErr()) {
       await this.forceCloseFailed(input.runId, driveResult.error.message)
       throw new Error(driveResult.error.message)
     }
-    const [row] = await this.getDb()
-      .select({ status: schema.issueRun.status })
-      .from(schema.issueRun)
-      .where(eq(schema.issueRun.id, input.runId))
-      .limit(1)
-    return { status: row?.status ?? 'unknown' }
+    return { status: runRow?.status ?? 'unknown' }
   }
 
   async requestCancel(input: StartTurnInput): Promise<void> {
@@ -1040,7 +1052,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         }),
       )
     }
-    if (!result.value.issueId || !result.value.wakeupId) {
+    if (!result.value.issueId) {
       return Result.err(
         new IssueRunSubAgentError({
           code: 'not_found',
@@ -1079,7 +1091,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
           .from(schema.issueRun)
           .innerJoin(schema.issue, eq(schema.issue.id, schema.issueRun.issueId))
           .innerJoin(schema.agent, eq(schema.agent.id, schema.issueRun.agentId))
-          .innerJoin(
+          .leftJoin(
             schema.issueWakeup,
             eq(schema.issueWakeup.id, schema.issueRun.wakeupId),
           )
@@ -1207,7 +1219,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     }
 
     const triggerReason = this.renderTriggerReason({
-      source: row.runRow.wakeup.source,
+      source: row.runRow.wakeup?.source ?? (row.runRow.run.contextSnapshot as { source?: string } | null)?.source ?? '',
       contextSnapshot: row.runRow.run.contextSnapshot,
       comments: row.comments,
       users: row.commentUsers,
@@ -1296,7 +1308,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       runTimeoutSec: number
       permissions?: unknown
     }
-    wakeup: typeof schema.issueWakeup.$inferSelect
+    wakeup: typeof schema.issueWakeup.$inferSelect | null
     comments: Array<typeof schema.issueComment.$inferSelect>
     runs: Array<typeof schema.issueRun.$inferSelect>
     workProducts: Array<typeof schema.issueWorkProduct.$inferSelect>
@@ -1403,7 +1415,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
           status: input.run.status,
           started_at: dateToIso(input.run.startedAt),
           cancel_requested_at: dateToIso(input.run.cancelRequestedAt),
-          wakeup_source: input.wakeup.source,
+          wakeup_source: input.wakeup?.source ?? null,
           run_timeout_sec: input.agent.runTimeoutSec,
         }),
       ),
@@ -1886,21 +1898,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     const run = runStateResult.value
     const db = this.getDb()
     const now = new Date()
-    const wakeupResult = await Result.tryPromise({
-      try: async () => {
-        const [wakeup] = await db
-          .select({ attemptCount: schema.issueWakeup.attemptCount })
-          .from(schema.issueWakeup)
-          .where(eq(schema.issueWakeup.id, run.wakeupId))
-          .limit(1)
-        return wakeup ?? null
-      },
-      catch: (cause) => dbError('load failed run wakeup', cause),
-    })
-    if (wakeupResult.isErr()) return Result.err(wakeupResult.error)
-    const nextAttemptAt = new Date(
-      now.getTime() + retryDelayMs(wakeupResult.value?.attemptCount ?? 1),
-    )
 
     const writeResult = await Result.tryPromise({
       try: async () => {
@@ -1919,13 +1916,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
             .update(schema.issue)
             .set({ activeRunId: null, updatedAt: now })
             .where(eq(schema.issue.id, run.issueId))
-          await tx
-            .update(schema.issueWakeup)
-            .set({
-              nextAttemptAt,
-              updatedAt: now,
-            })
-            .where(eq(schema.issueWakeup.id, run.wakeupId))
         })
       },
       catch: (cause) => dbError('force close failed issue run', cause),
@@ -1942,7 +1932,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       message: 'Run failed',
       payload: {
         reason,
-        retry_after_ms: retryDelayMs(wakeupResult.value?.attemptCount ?? 1),
       },
     })
     if (eventResult.isErr()) {

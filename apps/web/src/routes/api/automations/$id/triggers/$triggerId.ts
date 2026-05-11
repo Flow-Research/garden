@@ -82,7 +82,6 @@ export const Route = createFileRoute(
           enabled: nextEnabled,
           cronExpression: nextCron,
           timezone: nextTimezone,
-          nextRunAt: nextRunResult?.isOk() ? nextRunResult.value : null,
           updatedAt: new Date(),
         }
         if (Object.prototype.hasOwnProperty.call(body, 'label')) {

@@ -36,7 +36,7 @@ export type IssueRunToolState = {
   agentId: string
   agentOwnerUserId: string
   hostName: string
-  wakeupId: string
+  wakeupId: string | null
 }
 
 export type IssueRunMcpToolRecord = {
@@ -214,7 +214,7 @@ export async function updateRunStatus(args: {
             .where(eq(schema.issue.id, args.run.issueId))
         }
 
-        if (args.completeWakeup) {
+        if (args.completeWakeup && args.run.wakeupId) {
           await tx
             .update(schema.issueWakeup)
             .set({

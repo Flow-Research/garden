@@ -149,7 +149,6 @@ export const Route = createFileRoute('/api/automations')({
               enabled: triggerEnabled,
               cronExpression: triggerInput.cron_expression,
               timezone: triggerInput.timezone,
-              nextRunAt: nextRunResult?.isOk() ? nextRunResult.value : null,
             })
             .returning()
           return [automationRow, triggerRow] as const

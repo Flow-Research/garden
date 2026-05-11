@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
+import { CronExpressionParser } from 'cron-parser'
 import { createLogger } from '@garden/core/logger'
 import { LIVE_RUN_STATUSES } from '@garden/core/issues/run-sync'
 import type { AppEnv } from '@/lib/server/env'
@@ -10,6 +11,23 @@ import {
 } from '@garden/core/issues/run-service'
 
 const logger = createLogger('issue-run-reconciler')
+
+function nextRunFromCronInline(args: {
+  cronExpression: string
+  timezone: string
+  from: Date
+}): ResultValue<Date, string> {
+  return Result.try({
+    try: () =>
+      CronExpressionParser.parse(args.cronExpression, {
+        currentDate: args.from,
+        tz: args.timezone,
+      })
+        .next()
+        .toDate(),
+    catch: (cause) => (cause instanceof Error ? cause.message : String(cause)),
+  })
+}
 
 const DEFAULT_MAX_WAKEUP_ATTEMPTS = 3
 const RUNTIME_RECOVERY_MAX_WAKEUP_ATTEMPTS = 12
@@ -78,7 +96,8 @@ type StrandedTriggerRow = {
   trigger_id: string
   automation_id: string
   concurrency_policy: string
-  next_run_at: Date
+  cron_expression: string | null
+  timezone: string | null
 }
 
 type AutomationRunSyncRow = {
@@ -527,17 +546,17 @@ async function recoverStrandedTriggers(
           t.id as trigger_id,
           t.automation_id,
           a.concurrency_policy,
-          t.next_run_at
+          t.cron_expression,
+          t.timezone
         from automation_trigger t
         join automation a on a.id = t.automation_id
         where t.kind = 'schedule'
           and t.enabled = true
           and a.status = 'active'
-          and t.next_run_at is not null
-          and t.next_run_at < ${strandedBefore}
-          and (t.last_fired_at is null or t.last_fired_at < t.next_run_at)
-        order by t.next_run_at
-        limit 50
+          and t.cron_expression is not null
+          and t.timezone is not null
+        order by t.id
+        limit 200
       `)
       return rows.rows
     },
@@ -554,17 +573,49 @@ async function recoverStrandedTriggers(
     ) {
       continue
     }
+    if (!row.cron_expression || !row.timezone) continue
     const concurrencyPolicy = row.concurrency_policy
+
+    const stub = env.AUTOMATION_TRIGGER.get(
+      env.AUTOMATION_TRIGGER.idFromName(row.trigger_id),
+    )
+
+    const describeResult = await Result.tryPromise({
+      try: async () => (await stub.describe()) as unknown,
+      catch: (cause) => dbError('describe automation trigger', cause),
+    })
+    if (describeResult.isErr()) return Result.err(describeResult.error)
+
+    const description = describeResult.value as {
+      nextRunAt?: Date | string | null
+    } | null
+    const currentAlarm = description?.nextRunAt
+      ? new Date(description.nextRunAt)
+      : null
+    if (currentAlarm && currentAlarm.getTime() > strandedBefore.getTime()) {
+      continue
+    }
+
+    const nextResult = nextRunFromCronInline({
+      cronExpression: row.cron_expression,
+      timezone: row.timezone,
+      from: now,
+    })
+    if (nextResult.isErr()) {
+      logger.warn('cron parse failed during recovery', {
+        triggerId: row.trigger_id,
+        error: nextResult.error,
+      })
+      continue
+    }
 
     const rawResult = await Result.tryPromise({
       try: async () =>
-        (await env.AUTOMATION_TRIGGER.get(
-          env.AUTOMATION_TRIGGER.idFromName(row.trigger_id),
-        ).install({
+        (await stub.install({
           triggerId: row.trigger_id,
           automationId: row.automation_id,
           concurrencyPolicy,
-          nextRunAt: row.next_run_at,
+          nextRunAt: nextResult.value,
         })) as unknown,
       catch: (cause) => dbError('re-arm automation trigger', cause),
     })

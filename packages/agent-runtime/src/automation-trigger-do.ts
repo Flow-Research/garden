@@ -693,13 +693,6 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
     })
     if (nextResult.isErr()) return Result.err(nextResult.error)
 
-    const updateResult = await this.persistNextRun({
-      triggerId,
-      nextRunAt: nextResult.value,
-      firedAt,
-    })
-    if (updateResult.isErr()) return Result.err(updateResult.error)
-
     this.ctx.storage.kv.put(CONFIG_KEY, {
       triggerId: row.triggerId,
       automationId: row.automationId,
@@ -746,29 +739,5 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
     if (result.isErr()) return Result.err(result.error)
 
     return Result.ok(result.value)
-  }
-
-  private async persistNextRun(args: {
-    triggerId: string
-    nextRunAt: Date
-    firedAt: Date
-  }): Promise<ResultValue<void, AutomationDoError>> {
-    const db = this.db()
-    const result = await Result.tryPromise({
-      try: async () => {
-        await db
-          .update(schema.automationTrigger)
-          .set({
-            nextRunAt: args.nextRunAt,
-            lastFiredAt: args.firedAt,
-            updatedAt: args.firedAt,
-          })
-          .where(eq(schema.automationTrigger.id, args.triggerId))
-      },
-      catch: (cause) => dbError('persist next automation run', cause),
-    })
-    if (result.isErr()) return Result.err(result.error)
-
-    return Result.ok()
   }
 }
