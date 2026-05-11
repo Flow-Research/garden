@@ -6,7 +6,6 @@ export {
   RUN_WORKFLOW_CONTROL_EVENT_TYPE,
   type RunWorkflowControlEvent,
   type RunWorkflowEnv,
-  type RunWorkflowParams,
 } from './run-workflow'
 export {
   RunDispatchError,
@@ -17,6 +16,7 @@ export {
   type RunDispatchMessage,
   type RunQueueBinding,
   type RunWorkflowBinding,
+  type RunWorkflowParams,
 } from './run-dispatcher'
 export { createAgentModel } from './model'
 export {

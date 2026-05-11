@@ -17,11 +17,7 @@ import {
  *   https://developers.cloudflare.com/workflows/
  */
 
-export type RunWorkflowParams = {
-  runId: string;
-  issueId: string;
-  agentRuntimeName: string;
-};
+import type { RunWorkflowParams } from "./run-dispatcher";
 
 type AgentDoStub = {
   executeRunTurn: (input: {
