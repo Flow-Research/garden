@@ -8,6 +8,16 @@ export {
   type RunWorkflowEnv,
   type RunWorkflowParams,
 } from './run-workflow'
+export {
+  RunDispatchError,
+  consumeRunDispatchBatch,
+  enqueueRunDispatch,
+  type RunDispatchBatch,
+  type RunDispatchEnv,
+  type RunDispatchMessage,
+  type RunQueueBinding,
+  type RunWorkflowBinding,
+} from './run-dispatcher'
 export { createAgentModel } from './model'
 export {
   extractTrackedChangeIds,
