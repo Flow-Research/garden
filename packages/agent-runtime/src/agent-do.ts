@@ -780,8 +780,17 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       getSandbox: () => this.getAgentSandbox(),
       issueRunEnv: this.env,
       cancelIssueRun: async (input) => {
+        if (this.env.RUN_WORKFLOW) {
+          const instance = await this.env.RUN_WORKFLOW.get(input.runId);
+          await instance.sendEvent({
+            type: 'run-control',
+            payload: { kind: 'cancel' },
+          });
+          return;
+        }
         const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId);
         await issueAgent.requestCancel(input);
+        this.abortSubAgent(IssueRunSubAgent, input.issueId);
       },
     });
   }
