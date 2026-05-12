@@ -27,7 +27,7 @@
   );
   --garden-dock-tab-strip-surface: color-mix(
     in srgb,
-    var(--ink) 2%,
+    var(--ink) 3%,
     var(--garden-dock-tab-surface)
   );
   --garden-dock-tab-muted-surface: color-mix(
@@ -76,7 +76,7 @@
   --garden-dock-tab-surface: var(--parchment);
   --garden-dock-tab-strip-surface: color-mix(
     in srgb,
-    var(--bone) 5%,
+    var(--bone) 8%,
     var(--garden-dock-tab-surface)
   );
 }
@@ -104,7 +104,7 @@
 
 .garden-dockview .dv-tab:not(.dv-active-tab) {
   align-self: flex-start !important;
-  height: 30px;
+  height: 28px;
   margin-top: 4px !important;
   z-index: 2;
 }
@@ -124,7 +124,7 @@
   color: var(--ink) !important;
   font-weight: 600;
   overflow: visible;
-  z-index: 1;
+  z-index: 3;
   box-shadow: none;
 }
 
@@ -153,10 +153,10 @@
   display: none;
   position: absolute;
   bottom: 0;
-  z-index: 0;
-  width: 8px;
-  height: 8px;
-  background: transparent;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  background: var(--garden-dock-tab-strip-surface);
   pointer-events: none;
 }
 
@@ -165,15 +165,13 @@
 }
 
 .garden-dock-tab__shoulder--left {
-  left: -8px;
-  border-bottom-right-radius: 8px;
-  box-shadow: 4px 4px 0 3px var(--garden-dock-tab-surface);
+  left: 0;
+  border-bottom-right-radius: 10px;
 }
 
 .garden-dock-tab__shoulder--right {
-  right: -8px;
-  border-bottom-left-radius: 8px;
-  box-shadow: -4px 4px 0 3px var(--garden-dock-tab-surface);
+  right: 0;
+  border-bottom-left-radius: 10px;
 }
 
 /*
