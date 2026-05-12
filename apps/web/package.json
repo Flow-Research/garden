@@ -6,9 +6,10 @@
     "#/*": "./src/*"
   },
   "scripts": {
-    "dev": "NODE_OPTIONS='--max-old-space-size=3072' bash ./scripts/dev.sh",
+    "dev": "bash ./scripts/dev-portless.sh",
+    "dev:app": "NODE_OPTIONS='--max-old-space-size=3072' bash ./scripts/dev.sh",
     "dev:containers": "NODE_OPTIONS='--max-old-space-size=3072' REQUIRE_CONTAINERS=1 bash ./scripts/dev.sh --require-containers",
-    "dev:proxy": "portless",
+    "dev:proxy": "pnpm run dev",
     "build": "vite build",
     "preview": "vite preview",
     "worker:types": "wrangler types worker-configuration.d.ts --include-runtime false",

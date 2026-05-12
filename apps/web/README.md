@@ -10,16 +10,16 @@ From the repository root:
 pnpm install
 cp .env.example apps/web/.dev.vars
 pnpm --filter @garden/db db:migrate
-pnpm --filter @garden/web dev
+pnpm dev
 ```
 
-The app defaults to `http://localhost:3000`. If that port is occupied, Vite prints the next open port, usually `http://localhost:3001`.
+The root dev command starts the MCP proxy first, then starts the web app through portless at `https://garden.localhost`.
 
 For the stable local HTTPS URL:
 
 ```bash
 pnpm --filter @garden/web exec portless trust
-pnpm --filter @garden/web dev:proxy
+pnpm --filter @garden/web dev
 ```
 
 That serves the app at `https://garden.localhost`. Keep using `localhost:3000` for Better Auth or OAuth callback testing until the local callback URLs move to portless.
@@ -44,9 +44,10 @@ GitHub connector development also needs the GitHub app fields from the root `.en
 
 | Command | Description |
 |---|---|
-| `pnpm --filter @garden/web dev` | Start TanStack Start locally |
+| `pnpm --filter @garden/web dev` | Start TanStack Start through portless |
+| `pnpm --filter @garden/web dev:app` | Start TanStack Start directly on `localhost` |
 | `pnpm --filter @garden/web dev:containers` | Start with local sandbox containers enabled |
-| `pnpm --filter @garden/web dev:proxy` | Start through portless at `https://garden.localhost` |
+| `pnpm --filter @garden/web dev:proxy` | Alias for portless dev at `https://garden.localhost` |
 | `pnpm --filter @garden/web build` | Build production worker bundle |
 | `pnpm --filter @garden/web typecheck` | Run TypeScript without emit |
 | `pnpm --filter @garden/web worker:types:check` | Regenerate and verify Worker binding types |
@@ -69,7 +70,7 @@ Generated files such as `src/routeTree.gen.ts` and Worker types should be regene
 Use agent-browser for real app checks instead of unit-only coverage:
 
 ```bash
-pnpm --filter @garden/web dev
+pnpm --filter @garden/web dev:app
 agent-browser --session garden-smoke open http://localhost:3000/workspace
 agent-browser --session garden-smoke snapshot -i -c -d 3
 agent-browser --session garden-smoke console
