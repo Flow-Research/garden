@@ -16,11 +16,11 @@
 }
 
 .garden-dock-theme {
-  --garden-dock-tab-curve: 7px;
+  --garden-dock-tab-curve: 6px;
   --dv-border-radius: 7px;
   --dv-tab-margin: 2px;
   --dv-tab-font-size: 13px;
-  --dv-tabs-and-actions-container-height: 31px;
+  --dv-tabs-and-actions-container-height: 29px;
   --garden-dock-tab-surface: color-mix(
     in srgb,
     var(--bone) 74%,
@@ -89,7 +89,7 @@
 /* Chrome-style tabs. Dockview owns layout, so the slot owns active material. */
 .garden-dockview .dv-tab {
   padding: 0 !important;
-  height: 30px;
+  height: 28px;
   align-self: flex-end !important;
   margin: 0 2px !important;
   margin-top: 1px !important;
@@ -110,7 +110,7 @@
 }
 
 .garden-dockview .dv-tab:not(.dv-active-tab) {
-  align-self: flex-start !important;
+  align-self: flex-end !important;
   z-index: 2;
 }
 
@@ -123,9 +123,9 @@
 }
 
 .garden-dockview .dv-tab.dv-active-tab {
-  height: 30px;
+  height: 28px;
   background: var(--garden-dock-tab-surface) !important;
-  border-radius: 10px 10px 0 0;
+  border-radius: 8px 8px 0 0;
   color: var(--ink) !important;
   overflow: visible;
   z-index: 3;
@@ -166,11 +166,11 @@
 }
 
 .garden-dockview .dv-tab .garden-dock-tab {
-  height: 30px;
+  height: 28px;
   width: 100%;
   margin-top: 0;
   padding: 0 14px;
-  border-radius: 9px 9px 0 0;
+  border-radius: 8px 8px 0 0;
   background: var(--garden-dock-tab-muted-surface);
   box-sizing: border-box;
   overflow: visible;
@@ -182,7 +182,7 @@
 }
 
 .garden-dockview .dv-tab.dv-active-tab .garden-dock-tab {
-  height: 30px;
+  height: 28px;
   margin-top: 0;
   background: transparent;
   box-shadow: none;
@@ -294,8 +294,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.125rem;
+  height: 1.125rem;
   margin-left: 0.25rem;
   border-radius: 4px;
   background: transparent !important;
@@ -326,8 +326,8 @@
   display: flex;
   align-items: center;
   height: 100%;
-  padding-left: 0.375rem;
-  padding-right: 0.25rem;
+  padding-left: 0.25rem;
+  padding-right: 0.1875rem;
   position: relative;
   z-index: 4;
 }
@@ -336,8 +336,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.625rem;
-  height: 1.625rem;
+  width: 1.375rem;
+  height: 1.375rem;
   border: 0;
   border-radius: 9999px;
   background: transparent;
