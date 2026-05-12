@@ -15,7 +15,7 @@ pnpm dev
 
 The root dev command starts the MCP proxy first, then starts the web app through portless at `https://garden.localhost`.
 The root dev wrapper also keeps Turbo's persisted task list visible so the TUI opens with service tabs instead of only the inline log pane.
-Portless is configured at the repo root so `portless` from the project directory maps the web app to `garden.localhost` and runs the MCP proxy as a non-proxied task.
+Portless is configured at the repo root so `portless` from the project directory maps the web app to `garden.localhost`, pins the app port to `3000`, and runs the MCP proxy as a non-proxied task.
 The web dev wrapper pins portless state to `~/.portless`, matching Portless' documented state directory and keeping the privileged proxy and app route registry on the same `routes.json`.
 
 For the stable local HTTPS URL:
