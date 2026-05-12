@@ -14,6 +14,7 @@ pnpm dev
 ```
 
 The root dev command starts the MCP proxy first, then starts the web app through portless at `https://garden.localhost`.
+The web dev wrapper pins portless state to `~/.portless` and restarts a stale proxy if it is answering from a different state directory, so the privileged proxy and app route registry read the same `routes.json`.
 
 For the stable local HTTPS URL:
 
