@@ -592,14 +592,6 @@ function WorkspaceDockTab(
           />
         }
       >
-        <span
-          aria-hidden="true"
-          className="garden-dock-tab__shoulder garden-dock-tab__shoulder--left"
-        />
-        <span
-          aria-hidden="true"
-          className="garden-dock-tab__shoulder garden-dock-tab__shoulder--right"
-        />
         <span className="dv-default-tab-content">
           <span className="garden-dock-tab__label">
             <Icon className="size-3.5 shrink-0" />

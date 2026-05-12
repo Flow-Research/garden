@@ -16,6 +16,7 @@
 }
 
 .garden-dock-theme {
+  --garden-dock-tab-curve: 8px;
   --dv-border-radius: 7px;
   --dv-tab-margin: 2px;
   --dv-tab-font-size: 13px;
@@ -86,7 +87,7 @@
   padding: 0 !important;
   height: 30px;
   align-self: stretch !important;
-  margin: 4px 2px 0 !important;
+  margin: 4px 3px 0 !important;
   background: transparent !important;
   font-weight: 500;
   font-size: 13px;
@@ -131,9 +132,13 @@
 .garden-dockview .dv-tab .garden-dock-tab {
   height: 100%;
   width: 100%;
-  padding: 0 14px;
+  padding: 0 calc(14px - var(--garden-dock-tab-curve));
+  border-inline: var(--garden-dock-tab-curve) solid transparent;
   border-radius: 9px 9px 0 0;
   background: var(--garden-dock-tab-muted-surface);
+  box-sizing: border-box;
+  overflow: visible;
+  position: relative;
   box-shadow: inset 0 1px 0 0 var(--garden-dock-tab-muted-edge);
   transition:
     background-color 180ms cubic-bezier(0.16, 1, 0.3, 1),
@@ -141,37 +146,26 @@
 }
 
 .garden-dockview .dv-tab.dv-active-tab .garden-dock-tab {
+  --garden-dock-tab-roundout-mask:
+    radial-gradient(
+        var(--garden-dock-tab-curve) at var(--garden-dock-tab-curve) 0,
+        transparent 98%,
+        #000 101%
+      )
+      calc(-1 * var(--garden-dock-tab-curve)) 100% / 100%
+      var(--garden-dock-tab-curve) repeat-x,
+    conic-gradient(#000 0 0) padding-box;
+
+  border-radius: calc(var(--garden-dock-tab-curve) * 2)
+    calc(var(--garden-dock-tab-curve) * 2) 0 0 / var(--garden-dock-tab-curve);
   background: var(--garden-dock-tab-surface);
+  -webkit-mask: var(--garden-dock-tab-roundout-mask);
+  mask: var(--garden-dock-tab-roundout-mask);
   box-shadow:
     inset 0 1px 0 0 var(--garden-dock-tab-edge),
     inset 1px 0 0 0 var(--garden-dock-tab-edge),
     inset -1px 0 0 0 var(--garden-dock-tab-edge),
     0 -1px 8px 0 var(--garden-dock-tab-active-glow);
-}
-
-.garden-dock-tab__shoulder {
-  display: none;
-  position: absolute;
-  bottom: 0;
-  z-index: 1;
-  width: 10px;
-  height: 10px;
-  background: var(--garden-dock-tab-strip-surface);
-  pointer-events: none;
-}
-
-.garden-dockview .dv-tab.dv-active-tab .garden-dock-tab__shoulder {
-  display: block;
-}
-
-.garden-dock-tab__shoulder--left {
-  left: 0;
-  border-bottom-right-radius: 10px;
-}
-
-.garden-dock-tab__shoulder--right {
-  right: 0;
-  border-bottom-left-radius: 10px;
 }
 
 /*
