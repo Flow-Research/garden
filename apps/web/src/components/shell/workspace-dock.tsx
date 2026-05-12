@@ -1564,8 +1564,8 @@ export function WorkspaceDockProvider({
       const orderedPanels = api.groups.flatMap((group) => group.panels)
       const visiblePanels =
         api.hasMaximizedGroup() && api.activeGroup
-          ? [api.activeGroup.activePanel]
-          : api.groups.map((group) => group.activePanel)
+          ? [api.activeGroup.activePanel ?? api.activeGroup.panels[0]]
+          : api.groups.map((group) => group.activePanel ?? group.panels[0])
       const visibleChatSessionIds = [
         ...new Set(
           visiblePanels.flatMap((panel) => {
