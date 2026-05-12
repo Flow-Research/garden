@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, count, desc, eq, ne } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
@@ -46,12 +46,12 @@ export const Route = createFileRoute('/api/automations')({
             eq(schema.automation.status, searchResult.value.status),
           )
         } else {
-          conditions.push(sql`${schema.automation.status} <> 'archived'`)
+          conditions.push(ne(schema.automation.status, 'archived'))
         }
         const whereClause = and(...conditions)
         const [countRows, rows] = await Promise.all([
           db
-            .select({ count: sql<number>`cast(count(*) as int)` })
+            .select({ count: count() })
             .from(schema.automation)
             .where(whereClause),
           db

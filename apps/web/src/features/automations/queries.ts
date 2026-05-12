@@ -14,9 +14,6 @@ export function automationListOptions(wsId: string) {
   return queryOptions({
     queryKey: automationKeys.list(wsId),
     queryFn: () => api.listAutomations(),
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: false,
   })
 }
 
