@@ -25,19 +25,24 @@
     var(--bone) 74%,
     var(--parchment)
   );
-  --garden-dock-tab-strip-surface: var(--garden-dock-tab-surface);
+  --garden-dock-tab-strip-surface: color-mix(
+    in srgb,
+    var(--ink) 2%,
+    var(--garden-dock-tab-surface)
+  );
   --garden-dock-tab-muted-surface: color-mix(
     in srgb,
-    var(--ink) 10%,
+    var(--ink) 9%,
     var(--garden-dock-tab-surface)
   );
   --garden-dock-tab-muted-hover: color-mix(
     in srgb,
-    var(--ink) 13%,
+    var(--ink) 12%,
     var(--garden-dock-tab-surface)
   );
   --garden-dock-tab-edge: color-mix(in srgb, var(--ink) 18%, transparent);
   --garden-dock-tab-muted-edge: color-mix(in srgb, var(--ink) 9%, transparent);
+  --garden-dock-tab-active-glow: color-mix(in srgb, var(--ink) 5%, transparent);
   --dv-tabs-container-scrollbar-color: color-mix(
     in srgb,
     var(--ink) 22%,
@@ -68,6 +73,11 @@
 
 .dark .garden-dock-theme {
   --garden-dock-tab-surface: var(--parchment);
+  --garden-dock-tab-strip-surface: color-mix(
+    in srgb,
+    var(--bone) 5%,
+    var(--garden-dock-tab-surface)
+  );
 }
 
 /* Chrome-style tabs. The active tab shares the workspace surface; inactive tabs
@@ -75,9 +85,9 @@
 .garden-dockview .dv-tab {
   border-radius: 9px 9px 0 0 !important;
   padding: 0 14px;
-  height: 31px;
+  height: 30px;
   align-self: stretch !important;
-  margin: 3px 1px 0 !important;
+  margin: 4px 1px 0 !important;
   background-color: var(--garden-dock-tab-muted-surface) !important;
   font-weight: 500;
   font-size: 13px;
@@ -94,8 +104,9 @@
 
 .garden-dockview .dv-tab:not(.dv-active-tab) {
   align-self: flex-start !important;
-  height: 29px;
-  margin-top: 4px !important;
+  border-radius: 9px 9px 3px 3px !important;
+  height: 28px;
+  margin-top: 3px !important;
 }
 
 .garden-dockview .dv-tab:hover:not(.dv-active-tab) {
@@ -108,8 +119,12 @@
   color: var(--ink) !important;
   font-weight: 600;
   overflow: visible;
-  z-index: 1;
-  box-shadow: none;
+  z-index: 3;
+  box-shadow:
+    inset 0 1px 0 0 var(--garden-dock-tab-edge),
+    inset 1px 0 0 0 var(--garden-dock-tab-edge),
+    inset -1px 0 0 0 var(--garden-dock-tab-edge),
+    0 -1px 8px 0 var(--garden-dock-tab-active-glow);
 }
 
 /* Chrome-like round-out shoulders: the transparent quadrant exposes the tab
@@ -119,26 +134,27 @@
   content: '';
   position: absolute;
   bottom: 0;
-  width: 6px;
-  height: 5px;
+  z-index: -1;
+  width: 7px;
+  height: 6px;
   pointer-events: none;
 }
 
 .garden-dockview .dv-tab.dv-active-tab::before {
-  left: -6px;
+  left: -7px;
   background: radial-gradient(
     7px 7px at top left,
-    transparent 0 5.25px,
-    var(--garden-dock-tab-surface) 5.75px
+    transparent 0 5.5px,
+    var(--garden-dock-tab-surface) 6px
   );
 }
 
 .garden-dockview .dv-tab.dv-active-tab::after {
-  right: -6px;
+  right: -7px;
   background: radial-gradient(
     7px 7px at top right,
-    transparent 0 5.25px,
-    var(--garden-dock-tab-surface) 5.75px
+    transparent 0 5.5px,
+    var(--garden-dock-tab-surface) 6px
   );
 }
 
@@ -193,7 +209,6 @@
   border-top: 0 !important;
   background: var(--garden-dock-tab-surface);
   box-shadow: none !important;
-  margin-top: -1px;
 }
 
 /* Tab strip reads as a quiet tray; active tab and content share one material. */
