@@ -116,7 +116,7 @@
  * strip while the outer corner paints the same material as the workspace. */
 .garden-dockview .dv-tab.dv-active-tab::before,
 .garden-dockview .dv-tab.dv-active-tab::after {
-  content: '';
+  content: "";
   position: absolute;
   bottom: 0;
   width: 8px;
@@ -214,6 +214,29 @@
 
 .garden-dock-tab__pin {
   color: var(--muted-foreground);
+}
+
+.garden-dockview .dv-default-tab-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-left: 0.25rem;
+  border-radius: 4px;
+  background: transparent !important;
+  color: var(--gravel);
+  opacity: 0.72;
+  transition:
+    color 140ms ease,
+    opacity 140ms ease;
+}
+
+.garden-dockview .dv-default-tab-action:hover,
+.garden-dockview .dv-default-tab-action:active {
+  background: transparent !important;
+  color: var(--ink);
+  opacity: 1;
 }
 
 .garden-dock-actions {
