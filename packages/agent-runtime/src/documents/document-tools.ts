@@ -141,7 +141,12 @@ function contentTypeForFileType(fileType: string) {
 
 function normalizeWorkspaceFilename(filename: string) {
   const trimmed = filename.trim() || 'document'
-  return trimmed.replace(/[\x00-\x1F\x7F]/g, '_').replace(/[\\/]/g, '_')
+  return Array.from(trimmed, (char) => {
+    const code = char.charCodeAt(0)
+    return code < 32 || code === 127 || char === '/' || char === '\\'
+      ? '_'
+      : char
+  }).join('')
 }
 
 function buildArtifact(args: {

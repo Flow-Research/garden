@@ -8,7 +8,12 @@ export class DocumentStorageError extends TaggedError('DocumentStorageError')<{
 export function normalizeDownloadFilename(name: string): string {
   const trimmed = name.trim()
   const base = trimmed || 'download'
-  return base.replace(/[\x00-\x1F\x7F]/g, '_').replace(/[\\/]/g, '_')
+  return Array.from(base, (char) => {
+    const code = char.charCodeAt(0)
+    return code < 32 || code === 127 || char === '/' || char === '\\'
+      ? '_'
+      : char
+  }).join('')
 }
 
 export function sanitizeDispositionFilename(name: string): string {
