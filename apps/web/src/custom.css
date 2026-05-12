@@ -33,13 +33,13 @@
   );
   --garden-dock-tab-muted-surface: color-mix(
     in srgb,
-    var(--ink) 9%,
-    var(--garden-dock-tab-surface)
+    var(--parchment-deep) 76%,
+    var(--bone)
   );
   --garden-dock-tab-muted-hover: color-mix(
     in srgb,
-    var(--ink) 12%,
-    var(--garden-dock-tab-surface)
+    var(--parchment-deep) 86%,
+    var(--bone)
   );
   --garden-dock-tab-edge: color-mix(in srgb, var(--ink) 18%, transparent);
   --garden-dock-tab-muted-edge: color-mix(in srgb, var(--ink) 9%, transparent);
@@ -77,6 +77,8 @@
 
 .dark .garden-dock-theme {
   --garden-dock-tab-surface: var(--parchment);
+  --garden-dock-tab-edge: color-mix(in srgb, var(--ink) 20%, transparent);
+  --garden-dock-tab-active-glow: color-mix(in srgb, var(--ink) 9%, transparent);
   --garden-dock-tab-strip-surface: color-mix(
     in srgb,
     var(--bone) 8%,
@@ -87,9 +89,10 @@
 /* Chrome-style tabs. Dockview owns layout, so the slot owns active material. */
 .garden-dockview .dv-tab {
   padding: 0 !important;
-  height: 34px;
-  align-self: stretch !important;
+  height: 32px;
+  align-self: flex-end !important;
   margin: 0 2px !important;
+  margin-top: 2px !important;
   background: transparent !important;
   box-sizing: border-box;
   font-weight: 600;
@@ -120,7 +123,7 @@
 }
 
 .garden-dockview .dv-tab.dv-active-tab {
-  height: 34px;
+  height: 32px;
   background: var(--garden-dock-tab-surface) !important;
   border-radius: 10px 10px 0 0;
   color: var(--ink) !important;
@@ -128,12 +131,13 @@
   z-index: 3;
   box-shadow:
     inset 0 1px 0 0 var(--garden-dock-tab-edge),
+    inset 1px 0 0 0 var(--garden-dock-tab-edge),
+    inset -1px 0 0 0 var(--garden-dock-tab-edge),
     0 -1px 8px 0 var(--garden-dock-tab-active-glow);
 }
 
-.garden-dockview .dv-tabs-container.dv-horizontal .dv-tab.dv-active-tab::before,
-.garden-dockview .dv-tab.dv-active-tab::after {
-  content: "";
+.garden-dock-tab__shoulder {
+  display: none;
   position: absolute;
   bottom: 0;
   width: var(--garden-dock-tab-curve);
@@ -143,9 +147,11 @@
   z-index: 0;
 }
 
-.garden-dockview
-  .dv-tabs-container.dv-horizontal
-  .dv-tab.dv-active-tab::before {
+.garden-dockview .dv-tab.dv-active-tab .garden-dock-tab__shoulder {
+  display: block;
+}
+
+.garden-dock-tab__shoulder--left {
   left: calc(-1 * var(--garden-dock-tab-curve));
   border-bottom-right-radius: var(--garden-dock-tab-curve);
   box-shadow: calc(var(--garden-dock-tab-curve) * 0.55)
@@ -153,7 +159,7 @@
     calc(var(--garden-dock-tab-curve) * 0.45) var(--garden-dock-tab-surface);
 }
 
-.garden-dockview .dv-tab.dv-active-tab::after {
+.garden-dock-tab__shoulder--right {
   right: calc(-1 * var(--garden-dock-tab-curve));
   border-bottom-left-radius: var(--garden-dock-tab-curve);
   box-shadow: calc(var(--garden-dock-tab-curve) * -0.55)
@@ -162,9 +168,9 @@
 }
 
 .garden-dockview .dv-tab .garden-dock-tab {
-  height: 30px;
+  height: 32px;
   width: 100%;
-  margin-top: 4px;
+  margin-top: 0;
   padding: 0 14px;
   border-radius: 9px 9px 0 0;
   background: var(--garden-dock-tab-muted-surface);
@@ -178,7 +184,7 @@
 }
 
 .garden-dockview .dv-tab.dv-active-tab .garden-dock-tab {
-  height: 34px;
+  height: 32px;
   margin-top: 0;
   background: transparent;
   box-shadow: none;
@@ -234,6 +240,7 @@
 
 .garden-dockview .dv-groupview .dv-content-container {
   border-top: 0 !important;
+  margin-top: -1px;
   background: var(--garden-dock-tab-surface);
   box-shadow: none !important;
 }
@@ -258,6 +265,10 @@
 }
 
 .garden-dockview .dv-tabs-container {
+  overflow: visible !important;
+}
+
+.garden-dockview .dv-scrollable {
   overflow: visible !important;
 }
 

@@ -592,6 +592,14 @@ function WorkspaceDockTab(
           />
         }
       >
+        <span
+          aria-hidden="true"
+          className="garden-dock-tab__shoulder garden-dock-tab__shoulder--left"
+        />
+        <span
+          aria-hidden="true"
+          className="garden-dock-tab__shoulder garden-dock-tab__shoulder--right"
+        />
         <span className="dv-default-tab-content">
           <span className="garden-dock-tab__label">
             <Icon className="size-3.5 shrink-0" />
@@ -1564,8 +1572,8 @@ export function WorkspaceDockProvider({
       const orderedPanels = api.groups.flatMap((group) => group.panels)
       const visiblePanels =
         api.hasMaximizedGroup() && api.activeGroup
-          ? [api.activeGroup.activePanel ?? api.activeGroup.panels[0]]
-          : api.groups.map((group) => group.activePanel ?? group.panels[0])
+          ? [api.activeGroup.activePanel]
+          : api.groups.map((group) => group.activePanel)
       const visibleChatSessionIds = [
         ...new Set(
           visiblePanels.flatMap((panel) => {
@@ -1608,9 +1616,8 @@ export function WorkspaceDockProvider({
       if (options?.source === 'query') {
         staleSearchPanelRef.current = undefined
       } else {
-        staleSearchPanelRef.current = normalizePanelForSearch(
-          requestedSearchPanel,
-        )
+        staleSearchPanelRef.current =
+          normalizePanelForSearch(requestedSearchPanel)
       }
       const nextGroupId = api?.activeGroup?.id ?? null
       setActiveGroupId((current) =>
@@ -1722,10 +1729,7 @@ export function WorkspaceDockProvider({
   }, [])
 
   const openPanel = useCallback(
-    (
-      panel: WorkspacePanelInput,
-      options?: OpenPanelOptions,
-    ) => {
+    (panel: WorkspacePanelInput, options?: OpenPanelOptions) => {
       const api = apiRef.current
       if (!api) {
         commitPanelState(panel, undefined, { source: options?.source })
@@ -1762,8 +1766,7 @@ export function WorkspaceDockProvider({
         commitPanelState(
           {
             kind: panel.kind,
-            title:
-              existing.title ?? existing.api.title ?? existingParams.title,
+            title: existing.title ?? existing.api.title ?? existingParams.title,
             entityId: panel.entityId ?? existingParams.entityId,
           },
           api,
