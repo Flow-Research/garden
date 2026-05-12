@@ -236,6 +236,19 @@ async function deleteStaleCapabilityDependencies(staleCapabilityIds: string[]) {
   })
 }
 
+function dedupeCapabilityRows(
+  rows: Array<typeof schema.capability.$inferInsert>,
+) {
+  return Array.from(
+    rows
+      .reduce(
+        (byName, row) => byName.set(row.name, row),
+        new Map<string, typeof schema.capability.$inferInsert>(),
+      )
+      .values(),
+  ).sort((left, right) => left.name.localeCompare(right.name))
+}
+
 function buildProxyTransport(args: {
   connectorId: string
   transport: 'streamable-http' | 'sse'
@@ -371,15 +384,17 @@ export async function syncCapabilities(
   })
   if (toolsResult.isErr()) return toolsResult
 
-  const capabilityRows: Array<typeof schema.capability.$inferInsert> = []
+  const discoveredCapabilityRows: Array<typeof schema.capability.$inferInsert> =
+    []
   for (const tool of toolsResult.value) {
     const capabilityResult = await toCapabilityValue({
       connectorId,
       tool,
     })
     if (capabilityResult.isErr()) return capabilityResult
-    capabilityRows.push(capabilityResult.value)
+    discoveredCapabilityRows.push(capabilityResult.value)
   }
+  const capabilityRows = dedupeCapabilityRows(discoveredCapabilityRows)
 
   const db = getDb(appEnv)
   const upsertResult = await Result.tryPromise({
