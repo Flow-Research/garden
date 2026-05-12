@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes } from 'react'
-import { act, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockQueryState = vi.hoisted(() => ({
   chat: null as string | null,
@@ -10,6 +10,8 @@ const mockQueryState = vi.hoisted(() => ({
 }))
 
 const mockSetQueryState = vi.hoisted(() => vi.fn())
+const mockSetActiveSession = vi.hoisted(() => vi.fn())
+const mockSetVisibleChatSessions = vi.hoisted(() => vi.fn())
 
 vi.mock('nuqs', () => ({
   parseAsString: {},
@@ -21,19 +23,25 @@ vi.mock('@garden/core/chat', () => ({
     (
       selector?: (state: {
         activeSessionId: string | null
+        visibleChatSessionIds: string[]
         setActiveSession: (id: string | null) => void
+        setVisibleChatSessions: (ids: string[]) => void
       }) => unknown,
     ) => {
       const state = {
         activeSessionId: null,
-        setActiveSession: vi.fn(),
+        visibleChatSessionIds: [],
+        setActiveSession: mockSetActiveSession,
+        setVisibleChatSessions: mockSetVisibleChatSessions,
       }
       return selector ? selector(state) : state
     },
     {
       getState: () => ({
         activeSessionId: null,
-        setActiveSession: vi.fn(),
+        visibleChatSessionIds: [],
+        setActiveSession: mockSetActiveSession,
+        setVisibleChatSessions: mockSetVisibleChatSessions,
       }),
     },
   ),
@@ -541,9 +549,16 @@ function DockContextCapture() {
 }
 
 describe('WorkspaceDockProvider', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
   beforeEach(() => {
+    cleanup()
     window.localStorage.clear()
     mockSetQueryState.mockClear()
+    mockSetActiveSession.mockClear()
+    mockSetVisibleChatSessions.mockClear()
     mockQueryState.chat = null
     mockQueryState.panel = null
     mockQueryState.panelTitle = null
@@ -667,6 +682,60 @@ describe('WorkspaceDockProvider', () => {
     })
   })
 
+  it('publishes every visible split chat session to the chat runtime store', async () => {
+    const api = new FakeDockApi()
+
+    window.localStorage.setItem(
+      'garden:dockview:workspace-1',
+      JSON.stringify(
+        makeSerializedDock(
+          [
+            {
+              id: 'group-1',
+              activePanelId: 'panel-1',
+              panels: [
+                {
+                  id: 'panel-1',
+                  kind: 'chat',
+                  title: 'Thread 1',
+                  entityId: 'thread-1',
+                },
+              ],
+            },
+            {
+              id: 'group-2',
+              activePanelId: 'panel-2',
+              panels: [
+                {
+                  id: 'panel-2',
+                  kind: 'chat',
+                  title: 'Thread 2',
+                  entityId: 'thread-2',
+                },
+              ],
+            },
+          ],
+          'group-1',
+        ),
+      ),
+    )
+
+    render(
+      <WorkspaceDockProvider workspaceId="workspace-1">
+        <DockContextCapture />
+      </WorkspaceDockProvider>,
+    )
+
+    await act(async () => {
+      capturedDock?.handleReady({ api } as never)
+    })
+
+    expect(mockSetVisibleChatSessions).toHaveBeenLastCalledWith([
+      'thread-1',
+      'thread-2',
+    ])
+  })
+
   it('lets local panel opens outrun a stale chat query while the URL write catches up', async () => {
     const api = new FakeDockApi()
     mockQueryState.chat = 'thread-1'
@@ -751,7 +820,11 @@ describe('WorkspaceDockProvider', () => {
 
     await act(async () => {
       api.silentlySetActivePanel(chatPanelId ?? '')
-      rerender(ui)
+      rerender(
+        <WorkspaceDockProvider workspaceId="workspace-1">
+          <DockContextCapture />
+        </WorkspaceDockProvider>,
+      )
     })
 
     await waitFor(() => {

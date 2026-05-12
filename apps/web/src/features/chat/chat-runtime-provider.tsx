@@ -148,6 +148,13 @@ export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
     ensureWarmSession: false,
   })
   const activeSessionId = useChatStore((state) => state.activeSessionId)
+  const visibleChatSessionIds = useChatStore(
+    (state) => state.visibleChatSessionIds,
+  )
+  const visibleChatSessionIdSet = useMemo(
+    () => new Set(visibleChatSessionIds),
+    [visibleChatSessionIds],
+  )
   const runtimeSessions = useMemo(
     () =>
       sessions.filter((session) => !session.archivedAt && !session.optimistic),
@@ -170,14 +177,18 @@ export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
     <>
       {runtimeSessions.map((session) => {
         const preloadIndex = messagePreloadOrder.get(session.id)
+        const isFocusedSession = session.id === activeSessionId
+        const isVisibleSession = visibleChatSessionIdSet.has(session.id)
         return (
           <ChatRuntimeConnection
             key={session.id}
-            hydrateMessages={session.id === activeSessionId}
+            hydrateMessages={isFocusedSession || isVisibleSession}
             preloadDelayMs={(preloadIndex ?? 0) * MESSAGE_PRELOAD_STAGGER_MS}
             preloadMessages={preloadIndex !== undefined}
             prewarmRuntime={
-              session.id === activeSessionId || session.id === warmSession?.id
+              isFocusedSession ||
+              isVisibleSession ||
+              session.id === warmSession?.id
             }
             session={session}
             updateSessionPreview={updateSessionPreview}

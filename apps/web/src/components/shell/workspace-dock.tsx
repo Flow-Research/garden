@@ -1450,6 +1450,9 @@ export function WorkspaceDockProvider({
   children: React.ReactNode
 }) {
   const setActiveSession = useChatStore((state) => state.setActiveSession)
+  const setVisibleChatSessions = useChatStore(
+    (state) => state.setVisibleChatSessions,
+  )
   const [{ chat, panel, panelEntityId, panelTitle }, setPanelQueryState] =
     useQueryStates({
       chat: parseAsString,
@@ -1559,6 +1562,21 @@ export function WorkspaceDockProvider({
       const activePanelId =
         api.activeGroup?.activePanel?.id ?? api.activePanel?.id
       const orderedPanels = api.groups.flatMap((group) => group.panels)
+      const visiblePanels =
+        api.hasMaximizedGroup() && api.activeGroup
+          ? [api.activeGroup.activePanel]
+          : api.groups.map((group) => group.activePanel)
+      const visibleChatSessionIds = [
+        ...new Set(
+          visiblePanels.flatMap((panel) => {
+            if (!panel) return []
+            const params = getPanelParams(panel)
+            return params.kind === 'chat' && params.entityId
+              ? [params.entityId]
+              : []
+          }),
+        ),
+      ]
       const nextDockPanels = orderedPanels.map((panel) => {
         const params = getPanelParams(panel)
         const title = panel.title ?? panel.api.title ?? params.title
@@ -1576,8 +1594,9 @@ export function WorkspaceDockProvider({
           ? current
           : nextDockPanels,
       )
+      setVisibleChatSessions(visibleChatSessionIds)
     },
-    [pinnedCanonicalIds],
+    [pinnedCanonicalIds, setVisibleChatSessions],
   )
 
   const commitPanelState = useCallback(
