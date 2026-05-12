@@ -1981,6 +1981,8 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       env: this.env,
       ctx: this.ctx,
       mcp: this.mcp,
+      getServerStates: () =>
+        this.getMcpServers().servers as RuntimeMcpServerStates,
       connectRpcMcpServer: async ({ connectorId, props }) =>
         await connectRpcMcpConnector({
           mcp: this.mcp,

@@ -1,5 +1,5 @@
 import handler from '@tanstack/react-start/server-entry'
-import { routeAgentRequest } from 'agents'
+import { getAgentByName } from 'agents'
 import {
   AgentDO,
   AutomationTriggerDO,
@@ -78,7 +78,7 @@ function responseFromCaughtError(args: {
 function getAgentRuntimeNameFromRequest(request: Request) {
   const url = new URL(request.url)
   const parts = url.pathname.split('/').filter(Boolean)
-  if (parts[0] !== 'agents' || !parts[1]) return null
+  if (parts[0] !== 'agents' || parts[1] !== 'agent-d-o') return null
 
   const agentRuntimeName = decodeURIComponent(parts[2] ?? '')
   if (!agentRuntimeName || !isAgentRuntimeName(agentRuntimeName)) {
@@ -86,6 +86,17 @@ function getAgentRuntimeNameFromRequest(request: Request) {
   }
 
   return agentRuntimeName
+}
+
+async function routeAgentDoRequest(request: Request, env: ServerEnv) {
+  const agentRuntimeName = getAgentRuntimeNameFromRequest(request)
+  if (!agentRuntimeName) return new Response('Not found', { status: 404 })
+
+  const routedRequest = new Request(request)
+  routedRequest.headers.set('x-partykit-namespace', 'agent-d-o')
+
+  const agent = await getAgentByName(env.AgentDO, agentRuntimeName)
+  return await agent.fetch(routedRequest)
 }
 
 async function authorizeAgentRequest(request: Request, env: ServerEnv) {
@@ -162,7 +173,7 @@ export default {
       if (agentAuth.response) return agentAuth.response
 
       const agentResponse = await Result.tryPromise({
-        try: async () => routeAgentRequest(agentAuth.request, env),
+        try: async () => await routeAgentDoRequest(agentAuth.request, env),
         catch: (cause) => cause,
       })
       if (agentResponse.isErr()) {

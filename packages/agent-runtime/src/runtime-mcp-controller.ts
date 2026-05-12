@@ -135,6 +135,7 @@ export type McpHost = {
   readonly env: McpHostEnv;
   readonly ctx: { storage: { sql: SqlStorage } };
   readonly mcp: McpClientFacade;
+  readonly getServerStates?: () => RuntimeMcpServerStates;
   connectRpcMcpServer: (input: {
     connectorId: string;
     props: RpcMcpConnectorProps;
@@ -823,6 +824,15 @@ export class RuntimeMcpController {
     );
     if (staleTransportResult.isErr()) return staleTransportResult;
 
+    const failedServerResult = await this.removeFailedConnectorServers(
+      bindingsResult.value,
+    );
+    if (failedServerResult.isErr()) return failedServerResult;
+    const precleanedConnectorIds = new Set([
+      ...staleTransportResult.value,
+      ...failedServerResult.value,
+    ]);
+
     const storedRowsResult = this.readConnectorServerRows();
     if (storedRowsResult.isErr()) return storedRowsResult;
 
@@ -853,6 +863,7 @@ export class RuntimeMcpController {
         {
           allowReplacingRegisteredServers:
             options?.allowReplacingRegisteredServers ?? true,
+          precleaned: precleanedConnectorIds.has(binding.connectorId),
         },
       );
       if (refreshResult.isErr()) {
@@ -898,7 +909,31 @@ export class RuntimeMcpController {
       if (removalResult.isErr()) return removalResult;
     }
 
-    return Result.ok(undefined);
+    return Result.ok(staleServerIds);
+  }
+
+  private async removeFailedConnectorServers(bindings: ActiveConnectorBinding[]) {
+    if (!this.host.getServerStates) return Result.ok([]);
+
+    const activeConnectorIds = new Set(
+      bindings.map((binding) => binding.connectorId),
+    );
+    const failedServerIds = Object.entries(this.host.getServerStates()).flatMap(
+      ([serverId, server]) => {
+        if (!activeConnectorIds.has(serverId)) return [];
+        return server.state === "failed" ? [serverId] : [];
+      },
+    );
+
+    for (const connectorId of failedServerIds) {
+      console.warn("[agent-runtime] removing failed MCP connector server", {
+        connectorId,
+      });
+      const removalResult = await this.removeConnectorServer(connectorId);
+      if (removalResult.isErr()) return removalResult;
+    }
+
+    return Result.ok(failedServerIds);
   }
 
   hasWarmProxyMcpConnections(now = Date.now()) {
@@ -940,24 +975,18 @@ export class RuntimeMcpController {
   }
 
   private async removeConnectorServer(connectorId: string) {
-    const hasRegisteredServer = this.host.mcp
-      .listServers()
-      .some((server) => server.id === connectorId);
-
-    if (hasRegisteredServer) {
-      const unregisterResult = await Result.tryPromise({
-        try: async () => this.host.removeMcpServer(connectorId),
-        catch: (cause) =>
-          new RuntimeMcpError({
-            code: "mcp_register_failed",
-            message:
-              cause instanceof Error
-                ? cause.message
-                : `Failed to remove MCP server ${connectorId}`,
-          }),
-      });
-      if (unregisterResult.isErr()) return unregisterResult;
-    }
+    const unregisterResult = await Result.tryPromise({
+      try: async () => this.host.removeMcpServer(connectorId),
+      catch: (cause) =>
+        new RuntimeMcpError({
+          code: "mcp_register_failed",
+          message:
+            cause instanceof Error
+              ? cause.message
+              : `Failed to remove MCP server ${connectorId}`,
+        }),
+    });
+    if (unregisterResult.isErr()) return unregisterResult;
 
     return this.deleteConnectorServerRow(connectorId);
   }
@@ -965,7 +994,7 @@ export class RuntimeMcpController {
   private async refreshConnectorServer(
     identity: ThreadRuntimeIdentity,
     binding: ActiveConnectorBinding,
-    options?: { allowReplacingRegisteredServers?: boolean },
+    options?: { allowReplacingRegisteredServers?: boolean; precleaned?: boolean },
   ) {
     const connector = getConnectorById(binding.connectorId);
     if (!connector) {
@@ -1009,8 +1038,10 @@ export class RuntimeMcpController {
       return Result.ok(undefined);
     }
 
-    const cleanupResult = await this.removeConnectorServer(connector.id);
-    if (cleanupResult.isErr()) return cleanupResult;
+    if (!options?.precleaned) {
+      const cleanupResult = await this.removeConnectorServer(connector.id);
+      if (cleanupResult.isErr()) return cleanupResult;
+    }
 
     const connectResult = await Result.tryPromise({
       try: async () => {
