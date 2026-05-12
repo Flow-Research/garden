@@ -53,6 +53,7 @@
     "./pricing": "./pricing.ts",
     "./connectors/errors": "./connectors/errors.ts",
     "./constants/*": "./constants/*.ts",
+    "./platform/rpc": "./platform/rpc.ts",
     "./platform": "./platform/index.ts"
   },
   "dependencies": {

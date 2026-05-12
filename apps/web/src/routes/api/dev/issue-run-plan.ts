@@ -9,6 +9,7 @@ import {
   requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
 import { getAgentDoStub } from '@/lib/server/agent-do-router'
+import { disposeRpcResult } from '@garden/core/platform/rpc'
 
 export const Route = createFileRoute('/api/dev/issue-run-plan')({
   server: {
@@ -56,10 +57,12 @@ export const Route = createFileRoute('/api/dev/issue-run-plan')({
 
         const planResult = await Result.tryPromise({
           try: async () =>
-            await stubResult.value.getRunPlan({
-              runId: run.id,
-              issueId: run.issueId as string,
-            }),
+            disposeRpcResult(
+              await stubResult.value.getRunPlan({
+                runId: run.id,
+                issueId: run.issueId as string,
+              }),
+            ),
           catch: (cause) =>
             cause instanceof Error ? cause.message : String(cause),
         })

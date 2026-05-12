@@ -12,6 +12,7 @@ import { drizzle } from "drizzle-orm/neon-serverless";
 import { z } from "zod";
 import { connectorRegistry } from "@garden/connectors";
 import { formatIssueIdentifier } from "@garden/core/issues/identifier";
+import { disposeRpcResult } from "@garden/core/platform/rpc";
 import {
   isTerminalIssueStatus,
   LIVE_RUN_STATUSES,
@@ -733,7 +734,9 @@ async function readRunPlan(args: {
       Array<{ content: string; status: 'pending' | 'in_progress' | 'completed'; activeForm: string }> | null
     >;
   };
-  return await stub.getRunPlan({ runId: args.runId, issueId: args.issueId });
+  return disposeRpcResult(
+    await stub.getRunPlan({ runId: args.runId, issueId: args.issueId }),
+  );
 }
 
 async function readRun(

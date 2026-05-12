@@ -7,6 +7,7 @@ import { getAgentDoStub } from './agent-do-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { DEFAULT_AGENT_PERMISSIONS } from '@garden/core/agents/permissions'
+import { disposeRpcResult } from '@garden/core/platform/rpc'
 
 // Server-side helpers for managing AgentDOs + their ChatSubAgent thread
 // facets. The API response exposes `hostName`, the saved AgentDO runtime name.
@@ -26,7 +27,7 @@ async function callChatThreadRuntime<T>(
   call: (stub: AgentRuntimeStub, threadId: string) => T | Promise<T>,
 ): Promise<Awaited<T>> {
   const stub = getAgentRuntimeStub(input.hostName)
-  return await call(stub, input.threadId)
+  return disposeRpcResult(await call(stub, input.threadId))
 }
 
 export async function ensureAgentRow(input: {
@@ -194,11 +195,13 @@ export async function uploadChatThreadDocument(input: {
   threadId: string
 }) {
   const stub = getAgentRuntimeStub(input.hostName)
-  return stub.uploadThreadDocument(input.threadId, {
-    base64: input.base64,
-    filename: input.filename,
-    mediaType: input.mediaType ?? null,
-  })
+  return disposeRpcResult(
+    await stub.uploadThreadDocument(input.threadId, {
+      base64: input.base64,
+      filename: input.filename,
+      mediaType: input.mediaType ?? null,
+    }),
+  )
 }
 
 export async function readChatThreadDocumentBytes(input: {
@@ -207,7 +210,9 @@ export async function readChatThreadDocumentBytes(input: {
   threadId: string
 }) {
   const stub = getAgentRuntimeStub(input.hostName)
-  return stub.readThreadDocumentBytes(input.threadId, input.documentId)
+  return disposeRpcResult(
+    await stub.readThreadDocumentBytes(input.threadId, input.documentId),
+  )
 }
 
 export async function readChatThreadDocumentVersionBytes(input: {
@@ -218,11 +223,13 @@ export async function readChatThreadDocumentVersionBytes(input: {
   versionId?: string | null
 }) {
   const stub = getAgentRuntimeStub(input.hostName)
-  return stub.readThreadDocumentVersionBytes(input.threadId, {
-    documentId: input.documentId,
-    preferPdf: input.preferPdf,
-    versionId: input.versionId ?? null,
-  })
+  return disposeRpcResult(
+    await stub.readThreadDocumentVersionBytes(input.threadId, {
+      documentId: input.documentId,
+      preferPdf: input.preferPdf,
+      versionId: input.versionId ?? null,
+    }),
+  )
 }
 
 export async function listChatThreadDocumentVersions(input: {
@@ -231,7 +238,9 @@ export async function listChatThreadDocumentVersions(input: {
   threadId: string
 }) {
   const stub = getAgentRuntimeStub(input.hostName)
-  return stub.listThreadDocumentVersions(input.threadId, input.documentId)
+  return disposeRpcResult(
+    await stub.listThreadDocumentVersions(input.threadId, input.documentId),
+  )
 }
 
 export async function resolveChatThreadDocumentEdit(input: {
@@ -242,9 +251,11 @@ export async function resolveChatThreadDocumentEdit(input: {
   threadId: string
 }) {
   const stub = getAgentRuntimeStub(input.hostName)
-  return stub.resolveThreadDocumentEdit(input.threadId, {
-    action: input.action,
-    documentId: input.documentId,
-    editId: input.editId,
-  })
+  return disposeRpcResult(
+    await stub.resolveThreadDocumentEdit(input.threadId, {
+      action: input.action,
+      documentId: input.documentId,
+      editId: input.editId,
+    }),
+  )
 }

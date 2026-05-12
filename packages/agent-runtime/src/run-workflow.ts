@@ -3,6 +3,7 @@ import {
   type WorkflowEvent,
   type WorkflowStep,
 } from "cloudflare:workers";
+import { disposeRpcResult } from "@garden/core/platform/rpc";
 
 /**
  * Per-run durable executor.
@@ -80,7 +81,10 @@ export class RunWorkflow extends WorkflowEntrypoint<
       const result = await step.do(
         `turn-${turn}`,
         { retries: TURN_RETRIES, timeout: TURN_TIMEOUT },
-        async () => await stub.executeRunTurn({ runId, issueId, mode }),
+        async () =>
+          disposeRpcResult(
+            await stub.executeRunTurn({ runId, issueId, mode }),
+          ),
       );
 
       if (TERMINAL_RUN_STATUSES.has(result.status)) {
