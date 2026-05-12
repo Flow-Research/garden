@@ -49,6 +49,7 @@
     transparent
   );
   --dv-separator-border: transparent;
+  --dv-tab-divider-color: transparent;
   --dv-group-view-background-color: transparent;
   --dv-tabs-and-actions-container-background-color: transparent;
   --dv-activegroup-visiblepanel-tab-background-color: var(--vellum-heavy);
@@ -80,46 +81,67 @@
   );
 }
 
-/* Chrome-style tabs. The active tab shares the workspace surface; inactive tabs
- * carry the contrast so the selected tab blends into the work area. */
+/* Chrome-style tabs. Dockview owns layout; the inner tab owns material. */
 .garden-dockview .dv-tab {
-  border-radius: 9px 9px 0 0 !important;
-  padding: 0 14px;
+  padding: 0 !important;
   height: 30px;
   align-self: stretch !important;
-  margin: 4px 1px 0 !important;
-  background-color: var(--garden-dock-tab-muted-surface) !important;
+  margin: 4px 2px 0 !important;
+  background: transparent !important;
   font-weight: 500;
   font-size: 13px;
   letter-spacing: 0;
   color: var(--gravel) !important;
   position: relative;
+  overflow: visible !important;
   z-index: 2;
   transition:
     background-color 180ms cubic-bezier(0.16, 1, 0.3, 1),
     color 180ms cubic-bezier(0.16, 1, 0.3, 1),
     box-shadow 220ms cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: inset 0 1px 0 0 var(--garden-dock-tab-muted-edge);
+  box-shadow: none;
 }
 
 .garden-dockview .dv-tab:not(.dv-active-tab) {
   align-self: flex-start !important;
-  border-radius: 9px 9px 3px 3px !important;
-  height: 28px;
-  margin-top: 3px !important;
+  height: 30px;
+  margin-top: 4px !important;
+  z-index: 2;
 }
 
 .garden-dockview .dv-tab:hover:not(.dv-active-tab) {
-  background-color: var(--garden-dock-tab-muted-hover) !important;
   color: var(--ink) !important;
 }
 
+.garden-dockview .dv-tab:hover:not(.dv-active-tab) .garden-dock-tab {
+  background: var(--garden-dock-tab-muted-hover);
+}
+
 .garden-dockview .dv-tab.dv-active-tab {
-  background-color: var(--garden-dock-tab-surface) !important;
+  height: 34px;
+  margin-top: 0 !important;
+  background: transparent !important;
   color: var(--ink) !important;
   font-weight: 600;
   overflow: visible;
-  z-index: 3;
+  z-index: 1;
+  box-shadow: none;
+}
+
+.garden-dockview .dv-tab .garden-dock-tab {
+  height: 100%;
+  width: 100%;
+  padding: 0 14px;
+  border-radius: 9px 9px 0 0;
+  background: var(--garden-dock-tab-muted-surface);
+  box-shadow: inset 0 1px 0 0 var(--garden-dock-tab-muted-edge);
+  transition:
+    background-color 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.garden-dockview .dv-tab.dv-active-tab .garden-dock-tab {
+  background: var(--garden-dock-tab-surface);
   box-shadow:
     inset 0 1px 0 0 var(--garden-dock-tab-edge),
     inset 1px 0 0 0 var(--garden-dock-tab-edge),
@@ -127,35 +149,31 @@
     0 -1px 8px 0 var(--garden-dock-tab-active-glow);
 }
 
-/* Chrome-like round-out shoulders: the transparent quadrant exposes the tab
- * strip while the outer corner paints the same material as the workspace. */
-.garden-dockview .dv-tab.dv-active-tab::before,
-.garden-dockview .dv-tab.dv-active-tab::after {
-  content: '';
+.garden-dock-tab__shoulder {
+  display: none;
   position: absolute;
   bottom: 0;
-  z-index: -1;
-  width: 7px;
-  height: 6px;
+  z-index: 0;
+  width: 8px;
+  height: 8px;
+  background: transparent;
   pointer-events: none;
 }
 
-.garden-dockview .dv-tab.dv-active-tab::before {
-  left: -7px;
-  background: radial-gradient(
-    7px 7px at top left,
-    transparent 0 5.5px,
-    var(--garden-dock-tab-surface) 6px
-  );
+.garden-dockview .dv-tab.dv-active-tab .garden-dock-tab__shoulder {
+  display: block;
 }
 
-.garden-dockview .dv-tab.dv-active-tab::after {
-  right: -7px;
-  background: radial-gradient(
-    7px 7px at top right,
-    transparent 0 5.5px,
-    var(--garden-dock-tab-surface) 6px
-  );
+.garden-dock-tab__shoulder--left {
+  left: -8px;
+  border-bottom-right-radius: 8px;
+  box-shadow: 4px 4px 0 3px var(--garden-dock-tab-surface);
+}
+
+.garden-dock-tab__shoulder--right {
+  right: -8px;
+  border-bottom-left-radius: 8px;
+  box-shadow: -4px 4px 0 3px var(--garden-dock-tab-surface);
 }
 
 /*
@@ -238,6 +256,9 @@
   display: flex;
   align-items: center;
   min-width: 0;
+  box-sizing: border-box;
+  overflow: visible;
+  position: relative;
 }
 
 .garden-dock-tab__label {
