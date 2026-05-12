@@ -385,6 +385,25 @@ function arePanelsEqual(
   )
 }
 
+function areDockTabStatesEqual(
+  left: WorkspaceDockTabState[],
+  right: WorkspaceDockTabState[],
+) {
+  if (left.length !== right.length) return false
+  return left.every((leftTab, index) => {
+    const rightTab = right[index]
+    return (
+      rightTab &&
+      leftTab.id === rightTab.id &&
+      leftTab.kind === rightTab.kind &&
+      leftTab.title === rightTab.title &&
+      leftTab.entityId === rightTab.entityId &&
+      leftTab.isActive === rightTab.isActive &&
+      leftTab.isPinned === rightTab.isPinned
+    )
+  })
+}
+
 function normalizePanelForSearch(panel: WorkspacePanelInput | null) {
   return panel?.kind === 'blank' ? null : panel
 }
@@ -1179,7 +1198,10 @@ function ChatDockPanel({
         title: nextTitle,
         entityId: session.id,
       })
-      if (api.isActive) {
+      if (
+        api.isActive &&
+        useChatStore.getState().activeSessionId !== session.id
+      ) {
         setActiveSession(session.id)
       }
       if (
@@ -1464,6 +1486,8 @@ export function WorkspaceDockProvider({
         panelEntityId,
       }),
   )
+  const activePanelRef = useRef(activePanel)
+  activePanelRef.current = activePanel
   const [groupCount, setGroupCount] = useState(0)
   const [isReady, setIsReady] = useState(false)
   const [maximizedGroupId, setMaximizedGroupId] = useState<string | null>(null)
@@ -1543,19 +1567,22 @@ export function WorkspaceDockProvider({
       const activePanelId =
         api.activeGroup?.activePanel?.id ?? api.activePanel?.id
       const orderedPanels = api.groups.flatMap((group) => group.panels)
-      setDockPanels(
-        orderedPanels.map((panel) => {
-          const params = getPanelParams(panel)
-          const title = panel.title ?? panel.api.title ?? params.title
-          return {
-            id: panel.id,
-            kind: params.kind,
-            title,
-            entityId: params.entityId,
-            isActive: panel.id === activePanelId,
-            isPinned: pinnedCanonicalIds.includes(params.canonicalId),
-          }
-        }),
+      const nextDockPanels = orderedPanels.map((panel) => {
+        const params = getPanelParams(panel)
+        const title = panel.title ?? panel.api.title ?? params.title
+        return {
+          id: panel.id,
+          kind: params.kind,
+          title,
+          entityId: params.entityId,
+          isActive: panel.id === activePanelId,
+          isPinned: pinnedCanonicalIds.includes(params.canonicalId),
+        }
+      })
+      setDockPanels((current) =>
+        areDockTabStatesEqual(current, nextDockPanels)
+          ? current
+          : nextDockPanels,
       )
     },
     [pinnedCanonicalIds],
@@ -1578,11 +1605,17 @@ export function WorkspaceDockProvider({
       setActiveGroupId((current) =>
         current === nextGroupId ? current : nextGroupId,
       )
+      const nextActiveSessionId =
+        nextPanel?.kind === 'chat' ? (nextPanel.entityId ?? null) : null
+      if (
+        !arePanelsEqual(activePanelRef.current, nextPanel) ||
+        useChatStore.getState().activeSessionId !== nextActiveSessionId
+      ) {
+        activePanelRef.current = nextPanel
+        setActiveSession(nextActiveSessionId)
+      }
       setActivePanel((current) =>
         arePanelsEqual(current, nextPanel) ? current : nextPanel,
-      )
-      setActiveSession(
-        nextPanel?.kind === 'chat' ? (nextPanel.entityId ?? null) : null,
       )
       if (api) syncDockPanels(api)
       writePanelToQueryState(nextPanel)
