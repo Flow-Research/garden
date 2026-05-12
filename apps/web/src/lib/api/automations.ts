@@ -49,6 +49,13 @@ export type Automation = {
   metadata: unknown
 }
 
+export type AutomationListItem = Pick<
+  Automation,
+  'id' | 'title' | 'assignee_agent_id' | 'status' | 'last_run_at'
+> & {
+  assignee_agent_name: string | null
+}
+
 export type AutomationTrigger = {
   id: string
   automation_id: string
@@ -79,8 +86,7 @@ export type AutomationRun = {
 }
 
 export type AutomationListResponse = {
-  automations: Automation[]
-  total: number
+  automations: AutomationListItem[]
 }
 
 export type AutomationDetailResponse = {

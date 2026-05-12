@@ -188,6 +188,22 @@ export function toAutomation(row: AutomationRow) {
   }
 }
 
+export function toAutomationListItem(
+  row: Pick<
+    AutomationRow,
+    'id' | 'title' | 'assigneeAgentId' | 'status' | 'lastRunAt'
+  > & { assigneeAgentName: string | null },
+) {
+  return {
+    id: row.id,
+    title: row.title,
+    assignee_agent_id: row.assigneeAgentId,
+    assignee_agent_name: row.assigneeAgentName,
+    status: row.status,
+    last_run_at: dateToIso(row.lastRunAt),
+  }
+}
+
 export function toAutomationTrigger(row: AutomationTriggerRow) {
   return {
     id: row.id,

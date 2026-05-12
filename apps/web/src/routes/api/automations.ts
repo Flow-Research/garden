@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ne } from 'drizzle-orm'
+import { and, desc, eq, ne } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
@@ -9,6 +9,7 @@ import {
   installScheduleTrigger,
   nextRunFromCron,
   toAutomation,
+  toAutomationListItem,
   toAutomationTrigger,
 } from '@/lib/server/automations'
 import { requireWorkspaceContext } from '@/lib/server/control-plane'
@@ -25,7 +26,7 @@ export const Route = createFileRoute('/api/automations')({
       GET: async ({ request }) => {
         const context = await requireWorkspaceContext(request, {
           missingWorkspaceResponse: () =>
-            automationOk({ automations: [], total: 0 }),
+            automationOk({ automations: [] }),
         })
         if (context instanceof Response) return context
 
@@ -49,23 +50,27 @@ export const Route = createFileRoute('/api/automations')({
           conditions.push(ne(schema.automation.status, 'archived'))
         }
         const whereClause = and(...conditions)
-        const [countRows, rows] = await Promise.all([
-          db
-            .select({ count: count() })
-            .from(schema.automation)
-            .where(whereClause),
-          db
-            .select()
-            .from(schema.automation)
-            .where(whereClause)
-            .orderBy(desc(schema.automation.updatedAt))
-            .limit(searchResult.value.limit ?? 50)
-            .offset(searchResult.value.offset ?? 0),
-        ])
+        const rows = await db
+          .select({
+            id: schema.automation.id,
+            title: schema.automation.title,
+            assigneeAgentId: schema.automation.assigneeAgentId,
+            assigneeAgentName: schema.agent.name,
+            status: schema.automation.status,
+            lastRunAt: schema.automation.lastRunAt,
+          })
+          .from(schema.automation)
+          .innerJoin(
+            schema.agent,
+            eq(schema.agent.id, schema.automation.assigneeAgentId),
+          )
+          .where(whereClause)
+          .orderBy(desc(schema.automation.updatedAt))
+          .limit(searchResult.value.limit ?? 50)
+          .offset(searchResult.value.offset ?? 0)
 
         return automationOk({
-          automations: rows.map(toAutomation),
-          total: countRows[0]?.count ?? 0,
+          automations: rows.map(toAutomationListItem),
         })
       },
       POST: async ({ request }) => {

@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Agent } from '@garden/core/types'
-import type { Automation } from '@/lib/api'
+import type { Automation, AutomationListItem } from '@/lib/api'
 import { useWorkspaceId } from '@garden/core/hooks'
 import { Button } from '@garden/ui/components/ui/button'
 import {
@@ -34,9 +34,8 @@ import {
   SelectValue,
 } from '@garden/ui/components/ui/select'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
+import { ActorAvatar as ActorAvatarBase } from '@garden/ui/components/common/actor-avatar'
 import { cn } from '@garden/ui/lib/utils'
-import { ActorAvatar } from '@/features/common/actor-avatar'
-import { useActorName } from '@/lib/workspace/hooks'
 import { agentListOptions } from '@/lib/workspace/queries'
 import { automationListOptions } from './queries'
 import { useCreateAutomation } from './mutations'
@@ -56,6 +55,8 @@ type AutomationTemplate = {
   frequency: TriggerFrequency
   time: string
 }
+
+type AutomationOpenTarget = Pick<Automation, 'id' | 'title'>
 
 const TEMPLATES: AutomationTemplate[] = [
   {
@@ -160,12 +161,12 @@ function AutomationRow({
   automation,
   onOpenAutomation,
 }: {
-  automation: Automation
-  onOpenAutomation?: (automation: Automation) => void
+  automation: AutomationListItem
+  onOpenAutomation?: (automation: AutomationOpenTarget) => void
 }) {
-  const { getActorName } = useActorName()
   const statusConfig = STATUS_CONFIG[automation.status] ?? STATUS_CONFIG.active
   const StatusIcon = statusConfig.icon
+  const agentName = automation.assignee_agent_name ?? 'Unknown Agent'
 
   return (
     <button
@@ -178,13 +179,20 @@ function AutomationRow({
         {automation.title}
       </span>
       <span className="flex w-32 shrink-0 items-center gap-1.5">
-        <ActorAvatar
-          actorType="agent"
-          actorId={automation.assignee_agent_id}
+        <ActorAvatarBase
+          name={agentName}
+          initials={agentName
+            .split(' ')
+            .map((word) => word[0])
+            .join('')
+            .toUpperCase()
+            .slice(0, 2)}
+          avatarUrl={null}
+          isAgent
           size={18}
         />
         <span className="truncate text-xs text-muted-foreground">
-          {getActorName('agent', automation.assignee_agent_id)}
+          {agentName}
         </span>
       </span>
       <span className="w-24 shrink-0 text-center text-xs text-muted-foreground">
@@ -366,15 +374,18 @@ function CreateAutomationDialog({
 export function AutomationsPage({
   onOpenAutomation,
 }: {
-  onOpenAutomation?: (automation: Automation) => void
+  onOpenAutomation?: (automation: AutomationOpenTarget) => void
 }) {
   const wsId = useWorkspaceId()
   const { data, isLoading } = useQuery(automationListOptions(wsId))
-  const { data: agents = [] } = useQuery(agentListOptions(wsId))
   const automations = data?.automations ?? []
   const [createOpen, setCreateOpen] = useState(false)
   const [selectedTemplate, setSelectedTemplate] =
     useState<AutomationTemplate | null>(null)
+  const { data: agents = [] } = useQuery({
+    ...agentListOptions(wsId),
+    enabled: createOpen,
+  })
 
   const openCreate = (template?: AutomationTemplate) => {
     setSelectedTemplate(template ?? null)
