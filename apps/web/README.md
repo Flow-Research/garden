@@ -14,7 +14,9 @@ pnpm dev
 ```
 
 The root dev command starts the MCP proxy first, then starts the web app through portless at `https://garden.localhost`.
-The web dev wrapper pins portless state to `~/.portless` and restarts a stale proxy if it is answering from a different state directory, so the privileged proxy and app route registry read the same `routes.json`.
+The root dev wrapper also keeps Turbo's persisted task list visible so the TUI opens with service tabs instead of only the inline log pane.
+Portless is configured at the repo root so `portless` from the project directory maps the web app to `garden.localhost` and runs the MCP proxy as a non-proxied task.
+The web dev wrapper pins portless state to `~/.portless`, matching Portless' documented state directory and keeping the privileged proxy and app route registry on the same `routes.json`.
 
 For the stable local HTTPS URL:
 
@@ -45,6 +47,7 @@ GitHub connector development also needs the GitHub app fields from the root `.en
 
 | Command | Description |
 |---|---|
+| `portless` | From the repo root, start the configured workspace through Portless |
 | `pnpm --filter @garden/web dev` | Start TanStack Start through portless |
 | `pnpm --filter @garden/web dev:app` | Start TanStack Start directly on `localhost` |
 | `pnpm --filter @garden/web dev:containers` | Start with local sandbox containers enabled |

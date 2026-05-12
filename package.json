@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "dev": "GARDEN_WAIT_FOR_MCP_PROXY=1 turbo run dev --ui=tui --filter=@garden/mcp-proxy --filter=@garden/web",
+    "dev": "bash ./scripts/dev.sh",
     "dev:web": "turbo run dev --ui=tui --filter=@garden/web",
     "dev:web:containers": "pnpm --filter @garden/web dev:containers",
     "build": "turbo run build",
