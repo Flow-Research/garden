@@ -82,9 +82,7 @@ export const permissionRequest = pgTable(
       .notNull()
       .references(() => agent.id),
     kind: text('kind').notNull().default('connector_write'),
-    capabilityId: uuid('capability_id')
-      .notNull()
-      .references(() => capability.id),
+    capabilityId: uuid('capability_id').references(() => capability.id),
     context: text('context'),
     issueId: uuid('issue_id').references(() => issue.id, {
       onDelete: 'set null',

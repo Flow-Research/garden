@@ -283,7 +283,7 @@ export const permissionRequestSelectSchema = createSelectSchema(
   {
     id: () => uuidSchema,
     agentId: () => uuidSchema,
-    capabilityId: () => uuidSchema,
+    capabilityId: () => uuidSchema.nullable(),
     issueId: () => uuidSchema,
     runId: () => uuidSchema,
     argsJson: () => jsonObjectSchema,

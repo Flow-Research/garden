@@ -87,39 +87,6 @@ function pendingAgentIdFromContext(value: string | null) {
   return value?.startsWith(prefix) ? value.slice(prefix.length) : null;
 }
 
-async function ensureAgentProposalCapability(
-  tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0],
-) {
-  const [capability] = await tx
-    .insert(schema.capability)
-    .values({
-      id: crypto.randomUUID(),
-      connectorType: "garden",
-      name: "agent_proposal",
-      description: "Approve creation of a workspace agent.",
-      schemaHash: "garden.agent_proposal.v1",
-      riskClass: "write",
-    })
-    .onConflictDoUpdate({
-      target: [schema.capability.connectorType, schema.capability.name],
-      set: {
-        description: "Approve creation of a workspace agent.",
-        schemaHash: "garden.agent_proposal.v1",
-        riskClass: "write",
-      },
-    })
-    .returning({ id: schema.capability.id });
-
-  if (!capability) {
-    throw new ProposeAgentToolError({
-      code: "database_failed",
-      message: "Failed to create agent proposal capability.",
-    });
-  }
-
-  return capability;
-}
-
 async function loadRuntimeIdentity(
   context: Required<ProposeAgentContext>,
 ): Promise<ResultValue<RuntimeIdentity, ProposeAgentToolError>> {
@@ -291,8 +258,6 @@ async function proposeAgent(
           );
         }
 
-        const proposalCapability = await ensureAgentProposalCapability(tx);
-
         await tx.execute(sql`
           insert into permission_request (
             id,
@@ -310,7 +275,7 @@ async function proposeAgent(
             ${permissionRequestId}::uuid,
             ${identity.agentId}::uuid,
             'agent_proposal',
-            ${proposalCapability.id}::uuid,
+            null,
             ${pendingAgentContext(pendingAgentId)},
             ${input.source_issue_id ?? null}::uuid,
             ${JSON.stringify(payload)}::jsonb,

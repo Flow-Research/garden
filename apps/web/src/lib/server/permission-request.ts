@@ -1,5 +1,5 @@
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { canonicalJsonString } from '@garden/connectors/capabilities'
 import type { getDb } from './db'
 import { schema } from './db'
@@ -9,10 +9,14 @@ type ServerDb = ReturnType<typeof getDb>
 type PermissionRequestRow = {
   id: string
   agentId: string
-  capabilityId: string
+  capabilityId: string | null
   argsJson: unknown
   issueId: string | null
   toolCallId: string
+}
+
+type ConnectorWritePermissionRequestRow = PermissionRequestRow & {
+  capabilityId: string
 }
 
 export class PermissionRequestServiceError extends TaggedError(
@@ -67,7 +71,9 @@ async function hashToolArgs(value: unknown) {
 
 async function loadReferenceRequest(
   input: ResolveConnectorWritePermissionInput,
-): Promise<ResultValue<PermissionRequestRow, PermissionRequestServiceError>> {
+): Promise<
+  ResultValue<ConnectorWritePermissionRequestRow, PermissionRequestServiceError>
+> {
   if (!input.toolCallId && !input.permissionRequestId) {
     return Result.err(
       new PermissionRequestServiceError({
@@ -105,6 +111,7 @@ async function loadReferenceRequest(
           and(
             requestFilter,
             eq(schema.permissionRequest.kind, 'connector_write'),
+            isNotNull(schema.permissionRequest.capabilityId),
             eq(schema.permissionRequest.status, 'pending'),
             eq(schema.agent.workspaceId, input.workspaceId),
             issueFilter,
@@ -122,20 +129,25 @@ async function loadReferenceRequest(
   if (requestResult.isErr()) return Result.err(requestResult.error)
 
   const request = requestResult.value[0]
-  return request
-    ? Result.ok(request)
-    : Result.err(
-        new PermissionRequestServiceError({
-          code: 'permission_request_not_found',
-          status: 404,
-          message: 'Permission request not found',
-        }),
-      )
+  if (request?.capabilityId) {
+    return Result.ok({
+      ...request,
+      capabilityId: request.capabilityId,
+    })
+  }
+
+  return Result.err(
+    new PermissionRequestServiceError({
+      code: 'permission_request_not_found',
+      status: 404,
+      message: 'Permission request not found',
+    }),
+  )
 }
 
 async function loadMatchingPendingRequests(args: {
   db: ServerDb
-  referenceRequest: PermissionRequestRow
+  referenceRequest: ConnectorWritePermissionRequestRow
 }) {
   const issueScope = args.referenceRequest.issueId
     ? eq(schema.permissionRequest.issueId, args.referenceRequest.issueId)
@@ -160,6 +172,7 @@ async function loadMatchingPendingRequests(args: {
               args.referenceRequest.capabilityId,
             ),
             eq(schema.permissionRequest.kind, 'connector_write'),
+            isNotNull(schema.permissionRequest.capabilityId),
             eq(schema.permissionRequest.status, 'pending'),
             issueScope,
           ),
@@ -177,9 +190,16 @@ async function loadMatchingPendingRequests(args: {
   const referenceArgsSignature = canonicalJsonString(
     args.referenceRequest.argsJson,
   )
-  const matchingRequests = requestsResult.value.filter(
-    (candidate) =>
-      canonicalJsonString(candidate.argsJson) === referenceArgsSignature,
+  const matchingRequests = requestsResult.value.flatMap((candidate) =>
+    candidate.capabilityId &&
+    canonicalJsonString(candidate.argsJson) === referenceArgsSignature
+      ? [
+          {
+            ...candidate,
+            capabilityId: candidate.capabilityId,
+          },
+        ]
+      : [],
   )
 
   return matchingRequests.length > 0
@@ -291,13 +311,21 @@ export async function resolveConnectorWritePermissionRequests(
     if (auditResult.isErr()) return Result.err(auditResult.error)
   }
 
+  const retryToolCalls = updateResult.value.flatMap((request) =>
+    request.capabilityId
+      ? [
+          {
+            argsJson: request.argsJson,
+            capabilityId: request.capabilityId,
+            toolCallId: request.toolCallId,
+          },
+        ]
+      : [],
+  )
+
   return Result.ok({
     permissionRequestIds: matchingRequestIds,
-    retryToolCalls: updateResult.value.map((request) => ({
-      argsJson: request.argsJson,
-      capabilityId: request.capabilityId,
-      toolCallId: request.toolCallId,
-    })),
+    retryToolCalls,
     toolCallIds: updateResult.value.map((request) => request.toolCallId),
   })
 }

@@ -345,7 +345,7 @@ export async function syncCapabilities(
   workspaceId: string,
 ) {
   const connector = getConnectorById(connectorId)
-  if (!connector) {
+  if (!connector || connector.id !== connectorId) {
     return Result.err(
       new CapabilitySyncError({
         code: 'connector_not_found',
