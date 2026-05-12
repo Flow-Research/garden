@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "NODE_OPTIONS='--max-old-space-size=3072' bash ./scripts/dev.sh",
     "dev:containers": "NODE_OPTIONS='--max-old-space-size=3072' REQUIRE_CONTAINERS=1 bash ./scripts/dev.sh --require-containers",
+    "dev:proxy": "portless",
     "build": "vite build",
     "preview": "vite preview",
     "worker:types": "wrangler types worker-configuration.d.ts --include-runtime false",
@@ -150,6 +151,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "jsdom": "^29.0.1",
+    "portless": "^0.13.0",
     "typescript": "^5.9.3",
     "vite": "^8.0.0",
     "vitest": "^4.1.0",

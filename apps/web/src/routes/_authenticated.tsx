@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useRef } from 'react'
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/core/auth'
@@ -8,6 +8,14 @@ import { sanitizeRedirectTarget } from '@/lib/redirect'
 import { getAuthBootstrap } from '@/lib/server/auth-bootstrap'
 
 const PREFERRED_WORKSPACE_KEY = 'accelerate_workspace_id'
+
+function scheduleClientStoreHydration(callback: () => void) {
+  if (typeof queueMicrotask === 'function') {
+    queueMicrotask(callback)
+    return
+  }
+  void Promise.resolve().then(callback)
+}
 
 export const Route = createFileRoute('/_authenticated')({
   staleTime: Number.POSITIVE_INFINITY,
@@ -29,20 +37,25 @@ export const Route = createFileRoute('/_authenticated')({
 function AuthenticatedLayout() {
   const { user, workspaces } = Route.useLoaderData()
   const qc = useQueryClient()
+  const hydratedKey = useRef('')
 
-  // Hydrate auth + workspace state synchronously during render so children
-  // render once with populated stores — no useEffect, no extra round-trip.
-  // SSR pass skips the singleton mutation to avoid cross-request leaks; the
-  // first client render re-hydrates before children read the store.
-  useMemo(() => {
-    if (typeof window === 'undefined') return
-    useAuthStore.setState({ user })
-    qc.setQueryData(workspaceKeys.list(), workspaces)
-    if (!useWorkspaceStore.getState().workspace) {
-      const preferred = window.localStorage.getItem(PREFERRED_WORKSPACE_KEY)
-      useWorkspaceStore.getState().hydrateWorkspace(workspaces, preferred)
+  // Hydrate singleton stores after the render that consumes loader data.
+  // Updating them during render trips React's setState-in-render guard because
+  // WSProvider subscribes above this route.
+  if (typeof window !== 'undefined') {
+    const nextKey = `${user.id}:${workspaces.map((workspace) => workspace.id).join(',')}`
+    if (hydratedKey.current !== nextKey) {
+      hydratedKey.current = nextKey
+      scheduleClientStoreHydration(() => {
+        qc.setQueryData(workspaceKeys.list(), workspaces)
+        useAuthStore.setState({ user })
+        if (!useWorkspaceStore.getState().workspace) {
+          const preferred = window.localStorage.getItem(PREFERRED_WORKSPACE_KEY)
+          useWorkspaceStore.getState().hydrateWorkspace(workspaces, preferred)
+        }
+      })
     }
-  }, [user, workspaces, qc])
+  }
 
   return <Outlet />
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useDeferredValue } from 'react'
+import { useState, useMemo, useDeferredValue, useRef } from 'react'
 import {
   Plus,
   Trash2,
@@ -136,6 +136,14 @@ function buildFileMap(
 
 type LoadedFile = { path: string; content: string }
 
+function schedulePostRender(callback: () => void) {
+  if (typeof queueMicrotask === 'function') {
+    queueMicrotask(callback)
+    return
+  }
+  void Promise.resolve().then(callback)
+}
+
 // ---------------------------------------------------------------------------
 // Page root
 // ---------------------------------------------------------------------------
@@ -150,21 +158,7 @@ export default function SkillsPage({
   const { data: skills = [], isLoading: isSkillsLoading } = useQuery(
     skillListOptions(wsId),
   )
-  const [selectedSkillId, setSelectedSkillId] = useState<string>(
-    focusedSkillId ?? '',
-  )
-
-  // Render-time sync: when an external surface (e.g. sidebar or agent tab)
-  // asks us to focus a specific skill, swap selection without a useEffect.
-  const [syncedFocusId, setSyncedFocusId] = useState<string | undefined>(
-    focusedSkillId,
-  )
-  if (focusedSkillId !== syncedFocusId) {
-    setSyncedFocusId(focusedSkillId)
-    if (focusedSkillId) {
-      setSelectedSkillId(focusedSkillId)
-    }
-  }
+  const [selectedSkillId, setSelectedSkillId] = useState<string>('')
 
   const browseSearch = useSkillsBrowseStore((s) => s.browseSearch)
   const setBrowseSearch = useSkillsBrowseStore((s) => s.setBrowseSearch)
@@ -174,14 +168,15 @@ export default function SkillsPage({
   const addMode = useSkillsBrowseStore((s) => s.addMode)
   const setAddMode = useSkillsBrowseStore((s) => s.setAddMode)
 
-  // Selection effective id: prefer focused/selected, else the first skill.
-  const effectiveSkillId = skills.some((s) => s.id === selectedSkillId)
-    ? selectedSkillId
-    : (skills[0]?.id ?? '')
-
-  if (effectiveSkillId && effectiveSkillId !== selectedSkillId) {
-    setSelectedSkillId(effectiveSkillId)
-  }
+  // Selection effective id: prefer explicit external focus, then local
+  // selection, then the first skill. Keep it derived so render never calls
+  // setState just to reconcile props/query data.
+  const effectiveSkillId =
+    focusedSkillId && skills.some((s) => s.id === focusedSkillId)
+      ? focusedSkillId
+      : skills.some((s) => s.id === selectedSkillId)
+        ? selectedSkillId
+        : (skills[0]?.id ?? '')
 
   // ------- mutations -------
   const createMutation = useMutation({
@@ -374,10 +369,11 @@ function SkillWorkspace({
     [loaded],
   )
 
-  // Local editor state. Reset via render-time sync whenever the underlying
-  // bundle changes (save / sync / fresh load). This replaces a useEffect.
+  // Local editor state. Reset after render whenever the underlying bundle
+  // changes (save / sync / fresh load), avoiding cross-component store writes
+  // during render.
   const bundleKey = loaded ? `${loaded.id}:${loaded.bundle_hash ?? ''}` : ''
-  const [syncedKey, setSyncedKey] = useState('')
+  const syncedKey = useRef('')
   const [content, setContent] = useState(loadedContent)
   const [files, setFiles] = useState<LoadedFile[]>(loadedFiles)
 
@@ -389,17 +385,19 @@ function SkillWorkspace({
   const setStoreFilePaths = useSkillEditorStore((s) => s.setFilePaths)
   const clearActiveBundle = useSkillEditorStore((s) => s.clear)
 
-  if (bundleKey && syncedKey !== bundleKey) {
-    setSyncedKey(bundleKey)
-    setContent(loadedContent)
-    setFiles(loadedFiles)
-    if (loaded) {
-      const initialPaths = [
-        SKILL_MD,
-        ...loadedFiles.map((f) => f.path).filter(Boolean),
-      ]
-      setActiveBundle(loaded.id, initialPaths)
-    }
+  if (bundleKey && syncedKey.current !== bundleKey) {
+    syncedKey.current = bundleKey
+    const initialPaths = [
+      SKILL_MD,
+      ...loadedFiles.map((f) => f.path).filter(Boolean),
+    ]
+    schedulePostRender(() => {
+      setContent(loadedContent)
+      setFiles(loadedFiles)
+      if (loaded) {
+        setActiveBundle(loaded.id, initialPaths)
+      }
+    })
   }
 
   const [saving, setSaving] = useState(false)
@@ -414,18 +412,18 @@ function SkillWorkspace({
   const selectedContent = fileMap.get(selectedPath) ?? ''
 
   // Keep the store's filePaths in sync with the editor's current bundle,
-  // including unsaved adds/deletes. Render-time guard avoids redundant writes.
-  const [syncedPathsKey, setSyncedPathsKey] = useState('')
+  // including unsaved adds/deletes.
+  const syncedPathsKey = useRef('')
   const filePathsKey = filePaths.join('')
-  if (loaded && filePathsKey !== syncedPathsKey) {
-    setSyncedPathsKey(filePathsKey)
-    setStoreFilePaths(filePaths)
+  if (loaded && filePathsKey !== syncedPathsKey.current) {
+    syncedPathsKey.current = filePathsKey
+    schedulePostRender(() => setStoreFilePaths(filePaths))
   }
 
   // If the sidebar selected a path that no longer exists (e.g. deletion),
   // fall back to SKILL.md.
   if (selectedPath && !fileMap.has(selectedPath) && fileMap.size > 0) {
-    setSelectedPath(SKILL_MD)
+    schedulePostRender(() => setSelectedPath(SKILL_MD))
   }
 
   const isDirty =
