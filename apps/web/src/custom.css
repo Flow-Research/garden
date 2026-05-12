@@ -19,19 +19,25 @@
   --dv-border-radius: 7px;
   --dv-tab-margin: 2px;
   --dv-tab-font-size: 13px;
-  --dv-tabs-and-actions-container-height: 36px;
-  --garden-dock-tab-surface: var(--vellum);
+  --dv-tabs-and-actions-container-height: 34px;
+  --garden-dock-tab-surface: color-mix(in srgb, var(--vellum) 92%, var(--bone));
+  --garden-dock-tab-strip-surface: color-mix(
+    in srgb,
+    var(--parchment) 86%,
+    var(--bone)
+  );
   --garden-dock-tab-muted-surface: color-mix(
     in srgb,
-    var(--ink) 7%,
-    var(--vellum)
+    var(--garden-dock-tab-strip-surface) 84%,
+    var(--garden-dock-tab-surface)
   );
   --garden-dock-tab-muted-hover: color-mix(
     in srgb,
-    var(--ink) 10%,
-    var(--vellum)
+    var(--garden-dock-tab-strip-surface) 74%,
+    var(--garden-dock-tab-surface)
   );
-  --garden-dock-tab-edge: color-mix(in srgb, var(--ink) 16%, transparent);
+  --garden-dock-tab-edge: color-mix(in srgb, var(--ink) 18%, transparent);
+  --garden-dock-tab-muted-edge: color-mix(in srgb, var(--ink) 9%, transparent);
   --dv-tabs-container-scrollbar-color: color-mix(
     in srgb,
     var(--ink) 22%,
@@ -60,14 +66,22 @@
   --dv-transition-duration: 200ms;
 }
 
+.dark .garden-dock-theme {
+  --garden-dock-tab-strip-surface: color-mix(
+    in srgb,
+    var(--parchment) 76%,
+    var(--ink) 24%
+  );
+}
+
 /* Chrome-style tabs. The active tab shares the workspace surface; inactive tabs
  * carry the contrast so the selected tab blends into the work area. */
 .garden-dockview .dv-tab {
-  border-radius: 8px 8px 0 0 !important;
+  border-radius: 10px 10px 0 0 !important;
   padding: 0 14px;
-  height: 34px;
+  height: 32px;
   align-self: stretch !important;
-  margin: 2px 2px 0 !important;
+  margin: 2px 1px 0 !important;
   background-color: var(--garden-dock-tab-muted-surface) !important;
   font-weight: 500;
   font-size: 13px;
@@ -75,9 +89,10 @@
   color: var(--gravel) !important;
   position: relative;
   transition:
-    background-color 150ms ease,
-    color 150ms ease,
-    box-shadow 200ms ease;
+    background-color 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: inset 0 1px 0 0 var(--garden-dock-tab-muted-edge);
 }
 
 .garden-dockview .dv-tab:hover:not(.dv-active-tab) {
@@ -97,33 +112,33 @@
     inset -1px 0 0 0 var(--garden-dock-tab-edge);
 }
 
-/* Small round-out shoulders. Paint with gradients rather than shadows so the
- * corner never double-paints darker than the tab surface. */
+/* Chrome-like round-out shoulders: the transparent quadrant exposes the tab
+ * strip while the outer corner paints the same material as the workspace. */
 .garden-dockview .dv-tab.dv-active-tab::before,
 .garden-dockview .dv-tab.dv-active-tab::after {
   content: '';
   position: absolute;
   bottom: 0;
-  width: 3px;
-  height: 3px;
+  width: 8px;
+  height: 8px;
   pointer-events: none;
 }
 
 .garden-dockview .dv-tab.dv-active-tab::before {
-  left: -3px;
+  left: -8px;
   background: radial-gradient(
     circle at top left,
-    transparent 0 2.5px,
-    var(--garden-dock-tab-surface) 3px
+    transparent 0 7px,
+    var(--garden-dock-tab-surface) 7.5px
   );
 }
 
 .garden-dockview .dv-tab.dv-active-tab::after {
-  right: -3px;
+  right: -8px;
   background: radial-gradient(
     circle at top right,
-    transparent 0 2.5px,
-    var(--garden-dock-tab-surface) 3px
+    transparent 0 7px,
+    var(--garden-dock-tab-surface) 7.5px
   );
 }
 
@@ -174,14 +189,13 @@
 }
 
 .garden-dockview .dv-groupview .dv-content-container {
-  background: transparent;
+  background: var(--garden-dock-tab-surface);
 }
 
-/* Tab strip — completely transparent. No bg, no border, no rail line. The
- * active tab carries all the contrast via its bg fill + accent line. */
+/* Tab strip reads as a quiet tray; active tab and content share one material. */
 .garden-dockview .dv-tabs-and-actions-container {
-  padding: 0 6px;
-  background: transparent;
+  padding: 0 4px;
+  background: var(--garden-dock-tab-strip-surface);
   position: relative;
 }
 
