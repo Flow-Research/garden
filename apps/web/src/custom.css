@@ -324,6 +324,11 @@
   box-shadow: var(--shadow-hairline-soft);
 }
 
+.garden-dock-actions__button--context-rail.garden-dock-actions__button--active {
+  background: transparent;
+  box-shadow: none;
+}
+
 .garden-dock-watermark {
   display: flex;
   flex-direction: column;

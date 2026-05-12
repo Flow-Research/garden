@@ -670,6 +670,7 @@ export function WorkspaceDockControlsStrip(
         type="button"
         className={cn(
           'garden-dock-actions__button',
+          'garden-dock-actions__button--context-rail',
           railOpen && 'garden-dock-actions__button--active',
         )}
         disabled={!canUseContextRail}
