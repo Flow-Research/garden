@@ -46,6 +46,7 @@ import { Route as ApiInboxArchiveAllRouteImport } from './routes/api/inbox/archi
 import { Route as ApiGithubSetupRouteImport } from './routes/api/github/setup'
 import { Route as ApiGithubInstallRouteImport } from './routes/api/github/install'
 import { Route as ApiGithubCallbackRouteImport } from './routes/api/github/callback'
+import { Route as ApiDevIssueRunPlanRouteImport } from './routes/api/dev/issue-run-plan'
 import { Route as ApiConnectionsConnectorIdRouteImport } from './routes/api/connections/$connectorId'
 import { Route as ApiCommentsIdRouteImport } from './routes/api/comments/$id'
 import { Route as ApiChatThreadsRouteImport } from './routes/api/chat/threads'
@@ -283,6 +284,11 @@ const ApiGithubInstallRoute = ApiGithubInstallRouteImport.update({
 const ApiGithubCallbackRoute = ApiGithubCallbackRouteImport.update({
   id: '/api/github/callback',
   path: '/api/github/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDevIssueRunPlanRoute = ApiDevIssueRunPlanRouteImport.update({
+  id: '/api/dev/issue-run-plan',
+  path: '/api/dev/issue-run-plan',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiConnectionsConnectorIdRoute =
@@ -582,6 +588,7 @@ export interface FileRoutesByFullPath {
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
   '/api/comments/$id': typeof ApiCommentsIdRouteWithChildren
   '/api/connections/$connectorId': typeof ApiConnectionsConnectorIdRouteWithChildren
+  '/api/dev/issue-run-plan': typeof ApiDevIssueRunPlanRoute
   '/api/github/callback': typeof ApiGithubCallbackRoute
   '/api/github/install': typeof ApiGithubInstallRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
@@ -671,6 +678,7 @@ export interface FileRoutesByTo {
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
   '/api/comments/$id': typeof ApiCommentsIdRouteWithChildren
   '/api/connections/$connectorId': typeof ApiConnectionsConnectorIdRouteWithChildren
+  '/api/dev/issue-run-plan': typeof ApiDevIssueRunPlanRoute
   '/api/github/callback': typeof ApiGithubCallbackRoute
   '/api/github/install': typeof ApiGithubInstallRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
@@ -762,6 +770,7 @@ export interface FileRoutesById {
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
   '/api/comments/$id': typeof ApiCommentsIdRouteWithChildren
   '/api/connections/$connectorId': typeof ApiConnectionsConnectorIdRouteWithChildren
+  '/api/dev/issue-run-plan': typeof ApiDevIssueRunPlanRoute
   '/api/github/callback': typeof ApiGithubCallbackRoute
   '/api/github/install': typeof ApiGithubInstallRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
@@ -853,6 +862,7 @@ export interface FileRouteTypes {
     | '/api/chat/threads'
     | '/api/comments/$id'
     | '/api/connections/$connectorId'
+    | '/api/dev/issue-run-plan'
     | '/api/github/callback'
     | '/api/github/install'
     | '/api/github/setup'
@@ -942,6 +952,7 @@ export interface FileRouteTypes {
     | '/api/chat/threads'
     | '/api/comments/$id'
     | '/api/connections/$connectorId'
+    | '/api/dev/issue-run-plan'
     | '/api/github/callback'
     | '/api/github/install'
     | '/api/github/setup'
@@ -1032,6 +1043,7 @@ export interface FileRouteTypes {
     | '/api/chat/threads'
     | '/api/comments/$id'
     | '/api/connections/$connectorId'
+    | '/api/dev/issue-run-plan'
     | '/api/github/callback'
     | '/api/github/install'
     | '/api/github/setup'
@@ -1118,6 +1130,7 @@ export interface RootRouteChildren {
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiChatThreadsRoute: typeof ApiChatThreadsRouteWithChildren
   ApiCommentsIdRoute: typeof ApiCommentsIdRouteWithChildren
+  ApiDevIssueRunPlanRoute: typeof ApiDevIssueRunPlanRoute
   ApiGithubCallbackRoute: typeof ApiGithubCallbackRoute
   ApiGithubInstallRoute: typeof ApiGithubInstallRoute
   ApiGithubSetupRoute: typeof ApiGithubSetupRoute
@@ -1392,6 +1405,13 @@ declare module '@tanstack/react-router' {
       path: '/api/github/callback'
       fullPath: '/api/github/callback'
       preLoaderRoute: typeof ApiGithubCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/dev/issue-run-plan': {
+      id: '/api/dev/issue-run-plan'
+      path: '/api/dev/issue-run-plan'
+      fullPath: '/api/dev/issue-run-plan'
+      preLoaderRoute: typeof ApiDevIssueRunPlanRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/connections/$connectorId': {
@@ -2118,6 +2138,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiChatThreadsRoute: ApiChatThreadsRouteWithChildren,
   ApiCommentsIdRoute: ApiCommentsIdRouteWithChildren,
+  ApiDevIssueRunPlanRoute: ApiDevIssueRunPlanRoute,
   ApiGithubCallbackRoute: ApiGithubCallbackRoute,
   ApiGithubInstallRoute: ApiGithubInstallRoute,
   ApiGithubSetupRoute: ApiGithubSetupRoute,

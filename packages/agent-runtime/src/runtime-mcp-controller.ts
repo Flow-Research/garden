@@ -130,18 +130,6 @@ export type McpClientFacade = {
   ) => Promise<{ success: boolean; error?: string } | null | undefined>;
 };
 
-type StoredMcpServerRecord = {
-  id: string;
-  server_url?: string | null;
-};
-
-type RestoreMcpManager = {
-  restoreConnectionsFromStorage?: (clientName: string) => Promise<void>;
-  getServersFromStorage?: () => StoredMcpServerRecord[];
-  removeServerFromStorage?: (serverId: string) => void;
-  __gardenRpcOnlyRestorePatched?: boolean;
-};
-
 export type McpHost = {
   readonly name: string;
   readonly env: McpHostEnv;
@@ -156,47 +144,6 @@ export type McpHost = {
     ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
   >;
 };
-
-function isNonRpcGardenConnectorServer(server: StoredMcpServerRecord) {
-  if (typeof server.server_url !== "string") return false;
-  if (server.server_url.startsWith("rpc:")) return false;
-
-  return Boolean(getConnectorById(server.id));
-}
-
-export function enforceRpcOnlyMcpConnectorRestore(mcp: unknown) {
-  const manager = mcp as RestoreMcpManager;
-  if (manager.__gardenRpcOnlyRestorePatched) return;
-  const {
-    restoreConnectionsFromStorage,
-    getServersFromStorage,
-    removeServerFromStorage,
-  } = manager;
-  if (
-    !restoreConnectionsFromStorage ||
-    !getServersFromStorage ||
-    !removeServerFromStorage
-  ) {
-    return;
-  }
-
-  const restore = restoreConnectionsFromStorage.bind(manager);
-  manager.restoreConnectionsFromStorage = async (clientName: string) => {
-    const staleServers = getServersFromStorage().filter(
-      isNonRpcGardenConnectorServer,
-    );
-
-    for (const server of staleServers) {
-      console.warn("[agent-runtime] pruning non-RPC MCP connector restore", {
-        connectorId: server.id,
-      });
-      removeServerFromStorage(server.id);
-    }
-
-    await restore(clientName);
-  };
-  manager.__gardenRpcOnlyRestorePatched = true;
-}
 
 export function isMcpDiscoveryCancellation(message: string | undefined) {
   return message === "Discovery was cancelled";
@@ -1139,39 +1086,30 @@ export class RuntimeMcpController {
   }
 
   private async discoverRegisteredConnectorServer(connectorId: string) {
-    const cancelledDelaysMs =
-      mcpRuntimeConfig.connectorDiscoveryCancellationRetryDelaysMs;
+    const discovery = await this.host.mcp.discoverIfConnected(connectorId, {
+      timeoutMs: mcpRuntimeConfig.connectorDiscoveryTimeoutMs,
+    });
+    if (discovery?.success) return Result.ok(undefined);
 
-    for (let attempt = 0; attempt <= cancelledDelaysMs.length; attempt += 1) {
-      const discovery = await this.host.mcp.discoverIfConnected(connectorId, {
-        timeoutMs: mcpRuntimeConfig.connectorDiscoveryTimeoutMs,
-      });
-      if (discovery?.success) return Result.ok(undefined);
-
-      const error =
-        discovery?.error || `Failed to discover MCP tools for ${connectorId}`;
-      if (!isMcpDiscoveryCancellation(error)) {
-        return Result.err(error);
-      }
-
-      const hasDiscoveredTools =
-        this.host.mcp.listTools({ serverId: connectorId }).length > 0;
-      if (hasDiscoveredTools) return Result.ok(undefined);
-
-      await this.host.mcp.waitForConnections?.({
-        timeout: mcpRuntimeConfig.connectorDiscoveryWaitTimeoutMs,
-      });
-
-      const hasToolsAfterWait =
-        this.host.mcp.listTools({ serverId: connectorId }).length > 0;
-      if (hasToolsAfterWait) return Result.ok(undefined);
-
-      const delayMs = cancelledDelaysMs[attempt];
-      if (delayMs === undefined) return Result.err(error);
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    const error =
+      discovery?.error || `Failed to discover MCP tools for ${connectorId}`;
+    if (!isMcpDiscoveryCancellation(error)) {
+      return Result.err(error);
     }
 
-    return Result.err(`Failed to discover MCP tools for ${connectorId}`);
+    const hasDiscoveredTools =
+      this.host.mcp.listTools({ serverId: connectorId }).length > 0;
+    if (hasDiscoveredTools) return Result.ok(undefined);
+
+    await this.host.mcp.waitForConnections?.({
+      timeout: mcpRuntimeConfig.connectorDiscoveryWaitTimeoutMs,
+    });
+
+    const hasToolsAfterWait =
+      this.host.mcp.listTools({ serverId: connectorId }).length > 0;
+    if (hasToolsAfterWait) return Result.ok(undefined);
+
+    return Result.err(error);
   }
 
   private async requestCapabilitySyncForConnectors(connectorIds: string[]) {
@@ -1348,71 +1286,54 @@ export class RuntimeMcpConnectionPreparer {
       waitForReadiness?: boolean;
     },
   ): Promise<RuntimeMcpPrepareResult> {
-    const delaysMs = [0, 1_000, 3_000];
-    let lastError = "MCP connector refresh failed";
-
-    for (let attempt = 0; attempt < delaysMs.length; attempt += 1) {
-      const delayMs = delaysMs[attempt] ?? 0;
-      if (delayMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-      }
-
-      const controller = this.options.getController();
-      const connectionResult =
-        await controller.ensureProxyMcpConnections(options);
-      if (connectionResult.isOk()) {
-        if (
-          options?.waitForReadiness !== false &&
-          this.shouldWaitForReadiness()
-        ) {
-          const readinessResult = await this.waitForConnectionsReady(reason);
-          if (readinessResult.isErr()) {
-            lastError = readinessResult.error.message;
-            console.warn(
-              "[agent-runtime] MCP connector readiness check failed",
-              {
-                reason,
-                attempt: attempt + 1,
-                error: readinessResult.error.message,
-                serverIds: readinessResult.error.serverIds,
-              },
-            );
-
-            const resetResult = await controller.resetProxyMcpServers(
-              readinessResult.error.serverIds.length > 0
-                ? readinessResult.error.serverIds
-                : undefined,
-            );
-            if (resetResult.isErr()) {
-              lastError = resetResult.error.message;
-              console.warn(
-                "[agent-runtime] failed to reset stale MCP connector servers",
-                resetResult.error,
-              );
-            }
-            continue;
-          }
-        }
-
-        this.lastFullSyncAt = Date.now();
-        this.options.onSuccessfulRefresh?.(controller);
-        return Result.ok(undefined);
-      }
-
+    const controller = this.options.getController();
+    const connectionResult =
+      await controller.ensureProxyMcpConnections(options);
+    if (connectionResult.isErr()) {
       if (connectionResult.error.code === "thread_not_found") {
         await this.options.onThreadNotFound?.(reason, controller);
         return Result.ok(undefined);
       }
-
-      lastError = connectionResult.error.message;
       console.warn(this.options.refreshFailedMessage, {
         reason,
-        attempt: attempt + 1,
         error: connectionResult.error,
       });
+      return Result.err(connectionResult.error.message);
     }
 
-    return Result.err(lastError);
+    if (
+      options?.waitForReadiness !== false &&
+      this.shouldWaitForReadiness()
+    ) {
+      const readinessResult = await this.waitForConnectionsReady(reason);
+      if (readinessResult.isErr()) {
+        console.warn(
+          "[agent-runtime] MCP connector readiness check failed",
+          {
+            reason,
+            error: readinessResult.error.message,
+            serverIds: readinessResult.error.serverIds,
+          },
+        );
+
+        const resetResult = await controller.resetProxyMcpServers(
+          readinessResult.error.serverIds.length > 0
+            ? readinessResult.error.serverIds
+            : undefined,
+        );
+        if (resetResult.isErr()) {
+          console.warn(
+            "[agent-runtime] failed to reset stale MCP connector servers",
+            resetResult.error,
+          );
+        }
+        return Result.err(readinessResult.error.message);
+      }
+    }
+
+    this.lastFullSyncAt = Date.now();
+    this.options.onSuccessfulRefresh?.(controller);
+    return Result.ok(undefined);
   }
 
   private shouldWaitForReadiness() {

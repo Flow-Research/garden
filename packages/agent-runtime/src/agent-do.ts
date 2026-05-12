@@ -454,7 +454,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     }
   }
 
-  @callable()
   async resumeIssueRun(input: {
     runId: string;
     issueId: string;
@@ -464,7 +463,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     await issueAgent.resumeTurn(input);
   }
 
-  @callable()
   async cancelIssueRun(input: {
     runId: string;
     issueId: string;
@@ -476,11 +474,22 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   }
 
   /**
-   * Awaitable per-turn entrypoint for RunWorkflow's `step.do` blocks.
-   * Returns the run's status after the turn so the workflow can decide to
-   * loop, await an event, or finish.
+   * Internal Durable Object RPC used by chat tools and debug endpoints to read
+   * the live plan stored in the issue-run facet's SQLite database.
    */
-  @callable()
+  async getRunPlan(input: {
+    runId: string;
+    issueId: string;
+  }): Promise<Array<{
+    content: string;
+    status: 'pending' | 'in_progress' | 'completed';
+    activeForm: string;
+  }> | null> {
+    await this.requireIssueAccess(input.issueId);
+    const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId);
+    return issueAgent.getRunPlan(input.runId);
+  }
+
   async executeRunTurn(input: {
     runId: string;
     issueId: string;

@@ -723,6 +723,16 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
    * run's current status so the workflow can decide to wait, loop, or finish.
    * See docs/features/agent-runtime-rearchitecture.md.
    */
+  getRunPlan(
+    runId: string,
+  ): Array<{
+    content: string;
+    status: 'pending' | 'in_progress' | 'completed';
+    activeForm: string;
+  }> | null {
+    return readIssueRunPlan(this.ctx.storage.sql, runId);
+  }
+
   async executeWorkflowTurn(
     mode: TurnMode,
     input: StartTurnInput,

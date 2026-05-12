@@ -327,6 +327,7 @@ type ReadRunToolResult = {
 type ReadRunToolContext = {
   databaseUrl: string;
   threadId: string;
+  issueRunEnv?: IssueRunEnv;
 };
 
 type ChatIssueToolContext = {
@@ -352,6 +353,7 @@ type IssueRunRow = {
   id: string;
   issue_id: string;
   agent_id: string;
+  agent_host_name: string;
   status: string;
   started_at: unknown;
 };
@@ -587,6 +589,7 @@ async function resolveIssueRun(args: {
           r.id,
           r.issue_id,
           r.agent_id,
+          r.host_name as agent_host_name,
           r.status,
           r.started_at
         from issue i
@@ -620,6 +623,7 @@ async function resolveIssueRun(args: {
         id,
         issue_id,
         agent_id,
+        host_name as agent_host_name,
         status,
         started_at
       from issue_run
@@ -714,6 +718,24 @@ function pendingApprovalFromEvent(event: IssueRunEventRow | null) {
   };
 }
 
+async function readRunPlan(args: {
+  context: ReadRunToolContext;
+  runId: string;
+  issueId: string;
+  agentId: string;
+  agentHostName: string;
+}): Promise<ReadRunToolResult['plan']> {
+  if (!args.context.issueRunEnv?.AgentDO) return null;
+  const { AgentDO } = args.context.issueRunEnv;
+  const agentDoId = AgentDO.idFromName(args.agentHostName);
+  const stub = AgentDO.get(agentDoId) as unknown as {
+    getRunPlan: (input: { runId: string; issueId: string }) => Promise<
+      Array<{ content: string; status: 'pending' | 'in_progress' | 'completed'; activeForm: string }> | null
+    >;
+  };
+  return await stub.getRunPlan({ runId: args.runId, issueId: args.issueId });
+}
+
 async function readRun(
   context: ReadRunToolContext,
   runIdOrIssueIdentifier: string,
@@ -768,8 +790,13 @@ async function readRun(
     status: statusResult.value,
     started_at: toIsoString(run.started_at),
     last_event_summary: eventSummary(latestEventResult.value),
-    // Per-agent Durable Object plan RPC is not wired in this branch yet.
-    plan: null,
+    plan: await readRunPlan({
+      context,
+      runId: run.id,
+      issueId: run.issue_id,
+      agentId: run.agent_id,
+      agentHostName: run.agent_host_name,
+    }),
     pending_question:
       statusResult.value === "waiting_for_input"
         ? pendingQuestionFromEvent(questionEventResult.value)
@@ -1324,7 +1351,9 @@ export function createChatSubAgentTools({
   const documentContext = (): DocumentToolContext | null =>
     databaseUrl && threadId ? { databaseUrl, workspace, threadId } : null;
   const readRunContext = (): ReadRunToolContext | null =>
-    databaseUrl && threadId ? { databaseUrl, threadId } : null;
+    databaseUrl && threadId
+      ? { databaseUrl, threadId, issueRunEnv }
+      : null;
   const chatIssueContext = (): ChatIssueToolContext | null =>
     databaseUrl && threadId && issueRunEnv
       ? { databaseUrl, threadId, issueRunEnv }

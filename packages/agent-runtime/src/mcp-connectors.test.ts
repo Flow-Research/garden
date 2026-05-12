@@ -12,7 +12,6 @@ import {
 } from './mcp-connectors'
 import {
   connectRpcMcpConnector,
-  enforceRpcOnlyMcpConnectorRestore,
   isMcpDiscoveryCancellation,
   RuntimeMcpController,
   type McpHost,
@@ -357,44 +356,6 @@ describe('connectRpcMcpConnector', () => {
       state: 'failed',
       error: 'RPC MCP id mismatch',
     })
-  })
-})
-
-describe('enforceRpcOnlyMcpConnectorRestore', () => {
-  it('prunes persisted non-rpc garden connector servers before sdk restore', async () => {
-    const servers = [
-      {
-        id: 'github',
-        server_url: 'http://localhost:3000/api/mcp-proxy/github/mcp',
-      },
-      { id: 'exa-search', server_url: 'rpc:exa-search' },
-      { id: 'custom', server_url: 'http://localhost:8788/custom/mcp' },
-    ]
-    const removedServerIds: string[] = []
-    let restoredClientName: string | null = null
-
-    const mcp = {
-      __gardenRpcOnlyRestorePatched: false,
-      getServersFromStorage: () => servers,
-      removeServerFromStorage: (serverId: string) => {
-        removedServerIds.push(serverId)
-        const index = servers.findIndex((server) => server.id === serverId)
-        if (index >= 0) servers.splice(index, 1)
-      },
-      restoreConnectionsFromStorage: async (clientName: string) => {
-        restoredClientName = clientName
-      },
-    }
-
-    enforceRpcOnlyMcpConnectorRestore(mcp)
-    await mcp.restoreConnectionsFromStorage('chat:thread-1')
-
-    expect(restoredClientName).toBe('chat:thread-1')
-    expect(removedServerIds).toEqual(['github'])
-    expect(servers.map((server) => server.id)).toEqual([
-      'exa-search',
-      'custom',
-    ])
   })
 })
 
