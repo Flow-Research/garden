@@ -67,7 +67,6 @@ import {
   type ThreadRuntimeIdentity,
 } from './runtime-mcp-controller'
 import {
-  MCP_PROXY_JWT_PERIODIC_REFRESH_WINDOW_MS,
   mcpRuntimeConfig,
 } from './mcp-runtime-config'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
@@ -339,10 +338,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
 
   override async onStart() {
     await loadIssueInteractionSkillMarkdown()
-    await this.scheduleEvery(
-      mcpRuntimeConfig.proxyJwtRefreshIntervalSeconds,
-      'refreshProxyMcpJwts' as keyof this,
-    )
   }
 
   override getTools(): ToolSet {
@@ -692,21 +687,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       return
     }
     this.startIssueRunFiber('resume', { runId, issueId: run.issueId })
-  }
-
-  async refreshProxyMcpJwts() {
-    const result = await this.mcpConnectionPreparer.ensureLoaded(
-      'issue-periodic-jwt-refresh',
-      {
-        refreshWindowMs: MCP_PROXY_JWT_PERIODIC_REFRESH_WINDOW_MS,
-      },
-    )
-    if (result.isErr()) {
-      console.warn(
-        '[agent-runtime] periodic issue MCP JWT refresh failed',
-        result.error,
-      )
-    }
   }
 
   async startTurn(input: StartTurnInput): Promise<void> {

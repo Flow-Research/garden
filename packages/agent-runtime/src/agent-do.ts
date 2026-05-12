@@ -61,7 +61,6 @@ import {
   type RuntimeMcpServerStates,
 } from "./runtime-mcp-controller";
 import {
-  MCP_PROXY_JWT_PERIODIC_REFRESH_WINDOW_MS,
   mcpRuntimeConfig,
 } from "./mcp-runtime-config";
 import { createChatSubAgentTools } from "./chat-sub-agent-tools";
@@ -896,30 +895,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     return drizzle(this.env.DATABASE_URL, { schema });
   }
 
-  override async onStart() {
-    await this.scheduleEvery(
-      mcpRuntimeConfig.proxyJwtRefreshIntervalSeconds,
-      "refreshProxyMcpJwts" as keyof this,
-    );
-  }
-
-  async refreshProxyMcpJwts() {
-    const result = await this.mcpConnectionPreparer.ensureLoaded(
-      "periodic-jwt-refresh",
-      {
-        refreshWindowMs: MCP_PROXY_JWT_PERIODIC_REFRESH_WINDOW_MS,
-        allowReplacingRegisteredServers: false,
-        waitForReadiness: false,
-      },
-    );
-    if (result.isErr()) {
-      console.warn(
-        "[agent-runtime] periodic MCP JWT refresh failed",
-        result.error,
-      );
-    }
-  }
-
   async pauseRuntime(reason: string): Promise<RuntimeOkPayload> {
     await this.pauseMcpRuntime(reason);
     return { ok: true };
@@ -1741,49 +1716,9 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       );
     }
 
-    const schedulesResult = await Result.tryPromise({
-      try: async () => await this.listSchedules(),
-      catch: (cause) =>
-        cause instanceof Error ? cause.message : String(cause),
-    });
-    if (schedulesResult.isErr()) {
-      console.warn(
-        "[agent-runtime] failed to inspect schedules for paused chat facet",
-        {
-          reason,
-          agentName: this.name,
-          error: schedulesResult.error,
-        },
-      );
-      return;
-    }
-
-    const refreshSchedules = schedulesResult.value.filter(
-      (schedule) => schedule.callback === "refreshProxyMcpJwts",
-    );
-    for (const schedule of refreshSchedules) {
-      const cancelResult = await Result.tryPromise({
-        try: async () => await this.cancelSchedule(schedule.id),
-        catch: (cause) =>
-          cause instanceof Error ? cause.message : String(cause),
-      });
-      if (cancelResult.isErr()) {
-        console.warn(
-          "[agent-runtime] failed to cancel paused chat MCP refresh schedule",
-          {
-            reason,
-            agentName: this.name,
-            scheduleId: schedule.id,
-            error: cancelResult.error,
-          },
-        );
-      }
-    }
-
-    console.warn("[agent-runtime] paused MCP refresh for chat facet", {
+    console.warn("[agent-runtime] paused MCP connectors for chat facet", {
       reason,
       agentName: this.name,
-      cancelledSchedules: refreshSchedules.length,
     });
   }
 
