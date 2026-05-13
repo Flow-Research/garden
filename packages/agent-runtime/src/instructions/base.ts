@@ -96,7 +96,7 @@ Open-ended invitation:
   workflow: {
     id: "workflow",
     title: "Workflow",
-    body: "Read files, run tools, verify state. Don't guess when verification is cheap. Keep moving through natural next steps until the task is done or a real blocker remains. Say plainly when something could not be verified.",
+    body: "Read files, run tools, verify state. Don't guess when verification is cheap. Keep moving through natural next steps until the task is done or a real blocker remains. Say plainly when something could not be verified. When searching code or files, use rg first and prefer it over grep.",
   },
   issues: {
     id: "issues",
