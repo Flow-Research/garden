@@ -6,8 +6,8 @@ export type AppEnv = {
   DATABASE_URL: RequiredEnvBinding<'DATABASE_URL'>
   BETTER_AUTH_SECRET: RequiredEnvBinding<'BETTER_AUTH_SECRET'>
   BETTER_AUTH_URL: RequiredEnvBinding<'BETTER_AUTH_URL'>
-  CF_AIG_ACCOUNT_ID: RequiredEnvBinding<'CF_AIG_ACCOUNT_ID'>
-  CF_AIG_TOKEN: RequiredEnvBinding<'CF_AIG_TOKEN'>
+  CLOUDFLARE_ACCOUNT_ID: RequiredEnvBinding<'CLOUDFLARE_ACCOUNT_ID'>
+  CLOUDFLARE_API_TOKEN: RequiredEnvBinding<'CLOUDFLARE_API_TOKEN'>
   FILES: RequiredEnvBinding<'FILES'>
   LOADER: RequiredEnvBinding<'LOADER'>
   MCP_PROXY: RequiredEnvBinding<'MCP_PROXY'>
