@@ -1,32 +1,26 @@
 import { and, eq } from 'drizzle-orm'
+import { getAgentByName } from 'agents'
+import type { AgentDO } from '@garden/agent-runtime'
 import {
   bindExistingCapabilitiesToAgent,
   bindExistingSkillsToAgent,
 } from './agent-bindings'
-import { getAgentDoStub } from './agent-do-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { DEFAULT_AGENT_PERMISSIONS } from '@garden/core/agents/permissions'
 import { disposeRpcResult } from '@garden/core/platform/rpc'
 
-// Server-side helpers for managing AgentDOs + their ChatSubAgent thread
-// facets. The API response exposes `hostName`, the saved AgentDO runtime name.
-// New agents use their UUID; migrated chat agents may keep the older runtime
-// name that owns their Durable Object storage.
+type AgentRuntimeStub = DurableObjectStub<AgentDO>
 
-function getAgentRuntimeStub(agentId: string) {
-  const stubResult = getAgentDoStub(appEnv, agentId)
-  if (stubResult.isErr()) throw stubResult.error
-  return stubResult.value
+async function getAgentRuntimeStub(hostName: string): Promise<AgentRuntimeStub> {
+  return getAgentByName(appEnv.AgentDO, hostName)
 }
-
-type AgentRuntimeStub = ReturnType<typeof getAgentRuntimeStub>
 
 async function callChatThreadRuntime<T>(
   input: { hostName: string; threadId: string },
   call: (stub: AgentRuntimeStub, threadId: string) => T | Promise<T>,
 ): Promise<Awaited<T>> {
-  const stub = getAgentRuntimeStub(input.hostName)
+  const stub = await getAgentRuntimeStub(input.hostName)
   return disposeRpcResult(await call(stub, input.threadId))
 }
 
@@ -194,7 +188,7 @@ export async function uploadChatThreadDocument(input: {
   mediaType?: string | null
   threadId: string
 }) {
-  const stub = getAgentRuntimeStub(input.hostName)
+  const stub = await getAgentRuntimeStub(input.hostName)
   return disposeRpcResult(
     await stub.uploadThreadDocument(input.threadId, {
       base64: input.base64,
@@ -209,7 +203,7 @@ export async function readChatThreadDocumentBytes(input: {
   hostName: string
   threadId: string
 }) {
-  const stub = getAgentRuntimeStub(input.hostName)
+  const stub = await getAgentRuntimeStub(input.hostName)
   return disposeRpcResult(
     await stub.readThreadDocumentBytes(input.threadId, input.documentId),
   )
@@ -222,7 +216,7 @@ export async function readChatThreadDocumentVersionBytes(input: {
   threadId: string
   versionId?: string | null
 }) {
-  const stub = getAgentRuntimeStub(input.hostName)
+  const stub = await getAgentRuntimeStub(input.hostName)
   return disposeRpcResult(
     await stub.readThreadDocumentVersionBytes(input.threadId, {
       documentId: input.documentId,
@@ -237,7 +231,7 @@ export async function listChatThreadDocumentVersions(input: {
   hostName: string
   threadId: string
 }) {
-  const stub = getAgentRuntimeStub(input.hostName)
+  const stub = await getAgentRuntimeStub(input.hostName)
   return disposeRpcResult(
     await stub.listThreadDocumentVersions(input.threadId, input.documentId),
   )
@@ -250,7 +244,7 @@ export async function resolveChatThreadDocumentEdit(input: {
   hostName: string
   threadId: string
 }) {
-  const stub = getAgentRuntimeStub(input.hostName)
+  const stub = await getAgentRuntimeStub(input.hostName)
   return disposeRpcResult(
     await stub.resolveThreadDocumentEdit(input.threadId, {
       action: input.action,

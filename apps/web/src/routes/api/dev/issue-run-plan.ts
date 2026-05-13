@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm'
+import { getAgentByName } from 'agents'
 import { Result } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
@@ -8,7 +9,6 @@ import {
   notFound,
   requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
-import { getAgentDoStub } from '@/lib/server/agent-do-router'
 import { disposeRpcResult } from '@garden/core/platform/rpc'
 
 export const Route = createFileRoute('/api/dev/issue-run-plan')({
@@ -52,17 +52,16 @@ export const Route = createFileRoute('/api/dev/issue-run-plan')({
           .limit(1)
         if (!issueAccess[0]) return notFound('Issue not found')
 
-        const stubResult = getAgentDoStub(appEnv, run.hostName)
-        if (stubResult.isErr()) return badRequest(stubResult.error.message)
-
         const planResult = await Result.tryPromise({
-          try: async () =>
-            disposeRpcResult(
-              await stubResult.value.getRunPlan({
+          try: async () => {
+            const stub = await getAgentByName(appEnv.AgentDO, run.hostName)
+            return disposeRpcResult(
+              await stub.getRunPlan({
                 runId: run.id,
                 issueId: run.issueId as string,
               }),
-            ),
+            )
+          },
           catch: (cause) =>
             cause instanceof Error ? cause.message : String(cause),
         })

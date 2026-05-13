@@ -34,9 +34,7 @@
       "lightningcss",
       "workerd"
     ],
-    "patchedDependencies": {
-      "@cloudflare/vite-plugin@1.36.0": "patches/@cloudflare__vite-plugin@1.36.0.patch"
-    }
+    "patchedDependencies": {}
   },
   "dependencies": {
     "better-result": "^2.9.2"

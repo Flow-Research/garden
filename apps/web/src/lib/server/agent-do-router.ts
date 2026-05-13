@@ -1,12 +1,11 @@
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, eq, or } from 'drizzle-orm'
-import type { AgentDO } from '@garden/agent-runtime'
 import { agentSelectSchema, uuidSchema } from '@garden/db/validation'
 import { getDb, schema } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
 
 export class AgentDoRouterError extends TaggedError('AgentDoRouterError')<{
-  code: 'invalid_agent_id' | 'not_configured' | 'access_denied' | 'db_error'
+  code: 'access_denied' | 'db_error' | 'invalid_agent_id'
   message: string
   cause?: unknown
 }>() {}
@@ -17,9 +16,6 @@ export type AgentAccessAction =
   | 'issue_run'
   | 'debug'
   | 'tool_approval'
-
-export type AgentDoRpcStub = DurableObjectStub<AgentDO>
-type AgentDoNamespace = DurableObjectNamespace<AgentDO>
 
 type AgentDoEnv = Pick<AppEnv, 'AgentDO' | 'DATABASE_URL'>
 type AgentSession = { user?: { id?: string | null } | null } | null | undefined
@@ -42,31 +38,6 @@ function dbError(operation: string, cause: unknown) {
     message: `${operation} failed: ${message}`,
     cause,
   })
-}
-
-export function getAgentDoStub(
-  env: { AgentDO?: AgentDoNamespace },
-  agentRuntimeName: string,
-): ResultValue<AgentDoRpcStub, AgentDoRouterError> {
-  if (!agentRuntimeName || !isAgentRuntimeName(agentRuntimeName)) {
-    return Result.err(
-      new AgentDoRouterError({
-        code: 'invalid_agent_id',
-        message: 'Agent runtime name is invalid.',
-      }),
-    )
-  }
-
-  if (!env.AgentDO) {
-    return Result.err(
-      new AgentDoRouterError({
-        code: 'not_configured',
-        message: 'AgentDO runtime binding is not configured.',
-      }),
-    )
-  }
-
-  return Result.ok(env.AgentDO.get(env.AgentDO.idFromName(agentRuntimeName)))
 }
 
 export async function requireAgentAccess(
