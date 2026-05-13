@@ -88,7 +88,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   Sandbox: DurableObjectNamespace<SandboxDO>;
   MCP_SESSION: DurableObjectNamespace;
   RUN_QUEUE?: RunQueueBinding;
-  RUN_WORKFLOW?: RunWorkflowBinding;
+  RUN_WORKFLOW: RunWorkflowBinding;
 };
 
 type AgentSessionStateItem = {
@@ -453,15 +453,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     }
   }
 
-  async resumeIssueRun(input: {
-    runId: string;
-    issueId: string;
-  }): Promise<void> {
-    await this.requireIssueAccess(input.issueId);
-    const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId);
-    await issueAgent.resumeTurn(input);
-  }
-
   async cancelIssueRun(input: {
     runId: string;
     issueId: string;
@@ -788,17 +779,11 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       getSandbox: () => this.getAgentSandbox(),
       issueRunEnv: this.env,
       cancelIssueRun: async (input) => {
-        if (this.env.RUN_WORKFLOW) {
-          const instance = await this.env.RUN_WORKFLOW.get(input.runId);
-          await instance.sendEvent({
-            type: 'run-control',
-            payload: { kind: 'cancel' },
-          });
-          return;
-        }
-        const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId);
-        await issueAgent.requestCancel(input);
-        this.abortSubAgent(IssueRunSubAgent, input.issueId);
+        const instance = await this.env.RUN_WORKFLOW.get(input.runId);
+        await instance.sendEvent({
+          type: 'run-control',
+          payload: { kind: 'cancel' },
+        });
       },
     });
   }

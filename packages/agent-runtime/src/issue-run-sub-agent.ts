@@ -2,7 +2,6 @@ import {
   Session,
   Think,
   type ChatResponseResult,
-  type FiberRecoveryContext,
   type StepContext,
   type ToolCallContext,
   type ToolCallResultContext,
@@ -598,105 +597,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     this.clearTurnState()
   }
 
-  override async onFiberRecovered(ctx: FiberRecoveryContext) {
-    const snapshot = objectOrNull(ctx.snapshot)
-    const runId = stringValue(snapshot?.runId)
-    if (!runId) return
-
-    const runResult = await Result.tryPromise({
-      try: async () => {
-        const [run] = await this.getDb()
-          .select({
-            id: schema.issueRun.id,
-            issueId: schema.issueRun.issueId,
-            agentId: schema.issueRun.agentId,
-            status: schema.issueRun.status,
-            createdAt: schema.issueRun.createdAt,
-            startedAt: schema.issueRun.startedAt,
-          })
-          .from(schema.issueRun)
-          .where(eq(schema.issueRun.id, runId))
-          .limit(1)
-        return run ?? null
-      },
-      catch: (cause) => dbError('load recovered issue run', cause),
-    })
-    if (runResult.isErr()) {
-      console.warn('[agent-runtime] failed to load recovered issue run', {
-        error: runResult.error.message,
-        runId,
-      })
-      return
-    }
-
-    const run = runResult.value
-    if (!run || !isActiveRunStatus(run.status ?? '')) {
-      return
-    }
-
-    const timeoutSec = await this.loadRunTimeoutSec(run.agentId)
-    if (timeoutSec.isErr()) {
-      console.warn('[agent-runtime] failed to load recovered run timeout', {
-        error: timeoutSec.error.message,
-        runId,
-      })
-      return
-    }
-    const startedAt = run.startedAt ?? run.createdAt
-    const elapsedMs = startedAt ? Date.now() - startedAt.getTime() : 0
-    if (elapsedMs > timeoutSec.value * 1000) {
-      const failedResult = await this.forceCloseFailed(runId, 'timeout')
-      if (failedResult.isErr()) {
-        console.warn('[agent-runtime] failed to timeout recovered fiber', {
-          error: failedResult.error.message,
-          runId,
-        })
-      }
-      return
-    }
-
-    const runStateResult = await this.loadRunState(runId)
-    if (runStateResult.isErr()) return
-    const db = getIssueRunDb(this.env.DATABASE_URL)
-    const eventResult = await appendIssueRunEvent({
-      db,
-      run: runStateResult.value,
-      eventType: 'issue_run:message',
-      stream: 'system',
-      level: 'warn',
-      message: 'Run fiber recovered; resuming issue run',
-      payload: {
-        reason: 'fiber_recovered',
-        fiber_id: ctx.id,
-        fiber_name: ctx.name,
-        snapshot,
-        created_at_ms: ctx.createdAt,
-      },
-    })
-    if (eventResult.isErr()) {
-      console.warn('[agent-runtime] failed to append fiber recovery event', {
-        error: eventResult.error.message,
-        runId,
-      })
-    }
-
-    if (!run.issueId) {
-      console.warn('[agent-runtime] skipping fiber resume for issueless run', {
-        runId,
-      })
-      return
-    }
-    this.startIssueRunFiber('resume', { runId, issueId: run.issueId })
-  }
-
-  async startTurn(input: StartTurnInput): Promise<void> {
-    this.startIssueRunFiber('start', input)
-  }
-
-  async resumeTurn(input: StartTurnInput): Promise<void> {
-    this.startIssueRunFiber('resume', input)
-  }
-
   /**
    * Awaitable single-turn driver for RunWorkflow's `step.do` blocks.
    * Throws on failure so the workflow step can retry; otherwise returns the
@@ -748,7 +648,13 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       await this.forceCloseFailed(input.runId, driveResult.error.message)
       throw new Error(driveResult.error.message)
     }
-    return { status: runRow?.status ?? 'unknown' }
+
+    const statusResult = await this.readRunStatus(input.runId)
+    if (statusResult.isErr()) {
+      await this.forceCloseFailed(input.runId, statusResult.error.message)
+      throw new Error(statusResult.error.message)
+    }
+    return { status: statusResult.value }
   }
 
   async requestCancel(input: StartTurnInput): Promise<void> {
@@ -760,28 +666,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       })
     }
     this.abortAllRequests()
-  }
-
-  private startIssueRunFiber(mode: TurnMode, input: StartTurnInput) {
-    void this.runFiber(`issue-run:${input.runId}:${mode}`, async (fiber) => {
-      fiber.stash({ runId: input.runId, issueId: input.issueId, mode })
-      const result = await this.driveTurn(mode, input)
-      if (result.isErr()) {
-        const failedResult = await this.forceCloseFailed(
-          input.runId,
-          result.error.message,
-        )
-        if (failedResult.isErr()) {
-          console.warn(
-            '[agent-runtime] failed to close issue run fiber error',
-            {
-              error: failedResult.error.message,
-              runId: input.runId,
-            },
-          )
-        }
-      }
-    })
   }
 
   private async driveTurn(
@@ -1008,6 +892,24 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         message: `Issue run is no longer active (${status ?? 'missing'}).`,
       }),
     )
+  }
+
+  private async readRunStatus(
+    runId: string,
+  ): Promise<ResultValue<string, IssueRunSubAgentError>> {
+    const result = await Result.tryPromise({
+      try: async () => {
+        const [row] = await this.getDb()
+          .select({ status: schema.issueRun.status })
+          .from(schema.issueRun)
+          .where(eq(schema.issueRun.id, runId))
+          .limit(1)
+        return row?.status ?? 'unknown'
+      },
+      catch: (cause) => dbError('load issue run status', cause),
+    })
+    if (result.isErr()) return Result.err(result.error)
+    return Result.ok(result.value)
   }
 
   private async loadRunState(
