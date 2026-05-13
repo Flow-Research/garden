@@ -20,7 +20,6 @@ import {
   automationTriggerKindValues,
 } from './automation-values.js'
 import { issuePriorityValues } from './issue-values.js'
-import { issue, issueRun } from './issues.js'
 import { user } from './users.js'
 import { organization } from './workspaces.js'
 
@@ -40,7 +39,6 @@ export const automation = pgTable(
     projectId: uuid('project_id'),
     title: text('title').notNull(),
     description: text('description'),
-    issueTitleTemplate: text('issue_title_template'),
     assigneeAgentId: uuid('assignee_agent_id')
       .notNull()
       .references(() => agent.id),
@@ -163,6 +161,9 @@ export const automationRun = pgTable(
   'automation_run',
   {
     id: uuid('id').primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => organization.id),
     automationId: uuid('automation_id')
       .notNull()
       .references(() => automation.id, { onDelete: 'cascade' }),
@@ -171,11 +172,22 @@ export const automationRun = pgTable(
     }),
     source: text('source').notNull(),
     status: text('status').notNull().default('pending'),
-    issueId: uuid('issue_id').references(() => issue.id, {
-      onDelete: 'set null',
+    agentId: uuid('agent_id')
+      .notNull()
+      .references(() => agent.id),
+    hostName: text('host_name').notNull(),
+    workflowInstanceId: text('workflow_instance_id'),
+    cancelRequestedAt: timestamp('cancel_requested_at', {
+      mode: 'date',
+      withTimezone: true,
     }),
-    issueRunId: uuid('issue_run_id').references(() => issueRun.id, {
-      onDelete: 'set null',
+    contextSnapshot: jsonb('context_snapshot'),
+    resultJson: jsonb('result_json'),
+    usageJson: jsonb('usage_json'),
+    error: text('error'),
+    startedAt: timestamp('started_at', {
+      mode: 'date',
+      withTimezone: true,
     }),
     triggeredAt: timestamp('triggered_at', {
       mode: 'date',
@@ -192,13 +204,26 @@ export const automationRun = pgTable(
     createdAt: timestamp('created_at', { mode: 'date' })
       .notNull()
       .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { mode: 'date' })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [
+    index('automation_run_workspace_idx').on(
+      table.workspaceId,
+      table.status,
+      table.triggeredAt,
+    ),
     index('automation_run_automation_idx').on(
       table.automationId,
       table.triggeredAt,
     ),
-    index('automation_run_issue_idx').on(table.issueId),
+    index('automation_run_agent_active_idx')
+      .on(table.agentId)
+      .where(sql`${table.status} in ('queued', 'running')`),
+    index('automation_run_workflow_idx')
+      .on(table.workflowInstanceId)
+      .where(sql`${table.workflowInstanceId} is not null`),
     check(
       'automation_run_source_check',
       sql`${table.source} in (${sqlValueList(automationRunSourceValues)})`,

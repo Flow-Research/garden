@@ -134,32 +134,20 @@ async function markRunFailed(args: {
             updatedAt: args.now,
           })
           .where(eq(schema.issueRun.id, args.runId))
-        if (issueId) {
-          await tx
-            .update(schema.issue)
-            .set({ activeRunId: null, updatedAt: args.now })
-            .where(
-              and(
-                eq(schema.issue.id, issueId),
-                eq(schema.issue.activeRunId, args.runId),
-              ),
-            )
-        }
         await tx
-          .update(schema.automationRun)
-          .set({
-            status: 'failed',
-            completedAt: args.now,
-            failureReason: args.reason,
-          })
-          .where(eq(schema.automationRun.issueRunId, args.runId))
+          .update(schema.issue)
+          .set({ activeRunId: null, updatedAt: args.now })
+          .where(
+            and(
+              eq(schema.issue.id, issueId),
+              eq(schema.issue.activeRunId, args.runId),
+            ),
+          )
       })
     },
     catch: (cause) => dbError('mark run failed', cause),
   })
   if (updateResult.isErr()) return Result.err(updateResult.error)
-
-  if (!issueId) return Result.ok()
 
   const eventResult = await Result.tryPromise({
     try: async () => {

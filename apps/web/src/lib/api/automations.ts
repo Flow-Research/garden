@@ -7,10 +7,11 @@ export type AutomationConcurrencyPolicy = 'skip' | 'queue' | 'replace'
 export type AutomationRunSource = 'schedule' | 'manual' | 'webhook' | 'api'
 export type AutomationRunStatus =
   | 'pending'
-  | 'issue_created'
+  | 'queued'
   | 'running'
   | 'completed'
   | 'failed'
+  | 'cancelled'
   | 'skipped'
 
 export type Automation = {
@@ -19,7 +20,6 @@ export type Automation = {
   project_id: string | null
   title: string
   description: string | null
-  issue_title_template: string | null
   assignee_agent_id: string
   priority: AutomationPriority
   status: AutomationStatus
@@ -76,8 +76,7 @@ export type AutomationRun = {
   trigger_id: string | null
   source: AutomationRunSource
   status: AutomationRunStatus
-  issue_id: string | null
-  issue_run_id: string | null
+  run_id: string | null
   triggered_at: string | null
   completed_at: string | null
   failure_reason: string | null
@@ -98,7 +97,6 @@ export type AutomationDetailResponse = {
 export type CreateAutomationRequest = {
   title: string
   description?: string | null
-  issue_title_template?: string | null
   assignee_agent_id: string
   priority?: AutomationPriority
   project_id?: string | null
@@ -124,7 +122,6 @@ export type UpdateAutomationRequest = Partial<
     CreateAutomationRequest,
     | 'title'
     | 'description'
-    | 'issue_title_template'
     | 'assignee_agent_id'
     | 'priority'
     | 'project_id'

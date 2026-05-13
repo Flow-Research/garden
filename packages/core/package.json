@@ -19,6 +19,7 @@
     "./workspace": "./workspace/index.ts",
     "./webhooks": "./webhooks/index.ts",
     "./issues": "./issues/index.ts",
+    "./automations/run-service": "./automations/run-service.ts",
     "./issues/identifier": "./issues/identifier.ts",
     "./issues/server": "./issues/server.ts",
     "./issues/run-service": "./issues/run-service.ts",

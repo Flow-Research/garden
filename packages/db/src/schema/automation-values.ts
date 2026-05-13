@@ -17,9 +17,10 @@ export const automationRunSourceValues = [
 ] as const
 export const automationRunStatusValues = [
   'pending',
-  'issue_created',
+  'queued',
   'running',
   'completed',
   'failed',
+  'cancelled',
   'skipped',
 ] as const

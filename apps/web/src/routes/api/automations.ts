@@ -122,7 +122,6 @@ export const Route = createFileRoute('/api/automations')({
               projectId: body.project_id ?? null,
               title: body.title,
               description: body.description ?? null,
-              issueTitleTemplate: body.issue_title_template ?? null,
               assigneeAgentId: body.assignee_agent_id,
               priority: body.priority ?? 'medium',
               status: automationStatus,

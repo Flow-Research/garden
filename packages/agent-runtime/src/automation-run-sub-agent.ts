@@ -1,0 +1,1278 @@
+import {
+  Session,
+  Think,
+  type ChatResponseResult,
+  type StepContext,
+  type ToolCallContext,
+  type TurnConfig,
+  type TurnContext,
+} from '@cloudflare/think'
+import { Workspace } from '@cloudflare/shell'
+import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
+import type { LanguageModel, ModelMessage, ToolSet, UIMessage } from 'ai'
+import { Result, TaggedError, type Result as ResultValue } from 'better-result'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
+import { drizzle } from 'drizzle-orm/neon-serverless'
+import { connectorRegistry } from '@garden/connectors'
+import {
+  derivePermissions,
+  type AgentPermissions,
+} from '@garden/core/agents/permissions'
+import * as schema from '@garden/db/schema'
+import { createAgentModel } from './model'
+import {
+  RuntimeMcpConnectionPreparer,
+  RuntimeMcpController,
+  RuntimeMcpError,
+  connectRpcMcpConnector,
+  type McpHost,
+  type RuntimeMcpServerStates,
+  type ThreadRuntimeIdentity,
+} from './runtime-mcp-controller'
+import { mcpRuntimeConfig } from './mcp-runtime-config'
+import { assembleFoundationPrompt } from './prompt'
+import { createSandboxTools } from './sandbox-tools'
+
+type AgentRuntimeEnv = Cloudflare.Env & {
+  BETTER_AUTH_SECRET: string
+  BETTER_AUTH_URL: string
+  DATABASE_URL: string
+  OPENCODE_GO_API_KEY: string
+  FILES: R2Bucket
+  LOADER: WorkerLoader
+  Sandbox: DurableObjectNamespace<SandboxDO>
+  MCP_SESSION: DurableObjectNamespace
+}
+
+type TurnMode = 'start' | 'resume'
+
+type StartTurnInput = {
+  runId: string
+}
+
+type LoadedAutomationRunContext = {
+  contextBlock: string
+  permissions: AgentPermissions
+  run: typeof schema.automationRun.$inferSelect
+  automation: typeof schema.automation.$inferSelect
+  agent: {
+    id: string
+    name: string
+    roleTitle: string | null
+    ownerUserId: string
+    runTimeoutSec: number
+    permissions: unknown
+  }
+}
+
+type RunUsage = {
+  input_tokens: number
+  output_tokens: number
+  cached_input_tokens: number
+  reasoning_tokens?: number
+  total_tokens: number
+  model: string
+  model_provider: string
+  step_count: number
+  recorded_at_ms: number
+}
+
+const DEFAULT_AUTOMATION_RUN_TIMEOUT_SEC = 2 * 60 * 60
+const THINK_TURN_MAX_RETRIES = 1
+const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.automation-run.turn'
+const ACTIVE_AUTOMATION_RUN_STATUSES = ['queued', 'running'] as const
+
+class AutomationRunSubAgentError extends TaggedError(
+  'AutomationRunSubAgentError',
+)<{
+  code: 'database_failed' | 'invalid_state' | 'not_found' | 'runtime_failed'
+  message: string
+  cause?: unknown
+}>() {}
+
+class AutomationRunTurnStopped extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'AutomationRunTurnStopped'
+  }
+}
+
+function dbError(operation: string, cause: unknown) {
+  const message = cause instanceof Error ? cause.message : String(cause)
+  return new AutomationRunSubAgentError({
+    code: 'database_failed',
+    message: `${operation} failed: ${message}`,
+    cause,
+  })
+}
+
+function dateToIso(value: Date | null | undefined) {
+  return value ? value.toISOString() : null
+}
+
+function objectOrNull(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function stringValue(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function renderJson(value: unknown) {
+  return JSON.stringify(value, null, 2)
+}
+
+function renderSection(title: string, body: string) {
+  return [`## ${title}`, body.trim() || 'None.'].join('\n')
+}
+
+function makeUserMessage(text: string): UIMessage {
+  return {
+    id: crypto.randomUUID(),
+    role: 'user',
+    parts: [{ type: 'text', text }],
+  }
+}
+
+function messageText(message: UIMessage) {
+  return message.parts
+    .flatMap((part) =>
+      part.type === 'text' && typeof part.text === 'string'
+        ? [part.text.trim()]
+        : [],
+    )
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+function partType(part: unknown) {
+  return objectOrNull(part)?.type
+}
+
+function partToolCallId(part: unknown) {
+  const value = objectOrNull(part)
+  return stringValue(value?.toolCallId) ?? stringValue(value?.tool_call_id)
+}
+
+function collectToolResultIds(messages: ModelMessage[]) {
+  const ids = new Set<string>()
+  for (const message of messages) {
+    if (message.role !== 'tool' || !Array.isArray(message.content)) continue
+    for (const part of message.content) {
+      const id = partToolCallId(part)
+      if (id) ids.add(id)
+    }
+  }
+  return ids
+}
+
+function sanitizeRecoveredToolTranscript(messages: ModelMessage[]) {
+  const toolResultIds = collectToolResultIds(messages)
+  let removed = 0
+  const sanitized: ModelMessage[] = []
+
+  for (const message of messages) {
+    if (message.role !== 'assistant' || !Array.isArray(message.content)) {
+      sanitized.push(message)
+      continue
+    }
+
+    const content = message.content.filter((part) => {
+      const type = partType(part)
+      if (type !== 'tool-call') return true
+      const id = partToolCallId(part)
+      const keep = Boolean(id && toolResultIds.has(id))
+      if (!keep) removed += 1
+      return keep
+    })
+
+    if (content.length === message.content.length) {
+      sanitized.push(message)
+    } else if (content.length > 0) {
+      sanitized.push({ ...message, content } as ModelMessage)
+    }
+  }
+
+  if (removed === 0) return { messages, removed }
+
+  return {
+    messages: [
+      ...sanitized,
+      {
+        role: 'user',
+        content:
+          'Runtime recovery removed orphaned tool-call records from a previous interrupted automation turn. Continue from the current automation context.',
+      } satisfies ModelMessage,
+    ],
+    removed,
+  }
+}
+
+function usageTotal(usage: RunUsage) {
+  return usage.input_tokens + usage.output_tokens + usage.cached_input_tokens
+}
+
+function emptyUsage(ctx: StepContext): RunUsage {
+  return {
+    input_tokens: 0,
+    output_tokens: 0,
+    cached_input_tokens: 0,
+    total_tokens: 0,
+    model: ctx.model.modelId,
+    model_provider: ctx.model.provider,
+    step_count: 0,
+    recorded_at_ms: Date.now(),
+  }
+}
+
+function isActiveAutomationRunStatus(status: string) {
+  return (ACTIVE_AUTOMATION_RUN_STATUSES as readonly string[]).includes(status)
+}
+
+export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
+  constructor(ctx: DurableObjectState, env: AgentRuntimeEnv) {
+    super(ctx, env)
+  }
+
+  waitForMcpConnections = {
+    timeout: mcpRuntimeConfig.connectionWaitTimeoutMs,
+  }
+
+  override workspace = new Workspace({
+    sql: this.ctx.storage.sql,
+    r2: this.env.FILES,
+    name: () => this.name,
+  })
+
+  private currentRunId: string | null = null
+  private currentPermissions: AgentPermissions | null = null
+  private aggUsage: RunUsage | null = null
+  private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
+    getController: () => this.getMcpController(),
+    fullSyncIntervalMs: mcpRuntimeConfig.connectorFullSyncIntervalMs,
+    waitForConnections: async (timeoutMs) =>
+      await this.mcp.waitForConnections({ timeout: timeoutMs }),
+    getServerStates: () =>
+      this.getMcpServers().servers as RuntimeMcpServerStates,
+    connectionWaitTimeoutMs: mcpRuntimeConfig.connectionWaitTimeoutMs,
+    backgroundRefreshFailedMessage:
+      '[agent-runtime] automation MCP background refresh failed',
+    refreshFailedMessage:
+      '[agent-runtime] automation MCP connector refresh failed',
+    continuingWithoutReadyMessage:
+      '[agent-runtime] continuing automation run without ready MCP connectors',
+  })
+
+  maxSteps = 30
+
+  getModel(): LanguageModel {
+    return createAgentModel(this.env.OPENCODE_GO_API_KEY)
+  }
+
+  override async configureSession(session: Session) {
+    return session
+      .withContext('foundation', {
+        description:
+          'Base Garden operating contract. Later context refines this but does not override it.',
+        provider: {
+          get: async () => assembleFoundationPrompt(),
+        },
+      })
+      .withContext('automation-run', {
+        description:
+          'Standalone automation-run behavior and output discipline.',
+        provider: {
+          get: async () =>
+            [
+              'You are executing a standalone Garden automation.',
+              'This is not an issue, should not create a kanban card, and has no issue timeline.',
+              'Complete the configured automation task directly and return the result as the final assistant message.',
+              'Only inspect or modify Garden issues when the automation prompt explicitly asks for issue work.',
+            ].join('\n'),
+        },
+      })
+      .withCachedPrompt()
+  }
+
+  override getTools(): ToolSet {
+    return {
+      ...createSandboxTools(() => this.getAgentSandbox()),
+    }
+  }
+
+  override async beforeTurn(ctx: TurnContext): Promise<TurnConfig | void> {
+    const runId = stringValue(ctx.body?.run_id) ?? this.currentRunId
+    if (!runId) {
+      throw new Error('AutomationRunSubAgent.beforeTurn missing run_id.')
+    }
+
+    const loadedResult = await this.loadTurnContext(runId)
+    if (loadedResult.isErr()) throw loadedResult.error
+
+    const guardResult = await this.applyRunBoundaryGuards(loadedResult.value)
+    if (guardResult.isErr()) throw guardResult.error
+    if (guardResult.value !== 'continue') {
+      throw new AutomationRunTurnStopped(guardResult.value)
+    }
+
+    this.currentRunId = runId
+    this.currentPermissions = loadedResult.value.permissions
+    this.aggUsage = null
+
+    const mcpController = await this.ensureProxyMcpConnectionsForTurn()
+    const observedChangesResult = mcpController.captureObservedMcpToolChanges()
+    if (observedChangesResult.isErr()) {
+      console.warn(
+        '[agent-runtime] failed to capture MCP tool changes for automation run',
+        observedChangesResult.error,
+      )
+    }
+    const transcript = sanitizeRecoveredToolTranscript(ctx.messages)
+    if (transcript.removed > 0) {
+      console.warn('[agent-runtime] sanitized orphaned automation tool calls', {
+        runId,
+        removed: transcript.removed,
+      })
+    }
+
+    return {
+      experimental_telemetry: {
+        functionId: THINK_TURN_TELEMETRY_FUNCTION_ID,
+        isEnabled: true,
+        metadata: {
+          agentClass: 'AutomationRunSubAgent',
+          runId,
+        },
+        recordInputs: false,
+        recordOutputs: false,
+      },
+      maxRetries: THINK_TURN_MAX_RETRIES,
+      maxSteps: this.maxSteps,
+      messages: transcript.messages,
+      sendReasoning: true,
+      system: `${ctx.system}\n\n${loadedResult.value.contextBlock}`,
+      tools: mcpController.wrapGetAITools(
+        this.mcp.getAITools.bind(this.mcp),
+        undefined,
+        {
+          shouldAutoApprove: ({ riskClass }) =>
+            this.shouldAutoApproveRiskClass(riskClass),
+        },
+      ),
+    } satisfies TurnConfig
+  }
+
+  override async beforeToolCall(ctx: ToolCallContext) {
+    const activeResult = await this.assertRunActiveForTool()
+    if (activeResult.isErr()) throw activeResult.error
+
+    const gateResult = this.assertToolAllowed(ctx.toolName)
+    if (gateResult.isErr()) throw gateResult.error
+
+    return undefined
+  }
+
+  override async onStepFinish(ctx: StepContext) {
+    const runId = this.currentRunId
+    if (!runId) return
+
+    const nextUsage = this.aggUsage ?? emptyUsage(ctx)
+    nextUsage.input_tokens += ctx.usage.inputTokens ?? 0
+    nextUsage.output_tokens += ctx.usage.outputTokens ?? 0
+    nextUsage.cached_input_tokens +=
+      ctx.usage.inputTokenDetails.cacheReadTokens ??
+      ctx.usage.cachedInputTokens ??
+      0
+    const reasoningTokens =
+      ctx.usage.outputTokenDetails.reasoningTokens ??
+      ctx.usage.reasoningTokens ??
+      0
+    if (reasoningTokens > 0) {
+      nextUsage.reasoning_tokens =
+        (nextUsage.reasoning_tokens ?? 0) + reasoningTokens
+    }
+    nextUsage.step_count += 1
+    nextUsage.total_tokens = ctx.usage.totalTokens ?? usageTotal(nextUsage)
+    nextUsage.recorded_at_ms = Date.now()
+    nextUsage.model = ctx.model.modelId
+    nextUsage.model_provider = ctx.model.provider
+    this.aggUsage = nextUsage
+
+    const persistResult = await this.persistUsage(runId, nextUsage)
+    if (persistResult.isErr()) {
+      console.warn('[agent-runtime] failed to persist automation run usage', {
+        error: persistResult.error.message,
+        runId,
+      })
+    }
+  }
+
+  override async onChatResponse(result: ChatResponseResult) {
+    const runId = this.currentRunId
+    if (!runId) return
+
+    if (this.aggUsage) {
+      const usageResult = await this.persistUsage(runId, this.aggUsage)
+      if (usageResult.isErr()) {
+        console.warn('[agent-runtime] failed to persist final usage', {
+          error: usageResult.error.message,
+          runId,
+        })
+      }
+    }
+
+    if (result.status === 'aborted') {
+      const cancelResult = await this.cancelRunIfRequested(runId)
+      if (cancelResult.isErr()) {
+        console.warn(
+          '[agent-runtime] failed to apply automation run cancellation',
+          { error: cancelResult.error.message, runId },
+        )
+      }
+      this.clearTurnState()
+      return
+    }
+
+    if (result.status === 'error') {
+      const failedResult = await this.forceCloseFailed(
+        runId,
+        result.error ?? 'chat_error',
+      )
+      if (failedResult.isErr()) {
+        console.warn('[agent-runtime] failed to close errored automation run', {
+          error: failedResult.error.message,
+          runId,
+        })
+      }
+      this.clearTurnState()
+      return
+    }
+
+    const completeResult = await this.finishCompleted(runId, result.message)
+    if (completeResult.isErr()) {
+      console.warn('[agent-runtime] failed to complete automation run', {
+        error: completeResult.error.message,
+        runId,
+      })
+    }
+    this.clearTurnState()
+  }
+
+  async executeWorkflowTurn(
+    mode: TurnMode,
+    input: StartTurnInput,
+  ): Promise<{ status: string }> {
+    const [runRow] = await this.getDb()
+      .select({
+        cancelRequestedAt: schema.automationRun.cancelRequestedAt,
+        status: schema.automationRun.status,
+      })
+      .from(schema.automationRun)
+      .where(eq(schema.automationRun.id, input.runId))
+      .limit(1)
+
+    if (runRow?.cancelRequestedAt) {
+      const cancelResult = await this.finishCancelled(input.runId, 'cancelled')
+      if (cancelResult.isErr()) {
+        await this.forceCloseFailed(input.runId, cancelResult.error.message)
+        throw new Error(cancelResult.error.message)
+      }
+      return { status: 'cancelled' }
+    }
+
+    const driveResult = await this.driveTurn(mode, input)
+    if (driveResult.isErr()) {
+      await this.forceCloseFailed(input.runId, driveResult.error.message)
+      throw new Error(driveResult.error.message)
+    }
+
+    const statusResult = await this.readRunStatus(input.runId)
+    if (statusResult.isErr()) {
+      await this.forceCloseFailed(input.runId, statusResult.error.message)
+      throw new Error(statusResult.error.message)
+    }
+    return { status: statusResult.value }
+  }
+
+  async requestCancel(input: StartTurnInput): Promise<void> {
+    const cancelResult = await this.setCancelRequested(input.runId, 'cancelled')
+    if (cancelResult.isErr()) {
+      console.warn('[agent-runtime] failed to request automation cancellation', {
+        error: cancelResult.error.message,
+        runId: input.runId,
+      })
+    }
+    this.abortAllRequests()
+  }
+
+  private async driveTurn(
+    mode: TurnMode,
+    input: StartTurnInput,
+  ): Promise<ResultValue<void, AutomationRunSubAgentError>> {
+    const loadedResult = await this.loadTurnContext(input.runId)
+    if (loadedResult.isErr()) return Result.err(loadedResult.error)
+
+    const boundaryResult = await this.applyRunBoundaryGuards(loadedResult.value)
+    if (boundaryResult.isErr()) return Result.err(boundaryResult.error)
+    if (boundaryResult.value !== 'continue') return Result.ok()
+
+    const statusResult =
+      mode === 'start'
+        ? await this.markRunStarted(loadedResult.value)
+        : await this.markRunResumed(loadedResult.value)
+    if (statusResult.isErr()) return Result.err(statusResult.error)
+
+    this.currentRunId = input.runId
+    this.currentPermissions = loadedResult.value.permissions
+    this.setProgrammaticBody({
+      run_id: input.runId,
+      mode,
+    })
+
+    const message = makeUserMessage(
+      mode === 'resume'
+        ? 'Resume this automation run using the injected automation context. Complete the scheduled task and return the final result directly.'
+        : 'Start this automation run using the injected automation context. Complete the task directly; do not create, update, or comment on issues unless the automation prompt explicitly asks you to inspect existing issues.',
+    )
+
+    const saveResult = await Result.tryPromise({
+      try: async () => {
+        await this.saveMessages([message])
+      },
+      catch: (cause) => cause,
+    })
+    if (saveResult.isErr()) {
+      if (saveResult.error instanceof AutomationRunTurnStopped) {
+        return Result.ok()
+      }
+      return Result.err(
+        new AutomationRunSubAgentError({
+          code: 'runtime_failed',
+          message:
+            saveResult.error instanceof Error
+              ? saveResult.error.message
+              : String(saveResult.error),
+          cause: saveResult.error,
+        }),
+      )
+    }
+
+    return Result.ok()
+  }
+
+  private getDb() {
+    return drizzle(this.env.DATABASE_URL, { schema })
+  }
+
+  private getSandboxId() {
+    const pathKey = this.selfPath.map((segment) => segment.name).join('-')
+    const candidate = pathKey || this.name
+    if (candidate.length <= 63) {
+      return candidate
+    }
+
+    return [
+      this.compactSandboxSegment(
+        this.parentPath.at(-1)?.name || 'agent-do',
+        20,
+      ),
+      this.compactSandboxSegment(this.name, 20),
+      this.hashSandboxId(candidate),
+    ].join('-')
+  }
+
+  private compactSandboxSegment(value: string, maxLength: number) {
+    const normalized = value
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+
+    if (!normalized) {
+      return 'sandbox'
+    }
+
+    return normalized.slice(0, maxLength)
+  }
+
+  private hashSandboxId(value: string) {
+    let hash = 2166136261
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index)
+      hash = Math.imul(hash, 16777619)
+    }
+
+    return (hash >>> 0).toString(16)
+  }
+
+  private getAgentSandbox() {
+    return getSandbox(this.env.Sandbox, this.getSandboxId(), {
+      normalizeId: true,
+      sleepAfter: '5m',
+      transport: 'rpc',
+    })
+  }
+
+  private connectorToolForName(toolName: string) {
+    for (const connector of connectorRegistry) {
+      const prefix = `tool_${connector.id.replace(/-/g, '')}_`
+      if (toolName.startsWith(prefix)) {
+        return {
+          connectorId: connector.id,
+          toolName: toolName.slice(prefix.length),
+        }
+      }
+    }
+    return null
+  }
+
+  private assertToolAllowed(
+    runtimeToolName: string,
+  ): ResultValue<void, AutomationRunSubAgentError> {
+    const permissions = this.currentPermissions
+    if (!permissions || permissions.full_access) return Result.ok()
+
+    const connectorTool = this.connectorToolForName(runtimeToolName)
+    const toolName = connectorTool?.toolName ?? runtimeToolName
+
+    if (
+      permissions.allowed_tools.length > 0 &&
+      !permissions.allowed_tools.includes(toolName) &&
+      !permissions.allowed_tools.includes(runtimeToolName)
+    ) {
+      return Result.err(
+        new AutomationRunSubAgentError({
+          code: 'runtime_failed',
+          message: `Tool ${toolName} is not allowed for this agent.`,
+        }),
+      )
+    }
+
+    if (
+      connectorTool &&
+      permissions.allowed_connectors.length > 0 &&
+      !permissions.allowed_connectors.includes(connectorTool.connectorId)
+    ) {
+      return Result.err(
+        new AutomationRunSubAgentError({
+          code: 'runtime_failed',
+          message: `Connector ${connectorTool.connectorId} is not allowed for this agent.`,
+        }),
+      )
+    }
+
+    return Result.ok()
+  }
+
+  private shouldAutoApproveRiskClass(riskClass: string) {
+    const permissions = this.currentPermissions
+    if (!permissions) return false
+    if (riskClass !== 'send_external' && riskClass !== 'destructive') {
+      return false
+    }
+    return permissions.approval_overrides[riskClass] === 'auto'
+  }
+
+  private async assertRunActiveForTool(): Promise<
+    ResultValue<void, AutomationRunSubAgentError>
+  > {
+    const runId = this.currentRunId
+    if (!runId) {
+      return Result.err(
+        new AutomationRunSubAgentError({
+          code: 'invalid_state',
+          message: 'Automation tool called outside an active run.',
+        }),
+      )
+    }
+    const result = await this.readRunStatus(runId)
+    if (result.isErr()) return Result.err(result.error)
+    if (isActiveAutomationRunStatus(result.value)) return Result.ok()
+
+    return Result.err(
+      new AutomationRunSubAgentError({
+        code: 'invalid_state',
+        message: `Automation run is no longer active (${result.value}).`,
+      }),
+    )
+  }
+
+  private async readRunStatus(
+    runId: string,
+  ): Promise<ResultValue<string, AutomationRunSubAgentError>> {
+    const result = await Result.tryPromise({
+      try: async () => {
+        const [row] = await this.getDb()
+          .select({ status: schema.automationRun.status })
+          .from(schema.automationRun)
+          .where(eq(schema.automationRun.id, runId))
+          .limit(1)
+        return row?.status ?? 'unknown'
+      },
+      catch: (cause) => dbError('load automation run status', cause),
+    })
+    if (result.isErr()) return Result.err(result.error)
+    return Result.ok(result.value)
+  }
+
+  private async loadTurnContext(
+    runId: string,
+  ): Promise<ResultValue<LoadedAutomationRunContext, AutomationRunSubAgentError>> {
+    const db = this.getDb()
+    const result = await Result.tryPromise({
+      try: async () => {
+        const [runRow] = await db
+          .select({
+            run: schema.automationRun,
+            automation: schema.automation,
+            agent: {
+              id: schema.agent.id,
+              name: schema.agent.name,
+              roleTitle: schema.agent.roleTitle,
+              ownerUserId: schema.agent.ownerUserId,
+              runTimeoutSec: schema.agent.runTimeoutSec,
+              permissions: schema.agent.permissions,
+            },
+          })
+          .from(schema.automationRun)
+          .innerJoin(
+            schema.automation,
+            eq(schema.automation.id, schema.automationRun.automationId),
+          )
+          .innerJoin(
+            schema.agent,
+            eq(schema.agent.id, schema.automationRun.agentId),
+          )
+          .where(eq(schema.automationRun.id, runId))
+          .limit(1)
+
+        if (!runRow) return null
+
+        const [recentRuns, availableAgents] = await Promise.all([
+          db
+            .select()
+            .from(schema.automationRun)
+            .where(eq(schema.automationRun.automationId, runRow.automation.id))
+            .orderBy(desc(schema.automationRun.triggeredAt))
+            .limit(10),
+          db
+            .select({
+              id: schema.agent.id,
+              name: schema.agent.name,
+              roleTitle: schema.agent.roleTitle,
+            })
+            .from(schema.agent)
+            .where(
+              and(
+                eq(schema.agent.workspaceId, runRow.automation.workspaceId),
+                inArray(schema.agent.status, ['active', 'pending_approval']),
+              ),
+            )
+            .orderBy(asc(schema.agent.name)),
+        ])
+
+        return {
+          runRow,
+          recentRuns,
+          availableAgents,
+        }
+      },
+      catch: (cause) => dbError('load automation turn context', cause),
+    })
+    if (result.isErr()) return Result.err(result.error)
+    if (!result.value) {
+      return Result.err(
+        new AutomationRunSubAgentError({
+          code: 'not_found',
+          message: 'Automation run not found.',
+        }),
+      )
+    }
+
+    const row = result.value
+    const context = objectOrNull(row.runRow.run.contextSnapshot)
+    const source = stringValue(context?.source) ?? row.runRow.run.source
+    const triggerReason =
+      source === 'schedule'
+        ? 'A schedule triggered this automation.'
+        : source === 'manual'
+          ? 'A workspace member manually triggered this automation.'
+          : `This automation was triggered by ${source}.`
+
+    return Result.ok({
+      permissions: derivePermissions({
+        agent: row.runRow.agent,
+        issue: null,
+      }),
+      run: row.runRow.run,
+      automation: row.runRow.automation,
+      agent: row.runRow.agent,
+      contextBlock: this.renderContextBlock({
+        triggerReason,
+        run: row.runRow.run,
+        automation: row.runRow.automation,
+        agent: row.runRow.agent,
+        recentRuns: row.recentRuns,
+        availableAgents: row.availableAgents,
+      }),
+    })
+  }
+
+  private renderContextBlock(input: {
+    triggerReason: string
+    run: typeof schema.automationRun.$inferSelect
+    automation: typeof schema.automation.$inferSelect
+    agent: {
+      id: string
+      name: string
+      roleTitle: string | null
+      ownerUserId: string
+      runTimeoutSec: number
+      permissions?: unknown
+    }
+    recentRuns: Array<typeof schema.automationRun.$inferSelect>
+    availableAgents: Array<{
+      id: string
+      name: string
+      roleTitle: string | null
+    }>
+  }) {
+    const context = objectOrNull(input.run.contextSnapshot)
+    const payload = objectOrNull(context?.payload) ?? context?.payload ?? null
+    const recentRuns = input.recentRuns.map((run) => ({
+      id: run.id,
+      source: run.source,
+      status: run.status,
+      failure_reason: run.failureReason ?? null,
+      triggered_at: dateToIso(run.triggeredAt),
+      completed_at: dateToIso(run.completedAt),
+    }))
+    const availableAgents = input.availableAgents.map((agent) => ({
+      name: agent.name,
+      role: agent.roleTitle ?? 'Workspace agent',
+    }))
+
+    return [
+      '# Automation run context',
+      '',
+      'This is a standalone automation run. It is not an issue and should not create a kanban card.',
+      input.triggerReason,
+      '',
+      renderSection(
+        'Current run',
+        renderJson({
+          id: input.run.id,
+          status: input.run.status,
+          source: input.run.source,
+          started_at: dateToIso(input.run.startedAt),
+          cancel_requested_at: dateToIso(input.run.cancelRequestedAt),
+          run_timeout_sec: input.agent.runTimeoutSec,
+        }),
+      ),
+      renderSection(
+        'Automation',
+        renderJson({
+          id: input.automation.id,
+          title: input.automation.title,
+          prompt: input.automation.description ?? '',
+          system_prompt: input.automation.systemPrompt ?? null,
+          input_schema: input.automation.inputSchema ?? null,
+          output_config: input.automation.outputConfig ?? null,
+          execution_config: input.automation.executionConfig ?? null,
+          tags: input.automation.tags,
+          category: input.automation.category,
+        }),
+      ),
+      renderSection('Trigger payload', renderJson(payload)),
+      renderSection('Recent automation runs', renderJson(recentRuns)),
+      renderSection('Available agents', renderJson(availableAgents)),
+    ].join('\n\n')
+  }
+
+  private async applyRunBoundaryGuards(
+    loaded: LoadedAutomationRunContext,
+  ): Promise<
+    ResultValue<'continue' | 'cancelled' | 'timeout', AutomationRunSubAgentError>
+  > {
+    if (!isActiveAutomationRunStatus(loaded.run.status)) {
+      return Result.ok('cancelled')
+    }
+
+    if (loaded.run.cancelRequestedAt) {
+      const cancelResult = await this.finishCancelled(loaded.run.id, 'cancelled')
+      if (cancelResult.isErr()) return Result.err(cancelResult.error)
+      return Result.ok('cancelled')
+    }
+
+    const timeoutSec = await this.loadRunTimeoutSec(loaded.run.agentId)
+    if (timeoutSec.isErr()) return Result.err(timeoutSec.error)
+    const startedAt = loaded.run.startedAt ?? loaded.run.createdAt
+    const elapsedMs = startedAt ? Date.now() - startedAt.getTime() : 0
+    if (elapsedMs > timeoutSec.value * 1000) {
+      const cancelResult = await this.setCancelRequested(
+        loaded.run.id,
+        'timeout',
+      )
+      if (cancelResult.isErr()) return Result.err(cancelResult.error)
+      const failedResult = await this.forceCloseFailed(loaded.run.id, 'timeout')
+      if (failedResult.isErr()) return Result.err(failedResult.error)
+      return Result.ok('timeout')
+    }
+
+    return Result.ok('continue')
+  }
+
+  private async loadRunTimeoutSec(
+    agentId: string,
+  ): Promise<ResultValue<number, AutomationRunSubAgentError>> {
+    const result = await Result.tryPromise({
+      try: async () => {
+        const [agent] = await this.getDb()
+          .select({ runTimeoutSec: schema.agent.runTimeoutSec })
+          .from(schema.agent)
+          .where(eq(schema.agent.id, agentId))
+          .limit(1)
+        return Math.max(
+          agent?.runTimeoutSec ?? DEFAULT_AUTOMATION_RUN_TIMEOUT_SEC,
+          DEFAULT_AUTOMATION_RUN_TIMEOUT_SEC,
+        )
+      },
+      catch: (cause) => dbError('load automation run timeout', cause),
+    })
+    if (result.isErr()) return Result.err(result.error)
+    return Result.ok(result.value)
+  }
+
+  private async markRunStarted(
+    loaded: LoadedAutomationRunContext,
+  ): Promise<ResultValue<void, AutomationRunSubAgentError>> {
+    const now = new Date()
+    const result = await Result.tryPromise({
+      try: async () => {
+        await this.getDb()
+          .update(schema.automationRun)
+          .set({
+            status: 'running',
+            startedAt: loaded.run.startedAt ?? now,
+            updatedAt: now,
+          })
+          .where(eq(schema.automationRun.id, loaded.run.id))
+      },
+      catch: (cause) => dbError('mark automation run started', cause),
+    })
+    if (result.isErr()) return Result.err(result.error)
+    return Result.ok()
+  }
+
+  private async markRunResumed(
+    loaded: LoadedAutomationRunContext,
+  ): Promise<ResultValue<void, AutomationRunSubAgentError>> {
+    const now = new Date()
+    const result = await Result.tryPromise({
+      try: async () => {
+        await this.getDb()
+          .update(schema.automationRun)
+          .set({ status: 'running', updatedAt: now })
+          .where(eq(schema.automationRun.id, loaded.run.id))
+      },
+      catch: (cause) => dbError('mark automation run resumed', cause),
+    })
+    if (result.isErr()) return Result.err(result.error)
+    return Result.ok()
+  }
+
+  private async persistUsage(
+    runId: string,
+    usage: RunUsage,
+  ): Promise<ResultValue<void, AutomationRunSubAgentError>> {
+    const normalizedUsage = {
+      ...usage,
+      total_tokens: usage.total_tokens || usageTotal(usage),
+      recorded_at_ms: Date.now(),
+    }
+    const result = await Result.tryPromise({
+      try: async () => {
+        await this.getDb()
+          .update(schema.automationRun)
+          .set({ usageJson: normalizedUsage, updatedAt: new Date() })
+          .where(eq(schema.automationRun.id, runId))
+      },
+      catch: (cause) => dbError('persist automation run usage', cause),
+    })
+    if (result.isErr()) return Result.err(result.error)
+    return Result.ok()
+  }
+
+  private async setCancelRequested(
+    runId: string,
+    reason: string,
+  ): Promise<ResultValue<void, AutomationRunSubAgentError>> {
+    const result = await Result.tryPromise({
+      try: async () => {
+        await this.getDb()
+          .update(schema.automationRun)
+          .set({
+            cancelRequestedAt: new Date(),
+            error: reason,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.automationRun.id, runId))
+      },
+      catch: (cause) =>
+        dbError('request automation run cancellation', cause),
+    })
+    if (result.isErr()) return Result.err(result.error)
+    return Result.ok()
+  }
+
+  private async cancelRunIfRequested(
+    runId: string,
+  ): Promise<ResultValue<void, AutomationRunSubAgentError>> {
+    const [run] = await this.getDb()
+      .select()
+      .from(schema.automationRun)
+      .where(eq(schema.automationRun.id, runId))
+      .limit(1)
+    if (!run?.cancelRequestedAt) return Result.ok()
+    return await this.finishCancelled(runId, 'cancelled')
+  }
+
+  private async finishCompleted(
+    runId: string,
+    message: UIMessage,
+  ): Promise<ResultValue<void, AutomationRunSubAgentError>> {
+    const db = this.getDb()
+    const now = new Date()
+    const output = messageText(message)
+    const result = await Result.tryPromise({
+      try: async () => {
+        await db.transaction(async (tx) => {
+          await tx
+            .update(schema.automationRun)
+            .set({
+              status: 'completed',
+              resultJson: {
+                resolution: 'automation_completed',
+                output,
+              },
+              completedAt: now,
+              failureReason: null,
+              error: null,
+              updatedAt: now,
+            })
+            .where(eq(schema.automationRun.id, runId))
+          const [automationRun] = await tx
+            .select({ automationId: schema.automationRun.automationId })
+            .from(schema.automationRun)
+            .where(eq(schema.automationRun.id, runId))
+            .limit(1)
+          if (automationRun) {
+            await tx
+              .update(schema.automation)
+              .set({
+                lastRunAt: now,
+                updatedAt: now,
+                runCount: sql`${schema.automation.runCount} + 1`,
+                successCount: sql`${schema.automation.successCount} + 1`,
+              })
+              .where(eq(schema.automation.id, automationRun.automationId))
+          }
+        })
+      },
+      catch: (cause) => dbError('finish automation run', cause),
+    })
+    if (result.isErr()) return Result.err(result.error)
+    return Result.ok()
+  }
+
+  private async finishCancelled(
+    runId: string,
+    reason: string,
+  ): Promise<ResultValue<void, AutomationRunSubAgentError>> {
+    const db = this.getDb()
+    const now = new Date()
+    const result = await Result.tryPromise({
+      try: async () => {
+        await db.transaction(async (tx) => {
+          await tx
+            .update(schema.automationRun)
+            .set({
+              status: 'cancelled',
+              error: reason,
+              resultJson: { resolution: 'cancelled', reason },
+              completedAt: now,
+              failureReason: reason,
+              updatedAt: now,
+            })
+            .where(eq(schema.automationRun.id, runId))
+          const [automationRun] = await tx
+            .select({ automationId: schema.automationRun.automationId })
+            .from(schema.automationRun)
+            .where(eq(schema.automationRun.id, runId))
+            .limit(1)
+          if (automationRun) {
+            await tx
+              .update(schema.automation)
+              .set({
+                lastRunAt: now,
+                updatedAt: now,
+                runCount: sql`${schema.automation.runCount} + 1`,
+              })
+              .where(eq(schema.automation.id, automationRun.automationId))
+          }
+        })
+      },
+      catch: (cause) => dbError('cancel automation run', cause),
+    })
+    if (result.isErr()) return Result.err(result.error)
+    return Result.ok()
+  }
+
+  private async forceCloseFailed(
+    runId: string,
+    reason: string,
+  ): Promise<ResultValue<void, AutomationRunSubAgentError>> {
+    const db = this.getDb()
+    const now = new Date()
+    const writeResult = await Result.tryPromise({
+      try: async () => {
+        await db.transaction(async (tx) => {
+          await tx
+            .update(schema.automationRun)
+            .set({
+              status: 'failed',
+              error: reason,
+              resultJson: { resolution: 'failed', reason },
+              completedAt: now,
+              failureReason: reason,
+              updatedAt: now,
+            })
+            .where(eq(schema.automationRun.id, runId))
+          const [automationRun] = await tx
+            .select({ automationId: schema.automationRun.automationId })
+            .from(schema.automationRun)
+            .where(eq(schema.automationRun.id, runId))
+            .limit(1)
+          if (automationRun) {
+            await tx
+              .update(schema.automation)
+              .set({
+                lastRunAt: now,
+                updatedAt: now,
+                runCount: sql`${schema.automation.runCount} + 1`,
+                failureCount: sql`${schema.automation.failureCount} + 1`,
+              })
+              .where(eq(schema.automation.id, automationRun.automationId))
+          }
+        })
+      },
+      catch: (cause) => dbError('force close failed automation run', cause),
+    })
+    if (writeResult.isErr()) return Result.err(writeResult.error)
+    return Result.ok()
+  }
+
+  private setProgrammaticBody(body: Record<string, unknown>) {
+    const host = this as unknown as {
+      _lastBody?: Record<string, unknown>
+      _persistBody?: () => void
+    }
+    host._lastBody = body
+    if (host._persistBody) host._persistBody()
+  }
+
+  private clearTurnState() {
+    this.currentRunId = null
+    this.currentPermissions = null
+    this.aggUsage = null
+  }
+
+  private getMcpController() {
+    const host: McpHost = {
+      name: this.name,
+      env: this.env,
+      ctx: this.ctx,
+      mcp: this.mcp,
+      getServerStates: () =>
+        this.getMcpServers().servers as RuntimeMcpServerStates,
+      connectRpcMcpServer: async ({ connectorId, props }) =>
+        await connectRpcMcpConnector({
+          mcp: this.mcp,
+          namespace: this.env.MCP_SESSION,
+          connectorId,
+          props,
+        }),
+      removeMcpServer: this.removeMcpServer.bind(this),
+      resolveRuntimeIdentity: async () =>
+        await this.resolveAutomationMcpIdentity(),
+    }
+    return new RuntimeMcpController(host)
+  }
+
+  private async resolveAutomationMcpIdentity(): Promise<
+    ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
+  > {
+    const runId = this.currentRunId
+    if (!runId) {
+      return Result.err(
+        new RuntimeMcpError({
+          code: 'thread_not_found',
+          message: 'Automation MCP identity requested outside an active run.',
+        }),
+      )
+    }
+
+    const result = await Result.tryPromise({
+      try: async () => {
+        const [row] = await this.getDb()
+          .select({
+            workspaceId: schema.automationRun.workspaceId,
+            userId: schema.agent.ownerUserId,
+            agentId: schema.automationRun.agentId,
+          })
+          .from(schema.automationRun)
+          .innerJoin(
+            schema.agent,
+            eq(schema.agent.id, schema.automationRun.agentId),
+          )
+          .where(eq(schema.automationRun.id, runId))
+          .limit(1)
+        return row ?? null
+      },
+      catch: (cause) => cause,
+    })
+    if (result.isErr()) {
+      return Result.err(
+        new RuntimeMcpError({
+          code: 'database_failed',
+          message:
+            result.error instanceof Error
+              ? result.error.message
+              : 'Failed to load automation MCP identity.',
+        }),
+      )
+    }
+    if (!result.value) {
+      return Result.err(
+        new RuntimeMcpError({
+          code: 'thread_not_found',
+          message: 'Automation run not found for MCP identity.',
+        }),
+      )
+    }
+
+    return Result.ok({
+      threadId: this.name,
+      workspaceId: result.value.workspaceId,
+      userId: result.value.userId,
+      agentId: result.value.agentId,
+      runId,
+    })
+  }
+
+  private async ensureProxyMcpConnectionsForTurn() {
+    return await this.mcpConnectionPreparer.ensureForTurn('automation-turn')
+  }
+}

@@ -1,21 +1,19 @@
 import { DurableObject } from 'cloudflare:workers'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/neon-serverless'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { CronExpressionParser } from 'cron-parser'
 import * as schema from '@garden/db/schema'
-import type { IssuePriority } from '@garden/core/types'
-import { createIssue } from '@garden/core/issues/server'
 import {
-  cancelIssueRun,
-  startIssueRun,
-  type IssueRunEnv,
-} from '@garden/core/issues/run-service'
-import { LIVE_RUN_STATUSES } from '@garden/core/issues/run-sync'
+  cancelAutomationRun,
+  startAutomationRun,
+  type AutomationRunEnv,
+} from '@garden/core/automations/run-service'
 
-type AutomationTriggerEnv = IssueRunEnv
+type AutomationTriggerEnv = AutomationRunEnv
 type AutomationConcurrencyPolicy = 'skip' | 'replace'
 type AutomationRunSource = 'schedule' | 'manual' | 'webhook' | 'api'
+const LIVE_AUTOMATION_RUN_STATUSES = ['queued', 'running'] as const
 
 type AutomationConfig = {
   triggerId: string
@@ -25,7 +23,6 @@ type AutomationConfig = {
 
 type AutomationState = {
   inFlightRunId: string | null
-  inFlightIssueRunId: string | null
 }
 
 type AutomationRow = {
@@ -34,12 +31,19 @@ type AutomationRow = {
   projectId: string | null
   title: string
   description: string | null
-  issueTitleTemplate: string | null
+  systemPrompt: string | null
+  inputSchema: unknown
+  contextSources: unknown
+  outputConfig: unknown
+  executionConfig: unknown
+  tags: string[]
+  category: string | null
   assigneeAgentId: string
   priority: string
   status: string
   concurrencyPolicy: string
   createdBy: string
+  agentHostName: string | null
 }
 
 type TriggerScheduleRow = {
@@ -56,7 +60,6 @@ type TriggerScheduleRow = {
 type InFlightRunRow = {
   id: string
   workspaceId: string
-  issueId: string | null
   status: string
 }
 
@@ -150,13 +153,8 @@ function nextRunFromCron(args: {
   })
 }
 
-function issueTitleForAutomation(row: AutomationRow) {
-  const template = row.issueTitleTemplate?.trim()
-  return template && template.length > 0 ? template : row.title
-}
-
 function emptyState(): AutomationState {
-  return { inFlightRunId: null, inFlightIssueRunId: null }
+  return { inFlightRunId: null }
 }
 
 export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
@@ -314,9 +312,9 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
     config: AutomationConfig,
   ): Promise<ResultValue<'fire' | 'skip', AutomationDoError>> {
     const state = this.getState()
-    if (!state.inFlightIssueRunId) return Result.ok('fire')
+    if (!state.inFlightRunId) return Result.ok('fire')
 
-    const runResult = await this.loadInFlightRun(state.inFlightIssueRunId)
+    const runResult = await this.loadInFlightRun(state.inFlightRunId)
     if (runResult.isErr()) return Result.err(runResult.error)
     const run = runResult.value
     if (!run) {
@@ -324,14 +322,16 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
       return Result.ok('fire')
     }
 
-    if (!(LIVE_RUN_STATUSES as readonly string[]).includes(run.status)) {
+    if (
+      !(LIVE_AUTOMATION_RUN_STATUSES as readonly string[]).includes(run.status)
+    ) {
       this.clearInFlightState()
       return Result.ok('fire')
     }
 
     if (config.concurrencyPolicy === 'skip') return Result.ok('skip')
 
-    const cancelResult = await cancelIssueRun(this.env, {
+    const cancelResult = await cancelAutomationRun(this.env, {
       workspaceId: run.workspaceId,
       runId: run.id,
       actor: { type: 'system', id: 'automation' },
@@ -339,7 +339,7 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
     })
     if (cancelResult.isErr()) {
       return Result.err(
-        dispatchError('cancel replaced issue run', cancelResult.error),
+        dispatchError('cancel replaced automation run', cancelResult.error),
       )
     }
 
@@ -358,17 +358,16 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
       try: async () => {
         const [run] = await db
           .select({
-            id: schema.issueRun.id,
-            workspaceId: schema.issueRun.workspaceId,
-            issueId: schema.issueRun.issueId,
-            status: schema.issueRun.status,
+            id: schema.automationRun.id,
+            workspaceId: schema.automationRun.workspaceId,
+            status: schema.automationRun.status,
           })
-          .from(schema.issueRun)
-          .where(eq(schema.issueRun.id, runId))
+          .from(schema.automationRun)
+          .where(eq(schema.automationRun.id, runId))
           .limit(1)
         return run ?? null
       },
-      catch: (cause) => dbError('load in-flight automation issue run', cause),
+      catch: (cause) => dbError('load in-flight automation run', cause),
     })
     if (result.isErr()) return Result.err(result.error)
     return Result.ok(result.value)
@@ -386,9 +385,11 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
         await db
           .update(schema.automationRun)
           .set({
-            status: 'failed',
+            status: 'cancelled',
             completedAt: now,
             failureReason: 'replaced_by_automation',
+            error: 'replaced_by_automation',
+            updatedAt: now,
           })
           .where(eq(schema.automationRun.id, state.inFlightRunId!))
       },
@@ -402,6 +403,18 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
   private async recordSkippedRun(
     config: AutomationConfig,
   ): Promise<ResultValue<{ runId: string }, AutomationDoError>> {
+    const automationResult = await this.loadAutomation(config.automationId)
+    if (automationResult.isErr()) return Result.err(automationResult.error)
+    const automation = automationResult.value
+    if (!automation) {
+      return Result.err(
+        automationDoError({
+          code: 'invalid_config',
+          message: 'Automation not found.',
+        }),
+      )
+    }
+
     const db = this.db()
     const runId = crypto.randomUUID()
     const now = new Date()
@@ -409,17 +422,26 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
       try: async () => {
         await db.insert(schema.automationRun).values({
           id: runId,
+          workspaceId: automation.workspaceId,
           automationId: config.automationId,
           triggerId: config.triggerId,
           source: 'schedule',
           status: 'skipped',
+          agentId: automation.assigneeAgentId,
+          hostName: automation.agentHostName ?? automation.assigneeAgentId,
           triggeredAt: now,
           completedAt: now,
           failureReason: 'concurrency_policy_skip',
+          updatedAt: now,
         })
         await db
           .update(schema.automation)
-          .set({ lastRunAt: now, updatedAt: now })
+          .set({
+            lastRunAt: now,
+            updatedAt: now,
+            runCount: sql`${schema.automation.runCount} + 1`,
+            skipCount: sql`${schema.automation.skipCount} + 1`,
+          })
           .where(eq(schema.automation.id, config.automationId))
       },
       catch: (cause) => dbError('record skipped automation run', cause),
@@ -459,81 +481,52 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
     if (policyResult.isErr()) return Result.err(policyResult.error)
 
     const runId = crypto.randomUUID()
-    const insertRunResult = await this.insertPendingRun({
-      runId,
+    const startResult = await startAutomationRun(this.env, {
+      workspaceId: automation.workspaceId,
       automationId: automation.id,
       triggerId: args.config.triggerId,
       source: args.source,
-      payload: args.payload,
-    })
-    if (insertRunResult.isErr()) return Result.err(insertRunResult.error)
-
-    const issueResult = await createIssue({
-      databaseUrl: this.env.DATABASE_URL,
-      workspaceId: automation.workspaceId,
-      title: issueTitleForAutomation(automation),
-      description: automation.description,
-      status: 'todo',
-      priority: automation.priority as IssuePriority,
-      createdBy: automation.createdBy,
-      assigneeType: 'agent',
-      assigneeId: automation.assigneeAgentId,
-      projectId: automation.projectId,
-    })
-    if (issueResult.isErr()) {
-      const failedResult = await this.markRunFailed({
-        runId,
-        message: issueResult.error.message,
-      })
-      if (failedResult.isErr()) return Result.err(failedResult.error)
-      return Result.err(
-        dispatchError('create automation issue', issueResult.error),
-      )
-    }
-
-    const issue = issueResult.value
-    const startResult = await startIssueRun(this.env, {
-      workspaceId: automation.workspaceId,
-      issueId: issue.id,
+      runId,
       agentId: automation.assigneeAgentId,
-      source: 'automation',
       trigger: {
         correlationId: `automation:${runId}:${args.source}`,
       },
       actor: { type: 'system', id: 'automation' },
+      payload: args.payload ?? null,
+      contextSnapshot: {
+        automation: {
+          id: automation.id,
+          title: automation.title,
+          description: automation.description,
+          system_prompt: automation.systemPrompt,
+          input_schema: automation.inputSchema,
+          context_sources: automation.contextSources,
+          output_config: automation.outputConfig,
+          execution_config: automation.executionConfig,
+          tags: automation.tags,
+          category: automation.category,
+        },
+      },
     })
     if (startResult.isErr()) {
       const failedResult = await this.markRunFailed({
         runId,
-        issueId: issue.id,
         message: startResult.error.message,
       })
       if (failedResult.isErr()) return Result.err(failedResult.error)
       return Result.err(
-        dispatchError('start automation issue run', startResult.error),
+        dispatchError('start automation run', startResult.error),
       )
     }
-
-    const issueRunId =
-      startResult.value.kind === 'enqueued' ||
-      startResult.value.kind === 'resumed'
-        ? startResult.value.runId
-        : null
-    const status =
-      startResult.value.kind === 'skipped' ? 'skipped' : 'issue_created'
 
     const updateRunResult = await this.markRunDispatched({
       runId,
       automationId: automation.id,
-      issueId: issue.id,
-      issueRunId,
-      status,
     })
     if (updateRunResult.isErr()) return Result.err(updateRunResult.error)
 
     this.setState({
       inFlightRunId: runId,
-      inFlightIssueRunId: issueRunId,
     })
 
     return Result.ok({ runId })
@@ -552,14 +545,25 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
             projectId: schema.automation.projectId,
             title: schema.automation.title,
             description: schema.automation.description,
-            issueTitleTemplate: schema.automation.issueTitleTemplate,
+            systemPrompt: schema.automation.systemPrompt,
+            inputSchema: schema.automation.inputSchema,
+            contextSources: schema.automation.contextSources,
+            outputConfig: schema.automation.outputConfig,
+            executionConfig: schema.automation.executionConfig,
+            tags: schema.automation.tags,
+            category: schema.automation.category,
             assigneeAgentId: schema.automation.assigneeAgentId,
             priority: schema.automation.priority,
             status: schema.automation.status,
             concurrencyPolicy: schema.automation.concurrencyPolicy,
             createdBy: schema.automation.createdBy,
+            agentHostName: schema.agent.hostName,
           })
           .from(schema.automation)
+          .innerJoin(
+            schema.agent,
+            eq(schema.agent.id, schema.automation.assigneeAgentId),
+          )
           .where(eq(schema.automation.id, automationId))
           .limit(1)
         return row ?? null
@@ -571,35 +575,8 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
     return Result.ok(result.value)
   }
 
-  private async insertPendingRun(args: {
-    runId: string
-    automationId: string
-    triggerId: string
-    source: AutomationRunSource
-    payload?: unknown
-  }): Promise<ResultValue<void, AutomationDoError>> {
-    const db = this.db()
-    const result = await Result.tryPromise({
-      try: async () => {
-        await db.insert(schema.automationRun).values({
-          id: args.runId,
-          automationId: args.automationId,
-          triggerId: args.triggerId,
-          source: args.source,
-          status: 'pending',
-          triggerPayload: args.payload ?? null,
-        })
-      },
-      catch: (cause) => dbError('insert automation run', cause),
-    })
-    if (result.isErr()) return Result.err(result.error)
-
-    return Result.ok()
-  }
-
   private async markRunFailed(args: {
     runId: string
-    issueId?: string
     message: string
   }): Promise<ResultValue<void, AutomationDoError>> {
     const db = this.db()
@@ -610,9 +587,10 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
           .update(schema.automationRun)
           .set({
             status: 'failed',
-            issueId: args.issueId,
             completedAt: now,
             failureReason: args.message,
+            error: args.message,
+            updatedAt: now,
           })
           .where(eq(schema.automationRun.id, args.runId))
       },
@@ -626,9 +604,6 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
   private async markRunDispatched(args: {
     runId: string
     automationId: string
-    issueId: string
-    issueRunId: string | null
-    status: 'issue_created' | 'skipped'
   }): Promise<ResultValue<void, AutomationDoError>> {
     const db = this.db()
     const now = new Date()
@@ -637,10 +612,9 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
         await db
           .update(schema.automationRun)
           .set({
-            status: args.status,
-            issueId: args.issueId,
-            issueRunId: args.issueRunId,
-            completedAt: args.status === 'skipped' ? now : null,
+            status: 'queued',
+            completedAt: null,
+            updatedAt: now,
           })
           .where(eq(schema.automationRun.id, args.runId))
         await db

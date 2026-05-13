@@ -45,7 +45,6 @@ export const issueWakeupSourceValues = [
   'mention',
   'manual',
   'scheduled',
-  'automation',
   'connector_event',
   'reconciler_retry',
   'hire_approval',
@@ -92,7 +91,6 @@ export const issueRunTriggerSourceValues = [
   'connector_event',
   'reconciler_retry',
   'hire_approval',
-  'automation',
 ] as const
 
 export const issueRunEventTypeValues = [

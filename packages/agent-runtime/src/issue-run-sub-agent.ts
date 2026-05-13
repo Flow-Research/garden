@@ -944,18 +944,8 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         }),
       )
     }
-    if (!result.value.issueId) {
-      return Result.err(
-        new IssueRunSubAgentError({
-          code: 'not_found',
-          message:
-            'Issueless runs are not supported by IssueRunSubAgent; use RunWorkflow.',
-        }),
-      )
-    }
     return Result.ok({
       ...result.value,
-      issueId: result.value.issueId,
       wakeupId: result.value.wakeupId,
     })
   }
@@ -1091,12 +1081,11 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     }
 
     const row = result.value
-    if (!row.runRow.run.issueId || !row.runRow.run.wakeupId) {
+    if (!row.runRow.run.wakeupId) {
       return Result.err(
         new IssueRunSubAgentError({
           code: 'not_found',
-          message:
-            'Issueless runs are not yet supported by IssueRunSubAgent; they should run via RunWorkflow.',
+          message: 'Issue run is missing wakeup state.',
         }),
       )
     }
@@ -1933,7 +1922,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       workspaceId: result.value.workspaceId,
       userId: result.value.userId,
       agentId: result.value.agentId,
-      issueId: result.value.issueId ?? undefined,
+      issueId: result.value.issueId,
       runId,
     })
   }

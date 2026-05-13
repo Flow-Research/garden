@@ -4,7 +4,8 @@
 // One `AgentDO` per agent runtime name. New agents use their UUID as that
 // name; migrated chat agents can keep their saved `agent.host_name` so their
 // Durable Object storage remains addressable. Inside, `ChatSubAgent` facets
-// are keyed by threadId and `IssueRunSubAgent` facets are keyed by issueId. Per-agent
+// are keyed by threadId, `IssueRunSubAgent` facets by issueId, and
+// `AutomationRunSubAgent` facets by automation run id. Per-agent
 // personality (name, role, skills, instructions, runtimeConfig, permissions)
 // comes from `agent` rows in Postgres.
 //
@@ -72,6 +73,7 @@ import {
   resolveDocumentEdit,
 } from "./documents/document-tools";
 import { IssueRunSubAgent } from "./issue-run-sub-agent";
+import { AutomationRunSubAgent } from "./automation-run-sub-agent";
 import {
   enqueueRunDispatch,
   type RunQueueBinding,
@@ -277,6 +279,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
 
   private readonly authorizedThreadIds = new Set<string>();
   private readonly authorizedIssueIds = new Set<string>();
+  private readonly authorizedAutomationRunIds = new Set<string>();
   private identitySyncedAt = 0;
   private runtimeAgentIdValue: string | undefined;
 
@@ -444,8 +447,22 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   }): Promise<void> {
     await this.requireIssueAccess(input.issueId);
     const dispatchResult = await enqueueRunDispatch(this.env, {
+      kind: "issue",
       runId: input.runId,
       issueId: input.issueId,
+      agentRuntimeName: this.name,
+    });
+    if (dispatchResult.isErr()) {
+      throw dispatchResult.error;
+    }
+  }
+
+  @callable()
+  async enqueueAutomationRun(input: { runId: string }): Promise<void> {
+    await this.requireAutomationRunAccess(input.runId);
+    const dispatchResult = await enqueueRunDispatch(this.env, {
+      kind: "automation",
+      runId: input.runId,
       agentRuntimeName: this.name,
     });
     if (dispatchResult.isErr()) {
@@ -461,6 +478,16 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId);
     await issueAgent.requestCancel(input);
     this.abortSubAgent(IssueRunSubAgent, input.issueId);
+  }
+
+  async cancelAutomationRun(input: { runId: string }): Promise<void> {
+    await this.requireAutomationRunAccess(input.runId);
+    const automationAgent = await this.subAgent(
+      AutomationRunSubAgent,
+      input.runId,
+    );
+    await automationAgent.requestCancel(input);
+    this.abortSubAgent(AutomationRunSubAgent, input.runId);
   }
 
   /**
@@ -493,13 +520,28 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     });
   }
 
+  async executeAutomationRunTurn(input: {
+    runId: string;
+    mode: "start" | "resume";
+  }): Promise<{ status: string }> {
+    await this.requireAutomationRunAccess(input.runId);
+    const automationAgent = await this.subAgent(
+      AutomationRunSubAgent,
+      input.runId,
+    );
+    return await automationAgent.executeWorkflowTurn(input.mode, {
+      runId: input.runId,
+    });
+  }
+
   override async onBeforeSubAgent(
     _request: Request,
     child: { className: string; name: string },
   ) {
     if (
       child.className !== ChatSubAgent.name &&
-      child.className !== IssueRunSubAgent.name
+      child.className !== IssueRunSubAgent.name &&
+      child.className !== AutomationRunSubAgent.name
     ) {
       return new Response("Not found", { status: 404 });
     }
@@ -507,7 +549,9 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     const access =
       child.className === ChatSubAgent.name
         ? await this.checkThreadAccess(child.name)
-        : await this.checkIssueAccess(child.name);
+        : child.className === IssueRunSubAgent.name
+          ? await this.checkIssueAccess(child.name)
+          : await this.checkAutomationRunAccess(child.name);
     if (!access) {
       return new Response("Not found", { status: 404 });
     }
@@ -515,8 +559,10 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     if (!this.hasSubAgent(child.className, child.name)) {
       if (child.className === ChatSubAgent.name) {
         await this.subAgent(ChatSubAgent, child.name);
-      } else {
+      } else if (child.className === IssueRunSubAgent.name) {
         await this.subAgent(IssueRunSubAgent, child.name);
+      } else {
+        await this.subAgent(AutomationRunSubAgent, child.name);
       }
     }
 
@@ -710,6 +756,35 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   private async requireIssueAccess(issueId: string) {
     if (await this.checkIssueAccess(issueId)) return;
     throw new Error("Issue run not found");
+  }
+
+  private async checkAutomationRunAccess(runId: string) {
+    if (this.authorizedAutomationRunIds.has(runId)) {
+      return true;
+    }
+    await this.syncAgentIdentityState();
+    const agentId = await this.resolveRuntimeAgentId();
+
+    const [row] = await this.getDb()
+      .select({ id: schema.automationRun.id })
+      .from(schema.automationRun)
+      .where(
+        and(
+          eq(schema.automationRun.id, runId),
+          eq(schema.automationRun.agentId, agentId),
+        ),
+      )
+      .limit(1);
+
+    if (!row) return false;
+
+    this.authorizedAutomationRunIds.add(runId);
+    return true;
+  }
+
+  private async requireAutomationRunAccess(runId: string) {
+    if (await this.checkAutomationRunAccess(runId)) return;
+    throw new Error("Automation run not found");
   }
 }
 

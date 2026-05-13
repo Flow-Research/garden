@@ -1,5 +1,6 @@
 export { AgentDO, ChatSubAgent } from './agent-do'
 export { IssueRunSubAgent } from './issue-run-sub-agent'
+export { AutomationRunSubAgent } from './automation-run-sub-agent'
 export { AutomationTriggerDO } from './automation-trigger-do'
 export {
   RunWorkflow,

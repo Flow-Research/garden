@@ -94,11 +94,6 @@ export const Route = createFileRoute('/api/automations/$id')({
         if (Object.prototype.hasOwnProperty.call(body, 'description')) {
           values.description = body.description ?? null
         }
-        if (
-          Object.prototype.hasOwnProperty.call(body, 'issue_title_template')
-        ) {
-          values.issueTitleTemplate = body.issue_title_template ?? null
-        }
         if (body.assignee_agent_id)
           values.assigneeAgentId = body.assignee_agent_id
         if (body.priority) values.priority = body.priority

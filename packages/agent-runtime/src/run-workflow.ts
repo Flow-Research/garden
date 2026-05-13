@@ -8,8 +8,8 @@ import { disposeRpcResult } from "@garden/core/platform/rpc";
 /**
  * Per-run durable executor.
  *
- * One Workflow instance per `agent_run` row, keyed by `runId`. The Workflow
- * drives the agent loop turn-by-turn through `AgentDO.executeRunTurn` RPCs;
+ * One Workflow instance per issue or automation run, keyed by `runId`. The
+ * Workflow drives the agent loop turn-by-turn through AgentDO RPCs;
  * streaming and live UI stay in the DO, durable checkpoints live here.
  *
  * See:
@@ -30,6 +30,13 @@ type AgentDoStub = {
     runId: string;
     issueId: string;
   }) => Promise<void>;
+  executeAutomationRunTurn: (input: {
+    runId: string;
+    mode: "start" | "resume";
+  }) => Promise<{ status: string }>;
+  cancelAutomationRun: (input: {
+    runId: string;
+  }) => Promise<void>;
 };
 
 type AgentDoBinding = {
@@ -43,9 +50,11 @@ export type RunWorkflowEnv = {
 
 const TERMINAL_RUN_STATUSES = new Set([
   "succeeded",
+  "completed",
   "failed",
   "cancelled",
   "blocked",
+  "skipped",
 ]);
 const AWAITING_RUN_STATUSES = new Set([
   "waiting_for_input",
@@ -70,7 +79,7 @@ export class RunWorkflow extends WorkflowEntrypoint<
     event: WorkflowEvent<RunWorkflowParams>,
     step: WorkflowStep,
   ): Promise<{ runId: string; status: string }> {
-    const { runId, issueId, agentRuntimeName } = event.payload;
+    const { runId, agentRuntimeName } = event.payload;
     const stub = this.env.AgentDO.get(
       this.env.AgentDO.idFromName(agentRuntimeName),
     );
@@ -81,10 +90,20 @@ export class RunWorkflow extends WorkflowEntrypoint<
       const result = await step.do(
         `turn-${turn}`,
         { retries: TURN_RETRIES, timeout: TURN_TIMEOUT },
-        async () =>
-          disposeRpcResult(
-            await stub.executeRunTurn({ runId, issueId, mode }),
-          ),
+        async () => {
+          if (event.payload.kind === "automation") {
+            return disposeRpcResult(
+              await stub.executeAutomationRunTurn({ runId, mode }),
+            );
+          }
+          return disposeRpcResult(
+            await stub.executeRunTurn({
+              runId,
+              issueId: event.payload.issueId,
+              mode,
+            }),
+          );
+        },
       );
 
       if (TERMINAL_RUN_STATUSES.has(result.status)) {
@@ -106,7 +125,15 @@ export class RunWorkflow extends WorkflowEntrypoint<
         await step.do(
           `cancel-${turn}`,
           { retries: { limit: 2, delay: "2 seconds", backoff: "constant" } },
-          async () => await stub.cancelIssueRun({ runId, issueId }),
+          async () => {
+            if (event.payload.kind === "automation") {
+              return await stub.cancelAutomationRun({ runId });
+            }
+            return await stub.cancelIssueRun({
+              runId,
+              issueId: event.payload.issueId,
+            });
+          },
         );
         return { runId, status: "cancelled" };
       }

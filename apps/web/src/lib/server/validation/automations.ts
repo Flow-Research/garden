@@ -45,7 +45,6 @@ export const createAutomationBodySchema = z
   .object({
     title: nonEmptyStringSchema,
     description: nullableOptionalString,
-    issue_title_template: nullableOptionalString,
     assignee_agent_id: uuidSchema,
     priority: issuePrioritySchema.optional(),
     project_id: uuidSchema.optional().nullable(),
@@ -71,7 +70,6 @@ export const updateAutomationBodySchema = z
   .object({
     title: optionalNonEmptyString,
     description: nullableOptionalString,
-    issue_title_template: nullableOptionalString,
     assignee_agent_id: uuidSchema.optional(),
     priority: issuePrioritySchema.optional(),
     project_id: uuidSchema.optional().nullable(),

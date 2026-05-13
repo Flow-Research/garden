@@ -1102,13 +1102,6 @@ function AutomationDetailDockPanel({
           ctx?.openPanel({ kind: 'automations', title: 'Automations' })
           api.close()
         }}
-        onOpenIssue={(issueId) => {
-          ctx?.openPanel({
-            kind: 'issue-detail',
-            title: 'Issue',
-            entityId: issueId,
-          })
-        }}
       />
     </WorkspacePanelFrame>
   )

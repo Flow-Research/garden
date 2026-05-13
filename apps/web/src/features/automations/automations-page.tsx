@@ -195,9 +195,6 @@ function AutomationRow({
           {agentName}
         </span>
       </span>
-      <span className="w-24 shrink-0 text-center text-xs text-muted-foreground">
-        Create Issue
-      </span>
       <span
         className={cn(
           'flex w-20 shrink-0 items-center justify-center gap-1 text-xs',
@@ -464,7 +461,6 @@ export function AutomationsPage({
               <span className="w-4 shrink-0" />
               <span className="min-w-0 flex-1">Name</span>
               <span className="w-32 shrink-0">Agent</span>
-              <span className="w-24 shrink-0 text-center">Mode</span>
               <span className="w-20 shrink-0 text-center">Status</span>
               <span className="w-20 shrink-0 text-right">Last run</span>
             </div>

@@ -65,8 +65,8 @@ const RUN_STATUS_CONFIG: Record<
   string,
   { label: string; color: string; icon: typeof CheckCircle2 }
 > = {
-  issue_created: {
-    label: 'Issue Created',
+  queued: {
+    label: 'Queued',
     color: 'text-blue-500',
     icon: Clock,
   },
@@ -77,18 +77,17 @@ const RUN_STATUS_CONFIG: Record<
     icon: CheckCircle2,
   },
   failed: { label: 'Failed', color: 'text-destructive', icon: XCircle },
+  cancelled: { label: 'Cancelled', color: 'text-muted-foreground', icon: Pause },
   skipped: { label: 'Skipped', color: 'text-amber-500', icon: Pause },
 }
 
 function RunRow({
   run,
-  onOpenIssue,
 }: {
   run: AutomationRun
-  onOpenIssue?: (run: AutomationRun) => void
 }) {
   const config =
-    RUN_STATUS_CONFIG[run.status] ?? RUN_STATUS_CONFIG.issue_created
+    RUN_STATUS_CONFIG[run.status] ?? RUN_STATUS_CONFIG.queued
   const StatusIcon = config.icon
 
   return (
@@ -101,16 +100,10 @@ function RunRow({
         {run.source}
       </span>
       <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-        {run.issue_id ? (
-          <button
-            type="button"
-            className="hover:underline"
-            onClick={() => onOpenIssue?.(run)}
-          >
-            Issue linked
-          </button>
-        ) : run.failure_reason ? (
+        {run.failure_reason ? (
           <span className="text-destructive">{run.failure_reason}</span>
+        ) : run.run_id ? (
+          <span className="font-mono">{run.run_id.slice(0, 8)}</span>
         ) : null}
       </span>
       <span className="w-32 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
@@ -415,12 +408,10 @@ export function AutomationDetailPage({
   automationId,
   onBack,
   onDeleted,
-  onOpenIssue,
 }: {
   automationId: string
   onBack?: () => void
   onDeleted?: () => void
-  onOpenIssue?: (issueId: string) => void
 }) {
   const wsId = useWorkspaceId()
   const { getActorName } = useActorName()
@@ -577,12 +568,6 @@ export function AutomationDetailPage({
                 </label>
                 <div className="mt-1 capitalize">{automation.priority}</div>
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground">
-                  Execution Mode
-                </label>
-                <div className="mt-1">Create Issue</div>
-              </div>
               {automation.description ? (
                 <div className="col-span-2">
                   <label className="text-xs text-muted-foreground">
@@ -644,14 +629,7 @@ export function AutomationDetailPage({
             ) : (
               <div className="overflow-hidden rounded-md border">
                 {runs.map((run) => (
-                  <RunRow
-                    key={run.id}
-                    run={run}
-                    onOpenIssue={(row) => {
-                      if (!row.issue_id) return
-                      onOpenIssue?.(row.issue_id)
-                    }}
-                  />
+                  <RunRow key={run.id} run={run} />
                 ))}
               </div>
             )}

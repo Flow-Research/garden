@@ -2,6 +2,7 @@ import handler from '@tanstack/react-start/server-entry'
 import { getAgentByName } from 'agents'
 import {
   AgentDO,
+  AutomationRunSubAgent,
   AutomationTriggerDO,
   ChatSubAgent,
   IssueRunSubAgent,
@@ -21,6 +22,7 @@ import {
 import { reconcile } from '@/lib/server/issue-run-reconciler'
 
 export { AgentDO }
+export { AutomationRunSubAgent }
 export { AutomationTriggerDO }
 export { ChatSubAgent }
 export { IssueRunSubAgent }
