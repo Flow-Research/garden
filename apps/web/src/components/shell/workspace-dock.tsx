@@ -102,15 +102,6 @@ type BlankPanelChoice = WorkspacePanelInput & {
   forceNew?: boolean
 }
 
-type WorkspaceDockTabState = {
-  id: string
-  kind: WorkspacePanelKind
-  title: string
-  entityId?: string
-  isActive: boolean
-  isPinned: boolean
-}
-
 type OpenPanelSource = 'local' | 'query'
 
 type OpenPanelOptions = {
@@ -148,15 +139,13 @@ type DockPanelState = {
   }
 }
 
-type WorkspaceDockContextValue = {
+type WorkspaceDockStateContextValue = {
   activeGroupId: string | null
   activePanel: WorkspacePanelInput | null
-  activePanelIsExpanded: boolean
-  activePanelIsPinned: boolean
-  canSplitPanels: boolean
+}
+
+type WorkspaceDockContextValue = {
   dockTheme: DockviewTheme
-  dockPanels: WorkspaceDockTabState[]
-  groupCount: number
   getDockApi: () => DockviewApi | null
   handleReady: (event: DockviewReadyEvent) => void
   isReady: boolean
@@ -173,14 +162,11 @@ type WorkspaceDockContextValue = {
     index?: number,
   ) => string | null
   openNewTab: () => string | null
-  splitActivePanel: () => void
   splitPanel: (panelId: string) => void
-  maximizeActivePanel: () => void
   focusNextPanel: () => void
   focusPreviousPanel: () => void
   isPanelExpanded: (panelId: string) => boolean
   isPanelPinned: (panelId: string) => boolean
-  toggleActivePanelPinned: () => void
   togglePanelExpanded: (panelId: string) => void
   togglePanelPinned: (panelId: string) => void
 }
@@ -188,6 +174,8 @@ type WorkspaceDockContextValue = {
 const WorkspaceDockContext = createContext<WorkspaceDockContextValue | null>(
   null,
 )
+const WorkspaceDockStateContext =
+  createContext<WorkspaceDockStateContextValue | null>(null)
 
 export const chatSessionDragType = 'application/garden-chat-session'
 
@@ -383,25 +371,6 @@ function arePanelsEqual(
     left.title === right.title &&
     left.entityId === right.entityId
   )
-}
-
-function areDockTabStatesEqual(
-  left: WorkspaceDockTabState[],
-  right: WorkspaceDockTabState[],
-) {
-  if (left.length !== right.length) return false
-  return left.every((leftTab, index) => {
-    const rightTab = right[index]
-    return (
-      rightTab &&
-      leftTab.id === rightTab.id &&
-      leftTab.kind === rightTab.kind &&
-      leftTab.title === rightTab.title &&
-      leftTab.entityId === rightTab.entityId &&
-      leftTab.isActive === rightTab.isActive &&
-      leftTab.isPinned === rightTab.isPinned
-    )
-  })
 }
 
 function normalizePanelForSearch(panel: WorkspacePanelInput | null) {
@@ -636,7 +605,7 @@ function WorkspaceDockTab(
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem
-          disabled={!ctx?.canSplitPanels}
+          disabled={!ctx || containerApi.groups.length >= 2}
           onClick={() => {
             ctx?.splitPanel(api.id)
           }}
@@ -667,29 +636,28 @@ function WorkspaceDockTab(
 }
 
 export function WorkspaceDockControlsStrip(
-  _props?: IDockviewHeaderActionsProps,
+  props?: IDockviewHeaderActionsProps,
 ) {
   const ctx = useContext(WorkspaceDockContext)
   const workspaceSidebar = useSidebar()
 
-  if (!ctx) {
+  if (!ctx || !props) {
     return null
   }
 
-  const {
-    activeGroupId,
-    activePanelIsExpanded,
-    activePanelIsPinned,
-    canSplitPanels,
-    splitActivePanel,
-    maximizeActivePanel,
-    toggleActivePanelPinned,
-  } = ctx
-  const hasActiveGroup = Boolean(activeGroupId)
-  const hasActivePanel = Boolean(ctx.activePanel)
-  const canUseContextRail = panelUsesContextRail(ctx.activePanel?.kind)
+  const { activePanel, containerApi } = props
+  const activePanelParams = activePanel ? getPanelParams(activePanel) : null
+  const hasActivePanel = Boolean(activePanel)
+  const hasActiveGroup = Boolean(props.group)
+  const activePanelIsExpanded = activePanel
+    ? activePanel.group.api.isMaximized()
+    : false
+  const activePanelIsPinned = activePanel
+    ? ctx.isPanelPinned(activePanel.id)
+    : false
+  const canUseContextRail = panelUsesContextRail(activePanelParams?.kind)
   const railOpen = workspaceSidebar.state === 'expanded'
-  const canSplit = hasActivePanel && canSplitPanels
+  const canSplit = hasActivePanel && containerApi.groups.length < 2
 
   return (
     <div className="garden-dock-actions">
@@ -717,7 +685,11 @@ export function WorkspaceDockControlsStrip(
         type="button"
         className="garden-dock-actions__button"
         disabled={!canSplit}
-        onClick={canSplit ? () => splitActivePanel() : undefined}
+        onClick={
+          canSplit && activePanel
+            ? () => ctx.splitPanel(activePanel.id)
+            : undefined
+        }
         title="Split right"
       >
         <Columns2 className="size-3.5" />
@@ -726,7 +698,11 @@ export function WorkspaceDockControlsStrip(
         type="button"
         className="garden-dock-actions__button"
         disabled={!hasActiveGroup}
-        onClick={hasActiveGroup ? () => maximizeActivePanel() : undefined}
+        onClick={
+          hasActivePanel && activePanel
+            ? () => ctx.togglePanelExpanded(activePanel.id)
+            : undefined
+        }
         title={activePanelIsExpanded ? 'Restore split' : 'Expand tab'}
       >
         {activePanelIsExpanded ? (
@@ -742,7 +718,11 @@ export function WorkspaceDockControlsStrip(
           activePanelIsPinned && 'garden-dock-actions__button--active',
         )}
         disabled={!hasActivePanel}
-        onClick={hasActivePanel ? () => toggleActivePanelPinned() : undefined}
+        onClick={
+          hasActivePanel && activePanel
+            ? () => ctx.togglePanelPinned(activePanel.id)
+            : undefined
+        }
         title={activePanelIsPinned ? 'Unpin tab' : 'Pin tab'}
       >
         {activePanelIsPinned ? (
@@ -756,24 +736,33 @@ export function WorkspaceDockControlsStrip(
 }
 
 export function WorkspaceDockTabStripActions(
-  _props?: IDockviewHeaderActionsProps,
+  props?: IDockviewHeaderActionsProps,
 ) {
   const ctx = useContext(WorkspaceDockContext)
 
-  if (!ctx) {
+  if (!ctx || !props) {
     return null
   }
 
-  const hasActiveGroup = Boolean(ctx.activeGroupId)
+  const hasGroup = Boolean(props.group)
 
   return (
     <div className="garden-dock-tabstrip-actions">
       <button
         type="button"
         className="garden-dock-tabstrip-actions__button"
-        disabled={!hasActiveGroup}
+        disabled={!hasGroup}
         onClick={() => {
-          ctx.openNewTab()
+          ctx.openPanel(
+            { kind: 'blank', title: 'New Tab' },
+            {
+              forceNew: true,
+              position: {
+                referenceGroup: props.group.id,
+                direction: 'within',
+              },
+            },
+          )
         }}
         title="New tab"
       >
@@ -786,7 +775,6 @@ export function WorkspaceDockTabStripActions(
 function WorkspaceDockWatermark() {
   const workspace = useWorkspaceStore((state) => state.workspace)
   const ctx = useContext(WorkspaceDockContext)
-  const hasActiveGroup = Boolean(ctx?.activeGroupId)
 
   return (
     <div className="garden-dock-watermark">
@@ -795,7 +783,7 @@ function WorkspaceDockWatermark() {
         <h2>{workspace?.name ?? 'Garden'}</h2>
         <p>Open a tab from the rail or use the new-tab button above.</p>
       </div>
-      {hasActiveGroup && ctx ? (
+      {ctx ? (
         <div className="garden-dock-watermark__actions">
           <Button
             type="button"
@@ -821,7 +809,9 @@ function WorkspacePanelFrame({
 }) {
   const ctx = useContext(WorkspaceDockContext)
   const isExpanded = panelId ? (ctx?.isPanelExpanded(panelId) ?? false) : false
-  const canExpand = Boolean(ctx && panelId && ctx.groupCount > 1 && !isExpanded)
+  const canExpand = Boolean(
+    ctx && panelId && (ctx.getDockApi()?.groups.length ?? 0) > 1 && !isExpanded,
+  )
   const [isDragOver, setIsDragOver] = useState(false)
 
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
@@ -1479,7 +1469,6 @@ export function WorkspaceDockProvider({
   )
   const readyCleanupRef = useRef<(() => void) | null>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [activePanel, setActivePanel] = useState<WorkspacePanelInput | null>(
     () =>
       readPanelFromSearchState({
@@ -1491,10 +1480,7 @@ export function WorkspaceDockProvider({
   )
   const activePanelRef = useRef(activePanel)
   activePanelRef.current = activePanel
-  const [groupCount, setGroupCount] = useState(0)
   const [isReady, setIsReady] = useState(false)
-  const [maximizedGroupId, setMaximizedGroupId] = useState<string | null>(null)
-  const [dockPanels, setDockPanels] = useState<WorkspaceDockTabState[]>([])
   const [pinnedCanonicalIds, setPinnedCanonicalIds] = useState<string[]>([])
 
   const storageKey = `garden:dockview:${workspaceId}`
@@ -1565,11 +1551,8 @@ export function WorkspaceDockProvider({
     [chat, panel, panelEntityId, panelTitle, setPanelQueryState],
   )
 
-  const syncDockPanels = useCallback(
+  const syncVisibleChatSessions = useCallback(
     (api: DockviewApi) => {
-      const activePanelId =
-        api.activeGroup?.activePanel?.id ?? api.activePanel?.id
-      const orderedPanels = api.groups.flatMap((group) => group.panels)
       const visiblePanels =
         api.hasMaximizedGroup() && api.activeGroup
           ? [api.activeGroup.activePanel ?? api.activeGroup.panels[0]]
@@ -1585,26 +1568,9 @@ export function WorkspaceDockProvider({
           }),
         ),
       ]
-      const nextDockPanels = orderedPanels.map((panel) => {
-        const params = getPanelParams(panel)
-        const title = panel.title ?? panel.api.title ?? params.title
-        return {
-          id: panel.id,
-          kind: params.kind,
-          title,
-          entityId: params.entityId,
-          isActive: panel.id === activePanelId,
-          isPinned: pinnedCanonicalIds.includes(params.canonicalId),
-        }
-      })
-      setDockPanels((current) =>
-        areDockTabStatesEqual(current, nextDockPanels)
-          ? current
-          : nextDockPanels,
-      )
       setVisibleChatSessions(visibleChatSessionIds)
     },
-    [pinnedCanonicalIds, setVisibleChatSessions],
+    [setVisibleChatSessions],
   )
 
   const commitPanelState = useCallback(
@@ -1619,30 +1585,28 @@ export function WorkspaceDockProvider({
         staleSearchPanelRef.current =
           normalizePanelForSearch(requestedSearchPanel)
       }
-      const nextGroupId = api?.activeGroup?.id ?? null
-      setActiveGroupId((current) =>
-        current === nextGroupId ? current : nextGroupId,
-      )
       const nextActiveSessionId =
         nextPanel?.kind === 'chat' ? (nextPanel.entityId ?? null) : null
-      if (
-        !arePanelsEqual(activePanelRef.current, nextPanel) ||
+      const panelChanged = !arePanelsEqual(activePanelRef.current, nextPanel)
+      const sessionChanged =
         useChatStore.getState().activeSessionId !== nextActiveSessionId
-      ) {
+      if (panelChanged) {
         activePanelRef.current = nextPanel
+        setActivePanel(nextPanel)
+      }
+      if (sessionChanged) {
         setActiveSession(nextActiveSessionId)
       }
-      setActivePanel((current) =>
-        arePanelsEqual(current, nextPanel) ? current : nextPanel,
-      )
-      if (api) syncDockPanels(api)
-      writePanelToQueryState(nextPanel)
+      if (api) syncVisibleChatSessions(api)
+      if (panelChanged || options?.source === 'query') {
+        writePanelToQueryState(nextPanel)
+      }
       return nextPanel
     },
     [
       requestedSearchPanel,
       setActiveSession,
-      syncDockPanels,
+      syncVisibleChatSessions,
       writePanelToQueryState,
     ],
   )
@@ -1695,12 +1659,6 @@ export function WorkspaceDockProvider({
     [resolveCanonicalIdForPanel, setPinnedIds],
   )
 
-  const toggleActivePanelPinned = useCallback(() => {
-    const panelId = apiRef.current?.activePanel?.id
-    if (!panelId) return
-    togglePanelPinned(panelId)
-  }, [togglePanelPinned])
-
   const activatePanel = useCallback(
     (panelId: string) => {
       const api = apiRef.current
@@ -1717,15 +1675,6 @@ export function WorkspaceDockProvider({
     const panel = apiRef.current?.getPanel(panelId)
     if (!panel) return
     panel.api.close()
-  }, [])
-
-  const syncDockLayoutState = useCallback((api: DockviewApi) => {
-    setGroupCount((current) =>
-      current === api.groups.length ? current : api.groups.length,
-    )
-    if (api.groups.length <= 1) {
-      setMaximizedGroupId(null)
-    }
   }, [])
 
   const openPanel = useCallback(
@@ -1843,35 +1792,11 @@ export function WorkspaceDockProvider({
     [commitPanelState, openPanel],
   )
 
-  const canSplitPanels = groupCount < 2
-
-  const duplicateActivePanel = useCallback(() => {
-    const api = apiRef.current
-    const current = api?.activePanel
-    if (!api || !current || !canSplitPanels) return
-
-    const params = getPanelParams(current)
-    openPanel(
-      {
-        kind: params.kind,
-        title: current.title ?? current.api.title ?? params.title,
-        entityId: params.entityId,
-      },
-      {
-        forceNew: true,
-        position: {
-          referencePanel: current,
-          direction: 'right',
-        },
-      },
-    )
-  }, [canSplitPanels, openPanel])
-
   const splitPanel = useCallback(
     (panelId: string) => {
       const api = apiRef.current
       const current = api?.getPanel(panelId)
-      if (!api || !current || !canSplitPanels) return
+      if (!api || !current || api.groups.length >= 2) return
 
       const params = getPanelParams(current)
       openPanel(
@@ -1889,7 +1814,7 @@ export function WorkspaceDockProvider({
         },
       )
     },
-    [canSplitPanels, openPanel],
+    [openPanel],
   )
 
   const togglePanelExpanded = useCallback(
@@ -1898,13 +1823,10 @@ export function WorkspaceDockProvider({
       const panel = api?.getPanel(panelId)
       if (!api || !panel) return
 
-      const nextGroupId = panel.group.id
-      const isExpanded =
-        maximizedGroupId === nextGroupId && api.hasMaximizedGroup()
+      const isExpanded = panel.group.api.isMaximized()
 
       if (isExpanded) {
-        api.exitMaximizedGroup()
-        setMaximizedGroupId(null)
+        panel.group.api.exitMaximized()
         commitActiveDockState(api)
         return
       }
@@ -1915,18 +1837,10 @@ export function WorkspaceDockProvider({
 
       panel.api.setActive()
       panel.group.api.maximize()
-      setMaximizedGroupId(nextGroupId)
       commitActiveDockState(api)
     },
-    [commitActiveDockState, maximizedGroupId],
+    [commitActiveDockState],
   )
-
-  const maximizeActivePanel = useCallback(() => {
-    const api = apiRef.current
-    const current = api?.activePanel
-    if (!api || !current) return
-    togglePanelExpanded(current.id)
-  }, [togglePanelExpanded])
 
   const dockActivePanel = apiRef.current
     ? getPanelInputFromApi(apiRef.current)
@@ -1974,25 +1888,15 @@ export function WorkspaceDockProvider({
     requestedSearchPanel,
   ])
 
-  const activePanelIsPinned = useMemo(() => {
-    const panelId = apiRef.current?.activePanel?.id
-    return panelId ? isPanelPinned(panelId) : false
-  }, [activePanel, isPanelPinned])
-
   const isPanelExpanded = useCallback(
     (panelId: string) => {
       const api = apiRef.current
       const panel = api?.getPanel(panelId)
       if (!api || !panel) return false
-      return maximizedGroupId === panel.group.id && api.hasMaximizedGroup()
+      return panel.group.api.isMaximized()
     },
-    [maximizedGroupId],
+    [],
   )
-
-  const activePanelIsExpanded = useMemo(() => {
-    const panelId = apiRef.current?.activePanel?.id
-    return panelId ? isPanelExpanded(panelId) : false
-  }, [activePanel, isPanelExpanded])
 
   const focusNextPanel = useCallback(() => {
     apiRef.current?.moveToNext({ includePanel: true })
@@ -2029,12 +1933,6 @@ export function WorkspaceDockProvider({
   }, [pinnedStorageKey])
 
   useEffect(() => {
-    const api = apiRef.current
-    if (!api) return
-    syncDockPanels(api)
-  }, [pinnedCanonicalIds, syncDockPanels])
-
-  useEffect(() => {
     return () => {
       readyCleanupRef.current?.()
       if (saveTimeoutRef.current) {
@@ -2049,10 +1947,6 @@ export function WorkspaceDockProvider({
       const api = event.api
       apiRef.current = api
       setIsReady(true)
-
-      const syncActiveDockState = () => {
-        commitActiveDockState(api)
-      }
 
       const ensureActivePanel = () => {
         const candidate = getPreferredPanelAfterRestore(api)
@@ -2110,7 +2004,6 @@ export function WorkspaceDockProvider({
         openPanel({ kind: 'inbox', title: 'Inbox' })
       }
 
-      syncDockLayoutState(api)
       if (requestedPanelId) {
         const requestedPanel = api.getPanel(requestedPanelId)
         requestedPanel?.group.api.setActive()
@@ -2140,11 +2033,10 @@ export function WorkspaceDockProvider({
         commitActiveDockState(api)
       })
       const disposeActiveGroup = api.onDidActiveGroupChange(() => {
-        syncActiveDockState()
+        commitActiveDockState(api)
       })
       const disposeLayout = api.onDidLayoutChange(() => {
-        syncDockLayoutState(api)
-        syncDockPanels(api)
+        syncVisibleChatSessions(api)
         saveLayout()
       })
       // Veto the top/bottom overlays during drag so horizontal stacking is
@@ -2170,81 +2062,65 @@ export function WorkspaceDockProvider({
     [
       commitActiveDockState,
       commitPanelState,
-      chat,
       getPanelInputFromApi,
-      syncDockLayoutState,
-      syncDockPanels,
-      panel,
-      panelEntityId,
-      panelTitle,
+      syncVisibleChatSessions,
       openPanel,
       requestedSearchPanel,
       storageKey,
-      writePanelToQueryState,
     ],
+  )
+
+  const stateValue = useMemo<WorkspaceDockStateContextValue>(
+    () => ({
+      activeGroupId: apiRef.current?.activeGroup?.id ?? null,
+      activePanel: contextActivePanel,
+    }),
+    [contextActivePanel],
   )
 
   const contextValue = useMemo<WorkspaceDockContextValue>(
     () => ({
-      activeGroupId,
-      activePanel: contextActivePanel,
-      activePanelIsExpanded,
-      activePanelIsPinned,
       activatePanel,
-      canSplitPanels,
       closePanel,
       dockTheme,
-      dockPanels,
       getDockApi: () => apiRef.current,
-      groupCount,
       handleReady,
       isReady,
       isPanelExpanded,
       openNewTab,
       openPanel,
       openPanelAt,
-      splitActivePanel: duplicateActivePanel,
       splitPanel,
-      maximizeActivePanel,
       focusNextPanel,
       focusPreviousPanel,
       togglePanelExpanded,
       isPanelPinned,
-      toggleActivePanelPinned,
       togglePanelPinned,
     }),
     [
-      activeGroupId,
-      contextActivePanel,
-      activePanelIsExpanded,
-      activePanelIsPinned,
       activatePanel,
-      canSplitPanels,
       closePanel,
       dockTheme,
-      dockPanels,
-      duplicateActivePanel,
       focusNextPanel,
       focusPreviousPanel,
-      groupCount,
       handleReady,
       isPanelExpanded,
       isPanelPinned,
       isReady,
-      maximizeActivePanel,
       openNewTab,
       openPanel,
       openPanelAt,
       splitPanel,
       togglePanelExpanded,
-      toggleActivePanelPinned,
       togglePanelPinned,
     ],
   )
 
   return (
     <WorkspaceDockContext.Provider value={contextValue}>
-      {children}
+      <WorkspaceDockStateContext.Provider value={stateValue}>
+        {children}
+      </WorkspaceDockStateContext.Provider>
     </WorkspaceDockContext.Provider>
   )
 }
@@ -2256,7 +2132,12 @@ export function WorkspaceDockProvider({
  * rather than crash. Use `useRequiredWorkspaceDock` when the dock must exist.
  */
 export function useWorkspaceDock() {
-  return useContext(WorkspaceDockContext)
+  const commands = useContext(WorkspaceDockContext)
+  const state = useContext(WorkspaceDockStateContext)
+  return useMemo(
+    () => (commands && state ? { ...commands, ...state } : null),
+    [commands, state],
+  )
 }
 
 /**
@@ -2265,7 +2146,7 @@ export function useWorkspaceDock() {
  * shell-level controls).
  */
 export function useRequiredWorkspaceDock() {
-  const ctx = useContext(WorkspaceDockContext)
+  const ctx = useWorkspaceDock()
   if (!ctx) {
     throw new Error(
       'useRequiredWorkspaceDock must be used inside the workspace dock provider',
@@ -2275,7 +2156,7 @@ export function useRequiredWorkspaceDock() {
 }
 
 export function WorkspaceDockView() {
-  const dock = useWorkspaceDock()
+  const dock = useContext(WorkspaceDockContext)
 
   if (!dock) return null
 
