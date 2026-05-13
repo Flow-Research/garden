@@ -852,7 +852,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
             agentId: schema.issueRun.agentId,
             agentOwnerUserId: schema.agent.ownerUserId,
             hostName: schema.issueRun.hostName,
-            wakeupId: schema.issueRun.wakeupId,
           })
           .from(schema.issueRun)
           .innerJoin(schema.agent, eq(schema.agent.id, schema.issueRun.agentId))
@@ -871,10 +870,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         }),
       )
     }
-    return Result.ok({
-      ...result.value,
-      wakeupId: result.value.wakeupId,
-    })
+    return Result.ok(result.value)
   }
 
   private async loadTurnContext(
@@ -895,15 +891,10 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
               runTimeoutSec: schema.agent.runTimeoutSec,
               permissions: schema.agent.permissions,
             },
-            wakeup: schema.issueWakeup,
           })
           .from(schema.issueRun)
           .innerJoin(schema.issue, eq(schema.issue.id, schema.issueRun.issueId))
           .innerJoin(schema.agent, eq(schema.agent.id, schema.issueRun.agentId))
-          .leftJoin(
-            schema.issueWakeup,
-            eq(schema.issueWakeup.id, schema.issueRun.wakeupId),
-          )
           .where(eq(schema.issueRun.id, runId))
           .limit(1)
 
@@ -1008,14 +999,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     }
 
     const row = result.value
-    if (!row.runRow.run.wakeupId) {
-      return Result.err(
-        new IssueRunSubAgentError({
-          code: 'not_found',
-          message: 'Issue run is missing wakeup state.',
-        }),
-      )
-    }
     const runState: IssueRunToolState = {
       runId: row.runRow.run.id,
       workspaceId: row.runRow.run.workspaceId,
@@ -1023,12 +1006,11 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       agentId: row.runRow.run.agentId,
       agentOwnerUserId: row.runRow.agent.ownerUserId,
       hostName: row.runRow.run.hostName,
-      wakeupId: row.runRow.run.wakeupId,
     }
 
     const triggerReason = this.renderTriggerReason({
       source:
-        row.runRow.wakeup?.source ??
+        row.runRow.run.triggerSource ??
         (row.runRow.run.contextSnapshot as { source?: string } | null)
           ?.source ??
         '',
@@ -1052,7 +1034,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         run: row.runRow.run,
         issue: row.runRow.issue,
         agent: row.runRow.agent,
-        wakeup: row.runRow.wakeup,
         comments: row.comments,
         runs: row.runs,
         workProducts: row.workProducts,
@@ -1120,7 +1101,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       runTimeoutSec: number
       permissions?: unknown
     }
-    wakeup: typeof schema.issueWakeup.$inferSelect | null
     comments: Array<typeof schema.issueComment.$inferSelect>
     runs: Array<typeof schema.issueRun.$inferSelect>
     workProducts: Array<typeof schema.issueWorkProduct.$inferSelect>
@@ -1227,7 +1207,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
           status: input.run.status,
           started_at: dateToIso(input.run.startedAt),
           cancel_requested_at: dateToIso(input.run.cancelRequestedAt),
-          wakeup_source: input.wakeup?.source ?? null,
+          trigger_source: input.run.triggerSource,
           run_timeout_sec: input.agent.runTimeoutSec,
         }),
       ),
@@ -1675,7 +1655,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       status: 'cancelled',
       error: reason,
       finished: true,
-      completeWakeup: true,
       resultJson: { resolution: 'cancelled', reason },
     })
     if (statusResult.isErr()) {

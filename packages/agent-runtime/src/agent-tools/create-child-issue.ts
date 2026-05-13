@@ -149,7 +149,6 @@ export function createCreateChildIssueTool(context: IssueRunToolContext) {
         run,
         status: 'succeeded',
         finished: true,
-        completeWakeup: true,
         resultJson: {
           resolution: 'create_child_issue',
           child_issue_id: childIssue.id,

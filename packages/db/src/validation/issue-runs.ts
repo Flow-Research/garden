@@ -5,7 +5,6 @@ import {
   issueRun,
   issueRunEvent,
   issueSourceBinding,
-  issueWakeup,
   issueWorkProduct,
 } from '../schema/index.js'
 import {
@@ -14,8 +13,6 @@ import {
   issueRunEventStreamValues,
   issueRunEventTypeValues,
   issueRunStatusValues,
-  issueWakeupSourceValues,
-  issueWakeupStatusValues,
   issueWorkProductReviewStateValues,
   issueWorkProductStatusValues,
   issueWorkProductTypeValues,
@@ -28,8 +25,6 @@ export {
   issueRunEventStreamValues,
   issueRunEventTypeValues,
   issueRunStatusValues,
-  issueWakeupSourceValues,
-  issueWakeupStatusValues,
   issueWorkProductReviewStateValues,
   issueWorkProductStatusValues,
   issueWorkProductTypeValues,
@@ -40,10 +35,6 @@ const uuidSchema = z.string().uuid()
 const jsonObjectSchema = z.record(z.string(), z.unknown())
 
 export const issueRunStatusSchema = z.enum(issueRunStatusValues)
-
-export const issueWakeupStatusSchema = z.enum(issueWakeupStatusValues)
-
-export const issueWakeupSourceSchema = z.enum(issueWakeupSourceValues)
 
 export const issueRunEventTypeSchema = z.enum(issueRunEventTypeValues)
 
@@ -70,7 +61,6 @@ export const issueRunSelectSchema = createSelectSchema(issueRun, {
   workspaceId: () => uuidSchema,
   issueId: () => uuidSchema,
   agentId: () => uuidSchema,
-  wakeupId: () => uuidSchema,
   status: () => issueRunStatusSchema,
   contextSnapshot: () => jsonObjectSchema,
   resultJson: () => jsonObjectSchema,
@@ -82,7 +72,6 @@ export const issueRunInsertSchema = createInsertSchema(issueRun, {
   workspaceId: () => uuidSchema,
   issueId: () => uuidSchema,
   agentId: () => uuidSchema,
-  wakeupId: () => uuidSchema,
   status: () => issueRunStatusSchema,
   contextSnapshot: () => jsonObjectSchema,
   resultJson: () => jsonObjectSchema,
@@ -94,7 +83,6 @@ export const issueRunUpdateSchema = createUpdateSchema(issueRun, {
   workspaceId: () => uuidSchema,
   issueId: () => uuidSchema,
   agentId: () => uuidSchema,
-  wakeupId: () => uuidSchema,
   status: () => issueRunStatusSchema,
   contextSnapshot: () => jsonObjectSchema,
   resultJson: () => jsonObjectSchema,
@@ -121,28 +109,6 @@ export const issueRunEventInsertSchema = createInsertSchema(issueRunEvent, {
   stream: () => issueRunEventStreamSchema,
   level: () => issueRunEventLevelSchema,
   payload: () => jsonObjectSchema,
-})
-
-export const issueWakeupSelectSchema = createSelectSchema(issueWakeup, {
-  id: () => uuidSchema,
-  workspaceId: () => uuidSchema,
-  issueId: () => uuidSchema,
-  agentId: () => uuidSchema,
-  triggerCommentId: () => uuidSchema,
-  triggerSourceId: () => uuidSchema,
-  source: () => issueWakeupSourceSchema,
-  status: () => issueWakeupStatusSchema,
-})
-
-export const issueWakeupInsertSchema = createInsertSchema(issueWakeup, {
-  id: () => uuidSchema,
-  workspaceId: () => uuidSchema,
-  issueId: () => uuidSchema,
-  agentId: () => uuidSchema,
-  triggerCommentId: () => uuidSchema,
-  triggerSourceId: () => uuidSchema,
-  source: () => issueWakeupSourceSchema,
-  status: () => issueWakeupStatusSchema,
 })
 
 export const issueWorkProductSelectSchema = createSelectSchema(issueWorkProduct, {

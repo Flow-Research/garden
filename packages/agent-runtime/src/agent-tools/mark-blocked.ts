@@ -53,16 +53,6 @@ export function createMarkBlockedTool(context: IssueRunToolContext) {
                 updatedAt: now,
               })
               .where(eq(schema.issueRun.id, run.runId))
-            if (run.wakeupId) {
-              await tx
-                .update(schema.issueWakeup)
-                .set({
-                  status: 'completed',
-                  completedAt: now,
-                  updatedAt: now,
-                })
-                .where(eq(schema.issueWakeup.id, run.wakeupId))
-            }
             await tx.insert(schema.issueComment).values({
               id: commentId,
               issueId: run.issueId,

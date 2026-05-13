@@ -38,7 +38,6 @@ export type IssueRunToolState = {
   agentId: string
   agentOwnerUserId: string
   hostName: string
-  wakeupId: string | null
 }
 
 export type IssueRunMcpToolRecord = {
@@ -190,7 +189,6 @@ export async function updateRunStatus(args: {
   error?: string | null
   resultJson?: Record<string, unknown> | null
   finished?: boolean
-  completeWakeup?: boolean
 }): Promise<ResultValue<void, IssueRunToolError>> {
   const now = new Date()
   const result = await Result.tryPromise({
@@ -216,16 +214,6 @@ export async function updateRunStatus(args: {
             .where(eq(schema.issue.id, args.run.issueId))
         }
 
-        if (args.completeWakeup && args.run.wakeupId) {
-          await tx
-            .update(schema.issueWakeup)
-            .set({
-              status: 'completed',
-              completedAt: now,
-              updatedAt: now,
-            })
-            .where(eq(schema.issueWakeup.id, args.run.wakeupId))
-        }
       })
     },
     catch: (cause) => dbError('update issue run status', cause),

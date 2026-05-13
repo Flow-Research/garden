@@ -135,7 +135,6 @@ export function createReviseWorkProductTool(context: IssueRunToolContext) {
         run,
         status: 'succeeded',
         finished: true,
-        completeWakeup: true,
         resultJson: {
           resolution: 'revise_work_product',
           work_product_id: input.id,

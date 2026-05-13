@@ -39,27 +39,6 @@ export const sourceKindValues = [
   'search_result',
 ] as const
 
-export const issueWakeupSourceValues = [
-  'assignment',
-  'comment',
-  'mention',
-  'manual',
-  'scheduled',
-  'connector_event',
-  'reconciler_retry',
-  'hire_approval',
-] as const
-
-export const issueWakeupStatusValues = [
-  'pending',
-  'claimed',
-  'completed',
-  'failed',
-  'superseded',
-] as const
-
-export const activeIssueWakeupStatusValues = ['pending', 'claimed'] as const
-
 export const issueRunStatusValues = [
   'queued',
   'running',
