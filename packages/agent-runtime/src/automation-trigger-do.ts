@@ -1,7 +1,12 @@
 import { DurableObject } from 'cloudflare:workers'
 import { eq, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/neon-serverless'
-import { Result, TaggedError, type Result as ResultValue } from 'better-result'
+import {
+  Result,
+  TaggedError,
+  type Result as ResultValue,
+  type SerializedResult,
+} from 'better-result'
 import { CronExpressionParser } from 'cron-parser'
 import * as schema from '@garden/db/schema'
 import {
@@ -167,6 +172,16 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
     automationId: string
     concurrencyPolicy: AutomationConcurrencyPolicy
     nextRunAt: Date | string | number
+  }): Promise<SerializedResult<void, AutomationDoError>> {
+    const result = await this.installTrigger(args)
+    return Result.serialize(result)
+  }
+
+  private async installTrigger(args: {
+    triggerId: string
+    automationId: string
+    concurrencyPolicy: AutomationConcurrencyPolicy
+    nextRunAt: Date | string | number
   }): Promise<ResultValue<void, AutomationDoError>> {
     const nextRunAt = coerceDate(args.nextRunAt)
     if (!nextRunAt) {
@@ -192,12 +207,19 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
       try: async () => await this.ctx.storage.setAlarm(nextRunAt),
       catch: (cause) => dbError('set automation trigger alarm', cause),
     })
-    if (alarmResult.isErr()) return Result.err(alarmResult.error)
+    if (alarmResult.isErr()) {
+      return Result.err(alarmResult.error)
+    }
 
     return Result.ok()
   }
 
-  async uninstall(): Promise<ResultValue<void, AutomationDoError>> {
+  async uninstall(): Promise<SerializedResult<void, AutomationDoError>> {
+    const result = await this.uninstallTrigger()
+    return Result.serialize(result)
+  }
+
+  private async uninstallTrigger(): Promise<ResultValue<void, AutomationDoError>> {
     this.ctx.storage.kv.delete(CONFIG_KEY)
     this.ctx.storage.kv.delete(STATE_KEY)
 
@@ -205,7 +227,9 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
       try: async () => await this.ctx.storage.deleteAlarm(),
       catch: (cause) => dbError('delete automation trigger alarm', cause),
     })
-    if (alarmResult.isErr()) return Result.err(alarmResult.error)
+    if (alarmResult.isErr()) {
+      return Result.err(alarmResult.error)
+    }
 
     return Result.ok()
   }
@@ -222,6 +246,14 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
   }
 
   async fireNow(args: {
+    source: Exclude<AutomationRunSource, 'schedule'>
+    payload?: unknown
+  }): Promise<SerializedResult<{ runId: string }, AutomationDoError>> {
+    const result = await this.fireNowTrigger(args)
+    return Result.serialize(result)
+  }
+
+  private async fireNowTrigger(args: {
     source: Exclude<AutomationRunSource, 'schedule'>
     payload?: unknown
   }): Promise<ResultValue<{ runId: string }, AutomationDoError>> {
@@ -643,7 +675,7 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
       row.kind !== 'schedule' ||
       row.automationStatus !== 'active'
     ) {
-      const uninstallResult = await this.uninstall()
+      const uninstallResult = await this.uninstallTrigger()
       if (uninstallResult.isErr()) return Result.err(uninstallResult.error)
       return Result.ok(null)
     }
