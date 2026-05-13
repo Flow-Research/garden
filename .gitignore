@@ -2,6 +2,7 @@ node_modules/
 .turbo/
 .wrangler/
 .deepsec/
+.claude/worktrees/
 **/.wrangler/
 .env
 .env.*

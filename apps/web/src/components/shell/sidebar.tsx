@@ -31,7 +31,6 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuBadge,
@@ -209,27 +208,9 @@ function HomeInboxIcon({ className }: { className?: string }) {
   )
 }
 
-function ExplorerSection({
-  label,
-  count,
-  children,
-}: {
-  label?: string
-  count?: number
-  children: React.ReactNode
-}) {
+function ExplorerSection({ children }: { children: React.ReactNode }) {
   return (
     <SidebarGroup className="px-0 py-1.5">
-      {label ? (
-        <div className="flex items-center gap-2 px-4 pb-1.5">
-          <SidebarGroupLabel className="h-auto px-0 text-[10px] tracking-[0.18em] text-[color:var(--gravel)] uppercase font-medium">
-            {label}
-          </SidebarGroupLabel>
-          {typeof count === 'number' ? (
-            <span className="text-[10px] text-muted-foreground">{count}</span>
-          ) : null}
-        </div>
-      ) : null}
       <SidebarGroupContent>{children}</SidebarGroupContent>
     </SidebarGroup>
   )
@@ -307,8 +288,6 @@ export function WorkspaceSidebar() {
     pendingRail && activeRailId === pendingRail.from
       ? pendingRail.id
       : activeRailId
-  const activeRail =
-    railItems.find((item) => item.id === effectiveRailId) ?? railItems[0]
   const workspaceId = workspace?.id ?? ''
 
   const { data: rawInboxItems = [] } = useQuery({
@@ -471,7 +450,10 @@ export function WorkspaceSidebar() {
             <SidebarGroupContent>
               <SidebarMenu className="gap-2 py-2">
                 {railItems.map((item) => (
-                  <SidebarMenuItem key={item.id} className="!flex !justify-center">
+                  <SidebarMenuItem
+                    key={item.id}
+                    className="!flex !justify-center"
+                  >
                     <SidebarMenuButton
                       tooltip={{
                         children: item.label,
@@ -536,12 +518,7 @@ export function WorkspaceSidebar() {
             : 'hidden min-w-0 flex-1 md:flex'
         }
       >
-        <SidebarHeader className="gap-3 p-3">
-          <div className="flex items-center gap-2 px-1">
-            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--gravel)]">
-              {activeRail.label}
-            </span>
-          </div>
+        <SidebarHeader className="p-3">
           <SearchTrigger className="flex-1" />
         </SidebarHeader>
 
@@ -590,7 +567,7 @@ export function WorkspaceSidebar() {
           ) : null}
 
           {effectiveRailId === 'home' ? (
-            <ExplorerSection label="Home">
+            <ExplorerSection>
               <SidebarMenu>
                 <ExplorerActionRow
                   label="Dashboard"
@@ -753,7 +730,7 @@ function AgentsExplorer({
         </SidebarMenu>
       </ExplorerSection>
       {live.length > 0 ? (
-        <ExplorerSection label="Workspace" count={live.length}>
+        <ExplorerSection>
           <SidebarMenu>
             {live.map((agent) => {
               const active = activeEntityId === agent.id
@@ -981,12 +958,12 @@ function ConnectionsExplorer({
   return (
     <>
       {connected.length > 0 ? (
-        <ExplorerSection label="Connected" count={connected.length}>
+        <ExplorerSection>
           <SidebarMenu>{connected.map(renderRow)}</SidebarMenu>
         </ExplorerSection>
       ) : null}
       {available.length > 0 ? (
-        <ExplorerSection label="Available" count={available.length}>
+        <ExplorerSection>
           <SidebarMenu>{available.map(renderRow)}</SidebarMenu>
         </ExplorerSection>
       ) : null}
