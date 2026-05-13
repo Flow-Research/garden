@@ -648,7 +648,7 @@ export async function dispatchAutomation(
         .where(eq(schema.automationRun.id, runId))
       return run
     },
-    catch: (cause) => dbError('mark automation run dispatched', cause),
+    catch: (cause) => dbError('mark automation last run', cause),
   })
   if (updateResult.isErr()) return Result.err(updateResult.error)
   if (!updateResult.value) {

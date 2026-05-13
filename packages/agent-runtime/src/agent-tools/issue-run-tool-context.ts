@@ -12,7 +12,10 @@ import * as schema from '@garden/db/schema'
 
 export type AgentDoRpcStub = {
   setName?: (name: string) => Promise<void>
-  enqueueIssueRun: (input: { runId: string; issueId: string }) => Promise<void>
+  startIssueRunWorkflow: (input: {
+    runId: string
+    issueId: string
+  }) => Promise<void>
   cancelIssueRun: (input: { runId: string; issueId: string }) => Promise<void>
 }
 

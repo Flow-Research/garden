@@ -15,7 +15,6 @@ export type AppEnv = {
   AUTOMATION_TRIGGER: RequiredEnvBinding<'AUTOMATION_TRIGGER'>
   MCP_SESSION: RequiredEnvBinding<'MCP_SESSION'>
   Sandbox: RequiredEnvBinding<'Sandbox'>
-  RUN_QUEUE: RequiredEnvBinding<'RUN_QUEUE'>
   RUN_WORKFLOW: RequiredEnvBinding<'RUN_WORKFLOW'>
   ENVIRONMENT?: 'development' | 'test' | 'production'
   GITHUB_CLIENT_ID?: string

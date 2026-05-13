@@ -7,8 +7,6 @@ import {
   ChatSubAgent,
   IssueRunSubAgent,
   RunWorkflow,
-  consumeRunDispatchBatch,
-  type RunDispatchBatch,
 } from '@garden/agent-runtime'
 import { proxyToSandbox, Sandbox } from '@cloudflare/sandbox'
 import { Result } from 'better-result'
@@ -150,14 +148,6 @@ export default {
           })
         }
       }),
-    )
-  },
-
-  async queue(batch: MessageBatch<unknown>, env: ServerEnv): Promise<void> {
-    bindAppEnv(env)
-    await consumeRunDispatchBatch(
-      env as unknown as Parameters<typeof consumeRunDispatchBatch>[0],
-      batch as unknown as RunDispatchBatch,
     )
   },
 

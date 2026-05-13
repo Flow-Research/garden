@@ -5,20 +5,13 @@ export { AutomationTriggerDO } from './automation-trigger-do'
 export {
   RunWorkflow,
   RUN_WORKFLOW_CONTROL_EVENT_TYPE,
+  RunWorkflowCreateError,
+  createRunWorkflow,
   type RunWorkflowControlEvent,
   type RunWorkflowEnv,
-} from './run-workflow'
-export {
-  RunDispatchError,
-  consumeRunDispatchBatch,
-  enqueueRunDispatch,
-  type RunDispatchBatch,
-  type RunDispatchEnv,
-  type RunDispatchMessage,
-  type RunQueueBinding,
   type RunWorkflowBinding,
   type RunWorkflowParams,
-} from './run-dispatcher'
+} from './run-workflow'
 export { createAgentModel } from './model'
 export {
   extractTrackedChangeIds,

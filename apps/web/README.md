@@ -59,11 +59,11 @@ GitHub connector development also needs the GitHub app fields from the root `.en
 
 ## Cloudflare Runtime
 
-The local Worker uses `wrangler.jsonc` for Durable Objects, R2, queues, workflows, sandbox bindings, and service bindings. Key runtime pieces:
+The local Worker uses `wrangler.jsonc` for Durable Objects, R2, Workflows, sandbox bindings, and service bindings. Key runtime pieces:
 
 - `AgentDO` hosts per-agent state and WebSocket/RPC behavior.
 - `FILES` and `LOADER` are R2 buckets for uploaded files and loader artifacts.
-- `RUN_QUEUE` and `RUN_WORKFLOW` drive issue-run execution.
+- `RUN_WORKFLOW` drives durable issue-run and automation-run execution directly from `AgentDO`.
 - `MCP_PROXY` connects runtime MCP calls to local or deployed connector services.
 - Sandbox bindings are enabled by `dev:containers` or automatically when Docker is available.
 

@@ -113,7 +113,7 @@ export function createCreateChildIssueTool(context: IssueRunToolContext) {
           trigger: { correlationId: `parent:${run.issueId}:run:${run.runId}` },
           actor: { type: 'agent', id: run.agentId },
         })
-        childRun = startResult.isOk() && startResult.value.kind === 'enqueued'
+        childRun = startResult.isOk() && startResult.value.kind === 'started'
           ? { kind: 'started', run_id: startResult.value.runId }
           : {
               kind: 'failed',

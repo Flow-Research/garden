@@ -967,7 +967,7 @@ async function assignIssueFromChat(
     identifier: summaryResult.value.identifier,
     assignee_agent_id: assigneeAgentId,
     run:
-      startResult.value.kind === "enqueued"
+      startResult.value.kind === "started"
         ? { kind: "started", run_id: startResult.value.runId }
         : startResult.value.kind === "resumed"
           ? { kind: "resumed", run_id: startResult.value.runId }

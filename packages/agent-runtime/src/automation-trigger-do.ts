@@ -519,7 +519,7 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
       )
     }
 
-    const updateRunResult = await this.markRunDispatched({
+    const updateRunResult = await this.markRunStarted({
       runId,
       automationId: automation.id,
     })
@@ -601,7 +601,7 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
     return Result.ok()
   }
 
-  private async markRunDispatched(args: {
+  private async markRunStarted(args: {
     runId: string
     automationId: string
   }): Promise<ResultValue<void, AutomationDoError>> {
@@ -622,7 +622,7 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
           .set({ lastRunAt: now, updatedAt: now })
           .where(eq(schema.automation.id, args.automationId))
       },
-      catch: (cause) => dbError('mark automation run dispatched', cause),
+      catch: (cause) => dbError('mark automation run started', cause),
     })
     if (result.isErr()) return Result.err(result.error)
 
