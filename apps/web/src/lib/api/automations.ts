@@ -82,6 +82,8 @@ export type AutomationRun = {
   failure_reason: string | null
   trigger_payload: unknown
   created_at: string | null
+  result_json?: Record<string, unknown> | null
+  usage_json?: Record<string, unknown> | null
 }
 
 export type AutomationListResponse = {
@@ -239,9 +241,15 @@ export async function triggerAutomation(id: string): Promise<AutomationRun> {
   return unwrapAutomationEnvelope(payload)
 }
 
-export async function listAutomationRuns(id: string): Promise<AutomationRun[]> {
+export async function listAutomationRuns(
+  id: string,
+  options?: { debug?: boolean },
+): Promise<AutomationRun[]> {
+  const search = new URLSearchParams()
+  if (options?.debug) search.set('debug', 'true')
+  const suffix = search.size > 0 ? `?${search}` : ''
   const payload = await getApiTransport().request<ApiEnvelope<AutomationRun[]>>(
-    `/api/automations/${id}/runs`,
+    `/api/automations/${id}/runs${suffix}`,
   )
   return unwrapAutomationEnvelope(payload)
 }

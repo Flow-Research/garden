@@ -64,6 +64,12 @@ function errorMessage(cause: unknown) {
   return cause instanceof Error ? cause.message : String(cause)
 }
 
+function objectOrNull(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
 function dbError(operation: string, cause: unknown) {
   return automationError({
     code: 'db_error',
@@ -215,8 +221,11 @@ export function toAutomationTrigger(row: AutomationTriggerRow) {
   }
 }
 
-export function toAutomationRun(row: AutomationRunRow) {
-  return {
+export function toAutomationRun(
+  row: AutomationRunRow,
+  options: { debug?: boolean } = {},
+) {
+  const run = {
     id: row.id,
     automation_id: row.automationId,
     trigger_id: row.triggerId,
@@ -228,6 +237,14 @@ export function toAutomationRun(row: AutomationRunRow) {
     failure_reason: row.failureReason,
     trigger_payload: row.triggerPayload,
     created_at: dateToIso(row.createdAt),
+  }
+
+  if (!options.debug) return run
+
+  return {
+    ...run,
+    result_json: objectOrNull(row.resultJson),
+    usage_json: objectOrNull(row.usageJson),
   }
 }
 

@@ -38,7 +38,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_URL: string
   DATABASE_URL: string
   CLOUDFLARE_ACCOUNT_ID: string
-  CLOUDFLARE_API_TOKEN: string
+  CF_AIG_TOKEN: string
   FILES: R2Bucket
   LOADER: WorkerLoader
   Sandbox: DurableObjectNamespace<SandboxDO>
@@ -170,7 +170,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   getModel(): LanguageModel {
     return createAgentModel({
       accountId: this.env.CLOUDFLARE_ACCOUNT_ID,
-      apiKey: this.env.CLOUDFLARE_API_TOKEN,
+      apiKey: this.env.CF_AIG_TOKEN,
     })
   }
 

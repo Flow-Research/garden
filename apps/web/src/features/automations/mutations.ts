@@ -52,7 +52,9 @@ export function useTriggerAutomation() {
     mutationFn: (id: string) => api.triggerAutomation(id),
     onSettled: (_data, _error, id) => {
       qc.invalidateQueries({ queryKey: automationKeys.detail(wsId, id) })
-      qc.invalidateQueries({ queryKey: automationKeys.runs(wsId, id) })
+      qc.invalidateQueries({
+        queryKey: [...automationKeys.detail(wsId, id), 'runs'],
+      })
     },
   })
 }

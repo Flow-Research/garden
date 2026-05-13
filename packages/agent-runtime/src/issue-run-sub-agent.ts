@@ -73,7 +73,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_URL: string
   DATABASE_URL: string
   CLOUDFLARE_ACCOUNT_ID: string
-  CLOUDFLARE_API_TOKEN: string
+  CF_AIG_TOKEN: string
   FILES: R2Bucket
   LOADER: WorkerLoader
   Sandbox: DurableObjectNamespace<SandboxDO>
@@ -111,6 +111,13 @@ const VALID_RESOLUTION_ACTIONS = new Set<IssueRunResolutionAction>([
   'revise_work_product',
   'mark_blocked',
   'create_child_issue',
+])
+
+const TERMINAL_RESOLUTION_ACTIONS = new Set<IssueRunResolutionAction>([
+  'ask_question',
+  'create_work_product',
+  'revise_work_product',
+  'mark_blocked',
 ])
 
 let cachedIssueInteractionSkillMarkdown: string | null = null
@@ -240,7 +247,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   getModel(): LanguageModel {
     return createAgentModel({
       accountId: this.env.CLOUDFLARE_ACCOUNT_ID,
-      apiKey: this.env.CLOUDFLARE_API_TOKEN,
+      apiKey: this.env.CF_AIG_TOKEN,
     })
   }
 
@@ -352,7 +359,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     const run = this.currentRunState
     if (!run) return undefined
 
-    if (this.resolutionActions.size > 0) {
+    if (this.hasTerminalResolutionAction()) {
       return {
         action: 'substitute',
         output: {
@@ -514,6 +521,14 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     if (guardResult.isErr()) {
       console.warn('[agent-runtime] issue run exit guard failed', {
         error: guardResult.error.message,
+        runId,
+      })
+    }
+
+    const finalizeChildResult = await this.finalizeChildIssueResolution(runId)
+    if (finalizeChildResult.isErr()) {
+      console.warn('[agent-runtime] issue run child resolution finalize failed', {
+        error: finalizeChildResult.error.message,
         runId,
       })
     }
@@ -1505,6 +1520,72 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     }
 
     return await this.forceCloseFailed(runId, 'no_resolution')
+  }
+
+  private hasTerminalResolutionAction() {
+    for (const action of this.resolutionActions) {
+      if (TERMINAL_RESOLUTION_ACTIONS.has(action)) return true
+    }
+    return false
+  }
+
+  private async finalizeChildIssueResolution(
+    runId: string,
+  ): Promise<ResultValue<void, IssueRunSubAgentError>> {
+    if (
+      !this.resolutionActions.has('create_child_issue') ||
+      this.hasTerminalResolutionAction()
+    ) {
+      return Result.ok()
+    }
+
+    const runStateResult = await this.loadRunState(runId)
+    if (runStateResult.isErr()) return Result.err(runStateResult.error)
+
+    const [run] = await this.getDb()
+      .select({ status: schema.issueRun.status })
+      .from(schema.issueRun)
+      .where(eq(schema.issueRun.id, runId))
+      .limit(1)
+    if (!run || run.status !== 'running') return Result.ok()
+
+    const db = getIssueRunDb(this.env.DATABASE_URL)
+    const statusResult = await updateRunStatus({
+      db,
+      run: runStateResult.value,
+      status: 'succeeded',
+      finished: true,
+      resultJson: { resolution: 'create_child_issue' },
+    })
+    if (statusResult.isErr()) {
+      return Result.err(
+        new IssueRunSubAgentError({
+          code: 'database_failed',
+          message: statusResult.error.message,
+          cause: statusResult.error,
+        }),
+      )
+    }
+
+    const eventResult = await appendIssueRunEvent({
+      db,
+      run: runStateResult.value,
+      eventType: 'issue_run:succeeded',
+      stream: 'system',
+      message: 'Run succeeded',
+      payload: { resolution: 'create_child_issue' },
+    })
+    if (eventResult.isErr()) {
+      return Result.err(
+        new IssueRunSubAgentError({
+          code: 'database_failed',
+          message: eventResult.error.message,
+          cause: eventResult.error,
+        }),
+      )
+    }
+
+    return Result.ok()
   }
 
   private ensureResolutionGuardTable() {

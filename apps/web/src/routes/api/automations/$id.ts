@@ -52,7 +52,7 @@ export const Route = createFileRoute('/api/automations/$id')({
         return automationOk({
           automation: toAutomation(automation),
           triggers: triggersResult.value.map(toAutomationTrigger),
-          runs: runsResult.value.map(toAutomationRun),
+          runs: runsResult.value.map((run) => toAutomationRun(run)),
         })
       },
       PATCH: async ({ request, params }) => {

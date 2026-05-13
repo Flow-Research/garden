@@ -19,10 +19,10 @@ function readDevVar(name: string) {
 }
 
 const accountId = readDevVar('CLOUDFLARE_ACCOUNT_ID')
-const apiKey = readDevVar('CLOUDFLARE_API_TOKEN')
+const apiKey = readDevVar('CF_AIG_TOKEN')
 
 if (!accountId || !apiKey) {
-  console.error('CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN must be set in apps/web/.dev.vars')
+  console.error('CLOUDFLARE_ACCOUNT_ID and CF_AIG_TOKEN must be set in apps/web/.dev.vars')
   process.exit(1)
 }
 

@@ -22,6 +22,9 @@ const automationConcurrencyPolicySchema = z.enum(
   automationConcurrencyPolicyValues,
 )
 const issuePrioritySchema = z.enum(issuePriorityValues)
+const debugQueryFlagSchema = z
+  .enum(['true', 'false'])
+  .transform((value) => value === 'true')
 
 const scheduleTriggerInputSchema = z
   .object({
@@ -104,6 +107,7 @@ export const updateAutomationTriggerBodySchema = z
 export const automationRunsListSearchSchema = z
   .object({
     source: automationRunSourceSchema.optional(),
+    debug: debugQueryFlagSchema.optional(),
     limit: positiveQueryIntSchema.max(100).optional(),
     offset: nonNegativeQueryIntSchema.optional(),
   })

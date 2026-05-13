@@ -35,6 +35,7 @@ import {
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { cn } from '@garden/ui/lib/utils'
 import { ActorAvatar } from '@/features/common/actor-avatar'
+import { useDevSettingsStore } from '@/features/settings/dev-settings-store'
 import { useActorName } from '@/lib/workspace/hooks'
 import { agentListOptions } from '@/lib/workspace/queries'
 import {
@@ -61,6 +62,18 @@ function formatDate(date: string): string {
   })
 }
 
+function numberValue(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function stringValue(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function formatTokenCount(value: number) {
+  return Intl.NumberFormat(undefined, { notation: 'compact' }).format(value)
+}
+
 const RUN_STATUS_CONFIG: Record<
   string,
   { label: string; color: string; icon: typeof CheckCircle2 }
@@ -83,12 +96,17 @@ const RUN_STATUS_CONFIG: Record<
 
 function RunRow({
   run,
+  debugMode = false,
 }: {
   run: AutomationRun
+  debugMode?: boolean
 }) {
   const config =
     RUN_STATUS_CONFIG[run.status] ?? RUN_STATUS_CONFIG.queued
   const StatusIcon = config.icon
+  const usage = run.usage_json
+  const totalTokens = numberValue(usage?.total_tokens)
+  const model = stringValue(usage?.model)
 
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-accent/30">
@@ -104,6 +122,14 @@ function RunRow({
           <span className="text-destructive">{run.failure_reason}</span>
         ) : run.run_id ? (
           <span className="font-mono">{run.run_id.slice(0, 8)}</span>
+        ) : null}
+        {debugMode && (totalTokens !== null || model) ? (
+          <span className="ml-2 text-[11px] text-muted-foreground">
+            {totalTokens !== null
+              ? `${formatTokenCount(totalTokens)} tokens`
+              : 'usage'}
+            {model ? ` · ${model}` : null}
+          </span>
         ) : null}
       </span>
       <span className="w-32 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
@@ -414,12 +440,13 @@ export function AutomationDetailPage({
   onDeleted?: () => void
 }) {
   const wsId = useWorkspaceId()
+  const debugMode = useDevSettingsStore((state) => state.debugMode)
   const { getActorName } = useActorName()
   const { data, isLoading } = useQuery(
     automationDetailOptions(wsId, automationId),
   )
   const { data: runs = [], isLoading: runsLoading } = useQuery(
-    automationRunsOptions(wsId, automationId),
+    automationRunsOptions(wsId, automationId, debugMode),
   )
   const { data: agents = [] } = useQuery(agentListOptions(wsId))
   const updateAutomation = useUpdateAutomation()
@@ -629,7 +656,7 @@ export function AutomationDetailPage({
             ) : (
               <div className="overflow-hidden rounded-md border">
                 {runs.map((run) => (
-                  <RunRow key={run.id} run={run} />
+                  <RunRow key={run.id} run={run} debugMode={debugMode} />
                 ))}
               </div>
             )}

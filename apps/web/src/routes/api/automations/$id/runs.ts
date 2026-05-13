@@ -46,7 +46,11 @@ export const Route = createFileRoute('/api/automations/$id/runs')({
         })
         if (runsResult.isErr()) return automationErr(runsResult.error)
 
-        return automationOk(runsResult.value.map(toAutomationRun))
+        return automationOk(
+          runsResult.value.map((run) =>
+            toAutomationRun(run, { debug: searchResult.value.debug }),
+          ),
+        )
       },
     },
   },

@@ -1,7 +1,9 @@
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import { createAiGateway } from 'ai-gateway-provider'
+import { createUnified } from 'ai-gateway-provider/providers/unified'
 import type { LanguageModel } from 'ai'
 
-const AGENT_MODEL_ID = '@cf/moonshotai/kimi-k2.6'
+const AI_GATEWAY_ID = 'garden'
+const AGENT_MODEL_ID = 'workers-ai/@cf/moonshotai/kimi-k2.6'
 
 type AgentModelConfig = {
   accountId: string
@@ -9,11 +11,12 @@ type AgentModelConfig = {
 }
 
 export function createAgentModel(config: AgentModelConfig): LanguageModel {
-  const workersAi = createOpenAICompatible({
-    name: 'cloudflare-workers-ai',
-    baseURL: `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/ai/v1`,
+  const aigateway = createAiGateway({
+    accountId: config.accountId,
+    gateway: AI_GATEWAY_ID,
     apiKey: config.apiKey,
   })
+  const unified = createUnified()
 
-  return workersAi(AGENT_MODEL_ID)
+  return aigateway(unified(AGENT_MODEL_ID))
 }

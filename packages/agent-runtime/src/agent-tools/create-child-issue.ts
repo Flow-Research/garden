@@ -13,7 +13,6 @@ import {
   requireRunState,
   toolErrorResult,
   toolOkResult,
-  updateRunStatus,
   type IssueRunDb,
   type IssueRunToolContext,
 } from './issue-run-tool-context'
@@ -144,36 +143,13 @@ export function createCreateChildIssueTool(context: IssueRunToolContext) {
       })
       if (eventResult.isErr()) return toolErrorResult(eventResult.error)
 
-      const statusResult = await updateRunStatus({
-        db,
-        run,
-        status: 'succeeded',
-        finished: true,
-        resultJson: {
-          resolution: 'create_child_issue',
-          child_issue_id: childIssue.id,
-        },
-      })
-      if (statusResult.isErr()) return toolErrorResult(statusResult.error)
-
-      const succeededEventResult = await appendIssueRunEvent({
-        db,
-        run,
-        eventType: 'issue_run:succeeded',
-        stream: 'system',
-        message: 'Run succeeded',
-        payload: { resolution: 'create_child_issue' },
-      })
-      if (succeededEventResult.isErr())
-        return toolErrorResult(succeededEventResult.error)
-
       context.recordResolution('create_child_issue')
       return toolOkResult({
         issue_id: childIssue.id,
         identifier: childIssue.identifier,
         child_run: childRun,
         warning,
-        run_status: 'succeeded',
+        run_status: 'running',
       })
     },
   })

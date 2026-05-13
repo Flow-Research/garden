@@ -115,7 +115,7 @@ Engineer-to-engineer. Direct. No filler. Specific over polite.
 | `revise_work_product(id, body, change_summary?)` | Revise in place; old body → `previous_versions[]` | Same outcome as create. |
 | `update_issue_status(status)` | Move your assigned issue through `todo`, `in_progress`, `in_review`, `done`, or `blocked` | Issue status only. Doesn't satisfy the exit-state guard. Stable blocked inbox item reopens only when blocked state is updated after dismissal. |
 | `mark_blocked(reason)` | Hard stop with concrete reason | Issue → `blocked`. Run → `blocked`. |
-| `create_child_issue(title, description, assignee_agent_id?)` | Decompose into a sub-issue | New issue with `parent_id = self`. Optional agent assignee fires its own run. Doesn't block parent. Soft-warn at depth ≥ 3, reject at depth ≥ 5. |
+| `create_child_issue(title, description, assignee_agent_id?)` | Decompose into a sub-issue | New issue with `parent_id = self`. Optional agent assignee fires its own run. Doesn't block parent and doesn't stop the parent turn; if it is the only resolution by turn end, the parent run closes succeeded. Soft-warn at depth ≥ 3, reject at depth ≥ 5. |
 | `attach_source_binding(connector_id, source_kind, external_id, external_url?)` | Bind issue to external object | Updates `issue.source_summary`. |
 | `read_source()` | Fetch source content via connector MCP | Read tool; no approval gate. |
 | (workspace skills) | Whatever's assigned via `agent_skill` | Read-only by default. |
