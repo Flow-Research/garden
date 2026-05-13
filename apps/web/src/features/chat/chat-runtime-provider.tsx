@@ -81,12 +81,15 @@ const useChatRuntimeStore = create<ChatRuntimeStore>((set) => ({
       }
     }),
   setRuntime: (sessionId, runtime) =>
-    set((state) => ({
-      runtimes: {
-        ...state.runtimes,
-        [sessionId]: runtime,
-      },
-    })),
+    set((state) => {
+      if (state.runtimes[sessionId] === runtime) return state
+      return {
+        runtimes: {
+          ...state.runtimes,
+          [sessionId]: runtime,
+        },
+      }
+    }),
   removeRuntime: (sessionId) =>
     set((state) => {
       if (!state.runtimes[sessionId]) {

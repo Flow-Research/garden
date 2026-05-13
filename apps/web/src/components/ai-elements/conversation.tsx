@@ -71,13 +71,22 @@ export function Conversation<TItem>({
 
   const updateStickiness = useCallback(() => {
     const state = listRef.current?.getState?.()
-    if (state) setIsAtBottom(state.isAtEnd)
+    if (!state) return
+    setIsAtBottom((current) =>
+      current === state.isAtEnd ? current : state.isAtEnd,
+    )
   }, [])
 
   const scrollToBottom = useCallback(() => {
     listRef.current?.scrollToEnd?.({ animated: true })
     setIsAtBottom(true)
   }, [])
+
+  const scrollToBottomOnLoad = useCallback(() => {
+    if (data.length === 0) return
+    listRef.current?.scrollToEnd?.({ animated: false })
+    setIsAtBottom((current) => (current ? current : true))
+  }, [data.length])
 
   const rawRows = useMemo(
     () =>
@@ -117,8 +126,13 @@ export function Conversation<TItem>({
     [onTouchStart],
   )
 
+  const contextValue = useMemo(
+    () => ({ isAtBottom, scrollToBottom }),
+    [isAtBottom, scrollToBottom],
+  )
+
   return (
-    <ConversationContext.Provider value={{ isAtBottom, scrollToBottom }}>
+    <ConversationContext.Provider value={contextValue}>
       <div
         role="log"
         {...props}
@@ -131,14 +145,14 @@ export function Conversation<TItem>({
           data={rows}
           keyExtractor={(item) => item.key}
           renderItem={renderItem}
+          alignItemsAtEnd
           drawDistance={drawDistance}
           estimatedListSize={estimatedListSize}
           estimatedItemSize={estimateItemSize}
           initialContainerPoolRatio={initialContainerPoolRatio}
-          initialScrollAtEnd
           maintainScrollAtEnd
           maintainScrollAtEndThreshold={0.1}
-          maintainVisibleContentPosition
+          onLoad={scrollToBottomOnLoad}
           onScroll={updateStickiness}
           className="h-full overflow-x-hidden overscroll-y-contain"
         />
