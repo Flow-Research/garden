@@ -37,7 +37,8 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_SECRET: string
   BETTER_AUTH_URL: string
   DATABASE_URL: string
-  OPENCODE_GO_API_KEY: string
+  CF_AIG_ACCOUNT_ID: string
+  CF_AIG_TOKEN: string
   FILES: R2Bucket
   LOADER: WorkerLoader
   Sandbox: DurableObjectNamespace<SandboxDO>
@@ -167,7 +168,10 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   maxSteps = 30
 
   getModel(): LanguageModel {
-    return createAgentModel(this.env.OPENCODE_GO_API_KEY)
+    return createAgentModel({
+      accountId: this.env.CF_AIG_ACCOUNT_ID,
+      apiKey: this.env.CF_AIG_TOKEN,
+    })
   }
 
   override async configureSession(session: Session) {

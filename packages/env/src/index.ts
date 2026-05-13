@@ -20,7 +20,8 @@ const serverSchema = {
   GITHUB_WEBHOOK_SECRET: z.string().min(1).optional(),
   GOOGLE_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
-  OPENCODE_GO_API_KEY: z.string().min(1),
+  CF_AIG_ACCOUNT_ID: z.string().min(1),
+  CF_AIG_TOKEN: z.string().min(1),
   SLACK_CLIENT_ID: z.string().min(1).optional(),
   SLACK_CLIENT_SECRET: z.string().min(1).optional(),
   ENVIRONMENT: z

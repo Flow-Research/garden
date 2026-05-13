@@ -9,19 +9,24 @@ const devVars = readFileSync(
   new URL('../../../apps/web/.dev.vars', import.meta.url),
   'utf8',
 )
-const apiKey = devVars
-  .split('\n')
-  .find((l) => l.startsWith('OPENCODE_GO_API_KEY='))
-  ?.split('=')[1]
-  ?.trim()
-  ?.replace(/^["']|["']$/g, '')
+function readDevVar(name: string) {
+  return devVars
+    .split('\n')
+    .find((line) => line.startsWith(`${name}=`))
+    ?.split('=')[1]
+    ?.trim()
+    ?.replace(/^["']|["']$/g, '')
+}
 
-if (!apiKey) {
-  console.error('OPENCODE_GO_API_KEY not found in apps/web/.dev.vars')
+const accountId = readDevVar('CF_AIG_ACCOUNT_ID')
+const apiKey = readDevVar('CF_AIG_TOKEN')
+
+if (!accountId || !apiKey) {
+  console.error('CF_AIG_ACCOUNT_ID and CF_AIG_TOKEN must be set in apps/web/.dev.vars')
   process.exit(1)
 }
 
-const model = createAgentModel(apiKey)
+const model = createAgentModel({ accountId, apiKey })
 
 const promptVariant = process.argv[2] ?? 'current'
 
