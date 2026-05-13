@@ -9,7 +9,7 @@ import {
 } from '@cloudflare/think'
 import { Workspace } from '@cloudflare/shell'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
-import type { LanguageModel, ModelMessage, ToolSet, UIMessage } from 'ai'
+import type { LanguageModel, ToolSet, UIMessage } from 'ai'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/neon-serverless'
@@ -77,6 +77,11 @@ type RunUsage = {
   recorded_at_ms: number
 }
 
+type AutomationRunContextSnapshot = {
+  source?: string
+  payload?: unknown
+}
+
 const DEFAULT_AUTOMATION_RUN_TIMEOUT_SEC = 2 * 60 * 60
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.automation-run.turn'
@@ -106,114 +111,6 @@ function dbError(operation: string, cause: unknown) {
   })
 }
 
-function dateToIso(value: Date | null | undefined) {
-  return value ? value.toISOString() : null
-}
-
-function objectOrNull(value: unknown) {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null
-}
-
-function stringValue(value: unknown) {
-  return typeof value === 'string' && value.trim() ? value.trim() : null
-}
-
-function renderJson(value: unknown) {
-  return JSON.stringify(value, null, 2)
-}
-
-function renderSection(title: string, body: string) {
-  return [`## ${title}`, body.trim() || 'None.'].join('\n')
-}
-
-function makeUserMessage(text: string): UIMessage {
-  return {
-    id: crypto.randomUUID(),
-    role: 'user',
-    parts: [{ type: 'text', text }],
-  }
-}
-
-function messageText(message: UIMessage) {
-  return message.parts
-    .flatMap((part) =>
-      part.type === 'text' && typeof part.text === 'string'
-        ? [part.text.trim()]
-        : [],
-    )
-    .filter(Boolean)
-    .join('\n\n')
-}
-
-function partType(part: unknown) {
-  return objectOrNull(part)?.type
-}
-
-function partToolCallId(part: unknown) {
-  const value = objectOrNull(part)
-  return stringValue(value?.toolCallId) ?? stringValue(value?.tool_call_id)
-}
-
-function collectToolResultIds(messages: ModelMessage[]) {
-  const ids = new Set<string>()
-  for (const message of messages) {
-    if (message.role !== 'tool' || !Array.isArray(message.content)) continue
-    for (const part of message.content) {
-      const id = partToolCallId(part)
-      if (id) ids.add(id)
-    }
-  }
-  return ids
-}
-
-function sanitizeRecoveredToolTranscript(messages: ModelMessage[]) {
-  const toolResultIds = collectToolResultIds(messages)
-  let removed = 0
-  const sanitized: ModelMessage[] = []
-
-  for (const message of messages) {
-    if (message.role !== 'assistant' || !Array.isArray(message.content)) {
-      sanitized.push(message)
-      continue
-    }
-
-    const content = message.content.filter((part) => {
-      const type = partType(part)
-      if (type !== 'tool-call') return true
-      const id = partToolCallId(part)
-      const keep = Boolean(id && toolResultIds.has(id))
-      if (!keep) removed += 1
-      return keep
-    })
-
-    if (content.length === message.content.length) {
-      sanitized.push(message)
-    } else if (content.length > 0) {
-      sanitized.push({ ...message, content } as ModelMessage)
-    }
-  }
-
-  if (removed === 0) return { messages, removed }
-
-  return {
-    messages: [
-      ...sanitized,
-      {
-        role: 'user',
-        content:
-          'Runtime recovery removed orphaned tool-call records from a previous interrupted automation turn. Continue from the current automation context.',
-      } satisfies ModelMessage,
-    ],
-    removed,
-  }
-}
-
-function usageTotal(usage: RunUsage) {
-  return usage.input_tokens + usage.output_tokens + usage.cached_input_tokens
-}
-
 function emptyUsage(ctx: StepContext): RunUsage {
   return {
     input_tokens: 0,
@@ -235,6 +132,8 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   constructor(ctx: DurableObjectState, env: AgentRuntimeEnv) {
     super(ctx, env)
   }
+
+  override chatRecovery = false
 
   waitForMcpConnections = {
     timeout: mcpRuntimeConfig.connectionWaitTimeoutMs,
@@ -303,7 +202,11 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async beforeTurn(ctx: TurnContext): Promise<TurnConfig | void> {
-    const runId = stringValue(ctx.body?.run_id) ?? this.currentRunId
+    const bodyRunId = ctx.body?.run_id
+    const runId =
+      typeof bodyRunId === 'string' && bodyRunId.trim()
+        ? bodyRunId.trim()
+        : this.currentRunId
     if (!runId) {
       throw new Error('AutomationRunSubAgent.beforeTurn missing run_id.')
     }
@@ -329,13 +232,6 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
         observedChangesResult.error,
       )
     }
-    const transcript = sanitizeRecoveredToolTranscript(ctx.messages)
-    if (transcript.removed > 0) {
-      console.warn('[agent-runtime] sanitized orphaned automation tool calls', {
-        runId,
-        removed: transcript.removed,
-      })
-    }
 
     return {
       experimental_telemetry: {
@@ -350,7 +246,6 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       },
       maxRetries: THINK_TURN_MAX_RETRIES,
       maxSteps: this.maxSteps,
-      messages: transcript.messages,
       sendReasoning: true,
       system: `${ctx.system}\n\n${loadedResult.value.contextBlock}`,
       tools: mcpController.wrapGetAITools(
@@ -394,7 +289,11 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
         (nextUsage.reasoning_tokens ?? 0) + reasoningTokens
     }
     nextUsage.step_count += 1
-    nextUsage.total_tokens = ctx.usage.totalTokens ?? usageTotal(nextUsage)
+    nextUsage.total_tokens =
+      ctx.usage.totalTokens ??
+      nextUsage.input_tokens +
+        nextUsage.output_tokens +
+        nextUsage.cached_input_tokens
     nextUsage.recorded_at_ms = Date.now()
     nextUsage.model = ctx.model.modelId
     nextUsage.model_provider = ctx.model.provider
@@ -499,10 +398,13 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   async requestCancel(input: StartTurnInput): Promise<void> {
     const cancelResult = await this.setCancelRequested(input.runId, 'cancelled')
     if (cancelResult.isErr()) {
-      console.warn('[agent-runtime] failed to request automation cancellation', {
-        error: cancelResult.error.message,
-        runId: input.runId,
-      })
+      console.warn(
+        '[agent-runtime] failed to request automation cancellation',
+        {
+          error: cancelResult.error.message,
+          runId: input.runId,
+        },
+      )
     }
     this.abortAllRequests()
   }
@@ -531,11 +433,19 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       mode,
     })
 
-    const message = makeUserMessage(
-      mode === 'resume'
-        ? 'Resume this automation run using the injected automation context. Complete the scheduled task and return the final result directly.'
-        : 'Start this automation run using the injected automation context. Complete the task directly; do not create, update, or comment on issues unless the automation prompt explicitly asks you to inspect existing issues.',
-    )
+    const message: UIMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      parts: [
+        {
+          type: 'text',
+          text:
+            mode === 'resume'
+              ? 'Resume this automation run using the injected automation context. Complete the scheduled task and return the final result directly.'
+              : 'Start this automation run using the injected automation context. Complete the task directly; do not create, update, or comment on issues unless the automation prompt explicitly asks you to inspect existing issues.',
+        },
+      ],
+    }
 
     const saveResult = await Result.tryPromise({
       try: async () => {
@@ -719,7 +629,9 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
 
   private async loadTurnContext(
     runId: string,
-  ): Promise<ResultValue<LoadedAutomationRunContext, AutomationRunSubAgentError>> {
+  ): Promise<
+    ResultValue<LoadedAutomationRunContext, AutomationRunSubAgentError>
+  > {
     const db = this.getDb()
     const result = await Result.tryPromise({
       try: async () => {
@@ -792,8 +704,12 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     }
 
     const row = result.value
-    const context = objectOrNull(row.runRow.run.contextSnapshot)
-    const source = stringValue(context?.source) ?? row.runRow.run.source
+    const context = row.runRow.run
+      .contextSnapshot as AutomationRunContextSnapshot | null
+    const source =
+      typeof context?.source === 'string' && context.source.trim()
+        ? context.source.trim()
+        : row.runRow.run.source
     const triggerReason =
       source === 'schedule'
         ? 'A schedule triggered this automation.'
@@ -839,15 +755,16 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       roleTitle: string | null
     }>
   }) {
-    const context = objectOrNull(input.run.contextSnapshot)
-    const payload = objectOrNull(context?.payload) ?? context?.payload ?? null
+    const context = input.run
+      .contextSnapshot as AutomationRunContextSnapshot | null
+    const payload = context?.payload ?? null
     const recentRuns = input.recentRuns.map((run) => ({
       id: run.id,
       source: run.source,
       status: run.status,
       failure_reason: run.failureReason ?? null,
-      triggered_at: dateToIso(run.triggeredAt),
-      completed_at: dateToIso(run.completedAt),
+      triggered_at: run.triggeredAt?.toISOString() ?? null,
+      completed_at: run.completedAt?.toISOString() ?? null,
     }))
     const availableAgents = input.availableAgents.map((agent) => ({
       name: agent.name,
@@ -860,48 +777,67 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       'This is a standalone automation run. It is not an issue and should not create a kanban card.',
       input.triggerReason,
       '',
-      renderSection(
-        'Current run',
-        renderJson({
-          id: input.run.id,
-          status: input.run.status,
-          source: input.run.source,
-          started_at: dateToIso(input.run.startedAt),
-          cancel_requested_at: dateToIso(input.run.cancelRequestedAt),
-          run_timeout_sec: input.agent.runTimeoutSec,
-        }),
+      [
+        '## Current run',
+        JSON.stringify(
+          {
+            id: input.run.id,
+            status: input.run.status,
+            source: input.run.source,
+            started_at: input.run.startedAt?.toISOString() ?? null,
+            cancel_requested_at:
+              input.run.cancelRequestedAt?.toISOString() ?? null,
+            run_timeout_sec: input.agent.runTimeoutSec,
+          },
+          null,
+          2,
+        ),
+      ].join('\n'),
+      [
+        '## Automation',
+        JSON.stringify(
+          {
+            id: input.automation.id,
+            title: input.automation.title,
+            prompt: input.automation.description ?? '',
+            system_prompt: input.automation.systemPrompt ?? null,
+            input_schema: input.automation.inputSchema ?? null,
+            output_config: input.automation.outputConfig ?? null,
+            execution_config: input.automation.executionConfig ?? null,
+            tags: input.automation.tags,
+            category: input.automation.category,
+          },
+          null,
+          2,
+        ),
+      ].join('\n'),
+      ['## Trigger payload', JSON.stringify(payload, null, 2)].join('\n'),
+      ['## Recent automation runs', JSON.stringify(recentRuns, null, 2)].join(
+        '\n',
       ),
-      renderSection(
-        'Automation',
-        renderJson({
-          id: input.automation.id,
-          title: input.automation.title,
-          prompt: input.automation.description ?? '',
-          system_prompt: input.automation.systemPrompt ?? null,
-          input_schema: input.automation.inputSchema ?? null,
-          output_config: input.automation.outputConfig ?? null,
-          execution_config: input.automation.executionConfig ?? null,
-          tags: input.automation.tags,
-          category: input.automation.category,
-        }),
+      ['## Available agents', JSON.stringify(availableAgents, null, 2)].join(
+        '\n',
       ),
-      renderSection('Trigger payload', renderJson(payload)),
-      renderSection('Recent automation runs', renderJson(recentRuns)),
-      renderSection('Available agents', renderJson(availableAgents)),
     ].join('\n\n')
   }
 
   private async applyRunBoundaryGuards(
     loaded: LoadedAutomationRunContext,
   ): Promise<
-    ResultValue<'continue' | 'cancelled' | 'timeout', AutomationRunSubAgentError>
+    ResultValue<
+      'continue' | 'cancelled' | 'timeout',
+      AutomationRunSubAgentError
+    >
   > {
     if (!isActiveAutomationRunStatus(loaded.run.status)) {
       return Result.ok('cancelled')
     }
 
     if (loaded.run.cancelRequestedAt) {
-      const cancelResult = await this.finishCancelled(loaded.run.id, 'cancelled')
+      const cancelResult = await this.finishCancelled(
+        loaded.run.id,
+        'cancelled',
+      )
       if (cancelResult.isErr()) return Result.err(cancelResult.error)
       return Result.ok('cancelled')
     }
@@ -989,7 +925,9 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   ): Promise<ResultValue<void, AutomationRunSubAgentError>> {
     const normalizedUsage = {
       ...usage,
-      total_tokens: usage.total_tokens || usageTotal(usage),
+      total_tokens:
+        usage.total_tokens ||
+        usage.input_tokens + usage.output_tokens + usage.cached_input_tokens,
       recorded_at_ms: Date.now(),
     }
     const result = await Result.tryPromise({
@@ -1020,8 +958,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
           })
           .where(eq(schema.automationRun.id, runId))
       },
-      catch: (cause) =>
-        dbError('request automation run cancellation', cause),
+      catch: (cause) => dbError('request automation run cancellation', cause),
     })
     if (result.isErr()) return Result.err(result.error)
     return Result.ok()
@@ -1045,7 +982,11 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   ): Promise<ResultValue<void, AutomationRunSubAgentError>> {
     const db = this.getDb()
     const now = new Date()
-    const output = messageText(message)
+    const output = message.parts
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text.trim())
+      .filter(Boolean)
+      .join('\n\n')
     const result = await Result.tryPromise({
       try: async () => {
         await db.transaction(async (tx) => {

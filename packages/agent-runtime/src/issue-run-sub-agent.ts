@@ -10,7 +10,7 @@ import {
 } from '@cloudflare/think'
 import { Workspace } from '@cloudflare/shell'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
-import type { LanguageModel, ModelMessage, ToolSet, UIMessage } from 'ai'
+import type { LanguageModel, ToolSet, UIMessage } from 'ai'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/neon-serverless'
@@ -65,9 +65,7 @@ import {
   type RuntimeMcpServerStates,
   type ThreadRuntimeIdentity,
 } from './runtime-mcp-controller'
-import {
-  mcpRuntimeConfig,
-} from './mcp-runtime-config'
+import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
 
 type AgentRuntimeEnv = Cloudflare.Env & {
@@ -175,87 +173,12 @@ async function loadIssueInteractionSkillMarkdown() {
   return cachedIssueInteractionSkillMarkdown
 }
 
-function makeUserMessage(text: string): UIMessage {
-  return {
-    id: crypto.randomUUID(),
-    role: 'user',
-    parts: [{ type: 'text', text }],
-  }
-}
-
-function partType(part: unknown) {
-  return objectOrNull(part)?.type
-}
-
-function partToolCallId(part: unknown) {
-  const value = objectOrNull(part)
-  return stringValue(value?.toolCallId) ?? stringValue(value?.tool_call_id)
-}
-
-function collectToolResultIds(messages: ModelMessage[]) {
-  const ids = new Set<string>()
-  for (const message of messages) {
-    if (message.role !== 'tool' || !Array.isArray(message.content)) continue
-    for (const part of message.content) {
-      const id = partToolCallId(part)
-      if (id) ids.add(id)
-    }
-  }
-  return ids
-}
-
-function sanitizeRecoveredToolTranscript(messages: ModelMessage[]) {
-  const toolResultIds = collectToolResultIds(messages)
-  let removed = 0
-  const sanitized: ModelMessage[] = []
-
-  for (const message of messages) {
-    if (message.role !== 'assistant' || !Array.isArray(message.content)) {
-      sanitized.push(message)
-      continue
-    }
-
-    const content = message.content.filter((part) => {
-      const type = partType(part)
-      if (type !== 'tool-call') return true
-      const id = partToolCallId(part)
-      const keep = Boolean(id && toolResultIds.has(id))
-      if (!keep) removed += 1
-      return keep
-    })
-
-    if (content.length === message.content.length) {
-      sanitized.push(message)
-    } else if (content.length > 0) {
-      sanitized.push({ ...message, content } as ModelMessage)
-    }
-  }
-
-  if (removed === 0) return { messages, removed }
-
-  return {
-    messages: [
-      ...sanitized,
-      {
-        role: 'user',
-        content:
-          'Runtime recovery removed orphaned tool-call records from a previous interrupted turn. Continue from the current issue context and recorded tool events. If enough source material exists, synthesize it into a work product instead of repeating raw results.',
-      } satisfies ModelMessage,
-    ],
-    removed,
-  }
-}
-
 function renderJson(value: unknown) {
   return JSON.stringify(value, null, 2)
 }
 
 function renderSection(title: string, body: string) {
   return [`## ${title}`, body.trim() || 'None.'].join('\n')
-}
-
-function usageTotal(usage: IssueRunUsage) {
-  return usage.input_tokens + usage.output_tokens + usage.cached_input_tokens
 }
 
 function emptyUsage(ctx: StepContext): IssueRunUsage {
@@ -279,6 +202,8 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   constructor(ctx: DurableObjectState, env: AgentRuntimeEnv) {
     super(ctx, env)
   }
+
+  override chatRecovery = false
 
   waitForMcpConnections = {
     timeout: mcpRuntimeConfig.connectionWaitTimeoutMs,
@@ -304,8 +229,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     connectionWaitTimeoutMs: mcpRuntimeConfig.connectionWaitTimeoutMs,
     backgroundRefreshFailedMessage:
       '[agent-runtime] issue MCP background refresh failed',
-    refreshFailedMessage:
-      '[agent-runtime] issue MCP connector refresh failed',
+    refreshFailedMessage: '[agent-runtime] issue MCP connector refresh failed',
     continuingWithoutReadyMessage:
       '[agent-runtime] continuing issue run without ready MCP connectors',
   })
@@ -392,13 +316,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         observedChangesResult.error,
       )
     }
-    const transcript = sanitizeRecoveredToolTranscript(ctx.messages)
-    if (transcript.removed > 0) {
-      console.warn('[agent-runtime] sanitized orphaned issue tool calls', {
-        runId,
-        removed: transcript.removed,
-      })
-    }
 
     return {
       experimental_telemetry: {
@@ -414,7 +331,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       },
       maxRetries: THINK_TURN_MAX_RETRIES,
       maxSteps: this.maxSteps,
-      messages: transcript.messages,
       sendReasoning: true,
       system: `${ctx.system}\n\n${loadedResult.value.contextBlock}`,
       tools: mcpController.wrapGetAITools(
@@ -530,7 +446,11 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         (nextUsage.reasoning_tokens ?? 0) + reasoningTokens
     }
     nextUsage.step_count += 1
-    nextUsage.total_tokens = ctx.usage.totalTokens ?? usageTotal(nextUsage)
+    nextUsage.total_tokens =
+      ctx.usage.totalTokens ??
+      nextUsage.input_tokens +
+        nextUsage.output_tokens +
+        nextUsage.cached_input_tokens
     nextUsage.recorded_at_ms = Date.now()
     nextUsage.model = ctx.model.modelId
     nextUsage.model_provider = ctx.model.provider
@@ -603,14 +523,12 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
    * run's current status so the workflow can decide to wait, loop, or finish.
    * See docs/features/agent-runtime-rearchitecture.md.
    */
-  getRunPlan(
-    runId: string,
-  ): Array<{
-    content: string;
-    status: 'pending' | 'in_progress' | 'completed';
-    activeForm: string;
+  getRunPlan(runId: string): Array<{
+    content: string
+    status: 'pending' | 'in_progress' | 'completed'
+    activeForm: string
   }> | null {
-    return readIssueRunPlan(this.ctx.storage.sql, runId);
+    return readIssueRunPlan(this.ctx.storage.sql, runId)
   }
 
   async executeWorkflowTurn(
@@ -696,11 +614,19 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       mode,
     })
 
-    const message = makeUserMessage(
-      mode === 'resume'
-        ? 'Resume this issue run using the latest issue context. If the user answered a pending question, use that answer now.'
-        : 'Start this issue run using the injected issue context. Produce a useful work product, ask one focused question, mark blocked, or decompose into child issues.',
-    )
+    const message: UIMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      parts: [
+        {
+          type: 'text',
+          text:
+            mode === 'resume'
+              ? 'Resume this issue run using the latest issue context. If the user answered a pending question, use that answer now.'
+              : 'Start this issue run using the injected issue context. Produce a useful work product, ask one focused question, mark blocked, or decompose into child issues.',
+        },
+      ],
+    }
 
     const saveResult = await Result.tryPromise({
       try: async () => {
@@ -878,7 +804,8 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
           .limit(1)
         return row ?? null
       },
-      catch: (cause) => dbError('load issue run status before tool call', cause),
+      catch: (cause) =>
+        dbError('load issue run status before tool call', cause),
     })
     if (result.isErr()) return Result.err(result.error)
     const status = result.value?.status
@@ -1100,7 +1027,11 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     }
 
     const triggerReason = this.renderTriggerReason({
-      source: row.runRow.wakeup?.source ?? (row.runRow.run.contextSnapshot as { source?: string } | null)?.source ?? '',
+      source:
+        row.runRow.wakeup?.source ??
+        (row.runRow.run.contextSnapshot as { source?: string } | null)
+          ?.source ??
+        '',
       contextSnapshot: row.runRow.run.contextSnapshot,
       comments: row.comments,
       users: row.commentUsers,
@@ -1481,7 +1412,9 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   ): Promise<ResultValue<void, IssueRunSubAgentError>> {
     const normalizedUsage = {
       ...usage,
-      total_tokens: usage.total_tokens || usageTotal(usage),
+      total_tokens:
+        usage.total_tokens ||
+        usage.input_tokens + usage.output_tokens + usage.cached_input_tokens,
       recorded_at_ms: Date.now(),
     }
     const result = await Result.tryPromise({
@@ -1529,9 +1462,16 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         mode: 'resume',
         guard: 'missing_resolution',
       })
-      const nudgeMessage = makeUserMessage(
-        'The previous turn ended without a resolution. Synthesize the gathered context into a useful work product now. Do not expose raw search results as the output; create or revise the issue work product. Only ask a question or mark blocked if a synthesized work product is impossible.',
-      )
+      const nudgeMessage: UIMessage = {
+        id: crypto.randomUUID(),
+        role: 'user',
+        parts: [
+          {
+            type: 'text',
+            text: 'The previous turn ended without a resolution. Synthesize the gathered context into a useful work product now. Do not expose raw search results as the output; create or revise the issue work product. Only ask a question or mark blocked if a synthesized work product is impossible.',
+          },
+        ],
+      }
       const saveResult = await Result.tryPromise({
         try: async () => {
           await this.saveMessages([nudgeMessage])
