@@ -165,6 +165,7 @@ function candidateArgs(binding: SourceBindingRow, toolName: string) {
   }
 
   if (github) {
+    candidates.method = 'get'
     candidates.owner = github.owner
     candidates.repo = github.repo
     candidates.repository = github.repo
@@ -213,7 +214,7 @@ function defaultArgsForTool(binding: SourceBindingRow, toolName: string) {
   return { id: binding.externalId }
 }
 
-function argsForTool(
+export function buildReadSourceToolArgs(
   binding: SourceBindingRow,
   tool: IssueRunMcpToolRecord,
 ): Record<string, unknown> {
@@ -331,7 +332,7 @@ async function readBindingSource(args: {
       await bridge.callTool({
         serverId: connectorId,
         name: toolName,
-        arguments: argsForTool(args.binding, toolRecord),
+        arguments: buildReadSourceToolArgs(args.binding, toolRecord),
       }),
     catch: (cause) =>
       connectorToolError(

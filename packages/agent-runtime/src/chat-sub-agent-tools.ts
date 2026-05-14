@@ -7,7 +7,15 @@ import { createExecuteTool } from "@cloudflare/think/tools/execute";
 import type { Sandbox as SandboxDO } from "@cloudflare/sandbox";
 import { Result, type Result as ResultValue } from "better-result";
 import { tool, type ToolSet } from "ai";
-import { and, eq, inArray, isNull, sql, type SQLWrapper } from "drizzle-orm";
+import {
+  and,
+  eq,
+  inArray,
+  isNull,
+  or,
+  sql,
+  type SQLWrapper,
+} from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { z } from "zod";
 import { connectorRegistry } from "@garden/connectors";
@@ -343,9 +351,11 @@ const COMPACT_EXECUTE_DESCRIPTION =
   "Input is an async arrow function body as JavaScript, not TypeScript. Return the useful result.";
 
 type ChatIssueIdentity = {
+  threadId: string;
   workspaceId: string;
   ownerUserId: string;
   agentId: string;
+  issuePrefix: string;
 };
 
 type ReadRunDb = ReturnType<typeof getReadRunDb>;
@@ -420,6 +430,43 @@ async function readRunRows<TRow extends Record<string, unknown>>(
   });
 }
 
+async function loadChatThreadContext(context: {
+  databaseUrl: string;
+  threadId: string;
+}): Promise<ResultValue<{ db: ReadRunDb } & ChatIssueIdentity, string>> {
+  const db = getReadRunDb(context.databaseUrl);
+  const result = await Result.tryPromise<ChatIssueIdentity | null, string>({
+    try: async () => {
+      const [row] = await db
+        .select({
+          threadId: schema.chatThread.id,
+          workspaceId: schema.chatThread.workspaceId,
+          ownerUserId: schema.chatThread.ownerUserId,
+          agentId: schema.chatThread.agentId,
+          issuePrefix: schema.organization.issuePrefix,
+        })
+        .from(schema.chatThread)
+        .innerJoin(
+          schema.organization,
+          eq(schema.organization.id, schema.chatThread.workspaceId),
+        )
+        .where(
+          or(
+            eq(schema.chatThread.id, context.threadId),
+            eq(schema.chatThread.runtimeKey, context.threadId),
+          ),
+        )
+        .limit(1);
+      return row ?? null;
+    },
+    catch: errorMessage,
+  });
+  if (result.isErr()) return Result.err(result.error);
+  return result.value
+    ? Result.ok({ db, ...result.value })
+    : Result.err("chat thread not found.");
+}
+
 async function loadReadRunWorkspace(context: ReadRunToolContext): Promise<
   ResultValue<
     {
@@ -430,34 +477,14 @@ async function loadReadRunWorkspace(context: ReadRunToolContext): Promise<
     string
   >
 > {
-  const db = getReadRunDb(context.databaseUrl);
-  const rowResult = await Result.tryPromise<
-    { workspaceId: string; issuePrefix: string } | null,
-    string
-  >({
-    try: async () => {
-      const [row] = await db
-        .select({
-          workspaceId: schema.chatThread.workspaceId,
-          issuePrefix: schema.organization.issuePrefix,
-        })
-        .from(schema.chatThread)
-        .innerJoin(
-          schema.organization,
-          eq(schema.organization.id, schema.chatThread.workspaceId),
-        )
-        .where(eq(schema.chatThread.id, context.threadId))
-        .limit(1);
-      return row ?? null;
-    },
-    catch: errorMessage,
-  });
-  if (rowResult.isErr()) return readRunErr(rowResult.error);
-  if (!rowResult.value) return readRunErr("read_run: chat thread not found.");
+  const threadResult = await loadChatThreadContext(context);
+  if (threadResult.isErr()) {
+    return readRunErr(`read_run: ${threadResult.error}`);
+  }
   return Result.ok({
-    db,
-    workspaceId: rowResult.value.workspaceId,
-    issuePrefix: rowResult.value.issuePrefix,
+    db: threadResult.value.db,
+    workspaceId: threadResult.value.workspaceId,
+    issuePrefix: threadResult.value.issuePrefix,
   });
 }
 
@@ -468,26 +495,15 @@ function issueToolErr<T>(error: string): ResultValue<T, string> {
 async function loadChatIssueIdentity(
   context: ChatIssueToolContext,
 ): Promise<ResultValue<ChatIssueIdentity, string>> {
-  const db = getReadRunDb(context.databaseUrl);
-  const result = await Result.tryPromise<ChatIssueIdentity | null, string>({
-    try: async () => {
-      const [row] = await db
-        .select({
-          workspaceId: schema.chatThread.workspaceId,
-          ownerUserId: schema.chatThread.ownerUserId,
-          agentId: schema.chatThread.agentId,
-        })
-        .from(schema.chatThread)
-        .where(eq(schema.chatThread.id, context.threadId))
-        .limit(1);
-      return row ?? null;
-    },
-    catch: errorMessage,
-  });
+  const result = await loadChatThreadContext(context);
   if (result.isErr()) return Result.err(result.error);
-  return result.value
-    ? Result.ok(result.value)
-    : issueToolErr("issue tools: chat thread not found.");
+  return Result.ok({
+    threadId: result.value.threadId,
+    workspaceId: result.value.workspaceId,
+    ownerUserId: result.value.ownerUserId,
+    agentId: result.value.agentId,
+    issuePrefix: result.value.issuePrefix,
+  });
 }
 
 async function requireActiveWorkspaceAgent(args: {
@@ -866,7 +882,7 @@ async function createIssueFromChat(
         .set({ primaryIssueId: issue.id, updatedAt: new Date() })
         .where(
           and(
-            eq(schema.chatThread.id, context.threadId),
+            eq(schema.chatThread.id, identity.threadId),
             isNull(schema.chatThread.primaryIssueId),
           ),
         );

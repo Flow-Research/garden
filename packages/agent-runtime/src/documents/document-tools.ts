@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer'
 import type { WorkspaceFsLike } from '@cloudflare/shell'
-import { and, desc, eq, max } from 'drizzle-orm'
+import { and, desc, eq, max, or } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/neon-serverless'
 import {
   AlignmentType,
@@ -174,11 +174,17 @@ async function loadThreadContext(context: DocumentToolContext) {
     try: async () => {
       const [row] = await db
         .select({
+          threadId: schema.chatThread.id,
           workspaceId: schema.chatThread.workspaceId,
           ownerUserId: schema.chatThread.ownerUserId,
         })
         .from(schema.chatThread)
-        .where(eq(schema.chatThread.id, context.threadId))
+        .where(
+          or(
+            eq(schema.chatThread.id, context.threadId),
+            eq(schema.chatThread.runtimeKey, context.threadId),
+          ),
+        )
         .limit(1)
       return row ?? null
     },
@@ -238,7 +244,7 @@ export async function generateDocx(args: {
   const threadContext = await loadThreadContext(args.context)
   if (threadContext.isErr())
     return { ok: false, error: threadContext.error.message }
-  const { db, workspaceId, ownerUserId } = threadContext.value
+  const { db, workspaceId, ownerUserId, threadId } = threadContext.value
 
   const FONT = args.options?.font?.trim() || DEFAULT_FONT
   const SIZE = 22
@@ -512,7 +518,7 @@ export async function generateDocx(args: {
           id: documentId,
           workspaceId,
           ownerUserId,
-          threadId: args.context.threadId,
+          threadId,
           filename,
           fileType: 'docx',
           sizeBytes: packResult.value.byteLength,
@@ -572,7 +578,9 @@ async function loadActiveDocument(
   context: DocumentToolContext,
   documentId: string,
 ) {
-  const db = getDb(context.databaseUrl)
+  const threadContext = await loadThreadContext(context)
+  if (threadContext.isErr()) return threadContext
+  const { db, threadId } = threadContext.value
   const rowResult = await Result.tryPromise({
     try: async () => {
       const [row] = await db
@@ -593,11 +601,11 @@ async function loadActiveDocument(
         .where(
           and(
             eq(schema.document.id, documentId),
-            eq(schema.document.threadId, context.threadId),
+            eq(schema.document.threadId, threadId),
           ),
         )
         .limit(1)
-      return row ?? null
+      return row ? { ...row, threadId } : null
     },
     catch: (error) =>
       new DocumentToolError({
@@ -822,7 +830,7 @@ export async function editDocument(args: {
           editResult.value.changes.map((change) => ({
             documentId: args.documentId,
             versionId: versionRow.id,
-            chatThreadId: args.context.threadId,
+            chatThreadId: activeDocument.threadId,
             changeId: change.id,
             delWId: change.delId ?? null,
             insWId: change.insId ?? null,
@@ -907,7 +915,7 @@ export async function registerUploadedDocument(args: {
   const threadContext = await loadThreadContext(args.context)
   if (threadContext.isErr())
     return { ok: false, error: threadContext.error.message }
-  const { db, workspaceId, ownerUserId } = threadContext.value
+  const { db, workspaceId, ownerUserId, threadId } = threadContext.value
   const documentId = crypto.randomUUID()
   const filename = normalizeWorkspaceFilename(args.filename)
   const fileType = fileTypeFromFilename(filename, args.mediaType)
@@ -939,7 +947,7 @@ export async function registerUploadedDocument(args: {
           id: documentId,
           workspaceId,
           ownerUserId,
-          threadId: args.context.threadId,
+          threadId,
           filename,
           fileType,
           sizeBytes: byteArray.byteLength,
@@ -1010,7 +1018,10 @@ export async function getDocumentVersionBytes(args: {
   preferPdf?: boolean
   versionId?: string | null
 }) {
-  const db = getDb(args.context.databaseUrl)
+  const threadContext = await loadThreadContext(args.context)
+  if (threadContext.isErr())
+    return { ok: false, error: threadContext.error.message }
+  const { db, threadId } = threadContext.value
   const versionResult = await Result.tryPromise({
     try: async () => {
       const [row] = await db
@@ -1035,7 +1046,7 @@ export async function getDocumentVersionBytes(args: {
         .where(
           and(
             eq(schema.document.id, args.documentId),
-            eq(schema.document.threadId, args.context.threadId),
+            eq(schema.document.threadId, threadId),
           ),
         )
         .limit(1)
@@ -1080,7 +1091,10 @@ export async function listDocumentVersions(args: {
   context: DocumentToolContext
   documentId: string
 }) {
-  const db = getDb(args.context.databaseUrl)
+  const threadContext = await loadThreadContext(args.context)
+  if (threadContext.isErr())
+    return { ok: false, error: threadContext.error.message }
+  const { db, threadId } = threadContext.value
   const result = await Result.tryPromise({
     try: async () => {
       const [documentRow] = await db
@@ -1089,7 +1103,7 @@ export async function listDocumentVersions(args: {
         .where(
           and(
             eq(schema.document.id, args.documentId),
-            eq(schema.document.threadId, args.context.threadId),
+            eq(schema.document.threadId, threadId),
           ),
         )
         .limit(1)
@@ -1136,7 +1150,10 @@ export async function resolveDocumentEdit(args: {
   editId: string
   action: 'accept' | 'reject'
 }) {
-  const db = getDb(args.context.databaseUrl)
+  const threadContext = await loadThreadContext(args.context)
+  if (threadContext.isErr())
+    return { ok: false, error: threadContext.error.message }
+  const { db, threadId } = threadContext.value
   const rowResult = await Result.tryPromise({
     try: async () => {
       const [row] = await db
@@ -1159,6 +1176,7 @@ export async function resolveDocumentEdit(args: {
           and(
             eq(schema.document.id, args.documentId),
             eq(schema.documentEdit.id, args.editId),
+            eq(schema.document.threadId, threadId),
           ),
         )
         .limit(1)

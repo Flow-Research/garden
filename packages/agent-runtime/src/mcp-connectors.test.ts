@@ -311,8 +311,10 @@ describe('isMcpFailedConnectionStateMessage', () => {
 })
 
 describe('connectRpcMcpConnector', () => {
-  it('connects with RPC transport, stable reconnect id, namespace, and props', async () => {
-    const calls: unknown[] = []
+  it('registers, persists, and connects an RPC connector with stable storage', async () => {
+    const registerCalls: unknown[] = []
+    const storageCalls: unknown[] = []
+    const connectCalls: unknown[] = []
     const namespace = { binding: 'MCP_SESSION' } as unknown as DurableObjectNamespace
     const props = {
       userId: 'user-1',
@@ -324,22 +326,32 @@ describe('connectRpcMcpConnector', () => {
 
     const result = await connectRpcMcpConnector({
       mcp: {
-        connect: async (...args: unknown[]) => {
-          calls.push(args)
-          return { id: 'github' }
+        registerServer: async (...args: unknown[]) => {
+          registerCalls.push(args)
+          return 'github'
+        },
+        saveRpcServerToStorage: (...args: unknown[]) => {
+          storageCalls.push(args)
+        },
+        connectToServer: async (...args: unknown[]) => {
+          connectCalls.push(args)
+          return { state: 'connected' }
         },
       },
       namespace,
+      bindingName: 'MCP_SESSION',
       connectorId: 'github',
       props,
     })
 
     expect(result).toEqual({ state: 'connected' })
-    expect(calls).toEqual([
+    expect(registerCalls).toEqual([
       [
-        'rpc://github',
+        'github',
         {
-          reconnect: { id: 'github' },
+          url: 'rpc:github',
+          name: 'github',
+          callbackUrl: '',
           transport: {
             type: 'rpc',
             namespace,
@@ -349,14 +361,21 @@ describe('connectRpcMcpConnector', () => {
         },
       ],
     ])
+    expect(storageCalls).toEqual([
+      ['github', 'github', 'github', 'MCP_SESSION', props],
+    ])
+    expect(connectCalls).toEqual([['github']])
   })
 
-  it('fails when the MCP client returns an unexpected reconnect id', async () => {
+  it('fails when the MCP client returns an unexpected registered id', async () => {
     const result = await connectRpcMcpConnector({
       mcp: {
-        connect: async () => ({ id: 'wrong-id' }),
+        registerServer: async () => 'wrong-id',
+        saveRpcServerToStorage: () => undefined,
+        connectToServer: async () => ({ state: 'connected' }),
       },
       namespace: {} as DurableObjectNamespace,
+      bindingName: 'MCP_SESSION',
       connectorId: 'github',
       props: {
         userId: 'user-1',
@@ -370,6 +389,34 @@ describe('connectRpcMcpConnector', () => {
     expect(result).toEqual({
       state: 'failed',
       error: 'RPC MCP id mismatch',
+    })
+  })
+
+  it('returns the real connectToServer failure instead of masking it as discovery failed-state', async () => {
+    const result = await connectRpcMcpConnector({
+      mcp: {
+        registerServer: async () => 'github',
+        saveRpcServerToStorage: () => undefined,
+        connectToServer: async () => ({
+          state: 'failed',
+          error: 'GitHub App installation token expired',
+        }),
+      },
+      namespace: {} as DurableObjectNamespace,
+      bindingName: 'MCP_SESSION',
+      connectorId: 'github',
+      props: {
+        userId: 'user-1',
+        workspaceId: 'workspace-1',
+        agentId: 'agent-1',
+        connectorId: 'github',
+        authKind: 'oauth',
+      },
+    })
+
+    expect(result).toEqual({
+      state: 'failed',
+      error: 'GitHub App installation token expired',
     })
   })
 })

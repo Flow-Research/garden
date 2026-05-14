@@ -1842,6 +1842,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         await connectRpcMcpConnector({
           mcp: this.mcp,
           namespace: this.env.MCP_SESSION,
+          bindingName: 'MCP_SESSION',
           connectorId,
           props,
         }),

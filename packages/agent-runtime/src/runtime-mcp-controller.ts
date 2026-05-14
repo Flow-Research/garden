@@ -95,10 +95,12 @@ export type RpcMcpConnectorProps = {
 };
 
 type RpcMcpConnectClient = {
-  connect: (
-    url: string,
+  registerServer: (
+    id: string,
     options: {
-      reconnect: { id: string };
+      url: string;
+      name: string;
+      callbackUrl: string;
       transport: {
         type: "rpc";
         namespace: DurableObjectNamespace;
@@ -106,7 +108,18 @@ type RpcMcpConnectClient = {
         props: RpcMcpConnectorProps;
       };
     },
-  ) => Promise<{ id: string }>;
+  ) => Promise<string>;
+  connectToServer: (id: string) => Promise<{
+    state: "authenticating" | "connected" | "failed" | "ready";
+    error?: string;
+  }>;
+  saveRpcServerToStorage: (
+    id: string,
+    name: string,
+    normalizedName: string,
+    bindingName: string,
+    props: Record<string, unknown>,
+  ) => void;
 };
 
 export type McpToolRecord = {
@@ -160,12 +173,15 @@ export function isMcpFailedConnectionStateMessage(
 export async function connectRpcMcpConnector(args: {
   mcp: unknown;
   namespace: DurableObjectNamespace;
+  bindingName: string;
   connectorId: string;
   props: RpcMcpConnectorProps;
 }): Promise<McpRegistration> {
   const client = args.mcp as RpcMcpConnectClient;
-  const result = await client.connect(`rpc://${args.connectorId}`, {
-    reconnect: { id: args.connectorId },
+  const serverId = await client.registerServer(args.connectorId, {
+    url: `rpc:${args.connectorId}`,
+    name: args.connectorId,
+    callbackUrl: "",
     transport: {
       type: "rpc",
       namespace: args.namespace,
@@ -174,9 +190,27 @@ export async function connectRpcMcpConnector(args: {
     },
   });
 
-  return result.id === args.connectorId
-    ? { state: "connected" }
-    : { state: "failed", error: "RPC MCP id mismatch" };
+  if (serverId !== args.connectorId) {
+    return { state: "failed", error: "RPC MCP id mismatch" };
+  }
+
+  client.saveRpcServerToStorage(
+    args.connectorId,
+    args.connectorId,
+    args.connectorId,
+    args.bindingName,
+    { ...args.props },
+  );
+
+  const connection = await client.connectToServer(args.connectorId);
+  if (connection.state === "failed") {
+    return {
+      state: "failed",
+      error: connection.error ?? "Unknown RPC MCP connection failure",
+    };
+  }
+
+  return { state: connection.state };
 }
 
 export class RuntimeMcpController {
