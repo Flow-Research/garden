@@ -19,6 +19,7 @@ import {
 } from 'react'
 import { Result } from 'better-result'
 import { useQueryClient } from '@tanstack/react-query'
+import { useAuthStore } from '@garden/core/auth'
 import { useChatStore } from '@garden/core/chat'
 import { useWorkspaceStore } from '@garden/core/workspace'
 import { motion, AnimatePresence } from 'motion/react'
@@ -68,12 +69,15 @@ import type {
 } from '@garden/core/chat'
 import { isToolUIPart, getToolName } from 'ai'
 import { getToolCallId, getToolInput } from '@cloudflare/ai-chat/react'
-import {
-  Suggestions,
-  Suggestion as SuggestionChip,
-} from '@/components/ai-elements/suggestion'
 import { ChatTimeline } from './chat-timeline'
-import { X } from 'lucide-react'
+import {
+  FileText,
+  ListTodo,
+  Sparkles,
+  Workflow,
+  X,
+  type LucideIcon,
+} from 'lucide-react'
 import {
   IconLayoutSidebarLeftCollapse,
   IconLayoutSidebarLeftExpand,
@@ -81,135 +85,90 @@ import {
 import { HeaderAttachmentsMenu } from './chat-message-files'
 import { IssueMentionCard } from '@/features/issues/components/issue-mention-card'
 
-const EMPTY_CHAT_INTROS = [
-  {
-    direction: 'up',
-    rest: 'with context.',
-    slot: 'Ask',
-    slotPosition: 'start',
-    subtitle:
-      "Attach a file or share the thread. I'll keep the answer grounded.",
-  },
-  {
-    direction: 'down',
-    rest: 'Turn rough notes into',
-    slot: 'next steps.',
-    slotPosition: 'end',
-    subtitle: "Bring the messy version. We'll shape it into something usable.",
-  },
-  {
-    direction: 'up',
-    rest: 'from what you have.',
-    slot: 'Draft',
-    slotPosition: 'start',
-    subtitle: "Paste the source material. I'll help make it clear.",
-  },
-] as const
+// Single ease shared across the few motions that remain.
+const EMPTY_INTRO_EASE = [0.32, 0.72, 0, 1] as const
 
-function EmptyChatIntroSlot({
-  direction,
-  position,
-  value,
-}: {
-  direction: (typeof EMPTY_CHAT_INTROS)[number]['direction']
-  position: (typeof EMPTY_CHAT_INTROS)[number]['slotPosition']
-  value: string
-}) {
-  const offset = direction === 'up' ? 18 : -18
-
-  return (
-    <span
-      className={cn(
-        'relative inline-grid h-[1.15em] overflow-hidden align-baseline',
-        position === 'start' ? 'min-w-[4.5ch]' : 'min-w-[9.5ch]',
-      )}
-    >
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.span
-          key={value}
-          initial={{ opacity: 0, y: offset }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -offset }}
-          transition={{
-            duration: 0.72,
-            ease: [0.16, 1, 0.3, 1],
-          }}
-          className="col-start-1 row-start-1 block text-left"
-        >
-          {value}
-        </motion.span>
-      </AnimatePresence>
-    </span>
-  )
+// Quiet agent prompt — serif, in repose. The agent's voice greeting the
+// person by first name when we have it, otherwise just a soft open.
+function buildEmptyPrompt(firstName: string | null): string {
+  return firstName
+    ? `What are you working on, ${firstName}?`
+    : 'What are you working on?'
 }
 
-function EmptyChatIntroText({
-  intro,
+// Garden-flavored quick starts. Each tile maps to a product surface so the
+// empty state doubles as a low-key launcher.
+type StartTile = {
+  icon: LucideIcon
+  label: string
+  hint: string
+  starter: string
+}
+
+const EMPTY_STATE_TILES: ReadonlyArray<StartTile> = [
+  {
+    icon: FileText,
+    label: 'Draft a document',
+    hint: 'memo, brief, outline',
+    starter: 'Help me draft a document about ',
+  },
+  {
+    icon: Sparkles,
+    label: 'Summarize recent work',
+    hint: 'across docs + threads',
+    starter: 'Summarize what I worked on this week.',
+  },
+  {
+    icon: ListTodo,
+    label: 'Plan my next move',
+    hint: 'priorities, next steps',
+    starter: 'Help me figure out what to focus on next. Here is what is on my plate: ',
+  },
+  {
+    icon: Workflow,
+    label: 'Set up an automation',
+    hint: 'trigger on a schedule or event',
+    starter: 'I want to set up an automation that ',
+  },
+]
+
+function EmptyStateTile({
+  index,
+  onSelect,
+  tile,
 }: {
-  intro: (typeof EMPTY_CHAT_INTROS)[number]
+  index: number
+  onSelect: (starter: string) => void
+  tile: StartTile
 }) {
+  const Icon = tile.icon
   return (
-    <div className="w-full">
-      <h2 className="mx-auto flex max-w-xl flex-wrap items-baseline justify-center gap-x-2 text-balance font-medium text-2xl leading-tight text-foreground sm:text-3xl lg:text-[2.35rem]">
-        {intro.slotPosition === 'start' ? (
-          <>
-            <EmptyChatIntroSlot
-              direction={intro.direction}
-              position={intro.slotPosition}
-              value={intro.slot}
-            />
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.span
-                key={intro.rest}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.32, ease: 'easeOut' }}
-              >
-                {intro.rest}
-              </motion.span>
-            </AnimatePresence>
-          </>
-        ) : (
-          <>
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.span
-                key={intro.rest}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.32, ease: 'easeOut' }}
-              >
-                {intro.rest}
-              </motion.span>
-            </AnimatePresence>
-            <EmptyChatIntroSlot
-              direction={intro.direction}
-              position={intro.slotPosition}
-              value={intro.slot}
-            />
-          </>
-        )}
-      </h2>
-      <div className="mx-auto mt-3 grid min-h-12 max-w-lg place-items-start">
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.p
-            key={intro.subtitle}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{
-              delay: 0.12,
-              duration: 0.46,
-              ease: [0.16, 1, 0.3, 1],
-            }}
-            className="col-start-1 row-start-1 text-balance text-muted-foreground text-sm leading-6 sm:text-base"
-          >
-            {intro.subtitle}
-          </motion.p>
-        </AnimatePresence>
-      </div>
-    </div>
+    <motion.button
+      type="button"
+      onClick={() => onSelect(tile.starter)}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{
+        duration: 0.5,
+        delay: 0.22 + index * 0.05,
+        ease: EMPTY_INTRO_EASE,
+      }}
+      whileHover={{ y: -1 }}
+      whileTap={{ scale: 0.985 }}
+      className="group pointer-events-auto flex w-full items-start gap-3 rounded-[12px] bg-[color-mix(in_oklab,var(--bone)_55%,transparent)] p-3.5 text-left shadow-[var(--shadow-hairline-soft)] backdrop-blur-md transition-colors duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[color-mix(in_oklab,var(--bone)_85%,transparent)] hover:shadow-[var(--shadow-hairline)] focus-visible:outline-none focus-visible:shadow-[0_0_0_1.5px_color-mix(in_oklab,var(--ring)_45%,transparent),var(--shadow-hairline)]"
+    >
+      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklab,var(--moss)_14%,transparent)] text-[color:var(--moss)]">
+        <Icon className="size-[15px]" strokeWidth={1.6} />
+      </span>
+      <span className="flex min-w-0 flex-col gap-0.5 pt-0.5">
+        <span className="truncate font-medium text-[13.5px] leading-tight tracking-[-0.005em] text-foreground">
+          {tile.label}
+        </span>
+        <span className="truncate text-[12px] leading-tight text-muted-foreground/85">
+          {tile.hint}
+        </span>
+      </span>
+    </motion.button>
   )
 }
 
@@ -242,6 +201,12 @@ export function ConnectedChatPanelInteraction({
   const queryClient = useQueryClient()
   const debugModeEnabled = useDevSettingsStore((s) => s.debugMode)
   const workspaceId = useWorkspaceStore((s) => s.workspace?.id ?? null)
+  const userFirstName = useAuthStore((s) => {
+    const name = s.user?.name?.trim()
+    if (!name) return null
+    const first = name.split(/\s+/)[0]
+    return first && first.length > 0 ? first : null
+  })
   usePrefetchDebugStream({
     enabled: debugModeEnabled,
     workspaceId,
@@ -548,23 +513,8 @@ export function ConnectedChatPanelInteraction({
   const visibleMessages = sessionIsFresh ? [] : messages
   const normalizedStatus = normalizeStatus(status)
   const showEmptyChatState = sessionIsFresh && normalizedStatus === 'idle'
-  const [emptyIntroIndex, setEmptyIntroIndex] = useState(0)
-
-  useEffect(() => {
-    if (!showEmptyChatState) {
-      setEmptyIntroIndex(0)
-      return
-    }
-
-    const interval = window.setInterval(() => {
-      setEmptyIntroIndex((current) => (current + 1) % EMPTY_CHAT_INTROS.length)
-    }, 9000)
-
-    return () => window.clearInterval(interval)
-  }, [showEmptyChatState])
 
   const currentTitle = sessionIsFresh ? panelTitle : activeSession.title
-  const emptyIntro = EMPTY_CHAT_INTROS[emptyIntroIndex] ?? EMPTY_CHAT_INTROS[0]
   const headerAttachments = useMemo(() => {
     const seenDocuments = new Set(
       documentAttachments.map((attachment) => attachment.id),
@@ -710,79 +660,75 @@ export function ConnectedChatPanelInteraction({
               </Alert>
             </div>
           ) : null}
-          {showEmptyChatState ? null : (
-            <ChatTimeline
-              debugMode={debugModeEnabled}
-              sessionId={sessionId}
-              messages={visibleMessages}
-              error={error ?? null}
-              status={status}
-              onOpenDocument={openDocumentArtifact}
-              onOpenEdit={openDocumentEdit}
-              onOpenCitation={openDocumentCitation}
-              onDocumentEditResolveError={handleDocumentEditResolveError}
-              onDocumentEditResolveStart={handleDocumentEditResolveStart}
-              onDocumentEditResolved={handleDocumentEditResolved}
-              onResolveToolApproval={handleResolveToolApproval}
-              resolvedDocumentEditStatuses={resolvedDocumentEditStatuses}
-              resolvedApprovalIds={resolvedApprovalIds}
-              resolvingToolCallIds={resolvingToolCallIds}
-              onRetry={handleRetry}
-              isRetrying={isRetrying}
-              forcePendingActivity={optimisticPendingTurn}
-            />
-          )}
-          <motion.div
-            layout
-            transition={{ type: 'spring', stiffness: 280, damping: 28 }}
-            className={cn(
-              showEmptyChatState
-                ? 'flex min-h-0 flex-1 flex-col justify-start pt-[clamp(3.75rem,14vh,7rem)]'
-                : 'shrink-0',
+          <div className="flex min-h-0 flex-1 flex-col">
+            {showEmptyChatState ? null : (
+              <ChatTimeline
+                debugMode={debugModeEnabled}
+                sessionId={sessionId}
+                messages={visibleMessages}
+                error={error ?? null}
+                status={status}
+                onOpenDocument={openDocumentArtifact}
+                onOpenEdit={openDocumentEdit}
+                onOpenCitation={openDocumentCitation}
+                onDocumentEditResolveError={handleDocumentEditResolveError}
+                onDocumentEditResolveStart={handleDocumentEditResolveStart}
+                onDocumentEditResolved={handleDocumentEditResolved}
+                onResolveToolApproval={handleResolveToolApproval}
+                resolvedDocumentEditStatuses={resolvedDocumentEditStatuses}
+                resolvedApprovalIds={resolvedApprovalIds}
+                resolvingToolCallIds={resolvingToolCallIds}
+                onRetry={handleRetry}
+                isRetrying={isRetrying}
+                forcePendingActivity={optimisticPendingTurn}
+              />
             )}
+          </div>
+          {/* Composer block — hero lives above as an absolutely-positioned
+              child so its mount/unmount can't reflow the composer. The whole
+              block lifts toward the visual center in empty state, then
+              translates down to the panel bottom on first send. */}
+          <motion.div
+            className="relative shrink-0"
+            initial={false}
+            animate={{
+              y: showEmptyChatState
+                ? 'calc(-1 * clamp(7.5rem, 40vh, 22rem))'
+                : 0,
+              scale: showEmptyChatState ? 1.08 : 1,
+              filter: showEmptyChatState
+                ? 'drop-shadow(0 1px 1px rgba(91, 85, 77, 0.05)) drop-shadow(0 10px 22px rgba(91, 85, 77, 0.05)) drop-shadow(0 36px 64px rgba(91, 85, 77, 0.04))'
+                : 'drop-shadow(0 0 0 rgba(91, 85, 77, 0))',
+            }}
+            transition={{ duration: 0.72, ease: EMPTY_INTRO_EASE }}
+            style={{
+              willChange: 'transform, filter',
+              transformOrigin: 'center bottom',
+            }}
           >
-            <AnimatePresence>
+            <AnimatePresence initial={false}>
               {showEmptyChatState ? (
                 <motion.div
-                  key="garden-greeting"
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -12 }}
-                  transition={{ duration: 0.35, ease: 'easeOut' }}
-                  className="mb-7 px-4 text-center"
-                >
-                  <div className="mx-auto grid min-h-[6.75rem] w-full max-w-2xl place-items-center overflow-visible sm:min-h-[7.5rem]">
-                    <EmptyChatIntroText intro={emptyIntro} />
-                  </div>
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
-            <AnimatePresence>
-              {showEmptyChatState ? (
-                <motion.div
-                  key="suggestions"
+                  key="empty-prompt"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.25 }}
-                  className="shrink-0 px-4 pb-2"
+                  exit={{
+                    opacity: 0,
+                    transition: { duration: 0.22, ease: EMPTY_INTRO_EASE },
+                  }}
+                  transition={{
+                    duration: 0.5,
+                    delay: 0.06,
+                    ease: EMPTY_INTRO_EASE,
+                  }}
+                  className="pointer-events-none absolute inset-x-0 bottom-[calc(100%+1.25rem)] flex justify-center px-6"
                 >
-                  <div className="mx-auto max-w-2xl">
-                    <Suggestions className="mx-auto justify-center">
-                      <SuggestionChip
-                        suggestion="Summarize recent documents"
-                        onClick={(s) => setInput(s)}
-                      />
-                      <SuggestionChip
-                        suggestion="Help me draft a document"
-                        onClick={(s) => setInput(s)}
-                      />
-                      <SuggestionChip
-                        suggestion="What can you help me with?"
-                        onClick={(s) => setInput(s)}
-                      />
-                    </Suggestions>
-                  </div>
+                  <p
+                    className="max-w-2xl text-balance text-center font-prose text-[34px] italic leading-[1.12] tracking-[-0.003em] text-[color-mix(in_oklab,var(--ink)_82%,transparent)] sm:text-[42px]"
+                    style={{ fontWeight: 600 }}
+                  >
+                    {buildEmptyPrompt(userFirstName)}
+                  </p>
                 </motion.div>
               ) : null}
             </AnimatePresence>
@@ -797,6 +743,38 @@ export function ConnectedChatPanelInteraction({
               pendingQuestions={pendingStructuredInput?.questions}
               onSubmitAnswers={handleSubmitAnswers}
             />
+            <AnimatePresence initial={false}>
+              {showEmptyChatState ? (
+                <motion.div
+                  key="empty-tiles"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{
+                    opacity: 0,
+                    y: 4,
+                    transition: { duration: 0.2, ease: EMPTY_INTRO_EASE },
+                  }}
+                  transition={{
+                    duration: 0.5,
+                    delay: 0.16,
+                    ease: EMPTY_INTRO_EASE,
+                  }}
+                  className="pointer-events-none absolute inset-x-0 top-[calc(100%+0.75rem)] mx-auto flex justify-center px-4"
+                  style={{ willChange: 'transform, opacity' }}
+                >
+                  <div className="pointer-events-auto grid w-full max-w-2xl grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+                    {EMPTY_STATE_TILES.map((tile, index) => (
+                      <EmptyStateTile
+                        key={tile.label}
+                        index={index}
+                        onSelect={setInput}
+                        tile={tile}
+                      />
+                    ))}
+                  </div>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           </motion.div>
         </div>
         <DocumentSidePanel
@@ -878,7 +856,7 @@ function ShellFrame({
             </Button>
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
-                <div className="truncate text-sm font-semibold">
+                <div className="truncate font-prose text-sm font-semibold">
                   {panelTitle}
                 </div>
                 {primaryIssueId ? (

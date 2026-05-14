@@ -4,7 +4,7 @@
 
 **Theme:** light
 
-Garden's surfaces float on a warm parchment ground (`#f5f1e8`) overlaid with 4% film grain and a faint dotted grid (1.5px dots every 24px at 6% ink). UI panels sit above the ground as glass vellum (`bg-white/72 backdrop-blur-xl`), with hairline inset shadows replacing every drop-shadow. The shell is intentionally *disconnected* — sidebar rail, context rail, and dock content area each float with breathing room around them so the atmosphere shows through, never snapping flush to the viewport. Type is Geist for UI, DM Serif Text for agent prose, Geist Mono for code. Brand expression lives in the warm Moss green and the foliage status palette (Sage / Moss / Amber / Clay / Stone), not in saturated accents. Every interactive element is a pill (`9999px`) except inputs (`6px`); cards 16px, panels 20px, modals 24px. Nothing in the system reads as square or hard.
+Garden's surfaces float on a warm parchment ground (`#f5f1e8`) overlaid with 4% film grain and a faint dotted grid (1.5px dots every 24px at 6% ink). UI panels sit above the ground as glass vellum (`bg-white/72 backdrop-blur-xl`), with hairline inset shadows replacing every drop-shadow. The shell is intentionally *disconnected* — sidebar rail, context rail, and dock content area each float with breathing room around them so the atmosphere shows through, never snapping flush to the viewport. Type is Geist for UI, DM Sans for the chat surface (agent prose + chat module titles), Geist Mono for code. Brand expression lives in the warm Moss green and the foliage status palette (Sage / Moss / Amber / Clay / Stone), not in saturated accents. Every interactive element is a pill (`9999px`) except inputs (`6px`); cards 16px, panels 20px, modals 24px. Nothing in the system reads as square or hard.
 
 ## Tokens — Colors
 
@@ -40,12 +40,12 @@ Three fonts, three roles. All free, all Google Fonts.
 - **Tracking:** +0.005em at 11-13px, normal at 14-16px, -0.015em at 18px, -0.02em at 22px+
 - **Role:** Every UI label, body paragraph, button text, tab title, sidebar row, dashboard metric, table cell.
 
-### DM Serif Text — Agent markdown prose. Chat message body, issue descriptions, comments — anywhere an agent has written paragraphs for a human to read. Gives the agent's voice considered weight without going Klim/Anthropic. Applied via the `.is-assistant` class on the message bubble. · `--font-prose`
-- **Weights:** 400
-- **Sizes:** 15.5px (chat body), 16 (issue prose), 18 (lead paragraph)
-- **Line height:** 1.6
-- **Letter spacing:** +0.005em (subtle open tracking for legibility on parchment)
-- **Role:** Only inside agent-authored content surfaces. The `.is-assistant` rule sets font-family on the message; headings/buttons/inputs/code inside that scope revert to sans/mono so structural UI elements stay consistent. Never UI labels, never buttons, never tabs.
+### DM Sans — Chat surface: agent markdown prose + chat module titles (panel title, chat session title). Gives the chat its own typographic identity, distinct from the rest of the product chrome. Applied via the `.is-assistant` class on the message bubble and the `font-prose` utility on chat-module headers. · `--font-prose`
+- **Weights:** 400, 500, 700
+- **Sizes:** 14.5px (chat body), 14px (chat header title), 16 (issue prose), 18 (lead paragraph)
+- **Line height:** 1.55
+- **Letter spacing:** -0.005em (matches Geist's optical density at body sizes)
+- **Role:** Inside agent-authored content surfaces and the chat panel's own title chrome. The `.is-assistant` rule sets font-family on the message; headings inherit it; code/kbd/samp inside that scope revert to mono. Never general UI labels, never buttons, never tabs outside the chat module.
 
 ### Geist Mono — Code blocks, inline code, file paths, tool names, agent IDs, durations. The 5-10% of text that's machine-output or stable identifiers. · `--font-mono`
 - **Weights:** 400, 500
@@ -166,7 +166,7 @@ Tabs sit at the bottom of a 38px tab strip. The strip has a 1px hairline bottom 
 ### Do
 - Apply atmospheric ground to `<body>` once. Every panel above it uses Vellum + backdrop-blur.
 - Use Geist Sans 400 at body, 500 for emphasis/labels, 600 for headings. Tighten tracking proportionally with size.
-- Reserve DM Serif Text for agent-authored markdown content only — chat messages, issue descriptions, comments.
+- Reserve DM Sans for the chat surface — agent markdown content (chat messages, issue descriptions, comments) and the chat module's own title chrome.
 - Use `rounded-full` (9999px) on every interactive element. Use 16/20/24 on containers.
 - Reserve Moss for "create-new" CTAs and "ready" status. Use Ink for default CTA.
 - Foliage status palette (Sage/Moss/Amber/Clay/Stone) for all status indicators across the system.
@@ -175,7 +175,7 @@ Tabs sit at the bottom of a 38px tab strip. The strip has a 1px hairline bottom 
 
 ### Don't
 - Never use dark / midnight backgrounds. Light is canonical.
-- Never use a font outside the three locked roles. No serif on UI buttons. No mono in body. No sans in agent prose.
+- Never use a font outside the three locked roles. Geist for product UI, DM Sans for the chat surface, Geist Mono for code — never swapped or mixed across roles.
 - Never apply small radii (2–8px) to interactive elements except inputs.
 - Never use pure white `#ffffff` as a page or panel background. Use Parchment or Vellum.
 - Never use drop-shadow elevation larger than `0px 4px 12px` (Float-2).
@@ -199,7 +199,7 @@ The tab active state differs slightly (solid bone vs vellum-heavy) because tabs 
 
 ### Font Imports
 ```html
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=DM+Serif+Text&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400;1,500&display=swap" rel="stylesheet">
 ```
 
 ### CSS Custom Properties
@@ -236,7 +236,7 @@ The tab active state differs slightly (solid bone vs vellum-heavy) because tabs 
 
   /* Typography */
   --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-prose: 'DM Serif Text', Georgia, serif;
+  --font-prose: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, monospace;
 
   /* Radii — Linear-tier restraint */

@@ -447,10 +447,10 @@
   gap: 0.5rem;
 }
 
-/* Chat assistant prose — Geist Sans at 14.5px / 1.55 line-height. Code and
- * pre stay in Geist Mono. (DM Serif Text was tried and dropped.) */
+/* Chat assistant prose — DM Sans at 14.5px / 1.55 line-height. Code and
+ * pre stay in Geist Mono. */
 .is-assistant {
-  font-family: var(--font-sans);
+  font-family: var(--font-prose);
   font-size: 14.5px;
   line-height: 1.55;
   letter-spacing: -0.005em;
