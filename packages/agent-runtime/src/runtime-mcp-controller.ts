@@ -45,6 +45,7 @@ export class RuntimeMcpError extends TaggedError("RuntimeMcpError")<{
     | "jwt_mint_failed"
     | "mcp_connect_failed"
     | "mcp_discover_failed"
+    | "mcp_readiness_failed"
     | "mcp_register_failed"
     | "thread_not_found";
   message: string;
@@ -148,6 +149,12 @@ export type McpHost = {
 
 export function isMcpDiscoveryCancellation(message: string | undefined) {
   return message === "Discovery was cancelled";
+}
+
+export function isMcpFailedConnectionStateMessage(
+  message: string | undefined,
+) {
+  return Boolean(message?.toLowerCase().includes("failed state"));
 }
 
 export async function connectRpcMcpConnector(args: {
@@ -879,9 +886,14 @@ export class RuntimeMcpController {
     }
 
     if (failedRefreshes.length > 0) {
-      console.warn("[agent-runtime] continuing after MCP connector failures", {
-        failedRefreshes,
-      });
+      return Result.err(
+        new RuntimeMcpError({
+          code: "mcp_connect_failed",
+          message: `Failed to refresh MCP connectors: ${failedRefreshes
+            .map((failure) => `${failure.connectorId}: ${failure.error}`)
+            .join("; ")}`,
+        }),
+      );
     }
 
     return Result.ok(undefined);
@@ -959,13 +971,15 @@ export class RuntimeMcpController {
     const storedRowsResult = this.readConnectorServerRows();
     if (storedRowsResult.isErr()) return storedRowsResult;
 
-    const idsToReset = serverIds ? new Set(serverIds) : null;
-    for (const row of storedRowsResult.value) {
-      if (idsToReset && !idsToReset.has(row.serverId)) {
-        continue;
-      }
+    const connectorIdsToReset = [
+      ...new Set(
+        serverIds ??
+          storedRowsResult.value.map((row) => row.connectorId),
+      ),
+    ];
 
-      const removalResult = await this.removeConnectorServer(row.connectorId);
+    for (const connectorId of connectorIdsToReset) {
+      const removalResult = await this.removeConnectorServer(connectorId);
       if (removalResult.isErr()) {
         return removalResult;
       }
@@ -1043,7 +1057,61 @@ export class RuntimeMcpController {
       if (cleanupResult.isErr()) return cleanupResult;
     }
 
-    const connectResult = await Result.tryPromise({
+    let connectResult = await this.connectAndDiscoverConnectorServer({
+      identity,
+      binding,
+      connector,
+    });
+
+    if (
+      connectResult.isErr() &&
+      isMcpFailedConnectionStateMessage(connectResult.error.message)
+    ) {
+      console.warn(
+        "[agent-runtime] resetting failed MCP connector before retry",
+        {
+          connectorId: connector.id,
+          error: connectResult.error.message,
+        },
+      );
+
+      const cleanupResult = await this.removeConnectorServer(connector.id);
+      if (cleanupResult.isErr()) return cleanupResult;
+
+      connectResult = await this.connectAndDiscoverConnectorServer({
+        identity,
+        binding,
+        connector,
+      });
+    }
+
+    if (connectResult.isErr()) {
+      await this.removeConnectorServer(connector.id);
+      return connectResult;
+    }
+
+    const persistResult = this.upsertConnectorServerRow({
+      identity,
+      connectorId: connector.id,
+      accountId: binding.accountId,
+      jwtExpiresAt: new Date(
+        Date.now() + mcpRuntimeConfig.proxyJwtTtlSeconds * 1000,
+      ).toISOString(),
+      toolsSignature: this.buildConnectorToolsSignature(connector.id),
+    });
+    if (persistResult.isErr()) return persistResult;
+
+    return Result.ok(undefined);
+  }
+
+  private async connectAndDiscoverConnectorServer(args: {
+    identity: ThreadRuntimeIdentity;
+    binding: ActiveConnectorBinding;
+    connector: NonNullable<ReturnType<typeof getConnectorById>>;
+  }) {
+    const { identity, binding, connector } = args;
+
+    return await Result.tryPromise({
       try: async () => {
         const registration = await this.host.connectRpcMcpServer({
           connectorId: connector.id,
@@ -1086,34 +1154,22 @@ export class RuntimeMcpController {
           });
         }
       },
-      catch: (cause) =>
-        cause instanceof RuntimeMcpError
-          ? cause
-          : new RuntimeMcpError({
-              code: "mcp_register_failed",
-              message:
-                cause instanceof Error
-                  ? cause.message
-                  : `Failed to attach MCP server ${connector.id}`,
-            }),
-    });
-    if (connectResult.isErr()) {
-      await this.removeConnectorServer(connector.id);
-      return connectResult;
-    }
+      catch: (cause) => {
+        if (cause instanceof RuntimeMcpError) return cause;
 
-    const persistResult = this.upsertConnectorServerRow({
-      identity,
-      connectorId: connector.id,
-      accountId: binding.accountId,
-      jwtExpiresAt: new Date(
-        Date.now() + mcpRuntimeConfig.proxyJwtTtlSeconds * 1000,
-      ).toISOString(),
-      toolsSignature: this.buildConnectorToolsSignature(connector.id),
-    });
-    if (persistResult.isErr()) return persistResult;
+        const message =
+          cause instanceof Error
+            ? cause.message
+            : `Failed to attach MCP server ${connector.id}`;
 
-    return Result.ok(undefined);
+        return new RuntimeMcpError({
+          code: isMcpFailedConnectionStateMessage(message)
+            ? "mcp_discover_failed"
+            : "mcp_register_failed",
+          message,
+        });
+      },
+    });
   }
 
   private async discoverRegisteredConnectorServer(connectorId: string) {
@@ -1204,7 +1260,12 @@ type RuntimeMcpReadinessResult = ResultValue<void, RuntimeMcpReadinessError>;
 
 export type RuntimeMcpServerStates = Record<
   string,
-  { state: string; error?: string | null }
+  {
+    state: string;
+    error?: string | null;
+    name?: string | null;
+    server_url?: string | null;
+  }
 >;
 
 type RuntimeMcpConnectionPreparerOptions = {
@@ -1216,6 +1277,7 @@ type RuntimeMcpConnectionPreparerOptions = {
   backgroundRefreshFailedMessage: string;
   refreshFailedMessage: string;
   continuingWithoutReadyMessage: string;
+  readinessPolicy?: "opportunistic" | "required";
   onSuccessfulRefresh?: (controller: RuntimeMcpController) => void;
   onThreadNotFound?: (
     reason: string,
@@ -1275,6 +1337,12 @@ export class RuntimeMcpConnectionPreparer {
         reason,
         error: readyResult.error,
       });
+      if (this.options.readinessPolicy === "required") {
+        throw new RuntimeMcpError({
+          code: "mcp_readiness_failed",
+          message: readyResult.error,
+        });
+      }
     }
 
     return controller;

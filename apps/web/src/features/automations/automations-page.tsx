@@ -66,7 +66,7 @@ const TEMPLATES: AutomationTemplate[] = [
 2. Filter for topics relevant to our team and industry
 3. For each item, write a short summary including: title, source, key takeaways
 4. Compile everything into a single digest post
-5. Post the digest as a comment on this issue and @mention all workspace members`,
+5. Return the digest as the automation run report, including any recommended recipients`,
     icon: Newspaper,
     frequency: 'daily',
     time: '09:00',
@@ -77,8 +77,8 @@ const TEMPLATES: AutomationTemplate[] = [
     prompt: `1. List all open pull requests in the repository
 2. Identify PRs that have been open for more than 24 hours without a review
 3. For each stale PR, note the author, age, and a one-line summary of the change
-4. Post a comment on this issue listing all stale PRs with links
-5. @mention the team to remind them to review`,
+4. Return a stale PR report with links and recommended reviewers
+5. Include a concise team-facing reminder in the run output`,
     icon: GitPullRequest,
     frequency: 'weekdays',
     time: '10:00',
@@ -90,7 +90,7 @@ const TEMPLATES: AutomationTemplate[] = [
 2. For each issue, read the description and any attached logs or screenshots
 3. Assess severity (critical / high / medium / low) based on user impact and scope
 4. Set the priority field on the issue accordingly
-5. Add a comment explaining your assessment and suggested next steps`,
+5. Return a triage report explaining each assessment and suggested next steps`,
     icon: Bug,
     frequency: 'weekdays',
     time: '09:00',
@@ -103,7 +103,7 @@ const TEMPLATES: AutomationTemplate[] = [
 3. Identify any blocked issues and their blockers
 4. Calculate key metrics: issues closed, issues opened, net change
 5. Write a structured weekly report with sections: Completed, In Progress, Blocked, Metrics
-6. Post the report as a comment on this issue`,
+6. Return the report as the automation run output`,
     icon: BarChart3,
     frequency: 'weekly',
     time: '17:00',
@@ -115,7 +115,7 @@ const TEMPLATES: AutomationTemplate[] = [
 2. Identify any packages with known security vulnerabilities
 3. List outdated packages that are more than 2 major versions behind
 4. For each finding, note the severity, affected package, and recommended fix
-5. Post a summary report as a comment with actionable items`,
+5. Return a summary report with actionable items`,
     icon: Shield,
     frequency: 'weekly',
     time: '08:00',
@@ -127,7 +127,7 @@ const TEMPLATES: AutomationTemplate[] = [
 2. For each significant change, check if related documentation was updated
 3. Identify any new APIs, config options, or features missing documentation
 4. Create a list of documentation gaps with file paths and suggested content
-5. Post the findings as a comment on this issue`,
+5. Return the findings as the automation run output`,
     icon: FileSearch,
     frequency: 'weekly',
     time: '14:00',

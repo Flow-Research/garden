@@ -2,6 +2,7 @@ import {
   Session,
   Think,
   type ChatResponseResult,
+  type SaveMessagesResult,
   type StepContext,
   type ToolCallContext,
   type ToolCallResultContext,
@@ -67,6 +68,7 @@ import {
 } from './runtime-mcp-controller'
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
+import { addStepUsage, normalizeRunUsage } from './run-usage'
 
 type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_SECRET: string
@@ -189,19 +191,6 @@ function renderSection(title: string, body: string) {
   return [`## ${title}`, body.trim() || 'None.'].join('\n')
 }
 
-function emptyUsage(ctx: StepContext): IssueRunUsage {
-  return {
-    input_tokens: 0,
-    output_tokens: 0,
-    cached_input_tokens: 0,
-    total_tokens: 0,
-    model: ctx.model.modelId,
-    model_provider: ctx.model.provider,
-    step_count: 0,
-    recorded_at_ms: Date.now(),
-  }
-}
-
 function isActiveRunStatus(status: string) {
   return isLiveIssueRunStatus(status as IssueRunStatus)
 }
@@ -239,7 +228,8 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       '[agent-runtime] issue MCP background refresh failed',
     refreshFailedMessage: '[agent-runtime] issue MCP connector refresh failed',
     continuingWithoutReadyMessage:
-      '[agent-runtime] continuing issue run without ready MCP connectors',
+      '[agent-runtime] issue MCP connectors are not ready',
+    readinessPolicy: 'required',
   })
 
   maxSteps = 30
@@ -299,7 +289,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async beforeTurn(ctx: TurnContext): Promise<TurnConfig | void> {
-    const runId = stringValue(ctx.body?.run_id) ?? this.currentRunId
+    const runId = this.currentRunId ?? stringValue(ctx.body?.run_id)
     if (!runId) {
       throw new Error('IssueRunSubAgent.beforeTurn missing run_id.')
     }
@@ -441,30 +431,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     const runId = this.currentRunId
     if (!runId) return
 
-    const nextUsage = this.aggUsage ?? emptyUsage(ctx)
-    nextUsage.input_tokens += ctx.usage.inputTokens ?? 0
-    nextUsage.output_tokens += ctx.usage.outputTokens ?? 0
-    nextUsage.cached_input_tokens +=
-      ctx.usage.inputTokenDetails.cacheReadTokens ??
-      ctx.usage.cachedInputTokens ??
-      0
-    const reasoningTokens =
-      ctx.usage.outputTokenDetails.reasoningTokens ??
-      ctx.usage.reasoningTokens ??
-      0
-    if (reasoningTokens > 0) {
-      nextUsage.reasoning_tokens =
-        (nextUsage.reasoning_tokens ?? 0) + reasoningTokens
-    }
-    nextUsage.step_count += 1
-    nextUsage.total_tokens =
-      ctx.usage.totalTokens ??
-      nextUsage.input_tokens +
-        nextUsage.output_tokens +
-        nextUsage.cached_input_tokens
-    nextUsage.recorded_at_ms = Date.now()
-    nextUsage.model = ctx.model.modelId
-    nextUsage.model_provider = ctx.model.provider
+    const nextUsage = addStepUsage(this.aggUsage, ctx)
     this.aggUsage = nextUsage
 
     const persistResult = await this.persistUsage(runId, nextUsage)
@@ -497,6 +464,14 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
           error: cancelResult.error.message,
           runId,
         })
+      } else if (!cancelResult.value) {
+        const failedResult = await this.forceCloseFailed(runId, 'turn_aborted')
+        if (failedResult.isErr()) {
+          console.warn('[agent-runtime] failed to close aborted issue run', {
+            error: failedResult.error.message,
+            runId,
+          })
+        }
       }
       this.clearTurnState()
       return
@@ -585,6 +560,31 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       await this.forceCloseFailed(input.runId, driveResult.error.message)
       throw new Error(driveResult.error.message)
     }
+    if (driveResult.value === 'aborted') {
+      const cancelResult = await this.cancelRunIfRequested(input.runId)
+      if (cancelResult.isErr()) {
+        await this.forceCloseFailed(input.runId, cancelResult.error.message)
+        throw new Error(cancelResult.error.message)
+      }
+      if (!cancelResult.value) {
+        const failedResult = await this.forceCloseFailed(
+          input.runId,
+          'turn_aborted',
+        )
+        if (failedResult.isErr()) {
+          throw new Error(failedResult.error.message)
+        }
+      }
+    }
+    if (driveResult.value === 'skipped') {
+      const failedResult = await this.forceCloseFailed(
+        input.runId,
+        'turn_skipped',
+      )
+      if (failedResult.isErr()) {
+        throw new Error(failedResult.error.message)
+      }
+    }
 
     const statusResult = await this.readRunStatus(input.runId)
     if (statusResult.isErr()) {
@@ -608,13 +608,18 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   private async driveTurn(
     mode: TurnMode,
     input: StartTurnInput,
-  ): Promise<ResultValue<void, IssueRunSubAgentError>> {
+  ): Promise<
+    ResultValue<
+      SaveMessagesResult['status'] | 'stopped',
+      IssueRunSubAgentError
+    >
+  > {
     const loadedResult = await this.loadTurnContext(input.runId)
     if (loadedResult.isErr()) return Result.err(loadedResult.error)
 
     const boundaryResult = await this.applyRunBoundaryGuards(loadedResult.value)
     if (boundaryResult.isErr()) return Result.err(boundaryResult.error)
-    if (boundaryResult.value !== 'continue') return Result.ok()
+    if (boundaryResult.value !== 'continue') return Result.ok('stopped')
 
     if (mode === 'start') {
       const startResult = await this.markRunStarted(loadedResult.value)
@@ -627,11 +632,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     this.currentRunId = input.runId
     this.currentRunState = loadedResult.value.runState
     this.currentPermissions = loadedResult.value.permissions
-    this.setProgrammaticBody({
-      run_id: input.runId,
-      issue_id: input.issueId,
-      mode,
-    })
 
     const message: UIMessage = {
       id: crypto.randomUUID(),
@@ -648,13 +648,13 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     }
 
     const saveResult = await Result.tryPromise({
-      try: async () => {
-        await this.saveMessages([message])
-      },
+      try: async () => await this.saveMessages([message]),
       catch: (cause) => cause,
     })
     if (saveResult.isErr()) {
-      if (saveResult.error instanceof IssueRunTurnStopped) return Result.ok()
+      if (saveResult.error instanceof IssueRunTurnStopped) {
+        return Result.ok('stopped')
+      }
       return Result.err(
         new IssueRunSubAgentError({
           code: 'runtime_failed',
@@ -667,7 +667,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       )
     }
 
-    return Result.ok()
+    return Result.ok(saveResult.value.status)
   }
 
   private getIssueToolContext(): IssueRunToolContext {
@@ -684,15 +684,13 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         ensureConnections: async () => await this.ensureMcpConnectionsForTool(),
         listTools: (filter) => this.mcp.listTools(filter),
         callTool: async (params) => {
-          const callTool = (
-            this.mcp as unknown as {
-              callTool?: (input: typeof params) => Promise<unknown>
-            }
-          ).callTool
-          if (!callTool) {
+          const mcp = this.mcp as unknown as {
+            callTool?: (input: typeof params) => Promise<unknown>
+          }
+          if (!mcp.callTool) {
             throw new Error('MCP callTool is not available.')
           }
-          return await callTool(params)
+          return await mcp.callTool(params)
         },
       },
     }
@@ -1409,13 +1407,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     runId: string,
     usage: IssueRunUsage,
   ): Promise<ResultValue<void, IssueRunSubAgentError>> {
-    const normalizedUsage = {
-      ...usage,
-      total_tokens:
-        usage.total_tokens ||
-        usage.input_tokens + usage.output_tokens + usage.cached_input_tokens,
-      recorded_at_ms: Date.now(),
-    }
+    const normalizedUsage = normalizeRunUsage(usage)
     const result = await Result.tryPromise({
       try: async () => {
         await this.getDb()
@@ -1455,12 +1447,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
 
       this.currentRunId = runId
       this.currentRunState = runStateResult.value
-      this.setProgrammaticBody({
-        run_id: runId,
-        issue_id: runStateResult.value.issueId,
-        mode: 'resume',
-        guard: 'missing_resolution',
-      })
       const nudgeMessage: UIMessage = {
         id: crypto.randomUUID(),
         role: 'user',
@@ -1472,9 +1458,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         ],
       }
       const saveResult = await Result.tryPromise({
-        try: async () => {
-          await this.saveMessages([nudgeMessage])
-        },
+        try: async () => await this.saveMessages([nudgeMessage]),
         catch: (cause) => cause,
       })
       if (saveResult.isErr()) {
@@ -1717,16 +1701,21 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
 
   private async cancelRunIfRequested(
     runId: string,
-  ): Promise<ResultValue<void, IssueRunSubAgentError>> {
+  ): Promise<ResultValue<boolean, IssueRunSubAgentError>> {
     const [run] = await this.getDb()
       .select()
       .from(schema.issueRun)
       .where(eq(schema.issueRun.id, runId))
       .limit(1)
-    if (!run?.cancelRequestedAt) return Result.ok()
+    if (!run?.cancelRequestedAt) return Result.ok(false)
     const runStateResult = await this.loadRunState(runId)
     if (runStateResult.isErr()) return Result.err(runStateResult.error)
-    return await this.finishCancelled(runStateResult.value, 'cancelled')
+    const cancelResult = await this.finishCancelled(
+      runStateResult.value,
+      'cancelled',
+    )
+    if (cancelResult.isErr()) return Result.err(cancelResult.error)
+    return Result.ok(true)
   }
 
   private async finishCancelled(
@@ -1830,15 +1819,6 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     }
 
     return Result.ok()
-  }
-
-  private setProgrammaticBody(body: Record<string, unknown>) {
-    const host = this as unknown as {
-      _lastBody?: Record<string, unknown>
-      _persistBody?: () => void
-    }
-    host._lastBody = body
-    if (host._persistBody) host._persistBody()
   }
 
   private clearTurnState() {

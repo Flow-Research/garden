@@ -105,42 +105,54 @@ function RunRow({
     RUN_STATUS_CONFIG[run.status] ?? RUN_STATUS_CONFIG.queued
   const StatusIcon = config.icon
   const usage = run.usage_json
+  const result = run.result_json
   const totalTokens = numberValue(usage?.total_tokens)
   const model = stringValue(usage?.model)
+  const output = stringValue(result?.output)
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-accent/30">
-      <StatusIcon className={cn('size-4 shrink-0', config.color)} />
-      <span className={cn('w-24 shrink-0 text-xs font-medium', config.color)}>
-        {config.label}
-      </span>
-      <span className="w-16 shrink-0 text-xs text-muted-foreground capitalize">
-        {run.source}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-        {run.failure_reason ? (
-          <span className="text-destructive">{run.failure_reason}</span>
-        ) : run.run_id ? (
-          <span className="font-mono">{run.run_id.slice(0, 8)}</span>
-        ) : null}
-        {debugMode && (totalTokens !== null || model) ? (
-          <span className="ml-2 text-[11px] text-muted-foreground">
-            {totalTokens !== null
-              ? `${formatTokenCount(totalTokens)} tokens`
-              : 'usage'}
-            {model ? ` · ${model}` : null}
-          </span>
-        ) : null}
-      </span>
-      <span className="w-32 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-        {run.triggered_at || run.created_at
-          ? formatDate(run.triggered_at ?? run.created_at ?? '')
-          : '--'}
-      </span>
+    <div className="px-4 py-2.5 text-sm transition-colors hover:bg-accent/30">
+      <div className="flex items-center gap-3">
+        <StatusIcon className={cn('size-4 shrink-0', config.color)} />
+        <span
+          className={cn('w-24 shrink-0 text-xs font-medium', config.color)}
+        >
+          {config.label}
+        </span>
+        <span className="w-16 shrink-0 text-xs text-muted-foreground capitalize">
+          {run.source}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          {run.failure_reason ? (
+            <span className="text-destructive">{run.failure_reason}</span>
+          ) : output ? (
+            output
+          ) : run.run_id ? (
+            <span className="font-mono">{run.run_id.slice(0, 8)}</span>
+          ) : null}
+          {debugMode && (totalTokens !== null || model) ? (
+            <span className="ml-2 text-[11px] text-muted-foreground">
+              {totalTokens !== null
+                ? `${formatTokenCount(totalTokens)} tokens`
+                : 'usage'}
+              {model ? ` · ${model}` : null}
+            </span>
+          ) : null}
+        </span>
+        <span className="w-32 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+          {run.triggered_at || run.created_at
+            ? formatDate(run.triggered_at ?? run.created_at ?? '')
+            : '--'}
+        </span>
+      </div>
+      {output && output.length > 120 ? (
+        <p className="mt-1 line-clamp-2 pl-[7.75rem] text-xs leading-5 text-muted-foreground">
+          {output}
+        </p>
+      ) : null}
     </div>
   )
 }
-
 function TriggerRow({
   trigger,
   automationId,

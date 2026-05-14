@@ -12,8 +12,11 @@ import {
 } from './mcp-connectors'
 import {
   connectRpcMcpConnector,
+  isMcpFailedConnectionStateMessage,
   isMcpDiscoveryCancellation,
   RuntimeMcpController,
+  RuntimeMcpConnectionPreparer,
+  RuntimeMcpError,
   type McpHost,
   type McpToolRecord,
   type RpcMcpConnectorProps,
@@ -292,6 +295,18 @@ describe('isMcpDiscoveryCancellation', () => {
     expect(isMcpDiscoveryCancellation('Discovery was cancelled')).toBe(true)
     expect(isMcpDiscoveryCancellation('Network connection lost.')).toBe(false)
     expect(isMcpDiscoveryCancellation(undefined)).toBe(false)
+  })
+})
+
+describe('isMcpFailedConnectionStateMessage', () => {
+  it('matches Agents SDK failed-state discovery errors', () => {
+    expect(
+      isMcpFailedConnectionStateMessage(
+        'Failed to discover server capabilities: Discovery skipped - connection in failed state',
+      ),
+    ).toBe(true)
+    expect(isMcpFailedConnectionStateMessage('No tools discovered')).toBe(false)
+    expect(isMcpFailedConnectionStateMessage(undefined)).toBe(false)
   })
 })
 
@@ -756,5 +771,182 @@ describe('RuntimeMcpController GitHub tools', () => {
     expect(result.isOk()).toBe(true)
     expect(removedServerIds).toEqual(['github'])
     expect(connectedServerIds).toEqual(['github'])
+  })
+
+  it('resets and retries when the SDK connect path discovers a failed-state connection', async () => {
+    const removedServerIds: string[] = []
+    const connectedServerIds: string[] = []
+    const toolsByServer = new Map<string, McpToolRecord[]>()
+    const exaTools: McpToolRecord[] = [
+      {
+        serverId: 'exa-search',
+        name: 'web_search_exa',
+        description: 'Search the web.',
+        inputSchema: { type: 'object' },
+      },
+    ]
+
+    const host: McpHost = {
+      name: 'chat:thread-1',
+      env: {
+        BETTER_AUTH_SECRET: 'secret',
+        BETTER_AUTH_URL: 'https://garden.test',
+        DATABASE_URL: 'postgres://garden.test/db',
+      },
+      ctx: { storage: { sql: createSqlStorageStub() } },
+      mcp: {
+        getAITools: () => ({}),
+        listTools: (filter?: MCPServerFilter) => {
+          const serverId = filter?.serverId
+          return serverId && !Array.isArray(serverId)
+            ? (toolsByServer.get(serverId) ?? [])
+            : [...toolsByServer.values()].flat()
+        },
+        listServers: () => [],
+        waitForConnections: async () => undefined,
+        discoverIfConnected: async (serverId: string) =>
+          toolsByServer.get(serverId)?.length
+            ? { success: true }
+            : { success: false, error: 'No tools discovered' },
+      },
+      connectRpcMcpServer: async ({ connectorId }) => {
+        connectedServerIds.push(connectorId)
+        if (connectedServerIds.length === 1) {
+          throw new Error(
+            'Failed to discover server capabilities: Discovery skipped - connection in failed state',
+          )
+        }
+
+        toolsByServer.set(connectorId, exaTools)
+        return { state: 'connected' }
+      },
+      removeMcpServer: async (connectorId) => {
+        removedServerIds.push(connectorId)
+        toolsByServer.delete(connectorId)
+      },
+      resolveRuntimeIdentity: async () =>
+        Result.ok({
+          threadId: 'thread-1',
+          workspaceId: 'workspace-1',
+          userId: 'user-1',
+          agentId: 'agent-1',
+        }),
+    }
+    const controller = new RuntimeMcpController(host)
+    ;(
+      controller as unknown as {
+        listActiveConnectorBindings: () => Promise<
+          Result<Array<{ connectorId: string; accountId: string | null }>, never>
+        >
+      }
+    ).listActiveConnectorBindings = async () =>
+      Result.ok([{ connectorId: 'exa-search', accountId: null }])
+
+    const result = await controller.ensureProxyMcpConnections()
+
+    expect(result.isOk()).toBe(true)
+    expect(removedServerIds).toEqual(['exa-search', 'exa-search'])
+    expect(connectedServerIds).toEqual(['exa-search', 'exa-search'])
+    expect(host.mcp.listTools({ serverId: 'exa-search' })).toEqual(exaTools)
+  })
+
+  it('returns connector refresh errors instead of silently continuing', async () => {
+    const host: McpHost = {
+      name: 'chat:thread-1',
+      env: {
+        BETTER_AUTH_SECRET: 'secret',
+        BETTER_AUTH_URL: 'https://garden.test',
+        DATABASE_URL: 'postgres://garden.test/db',
+      },
+      ctx: { storage: { sql: createSqlStorageStub() } },
+      mcp: {
+        getAITools: () => ({}),
+        listTools: () => [],
+        listServers: () => [],
+        waitForConnections: async () => undefined,
+        discoverIfConnected: async () => ({ success: false }),
+      },
+      connectRpcMcpServer: async () => ({
+        state: 'failed',
+        error: 'Proxy returned 503',
+      }),
+      removeMcpServer: async () => undefined,
+      resolveRuntimeIdentity: async () =>
+        Result.ok({
+          threadId: 'thread-1',
+          workspaceId: 'workspace-1',
+          userId: 'user-1',
+          agentId: 'agent-1',
+        }),
+    }
+    const controller = new RuntimeMcpController(host)
+    ;(
+      controller as unknown as {
+        listActiveConnectorBindings: () => Promise<
+          Result<Array<{ connectorId: string; accountId: string | null }>, never>
+        >
+      }
+    ).listActiveConnectorBindings = async () =>
+      Result.ok([{ connectorId: 'exa-search', accountId: null }])
+
+    const result = await controller.ensureProxyMcpConnections()
+
+    expect(result.isErr()).toBe(true)
+    if (result.isOk()) return
+    expect(result.error.message).toContain('exa-search: Proxy returned 503')
+  })
+
+  it('throws for required turn readiness when connector refresh fails', async () => {
+    const host: McpHost = {
+      name: 'chat:thread-1',
+      env: {
+        BETTER_AUTH_SECRET: 'secret',
+        BETTER_AUTH_URL: 'https://garden.test',
+        DATABASE_URL: 'postgres://garden.test/db',
+      },
+      ctx: { storage: { sql: createSqlStorageStub() } },
+      mcp: {
+        getAITools: () => ({}),
+        listTools: () => [],
+        listServers: () => [],
+        waitForConnections: async () => undefined,
+        discoverIfConnected: async () => ({ success: false }),
+      },
+      connectRpcMcpServer: async () => ({
+        state: 'failed',
+        error: 'Proxy returned 503',
+      }),
+      removeMcpServer: async () => undefined,
+      resolveRuntimeIdentity: async () =>
+        Result.ok({
+          threadId: 'thread-1',
+          workspaceId: 'workspace-1',
+          userId: 'user-1',
+          agentId: 'agent-1',
+        }),
+    }
+    const controller = new RuntimeMcpController(host)
+    ;(
+      controller as unknown as {
+        listActiveConnectorBindings: () => Promise<
+          Result<Array<{ connectorId: string; accountId: string | null }>, never>
+        >
+      }
+    ).listActiveConnectorBindings = async () =>
+      Result.ok([{ connectorId: 'exa-search', accountId: null }])
+
+    const preparer = new RuntimeMcpConnectionPreparer({
+      getController: () => controller,
+      fullSyncIntervalMs: 60_000,
+      backgroundRefreshFailedMessage: 'background failed',
+      refreshFailedMessage: 'refresh failed',
+      continuingWithoutReadyMessage: 'required failed',
+      readinessPolicy: 'required',
+    })
+
+    await expect(preparer.ensureForTurn('issue-turn')).rejects.toMatchObject({
+      name: RuntimeMcpError.name,
+      code: 'mcp_readiness_failed',
+    })
   })
 })

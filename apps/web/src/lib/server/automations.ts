@@ -225,6 +225,7 @@ export function toAutomationRun(
   row: AutomationRunRow,
   options: { debug?: boolean } = {},
 ) {
+  const resultJson = objectOrNull(row.resultJson)
   const run = {
     id: row.id,
     automation_id: row.automationId,
@@ -237,13 +238,13 @@ export function toAutomationRun(
     failure_reason: row.failureReason,
     trigger_payload: row.triggerPayload,
     created_at: dateToIso(row.createdAt),
+    result_json: resultJson,
   }
 
   if (!options.debug) return run
 
   return {
     ...run,
-    result_json: objectOrNull(row.resultJson),
     usage_json: objectOrNull(row.usageJson),
   }
 }
