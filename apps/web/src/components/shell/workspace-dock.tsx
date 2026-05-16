@@ -1866,7 +1866,9 @@ export function WorkspaceDockProvider({
     }
 
     const queryPanel = requestedSearchPanel
-    if (!queryPanel || arePanelsEqual(activePanel, queryPanel)) return
+    if (!queryPanel || arePanelSearchTargetsEqual(activePanel, queryPanel)) {
+      return
+    }
 
     commitPanelState(queryPanel, apiRef.current ?? undefined, {
       source: 'query',
