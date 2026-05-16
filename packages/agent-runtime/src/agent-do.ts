@@ -20,6 +20,7 @@
 import {
   Session,
   Think,
+  type MessageConcurrency,
   type TurnConfig,
   type TurnContext,
 } from '@cloudflare/think'
@@ -779,6 +780,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     super(ctx, env)
   }
 
+  override messageConcurrency: MessageConcurrency = 'merge'
   waitForMcpConnections = {
     timeout: mcpRuntimeConfig.connectionWaitTimeoutMs,
   }
