@@ -265,9 +265,7 @@ export function WorkspaceSidebar() {
     },
     [dock],
   )
-  const { claimWarmSession, sessions } = useAgentSessions({
-    ensureWarmSession: false,
-  })
+  const { claimWarmSession, sessions } = useAgentSessions()
   const workspace = useWorkspaceStore((state) => state.workspace)
   const clearWorkspace = useWorkspaceStore((state) => state.clearWorkspace)
   const user = useAuthStore((state) => state.user)

@@ -1,7 +1,6 @@
 'use client'
 
 import {
-  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -16,7 +15,6 @@ import type { UIMessage } from 'ai'
 import { create } from 'zustand'
 import { useChatStore } from '@garden/core/chat'
 import {
-  isPendingFirstTurn,
   useAgentSessions,
   type AgentChatSession,
 } from './use-agent-chat-sessions'
@@ -40,8 +38,6 @@ type PendingTurn = {
   title: string | null
   preview: string
 }
-
-const MESSAGE_PRELOAD_LIMIT = 10
 
 type AgentChatApi = ReturnType<typeof useAgentChat<unknown, ChatUiMessage>>
 
@@ -134,9 +130,7 @@ export function useChatRuntime(sessionId: string) {
 }
 
 export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
-  const { sessions, updateSessionPreview, warmSession } = useAgentSessions({
-    ensureWarmSession: false,
-  })
+  const { sessions, updateSessionPreview } = useAgentSessions()
   const activeSessionId = useChatStore((state) => state.activeSessionId)
   const visibleChatSessionIds = useChatStore(
     (state) => state.visibleChatSessionIds,
@@ -147,59 +141,34 @@ export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
   )
   const runtimeSessions = useMemo(
     () =>
-      sessions.filter((session) => !session.archivedAt && !session.optimistic),
-    [sessions],
+      sessions.filter(
+        (session) =>
+          !session.archivedAt &&
+          !session.optimistic &&
+          (session.id === activeSessionId ||
+            visibleChatSessionIdSet.has(session.id)),
+      ),
+    [activeSessionId, sessions, visibleChatSessionIdSet],
   )
-  const messagePreloadOrder = useMemo(() => {
-    const orderedSessionIds = new Map<string, number>()
-    sessions
-      .filter(
-        (session) => !session.archivedAt && !isPendingFirstTurn(session),
-      )
-      .slice(0, MESSAGE_PRELOAD_LIMIT)
-      .forEach((session, index) => {
-        orderedSessionIds.set(session.id, index)
-      })
-    return orderedSessionIds
-  }, [sessions])
 
   return (
     <>
-      {runtimeSessions.map((session) => {
-        const preloadIndex = messagePreloadOrder.get(session.id)
-        const isFocusedSession = session.id === activeSessionId
-        const isVisibleSession = visibleChatSessionIdSet.has(session.id)
-        return (
-          <Suspense fallback={null} key={session.id}>
-            <ChatRuntimeConnection
-              hydrateMessages={isFocusedSession || isVisibleSession}
-              preloadMessages={preloadIndex !== undefined}
-              prewarmRuntime={
-                isFocusedSession ||
-                isVisibleSession ||
-                session.id === warmSession?.id
-              }
-              session={session}
-              updateSessionPreview={updateSessionPreview}
-            />
-          </Suspense>
-        )
-      })}
+      {runtimeSessions.map((session) => (
+        <ChatRuntimeConnection
+          key={session.id}
+          session={session}
+          updateSessionPreview={updateSessionPreview}
+        />
+      ))}
       {children}
     </>
   )
 }
 
 function ChatRuntimeConnection({
-  hydrateMessages,
-  preloadMessages,
-  prewarmRuntime,
   session,
   updateSessionPreview,
 }: {
-  hydrateMessages: boolean
-  preloadMessages: boolean
-  prewarmRuntime: boolean
   session: AgentChatSession
   updateSessionPreview: ReturnType<
     typeof useAgentSessions
@@ -216,54 +185,6 @@ function ChatRuntimeConnection({
     name: session.hostName,
     sub: [{ agent: 'ChatSubAgent', name: session.runtime_key }],
   })
-
-  const prepareRuntime = useCallback(
-    async (cancelled: () => boolean) => {
-      await agent.ready
-      if (cancelled()) return null
-      return (await agent.stub.prepareRuntime()) as
-        | { ok: true }
-        | { ok: false; error: string }
-    },
-    [agent],
-  )
-
-  useEffect(() => {
-    if (!prewarmRuntime) return
-
-    let cancelled = false
-
-    const runPrepareRuntime = () => {
-      void Result.tryPromise(() => prepareRuntime(() => cancelled)).then(
-        (result) => {
-          if (cancelled) return
-          if (Result.isError(result)) {
-            console.warn('[chat.runtime] runtime prewarm failed', result.error)
-            return
-          }
-          if (result.value && !result.value.ok) {
-            console.warn(
-              '[chat.runtime] runtime prewarm failed',
-              result.value.error,
-            )
-          }
-        },
-      )
-    }
-
-    const onConnectionsChanged = () => runPrepareRuntime()
-
-    runPrepareRuntime()
-    window.addEventListener('garden:connections-changed', onConnectionsChanged)
-
-    return () => {
-      cancelled = true
-      window.removeEventListener(
-        'garden:connections-changed',
-        onConnectionsChanged,
-      )
-    }
-  }, [prepareRuntime, prewarmRuntime, session.id])
 
   const markTurnError = useCallback(
     (err: Error) => {
@@ -286,15 +207,6 @@ function ChatRuntimeConnection({
     [session.id, updateSessionPreview],
   )
 
-  const getInitialMessages = useMemo(() => {
-    if (!hydrateMessages && !preloadMessages) return null
-
-    return async () => {
-      await agent.ready
-      return (await agent.stub.loadMessages()) as ChatUiMessage[]
-    }
-  }, [agent, hydrateMessages, preloadMessages])
-
   const {
     addToolApprovalResponse,
     addToolOutput,
@@ -308,7 +220,7 @@ function ChatRuntimeConnection({
     error,
   } = useAgentChat<unknown, ChatUiMessage>({
     agent,
-    getInitialMessages,
+    getInitialMessages: null,
     onFinish: ({ message }) => {
       const pending = pendingTurnRef.current
       pendingTurnRef.current = null
@@ -329,8 +241,6 @@ function ChatRuntimeConnection({
     onError: markTurnError,
     experimental_throttle: 50,
   })
-  const registerRuntimeBeforePaint = hydrateMessages || prewarmRuntime
-
   useEffect(() => {
     const onAgentMessage = (event: MessageEvent) => {
       if (typeof event.data !== 'string') return
@@ -427,14 +337,8 @@ function ChatRuntimeConnection({
   )
 
   useLayoutEffect(() => {
-    if (!registerRuntimeBeforePaint) return
     setRuntime(session.id, runtime)
-  }, [registerRuntimeBeforePaint, runtime, session.id, setRuntime])
-
-  useEffect(() => {
-    if (registerRuntimeBeforePaint) return
-    setRuntime(session.id, runtime)
-  }, [registerRuntimeBeforePaint, runtime, session.id, setRuntime])
+  }, [runtime, session.id, setRuntime])
 
   useEffect(
     () => () => {

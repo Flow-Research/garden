@@ -34,6 +34,10 @@ export function sortSessions(sessions: AgentChatSession[]) {
 
 export function isPendingFirstTurn(session: AgentChatSession) {
   return (
+    session.runtime_kind === 'chat' &&
+    !session.primary_issue_id &&
+    !session.primaryIssue &&
+    session.runtime_key === session.id &&
     session.title.trim().toLowerCase() === NEW_SESSION_TITLE.toLowerCase() &&
     session.lastMessage.trim().length === 0
   )

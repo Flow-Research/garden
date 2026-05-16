@@ -535,9 +535,7 @@ export function EnvironmentDebugDrawer({
   const [refreshingPrompt, setRefreshingPrompt] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
   const workspaceId = useWorkspaceStore((state) => state.workspace?.id ?? null)
-  const { sessions: uiSessions } = useAgentSessions({
-    ensureWarmSession: false,
-  })
+  const { sessions: uiSessions } = useAgentSessions()
 
   const state = useDebugStream({ open, workspaceId, sessionId })
 

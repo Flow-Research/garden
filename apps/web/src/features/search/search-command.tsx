@@ -168,9 +168,7 @@ export function SearchCommand() {
       dock?.openPanel(...args) ?? null,
     [dock],
   )
-  const { claimWarmSession } = useAgentSessions({
-    ensureWarmSession: false,
-  })
+  const { claimWarmSession } = useAgentSessions()
   const openSettingsDialog = useSettingsDialogStore((s) => s.openSettings)
   const open = useSearchStore((s) => s.open)
   const setOpen = useSearchStore((s) => s.setOpen)

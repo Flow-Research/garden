@@ -1523,23 +1523,35 @@ export function WorkspaceDockProvider({
   const writePanelToQueryState = useCallback(
     (nextPanel: WorkspacePanelInput | null) => {
       const queryPanel = nextPanel?.kind === 'blank' ? null : nextPanel
-      const chatId = queryPanel?.kind === 'chat' ? queryPanel.entityId : null
-      const queryPanelTitle =
-        queryPanel?.kind === 'chat' ? null : (queryPanel?.title ?? null)
+      const isFreshChatPanel =
+        queryPanel?.kind === 'chat' &&
+        queryPanel.title.trim().toLowerCase() === 'new chat'
+      const chatId =
+        queryPanel?.kind === 'chat' && !isFreshChatPanel
+          ? (queryPanel.entityId ?? null)
+          : null
+      const nextQuery = chatId
+        ? {
+            chat: chatId,
+            panel: null,
+            panelTitle: null,
+            panelEntityId: null,
+          }
+        : {
+            chat: null,
+            panel: queryPanel?.kind ?? null,
+            panelTitle: queryPanel?.title ?? null,
+            panelEntityId: queryPanel?.entityId ?? null,
+          }
       if (
-        chat === chatId &&
-        panel === (queryPanel?.kind ?? null) &&
-        panelTitle === queryPanelTitle &&
-        panelEntityId === (queryPanel?.entityId ?? null)
+        chat === nextQuery.chat &&
+        panel === nextQuery.panel &&
+        panelTitle === nextQuery.panelTitle &&
+        panelEntityId === nextQuery.panelEntityId
       ) {
         return
       }
-      void setPanelQueryState({
-        chat: chatId ?? null,
-        panel: queryPanel?.kind ?? null,
-        panelTitle: queryPanelTitle,
-        panelEntityId: queryPanel?.entityId ?? null,
-      })
+      void setPanelQueryState(nextQuery)
     },
     [chat, panel, panelEntityId, panelTitle, setPanelQueryState],
   )
@@ -1967,7 +1979,13 @@ export function WorkspaceDockProvider({
       }
 
       const searchPanel = requestedSearchPanel
-      const storedLayout = readStoredDockviewLayout(storageKey)
+      // Explicit URL state is a navigation command, not a suggestion layered on
+      // top of yesterday's dock. Restoring saved layout here can resurrect old
+      // chat panels and let them fight the requested session. When URL names a
+      // panel, start from that panel only; otherwise restore the user's layout.
+      const storedLayout = searchPanel
+        ? null
+        : readStoredDockviewLayout(storageKey)
       const savedLayout = activatePanelInStoredLayout(storedLayout, searchPanel)
       const hasSavedLayout = Boolean(savedLayout)
       if (savedLayout) {

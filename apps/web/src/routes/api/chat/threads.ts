@@ -64,11 +64,29 @@ export const Route = createFileRoute('/api/chat/threads')({
           .orderBy(desc(schema.chatThread.updatedAt))
 
         return Response.json(
-          rows.flatMap((row) =>
-            row.hostName
-              ? [toChatThread(row.thread, row.hostName, row.primaryIssue)]
-              : [],
-          ),
+          rows.flatMap((row) => {
+            if (!row.hostName) return []
+            const thread = toChatThread(
+              row.thread,
+              row.hostName,
+              row.primaryIssue,
+            )
+            if (
+              thread.title.trim().toLowerCase() !==
+              NEW_CHAT_TITLE.toLowerCase()
+            ) {
+              return [thread]
+            }
+            if (!thread.primary_issue_id && thread.runtime_kind === 'chat') {
+              return [thread]
+            }
+            return [
+              {
+                ...thread,
+                title: row.primaryIssue?.title ?? 'Issue chat',
+              },
+            ]
+          }),
         )
       },
       POST: async ({ request }) => {

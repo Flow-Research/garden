@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Result } from 'better-result'
 import { toast } from 'sonner'
@@ -29,10 +29,7 @@ function isWarmSession(session: AgentChatSession) {
   )
 }
 
-export function useAgentSessions(
-  options: { ensureWarmSession?: boolean } = {},
-) {
-  const ensureWarmSession = options.ensureWarmSession ?? true
+export function useAgentSessions() {
   const qc = useQueryClient()
   const user = useAuthStore((state) => state.user)
   const workspace = useWorkspaceStore((state) => state.workspace)
@@ -43,7 +40,6 @@ export function useAgentSessions(
   // gets wiped by refetch — this set survives).
   const erroredSessionIds = useChatStore((state) => state.erroredSessionIds)
   const workspaceId = workspace?.id ?? null
-  const warmCreateInFlightRef = useRef(false)
 
   const queryKey = useMemo(
     () => ['chat-threads', workspaceId, user?.id ?? null] as const,
@@ -276,37 +272,6 @@ export function useAgentSessions(
     if (warmSession) return warmSession
     return createSession.mutateAsync(NEW_SESSION_TITLE)
   }, [createSession, warmSession])
-
-  useEffect(() => {
-    if (
-      !ensureWarmSession ||
-      !workspaceId ||
-      !user?.id ||
-      sessionsQuery.status !== 'success' ||
-      warmSession ||
-      createSession.isPending ||
-      warmCreateInFlightRef.current
-    ) {
-      return
-    }
-
-    warmCreateInFlightRef.current = true
-    void Result.tryPromise(() =>
-      createSession.mutateAsync(NEW_SESSION_TITLE),
-    ).then((result) => {
-      warmCreateInFlightRef.current = false
-      if (Result.isError(result)) {
-        console.warn('[chat.sessions] failed to create warm chat', result.error)
-      }
-    })
-  }, [
-    createSession,
-    ensureWarmSession,
-    sessionsQuery.status,
-    user?.id,
-    warmSession,
-    workspaceId,
-  ])
 
   return {
     createSession,
