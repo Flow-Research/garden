@@ -1652,7 +1652,7 @@ export function createChatSubAgentTools({
 
     generateDocx: tool({
       description:
-        'Generate a Word (.docx) document from structured content. Use when the user asks to draft, create, write, or produce a document. Section content supports **bold** and *italic* inline markdown plus simple "- " or "* " bullet lines. Returns a first-class document artifact.',
+        'Generate a new Word (.docx) document from structured content. Use when the user asks to draft, create, write, or produce a new document. Do not use to update an existing document unless the user explicitly asks for a fresh replacement; use editDocument tracked changes for existing .docx updates. Section content supports **bold** and *italic* inline markdown plus simple "- " or "* " bullet lines. Returns a first-class document artifact.',
       inputSchema: z.object({
         title: z
           .string()
@@ -1723,7 +1723,7 @@ export function createChatSubAgentTools({
 
     editDocument: tool({
       description:
-        "Propose tracked changes to a .docx document. Use readDocument first. Each edit must be a precise substitution with context_before and context_after so it can be located unambiguously. Returns edit annotations and a new document artifact version.",
+        "Update an existing .docx document by proposing tracked find/replace changes. Use this for requests like update this document, remove a duplicate title, add research to a section, rewrite a paragraph, or replace text in the current doc. Use readDocument first. Each edit must be a precise substitution with context_before and context_after so it can be located unambiguously. Returns edit annotations and a new document artifact version.",
       inputSchema: z.object({
         documentId: z
           .string()
