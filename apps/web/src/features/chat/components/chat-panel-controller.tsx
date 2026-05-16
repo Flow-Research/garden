@@ -68,11 +68,7 @@ import type {
   StructuredQuestionAnswers,
 } from '@garden/core/chat'
 import { isToolUIPart, getToolName } from 'ai'
-import {
-  getToolCallId,
-  getToolInput,
-  getToolPartState,
-} from '@cloudflare/ai-chat/react'
+import { getToolCallId, getToolInput } from '@cloudflare/ai-chat/react'
 import { ChatTimeline } from './chat-timeline'
 import {
   FileText,
@@ -244,7 +240,6 @@ export function ConnectedChatPanelInteraction({
   const [optimisticPendingTurn, setOptimisticPendingTurn] = useState(false)
   const lastSentTextRef = useRef<string | null>(null)
   const pendingMessageCountRef = useRef<number | null>(null)
-  const repairedToolCallIdsRef = useRef(new Set<string>())
   const {
     addToolApprovalResponse,
     addToolOutput,
@@ -267,12 +262,10 @@ export function ConnectedChatPanelInteraction({
     setResolvingToolCallIds([])
     lastSentTextRef.current = null
     pendingMessageCountRef.current = null
-    repairedToolCallIdsRef.current.clear()
   }, [sessionId])
 
   useEffect(() => {
-    const normalized = normalizeStatus(status)
-    if (normalized !== 'idle') {
+    if (normalizeStatus(status) !== 'idle') {
       setOptimisticPendingTurn(false)
       pendingMessageCountRef.current = null
       return
@@ -284,34 +277,7 @@ export function ConnectedChatPanelInteraction({
       setOptimisticPendingTurn(false)
       pendingMessageCountRef.current = null
     }
-
-    if (!addToolOutput) return
-    const latestAssistant = [...messages]
-      .reverse()
-      .find((message) => message.role === 'assistant')
-    if (!latestAssistant) return
-
-    for (const part of latestAssistant.parts) {
-      if (!isToolUIPart(part)) continue
-      const state = String(getToolPartState(part))
-      if (state === 'output-available' || state === 'output-error') continue
-      if (state === 'waiting-approval') continue
-
-      const toolName = getToolName(part)
-      if (toolName === 'askUserInput' || toolName === 'propose_agent') continue
-
-      const toolCallId = getToolCallId(part)
-      if (repairedToolCallIdsRef.current.has(toolCallId)) continue
-      repairedToolCallIdsRef.current.add(toolCallId)
-      addToolOutput({
-        toolCallId,
-        toolName,
-        state: 'output-error',
-        errorText: `${toolName} was interrupted before it returned a result. Continue without this tool result or retry the request.`,
-        output: null,
-      })
-    }
-  }, [addToolOutput, messages, status])
+  }, [messages.length, status])
 
   const handleSend = async ({
     text,
