@@ -542,6 +542,76 @@ describe('RuntimeMcpController GitHub tools', () => {
     ).toContain('External github write tool')
   })
 
+  it('returns connector tool transport failures as tool output instead of throwing', async () => {
+    const toolKey = buildMcpAiToolKey('exa-search', 'web_search_exa')
+    const controller = new RuntimeMcpController({
+      name: 'chat:thread-1',
+      env: {
+        BETTER_AUTH_SECRET: 'secret',
+        BETTER_AUTH_URL: 'https://garden.test',
+        DATABASE_URL: 'postgres://garden.test/db',
+      },
+      ctx: { storage: { sql: createSqlStorageStub() } },
+      mcp: {
+        getAITools: () =>
+          ({
+            [toolKey]: {
+              description: 'Search with Exa.',
+              inputSchema: { type: 'object' },
+              execute: async () => {
+                return await Promise.reject(
+                  new Error(
+                    'Request timeout: No response received within 120000ms',
+                  ),
+                )
+              },
+            },
+          }) as unknown as ToolSet,
+        listTools: () => [
+          {
+            serverId: 'exa-search',
+            name: 'web_search_exa',
+            description: 'Search with Exa.',
+            inputSchema: { type: 'object' },
+          },
+        ],
+        listServers: () => [],
+        waitForConnections: async () => undefined,
+        discoverIfConnected: async () => ({ success: true }),
+      },
+      connectRpcMcpServer: async () => ({ state: 'connected' }),
+      removeMcpServer: async () => undefined,
+      resolveRuntimeIdentity: async () =>
+        Result.ok({
+          threadId: 'thread-1',
+          workspaceId: 'workspace-1',
+          userId: 'user-1',
+          agentId: 'agent-1',
+        }),
+    })
+
+    const aiTools = controller.wrapGetAITools(() =>
+      ({
+        [toolKey]: {
+          description: 'Search with Exa.',
+          inputSchema: { type: 'object' },
+          execute: async () => {
+            return await Promise.reject(
+              new Error('Request timeout: No response received within 120000ms'),
+            )
+          },
+        },
+      }) as unknown as ToolSet,
+    )
+    await expect(
+      aiTools[toolKey]?.execute?.({} as never, {} as never),
+    ).resolves.toEqual({
+      error: true,
+      message:
+        'exa-search.web_search_exa failed: Request timeout: No response received within 120000ms',
+    })
+  })
+
   it('replaces restored http connector servers before checking warm state', async () => {
     const now = Date.UTC(2026, 4, 9, 14, 30, 0)
     const servers: Array<{ id: string; server_url?: string }> = [

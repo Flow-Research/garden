@@ -246,8 +246,37 @@ export class RuntimeMcpController {
         }
 
         const baseNeedsApproval = rawTool.needsApproval;
+        const baseExecute = rawTool.execute;
         acc[toolKey] = {
           ...rawTool,
+          ...(baseExecute
+            ? {
+                execute: async (
+                  ...args: Parameters<NonNullable<typeof baseExecute>>
+                ) => {
+                  const result = await Result.tryPromise({
+                    try: async () => await baseExecute(...args),
+                    catch: (cause) =>
+                      cause instanceof Error
+                        ? cause
+                        : new Error(String(cause)),
+                  });
+
+                  if (result.isOk()) return result.value;
+
+                  console.warn('[agent-runtime] MCP tool call failed', {
+                    connectorId: tool.serverId,
+                    toolName: tool.name,
+                    error: result.error.message,
+                  });
+
+                  return {
+                    error: true,
+                    message: `${tool.serverId}.${tool.name} failed: ${result.error.message}`,
+                  };
+                },
+              }
+            : {}),
           description: guardedMcpToolDescription({
             connectorId: tool.serverId,
             toolName: tool.name,
