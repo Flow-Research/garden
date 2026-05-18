@@ -10,8 +10,8 @@ import {
 } from 'react'
 import { Result } from 'better-result'
 import { useAgent } from 'agents/react'
-import { useAgentChat } from '@cloudflare/ai-chat/react'
-import type { UIMessage } from 'ai'
+import { getToolPartState, useAgentChat } from '@cloudflare/ai-chat/react'
+import { isToolUIPart, type UIMessage } from 'ai'
 import { create } from 'zustand'
 import { useChatStore } from '@garden/core/chat'
 import {
@@ -39,6 +39,10 @@ type PendingTurn = {
   preview: string
 }
 
+type ChatContinuationResult =
+  | { ok: true; status: 'completed' | 'skipped' | 'aborted' }
+  | { ok: false; error: string }
+
 type AgentChatApi = ReturnType<typeof useAgentChat<unknown, ChatUiMessage>>
 
 export type ChatRuntime = {
@@ -47,6 +51,11 @@ export type ChatRuntime = {
   error: AgentChatApi['error']
   isServerStreaming: AgentChatApi['isServerStreaming']
   isStreaming: AgentChatApi['isStreaming']
+  continueAfterGardenApproval: (input: {
+    approved: boolean
+    pendingAgentId?: string | null
+    permissionRequestId: string
+  }) => Promise<ChatContinuationResult>
   markTurnError: (err: Error) => void
   messages: ChatUiMessage[]
   sendMessage: AgentChatApi['sendMessage']
@@ -125,6 +134,24 @@ function getAgentStreamEvent(data: unknown) {
   }
 }
 
+function getLatestAssistantMessage(messages: ChatUiMessage[]) {
+  return [...messages].reverse().find((message) => message.role === 'assistant')
+}
+
+function hasInterruptedToolCall(message: ChatUiMessage | undefined) {
+  if (!message) return false
+
+  return message.parts.some((part) => {
+    if (!isToolUIPart(part)) return false
+    const state = String(getToolPartState(part))
+    return (
+      state !== 'output-available' &&
+      state !== 'output-error' &&
+      state !== 'waiting-approval'
+    )
+  })
+}
+
 export function useChatRuntime(sessionId: string) {
   return useChatRuntimeStore((state) => state.runtimes[sessionId] ?? null)
 }
@@ -176,6 +203,10 @@ function ChatRuntimeConnection({
 }) {
   const pendingTurnRef = useRef<PendingTurn | null>(null)
   const activeStreamIdsRef = useRef(new Set<string>())
+  const needsReconnectRecoveryRef = useRef(false)
+  const recoveringRef = useRef(false)
+  const recoveredAssistantIdsRef = useRef(new Set<string>())
+  const recoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const setRuntime = useChatRuntimeStore((state) => state.setRuntime)
   const removeRuntime = useChatRuntimeStore((state) => state.removeRuntime)
 
@@ -183,6 +214,13 @@ function ChatRuntimeConnection({
     agent: 'AgentDO',
     connectionTimeout: 30_000,
     name: session.hostName,
+    onClose: () => {
+      needsReconnectRecoveryRef.current = true
+    },
+    onError: (event) => {
+      needsReconnectRecoveryRef.current = true
+      console.warn('[chat.runtime] websocket connection error', event)
+    },
     sub: [{ agent: 'ChatSubAgent', name: session.runtime_key }],
   })
 
@@ -241,11 +279,76 @@ function ChatRuntimeConnection({
     onError: markTurnError,
     experimental_throttle: 50,
   })
+
+  const recoverInterruptedTurn = useCallback(() => {
+    if (!needsReconnectRecoveryRef.current) return
+    if (recoveringRef.current) return
+    if (isStreaming) return
+    if (status !== 'ready') return
+
+    const assistant = getLatestAssistantMessage(messages)
+    if (!assistant || !hasInterruptedToolCall(assistant)) return
+    const assistantId = assistant.id
+    if (recoveredAssistantIdsRef.current.has(assistantId)) return
+
+    recoveredAssistantIdsRef.current.add(assistantId)
+    recoveringRef.current = true
+    updateSessionPreview({
+      sessionId: session.id,
+      status: 'streaming',
+      unread: false,
+      updatedAt: new Date().toISOString(),
+    })
+
+    void Result.tryPromise(() =>
+      agent.call<ChatContinuationResult>('recoverInterruptedTurn'),
+    ).then((result) => {
+      recoveringRef.current = false
+      if (Result.isError(result)) {
+        recoveredAssistantIdsRef.current.delete(assistantId)
+        console.warn('[chat.runtime] reconnect recovery failed', result.error)
+        return
+      }
+      if (!result.value.ok) {
+        recoveredAssistantIdsRef.current.delete(assistantId)
+        console.warn(
+          '[chat.runtime] reconnect recovery skipped',
+          result.value.error,
+        )
+        return
+      }
+      needsReconnectRecoveryRef.current = false
+    })
+  }, [agent, isStreaming, messages, session.id, status, updateSessionPreview])
+
+  const scheduleReconnectRecovery = useCallback(() => {
+    if (recoveryTimerRef.current) {
+      clearTimeout(recoveryTimerRef.current)
+    }
+    recoveryTimerRef.current = setTimeout(() => {
+      recoveryTimerRef.current = null
+      recoverInterruptedTurn()
+    }, 250)
+  }, [recoverInterruptedTurn])
+
+  useEffect(() => {
+    recoverInterruptedTurn()
+  }, [recoverInterruptedTurn])
+
   useEffect(() => {
     const onAgentMessage = (event: MessageEvent) => {
       if (typeof event.data !== 'string') return
       const parsed = Result.try(() => JSON.parse(event.data) as unknown)
       if (Result.isError(parsed)) return
+      const sessionEvent = parsed.value as { phase?: unknown; type?: unknown }
+      if (
+        sessionEvent.type === 'cf_agent_session' &&
+        sessionEvent.phase === 'idle'
+      ) {
+        scheduleReconnectRecovery()
+        return
+      }
+
       const streamEvent = getAgentStreamEvent(parsed.value)
       if (!streamEvent) return
 
@@ -274,8 +377,12 @@ function ChatRuntimeConnection({
     return () => {
       agent.removeEventListener('message', onAgentMessage)
       activeStreamIdsRef.current.clear()
+      if (recoveryTimerRef.current) {
+        clearTimeout(recoveryTimerRef.current)
+        recoveryTimerRef.current = null
+      }
     }
-  }, [agent, setMessages])
+  }, [agent, scheduleReconnectRecovery, setMessages])
 
   const stopCurrentTurn = useCallback(async () => {
     const streamIds = [...activeStreamIdsRef.current]
@@ -313,6 +420,10 @@ function ChatRuntimeConnection({
       error,
       isServerStreaming,
       isStreaming,
+      continueAfterGardenApproval: async (input) =>
+        await agent.call<ChatContinuationResult>('continueAfterGardenApproval', [
+          input,
+        ]),
       markTurnError,
       messages,
       sendMessage,
@@ -328,6 +439,7 @@ function ChatRuntimeConnection({
       error,
       isServerStreaming,
       isStreaming,
+      agent,
       markTurnError,
       messages,
       sendMessage,

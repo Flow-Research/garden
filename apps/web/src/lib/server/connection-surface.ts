@@ -6,6 +6,7 @@ import {
   type RiskClass,
 } from '@garden/connectors/capabilities'
 import { desc } from 'drizzle-orm'
+import type { AvailableConnectorBinding } from '@garden/core/connectors/availability'
 import { schema } from './db'
 
 export type ConnectorStatus =
@@ -15,7 +16,6 @@ export type ConnectorStatus =
   | 'disconnected'
 
 type ConnectionRow = typeof schema.account.$inferSelect
-type GitHubInstallationRow = typeof schema.githubAppInstallation.$inferSelect
 type CapabilityRow = typeof schema.capability.$inferSelect
 type PermissionGrantRow = typeof schema.permissionGrant.$inferSelect
 type ToolCallAuditRow = typeof schema.toolCallAudit.$inferSelect
@@ -33,6 +33,9 @@ export type ConnectionSurfaceItem = {
   label: string
   description: string
   status: ConnectorStatus
+  authKind: AvailableConnectorBinding['authKind'] | null
+  accountLogin: string | null
+  repositorySelection: string | null
   scopes: string[]
   connectedAt: string | null
   toolCount: number
@@ -48,7 +51,7 @@ export type ConnectionSurfaceItem = {
 export function buildConnectionSurface(args: {
   agentIds: string[]
   connections: ConnectionRow[]
-  githubInstallations: GitHubInstallationRow[]
+  availableConnectors: AvailableConnectorBinding[]
   capabilities: CapabilityRow[]
   permissionGrants: PermissionGrantRow[]
   toolCallAudits: ToolCallAuditRow[]
@@ -56,7 +59,7 @@ export function buildConnectionSurface(args: {
   const {
     agentIds,
     connections,
-    githubInstallations,
+    availableConnectors,
     capabilities,
     permissionGrants,
     toolCallAudits,
@@ -106,8 +109,9 @@ export function buildConnectionSurface(args: {
     const connection = connections.find(
       (item) => item.connectorType === connector.id,
     )
-    const githubInstallation =
-      connector.id === 'github' ? githubInstallations[0] : null
+    const availableConnector = availableConnectors.find(
+      (item) => item.connectorId === connector.id,
+    )
     const dbTools = capabilitiesByConnector.get(connector.id) ?? []
     const tools = dbTools.map((tool) => ({
       name: tool.name,
@@ -142,12 +146,11 @@ export function buildConnectionSurface(args: {
     )
 
     const hasDiscoveredTools = dbTools.length > 0
-    const resolvedStatus: ConnectorStatus = githubInstallation
-      ? ((githubInstallation.status as ConnectorStatus | undefined) ??
-        'connected')
+    const resolvedStatus: ConnectorStatus = availableConnector
+      ? availableConnector.status
       : connection
         ? ((connection.status as ConnectorStatus | undefined) ?? 'connected')
-        : connector.oauth
+        : connector.oauth || connector.apiKey
           ? 'available'
           : hasDiscoveredTools
             ? 'connected'
@@ -158,13 +161,22 @@ export function buildConnectionSurface(args: {
       label: connector.label,
       description: connector.description,
       status: resolvedStatus,
-      scopes: githubInstallation
-        ? ['github-app-installation']
+      authKind: availableConnector?.authKind ?? null,
+      accountLogin: availableConnector?.accountLogin ?? null,
+      repositorySelection: availableConnector?.repositorySelection ?? null,
+      scopes: availableConnector
+        ? [
+            availableConnector.authKind,
+            ...(availableConnector.accountLogin
+              ? [`account:${availableConnector.accountLogin}`]
+              : []),
+            ...(availableConnector.repositorySelection
+              ? [`repository_selection:${availableConnector.repositorySelection}`]
+              : []),
+          ]
         : (connection?.scopes ?? []),
-      connectedAt: (githubInstallation?.createdAt ?? connection?.createdAt)
-        ? new Date(
-            githubInstallation?.createdAt ?? connection?.createdAt ?? new Date(),
-          ).toISOString()
+      connectedAt: connection?.createdAt
+        ? new Date(connection.createdAt).toISOString()
         : null,
       toolCount: tools.length,
       recentInvocations,

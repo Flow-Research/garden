@@ -11,6 +11,9 @@ const enableDevtools =
   process.env.VITE_ENABLE_DEVTOOLS === '1'
 const cloudflareConfigPath =
   process.env.CLOUDFLARE_WORKER_CONFIG_PATH || undefined
+const remoteBindings = process.env.CLOUDFLARE_VITE_REMOTE_BINDINGS !== '0'
+const enableMcpAuxiliaryWorker =
+  process.env.GARDEN_ENABLE_MCP_AUXILIARY_WORKER === '1'
 const baseLogger = createLogger()
 
 function isSandboxInfoLog(message: unknown) {
@@ -75,6 +78,14 @@ const config = defineConfig({
     cloudflare({
       viteEnvironment: { name: 'ssr' },
       configPath: cloudflareConfigPath,
+      ...(enableMcpAuxiliaryWorker
+        ? {
+            auxiliaryWorkers: [
+              { configPath: '../../workers/mcp-proxy/wrangler.jsonc' },
+            ],
+          }
+        : {}),
+      remoteBindings,
       persistState: {
         path:
           process.env.GARDEN_WRANGLER_STATE_PATH ??

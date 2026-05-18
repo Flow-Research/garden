@@ -357,6 +357,29 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   }
 
   @callable()
+  async runThreadFixtureTurn(
+    threadId: string,
+    input: { clear?: boolean; message: string },
+  ) {
+    await this.requireThreadAccess(threadId)
+    const thread = await this.subAgent(ChatSubAgent, threadId)
+    if (input.clear) thread.clearMessages()
+
+    const result = await thread.saveMessages([
+      {
+        id: crypto.randomUUID(),
+        role: 'user',
+        parts: [{ type: 'text', text: input.message }],
+      },
+    ])
+
+    return {
+      result,
+      messages: thread.getMessages(),
+    }
+  }
+
+  @callable()
   async uploadThreadDocument(
     threadId: string,
     input: { base64: string; filename: string; mediaType?: string | null },
@@ -781,6 +804,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override messageConcurrency: MessageConcurrency = 'merge'
+  override chatRecovery = true
   waitForMcpConnections = {
     timeout: mcpRuntimeConfig.connectionWaitTimeoutMs,
   }
@@ -949,6 +973,45 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   async pauseRuntime(reason: string): Promise<RuntimeOkPayload> {
     await this.pauseMcpRuntime(reason)
     return { ok: true }
+  }
+
+  async recoverInterruptedTurn() {
+    const stable = await this.waitUntilStable({ timeout: 5_000 })
+    if (!stable) {
+      return { ok: false, error: 'Chat turn is still active.' }
+    }
+
+    const result = await this.continueLastTurn({ recovery: 'client-reconnect' })
+
+    return { ok: true, status: result.status }
+  }
+
+  async continueAfterGardenApproval(input: {
+    approved: boolean
+    permissionRequestId: string
+    pendingAgentId?: string | null
+  }) {
+    const stable = await this.waitUntilStable({ timeout: 5_000 })
+    if (!stable) {
+      return { ok: false, error: 'Chat turn is still active.' }
+    }
+
+    const result = await this.saveMessages([
+      {
+        id: crypto.randomUUID(),
+        role: 'user',
+        parts: [
+          {
+            type: 'text',
+            text: input.approved
+              ? `The user approved the agent proposal ${input.permissionRequestId}. The pending agent${input.pendingAgentId ? ` (${input.pendingAgentId})` : ''} is now active. Continue from the approval and confirm the hire.`
+              : `The user denied the agent proposal ${input.permissionRequestId}. Continue from the denial and adapt without hiring that agent.`,
+          },
+        ],
+      },
+    ])
+
+    return { ok: true, status: result.status }
   }
 
   override async beforeTurn(ctx: TurnContext) {

@@ -1558,14 +1558,9 @@ export function WorkspaceDockProvider({
 
   const syncVisibleChatSessions = useCallback(
     (api: DockviewApi) => {
-      const visiblePanels =
-        api.hasMaximizedGroup() && api.activeGroup
-          ? [api.activeGroup.activePanel ?? api.activeGroup.panels[0]]
-          : api.groups.map((group) => group.activePanel ?? group.panels[0])
-      const visibleChatSessionIds = [
+      const openChatSessionIds = [
         ...new Set(
-          visiblePanels.flatMap((panel) => {
-            if (!panel) return []
+          api.panels.flatMap((panel) => {
             const params = getPanelParams(panel)
             return params.kind === 'chat' && params.entityId
               ? [params.entityId]
@@ -1573,7 +1568,7 @@ export function WorkspaceDockProvider({
           }),
         ),
       ]
-      setVisibleChatSessions(visibleChatSessionIds)
+      setVisibleChatSessions(openChatSessionIds)
     },
     [setVisibleChatSessions],
   )

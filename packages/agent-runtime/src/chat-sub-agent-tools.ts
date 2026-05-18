@@ -43,6 +43,7 @@ import {
   type DocumentToolContext,
 } from "./documents/document-tools";
 import { createProposeAgentTool } from "./agent-tools/propose-agent";
+import { listAvailableConnectorBindings } from "@garden/core/connectors/availability";
 import { createSandboxTools } from "./sandbox-tools";
 import {
   createIssue as createIssueService,
@@ -279,6 +280,9 @@ type WorkspaceInventoryToolResult = {
     description: string;
     connected: boolean;
     status: string | null;
+    account_login: string | null;
+    auth_kind: string | null;
+    repository_selection?: string | null;
     tools: Array<{
       name: string;
       risk_class: string;
@@ -1118,7 +1122,7 @@ async function listWorkspaceInventoryFromChat(
 
   const result = await Result.tryPromise<WorkspaceInventoryToolResult, string>({
     try: async () => {
-      const [agents, skills, assignedSkills, accounts, capabilityRows] =
+      const [agents, skills, assignedSkills, connectorBindings, capabilityRows] =
         await Promise.all([
           includeAgents
             ? db
@@ -1155,13 +1159,11 @@ async function listWorkspaceInventoryFromChat(
                 .where(eq(schema.agentSkill.agentId, identity.agentId))
             : [],
           includeConnectors
-            ? db
-                .select({
-                  connectorType: schema.account.connectorType,
-                  status: schema.account.status,
-                })
-                .from(schema.account)
-                .where(eq(schema.account.workspaceId, identity.workspaceId))
+            ? listAvailableConnectorBindings({
+                db,
+                userId: identity.ownerUserId,
+                workspaceId: identity.workspaceId,
+              })
             : [],
           includeConnectors
             ? db
@@ -1188,10 +1190,8 @@ async function listWorkspaceInventoryFromChat(
       const assignedSkillSlugs = new Set(
         assignedSkills.map((skill) => skill.slug),
       );
-      const accountByConnector = new Map(
-        accounts.flatMap((account) =>
-          account.connectorType ? [[account.connectorType, account]] : [],
-        ),
+      const connectorBindingById = new Map(
+        connectorBindings.map((binding) => [binding.connectorId, binding]),
       );
       const capabilitiesByConnector = new Map<
         string,
@@ -1220,7 +1220,7 @@ async function listWorkspaceInventoryFromChat(
       );
       const filteredConnectors = includeConnectors
         ? connectorRegistry.flatMap((connector) => {
-            const account = accountByConnector.get(connector.id);
+            const binding = connectorBindingById.get(connector.id);
             const syncedTools = capabilitiesByConnector.get(connector.id);
             const registryTools = Object.entries(connector.tools).map(
               ([name, toolConfig]) => ({
@@ -1243,7 +1243,7 @@ async function listWorkspaceInventoryFromChat(
               connector.id,
               connector.label,
               connector.description,
-              account?.status,
+              binding ? "connected" : null,
             );
             if (!connectorMatches && filteredTools.length === 0) return [];
 
@@ -1252,8 +1252,13 @@ async function listWorkspaceInventoryFromChat(
                 id: connector.id,
                 label: connector.label,
                 description: connector.description,
-                connected: Boolean(account),
-                status: account?.status ?? null,
+                connected: Boolean(binding),
+                status: binding ? "connected" : null,
+                account_login: binding?.accountLogin ?? null,
+                auth_kind: binding?.authKind ?? null,
+                ...(binding?.repositorySelection
+                  ? { repository_selection: binding.repositorySelection }
+                  : {}),
                 tools: filteredTools.slice(0, limit),
               },
             ];

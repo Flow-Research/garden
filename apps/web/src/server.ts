@@ -10,6 +10,7 @@ import {
 } from '@garden/agent-runtime'
 import { proxyToSandbox, Sandbox } from '@cloudflare/sandbox'
 import { Result } from 'better-result'
+import { eq, max } from 'drizzle-orm'
 import { createAuth } from '@/lib/auth'
 import type { AppEnv } from '@/lib/server/env'
 import { bindAppEnv } from '@/lib/server/env'
@@ -18,6 +19,9 @@ import {
   requireAgentAccess,
 } from '@/lib/server/agent-do-router'
 import { reconcile } from '@/lib/server/issue-run-reconciler'
+import { ensureAgentRow } from '@/lib/server/chat-agents'
+import { getDb, schema } from '@/lib/server/db'
+import { disposeRpcResult } from '@garden/core/platform/rpc'
 
 export { AgentDO }
 export { AutomationRunSubAgent }
@@ -99,6 +103,145 @@ async function routeAgentDoRequest(request: Request, env: ServerEnv) {
   return await agent.fetch(routedRequest)
 }
 
+async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
+  if (request.method !== 'POST') return new Response('Not found', { status: 404 })
+  if (request.headers.get('x-garden-internal-secret') !== env.BETTER_AUTH_SECRET) {
+    return new Response('Unauthorized', { status: 401 })
+  }
+
+  const parsed = await request.json().then(
+    (value) => ({ ok: true as const, value }),
+    (cause: unknown) => ({
+      ok: false as const,
+      error: cause instanceof Error ? cause.message : 'Invalid JSON',
+    }),
+  )
+  if (!parsed.ok) return new Response(parsed.error, { status: 400 })
+
+  const body = parsed.value as {
+    message?: unknown
+    mode?: unknown
+    target?: unknown
+    userId?: unknown
+    workspaceId?: unknown
+  }
+  const target =
+    body.target === 'issue-run' || body.target === 'automation-run'
+      ? body.target
+      : 'chat'
+  const workspaceId = typeof body.workspaceId === 'string' ? body.workspaceId : null
+  const userId = typeof body.userId === 'string' ? body.userId : null
+  if (!workspaceId || !userId) {
+    return new Response('workspaceId and userId are required', { status: 400 })
+  }
+
+  const db = getDb(env)
+  const agent = await ensureAgentRow({ workspaceId, ownerUserId: userId })
+  if (!agent.hostName) return new Response('Agent hostName is missing', { status: 400 })
+
+  const stub = await getAgentByName(env.AgentDO, agent.hostName)
+  if (target === 'chat') {
+    const threadId = crypto.randomUUID()
+    await db.insert(schema.chatThread).values({
+      id: threadId,
+      workspaceId,
+      ownerUserId: userId,
+      agentId: agent.id,
+      runtimeKind: 'chat',
+      runtimeKey: threadId,
+      title: '[fixture] live chat agent',
+    })
+    await disposeRpcResult(await stub.ensureThread(threadId))
+    const tools = await disposeRpcResult(await stub.debugThreadTools(threadId))
+    const prompt = await disposeRpcResult(await stub.debugThreadPrompt(threadId))
+    const toolNames = tools.inventory.map((tool) => tool.key)
+    const base = {
+      ok: true,
+      target,
+      agentId: agent.id,
+      hostName: agent.hostName,
+      threadId,
+      hasGithubRepoSearchTool: toolNames.includes('tool_github_search_repositories'),
+      hasGithubRoutingPrompt: prompt.prompt.includes('search_repositories tool'),
+    }
+    if (body.mode === 'inspect') return Response.json({ ...base, toolNames })
+    const message = typeof body.message === 'string' ? body.message : null
+    if (!message) return new Response('message is required unless mode=inspect', { status: 400 })
+    const turn = await disposeRpcResult(
+      await stub.runThreadFixtureTurn(threadId, { clear: true, message }),
+    )
+    return Response.json({ ...base, turn })
+  }
+
+  if (target === 'issue-run') {
+    const [{ number: maxNumber }] = await db
+      .select({ number: max(schema.issue.number) })
+      .from(schema.issue)
+      .where(eq(schema.issue.workspaceId, workspaceId))
+    const issueId = crypto.randomUUID()
+    const runId = crypto.randomUUID()
+    await db.insert(schema.issue).values({
+      id: issueId,
+      workspaceId,
+      number: (maxNumber ?? 0) + 1,
+      title: '[fixture] issue run',
+      description: typeof body.message === 'string' ? body.message : 'Fixture issue run.',
+      status: 'backlog',
+      priority: 'medium',
+      assigneeType: 'agent',
+      assigneeId: agent.id,
+      createdBy: userId,
+      activeRunId: runId,
+    })
+    await db.insert(schema.issueRun).values({
+      id: runId,
+      workspaceId,
+      issueId,
+      agentId: agent.id,
+      hostName: agent.hostName,
+      status: 'queued',
+      triggerSource: 'manual',
+    })
+    const base = { ok: true, target, agentId: agent.id, hostName: agent.hostName, issueId, runId }
+    if (body.mode === 'inspect') return Response.json(base)
+    const turn = await disposeRpcResult(
+      await stub.executeRunTurn({ issueId, runId, mode: 'start' }),
+    )
+    return Response.json({ ...base, turn })
+  }
+
+  const automationId = crypto.randomUUID()
+  const runId = crypto.randomUUID()
+  await db.insert(schema.automation).values({
+    id: automationId,
+    workspaceId,
+    title: '[fixture] automation run',
+    description: typeof body.message === 'string' ? body.message : 'Fixture automation run.',
+    assigneeAgentId: agent.id,
+    priority: 'medium',
+    status: 'active',
+    concurrencyPolicy: 'skip',
+    createdBy: userId,
+    systemPrompt: typeof body.message === 'string' ? body.message : 'Inspect runtime and report readiness.',
+  })
+  await db.insert(schema.automationRun).values({
+    id: runId,
+    workspaceId,
+    automationId,
+    source: 'manual',
+    status: 'pending',
+    agentId: agent.id,
+    hostName: agent.hostName,
+    triggerPayload: {},
+  })
+  const base = { ok: true, target, agentId: agent.id, hostName: agent.hostName, automationId, runId }
+  if (body.mode === 'inspect') return Response.json(base)
+  const turn = await disposeRpcResult(
+    await stub.executeAutomationRunTurn({ runId, mode: 'start' }),
+  )
+  return Response.json({ ...base, turn })
+}
+
 async function authorizeAgentRequest(request: Request, env: ServerEnv) {
   const agentRuntimeName = getAgentRuntimeNameFromRequest(request)
   if (!agentRuntimeName) {
@@ -159,6 +302,10 @@ export default {
     if (sandboxResponse) return sandboxResponse
 
     const url = new URL(request.url)
+
+    if (url.pathname === '/api/dev/chat-agent-fixture') {
+      return await handleChatAgentFixtureRequest(request, env)
+    }
 
     if (url.pathname.startsWith('/agents/')) {
       const agentAuth = await authorizeAgentRequest(request, env)

@@ -22,6 +22,9 @@ export type ConnectionItem = {
   label: string
   description: string
   status: ConnectorStatus
+  authKind: 'oauth' | 'github_app' | 'api_key' | 'none' | null
+  accountLogin: string | null
+  repositorySelection: string | null
   scopes: string[]
   connectedAt: string | null
   toolCount: number
@@ -60,8 +63,12 @@ export type ConnectionActivityResponse = {
 
 export type ConnectionAction = 'disconnect' | 'resync'
 
-export function listConnections(): Promise<ConnectionsSnapshot> {
-  return getApiTransport().request('/api/connections')
+export function listConnections(options?: {
+  summary?: boolean
+}): Promise<ConnectionsSnapshot> {
+  return getApiTransport().request(
+    options?.summary ? '/api/connections?summary=1' : '/api/connections',
+  )
 }
 
 export function mutateConnection(

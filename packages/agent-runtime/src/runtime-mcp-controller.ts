@@ -3,7 +3,7 @@ import type { ModelMessage, ToolSet } from "ai";
 import { Result, TaggedError, type Result as ResultValue } from "better-result";
 import { and, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-serverless";
-import { connectorRegistry, getConnectorById } from "@garden/connectors";
+import { getConnectorById } from "@garden/connectors";
 import {
   buildMcpAiToolKey,
   canonicalJsonString,
@@ -18,6 +18,7 @@ import {
   type ActiveConnectorBinding,
   type StoredConnectorServerRow,
 } from "./mcp-connectors";
+import { listAvailableConnectorBindings } from "@garden/core/connectors/availability";
 import { mcpRuntimeConfig } from "./mcp-runtime-config";
 
 export { canonicalJsonString } from "@garden/connectors/capabilities";
@@ -707,114 +708,28 @@ export class RuntimeMcpController {
   }
 
   private async listActiveConnectorBindings(identity: ThreadRuntimeIdentity) {
-    const db = this.getDb();
-    const oauthBindingsResult = await Result.tryPromise({
+    const result = await Result.tryPromise({
       try: async () =>
-        db
-          .select({
-            accountId: schema.account.id,
-            connectorId: schema.account.connectorType,
-          })
-          .from(schema.account)
-          .where(
-            and(
-              eq(schema.account.workspaceId, identity.workspaceId),
-              eq(schema.account.userId, identity.userId),
-              eq(schema.account.status, "connected"),
-            ),
-          ),
+        await listAvailableConnectorBindings({
+          db: this.getDb(),
+          getEnvVar: (name) => {
+            const value = (this.host.env as Record<string, unknown>)[name];
+            return typeof value === "string" ? value : undefined;
+          },
+          userId: identity.userId,
+          workspaceId: identity.workspaceId,
+        }),
       catch: (cause) =>
         new RuntimeMcpError({
           code: "database_failed",
           message:
             cause instanceof Error
               ? cause.message
-              : "Failed to load connector accounts for chat runtime",
+              : "Failed to load available connector bindings for chat runtime",
         }),
     });
-    if (oauthBindingsResult.isErr()) return oauthBindingsResult;
 
-    const githubInstallationsResult = await Result.tryPromise({
-      try: async () =>
-        db
-          .select({ id: schema.githubAppInstallation.id })
-          .from(schema.githubAppInstallation)
-          .where(
-            and(
-              eq(
-                schema.githubAppInstallation.workspaceId,
-                identity.workspaceId,
-              ),
-              eq(schema.githubAppInstallation.status, "connected"),
-            ),
-          )
-          .limit(1),
-      catch: (cause) =>
-        new RuntimeMcpError({
-          code: "database_failed",
-          message:
-            cause instanceof Error
-              ? cause.message
-              : "Failed to load GitHub App installation for chat runtime",
-        }),
-    });
-    if (githubInstallationsResult.isErr()) return githubInstallationsResult;
-
-    const oauthBindings = oauthBindingsResult.value.flatMap((row) => {
-      const connectorId = row.connectorId?.trim();
-      const connector = connectorId ? getConnectorById(connectorId) : undefined;
-      if (!connectorId || !connector?.oauth) {
-        return [];
-      }
-
-      return [
-        {
-          connectorId,
-          accountId: row.accountId,
-        } satisfies ActiveConnectorBinding,
-      ];
-    });
-
-    const githubBindings =
-      githubInstallationsResult.value.length > 0
-        ? [
-            {
-              connectorId: "github",
-              accountId: null,
-            } satisfies ActiveConnectorBinding,
-          ]
-        : [];
-
-    const runtimeEnv = this.host.env as Record<string, string | undefined>;
-    const nonOAuthBindings = connectorRegistry.flatMap((connector) => {
-      if (!connector.oauth && !connector.apiKey) {
-        return [
-          {
-            connectorId: connector.id,
-            accountId: null,
-          } satisfies ActiveConnectorBinding,
-        ];
-      }
-
-      const apiKey = connector.apiKey
-        ? runtimeEnv[connector.apiKey.envVar]?.trim()
-        : undefined;
-
-      return connector.apiKey && apiKey
-        ? [
-            {
-              connectorId: connector.id,
-              accountId: null,
-            } satisfies ActiveConnectorBinding,
-          ]
-        : [];
-    });
-
-    return Result.ok([
-      ...oauthBindings,
-      ...githubBindings,
-      ...nonOAuthBindings,
-    ]);
+    return result;
   }
 
   private buildConnectorToolsSignature(connectorId: string) {

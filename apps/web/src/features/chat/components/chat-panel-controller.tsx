@@ -443,25 +443,28 @@ export function ConnectedChatPanelInteraction({
         setResolvedApprovalIds((current) => [
           ...new Set([...current, ...group.approvalIds]),
         ])
-        const resolvedToolCallIds = new Set(result.toolCallIds)
-        group.toolCallIds.forEach((toolCallId, index) => {
-          if (
-            resolvedToolCallIds.size > 0 &&
-            !resolvedToolCallIds.has(toolCallId)
-          ) {
-            return
-          }
 
-          const approvalId = group.approvalIds[index]
-          if (!approvalId) {
-            return
-          }
+        if (!group.permissionRequestId) {
+          const resolvedToolCallIds = new Set(result.toolCallIds)
+          group.toolCallIds.forEach((toolCallId, index) => {
+            if (
+              resolvedToolCallIds.size > 0 &&
+              !resolvedToolCallIds.has(toolCallId)
+            ) {
+              return
+            }
 
-          addToolApprovalResponse?.({
-            id: approvalId,
-            approved,
+            const approvalId = group.approvalIds[index]
+            if (!approvalId) {
+              return
+            }
+
+            addToolApprovalResponse?.({
+              id: approvalId,
+              approved,
+            })
           })
-        })
+        }
       }
 
       setResolvingToolCallIds((current) =>

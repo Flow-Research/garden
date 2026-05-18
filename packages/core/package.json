@@ -11,6 +11,7 @@
   },
   "exports": {
     ".": "./index.ts",
+    "./connectors/availability": "./connectors/availability.ts",
     "./types": "./types/index.ts",
     "./types/*": "./types/*.ts",
     "./config": "./config/index.ts",
@@ -58,7 +59,9 @@
     "./platform": "./platform/index.ts"
   },
   "dependencies": {
+    "@garden/connectors": "workspace:*",
     "@garden/db": "workspace:*",
+    "drizzle-orm": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-query-devtools": "^5.100.9",
     "better-result": "^2.9.2",

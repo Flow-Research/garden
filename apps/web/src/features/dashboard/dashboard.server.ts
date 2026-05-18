@@ -1,9 +1,10 @@
-import { and, eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { getRequest } from '@tanstack/react-start/server'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { computeInboxItems } from '@/lib/server/inbox-compute'
 import { sortIssuesByUpdatedAt } from '@/lib/server/inbox-surface'
+import { listAvailableConnectorBindings } from '@garden/core/connectors/availability'
 import { buildConnectionSurface } from '@/lib/server/connection-surface'
 import { requireSession } from '@/lib/server/control-plane'
 import type { IssuePriority, IssueStatus } from '@garden/core/types'
@@ -157,10 +158,10 @@ async function requireDashboardAccess(workspaceId: string) {
 }
 
 async function loadDashboardConnections(workspaceId: string) {
-  const { db } = await requireDashboardAccess(workspaceId)
+  const { db, session } = await requireDashboardAccess(workspaceId)
   const [
     connections,
-    githubInstallations,
+    availableConnectors,
     capabilities,
     permissionGrants,
     toolCallAudits,
@@ -169,22 +170,29 @@ async function loadDashboardConnections(workspaceId: string) {
       .select()
       .from(schema.account)
       .where(eq(schema.account.workspaceId, workspaceId)),
-    db
-      .select()
-      .from(schema.githubAppInstallation)
-      .where(eq(schema.githubAppInstallation.workspaceId, workspaceId)),
+    listAvailableConnectorBindings({
+      db,
+      getEnvVar: (name) => {
+        const value = (appEnv as Record<string, unknown>)[name]
+        return typeof value === 'string' ? value : undefined
+      },
+      userId: session.user.id,
+      workspaceId,
+    }),
     db.select().from(schema.capability),
     db.select().from(schema.permissionGrant),
     db
       .select()
       .from(schema.toolCallAudit)
-      .where(eq(schema.toolCallAudit.workspaceId, workspaceId)),
+      .where(eq(schema.toolCallAudit.workspaceId, workspaceId))
+      .orderBy(desc(schema.toolCallAudit.ts))
+      .limit(500),
   ])
 
   return buildConnectionSurface({
     agentIds: [],
     connections,
-    githubInstallations,
+    availableConnectors,
     capabilities,
     permissionGrants,
     toolCallAudits,

@@ -233,7 +233,7 @@ function ExplorerActionRow({
     <SidebarMenuItem>
       <SidebarMenuButton
         isActive={active}
-        className="rounded-[7px] px-2.5 transition-all duration-150 data-[active=true]:bg-[color:var(--vellum-heavy)] data-[active=true]:text-[color:var(--ink)] data-[active=true]:font-medium data-[active=true]:shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.10)] hover:bg-[color:rgba(26,31,28,0.04)]"
+        className="rounded-[7px] px-2.5 transition-all duration-150 data-[active=true]:bg-[color:var(--vellum-heavy)] data-[active=true]:text-[color:var(--ink)] data-[active=true]:font-medium data-[active=true]:shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.10)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         onClick={onClick}
       >
         <Icon className="size-4" />
@@ -459,7 +459,7 @@ export function WorkspaceSidebar() {
                       }}
                       aria-label={item.label}
                       isActive={activeRailId === item.id}
-                      className="!h-8 !w-8 !gap-0 !p-0 justify-center !rounded-[8px] transition-all duration-150 !text-[color:var(--slate)] data-[active=true]:!bg-[color:var(--vellum-heavy)] data-[active=true]:!text-[color:var(--ink)] data-[active=true]:shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.10)] hover:!bg-[color:rgba(26,31,28,0.04)] hover:!text-[color:var(--ink)] group-data-[collapsible=icon]:!h-8 group-data-[collapsible=icon]:!w-8"
+                      className="!h-8 !w-8 !gap-0 !p-0 justify-center !rounded-[8px] transition-all duration-150 !text-[color:var(--slate)] data-[active=true]:!bg-[color:var(--vellum-heavy)] data-[active=true]:!text-[color:var(--ink)] data-[active=true]:shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.10)] hover:!bg-sidebar-accent hover:!text-sidebar-accent-foreground group-data-[collapsible=icon]:!h-8 group-data-[collapsible=icon]:!w-8"
                       onPointerEnter={() => prefetchRailData(item)}
                       onFocus={() => prefetchRailData(item)}
                       onClick={() => openRailContext(item)}
@@ -487,7 +487,7 @@ export function WorkspaceSidebar() {
                   hidden: false,
                 }}
                 aria-label="Settings"
-                className="!h-8 !w-8 !gap-0 !p-0 justify-center !rounded-[8px] transition-all duration-150 !text-[color:var(--slate)] hover:!bg-[color:rgba(26,31,28,0.04)] hover:!text-[color:var(--ink)] group-data-[collapsible=icon]:!h-8 group-data-[collapsible=icon]:!w-8"
+                className="!h-8 !w-8 !gap-0 !p-0 justify-center !rounded-[8px] transition-all duration-150 !text-[color:var(--slate)] hover:!bg-sidebar-accent hover:!text-sidebar-accent-foreground group-data-[collapsible=icon]:!h-8 group-data-[collapsible=icon]:!w-8"
                 onClick={openSettings}
               >
                 <RailSettingsIcon className="!size-[20px] shrink-0" />
@@ -647,7 +647,7 @@ type ConnectionsSnapshotLite = {
 }
 
 async function loadConnectionsForSidebar(): Promise<ConnectionsSnapshotLite> {
-  const snapshot = await listConnections()
+  const snapshot = await listConnections({ summary: true })
   return { connectors: snapshot.connectors }
 }
 
@@ -736,7 +736,7 @@ function AgentsExplorer({
                 <SidebarMenuItem key={agent.id}>
                   <SidebarMenuButton
                     isActive={active}
-                    className="rounded-[7px] px-2.5 transition-all duration-150 data-[active=true]:bg-[color:var(--vellum-heavy)] data-[active=true]:text-[color:var(--ink)] data-[active=true]:font-medium data-[active=true]:shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.10)] hover:bg-[color:rgba(26,31,28,0.04)]"
+                    className="rounded-[7px] px-2.5 transition-all duration-150 data-[active=true]:bg-[color:var(--vellum-heavy)] data-[active=true]:text-[color:var(--ink)] data-[active=true]:font-medium data-[active=true]:shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.10)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                     onClick={() => onOpenAgent(agent)}
                   >
                     <Bot className="size-4" />
@@ -880,7 +880,7 @@ function SkillsRailExplorer({
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       isActive={active}
-                      className="rounded-[7px] px-2.5 transition-all duration-150 data-[active=true]:bg-[color:var(--vellum-heavy)] data-[active=true]:text-[color:var(--ink)] data-[active=true]:font-medium data-[active=true]:shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.10)] hover:bg-[color:rgba(26,31,28,0.04)]"
+                      className="rounded-[7px] px-2.5 transition-all duration-150 data-[active=true]:bg-[color:var(--vellum-heavy)] data-[active=true]:text-[color:var(--ink)] data-[active=true]:font-medium data-[active=true]:shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.10)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                       onClick={() => onOpenSkill(skill)}
                     >
                       <span className="flex-1 truncate">{skill.name}</span>
@@ -938,7 +938,7 @@ function ConnectionsExplorer({
       <SidebarMenuItem key={connector.id}>
         <SidebarMenuButton
           isActive={active}
-          className="rounded-[7px] px-2.5 transition-all duration-150 data-[active=true]:bg-[color:var(--vellum-heavy)] data-[active=true]:text-[color:var(--ink)] data-[active=true]:font-medium data-[active=true]:shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.10)] hover:bg-[color:rgba(26,31,28,0.04)]"
+          className="rounded-[7px] px-2.5 transition-all duration-150 data-[active=true]:bg-[color:var(--vellum-heavy)] data-[active=true]:text-[color:var(--ink)] data-[active=true]:font-medium data-[active=true]:shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.10)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
           onClick={() => onOpenConnector(connector)}
         >
           <ConnectorRowIcon id={connector.id} className="size-4" />

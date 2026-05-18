@@ -395,6 +395,15 @@ export function ConnectionsPage({
       : connector.status === 'disconnected'
         ? 'Disconnected'
         : 'Available'
+  const connectionDetails = [
+    connector.accountLogin ? `Account ${connector.accountLogin}` : null,
+    connector.repositorySelection
+      ? connector.repositorySelection === 'selected'
+        ? 'Selected repositories'
+        : 'All repositories'
+      : null,
+    connector.authKind ? connector.authKind.replace('_', ' ') : null,
+  ].filter(Boolean)
 
   const handleBulkChange = (
     groupTools: ConnectionTool[],
@@ -441,6 +450,18 @@ export function ConnectionsPage({
             <p className="mt-1 max-w-prose text-xs text-muted-foreground">
               {connector.description}
             </p>
+            {connectionDetails.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {connectionDetails.map((detail) => (
+                  <span
+                    key={detail}
+                    className="rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+                  >
+                    {detail}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
 
