@@ -7,6 +7,7 @@ import {
   AlertCircle,
   BarChart3,
   Bug,
+  ChevronDown,
   FileSearch,
   GitPullRequest,
   Newspaper,
@@ -19,12 +20,19 @@ import {
 import { toast } from 'sonner'
 import {
   BUILTIN_AUTOMATION_TEMPLATES,
+  createAutomationExecutionConfig,
   type AutomationTemplateDefinition,
 } from '@garden/core/automations/templates'
 import type { Agent } from '@garden/core/types'
 import type { Automation, AutomationListItem } from '@/lib/api'
 import { useWorkspaceId } from '@garden/core/hooks'
 import { Button } from '@garden/ui/components/ui/button'
+import { Checkbox } from '@garden/ui/components/ui/checkbox'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@garden/ui/components/ui/collapsible'
 import {
   Dialog,
   DialogContent,
@@ -67,6 +75,40 @@ type AutomationTemplate = {
 }
 
 type AutomationOpenTarget = Pick<Automation, 'id' | 'title'>
+
+type AutomationCapabilityKey = 'browser' | 'sandbox' | 'github'
+
+type AutomationCapabilityState = Record<AutomationCapabilityKey, boolean>
+
+const DEFAULT_CAPABILITIES: AutomationCapabilityState = {
+  browser: false,
+  sandbox: false,
+  github: false,
+}
+
+const CAPABILITY_LABELS: Record<AutomationCapabilityKey, string> = {
+  browser: 'Browser Run',
+  sandbox: 'Sandbox',
+  github: 'GitHub',
+}
+
+function formatSkills(skills: string[] | undefined) {
+  return skills?.join(', ') ?? ''
+}
+
+function parseSkills(value: string) {
+  return value
+    .split(/[\n,]/)
+    .map((skill) => skill.trim())
+    .filter(Boolean)
+}
+
+function capabilitySummary(capabilities: AutomationCapabilityState) {
+  const active = Object.entries(capabilities)
+    .filter(([, enabled]) => enabled)
+    .map(([capability]) => CAPABILITY_LABELS[capability as AutomationCapabilityKey])
+  return active.length > 0 ? active.join(', ') : 'No extra capabilities'
+}
 
 const TEMPLATE_ICONS: Record<string, typeof Zap> = {
   'qa-sweep': Shield,
@@ -268,6 +310,10 @@ function CreateAutomationDialog({
   const [appliedTemplate, setAppliedTemplate] = useState<
     AutomationTemplate | null | undefined
   >(null)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [capabilities, setCapabilities] =
+    useState<AutomationCapabilityState>(DEFAULT_CAPABILITIES)
+  const [skillsText, setSkillsText] = useState('')
 
   if (template !== appliedTemplate && open) {
     setAppliedTemplate(template)
@@ -279,6 +325,11 @@ function CreateAutomationDialog({
         frequency: template.frequency,
         time: template.time,
       })
+      setCapabilities(template.executionConfig?.capabilities ?? DEFAULT_CAPABILITIES)
+      setSkillsText(formatSkills(template.executionConfig?.requiredSkills))
+    } else {
+      setCapabilities(DEFAULT_CAPABILITIES)
+      setSkillsText('')
     }
   }
 
@@ -287,6 +338,16 @@ function CreateAutomationDialog({
 
   const handleSubmit = async () => {
     if (!title.trim() || !assigneeId || submitting) return
+    const requiredSkills = parseSkills(skillsText)
+    const executionConfig = createAutomationExecutionConfig({
+      templateId: template?.executionConfig?.templateId ?? 'custom-automation',
+      templateVersion: template?.executionConfig?.templateVersion ?? 1,
+      capabilities,
+      requiredSkills,
+      requiredConnectors: capabilities.github ? ['github'] : [],
+      inputContract: template?.executionConfig?.runContract.input,
+      outputContract: template?.executionConfig?.runContract.output,
+    })
     const result = await Result.tryPromise(() =>
       createAutomation.mutateAsync({
         title: title.trim(),
@@ -294,7 +355,7 @@ function CreateAutomationDialog({
         assignee_agent_id: assigneeId,
         priority: 'medium',
         system_prompt: template?.systemPrompt ?? null,
-        execution_config: template?.executionConfig ?? null,
+        execution_config: executionConfig,
         output_config: template?.outputConfig ?? null,
         category: template?.category ?? null,
         tags: template?.tags ?? [],
@@ -319,6 +380,8 @@ function CreateAutomationDialog({
     setDescription('')
     setAssigneeId('')
     setTriggerConfig(getDefaultTriggerConfig())
+    setCapabilities(DEFAULT_CAPABILITIES)
+    setSkillsText('')
     toast.success('Automation created')
     onCreated?.(result.value.automation)
   }
@@ -373,6 +436,64 @@ function CreateAutomationDialog({
               </SelectContent>
             </Select>
           </div>
+          <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+            <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border bg-muted/20 px-3 py-2 text-left text-xs transition-colors hover:bg-accent/40">
+              <span>
+                <span className="font-medium">Capabilities & skills</span>
+                <span className="ml-2 text-muted-foreground">
+                  {capabilitySummary(capabilities)}
+                  {parseSkills(skillsText).length > 0
+                    ? ` · ${parseSkills(skillsText).length} skills`
+                    : ''}
+                </span>
+              </span>
+              <ChevronDown
+                className={cn(
+                  'size-3.5 text-muted-foreground transition-transform',
+                  advancedOpen && 'rotate-180',
+                )}
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-3 pt-3">
+              <div className="grid grid-cols-3 gap-2">
+                {(Object.keys(CAPABILITY_LABELS) as AutomationCapabilityKey[]).map(
+                  (capability) => (
+                    <label
+                      key={capability}
+                      className="flex items-center gap-2 rounded-md border px-2.5 py-2 text-xs"
+                    >
+                      <Checkbox
+                        checked={capabilities[capability]}
+                        onCheckedChange={(checked) =>
+                          setCapabilities((current) => ({
+                            ...current,
+                            [capability]: checked === true,
+                          }))
+                        }
+                      />
+                      {CAPABILITY_LABELS[capability]}
+                    </label>
+                  ),
+                )}
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">
+                  Skills
+                </label>
+                <textarea
+                  value={skillsText}
+                  onChange={(event) => setSkillsText(event.target.value)}
+                  placeholder="qa-sweep, browser-qa, test-quality-validator"
+                  rows={3}
+                  className="mt-1 w-full resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Comma or newline separated skill slugs. Templates preload their
+                  recommended skills; add or remove as needed.
+                </p>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
           <div>
             <label className="text-xs font-medium text-muted-foreground">
               Schedule
@@ -478,6 +599,29 @@ export function AutomationsPage({
                       <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
                         {template.summary}
                       </div>
+                      {template.executionConfig ? (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {(
+                            Object.keys(
+                              template.executionConfig.capabilities,
+                            ) as AutomationCapabilityKey[]
+                          )
+                            .filter(
+                              (capability) =>
+                                template.executionConfig?.capabilities[
+                                  capability
+                                ],
+                            )
+                            .map((capability) => (
+                              <span
+                                key={capability}
+                                className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                              >
+                                {CAPABILITY_LABELS[capability]}
+                              </span>
+                            ))}
+                        </div>
+                      ) : null}
                     </div>
                   </button>
                 )
