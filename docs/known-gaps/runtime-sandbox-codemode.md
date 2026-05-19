@@ -47,11 +47,39 @@ return {}
 
 That means Garden’s custom `createSandboxTools()` is not duplicating a working Think SDK implementation; it is filling a real gap with direct `@cloudflare/sandbox` APIs.
 
+## Product tradeoffs
+
+### Starter codemode / `state.*`
+
+Codemode is best for product flows where the agent needs to coordinate many bounded tool/file operations in one model step. It lets the model write JavaScript that runs in an isolated sandbox and calls host-provided tools through RPC. When backed by `createWorkspaceStateBackend(this.workspace)`, the code can use `state.*` to read/write the durable Think/Shell workspace, plan/apply multi-file edits, search and replace across files, transform JSON, create archives, hash files, and return a structured result.
+
+This is a good product fit for “inspect these docs, update several workspace files, summarize what changed” and similar tool-orchestration tasks. It keeps the outer LLM loop smaller because twenty inner file/tool calls can happen under one `execute` tool call.
+
+Codemode is not a product substitute for a real machine. It does not run native binaries, install packages into a persistent environment, host preview servers, keep long-running processes, or naturally operate on a real checkout unless that checkout is represented through Workspace/provider tools. It is also awkward for approval-required capabilities: calls inside codemode are inner RPC calls, not outer AI SDK tool calls, so product-grade approval needs dispatch-layer gating or a policy that keeps ask-required tools out of the codemode surface.
+
+### Garden container sandbox tools
+
+The custom `sandbox*` tools are best when the product needs a real execution environment: shell commands, package installs, generated app previews, tests/builds, document conversion with native tools, Python/data tooling, background processes, and exposed ports. This product surface feels closer to “the agent has a computer.”
+
+The cost is more runtime surface area: separate container filesystem state, cold starts, lifecycle cleanup, package/image drift, stronger permission risk, output truncation, and the need to decide which container artifacts should be imported back into Garden’s durable Workspace.
+
+Until sync ships, treat container files as execution/scratch artifacts and Think/Shell Workspace files as durable Garden artifacts.
+
+## Dynamic Worker requirement
+
+Codemode does **not** strictly require Dynamic Workers. `createExecuteTool()` accepts either:
+
+- `loader`, which constructs a `DynamicWorkerExecutor` with a `WorkerLoader` binding.
+- `executor`, any custom implementation of the `@cloudflare/codemode` `Executor` interface.
+
+For Cloudflare Workers, `WorkerLoader` + `DynamicWorkerExecutor` is the standard Project Think starter path. Garden’s current `execute` tool uses `loader`, so the current deployed path does require the `LOADER` worker loader binding. But the codemode abstraction is executor-based, so another sandbox runtime can be substituted if it implements `execute(code, providers)`.
+
 ## Comparison matrix
 
 | Capability | Starter codemode / `state.*` | Garden custom `sandbox*` tools |
 | --- | --- | --- |
-| Runtime | Dynamic Worker via `WorkerLoader` | Cloudflare Sandbox container |
+| Product feel | Agent scripts its tools and durable workspace | Agent has a real execution computer |
+| Runtime | Dynamic Worker via `WorkerLoader` by default; custom `Executor` possible | Cloudflare Sandbox container |
 | Code language | JavaScript only; prompt says no TypeScript syntax | Shell commands, Python/JS/TS interpreter, long-running processes |
 | Filesystem | Think/Shell `Workspace` virtual FS | Container `/workspace` |
 | Persistence | DO SQLite/R2/proxy-backed workspace | Sandbox/container instance state; sleeps after idle |
