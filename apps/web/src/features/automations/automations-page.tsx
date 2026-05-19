@@ -17,6 +17,10 @@ import {
   Zap,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  BUILTIN_AUTOMATION_TEMPLATES,
+  type AutomationTemplateDefinition,
+} from '@garden/core/automations/templates'
 import type { Agent } from '@garden/core/types'
 import type { Automation, AutomationListItem } from '@/lib/api'
 import { useWorkspaceId } from '@garden/core/hooks'
@@ -54,11 +58,39 @@ type AutomationTemplate = {
   icon: typeof Zap
   frequency: TriggerFrequency
   time: string
+  category?: string
+  tags?: string[]
+  systemPrompt?: string
+  executionConfig?: AutomationTemplateDefinition['executionConfig']
+  outputConfig?: AutomationTemplateDefinition['outputConfig']
+  templateSource?: string
 }
 
 type AutomationOpenTarget = Pick<Automation, 'id' | 'title'>
 
+const TEMPLATE_ICONS: Record<string, typeof Zap> = {
+  'qa-sweep': Shield,
+}
+
+const registryTemplates: AutomationTemplate[] = BUILTIN_AUTOMATION_TEMPLATES.map(
+  (template) => ({
+    title: template.title,
+    summary: template.summary,
+    prompt: template.prompt,
+    systemPrompt: template.systemPrompt,
+    icon: TEMPLATE_ICONS[template.id] ?? Zap,
+    frequency: 'weekly',
+    time: '09:00',
+    category: template.category,
+    tags: template.tags,
+    templateSource: template.templateSource,
+    executionConfig: template.executionConfig,
+    outputConfig: template.outputConfig,
+  }),
+)
+
 const TEMPLATES: AutomationTemplate[] = [
+  ...registryTemplates,
   {
     title: 'Daily news digest',
     summary: "Search and summarize today's news for the team",
@@ -261,6 +293,12 @@ function CreateAutomationDialog({
         description: description.trim() || null,
         assignee_agent_id: assigneeId,
         priority: 'medium',
+        system_prompt: template?.systemPrompt ?? null,
+        execution_config: template?.executionConfig ?? null,
+        output_config: template?.outputConfig ?? null,
+        category: template?.category ?? null,
+        tags: template?.tags ?? [],
+        template_source: template?.templateSource ?? null,
         trigger: {
           kind: 'schedule',
           cron_expression: toCronExpression(triggerConfig),

@@ -10,11 +10,13 @@ import {
 } from '@cloudflare/think'
 import { Workspace } from '@cloudflare/shell'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
+import { createBrowserTools } from 'agents/browser/ai'
 import { tool, type LanguageModel, type ToolSet, type UIMessage } from 'ai'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/neon-serverless'
 import { z } from 'zod'
+import { parseAutomationExecutionConfig } from '@garden/core/automations/templates'
 import { connectorRegistry } from '@garden/connectors'
 import {
   derivePermissions,
@@ -35,6 +37,10 @@ import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { assembleFoundationPrompt } from './prompt'
 import { createSandboxTools } from './sandbox-tools'
 import {
+  createAssignedSkillProvider,
+  R2SkillBundleStore,
+} from './skills'
+import {
   addStepUsage,
   normalizeRunUsage,
   type RunUsageSnapshot,
@@ -48,6 +54,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   CF_AIG_TOKEN: string
   FILES: R2Bucket
   LOADER: WorkerLoader
+  BROWSER: Fetcher
   Sandbox: DurableObjectNamespace<SandboxDO>
   MCP_SESSION: DurableObjectNamespace
 }
@@ -138,6 +145,13 @@ function isTerminalAutomationRunStatus(status: string) {
   )
 }
 
+function automationAllowsBrowser(
+  automation: typeof schema.automation.$inferSelect,
+) {
+  const parsed = parseAutomationExecutionConfig(automation.executionConfig)
+  return parsed.success && parsed.data.capabilities.browser
+}
+
 export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   constructor(ctx: DurableObjectState, env: AgentRuntimeEnv) {
     super(ctx, env)
@@ -157,6 +171,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
 
   private currentRunId: string | null = null
   private currentPermissions: AgentPermissions | null = null
+  private currentBrowserAllowed = false
   private aggUsage: RunUsageSnapshot | null = null
   private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
     getController: () => this.getMcpController(),
@@ -207,6 +222,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
             ].join('\n'),
         },
       })
+      .withContext('skills', this.getSkillsContextOptions())
       .withCachedPrompt()
   }
 
@@ -238,6 +254,10 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
         },
       }),
       ...createSandboxTools(() => this.getAgentSandbox()),
+      ...createBrowserTools({
+        browser: this.env.BROWSER,
+        loader: this.env.LOADER,
+      }),
     }
   }
 
@@ -263,6 +283,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
 
     this.currentRunId = runId
     this.currentPermissions = loadedResult.value.permissions
+    this.currentBrowserAllowed = automationAllowsBrowser(loadedResult.value.automation)
     this.aggUsage = null
 
     const mcpController = await this.ensureProxyMcpConnectionsForTurn()
@@ -520,6 +541,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
 
     this.currentRunId = input.runId
     this.currentPermissions = loadedResult.value.permissions
+    this.currentBrowserAllowed = automationAllowsBrowser(loadedResult.value.automation)
 
     const message: UIMessage = {
       id: crypto.randomUUID(),
@@ -560,6 +582,30 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
 
   private getDb() {
     return drizzle(this.env.DATABASE_URL, { schema })
+  }
+
+  /**
+   * Exposes assigned workspace skills inside automation runs.
+   *
+   * Chat runs already had `load_context` backed by Garden's skill catalog, but
+   * automation runs could not load the vendored QA workflow pack. QA automation
+   * needs the same inventory/load behavior so the agent can pull `qa-sweep`,
+   * `browser-qa`, `qa-runtime`, and validators on demand while keeping the base
+   * prompt compact. Mirrors `ChatSubAgent.getSkillsContextOptions`; source
+   * reference: Cloudflare Think SkillProvider behavior and Harnessy's QA skill
+   * contract.
+   */
+  private getSkillsContextOptions() {
+    return {
+      description:
+        'Enabled skills assigned to this automation agent. Load by key when needed.',
+      provider: createAssignedSkillProvider({
+        agentRuntimeName: this.name,
+        databaseUrl: this.env.DATABASE_URL,
+        workspace: this.workspace,
+        bundleStore: new R2SkillBundleStore(this.env.FILES),
+      }),
+    }
   }
 
   private getSandboxId() {
@@ -628,6 +674,16 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     runtimeToolName: string,
   ): ResultValue<void, AutomationRunSubAgentError> {
     if (runtimeToolName === 'complete_automation') return Result.ok()
+
+    if (runtimeToolName.startsWith('browser_') && !this.currentBrowserAllowed) {
+      return Result.err(
+        new AutomationRunSubAgentError({
+          code: 'runtime_failed',
+          message:
+            'Browser Run tools are only available to automations whose execution_config enables capabilities.browser.',
+        }),
+      )
+    }
 
     const permissions = this.currentPermissions
     if (!permissions || permissions.full_access) return Result.ok()
@@ -1236,6 +1292,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   private clearTurnState() {
     this.currentRunId = null
     this.currentPermissions = null
+    this.currentBrowserAllowed = false
     this.aggUsage = null
   }
 

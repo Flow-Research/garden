@@ -10,6 +10,7 @@ export type AppEnv = {
   CF_AIG_TOKEN: RequiredEnvBinding<'CF_AIG_TOKEN'>
   FILES: RequiredEnvBinding<'FILES'>
   LOADER: RequiredEnvBinding<'LOADER'>
+  BROWSER: RequiredEnvBinding<'BROWSER'>
   MCP_PROXY: RequiredEnvBinding<'MCP_PROXY'>
   SANDBOX_TRANSPORT: RequiredEnvBinding<'SANDBOX_TRANSPORT'>
   AgentDO: RequiredEnvBinding<'AgentDO'>

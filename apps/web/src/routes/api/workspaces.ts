@@ -98,6 +98,7 @@ async function createWorkspaceWithGarden(input: CreateWorkspaceInput) {
         await seedBuiltinSkills(
           workspaceId,
           tx as unknown as ReturnType<typeof getDb>,
+          appEnv.FILES,
         )
 
         await tx

@@ -1,8 +1,9 @@
 import { and, eq } from 'drizzle-orm'
+import { HARNESSY_QA_SKILLS } from '@garden/agent-runtime'
 import issueInteractionSkillMarkdown from '@garden/agent-runtime/src/skills/issue-interaction/SKILL.md?raw'
 import { bindSkillToWorkspaceAgents } from './agent-bindings'
 import { type getDb, schema } from './db'
-import { hashSkillBundle } from './skill-bundles'
+import { hashSkillBundle, persistSkillBundleFiles } from './skill-bundles'
 
 type Db = ReturnType<typeof getDb>
 
@@ -18,48 +19,99 @@ function parseFrontmatter(markdown: string) {
   }
 }
 
-export async function seedBuiltinSkills(workspaceId: string, db: Db) {
-  const slug = 'issue-interaction'
-  const existing = await db
-    .select({ id: schema.skill.id })
-    .from(schema.skill)
-    .where(
-      and(
-        eq(schema.skill.workspaceId, workspaceId),
-        eq(schema.skill.slug, slug),
-      ),
-    )
-    .limit(1)
+type BuiltinSeedSkill = {
+  slug: string
+  name: string
+  description: string
+  content: string
+  files: Array<{ path: string; content: string }>
+  sourceUrl?: string | null
+}
 
-  if (existing.some((skill) => skill.id)) return
-
-  const parsed = parseFrontmatter(issueInteractionSkillMarkdown)
-  const bundleHash = await hashSkillBundle({
-    content: issueInteractionSkillMarkdown,
-    files: [],
-  })
-  const skillId = crypto.randomUUID()
-
-  // Source: docs/research/issue-flow-plan.md, "Issue page is the primary surface".
-  await db.insert(schema.skill).values({
-    id: skillId,
-    workspaceId,
+const BUILTIN_SEED_SKILLS: readonly BuiltinSeedSkill[] = [
+  {
+    slug: 'issue-interaction',
     name: 'Issue interaction',
-    slug,
     description:
       'How to behave when assigned to an issue: read, plan, decide, act.',
-    frontmatter: parsed.frontmatter,
-    body: parsed.body,
-    sourceType: 'builtin',
-    sourceUrl: null,
-    bundleHash,
-    authorId: null,
-  })
+    content: issueInteractionSkillMarkdown,
+    files: [],
+  },
+  ...HARNESSY_QA_SKILLS.map((skill) => ({
+    ...skill,
+    sourceUrl: 'https://github.com/Flow-Research/harnessy',
+  })),
+]
 
-  await bindSkillToWorkspaceAgents({
-    db,
-    schema,
-    skillId,
-    workspaceId,
-  })
+/**
+ * Seeds built-in skills that every workspace agent can use.
+ *
+ * Earlier bootstraps only installed the issue-interaction skill, which meant
+ * Garden automations had no durable QA operating pack to load. The Harnessy QA
+ * skills are now vendored into the runtime bundle and seeded here so workspaces
+ * receive the deterministic QA contract, browser workflow, codegen helpers, and
+ * validators without depending on a live skills.sh import. Source reference:
+ * Flow-Research/harnessy `.jarvis/context/docs/standards/qa-process.md` and
+ * `tools/flow-install/skills/*`.
+ */
+export async function seedBuiltinSkills(
+  workspaceId: string,
+  db: Db,
+  bucket: R2Bucket,
+) {
+  for (const seed of BUILTIN_SEED_SKILLS) {
+    const existing = await db
+      .select({ id: schema.skill.id })
+      .from(schema.skill)
+      .where(
+        and(
+          eq(schema.skill.workspaceId, workspaceId),
+          eq(schema.skill.slug, seed.slug),
+        ),
+      )
+      .limit(1)
+
+    if (existing.some((skill) => skill.id)) continue
+
+    const parsed = parseFrontmatter(seed.content)
+    const bundleHash = await hashSkillBundle({
+      content: seed.content,
+      files: seed.files,
+    })
+    const skillId = crypto.randomUUID()
+
+    await db.insert(schema.skill).values({
+      id: skillId,
+      workspaceId,
+      name: seed.name,
+      slug: seed.slug,
+      description: seed.description,
+      frontmatter: parsed.frontmatter,
+      body: parsed.body,
+      sourceType: 'builtin',
+      sourceUrl: seed.sourceUrl ?? null,
+      bundleHash,
+      authorId: null,
+    })
+
+    if (seed.files.length > 0) {
+      const storedFiles = await persistSkillBundleFiles({
+        bucket,
+        workspaceId,
+        skillId,
+        bundleHash,
+        files: seed.files,
+      })
+      if (storedFiles.length > 0) {
+        await db.insert(schema.skillFile).values(storedFiles)
+      }
+    }
+
+    await bindSkillToWorkspaceAgents({
+      db,
+      schema,
+      skillId,
+      workspaceId,
+    })
+  }
 }
