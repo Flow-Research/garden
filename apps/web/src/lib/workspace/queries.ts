@@ -1,5 +1,5 @@
 import { queryOptions } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api, listConnections } from '@/lib/api'
 
 export const workspaceKeys = {
   all: (wsId: string) => ['workspaces', wsId] as const,
@@ -11,6 +11,7 @@ export const workspaceKeys = {
   agent: (agentId: string) => ['agent', agentId] as const,
   agentSkills: (agentId: string) => ['agent', agentId, 'skills'] as const,
   skills: (wsId: string) => ['workspaces', wsId, 'skills'] as const,
+  connections: (wsId: string) => ['workspaces', wsId, 'connections'] as const,
   assigneeFrequency: (wsId: string) =>
     ['workspaces', wsId, 'assignee-frequency'] as const,
 }
@@ -57,6 +58,13 @@ export function skillListOptions(wsId: string) {
   return queryOptions({
     queryKey: workspaceKeys.skills(wsId),
     queryFn: () => api.listSkills(),
+  })
+}
+
+export function connectionListOptions(wsId: string) {
+  return queryOptions({
+    queryKey: workspaceKeys.connections(wsId),
+    queryFn: () => listConnections(),
   })
 }
 

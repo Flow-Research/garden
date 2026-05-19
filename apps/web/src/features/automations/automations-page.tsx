@@ -23,7 +23,7 @@ import {
   createAutomationExecutionConfig,
   type AutomationTemplateDefinition,
 } from '@garden/core/automations/templates'
-import type { Agent } from '@garden/core/types'
+import type { Agent, Skill } from '@garden/core/types'
 import type { Automation, AutomationListItem } from '@/lib/api'
 import { useWorkspaceId } from '@garden/core/hooks'
 import { Button } from '@garden/ui/components/ui/button'
@@ -48,16 +48,19 @@ import {
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { ActorAvatar as ActorAvatarBase } from '@garden/ui/components/common/actor-avatar'
 import { cn } from '@garden/ui/lib/utils'
-import { agentListOptions } from '@/lib/workspace/queries'
+import {
+  agentListOptions,
+  connectionListOptions,
+  skillListOptions,
+} from '@/lib/workspace/queries'
 import { automationListOptions } from './queries'
 import { useCreateAutomation } from './mutations'
 import {
   TriggerConfigSection,
-  getDefaultTriggerConfig,
   toCronExpression,
-  type TriggerConfig,
   type TriggerFrequency,
 } from './trigger-config'
+import { useCreateAutomationDialogStore } from './create-automation-dialog-store'
 
 type AutomationTemplate = {
   title: string
@@ -76,38 +79,8 @@ type AutomationTemplate = {
 
 type AutomationOpenTarget = Pick<Automation, 'id' | 'title'>
 
-type AutomationCapabilityKey = 'browser' | 'sandbox' | 'github'
-
-type AutomationCapabilityState = Record<AutomationCapabilityKey, boolean>
-
-const DEFAULT_CAPABILITIES: AutomationCapabilityState = {
-  browser: false,
-  sandbox: false,
-  github: false,
-}
-
-const CAPABILITY_LABELS: Record<AutomationCapabilityKey, string> = {
-  browser: 'Browser Run',
-  sandbox: 'Sandbox',
-  github: 'GitHub',
-}
-
-function formatSkills(skills: string[] | undefined) {
-  return skills?.join(', ') ?? ''
-}
-
-function parseSkills(value: string) {
-  return value
-    .split(/[\n,]/)
-    .map((skill) => skill.trim())
-    .filter(Boolean)
-}
-
-function capabilitySummary(capabilities: AutomationCapabilityState) {
-  const active = Object.entries(capabilities)
-    .filter(([, enabled]) => enabled)
-    .map(([capability]) => CAPABILITY_LABELS[capability as AutomationCapabilityKey])
-  return active.length > 0 ? active.join(', ') : 'No extra capabilities'
+function skillSlug(skill: Skill) {
+  return skill.slug ?? skill.name
 }
 
 const TEMPLATE_ICONS: Record<string, typeof Zap> = {
@@ -300,37 +273,82 @@ function CreateAutomationDialog({
   agents: Agent[]
   onCreated?: (automation: Automation) => void
 }) {
+  const wsId = useWorkspaceId()
   const createAutomation = useCreateAutomation()
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [assigneeId, setAssigneeId] = useState('')
-  const [triggerConfig, setTriggerConfig] = useState<TriggerConfig>(
-    getDefaultTriggerConfig,
+  const { data: skills = [] } = useQuery({
+    ...skillListOptions(wsId),
+    enabled: open,
+  })
+  const { data: connections } = useQuery({
+    ...connectionListOptions(wsId),
+    enabled: open,
+  })
+  const title = useCreateAutomationDialogStore((state) => state.title)
+  const description = useCreateAutomationDialogStore(
+    (state) => state.description,
   )
+  const assigneeId = useCreateAutomationDialogStore((state) => state.assigneeId)
+  const triggerConfig = useCreateAutomationDialogStore(
+    (state) => state.triggerConfig,
+  )
+  const selectedTemplate = useCreateAutomationDialogStore(
+    (state) => state.selectedTemplate,
+  )
+  const selectedSkillSlugs = useCreateAutomationDialogStore(
+    (state) => state.selectedSkillSlugs,
+  )
+  const selectedConnectorIds = useCreateAutomationDialogStore(
+    (state) => state.selectedConnectorIds,
+  )
+  const selectedToolNames = useCreateAutomationDialogStore(
+    (state) => state.selectedToolNames,
+  )
+  const templateOpen = useCreateAutomationDialogStore(
+    (state) => state.templateOpen,
+  )
+  const skillsOpen = useCreateAutomationDialogStore((state) => state.skillsOpen)
+  const capabilitiesOpen = useCreateAutomationDialogStore(
+    (state) => state.capabilitiesOpen,
+  )
+  const setTitle = useCreateAutomationDialogStore((state) => state.setTitle)
+  const setDescription = useCreateAutomationDialogStore(
+    (state) => state.setDescription,
+  )
+  const setAssigneeId = useCreateAutomationDialogStore(
+    (state) => state.setAssigneeId,
+  )
+  const setTriggerConfig = useCreateAutomationDialogStore(
+    (state) => state.setTriggerConfig,
+  )
+  const setTemplateOpen = useCreateAutomationDialogStore(
+    (state) => state.setTemplateOpen,
+  )
+  const setSkillsOpen = useCreateAutomationDialogStore(
+    (state) => state.setSkillsOpen,
+  )
+  const setCapabilitiesOpen = useCreateAutomationDialogStore(
+    (state) => state.setCapabilitiesOpen,
+  )
+  const toggleSkillSlug = useCreateAutomationDialogStore(
+    (state) => state.toggleSkillSlug,
+  )
+  const toggleConnectorId = useCreateAutomationDialogStore(
+    (state) => state.toggleConnectorId,
+  )
+  const toggleToolName = useCreateAutomationDialogStore(
+    (state) => state.toggleToolName,
+  )
+  const applyTemplate = useCreateAutomationDialogStore(
+    (state) => state.applyTemplate,
+  )
+  const resetDraft = useCreateAutomationDialogStore((state) => state.reset)
   const [appliedTemplate, setAppliedTemplate] = useState<
     AutomationTemplate | null | undefined
   >(null)
-  const [advancedOpen, setAdvancedOpen] = useState(false)
-  const [capabilities, setCapabilities] =
-    useState<AutomationCapabilityState>(DEFAULT_CAPABILITIES)
-  const [skillsText, setSkillsText] = useState('')
 
   if (template !== appliedTemplate && open) {
     setAppliedTemplate(template)
-    if (template) {
-      setTitle(template.title)
-      setDescription(template.prompt)
-      setTriggerConfig({
-        ...getDefaultTriggerConfig(),
-        frequency: template.frequency,
-        time: template.time,
-      })
-      setCapabilities(template.executionConfig?.capabilities ?? DEFAULT_CAPABILITIES)
-      setSkillsText(formatSkills(template.executionConfig?.requiredSkills))
-    } else {
-      setCapabilities(DEFAULT_CAPABILITIES)
-      setSkillsText('')
-    }
+    applyTemplate(template ?? null)
   }
 
   const activeAgents = agents.filter((agent) => !agent.archived_at)
@@ -338,15 +356,24 @@ function CreateAutomationDialog({
 
   const handleSubmit = async () => {
     if (!title.trim() || !assigneeId || submitting) return
-    const requiredSkills = parseSkills(skillsText)
+    const requiredConnectors = selectedConnectorIds.filter(
+      (connectorId): connectorId is 'github' | 'exa-search' | 'slack' | 'gmail' | 'google-drive' =>
+        ['github', 'exa-search', 'slack', 'gmail', 'google-drive'].includes(
+          connectorId,
+        ),
+    )
     const executionConfig = createAutomationExecutionConfig({
-      templateId: template?.executionConfig?.templateId ?? 'custom-automation',
-      templateVersion: template?.executionConfig?.templateVersion ?? 1,
-      capabilities,
-      requiredSkills,
-      requiredConnectors: capabilities.github ? ['github'] : [],
-      inputContract: template?.executionConfig?.runContract.input,
-      outputContract: template?.executionConfig?.runContract.output,
+      templateId: selectedTemplate?.executionConfig?.templateId ?? 'custom-automation',
+      templateVersion: selectedTemplate?.executionConfig?.templateVersion ?? 1,
+      capabilities: {
+        browser: selectedToolNames.some((tool) => tool.startsWith('browser_')),
+        sandbox: selectedToolNames.some((tool) => tool.includes('sandbox')),
+        github: selectedConnectorIds.includes('github'),
+      },
+      requiredSkills: selectedSkillSlugs,
+      requiredConnectors,
+      inputContract: selectedTemplate?.executionConfig?.runContract.input,
+      outputContract: selectedTemplate?.executionConfig?.runContract.output,
     })
     const result = await Result.tryPromise(() =>
       createAutomation.mutateAsync({
@@ -354,12 +381,12 @@ function CreateAutomationDialog({
         description: description.trim() || null,
         assignee_agent_id: assigneeId,
         priority: 'medium',
-        system_prompt: template?.systemPrompt ?? null,
+        system_prompt: selectedTemplate?.systemPrompt ?? null,
         execution_config: executionConfig,
-        output_config: template?.outputConfig ?? null,
-        category: template?.category ?? null,
-        tags: template?.tags ?? [],
-        template_source: template?.templateSource ?? null,
+        output_config: selectedTemplate?.outputConfig ?? null,
+        category: selectedTemplate?.category ?? null,
+        tags: selectedTemplate?.tags ?? [],
+        template_source: selectedTemplate?.templateSource ?? null,
         trigger: {
           kind: 'schedule',
           cron_expression: toCronExpression(triggerConfig),
@@ -376,21 +403,72 @@ function CreateAutomationDialog({
       return
     }
     onOpenChange(false)
-    setTitle('')
-    setDescription('')
-    setAssigneeId('')
-    setTriggerConfig(getDefaultTriggerConfig())
-    setCapabilities(DEFAULT_CAPABILITIES)
-    setSkillsText('')
+    resetDraft()
     toast.success('Automation created')
     onCreated?.(result.value.automation)
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!w-[min(92vw,56rem)] !max-w-[min(92vw,56rem)] sm:!max-w-[min(92vw,56rem)]">
+      <DialogContent className="!w-[min(92vw,44rem)] !max-w-[min(92vw,44rem)] sm:!max-w-[min(92vw,44rem)]">
         <DialogTitle>New Automation</DialogTitle>
         <div className="space-y-5 pt-2">
+          <Collapsible open={templateOpen} onOpenChange={setTemplateOpen}>
+            <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border bg-muted/20 px-3 py-2 text-left text-xs transition-colors hover:bg-accent/40">
+              <span>
+                <span className="font-medium">Template</span>
+                <span className="ml-2 text-muted-foreground">
+                  {selectedTemplate?.title ?? 'Custom automation'}
+                </span>
+              </span>
+              <ChevronDown
+                className={cn(
+                  'size-3.5 text-muted-foreground transition-transform',
+                  templateOpen && 'rotate-180',
+                )}
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-3">
+              <div className="grid max-h-56 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                <button
+                  type="button"
+                  className={cn(
+                    'rounded-lg border p-3 text-left transition-colors hover:bg-accent/40',
+                    !selectedTemplate && 'border-primary bg-primary/5',
+                  )}
+                  onClick={() => applyTemplate(null)}
+                >
+                  <div className="text-sm font-medium">Custom automation</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Blank prompt with platform skills and capabilities you choose.
+                  </div>
+                </button>
+                {registryTemplates.map((candidate) => {
+                  const Icon = candidate.icon
+                  return (
+                    <button
+                      key={candidate.templateSource ?? candidate.title}
+                      type="button"
+                      className={cn(
+                        'rounded-lg border p-3 text-left transition-colors hover:bg-accent/40',
+                        selectedTemplate?.templateSource ===
+                          candidate.templateSource && 'border-primary bg-primary/5',
+                      )}
+                      onClick={() => applyTemplate(candidate)}
+                    >
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <Icon className="size-4 text-muted-foreground" />
+                        {candidate.title}
+                      </div>
+                      <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                        {candidate.summary}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
           <div>
             <label className="text-xs font-medium text-muted-foreground">
               Name
@@ -436,61 +514,119 @@ function CreateAutomationDialog({
               </SelectContent>
             </Select>
           </div>
-          <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+          <Collapsible open={capabilitiesOpen} onOpenChange={setCapabilitiesOpen}>
             <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border bg-muted/20 px-3 py-2 text-left text-xs transition-colors hover:bg-accent/40">
               <span>
-                <span className="font-medium">Capabilities & skills</span>
+                <span className="font-medium">Capabilities</span>
                 <span className="ml-2 text-muted-foreground">
-                  {capabilitySummary(capabilities)}
-                  {parseSkills(skillsText).length > 0
-                    ? ` · ${parseSkills(skillsText).length} skills`
-                    : ''}
+                  {selectedConnectorIds.length + selectedToolNames.length} selected
                 </span>
               </span>
               <ChevronDown
                 className={cn(
                   'size-3.5 text-muted-foreground transition-transform',
-                  advancedOpen && 'rotate-180',
+                  capabilitiesOpen && 'rotate-180',
                 )}
               />
             </CollapsibleTrigger>
-            <CollapsibleContent className="space-y-3 pt-3">
-              <div className="grid grid-cols-3 gap-2">
-                {(Object.keys(CAPABILITY_LABELS) as AutomationCapabilityKey[]).map(
-                  (capability) => (
+            <CollapsibleContent className="pt-3">
+              <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                {(connections?.connectors ?? []).map((connector) => (
+                  <div key={connector.id} className="rounded-lg border p-3">
+                    <label className="flex items-start gap-2">
+                      <Checkbox
+                        checked={selectedConnectorIds.includes(connector.id)}
+                        onCheckedChange={() => toggleConnectorId(connector.id)}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2 text-sm font-medium">
+                          {connector.label}
+                          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            {connector.status}
+                          </span>
+                        </span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          {connector.description}
+                        </span>
+                      </span>
+                    </label>
+                    {connector.tools.length > 0 ? (
+                      <div className="mt-2 grid gap-1 pl-6">
+                        {connector.tools.map((tool) => (
+                          <label
+                            key={`${connector.id}:${tool.name}`}
+                            className="flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-accent/40"
+                          >
+                            <Checkbox
+                              checked={selectedToolNames.includes(tool.name)}
+                              onCheckedChange={() => toggleToolName(tool.name)}
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="text-xs font-medium">
+                                {tool.name}
+                              </span>
+                              <span className="ml-2 rounded bg-muted px-1 text-[10px] text-muted-foreground">
+                                {tool.riskClass}
+                              </span>
+                              {tool.description ? (
+                                <span className="mt-0.5 block line-clamp-2 text-[11px] text-muted-foreground">
+                                  {tool.description}
+                                </span>
+                              ) : null}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+          <Collapsible open={skillsOpen} onOpenChange={setSkillsOpen}>
+            <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border bg-muted/20 px-3 py-2 text-left text-xs transition-colors hover:bg-accent/40">
+              <span>
+                <span className="font-medium">Skills</span>
+                <span className="ml-2 text-muted-foreground">
+                  {selectedSkillSlugs.length} selected
+                </span>
+              </span>
+              <ChevronDown
+                className={cn(
+                  'size-3.5 text-muted-foreground transition-transform',
+                  skillsOpen && 'rotate-180',
+                )}
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-3">
+              <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                {skills.map((skill) => {
+                  const slug = skillSlug(skill)
+                  return (
                     <label
-                      key={capability}
-                      className="flex items-center gap-2 rounded-md border px-2.5 py-2 text-xs"
+                      key={skill.id}
+                      className="flex items-start gap-2 rounded-lg border p-3 hover:bg-accent/40"
                     >
                       <Checkbox
-                        checked={capabilities[capability]}
-                        onCheckedChange={(checked) =>
-                          setCapabilities((current) => ({
-                            ...current,
-                            [capability]: checked === true,
-                          }))
-                        }
+                        checked={selectedSkillSlugs.includes(slug)}
+                        onCheckedChange={() => toggleSkillSlug(slug)}
                       />
-                      {CAPABILITY_LABELS[capability]}
+                      <span className="min-w-0 flex-1">
+                        <span className="text-sm font-medium">{skill.name}</span>
+                        {skill.description ? (
+                          <span className="mt-0.5 block line-clamp-2 text-xs text-muted-foreground">
+                            {skill.description}
+                          </span>
+                        ) : null}
+                        {skill.slug ? (
+                          <span className="mt-1 block font-mono text-[10px] text-muted-foreground">
+                            {skill.slug}
+                          </span>
+                        ) : null}
+                      </span>
                     </label>
-                  ),
-                )}
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">
-                  Skills
-                </label>
-                <textarea
-                  value={skillsText}
-                  onChange={(event) => setSkillsText(event.target.value)}
-                  placeholder="qa-sweep, browser-qa, test-quality-validator"
-                  rows={3}
-                  className="mt-1 w-full resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
-                />
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Comma or newline separated skill slugs. Templates preload their
-                  recommended skills; add or remove as needed.
-                </p>
+                  )
+                })}
               </div>
             </CollapsibleContent>
           </Collapsible>
@@ -601,23 +737,24 @@ export function AutomationsPage({
                       </div>
                       {template.executionConfig ? (
                         <div className="mt-2 flex flex-wrap gap-1">
-                          {(
-                            Object.keys(
-                              template.executionConfig.capabilities,
-                            ) as AutomationCapabilityKey[]
-                          )
-                            .filter(
-                              (capability) =>
-                                template.executionConfig?.capabilities[
-                                  capability
-                                ],
-                            )
-                            .map((capability) => (
+                          {template.executionConfig.requiredConnectors.map(
+                            (connector) => (
                               <span
-                                key={capability}
+                                key={connector}
                                 className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
                               >
-                                {CAPABILITY_LABELS[capability]}
+                                {connector}
+                              </span>
+                            ),
+                          )}
+                          {template.executionConfig.requiredSkills
+                            .slice(0, 2)
+                            .map((skill) => (
+                              <span
+                                key={skill}
+                                className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                              >
+                                {skill}
                               </span>
                             ))}
                         </div>
