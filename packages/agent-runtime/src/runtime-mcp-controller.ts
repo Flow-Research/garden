@@ -1,27 +1,28 @@
-import type { MCPServerFilter } from "agents/mcp/client";
-import type { ModelMessage, ToolSet } from "ai";
-import { Result, TaggedError, type Result as ResultValue } from "better-result";
-import { and, desc, eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import { getConnectorById } from "@garden/connectors";
+import type { MCPServerFilter } from 'agents/mcp/client'
+import type { ModelMessage, ToolSet } from 'ai'
+import { Result, TaggedError, type Result as ResultValue } from 'better-result'
+import { and, desc, eq } from 'drizzle-orm'
+import { drizzle } from 'drizzle-orm/neon-serverless'
+import { getConnectorById } from '@garden/connectors'
 import {
   buildMcpAiToolKey,
   canonicalJsonString,
   guardedMcpToolDescription,
-} from "@garden/connectors/capabilities";
-import * as schema from "@garden/db/schema";
-import { upsertPermissionRequestInbox } from "@garden/db/inbox";
+} from '@garden/connectors/capabilities'
+import * as schema from '@garden/db/schema'
+import { upsertPermissionRequestInbox } from '@garden/db/inbox'
 import {
   buildConnectorSyncPlan,
   extractThreadIdFromAgentName,
   hasWarmStoredConnectorServers,
+  normalizeMcpConnectorId,
   type ActiveConnectorBinding,
   type StoredConnectorServerRow,
-} from "./mcp-connectors";
-import { listAvailableConnectorBindings } from "@garden/core/connectors/availability";
-import { mcpRuntimeConfig } from "./mcp-runtime-config";
+} from './mcp-connectors'
+import { listAvailableConnectorBindings } from '@garden/core/connectors/availability'
+import { mcpRuntimeConfig } from './mcp-runtime-config'
 
-export { canonicalJsonString } from "@garden/connectors/capabilities";
+export { canonicalJsonString } from '@garden/connectors/capabilities'
 
 export const MCP_CONNECTOR_SERVER_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS mcp_connector_server (
@@ -35,194 +36,188 @@ export const MCP_CONNECTOR_SERVER_SCHEMA_SQL = `
     tools_signature TEXT,
     updated_at TEXT NOT NULL
   )
-`;
+`
 
-export const PERMISSION_APPROVAL_REUSE_WINDOW_MS = 60 * 1000;
+export const PERMISSION_APPROVAL_REUSE_WINDOW_MS = 60 * 1000
 
-export class RuntimeMcpError extends TaggedError("RuntimeMcpError")<{
+export class RuntimeMcpError extends TaggedError('RuntimeMcpError')<{
   code:
-    | "connector_not_found"
-    | "database_failed"
-    | "jwt_mint_failed"
-    | "mcp_connect_failed"
-    | "mcp_discover_failed"
-    | "mcp_readiness_failed"
-    | "mcp_register_failed"
-    | "thread_not_found";
-  message: string;
+    | 'connector_not_found'
+    | 'database_failed'
+    | 'jwt_mint_failed'
+    | 'mcp_connect_failed'
+    | 'mcp_discover_failed'
+    | 'mcp_readiness_failed'
+    | 'mcp_register_failed'
+    | 'thread_not_found'
+  message: string
 }>() {}
 
 export type ThreadRuntimeIdentity = {
-  threadId: string;
-  workspaceId: string;
-  userId: string;
-  agentId: string;
-  issueId?: string;
-  runId?: string;
-};
+  threadId: string
+  workspaceId: string
+  userId: string
+  agentId: string
+  issueId?: string
+  runId?: string
+}
 
 type StoredConnectorServerRowRecord = {
-  connector_id: string;
-  server_id: string;
-  account_id: string | null;
-  workspace_id: string;
-  user_id: string;
-  agent_id: string;
-  jwt_expires_at: string;
-  tools_signature: string | null;
-};
+  connector_id: string
+  server_id: string
+  account_id: string | null
+  workspace_id: string
+  user_id: string
+  agent_id: string
+  jwt_expires_at: string
+  tools_signature: string | null
+}
 
 export type McpHostEnv = {
-  BETTER_AUTH_SECRET: string;
-  BETTER_AUTH_URL: string;
-  DATABASE_URL: string;
-};
+  BETTER_AUTH_SECRET: string
+  BETTER_AUTH_URL: string
+  DATABASE_URL: string
+}
 
 export type McpRegistration =
-  | { state: "failed"; error: string }
-  | { state: "authenticating" }
-  | { state: "connected" }
-  | { state: "ready" };
+  | { state: 'failed'; error: string }
+  | { state: 'authenticating' }
+  | { state: 'connected' }
+  | { state: 'ready' }
 
 export type RpcMcpConnectorProps = {
-  userId: string;
-  workspaceId: string;
-  agentId: string;
-  issueId?: string;
-  runId?: string;
-  connectorId: string;
-  authKind: "oauth" | "api-key" | "none";
-  accountId?: string;
-};
-
-type RpcMcpConnectClient = {
-  registerServer: (
-    id: string,
-    options: {
-      url: string;
-      name: string;
-      callbackUrl: string;
-      transport: {
-        type: "rpc";
-        namespace: DurableObjectNamespace;
-        name: string;
-        props: RpcMcpConnectorProps;
-      };
-    },
-  ) => Promise<string>;
-  connectToServer: (id: string) => Promise<{
-    state: "authenticating" | "connected" | "failed" | "ready";
-    error?: string;
-  }>;
-  saveRpcServerToStorage: (
-    id: string,
-    name: string,
-    normalizedName: string,
-    bindingName: string,
-    props: Record<string, unknown>,
-  ) => void;
-};
+  userId: string
+  workspaceId: string
+  agentId: string
+  issueId?: string
+  runId?: string
+  connectorId: string
+  authKind: 'oauth' | 'api-key' | 'none'
+  accountId?: string
+}
 
 export type McpToolRecord = {
-  name: string;
-  description?: string | null;
-  inputSchema?: unknown;
-  outputSchema?: unknown;
-  serverId: string;
-};
+  name: string
+  description?: string | null
+  inputSchema?: unknown
+  outputSchema?: unknown
+  serverId: string
+}
 
 export type McpClientFacade = {
-  getAITools: (filter?: MCPServerFilter) => ToolSet;
-  listTools: (filter?: MCPServerFilter) => McpToolRecord[];
+  getAITools: (filter?: MCPServerFilter) => ToolSet
+  listTools: (filter?: MCPServerFilter) => McpToolRecord[]
   listServers: () => Array<{
-    id: string;
-    server_url?: string | null;
-  }>;
-  waitForConnections?: (options: { timeout: number }) => Promise<unknown>;
+    id: string
+    name?: string | null
+    server_url?: string | null
+  }>
+  waitForConnections?: (options: { timeout: number }) => Promise<unknown>
   discoverIfConnected: (
     serverId: string,
     options: { timeoutMs: number },
-  ) => Promise<{ success: boolean; error?: string } | null | undefined>;
-};
+  ) => Promise<{ success: boolean; error?: string } | null | undefined>
+}
 
 export type McpHost = {
-  readonly name: string;
-  readonly env: McpHostEnv;
-  readonly ctx: { storage: { sql: SqlStorage } };
-  readonly mcp: McpClientFacade;
-  readonly getServerStates?: () => RuntimeMcpServerStates;
-  connectRpcMcpServer: (input: {
-    connectorId: string;
-    props: RpcMcpConnectorProps;
-  }) => Promise<McpRegistration>;
-  removeMcpServer: (connectorId: string) => Promise<void>;
+  readonly name: string
+  readonly env: McpHostEnv
+  readonly ctx: { storage: { sql: SqlStorage } }
+  readonly mcp: McpClientFacade
+  readonly getServerStates?: () => RuntimeMcpServerStates
+  addRpcMcpServer: (input: {
+    connectorId: string
+    props: RpcMcpConnectorProps
+  }) => Promise<McpRegistration & { id?: string }>
+  removeMcpServer: (connectorId: string) => Promise<void>
   resolveRuntimeIdentity?: () => Promise<
     ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
-  >;
-};
+  >
+}
 
 export function isMcpDiscoveryCancellation(message: string | undefined) {
-  return message === "Discovery was cancelled";
+  return message === 'Discovery was cancelled'
 }
 
-export function isMcpFailedConnectionStateMessage(
-  message: string | undefined,
-) {
-  return Boolean(message?.toLowerCase().includes("failed state"));
-}
-
-export async function connectRpcMcpConnector(args: {
-  mcp: unknown;
-  namespace: DurableObjectNamespace;
-  bindingName: string;
-  connectorId: string;
-  props: RpcMcpConnectorProps;
-}): Promise<McpRegistration> {
-  const client = args.mcp as RpcMcpConnectClient;
-  const serverId = await client.registerServer(args.connectorId, {
-    url: `rpc:${args.connectorId}`,
-    name: args.connectorId,
-    callbackUrl: "",
-    transport: {
-      type: "rpc",
-      namespace: args.namespace,
-      name: args.connectorId,
-      props: args.props,
-    },
-  });
-
-  if (serverId !== args.connectorId) {
-    return { state: "failed", error: "RPC MCP id mismatch" };
-  }
-
-  client.saveRpcServerToStorage(
-    args.connectorId,
-    args.connectorId,
-    args.connectorId,
-    args.bindingName,
-    { ...args.props },
-  );
-
-  const connection = await client.connectToServer(args.connectorId);
-  if (connection.state === "failed") {
-    return {
-      state: "failed",
-      error: connection.error ?? "Unknown RPC MCP connection failure",
-    };
-  }
-
-  return { state: connection.state };
+export function isMcpFailedConnectionStateMessage(message: string | undefined) {
+  return Boolean(message?.toLowerCase().includes('failed state'))
 }
 
 export class RuntimeMcpController {
   constructor(private readonly host: McpHost) {}
 
   private getDb() {
-    return drizzle(this.host.env.DATABASE_URL, { schema });
+    return drizzle(this.host.env.DATABASE_URL, { schema })
+  }
+
+  /**
+   * Maps SDK-generated MCP server ids back to Garden connector ids. The Agents
+   * SDK high-level RPC lifecycle persists opaque server ids, while Garden's
+   * permission, audit, and capability tables are keyed by stable connector ids.
+   */
+  private connectorIdForServerId(serverId: string) {
+    const directConnectorId = normalizeMcpConnectorId(serverId)
+    if (getConnectorById(directConnectorId)) return directConnectorId
+
+    const server = this.host.mcp
+      .listServers()
+      .find((candidate) => candidate.id === serverId)
+    if (!server) return null
+
+    const byName =
+      typeof server.name === 'string'
+        ? normalizeMcpConnectorId(server.name)
+        : null
+    if (byName && getConnectorById(byName)) return byName
+
+    const rpcConnectorId =
+      typeof server.server_url === 'string' &&
+      server.server_url.startsWith('rpc:')
+        ? normalizeMcpConnectorId(server.server_url.slice('rpc:'.length))
+        : null
+    return rpcConnectorId && getConnectorById(rpcConnectorId)
+      ? rpcConnectorId
+      : null
+  }
+
+  private serverForConnectorId(connectorId: string) {
+    return this.host.mcp.listServers().find((server) => {
+      const serverName =
+        typeof server.name === 'string'
+          ? normalizeMcpConnectorId(server.name)
+          : null
+      if (serverName === connectorId) return true
+
+      return server.server_url === `rpc:${connectorId}`
+    })
   }
 
   ensureConnectorServerTable() {
-    this.host.ctx.storage.sql.exec(MCP_CONNECTOR_SERVER_SCHEMA_SQL);
+    this.host.ctx.storage.sql.exec(MCP_CONNECTOR_SERVER_SCHEMA_SQL)
+  }
+
+  getRawMcpToolKeys(filter?: MCPServerFilter) {
+    return new Set(
+      this.host.mcp
+        .listTools(filter)
+        .map((tool) => buildMcpAiToolKey(tool.serverId, tool.name)),
+    )
+  }
+
+  activeToolKeysWithoutRawMcp(args: {
+    assembledTools: ToolSet
+    stableMcpTools: ToolSet
+    filter?: MCPServerFilter
+  }) {
+    const rawMcpToolKeys = this.getRawMcpToolKeys(args.filter)
+    return [
+      ...new Set([
+        ...Object.keys(args.assembledTools).filter(
+          (key) => !rawMcpToolKeys.has(key),
+        ),
+        ...Object.keys(args.stableMcpTools),
+      ]),
+    ]
   }
 
   wrapGetAITools(
@@ -230,24 +225,32 @@ export class RuntimeMcpController {
     filter?: MCPServerFilter,
     wrapOptions?: {
       shouldAutoApprove?: (input: {
-        connectorId: string;
-        toolName: string;
-        riskClass: string;
-      }) => boolean;
+        connectorId: string
+        toolName: string
+        riskClass: string
+      }) => boolean
     },
   ) {
-    const rawTools = rawGetMcpAiTools(filter);
+    const rawTools = rawGetMcpAiTools(filter)
+    const wrappedRawToolKeys = new Set<string>()
     const wrappedTools = this.host.mcp
       .listTools(filter)
       .reduce<ToolSet>((acc, tool) => {
-        const toolKey = buildMcpAiToolKey(tool.serverId, tool.name);
-        const rawTool = rawTools[toolKey];
-        if (!rawTool) {
-          return acc;
+        const connectorId = this.connectorIdForServerId(tool.serverId)
+        if (!connectorId) {
+          return acc
         }
 
-        const baseNeedsApproval = rawTool.needsApproval;
-        const baseExecute = rawTool.execute;
+        const rawToolKey = buildMcpAiToolKey(tool.serverId, tool.name)
+        const toolKey = buildMcpAiToolKey(connectorId, tool.name)
+        const rawTool = rawTools[rawToolKey]
+        if (!rawTool) {
+          return acc
+        }
+        wrappedRawToolKeys.add(rawToolKey)
+
+        const baseNeedsApproval = rawTool.needsApproval
+        const baseExecute = rawTool.execute
         acc[toolKey] = {
           ...rawTool,
           ...(baseExecute
@@ -258,89 +261,91 @@ export class RuntimeMcpController {
                   const result = await Result.tryPromise({
                     try: async () => await baseExecute(...args),
                     catch: (cause) =>
-                      cause instanceof Error
-                        ? cause
-                        : new Error(String(cause)),
-                  });
+                      cause instanceof Error ? cause : new Error(String(cause)),
+                  })
 
-                  if (result.isOk()) return result.value;
+                  if (result.isOk()) return result.value
 
                   console.warn('[agent-runtime] MCP tool call failed', {
-                    connectorId: tool.serverId,
+                    connectorId,
                     toolName: tool.name,
                     error: result.error.message,
-                  });
+                  })
 
                   return {
                     error: true,
-                    message: `${tool.serverId}.${tool.name} failed: ${result.error.message}`,
-                  };
+                    message: `${connectorId}.${tool.name} failed: ${result.error.message}`,
+                  }
                 },
               }
             : {}),
           description: guardedMcpToolDescription({
-            connectorId: tool.serverId,
+            connectorId,
             toolName: tool.name,
             description:
-              typeof rawTool.description === "string"
+              typeof rawTool.description === 'string'
                 ? rawTool.description
                 : tool.description,
           }),
           needsApproval: async (
             input: unknown,
             options: {
-              toolCallId: string;
-              messages: ModelMessage[];
-              experimental_context?: unknown;
+              toolCallId: string
+              messages: ModelMessage[]
+              experimental_context?: unknown
             },
           ) => {
             const baseApproval =
-              typeof baseNeedsApproval === "function"
+              typeof baseNeedsApproval === 'function'
                 ? await baseNeedsApproval(input, options)
-                : (baseNeedsApproval ?? false);
+                : (baseNeedsApproval ?? false)
 
             if (baseApproval) {
-              return true;
+              return true
             }
 
             const approvalResult = await this.ensureMcpToolNeedsApproval({
-              connectorId: tool.serverId,
+              connectorId,
               toolName: tool.name,
               toolCallId: options.toolCallId,
               toolArgs: input,
               shouldAutoApprove: wrapOptions?.shouldAutoApprove,
-            });
+            })
             if (approvalResult.isErr()) {
-              throw approvalResult.error;
+              throw approvalResult.error
             }
 
-            return approvalResult.value;
+            return approvalResult.value
           },
-        };
-        return acc;
-      }, {});
+        }
+        return acc
+      }, {})
 
     return {
-      ...rawTools,
+      ...Object.fromEntries(
+        Object.entries(rawTools).filter(
+          ([key]) => !wrappedRawToolKeys.has(key),
+        ),
+      ),
       ...wrappedTools,
-    };
+    }
   }
 
   private async ensureMcpToolNeedsApproval(args: {
-    connectorId: string;
-    toolName: string;
-    toolCallId: string;
-    toolArgs: unknown;
+    connectorId: string
+    toolName: string
+    toolCallId: string
+    toolArgs: unknown
     shouldAutoApprove?: (input: {
-      connectorId: string;
-      toolName: string;
-      riskClass: string;
-    }) => boolean;
+      connectorId: string
+      toolName: string
+      riskClass: string
+    }) => boolean
   }) {
-    const identityResult = await this.resolveRuntimeIdentity();
-    if (identityResult.isErr()) return identityResult;
+    const identityResult = await this.resolveRuntimeIdentity()
+    if (identityResult.isErr()) return identityResult
 
-    const db = this.getDb();
+    const db = this.getDb()
     const capabilityResult = await Result.tryPromise({
       try: async () =>
         db
@@ -358,18 +363,18 @@ export class RuntimeMcpController {
           .limit(1),
       catch: (cause) =>
         new RuntimeMcpError({
-          code: "database_failed",
+          code: 'database_failed',
           message:
             cause instanceof Error
               ? cause.message
               : `Failed to load capability for ${args.connectorId}.${args.toolName}`,
         }),
-    });
-    if (capabilityResult.isErr()) return capabilityResult;
+    })
+    if (capabilityResult.isErr()) return capabilityResult
 
-    const capability = capabilityResult.value[0];
+    const capability = capabilityResult.value[0]
     if (!capability) {
-      return Result.ok(false);
+      return Result.ok(false)
     }
     if (
       args.shouldAutoApprove?.({
@@ -378,10 +383,10 @@ export class RuntimeMcpController {
         riskClass: capability.riskClass,
       })
     ) {
-      return Result.ok(false);
+      return Result.ok(false)
     }
 
-    const toolArgsSignature = canonicalJsonString(args.toolArgs);
+    const toolArgsSignature = canonicalJsonString(args.toolArgs)
     const existingRequestResult = await Result.tryPromise({
       try: async () =>
         db
@@ -404,27 +409,27 @@ export class RuntimeMcpController {
           .limit(10),
       catch: (cause) =>
         new RuntimeMcpError({
-          code: "database_failed",
+          code: 'database_failed',
           message:
             cause instanceof Error
               ? cause.message
               : `Failed to load permission request for ${args.toolCallId}`,
         }),
-    });
-    if (existingRequestResult.isErr()) return existingRequestResult;
+    })
+    if (existingRequestResult.isErr()) return existingRequestResult
 
     const existingRequest = existingRequestResult.value.find(
       (request) => canonicalJsonString(request.argsJson) === toolArgsSignature,
-    );
-    if (existingRequest?.status === "pending") {
-      return Result.ok(true);
+    )
+    if (existingRequest?.status === 'pending') {
+      return Result.ok(true)
     }
 
     if (
-      existingRequest?.status === "approved" ||
-      existingRequest?.status === "denied"
+      existingRequest?.status === 'approved' ||
+      existingRequest?.status === 'denied'
     ) {
-      return Result.ok(false);
+      return Result.ok(false)
     }
 
     const grantResult = await Result.tryPromise({
@@ -443,17 +448,17 @@ export class RuntimeMcpController {
           .limit(1),
       catch: (cause) =>
         new RuntimeMcpError({
-          code: "database_failed",
+          code: 'database_failed',
           message:
             cause instanceof Error
               ? cause.message
               : `Failed to load permission grant for ${args.connectorId}.${args.toolName}`,
         }),
-    });
-    if (grantResult.isErr()) return grantResult;
+    })
+    if (grantResult.isErr()) return grantResult
 
-    if ((grantResult.value[0]?.trustLevel ?? "ask") !== "ask") {
-      return Result.ok(false);
+    if ((grantResult.value[0]?.trustLevel ?? 'ask') !== 'ask') {
+      return Result.ok(false)
     }
 
     const matchingApprovalResult = await Result.tryPromise({
@@ -478,33 +483,33 @@ export class RuntimeMcpController {
           .limit(20),
       catch: (cause) =>
         new RuntimeMcpError({
-          code: "database_failed",
+          code: 'database_failed',
           message:
             cause instanceof Error
               ? cause.message
               : `Failed to load recent permission approvals for ${args.connectorId}.${args.toolName}`,
         }),
-    });
-    if (matchingApprovalResult.isErr()) return matchingApprovalResult;
+    })
+    if (matchingApprovalResult.isErr()) return matchingApprovalResult
 
     const hasReusableApproval = matchingApprovalResult.value.some((request) => {
-      if (request.status !== "approved" || !request.resolvedAt) {
-        return false;
+      if (request.status !== 'approved' || !request.resolvedAt) {
+        return false
       }
 
       return (
         Date.now() - request.resolvedAt.getTime() <=
           PERMISSION_APPROVAL_REUSE_WINDOW_MS &&
         canonicalJsonString(request.argsJson) === toolArgsSignature
-      );
-    });
+      )
+    })
     if (hasReusableApproval) {
-      return Result.ok(false);
+      return Result.ok(false)
     }
 
     const insertResult = await Result.tryPromise({
       try: async () => {
-        const requestId = crypto.randomUUID();
+        const requestId = crypto.randomUUID()
         await db.insert(schema.permissionRequest).values({
           id: requestId,
           agentId: identityResult.value.agentId,
@@ -515,26 +520,26 @@ export class RuntimeMcpController {
           issueId: identityResult.value.issueId ?? null,
           argsJson: args.toolArgs as object,
           toolCallId: args.toolCallId,
-          status: "pending",
-        });
+          status: 'pending',
+        })
         await upsertPermissionRequestInbox({
           db,
           workspaceId: identityResult.value.workspaceId,
           requestId,
-        });
+        })
       },
       catch: (cause) =>
         new RuntimeMcpError({
-          code: "database_failed",
+          code: 'database_failed',
           message:
             cause instanceof Error
               ? cause.message
               : `Failed to persist permission request for ${args.toolCallId}`,
         }),
-    });
-    if (insertResult.isErr()) return insertResult;
+    })
+    if (insertResult.isErr()) return insertResult
 
-    return Result.ok(true);
+    return Result.ok(true)
   }
 
   private readConnectorServerRows() {
@@ -555,7 +560,7 @@ export class RuntimeMcpController {
               FROM mcp_connector_server
             `,
           ),
-        ) as StoredConnectorServerRowRecord[];
+        ) as StoredConnectorServerRowRecord[]
 
         return rows.map(
           (row) =>
@@ -566,22 +571,23 @@ export class RuntimeMcpController {
               jwtExpiresAt: row.jwt_expires_at,
               toolsSignature: row.tools_signature,
             }) satisfies StoredConnectorServerRow,
-        );
+        )
       },
       catch: () =>
         new RuntimeMcpError({
-          code: "database_failed",
-          message: "Failed to read MCP connector server rows",
+          code: 'database_failed',
+          message: 'Failed to read MCP connector server rows',
         }),
-    });
+    })
   }
 
   private upsertConnectorServerRow(input: {
-    identity: ThreadRuntimeIdentity;
-    connectorId: string;
-    accountId: string | null;
-    jwtExpiresAt: string;
-    toolsSignature: string | null;
+    identity: ThreadRuntimeIdentity
+    connectorId: string
+    serverId: string
+    accountId: string | null
+    jwtExpiresAt: string
+    toolsSignature: string | null
   }) {
     return Result.try({
       try: () =>
@@ -610,7 +616,7 @@ export class RuntimeMcpController {
               updated_at = excluded.updated_at
           `,
           input.connectorId,
-          input.connectorId,
+          input.serverId,
           input.accountId,
           input.identity.workspaceId,
           input.identity.userId,
@@ -621,10 +627,10 @@ export class RuntimeMcpController {
         ),
       catch: () =>
         new RuntimeMcpError({
-          code: "database_failed",
+          code: 'database_failed',
           message: `Failed to persist MCP connector row for ${input.connectorId}`,
         }),
-    });
+    })
   }
 
   private deleteConnectorServerRow(connectorId: string) {
@@ -639,26 +645,26 @@ export class RuntimeMcpController {
         ),
       catch: () =>
         new RuntimeMcpError({
-          code: "database_failed",
+          code: 'database_failed',
           message: `Failed to delete MCP connector row for ${connectorId}`,
         }),
-    });
+    })
   }
 
   private async resolveThreadRuntimeIdentity(): Promise<
     ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
   > {
-    const threadId = extractThreadIdFromAgentName(this.host.name);
+    const threadId = extractThreadIdFromAgentName(this.host.name)
     if (!threadId) {
       return Result.err(
         new RuntimeMcpError({
-          code: "thread_not_found",
+          code: 'thread_not_found',
           message: `Unable to resolve chat thread from agent "${this.host.name}"`,
         }),
-      );
+      )
     }
 
-    const db = this.getDb();
+    const db = this.getDb()
     const threadResult = await Result.tryPromise({
       try: async () =>
         db
@@ -672,23 +678,23 @@ export class RuntimeMcpController {
           .limit(1),
       catch: (cause) =>
         new RuntimeMcpError({
-          code: "database_failed",
+          code: 'database_failed',
           message:
             cause instanceof Error
               ? cause.message
               : `Failed to load chat thread ${threadId}`,
         }),
-    });
-    if (threadResult.isErr()) return Result.err(threadResult.error);
+    })
+    if (threadResult.isErr()) return Result.err(threadResult.error)
 
-    const thread = threadResult.value[0];
+    const thread = threadResult.value[0]
     if (!thread) {
       return Result.err(
         new RuntimeMcpError({
-          code: "thread_not_found",
+          code: 'thread_not_found',
           message: `Chat thread ${threadId} was not found`,
         }),
-      );
+      )
     }
 
     return Result.ok({
@@ -696,7 +702,7 @@ export class RuntimeMcpController {
       workspaceId: thread.workspaceId,
       userId: thread.userId,
       agentId: thread.agentId,
-    } satisfies ThreadRuntimeIdentity);
+    } satisfies ThreadRuntimeIdentity)
   }
 
   private async resolveRuntimeIdentity(): Promise<
@@ -704,7 +710,7 @@ export class RuntimeMcpController {
   > {
     return this.host.resolveRuntimeIdentity
       ? await this.host.resolveRuntimeIdentity()
-      : await this.resolveThreadRuntimeIdentity();
+      : await this.resolveThreadRuntimeIdentity()
   }
 
   private async listActiveConnectorBindings(identity: ThreadRuntimeIdentity) {
@@ -713,29 +719,30 @@ export class RuntimeMcpController {
         await listAvailableConnectorBindings({
           db: this.getDb(),
           getEnvVar: (name) => {
-            const value = (this.host.env as Record<string, unknown>)[name];
-            return typeof value === "string" ? value : undefined;
+            const value = (this.host.env as Record<string, unknown>)[name]
+            return typeof value === 'string' ? value : undefined
           },
           userId: identity.userId,
           workspaceId: identity.workspaceId,
         }),
       catch: (cause) =>
         new RuntimeMcpError({
-          code: "database_failed",
+          code: 'database_failed',
           message:
             cause instanceof Error
               ? cause.message
-              : "Failed to load available connector bindings for chat runtime",
+              : 'Failed to load available connector bindings for chat runtime',
         }),
-    });
+    })
 
-    return result;
+    return result
   }
 
   private buildConnectorToolsSignature(connectorId: string) {
+    const server = this.serverForConnectorId(connectorId)
     return canonicalJsonString(
       this.host.mcp
-        .listTools({ serverId: connectorId })
+        .listTools(server ? { serverId: server.id } : { serverId: connectorId })
         .map((tool) => ({
           name: tool.name,
           description: tool.description ?? null,
@@ -743,19 +750,19 @@ export class RuntimeMcpController {
           outputSchema: tool.outputSchema ?? null,
         }))
         .sort((left, right) => left.name.localeCompare(right.name)),
-    );
+    )
   }
 
   captureObservedMcpToolChanges() {
-    this.ensureConnectorServerTable();
-    const storedRowsResult = this.readConnectorServerRows();
-    if (storedRowsResult.isErr()) return storedRowsResult;
+    this.ensureConnectorServerTable()
+    const storedRowsResult = this.readConnectorServerRows()
+    if (storedRowsResult.isErr()) return storedRowsResult
 
-    const connectorIdsToSync: string[] = [];
+    const connectorIdsToSync: string[] = []
     for (const row of storedRowsResult.value) {
-      const nextSignature = this.buildConnectorToolsSignature(row.connectorId);
+      const nextSignature = this.buildConnectorToolsSignature(row.connectorId)
       if (nextSignature === row.toolsSignature) {
-        continue;
+        continue
       }
 
       const updateResult = Result.try({
@@ -772,54 +779,54 @@ export class RuntimeMcpController {
           ),
         catch: () =>
           new RuntimeMcpError({
-            code: "database_failed",
+            code: 'database_failed',
             message: `Failed to update observed tool signature for ${row.connectorId}`,
           }),
-      });
+      })
       if (updateResult.isErr()) {
-        return updateResult;
+        return updateResult
       }
 
-      connectorIdsToSync.push(row.connectorId);
+      connectorIdsToSync.push(row.connectorId)
     }
 
     if (connectorIdsToSync.length > 0) {
-      void this.requestCapabilitySyncForConnectors(connectorIdsToSync);
+      void this.requestCapabilitySyncForConnectors(connectorIdsToSync)
     }
 
-    return Result.ok(connectorIdsToSync);
+    return Result.ok(connectorIdsToSync)
   }
 
   async ensureProxyMcpConnections(options?: {
-    refreshWindowMs?: number;
-    allowReplacingRegisteredServers?: boolean;
+    refreshWindowMs?: number
+    allowReplacingRegisteredServers?: boolean
   }) {
-    this.ensureConnectorServerTable();
+    this.ensureConnectorServerTable()
 
-    const identityResult = await this.resolveRuntimeIdentity();
-    if (identityResult.isErr()) return identityResult;
+    const identityResult = await this.resolveRuntimeIdentity()
+    if (identityResult.isErr()) return identityResult
 
     const bindingsResult = await this.listActiveConnectorBindings(
       identityResult.value,
-    );
-    if (bindingsResult.isErr()) return bindingsResult;
+    )
+    if (bindingsResult.isErr()) return bindingsResult
 
     const staleTransportResult = await this.removeNonRpcConnectorServers(
       bindingsResult.value,
-    );
-    if (staleTransportResult.isErr()) return staleTransportResult;
+    )
+    if (staleTransportResult.isErr()) return staleTransportResult
 
     const failedServerResult = await this.removeFailedConnectorServers(
       bindingsResult.value,
-    );
-    if (failedServerResult.isErr()) return failedServerResult;
+    )
+    if (failedServerResult.isErr()) return failedServerResult
     const precleanedConnectorIds = new Set([
       ...staleTransportResult.value,
       ...failedServerResult.value,
-    ]);
+    ])
 
-    const storedRowsResult = this.readConnectorServerRows();
-    if (storedRowsResult.isErr()) return storedRowsResult;
+    const storedRowsResult = this.readConnectorServerRows()
+    if (storedRowsResult.isErr()) return storedRowsResult
 
     const plan = buildConnectorSyncPlan({
       bindings: bindingsResult.value,
@@ -828,19 +835,19 @@ export class RuntimeMcpController {
         .map((server) => server.id),
       storedRows: storedRowsResult.value,
       refreshWindowMs: options?.refreshWindowMs,
-    });
+    })
 
     for (const connectorId of plan.connectorIdsToRemove) {
-      const removalResult = await this.removeConnectorServer(connectorId);
+      const removalResult = await this.removeConnectorServer(connectorId)
       if (removalResult.isErr()) {
-        console.warn("[agent-runtime] failed to remove stale MCP connector", {
+        console.warn('[agent-runtime] failed to remove stale MCP connector', {
           connectorId,
           error: removalResult.error,
-        });
+        })
       }
     }
 
-    const failedRefreshes: Array<{ connectorId: string; error: string }> = [];
+    const failedRefreshes: Array<{ connectorId: string; error: string }> = []
     for (const binding of plan.bindingsToRefresh) {
       const refreshResult = await this.refreshConnectorServer(
         identityResult.value,
@@ -850,87 +857,93 @@ export class RuntimeMcpController {
             options?.allowReplacingRegisteredServers ?? true,
           precleaned: precleanedConnectorIds.has(binding.connectorId),
         },
-      );
+      )
       if (refreshResult.isErr()) {
         failedRefreshes.push({
           connectorId: binding.connectorId,
           error: refreshResult.error.message,
-        });
-        console.warn("[agent-runtime] MCP connector refresh failed", {
+        })
+        console.warn('[agent-runtime] MCP connector refresh failed', {
           connectorId: binding.connectorId,
           error: refreshResult.error,
-        });
+        })
       }
     }
 
     if (failedRefreshes.length > 0) {
       return Result.err(
         new RuntimeMcpError({
-          code: "mcp_connect_failed",
+          code: 'mcp_connect_failed',
           message: `Failed to refresh MCP connectors: ${failedRefreshes
             .map((failure) => `${failure.connectorId}: ${failure.error}`)
-            .join("; ")}`,
+            .join('; ')}`,
         }),
-      );
+      )
     }
 
-    return Result.ok(undefined);
+    return Result.ok(undefined)
   }
 
-  private async removeNonRpcConnectorServers(bindings: ActiveConnectorBinding[]) {
+  private async removeNonRpcConnectorServers(
+    bindings: ActiveConnectorBinding[],
+  ) {
     const activeConnectorIds = new Set(
       bindings.map((binding) => binding.connectorId),
-    );
+    )
     const staleServerIds = this.host.mcp
       .listServers()
       .filter((server) => {
-        if (!activeConnectorIds.has(server.id)) return false;
-        if (typeof server.server_url !== "string") return false;
+        const connectorId = this.connectorIdForServerId(server.id)
+        if (!connectorId || !activeConnectorIds.has(connectorId)) return false
+        if (typeof server.server_url !== 'string') return false
 
-        return !server.server_url.startsWith("rpc:");
+        return !server.server_url.startsWith('rpc:')
       })
-      .map((server) => server.id);
+      .map((server) => server.id)
 
-    for (const connectorId of staleServerIds) {
-      console.warn("[agent-runtime] removing non-RPC MCP connector server", {
-        connectorId,
-      });
-      const removalResult = await this.removeConnectorServer(connectorId);
-      if (removalResult.isErr()) return removalResult;
+    for (const serverId of staleServerIds) {
+      console.warn('[agent-runtime] removing non-RPC MCP connector server', {
+        serverId,
+      })
+      const removalResult = await this.removeConnectorServer(serverId)
+      if (removalResult.isErr()) return removalResult
     }
 
-    return Result.ok(staleServerIds);
+    return Result.ok(staleServerIds)
   }
 
-  private async removeFailedConnectorServers(bindings: ActiveConnectorBinding[]) {
-    if (!this.host.getServerStates) return Result.ok([]);
+  private async removeFailedConnectorServers(
+    bindings: ActiveConnectorBinding[],
+  ) {
+    if (!this.host.getServerStates) return Result.ok([])
 
     const activeConnectorIds = new Set(
       bindings.map((binding) => binding.connectorId),
-    );
+    )
     const failedServerIds = Object.entries(this.host.getServerStates()).flatMap(
       ([serverId, server]) => {
-        if (!activeConnectorIds.has(serverId)) return [];
-        return server.state === "failed" ? [serverId] : [];
+        const connectorId = this.connectorIdForServerId(serverId)
+        if (!connectorId || !activeConnectorIds.has(connectorId)) return []
+        return server.state === 'failed' ? [serverId] : []
       },
-    );
+    )
 
-    for (const connectorId of failedServerIds) {
-      console.warn("[agent-runtime] removing failed MCP connector server", {
-        connectorId,
-      });
-      const removalResult = await this.removeConnectorServer(connectorId);
-      if (removalResult.isErr()) return removalResult;
+    for (const serverId of failedServerIds) {
+      console.warn('[agent-runtime] removing failed MCP connector server', {
+        serverId,
+      })
+      const removalResult = await this.removeConnectorServer(serverId)
+      if (removalResult.isErr()) return removalResult
     }
 
-    return Result.ok(failedServerIds);
+    return Result.ok(failedServerIds)
   }
 
   hasWarmProxyMcpConnections(now = Date.now()) {
-    this.ensureConnectorServerTable();
+    this.ensureConnectorServerTable()
 
-    const storedRowsResult = this.readConnectorServerRows();
-    if (storedRowsResult.isErr()) return storedRowsResult;
+    const storedRowsResult = this.readConnectorServerRows()
+    if (storedRowsResult.isErr()) return storedRowsResult
 
     return Result.ok(
       hasWarmStoredConnectorServers({
@@ -940,158 +953,190 @@ export class RuntimeMcpController {
           .map((server) => server.id),
         now,
       }),
-    );
+    )
   }
 
   async resetProxyMcpServers(serverIds?: string[]) {
-    this.ensureConnectorServerTable();
+    this.ensureConnectorServerTable()
 
-    const storedRowsResult = this.readConnectorServerRows();
-    if (storedRowsResult.isErr()) return storedRowsResult;
+    const storedRowsResult = this.readConnectorServerRows()
+    if (storedRowsResult.isErr()) return storedRowsResult
 
     const connectorIdsToReset = [
       ...new Set(
-        serverIds ??
-          storedRowsResult.value.map((row) => row.connectorId),
+        serverIds ?? storedRowsResult.value.map((row) => row.connectorId),
       ),
-    ];
+    ]
 
     for (const connectorId of connectorIdsToReset) {
-      const removalResult = await this.removeConnectorServer(connectorId);
+      const removalResult = await this.removeConnectorServer(connectorId)
       if (removalResult.isErr()) {
-        return removalResult;
+        return removalResult
       }
     }
 
-    return Result.ok(undefined);
+    return Result.ok(undefined)
   }
 
-  private async removeConnectorServer(connectorId: string) {
+  private async removeConnectorServer(connectorOrServerId: string) {
+    const storedRowsResult = this.readConnectorServerRows()
+    if (storedRowsResult.isErr()) return storedRowsResult
+
+    const storedRow = storedRowsResult.value.find(
+      (row) =>
+        row.connectorId === connectorOrServerId ||
+        row.serverId === connectorOrServerId,
+    )
+    const server =
+      this.host.mcp
+        .listServers()
+        .find((candidate) => candidate.id === connectorOrServerId) ??
+      (storedRow ? this.serverForConnectorId(storedRow.connectorId) : undefined)
+    const serverId = server?.id ?? storedRow?.serverId ?? connectorOrServerId
+    const connectorId =
+      storedRow?.connectorId ??
+      this.connectorIdForServerId(serverId) ??
+      connectorOrServerId
+
     const unregisterResult = await Result.tryPromise({
-      try: async () => this.host.removeMcpServer(connectorId),
+      try: async () => this.host.removeMcpServer(serverId),
       catch: (cause) =>
         new RuntimeMcpError({
-          code: "mcp_register_failed",
+          code: 'mcp_register_failed',
           message:
             cause instanceof Error
               ? cause.message
-              : `Failed to remove MCP server ${connectorId}`,
+              : `Failed to remove MCP server ${serverId}`,
         }),
-    });
-    if (unregisterResult.isErr()) return unregisterResult;
+    })
+    if (unregisterResult.isErr()) return unregisterResult
 
-    return this.deleteConnectorServerRow(connectorId);
+    return this.deleteConnectorServerRow(connectorId)
   }
 
   private async refreshConnectorServer(
     identity: ThreadRuntimeIdentity,
     binding: ActiveConnectorBinding,
-    options?: { allowReplacingRegisteredServers?: boolean; precleaned?: boolean },
+    options?: {
+      allowReplacingRegisteredServers?: boolean
+      precleaned?: boolean
+    },
   ) {
-    const connector = getConnectorById(binding.connectorId);
+    const connector = getConnectorById(binding.connectorId)
     if (!connector) {
       return Result.err(
         new RuntimeMcpError({
-          code: "connector_not_found",
+          code: 'connector_not_found',
           message: `Unknown connector: ${binding.connectorId}`,
         }),
-      );
+      )
     }
 
-    const hasRegisteredServer = this.host.mcp
-      .listServers()
-      .some((server) => server.id === connector.id);
+    const registeredServer = this.serverForConnectorId(connector.id)
+    const hasRegisteredServer = Boolean(registeredServer)
 
-    const storedRowsResult = this.readConnectorServerRows();
-    if (storedRowsResult.isErr()) return storedRowsResult;
+    const storedRowsResult = this.readConnectorServerRows()
+    if (storedRowsResult.isErr()) return storedRowsResult
     const storedRow = storedRowsResult.value.find(
       (row) => row.connectorId === connector.id,
-    );
-    const hasDiscoveredTools =
-      this.host.mcp.listTools({ serverId: connector.id }).length > 0;
+    )
+    const hasDiscoveredTools = registeredServer
+      ? this.host.mcp.listTools({ serverId: registeredServer.id }).length > 0
+      : false
 
     if (
       hasRegisteredServer &&
       hasDiscoveredTools &&
       storedRow?.accountId === binding.accountId
     ) {
+      if (!registeredServer) {
+        return Result.err(
+          new RuntimeMcpError({
+            code: 'mcp_register_failed',
+            message: `Failed to resolve registered MCP server for ${connector.id}`,
+          }),
+        )
+      }
+
       return this.upsertConnectorServerRow({
         identity,
         connectorId: connector.id,
+        serverId: registeredServer.id,
         accountId: binding.accountId,
         jwtExpiresAt: new Date(
           Date.now() + mcpRuntimeConfig.proxyJwtTtlSeconds * 1000,
         ).toISOString(),
         toolsSignature: this.buildConnectorToolsSignature(connector.id),
-      });
+      })
     }
 
     if (hasRegisteredServer && !options?.allowReplacingRegisteredServers) {
-      return Result.ok(undefined);
+      return Result.ok(undefined)
     }
 
     if (!options?.precleaned) {
-      const cleanupResult = await this.removeConnectorServer(connector.id);
-      if (cleanupResult.isErr()) return cleanupResult;
+      const cleanupResult = await this.removeConnectorServer(connector.id)
+      if (cleanupResult.isErr()) return cleanupResult
     }
 
     let connectResult = await this.connectAndDiscoverConnectorServer({
       identity,
       binding,
       connector,
-    });
+    })
 
     if (
       connectResult.isErr() &&
       isMcpFailedConnectionStateMessage(connectResult.error.message)
     ) {
       console.warn(
-        "[agent-runtime] resetting failed MCP connector before retry",
+        '[agent-runtime] resetting failed MCP connector before retry',
         {
           connectorId: connector.id,
           error: connectResult.error.message,
         },
-      );
+      )
 
-      const cleanupResult = await this.removeConnectorServer(connector.id);
-      if (cleanupResult.isErr()) return cleanupResult;
+      const cleanupResult = await this.removeConnectorServer(connector.id)
+      if (cleanupResult.isErr()) return cleanupResult
 
       connectResult = await this.connectAndDiscoverConnectorServer({
         identity,
         binding,
         connector,
-      });
+      })
     }
 
     if (connectResult.isErr()) {
-      await this.removeConnectorServer(connector.id);
-      return connectResult;
+      await this.removeConnectorServer(connector.id)
+      return connectResult
     }
 
     const persistResult = this.upsertConnectorServerRow({
       identity,
       connectorId: connector.id,
+      serverId: connectResult.value,
       accountId: binding.accountId,
       jwtExpiresAt: new Date(
         Date.now() + mcpRuntimeConfig.proxyJwtTtlSeconds * 1000,
       ).toISOString(),
       toolsSignature: this.buildConnectorToolsSignature(connector.id),
-    });
-    if (persistResult.isErr()) return persistResult;
+    })
+    if (persistResult.isErr()) return persistResult
 
-    return Result.ok(undefined);
+    return Result.ok(undefined)
   }
 
   private async connectAndDiscoverConnectorServer(args: {
-    identity: ThreadRuntimeIdentity;
-    binding: ActiveConnectorBinding;
-    connector: NonNullable<ReturnType<typeof getConnectorById>>;
+    identity: ThreadRuntimeIdentity
+    binding: ActiveConnectorBinding
+    connector: NonNullable<ReturnType<typeof getConnectorById>>
   }) {
-    const { identity, binding, connector } = args;
+    const { identity, binding, connector } = args
 
     return await Result.tryPromise({
       try: async () => {
-        const registration = await this.host.connectRpcMcpServer({
+        const registration = await this.host.addRpcMcpServer({
           connectorId: connector.id,
           props: {
             userId: identity.userId,
@@ -1101,329 +1146,335 @@ export class RuntimeMcpController {
             ...(identity.runId ? { runId: identity.runId } : {}),
             connectorId: connector.id,
             authKind: connector.apiKey
-              ? "api-key"
+              ? 'api-key'
               : connector.oauth
-                ? "oauth"
-                : "none",
+                ? 'oauth'
+                : 'none',
             ...(binding.accountId ? { accountId: binding.accountId } : {}),
           },
-        });
+        })
 
-        if (registration.state === "failed") {
+        if (registration.state === 'failed') {
           throw new RuntimeMcpError({
-            code: "mcp_connect_failed",
+            code: 'mcp_connect_failed',
             message: registration.error,
-          });
+          })
         }
 
-        if (registration.state === "authenticating") {
+        if (registration.state === 'authenticating') {
           throw new RuntimeMcpError({
-            code: "mcp_connect_failed",
+            code: 'mcp_connect_failed',
             message: `Unexpected OAuth handshake for RPC connector ${connector.id}`,
-          });
+          })
+        }
+
+        const serverId =
+          registration.id ??
+          this.serverForConnectorId(connector.id)?.id ??
+          connector.id
+        if (!serverId) {
+          throw new RuntimeMcpError({
+            code: 'mcp_register_failed',
+            message: `Failed to resolve MCP server id for ${connector.id}`,
+          })
         }
 
         const discoveryResult =
-          await this.discoverRegisteredConnectorServer(connector.id);
+          await this.discoverRegisteredConnectorServer(serverId)
         if (discoveryResult.isErr()) {
           throw new RuntimeMcpError({
-            code: "mcp_discover_failed",
+            code: 'mcp_discover_failed',
             message: discoveryResult.error,
-          });
+          })
         }
+
+        return serverId
       },
       catch: (cause) => {
-        if (cause instanceof RuntimeMcpError) return cause;
+        if (cause instanceof RuntimeMcpError) return cause
 
         const message =
           cause instanceof Error
             ? cause.message
-            : `Failed to attach MCP server ${connector.id}`;
+            : `Failed to attach MCP server ${connector.id}`
 
         return new RuntimeMcpError({
           code: isMcpFailedConnectionStateMessage(message)
-            ? "mcp_discover_failed"
-            : "mcp_register_failed",
+            ? 'mcp_discover_failed'
+            : 'mcp_register_failed',
           message,
-        });
+        })
       },
-    });
+    })
   }
 
   private async discoverRegisteredConnectorServer(connectorId: string) {
     const discovery = await this.host.mcp.discoverIfConnected(connectorId, {
       timeoutMs: mcpRuntimeConfig.connectorDiscoveryTimeoutMs,
-    });
-    if (discovery?.success) return Result.ok(undefined);
+    })
+    if (discovery?.success) return Result.ok(undefined)
 
     const error =
-      discovery?.error || `Failed to discover MCP tools for ${connectorId}`;
+      discovery?.error || `Failed to discover MCP tools for ${connectorId}`
     if (!isMcpDiscoveryCancellation(error)) {
-      return Result.err(error);
+      return Result.err(error)
     }
 
     const hasDiscoveredTools =
-      this.host.mcp.listTools({ serverId: connectorId }).length > 0;
-    if (hasDiscoveredTools) return Result.ok(undefined);
+      this.host.mcp.listTools({ serverId: connectorId }).length > 0
+    if (hasDiscoveredTools) return Result.ok(undefined)
 
     await this.host.mcp.waitForConnections?.({
       timeout: mcpRuntimeConfig.connectorDiscoveryWaitTimeoutMs,
-    });
+    })
 
     const hasToolsAfterWait =
-      this.host.mcp.listTools({ serverId: connectorId }).length > 0;
-    if (hasToolsAfterWait) return Result.ok(undefined);
+      this.host.mcp.listTools({ serverId: connectorId }).length > 0
+    if (hasToolsAfterWait) return Result.ok(undefined)
 
-    return Result.err(error);
+    return Result.err(error)
   }
 
   private async requestCapabilitySyncForConnectors(connectorIds: string[]) {
-    const uniqueConnectorIds = [...new Set(connectorIds)];
+    const uniqueConnectorIds = [...new Set(connectorIds)]
     if (uniqueConnectorIds.length === 0) {
-      return Result.ok(undefined);
+      return Result.ok(undefined)
     }
 
-    const identityResult = await this.resolveRuntimeIdentity();
-    if (identityResult.isErr()) return identityResult;
+    const identityResult = await this.resolveRuntimeIdentity()
+    if (identityResult.isErr()) return identityResult
 
     const endpoint = new URL(
-      "/api/internal/capability-sync",
+      '/api/internal/capability-sync',
       this.host.env.BETTER_AUTH_URL,
-    ).toString();
+    ).toString()
 
     for (const connectorId of uniqueConnectorIds) {
       const syncResult = await Result.tryPromise({
         try: async () => {
           const response = await fetch(endpoint, {
-            method: "POST",
+            method: 'POST',
             headers: {
-              "Content-Type": "application/json",
-              "x-garden-internal-secret": this.host.env.BETTER_AUTH_SECRET,
+              'Content-Type': 'application/json',
+              'x-garden-internal-secret': this.host.env.BETTER_AUTH_SECRET,
             },
             body: JSON.stringify({
               connectorId,
               userId: identityResult.value.userId,
               workspaceId: identityResult.value.workspaceId,
             }),
-          });
+          })
 
           if (!response.ok) {
             throw new Error(
               `Capability sync failed for ${connectorId} with ${response.status}`,
-            );
+            )
           }
         },
         catch: (cause) =>
           new RuntimeMcpError({
-            code: "database_failed",
+            code: 'database_failed',
             message:
               cause instanceof Error
                 ? cause.message
                 : `Failed to request capability sync for ${connectorId}`,
           }),
-      });
+      })
       if (syncResult.isErr()) {
-        return syncResult;
+        return syncResult
       }
     }
 
-    return Result.ok(undefined);
+    return Result.ok(undefined)
   }
 }
 
-export type RuntimeMcpPrepareResult = ResultValue<void, string>;
+export type RuntimeMcpPrepareResult = ResultValue<void, string>
 
-type RuntimeMcpReadinessError = { message: string; serverIds: string[] };
-type RuntimeMcpReadinessResult = ResultValue<void, RuntimeMcpReadinessError>;
+type RuntimeMcpReadinessError = { message: string; serverIds: string[] }
+type RuntimeMcpReadinessResult = ResultValue<void, RuntimeMcpReadinessError>
 
 export type RuntimeMcpServerStates = Record<
   string,
   {
-    state: string;
-    error?: string | null;
-    name?: string | null;
-    server_url?: string | null;
+    state: string
+    error?: string | null
+    name?: string | null
+    server_url?: string | null
   }
->;
+>
 
 type RuntimeMcpConnectionPreparerOptions = {
-  getController: () => RuntimeMcpController;
-  fullSyncIntervalMs: number;
-  waitForConnections?: (timeoutMs: number) => Promise<unknown>;
-  getServerStates?: () => RuntimeMcpServerStates;
-  connectionWaitTimeoutMs?: number;
-  backgroundRefreshFailedMessage: string;
-  refreshFailedMessage: string;
-  continuingWithoutReadyMessage: string;
-  readinessPolicy?: "opportunistic" | "required";
-  onSuccessfulRefresh?: (controller: RuntimeMcpController) => void;
+  getController: () => RuntimeMcpController
+  fullSyncIntervalMs: number
+  waitForConnections?: (timeoutMs: number) => Promise<unknown>
+  getServerStates?: () => RuntimeMcpServerStates
+  connectionWaitTimeoutMs?: number
+  backgroundRefreshFailedMessage: string
+  refreshFailedMessage: string
+  continuingWithoutReadyMessage: string
+  readinessPolicy?: 'opportunistic' | 'required'
+  onSuccessfulRefresh?: (controller: RuntimeMcpController) => void
   onThreadNotFound?: (
     reason: string,
     controller: RuntimeMcpController,
-  ) => Promise<void>;
-};
+  ) => Promise<void>
+}
 
 export class RuntimeMcpConnectionPreparer {
-  private lastFullSyncAt = 0;
-  private refreshInFlight: Promise<RuntimeMcpPrepareResult> | null = null;
+  private lastFullSyncAt = 0
+  private refreshInFlight: Promise<RuntimeMcpPrepareResult> | null = null
 
   constructor(private readonly options: RuntimeMcpConnectionPreparerOptions) {}
 
   async ensureForTurn(reason: string) {
-    const controller = this.options.getController();
-    const now = Date.now();
-    const warmResult = controller.hasWarmProxyMcpConnections(now);
+    const controller = this.options.getController()
+    const now = Date.now()
+    const warmResult = controller.hasWarmProxyMcpConnections(now)
 
     if (
       warmResult.isOk() &&
       warmResult.value &&
       now - this.lastFullSyncAt < this.options.fullSyncIntervalMs
     ) {
-      if (!this.shouldWaitForReadiness()) return controller;
+      if (!this.shouldWaitForReadiness()) return controller
 
-      const readinessResult = await this.waitForConnectionsReady(reason);
-      if (readinessResult.isOk()) return controller;
+      const readinessResult = await this.waitForConnectionsReady(reason)
+      if (readinessResult.isOk()) return controller
 
-      console.warn("[agent-runtime] warm MCP connector state is stale", {
+      console.warn('[agent-runtime] warm MCP connector state is stale', {
         error: readinessResult.error.message,
         serverIds: readinessResult.error.serverIds,
-      });
+      })
 
       const resetResult = await controller.resetProxyMcpServers(
         readinessResult.error.serverIds.length > 0
           ? readinessResult.error.serverIds
           : undefined,
-      );
+      )
       if (resetResult.isErr()) {
         console.warn(
-          "[agent-runtime] failed to reset stale MCP connector servers",
+          '[agent-runtime] failed to reset stale MCP connector servers',
           resetResult.error,
-        );
+        )
       }
     }
 
     if (warmResult.isErr()) {
       console.warn(
-        "[agent-runtime] failed to inspect warm MCP connector state",
+        '[agent-runtime] failed to inspect warm MCP connector state',
         warmResult.error,
-      );
+      )
     }
 
-    const readyResult = await this.ensureLoaded(reason);
+    const readyResult = await this.ensureLoaded(reason)
     if (readyResult.isErr()) {
       console.warn(this.options.continuingWithoutReadyMessage, {
         reason,
         error: readyResult.error,
-      });
-      if (this.options.readinessPolicy === "required") {
+      })
+      if (this.options.readinessPolicy === 'required') {
         throw new RuntimeMcpError({
-          code: "mcp_readiness_failed",
+          code: 'mcp_readiness_failed',
           message: readyResult.error,
-        });
+        })
       }
     }
 
-    return controller;
+    return controller
   }
 
   ensureLoaded(
     reason: string,
     options?: {
-      refreshWindowMs?: number;
-      allowReplacingRegisteredServers?: boolean;
-      waitForReadiness?: boolean;
+      refreshWindowMs?: number
+      allowReplacingRegisteredServers?: boolean
+      waitForReadiness?: boolean
     },
   ): Promise<RuntimeMcpPrepareResult> {
-    if (this.refreshInFlight) return this.refreshInFlight;
+    if (this.refreshInFlight) return this.refreshInFlight
 
     this.refreshInFlight = this.refreshWithRetries(reason, options).then(
       (result) => {
-        this.refreshInFlight = null;
-        return result;
+        this.refreshInFlight = null
+        return result
       },
       (cause: unknown) => {
-        const message = cause instanceof Error ? cause.message : String(cause);
+        const message = cause instanceof Error ? cause.message : String(cause)
         console.warn(this.options.backgroundRefreshFailedMessage, {
           reason,
           error: message,
-        });
-        this.refreshInFlight = null;
-        return Result.err(message);
+        })
+        this.refreshInFlight = null
+        return Result.err(message)
       },
-    );
+    )
 
-    return this.refreshInFlight;
+    return this.refreshInFlight
   }
 
   private async refreshWithRetries(
     reason: string,
     options?: {
-      refreshWindowMs?: number;
-      allowReplacingRegisteredServers?: boolean;
-      waitForReadiness?: boolean;
+      refreshWindowMs?: number
+      allowReplacingRegisteredServers?: boolean
+      waitForReadiness?: boolean
     },
   ): Promise<RuntimeMcpPrepareResult> {
-    const controller = this.options.getController();
-    const connectionResult =
-      await controller.ensureProxyMcpConnections(options);
+    const controller = this.options.getController()
+    const connectionResult = await controller.ensureProxyMcpConnections(options)
     if (connectionResult.isErr()) {
-      if (connectionResult.error.code === "thread_not_found") {
-        await this.options.onThreadNotFound?.(reason, controller);
-        return Result.ok(undefined);
+      if (connectionResult.error.code === 'thread_not_found') {
+        await this.options.onThreadNotFound?.(reason, controller)
+        return Result.ok(undefined)
       }
       console.warn(this.options.refreshFailedMessage, {
         reason,
         error: connectionResult.error,
-      });
-      return Result.err(connectionResult.error.message);
+      })
+      return Result.err(connectionResult.error.message)
     }
 
-    if (
-      options?.waitForReadiness !== false &&
-      this.shouldWaitForReadiness()
-    ) {
-      const readinessResult = await this.waitForConnectionsReady(reason);
+    if (options?.waitForReadiness !== false && this.shouldWaitForReadiness()) {
+      const readinessResult = await this.waitForConnectionsReady(reason)
       if (readinessResult.isErr()) {
-        console.warn(
-          "[agent-runtime] MCP connector readiness check failed",
-          {
-            reason,
-            error: readinessResult.error.message,
-            serverIds: readinessResult.error.serverIds,
-          },
-        );
+        console.warn('[agent-runtime] MCP connector readiness check failed', {
+          reason,
+          error: readinessResult.error.message,
+          serverIds: readinessResult.error.serverIds,
+        })
 
         const resetResult = await controller.resetProxyMcpServers(
           readinessResult.error.serverIds.length > 0
             ? readinessResult.error.serverIds
             : undefined,
-        );
+        )
         if (resetResult.isErr()) {
           console.warn(
-            "[agent-runtime] failed to reset stale MCP connector servers",
+            '[agent-runtime] failed to reset stale MCP connector servers',
             resetResult.error,
-          );
+          )
         }
-        return Result.err(readinessResult.error.message);
+        return Result.err(readinessResult.error.message)
       }
     }
 
-    this.lastFullSyncAt = Date.now();
-    this.options.onSuccessfulRefresh?.(controller);
-    return Result.ok(undefined);
+    this.lastFullSyncAt = Date.now()
+    this.options.onSuccessfulRefresh?.(controller)
+    return Result.ok(undefined)
   }
 
   private shouldWaitForReadiness() {
     return Boolean(
       this.options.waitForConnections && this.options.getServerStates,
-    );
+    )
   }
 
   private async waitForConnectionsReady(
     reason: string,
   ): Promise<RuntimeMcpReadinessResult> {
     if (!this.options.waitForConnections || !this.options.getServerStates) {
-      return Result.ok(undefined);
+      return Result.ok(undefined)
     }
 
     const waitResult = await Result.tryPromise({
@@ -1435,29 +1486,29 @@ export class RuntimeMcpConnectionPreparer {
       catch: (cause) =>
         cause instanceof Error
           ? cause.message
-          : "Failed waiting for MCP connections",
-    });
+          : 'Failed waiting for MCP connections',
+    })
     if (waitResult.isErr()) {
       return Result.err({
         message: waitResult.error,
         serverIds: [],
-      });
+      })
     }
 
     const notReadyServers = Object.entries(
       this.options.getServerStates(),
     ).flatMap(([serverId, server]) => {
-      if (server.state === "ready") return [];
+      if (server.state === 'ready') return []
       return [
         {
           id: serverId,
           state: server.state,
           error: server.error,
         },
-      ];
-    });
+      ]
+    })
 
-    if (notReadyServers.length === 0) return Result.ok(undefined);
+    if (notReadyServers.length === 0) return Result.ok(undefined)
 
     return Result.err({
       message: `MCP servers are not ready after ${reason}: ${notReadyServers
@@ -1466,8 +1517,8 @@ export class RuntimeMcpConnectionPreparer {
             ? `${server.id}:${server.state} (${server.error})`
             : `${server.id}:${server.state}`,
         )
-        .join(", ")}`,
+        .join(', ')}`,
       serverIds: notReadyServers.map((server) => server.id),
-    });
+    })
   }
 }

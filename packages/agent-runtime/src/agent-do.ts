@@ -26,6 +26,7 @@ import {
 } from '@cloudflare/think'
 import { Buffer } from 'node:buffer'
 import { Agent, callable } from 'agents'
+import type { McpAgent } from 'agents/mcp'
 import { type LanguageModel, type Tool, type ToolSet, type UIMessage } from 'ai'
 import { createWorkspaceTools } from '@cloudflare/think/tools/workspace'
 import { Workspace } from '@cloudflare/shell'
@@ -53,7 +54,6 @@ import {
 import {
   RuntimeMcpConnectionPreparer,
   RuntimeMcpController,
-  connectRpcMcpConnector,
   type McpHost,
   type RuntimeMcpServerStates,
 } from './runtime-mcp-controller'
@@ -1031,6 +1031,10 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         ? ctx.body.document_context.trim()
         : null
 
+    const stableMcpTools = mcpController.wrapGetAITools(
+      this.mcp.getAITools.bind(this.mcp),
+    )
+
     return {
       experimental_telemetry: {
         functionId: THINK_TURN_TELEMETRY_FUNCTION_ID,
@@ -1048,7 +1052,11 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         ? { system: `${ctx.system}\n\n${documentContext}` }
         : {}),
       timeout: THINK_TURN_TIMEOUT_MS,
-      tools: mcpController.wrapGetAITools(this.mcp.getAITools.bind(this.mcp)),
+      tools: stableMcpTools,
+      activeTools: mcpController.activeToolKeysWithoutRawMcp({
+        assembledTools: ctx.tools,
+        stableMcpTools,
+      }),
     } satisfies TurnConfig
   }
 
@@ -1467,15 +1475,9 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       .tools()
       .catch(() => ({}) as ToolSet)) as ToolSet
     const extensionTools = (this.extensionManager?.getTools() ?? {}) as ToolSet
-    const mcpManager = (
-      this as unknown as {
-        mcp?: { getAITools?: () => ToolSet }
-      }
-    ).mcp
-    const mcpTools: ToolSet =
-      typeof mcpManager?.getAITools === 'function'
-        ? mcpManager.getAITools()
-        : {}
+    const mcpTools = this.getMcpController().wrapGetAITools(
+      this.mcp.getAITools.bind(this.mcp),
+    )
 
     const entriesFor = (
       group: ToolGroup,
@@ -1776,14 +1778,12 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       mcp: this.mcp,
       getServerStates: () =>
         this.getMcpServers().servers as RuntimeMcpServerStates,
-      connectRpcMcpServer: async ({ connectorId, props }) =>
-        await connectRpcMcpConnector({
-          mcp: this.mcp,
-          namespace: this.env.MCP_SESSION,
-          bindingName: 'MCP_SESSION',
+      addRpcMcpServer: async ({ connectorId, props }) =>
+        await this.addMcpServer(
           connectorId,
-          props,
-        }),
+          this.env.MCP_SESSION as unknown as DurableObjectNamespace<McpAgent>,
+          { props },
+        ),
       removeMcpServer: this.removeMcpServer.bind(this),
     }
     return new RuntimeMcpController(host)

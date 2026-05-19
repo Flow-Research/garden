@@ -11,7 +11,6 @@ import {
   type StoredConnectorServerRow,
 } from './mcp-connectors'
 import {
-  connectRpcMcpConnector,
   isMcpFailedConnectionStateMessage,
   isMcpDiscoveryCancellation,
   RuntimeMcpController,
@@ -19,7 +18,6 @@ import {
   RuntimeMcpError,
   type McpHost,
   type McpToolRecord,
-  type RpcMcpConnectorProps,
 } from './runtime-mcp-controller'
 
 function createSqlStorageStub(initialRows: StoredConnectorServerRow[] = []) {
@@ -310,117 +308,6 @@ describe('isMcpFailedConnectionStateMessage', () => {
   })
 })
 
-describe('connectRpcMcpConnector', () => {
-  it('registers, persists, and connects an RPC connector with stable storage', async () => {
-    const registerCalls: unknown[] = []
-    const storageCalls: unknown[] = []
-    const connectCalls: unknown[] = []
-    const namespace = { binding: 'MCP_SESSION' } as unknown as DurableObjectNamespace
-    const props = {
-      userId: 'user-1',
-      workspaceId: 'workspace-1',
-      agentId: 'agent-1',
-      connectorId: 'github',
-      authKind: 'oauth',
-    } satisfies RpcMcpConnectorProps
-
-    const result = await connectRpcMcpConnector({
-      mcp: {
-        registerServer: async (...args: unknown[]) => {
-          registerCalls.push(args)
-          return 'github'
-        },
-        saveRpcServerToStorage: (...args: unknown[]) => {
-          storageCalls.push(args)
-        },
-        connectToServer: async (...args: unknown[]) => {
-          connectCalls.push(args)
-          return { state: 'connected' }
-        },
-      },
-      namespace,
-      bindingName: 'MCP_SESSION',
-      connectorId: 'github',
-      props,
-    })
-
-    expect(result).toEqual({ state: 'connected' })
-    expect(registerCalls).toEqual([
-      [
-        'github',
-        {
-          url: 'rpc:github',
-          name: 'github',
-          callbackUrl: '',
-          transport: {
-            type: 'rpc',
-            namespace,
-            name: 'github',
-            props,
-          },
-        },
-      ],
-    ])
-    expect(storageCalls).toEqual([
-      ['github', 'github', 'github', 'MCP_SESSION', props],
-    ])
-    expect(connectCalls).toEqual([['github']])
-  })
-
-  it('fails when the MCP client returns an unexpected registered id', async () => {
-    const result = await connectRpcMcpConnector({
-      mcp: {
-        registerServer: async () => 'wrong-id',
-        saveRpcServerToStorage: () => undefined,
-        connectToServer: async () => ({ state: 'connected' }),
-      },
-      namespace: {} as DurableObjectNamespace,
-      bindingName: 'MCP_SESSION',
-      connectorId: 'github',
-      props: {
-        userId: 'user-1',
-        workspaceId: 'workspace-1',
-        agentId: 'agent-1',
-        connectorId: 'github',
-        authKind: 'oauth',
-      },
-    })
-
-    expect(result).toEqual({
-      state: 'failed',
-      error: 'RPC MCP id mismatch',
-    })
-  })
-
-  it('returns the real connectToServer failure instead of masking it as discovery failed-state', async () => {
-    const result = await connectRpcMcpConnector({
-      mcp: {
-        registerServer: async () => 'github',
-        saveRpcServerToStorage: () => undefined,
-        connectToServer: async () => ({
-          state: 'failed',
-          error: 'GitHub App installation token expired',
-        }),
-      },
-      namespace: {} as DurableObjectNamespace,
-      bindingName: 'MCP_SESSION',
-      connectorId: 'github',
-      props: {
-        userId: 'user-1',
-        workspaceId: 'workspace-1',
-        agentId: 'agent-1',
-        connectorId: 'github',
-        authKind: 'oauth',
-      },
-    })
-
-    expect(result).toEqual({
-      state: 'failed',
-      error: 'GitHub App installation token expired',
-    })
-  })
-})
-
 describe('RuntimeMcpController GitHub tools', () => {
   it('exposes github tools to the agent after the runtime connector is attached', async () => {
     const githubTools: McpToolRecord[] = [
@@ -437,9 +324,15 @@ describe('RuntimeMcpController GitHub tools', () => {
         inputSchema: { type: 'object' },
       },
     ]
-    const servers: Array<{ id: string }> = []
+    const servers: Array<{ id: string; name: string; server_url: string }> = []
     const toolsByServer = new Map<string, McpToolRecord[]>()
-    const connectCalls: RpcMcpConnectorProps[] = []
+    const connectCalls: Array<{
+      userId: string
+      workspaceId: string
+      agentId: string
+      connectorId: string
+      authKind: 'oauth' | 'api-key' | 'none'
+    }> = []
     const listTools = (filter?: MCPServerFilter) => {
       const serverId = filter?.serverId
       const tools = [...toolsByServer.values()].flat()
@@ -449,9 +342,7 @@ describe('RuntimeMcpController GitHub tools', () => {
         return tools.filter((tool) => serverIds.has(tool.serverId))
       }
 
-      return serverId
-        ? (toolsByServer.get(serverId) ?? [])
-        : tools
+      return serverId ? (toolsByServer.get(serverId) ?? []) : tools
     }
 
     const mcp = {
@@ -483,11 +374,19 @@ describe('RuntimeMcpController GitHub tools', () => {
       },
       ctx: { storage: { sql: createSqlStorageStub() } },
       mcp,
-      connectRpcMcpServer: async ({ connectorId, props }) => {
+      addRpcMcpServer: async ({ connectorId, props }) => {
+        const sdkServerId = 'sdk-generated-github'
         connectCalls.push(props)
-        servers.push({ id: connectorId })
-        toolsByServer.set(connectorId, githubTools)
-        return { state: 'connected' }
+        servers.push({
+          id: sdkServerId,
+          name: connectorId,
+          server_url: `rpc:${connectorId}`,
+        })
+        toolsByServer.set(
+          sdkServerId,
+          githubTools.map((tool) => ({ ...tool, serverId: sdkServerId })),
+        )
+        return { id: sdkServerId, state: 'connected' }
       },
       removeMcpServer: async (connectorId) => {
         const index = servers.findIndex((server) => server.id === connectorId)
@@ -506,7 +405,10 @@ describe('RuntimeMcpController GitHub tools', () => {
     ;(
       controller as unknown as {
         listActiveConnectorBindings: () => Promise<
-          Result<Array<{ connectorId: string; accountId: string | null }>, never>
+          Result<
+            Array<{ connectorId: string; accountId: string | null }>,
+            never
+          >
         >
       }
     ).listActiveConnectorBindings = async () =>
@@ -524,10 +426,11 @@ describe('RuntimeMcpController GitHub tools', () => {
         authKind: 'oauth',
       },
     ])
-    expect(host.mcp.listTools({ serverId: 'github' }).map((tool) => tool.name)).toEqual([
-      'issue_read',
-      'create_pull_request',
-    ])
+    expect(
+      host.mcp
+        .listTools({ serverId: 'sdk-generated-github' })
+        .map((tool) => tool.name),
+    ).toEqual(['issue_read', 'create_pull_request'])
 
     const aiTools = controller.wrapGetAITools(host.mcp.getAITools)
     expect(Object.keys(aiTools).sort()).toEqual(
@@ -537,9 +440,23 @@ describe('RuntimeMcpController GitHub tools', () => {
       ].sort(),
     )
     expect(
-      aiTools[buildMcpAiToolKey('github', 'create_pull_request')]
-        ?.description,
+      aiTools[buildMcpAiToolKey('github', 'create_pull_request')]?.description,
     ).toContain('External github write tool')
+
+    expect(
+      controller.activeToolKeysWithoutRawMcp({
+        assembledTools: {
+          local_tool: {} as ToolSet[string],
+          [buildMcpAiToolKey('sdk-generated-github', 'create_pull_request')]:
+            {} as ToolSet[string],
+        },
+        stableMcpTools: aiTools,
+      }),
+    ).toEqual([
+      'local_tool',
+      buildMcpAiToolKey('github', 'issue_read'),
+      buildMcpAiToolKey('github', 'create_pull_request'),
+    ])
   })
 
   it('returns connector tool transport failures as tool output instead of throwing', async () => {
@@ -579,7 +496,7 @@ describe('RuntimeMcpController GitHub tools', () => {
         waitForConnections: async () => undefined,
         discoverIfConnected: async () => ({ success: true }),
       },
-      connectRpcMcpServer: async () => ({ state: 'connected' }),
+      addRpcMcpServer: async () => ({ state: 'connected' }),
       removeMcpServer: async () => undefined,
       resolveRuntimeIdentity: async () =>
         Result.ok({
@@ -590,18 +507,21 @@ describe('RuntimeMcpController GitHub tools', () => {
         }),
     })
 
-    const aiTools = controller.wrapGetAITools(() =>
-      ({
-        [toolKey]: {
-          description: 'Search with Exa.',
-          inputSchema: { type: 'object' },
-          execute: async () => {
-            return await Promise.reject(
-              new Error('Request timeout: No response received within 120000ms'),
-            )
+    const aiTools = controller.wrapGetAITools(
+      () =>
+        ({
+          [toolKey]: {
+            description: 'Search with Exa.',
+            inputSchema: { type: 'object' },
+            execute: async () => {
+              return await Promise.reject(
+                new Error(
+                  'Request timeout: No response received within 120000ms',
+                ),
+              )
+            },
           },
-        },
-      }) as unknown as ToolSet,
+        }) as unknown as ToolSet,
     )
     await expect(
       aiTools[toolKey]?.execute?.({} as never, {} as never),
@@ -677,7 +597,7 @@ describe('RuntimeMcpController GitHub tools', () => {
             ? { success: true }
             : { success: false, error: 'No tools discovered' },
       },
-      connectRpcMcpServer: async ({ connectorId }) => {
+      addRpcMcpServer: async ({ connectorId }) => {
         connectedServerIds.push(connectorId)
         servers.push({ id: connectorId, server_url: `rpc:${connectorId}` })
         toolsByServer.set(connectorId, githubTools)
@@ -701,7 +621,10 @@ describe('RuntimeMcpController GitHub tools', () => {
     ;(
       controller as unknown as {
         listActiveConnectorBindings: () => Promise<
-          Result<Array<{ connectorId: string; accountId: string | null }>, never>
+          Result<
+            Array<{ connectorId: string; accountId: string | null }>,
+            never
+          >
         >
       }
     ).listActiveConnectorBindings = async () =>
@@ -777,7 +700,7 @@ describe('RuntimeMcpController GitHub tools', () => {
             : { success: false, error: 'No tools discovered' },
       },
       getServerStates: () => serverStates,
-      connectRpcMcpServer: async ({ connectorId }) => {
+      addRpcMcpServer: async ({ connectorId }) => {
         connectedServerIds.push(connectorId)
         servers.push({ id: connectorId, server_url: `rpc:${connectorId}` })
         toolsByServer.set(connectorId, exaTools)
@@ -803,7 +726,10 @@ describe('RuntimeMcpController GitHub tools', () => {
     ;(
       controller as unknown as {
         listActiveConnectorBindings: () => Promise<
-          Result<Array<{ connectorId: string; accountId: string | null }>, never>
+          Result<
+            Array<{ connectorId: string; accountId: string | null }>,
+            never
+          >
         >
       }
     ).listActiveConnectorBindings = async () =>
@@ -854,9 +780,12 @@ describe('RuntimeMcpController GitHub tools', () => {
         discoverIfConnected: async (serverId: string) =>
           toolsByServer.get(serverId)?.length
             ? { success: true }
-            : { success: false, error: 'Discovery skipped - connection in failed state' },
+            : {
+                success: false,
+                error: 'Discovery skipped - connection in failed state',
+              },
       },
-      connectRpcMcpServer: async ({ connectorId }) => {
+      addRpcMcpServer: async ({ connectorId }) => {
         connectedServerIds.push(connectorId)
         toolsByServer.set(connectorId, githubTools)
         return { state: 'connected' }
@@ -877,7 +806,10 @@ describe('RuntimeMcpController GitHub tools', () => {
     ;(
       controller as unknown as {
         listActiveConnectorBindings: () => Promise<
-          Result<Array<{ connectorId: string; accountId: string | null }>, never>
+          Result<
+            Array<{ connectorId: string; accountId: string | null }>,
+            never
+          >
         >
       }
     ).listActiveConnectorBindings = async () =>
@@ -926,7 +858,7 @@ describe('RuntimeMcpController GitHub tools', () => {
             ? { success: true }
             : { success: false, error: 'No tools discovered' },
       },
-      connectRpcMcpServer: async ({ connectorId }) => {
+      addRpcMcpServer: async ({ connectorId }) => {
         connectedServerIds.push(connectorId)
         if (connectedServerIds.length === 1) {
           throw new Error(
@@ -953,7 +885,10 @@ describe('RuntimeMcpController GitHub tools', () => {
     ;(
       controller as unknown as {
         listActiveConnectorBindings: () => Promise<
-          Result<Array<{ connectorId: string; accountId: string | null }>, never>
+          Result<
+            Array<{ connectorId: string; accountId: string | null }>,
+            never
+          >
         >
       }
     ).listActiveConnectorBindings = async () =>
@@ -983,7 +918,7 @@ describe('RuntimeMcpController GitHub tools', () => {
         waitForConnections: async () => undefined,
         discoverIfConnected: async () => ({ success: false }),
       },
-      connectRpcMcpServer: async () => ({
+      addRpcMcpServer: async () => ({
         state: 'failed',
         error: 'Proxy returned 503',
       }),
@@ -1000,7 +935,10 @@ describe('RuntimeMcpController GitHub tools', () => {
     ;(
       controller as unknown as {
         listActiveConnectorBindings: () => Promise<
-          Result<Array<{ connectorId: string; accountId: string | null }>, never>
+          Result<
+            Array<{ connectorId: string; accountId: string | null }>,
+            never
+          >
         >
       }
     ).listActiveConnectorBindings = async () =>
@@ -1029,7 +967,7 @@ describe('RuntimeMcpController GitHub tools', () => {
         waitForConnections: async () => undefined,
         discoverIfConnected: async () => ({ success: false }),
       },
-      connectRpcMcpServer: async () => ({
+      addRpcMcpServer: async () => ({
         state: 'failed',
         error: 'Proxy returned 503',
       }),
@@ -1046,7 +984,10 @@ describe('RuntimeMcpController GitHub tools', () => {
     ;(
       controller as unknown as {
         listActiveConnectorBindings: () => Promise<
-          Result<Array<{ connectorId: string; accountId: string | null }>, never>
+          Result<
+            Array<{ connectorId: string; accountId: string | null }>,
+            never
+          >
         >
       }
     ).listActiveConnectorBindings = async () =>

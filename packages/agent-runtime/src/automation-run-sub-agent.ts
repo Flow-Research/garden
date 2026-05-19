@@ -11,6 +11,7 @@ import {
 import { Workspace } from '@cloudflare/shell'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { createBrowserTools } from 'agents/browser/ai'
+import type { McpAgent } from 'agents/mcp'
 import { tool, type LanguageModel, type ToolSet, type UIMessage } from 'ai'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
@@ -28,7 +29,6 @@ import {
   RuntimeMcpConnectionPreparer,
   RuntimeMcpController,
   RuntimeMcpError,
-  connectRpcMcpConnector,
   type McpHost,
   type RuntimeMcpServerStates,
   type ThreadRuntimeIdentity,
@@ -36,10 +36,7 @@ import {
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { assembleFoundationPrompt } from './prompt'
 import { createSandboxTools } from './sandbox-tools'
-import {
-  createAssignedSkillProvider,
-  R2SkillBundleStore,
-} from './skills'
+import { createAssignedSkillProvider, R2SkillBundleStore } from './skills'
 import {
   addStepUsage,
   normalizeRunUsage,
@@ -283,7 +280,9 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
 
     this.currentRunId = runId
     this.currentPermissions = loadedResult.value.permissions
-    this.currentBrowserAllowed = automationAllowsBrowser(loadedResult.value.automation)
+    this.currentBrowserAllowed = automationAllowsBrowser(
+      loadedResult.value.automation,
+    )
     this.aggUsage = null
 
     const mcpController = await this.ensureProxyMcpConnectionsForTurn()
@@ -294,6 +293,15 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
         observedChangesResult.error,
       )
     }
+
+    const stableMcpTools = mcpController.wrapGetAITools(
+      this.mcp.getAITools.bind(this.mcp),
+      undefined,
+      {
+        shouldAutoApprove: ({ riskClass }) =>
+          this.shouldAutoApproveRiskClass(riskClass),
+      },
+    )
 
     return {
       experimental_telemetry: {
@@ -310,14 +318,11 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       maxSteps: this.maxSteps,
       sendReasoning: true,
       system: `${ctx.system}\n\n${loadedResult.value.contextBlock}`,
-      tools: mcpController.wrapGetAITools(
-        this.mcp.getAITools.bind(this.mcp),
-        undefined,
-        {
-          shouldAutoApprove: ({ riskClass }) =>
-            this.shouldAutoApproveRiskClass(riskClass),
-        },
-      ),
+      tools: stableMcpTools,
+      activeTools: mcpController.activeToolKeysWithoutRawMcp({
+        assembledTools: ctx.tools,
+        stableMcpTools,
+      }),
     } satisfies TurnConfig
   }
 
@@ -541,7 +546,9 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
 
     this.currentRunId = input.runId
     this.currentPermissions = loadedResult.value.permissions
-    this.currentBrowserAllowed = automationAllowsBrowser(loadedResult.value.automation)
+    this.currentBrowserAllowed = automationAllowsBrowser(
+      loadedResult.value.automation,
+    )
 
     const message: UIMessage = {
       id: crypto.randomUUID(),
@@ -1304,14 +1311,12 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       mcp: this.mcp,
       getServerStates: () =>
         this.getMcpServers().servers as RuntimeMcpServerStates,
-      connectRpcMcpServer: async ({ connectorId, props }) =>
-        await connectRpcMcpConnector({
-          mcp: this.mcp,
-          namespace: this.env.MCP_SESSION,
-          bindingName: 'MCP_SESSION',
+      addRpcMcpServer: async ({ connectorId, props }) =>
+        await this.addMcpServer(
           connectorId,
-          props,
-        }),
+          this.env.MCP_SESSION as unknown as DurableObjectNamespace<McpAgent>,
+          { props },
+        ),
       removeMcpServer: this.removeMcpServer.bind(this),
       resolveRuntimeIdentity: async () =>
         await this.resolveAutomationMcpIdentity(),

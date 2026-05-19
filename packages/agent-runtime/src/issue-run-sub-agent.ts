@@ -10,6 +10,7 @@ import {
   type TurnContext,
 } from '@cloudflare/think'
 import { Workspace } from '@cloudflare/shell'
+import type { McpAgent } from 'agents/mcp'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import type { LanguageModel, ToolSet, UIMessage } from 'ai'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
@@ -61,7 +62,6 @@ import {
   RuntimeMcpConnectionPreparer,
   RuntimeMcpError,
   RuntimeMcpController,
-  connectRpcMcpConnector,
   type McpHost,
   type RuntimeMcpServerStates,
   type ThreadRuntimeIdentity,
@@ -318,6 +318,15 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       )
     }
 
+    const stableMcpTools = mcpController.wrapGetAITools(
+      this.mcp.getAITools.bind(this.mcp),
+      undefined,
+      {
+        shouldAutoApprove: ({ riskClass }) =>
+          this.shouldAutoApproveRiskClass(riskClass),
+      },
+    )
+
     return {
       experimental_telemetry: {
         functionId: THINK_TURN_TELEMETRY_FUNCTION_ID,
@@ -334,14 +343,11 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       maxSteps: this.maxSteps,
       sendReasoning: true,
       system: `${ctx.system}\n\n${loadedResult.value.contextBlock}`,
-      tools: mcpController.wrapGetAITools(
-        this.mcp.getAITools.bind(this.mcp),
-        undefined,
-        {
-          shouldAutoApprove: ({ riskClass }) =>
-            this.shouldAutoApproveRiskClass(riskClass),
-        },
-      ),
+      tools: stableMcpTools,
+      activeTools: mcpController.activeToolKeysWithoutRawMcp({
+        assembledTools: ctx.tools,
+        stableMcpTools,
+      }),
     } satisfies TurnConfig
   }
 
@@ -502,10 +508,13 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
 
     const finalizeChildResult = await this.finalizeChildIssueResolution(runId)
     if (finalizeChildResult.isErr()) {
-      console.warn('[agent-runtime] issue run child resolution finalize failed', {
-        error: finalizeChildResult.error.message,
-        runId,
-      })
+      console.warn(
+        '[agent-runtime] issue run child resolution finalize failed',
+        {
+          error: finalizeChildResult.error.message,
+          runId,
+        },
+      )
     }
 
     this.clearTurnState()
@@ -609,10 +618,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     mode: TurnMode,
     input: StartTurnInput,
   ): Promise<
-    ResultValue<
-      SaveMessagesResult['status'] | 'stopped',
-      IssueRunSubAgentError
-    >
+    ResultValue<SaveMessagesResult['status'] | 'stopped', IssueRunSubAgentError>
   > {
     const loadedResult = await this.loadTurnContext(input.runId)
     if (loadedResult.isErr()) return Result.err(loadedResult.error)
@@ -1838,14 +1844,12 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       mcp: this.mcp,
       getServerStates: () =>
         this.getMcpServers().servers as RuntimeMcpServerStates,
-      connectRpcMcpServer: async ({ connectorId, props }) =>
-        await connectRpcMcpConnector({
-          mcp: this.mcp,
-          namespace: this.env.MCP_SESSION,
-          bindingName: 'MCP_SESSION',
+      addRpcMcpServer: async ({ connectorId, props }) =>
+        await this.addMcpServer(
           connectorId,
-          props,
-        }),
+          this.env.MCP_SESSION as unknown as DurableObjectNamespace<McpAgent>,
+          { props },
+        ),
       removeMcpServer: this.removeMcpServer.bind(this),
       resolveRuntimeIdentity: async () => await this.resolveIssueMcpIdentity(),
     }
