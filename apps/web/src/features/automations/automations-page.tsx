@@ -388,7 +388,7 @@ function CreateAutomationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="!w-[min(92vw,56rem)] !max-w-[min(92vw,56rem)] sm:!max-w-[min(92vw,56rem)]">
         <DialogTitle>New Automation</DialogTitle>
         <div className="space-y-5 pt-2">
           <div>
