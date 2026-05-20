@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/core/auth'
 import { WorkspaceIdProvider } from '@garden/core/hooks'
 import { useWorkspaceStore } from '@garden/core/workspace'
@@ -9,8 +10,33 @@ import { ModalRegistry } from '@/features/modals/registry'
 import { OnboardingOverlay } from '@/features/onboarding'
 import { useOnboardingStore } from '@/features/onboarding'
 import { SettingsDialog } from '@/features/settings'
+import {
+  agentListOptions,
+  connectionListOptions,
+  skillListOptions,
+} from '@/lib/workspace/queries'
 import { WorkspaceSidebar } from './sidebar'
 import { WorkspaceDockProvider, WorkspaceDockView } from './workspace-dock'
+
+/**
+ * Mount-only prefetch for workspace-wide caches.
+ *
+ * Why this exists: the New automation dialog (and other pickers across the
+ * app) need agents, skills, and connectors. Previously each consumer
+ * gated its own useQuery with `enabled: open`, so the dialog itself drove
+ * the cold fetch and the user watched the tools list pop in late. That
+ * coupled every consumer to fetch behavior. Warming once at workspace
+ * mount makes consumers pure cache readers — no surface area on them.
+ *
+ * Renders nothing; the useQuery calls only exist to seed the React Query
+ * cache for the active workspace.
+ */
+function WorkspaceWarmCaches({ wsId }: { wsId: string }) {
+  useQuery(agentListOptions(wsId))
+  useQuery(skillListOptions(wsId))
+  useQuery(connectionListOptions(wsId))
+  return null
+}
 
 function WorkspaceLoadingSkeleton() {
   return (
@@ -72,6 +98,7 @@ export function WorkspaceLayout() {
       >
         {activeWorkspaceId ? (
           <WorkspaceIdProvider wsId={activeWorkspaceId}>
+            <WorkspaceWarmCaches wsId={activeWorkspaceId} />
             <ChatRuntimeProvider>
               <WorkspaceSidebar />
               <SidebarInset className="relative overflow-hidden !my-2 !mr-2 !ml-0 !rounded-[14px] !bg-[color:var(--vellum)] backdrop-blur-xl saturate-110 shadow-[var(--shadow-hairline)]">

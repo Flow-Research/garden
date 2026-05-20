@@ -62,6 +62,28 @@ type StartTurnInput = {
   runId: string
 }
 
+type AutomationTraceEvent = {
+  ts: string
+  kind:
+    | 'turn_started'
+    | 'tool_started'
+    | 'tool_finished'
+    | 'step_finished'
+    | 'run_completed'
+    | 'run_failed'
+  step?: number
+  toolName?: string
+  toolCallId?: string
+  durationMs?: number
+  ok?: boolean
+  finishReason?: string
+  textPreview?: string
+  inputPreview?: string
+  outputPreview?: string
+  error?: string
+  usage?: RunUsageSnapshot | null
+}
+
 type LoadedAutomationRunContext = {
   contextBlock: string
   permissions: AgentPermissions
@@ -132,6 +154,33 @@ function dbError(operation: string, cause: unknown) {
   })
 }
 
+function previewString(value: string, maxLength = 1200) {
+  const trimmed = value.trim()
+  return trimmed.length > maxLength
+    ? `${trimmed.slice(0, maxLength)}…`
+    : trimmed
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function objectOrNull(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function previewUnknown(value: unknown) {
+  if (typeof value === 'string') return previewString(value)
+  const result = Result.try({
+    try: () => JSON.stringify(value),
+    catch: () => null,
+  })
+  if (result.isErr() || result.value === null) return String(value)
+  return previewString(result.value)
+}
+
 function isActiveAutomationRunStatus(status: string) {
   return (ACTIVE_AUTOMATION_RUN_STATUSES as readonly string[]).includes(status)
 }
@@ -170,6 +219,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   private currentPermissions: AgentPermissions | null = null
   private currentBrowserAllowed = false
   private aggUsage: RunUsageSnapshot | null = null
+  private currentTrace: AutomationTraceEvent[] = []
   private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
     getController: () => this.getMcpController(),
     fullSyncIntervalMs: mcpRuntimeConfig.connectorFullSyncIntervalMs,
@@ -284,6 +334,11 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       loadedResult.value.automation,
     )
     this.aggUsage = null
+    this.currentTrace = []
+    await this.recordTrace(runId, {
+      ts: new Date().toISOString(),
+      kind: 'turn_started',
+    })
 
     const mcpController = await this.ensureProxyMcpConnectionsForTurn()
     const observedChangesResult = mcpController.captureObservedMcpToolChanges()
@@ -333,7 +388,35 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     const gateResult = this.assertToolAllowed(ctx.toolName)
     if (gateResult.isErr()) throw gateResult.error
 
+    await this.recordTrace(this.currentRunId, {
+      ts: new Date().toISOString(),
+      kind: 'tool_started',
+      step: ctx.stepNumber,
+      toolName: ctx.toolName,
+      toolCallId: ctx.toolCallId,
+      inputPreview: previewUnknown(ctx.input),
+    })
+
     return undefined
+  }
+
+  override async afterToolCall(
+    ctx: Parameters<Think<AgentRuntimeEnv>['afterToolCall']>[0],
+  ) {
+    const runId = this.currentRunId
+    if (!runId) return
+
+    await this.recordTrace(runId, {
+      ts: new Date().toISOString(),
+      kind: 'tool_finished',
+      step: ctx.stepNumber,
+      toolName: ctx.toolName,
+      toolCallId: ctx.toolCallId,
+      durationMs: ctx.durationMs,
+      ok: ctx.success,
+      outputPreview: ctx.success ? previewUnknown(ctx.output) : undefined,
+      error: ctx.success ? undefined : errorMessage(ctx.error),
+    })
   }
 
   override async onStepFinish(ctx: StepContext) {
@@ -342,6 +425,15 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
 
     const nextUsage = addStepUsage(this.aggUsage, ctx)
     this.aggUsage = nextUsage
+
+    await this.recordTrace(runId, {
+      ts: new Date().toISOString(),
+      kind: 'step_finished',
+      finishReason: ctx.finishReason,
+      textPreview:
+        typeof ctx.text === 'string' ? previewString(ctx.text) : undefined,
+      usage: nextUsage,
+    })
 
     const persistResult = await this.persistUsage(runId, nextUsage)
     if (persistResult.isErr()) {
@@ -1070,6 +1162,55 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     return Result.ok()
   }
 
+  /**
+   * Persists a compact automation trace into result_json while a run is active.
+   * Cloudflare Think already saves chat messages and emits telemetry, but the
+   * automation detail page needs a simple run-local timeline for QA evals: tool
+   * starts/finishes, step summaries, usage snapshots, and terminal status.
+   * The trace is intentionally lossy to avoid storing huge tool outputs or
+   * secrets; full connector/tool audits remain in `tool_call_audit`.
+   * References consulted: Cloudflare Agents Think lifecycle hooks and AI SDK
+   * onStepFinish/tool-call docs.
+   */
+  private async recordTrace(runId: string | null, event: AutomationTraceEvent) {
+    if (!runId) return
+    const nextTrace = [...this.currentTrace, event].slice(-80)
+    this.currentTrace = nextTrace
+
+    const db = this.getDb()
+    const result = await Result.tryPromise({
+      try: async () => {
+        const [row] = await db
+          .select({ resultJson: schema.automationRun.resultJson })
+          .from(schema.automationRun)
+          .where(eq(schema.automationRun.id, runId))
+          .limit(1)
+        const existing = objectOrNull(row?.resultJson) ?? {}
+        await db
+          .update(schema.automationRun)
+          .set({
+            resultJson: {
+              ...existing,
+              observability: {
+                trace: nextTrace,
+                traceUpdatedAt: event.ts,
+              },
+            },
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.automationRun.id, runId))
+      },
+      catch: (cause) => dbError('persist automation trace', cause),
+    })
+
+    if (result.isErr()) {
+      console.warn('[agent-runtime] failed to persist automation trace', {
+        error: result.error.message,
+        runId,
+      })
+    }
+  }
+
   private async persistUsage(
     runId: string,
     usage: RunUsageSnapshot,
@@ -1142,6 +1283,13 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
         }),
       )
     }
+    await this.recordTrace(runId, {
+      ts: now.toISOString(),
+      kind: 'run_completed',
+      textPreview: previewString(output),
+    })
+    const trace = this.currentTrace
+
     const result = await Result.tryPromise({
       try: async () => {
         await db.transaction(async (tx) => {
@@ -1169,6 +1317,10 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
                 output,
                 data: completion.data,
                 source: completion.source,
+                observability: {
+                  trace,
+                  traceUpdatedAt: now.toISOString(),
+                },
               },
               completedAt: now,
               failureReason: null,
@@ -1250,6 +1402,13 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   ): Promise<ResultValue<void, AutomationRunSubAgentError>> {
     const db = this.getDb()
     const now = new Date()
+    await this.recordTrace(runId, {
+      ts: now.toISOString(),
+      kind: 'run_failed',
+      error: reason,
+    })
+    const trace = this.currentTrace
+
     const writeResult = await Result.tryPromise({
       try: async () => {
         await db.transaction(async (tx) => {
@@ -1273,7 +1432,14 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
             .set({
               status: 'failed',
               error: reason,
-              resultJson: { resolution: 'failed', reason },
+              resultJson: {
+                resolution: 'failed',
+                reason,
+                observability: {
+                  trace,
+                  traceUpdatedAt: now.toISOString(),
+                },
+              },
               completedAt: now,
               failureReason: reason,
               updatedAt: now,
@@ -1301,6 +1467,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     this.currentPermissions = null
     this.currentBrowserAllowed = false
     this.aggUsage = null
+    this.currentTrace = []
   }
 
   private getMcpController() {

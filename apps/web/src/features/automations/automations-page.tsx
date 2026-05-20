@@ -15,6 +15,7 @@ import {
   Play,
   Plus,
   Shield,
+  Sparkles,
   Zap,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -58,6 +59,7 @@ import { useCreateAutomation } from './mutations'
 import {
   TriggerConfigSection,
   toCronExpression,
+  type TriggerConfig,
   type TriggerFrequency,
 } from './trigger-config'
 import { useCreateAutomationDialogStore } from './create-automation-dialog-store'
@@ -195,8 +197,8 @@ const STATUS_CONFIG: Record<
   string,
   { label: string; color: string; icon: typeof Zap }
 > = {
-  active: { label: 'Active', color: 'text-emerald-500', icon: Play },
-  paused: { label: 'Paused', color: 'text-amber-500', icon: Pause },
+  active: { label: 'Active', color: 'text-sage', icon: Play },
+  paused: { label: 'Paused', color: 'text-amber', icon: Pause },
   archived: {
     label: 'Archived',
     color: 'text-muted-foreground',
@@ -260,6 +262,27 @@ function AutomationRow({
   )
 }
 
+/**
+ * Garden automation creation dialog.
+ *
+ * Why this exists: prior versions stacked 7 equal-weight sections inside a
+ * 44rem dialog with three sibling collapsibles, no hierarchy, generic
+ * emerald accent, and a horizontal-scroll template strip that read as
+ * sloppy (variable widths, "are there more?", duplicated icon-tile chrome).
+ * The Garden design system (docs/design.md, docs/vibe.md) calls for warm
+ * parchment + vellum surfaces, hairline borders, the Moss/Sage/Amber/Clay
+ * foliage palette, and Geist type — not emerald + generic shadcn neutrals.
+ *
+ * Intended behavior: 32rem focused column, sticky header with a Simple /
+ * Advanced segmented toggle (Simple is the default — Tools & Skills are
+ * derived from the chosen template; Advanced exposes them inline). The
+ * template chooser is a tidy 2-column grid of compact rows with an
+ * always-visible detail panel below the selected row that shows the prompt
+ * preview, required connectors, required skills, and the suggested cadence
+ * — so users actually understand what each template will produce. Moss is
+ * the sole accent; surfaces use vellum / hairline tokens so light and dark
+ * modes flow from the same code.
+ */
 function CreateAutomationDialog({
   open,
   onOpenChange,
@@ -275,6 +298,9 @@ function CreateAutomationDialog({
 }) {
   const wsId = useWorkspaceId()
   const createAutomation = useCreateAutomation()
+  // Pure consumers: workspace-layout warms these caches upstream at mount,
+  // so by the time the dialog opens the data is already there and these
+  // hooks just subscribe — the dialog is not a caller.
   const { data: skills = [] } = useQuery({
     ...skillListOptions(wsId),
     enabled: open,
@@ -283,6 +309,10 @@ function CreateAutomationDialog({
     ...connectionListOptions(wsId),
     enabled: open,
   })
+  const liveConnectors = (connections?.connectors ?? []).filter(
+    (connector) =>
+      connector.status === 'connected' || connector.status === 'degraded',
+  )
   const title = useCreateAutomationDialogStore((state) => state.title)
   const description = useCreateAutomationDialogStore(
     (state) => state.description,
@@ -303,13 +333,6 @@ function CreateAutomationDialog({
   const selectedToolNames = useCreateAutomationDialogStore(
     (state) => state.selectedToolNames,
   )
-  const templateOpen = useCreateAutomationDialogStore(
-    (state) => state.templateOpen,
-  )
-  const skillsOpen = useCreateAutomationDialogStore((state) => state.skillsOpen)
-  const capabilitiesOpen = useCreateAutomationDialogStore(
-    (state) => state.capabilitiesOpen,
-  )
   const setTitle = useCreateAutomationDialogStore((state) => state.setTitle)
   const setDescription = useCreateAutomationDialogStore(
     (state) => state.setDescription,
@@ -319,15 +342,6 @@ function CreateAutomationDialog({
   )
   const setTriggerConfig = useCreateAutomationDialogStore(
     (state) => state.setTriggerConfig,
-  )
-  const setTemplateOpen = useCreateAutomationDialogStore(
-    (state) => state.setTemplateOpen,
-  )
-  const setSkillsOpen = useCreateAutomationDialogStore(
-    (state) => state.setSkillsOpen,
-  )
-  const setCapabilitiesOpen = useCreateAutomationDialogStore(
-    (state) => state.setCapabilitiesOpen,
   )
   const toggleSkillSlug = useCreateAutomationDialogStore(
     (state) => state.toggleSkillSlug,
@@ -345,6 +359,10 @@ function CreateAutomationDialog({
   const [appliedTemplate, setAppliedTemplate] = useState<
     AutomationTemplate | null | undefined
   >(null)
+  const [expandedConnectorId, setExpandedConnectorId] = useState<string | null>(
+    null,
+  )
+  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   if (template !== appliedTemplate && open) {
     setAppliedTemplate(template)
@@ -353,6 +371,9 @@ function CreateAutomationDialog({
 
   const activeAgents = agents.filter((agent) => !agent.archived_at)
   const submitting = createAutomation.isPending
+  const selectedAgent = activeAgents.find((agent) => agent.id === assigneeId)
+  const totalCapabilities =
+    selectedConnectorIds.length + selectedToolNames.length
 
   const handleSubmit = async () => {
     if (!title.trim() || !assigneeId || submitting) return
@@ -362,13 +383,20 @@ function CreateAutomationDialog({
           connectorId,
         ),
     )
+    const templateCapabilities = selectedTemplate?.executionConfig?.capabilities
     const executionConfig = createAutomationExecutionConfig({
       templateId: selectedTemplate?.executionConfig?.templateId ?? 'custom-automation',
       templateVersion: selectedTemplate?.executionConfig?.templateVersion ?? 1,
       capabilities: {
-        browser: selectedToolNames.some((tool) => tool.startsWith('browser_')),
-        sandbox: selectedToolNames.some((tool) => tool.includes('sandbox')),
-        github: selectedConnectorIds.includes('github'),
+        browser:
+          templateCapabilities?.browser === true ||
+          selectedToolNames.some((tool) => tool.startsWith('browser_')),
+        sandbox:
+          templateCapabilities?.sandbox === true ||
+          selectedToolNames.some((tool) => tool.includes('sandbox')),
+        github:
+          templateCapabilities?.github === true ||
+          selectedConnectorIds.includes('github'),
       },
       requiredSkills: selectedSkillSlugs,
       requiredConnectors,
@@ -404,263 +432,639 @@ function CreateAutomationDialog({
     }
     onOpenChange(false)
     resetDraft()
+    setExpandedConnectorId(null)
     toast.success('Automation created')
     onCreated?.(result.value.automation)
   }
 
+  const previewLine = (() => {
+    const agentLabel = selectedAgent?.name ?? 'an agent'
+    return `Runs ${describeTriggerShort(triggerConfig)} as ${agentLabel}.`
+  })()
+
+  const detailTemplate = selectedTemplate
+    ? TEMPLATES.find(
+        (candidate) =>
+          (candidate.templateSource &&
+            candidate.templateSource === selectedTemplate.templateSource) ||
+          candidate.title === selectedTemplate.title,
+      ) ?? null
+    : null
+  const detailPromptSource = detailTemplate?.prompt ?? selectedTemplate?.prompt
+  const detailConnectors =
+    detailTemplate?.executionConfig?.requiredConnectors ??
+    selectedTemplate?.executionConfig?.requiredConnectors ??
+    []
+  const detailSkills =
+    detailTemplate?.executionConfig?.requiredSkills ??
+    selectedTemplate?.executionConfig?.requiredSkills ??
+    []
+  const detailTags = detailTemplate?.tags ?? selectedTemplate?.tags ?? []
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!w-[min(92vw,44rem)] !max-w-[min(92vw,44rem)] sm:!max-w-[min(92vw,44rem)]">
-        <DialogTitle>New Automation</DialogTitle>
-        <div className="space-y-5 pt-2">
-          <Collapsible open={templateOpen} onOpenChange={setTemplateOpen}>
-            <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border bg-muted/20 px-3 py-2 text-left text-xs transition-colors hover:bg-accent/40">
-              <span>
-                <span className="font-medium">Template</span>
-                <span className="ml-2 text-muted-foreground">
-                  {selectedTemplate?.title ?? 'Custom automation'}
-                </span>
-              </span>
-              <ChevronDown
-                className={cn(
-                  'size-3.5 text-muted-foreground transition-transform',
-                  templateOpen && 'rotate-180',
-                )}
-              />
-            </CollapsibleTrigger>
-            <CollapsibleContent className="pt-3">
-              <div className="grid max-h-56 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
-                <button
-                  type="button"
-                  className={cn(
-                    'rounded-lg border p-3 text-left transition-colors hover:bg-accent/40',
-                    !selectedTemplate && 'border-primary bg-primary/5',
-                  )}
+      <DialogContent
+        className={cn(
+          '!w-[min(94vw,35rem)] !max-w-[min(94vw,35rem)] sm:!max-w-[min(94vw,35rem)]',
+          'flex max-h-[88vh] flex-col gap-0 overflow-hidden rounded-[18px] border-0 p-0',
+          'bg-vellum-heavy shadow-[var(--shadow-float-2)] backdrop-blur-2xl',
+        )}
+      >
+        <div className="border-b border-hairline px-5 pt-5 pb-3.5">
+          <DialogTitle className="text-[15px] font-medium tracking-tight">
+            New automation
+          </DialogTitle>
+          <p className="mt-1 line-clamp-1 text-[11.5px] text-muted-foreground">
+            {previewLine}
+          </p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 pt-4 pb-5">
+          <div className="space-y-5">
+            <section>
+              <SectionLabel>Template</SectionLabel>
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
+                <TemplateRow
+                  icon={Sparkles}
+                  title="Custom"
+                  selected={!selectedTemplate}
                   onClick={() => applyTemplate(null)}
-                >
-                  <div className="text-sm font-medium">Custom automation</div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    Blank prompt with platform skills and capabilities you choose.
-                  </div>
-                </button>
-                {registryTemplates.map((candidate) => {
-                  const Icon = candidate.icon
-                  return (
-                    <button
-                      key={candidate.templateSource ?? candidate.title}
-                      type="button"
-                      className={cn(
-                        'rounded-lg border p-3 text-left transition-colors hover:bg-accent/40',
-                        selectedTemplate?.templateSource ===
-                          candidate.templateSource && 'border-primary bg-primary/5',
-                      )}
-                      onClick={() => applyTemplate(candidate)}
-                    >
-                      <div className="flex items-center gap-2 text-sm font-medium">
-                        <Icon className="size-4 text-muted-foreground" />
-                        {candidate.title}
-                      </div>
-                      <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                        {candidate.summary}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Name
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="e.g. Daily code review"
-              className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
-              autoFocus
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Prompt
-            </label>
-            <textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Step-by-step instructions for the agent..."
-              rows={6}
-              className="mt-1 w-full resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Agent
-            </label>
-            <Select
-              value={assigneeId}
-              onValueChange={(value) => value && setAssigneeId(value)}
-            >
-              <SelectTrigger className="mt-1 w-full">
-                <SelectValue placeholder="Select agent..." />
-              </SelectTrigger>
-              <SelectContent>
-                {activeAgents.map((agent) => (
-                  <SelectItem key={agent.id} value={agent.id}>
-                    {agent.name}
-                  </SelectItem>
+                />
+                {TEMPLATES.map((candidate) => (
+                  <TemplateRow
+                    key={candidate.templateSource ?? candidate.title}
+                    icon={candidate.icon}
+                    title={candidate.title}
+                    selected={
+                      (selectedTemplate?.templateSource &&
+                        selectedTemplate.templateSource ===
+                          candidate.templateSource) ||
+                      selectedTemplate?.title === candidate.title
+                    }
+                    onClick={() => applyTemplate(candidate)}
+                  />
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <Collapsible open={capabilitiesOpen} onOpenChange={setCapabilitiesOpen}>
-            <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border bg-muted/20 px-3 py-2 text-left text-xs transition-colors hover:bg-accent/40">
-              <span>
-                <span className="font-medium">Capabilities</span>
-                <span className="ml-2 text-muted-foreground">
-                  {selectedConnectorIds.length + selectedToolNames.length} selected
-                </span>
-              </span>
-              <ChevronDown
+              </div>
+
+              <TemplateDetail
+                title={detailTemplate?.title ?? 'Custom'}
+                summary={
+                  detailTemplate?.summary ??
+                  'Start blank. Write the prompt yourself and choose tools and skills under Advanced.'
+                }
+                promptPreview={detailPromptSource}
+                frequency={detailTemplate?.frequency ?? triggerConfig.frequency}
+                time={detailTemplate?.time ?? triggerConfig.time}
+                connectors={detailConnectors}
+                skills={detailSkills}
+                tags={detailTags}
+                category={detailTemplate?.category}
+              />
+            </section>
+
+            <Field label="Name">
+              <input
+                type="text"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="e.g. Daily code review"
                 className={cn(
-                  'size-3.5 text-muted-foreground transition-transform',
-                  capabilitiesOpen && 'rotate-180',
+                  'h-9 w-full rounded-[6px] border border-hairline bg-bone px-3 text-sm outline-none transition-colors',
+                  'focus:border-moss/60 focus:ring-2 focus:ring-moss/15',
+                )}
+                autoFocus
+              />
+            </Field>
+
+            <Field label="Prompt">
+              <textarea
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Step-by-step instructions for the agent…"
+                rows={4}
+                className={cn(
+                  'w-full resize-y rounded-[6px] border border-hairline bg-bone px-3 py-2 text-sm leading-relaxed outline-none transition-colors',
+                  'focus:border-moss/60 focus:ring-2 focus:ring-moss/15',
                 )}
               />
-            </CollapsibleTrigger>
-            <CollapsibleContent className="pt-3">
-              <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
-                {(connections?.connectors ?? []).map((connector) => (
-                  <div key={connector.id} className="rounded-lg border p-3">
-                    <label className="flex items-start gap-2">
-                      <Checkbox
-                        checked={selectedConnectorIds.includes(connector.id)}
-                        onCheckedChange={() => toggleConnectorId(connector.id)}
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-2 text-sm font-medium">
-                          {connector.label}
-                          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                            {connector.status}
+            </Field>
+
+            <Field label="Run as">
+              <Select
+                value={assigneeId}
+                onValueChange={(value) => value && setAssigneeId(value)}
+              >
+                <SelectTrigger className="h-9 w-full rounded-[6px] border-hairline bg-bone transition-colors hover:border-foreground/20 focus:ring-2 focus:ring-moss/15">
+                  <SelectValue placeholder="Select an agent">
+                    {() =>
+                      selectedAgent ? (
+                        <span className="flex items-center gap-2">
+                          <ActorAvatarBase
+                            name={selectedAgent.name}
+                            initials={agentInitials(selectedAgent.name)}
+                            avatarUrl={selectedAgent.avatar_url}
+                            isAgent
+                            size={18}
+                          />
+                          <span className="truncate text-sm">
+                            {selectedAgent.name}
                           </span>
                         </span>
-                        <span className="mt-0.5 block text-xs text-muted-foreground">
-                          {connector.description}
+                      ) : (
+                        <span className="text-muted-foreground">
+                          Select an agent
                         </span>
-                      </span>
-                    </label>
-                    {connector.tools.length > 0 ? (
-                      <div className="mt-2 grid gap-1 pl-6">
-                        {connector.tools.map((tool) => (
-                          <label
-                            key={`${connector.id}:${tool.name}`}
-                            className="flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-accent/40"
-                          >
-                            <Checkbox
-                              checked={selectedToolNames.includes(tool.name)}
-                              onCheckedChange={() => toggleToolName(tool.name)}
-                            />
-                            <span className="min-w-0 flex-1">
-                              <span className="text-xs font-medium">
-                                {tool.name}
-                              </span>
-                              <span className="ml-2 rounded bg-muted px-1 text-[10px] text-muted-foreground">
-                                {tool.riskClass}
-                              </span>
-                              {tool.description ? (
-                                <span className="mt-0.5 block line-clamp-2 text-[11px] text-muted-foreground">
-                                  {tool.description}
-                                </span>
-                              ) : null}
+                      )
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {activeAgents.map((agent) => (
+                    <SelectItem key={agent.id} value={agent.id}>
+                      <span className="flex items-center gap-2">
+                        <ActorAvatarBase
+                          name={agent.name}
+                          initials={agentInitials(agent.name)}
+                          avatarUrl={agent.avatar_url}
+                          isAgent
+                          size={18}
+                        />
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate text-sm leading-tight">
+                            {agent.name}
+                          </span>
+                          {agent.description ? (
+                            <span className="truncate text-[11px] leading-tight text-muted-foreground">
+                              {agent.description}
                             </span>
-                          </label>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-          <Collapsible open={skillsOpen} onOpenChange={setSkillsOpen}>
-            <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border bg-muted/20 px-3 py-2 text-left text-xs transition-colors hover:bg-accent/40">
-              <span>
-                <span className="font-medium">Skills</span>
-                <span className="ml-2 text-muted-foreground">
-                  {selectedSkillSlugs.length} selected
-                </span>
-              </span>
-              <ChevronDown
-                className={cn(
-                  'size-3.5 text-muted-foreground transition-transform',
-                  skillsOpen && 'rotate-180',
-                )}
-              />
-            </CollapsibleTrigger>
-            <CollapsibleContent className="pt-3">
-              <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
-                {skills.map((skill) => {
-                  const slug = skillSlug(skill)
-                  return (
-                    <label
-                      key={skill.id}
-                      className="flex items-start gap-2 rounded-lg border p-3 hover:bg-accent/40"
-                    >
-                      <Checkbox
-                        checked={selectedSkillSlugs.includes(slug)}
-                        onCheckedChange={() => toggleSkillSlug(slug)}
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="text-sm font-medium">{skill.name}</span>
-                        {skill.description ? (
-                          <span className="mt-0.5 block line-clamp-2 text-xs text-muted-foreground">
-                            {skill.description}
-                          </span>
-                        ) : null}
-                        {skill.slug ? (
-                          <span className="mt-1 block font-mono text-[10px] text-muted-foreground">
-                            {skill.slug}
-                          </span>
-                        ) : null}
+                          ) : null}
+                        </span>
                       </span>
-                    </label>
-                  )
-                })}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Schedule
-            </label>
-            <div className="mt-2">
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="Schedule">
               <TriggerConfigSection
                 config={triggerConfig}
                 onChange={setTriggerConfig}
               />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-1">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
+            </Field>
+
+            <Collapsible
+              open={advancedOpen}
+              onOpenChange={setAdvancedOpen}
+              className="-mx-1"
             >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleSubmit}
-              disabled={!title.trim() || !assigneeId || submitting}
-            >
-              {submitting ? 'Creating...' : 'Create'}
-            </Button>
+              <CollapsibleTrigger
+                className={cn(
+                  'group/adv flex w-full items-center justify-between gap-2 rounded-full px-2 py-1.5 text-left transition-colors',
+                  'hover:bg-parchment-deep/50',
+                )}
+              >
+                <span className="flex items-baseline gap-2">
+                  <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">
+                    Advanced options
+                  </span>
+                  <span className="text-[10.5px] text-muted-foreground/70">
+                    {totalCapabilities} tools · {selectedSkillSlugs.length}{' '}
+                    skills
+                  </span>
+                </span>
+                <ChevronDown
+                  className={cn(
+                    'size-3.5 text-muted-foreground transition-transform duration-200',
+                    advancedOpen && 'rotate-180',
+                  )}
+                />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="mt-3 space-y-5 px-1">
+                <section>
+                  <div className="flex items-baseline justify-between">
+                    <SectionLabel>Tools</SectionLabel>
+                    <span className="text-[10.5px] text-muted-foreground/80">
+                      {totalCapabilities} selected
+                    </span>
+                  </div>
+                  <div className="mt-2 divide-y divide-hairline-soft overflow-hidden rounded-[10px] border border-hairline bg-bone/70">
+                    {liveConnectors.map((connector) => {
+                      const expanded = expandedConnectorId === connector.id
+                      const selected = selectedConnectorIds.includes(
+                        connector.id,
+                      )
+                      return (
+                        <div key={connector.id}>
+                          <div
+                            className={cn(
+                              'flex items-center gap-2.5 px-3 py-2 transition-colors',
+                              selected && 'bg-moss/[0.05]',
+                            )}
+                          >
+                            <Checkbox
+                              checked={selected}
+                              onCheckedChange={() =>
+                                toggleConnectorId(connector.id)
+                              }
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 text-[13px] font-medium">
+                                <span className="truncate">
+                                  {connector.label}
+                                </span>
+                                <ConnectorStatusDot
+                                  status={connector.status}
+                                />
+                              </div>
+                              <div className="truncate text-[11px] text-muted-foreground">
+                                {connector.description}
+                              </div>
+                            </div>
+                            {connector.tools.length > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedConnectorId(
+                                    expanded ? null : connector.id,
+                                  )
+                                }
+                                className="flex shrink-0 items-center gap-1 rounded-full bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-hairline-soft transition-colors hover:bg-muted hover:text-foreground"
+                              >
+                                {connector.tools.length} tools
+                                <ChevronDown
+                                  className={cn(
+                                    'size-3 transition-transform duration-200',
+                                    expanded && 'rotate-180',
+                                  )}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
+                          {expanded && connector.tools.length > 0 ? (
+                            <div className="space-y-px bg-parchment-deep/40 px-3 py-2">
+                              {connector.tools.map((tool) => (
+                                <label
+                                  key={`${connector.id}:${tool.name}`}
+                                  className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 transition-colors hover:bg-bone/70"
+                                >
+                                  <Checkbox
+                                    checked={selectedToolNames.includes(
+                                      tool.name,
+                                    )}
+                                    onCheckedChange={() =>
+                                      toggleToolName(tool.name)
+                                    }
+                                  />
+                                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                                    <span className="truncate font-mono text-[11px]">
+                                      {tool.name}
+                                    </span>
+                                    <span className="shrink-0 rounded-full bg-muted/60 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground ring-1 ring-hairline-soft">
+                                      {tool.riskClass}
+                                    </span>
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      )
+                    })}
+                    {liveConnectors.length === 0 ? (
+                      <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                        No connectors are connected yet. Connect one in
+                        Settings to expose its tools here.
+                      </div>
+                    ) : null}
+                  </div>
+                </section>
+
+                <section>
+                  <div className="flex items-baseline justify-between">
+                    <SectionLabel>Skills</SectionLabel>
+                    <span className="text-[10.5px] text-muted-foreground/80">
+                      {selectedSkillSlugs.length} selected
+                    </span>
+                  </div>
+                  <div className="mt-2 max-h-44 space-y-px overflow-y-auto rounded-[10px] border border-hairline bg-bone/70">
+                    {skills.length === 0 ? (
+                      <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                        No skills configured
+                      </div>
+                    ) : (
+                      skills.map((skill) => {
+                        const slug = skillSlug(skill)
+                        const checked = selectedSkillSlugs.includes(slug)
+                        return (
+                          <label
+                            key={skill.id}
+                            className={cn(
+                              'flex cursor-pointer items-center gap-2.5 px-3 py-2 transition-colors',
+                              checked
+                                ? 'bg-moss/[0.06]'
+                                : 'hover:bg-parchment-deep/40',
+                            )}
+                          >
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={() => toggleSkillSlug(slug)}
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-[13px] font-medium">
+                                {skill.name}
+                              </span>
+                              {skill.description ? (
+                                <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                                  {skill.description}
+                                </span>
+                              ) : null}
+                            </span>
+                          </label>
+                        )
+                      })
+                    )}
+                  </div>
+                </section>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
           </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-hairline bg-parchment-deep/40 px-5 py-3">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            className="rounded-full"
+          >
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleSubmit}
+            disabled={!title.trim() || !assigneeId || submitting}
+            className="rounded-full bg-moss text-parchment hover:bg-moss/90 active:scale-[0.98]"
+          >
+            {submitting ? 'Creating…' : 'Create automation'}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
   )
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">
+      {children}
+    </div>
+  )
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="space-y-1.5">
+      <SectionLabel>{label}</SectionLabel>
+      {children}
+    </div>
+  )
+}
+
+function TemplateRow({
+  icon: Icon,
+  title,
+  selected,
+  onClick,
+}: {
+  icon: typeof Zap
+  title: string
+  selected: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'group/row flex h-9 items-center gap-2 rounded-[10px] border px-2.5 text-left transition-all duration-150',
+        'active:scale-[0.985]',
+        selected
+          ? 'border-moss/60 bg-moss/[0.08] text-foreground shadow-[var(--shadow-hairline-soft)]'
+          : 'border-hairline bg-bone/55 hover:border-moss/30 hover:bg-bone',
+      )}
+      aria-pressed={selected}
+    >
+      <Icon
+        className={cn(
+          'size-3.5 shrink-0 transition-colors',
+          selected
+            ? 'text-moss'
+            : 'text-muted-foreground group-hover/row:text-foreground',
+        )}
+        strokeWidth={1.75}
+      />
+      <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium tracking-tight">
+        {title}
+      </span>
+      {selected ? (
+        <span className="size-1.5 shrink-0 rounded-full bg-moss" />
+      ) : null}
+    </button>
+  )
+}
+
+function TemplateDetail({
+  title,
+  summary,
+  promptPreview,
+  frequency,
+  time,
+  connectors,
+  skills,
+  tags,
+  category,
+}: {
+  title: string
+  summary: string
+  promptPreview?: string
+  frequency: TriggerFrequency
+  time: string
+  connectors: readonly string[]
+  skills: readonly string[]
+  tags: readonly string[]
+  category?: string
+}) {
+  const cadence = (() => {
+    switch (frequency) {
+      case 'hourly':
+        return 'Hourly'
+      case 'daily':
+        return `Daily · ${formatClock(time)}`
+      case 'weekdays':
+        return `Weekdays · ${formatClock(time)}`
+      case 'weekly':
+        return `Weekly · ${formatClock(time)}`
+      case 'custom':
+        return 'Custom cadence'
+    }
+  })()
+  const hasChips =
+    connectors.length > 0 ||
+    skills.length > 0 ||
+    tags.length > 0 ||
+    Boolean(category)
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-[12px] border border-hairline bg-bone/60 shadow-[var(--shadow-hairline-soft)]">
+      <div className="flex items-baseline justify-between gap-3 px-3.5 pt-3 pb-2">
+        <div className="min-w-0">
+          <div className="text-[13px] font-medium tracking-tight">{title}</div>
+          <p className="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">
+            {summary}
+          </p>
+        </div>
+        <span className="shrink-0 rounded-full bg-parchment-deep/70 px-2 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground ring-1 ring-hairline-soft">
+          {cadence}
+        </span>
+      </div>
+
+      {promptPreview ? (
+        <div className="border-t border-hairline-soft bg-parchment-deep/30 px-3.5 py-2.5">
+          <div className="mb-1 text-[9.5px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">
+            What it does
+          </div>
+          <pre className="whitespace-pre-wrap font-prose text-[11.5px] leading-snug text-foreground/85 [&::-webkit-scrollbar]:hidden">
+            {clampLines(promptPreview, 5)}
+          </pre>
+        </div>
+      ) : null}
+
+      {hasChips ? (
+        <div className="flex flex-wrap items-center gap-1 border-t border-hairline-soft px-3.5 py-2.5">
+          {category ? <DetailChip tone="lichen">{category}</DetailChip> : null}
+          {connectors.map((connector) => (
+            <DetailChip key={`c:${connector}`} tone="moss">
+              {connector}
+            </DetailChip>
+          ))}
+          {skills.map((skill) => (
+            <DetailChip key={`s:${skill}`} tone="sage">
+              {skill}
+            </DetailChip>
+          ))}
+          {tags.map((tag) => (
+            <DetailChip key={`t:${tag}`} tone="stone">
+              {tag}
+            </DetailChip>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function DetailChip({
+  children,
+  tone,
+}: {
+  children: React.ReactNode
+  tone: 'moss' | 'sage' | 'lichen' | 'stone'
+}) {
+  const toneClass =
+    tone === 'moss'
+      ? 'bg-moss/10 text-moss ring-moss/20'
+      : tone === 'sage'
+        ? 'bg-sage/15 text-foreground/80 ring-sage/25'
+        : tone === 'lichen'
+          ? 'bg-parchment-deep text-foreground/80 ring-hairline'
+          : 'bg-muted/60 text-muted-foreground ring-hairline-soft'
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-medium tracking-tight ring-1',
+        toneClass,
+      )}
+    >
+      {children}
+    </span>
+  )
+}
+
+function clampLines(value: string, maxLines: number): string {
+  const lines = value.split('\n')
+  if (lines.length <= maxLines) return value
+  return `${lines.slice(0, maxLines).join('\n')}…`
+}
+
+function ConnectorStatusDot({
+  status,
+}: {
+  status: 'available' | 'connected' | 'degraded' | 'disconnected'
+}) {
+  const tone =
+    status === 'connected'
+      ? 'bg-sage'
+      : status === 'degraded'
+        ? 'bg-amber'
+        : status === 'disconnected'
+          ? 'bg-stone'
+          : 'bg-stone/60'
+  return (
+    <span
+      className={cn(
+        'inline-block size-1.5 shrink-0 rounded-full ring-2 ring-bone',
+        tone,
+      )}
+      aria-label={status}
+      title={status}
+    />
+  )
+}
+
+function agentInitials(name: string): string {
+  return name
+    .split(' ')
+    .map((part) => part[0])
+    .filter(Boolean)
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+}
+
+function describeTriggerShort(config: TriggerConfig): string {
+  switch (config.frequency) {
+    case 'hourly': {
+      const min = parseInt(config.time.split(':')[1] ?? '0', 10)
+      return `hourly at :${min.toString().padStart(2, '0')}`
+    }
+    case 'daily':
+      return `daily at ${formatClock(config.time)}`
+    case 'weekdays':
+      return `weekdays at ${formatClock(config.time)}`
+    case 'weekly': {
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+      return `every ${days[config.dayOfWeek]} at ${formatClock(config.time)}`
+    }
+    case 'custom':
+      return `on \`${config.cronExpression}\``
+  }
+}
+
+function formatClock(time: string): string {
+  const [h, m] = time.split(':')
+  const hour = parseInt(h ?? '9', 10)
+  const min = parseInt(m ?? '0', 10)
+  const ampm = hour >= 12 ? 'PM' : 'AM'
+  return `${hour % 12 || 12}:${min.toString().padStart(2, '0')} ${ampm}`
 }
 
 export function AutomationsPage({

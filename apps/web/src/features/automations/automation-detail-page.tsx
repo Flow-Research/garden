@@ -70,6 +70,22 @@ function stringValue(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
+function objectValue(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function arrayValue(value: unknown) {
+  return Array.isArray(value) ? value : []
+}
+
+function traceEvents(result: unknown) {
+  const resultObject = objectValue(result)
+  const observability = objectValue(resultObject?.observability)
+  return arrayValue(observability?.trace).map((event) => objectValue(event))
+}
+
 function formatTokenCount(value: number) {
   return Intl.NumberFormat(undefined, { notation: 'compact' }).format(value)
 }
@@ -109,6 +125,7 @@ function RunRow({
   const totalTokens = numberValue(usage?.total_tokens)
   const model = stringValue(usage?.model)
   const output = stringValue(result?.output)
+  const trace = traceEvents(result)
 
   return (
     <div className="px-4 py-2.5 text-sm transition-colors hover:bg-accent/30">
@@ -149,6 +166,31 @@ function RunRow({
         <p className="mt-1 line-clamp-2 pl-[7.75rem] text-xs leading-5 text-muted-foreground">
           {output}
         </p>
+      ) : null}
+      {debugMode && trace.length > 0 ? (
+        <div className="mt-2 ml-[7.75rem] max-h-64 overflow-y-auto rounded-md border bg-muted/20 p-2 font-mono text-[11px] text-muted-foreground">
+          {trace.map((event, index) => {
+            const kind = stringValue(event?.kind) ?? 'event'
+            const toolName = stringValue(event?.toolName)
+            const finishReason = stringValue(event?.finishReason)
+            const preview =
+              stringValue(event?.textPreview) ??
+              stringValue(event?.outputPreview) ??
+              stringValue(event?.error)
+            return (
+              <div key={index} className="border-b py-1 last:border-b-0">
+                <span className="text-foreground">{kind}</span>
+                {toolName ? <span> · {toolName}</span> : null}
+                {finishReason ? <span> · {finishReason}</span> : null}
+                {preview ? (
+                  <div className="mt-0.5 line-clamp-2 whitespace-pre-wrap font-sans">
+                    {preview}
+                  </div>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
       ) : null}
     </div>
   )

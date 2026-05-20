@@ -25,16 +25,10 @@ type AutomationDraftState = {
   selectedSkillSlugs: string[]
   selectedConnectorIds: string[]
   selectedToolNames: string[]
-  templateOpen: boolean
-  skillsOpen: boolean
-  capabilitiesOpen: boolean
   setTitle: (title: string) => void
   setDescription: (description: string) => void
   setAssigneeId: (assigneeId: string) => void
   setTriggerConfig: (triggerConfig: TriggerConfig) => void
-  setTemplateOpen: (open: boolean) => void
-  setSkillsOpen: (open: boolean) => void
-  setCapabilitiesOpen: (open: boolean) => void
   toggleSkillSlug: (slug: string) => void
   toggleToolName: (toolName: string) => void
   toggleConnectorId: (connectorId: string) => void
@@ -62,16 +56,10 @@ export const useCreateAutomationDialogStore = create<AutomationDraftState>(
     selectedSkillSlugs: [],
     selectedConnectorIds: [],
     selectedToolNames: [],
-    templateOpen: false,
-    skillsOpen: false,
-    capabilitiesOpen: false,
     setTitle: (title) => set({ title }),
     setDescription: (description) => set({ description }),
     setAssigneeId: (assigneeId) => set({ assigneeId }),
     setTriggerConfig: (triggerConfig) => set({ triggerConfig }),
-    setTemplateOpen: (templateOpen) => set({ templateOpen }),
-    setSkillsOpen: (skillsOpen) => set({ skillsOpen }),
-    setCapabilitiesOpen: (capabilitiesOpen) => set({ capabilitiesOpen }),
     toggleSkillSlug: (slug) =>
       set((state) => ({ selectedSkillSlugs: toggle(state.selectedSkillSlugs, slug) })),
     toggleToolName: (toolName) =>
@@ -106,9 +94,6 @@ export const useCreateAutomationDialogStore = create<AutomationDraftState>(
         selectedSkillSlugs: [],
         selectedConnectorIds: [],
         selectedToolNames: [],
-        templateOpen: false,
-        skillsOpen: false,
-        capabilitiesOpen: false,
       }),
   }),
 )
