@@ -2,8 +2,9 @@ import {
   Session,
   Think,
   type ChatResponseResult,
-  type SaveMessagesResult,
   type StepContext,
+  type SubmitMessagesResult,
+  type ThinkSubmissionInspection,
   type ToolCallContext,
   type TurnConfig,
   type TurnContext,
@@ -42,6 +43,12 @@ import {
   normalizeRunUsage,
   type RunUsageSnapshot,
 } from './run-usage'
+import {
+  getRunWorkflowTurnCompleteEventType,
+  type RunWorkflowBinding,
+  type RunWorkflowTurnCompleteEvent,
+  type RunWorkflowTurnStartResult,
+} from './run-workflow'
 
 type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_SECRET: string
@@ -54,12 +61,25 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   BROWSER: Fetcher
   Sandbox: DurableObjectNamespace<SandboxDO>
   MCP_SESSION: DurableObjectNamespace
+  RUN_WORKFLOW: RunWorkflowBinding
 }
 
 type TurnMode = 'start' | 'resume'
 
 type StartTurnInput = {
   runId: string
+  turn: number
+}
+
+const TERMINAL_SUBMISSION_STATUSES = new Set([
+  'completed',
+  'aborted',
+  'skipped',
+  'error',
+])
+
+function isTerminalSubmissionStatus(status: string) {
+  return TERMINAL_SUBMISSION_STATUSES.has(status)
 }
 
 type AutomationTraceEvent = {
@@ -400,6 +420,49 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     return undefined
   }
 
+  /**
+   * Wakes the owning RunWorkflow when Think records a terminal submission.
+   * This is the event-driven bridge that replaces DO-local waiters/timeouts
+   * while keeping Think as the durable turn ledger.
+   */
+  override async onSubmissionStatus(submission: ThinkSubmissionInspection) {
+    if (!isTerminalSubmissionStatus(submission.status)) return
+    const runId =
+      typeof submission.metadata?.runId === 'string'
+        ? submission.metadata.runId
+        : null
+    if (!runId) return
+
+    const payload: RunWorkflowTurnCompleteEvent = {
+      submissionId: submission.submissionId,
+      status: submission.status,
+      ...(submission.error ? { error: submission.error } : {}),
+    }
+    const sendResult = await Result.tryPromise({
+      try: async () => {
+        const instance = await this.env.RUN_WORKFLOW.get(runId)
+        await instance.sendEvent({
+          type: getRunWorkflowTurnCompleteEventType(submission.submissionId),
+          payload,
+        })
+      },
+      catch: (cause) => cause,
+    })
+    if (sendResult.isErr()) {
+      console.warn(
+        '[agent-runtime] failed to notify automation workflow turn',
+        {
+          error:
+            sendResult.error instanceof Error
+              ? sendResult.error.message
+              : String(sendResult.error),
+          runId,
+          submissionId: submission.submissionId,
+        },
+      )
+    }
+  }
+
   override async afterToolCall(
     ctx: Parameters<Think<AgentRuntimeEnv>['afterToolCall']>[0],
   ) {
@@ -539,10 +602,16 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     this.clearTurnState()
   }
 
+  /**
+   * Submits one idempotent Think turn for RunWorkflow and returns as soon as the
+   * SDK ledger accepts it. The previous implementation waited inside the DO
+   * with an arbitrary timer; Workflow now does the durable wait via the terminal
+   * submission event emitted from `onSubmissionStatus`.
+   */
   async executeWorkflowTurn(
     mode: TurnMode,
     input: StartTurnInput,
-  ): Promise<{ status: string }> {
+  ): Promise<RunWorkflowTurnStartResult> {
     const [runRow] = await this.getDb()
       .select({
         cancelRequestedAt: schema.automationRun.cancelRequestedAt,
@@ -558,7 +627,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
         await this.forceCloseFailed(input.runId, cancelResult.error.message)
         throw new Error(cancelResult.error.message)
       }
-      return { status: 'cancelled' }
+      return { kind: 'run_status', status: 'cancelled' }
     }
 
     const driveResult = await this.driveTurn(mode, input)
@@ -566,7 +635,65 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       await this.forceCloseFailed(input.runId, driveResult.error.message)
       throw new Error(driveResult.error.message)
     }
-    if (driveResult.value === 'aborted') {
+    if (driveResult.value.kind === 'stopped') {
+      const statusResult = await this.readRunStatus(input.runId)
+      if (statusResult.isErr()) {
+        await this.forceCloseFailed(input.runId, statusResult.error.message)
+        throw new Error(statusResult.error.message)
+      }
+      return { kind: 'run_status', status: statusResult.value }
+    }
+
+    return {
+      kind: 'submitted',
+      submissionId: driveResult.value.submissionId,
+      submissionStatus: driveResult.value.status,
+    }
+  }
+
+  /**
+   * Converts a terminal Think submission into Garden's automation run status
+   * after Workflow receives the durable event. This preserves cancellation,
+   * skipped-turn, and failure bookkeeping without making the DO own the wait.
+   */
+  async completeWorkflowTurn(input: {
+    runId: string
+    submissionId: string
+  }): Promise<{ status: string }> {
+    const inspectionResult = await Result.tryPromise({
+      try: async () => await this.inspectSubmission(input.submissionId),
+      catch: (cause) => cause,
+    })
+    if (inspectionResult.isErr()) {
+      await this.forceCloseFailed(input.runId, String(inspectionResult.error))
+      throw new Error(
+        inspectionResult.error instanceof Error
+          ? inspectionResult.error.message
+          : String(inspectionResult.error),
+      )
+    }
+
+    const inspection = inspectionResult.value
+    if (!inspection) {
+      const message = `Submitted automation turn ${input.submissionId} was not found.`
+      await this.forceCloseFailed(input.runId, message)
+      throw new Error(message)
+    }
+    if (!isTerminalSubmissionStatus(inspection.status)) {
+      throw new Error(
+        `Submitted automation turn ${input.submissionId} is still ${inspection.status}.`,
+      )
+    }
+
+    if (inspection.status === 'error') {
+      const failedResult = await this.forceCloseFailed(
+        input.runId,
+        inspection.error ?? 'Submitted automation turn failed.',
+      )
+      if (failedResult.isErr()) throw new Error(failedResult.error.message)
+      this.clearTurnState()
+    }
+    if (inspection.status === 'aborted') {
       const cancelResult = await this.cancelRunIfRequested(input.runId)
       if (cancelResult.isErr()) {
         await this.forceCloseFailed(input.runId, cancelResult.error.message)
@@ -577,19 +704,17 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
           input.runId,
           'turn_aborted',
         )
-        if (failedResult.isErr()) {
-          throw new Error(failedResult.error.message)
-        }
+        if (failedResult.isErr()) throw new Error(failedResult.error.message)
       }
+      this.clearTurnState()
     }
-    if (driveResult.value === 'skipped') {
+    if (inspection.status === 'skipped') {
       const failedResult = await this.forceCloseFailed(
         input.runId,
         'turn_skipped',
       )
-      if (failedResult.isErr()) {
-        throw new Error(failedResult.error.message)
-      }
+      if (failedResult.isErr()) throw new Error(failedResult.error.message)
+      this.clearTurnState()
     }
 
     const statusResult = await this.readRunStatus(input.runId)
@@ -600,7 +725,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     return { status: statusResult.value }
   }
 
-  async requestCancel(input: StartTurnInput): Promise<void> {
+  async requestCancel(input: { runId: string }): Promise<void> {
     const cancelResult = await this.setCancelRequested(input.runId, 'cancelled')
     if (cancelResult.isErr()) {
       console.warn(
@@ -619,7 +744,12 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     input: StartTurnInput,
   ): Promise<
     ResultValue<
-      SaveMessagesResult['status'] | 'stopped',
+      | { kind: 'stopped' }
+      | {
+          kind: 'submitted'
+          status: SubmitMessagesResult['status']
+          submissionId: string
+        },
       AutomationRunSubAgentError
     >
   > {
@@ -628,7 +758,9 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
 
     const boundaryResult = await this.applyRunBoundaryGuards(loadedResult.value)
     if (boundaryResult.isErr()) return Result.err(boundaryResult.error)
-    if (boundaryResult.value !== 'continue') return Result.ok('stopped')
+    if (boundaryResult.value !== 'continue') {
+      return Result.ok({ kind: 'stopped' })
+    }
 
     const statusResult =
       mode === 'start'
@@ -642,8 +774,9 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       loadedResult.value.automation,
     )
 
+    const submissionId = `automation-run:${input.runId}:${input.turn}:${mode}`
     const message: UIMessage = {
-      id: crypto.randomUUID(),
+      id: `${submissionId}:user`,
       role: 'user',
       parts: [
         {
@@ -656,27 +789,69 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       ],
     }
 
-    const saveResult = await Result.tryPromise({
-      try: async () => await this.saveMessages([message]),
+    return await this.submitWorkflowTurn({
+      submissionId,
+      message,
+      metadata: {
+        kind: 'automation',
+        mode,
+        runId: input.runId,
+        turn: input.turn,
+      },
+    })
+  }
+
+  /**
+   * Submits a durable Think turn and returns immediately to the Workflow.
+   * Waiting now lives in `Workflow.waitForEvent()` and completion is reported
+   * from `onSubmissionStatus`, so long-running automation turns are no longer
+   * constrained by a DO-local timer or in-memory callback map. References:
+   * Cloudflare Think durable submissions and Cloudflare Workflow event docs.
+   */
+  private async submitWorkflowTurn(args: {
+    submissionId: string
+    message: UIMessage
+    metadata: Record<string, unknown>
+  }): Promise<
+    ResultValue<
+      | { kind: 'stopped' }
+      | {
+          kind: 'submitted'
+          status: SubmitMessagesResult['status']
+          submissionId: string
+        },
+      AutomationRunSubAgentError
+    >
+  > {
+    const submitResult = await Result.tryPromise({
+      try: async () =>
+        await this.submitMessages([args.message], {
+          submissionId: args.submissionId,
+          idempotencyKey: args.submissionId,
+          metadata: args.metadata,
+        }),
       catch: (cause) => cause,
     })
-    if (saveResult.isErr()) {
-      if (saveResult.error instanceof AutomationRunTurnStopped) {
-        return Result.ok('stopped')
+    if (submitResult.isErr()) {
+      if (submitResult.error instanceof AutomationRunTurnStopped) {
+        return Result.ok({ kind: 'stopped' })
       }
-      return Result.err(
-        new AutomationRunSubAgentError({
-          code: 'runtime_failed',
-          message:
-            saveResult.error instanceof Error
-              ? saveResult.error.message
-              : String(saveResult.error),
-          cause: saveResult.error,
-        }),
-      )
+      return Result.err(this.runtimeFailure(submitResult.error))
     }
 
-    return Result.ok(saveResult.value.status)
+    return Result.ok({
+      kind: 'submitted',
+      submissionId: submitResult.value.submissionId,
+      status: submitResult.value.status,
+    })
+  }
+
+  private runtimeFailure(cause: unknown) {
+    return new AutomationRunSubAgentError({
+      code: 'runtime_failed',
+      message: cause instanceof Error ? cause.message : String(cause),
+      cause,
+    })
   }
 
   private getDb() {

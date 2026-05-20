@@ -2,8 +2,9 @@ import {
   Session,
   Think,
   type ChatResponseResult,
-  type SaveMessagesResult,
   type StepContext,
+  type SubmitMessagesResult,
+  type ThinkSubmissionInspection,
   type ToolCallContext,
   type ToolCallResultContext,
   type TurnConfig,
@@ -69,6 +70,12 @@ import {
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
 import { addStepUsage, normalizeRunUsage } from './run-usage'
+import {
+  getRunWorkflowTurnCompleteEventType,
+  type RunWorkflowBinding,
+  type RunWorkflowTurnCompleteEvent,
+  type RunWorkflowTurnStartResult,
+} from './run-workflow'
 
 type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_SECRET: string
@@ -80,6 +87,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   LOADER: WorkerLoader
   Sandbox: DurableObjectNamespace<SandboxDO>
   MCP_SESSION: DurableObjectNamespace
+  RUN_WORKFLOW: RunWorkflowBinding
 }
 
 type TurnMode = 'start' | 'resume'
@@ -87,6 +95,18 @@ type TurnMode = 'start' | 'resume'
 type StartTurnInput = {
   runId: string
   issueId: string
+  turn: number
+}
+
+const TERMINAL_SUBMISSION_STATUSES = new Set([
+  'completed',
+  'aborted',
+  'skipped',
+  'error',
+])
+
+function isTerminalSubmissionStatus(status: string) {
+  return TERMINAL_SUBMISSION_STATUSES.has(status)
 }
 
 type LoadedTurnContext = {
@@ -433,6 +453,46 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     }
   }
 
+  /**
+   * Wakes the owning RunWorkflow when Think records a terminal submission.
+   * This is the event-driven bridge that replaces DO-local waiters/timeouts
+   * while keeping Think as the durable turn ledger.
+   */
+  override async onSubmissionStatus(submission: ThinkSubmissionInspection) {
+    if (!isTerminalSubmissionStatus(submission.status)) return
+    const runId =
+      typeof submission.metadata?.runId === 'string'
+        ? submission.metadata.runId
+        : null
+    if (!runId) return
+
+    const payload: RunWorkflowTurnCompleteEvent = {
+      submissionId: submission.submissionId,
+      status: submission.status,
+      ...(submission.error ? { error: submission.error } : {}),
+    }
+    const sendResult = await Result.tryPromise({
+      try: async () => {
+        const instance = await this.env.RUN_WORKFLOW.get(runId)
+        await instance.sendEvent({
+          type: getRunWorkflowTurnCompleteEventType(submission.submissionId),
+          payload,
+        })
+      },
+      catch: (cause) => cause,
+    })
+    if (sendResult.isErr()) {
+      console.warn('[agent-runtime] failed to notify issue workflow turn', {
+        error:
+          sendResult.error instanceof Error
+            ? sendResult.error.message
+            : String(sendResult.error),
+        runId,
+        submissionId: submission.submissionId,
+      })
+    }
+  }
+
   override async onStepFinish(ctx: StepContext) {
     const runId = this.currentRunId
     if (!runId) return
@@ -521,10 +581,9 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   /**
-   * Awaitable single-turn driver for RunWorkflow's `step.do` blocks.
-   * Throws on failure so the workflow step can retry; otherwise returns the
-   * run's current status so the workflow can decide to wait, loop, or finish.
-   * See docs/features/agent-runtime-rearchitecture.md.
+   * Reads the live plan from the issue-run facet's SQLite state for debug/UI
+   * RPCs. This stays facet-local because plan tool updates are written during
+   * Think turns before the product DB is finalized.
    */
   getRunPlan(runId: string): Array<{
     content: string
@@ -534,10 +593,16 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     return readIssueRunPlan(this.ctx.storage.sql, runId)
   }
 
+  /**
+   * Submits one idempotent Think turn for RunWorkflow and returns as soon as the
+   * SDK ledger accepts it. The previous implementation waited inside the DO
+   * with an arbitrary timer; Workflow now does the durable wait via the terminal
+   * submission event emitted from `onSubmissionStatus`.
+   */
   async executeWorkflowTurn(
     mode: TurnMode,
     input: StartTurnInput,
-  ): Promise<{ status: string }> {
+  ): Promise<RunWorkflowTurnStartResult> {
     const [runRow] = await this.getDb()
       .select({
         cancelRequestedAt: schema.issueRun.cancelRequestedAt,
@@ -561,7 +626,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         await this.forceCloseFailed(input.runId, cancelResult.error.message)
         throw new Error(cancelResult.error.message)
       }
-      return { status: 'cancelled' }
+      return { kind: 'run_status', status: 'cancelled' }
     }
 
     const driveResult = await this.driveTurn(mode, input)
@@ -569,7 +634,65 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       await this.forceCloseFailed(input.runId, driveResult.error.message)
       throw new Error(driveResult.error.message)
     }
-    if (driveResult.value === 'aborted') {
+    if (driveResult.value.kind === 'stopped') {
+      const statusResult = await this.readRunStatus(input.runId)
+      if (statusResult.isErr()) {
+        await this.forceCloseFailed(input.runId, statusResult.error.message)
+        throw new Error(statusResult.error.message)
+      }
+      return { kind: 'run_status', status: statusResult.value }
+    }
+
+    return {
+      kind: 'submitted',
+      submissionId: driveResult.value.submissionId,
+      submissionStatus: driveResult.value.status,
+    }
+  }
+
+  /**
+   * Converts a terminal Think submission into Garden's product run status after
+   * Workflow receives the durable event. This preserves Garden's cancellation,
+   * skipped-turn, and failure bookkeeping without making the DO own the wait.
+   */
+  async completeWorkflowTurn(input: {
+    runId: string
+    submissionId: string
+  }): Promise<{ status: string }> {
+    const inspectionResult = await Result.tryPromise({
+      try: async () => await this.inspectSubmission(input.submissionId),
+      catch: (cause) => cause,
+    })
+    if (inspectionResult.isErr()) {
+      await this.forceCloseFailed(input.runId, String(inspectionResult.error))
+      throw new Error(
+        inspectionResult.error instanceof Error
+          ? inspectionResult.error.message
+          : String(inspectionResult.error),
+      )
+    }
+
+    const inspection = inspectionResult.value
+    if (!inspection) {
+      const message = `Submitted issue turn ${input.submissionId} was not found.`
+      await this.forceCloseFailed(input.runId, message)
+      throw new Error(message)
+    }
+    if (!isTerminalSubmissionStatus(inspection.status)) {
+      throw new Error(
+        `Submitted issue turn ${input.submissionId} is still ${inspection.status}.`,
+      )
+    }
+
+    if (inspection.status === 'error') {
+      const failedResult = await this.forceCloseFailed(
+        input.runId,
+        inspection.error ?? 'Submitted issue turn failed.',
+      )
+      if (failedResult.isErr()) throw new Error(failedResult.error.message)
+      this.clearTurnState()
+    }
+    if (inspection.status === 'aborted') {
       const cancelResult = await this.cancelRunIfRequested(input.runId)
       if (cancelResult.isErr()) {
         await this.forceCloseFailed(input.runId, cancelResult.error.message)
@@ -580,19 +703,17 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
           input.runId,
           'turn_aborted',
         )
-        if (failedResult.isErr()) {
-          throw new Error(failedResult.error.message)
-        }
+        if (failedResult.isErr()) throw new Error(failedResult.error.message)
       }
+      this.clearTurnState()
     }
-    if (driveResult.value === 'skipped') {
+    if (inspection.status === 'skipped') {
       const failedResult = await this.forceCloseFailed(
         input.runId,
         'turn_skipped',
       )
-      if (failedResult.isErr()) {
-        throw new Error(failedResult.error.message)
-      }
+      if (failedResult.isErr()) throw new Error(failedResult.error.message)
+      this.clearTurnState()
     }
 
     const statusResult = await this.readRunStatus(input.runId)
@@ -603,7 +724,10 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     return { status: statusResult.value }
   }
 
-  async requestCancel(input: StartTurnInput): Promise<void> {
+  async requestCancel(input: {
+    runId: string
+    issueId: string
+  }): Promise<void> {
     const cancelResult = await this.setCancelRequested(input.runId, 'cancelled')
     if (cancelResult.isErr()) {
       console.warn('[agent-runtime] failed to request issue run cancellation', {
@@ -618,14 +742,24 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     mode: TurnMode,
     input: StartTurnInput,
   ): Promise<
-    ResultValue<SaveMessagesResult['status'] | 'stopped', IssueRunSubAgentError>
+    ResultValue<
+      | { kind: 'stopped' }
+      | {
+          kind: 'submitted'
+          status: SubmitMessagesResult['status']
+          submissionId: string
+        },
+      IssueRunSubAgentError
+    >
   > {
     const loadedResult = await this.loadTurnContext(input.runId)
     if (loadedResult.isErr()) return Result.err(loadedResult.error)
 
     const boundaryResult = await this.applyRunBoundaryGuards(loadedResult.value)
     if (boundaryResult.isErr()) return Result.err(boundaryResult.error)
-    if (boundaryResult.value !== 'continue') return Result.ok('stopped')
+    if (boundaryResult.value !== 'continue') {
+      return Result.ok({ kind: 'stopped' })
+    }
 
     if (mode === 'start') {
       const startResult = await this.markRunStarted(loadedResult.value)
@@ -639,8 +773,9 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     this.currentRunState = loadedResult.value.runState
     this.currentPermissions = loadedResult.value.permissions
 
+    const submissionId = `issue-run:${input.runId}:${input.turn}:${mode}`
     const message: UIMessage = {
-      id: crypto.randomUUID(),
+      id: `${submissionId}:user`,
       role: 'user',
       parts: [
         {
@@ -653,27 +788,70 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       ],
     }
 
-    const saveResult = await Result.tryPromise({
-      try: async () => await this.saveMessages([message]),
+    return await this.submitWorkflowTurn({
+      submissionId,
+      message,
+      metadata: {
+        kind: 'issue',
+        issueId: input.issueId,
+        mode,
+        runId: input.runId,
+        turn: input.turn,
+      },
+    })
+  }
+
+  /**
+   * Submits a durable Think turn and returns immediately to the Workflow.
+   * Waiting now lives in `Workflow.waitForEvent()` and completion is reported
+   * from `onSubmissionStatus`, so long-running turns are no longer constrained
+   * by a DO-local timer or in-memory callback map. References: Cloudflare Think
+   * durable submissions and Cloudflare Workflow event docs.
+   */
+  private async submitWorkflowTurn(args: {
+    submissionId: string
+    message: UIMessage
+    metadata: Record<string, unknown>
+  }): Promise<
+    ResultValue<
+      | { kind: 'stopped' }
+      | {
+          kind: 'submitted'
+          status: SubmitMessagesResult['status']
+          submissionId: string
+        },
+      IssueRunSubAgentError
+    >
+  > {
+    const submitResult = await Result.tryPromise({
+      try: async () =>
+        await this.submitMessages([args.message], {
+          submissionId: args.submissionId,
+          idempotencyKey: args.submissionId,
+          metadata: args.metadata,
+        }),
       catch: (cause) => cause,
     })
-    if (saveResult.isErr()) {
-      if (saveResult.error instanceof IssueRunTurnStopped) {
-        return Result.ok('stopped')
+    if (submitResult.isErr()) {
+      if (submitResult.error instanceof IssueRunTurnStopped) {
+        return Result.ok({ kind: 'stopped' })
       }
-      return Result.err(
-        new IssueRunSubAgentError({
-          code: 'runtime_failed',
-          message:
-            saveResult.error instanceof Error
-              ? saveResult.error.message
-              : String(saveResult.error),
-          cause: saveResult.error,
-        }),
-      )
+      return Result.err(this.runtimeFailure(submitResult.error))
     }
 
-    return Result.ok(saveResult.value.status)
+    return Result.ok({
+      kind: 'submitted',
+      submissionId: submitResult.value.submissionId,
+      status: submitResult.value.status,
+    })
+  }
+
+  private runtimeFailure(cause: unknown) {
+    return new IssueRunSubAgentError({
+      code: 'runtime_failed',
+      message: cause instanceof Error ? cause.message : String(cause),
+      cause,
+    })
   }
 
   private getIssueToolContext(): IssueRunToolContext {

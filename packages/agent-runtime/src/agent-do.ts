@@ -68,7 +68,11 @@ import {
 } from './documents/document-tools'
 import { IssueRunSubAgent } from './issue-run-sub-agent'
 import { AutomationRunSubAgent } from './automation-run-sub-agent'
-import { createRunWorkflow, type RunWorkflowBinding } from './run-workflow'
+import {
+  RunWorkflowCreateError,
+  type RunWorkflowBinding,
+  type RunWorkflowTurnStartResult,
+} from './run-workflow'
 
 type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_SECRET: string
@@ -173,6 +177,23 @@ type DebugMetaPayload = {
   sessions: AgentSessionStateItem[]
 }
 
+function messageFromUnknown(cause: unknown) {
+  return cause instanceof Error ? cause.message : String(cause)
+}
+
+const DUPLICATE_WORKFLOW_INSTANCE_PATTERNS = [
+  'instance.already_exists',
+  'already exists',
+  'duplicate',
+]
+
+function isDuplicateWorkflowInstanceError(cause: unknown) {
+  const message = messageFromUnknown(cause).toLowerCase()
+  return DUPLICATE_WORKFLOW_INSTANCE_PATTERNS.some((pattern) =>
+    message.includes(pattern),
+  )
+}
+
 type DebugWorkspacePayload = {
   rootEntries: WorkspaceEntry[]
   samplePaths: WorkspaceEntry[]
@@ -249,7 +270,6 @@ type ThreadDocumentVersionsPayload = Awaited<
 type ThreadDocumentEditPayload = Awaited<
   ReturnType<ChatSubAgent['resolveDocumentEdit']>
 >
-const THINK_TURN_TIMEOUT_MS = 60_000
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.workspace-agent.turn'
 const UUID_PATTERN =
@@ -459,28 +479,66 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     issueId: string
   }): Promise<void> {
     await this.requireIssueAccess(input.issueId)
-    const workflowResult = await createRunWorkflow(this.env.RUN_WORKFLOW, {
-      kind: 'issue',
-      runId: input.runId,
-      issueId: input.issueId,
-      agentRuntimeName: this.name,
+    const workflowResult = await Result.tryPromise({
+      try: async () =>
+        await this.runWorkflow(
+          'RUN_WORKFLOW',
+          {
+            kind: 'issue',
+            runId: input.runId,
+            issueId: input.issueId,
+          },
+          {
+            id: input.runId,
+            agentBinding: 'AgentDO',
+            metadata: { kind: 'issue', issueId: input.issueId },
+          },
+        ),
+      catch: (cause) => cause,
     })
-    if (workflowResult.isErr()) {
-      throw workflowResult.error
+    if (
+      workflowResult.isOk() ||
+      isDuplicateWorkflowInstanceError(workflowResult.error)
+    ) {
+      return
     }
+    throw new RunWorkflowCreateError({
+      code: 'create_failed',
+      message: `create issue run workflow failed: ${messageFromUnknown(workflowResult.error)}`,
+      cause: workflowResult.error,
+    })
   }
 
   @callable()
   async startAutomationRunWorkflow(input: { runId: string }): Promise<void> {
     await this.requireAutomationRunAccess(input.runId)
-    const workflowResult = await createRunWorkflow(this.env.RUN_WORKFLOW, {
-      kind: 'automation',
-      runId: input.runId,
-      agentRuntimeName: this.name,
+    const workflowResult = await Result.tryPromise({
+      try: async () =>
+        await this.runWorkflow(
+          'RUN_WORKFLOW',
+          {
+            kind: 'automation',
+            runId: input.runId,
+          },
+          {
+            id: input.runId,
+            agentBinding: 'AgentDO',
+            metadata: { kind: 'automation' },
+          },
+        ),
+      catch: (cause) => cause,
     })
-    if (workflowResult.isErr()) {
-      throw workflowResult.error
+    if (
+      workflowResult.isOk() ||
+      isDuplicateWorkflowInstanceError(workflowResult.error)
+    ) {
+      return
     }
+    throw new RunWorkflowCreateError({
+      code: 'create_failed',
+      message: `create automation run workflow failed: ${messageFromUnknown(workflowResult.error)}`,
+      cause: workflowResult.error,
+    })
   }
 
   async cancelIssueRun(input: {
@@ -517,23 +575,52 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return issueAgent.getRunPlan(input.runId)
   }
 
+  /**
+   * Workflow-facing RPC that delegates issue turn submission to the issue facet.
+   * The facet returns the durable Think submission id instead of blocking the
+   * Workflow step, so Workflow can wait on `turn-complete` durably.
+   */
   async executeRunTurn(input: {
     runId: string
     issueId: string
     mode: 'start' | 'resume'
-  }): Promise<{ status: string }> {
+    turn: number
+  }): Promise<RunWorkflowTurnStartResult> {
     await this.requireIssueAccess(input.issueId)
     const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId)
     return await issueAgent.executeWorkflowTurn(input.mode, {
       runId: input.runId,
       issueId: input.issueId,
+      turn: input.turn,
     })
   }
 
+  /**
+   * Workflow-facing RPC that resolves a terminal issue submission into the
+   * Garden run ledger status after `Think.onSubmissionStatus` wakes Workflow.
+   */
+  async completeRunTurn(input: {
+    runId: string
+    issueId: string
+    submissionId: string
+  }): Promise<{ status: string }> {
+    await this.requireIssueAccess(input.issueId)
+    const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId)
+    return await issueAgent.completeWorkflowTurn({
+      runId: input.runId,
+      submissionId: input.submissionId,
+    })
+  }
+
+  /**
+   * Workflow-facing RPC that delegates automation turn submission to the run
+   * facet and returns the durable Think submission id without blocking the DO.
+   */
   async executeAutomationRunTurn(input: {
     runId: string
     mode: 'start' | 'resume'
-  }): Promise<{ status: string }> {
+    turn: number
+  }): Promise<RunWorkflowTurnStartResult> {
     await this.requireAutomationRunAccess(input.runId)
     const automationAgent = await this.subAgent(
       AutomationRunSubAgent,
@@ -541,7 +628,24 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     )
     return await automationAgent.executeWorkflowTurn(input.mode, {
       runId: input.runId,
+      turn: input.turn,
     })
+  }
+
+  /**
+   * Workflow-facing RPC that resolves a terminal automation submission into the
+   * Garden automation-run ledger status after Workflow receives its event.
+   */
+  async completeAutomationRunTurn(input: {
+    runId: string
+    submissionId: string
+  }): Promise<{ status: string }> {
+    await this.requireAutomationRunAccess(input.runId)
+    const automationAgent = await this.subAgent(
+      AutomationRunSubAgent,
+      input.runId,
+    )
+    return await automationAgent.completeWorkflowTurn(input)
   }
 
   override async onBeforeSubAgent(
@@ -975,27 +1079,11 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     return { ok: true }
   }
 
-  async recoverInterruptedTurn() {
-    const stable = await this.waitUntilStable({ timeout: 5_000 })
-    if (!stable) {
-      return { ok: false, error: 'Chat turn is still active.' }
-    }
-
-    const result = await this.continueLastTurn({ recovery: 'client-reconnect' })
-
-    return { ok: true, status: result.status }
-  }
-
   async continueAfterGardenApproval(input: {
     approved: boolean
     permissionRequestId: string
     pendingAgentId?: string | null
   }) {
-    const stable = await this.waitUntilStable({ timeout: 5_000 })
-    if (!stable) {
-      return { ok: false, error: 'Chat turn is still active.' }
-    }
-
     const result = await this.saveMessages([
       {
         id: crypto.randomUUID(),
@@ -1051,7 +1139,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       ...(documentContext
         ? { system: `${ctx.system}\n\n${documentContext}` }
         : {}),
-      timeout: THINK_TURN_TIMEOUT_MS,
       tools: stableMcpTools,
       activeTools: mcpController.activeToolKeysWithoutRawMcp({
         assembledTools: ctx.tools,

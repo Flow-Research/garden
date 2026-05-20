@@ -11,9 +11,8 @@ import {
   useAgentSessions,
   type AgentChatSession,
 } from '../use-agent-chat-sessions'
-import { useChatRuntime } from '../chat-runtime-provider'
+import { useChatRuntimeConnection } from '../chat-runtime-provider'
 import { ConnectedChatPanelInteraction } from './chat-panel-controller'
-
 
 type ChatHeaderAttachment = {
   href?: string | null
@@ -27,55 +26,34 @@ type ChatHeaderAttachment = {
 
 const EMPTY_CHAT_HEADER_ATTACHMENTS: ChatHeaderAttachment[] = []
 
-
-
-
-
-
-
-
 // ChatScrollArea removed — using Conversation from ai-elements
-
-
-
-
-
-
-
-
 
 async function fetchThreadDocumentAttachments(threadId: string) {
   const payload = await listThreadDocuments(threadId)
-  if (!payload.ok) throw new Error(payload.error ?? 'Failed to load attachments')
+  if (!payload.ok)
+    throw new Error(payload.error ?? 'Failed to load attachments')
 
-  return (payload.attachments ?? []).flatMap((document): ChatHeaderAttachment[] => {
-    if (!document.id || !document.filename) return []
-    return [
-      {
-        id: document.id,
-        label: document.filename,
-        meta: document.version_number
-          ? `Document V${document.version_number}`
-          : document.file_type
-            ? document.file_type.toUpperCase()
-            : (document.status ?? 'Document'),
-        href: document.download_url ?? null,
-        source: 'document',
-        versionId: document.version_id ?? null,
-        versionNumber: document.version_number ?? null,
-      },
-    ]
-  })
+  return (payload.attachments ?? []).flatMap(
+    (document): ChatHeaderAttachment[] => {
+      if (!document.id || !document.filename) return []
+      return [
+        {
+          id: document.id,
+          label: document.filename,
+          meta: document.version_number
+            ? `Document V${document.version_number}`
+            : document.file_type
+              ? document.file_type.toUpperCase()
+              : (document.status ?? 'Document'),
+          href: document.download_url ?? null,
+          source: 'document',
+          versionId: document.version_id ?? null,
+          versionNumber: document.version_number ?? null,
+        },
+      ]
+    },
+  )
 }
-
-
-
-
-
-
-
-
-
 
 export function AgentInteractionScreen({
   className,
@@ -185,8 +163,10 @@ function ChatPanelInteraction({
     queryFn: () => fetchThreadDocumentAttachments(activeSession.id),
     staleTime: 10_000,
   })
-  const runtime = useChatRuntime(activeSession.id)
-  if (!runtime) return null
+  const runtime = useChatRuntimeConnection({
+    session: activeSession,
+    updateSessionPreview: props.updateSessionPreview,
+  })
 
   return (
     <ConnectedChatPanelInteraction

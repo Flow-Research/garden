@@ -234,10 +234,8 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
       runId,
     }
     if (body.mode === 'inspect') return Response.json(base)
-    const turn = await disposeRpcResult(
-      await stub.executeRunTurn({ issueId, runId, mode: 'start' }),
-    )
-    return Response.json({ ...base, turn })
+    await disposeRpcResult(await stub.startIssueRunWorkflow({ issueId, runId }))
+    return Response.json({ ...base, workflowStarted: true })
   }
 
   const automationId = crypto.randomUUID()
@@ -265,7 +263,7 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
     workspaceId,
     automationId,
     source: 'manual',
-    status: 'pending',
+    status: 'queued',
     agentId: agent.id,
     hostName,
     triggerPayload: {},
@@ -279,10 +277,8 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
     runId,
   }
   if (body.mode === 'inspect') return Response.json(base)
-  const turn = await disposeRpcResult(
-    await stub.executeAutomationRunTurn({ runId, mode: 'start' }),
-  )
-  return Response.json({ ...base, turn })
+  await disposeRpcResult(await stub.startAutomationRunWorkflow({ runId }))
+  return Response.json({ ...base, workflowStarted: true })
 }
 
 async function authorizeAgentRequest(request: Request, env: ServerEnv) {

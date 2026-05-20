@@ -1,18 +1,10 @@
 'use client'
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  type ReactNode,
-} from 'react'
+import { useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { Result } from 'better-result'
 import { useAgent } from 'agents/react'
-import { getToolPartState, useAgentChat } from '@cloudflare/ai-chat/react'
-import { isToolUIPart, type UIMessage } from 'ai'
-import { create } from 'zustand'
+import { useAgentChat } from '@cloudflare/ai-chat/react'
+import type { UIMessage } from 'ai'
 import { useChatStore } from '@garden/core/chat'
 import {
   useAgentSessions,
@@ -64,35 +56,6 @@ export type ChatRuntime = {
   stop: AgentChatApi['stop']
 }
 
-type ChatRuntimeStore = {
-  removeRuntime: (sessionId: string) => void
-  runtimes: Record<string, ChatRuntime | undefined>
-  setRuntime: (sessionId: string, runtime: ChatRuntime) => void
-}
-
-const useChatRuntimeStore = create<ChatRuntimeStore>((set) => ({
-  runtimes: {},
-  setRuntime: (sessionId, runtime) =>
-    set((state) => {
-      if (state.runtimes[sessionId] === runtime) return state
-      return {
-        runtimes: {
-          ...state.runtimes,
-          [sessionId]: runtime,
-        },
-      }
-    }),
-  removeRuntime: (sessionId) =>
-    set((state) => {
-      if (!state.runtimes[sessionId]) {
-        return state
-      }
-      const next = { ...state.runtimes }
-      delete next[sessionId]
-      return { runtimes: next }
-    }),
-}))
-
 function getText(parts: ChatUiMessage['parts']) {
   return parts
     .filter((part) => part.type === 'text')
@@ -117,82 +80,17 @@ function buildSessionPreview(message: ChatUiMessage | undefined) {
     : ''
 }
 
-function getAgentStreamEvent(data: unknown) {
-  if (!data || typeof data !== 'object') return null
-  const event = data as {
-    done?: unknown
-    error?: unknown
-    id?: unknown
-    type?: unknown
-  }
-  if (typeof event.type !== 'string') return null
-  return {
-    done: event.done === true,
-    error: Boolean(event.error),
-    id: typeof event.id === 'string' ? event.id : null,
-    type: event.type,
-  }
-}
-
-function getLatestAssistantMessage(messages: ChatUiMessage[]) {
-  return [...messages].reverse().find((message) => message.role === 'assistant')
-}
-
-function hasInterruptedToolCall(message: ChatUiMessage | undefined) {
-  if (!message) return false
-
-  return message.parts.some((part) => {
-    if (!isToolUIPart(part)) return false
-    const state = String(getToolPartState(part))
-    return (
-      state !== 'output-available' &&
-      state !== 'output-error' &&
-      state !== 'waiting-approval'
-    )
-  })
-}
-
-export function useChatRuntime(sessionId: string) {
-  return useChatRuntimeStore((state) => state.runtimes[sessionId] ?? null)
-}
-
 export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
-  const { sessions, updateSessionPreview } = useAgentSessions()
-  const activeSessionId = useChatStore((state) => state.activeSessionId)
-  const visibleChatSessionIds = useChatStore(
-    (state) => state.visibleChatSessionIds,
-  )
-  const visibleChatSessionIdSet = useMemo(
-    () => new Set(visibleChatSessionIds),
-    [visibleChatSessionIds],
-  )
-  const runtimeSessions = useMemo(
-    () =>
-      sessions.filter(
-        (session) =>
-          !session.archivedAt &&
-          !session.optimistic &&
-          (session.id === activeSessionId ||
-            visibleChatSessionIdSet.has(session.id)),
-      ),
-    [activeSessionId, sessions, visibleChatSessionIdSet],
-  )
-
-  return (
-    <>
-      {runtimeSessions.map((session) => (
-        <ChatRuntimeConnection
-          key={session.id}
-          session={session}
-          updateSessionPreview={updateSessionPreview}
-        />
-      ))}
-      {children}
-    </>
-  )
+  return <>{children}</>
 }
 
-function ChatRuntimeConnection({
+/**
+ * Opens the Cloudflare chat connection directly where the panel consumes it.
+ * The old provider registered runtimes through a Zustand side effect and ran a
+ * reconnect-recovery loop; durable Think streams already recover server state,
+ * so this hook keeps the UI wiring local and effect-free.
+ */
+export function useChatRuntimeConnection({
   session,
   updateSessionPreview,
 }: {
@@ -202,23 +100,12 @@ function ChatRuntimeConnection({
   >['updateSessionPreview']
 }) {
   const pendingTurnRef = useRef<PendingTurn | null>(null)
-  const activeStreamIdsRef = useRef(new Set<string>())
-  const needsReconnectRecoveryRef = useRef(false)
-  const recoveringRef = useRef(false)
-  const recoveredAssistantIdsRef = useRef(new Set<string>())
-  const recoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const setRuntime = useChatRuntimeStore((state) => state.setRuntime)
-  const removeRuntime = useChatRuntimeStore((state) => state.removeRuntime)
 
   const agent = useAgent({
     agent: 'AgentDO',
     connectionTimeout: 30_000,
     name: session.hostName,
-    onClose: () => {
-      needsReconnectRecoveryRef.current = true
-    },
     onError: (event) => {
-      needsReconnectRecoveryRef.current = true
       console.warn('[chat.runtime] websocket connection error', event)
     },
     sub: [{ agent: 'ChatSubAgent', name: session.runtime_key }],
@@ -252,7 +139,6 @@ function ChatRuntimeConnection({
     isStreaming,
     messages,
     sendMessage,
-    setMessages,
     status,
     stop,
     error,
@@ -280,138 +166,14 @@ function ChatRuntimeConnection({
     experimental_throttle: 50,
   })
 
-  const recoverInterruptedTurn = useCallback(() => {
-    if (!needsReconnectRecoveryRef.current) return
-    if (recoveringRef.current) return
-    if (isStreaming) return
-    if (status !== 'ready') return
-
-    const assistant = getLatestAssistantMessage(messages)
-    if (!assistant || !hasInterruptedToolCall(assistant)) return
-    const assistantId = assistant.id
-    if (recoveredAssistantIdsRef.current.has(assistantId)) return
-
-    recoveredAssistantIdsRef.current.add(assistantId)
-    recoveringRef.current = true
-    updateSessionPreview({
-      sessionId: session.id,
-      status: 'streaming',
-      unread: false,
-      updatedAt: new Date().toISOString(),
-    })
-
-    void Result.tryPromise(() =>
-      agent.call<ChatContinuationResult>('recoverInterruptedTurn'),
-    ).then((result) => {
-      recoveringRef.current = false
-      if (Result.isError(result)) {
-        recoveredAssistantIdsRef.current.delete(assistantId)
-        console.warn('[chat.runtime] reconnect recovery failed', result.error)
-        return
-      }
-      if (!result.value.ok) {
-        recoveredAssistantIdsRef.current.delete(assistantId)
-        console.warn(
-          '[chat.runtime] reconnect recovery skipped',
-          result.value.error,
-        )
-        return
-      }
-      needsReconnectRecoveryRef.current = false
-    })
-  }, [agent, isStreaming, messages, session.id, status, updateSessionPreview])
-
-  const scheduleReconnectRecovery = useCallback(() => {
-    if (recoveryTimerRef.current) {
-      clearTimeout(recoveryTimerRef.current)
-    }
-    recoveryTimerRef.current = setTimeout(() => {
-      recoveryTimerRef.current = null
-      recoverInterruptedTurn()
-    }, 250)
-  }, [recoverInterruptedTurn])
-
-  useEffect(() => {
-    recoverInterruptedTurn()
-  }, [recoverInterruptedTurn])
-
-  useEffect(() => {
-    const onAgentMessage = (event: MessageEvent) => {
-      if (typeof event.data !== 'string') return
-      const parsed = Result.try(() => JSON.parse(event.data) as unknown)
-      if (Result.isError(parsed)) return
-      const sessionEvent = parsed.value as { phase?: unknown; type?: unknown }
-      if (
-        sessionEvent.type === 'cf_agent_session' &&
-        sessionEvent.phase === 'idle'
-      ) {
-        scheduleReconnectRecovery()
-        return
-      }
-
-      const streamEvent = getAgentStreamEvent(parsed.value)
-      if (!streamEvent) return
-
-      if (streamEvent.type === 'cf_agent_chat_clear') {
-        activeStreamIdsRef.current.clear()
-        setMessages([])
-        return
-      }
-
-      if (
-        streamEvent.type !== 'cf_agent_stream_resuming' &&
-        streamEvent.type !== 'cf_agent_use_chat_response'
-      ) {
-        return
-      }
-
-      if (!streamEvent.id) return
-      if (streamEvent.done || streamEvent.error) {
-        activeStreamIdsRef.current.delete(streamEvent.id)
-        return
-      }
-      activeStreamIdsRef.current.add(streamEvent.id)
-    }
-
-    agent.addEventListener('message', onAgentMessage)
-    return () => {
-      agent.removeEventListener('message', onAgentMessage)
-      activeStreamIdsRef.current.clear()
-      if (recoveryTimerRef.current) {
-        clearTimeout(recoveryTimerRef.current)
-        recoveryTimerRef.current = null
-      }
-    }
-  }, [agent, scheduleReconnectRecovery, setMessages])
-
   const stopCurrentTurn = useCallback(async () => {
-    const streamIds = [...activeStreamIdsRef.current]
-    activeStreamIdsRef.current.clear()
-
-    streamIds.forEach((id) => {
-      const sendResult = Result.try(() =>
-        agent.send(
-          JSON.stringify({
-            id,
-            type: 'cf_agent_chat_request_cancel',
-          }),
-        ),
-      )
-      if (Result.isError(sendResult)) {
-        console.warn('[chat.runtime] failed to send stream cancel', {
-          id,
-          error: sendResult.error,
-        })
-      }
-    })
-
     const stopResult = await Result.tryPromise(() => stop())
     if (Result.isError(stopResult)) {
       console.warn('[chat.runtime] failed to stop active chat turn', {
         error: stopResult.error,
       })
     }
-  }, [agent, stop])
+  }, [stop])
 
   const runtime = useMemo<ChatRuntime>(
     () => ({
@@ -421,9 +183,10 @@ function ChatRuntimeConnection({
       isServerStreaming,
       isStreaming,
       continueAfterGardenApproval: async (input) =>
-        await agent.call<ChatContinuationResult>('continueAfterGardenApproval', [
-          input,
-        ]),
+        await agent.call<ChatContinuationResult>(
+          'continueAfterGardenApproval',
+          [input],
+        ),
       markTurnError,
       messages,
       sendMessage,
@@ -448,16 +211,5 @@ function ChatRuntimeConnection({
     ],
   )
 
-  useLayoutEffect(() => {
-    setRuntime(session.id, runtime)
-  }, [runtime, session.id, setRuntime])
-
-  useEffect(
-    () => () => {
-      removeRuntime(session.id)
-    },
-    [removeRuntime, session.id],
-  )
-
-  return null
+  return runtime
 }
