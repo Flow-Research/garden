@@ -104,8 +104,11 @@ async function routeAgentDoRequest(request: Request, env: ServerEnv) {
 }
 
 async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
-  if (request.method !== 'POST') return new Response('Not found', { status: 404 })
-  if (request.headers.get('x-garden-internal-secret') !== env.BETTER_AUTH_SECRET) {
+  if (request.method !== 'POST')
+    return new Response('Not found', { status: 404 })
+  if (
+    request.headers.get('x-garden-internal-secret') !== env.BETTER_AUTH_SECRET
+  ) {
     return new Response('Unauthorized', { status: 401 })
   }
 
@@ -129,7 +132,8 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
     body.target === 'issue-run' || body.target === 'automation-run'
       ? body.target
       : 'chat'
-  const workspaceId = typeof body.workspaceId === 'string' ? body.workspaceId : null
+  const workspaceId =
+    typeof body.workspaceId === 'string' ? body.workspaceId : null
   const userId = typeof body.userId === 'string' ? body.userId : null
   if (!workspaceId || !userId) {
     return new Response('workspaceId and userId are required', { status: 400 })
@@ -137,9 +141,11 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
 
   const db = getDb(env)
   const agent = await ensureAgentRow({ workspaceId, ownerUserId: userId })
-  if (!agent.hostName) return new Response('Agent hostName is missing', { status: 400 })
+  const hostName = agent.hostName
+  if (!hostName)
+    return new Response('Agent hostName is missing', { status: 400 })
 
-  const stub = await getAgentByName(env.AgentDO, agent.hostName)
+  const stub = await getAgentByName(env.AgentDO, hostName)
   if (target === 'chat') {
     const threadId = crypto.randomUUID()
     await db.insert(schema.chatThread).values({
@@ -153,20 +159,29 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
     })
     await disposeRpcResult(await stub.ensureThread(threadId))
     const tools = await disposeRpcResult(await stub.debugThreadTools(threadId))
-    const prompt = await disposeRpcResult(await stub.debugThreadPrompt(threadId))
+    const prompt = await disposeRpcResult(
+      await stub.debugThreadPrompt(threadId),
+    )
     const toolNames = tools.inventory.map((tool) => tool.key)
     const base = {
       ok: true,
       target,
       agentId: agent.id,
-      hostName: agent.hostName,
+      hostName,
       threadId,
-      hasGithubRepoSearchTool: toolNames.includes('tool_github_search_repositories'),
-      hasGithubRoutingPrompt: prompt.prompt.includes('search_repositories tool'),
+      hasGithubRepoSearchTool: toolNames.includes(
+        'tool_github_search_repositories',
+      ),
+      hasGithubRoutingPrompt: prompt.prompt.includes(
+        'search_repositories tool',
+      ),
     }
     if (body.mode === 'inspect') return Response.json({ ...base, toolNames })
     const message = typeof body.message === 'string' ? body.message : null
-    if (!message) return new Response('message is required unless mode=inspect', { status: 400 })
+    if (!message)
+      return new Response('message is required unless mode=inspect', {
+        status: 400,
+      })
     const turn = await disposeRpcResult(
       await stub.runThreadFixtureTurn(threadId, { clear: true, message }),
     )
@@ -180,29 +195,44 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
       .where(eq(schema.issue.workspaceId, workspaceId))
     const issueId = crypto.randomUUID()
     const runId = crypto.randomUUID()
-    await db.insert(schema.issue).values({
-      id: issueId,
-      workspaceId,
-      number: (maxNumber ?? 0) + 1,
-      title: '[fixture] issue run',
-      description: typeof body.message === 'string' ? body.message : 'Fixture issue run.',
-      status: 'backlog',
-      priority: 'medium',
-      assigneeType: 'agent',
-      assigneeId: agent.id,
-      createdBy: userId,
-      activeRunId: runId,
+    await db.transaction(async (tx) => {
+      await tx.insert(schema.issue).values({
+        id: issueId,
+        workspaceId,
+        number: (maxNumber ?? 0) + 1,
+        title: '[fixture] issue run',
+        description:
+          typeof body.message === 'string'
+            ? body.message
+            : 'Fixture issue run.',
+        status: 'backlog',
+        priority: 'medium',
+        assigneeType: 'agent',
+        assigneeId: agent.id,
+        createdBy: userId,
+      })
+      await tx.insert(schema.issueRun).values({
+        id: runId,
+        workspaceId,
+        issueId,
+        agentId: agent.id,
+        hostName,
+        status: 'queued',
+        triggerSource: 'manual',
+      })
+      await tx
+        .update(schema.issue)
+        .set({ activeRunId: runId })
+        .where(eq(schema.issue.id, issueId))
     })
-    await db.insert(schema.issueRun).values({
-      id: runId,
-      workspaceId,
-      issueId,
+    const base = {
+      ok: true,
+      target,
       agentId: agent.id,
-      hostName: agent.hostName,
-      status: 'queued',
-      triggerSource: 'manual',
-    })
-    const base = { ok: true, target, agentId: agent.id, hostName: agent.hostName, issueId, runId }
+      hostName,
+      issueId,
+      runId,
+    }
     if (body.mode === 'inspect') return Response.json(base)
     const turn = await disposeRpcResult(
       await stub.executeRunTurn({ issueId, runId, mode: 'start' }),
@@ -216,13 +246,19 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
     id: automationId,
     workspaceId,
     title: '[fixture] automation run',
-    description: typeof body.message === 'string' ? body.message : 'Fixture automation run.',
+    description:
+      typeof body.message === 'string'
+        ? body.message
+        : 'Fixture automation run.',
     assigneeAgentId: agent.id,
     priority: 'medium',
     status: 'active',
     concurrencyPolicy: 'skip',
     createdBy: userId,
-    systemPrompt: typeof body.message === 'string' ? body.message : 'Inspect runtime and report readiness.',
+    systemPrompt:
+      typeof body.message === 'string'
+        ? body.message
+        : 'Inspect runtime and report readiness.',
   })
   await db.insert(schema.automationRun).values({
     id: runId,
@@ -231,10 +267,17 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
     source: 'manual',
     status: 'pending',
     agentId: agent.id,
-    hostName: agent.hostName,
+    hostName,
     triggerPayload: {},
   })
-  const base = { ok: true, target, agentId: agent.id, hostName: agent.hostName, automationId, runId }
+  const base = {
+    ok: true,
+    target,
+    agentId: agent.id,
+    hostName,
+    automationId,
+    runId,
+  }
   if (body.mode === 'inspect') return Response.json(base)
   const turn = await disposeRpcResult(
     await stub.executeAutomationRunTurn({ runId, mode: 'start' }),
