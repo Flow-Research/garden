@@ -129,7 +129,9 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
     workspaceId?: unknown
   }
   const target =
-    body.target === 'issue-run' || body.target === 'automation-run'
+    body.target === 'issue-run' ||
+    body.target === 'issue-run-work' ||
+    body.target === 'automation-run'
       ? body.target
       : 'chat'
   const workspaceId =
@@ -188,7 +190,7 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
     return Response.json({ ...base, turn })
   }
 
-  if (target === 'issue-run') {
+  if (target === 'issue-run' || target === 'issue-run-work') {
     const [{ number: maxNumber }] = await db
       .select({ number: max(schema.issue.number) })
       .from(schema.issue)
@@ -200,7 +202,10 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
         id: issueId,
         workspaceId,
         number: (maxNumber ?? 0) + 1,
-        title: '[fixture] issue run',
+        title:
+          target === 'issue-run-work'
+            ? '[fixture] issue run light work'
+            : '[fixture] issue run',
         description:
           typeof body.message === 'string'
             ? body.message
