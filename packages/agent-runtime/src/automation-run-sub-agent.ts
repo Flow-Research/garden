@@ -753,7 +753,53 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
         },
       )
     }
+    await this.cancelRunSubmissions(input.runId, 'cancelled')
     this.abortAllRequests()
+  }
+
+  /**
+   * Cancels accepted-but-not-terminal Think submissions for this run. SDK
+   * durable submissions can sit pending before inference starts; aborting only
+   * active requests would let those turns wake later after Garden already
+   * recorded cancellation.
+   */
+  private async cancelRunSubmissions(runId: string, reason: string) {
+    const submissionsResult = await Result.tryPromise({
+      try: async () =>
+        await this.listSubmissions({ status: ['pending', 'running'] }),
+      catch: (cause) => cause,
+    })
+    if (submissionsResult.isErr()) {
+      console.warn('[agent-runtime] failed to list automation submissions', {
+        error:
+          submissionsResult.error instanceof Error
+            ? submissionsResult.error.message
+            : String(submissionsResult.error),
+        runId,
+      })
+      return
+    }
+
+    const cancelResult = await Result.tryPromise({
+      try: async () =>
+        await Promise.all(
+          submissionsResult.value
+            .filter((submission) => submission.metadata?.runId === runId)
+            .map((submission) =>
+              this.cancelSubmission(submission.submissionId, reason),
+            ),
+        ),
+      catch: (cause) => cause,
+    })
+    if (cancelResult.isErr()) {
+      console.warn('[agent-runtime] failed to cancel automation submissions', {
+        error:
+          cancelResult.error instanceof Error
+            ? cancelResult.error.message
+            : String(cancelResult.error),
+        runId,
+      })
+    }
   }
 
   private async driveTurn(

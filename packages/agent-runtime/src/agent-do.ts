@@ -383,7 +383,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   ) {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
-    if (input.clear) thread.clearMessages()
+    if (input.clear) await thread.clearMessages()
 
     const result = await thread.saveMessages([
       {
@@ -395,7 +395,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
 
     return {
       result,
-      messages: thread.getMessages(),
+      messages: await thread.getMessages(),
     }
   }
 
@@ -1824,7 +1824,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     })
 
     const loadedSkillKeys = Array.from(
-      this.session.getLoadedSkillKeys?.() ?? [],
+      (await this.session.getLoadedSkillKeys?.()) ?? [],
     )
 
     return {

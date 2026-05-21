@@ -13,7 +13,12 @@ import {
 import { Workspace } from '@cloudflare/shell'
 import type { McpAgent } from 'agents/mcp'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
-import type { LanguageModel, ToolSet, UIMessage } from 'ai'
+import {
+  hasToolCall,
+  type LanguageModel,
+  type ToolSet,
+  type UIMessage,
+} from 'ai'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/neon-serverless'
@@ -141,6 +146,14 @@ const TERMINAL_RESOLUTION_ACTIONS = new Set<IssueRunResolutionAction>([
   'revise_work_product',
   'mark_blocked',
 ])
+
+const ISSUE_RUN_TERMINAL_TOOL_STOP_CONDITIONS = [
+  hasToolCall('ask_question'),
+  hasToolCall('create_work_product'),
+  hasToolCall('revise_work_product'),
+  hasToolCall('mark_blocked'),
+  hasToolCall('create_child_issue'),
+]
 
 let cachedIssueInteractionSkillMarkdown: string | null = null
 
@@ -362,6 +375,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       maxRetries: THINK_TURN_MAX_RETRIES,
       maxSteps: this.maxSteps,
       sendReasoning: true,
+      stopWhen: ISSUE_RUN_TERMINAL_TOOL_STOP_CONDITIONS,
       system: `${ctx.system}\n\n${loadedResult.value.contextBlock}`,
       tools: stableMcpTools,
       activeTools: mcpController.activeToolKeysWithoutRawMcp({
@@ -735,7 +749,53 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         runId: input.runId,
       })
     }
+    await this.cancelRunSubmissions(input.runId, 'cancelled')
     this.abortAllRequests()
+  }
+
+  /**
+   * Cancels accepted-but-not-terminal Think submissions for this run. SDK
+   * durable submissions can sit pending before inference starts; aborting only
+   * active requests would let those turns wake later after Garden already
+   * recorded cancellation.
+   */
+  private async cancelRunSubmissions(runId: string, reason: string) {
+    const submissionsResult = await Result.tryPromise({
+      try: async () =>
+        await this.listSubmissions({ status: ['pending', 'running'] }),
+      catch: (cause) => cause,
+    })
+    if (submissionsResult.isErr()) {
+      console.warn('[agent-runtime] failed to list issue submissions', {
+        error:
+          submissionsResult.error instanceof Error
+            ? submissionsResult.error.message
+            : String(submissionsResult.error),
+        runId,
+      })
+      return
+    }
+
+    const cancelResult = await Result.tryPromise({
+      try: async () =>
+        await Promise.all(
+          submissionsResult.value
+            .filter((submission) => submission.metadata?.runId === runId)
+            .map((submission) =>
+              this.cancelSubmission(submission.submissionId, reason),
+            ),
+        ),
+      catch: (cause) => cause,
+    })
+    if (cancelResult.isErr()) {
+      console.warn('[agent-runtime] failed to cancel issue submissions', {
+        error:
+          cancelResult.error instanceof Error
+            ? cancelResult.error.message
+            : String(cancelResult.error),
+        runId,
+      })
+    }
   }
 
   private async driveTurn(
