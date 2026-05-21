@@ -1,4 +1,4 @@
-import { DurableObject } from 'cloudflare:workers'
+import { Agent } from 'agents'
 import { eq, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/neon-serverless'
 import {
@@ -15,7 +15,7 @@ import {
   type AutomationRunEnv,
 } from '@garden/core/automations/run-service'
 
-type AutomationTriggerEnv = AutomationRunEnv
+type AutomationTriggerEnv = Cloudflare.Env & AutomationRunEnv
 type AutomationConcurrencyPolicy = 'skip' | 'replace'
 type AutomationRunSource = 'schedule' | 'manual' | 'webhook' | 'api'
 const LIVE_AUTOMATION_RUN_STATUSES = ['queued', 'running'] as const
@@ -24,6 +24,7 @@ type AutomationConfig = {
   triggerId: string
   automationId: string
   concurrencyPolicy: AutomationConcurrencyPolicy
+  scheduleId: string | null
 }
 
 type AutomationState = {
@@ -78,6 +79,7 @@ export class AutomationDoError extends TaggedError('AutomationDoError')<{
     | 'dispatch_failed'
     | 'invalid_config'
     | 'run_not_found'
+    | 'schedule_error'
     | 'unsupported_policy'
   message: string
   cause?: unknown
@@ -106,6 +108,14 @@ function dbError(operation: string, cause: unknown) {
 function dispatchError(operation: string, cause: unknown) {
   return automationDoError({
     code: 'dispatch_failed',
+    message: `${operation} failed: ${errorMessage(cause)}`,
+    cause,
+  })
+}
+
+function scheduleError(operation: string, cause: unknown) {
+  return automationDoError({
+    code: 'schedule_error',
     message: `${operation} failed: ${errorMessage(cause)}`,
     cause,
   })
@@ -162,7 +172,7 @@ function emptyState(): AutomationState {
   return { inFlightRunId: null }
 }
 
-export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
+export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
   private db() {
     return drizzle(this.env.DATABASE_URL, { schema })
   }
@@ -196,20 +206,20 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
     const policyResult = parseConcurrencyPolicy(args.concurrencyPolicy)
     if (policyResult.isErr()) return Result.err(policyResult.error)
 
-    this.ctx.storage.kv.put(CONFIG_KEY, {
-      triggerId: args.triggerId,
-      automationId: args.automationId,
-      concurrencyPolicy: policyResult.value,
-    } satisfies AutomationConfig)
-    this.ctx.storage.kv.put(STATE_KEY, this.getState())
+    const existingConfig = this.getConfig()
+    const scheduledResult = await this.scheduleAutomationTrigger(
+      {
+        triggerId: args.triggerId,
+        automationId: args.automationId,
+        concurrencyPolicy: policyResult.value,
+        scheduleId: existingConfig?.scheduleId ?? null,
+      },
+      nextRunAt,
+    )
+    if (scheduledResult.isErr()) return Result.err(scheduledResult.error)
 
-    const alarmResult = await Result.tryPromise({
-      try: async () => await this.ctx.storage.setAlarm(nextRunAt),
-      catch: (cause) => dbError('set automation trigger alarm', cause),
-    })
-    if (alarmResult.isErr()) {
-      return Result.err(alarmResult.error)
-    }
+    this.ctx.storage.kv.put(CONFIG_KEY, scheduledResult.value)
+    this.ctx.storage.kv.put(STATE_KEY, this.getRunState())
 
     return Result.ok()
   }
@@ -219,17 +229,15 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
     return Result.serialize(result)
   }
 
-  private async uninstallTrigger(): Promise<ResultValue<void, AutomationDoError>> {
+  private async uninstallTrigger(): Promise<
+    ResultValue<void, AutomationDoError>
+  > {
+    const config = this.getConfig()
+    const cancelResult = await this.cancelAutomationSchedule(config)
+    if (cancelResult.isErr()) return Result.err(cancelResult.error)
+
     this.ctx.storage.kv.delete(CONFIG_KEY)
     this.ctx.storage.kv.delete(STATE_KEY)
-
-    const alarmResult = await Result.tryPromise({
-      try: async () => await this.ctx.storage.deleteAlarm(),
-      catch: (cause) => dbError('delete automation trigger alarm', cause),
-    })
-    if (alarmResult.isErr()) {
-      return Result.err(alarmResult.error)
-    }
 
     return Result.ok()
   }
@@ -238,10 +246,13 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
     nextRunAt: Date | null
     inFlightRunId: string | null
   }> {
-    const alarm = await this.ctx.storage.getAlarm()
+    const config = this.getConfig()
+    const schedule = config?.scheduleId
+      ? await this.getScheduleById(config.scheduleId)
+      : undefined
     return {
-      nextRunAt: alarm === null ? null : new Date(alarm),
-      inFlightRunId: this.getState().inFlightRunId,
+      nextRunAt: schedule?.time ? new Date(schedule.time) : null,
+      inFlightRunId: this.getRunState().inFlightRunId,
     }
   }
 
@@ -274,27 +285,35 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
     })
   }
 
-  async alarm(): Promise<void> {
+  /**
+   * Invoked by the Agents SDK schedule row created for the trigger. Garden
+   * still computes timezone-aware next run dates itself, but Cloudflare now
+   * owns alarm dispatch, retries, and schedule bookkeeping instead of our DO
+   * writing raw alarms directly.
+   */
+  async fireScheduledTrigger(payload: AutomationConfig): Promise<void> {
     const result = await Result.tryPromise({
-      try: async () => await this.handleAlarm(),
+      try: async () => await this.handleScheduledTrigger(payload),
       catch: (cause) =>
         automationDoError({
           code: 'dispatch_failed',
-          message: `Automation trigger alarm failed: ${errorMessage(cause)}`,
+          message: `Automation trigger schedule failed: ${errorMessage(cause)}`,
           cause,
         }),
     })
     if (result.isErr()) {
-      console.error('[agent-runtime] automation trigger alarm failed', {
+      console.error('[agent-runtime] automation trigger schedule failed', {
         message: result.error.message,
         code: result.error.code,
       })
     }
   }
 
-  private async handleAlarm(): Promise<ResultValue<void, AutomationDoError>> {
+  private async handleScheduledTrigger(
+    payload: AutomationConfig,
+  ): Promise<ResultValue<void, AutomationDoError>> {
     const config = this.getConfig()
-    if (!config) return Result.ok()
+    if (!config || config.triggerId !== payload.triggerId) return Result.ok()
 
     const policyResult = await this.applyConcurrencyPolicy(config)
     if (policyResult.isErr()) return Result.err(policyResult.error)
@@ -325,25 +344,30 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
   }
 
   private getConfig() {
-    return this.ctx.storage.kv.get<AutomationConfig>(CONFIG_KEY) ?? null
+    const config = this.ctx.storage.kv.get<AutomationConfig>(CONFIG_KEY) ?? null
+    if (!config) return null
+    return {
+      ...config,
+      scheduleId: config.scheduleId ?? null,
+    }
   }
 
-  private getState(): AutomationState {
+  private getRunState(): AutomationState {
     return this.ctx.storage.kv.get<AutomationState>(STATE_KEY) ?? emptyState()
   }
 
-  private setState(state: AutomationState) {
+  private setRunState(state: AutomationState) {
     this.ctx.storage.kv.put(STATE_KEY, state)
   }
 
   private clearInFlightState() {
-    this.setState(emptyState())
+    this.setRunState(emptyState())
   }
 
   private async applyConcurrencyPolicy(
     config: AutomationConfig,
   ): Promise<ResultValue<'fire' | 'skip', AutomationDoError>> {
-    const state = this.getState()
+    const state = this.getRunState()
     if (!state.inFlightRunId) return Result.ok('fire')
 
     const runResult = await this.loadInFlightRun(state.inFlightRunId)
@@ -426,6 +450,46 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
           .where(eq(schema.automationRun.id, state.inFlightRunId!))
       },
       catch: (cause) => dbError('mark replaced automation run', cause),
+    })
+    if (result.isErr()) return Result.err(result.error)
+
+    return Result.ok()
+  }
+
+  /**
+   * Creates the next one-time SDK schedule for a timezone-aware cron trigger.
+   * Agents SDK cron schedules do not expose timezone control, so Garden keeps
+   * cron-parser as the calendar engine and delegates only the durable wakeup.
+   */
+  private async scheduleAutomationTrigger(
+    config: AutomationConfig,
+    nextRunAt: Date,
+  ): Promise<ResultValue<AutomationConfig, AutomationDoError>> {
+    const cancelResult = await this.cancelAutomationSchedule(config)
+    if (cancelResult.isErr()) return Result.err(cancelResult.error)
+
+    const result = await Result.tryPromise({
+      try: async () =>
+        await this.schedule(nextRunAt, 'fireScheduledTrigger', {
+          ...config,
+          scheduleId: null,
+        } satisfies AutomationConfig),
+      catch: (cause) => scheduleError('schedule automation trigger', cause),
+    })
+    if (result.isErr()) return Result.err(result.error)
+
+    return Result.ok({ ...config, scheduleId: result.value.id })
+  }
+
+  private async cancelAutomationSchedule(
+    config: AutomationConfig | null,
+  ): Promise<ResultValue<void, AutomationDoError>> {
+    if (!config?.scheduleId) return Result.ok()
+
+    const result = await Result.tryPromise({
+      try: async () => await this.cancelSchedule(config.scheduleId!),
+      catch: (cause) =>
+        scheduleError('cancel automation trigger schedule', cause),
     })
     if (result.isErr()) return Result.err(result.error)
 
@@ -557,7 +621,7 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
     })
     if (updateRunResult.isErr()) return Result.err(updateRunResult.error)
 
-    this.setState({
+    this.setRunState({
       inFlightRunId: runId,
     })
 
@@ -699,17 +763,18 @@ export class AutomationTriggerDO extends DurableObject<AutomationTriggerEnv> {
     })
     if (nextResult.isErr()) return Result.err(nextResult.error)
 
-    this.ctx.storage.kv.put(CONFIG_KEY, {
-      triggerId: row.triggerId,
-      automationId: row.automationId,
-      concurrencyPolicy: policyResult.value,
-    } satisfies AutomationConfig)
+    const scheduledResult = await this.scheduleAutomationTrigger(
+      {
+        triggerId: row.triggerId,
+        automationId: row.automationId,
+        concurrencyPolicy: policyResult.value,
+        scheduleId: this.getConfig()?.scheduleId ?? null,
+      },
+      nextResult.value,
+    )
+    if (scheduledResult.isErr()) return Result.err(scheduledResult.error)
 
-    const alarmResult = await Result.tryPromise({
-      try: async () => await this.ctx.storage.setAlarm(nextResult.value),
-      catch: (cause) => dbError('set next automation trigger alarm', cause),
-    })
-    if (alarmResult.isErr()) return Result.err(alarmResult.error)
+    this.ctx.storage.kv.put(CONFIG_KEY, scheduledResult.value)
 
     return Result.ok(nextResult.value)
   }

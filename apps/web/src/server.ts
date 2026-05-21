@@ -131,7 +131,8 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
   const target =
     body.target === 'issue-run' ||
     body.target === 'issue-run-work' ||
-    body.target === 'automation-run'
+    body.target === 'automation-run' ||
+    body.target === 'automation-schedule'
       ? body.target
       : 'chat'
   const workspaceId =
@@ -248,7 +249,10 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
   await db.insert(schema.automation).values({
     id: automationId,
     workspaceId,
-    title: '[fixture] automation run',
+    title:
+      target === 'automation-schedule'
+        ? '[fixture] automation schedule'
+        : '[fixture] automation run',
     description:
       typeof body.message === 'string'
         ? body.message
@@ -263,6 +267,48 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
         ? body.message
         : 'Inspect runtime and report readiness.',
   })
+
+  if (target === 'automation-schedule') {
+    const triggerId = crypto.randomUUID()
+    const nextRunAt = new Date(Date.now() + 3_000)
+    await db.insert(schema.automationTrigger).values({
+      id: triggerId,
+      automationId,
+      kind: 'schedule',
+      enabled: true,
+      label: '[fixture] schedule',
+      cronExpression: '* * * * *',
+      timezone: 'UTC',
+    })
+    const triggerStub = env.AUTOMATION_TRIGGER.get(
+      env.AUTOMATION_TRIGGER.idFromName(triggerId),
+    )
+    const installResult = Result.deserialize<void, { message?: string }>(
+      (await triggerStub.install({
+        triggerId,
+        automationId,
+        concurrencyPolicy: 'skip',
+        nextRunAt,
+      })) as unknown,
+    )
+    if (installResult.isErr()) {
+      return new Response(installResult.error.message ?? 'Install failed', {
+        status: 500,
+      })
+    }
+
+    const base = {
+      ok: true,
+      target,
+      agentId: agent.id,
+      hostName,
+      automationId,
+      triggerId,
+      nextRunAt: nextRunAt.toISOString(),
+    }
+    return Response.json({ ...base, scheduled: true })
+  }
+
   await db.insert(schema.automationRun).values({
     id: runId,
     workspaceId,
