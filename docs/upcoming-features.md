@@ -2,6 +2,8 @@
 
 AI Elements components installed but not yet wired into the UI.
 
+See also: [runtime execution boundaries](./features/runtime-execution-boundaries.md) for Workflows vs managed fibers and artifact preview boundaries.
+
 ## Queue
 
 Display and manage task queues in the agent interaction panel.
