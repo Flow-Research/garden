@@ -31,7 +31,10 @@ class SandboxToolError extends TaggedError('SandboxToolError')<{
 
 function clampTimeout(timeoutMs: number | undefined) {
   if (!Number.isFinite(timeoutMs)) return DEFAULT_TIMEOUT_MS
-  return Math.min(Math.max(Math.trunc(timeoutMs ?? DEFAULT_TIMEOUT_MS), 1), MAX_TIMEOUT_MS)
+  return Math.min(
+    Math.max(Math.trunc(timeoutMs ?? DEFAULT_TIMEOUT_MS), 1),
+    MAX_TIMEOUT_MS,
+  )
 }
 
 function truncate(value: string) {
@@ -88,9 +91,36 @@ async function runSandboxOperation<T>(
   return { ok: true, value: result.value }
 }
 
-export function createSandboxTools(
-  getSandbox: SandboxProvider,
-): ToolSet {
+/**
+ * Returns a preview URL for a sandbox service. Cloudflare Sandbox 0.10.2
+ * added zero-config quick tunnels behind the RPC transport, so Garden can stop
+ * requiring callers to know or supply a custom hostname for previewable work.
+ */
+async function exposeSandboxPreview(
+  sandbox: SandboxDO,
+  port: number,
+  hostname: string | undefined,
+) {
+  if (hostname) {
+    const exposed = await sandbox.exposePort(port, { hostname })
+    return {
+      hostname,
+      port: exposed.port,
+      tunnel: false,
+      url: exposed.url,
+    }
+  }
+
+  const tunnel = await sandbox.tunnels.get(port)
+  return {
+    hostname: tunnel.hostname,
+    port: tunnel.port,
+    tunnel: true,
+    url: tunnel.url,
+  }
+}
+
+export function createSandboxTools(getSandbox: SandboxProvider): ToolSet {
   return {
     sandboxExec: tool({
       description:
@@ -102,7 +132,9 @@ export function createSandboxTools(
         cwd: z
           .string()
           .optional()
-          .describe('Working directory inside the sandbox, defaults to /workspace'),
+          .describe(
+            'Working directory inside the sandbox, defaults to /workspace',
+          ),
         timeoutMs: z
           .number()
           .int()
@@ -258,7 +290,9 @@ export function createSandboxTools(
         cwd: z
           .string()
           .optional()
-          .describe('Working directory inside the sandbox, defaults to /workspace'),
+          .describe(
+            'Working directory inside the sandbox, defaults to /workspace',
+          ),
       }),
       execute: async ({ command, cwd }) => {
         const result = await runSandboxOperation('startProcess', () =>
@@ -303,10 +337,12 @@ export function createSandboxTools(
     }),
 
     sandboxKillProcess: tool({
-      description:
-        'Terminate a process that was started inside the sandbox.',
+      description: 'Terminate a process that was started inside the sandbox.',
       inputSchema: z.object({
-        processId: z.string().min(1).describe('Sandbox process id to terminate'),
+        processId: z
+          .string()
+          .min(1)
+          .describe('Sandbox process id to terminate'),
       }),
       execute: async ({ processId }) => {
         const result = await runSandboxOperation('killProcess', async () => {
@@ -325,23 +361,34 @@ export function createSandboxTools(
     sandboxExposePort: tool({
       description:
         'Expose a service running inside the sandbox and return its preview URL. ' +
-        'Use this after starting a web server process for an HTML app, generated artifact, or previewable tool.',
+        'Use this after starting a web server process for an HTML app, generated artifact, or previewable tool. ' +
+        'Omit hostname to use a zero-config Cloudflare quick tunnel.',
       inputSchema: z.object({
-        port: z.number().int().positive().max(65_535).describe('Port to expose'),
+        port: z
+          .number()
+          .int()
+          .positive()
+          .max(65_535)
+          .describe('Port to expose'),
         hostname: z
           .string()
           .min(1)
-          .describe('Hostname used to generate preview URLs'),
+          .optional()
+          .describe(
+            'Optional custom hostname used to generate preview URLs. Omit to create a trycloudflare.com quick tunnel.',
+          ),
       }),
       execute: async ({ port, hostname }) => {
         const result = await runSandboxOperation('exposePort', () =>
-          getSandbox().exposePort(port, { hostname }),
+          exposeSandboxPreview(getSandbox(), port, hostname),
         )
         if (!result.ok) return result
 
         return {
           ok: true,
+          hostname: result.value.hostname,
           port: result.value.port,
+          tunnel: result.value.tunnel,
           url: result.value.url,
         }
       },
