@@ -2,7 +2,10 @@
 
 AI Elements components installed but not yet wired into the UI.
 
-See also: [runtime execution boundaries](./features/runtime-execution-boundaries.md) for Workflows vs managed fibers and artifact preview boundaries.
+See also:
+
+- [runtime execution boundaries](./features/runtime-execution-boundaries.md) for Workflows vs managed fibers and preview boundaries
+- [artifact runtime model](./features/artifact-runtime-model.md) for current document/work-product/sandbox artifact paths and the desired unified model
 
 ## Queue
 
