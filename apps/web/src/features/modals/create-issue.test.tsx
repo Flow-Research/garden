@@ -4,6 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const mockPush = vi.hoisted(() => vi.fn())
+const mockOpenPanel = vi.hoisted(() => vi.fn())
 const mockCreateIssue = vi.hoisted(() => vi.fn())
 const mockSetDraft = vi.hoisted(() => vi.fn())
 const mockClearDraft = vi.hoisted(() => vi.fn())
@@ -50,6 +51,10 @@ vi.mock('@garden/core/issues/stores/draft-store', () => ({
 vi.mock('@/lib/issues/mutations', () => ({
   useCreateIssue: () => ({ mutateAsync: mockCreateIssue }),
   useUpdateIssue: () => ({ mutate: vi.fn() }),
+}))
+
+vi.mock('@/components/shell/workspace-dock', () => ({
+  useWorkspaceDock: () => ({ openPanel: mockOpenPanel }),
 }))
 
 vi.mock('@garden/core/hooks/use-file-upload', () => ({
@@ -226,6 +231,7 @@ describe('CreateIssueModal', () => {
         assignee_id: undefined,
         due_date: undefined,
         attachment_ids: undefined,
+        auto_start: true,
         parent_issue_id: undefined,
         project_id: undefined,
       })
@@ -248,7 +254,12 @@ describe('CreateIssueModal', () => {
 
     await user.click(screen.getByRole('button', { name: 'View issue' }))
 
-    expect(mockPush).toHaveBeenCalledWith('/issues/issue-123')
+    expect(mockOpenPanel).toHaveBeenCalledWith({
+      kind: 'issue-detail',
+      title: 'Ship create issue regression coverage',
+      entityId: 'issue-123',
+    })
+    expect(mockPush).not.toHaveBeenCalled()
     expect(mockToastDismiss).toHaveBeenCalledWith('toast-1')
   })
 })

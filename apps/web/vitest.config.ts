@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 import viteReact from '@vitejs/plugin-react'
 
@@ -6,7 +7,14 @@ import viteReact from '@vitejs/plugin-react'
 // which is incompatible with vitest's env resolution. Tests only need React
 // + tsconfig-paths to load the components under jsdom.
 export default defineConfig({
-  resolve: { tsconfigPaths: true },
+  resolve: {
+    tsconfigPaths: true,
+    alias: {
+      'cloudflare:workers': fileURLToPath(
+        new URL('./src/test/cloudflare-workers-mock.ts', import.meta.url),
+      ),
+    },
+  },
   plugins: [viteReact()],
   test: {
     environment: 'jsdom',

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Result } from 'better-result'
 import { useQuery } from '@tanstack/react-query'
 import {
+  AlertTriangle,
   CheckCircle2,
   Clock,
   Loader2,
@@ -12,6 +13,7 @@ import {
   Play,
   Plus,
   Trash2,
+  Wrench,
   XCircle,
   Zap,
 } from 'lucide-react'
@@ -83,7 +85,52 @@ function arrayValue(value: unknown) {
 function traceEvents(result: unknown) {
   const resultObject = objectValue(result)
   const observability = objectValue(resultObject?.observability)
-  return arrayValue(observability?.trace).map((event) => objectValue(event))
+  return arrayValue(observability?.trace).flatMap((event) => {
+    const objectEvent = objectValue(event)
+    return objectEvent ? [objectEvent] : []
+  })
+}
+
+function traceNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function formatDuration(value: unknown) {
+  const durationMs = traceNumber(value)
+  if (durationMs === null) return null
+  if (durationMs < 1000) return `${Math.round(durationMs)}ms`
+  return `${(durationMs / 1000).toFixed(1)}s`
+}
+
+function summarizeTrace(trace: Record<string, unknown>[]) {
+  const toolFinished = trace.filter((event) => event.kind === 'tool_finished')
+  const failedTools = toolFinished.filter((event) => event.ok === false)
+  const browserCalls = trace.filter(
+    (event) => stringValue(event.toolName) === 'browser_execute',
+  )
+  const githubCalls = trace.filter((event) =>
+    stringValue(event.toolName)?.startsWith('tool_github'),
+  )
+  return { toolFinished, failedTools, browserCalls, githubCalls }
+}
+
+function traceLabel(kind: string) {
+  switch (kind) {
+    case 'turn_started':
+      return 'turn started'
+    case 'tool_started':
+      return 'tool started'
+    case 'tool_finished':
+      return 'tool finished'
+    case 'step_finished':
+      return 'model step'
+    case 'run_completed':
+      return 'run completed'
+    case 'run_failed':
+      return 'run failed'
+    default:
+      return kind.replace(/_/g, ' ')
+  }
 }
 
 function formatTokenCount(value: number) {
@@ -108,6 +155,83 @@ const RUN_STATUS_CONFIG: Record<
   failed: { label: 'Failed', color: 'text-destructive', icon: XCircle },
   cancelled: { label: 'Cancelled', color: 'text-muted-foreground', icon: Pause },
   skipped: { label: 'Skipped', color: 'text-amber-500', icon: Pause },
+}
+
+/**
+ * Compact automation trace inspector.
+ *
+ * Why this exists: QA automations need to be critiqued after the fact. A raw
+ * markdown report can hide whether the agent actually used GitHub, Browser Run,
+ * or only guessed. This timeline turns persisted trace events into an audit
+ * strip with tool counts, failures, durations, and previews so dev/debug mode
+ * can review agent behavior without opening the database.
+ */
+function AutomationTraceTimeline({
+  trace,
+}: {
+  trace: Record<string, unknown>[]
+}) {
+  const { toolFinished, failedTools, browserCalls, githubCalls } =
+    summarizeTrace(trace)
+
+  return (
+    <div className="mt-2 ml-[7.75rem] rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1 rounded-full border bg-background px-2 py-0.5 font-medium text-foreground">
+          <Wrench className="size-3" /> {toolFinished.length} tool calls
+        </span>
+        <span className="rounded-full border bg-background px-2 py-0.5">
+          {browserCalls.length} browser
+        </span>
+        <span className="rounded-full border bg-background px-2 py-0.5">
+          {githubCalls.length} GitHub
+        </span>
+        {failedTools.length > 0 ? (
+          <span className="inline-flex items-center gap-1 rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-destructive">
+            <AlertTriangle className="size-3" /> {failedTools.length} failed
+          </span>
+        ) : null}
+      </div>
+      <div className="max-h-72 space-y-1 overflow-y-auto pr-1">
+        {trace.map((event, index) => {
+          const kind = stringValue(event.kind) ?? 'event'
+          const toolName = stringValue(event.toolName)
+          const finishReason = stringValue(event.finishReason)
+          const duration = formatDuration(event.durationMs)
+          const failed = event.ok === false || kind === 'run_failed'
+          const preview =
+            stringValue(event.textPreview) ??
+            stringValue(event.outputPreview) ??
+            stringValue(event.inputPreview) ??
+            stringValue(event.error)
+
+          return (
+            <div
+              key={`${kind}-${index}`}
+              className={cn(
+                'rounded-md border bg-background/70 p-2',
+                failed && 'border-destructive/30 bg-destructive/5',
+              )}
+            >
+              <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
+                <span className={failed ? 'text-destructive' : 'text-foreground'}>
+                  {traceLabel(kind)}
+                </span>
+                {toolName ? <span>· {toolName}</span> : null}
+                {duration ? <span>· {duration}</span> : null}
+                {finishReason ? <span>· {finishReason}</span> : null}
+              </div>
+              {preview ? (
+                <div className="mt-1 line-clamp-3 whitespace-pre-wrap font-sans leading-5">
+                  {preview}
+                </div>
+              ) : null}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 function RunRow({
@@ -168,29 +292,7 @@ function RunRow({
         </p>
       ) : null}
       {debugMode && trace.length > 0 ? (
-        <div className="mt-2 ml-[7.75rem] max-h-64 overflow-y-auto rounded-md border bg-muted/20 p-2 font-mono text-[11px] text-muted-foreground">
-          {trace.map((event, index) => {
-            const kind = stringValue(event?.kind) ?? 'event'
-            const toolName = stringValue(event?.toolName)
-            const finishReason = stringValue(event?.finishReason)
-            const preview =
-              stringValue(event?.textPreview) ??
-              stringValue(event?.outputPreview) ??
-              stringValue(event?.error)
-            return (
-              <div key={index} className="border-b py-1 last:border-b-0">
-                <span className="text-foreground">{kind}</span>
-                {toolName ? <span> · {toolName}</span> : null}
-                {finishReason ? <span> · {finishReason}</span> : null}
-                {preview ? (
-                  <div className="mt-0.5 line-clamp-2 whitespace-pre-wrap font-sans">
-                    {preview}
-                  </div>
-                ) : null}
-              </div>
-            )
-          })}
-        </div>
+        <AutomationTraceTimeline trace={trace} />
       ) : null}
     </div>
   )

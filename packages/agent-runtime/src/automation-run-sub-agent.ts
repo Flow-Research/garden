@@ -13,12 +13,22 @@ import { Workspace } from '@cloudflare/shell'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { createBrowserTools } from 'agents/browser/ai'
 import type { McpAgent } from 'agents/mcp'
-import { tool, type LanguageModel, type ToolSet, type UIMessage } from 'ai'
+import {
+  hasToolCall,
+  tool,
+  type LanguageModel,
+  type ToolSet,
+  type UIMessage,
+} from 'ai'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/neon-serverless'
 import { z } from 'zod'
-import { parseAutomationExecutionConfig } from '@garden/core/automations/templates'
+import {
+  parseAutomationExecutionConfig,
+  parseQaSweepRunPayload,
+  type QaSweepClosureAction,
+} from '@garden/core/automations/templates'
 import { connectorRegistry } from '@garden/connectors'
 import {
   derivePermissions,
@@ -127,6 +137,9 @@ type AutomationRunContextSnapshot = {
 const DEFAULT_AUTOMATION_RUN_TIMEOUT_SEC = 2 * 60 * 60
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.automation-run.turn'
+const AUTOMATION_RUN_TERMINAL_TOOL_STOP_CONDITIONS = [
+  hasToolCall('complete_automation'),
+]
 const ACTIVE_AUTOMATION_RUN_STATUSES = ['queued', 'running'] as const
 const TERMINAL_AUTOMATION_RUN_STATUSES = [
   'completed',
@@ -238,6 +251,8 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   private currentRunId: string | null = null
   private currentPermissions: AgentPermissions | null = null
   private currentBrowserAllowed = false
+  private currentClosureAction: QaSweepClosureAction = 'report-only'
+  private currentAllowSourceMutation = false
   private aggUsage: RunUsageSnapshot | null = null
   private currentTrace: AutomationTraceEvent[] = []
   private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
@@ -353,6 +368,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     this.currentBrowserAllowed = automationAllowsBrowser(
       loadedResult.value.automation,
     )
+    this.applyClosureControls(loadedResult.value.run)
     this.aggUsage = null
     this.currentTrace = []
     await this.recordTrace(runId, {
@@ -392,6 +408,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       maxRetries: THINK_TURN_MAX_RETRIES,
       maxSteps: this.maxSteps,
       sendReasoning: true,
+      stopWhen: AUTOMATION_RUN_TERMINAL_TOOL_STOP_CONDITIONS,
       system: `${ctx.system}\n\n${loadedResult.value.contextBlock}`,
       tools: stableMcpTools,
       activeTools: mcpController.activeToolKeysWithoutRawMcp({
@@ -773,6 +790,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     this.currentBrowserAllowed = automationAllowsBrowser(
       loadedResult.value.automation,
     )
+    this.applyClosureControls(loadedResult.value.run)
 
     const submissionId = `automation-run:${input.runId}:${input.turn}:${mode}`
     const message: UIMessage = {
@@ -784,7 +802,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
           text:
             mode === 'resume'
               ? 'Resume this automation run using the injected automation context. Complete required work, then call complete_automation with the final result.'
-              : 'Start this automation run using the injected automation context. Complete the task directly, then call complete_automation. Do not create, update, or comment on issues unless the automation prompt explicitly asks you to inspect existing issues.',
+              : 'Start this automation run using the injected automation context. Complete the task directly, then call complete_automation. Respect the injected closure controls: do not create issues, update GitHub, draft PRs, update QA artifacts, or mutate source unless the run payload explicitly enables that closure action.',
         },
       ],
     }
@@ -964,6 +982,8 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
 
     const connectorTool = this.connectorToolForName(runtimeToolName)
     const toolName = connectorTool?.toolName ?? runtimeToolName
+    const closureResult = this.assertClosureToolAllowed(connectorTool)
+    if (closureResult.isErr()) return closureResult
 
     if (
       permissions.allowed_tools.length > 0 &&
@@ -992,6 +1012,59 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     }
 
     return Result.ok()
+  }
+
+  /**
+   * Enforces report-only QA defaults for external and source-mutating tools.
+   *
+   * Connector permissions answer "can this agent ever call the tool?"; this
+   * guard answers "did this specific automation run opt into closure work?".
+   * It prevents accidental GitHub issue/PR/file writes when a QA sweep only
+   * requested evidence and recommendations.
+   */
+  private assertClosureToolAllowed(
+    connectorTool: ReturnType<AutomationRunSubAgent['connectorToolForName']>,
+  ): ResultValue<void, AutomationRunSubAgentError> {
+    if (!connectorTool || connectorTool.connectorId !== 'github') {
+      return Result.ok()
+    }
+
+    const github = connectorRegistry.find(
+      (connector) => connector.id === 'github',
+    )
+    const meta = github?.tools?.[connectorTool.toolName]
+    if (!meta || meta.riskClass === 'read') return Result.ok()
+
+    const action = this.currentClosureAction
+    const toolName = connectorTool.toolName
+    const issueWriteAllowed =
+      action === 'github-issue' &&
+      ['add_issue_comment', 'issue_write'].includes(toolName)
+    const sourceWriteAllowed =
+      this.currentAllowSourceMutation &&
+      ((action === 'draft-pr' &&
+        [
+          'create_branch',
+          'create_or_update_file',
+          'create_pull_request',
+          'fork_repository',
+          'push_files',
+          'update_pull_request',
+          'update_pull_request_branch',
+        ].includes(toolName)) ||
+        (action === 'qa-artifact-update' &&
+          ['create_branch', 'create_or_update_file', 'push_files'].includes(
+            toolName,
+          )))
+
+    if (issueWriteAllowed || sourceWriteAllowed) return Result.ok()
+
+    return Result.err(
+      new AutomationRunSubAgentError({
+        code: 'runtime_failed',
+        message: `Tool ${toolName} is blocked by automation closure controls (${action}).`,
+      }),
+    )
   }
 
   private shouldAutoApproveRiskClass(riskClass: string) {
@@ -1188,6 +1261,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       name: agent.name,
       role: agent.roleTitle ?? 'Workspace agent',
     }))
+    const closureControls = this.readClosureControls(input.run)
 
     return [
       '# Automation run context',
@@ -1230,6 +1304,12 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
         ),
       ].join('\n'),
       ['## Trigger payload', JSON.stringify(payload, null, 2)].join('\n'),
+      [
+        '## Closure controls',
+        JSON.stringify(closureControls, null, 2),
+        '',
+        'Default is report-only. If closureAction is report-only, do not create Garden issues, write GitHub issues, draft pull requests, update QA artifacts, or mutate repository files. GitHub and source-writing tools are runtime-blocked unless this payload opts in.',
+      ].join('\n'),
       ['## Recent automation runs', JSON.stringify(recentRuns, null, 2)].join(
         '\n',
       ),
@@ -1237,6 +1317,32 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
         '\n',
       ),
     ].join('\n\n')
+  }
+
+  /**
+   * Reads per-run QA closure controls from the trigger payload.
+   *
+   * Why this exists: QA automations default to report-only, but users may
+   * intentionally ask a run to create a GitHub issue, draft a PR, or update QA
+   * artifacts. Encoding that as typed payload state lets prompts and runtime
+   * tool gates agree on the mutation boundary instead of trusting prose alone.
+   */
+  private readClosureControls(run: typeof schema.automationRun.$inferSelect) {
+    const context = run.contextSnapshot as AutomationRunContextSnapshot | null
+    const parsed = parseQaSweepRunPayload(context?.payload ?? null)
+    if (!parsed.success) {
+      return {
+        closureAction: 'report-only' as const,
+        allowSourceMutation: false,
+      }
+    }
+    return parsed.data
+  }
+
+  private applyClosureControls(run: typeof schema.automationRun.$inferSelect) {
+    const controls = this.readClosureControls(run)
+    this.currentClosureAction = controls.closureAction
+    this.currentAllowSourceMutation = controls.allowSourceMutation
   }
 
   private async applyRunBoundaryGuards(

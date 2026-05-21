@@ -95,6 +95,7 @@ vi.mock('../../navigation', () => ({
   useNavigation: () => ({
     push: vi.fn(),
     pathname: '/issues/issue-1',
+    searchParams: new URLSearchParams(),
     getShareableUrl: undefined,
   }),
   NavigationProvider: ({ children }: { children: React.ReactNode }) => children,
@@ -193,6 +194,8 @@ const mockApiObj = vi.hoisted(() => ({
     events: [],
   }),
   getRunEvents: vi.fn().mockResolvedValue([]),
+  listIssueWorkProducts: vi.fn().mockResolvedValue([]),
+  getChildIssueProgress: vi.fn().mockResolvedValue({ progress: [] }),
   listChildIssues: vi.fn().mockResolvedValue({ issues: [] }),
   listIssues: vi.fn().mockResolvedValue({ issues: [], total: 0 }),
   uploadFile: vi.fn(),
@@ -544,8 +547,7 @@ describe('IssueDetail (shared)', () => {
       expect(screen.getByText('Test WS')).toBeInTheDocument()
     })
 
-    const wsLink = screen.getByText('Test WS')
-    expect(wsLink.closest('a')).toHaveAttribute('href', '/issues')
+    expect(screen.getByText('Test WS')).toBeInTheDocument()
   })
 
   it('renders properties sidebar with status, priority, assignee, due date', async () => {

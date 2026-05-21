@@ -1,5 +1,3 @@
-import { env } from 'cloudflare:workers'
-
 type RequiredEnvBinding<Key extends keyof Env> = NonNullable<Env[Key]>
 
 export type AppEnv = {
@@ -32,10 +30,10 @@ export type AppEnv = {
 }
 
 // The custom Worker entry receives the authoritative Cloudflare bindings as the
-// `env` argument. `cloudflare:workers` can be incomplete while TanStack Start
-// route modules are loaded through the wrapped handler, so server.ts refreshes
-// this live binding at the start of each Worker request.
-export let appEnv = env as AppEnv
+// `env` argument. Keep this module free of a static `cloudflare:workers` import:
+// route modules are also loaded by Vitest/Node, where that virtual protocol is
+// unavailable, and `server.ts` refreshes the live binding at request start.
+export let appEnv = {} as AppEnv
 
 export function bindAppEnv(nextEnv: AppEnv) {
   appEnv = nextEnv
