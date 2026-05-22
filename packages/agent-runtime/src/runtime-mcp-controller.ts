@@ -32,7 +32,6 @@ export const MCP_CONNECTOR_SERVER_SCHEMA_SQL = `
     workspace_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
     agent_id TEXT NOT NULL,
-    jwt_expires_at TEXT NOT NULL,
     tools_signature TEXT,
     updated_at TEXT NOT NULL
   )
@@ -69,7 +68,6 @@ type StoredConnectorServerRowRecord = {
   workspace_id: string
   user_id: string
   agent_id: string
-  jwt_expires_at: string
   tools_signature: string | null
 }
 
@@ -555,7 +553,6 @@ export class RuntimeMcpController {
                 workspace_id,
                 user_id,
                 agent_id,
-                jwt_expires_at,
                 tools_signature
               FROM mcp_connector_server
             `,
@@ -568,7 +565,6 @@ export class RuntimeMcpController {
               connectorId: row.connector_id,
               serverId: row.server_id,
               accountId: row.account_id,
-              jwtExpiresAt: row.jwt_expires_at,
               toolsSignature: row.tools_signature,
             }) satisfies StoredConnectorServerRow,
         )
@@ -586,7 +582,6 @@ export class RuntimeMcpController {
     connectorId: string
     serverId: string
     accountId: string | null
-    jwtExpiresAt: string
     toolsSignature: string | null
   }) {
     return Result.try({
@@ -600,18 +595,16 @@ export class RuntimeMcpController {
               workspace_id,
               user_id,
               agent_id,
-              jwt_expires_at,
               tools_signature,
               updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(connector_id) DO UPDATE SET
               server_id = excluded.server_id,
               account_id = excluded.account_id,
               workspace_id = excluded.workspace_id,
               user_id = excluded.user_id,
               agent_id = excluded.agent_id,
-              jwt_expires_at = excluded.jwt_expires_at,
               tools_signature = excluded.tools_signature,
               updated_at = excluded.updated_at
           `,
@@ -621,7 +614,6 @@ export class RuntimeMcpController {
           input.identity.workspaceId,
           input.identity.userId,
           input.identity.agentId,
-          input.jwtExpiresAt,
           input.toolsSignature,
           new Date().toISOString(),
         ),
@@ -798,7 +790,6 @@ export class RuntimeMcpController {
   }
 
   async ensureProxyMcpConnections(options?: {
-    refreshWindowMs?: number
     allowReplacingRegisteredServers?: boolean
   }) {
     this.ensureConnectorServerTable()
@@ -834,7 +825,6 @@ export class RuntimeMcpController {
         .listServers()
         .map((server) => server.id),
       storedRows: storedRowsResult.value,
-      refreshWindowMs: options?.refreshWindowMs,
     })
 
     for (const connectorId of plan.connectorIdsToRemove) {
@@ -1063,9 +1053,6 @@ export class RuntimeMcpController {
         connectorId: connector.id,
         serverId: registeredServer.id,
         accountId: binding.accountId,
-        jwtExpiresAt: new Date(
-          Date.now() + mcpRuntimeConfig.proxyJwtTtlSeconds * 1000,
-        ).toISOString(),
         toolsSignature: this.buildConnectorToolsSignature(connector.id),
       })
     }
@@ -1117,9 +1104,6 @@ export class RuntimeMcpController {
       connectorId: connector.id,
       serverId: connectResult.value,
       accountId: binding.accountId,
-      jwtExpiresAt: new Date(
-        Date.now() + mcpRuntimeConfig.proxyJwtTtlSeconds * 1000,
-      ).toISOString(),
       toolsSignature: this.buildConnectorToolsSignature(connector.id),
     })
     if (persistResult.isErr()) return persistResult
@@ -1387,7 +1371,6 @@ export class RuntimeMcpConnectionPreparer {
   ensureLoaded(
     reason: string,
     options?: {
-      refreshWindowMs?: number
       allowReplacingRegisteredServers?: boolean
       waitForReadiness?: boolean
     },
@@ -1416,7 +1399,6 @@ export class RuntimeMcpConnectionPreparer {
   private async refreshWithRetries(
     reason: string,
     options?: {
-      refreshWindowMs?: number
       allowReplacingRegisteredServers?: boolean
       waitForReadiness?: boolean
     },

@@ -7,7 +7,6 @@ import {
   buildConnectorSyncPlan,
   hasWarmStoredConnectorServers,
   extractThreadIdFromAgentName,
-  MCP_PROXY_JWT_REFRESH_WINDOW_MS,
   type StoredConnectorServerRow,
 } from './mcp-connectors'
 import {
@@ -31,7 +30,6 @@ function createSqlStorageStub(initialRows: StoredConnectorServerRow[] = []) {
       workspace_id: 'workspace-1',
       user_id: 'user-1',
       agent_id: 'agent-1',
-      jwt_expires_at: row.jwtExpiresAt,
       tools_signature: row.toolsSignature,
     })
   }
@@ -52,7 +50,6 @@ function createSqlStorageStub(initialRows: StoredConnectorServerRow[] = []) {
           workspaceId,
           userId,
           agentId,
-          jwtExpiresAt,
           toolsSignature,
         ] = params
 
@@ -63,7 +60,6 @@ function createSqlStorageStub(initialRows: StoredConnectorServerRow[] = []) {
           workspace_id: workspaceId,
           user_id: userId,
           agent_id: agentId,
-          jwt_expires_at: jwtExpiresAt,
           tools_signature: toolsSignature,
         })
 
@@ -101,7 +97,6 @@ describe('buildConnectorSyncPlan', () => {
     const plan = buildConnectorSyncPlan({
       bindings: [{ connectorId: 'github', accountId: 'account-1' }],
       storedRows: [],
-      now: Date.UTC(2026, 3, 23, 10, 0, 0),
     })
 
     expect(plan.connectorIdsToRemove).toEqual([])
@@ -111,11 +106,6 @@ describe('buildConnectorSyncPlan', () => {
   })
 
   it('removes stale stored connectors and keeps fresh ones', () => {
-    const now = Date.UTC(2026, 3, 23, 10, 0, 0)
-    const future = new Date(
-      now + MCP_PROXY_JWT_REFRESH_WINDOW_MS + 5 * 60 * 1000,
-    ).toISOString()
-
     const plan = buildConnectorSyncPlan({
       bindings: [{ connectorId: 'gmail', accountId: 'account-2' }],
       storedRows: [
@@ -123,18 +113,15 @@ describe('buildConnectorSyncPlan', () => {
           connectorId: 'gmail',
           serverId: 'gmail',
           accountId: 'account-2',
-          jwtExpiresAt: future,
           toolsSignature: null,
         },
         {
           connectorId: 'slack',
           serverId: 'slack',
           accountId: 'account-3',
-          jwtExpiresAt: future,
           toolsSignature: null,
         },
       ],
-      now,
     })
 
     expect(plan.connectorIdsToRemove).toEqual(['slack'])
@@ -142,11 +129,6 @@ describe('buildConnectorSyncPlan', () => {
   })
 
   it('refreshes stored bindings whose server is not registered in memory', () => {
-    const now = Date.UTC(2026, 3, 23, 10, 0, 0)
-    const future = new Date(
-      now + MCP_PROXY_JWT_REFRESH_WINDOW_MS + 5 * 60 * 1000,
-    ).toISOString()
-
     const plan = buildConnectorSyncPlan({
       bindings: [{ connectorId: 'exa-search', accountId: null }],
       registeredServerIds: [],
@@ -155,11 +137,9 @@ describe('buildConnectorSyncPlan', () => {
           connectorId: 'exa-search',
           serverId: 'exa-search',
           accountId: null,
-          jwtExpiresAt: future,
           toolsSignature: null,
         },
       ],
-      now,
     })
 
     expect(plan.connectorIdsToRemove).toEqual([])
@@ -168,12 +148,7 @@ describe('buildConnectorSyncPlan', () => {
     ])
   })
 
-  it('refreshes bindings whose jwt is near expiry or account changed', () => {
-    const now = Date.UTC(2026, 3, 23, 10, 0, 0)
-    const nearExpiry = new Date(
-      now + MCP_PROXY_JWT_REFRESH_WINDOW_MS - 1_000,
-    ).toISOString()
-
+  it('refreshes bindings whose account changed', () => {
     const plan = buildConnectorSyncPlan({
       bindings: [
         { connectorId: 'google-drive', accountId: 'account-4' },
@@ -184,35 +159,26 @@ describe('buildConnectorSyncPlan', () => {
           connectorId: 'google-drive',
           serverId: 'google-drive',
           accountId: 'old-account',
-          jwtExpiresAt: nearExpiry,
           toolsSignature: null,
         },
         {
           connectorId: 'exa-search',
           serverId: 'exa-search',
           accountId: null,
-          jwtExpiresAt: nearExpiry,
           toolsSignature: null,
         },
       ],
-      now,
     })
 
     expect(plan.connectorIdsToRemove).toEqual([])
     expect(plan.bindingsToRefresh).toEqual([
       { connectorId: 'google-drive', accountId: 'account-4' },
-      { connectorId: 'exa-search', accountId: null },
     ])
   })
 })
 
 describe('hasWarmStoredConnectorServers', () => {
-  it('returns true when every stored connector is registered and unexpired', () => {
-    const now = Date.UTC(2026, 3, 23, 10, 0, 0)
-    const future = new Date(
-      now + MCP_PROXY_JWT_REFRESH_WINDOW_MS + 5 * 60 * 1000,
-    ).toISOString()
-
+  it('returns true when every stored connector is registered', () => {
     expect(
       hasWarmStoredConnectorServers({
         registeredServerIds: ['github', 'exa-search'],
@@ -221,36 +187,24 @@ describe('hasWarmStoredConnectorServers', () => {
             connectorId: 'github',
             serverId: 'github',
             accountId: 'account-1',
-            jwtExpiresAt: future,
             toolsSignature: null,
           },
           {
             connectorId: 'exa-search',
             serverId: 'exa-search',
             accountId: null,
-            jwtExpiresAt: future,
             toolsSignature: null,
           },
         ],
-        now,
       }),
     ).toBe(true)
   })
 
-  it('returns false when storage is empty, missing a server, or near expiry', () => {
-    const now = Date.UTC(2026, 3, 23, 10, 0, 0)
-    const future = new Date(
-      now + MCP_PROXY_JWT_REFRESH_WINDOW_MS + 5 * 60 * 1000,
-    ).toISOString()
-    const nearExpiry = new Date(
-      now + MCP_PROXY_JWT_REFRESH_WINDOW_MS,
-    ).toISOString()
-
+  it('returns false when storage is empty or missing a server', () => {
     expect(
       hasWarmStoredConnectorServers({
         registeredServerIds: ['github'],
         storedRows: [],
-        now,
       }),
     ).toBe(false)
 
@@ -262,27 +216,9 @@ describe('hasWarmStoredConnectorServers', () => {
             connectorId: 'github',
             serverId: 'github',
             accountId: 'account-1',
-            jwtExpiresAt: future,
             toolsSignature: null,
           },
         ],
-        now,
-      }),
-    ).toBe(false)
-
-    expect(
-      hasWarmStoredConnectorServers({
-        registeredServerIds: ['github'],
-        storedRows: [
-          {
-            connectorId: 'github',
-            serverId: 'github',
-            accountId: 'account-1',
-            jwtExpiresAt: nearExpiry,
-            toolsSignature: null,
-          },
-        ],
-        now,
       }),
     ).toBe(false)
   })
@@ -533,7 +469,6 @@ describe('RuntimeMcpController GitHub tools', () => {
   })
 
   it('replaces restored http connector servers before checking warm state', async () => {
-    const now = Date.UTC(2026, 4, 9, 14, 30, 0)
     const servers: Array<{ id: string; server_url?: string }> = [
       {
         id: 'github',
@@ -579,9 +514,6 @@ describe('RuntimeMcpController GitHub tools', () => {
               connectorId: 'github',
               serverId: 'github',
               accountId: null,
-              jwtExpiresAt: new Date(
-                now + MCP_PROXY_JWT_REFRESH_WINDOW_MS + 60_000,
-              ).toISOString(),
               toolsSignature: null,
             },
           ]),
@@ -639,7 +571,6 @@ describe('RuntimeMcpController GitHub tools', () => {
   })
 
   it('replaces registered connector servers stuck in failed state before discovery', async () => {
-    const now = Date.UTC(2026, 4, 9, 14, 30, 0)
     const servers: Array<{ id: string; server_url?: string }> = [
       { id: 'exa-search', server_url: 'rpc:exa-search' },
     ]
@@ -681,9 +612,6 @@ describe('RuntimeMcpController GitHub tools', () => {
               connectorId: 'exa-search',
               serverId: 'exa-search',
               accountId: null,
-              jwtExpiresAt: new Date(
-                now + MCP_PROXY_JWT_REFRESH_WINDOW_MS + 60_000,
-              ).toISOString(),
               toolsSignature: null,
             },
           ]),

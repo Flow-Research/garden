@@ -1,5 +1,3 @@
-export const MCP_PROXY_JWT_REFRESH_WINDOW_MS = 10 * 60 * 1000
-
 export type ActiveConnectorBinding = {
   connectorId: string
   accountId: string | null
@@ -9,7 +7,6 @@ export type StoredConnectorServerRow = {
   connectorId: string
   serverId: string
   accountId: string | null
-  jwtExpiresAt: string
   toolsSignature: string | null
 }
 
@@ -47,8 +44,6 @@ function shouldRefreshStoredBinding(args: {
   binding: ActiveConnectorBinding
   registeredServerIds?: Set<string>
   stored: StoredConnectorServerRow | undefined
-  now: number
-  refreshWindowMs: number
 }) {
   if (!args.stored) return true
   if (args.stored.accountId !== args.binding.accountId) return true
@@ -59,21 +54,14 @@ function shouldRefreshStoredBinding(args: {
     return true
   }
 
-  return (
-    Date.parse(args.stored.jwtExpiresAt) - args.now <= args.refreshWindowMs
-  )
+  return false
 }
 
 export function buildConnectorSyncPlan(args: {
   bindings: ActiveConnectorBinding[]
   registeredServerIds?: string[]
   storedRows: StoredConnectorServerRow[]
-  now?: number
-  refreshWindowMs?: number
 }): ConnectorSyncPlan {
-  const now = args.now ?? Date.now()
-  const refreshWindowMs =
-    args.refreshWindowMs ?? MCP_PROXY_JWT_REFRESH_WINDOW_MS
   const activeConnectorIds = new Set(
     args.bindings.map((binding) => binding.connectorId),
   )
@@ -93,8 +81,6 @@ export function buildConnectorSyncPlan(args: {
         binding,
         registeredServerIds,
         stored: storedByConnector.get(binding.connectorId),
-        now,
-        refreshWindowMs,
       }),
     ),
   }
@@ -103,15 +89,7 @@ export function buildConnectorSyncPlan(args: {
 export function hasWarmStoredConnectorServers(args: WarmConnectorServerCheck) {
   if (args.storedRows.length === 0) return false
 
-  const now = args.now ?? Date.now()
   const registeredServerIds = new Set(args.registeredServerIds)
 
-  return args.storedRows.every((row) => {
-    if (!registeredServerIds.has(row.serverId)) return false
-
-    return (
-      Date.parse(row.jwtExpiresAt) - now >
-      MCP_PROXY_JWT_REFRESH_WINDOW_MS
-    )
-  })
+  return args.storedRows.every((row) => registeredServerIds.has(row.serverId))
 }
