@@ -43,7 +43,6 @@ export class RuntimeMcpError extends TaggedError('RuntimeMcpError')<{
   code:
     | 'connector_not_found'
     | 'database_failed'
-    | 'jwt_mint_failed'
     | 'mcp_connect_failed'
     | 'mcp_discover_failed'
     | 'mcp_readiness_failed'

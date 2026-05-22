@@ -42,7 +42,7 @@
 ## Session State Notes
 
 - Postgres is the authority for connector accounts, capability grants, agents, chat threads, and issue runs.
-- Durable Object state should be treated as warm cache: registered MCP servers, minted proxy JWTs, tool signatures, and refresh schedules.
+- Durable Object state should be treated as warm cache: registered MCP servers, session props, and tool signatures.
 - Delete should destroy runtime cache for the thread. Archive should only pause background refresh and live connector registrations so unarchive can rebuild cheaply.
 - The current code has a defensive orphan guard for missing chat threads and pauses archived chat runtimes, but a broader cleanup pass is still needed for agent archive, issue-run terminal states, and workspace deletion.
 - RPC MCP proxy sessions serialize `handleMcpMessage` calls per connector session so response delivery stays matched to callers under overlapping tool calls. If connector throughput becomes a real bottleneck, optional future split: isolate sessions by request/turn/thread instead of adding a background queue/effect layer. Avoid queue/effect orchestration unless a measured platform gap requires it.
