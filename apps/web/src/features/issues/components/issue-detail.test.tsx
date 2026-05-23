@@ -373,32 +373,6 @@ vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }))
 
-// Mock react-resizable-panels (used by /ui/components/ui/resizable)
-vi.mock('react-resizable-panels', () => ({
-  Group: ({ children, ...props }: any) => (
-    <div data-testid="panel-group" {...props}>
-      {children}
-    </div>
-  ),
-  Panel: ({ children, ...props }: any) => (
-    <div data-testid="panel" {...props}>
-      {children}
-    </div>
-  ),
-  Separator: ({ children, ...props }: any) => (
-    <div data-testid="panel-handle" {...props}>
-      {children}
-    </div>
-  ),
-  useDefaultLayout: () => ({
-    defaultLayout: undefined,
-    onLayoutChanged: vi.fn(),
-  }),
-  usePanelRef: () => ({
-    current: { isCollapsed: () => false, expand: vi.fn(), collapse: vi.fn() },
-  }),
-}))
-
 // ---------------------------------------------------------------------------
 // Test data
 // ---------------------------------------------------------------------------
