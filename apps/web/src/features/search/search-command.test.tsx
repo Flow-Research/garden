@@ -43,7 +43,7 @@ vi.mock('@garden/core/issues/stores', () => ({
   },
 }))
 
-vi.mock('@garden/core', () => ({
+vi.mock('@garden/core/hooks', () => ({
   useWorkspaceId: () => 'ws-test',
 }))
 
@@ -101,7 +101,9 @@ vi.mock('@/features/chat/use-agent-chat-sessions', () => ({
 
 vi.mock('@/features/settings', () => ({
   useSettingsDialogStore: (
-    selector?: (state: { openSettings: typeof mockOpenSettingsDialog }) => unknown,
+    selector?: (state: {
+      openSettings: typeof mockOpenSettingsDialog
+    }) => unknown,
   ) => {
     const state = { openSettings: mockOpenSettingsDialog }
     return selector ? selector(state) : state
@@ -134,7 +136,9 @@ describe('SearchCommand', () => {
 
     render(<SearchCommand />)
 
-    const input = screen.getByPlaceholderText('Search issues or open a panel...')
+    const input = screen.getByPlaceholderText(
+      'Search issues or open a panel...',
+    )
     await user.click(input)
 
     expect(useSearchStore.getState().open).toBe(true)
@@ -159,7 +163,9 @@ describe('SearchCommand', () => {
     const user = userEvent.setup()
     render(<SearchCommand />)
 
-    const input = screen.getByPlaceholderText('Search issues or open a panel...')
+    const input = screen.getByPlaceholderText(
+      'Search issues or open a panel...',
+    )
     await user.type(input, 'skill')
 
     await waitFor(() => {

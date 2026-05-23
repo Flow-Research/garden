@@ -19,7 +19,7 @@ import {
 import { useQuery } from '@tanstack/react-query'
 import { useRecentIssuesStore } from '@garden/core/issues/stores'
 import { issueListOptions } from '@/lib/issues/queries'
-import { useWorkspaceId } from '@garden/core'
+import { useWorkspaceId } from '@garden/core/hooks'
 import { STATUS_CONFIG } from '@garden/core/issues/config'
 import { StatusIcon } from '../issues/components'
 import {
