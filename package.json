@@ -19,16 +19,14 @@
     "clean": "turbo run clean"
   },
   "devDependencies": {
-    "create-garden-connector": "workspace:*",
+    "@garden/connectors": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "oxfmt": "^0.45.0",
     "oxlint": "^1.60.0",
     "turbo": "^2.5.8",
     "typescript": "catalog:"
   },
   "pnpm": {
-    "overrides": {
-      "create-garden-connector": "workspace:*"
-    },
     "onlyBuiltDependencies": [
       "esbuild",
       "lightningcss",

@@ -12,7 +12,6 @@
 | Agents SDK `addMcpServer()` does not accept a caller-provided stable server id, so connector-style integrations must map SDK-generated MCP server ids back to stable connector ids for permissions, audit, capability sync, and AI SDK tool namespacing until upstream supports explicit ids. | `packages/agent-runtime/src/runtime-mcp-controller.ts`, upstream issue [cloudflare/agents#1564](https://github.com/cloudflare/agents/issues/1564) | Medium               |
 | `GITHUB_TOKEN` not plumbed for skills.sh import API headroom                                                                                                                                                                                   | `apps/web/src/lib/server/skills-sh.ts:7`                                                                                                                                | Low                  |
 | Exa search should be a built-in agent tool, not an MCP connector — web search is a first-class agent capability, not an integration; routing it through the connector system is wrong abstraction                                               | `connectors/exa-search/`                                                                                                                                                | Medium               |
-| Contributor CLI scaffolds tools with `TODO: classify` stubs                                                                                                                                                                                    | `packages/create-garden-connector/src/upstream-tools.ts:104`                                                                                                            | By design (scaffold) |
 
 ## Done
 
@@ -54,7 +53,4 @@
 apps/web/src/lib/server/skills-sh.ts:7
   // TODO(skills): add a `GITHUB_TOKEN` worker secret/binding and plumb it through
   // the import path for higher GitHub API headroom.
-
-packages/create-garden-connector/src/upstream-tools.ts:104
-  '      // TODO: classify this tool honestly before shipping.',
 ```

@@ -4,7 +4,6 @@ on:
   pull_request:
     paths:
       - 'connectors/**'
-      - 'packages/create-garden-connector/**'
       - 'scripts/verify-connector-coverage.ts'
       - '.github/workflows/connectors.yml'
 
@@ -38,12 +37,8 @@ jobs:
           SLACK_MCP_BEARER_TOKEN: ${{ secrets.SLACK_MCP_BEARER_TOKEN }}
         run: pnpm verify:connectors
 
-      - name: Typecheck connector packages
-        run: |
-          pnpm --filter @garden/connectors typecheck
-          pnpm --filter create-garden-connector typecheck
+      - name: Typecheck connector package
+        run: pnpm --filter @garden/connectors typecheck
 
-      - name: Test connector packages
-        run: |
-          pnpm --filter @garden/connectors test
-          pnpm --filter create-garden-connector test
+      - name: Test connector package
+        run: pnpm --filter @garden/connectors test
