@@ -53,6 +53,7 @@
     "./provider": "./provider.tsx",
     "./logger": "./logger.ts",
     "./utils": "./utils.ts",
+    "./pricing": "./pricing.ts",
     "./connectors/errors": "./connectors/errors.ts",
     "./constants/*": "./constants/*.ts",
     "./platform/rpc": "./platform/rpc.ts",
@@ -63,6 +64,7 @@
     "@garden/db": "workspace:*",
     "drizzle-orm": "catalog:",
     "@tanstack/react-query": "catalog:",
+    "@tanstack/react-query-devtools": "^5.100.9",
     "better-result": "^2.9.2",
     "zod": "^4.4.3",
     "zustand": "catalog:"

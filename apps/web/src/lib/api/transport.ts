@@ -29,9 +29,19 @@ export class ApiTransport {
     this.workspaceId = id
   }
 
+  private readCsrfToken(): string | null {
+    if (typeof document === 'undefined') return null
+    const match = document.cookie
+      .split('; ')
+      .find((cookie) => cookie.startsWith('accelerate_csrf='))
+    return match ? (match.split('=')[1] ?? null) : null
+  }
+
   private authHeaders(): Record<string, string> {
     const headers: Record<string, string> = {}
     if (this.workspaceId) headers['X-Workspace-ID'] = this.workspaceId
+    const csrf = this.readCsrfToken()
+    if (csrf) headers['X-CSRF-Token'] = csrf
     return headers
   }
 
