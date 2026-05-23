@@ -16,7 +16,7 @@ export const useDevSettingsStore = create<DevSettingsState>()(
       setDebugMode: (enabled) => set({ debugMode: enabled }),
     }),
     {
-      name: 'accelerate_dev_settings',
+      name: 'garden_dev_settings',
       storage: createJSONStorage(() => createPersistStorage(defaultStorage)),
       partialize: (state) => ({ debugMode: state.debugMode }),
     },

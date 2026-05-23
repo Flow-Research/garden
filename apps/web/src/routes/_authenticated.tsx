@@ -7,7 +7,7 @@ import { workspaceKeys } from '@/lib/workspace/queries'
 import { sanitizeRedirectTarget } from '@/lib/redirect'
 import { getAuthBootstrap } from '@/lib/server/auth-bootstrap'
 
-const PREFERRED_WORKSPACE_KEY = 'accelerate_workspace_id'
+const PREFERRED_WORKSPACE_KEY = 'garden_workspace_id'
 
 function scheduleClientStoreHydration(callback: () => void) {
   if (typeof queueMicrotask === 'function') {
