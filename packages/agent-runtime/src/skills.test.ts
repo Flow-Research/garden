@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Session } from 'agents/experimental/memory/session'
 import type { SessionProvider } from 'agents/experimental/memory/session'
 import {
-  AssignedSkillProvider,
+  GardenSkillProvider,
   BuiltinSkillCatalog,
   MergedSkillCatalog,
   buildBuiltinSkillObjectKey,
@@ -118,7 +118,7 @@ function createSkillRecord(input: {
   }
 }
 
-describe('AssignedSkillProvider session integration', () => {
+describe('GardenSkillProvider session integration', () => {
   it('includes hidden built-in document skills in the cached inventory', async () => {
     const workspace = new MemorySkillWorkspace()
     const agentRuntimeName = 'primary.workspace.user'
@@ -126,7 +126,7 @@ describe('AssignedSkillProvider session integration', () => {
       context: [
         {
           label: 'skills',
-          provider: new AssignedSkillProvider(new BuiltinSkillCatalog(), {
+          provider: new GardenSkillProvider(new BuiltinSkillCatalog(), {
             agentRuntimeName,
             workspace,
             bundleStore: new MemorySkillBundleStore(),
@@ -163,7 +163,7 @@ describe('AssignedSkillProvider session integration', () => {
       context: [
         {
           label: 'skills',
-          provider: new AssignedSkillProvider(
+          provider: new GardenSkillProvider(
             new BuiltinSkillCatalog([
               {
                 slug: 'pdf',
@@ -234,7 +234,7 @@ describe('AssignedSkillProvider session integration', () => {
       context: [
         {
           label: 'skills',
-          provider: new AssignedSkillProvider(
+          provider: new GardenSkillProvider(
             new BuiltinSkillCatalog([
               {
                 slug: 'pdf',
@@ -268,7 +268,7 @@ describe('AssignedSkillProvider session integration', () => {
     )
   })
 
-  it('renders enabled assigned skills into the cached prompt inventory once per skill', async () => {
+  it('renders enabled runtime skills into the cached prompt inventory once per skill', async () => {
     const catalog = new MutableSkillCatalog()
     const workspace = new MemorySkillWorkspace()
     const agentRuntimeName = 'primary.workspace.user'
@@ -297,7 +297,7 @@ describe('AssignedSkillProvider session integration', () => {
       context: [
         {
           label: 'skills',
-          provider: new AssignedSkillProvider(catalog, {
+          provider: new GardenSkillProvider(catalog, {
             agentRuntimeName,
             workspace,
             bundleStore: new MemorySkillBundleStore(),
@@ -357,7 +357,7 @@ describe('AssignedSkillProvider session integration', () => {
       context: [
         {
           label: 'skills',
-          provider: new AssignedSkillProvider(catalog, {
+          provider: new GardenSkillProvider(catalog, {
             agentRuntimeName,
             workspace,
             bundleStore,
@@ -393,7 +393,7 @@ describe('AssignedSkillProvider session integration', () => {
     ).toBe('# Checklist')
   })
 
-  it('materializes all assigned skills into the workspace without load_context', async () => {
+  it('materializes all runtime skills into the workspace without load_context', async () => {
     const catalog = new MutableSkillCatalog()
     const workspace = new MemorySkillWorkspace()
     const bundleStore = new MemorySkillBundleStore(
@@ -441,7 +441,7 @@ describe('AssignedSkillProvider session integration', () => {
     ).toBe('# Brief')
   })
 
-  it('rewrites materialized skill files when the assigned skill changes', async () => {
+  it('rewrites materialized skill files when the runtime skill changes', async () => {
     const catalog = new MutableSkillCatalog()
     const workspace = new MemorySkillWorkspace()
     const bundleStore = new MemorySkillBundleStore()
@@ -503,7 +503,7 @@ describe('AssignedSkillProvider session integration', () => {
       context: [
         {
           label: 'skills',
-          provider: new AssignedSkillProvider(catalog, {
+          provider: new GardenSkillProvider(catalog, {
             agentRuntimeName,
             workspace,
             bundleStore: new MemorySkillBundleStore(),
@@ -534,7 +534,7 @@ describe('AssignedSkillProvider session integration', () => {
     expect(frozenAfterUnload).toBe(frozenBeforeLoad)
   })
 
-  it('refreshes the same live session after assigned skills change', async () => {
+  it('refreshes the same live session after runtime skills change', async () => {
     const catalog = new MutableSkillCatalog()
     const workspace = new MemorySkillWorkspace()
     const agentRuntimeName = 'primary.workspace.user'
@@ -552,7 +552,7 @@ describe('AssignedSkillProvider session integration', () => {
     ])
 
     const createProvider = () =>
-      new AssignedSkillProvider(catalog, {
+      new GardenSkillProvider(catalog, {
         agentRuntimeName,
         workspace,
         bundleStore,
@@ -648,7 +648,7 @@ describe('AssignedSkillProvider session integration', () => {
     expect(loaded[0]?.skillBody).toBe('# pdf\nWorkspace body')
   })
 
-  it('renders built-in and assigned skills together through one session provider', async () => {
+  it('renders built-in and runtime skills together through one session provider', async () => {
     const assignedCatalog = new MutableSkillCatalog()
     const workspace = new MemorySkillWorkspace()
     const builtinBundles: BuiltinSkillManifest[] = [
@@ -676,7 +676,7 @@ describe('AssignedSkillProvider session integration', () => {
       context: [
         {
           label: 'skills',
-          provider: new AssignedSkillProvider(
+          provider: new GardenSkillProvider(
             new MergedSkillCatalog([
               new BuiltinSkillCatalog(builtinBundles),
               assignedCatalog,

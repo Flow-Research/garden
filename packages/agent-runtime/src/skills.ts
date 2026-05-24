@@ -361,7 +361,14 @@ export class MergedSkillCatalog implements SkillCatalog {
   }
 }
 
-export class AssignedSkillProvider<
+/**
+ * Bridges Garden's skill catalog into Think's SkillProvider interface. The
+ * provider exists because Garden skills are not just a flat R2 prefix: built-in
+ * skills are content-addressed R2 bundles with manifests, while workspace skills
+ * are assigned in Postgres. Loading a skill also materializes supporting files
+ * into the agent workspace so relative references in SKILL.md keep working.
+ */
+export class GardenSkillProvider<
   TCatalog extends SkillCatalog = SkillCatalog,
 > implements SkillProvider {
   constructor(
@@ -553,13 +560,18 @@ function buildSkillMountRoot(skillSlug: string) {
 export { buildBuiltinSkillObjectKey }
 export { buildBuiltinSkillManifestObjectKey }
 
-export function createAssignedSkillProvider(input: {
+/**
+ * Creates the runtime skill provider used by chat and automation agents. It
+ * merges always-available built-in bundles with DB-assigned workspace skills,
+ * then lets Think expose them through load_context/unload_context.
+ */
+export function createGardenSkillProvider(input: {
   agentRuntimeName: string
   databaseUrl: string
   workspace: SkillWorkspace
   bundleStore: SkillBundleStore
 }) {
-  return new AssignedSkillProvider(
+  return new GardenSkillProvider(
     new MergedSkillCatalog([
       new BuiltinSkillCatalog(),
       new PostgresSkillCatalog(input.databaseUrl),
@@ -572,7 +584,12 @@ export function createAssignedSkillProvider(input: {
   )
 }
 
-export async function materializeAssignedSkills(input: {
+/**
+ * Mounts all currently available Garden skills into the workspace without
+ * waiting for an explicit load_context call. Used when the UI/runtime needs the
+ * files present for non-chat flows while preserving the same catalog semantics.
+ */
+export async function materializeGardenSkills(input: {
   agentRuntimeName: string
   databaseUrl: string
   workspace: SkillWorkspace
@@ -595,7 +612,7 @@ export async function materializeSkillCatalog(input: {
   workspace: SkillWorkspace
   bundleStore: SkillBundleStore
 }) {
-  const provider = new AssignedSkillProvider(input.catalog, {
+  const provider = new GardenSkillProvider(input.catalog, {
     agentRuntimeName: input.agentRuntimeName,
     workspace: input.workspace,
     bundleStore: input.bundleStore,

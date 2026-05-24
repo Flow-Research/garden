@@ -48,7 +48,7 @@ import {
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { assembleFoundationPrompt } from './prompt'
 import { createSandboxTools } from './sandbox-tools'
-import { createAssignedSkillProvider, R2SkillBundleStore } from './skills'
+import { createGardenSkillProvider, R2SkillBundleStore } from './skills'
 import {
   addStepUsage,
   normalizeRunUsage,
@@ -943,7 +943,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     return {
       description:
         'Enabled skills assigned to this automation agent. Load by key when needed.',
-      provider: createAssignedSkillProvider({
+      provider: createGardenSkillProvider({
         agentRuntimeName: this.name,
         databaseUrl: this.env.DATABASE_URL,
         workspace: this.workspace,

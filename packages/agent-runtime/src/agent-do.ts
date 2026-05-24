@@ -44,8 +44,8 @@ import {
 import { createAgentModel } from './model'
 import {
   R2SkillBundleStore,
-  createAssignedSkillProvider,
-  materializeAssignedSkills,
+  createGardenSkillProvider,
+  materializeGardenSkills,
 } from './skills'
 import {
   PostgresAgentPromptCatalog,
@@ -1305,7 +1305,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   ): Promise<RuntimePrepareResult> {
     const skillsResult = await Result.tryPromise({
       try: async () =>
-        materializeAssignedSkills({
+        materializeGardenSkills({
           agentRuntimeName: this.getAgentRuntimeName(),
           databaseUrl: this.env.DATABASE_URL,
           workspace: this.workspace,
@@ -1329,7 +1329,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
 
   @callable()
   async listRuntimeSkills(): Promise<RuntimeSkillMenuEntry[]> {
-    await materializeAssignedSkills({
+    await materializeGardenSkills({
       agentRuntimeName: this.getAgentRuntimeName(),
       databaseUrl: this.env.DATABASE_URL,
       workspace: this.workspace,
@@ -1935,7 +1935,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     return {
       description:
         'Enabled skills assigned to this agent. Load by key when needed.',
-      provider: createAssignedSkillProvider({
+      provider: createGardenSkillProvider({
         agentRuntimeName: this.getAgentRuntimeName(),
         databaseUrl: this.env.DATABASE_URL,
         workspace: this.workspace,
@@ -1949,7 +1949,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     this.session.removeContext('skills')
     await this.session.addContext('skills', skillOptions)
     await this.session.refreshSystemPrompt()
-    await materializeAssignedSkills({
+    await materializeGardenSkills({
       agentRuntimeName: this.getAgentRuntimeName(),
       databaseUrl: this.env.DATABASE_URL,
       workspace: this.workspace,
