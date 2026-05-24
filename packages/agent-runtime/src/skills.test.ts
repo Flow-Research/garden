@@ -237,6 +237,103 @@ describe('GardenSkillProvider session integration', () => {
     )
   })
 
+  it('exposes an Agent Skills-style fixture to the model and runtime loader', async () => {
+    const catalog = new MutableSkillCatalog()
+    const workspace = new MemorySkillWorkspace()
+    const agentRuntimeName = 'primary.workspace.user'
+    const fileStore = new MemorySkillFileStore(
+      new Map([
+        ['fixtures/runtime/SKILL.md', '# Runtime Fixture\nUse bundled files.'],
+        ['fixtures/runtime/references/guide.md', '# Guide\nRead me first.'],
+        [
+          'fixtures/runtime/scripts/check.ts',
+          'export default function check() { return "ok" }',
+        ],
+        ['fixtures/runtime/assets/logo.svg', '<svg role="img" />'],
+      ]),
+    )
+
+    catalog.replace(agentRuntimeName, [
+      createSkillRecord({
+        agentId: 'agent-1',
+        skillId: 'skill-fixture',
+        skillSlug: 'runtime-fixture',
+        skillName: 'Runtime Fixture',
+        skillDescription: 'Fixture visible to the model in a live session',
+        skillBodyR2Key: 'fixtures/runtime/SKILL.md',
+      }),
+      createSkillRecord({
+        agentId: 'agent-1',
+        skillId: 'skill-fixture',
+        skillSlug: 'runtime-fixture',
+        skillName: 'Runtime Fixture',
+        skillDescription: 'Fixture visible to the model in a live session',
+        skillBodyR2Key: 'fixtures/runtime/SKILL.md',
+        filePath: 'references/guide.md',
+        fileR2Key: 'fixtures/runtime/references/guide.md',
+      }),
+      createSkillRecord({
+        agentId: 'agent-1',
+        skillId: 'skill-fixture',
+        skillSlug: 'runtime-fixture',
+        skillName: 'Runtime Fixture',
+        skillDescription: 'Fixture visible to the model in a live session',
+        skillBodyR2Key: 'fixtures/runtime/SKILL.md',
+        filePath: 'scripts/check.ts',
+        fileR2Key: 'fixtures/runtime/scripts/check.ts',
+      }),
+      createSkillRecord({
+        agentId: 'agent-1',
+        skillId: 'skill-fixture',
+        skillSlug: 'runtime-fixture',
+        skillName: 'Runtime Fixture',
+        skillDescription: 'Fixture visible to the model in a live session',
+        skillBodyR2Key: 'fixtures/runtime/SKILL.md',
+        filePath: 'assets/logo.svg',
+        fileR2Key: 'fixtures/runtime/assets/logo.svg',
+      }),
+    ])
+
+    const session = new Session(stubProvider, {
+      context: [
+        {
+          label: 'skills',
+          provider: new GardenSkillProvider(catalog, {
+            agentRuntimeName,
+            workspace,
+            fileStore,
+          }),
+        },
+      ],
+    })
+
+    const prompt = await session.freezeSystemPrompt()
+    const tools = await session.tools()
+    const loadTool = tools.load_context as unknown as LoadToolFn
+
+    expect(prompt).toContain('runtime-fixture')
+    expect(prompt).toContain('Fixture visible to the model in a live session')
+    expect(tools).toHaveProperty('load_context')
+
+    const loaded = await loadTool.execute({
+      label: 'skills',
+      key: 'runtime-fixture',
+    })
+
+    expect(loaded).toContain('# Runtime Fixture')
+    expect(loaded).toContain(
+      '/.agents/skills/runtime-fixture/references/guide.md',
+    )
+    expect(loaded).toContain('/.agents/skills/runtime-fixture/scripts/check.ts')
+    expect(loaded).toContain('/.agents/skills/runtime-fixture/assets/logo.svg')
+    expect(
+      workspace.files.get('/.agents/skills/runtime-fixture/SKILL.md'),
+    ).toBe('# Runtime Fixture\nUse bundled files.')
+    expect(
+      workspace.files.get('/.agents/skills/runtime-fixture/scripts/check.ts'),
+    ).toBe('export default function check() { return "ok" }')
+  })
+
   it('renders enabled runtime skills into the cached prompt inventory once per skill', async () => {
     const catalog = new MutableSkillCatalog()
     const workspace = new MemorySkillWorkspace()
