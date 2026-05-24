@@ -6,10 +6,9 @@ import {
   BuiltinSkillCatalog,
   MergedSkillCatalog,
   buildBuiltinSkillObjectKey,
-  buildBuiltinSkillManifestObjectKey,
   materializeSkillCatalog,
   type RuntimeSkillRecord,
-  type SkillBundleStore,
+  type SkillFileStore,
   type SkillCatalog,
   type SkillWorkspace,
 } from './skills'
@@ -56,7 +55,7 @@ class MemorySkillWorkspace implements SkillWorkspace {
   }
 }
 
-class MemorySkillBundleStore implements SkillBundleStore {
+class MemorySkillFileStore implements SkillFileStore {
   constructor(private readonly files = new Map<string, string>()) {}
 
   async getText(key: string): Promise<string | null> {
@@ -92,13 +91,12 @@ function createSkillRecord(input: {
   skillDescription?: string | null
   skillBody?: string | null
   skillBodyR2Key?: string | null
-  bundleManifestR2Key?: string | null
   sourceUrl?: string | null
-  bundleHash?: string | null
   enabled?: boolean
   filePath?: string | null
   fileContentHash?: string | null
   fileR2Key?: string | null
+  fileContent?: string | null
 }): RuntimeSkillRecord {
   return {
     agentId: input.agentId as RuntimeSkillRecord['agentId'],
@@ -108,13 +106,12 @@ function createSkillRecord(input: {
     skillDescription: input.skillDescription ?? null,
     skillBody: input.skillBody ?? null,
     skillBodyR2Key: input.skillBodyR2Key ?? null,
-    bundleManifestR2Key: input.bundleManifestR2Key ?? null,
     sourceUrl: input.sourceUrl ?? null,
-    bundleHash: input.bundleHash ?? null,
     enabled: input.enabled ?? true,
     filePath: input.filePath ?? null,
     fileContentHash: input.fileContentHash ?? null,
     fileR2Key: input.fileR2Key ?? null,
+    fileContent: input.fileContent ?? null,
   }
 }
 
@@ -129,7 +126,7 @@ describe('GardenSkillProvider session integration', () => {
           provider: new GardenSkillProvider(new BuiltinSkillCatalog(), {
             agentRuntimeName,
             workspace,
-            bundleStore: new MemorySkillBundleStore(),
+            fileStore: new MemorySkillFileStore(),
           }),
         },
       ],
@@ -146,15 +143,10 @@ describe('GardenSkillProvider session integration', () => {
   it('loads a hidden built-in skill through the same load_context path', async () => {
     const workspace = new MemorySkillWorkspace()
     const agentRuntimeName = 'primary.workspace.user'
-    const bundleHash = 'builtin-hash'
-    const bundleStore = new MemorySkillBundleStore(
+    const fileStore = new MemorySkillFileStore(
       new Map([
         [
-          buildBuiltinSkillObjectKey({
-            slug: 'pdf',
-            bundleHash,
-            path: 'SKILL.md',
-          }),
+          buildBuiltinSkillObjectKey({ slug: 'pdf', path: 'SKILL.md' }),
           '# pdf\nReal PDF skill body',
         ],
       ]),
@@ -170,13 +162,16 @@ describe('GardenSkillProvider session integration', () => {
                 name: 'pdf',
                 description: 'Builtin PDF handler',
                 sourceUrl: null,
-                bundleHash,
+                bodyR2Key: buildBuiltinSkillObjectKey({
+                  slug: 'pdf',
+                  path: 'SKILL.md',
+                }),
               },
             ]),
             {
               agentRuntimeName,
               workspace,
-              bundleStore,
+              fileStore,
             },
           ),
         },
@@ -198,37 +193,10 @@ describe('GardenSkillProvider session integration', () => {
     )
   })
 
-  it('mounts built-in supporting files from the bundle store on load_context', async () => {
+  it('mounts built-in supporting files declared by the skill catalog', async () => {
     const workspace = new MemorySkillWorkspace()
     const agentRuntimeName = 'primary.workspace.user'
-    const bundleHash = 'builtin-hash'
-    const bundleStore = new MemorySkillBundleStore(
-      new Map([
-        [
-          buildBuiltinSkillObjectKey({
-            slug: 'pdf',
-            bundleHash,
-            path: 'SKILL.md',
-          }),
-          '# pdf\nReal PDF skill body',
-        ],
-        [
-          buildBuiltinSkillManifestObjectKey({
-            slug: 'pdf',
-            bundleHash,
-          }),
-          JSON.stringify({ files: ['SKILL.md', 'forms.md'] }),
-        ],
-        [
-          buildBuiltinSkillObjectKey({
-            slug: 'pdf',
-            bundleHash,
-            path: 'forms.md',
-          }),
-          '# PDF Forms',
-        ],
-      ]),
-    )
+    const fileStore = new MemorySkillFileStore()
 
     const session = new Session(stubProvider, {
       context: [
@@ -241,13 +209,14 @@ describe('GardenSkillProvider session integration', () => {
                 name: 'pdf',
                 description: 'Builtin PDF handler',
                 sourceUrl: null,
-                bundleHash,
+                body: '# pdf\nReal PDF skill body',
+                files: [{ path: 'forms.md', content: '# PDF Forms' }],
               },
             ]),
             {
               agentRuntimeName,
               workspace,
-              bundleStore,
+              fileStore,
             },
           ),
         },
@@ -300,7 +269,7 @@ describe('GardenSkillProvider session integration', () => {
           provider: new GardenSkillProvider(catalog, {
             agentRuntimeName,
             workspace,
-            bundleStore: new MemorySkillBundleStore(),
+            fileStore: new MemorySkillFileStore(),
           }),
         },
       ],
@@ -317,7 +286,7 @@ describe('GardenSkillProvider session integration', () => {
   it('materializes bundle files into /.agents/skills/<slug> during load_context', async () => {
     const catalog = new MutableSkillCatalog()
     const workspace = new MemorySkillWorkspace()
-    const bundleStore = new MemorySkillBundleStore(
+    const fileStore = new MemorySkillFileStore(
       new Map([
         ['skills/ws/skill-1/hash/templates/report.md', '# Report template'],
         ['skills/ws/skill-1/hash/references/checklist.md', '# Checklist'],
@@ -334,7 +303,6 @@ describe('GardenSkillProvider session integration', () => {
         skillBody: '# Planning With Files\nUse the templates.',
         sourceUrl:
           'https://skills.sh/othmanadi/planning-with-files/planning-with-files',
-        bundleHash: 'hash',
         filePath: 'templates/report.md',
         fileR2Key: 'skills/ws/skill-1/hash/templates/report.md',
       }),
@@ -347,7 +315,6 @@ describe('GardenSkillProvider session integration', () => {
         skillBody: '# Planning With Files\nUse the templates.',
         sourceUrl:
           'https://skills.sh/othmanadi/planning-with-files/planning-with-files',
-        bundleHash: 'hash',
         filePath: 'references/checklist.md',
         fileR2Key: 'skills/ws/skill-1/hash/references/checklist.md',
       }),
@@ -360,7 +327,7 @@ describe('GardenSkillProvider session integration', () => {
           provider: new GardenSkillProvider(catalog, {
             agentRuntimeName,
             workspace,
-            bundleStore,
+            fileStore,
           }),
         },
       ],
@@ -396,7 +363,7 @@ describe('GardenSkillProvider session integration', () => {
   it('materializes all runtime skills into the workspace without load_context', async () => {
     const catalog = new MutableSkillCatalog()
     const workspace = new MemorySkillWorkspace()
-    const bundleStore = new MemorySkillBundleStore(
+    const fileStore = new MemorySkillFileStore(
       new Map([['skills/ws/skill-2/hash/references/brief.md', '# Brief']]),
     )
     const agentRuntimeName = 'primary.workspace.user'
@@ -416,7 +383,6 @@ describe('GardenSkillProvider session integration', () => {
         skillName: 'Research',
         skillDescription: 'Research current context',
         skillBody: '# Research\nRead sources.',
-        bundleHash: 'hash',
         filePath: 'references/brief.md',
         fileR2Key: 'skills/ws/skill-2/hash/references/brief.md',
       }),
@@ -426,7 +392,7 @@ describe('GardenSkillProvider session integration', () => {
       agentRuntimeName,
       catalog,
       workspace,
-      bundleStore,
+      fileStore,
     })
 
     expect(materialized).toEqual(['code-review', 'research'])
@@ -444,7 +410,7 @@ describe('GardenSkillProvider session integration', () => {
   it('rewrites materialized skill files when the runtime skill changes', async () => {
     const catalog = new MutableSkillCatalog()
     const workspace = new MemorySkillWorkspace()
-    const bundleStore = new MemorySkillBundleStore()
+    const fileStore = new MemorySkillFileStore()
     const agentRuntimeName = 'primary.workspace.user'
     catalog.replace(agentRuntimeName, [
       createSkillRecord({
@@ -460,7 +426,7 @@ describe('GardenSkillProvider session integration', () => {
       agentRuntimeName,
       catalog,
       workspace,
-      bundleStore,
+      fileStore,
     })
     catalog.replace(agentRuntimeName, [
       createSkillRecord({
@@ -476,7 +442,7 @@ describe('GardenSkillProvider session integration', () => {
       agentRuntimeName,
       catalog,
       workspace,
-      bundleStore,
+      fileStore,
     })
 
     expect(workspace.files.get('/.agents/skills/code-review/SKILL.md')).toBe(
@@ -506,7 +472,7 @@ describe('GardenSkillProvider session integration', () => {
           provider: new GardenSkillProvider(catalog, {
             agentRuntimeName,
             workspace,
-            bundleStore: new MemorySkillBundleStore(),
+            fileStore: new MemorySkillFileStore(),
           }),
         },
       ],
@@ -538,7 +504,7 @@ describe('GardenSkillProvider session integration', () => {
     const catalog = new MutableSkillCatalog()
     const workspace = new MemorySkillWorkspace()
     const agentRuntimeName = 'primary.workspace.user'
-    const bundleStore = new MemorySkillBundleStore()
+    const fileStore = new MemorySkillFileStore()
 
     catalog.replace(agentRuntimeName, [
       createSkillRecord({
@@ -555,7 +521,7 @@ describe('GardenSkillProvider session integration', () => {
       new GardenSkillProvider(catalog, {
         agentRuntimeName,
         workspace,
-        bundleStore,
+        fileStore,
       })
 
     const session = new Session(stubProvider, {
@@ -616,7 +582,6 @@ describe('GardenSkillProvider session integration', () => {
         name: 'pdf',
         description: 'Builtin PDF handler',
         sourceUrl: null,
-        bundleHash: 'builtin-hash',
       },
     ]
     assignedCatalog.replace('primary.workspace.user', [
@@ -657,7 +622,6 @@ describe('GardenSkillProvider session integration', () => {
         name: 'pdf',
         description: 'Builtin PDF handler',
         sourceUrl: null,
-        bundleHash: 'builtin-hash',
       },
     ]
 
@@ -684,12 +648,11 @@ describe('GardenSkillProvider session integration', () => {
             {
               agentRuntimeName: 'primary.workspace.user',
               workspace,
-              bundleStore: new MemorySkillBundleStore(
+              fileStore: new MemorySkillFileStore(
                 new Map([
                   [
                     buildBuiltinSkillObjectKey({
                       slug: 'pdf',
-                      bundleHash: 'builtin-hash',
                       path: 'SKILL.md',
                     }),
                     '# pdf\nBuiltin body',

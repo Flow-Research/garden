@@ -43,7 +43,7 @@ import {
 } from './sandbox-debug'
 import { createAgentModel } from './model'
 import {
-  R2SkillBundleStore,
+  R2SkillFileStore,
   createGardenSkillProvider,
   materializeGardenSkills,
 } from './skills'
@@ -1309,7 +1309,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
           agentRuntimeName: this.getAgentRuntimeName(),
           databaseUrl: this.env.DATABASE_URL,
           workspace: this.workspace,
-          bundleStore: new R2SkillBundleStore(this.env.FILES),
+          fileStore: new R2SkillFileStore(this.env.FILES),
         }),
       catch: (cause) =>
         cause instanceof Error
@@ -1333,7 +1333,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       agentRuntimeName: this.getAgentRuntimeName(),
       databaseUrl: this.env.DATABASE_URL,
       workspace: this.workspace,
-      bundleStore: new R2SkillBundleStore(this.env.FILES),
+      fileStore: new R2SkillFileStore(this.env.FILES),
     })
 
     const skillDirs = await this.workspace
@@ -1939,7 +1939,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         agentRuntimeName: this.getAgentRuntimeName(),
         databaseUrl: this.env.DATABASE_URL,
         workspace: this.workspace,
-        bundleStore: new R2SkillBundleStore(this.env.FILES),
+        fileStore: new R2SkillFileStore(this.env.FILES),
       }),
     }
   }
@@ -1953,7 +1953,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       agentRuntimeName: this.getAgentRuntimeName(),
       databaseUrl: this.env.DATABASE_URL,
       workspace: this.workspace,
-      bundleStore: new R2SkillBundleStore(this.env.FILES),
+      fileStore: new R2SkillFileStore(this.env.FILES),
     })
   }
 

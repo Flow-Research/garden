@@ -4,9 +4,7 @@ import type { SkillProvider } from 'agents/experimental/memory/session'
 import * as schema from '@garden/db/schema'
 import {
   buildBuiltinSkillObjectKey,
-  buildBuiltinSkillManifestObjectKey,
   DOC_BUILTIN_SKILLS,
-  type BuiltinBundleFileManifest,
   type BuiltinSkillManifest,
 } from './bundled-skills'
 
@@ -29,13 +27,12 @@ type SkillCatalogRecord = {
   skillDescription: string | null
   skillBody: string | null
   skillBodyR2Key: string | null
-  bundleManifestR2Key: string | null
   sourceUrl: string | null
-  bundleHash: string | null
   enabled: boolean
   filePath: string | null
   fileContentHash: string | null
   fileR2Key: string | null
+  fileContent: string | null
 }
 
 export type RuntimeSkillRecord = SkillCatalogRecord
@@ -57,12 +54,11 @@ export type LoadedRuntimeSkill<
 > = RuntimeSkillSummary<TRecord> & {
   body: TRecord['skillBody']
   bodyR2Key: TRecord['skillBodyR2Key']
-  bundleManifestR2Key: TRecord['bundleManifestR2Key']
-  bundleHash: TRecord['bundleHash']
   files: Array<{
     path: string
     contentHash: string | null
     r2Key: string | null
+    content: string | null
   }>
 }
 
@@ -80,11 +76,11 @@ export interface SkillWorkspace {
   writeFile(path: string, content: string): Promise<void>
 }
 
-export interface SkillBundleStore {
+export interface SkillFileStore {
   getText(key: string): Promise<string | null>
 }
 
-export class R2SkillBundleStore implements SkillBundleStore {
+export class R2SkillFileStore implements SkillFileStore {
   constructor(private readonly bucket: R2Bucket) {}
 
   async getText(key: string): Promise<string | null> {
@@ -131,8 +127,6 @@ function toLoadedRuntimeSkill<TRecord extends RuntimeSkillRecord>(
     ...toRuntimeSkillSummary(head),
     body: head.skillBody,
     bodyR2Key: head.skillBodyR2Key,
-    bundleManifestR2Key: head.bundleManifestR2Key,
-    bundleHash: head.bundleHash,
     files: records.flatMap((record) =>
       record.filePath
         ? [
@@ -140,6 +134,7 @@ function toLoadedRuntimeSkill<TRecord extends RuntimeSkillRecord>(
               path: record.filePath,
               contentHash: record.fileContentHash,
               r2Key: record.fileR2Key,
+              content: record.fileContent,
             },
           ]
         : [],
@@ -162,6 +157,7 @@ function renderLoadedSkillDocument<TRecord extends RuntimeSkillRecord>(input: {
     path: string
     contentHash: string | null
     r2Key: string | null
+    content: string | null
   }>
 }) {
   const fileLines = (input.files ?? input.skill.files).map(
@@ -174,7 +170,6 @@ function renderLoadedSkillDocument<TRecord extends RuntimeSkillRecord>(input: {
     `entry file: ${input.mountRoot}/${SKILL_MD_FILENAME}`,
     'relative path rule: resolve skill-relative file references from the skill root above.',
     input.skill.sourceUrl ? `source: ${input.skill.sourceUrl}` : null,
-    input.skill.bundleHash ? `bundle hash: ${input.skill.bundleHash}` : null,
     input.skill.description ? `description: ${input.skill.description}` : null,
     fileLines.length > 0 ? ['', 'Mounted supporting files:', ...fileLines] : [],
     input.missingFiles.length > 0
@@ -237,9 +232,7 @@ export class PostgresSkillCatalog implements SkillCatalog {
         skillDescription: schema.skill.description,
         skillBody: schema.skill.body,
         skillBodyR2Key: sql<string | null>`null`,
-        bundleManifestR2Key: sql<string | null>`null`,
         sourceUrl: schema.skill.sourceUrl,
-        bundleHash: schema.skill.bundleHash,
         enabled: schema.agentSkill.enabled,
         filePath: schema.skillFile.path,
         fileContentHash: schema.skillFile.contentHash,
@@ -266,13 +259,12 @@ export class PostgresSkillCatalog implements SkillCatalog {
       skillDescription: row.skillDescription,
       skillBody: row.skillBody,
       skillBodyR2Key: row.skillBodyR2Key,
-      bundleManifestR2Key: row.bundleManifestR2Key,
       sourceUrl: row.sourceUrl,
-      bundleHash: row.bundleHash,
       enabled: row.enabled,
       filePath: row.filePath,
       fileContentHash: row.fileContentHash,
       fileR2Key: row.fileR2Key,
+      fileContent: null,
     }))
   }
 }
@@ -311,23 +303,44 @@ export class BuiltinSkillCatalog implements SkillCatalog {
         skillSlug: brandRuntimeSkillSlug(bundle.slug),
         skillName: bundle.name,
         skillDescription: bundle.description,
-        skillBody: null,
-        skillBodyR2Key: buildBuiltinSkillObjectKey({
-          slug: bundle.slug,
-          bundleHash: bundle.bundleHash,
-          path: 'SKILL.md',
-        }),
-        bundleManifestR2Key: buildBuiltinSkillManifestObjectKey({
-          slug: bundle.slug,
-          bundleHash: bundle.bundleHash,
-        }),
+        skillBody: bundle.body ?? null,
+        skillBodyR2Key:
+          bundle.bodyR2Key ??
+          (bundle.body
+            ? null
+            : buildBuiltinSkillObjectKey({
+                slug: bundle.slug,
+                path: 'SKILL.md',
+              })),
         sourceUrl: bundle.sourceUrl,
-        bundleHash: bundle.bundleHash,
         enabled: true,
         filePath: null,
         fileContentHash: null,
         fileR2Key: null,
+        fileContent: null,
       },
+      ...(bundle.files ?? []).map((file) => ({
+        agentId: brandRuntimeAgentId(`builtin:${agentRuntimeName}`),
+        skillId: brandRuntimeSkillId(`builtin:${bundle.slug}`),
+        skillSlug: brandRuntimeSkillSlug(bundle.slug),
+        skillName: bundle.name,
+        skillDescription: bundle.description,
+        skillBody: bundle.body ?? null,
+        skillBodyR2Key: bundle.bodyR2Key ?? null,
+        sourceUrl: bundle.sourceUrl,
+        enabled: true,
+        filePath: file.path,
+        fileContentHash: file.contentHash ?? null,
+        fileR2Key:
+          file.r2Key ??
+          (file.content
+            ? null
+            : buildBuiltinSkillObjectKey({
+                slug: bundle.slug,
+                path: file.path,
+              })),
+        fileContent: file.content ?? null,
+      })),
     ]
   }
 }
@@ -363,10 +376,11 @@ export class MergedSkillCatalog implements SkillCatalog {
 
 /**
  * Bridges Garden's skill catalog into Think's SkillProvider interface. The
- * provider exists because Garden skills are not just a flat R2 prefix: built-in
- * skills are content-addressed R2 bundles with manifests, while workspace skills
- * are assigned in Postgres. Loading a skill also materializes supporting files
- * into the agent workspace so relative references in SKILL.md keep working.
+ * provider exists because Garden skills are more than one flat R2 object:
+ * repo-bundled built-ins may carry raw supporting files, while workspace skills
+ * are assigned in Postgres and may point at large R2-backed utilities. Loading a
+ * skill materializes SKILL.md plus supporting files into the agent workspace so
+ * relative references keep working.
  */
 export class GardenSkillProvider<
   TCatalog extends SkillCatalog = SkillCatalog,
@@ -376,7 +390,7 @@ export class GardenSkillProvider<
     private readonly input: {
       agentRuntimeName: string
       workspace: SkillWorkspace
-      bundleStore: SkillBundleStore
+      fileStore: SkillFileStore
     },
   ) {}
 
@@ -401,7 +415,7 @@ export class GardenSkillProvider<
       skill,
       mountRoot,
       workspace: this.input.workspace,
-      bundleStore: this.input.bundleStore,
+      fileStore: this.input.fileStore,
     })
 
     return renderLoadedSkillDocument({
@@ -413,65 +427,19 @@ export class GardenSkillProvider<
   }
 }
 
-function parseBuiltinBundleFileManifest(
-  raw: string,
-): BuiltinBundleFileManifest {
-  const data = JSON.parse(raw) as { files?: unknown }
-  const files = Array.isArray(data.files)
-    ? data.files.filter((value): value is string => typeof value === 'string')
-    : []
-
-  return { files }
-}
-
-async function resolveLoadedSkillFiles<
-  TRecord extends RuntimeSkillRecord,
->(input: {
-  skill: LoadedRuntimeSkill<TRecord>
-  bundleStore: SkillBundleStore
-}) {
-  if (input.skill.files.length > 0) {
-    return input.skill.files
-  }
-
-  if (!input.skill.bundleManifestR2Key || !input.skill.bundleHash) {
-    return input.skill.files
-  }
-
-  const rawManifest = await input.bundleStore.getText(
-    input.skill.bundleManifestR2Key,
-  )
-  if (!rawManifest) {
-    return input.skill.files
-  }
-
-  const manifest = parseBuiltinBundleFileManifest(rawManifest)
-  return manifest.files
-    .filter((path) => path !== SKILL_MD_FILENAME)
-    .map((path) => ({
-      path,
-      contentHash: null,
-      r2Key: buildBuiltinSkillObjectKey({
-        slug: input.skill.key,
-        bundleHash: input.skill.bundleHash!,
-        path,
-      }),
-    }))
-}
-
 async function materializeLoadedSkill<
   TRecord extends RuntimeSkillRecord,
 >(input: {
   skill: LoadedRuntimeSkill<TRecord>
   mountRoot: string
   workspace: SkillWorkspace
-  bundleStore: SkillBundleStore
+  fileStore: SkillFileStore
 }) {
-  const resolvedFiles = await resolveLoadedSkillFiles(input)
+  const resolvedFiles = input.skill.files
   const skillBody =
     input.skill.body ??
     (input.skill.bodyR2Key
-      ? await input.bundleStore.getText(input.skill.bodyR2Key)
+      ? await input.fileStore.getText(input.skill.bodyR2Key)
       : null)
   if (skillBody === null) {
     return {
@@ -487,9 +455,9 @@ async function materializeLoadedSkill<
 
   const fileResults = await Promise.all(
     resolvedFiles.map(async (file) => {
-      if (!file.r2Key) return file.path
-
-      const content = await input.bundleStore.getText(file.r2Key)
+      const content =
+        file.content ??
+        (file.r2Key ? await input.fileStore.getText(file.r2Key) : null)
       if (content === null) return file.path
 
       await input.workspace.writeFile(
@@ -558,7 +526,6 @@ function buildSkillMountRoot(skillSlug: string) {
 }
 
 export { buildBuiltinSkillObjectKey }
-export { buildBuiltinSkillManifestObjectKey }
 
 /**
  * Creates the runtime skill provider used by chat and automation agents. It
@@ -569,7 +536,7 @@ export function createGardenSkillProvider(input: {
   agentRuntimeName: string
   databaseUrl: string
   workspace: SkillWorkspace
-  bundleStore: SkillBundleStore
+  fileStore: SkillFileStore
 }) {
   return new GardenSkillProvider(
     new MergedSkillCatalog([
@@ -579,7 +546,7 @@ export function createGardenSkillProvider(input: {
     {
       agentRuntimeName: input.agentRuntimeName,
       workspace: input.workspace,
-      bundleStore: input.bundleStore,
+      fileStore: input.fileStore,
     },
   )
 }
@@ -593,7 +560,7 @@ export async function materializeGardenSkills(input: {
   agentRuntimeName: string
   databaseUrl: string
   workspace: SkillWorkspace
-  bundleStore: SkillBundleStore
+  fileStore: SkillFileStore
 }) {
   return materializeSkillCatalog({
     agentRuntimeName: input.agentRuntimeName,
@@ -602,7 +569,7 @@ export async function materializeGardenSkills(input: {
       new PostgresSkillCatalog(input.databaseUrl),
     ]),
     workspace: input.workspace,
-    bundleStore: input.bundleStore,
+    fileStore: input.fileStore,
   })
 }
 
@@ -610,12 +577,12 @@ export async function materializeSkillCatalog(input: {
   agentRuntimeName: string
   catalog: SkillCatalog
   workspace: SkillWorkspace
-  bundleStore: SkillBundleStore
+  fileStore: SkillFileStore
 }) {
   const provider = new GardenSkillProvider(input.catalog, {
     agentRuntimeName: input.agentRuntimeName,
     workspace: input.workspace,
-    bundleStore: input.bundleStore,
+    fileStore: input.fileStore,
   })
   const assignedSkills = await input.catalog.listAssignedSkills({
     agentRuntimeName: input.agentRuntimeName,
