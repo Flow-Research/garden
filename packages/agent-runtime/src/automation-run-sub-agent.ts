@@ -9,8 +9,9 @@ import {
   type TurnConfig,
   type TurnContext,
 } from '@cloudflare/think'
-import { Workspace } from '@cloudflare/shell'
+import { createWorkspaceStateBackend, Workspace } from '@cloudflare/shell'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
+import { createExecuteTool } from '@cloudflare/think/tools/execute'
 import { createBrowserTools } from 'agents/browser/ai'
 import type { McpAgent } from 'agents/mcp'
 import {
@@ -310,6 +311,11 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
 
   override getTools(): ToolSet {
     return {
+      execute: createExecuteTool({
+        tools: {},
+        state: createWorkspaceStateBackend(this.workspace),
+        loader: this.env.LOADER,
+      }),
       complete_automation: tool({
         description:
           'Finish this standalone automation run with the final output. Does not create issues, comments, or kanban cards.',
