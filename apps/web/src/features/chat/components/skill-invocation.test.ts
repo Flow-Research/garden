@@ -7,9 +7,9 @@ import {
 } from './skill-invocation'
 
 describe('skill invocation helpers', () => {
-  it('formats manual invocation as a slash command', () => {
+  it('formats manual invocation as a direct slash command', () => {
     expect(formatSkillInvocation('planning-with-files')).toBe(
-      '/skill planning-with-files',
+      '/planning-with-files',
     )
   })
 
@@ -32,19 +32,21 @@ describe('skill invocation helpers', () => {
   it('extracts explicit slash-invoked skills from message text', () => {
     expect(
       extractExplicitSkillSlugs(
-        'Use /skill planning-with-files then /skill humanizer before reply',
+        'Use /planning-with-files then /humanizer before reply',
       ),
     ).toEqual(['planning-with-files', 'humanizer'])
   })
 
   it('ignores deprecated dollar-prefixed tokens', () => {
-    expect(extractExplicitSkillSlugs('Use $planning-with-files instead')).toEqual([])
+    expect(
+      extractExplicitSkillSlugs('Use $planning-with-files instead'),
+    ).toEqual([])
   })
 
   it('strips explicit skill invocations and returns slugs plus cleaned text', () => {
     expect(
       stripExplicitSkills(
-        'Use /skill planning-with-files then /skill humanizer before reply',
+        'Use /planning-with-files then /humanizer before reply',
       ),
     ).toEqual({
       slugs: ['planning-with-files', 'humanizer'],

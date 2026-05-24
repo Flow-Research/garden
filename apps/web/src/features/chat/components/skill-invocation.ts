@@ -1,10 +1,10 @@
-export const SKILL_COMMAND = '/skill'
+export const SKILL_COMMAND = '/'
 
 // Slash command menu fires when the user is typing `/` followed by
-// an optional slug. We keep the `/skill <slug>` invocation format on
-// insertion so the runtime parser stays unchanged.
+// an optional slug. The committed invocation format is the same direct
+// token the user typed, e.g. `/pdf`, so selected skills stay readable.
 const SKILL_TRIGGER_PATTERN = /(?:^|\s)\/([a-zA-Z0-9_-]*)$/
-export const EXPLICIT_SKILL_PATTERN = /(?:^|\s)\/skill\s+([a-zA-Z0-9_-]+)/g
+const SLASH_SKILL_TOKEN_PATTERN = /^\/([a-zA-Z0-9_-]+)$/
 
 export type SkillTriggerMatch = {
   query: string
@@ -13,7 +13,7 @@ export type SkillTriggerMatch = {
 }
 
 export function formatSkillInvocation(slug: string) {
-  return `${SKILL_COMMAND} ${slug}`
+  return `${SKILL_COMMAND}${slug}`
 }
 
 export function detectSkillTrigger(
@@ -36,13 +36,11 @@ export function detectSkillTrigger(
 }
 
 export function extractExplicitSkillSlugs(input: string) {
-  return Array.from(
-    new Set(
-      Array.from(input.matchAll(EXPLICIT_SKILL_PATTERN)).flatMap((match) =>
-        match[1] ? [match[1]] : [],
-      ),
-    ),
-  )
+  const slugs = input
+    .split(/\s+/)
+    .flatMap((token) => SLASH_SKILL_TOKEN_PATTERN.exec(token)?.[1] ?? [])
+
+  return Array.from(new Set(slugs))
 }
 
 export function stripExplicitSkills(input: string): {
@@ -51,8 +49,9 @@ export function stripExplicitSkills(input: string): {
 } {
   const slugs = extractExplicitSkillSlugs(input)
   const cleaned = input
-    .replace(EXPLICIT_SKILL_PATTERN, '')
-    .replace(/\s+/g, ' ')
+    .split(/\s+/)
+    .filter((token) => !SLASH_SKILL_TOKEN_PATTERN.test(token))
+    .join(' ')
     .trim()
   return { slugs, cleaned }
 }

@@ -200,12 +200,12 @@ function isDuplicateWorkflowInstanceError(cause: unknown) {
   )
 }
 
-const EXPLICIT_SKILL_PATTERN = /(?:^|\s)\/skill\s+([a-zA-Z0-9_-]+)/g
+const SLASH_SKILL_TOKEN_PATTERN = /^\/([a-zA-Z0-9_-]+)$/
 
 /**
  * Extracts text from AI SDK model messages so slash skill invocations can be
- * honored server-side, not just in the composer UI. The composer already emits
- * `/skill <slug>` tokens; before this change they were plain text and depended
+ * honored server-side, not just in the composer UI. The composer emits direct
+ * `/<slug>` tokens; before this change they were plain text and depended
  * on the model deciding to call `load_context`. Keeping parsing in the runtime
  * makes live fixtures and manual slash loading deterministic.
  */
@@ -240,13 +240,11 @@ function latestUserMessageText(messages: readonly ModelMessage[]) {
  */
 function explicitSkillSlugsFromMessages(messages: readonly ModelMessage[]) {
   const text = latestUserMessageText(messages)
-  return Array.from(
-    new Set(
-      Array.from(text.matchAll(EXPLICIT_SKILL_PATTERN)).flatMap((match) =>
-        match[1] ? [match[1]] : [],
-      ),
-    ),
-  )
+  const slugs = text
+    .split(/\s+/)
+    .flatMap((token) => SLASH_SKILL_TOKEN_PATTERN.exec(token)?.[1] ?? [])
+
+  return Array.from(new Set(slugs))
 }
 
 type DebugWorkspacePayload = {
@@ -1158,7 +1156,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   /**
-   * Loads any `/skill <slug>` tokens from the latest user message before the
+   * Loads any `/<slug>` tokens from the latest user message before the
    * model runs. The slash menu writes those tokens into chat text, but relying
    * on the model to notice and call `load_context` made explicit selections
    * flaky in live runtime tests. Calling the existing Think context tool here
@@ -1220,7 +1218,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       ? explicitSkillLoadResult.value
           .map(
             (entry) =>
-              `Explicitly loaded skill from /skill ${entry.slug}:\n${entry.document}`,
+              `Explicitly loaded skill from /${entry.slug}:\n${entry.document}`,
           )
           .join('\n\n')
       : ''
