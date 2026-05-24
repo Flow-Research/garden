@@ -48,7 +48,7 @@ import {
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { assembleFoundationPrompt } from './prompt'
 import { createSandboxTools } from './sandbox-tools'
-import { createGardenSkillProvider, R2SkillBundleStore } from './skills'
+import { createGardenSkillProvider, R2SkillFileStore } from './skills'
 import {
   addStepUsage,
   normalizeRunUsage,
@@ -947,7 +947,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
         agentRuntimeName: this.name,
         databaseUrl: this.env.DATABASE_URL,
         workspace: this.workspace,
-        bundleStore: new R2SkillBundleStore(this.env.FILES),
+        fileStore: new R2SkillFileStore(this.env.FILES),
       }),
     }
   }

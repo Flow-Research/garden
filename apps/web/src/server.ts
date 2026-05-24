@@ -178,6 +178,9 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
       hasGithubRoutingPrompt: prompt.prompt.includes(
         'search_repositories tool',
       ),
+      hasLoadContextTool: toolNames.includes('load_context'),
+      hasSkillsPrompt: prompt.prompt.includes('Available workspace skills'),
+      loadedSkillKeys: prompt.loadedSkillKeys,
     }
     if (body.mode === 'inspect') return Response.json({ ...base, toolNames })
     const message = typeof body.message === 'string' ? body.message : null
@@ -188,7 +191,20 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
     const turn = await disposeRpcResult(
       await stub.runThreadFixtureTurn(threadId, { clear: true, message }),
     )
-    return Response.json({ ...base, turn })
+    const [afterPrompt, workspace] = await Promise.all([
+      disposeRpcResult(await stub.debugThreadPrompt(threadId)),
+      disposeRpcResult(await stub.debugThreadWorkspace(threadId)),
+    ])
+    return Response.json({
+      ...base,
+      turn,
+      afterTurn: {
+        loadedSkillKeys: afterPrompt.loadedSkillKeys,
+        skillPaths: workspace.samplePaths
+          .map((entry) => entry.path)
+          .filter((path) => path.includes('/.agents/skills/')),
+      },
+    })
   }
 
   if (target === 'issue-run' || target === 'issue-run-work') {

@@ -27,7 +27,13 @@ import {
 import { Buffer } from 'node:buffer'
 import { Agent, callable } from 'agents'
 import type { McpAgent } from 'agents/mcp'
-import { type LanguageModel, type Tool, type ToolSet, type UIMessage } from 'ai'
+import {
+  type LanguageModel,
+  type ModelMessage,
+  type Tool,
+  type ToolSet,
+  type UIMessage,
+} from 'ai'
 import { createWorkspaceTools } from '@cloudflare/think/tools/workspace'
 import { Workspace } from '@cloudflare/shell'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
@@ -43,7 +49,7 @@ import {
 } from './sandbox-debug'
 import { createAgentModel } from './model'
 import {
-  R2SkillBundleStore,
+  R2SkillFileStore,
   createGardenSkillProvider,
   materializeGardenSkills,
 } from './skills'
@@ -192,6 +198,53 @@ function isDuplicateWorkflowInstanceError(cause: unknown) {
   return DUPLICATE_WORKFLOW_INSTANCE_PATTERNS.some((pattern) =>
     message.includes(pattern),
   )
+}
+
+const SLASH_SKILL_TOKEN_PATTERN = /^\/([a-zA-Z0-9_-]+)$/
+
+/**
+ * Extracts text from AI SDK model messages so slash skill invocations can be
+ * honored server-side, not just in the composer UI. The composer emits direct
+ * `/<slug>` tokens; before this change they were plain text and depended
+ * on the model deciding to call `load_context`. Keeping parsing in the runtime
+ * makes live fixtures and manual slash loading deterministic.
+ */
+function textFromModelContent(content: ModelMessage['content']): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+
+  return content
+    .flatMap((part) =>
+      part && typeof part === 'object' && 'text' in part
+        ? [String(part.text ?? '')]
+        : [],
+    )
+    .join('\n')
+}
+
+function latestUserMessageText(messages: readonly ModelMessage[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message?.role !== 'user') continue
+
+    return textFromModelContent(message.content)
+  }
+
+  return ''
+}
+
+/**
+ * Finds explicit slash-selected skill slugs in the latest user message. This
+ * mirrors the web composer format from `skill-invocation.ts` while staying in
+ * agent-runtime to avoid coupling the Worker bundle to web UI modules.
+ */
+function explicitSkillSlugsFromMessages(messages: readonly ModelMessage[]) {
+  const text = latestUserMessageText(messages)
+  const slugs = text
+    .split(/\s+/)
+    .flatMap((token) => SLASH_SKILL_TOKEN_PATTERN.exec(token)?.[1] ?? [])
+
+  return Array.from(new Set(slugs))
 }
 
 type DebugWorkspacePayload = {
@@ -1102,6 +1155,38 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     return { ok: true, status: result.status }
   }
 
+  /**
+   * Loads any `/<slug>` tokens from the latest user message before the
+   * model runs. The slash menu writes those tokens into chat text, but relying
+   * on the model to notice and call `load_context` made explicit selections
+   * flaky in live runtime tests. Calling the existing Think context tool here
+   * preserves the same loaded-skill state while making slash selection a hard
+   * user instruction.
+   */
+  private async loadExplicitSlashSkills(ctx: TurnContext) {
+    const slugs = explicitSkillSlugsFromMessages(ctx.messages)
+    if (slugs.length === 0) return []
+
+    const toolSet = await this.session.tools()
+    const loadTool = toolSet.load_context as
+      | { execute?: (input: { label: string; key: string }) => Promise<string> }
+      | undefined
+    if (!loadTool?.execute) return []
+    const executeLoadContext = loadTool.execute
+
+    const loaded = await Promise.all(
+      slugs.map(async (slug) => {
+        const document = await executeLoadContext({
+          label: 'skills',
+          key: slug,
+        })
+        return { slug, document }
+      }),
+    )
+
+    return loaded.filter((entry) => !entry.document.includes('not found'))
+  }
+
   override async beforeTurn(ctx: TurnContext) {
     const mcpController = await this.ensureProxyMcpConnectionsForTurn()
     const observedChangesResult = mcpController.captureObservedMcpToolChanges()
@@ -1118,6 +1203,29 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       ctx.body.document_context.trim()
         ? ctx.body.document_context.trim()
         : null
+
+    const explicitSkillLoadResult = await Result.tryPromise({
+      try: async () => await this.loadExplicitSlashSkills(ctx),
+      catch: (cause) => messageFromUnknown(cause),
+    })
+    if (explicitSkillLoadResult.isErr()) {
+      console.warn('[agent-runtime] failed to load slash-invoked skills', {
+        error: explicitSkillLoadResult.error,
+      })
+    }
+
+    const explicitSkillContext = explicitSkillLoadResult.isOk()
+      ? explicitSkillLoadResult.value
+          .map(
+            (entry) =>
+              `Explicitly loaded skill from /${entry.slug}:\n${entry.document}`,
+          )
+          .join('\n\n')
+      : ''
+
+    const systemAdditions = [documentContext, explicitSkillContext]
+      .filter((part): part is string => Boolean(part?.trim()))
+      .join('\n\n')
 
     const stableMcpTools = mcpController.wrapGetAITools(
       this.mcp.getAITools.bind(this.mcp),
@@ -1136,8 +1244,8 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       },
       maxRetries: THINK_TURN_MAX_RETRIES,
       sendReasoning: true,
-      ...(documentContext
-        ? { system: `${ctx.system}\n\n${documentContext}` }
+      ...(systemAdditions
+        ? { system: `${ctx.system}\n\n${systemAdditions}` }
         : {}),
       tools: stableMcpTools,
       activeTools: mcpController.activeToolKeysWithoutRawMcp({
@@ -1309,7 +1417,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
           agentRuntimeName: this.getAgentRuntimeName(),
           databaseUrl: this.env.DATABASE_URL,
           workspace: this.workspace,
-          bundleStore: new R2SkillBundleStore(this.env.FILES),
+          fileStore: new R2SkillFileStore(this.env.FILES),
         }),
       catch: (cause) =>
         cause instanceof Error
@@ -1333,7 +1441,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       agentRuntimeName: this.getAgentRuntimeName(),
       databaseUrl: this.env.DATABASE_URL,
       workspace: this.workspace,
-      bundleStore: new R2SkillBundleStore(this.env.FILES),
+      fileStore: new R2SkillFileStore(this.env.FILES),
     })
 
     const skillDirs = await this.workspace
@@ -1939,7 +2047,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         agentRuntimeName: this.getAgentRuntimeName(),
         databaseUrl: this.env.DATABASE_URL,
         workspace: this.workspace,
-        bundleStore: new R2SkillBundleStore(this.env.FILES),
+        fileStore: new R2SkillFileStore(this.env.FILES),
       }),
     }
   }
@@ -1953,7 +2061,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       agentRuntimeName: this.getAgentRuntimeName(),
       databaseUrl: this.env.DATABASE_URL,
       workspace: this.workspace,
-      bundleStore: new R2SkillBundleStore(this.env.FILES),
+      fileStore: new R2SkillFileStore(this.env.FILES),
     })
   }
 

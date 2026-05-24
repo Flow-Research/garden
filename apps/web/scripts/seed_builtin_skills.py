@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import json
 import os
 import subprocess
 import tempfile
@@ -20,25 +19,16 @@ def main() -> None:
         temp_root = Path(temp_dir)
         for slug in SKILLS:
             payload = download_bundle(slug)
-            bundle_hash = payload["hash"]
             files = payload["files"]
-            file_paths = [
-                str(file["path"]).replace("\\", "/").strip("/") for file in files
-            ]
 
-            print(f"seeding {slug} ({bundle_hash})")
-            upload_text(
-                temp_root / slug / "manifest.json",
-                json.dumps({"files": file_paths}, indent=2) + "\n",
-                f"{BUCKET}/{PREFIX}/{slug}/{bundle_hash}/manifest.json",
-            )
+            print(f"seeding {slug}")
             for file in files:
                 path = str(file["path"]).replace("\\", "/").strip("/")
                 content = str(file["contents"])
                 upload_text(
                     temp_root / slug / path,
                     content,
-                    f"{BUCKET}/{PREFIX}/{slug}/{bundle_hash}/{path}",
+                    f"{BUCKET}/{PREFIX}/{slug}/{path}",
                 )
 
 
