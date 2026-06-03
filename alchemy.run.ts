@@ -30,9 +30,8 @@ const app = await alchemy('garden', {
   stateStore: process.env.CI
     ? (scope) =>
         new CloudflareStateStore(scope, {
-          scriptName: 'garden-alchemy-state-staging',
+          scriptName: 'garden-alchemy-state-staging-v2',
           stateToken: secretEnv('ALCHEMY_PASSWORD'),
-          forceUpdate: true,
         })
     : undefined,
 })
