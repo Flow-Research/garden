@@ -2,7 +2,8 @@
   "extends": "@garden/tsconfig/react-library.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "."
+    "rootDir": ".",
+    "allowImportingTsExtensions": true
   },
   "include": ["**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules", "dist"]
