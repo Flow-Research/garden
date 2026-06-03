@@ -25,12 +25,14 @@ const runtimeCloudflareAccountId = plainEnv('CLOUDFLARE_ACCOUNT_ID')
 delete process.env.CLOUDFLARE_ACCOUNT_ID
 
 const app = await alchemy('garden', {
+  stage: 'staging',
   password: process.env.ALCHEMY_PASSWORD,
   stateStore: process.env.CI
     ? (scope) =>
         new CloudflareStateStore(scope, {
           scriptName: 'garden-alchemy-state-staging',
           stateToken: secretEnv('ALCHEMY_PASSWORD'),
+          forceUpdate: true,
         })
     : undefined,
 })
