@@ -15,3 +15,5 @@ db.txt
 refs/cloudflare-agents/
 refs/openai-codex/
 refs/t3code/
+refs/boneyard/
+refs/executor/
