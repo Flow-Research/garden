@@ -3,8 +3,8 @@ type RequiredEnvBinding<Key extends keyof Env> = NonNullable<Env[Key]>
 export type AppEnv = {
   DATABASE_URL: RequiredEnvBinding<'DATABASE_URL'>
   BETTER_AUTH_SECRET: RequiredEnvBinding<'BETTER_AUTH_SECRET'>
-  BETTER_AUTH_URL: RequiredEnvBinding<'BETTER_AUTH_URL'>
-  CLOUDFLARE_ACCOUNT_ID: RequiredEnvBinding<'CLOUDFLARE_ACCOUNT_ID'>
+  BETTER_AUTH_URL?: string
+  CLOUDFLARE_ACCOUNT_ID: string
   CF_AIG_TOKEN: RequiredEnvBinding<'CF_AIG_TOKEN'>
   FILES: RequiredEnvBinding<'FILES'>
   LOADER: RequiredEnvBinding<'LOADER'>

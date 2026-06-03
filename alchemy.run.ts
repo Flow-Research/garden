@@ -61,7 +61,7 @@ const mcpProxy = await Worker('mcp-proxy', {
     }),
     DATABASE_URL: secretEnv('DATABASE_URL'),
     BETTER_AUTH_SECRET: secretEnv('BETTER_AUTH_SECRET'),
-    BETTER_AUTH_URL: plainEnv('BETTER_AUTH_URL'),
+    ...optionalPlainBindings(['BETTER_AUTH_URL']),
   },
 })
 
@@ -131,7 +131,7 @@ export const web = await TanStackStart('web', {
     SANDBOX_TRANSPORT: plainEnv('SANDBOX_TRANSPORT', 'websocket'),
     DATABASE_URL: secretEnv('DATABASE_URL'),
     BETTER_AUTH_SECRET: secretEnv('BETTER_AUTH_SECRET'),
-    BETTER_AUTH_URL: plainEnv('BETTER_AUTH_URL'),
+    ...optionalPlainBindings(['BETTER_AUTH_URL']),
     CLOUDFLARE_ACCOUNT_ID: runtimeCloudflareAccountId,
     CF_AIG_TOKEN: secretEnv('CF_AIG_TOKEN'),
     ENVIRONMENT: plainEnv('ENVIRONMENT', 'production'),
