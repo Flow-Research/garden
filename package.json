@@ -8,7 +8,7 @@
     "dev:web": "turbo run dev --ui=tui --filter=@garden/web",
     "dev:web:containers": "pnpm --filter @garden/web dev:containers",
     "build": "turbo run build",
-    "deploy": "pnpm --filter @garden/mcp-proxy deploy && pnpm --filter @garden/web deploy",
+    "deploy": "ALCHEMY_PROFILE=garden-staging ALCHEMY_TELEMETRY_DISABLED=1 alchemy deploy",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "lint": "turbo run lint",
@@ -21,6 +21,7 @@
   "devDependencies": {
     "@garden/connectors": "workspace:*",
     "@modelcontextprotocol/sdk": "1.29.0",
+    "alchemy": "^0.93.10",
     "oxfmt": "^0.45.0",
     "oxlint": "^1.60.0",
     "turbo": "^2.5.8",
