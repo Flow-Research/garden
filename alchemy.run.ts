@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import alchemy from 'alchemy'
+import { CloudflareStateStore } from 'alchemy/state'
 import {
   AnalyticsEngineDataset,
   BrowserRendering,
@@ -25,6 +26,13 @@ delete process.env.CLOUDFLARE_ACCOUNT_ID
 
 const app = await alchemy('garden', {
   password: process.env.ALCHEMY_PASSWORD,
+  stateStore: process.env.CI
+    ? (scope) =>
+        new CloudflareStateStore(scope, {
+          scriptName: 'garden-alchemy-state-staging',
+          stateToken: secretEnv('ALCHEMY_PASSWORD'),
+        })
+    : undefined,
 })
 
 const mcpSession = DurableObjectNamespace('mcp-session', {
