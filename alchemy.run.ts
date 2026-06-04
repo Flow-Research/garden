@@ -36,6 +36,7 @@ const mcpProxy = await Worker('mcp-proxy', {
   compatibilityDate: '2026-04-23',
   compatibilityFlags: ['nodejs_compat'],
   adopt: true,
+  url: false,
   observability: {
     enabled: true,
     headSamplingRate: 1,
