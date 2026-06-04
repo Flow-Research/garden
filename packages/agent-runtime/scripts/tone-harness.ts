@@ -1,7 +1,7 @@
 import { generateText, tool, stepCountIs } from 'ai'
 import { readFileSync } from 'node:fs'
 import { z } from 'zod'
-import { createAgentModel } from '../src/model'
+import { createWorkersAI } from 'workers-ai-provider'
 import { assembleFoundationPrompt } from '../src/prompt'
 import { DOC_BUILTIN_SKILLS } from '../src/bundled-skills'
 
@@ -19,14 +19,21 @@ function readDevVar(name: string) {
 }
 
 const accountId = readDevVar('CLOUDFLARE_ACCOUNT_ID')
-const apiKey = readDevVar('CF_AIG_TOKEN')
+const apiKey = readDevVar('CLOUDFLARE_API_TOKEN')
 
 if (!accountId || !apiKey) {
-  console.error('CLOUDFLARE_ACCOUNT_ID and CF_AIG_TOKEN must be set in apps/web/.dev.vars')
+  console.error(
+    'CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN must be set in apps/web/.dev.vars',
+  )
   process.exit(1)
 }
 
-const model = createAgentModel({ accountId, apiKey })
+const workersai = createWorkersAI({
+  accountId,
+  apiKey,
+  gateway: { id: 'default' },
+})
+const model = workersai('@cf/moonshotai/kimi-k2.6')
 
 const promptVariant = process.argv[2] ?? 'current'
 

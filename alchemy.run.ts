@@ -9,6 +9,7 @@ import {
   DurableObjectNamespace,
   R2Bucket,
   TanStackStart,
+  Worker,
   WorkerLoader,
   WorkerRef,
   Workflow,
@@ -42,6 +43,7 @@ const app = await alchemy('garden', {
  * proxy or its dashboard-managed secrets.
  */
 const mcpProxyWorkerName = 'garden-mcp-proxy'
+const tailConsumerWorkerName = 'garden-staging-tail'
 
 const mcpSession = DurableObjectNamespace('mcp-session', {
   className: 'McpProxySession',
@@ -89,6 +91,51 @@ const automationTrigger = DurableObjectNamespace('automation-trigger', {
   sqlite: true,
 })
 
+/**
+ * Receives sampled execution events from staging without introducing runtime
+ * secrets. Workers Builds cannot create sibling scripts for the connected web
+ * Worker, so CI references the pre-created tail service while manual Alchemy
+ * deploys can create or reconcile it in the pinned staging account.
+ */
+const tailConsumer = process.env.WORKERS_CI
+  ? { service: tailConsumerWorkerName }
+  : await Worker('tail', {
+      ...cloudflareApiOptions,
+      name: tailConsumerWorkerName,
+      adopt: true,
+      compatibilityDate: '2026-04-18',
+      observability: {
+        enabled: true,
+        logs: {
+          enabled: true,
+          persist: true,
+          invocationLogs: true,
+        },
+      },
+      script: `export default {
+  async tail(events) {
+    for (const event of events) {
+      const request = event.event?.request;
+      const exceptions = event.exceptions ?? [];
+      const status = event.outcome ?? 'unknown';
+      if (status === 'ok' && exceptions.length === 0) continue;
+
+      console.log(JSON.stringify({
+        scriptName: event.scriptName,
+        outcome: status,
+        method: request?.method,
+        url: request?.url,
+        colo: request?.cf?.colo,
+        exceptions: exceptions.map((exception) => ({
+          name: exception.name,
+          message: exception.message,
+        })),
+      }));
+    }
+  },
+};`,
+    })
+
 export const web = await TanStackStart('web', {
   ...cloudflareApiOptions,
   name: 'garden-staging',
@@ -112,6 +159,7 @@ export const web = await TanStackStart('web', {
     },
   },
   crons: ['* * * * *'],
+  tailConsumers: [tailConsumer],
   bindings: {
     AgentDO: agentDo,
     ...(sandbox ? { Sandbox: sandbox } : {}),
