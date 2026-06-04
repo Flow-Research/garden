@@ -20,6 +20,15 @@ loadDotEnvFile(resolve('workers/mcp-proxy/.dev.vars'))
 const cloudflareAccountId = 'a6511f2a4e765359622910fd78f8668d'
 const cloudflareApiOptions = { accountId: cloudflareAccountId }
 
+/**
+ * Workers Builds exposes Wrangler-compatible CF_* auth in some build contexts.
+ * Alchemy reads CLOUDFLARE_* instead, so mirror those values before resources
+ * instantiate API clients while still keeping dashboard account vars optional.
+ */
+process.env.CLOUDFLARE_API_TOKEN ??= process.env.CF_API_TOKEN
+process.env.CLOUDFLARE_ACCOUNT_ID ??=
+  process.env.CF_ACCOUNT_ID ?? cloudflareAccountId
+
 const app = await alchemy('garden', {
   stage: 'staging',
   password: process.env.ALCHEMY_PASSWORD,
