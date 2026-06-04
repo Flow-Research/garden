@@ -3,15 +3,14 @@ import { resolve } from 'node:path'
 import alchemy from 'alchemy'
 import { CloudflareStateStore } from 'alchemy/state'
 import {
-  AnalyticsEngineDataset,
   Ai,
   BrowserRendering,
   Container,
   DurableObjectNamespace,
   R2Bucket,
   TanStackStart,
-  Worker,
   WorkerLoader,
+  WorkerRef,
   Workflow,
 } from 'alchemy/cloudflare'
 
@@ -24,42 +23,21 @@ const app = await alchemy('garden', {
   stateStore: createCiStateStore(),
 })
 
+/**
+ * Cloudflare Workers Builds gives the garden-staging trigger authority to
+ * upload the web worker, not create sibling workers. Reference the already
+ * deployed MCP proxy so push-to-deploy can update web without replacing the
+ * proxy or its dashboard-managed secrets.
+ */
+const mcpProxyWorkerName = 'garden-mcp-proxy'
+
 const mcpSession = DurableObjectNamespace('mcp-session', {
   className: 'McpProxySession',
+  scriptName: mcpProxyWorkerName,
   sqlite: true,
 })
 
-const mcpProxy = await Worker('mcp-proxy', {
-  name: 'garden-mcp-proxy-staging',
-  cwd: './workers/mcp-proxy',
-  entrypoint: './src/index.ts',
-  compatibilityDate: '2026-04-23',
-  compatibilityFlags: ['nodejs_compat'],
-  adopt: true,
-  url: false,
-  observability: {
-    enabled: true,
-    headSamplingRate: 1,
-    logs: {
-      enabled: true,
-      headSamplingRate: 1,
-      persist: true,
-      invocationLogs: true,
-    },
-    traces: {
-      enabled: true,
-      headSamplingRate: 1,
-      persist: true,
-    },
-  },
-  bindings: {
-    MCP_SESSION: mcpSession,
-    CONNECTOR_CALLS: AnalyticsEngineDataset('connector-calls', {
-      dataset: 'garden_mcp_proxy',
-    }),
-    ...optionalPlainBindings(['BETTER_AUTH_URL']),
-  },
-})
+const mcpProxy = WorkerRef({ service: mcpProxyWorkerName })
 
 const files = await R2Bucket('files', {
   name: 'garden-files-staging',
@@ -115,7 +93,7 @@ export const web = await TanStackStart('web', {
     AgentDO: agentDo,
     Sandbox: sandbox,
     AUTOMATION_TRIGGER: automationTrigger,
-    MCP_SESSION: mcpProxy.bindings.MCP_SESSION,
+    MCP_SESSION: mcpSession,
     RUN_WORKFLOW: Workflow('run-workflow', {
       workflowName: 'garden-run-workflow-staging',
       className: 'RunWorkflow',
