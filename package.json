@@ -10,7 +10,7 @@
     "build": "turbo run build",
     "deploy": "pnpm run deploy:alchemy && pnpm run deploy:mcp-proxy",
     "deploy:alchemy": "ALCHEMY_PROFILE=garden-staging ALCHEMY_CI_STATE_STORE_CHECK=false ALCHEMY_TELEMETRY_DISABLED=1 alchemy deploy",
-    "deploy:mcp-proxy": "CLOUDFLARE_ACCOUNT_ID=a6511f2a4e765359622910fd78f8668d wrangler deploy --config workers/mcp-proxy/wrangler.jsonc --keep-vars",
+    "deploy:mcp-proxy": "CLOUDFLARE_ACCOUNT_ID=a6511f2a4e765359622910fd78f8668d env -u WRANGLER_CI_OVERRIDE_NAME -u WRANGLER_CI_MATCH_TAG wrangler deploy --config workers/mcp-proxy/wrangler.jsonc --keep-vars",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "lint": "turbo run lint",
