@@ -160,14 +160,14 @@ function plainEnv(name: string, fallback?: string) {
 }
 
 /**
- * Uses the Cloudflare-backed Alchemy state worker only when CI supplies the
- * token required to read it. Cloudflare Workers Builds can deploy with its own
- * ephemeral state when that token is absent because every staging resource is
- * configured to adopt existing Cloudflare infrastructure.
+ * Uses the Cloudflare-backed Alchemy state worker only when non-Workers CI
+ * supplies the dedicated state token. Cloudflare Workers Builds can deploy with
+ * ephemeral state because every staging resource is configured to adopt existing
+ * Cloudflare infrastructure.
  */
 function createCiStateStore() {
-  const stateToken = process.env.ALCHEMY_PASSWORD
-  if (!process.env.CI || !stateToken) return undefined
+  const stateToken = process.env.ALCHEMY_STATE_TOKEN
+  if (process.env.WORKERS_CI || !process.env.CI || !stateToken) return undefined
 
   return (scope: ConstructorParameters<typeof CloudflareStateStore>[0]) =>
     new CloudflareStateStore(scope, {
