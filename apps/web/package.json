@@ -21,7 +21,7 @@
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix .",
     "format": "oxfmt -c ../../.oxfmtrc.json --check .",
     "format:write": "oxfmt -c ../../.oxfmtrc.json --write .",
-    "deploy": "ALCHEMY_PROFILE=garden-staging ALCHEMY_TELEMETRY_DISABLED=1 alchemy deploy",
+    "deploy": "ALCHEMY_PROFILE=garden-staging ALCHEMY_CI_STATE_STORE_CHECK=false ALCHEMY_TELEMETRY_DISABLED=1 alchemy deploy",
     "clean": "rm -rf .tanstack .output dist .turbo node_modules/.vite",
     "ui:add": "pnpm dlx shadcn@latest add --cwd ../../packages/ui --path components/ui",
     "ui:diff": "pnpm dlx shadcn@latest diff --cwd ../../packages/ui",
