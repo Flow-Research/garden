@@ -57,8 +57,14 @@ const files = await R2Bucket('files', {
   adopt: true,
 })
 
+/**
+ * Workers Builds' generated token does not include Cloudflare Containers
+ * permissions, and its build image is not a reliable Docker builder. Manual
+ * Alchemy deploys still reconcile the sandbox container; push deploys omit that
+ * binding rather than failing the web worker upload before the app can ship.
+ */
 const sandbox = process.env.WORKERS_CI
-  ? existingSandboxBinding()
+  ? undefined
   : await Container('sandbox', {
       ...cloudflareApiOptions,
       className: 'Sandbox',
@@ -108,7 +114,7 @@ export const web = await TanStackStart('web', {
   crons: ['* * * * *'],
   bindings: {
     AgentDO: agentDo,
-    Sandbox: sandbox,
+    ...(sandbox ? { Sandbox: sandbox } : {}),
     AUTOMATION_TRIGGER: automationTrigger,
     MCP_SESSION: mcpSession,
     RUN_WORKFLOW: Workflow('run-workflow', {
@@ -151,25 +157,6 @@ function plainEnv(name: string, fallback?: string) {
   const value = process.env[name] ?? fallback
   if (!value) throw new Error(`Missing ${name}`)
   return value
-}
-
-/**
- * Workers Builds currently runs without a reliable local Docker builder for the
- * sandbox image. Keep the Worker binding pointed at the existing container class
- * during push deploys; local/manual Alchemy deploys still build and reconcile
- * the container application when credentials and Docker are available.
- */
-function existingSandboxBinding() {
-  return {
-    type: 'container',
-    id: 'sandbox',
-    name: 'garden-web-sandbox-staging',
-    className: 'Sandbox',
-    instanceType: 'lite',
-    maxInstances: 4,
-    sqlite: true,
-    adopt: true,
-  } as Awaited<ReturnType<typeof Container>>
 }
 
 /**
