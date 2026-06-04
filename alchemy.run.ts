@@ -21,13 +21,7 @@ loadDotEnvFile(resolve('workers/mcp-proxy/.dev.vars'))
 const app = await alchemy('garden', {
   stage: 'staging',
   password: process.env.ALCHEMY_PASSWORD,
-  stateStore: process.env.CI
-    ? (scope) =>
-        new CloudflareStateStore(scope, {
-          scriptName: 'garden-alchemy-state-staging-v2',
-          stateToken: secretEnv('ALCHEMY_PASSWORD'),
-        })
-    : undefined,
+  stateStore: createCiStateStore(),
 })
 
 const mcpSession = DurableObjectNamespace('mcp-session', {
@@ -62,8 +56,6 @@ const mcpProxy = await Worker('mcp-proxy', {
     CONNECTOR_CALLS: AnalyticsEngineDataset('connector-calls', {
       dataset: 'garden_mcp_proxy',
     }),
-    DATABASE_URL: secretEnv('DATABASE_URL'),
-    BETTER_AUTH_SECRET: secretEnv('BETTER_AUTH_SECRET'),
     ...optionalPlainBindings(['BETTER_AUTH_URL']),
   },
 })
@@ -133,17 +125,8 @@ export const web = await TanStackStart('web', {
     AI: Ai(),
     MCP_PROXY: mcpProxy,
     SANDBOX_TRANSPORT: plainEnv('SANDBOX_TRANSPORT', 'websocket'),
-    DATABASE_URL: secretEnv('DATABASE_URL'),
-    BETTER_AUTH_SECRET: secretEnv('BETTER_AUTH_SECRET'),
     ...optionalPlainBindings(['BETTER_AUTH_URL']),
     ENVIRONMENT: plainEnv('ENVIRONMENT', 'production'),
-    ...optionalSecretBindings([
-      'GITHUB_CLIENT_SECRET',
-      'GITHUB_APP_PRIVATE_KEY',
-      'GITHUB_WEBHOOK_SECRET',
-      'GOOGLE_CLIENT_SECRET',
-      'SLACK_CLIENT_SECRET',
-    ]),
     ...optionalPlainBindings([
       'GITHUB_CLIENT_ID',
       'GITHUB_APP_ID',
@@ -174,23 +157,33 @@ function plainEnv(name: string, fallback?: string) {
   return value
 }
 
-function secretEnv(name: string) {
-  return alchemy.secret(plainEnv(name))
+/**
+ * Uses the Cloudflare-backed Alchemy state worker only when CI supplies the
+ * token required to read it. Cloudflare Workers Builds can deploy with its own
+ * ephemeral state when that token is absent because every staging resource is
+ * configured to adopt existing Cloudflare infrastructure.
+ */
+function createCiStateStore() {
+  const stateToken = process.env.ALCHEMY_PASSWORD
+  if (!process.env.CI || !stateToken) return undefined
+
+  return (scope: ConstructorParameters<typeof CloudflareStateStore>[0]) =>
+    new CloudflareStateStore(scope, {
+      scriptName: 'garden-alchemy-state-staging-v2',
+      stateToken: alchemy.secret(stateToken),
+    })
 }
 
+/**
+ * Runtime secrets are intentionally omitted from Alchemy bindings. Workers
+ * deployments preserve existing script secrets, so Cloudflare push-to-deploy can
+ * run without secret values while dashboard/API-managed secrets stay intact.
+ */
 function optionalPlainBindings(names: string[]) {
   return Object.fromEntries(
     names
       .filter((name) => process.env[name])
       .map((name) => [name, plainEnv(name)]),
-  )
-}
-
-function optionalSecretBindings(names: string[]) {
-  return Object.fromEntries(
-    names
-      .filter((name) => process.env[name])
-      .map((name) => [name, secretEnv(name)]),
   )
 }
 
