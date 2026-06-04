@@ -86,6 +86,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_URL: string
   DATABASE_URL: string
   AI: Ai
+  AI_GATEWAY_ID?: string
   FILES: R2Bucket
   LOADER: WorkerLoader
   Sandbox: DurableObjectNamespace<SandboxDO>
@@ -1037,7 +1038,10 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   maxSteps = 20
 
   getModel(): LanguageModel {
-    return createAgentModel({ ai: this.env.AI })
+    return createAgentModel({
+      ai: this.env.AI,
+      gatewayId: this.env.AI_GATEWAY_ID,
+    })
   }
 
   override async configureSession(session: Session) {

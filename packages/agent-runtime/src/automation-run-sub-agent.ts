@@ -70,6 +70,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_URL: string
   DATABASE_URL: string
   AI: Ai
+  AI_GATEWAY_ID?: string
   FILES: R2Bucket
   LOADER: WorkerLoader
   BROWSER: Fetcher
@@ -284,7 +285,10 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   maxSteps = 30
 
   getModel(): LanguageModel {
-    return createAgentModel({ ai: this.env.AI })
+    return createAgentModel({
+      ai: this.env.AI,
+      gatewayId: this.env.AI_GATEWAY_ID,
+    })
   }
 
   override async configureSession(session: Session) {
@@ -389,7 +393,10 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     }
     this.aggUsage = null
     this.currentTrace = []
-    automationRunLogger.info('automation_run.turn.started', this.currentLogContext)
+    automationRunLogger.info(
+      'automation_run.turn.started',
+      this.currentLogContext,
+    )
     await this.recordTrace(runId, {
       ts: new Date().toISOString(),
       kind: 'turn_started',

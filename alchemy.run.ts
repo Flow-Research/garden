@@ -4,6 +4,7 @@ import alchemy from 'alchemy'
 import { CloudflareStateStore } from 'alchemy/state'
 import {
   Ai,
+  AiGateway,
   BrowserRendering,
   Container,
   DurableObjectNamespace,
@@ -52,6 +53,21 @@ const mcpSession = DurableObjectNamespace('mcp-session', {
 })
 
 const mcpProxy = WorkerRef({ service: mcpProxyWorkerName })
+
+/**
+ * Owns the staging AI Gateway through the same push deploy path as the Worker.
+ * Workers AI binding calls are already account-authenticated, but non-default
+ * Gateway IDs must exist before use. Cloudflare AI Gateway docs and Alchemy's
+ * resource implementation show manual gateways are created at
+ * /accounts/:account/ai-gateway/gateways with the gateway ID in the body.
+ */
+const aiGateway = await AiGateway('ai-gateway', {
+  ...cloudflareApiOptions,
+  gatewayName: 'garden-staging',
+  collectLogs: true,
+  cacheTtl: 0,
+  cacheInvalidateOnUpdate: true,
+})
 
 const files = await R2Bucket('files', {
   ...cloudflareApiOptions,
@@ -151,6 +167,7 @@ export const web = await TanStackStart('web', {
     LOADER: WorkerLoader(),
     BROWSER: BrowserRendering(),
     AI: Ai(),
+    AI_GATEWAY_ID: plainEnv('AI_GATEWAY_ID', aiGateway.id),
     MCP_PROXY: mcpProxy,
     SANDBOX_TRANSPORT: plainEnv('SANDBOX_TRANSPORT', 'websocket'),
     ...optionalPlainBindings(['BETTER_AUTH_URL']),

@@ -5,6 +5,7 @@ export type AppEnv = {
   BETTER_AUTH_SECRET: RequiredEnvBinding<'BETTER_AUTH_SECRET'>
   BETTER_AUTH_URL?: string
   AI: RequiredEnvBinding<'AI'>
+  AI_GATEWAY_ID?: string
   FILES: RequiredEnvBinding<'FILES'>
   LOADER: RequiredEnvBinding<'LOADER'>
   BROWSER: RequiredEnvBinding<'BROWSER'>

@@ -31,7 +31,7 @@ if (!accountId || !apiKey) {
 const workersai = createWorkersAI({
   accountId,
   apiKey,
-  gateway: { id: 'default' },
+  gateway: { id: 'garden-staging' },
 })
 const model = workersai('@cf/moonshotai/kimi-k2.6')
 
@@ -165,14 +165,12 @@ const evalSet: EvalItem[] = [
   // schema-feature exercises (focus run)
   {
     id: 'schema-header-footer',
-    user:
-      'draft a Q4 board memo as a docx with "Confidential" in the header and page numbers in the footer',
+    user: 'draft a Q4 board memo as a docx with "Confidential" in the header and page numbers in the footer',
     category: 'tool-vs-skill',
   },
   {
     id: 'schema-a4',
-    user:
-      'write a one-pager pricing memo for the UK board, A4 page size, in Calibri',
+    user: 'write a one-pager pricing memo for the UK board, A4 page size, in Calibri',
     category: 'tool-vs-skill',
   },
 ]
