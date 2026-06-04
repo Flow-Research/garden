@@ -57,19 +57,21 @@ const files = await R2Bucket('files', {
   adopt: true,
 })
 
-const sandbox = await Container('sandbox', {
-  ...cloudflareApiOptions,
-  className: 'Sandbox',
-  name: 'garden-web-sandbox-staging',
-  tag: 'staging',
-  build: {
-    context: './apps/web',
-    dockerfile: 'Dockerfile',
-  },
-  instanceType: 'lite',
-  maxInstances: 4,
-  adopt: true,
-})
+const sandbox = process.env.WORKERS_CI
+  ? existingSandboxBinding()
+  : await Container('sandbox', {
+      ...cloudflareApiOptions,
+      className: 'Sandbox',
+      name: 'garden-web-sandbox-staging',
+      tag: 'staging',
+      build: {
+        context: './apps/web',
+        dockerfile: 'Dockerfile',
+      },
+      instanceType: 'lite',
+      maxInstances: 4,
+      adopt: true,
+    })
 
 const agentDo = DurableObjectNamespace('agent-do', {
   className: 'AgentDO',
@@ -149,6 +151,25 @@ function plainEnv(name: string, fallback?: string) {
   const value = process.env[name] ?? fallback
   if (!value) throw new Error(`Missing ${name}`)
   return value
+}
+
+/**
+ * Workers Builds currently runs without a reliable local Docker builder for the
+ * sandbox image. Keep the Worker binding pointed at the existing container class
+ * during push deploys; local/manual Alchemy deploys still build and reconcile
+ * the container application when credentials and Docker are available.
+ */
+function existingSandboxBinding() {
+  return {
+    type: 'container',
+    id: 'sandbox',
+    name: 'garden-web-sandbox-staging',
+    className: 'Sandbox',
+    instanceType: 'lite',
+    maxInstances: 4,
+    sqlite: true,
+    adopt: true,
+  } as Awaited<ReturnType<typeof Container>>
 }
 
 /**
