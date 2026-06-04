@@ -17,6 +17,9 @@ import {
 loadDotEnvFile(resolve('apps/web/.dev.vars'))
 loadDotEnvFile(resolve('workers/mcp-proxy/.dev.vars'))
 
+const cloudflareAccountId = 'a6511f2a4e765359622910fd78f8668d'
+const cloudflareApiOptions = { accountId: cloudflareAccountId }
+
 const app = await alchemy('garden', {
   stage: 'staging',
   password: process.env.ALCHEMY_PASSWORD,
@@ -40,11 +43,13 @@ const mcpSession = DurableObjectNamespace('mcp-session', {
 const mcpProxy = WorkerRef({ service: mcpProxyWorkerName })
 
 const files = await R2Bucket('files', {
+  ...cloudflareApiOptions,
   name: 'garden-files-staging',
   adopt: true,
 })
 
 const sandbox = await Container('sandbox', {
+  ...cloudflareApiOptions,
   className: 'Sandbox',
   name: 'garden-web-sandbox-staging',
   tag: 'staging',
@@ -68,6 +73,7 @@ const automationTrigger = DurableObjectNamespace('automation-trigger', {
 })
 
 export const web = await TanStackStart('web', {
+  ...cloudflareApiOptions,
   name: 'garden-staging',
   cwd: './apps/web',
   adopt: true,
@@ -148,6 +154,7 @@ function createCiStateStore() {
 
   return (scope: ConstructorParameters<typeof CloudflareStateStore>[0]) =>
     new CloudflareStateStore(scope, {
+      ...cloudflareApiOptions,
       scriptName: 'garden-alchemy-state-staging-v2',
       stateToken: alchemy.secret(stateToken),
     })
