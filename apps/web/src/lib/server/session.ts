@@ -23,11 +23,19 @@ export function toCoreUser(input: {
   }
 }
 
+/**
+ * Resolves the Better Auth session for route loaders and server functions.
+ * Before this request was not passed into `createAuth`, so staging sign-in
+ * could set a valid session cookie while guarded routes still redirected to
+ * `/login`. Passing the same request keeps Better Auth's runtime-origin and
+ * cookie context aligned with the auth API route. Reference: Better Auth
+ * handler/getSession request context and the local `createAuth` wrapper.
+ */
 export async function getAuthSession(
   request: Request,
   env: Pick<AppEnv, 'DATABASE_URL' | 'BETTER_AUTH_SECRET' | 'BETTER_AUTH_URL'>,
 ) {
-  const auth = createAuth(env)
+  const auth = createAuth(env, request)
   const result = await auth.api.getSession({ headers: request.headers })
   if (!result?.session || !result?.user) return null
   return result
