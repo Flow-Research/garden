@@ -4,6 +4,7 @@ import alchemy from 'alchemy'
 import { CloudflareStateStore } from 'alchemy/state'
 import {
   AnalyticsEngineDataset,
+  Ai,
   BrowserRendering,
   Container,
   DurableObjectNamespace,
@@ -16,13 +17,6 @@ import {
 
 loadDotEnvFile(resolve('apps/web/.dev.vars'))
 loadDotEnvFile(resolve('workers/mcp-proxy/.dev.vars'))
-
-const runtimeCloudflareAccountId = plainEnv('CLOUDFLARE_ACCOUNT_ID')
-
-// Alchemy resolves the deploy account from the selected profile. Garden also
-// exposes CLOUDFLARE_ACCOUNT_ID to runtime code, so keep the runtime value but
-// remove the env override before Alchemy creates its Cloudflare API client.
-delete process.env.CLOUDFLARE_ACCOUNT_ID
 
 const app = await alchemy('garden', {
   stage: 'staging',
@@ -136,13 +130,12 @@ export const web = await TanStackStart('web', {
     FILES: files,
     LOADER: WorkerLoader(),
     BROWSER: BrowserRendering(),
+    AI: Ai(),
     MCP_PROXY: mcpProxy,
     SANDBOX_TRANSPORT: plainEnv('SANDBOX_TRANSPORT', 'websocket'),
     DATABASE_URL: secretEnv('DATABASE_URL'),
     BETTER_AUTH_SECRET: secretEnv('BETTER_AUTH_SECRET'),
     ...optionalPlainBindings(['BETTER_AUTH_URL']),
-    CLOUDFLARE_ACCOUNT_ID: runtimeCloudflareAccountId,
-    CF_AIG_TOKEN: secretEnv('CF_AIG_TOKEN'),
     ENVIRONMENT: plainEnv('ENVIRONMENT', 'production'),
     ...optionalSecretBindings([
       'GITHUB_CLIENT_SECRET',

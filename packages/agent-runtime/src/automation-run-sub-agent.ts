@@ -65,8 +65,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_SECRET: string
   BETTER_AUTH_URL: string
   DATABASE_URL: string
-  CLOUDFLARE_ACCOUNT_ID: string
-  CF_AIG_TOKEN: string
+  AI: Ai
   FILES: R2Bucket
   LOADER: WorkerLoader
   BROWSER: Fetcher
@@ -276,10 +275,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   maxSteps = 30
 
   getModel(): LanguageModel {
-    return createAgentModel({
-      accountId: this.env.CLOUDFLARE_ACCOUNT_ID,
-      apiKey: this.env.CF_AIG_TOKEN,
-    })
+    return createAgentModel({ ai: this.env.AI })
   }
 
   override async configureSession(session: Session) {
