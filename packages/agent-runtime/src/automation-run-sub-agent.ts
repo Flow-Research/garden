@@ -30,6 +30,10 @@ import {
   parseQaSweepRunPayload,
   type QaSweepClosureAction,
 } from '@garden/core/automations/templates'
+import {
+  createGardenLogger,
+  type GardenLogFields,
+} from '@garden/core/observability/logger'
 import { connectorRegistry } from '@garden/connectors'
 import {
   derivePermissions,
@@ -137,6 +141,10 @@ type AutomationRunContextSnapshot = {
 const DEFAULT_AUTOMATION_RUN_TIMEOUT_SEC = 2 * 60 * 60
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.automation-run.turn'
+const automationRunLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'automation-run-sub-agent',
+})
 const AUTOMATION_RUN_TERMINAL_TOOL_STOP_CONDITIONS = [
   hasToolCall('complete_automation'),
 ]
@@ -253,6 +261,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   private currentBrowserAllowed = false
   private currentClosureAction: QaSweepClosureAction = 'report-only'
   private currentAllowSourceMutation = false
+  private currentLogContext: GardenLogFields | null = null
   private aggUsage: RunUsageSnapshot | null = null
   private currentTrace: AutomationTraceEvent[] = []
   private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
@@ -371,8 +380,16 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       loadedResult.value.automation,
     )
     this.applyClosureControls(loadedResult.value.run)
+    this.currentLogContext = {
+      userId: loadedResult.value.agent.ownerUserId,
+      workspaceId: loadedResult.value.run.workspaceId,
+      agentId: loadedResult.value.run.agentId,
+      automationId: loadedResult.value.run.automationId,
+      runId,
+    }
     this.aggUsage = null
     this.currentTrace = []
+    automationRunLogger.info('automation_run.turn.started', this.currentLogContext)
     await this.recordTrace(runId, {
       ts: new Date().toISOString(),
       kind: 'turn_started',
@@ -426,6 +443,13 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
 
     const gateResult = this.assertToolAllowed(ctx.toolName)
     if (gateResult.isErr()) throw gateResult.error
+
+    automationRunLogger.info('automation_run.tool.started', {
+      ...this.currentLogContext,
+      toolName: ctx.toolName,
+      toolCallId: ctx.toolCallId,
+      step: ctx.stepNumber,
+    })
 
     await this.recordTrace(this.currentRunId, {
       ts: new Date().toISOString(),
@@ -488,6 +512,18 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     const runId = this.currentRunId
     if (!runId) return
 
+    automationRunLogger[ctx.success ? 'info' : 'warn'](
+      'automation_run.tool.finished',
+      {
+        ...this.currentLogContext,
+        toolName: ctx.toolName,
+        toolCallId: ctx.toolCallId,
+        durationMs: ctx.durationMs,
+        ok: ctx.success,
+        error: ctx.success ? undefined : errorMessage(ctx.error),
+      },
+    )
+
     await this.recordTrace(runId, {
       ts: new Date().toISOString(),
       kind: 'tool_finished',
@@ -529,6 +565,11 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   override async onChatResponse(result: ChatResponseResult) {
     const runId = this.currentRunId
     if (!runId) return
+
+    automationRunLogger.info('automation_run.turn.finished', {
+      ...this.currentLogContext,
+      status: result.status,
+    })
 
     if (this.aggUsage) {
       const usageResult = await this.persistUsage(runId, this.aggUsage)
@@ -1795,6 +1836,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     this.currentRunId = null
     this.currentPermissions = null
     this.currentBrowserAllowed = false
+    this.currentLogContext = null
     this.aggUsage = null
     this.currentTrace = []
   }

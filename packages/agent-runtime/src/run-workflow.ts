@@ -5,6 +5,7 @@ import {
 } from 'agents/workflows'
 import { TaggedError } from 'better-result'
 import { disposeRpcResult } from '@garden/core/platform/rpc'
+import { createGardenLogger } from '@garden/core/observability/logger'
 import type { AgentDO } from './agent-do'
 
 /**
@@ -64,6 +65,10 @@ const TURN_RETRIES = {
   backoff: 'exponential' as const,
 }
 const MAX_TURNS = 200
+const workflowLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'run-workflow',
+})
 
 const TERMINAL_SUBMISSION_STATUSES = new Set([
   'completed',
@@ -104,6 +109,11 @@ export class RunWorkflow extends AgentWorkflow<
     step: AgentWorkflowStep,
   ): Promise<{ runId: string; status: string }> {
     const { runId } = event.payload
+    workflowLogger.info('run_workflow.started', {
+      kind: event.payload.kind,
+      runId,
+      ...(event.payload.kind === 'issue' ? { issueId: event.payload.issueId } : {}),
+    })
 
     let mode: 'start' | 'resume' = 'start'
 
@@ -152,11 +162,29 @@ export class RunWorkflow extends AgentWorkflow<
             })
 
       if (TERMINAL_RUN_STATUSES.has(result.status)) {
+        workflowLogger.info('run_workflow.completed', {
+          kind: event.payload.kind,
+          runId,
+          turn,
+          status: result.status,
+          ...(event.payload.kind === 'issue'
+            ? { issueId: event.payload.issueId }
+            : {}),
+        })
         await step.reportComplete({ runId, status: result.status })
         return { runId, status: result.status }
       }
 
       if (!AWAITING_RUN_STATUSES.has(result.status)) {
+        workflowLogger.info('run_workflow.completed', {
+          kind: event.payload.kind,
+          runId,
+          turn,
+          status: result.status,
+          ...(event.payload.kind === 'issue'
+            ? { issueId: event.payload.issueId }
+            : {}),
+        })
         await step.reportComplete({ runId, status: result.status })
         return { runId, status: result.status }
       }
@@ -181,6 +209,14 @@ export class RunWorkflow extends AgentWorkflow<
             })
           },
         )
+        workflowLogger.warn('run_workflow.cancelled', {
+          kind: event.payload.kind,
+          runId,
+          turn,
+          ...(event.payload.kind === 'issue'
+            ? { issueId: event.payload.issueId }
+            : {}),
+        })
         await step.reportComplete({ runId, status: 'cancelled' })
         return { runId, status: 'cancelled' }
       }
@@ -188,6 +224,11 @@ export class RunWorkflow extends AgentWorkflow<
       mode = 'resume'
     }
 
+    workflowLogger.warn('run_workflow.max_turns_exceeded', {
+      kind: event.payload.kind,
+      runId,
+      ...(event.payload.kind === 'issue' ? { issueId: event.payload.issueId } : {}),
+    })
     await step.reportComplete({ runId, status: 'max_turns_exceeded' })
     return { runId, status: 'max_turns_exceeded' }
   }

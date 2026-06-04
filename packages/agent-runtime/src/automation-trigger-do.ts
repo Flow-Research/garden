@@ -9,6 +9,7 @@ import {
 } from 'better-result'
 import { CronExpressionParser } from 'cron-parser'
 import * as schema from '@garden/db/schema'
+import { createGardenLogger } from '@garden/core/observability/logger'
 import {
   cancelAutomationRun,
   startAutomationRun,
@@ -19,6 +20,10 @@ type AutomationTriggerEnv = Cloudflare.Env & AutomationRunEnv
 type AutomationConcurrencyPolicy = 'skip' | 'replace'
 type AutomationRunSource = 'schedule' | 'manual' | 'webhook' | 'api'
 const LIVE_AUTOMATION_RUN_STATUSES = ['queued', 'running'] as const
+const automationTriggerLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'automation-trigger-do',
+})
 
 type AutomationConfig = {
   triggerId: string
@@ -577,6 +582,15 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
     if (policyResult.isErr()) return Result.err(policyResult.error)
 
     const runId = crypto.randomUUID()
+    automationTriggerLogger.info('automation.trigger.dispatch_started', {
+      userId: automation.createdBy,
+      workspaceId: automation.workspaceId,
+      agentId: automation.assigneeAgentId,
+      automationId: automation.id,
+      runId,
+      triggerId: args.config.triggerId,
+      source: args.source,
+    })
     const startResult = await startAutomationRun(this.env, {
       workspaceId: automation.workspaceId,
       automationId: automation.id,
@@ -605,6 +619,16 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
       },
     })
     if (startResult.isErr()) {
+      automationTriggerLogger.error('automation.trigger.dispatch_failed', {
+        userId: automation.createdBy,
+        workspaceId: automation.workspaceId,
+        agentId: automation.assigneeAgentId,
+        automationId: automation.id,
+        runId,
+        triggerId: args.config.triggerId,
+        source: args.source,
+        message: startResult.error.message,
+      })
       const failedResult = await this.markRunFailed({
         runId,
         message: startResult.error.message,
@@ -623,6 +647,16 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
 
     this.setRunState({
       inFlightRunId: runId,
+    })
+
+    automationTriggerLogger.info('automation.trigger.dispatch_completed', {
+      userId: automation.createdBy,
+      workspaceId: automation.workspaceId,
+      agentId: automation.assigneeAgentId,
+      automationId: automation.id,
+      runId,
+      triggerId: args.config.triggerId,
+      source: args.source,
     })
 
     return Result.ok({ runId })

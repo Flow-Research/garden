@@ -9,6 +9,7 @@ export type GardenAuthSession = Awaited<
 export type GardenAuthState = {
   getAuth: () => GardenAuth
   getSession: () => Promise<GardenAuthSession>
+  getCachedSession: () => Promise<GardenAuthSession> | undefined
 }
 
 export type AppRequestContext = {
@@ -40,6 +41,7 @@ export function createAuthState(env: AppEnv, request: Request): GardenAuthState 
       session ??= getAuth().api.getSession({ headers: request.headers })
       return session
     },
+    getCachedSession: () => session,
   }
 }
 

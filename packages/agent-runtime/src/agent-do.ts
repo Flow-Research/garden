@@ -41,6 +41,7 @@ import { drizzle } from 'drizzle-orm/neon-serverless'
 import { and, asc, eq, or, type SQL } from 'drizzle-orm'
 import { Result, type Result as ResultValue } from 'better-result'
 import { connectorRegistry } from '@garden/connectors'
+import { createGardenLogger } from '@garden/core/observability/logger'
 import * as schema from '@garden/db/schema'
 import {
   describeSandboxProbe,
@@ -324,6 +325,10 @@ type ThreadDocumentEditPayload = Awaited<
 >
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.workspace-agent.turn'
+const agentRuntimeLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'agent-do',
+})
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -531,6 +536,12 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     issueId: string
   }): Promise<void> {
     await this.requireIssueAccess(input.issueId)
+    const agentId = await this.resolveRuntimeAgentId()
+    agentRuntimeLogger.info('agent_do.issue_workflow.start_requested', {
+      agentId,
+      issueId: input.issueId,
+      runId: input.runId,
+    })
     const workflowResult = await Result.tryPromise({
       try: async () =>
         await this.runWorkflow(
@@ -552,8 +563,20 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       workflowResult.isOk() ||
       isDuplicateWorkflowInstanceError(workflowResult.error)
     ) {
+      agentRuntimeLogger.info('agent_do.issue_workflow.start_completed', {
+        agentId,
+        issueId: input.issueId,
+        runId: input.runId,
+        duplicate: workflowResult.isErr(),
+      })
       return
     }
+    agentRuntimeLogger.error('agent_do.issue_workflow.start_failed', {
+      agentId,
+      issueId: input.issueId,
+      runId: input.runId,
+      message: messageFromUnknown(workflowResult.error),
+    })
     throw new RunWorkflowCreateError({
       code: 'create_failed',
       message: `create issue run workflow failed: ${messageFromUnknown(workflowResult.error)}`,
@@ -564,6 +587,11 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   @callable()
   async startAutomationRunWorkflow(input: { runId: string }): Promise<void> {
     await this.requireAutomationRunAccess(input.runId)
+    const agentId = await this.resolveRuntimeAgentId()
+    agentRuntimeLogger.info('agent_do.automation_workflow.start_requested', {
+      agentId,
+      runId: input.runId,
+    })
     const workflowResult = await Result.tryPromise({
       try: async () =>
         await this.runWorkflow(
@@ -584,8 +612,18 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       workflowResult.isOk() ||
       isDuplicateWorkflowInstanceError(workflowResult.error)
     ) {
+      agentRuntimeLogger.info('agent_do.automation_workflow.start_completed', {
+        agentId,
+        runId: input.runId,
+        duplicate: workflowResult.isErr(),
+      })
       return
     }
+    agentRuntimeLogger.error('agent_do.automation_workflow.start_failed', {
+      agentId,
+      runId: input.runId,
+      message: messageFromUnknown(workflowResult.error),
+    })
     throw new RunWorkflowCreateError({
       code: 'create_failed',
       message: `create automation run workflow failed: ${messageFromUnknown(workflowResult.error)}`,

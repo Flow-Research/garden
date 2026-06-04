@@ -103,6 +103,8 @@ const tailConsumer = process.env.WORKERS_CI
       ...cloudflareApiOptions,
       name: tailConsumerWorkerName,
       adopt: true,
+      cwd: './workers/tail-observer',
+      entrypoint: 'src/index.ts',
       compatibilityDate: '2026-04-18',
       observability: {
         enabled: true,
@@ -112,28 +114,6 @@ const tailConsumer = process.env.WORKERS_CI
           invocationLogs: true,
         },
       },
-      script: `export default {
-  async tail(events) {
-    for (const event of events) {
-      const request = event.event?.request;
-      const exceptions = event.exceptions ?? [];
-      const status = event.outcome ?? 'unknown';
-      if (status === 'ok' && exceptions.length === 0) continue;
-
-      console.log(JSON.stringify({
-        scriptName: event.scriptName,
-        outcome: status,
-        method: request?.method,
-        url: request?.url,
-        colo: request?.cf?.colo,
-        exceptions: exceptions.map((exception) => ({
-          name: exception.name,
-          message: exception.message,
-        })),
-      }));
-    }
-  },
-};`,
     })
 
 export const web = await TanStackStart('web', {

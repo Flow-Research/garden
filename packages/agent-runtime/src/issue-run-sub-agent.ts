@@ -23,6 +23,7 @@ import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/neon-serverless'
 import { classifyConnectorError } from '@garden/core/connectors/errors'
+import { createGardenLogger } from '@garden/core/observability/logger'
 import {
   derivePermissions,
   type AgentPermissions,
@@ -130,6 +131,10 @@ type ResolutionGuardRow = {
 const DEFAULT_ISSUE_RUN_TIMEOUT_SEC = 2 * 60 * 60
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.issue-run.turn'
+const issueRunLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'issue-run-sub-agent',
+})
 
 const VALID_RESOLUTION_ACTIONS = new Set<IssueRunResolutionAction>([
   'ask_question',
@@ -337,6 +342,13 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     this.currentPermissions = loadedResult.value.permissions
     this.resolutionActions.clear()
     this.aggUsage = null
+    issueRunLogger.info('issue_run.turn.started', {
+      userId: loadedResult.value.runState.agentOwnerUserId,
+      workspaceId: loadedResult.value.runState.workspaceId,
+      agentId: loadedResult.value.runState.agentId,
+      issueId: loadedResult.value.runState.issueId,
+      runId,
+    })
 
     const mcpController = await this.ensureProxyMcpConnectionsForTurn()
     const observedChangesResult = mcpController.captureObservedMcpToolChanges()
@@ -403,6 +415,17 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     const gateResult = this.assertToolAllowed(ctx.toolName)
     if (gateResult.isErr()) throw gateResult.error
 
+    issueRunLogger.info('issue_run.tool.started', {
+      userId: run.agentOwnerUserId,
+      workspaceId: run.workspaceId,
+      agentId: run.agentId,
+      issueId: run.issueId,
+      runId: run.runId,
+      toolName: ctx.toolName,
+      toolCallId: ctx.toolCallId,
+      step: ctx.stepNumber,
+    })
+
     const db = getIssueRunDb(this.env.DATABASE_URL)
     const eventResult = await appendIssueRunEvent({
       db,
@@ -433,6 +456,17 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
 
     const output = ctx.success ? objectOrNull(ctx.output) : null
     const ok = ctx.success && output?.ok !== false
+    issueRunLogger[ok ? 'info' : 'warn']('issue_run.tool.finished', {
+      userId: run.agentOwnerUserId,
+      workspaceId: run.workspaceId,
+      agentId: run.agentId,
+      issueId: run.issueId,
+      runId: run.runId,
+      toolName: ctx.toolName,
+      toolCallId: ctx.toolCallId,
+      durationMs: ctx.durationMs,
+      ok,
+    })
     const db = getIssueRunDb(this.env.DATABASE_URL)
     const eventResult = await appendIssueRunEvent({
       db,
@@ -522,6 +556,18 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   override async onChatResponse(result: ChatResponseResult) {
     const runId = this.currentRunId
     if (!runId) return
+
+    const run = this.currentRunState
+    if (run) {
+      issueRunLogger.info('issue_run.turn.finished', {
+        userId: run.agentOwnerUserId,
+        workspaceId: run.workspaceId,
+        agentId: run.agentId,
+        issueId: run.issueId,
+        runId,
+        status: result.status,
+      })
+    }
 
     if (this.aggUsage) {
       const usageResult = await this.persistUsage(runId, this.aggUsage)

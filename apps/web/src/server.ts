@@ -22,6 +22,15 @@ import { reconcile } from '@/lib/server/issue-run-reconciler'
 import { ensureAgentRow } from '@/lib/server/chat-agents'
 import { getDb, schema } from '@/lib/server/db'
 import { disposeRpcResult } from '@garden/core/platform/rpc'
+import {
+  createGardenLogger,
+  errorFields,
+  requestFields,
+  responseFields,
+  withRequestIdHeader,
+  type GardenLogger,
+  type GardenLogFields,
+} from '@garden/core/observability/logger'
 import { createAppRequestContext } from '@/lib/server/context'
 
 export { AgentDO }
@@ -38,6 +47,10 @@ const AGENT_DO_AUTH_CACHE_TTL_MS = 60_000
 const RECONCILE_ON_FETCH_INTERVAL_MS = 5_000
 const agentDoAuthCache = new Map<string, number>()
 let lastFetchReconcileAt = 0
+const webLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'worker-entry',
+})
 
 function scheduleFetchReconcile(env: ServerEnv, ctx?: ExecutionContext) {
   const now = Date.now()
@@ -46,8 +59,7 @@ function scheduleFetchReconcile(env: ServerEnv, ctx?: ExecutionContext) {
 
   const task = reconcile(env).then((result) => {
     if (result.isErr()) {
-      console.error({
-        event: 'issue_run_reconcile_failed',
+      webLogger.error('issue_run.reconcile.failed', {
         message: result.error.message,
       })
     }
@@ -62,12 +74,13 @@ function responseFromCaughtError(args: {
   status: number
   fallback: string
   cause: unknown
+  logger: GardenLogger
 }) {
   const message =
     args.cause instanceof Error ? args.cause.message : args.fallback
-  console.error({
-    event: args.event,
+  args.logger.error(args.event, {
     message,
+    ...errorFields(args.cause),
   })
 
   return Response.json(
@@ -349,17 +362,32 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
   return Response.json({ ...base, workflowStarted: true })
 }
 
-async function authorizeAgentRequest(request: Request, env: ServerEnv) {
+async function authorizeAgentRequest(
+  request: Request,
+  env: ServerEnv,
+  logger: GardenLogger,
+) {
   const agentRuntimeName = getAgentRuntimeNameFromRequest(request)
   if (!agentRuntimeName) {
-    return { request, response: new Response('Not found', { status: 404 }) }
+    return {
+      request,
+      response: new Response('Not found', { status: 404 }),
+      userId: null,
+    }
   }
 
   const auth = createAuth(env, request)
   const session = await auth.api.getSession({ headers: request.headers })
   if (!session?.user) {
-    return { request, response: new Response('Unauthorized', { status: 401 }) }
+    logger.warn('agent.request.unauthorized')
+    return {
+      request,
+      response: new Response('Unauthorized', { status: 401 }),
+      userId: null,
+    }
   }
+
+  const userLogger = logger.child({ userId: session.user.id })
 
   const cacheKey = `${session.user.id}:${agentRuntimeName}`
   const cachedUntil = agentDoAuthCache.get(cacheKey) ?? 0
@@ -372,13 +400,32 @@ async function authorizeAgentRequest(request: Request, env: ServerEnv) {
       'connect',
     )
     if (accessResult.isErr()) {
-      return { request, response: new Response('Not found', { status: 404 }) }
+      userLogger.warn('agent.request.access_denied', {
+        agentRuntimeName,
+        message: accessResult.error.message,
+      })
+      return {
+        request,
+        response: new Response('Not found', { status: 404 }),
+        userId: session.user.id,
+      }
     }
 
     agentDoAuthCache.set(cacheKey, now + AGENT_DO_AUTH_CACHE_TTL_MS)
   }
 
-  return { request, response: null }
+  return { request, response: null, userId: session.user.id }
+}
+
+function requestCompletionFields(
+  response: Response,
+  startedAt: number,
+  extra?: GardenLogFields,
+) {
+  return {
+    ...responseFields(response, startedAt),
+    ...extra,
+  }
 }
 
 export default {
@@ -392,8 +439,7 @@ export default {
     ctx.waitUntil(
       reconcile(env).then((result) => {
         if (result.isErr()) {
-          console.error({
-            event: 'issue_run_reconcile_failed',
+          webLogger.error('issue_run.reconcile.failed', {
             message: result.error.message,
           })
         }
@@ -405,8 +451,22 @@ export default {
     bindAppEnv(env)
     scheduleFetchReconcile(env, ctx)
 
+    const startedAt = performance.now()
+    const baseRequestFields = requestFields(request)
+    const logger = webLogger.child(baseRequestFields)
+
     const sandboxResponse = await proxyToSandbox(request, env)
-    if (sandboxResponse) return sandboxResponse
+    if (sandboxResponse) {
+      const response = withRequestIdHeader(
+        sandboxResponse,
+        baseRequestFields.requestId,
+      )
+      logger.info(
+        'web.request.completed',
+        requestCompletionFields(response, startedAt, { route: 'sandbox' }),
+      )
+      return response
+    }
 
     const url = new URL(request.url)
 
@@ -415,40 +475,94 @@ export default {
     }
 
     if (url.pathname.startsWith('/agents/')) {
-      const agentAuth = await authorizeAgentRequest(request, env)
-      if (agentAuth.response) return agentAuth.response
+      const agentAuth = await authorizeAgentRequest(request, env, logger)
+      if (agentAuth.response) {
+        const response = withRequestIdHeader(
+          agentAuth.response,
+          baseRequestFields.requestId,
+        )
+        logger.info(
+          'web.request.completed',
+          requestCompletionFields(response, startedAt, {
+            route: 'agent-auth',
+            ...(agentAuth.userId ? { userId: agentAuth.userId } : {}),
+          }),
+        )
+        return response
+      }
 
+      const agentLogger = agentAuth.userId
+        ? logger.child({ userId: agentAuth.userId })
+        : logger
       const agentResponse = await Result.tryPromise({
         try: async () => await routeAgentDoRequest(agentAuth.request, env),
         catch: (cause) => cause,
       })
       if (agentResponse.isErr()) {
         return responseFromCaughtError({
-          event: 'agent_route_request_failed',
+          event: 'agent.request.failed',
           status: 502,
           fallback: 'Agent request failed',
           cause: agentResponse.error,
+          logger: agentLogger,
         })
       }
 
-      if (agentResponse.value) return agentResponse.value
+      if (agentResponse.value) {
+        const response = withRequestIdHeader(
+          agentResponse.value,
+          baseRequestFields.requestId,
+        )
+        agentLogger.info(
+          'web.request.completed',
+          requestCompletionFields(response, startedAt, { route: 'agent' }),
+        )
+        return response
+      }
     }
 
+    const appContext = createAppRequestContext(env, request)
     const appResponse = await Result.tryPromise({
       try: async () =>
         handler.fetch(request, {
-          context: createAppRequestContext(env, request),
+          context: appContext,
         }),
       catch: (cause) => cause,
     })
 
-    return appResponse.isOk()
-      ? appResponse.value
-      : responseFromCaughtError({
-          event: 'web_handler_failed',
-          status: 500,
-          fallback: 'Application request failed',
-          cause: appResponse.error,
+    const cachedSession = appContext.auth.getCachedSession()
+    const sessionResult = cachedSession
+      ? await Result.tryPromise({
+          try: async () => await cachedSession,
+          catch: (cause) => cause,
         })
+      : null
+    if (sessionResult?.isErr()) {
+      logger.warn('auth.session.log_context_failed', errorFields(sessionResult.error))
+    }
+    const session = sessionResult?.isOk() ? sessionResult.value : null
+    const appLogger = session?.user?.id
+      ? logger.child({ userId: session.user.id })
+      : logger
+
+    if (appResponse.isOk()) {
+      const response = withRequestIdHeader(
+        appResponse.value,
+        baseRequestFields.requestId,
+      )
+      appLogger.info(
+        'web.request.completed',
+        requestCompletionFields(response, startedAt, { route: 'app' }),
+      )
+      return response
+    }
+
+    return responseFromCaughtError({
+      event: 'web.request.failed',
+      status: 500,
+      fallback: 'Application request failed',
+      cause: appResponse.error,
+      logger: appLogger,
+    })
   },
 } satisfies ExportedHandler<ServerEnv>

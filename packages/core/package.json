@@ -43,6 +43,8 @@
     "./query-client": "./query-client.ts",
     "./provider": "./provider.tsx",
     "./logger": "./logger.ts",
+    "./observability": "./observability/index.ts",
+    "./observability/logger": "./observability/logger.ts",
     "./utils": "./utils.ts",
     "./connectors/errors": "./connectors/errors.ts",
     "./constants/*": "./constants/*.ts",
