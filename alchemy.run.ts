@@ -93,28 +93,26 @@ const automationTrigger = DurableObjectNamespace('automation-trigger', {
 
 /**
  * Receives sampled execution events from staging without introducing runtime
- * secrets. Workers Builds cannot create sibling scripts for the connected web
- * Worker, so CI references the pre-created tail service while manual Alchemy
- * deploys can create or reconcile it in the pinned staging account.
+ * secrets. This must deploy during push-to-deploy too; otherwise source changes
+ * can leave the dashboard Worker on an older ad hoc probe script while the
+ * producer keeps sending events to it.
  */
-const tailConsumer = process.env.WORKERS_CI
-  ? { service: tailConsumerWorkerName }
-  : await Worker('tail', {
-      ...cloudflareApiOptions,
-      name: tailConsumerWorkerName,
-      adopt: true,
-      cwd: './workers/tail-observer',
-      entrypoint: 'src/index.ts',
-      compatibilityDate: '2026-04-18',
-      observability: {
-        enabled: true,
-        logs: {
-          enabled: true,
-          persist: true,
-          invocationLogs: true,
-        },
-      },
-    })
+const tailConsumer = await Worker('tail', {
+  ...cloudflareApiOptions,
+  name: tailConsumerWorkerName,
+  adopt: true,
+  cwd: './workers/tail-observer',
+  entrypoint: 'src/index.ts',
+  compatibilityDate: '2026-04-18',
+  observability: {
+    enabled: true,
+    logs: {
+      enabled: true,
+      persist: true,
+      invocationLogs: true,
+    },
+  },
+})
 
 export const web = await TanStackStart('web', {
   ...cloudflareApiOptions,
