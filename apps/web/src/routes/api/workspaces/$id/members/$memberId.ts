@@ -24,7 +24,7 @@ export const Route = createFileRoute('/api/workspaces/$id/members/$memberId')({
         )
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
-        const auth = createAuth(appEnv)
+        const auth = createAuth(appEnv, request)
         await auth.api.updateMemberRole({
           headers: request.headers,
           body: {
@@ -57,7 +57,7 @@ export const Route = createFileRoute('/api/workspaces/$id/members/$memberId')({
       DELETE: async ({ request, params }) => {
         const session = await requireSession(request)
         if (!session) return unauthorized()
-        const auth = createAuth(appEnv)
+        const auth = createAuth(appEnv, request)
         await auth.api.removeMember({
           headers: request.headers,
           body: {

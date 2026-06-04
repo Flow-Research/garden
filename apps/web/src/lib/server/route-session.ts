@@ -1,11 +1,16 @@
 import { createServerFn } from '@tanstack/react-start'
-import { getRequest } from '@tanstack/react-start/server'
-import { appEnv } from '@/lib/server/env'
-import { getAuthSession } from '@/lib/server/session'
+import { requireAppRequestContext } from '@/lib/server/context'
 
+/**
+ * Returns the active route-guard session from request-scoped app context.
+ * Loaders/server functions read auth from `context`, not from global bindings,
+ * so sign-in redirects see the same cookie and origin as the auth API request.
+ * Reference: TanStack Router auth guards and TanStack Start server context.
+ */
 export const getRouteSession = createServerFn({ method: 'GET' }).handler(
-  async () => {
-    const session = await getAuthSession(getRequest(), appEnv)
+  async ({ context }) => {
+    const appContext = requireAppRequestContext(context)
+    const session = await appContext.auth.getSession()
     if (!session) return null
 
     return {

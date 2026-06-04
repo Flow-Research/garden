@@ -41,7 +41,7 @@ export const Route = createFileRoute('/api/workspaces/$id')({
         const session = await requireSession(request)
         if (!session) return unauthorized()
 
-        const auth = createAuth(appEnv)
+        const auth = createAuth(appEnv, request)
         const organization = (await auth.api.getFullOrganization({
           headers: request.headers,
           query: {
@@ -70,7 +70,7 @@ export const Route = createFileRoute('/api/workspaces/$id')({
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
 
-        const auth = createAuth(appEnv)
+        const auth = createAuth(appEnv, request)
         const data: Record<string, unknown> = {}
         if (typeof body.name === 'string') data.name = body.name
         if (typeof body.slug === 'string') data.slug = body.slug

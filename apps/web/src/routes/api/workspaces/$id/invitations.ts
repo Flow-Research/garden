@@ -13,7 +13,7 @@ export const Route = createFileRoute('/api/workspaces/$id/invitations')({
       GET: async ({ request, params }) => {
         const session = await requireSession(request)
         if (!session) return unauthorized()
-        const auth = createAuth(appEnv)
+        const auth = createAuth(appEnv, request)
         const rows = (await auth.api.listInvitations({
           headers: request.headers,
           query: {

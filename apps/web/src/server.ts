@@ -22,6 +22,7 @@ import { reconcile } from '@/lib/server/issue-run-reconciler'
 import { ensureAgentRow } from '@/lib/server/chat-agents'
 import { getDb, schema } from '@/lib/server/db'
 import { disposeRpcResult } from '@garden/core/platform/rpc'
+import { createAppRequestContext } from '@/lib/server/context'
 
 export { AgentDO }
 export { AutomationRunSubAgent }
@@ -434,7 +435,10 @@ export default {
     }
 
     const appResponse = await Result.tryPromise({
-      try: async () => handler.fetch(request),
+      try: async () =>
+        handler.fetch(request, {
+          context: createAppRequestContext(env, request),
+        }),
       catch: (cause) => cause,
     })
 

@@ -1,11 +1,9 @@
 import { eq } from 'drizzle-orm'
 import { createServerFn } from '@tanstack/react-start'
-import { getRequest } from '@tanstack/react-start/server'
-import { createAuth } from '@/lib/auth'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { toWorkspaceFromOrganization } from '@/lib/server/control-plane'
 import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
-import { getAuthSession, toCoreUser } from '@/lib/server/session'
+import { toCoreUser } from '@/lib/server/session'
 import type { User, Workspace } from '@garden/core/types'
 
 export interface AuthBootstrap {
@@ -13,22 +11,30 @@ export interface AuthBootstrap {
   workspaces: Workspace[]
 }
 
+/**
+ * Loads the authenticated shell bootstrap from request-scoped app context.
+ * Garden previously recreated Better Auth from `appEnv`, so
+ * `listOrganizations` could not see the signed-in request and threw
+ * `Unauthorized` after login. Keeping the same auth instance for session and
+ * organization reads makes the workspace landing deterministic. Reference:
+ * Better Auth organization plugin and TanStack Start server context.
+ */
 const rawGetAuthBootstrap = createServerFn({ method: 'GET' }).handler(
-  async () => {
-    const request = getRequest()
-    const session = await getAuthSession(request, appEnv)
+  async ({ context }) => {
+    const appContext = requireAppRequestContext(context)
+    const session = await appContext.auth.getSession()
     if (!session) return null
 
-    const db = getDb(appEnv)
+    const db = getDb(appContext.env)
     const [userRow] = await db
       .select()
       .from(schema.user)
       .where(eq(schema.user.id, session.user.id))
     if (!userRow) return null
 
-    const auth = createAuth(appEnv)
+    const auth = appContext.auth.getAuth()
     const organizations = await auth.api.listOrganizations({
-      headers: request.headers,
+      headers: appContext.request.headers,
     })
 
     return {

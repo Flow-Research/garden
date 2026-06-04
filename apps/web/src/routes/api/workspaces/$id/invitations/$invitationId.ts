@@ -11,7 +11,7 @@ export const Route = createFileRoute(
       DELETE: async ({ request, params }) => {
         const session = await requireSession(request)
         if (!session) return unauthorized()
-        const auth = createAuth(appEnv)
+        const auth = createAuth(appEnv, request)
         await auth.api.cancelInvitation({
           headers: request.headers,
           body: {

@@ -131,7 +131,7 @@ export const Route = createFileRoute('/api/workspaces')({
       GET: async ({ request }) => {
         const session = await requireSession(request)
         if (!session) return unauthorized()
-        const auth = createAuth(appEnv)
+        const auth = createAuth(appEnv, request)
         const organizations = await auth.api.listOrganizations({
           headers: request.headers,
         })

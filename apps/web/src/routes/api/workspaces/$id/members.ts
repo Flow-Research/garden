@@ -18,7 +18,7 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
       GET: async ({ request, params }) => {
         const session = await requireSession(request)
         if (!session) return unauthorized()
-        const auth = createAuth(appEnv)
+        const auth = createAuth(appEnv, request)
         const result = (await auth.api.listMembers({
           headers: request.headers,
           query: {
@@ -63,7 +63,7 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
         )
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
-        const auth = createAuth(appEnv)
+        const auth = createAuth(appEnv, request)
         const invitation = (await auth.api.createInvitation({
           headers: request.headers,
           body: {
