@@ -163,7 +163,6 @@ export function useChatRuntimeConnection({
       useChatStore.getState().setSessionErrored(session.id, false)
     },
     onError: markTurnError,
-    experimental_throttle: 50,
   })
 
   const stopCurrentTurn = useCallback(async () => {

@@ -8,13 +8,13 @@ packages:
 
 catalog:
   # Cloudflare
-  "@cloudflare/ai-chat": "0.7.1"
+  "@cloudflare/ai-chat": "0.8.4"
   "@cloudflare/sandbox": "0.10.2"
   "@cloudflare/shell": "0.3.8"
-  "@cloudflare/think": "0.7.2"
+  "@cloudflare/think": "0.8.6"
   "@cloudflare/vite-plugin": "1.37.3"
   "@cloudflare/workers-types": "4.20260521.1"
-  agents: "0.13.2"
+  agents: "0.14.5"
   wrangler: "4.93.1"
 
   # Database
