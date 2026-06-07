@@ -18,8 +18,7 @@ import {
   useState,
 } from 'react'
 import { Result } from 'better-result'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { chatKeys, listThreadPermissionRequests } from '@/lib/api/chat-threads'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/core/auth'
 import { useChatStore } from '@garden/core/chat'
 import { useWorkspaceStore } from '@garden/core/workspace'
@@ -40,6 +39,8 @@ import {
   NEW_SESSION_TITLE,
 } from '../use-agent-chat-sessions'
 import { makeSessionTitle, type ChatRuntime } from '../chat-runtime-provider'
+import { useToolApprovals } from '../use-tool-approvals'
+import { useStructuredInput } from '../use-structured-input'
 import {
   DocumentSidePanel,
   withDocumentVersionUrl,
@@ -47,11 +48,7 @@ import {
   type DocumentEditAnnotation,
   type DocumentPanelView,
 } from './chat-document-panel'
-import {
-  type ApprovalGroup,
-  type DocumentEditStatusMap,
-} from './chat-message-parts'
-import { resolveToolApproval } from './chat-tool-activity'
+import { type DocumentEditStatusMap } from './chat-message-parts'
 import {
   Composer,
   createFileList,
@@ -64,12 +61,6 @@ import {
   type ChatHeaderAttachment,
 } from './chat-message-files'
 import type { GardenArtifactData } from '@/features/artifacts/artifact-renderer'
-import type {
-  StructuredQuestion,
-  StructuredQuestionAnswers,
-} from '@garden/core/chat'
-import { isToolUIPart, getToolName } from 'ai'
-import { getToolCallId, getToolInput } from '@cloudflare/ai-chat/react'
 import { ChatTimeline } from './chat-timeline'
 import {
   FileText,
@@ -230,9 +221,6 @@ export function ConnectedChatPanelInteraction({
     },
     [sessionId, setInputDraftFn, clearInputDraftFn],
   )
-  const [approvalError, setApprovalError] = useState<string | null>(null)
-  const [resolvingToolCallIds, setResolvingToolCallIds] = useState<string[]>([])
-  const [resolvedApprovalIds, setResolvedApprovalIds] = useState<string[]>([])
   const [isRetrying, setIsRetrying] = useState(false)
   const [documentPanelView, setDocumentPanelView] =
     useState<DocumentPanelView | null>(null)
@@ -241,11 +229,6 @@ export function ConnectedChatPanelInteraction({
   const [optimisticPendingTurn, setOptimisticPendingTurn] = useState(false)
   const lastSentTextRef = useRef<string | null>(null)
   const pendingMessageCountRef = useRef<number | null>(null)
-  // B6: askUserInput tool calls already answered this session. The structured
-  // panel can fire onSubmit from two paths (single-select auto-advance timer +
-  // last-question handleAdvance); a second addToolOutput for the same toolCallId
-  // is rejected by the SDK's serialized tool channel and wedges the turn.
-  const submittedAnswerToolCallIdsRef = useRef<Set<string>>(new Set())
   const {
     addToolApprovalResponse,
     addToolOutput,
@@ -259,17 +242,33 @@ export function ConnectedChatPanelInteraction({
     isStreaming,
   } = runtime
 
+  // Approval + structured-input surfaces own their own state (review #4); the
+  // controller just threads the results into the timeline/composer.
+  const {
+    approvalError,
+    resolvingToolCallIds,
+    resolvedApprovalIds,
+    resolvedPermissionRequestIds,
+    handleResolveToolApproval,
+  } = useToolApprovals({
+    sessionId,
+    messages,
+    addToolApprovalResponse,
+    continueAfterGardenApproval: runtime.continueAfterGardenApproval,
+  })
+  const { pendingStructuredInput, handleSubmitAnswers } = useStructuredInput({
+    sessionId,
+    messages,
+    addToolOutput,
+  })
+
   useLayoutEffect(() => {
-    setApprovalError(null)
     setDocumentPanelView(null)
     setIsRetrying(false)
     setOptimisticPendingTurn(false)
-    setResolvedApprovalIds([])
     setResolvedDocumentEditStatuses({})
-    setResolvingToolCallIds([])
     lastSentTextRef.current = null
     pendingMessageCountRef.current = null
-    submittedAnswerToolCallIdsRef.current = new Set()
   }, [sessionId])
 
   useEffect(() => {
@@ -426,151 +425,6 @@ export function ConnectedChatPanelInteraction({
     await handleSend({ text, files: [] })
     setIsRetrying(false)
   }, [])
-
-  // B2: server-authoritative resolution for propose_agent approvals. The card
-  // used to derive resolved/pending from the embedded tool-output snapshot plus
-  // local `resolvedApprovalIds`, which is wiped on remount — so a reconnect
-  // resurfaced an already-approved proposal. Read the durable permission_request
-  // status instead (mind-map ProposalCard pattern). Only fetch when the thread
-  // actually has a proposal; refetches on reconnect/focus so the card reconciles.
-  const hasAgentProposal = useMemo(
-    () =>
-      messages.some((message) =>
-        message.parts.some(
-          (part) => isToolUIPart(part) && getToolName(part) === 'propose_agent',
-        ),
-      ),
-    [messages],
-  )
-  const permissionRequestsQuery = useQuery({
-    queryKey: chatKeys.permissionRequests(sessionId),
-    queryFn: () => listThreadPermissionRequests(sessionId),
-    enabled: hasAgentProposal,
-    staleTime: 30_000,
-  })
-  const resolvedPermissionRequestIds = useMemo(() => {
-    const ids = new Set<string>()
-    for (const request of permissionRequestsQuery.data?.requests ?? []) {
-      if (request.status !== 'pending') ids.add(request.id)
-    }
-    return ids
-  }, [permissionRequestsQuery.data])
-
-  const handleResolveToolApproval = useCallback(
-    async (group: ApprovalGroup, approved: boolean) => {
-      // B3: idempotency — never respond to an approval that's already resolved
-      // (double-click, or a card that reappeared after a reconnect). The SDK
-      // serializes tool results, so a duplicate response wedges the session.
-      if (group.approvalIds.every((id) => resolvedApprovalIds.includes(id))) {
-        return
-      }
-      setApprovalError(null)
-      setResolvingToolCallIds((current) => [
-        ...new Set([...current, ...group.toolCallIds]),
-      ])
-
-      const result = await resolveToolApproval({
-        approved,
-        threadId: sessionId,
-        ...(group.permissionRequestId
-          ? { permissionRequestId: group.permissionRequestId }
-          : { toolCallId: group.toolCallIds[0] ?? '' }),
-      }).catch((cause: unknown) => {
-        const message =
-          cause instanceof Error ? cause.message : 'Failed to resolve approval'
-        setApprovalError(message)
-        return null
-      })
-
-      if (result) {
-        setResolvedApprovalIds((current) => [
-          ...new Set([...current, ...group.approvalIds]),
-        ])
-
-        if (group.permissionRequestId) {
-          // B1: a propose_agent approval is recorded over REST above, but the
-          // durable Think turn only resumes when we tell the agent. Without this
-          // the approved sub-agent never spawns and the chat hangs "thinking".
-          const continuation = await runtime.continueAfterGardenApproval({
-            approved,
-            permissionRequestId: group.permissionRequestId,
-            pendingAgentId: group.pendingAgentId ?? null,
-          })
-          if (!continuation.ok) {
-            setApprovalError(continuation.error)
-          }
-          // Refresh durable status so the card reflects approved/denied even if
-          // this client's optimistic state is later dropped (B2).
-          void queryClient.invalidateQueries({
-            queryKey: chatKeys.permissionRequests(sessionId),
-          })
-        } else {
-          // B4: respond per (toolCallId → approvalId), keyed by the toolCallIds
-          // the server actually resolved — not by positional index, which
-          // mis-routes when the server returns a subset/reordered set for
-          // grouped identical-input calls.
-          const approvalByToolCallId = new Map<string, string>()
-          group.toolCallIds.forEach((toolCallId, index) => {
-            const approvalId = group.approvalIds[index]
-            if (toolCallId && approvalId) {
-              approvalByToolCallId.set(toolCallId, approvalId)
-            }
-          })
-          const targetToolCallIds =
-            result.toolCallIds.length > 0 ? result.toolCallIds : group.toolCallIds
-          for (const toolCallId of targetToolCallIds) {
-            const approvalId = approvalByToolCallId.get(toolCallId)
-            if (approvalId) {
-              addToolApprovalResponse?.({ id: approvalId, approved })
-            }
-          }
-        }
-      }
-
-      setResolvingToolCallIds((current) =>
-        current.filter((toolCallId) => !group.toolCallIds.includes(toolCallId)),
-      )
-    },
-    [addToolApprovalResponse, queryClient, resolvedApprovalIds, runtime, sessionId],
-  )
-
-  // ── Structured input: detect pending askUserInput tool parts ──────────
-  // Walk messages backward to find the latest askUserInput tool call
-  // waiting for the user's selection. The AI SDK surfaces client-side
-  // tools (no execute) with state "input-available".
-  const pendingStructuredInput = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const message = messages[i]
-      if (!message || message.role !== 'assistant') continue
-      for (const part of message.parts) {
-        if (!isToolUIPart(part)) continue
-        if (getToolName(part) !== 'askUserInput') continue
-        if ((part as { state: string }).state !== 'input-available') continue
-        const input = getToolInput(part) as
-          | { questions?: StructuredQuestion[] }
-          | undefined
-        if (input?.questions && input.questions.length > 0) {
-          return {
-            toolCallId: getToolCallId(part),
-            questions: input.questions,
-          }
-        }
-      }
-    }
-    return null
-  }, [messages])
-
-  const handleSubmitAnswers = useCallback(
-    (answers: StructuredQuestionAnswers) => {
-      if (!pendingStructuredInput || !addToolOutput) return
-      const { toolCallId } = pendingStructuredInput
-      // B6: collapse the two submit paths to a single response per toolCallId.
-      if (submittedAnswerToolCallIdsRef.current.has(toolCallId)) return
-      submittedAnswerToolCallIdsRef.current.add(toolCallId)
-      addToolOutput({ toolCallId, output: answers })
-    },
-    [addToolOutput, pendingStructuredInput],
-  )
 
   const sessionIsFresh =
     isUnusedIdleSession(activeSession) && messages.length === 0
