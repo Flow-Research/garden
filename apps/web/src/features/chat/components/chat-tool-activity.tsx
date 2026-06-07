@@ -46,10 +46,9 @@ import type { ChatUiMessage } from '../chat-runtime-provider'
 import {
   canonicalJsonString,
   formatApprovalInput,
-  formatApprovalToolName,
   type ApprovalGroup,
   type ChatWorkEntry,
-} from './chat-message-parts'
+} from './chat-message-model'
 
 export function PreResponseWrapper({
   children,
@@ -121,67 +120,6 @@ export function PendingAssistantActivity({ label }: { label: string }) {
     </div>
   )
 }
-
-export function toolStateLabel(state: string) {
-  switch (state) {
-    case 'streaming':
-    case 'input-streaming':
-      return 'thinking'
-    case 'loading':
-    case 'input-available':
-    case 'running':
-      return 'calling'
-    case 'complete':
-    case 'approved':
-    case 'output-available':
-      return 'done'
-    case 'error':
-    case 'output-error':
-      return 'error'
-    case 'waiting-approval':
-      return 'approval'
-    case 'denied':
-      return 'denied'
-    default:
-      return state.split('-').join(' ')
-  }
-}
-
-export function productToolLabel(toolName: string, input: unknown, output?: unknown) {
-  const record =
-    input && typeof input === 'object' ? (input as Record<string, unknown>) : {}
-  const outputRecord =
-    output && typeof output === 'object'
-      ? (output as Record<string, unknown>)
-      : {}
-  const filename =
-    typeof outputRecord.filename === 'string'
-      ? outputRecord.filename
-      : typeof record.filename === 'string'
-        ? record.filename
-        : typeof record.title === 'string'
-          ? record.title
-          : null
-  switch (toolName) {
-    case 'listDocuments':
-      return 'Checking available documents'
-    case 'readDocument':
-      return filename ? `Reading ${filename}` : 'Reading document'
-    case 'findInDocument':
-      return filename ? `Searching ${filename}` : 'Searching document'
-    case 'generateDocx':
-      return filename ? `Writing ${filename}` : 'Writing document'
-    case 'editDocument':
-      return filename ? `Editing ${filename}` : 'Preparing tracked edits'
-    case 'convertDocumentToPdf':
-      return filename ? `Converting ${filename}` : 'Converting document to PDF'
-    case 'askUserInput':
-      return 'Waiting for your input'
-    default:
-      return formatApprovalToolName(toolName)
-  }
-}
-
 
 export async function resolveToolApproval(args: {
   approved: boolean

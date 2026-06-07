@@ -1,40 +1,30 @@
 'use client'
 
 /**
- * Chat message rendering subsystem.
+ * Chat message JSX rendering. The pure interpretation layer (types, tool/edit
+ * helpers, buildMessageRenderModel) lives in `chat-message-model` and is
+ * re-exported from here for back-compat; this file owns the React components:
  *
- * Extracted from `agent-interaction-screen.tsx` to keep the parent file
- * tractable. Owns:
- *
- *   - **Render model**: buildMessageRenderModel (pure parts→typed-node
- *     interpreter) and MessageOrderedParts (thin renderer over it).
- *   - **Message rendering**: MessageSources, MessageCitations.
- *   - **Tool / approval helpers**: toolStateLabel, productToolLabel,
- *     extractApprovalDescription, resolveToolApproval.
- *   - **Tracked-edit DOM helpers**: findOpenTrackedChangeElement,
- *     normalizeInlineText, applyOptimisticResolutionToOpenDocx,
- *     DocumentEditCard, DocumentEditCardsSection, ArtifactGraphNode,
- *     GardenDocDownloadBlock, renderArtifactPart, extractCitations.
- *   - **Shared types/helpers**: ChatWorkEntry, ToolActivityItem,
- *     DocumentEditItem, DocumentEditStatusMap, ApprovalGroup,
- *     ArtifactMessagePart; plus the JSON canonicalizer, approval input
- *     formatter, internal-document-context strippers, and the EXT_TO_LANG
- *     map used by code-block rendering.
- *
- * Anything specifically tied to the Composer or top-level
- * AgentInteractionScreen still lives in the parent file.
+ *   - MessageOrderedParts — thin renderer over buildMessageRenderModel.
+ *   - MessageSources, MessageCitations — sources/citation rendering.
+ *   - DocumentEditCardsSection — tracked-edit cards.
+ *   - Artifact rendering: ArtifactGraphNode, GardenDocDownloadBlock,
+ *     renderArtifactPart.
  */
 
 import { useState } from 'react'
 import { Result } from 'better-result'
 import {
-  getToolInput,
-  getToolPartState,
-} from '@cloudflare/ai-chat/react'
-import { getToolName, isToolUIPart } from 'ai'
-import { canonicalizeJson } from '@garden/connectors/capabilities'
-import { isToolStateActive } from './chat-tool-state'
-export { canonicalJsonString } from '@garden/connectors/capabilities'
+  buildMessageRenderModel,
+  inferLanguageFromFilename,
+  type ArtifactMessagePart,
+  type DocumentEditItem,
+  type DocumentEditStatusMap,
+} from './chat-message-model'
+// Re-export the pure model surface so existing importers (chat-timeline,
+// chat-panel-controller, chat-tool-activity, lib/server) keep resolving these
+// from chat-message-parts after the model layer was split out.
+export * from './chat-message-model'
 import type {
   Edge as FlowEdge,
   Node as FlowNode,
@@ -103,8 +93,6 @@ import {
 import {
   PreResponseWrapper,
   StreamingWorkEntryRow,
-  productToolLabel,
-  toolStateLabel,
 } from './chat-tool-activity'
 import {
   DocumentEditCard,
@@ -113,258 +101,6 @@ import {
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type ArtifactMessagePart = {
-  type: string
-  data?: Record<string, unknown>
-}
-
-export type ApprovalGroup = {
-  approvalIds: string[]
-  input: unknown
-  key: string
-  permissionRequestId?: string
-  /**
-   * For a `propose_agent` approval: the sub-agent the server is waiting to
-   * spawn. Forwarded to `continueAfterGardenApproval` so the durable turn
-   * resumes after the REST approval is recorded. [B1]
-   */
-  pendingAgentId?: string
-  toolCallIds: string[]
-  toolName: string
-}
-
-export type ChatWorkEntry = {
-  active: boolean
-  detail: string | null
-  id: string
-  label: string
-  tone: 'thinking' | 'tool' | 'info' | 'error'
-}
-
-export type ToolActivityItem = ChatWorkEntry & {
-  input: unknown
-  output: unknown
-  state: string
-  toolName: string
-}
-
-export type DocumentEditItem = {
-  annotation: DocumentEditAnnotation
-  artifact: GardenArtifactData | null
-  key: string
-}
-
-export type DocumentEditStatusMap = Record<string, 'pending' | 'accepted' | 'rejected'>
-
-const EXT_TO_LANG: Record<string, string> = {
-  ts: 'typescript',
-  tsx: 'tsx',
-  js: 'javascript',
-  jsx: 'jsx',
-  py: 'python',
-  rb: 'ruby',
-  rs: 'rust',
-  go: 'go',
-  java: 'java',
-  kt: 'kotlin',
-  swift: 'swift',
-  css: 'css',
-  scss: 'scss',
-  html: 'html',
-  json: 'json',
-  yaml: 'yaml',
-  yml: 'yaml',
-  toml: 'toml',
-  md: 'markdown',
-  sql: 'sql',
-  sh: 'bash',
-  bash: 'bash',
-  zsh: 'bash',
-  dockerfile: 'dockerfile',
-  xml: 'xml',
-  graphql: 'graphql',
-  c: 'c',
-  cpp: 'cpp',
-  h: 'c',
-  hpp: 'cpp',
-  cs: 'csharp',
-}
-
-const INTERNAL_DOCUMENT_CONTEXT_START = '<GARDEN_INTERNAL_DOCUMENT_CONTEXT>'
-const INTERNAL_DOCUMENT_CONTEXT_END = '</GARDEN_INTERNAL_DOCUMENT_CONTEXT>'
-const LEGACY_INTERNAL_DOCUMENT_CONTEXT_START =
-  '\n\n[The user uploaded these workspace documents for this turn.'
-
-export function getToolActivityItem(args: {
-  debugMode: boolean
-  index: number
-  messageId: string
-  part: ChatUiMessage['parts'][number]
-}): ToolActivityItem | null {
-  if (!isToolUIPart(args.part)) return null
-  const toolName = getToolName(args.part)
-  const state = String(getToolPartState(args.part))
-  const input = getToolInput(args.part)
-  const record = args.part as unknown as Record<string, unknown>
-  const output = record.output ?? record.result
-  const active = isToolStateActive(state)
-  // A tool that ended in `output-error` is terminal (not active) but must not
-  // read as a quiet success: surface its `errorText` and an error tone so a
-  // failed connector call is visible instead of rendering as a neutral "info"
-  // row with its message dropped. [M5]
-  const errorText =
-    state === 'output-error' && typeof record.errorText === 'string'
-      ? record.errorText
-      : undefined
-  const label = args.debugMode
-    ? toolName
-    : productToolLabel(toolName, input, output)
-  const inputPreview = formatApprovalInput(input)
-  const outputPreview = formatApprovalInput(output)
-  const detail = args.debugMode
-    ? [
-        `state\n${state}`,
-        `input\n${inputPreview || '{}'}`,
-        outputPreview ? `output\n${outputPreview}` : null,
-        errorText ? `error\n${errorText}` : null,
-      ]
-        .filter(Boolean)
-        .join('\n\n')
-    : errorText
-      ? `error — ${errorText}`
-      : toolStateLabel(state)
-
-  return {
-    active,
-    detail,
-    id: `${args.messageId}:tool:${args.index}`,
-    input,
-    label,
-    output,
-    state,
-    tone: errorText ? 'error' : active ? 'tool' : 'info',
-    toolName,
-  }
-}
-
-export function getToolOutputPayload(part: ChatUiMessage['parts'][number]) {
-  const record = part as unknown as Record<string, unknown>
-  return typeof record.type === 'string' && record.type.startsWith('tool-')
-    ? ((record.output ?? record.result) as Record<string, unknown> | null)
-    : null
-}
-
-export function getDocumentEditItemsFromPart(args: {
-  index: number
-  messageId: string
-  part: ChatUiMessage['parts'][number]
-}): DocumentEditItem[] {
-  const payload = getToolOutputPayload(args.part)
-  const artifact = normalizeGardenArtifact(payload)
-  const annotations = Array.isArray(payload?.annotations)
-    ? payload.annotations
-    : []
-  return annotations.flatMap((annotation, annotationIndex) => {
-    if (!annotation || typeof annotation !== 'object') return []
-    const item = annotation as Record<string, unknown>
-    if (
-      typeof item.edit_id !== 'string' ||
-      typeof item.document_id !== 'string'
-    ) {
-      return []
-    }
-    return [
-      {
-        annotation: {
-          edit_id: item.edit_id,
-          document_id: item.document_id,
-          version_id:
-            typeof item.version_id === 'string' ? item.version_id : null,
-          version_number:
-            typeof item.version_number === 'number'
-              ? item.version_number
-              : null,
-          del_w_id: typeof item.del_w_id === 'string' ? item.del_w_id : null,
-          ins_w_id: typeof item.ins_w_id === 'string' ? item.ins_w_id : null,
-          inserted_text:
-            typeof item.inserted_text === 'string'
-              ? item.inserted_text
-              : undefined,
-          deleted_text:
-            typeof item.deleted_text === 'string'
-              ? item.deleted_text
-              : undefined,
-          reason: typeof item.reason === 'string' ? item.reason : undefined,
-          status:
-            item.status === 'accepted' ||
-            item.status === 'rejected' ||
-            item.status === 'pending'
-              ? item.status
-              : 'pending',
-        } satisfies DocumentEditAnnotation,
-        artifact,
-        key: `${args.messageId}:edit:${args.index}:${annotationIndex}`,
-      },
-    ]
-  })
-}
-
-export function inferLanguageFromFilename(filename: string | undefined | null): string | undefined {
-  if (!filename) return undefined
-  const ext = filename.split('.').pop()?.toLowerCase()
-  if (!ext) return undefined
-  return EXT_TO_LANG[ext]
-}
-
-export function stripGardenInternalDocumentContext(text: string) {
-  let next = stripBetweenMarkers(
-    text,
-    INTERNAL_DOCUMENT_CONTEXT_START,
-    INTERNAL_DOCUMENT_CONTEXT_END,
-  )
-  next = stripLegacyInternalDocumentContext(next)
-  return next.trim()
-}
-
-function stripBetweenMarkers(
-  text: string,
-  startMarker: string,
-  endMarker: string,
-) {
-  let next = text
-  let start = next.indexOf(startMarker)
-  while (start >= 0) {
-    const end = next.indexOf(endMarker, start + startMarker.length)
-    if (end < 0) return next.slice(0, start).trimEnd()
-    next =
-      next.slice(0, start).trimEnd() +
-      next.slice(end + endMarker.length).trimStart()
-    start = next.indexOf(startMarker)
-  }
-  return next
-}
-
-function stripLegacyInternalDocumentContext(text: string) {
-  const start = text.indexOf(LEGACY_INTERNAL_DOCUMENT_CONTEXT_START)
-  if (start < 0) return text
-  const end = text.indexOf(']\n', start)
-  if (end < 0) return text.slice(0, start).trimEnd()
-  return `${text.slice(0, start).trimEnd()}\n\n${text
-    .slice(end + 2)
-    .trimStart()}`.trim()
-}
-
-export function formatApprovalToolName(toolName: string) {
-  return toolName
-    .replace(/^tool_[^_]+_/, '')
-    .replace(/[_-]+/g, ' ')
-    .trim()
-}
-
-export function formatApprovalInput(input: unknown) {
-  const text = JSON.stringify(canonicalizeJson(input ?? null), null, 2)
-  return text === '{}' ? '' : text
-}
 
 export function MessageSources({ message }: { message: ChatUiMessage }) {
   const sourcePart = message.parts.find(
@@ -630,171 +366,9 @@ function DocumentEditCardsSection({
 }
 
 /**
- * The render model for one message: an ordered, typed list of what to draw, with
- * NO React in it. Extracted from `MessageOrderedParts`, which had grown into a
- * God-component interleaving three concerns inline — interpreting
- * `message.parts`, grouping consecutive tool calls into a "work" batch, and
- * emitting JSX. Pulling interpretation behind this seam makes the grouping/flush
- * algorithm explicit and testable, lets the component become a thin renderer,
- * and gives the streaming-correctness rules (M1/M2/M4) one home.
- */
-type MessageRenderNode =
-  | { kind: 'reasoning'; key: string; text: string; isStreaming: boolean }
-  | { kind: 'text'; key: string; text: string; isAnimating: boolean }
-  | {
-      kind: 'work'
-      key: string
-      entries: ToolActivityItem[]
-      active: boolean
-      stepCount: number
-    }
-  | { kind: 'artifact'; key: string; artifact: GardenArtifactData }
-  | { kind: 'edits'; key: string; edits: DocumentEditItem[] }
-  | {
-      kind: 'raw'
-      key: string
-      index: number
-      part: ChatUiMessage['parts'][number]
-    }
-
-/**
- * Interpret a message's parts into an ordered render model. Consecutive tool
- * parts accumulate into one "work" batch that flushes when a non-tool
- * renderable (reasoning/text/artifact/edits) interrupts them or the message
- * ends. Streaming-correctness rules live here:
- *  - reasoning shimmer is driven by the part's own `state === 'streaming'`,
- *    gated by whole-message streaming so finished history never shimmers. [M1]
- *  - text type-on tracks the LAST TEXT part (not the last part overall) so a
- *    trailing source/data/tool part can't cut the animation off the final
- *    sentence; the index heuristic is only a fallback when the part carries no
- *    `state`. [M2]
- *  - a work batch is keyed by the index of its FIRST tool part — a stable key
- *    that doesn't shift as content streams in above it, so the batch no longer
- *    remounts/flickers. [M4]
- */
-export function buildMessageRenderModel(
-  message: ChatUiMessage,
-  opts: { debugMode: boolean; isLatestStreaming?: boolean },
-): MessageRenderNode[] {
-  const { debugMode, isLatestStreaming } = opts
-  const nodes: MessageRenderNode[] = []
-
-  let lastTextIndex = -1
-  message.parts.forEach((part, i) => {
-    if (part.type === 'text' && (part.text ?? '').trim()) lastTextIndex = i
-  })
-
-  let work: ToolActivityItem[] = []
-  let workFirstIndex = -1
-  let workActive = false
-  const flushWork = () => {
-    if (work.length === 0) return
-    nodes.push({
-      kind: 'work',
-      key: `${message.id}:work:${workFirstIndex}`,
-      entries: work,
-      active: workActive,
-      stepCount: work.length,
-    })
-    work = []
-    workFirstIndex = -1
-    workActive = false
-  }
-
-  message.parts.forEach((part, index) => {
-    if (part.type === 'reasoning') {
-      flushWork()
-      if (!debugMode) return
-      const reasoningPart = part as {
-        type: 'reasoning'
-        text: string
-        state?: string
-      }
-      if (!reasoningPart.text.trim()) return
-      nodes.push({
-        kind: 'reasoning',
-        key: `${message.id}:reasoning:${index}`,
-        text: reasoningPart.text,
-        isStreaming:
-          Boolean(isLatestStreaming) && reasoningPart.state === 'streaming',
-      })
-      return
-    }
-
-    if (part.type === 'text') {
-      const text =
-        message.role === 'user'
-          ? stripGardenInternalDocumentContext(part.text ?? '')
-          : (part.text ?? '')
-      if (!text.trim()) return
-      flushWork()
-      const textState = (part as { state?: string }).state
-      const isAnimating =
-        Boolean(isLatestStreaming) &&
-        message.role === 'assistant' &&
-        (textState === 'streaming' ||
-          (textState === undefined && index === lastTextIndex))
-      nodes.push({
-        kind: 'text',
-        key: `${message.id}:text:${index}`,
-        text,
-        isAnimating,
-      })
-      return
-    }
-
-    if (isToolUIPart(part)) {
-      const activity = getToolActivityItem({
-        debugMode,
-        index,
-        messageId: message.id,
-        part,
-      })
-      if (activity) {
-        if (work.length === 0) workFirstIndex = index
-        work.push(activity)
-        workActive ||= activity.active
-      }
-
-      const payload = getToolOutputPayload(part)
-      const artifact = normalizeGardenArtifact(payload)
-      if (artifact) {
-        flushWork()
-        nodes.push({
-          kind: 'artifact',
-          key: `${message.id}:tool-artifact:${index}`,
-          artifact,
-        })
-      }
-
-      const edits = getDocumentEditItemsFromPart({
-        index,
-        messageId: message.id,
-        part,
-      })
-      if (edits.length > 0) {
-        flushWork()
-        nodes.push({
-          kind: 'edits',
-          key: `${message.id}:tool-edits:${index}`,
-          edits,
-        })
-      }
-      return
-    }
-
-    flushWork()
-    nodes.push({ kind: 'raw', key: `${message.id}:raw:${index}`, index, part })
-  })
-
-  flushWork()
-  return nodes
-}
-
-/**
- * Thin renderer over `buildMessageRenderModel`. Owns no interpretation — it maps
- * each typed node to its element, keeping the parse/group logic testable and out
- * of the React tree.
+ * Thin renderer over `buildMessageRenderModel` (chat-message-model). Owns no
+ * interpretation — it maps each typed render node to its element, keeping the
+ * parse/group logic testable and out of the React tree.
  */
 export function MessageOrderedParts({
   debugMode,
