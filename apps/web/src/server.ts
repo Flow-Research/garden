@@ -45,7 +45,12 @@ type ServerEnv = AppEnv
 
 const AGENT_DO_AUTH_CACHE_TTL_MS = 60_000
 const RECONCILE_ON_FETCH_INTERVAL_MS = 5_000
-const agentDoAuthCache = new Map<string, number>()
+type AgentDoAuthCacheEntry = {
+  expiresAt: number
+  agentId: string
+  workspaceId: string
+}
+const agentDoAuthCache = new Map<string, AgentDoAuthCacheEntry>()
 let lastFetchReconcileAt = 0
 const webLogger = createGardenLogger({
   service: 'garden-staging',
@@ -362,6 +367,28 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
   return Response.json({ ...base, workflowStarted: true })
 }
 
+/**
+ * Captures attribution fields before an agent request enters the Durable Object.
+ * The websocket incident showed that a 101 handoff can fail after auth but before
+ * completion logging, leaving high-volume traffic unattributed. These fields log
+ * only routing/shape metadata, never websocket keys or query values, so future
+ * reconnect storms can be traced to the authenticated user/workspace that opened
+ * the channel.
+ */
+function agentRequestAuditFields(request: Request) {
+  const url = new URL(request.url)
+  const upgrade = request.headers.get('upgrade')?.toLowerCase() ?? null
+
+  return {
+    route: 'agent',
+    upgrade,
+    isWebSocket: upgrade === 'websocket',
+    hasPartyKitKey: url.searchParams.has('_pk'),
+    userAgent: request.headers.get('user-agent'),
+    country: request.headers.get('cf-ipcountry'),
+  }
+}
+
 async function authorizeAgentRequest(
   request: Request,
   env: ServerEnv,
@@ -390,9 +417,9 @@ async function authorizeAgentRequest(
   const userLogger = logger.child({ userId: session.user.id })
 
   const cacheKey = `${session.user.id}:${agentRuntimeName}`
-  const cachedUntil = agentDoAuthCache.get(cacheKey) ?? 0
   const now = Date.now()
-  if (cachedUntil <= now) {
+  let access = agentDoAuthCache.get(cacheKey) ?? null
+  if (!access || access.expiresAt <= now) {
     const accessResult = await requireAgentAccess(
       env,
       agentRuntimeName,
@@ -411,8 +438,19 @@ async function authorizeAgentRequest(
       }
     }
 
-    agentDoAuthCache.set(cacheKey, now + AGENT_DO_AUTH_CACHE_TTL_MS)
+    access = {
+      ...accessResult.value,
+      expiresAt: now + AGENT_DO_AUTH_CACHE_TTL_MS,
+    }
+    agentDoAuthCache.set(cacheKey, access)
   }
+
+  userLogger.info('agent.request.connecting', {
+    ...agentRequestAuditFields(request),
+    agentRuntimeName,
+    agentId: access.agentId,
+    workspaceId: access.workspaceId,
+  })
 
   return { request, response: null, userId: session.user.id }
 }
