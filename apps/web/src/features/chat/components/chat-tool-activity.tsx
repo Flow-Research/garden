@@ -265,6 +265,7 @@ export function MessageToolApprovals({
           input,
           key: `${toolName}:${agentProposal.permissionRequestId}`,
           permissionRequestId: agentProposal.permissionRequestId,
+          pendingAgentId: agentProposal.pendingAgentId,
           toolCallIds: [toolCallId],
           toolName,
         },
@@ -277,6 +278,15 @@ export function MessageToolApprovals({
 
     const approval = getToolApproval(part)
     if (!approval?.id) {
+      return acc
+    }
+
+    // B3: hide an approval the moment it's optimistically resolved so the card
+    // can't be clicked again before the server flips the part out of
+    // waiting-approval (the propose_agent branch above already does this). The
+    // handler also guards against duplicate responses, but hiding kills the race
+    // at the source.
+    if (resolvedApprovalIds.includes(approval.id)) {
       return acc
     }
 

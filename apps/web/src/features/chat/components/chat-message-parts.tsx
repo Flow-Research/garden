@@ -123,6 +123,12 @@ export type ApprovalGroup = {
   input: unknown
   key: string
   permissionRequestId?: string
+  /**
+   * For a `propose_agent` approval: the sub-agent the server is waiting to
+   * spawn. Forwarded to `continueAfterGardenApproval` so the durable turn
+   * resumes after the REST approval is recorded. [B1]
+   */
+  pendingAgentId?: string
   toolCallIds: string[]
   toolName: string
 }

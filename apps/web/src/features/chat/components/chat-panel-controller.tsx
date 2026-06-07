@@ -240,6 +240,11 @@ export function ConnectedChatPanelInteraction({
   const [optimisticPendingTurn, setOptimisticPendingTurn] = useState(false)
   const lastSentTextRef = useRef<string | null>(null)
   const pendingMessageCountRef = useRef<number | null>(null)
+  // B6: askUserInput tool calls already answered this session. The structured
+  // panel can fire onSubmit from two paths (single-select auto-advance timer +
+  // last-question handleAdvance); a second addToolOutput for the same toolCallId
+  // is rejected by the SDK's serialized tool channel and wedges the turn.
+  const submittedAnswerToolCallIdsRef = useRef<Set<string>>(new Set())
   const {
     addToolApprovalResponse,
     addToolOutput,
@@ -262,6 +267,7 @@ export function ConnectedChatPanelInteraction({
     setResolvingToolCallIds([])
     lastSentTextRef.current = null
     pendingMessageCountRef.current = null
+    submittedAnswerToolCallIdsRef.current = new Set()
   }, [sessionId])
 
   useEffect(() => {
@@ -421,6 +427,12 @@ export function ConnectedChatPanelInteraction({
 
   const handleResolveToolApproval = useCallback(
     async (group: ApprovalGroup, approved: boolean) => {
+      // B3: idempotency — never respond to an approval that's already resolved
+      // (double-click, or a card that reappeared after a reconnect). The SDK
+      // serializes tool results, so a duplicate response wedges the session.
+      if (group.approvalIds.every((id) => resolvedApprovalIds.includes(id))) {
+        return
+      }
       setApprovalError(null)
       setResolvingToolCallIds((current) => [
         ...new Set([...current, ...group.toolCallIds]),
@@ -444,26 +456,38 @@ export function ConnectedChatPanelInteraction({
           ...new Set([...current, ...group.approvalIds]),
         ])
 
-        if (!group.permissionRequestId) {
-          const resolvedToolCallIds = new Set(result.toolCallIds)
-          group.toolCallIds.forEach((toolCallId, index) => {
-            if (
-              resolvedToolCallIds.size > 0 &&
-              !resolvedToolCallIds.has(toolCallId)
-            ) {
-              return
-            }
-
-            const approvalId = group.approvalIds[index]
-            if (!approvalId) {
-              return
-            }
-
-            addToolApprovalResponse?.({
-              id: approvalId,
-              approved,
-            })
+        if (group.permissionRequestId) {
+          // B1: a propose_agent approval is recorded over REST above, but the
+          // durable Think turn only resumes when we tell the agent. Without this
+          // the approved sub-agent never spawns and the chat hangs "thinking".
+          const continuation = await runtime.continueAfterGardenApproval({
+            approved,
+            permissionRequestId: group.permissionRequestId,
+            pendingAgentId: group.pendingAgentId ?? null,
           })
+          if (!continuation.ok) {
+            setApprovalError(continuation.error)
+          }
+        } else {
+          // B4: respond per (toolCallId → approvalId), keyed by the toolCallIds
+          // the server actually resolved — not by positional index, which
+          // mis-routes when the server returns a subset/reordered set for
+          // grouped identical-input calls.
+          const approvalByToolCallId = new Map<string, string>()
+          group.toolCallIds.forEach((toolCallId, index) => {
+            const approvalId = group.approvalIds[index]
+            if (toolCallId && approvalId) {
+              approvalByToolCallId.set(toolCallId, approvalId)
+            }
+          })
+          const targetToolCallIds =
+            result.toolCallIds.length > 0 ? result.toolCallIds : group.toolCallIds
+          for (const toolCallId of targetToolCallIds) {
+            const approvalId = approvalByToolCallId.get(toolCallId)
+            if (approvalId) {
+              addToolApprovalResponse?.({ id: approvalId, approved })
+            }
+          }
         }
       }
 
@@ -471,7 +495,7 @@ export function ConnectedChatPanelInteraction({
         current.filter((toolCallId) => !group.toolCallIds.includes(toolCallId)),
       )
     },
-    [addToolApprovalResponse, sessionId],
+    [addToolApprovalResponse, resolvedApprovalIds, runtime, sessionId],
   )
 
   // ── Structured input: detect pending askUserInput tool parts ──────────
@@ -503,10 +527,11 @@ export function ConnectedChatPanelInteraction({
   const handleSubmitAnswers = useCallback(
     (answers: StructuredQuestionAnswers) => {
       if (!pendingStructuredInput || !addToolOutput) return
-      addToolOutput({
-        toolCallId: pendingStructuredInput.toolCallId,
-        output: answers,
-      })
+      const { toolCallId } = pendingStructuredInput
+      // B6: collapse the two submit paths to a single response per toolCallId.
+      if (submittedAnswerToolCallIdsRef.current.has(toolCallId)) return
+      submittedAnswerToolCallIdsRef.current.add(toolCallId)
+      addToolOutput({ toolCallId, output: answers })
     },
     [addToolOutput, pendingStructuredInput],
   )
