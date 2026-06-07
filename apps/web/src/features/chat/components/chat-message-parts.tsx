@@ -6,11 +6,9 @@
  * Extracted from `agent-interaction-screen.tsx` to keep the parent file
  * tractable. Owns:
  *
- *   - **Message rendering**: MessageSources, MessageArtifacts,
- *     MessageDocumentEdits, MessageOrderedParts, MessageCitations,
- *     MessageToolActivity, MessageToolApprovals.
- *   - **Streaming activity rows**: PreResponseWrapper, StreamingWorkSection,
- *     StreamingWorkEntryRow, PendingAssistantActivity.
+ *   - **Render model**: buildMessageRenderModel (pure parts→typed-node
+ *     interpreter) and MessageOrderedParts (thin renderer over it).
+ *   - **Message rendering**: MessageSources, MessageCitations.
  *   - **Tool / approval helpers**: toolStateLabel, productToolLabel,
  *     extractApprovalDescription, resolveToolApproval.
  *   - **Tracked-edit DOM helpers**: findOpenTrackedChangeElement,
@@ -204,6 +202,14 @@ export function getToolActivityItem(args: {
   const record = args.part as unknown as Record<string, unknown>
   const output = record.output ?? record.result
   const active = isToolStateActive(state)
+  // A tool that ended in `output-error` is terminal (not active) but must not
+  // read as a quiet success: surface its `errorText` and an error tone so a
+  // failed connector call is visible instead of rendering as a neutral "info"
+  // row with its message dropped. [M5]
+  const errorText =
+    state === 'output-error' && typeof record.errorText === 'string'
+      ? record.errorText
+      : undefined
   const label = args.debugMode
     ? toolName
     : productToolLabel(toolName, input, output)
@@ -214,10 +220,13 @@ export function getToolActivityItem(args: {
         `state\n${state}`,
         `input\n${inputPreview || '{}'}`,
         outputPreview ? `output\n${outputPreview}` : null,
+        errorText ? `error\n${errorText}` : null,
       ]
         .filter(Boolean)
         .join('\n\n')
-    : toolStateLabel(state)
+    : errorText
+      ? `error — ${errorText}`
+      : toolStateLabel(state)
 
   return {
     active,
@@ -227,7 +236,7 @@ export function getToolActivityItem(args: {
     label,
     output,
     state,
-    tone: active ? 'tool' : 'info',
+    tone: errorText ? 'error' : active ? 'tool' : 'info',
     toolName,
   }
 }
@@ -499,205 +508,6 @@ function GardenDocDownloadBlock({
   )
 }
 
-export function MessageArtifacts({
-  message,
-  onOpenDocument,
-}: {
-  message: ChatUiMessage
-  onOpenDocument?: (artifact: GardenArtifactData) => void
-}) {
-  const gardenArtifacts = message.parts.flatMap((part, index) => {
-    const record = part as unknown as Record<string, unknown>
-    const type = typeof record.type === 'string' ? record.type : ''
-    const payload =
-      type === 'data-document-artifact' || type === 'data-artifact'
-        ? record.data
-        : type.startsWith('tool-')
-          ? (record.output ?? record.result)
-          : null
-    const artifact = normalizeGardenArtifact(payload)
-    return artifact ? [{ artifact, key: `${message.id}:garden:${index}` }] : []
-  })
-  const artifactParts = message.parts.filter(
-    (part) => part.type === 'data-artifact' || part.type === 'data-graph',
-  ) as ArtifactMessagePart[]
-
-  if (artifactParts.length === 0 && gardenArtifacts.length === 0) return null
-
-  return (
-    <div className="mt-3 space-y-3">
-      {gardenArtifacts.map((item) => (
-        <GardenDocDownloadBlock
-          key={item.key}
-          artifact={item.artifact}
-          onOpen={
-            onOpenDocument ? () => onOpenDocument(item.artifact) : undefined
-          }
-        />
-      ))}
-      {artifactParts.map((part, index) => {
-        if (normalizeGardenArtifact(part.data)) return null
-        if (part.type === 'data-graph') {
-          const rawNodes = Array.isArray(part.data?.nodes)
-            ? (part.data.nodes as Array<Record<string, unknown>>)
-            : []
-          const rawEdges = Array.isArray(part.data?.edges)
-            ? (part.data.edges as Array<Record<string, unknown>>)
-            : []
-
-          const nodes: FlowNode[] = rawNodes.map((node, nodeIndex) => ({
-            id:
-              typeof node.id === 'string'
-                ? node.id
-                : `node-${message.id}-${nodeIndex}`,
-            position: {
-              x: typeof node.x === 'number' ? node.x : nodeIndex * 220,
-              y:
-                typeof node.y === 'number'
-                  ? node.y
-                  : 40 + (nodeIndex % 2) * 140,
-            },
-            data: {
-              title:
-                typeof node.title === 'string'
-                  ? node.title
-                  : `Node ${nodeIndex + 1}`,
-              description:
-                typeof node.description === 'string'
-                  ? node.description
-                  : undefined,
-            },
-            type: 'artifactNode',
-          }))
-
-          const edges: FlowEdge[] = rawEdges.flatMap((edge, edgeIndex) => {
-            if (
-              typeof edge.source !== 'string' ||
-              typeof edge.target !== 'string'
-            ) {
-              return []
-            }
-            return [
-              {
-                id:
-                  typeof edge.id === 'string'
-                    ? edge.id
-                    : `edge-${message.id}-${edgeIndex}`,
-                source: edge.source,
-                target: edge.target,
-                type: 'animatedEdge',
-              } satisfies FlowEdge,
-            ]
-          })
-
-          return (
-            <Artifact key={`${message.id}:${part.type}:${index}`}>
-              <ArtifactHeader>
-                <div>
-                  <ArtifactTitle>
-                    {typeof part.data?.title === 'string'
-                      ? part.data.title
-                      : 'Graph'}
-                  </ArtifactTitle>
-                  {typeof part.data?.description === 'string' ? (
-                    <ArtifactDescription>
-                      {part.data.description}
-                    </ArtifactDescription>
-                  ) : null}
-                </div>
-              </ArtifactHeader>
-              <ArtifactContent className="p-0">
-                <div className="h-[360px] w-full">
-                  <Canvas
-                    nodes={nodes}
-                    edges={edges}
-                    edgeTypes={{ animatedEdge: GraphEdge.Animated }}
-                    nodeTypes={{ artifactNode: ArtifactGraphNode }}
-                    connectionLineComponent={Connection}
-                  >
-                    <Controls />
-                    <Panel position="top-left">
-                      <Badge variant="secondary" className="rounded-md">
-                        Canvas
-                      </Badge>
-                    </Panel>
-                  </Canvas>
-                </div>
-              </ArtifactContent>
-            </Artifact>
-          )
-        }
-
-        return (
-          <Artifact key={`${message.id}:${part.type}:${index}`}>
-            <ArtifactHeader>
-              <div>
-                <ArtifactTitle>
-                  {typeof part.data?.title === 'string'
-                    ? part.data.title
-                    : 'Artifact'}
-                </ArtifactTitle>
-                {typeof part.data?.description === 'string' ? (
-                  <ArtifactDescription>
-                    {part.data.description}
-                  </ArtifactDescription>
-                ) : null}
-              </div>
-            </ArtifactHeader>
-            <ArtifactContent>
-              <div className="text-sm leading-relaxed text-muted-foreground">
-                {typeof part.data?.content === 'string'
-                  ? part.data.content
-                  : JSON.stringify(part.data ?? {}, null, 2)}
-              </div>
-            </ArtifactContent>
-          </Artifact>
-        )
-      })}
-    </div>
-  )
-}
-
-export function MessageDocumentEdits({
-  edits: explicitEdits,
-  message,
-  onResolveError,
-  onResolveStart,
-  resolvedStatuses,
-  onOpenEdit,
-  onResolved,
-}: {
-  edits?: DocumentEditItem[]
-  message: ChatUiMessage
-  onResolveError?: (editId: string) => void
-  onResolveStart?: (editId: string, status: 'accepted' | 'rejected') => void
-  resolvedStatuses?: DocumentEditStatusMap
-  onOpenEdit?: (
-    annotation: DocumentEditAnnotation,
-    artifact: GardenArtifactData,
-  ) => void
-  onResolved?: (editId: string, status: 'accepted' | 'rejected') => void
-}) {
-  const edits =
-    explicitEdits ??
-    message.parts.flatMap((part, index) =>
-      getDocumentEditItemsFromPart({ index, messageId: message.id, part }),
-    )
-
-  if (edits.length === 0) return null
-
-  return (
-    <DocumentEditCardsSection
-      edits={edits}
-      onOpenEdit={onOpenEdit}
-      onResolveError={onResolveError}
-      onResolveStart={onResolveStart}
-      onResolved={onResolved}
-      resolvedStatuses={resolvedStatuses}
-    />
-  )
-}
-
 function DocumentEditCardsSection({
   edits,
   onOpenEdit,
@@ -813,6 +623,173 @@ function DocumentEditCardsSection({
   )
 }
 
+/**
+ * The render model for one message: an ordered, typed list of what to draw, with
+ * NO React in it. Extracted from `MessageOrderedParts`, which had grown into a
+ * God-component interleaving three concerns inline — interpreting
+ * `message.parts`, grouping consecutive tool calls into a "work" batch, and
+ * emitting JSX. Pulling interpretation behind this seam makes the grouping/flush
+ * algorithm explicit and testable, lets the component become a thin renderer,
+ * and gives the streaming-correctness rules (M1/M2/M4) one home.
+ */
+type MessageRenderNode =
+  | { kind: 'reasoning'; key: string; text: string; isStreaming: boolean }
+  | { kind: 'text'; key: string; text: string; isAnimating: boolean }
+  | {
+      kind: 'work'
+      key: string
+      entries: ToolActivityItem[]
+      active: boolean
+      stepCount: number
+    }
+  | { kind: 'artifact'; key: string; artifact: GardenArtifactData }
+  | { kind: 'edits'; key: string; edits: DocumentEditItem[] }
+  | {
+      kind: 'raw'
+      key: string
+      index: number
+      part: ChatUiMessage['parts'][number]
+    }
+
+/**
+ * Interpret a message's parts into an ordered render model. Consecutive tool
+ * parts accumulate into one "work" batch that flushes when a non-tool
+ * renderable (reasoning/text/artifact/edits) interrupts them or the message
+ * ends. Streaming-correctness rules live here:
+ *  - reasoning shimmer is driven by the part's own `state === 'streaming'`,
+ *    gated by whole-message streaming so finished history never shimmers. [M1]
+ *  - text type-on tracks the LAST TEXT part (not the last part overall) so a
+ *    trailing source/data/tool part can't cut the animation off the final
+ *    sentence; the index heuristic is only a fallback when the part carries no
+ *    `state`. [M2]
+ *  - a work batch is keyed by the index of its FIRST tool part — a stable key
+ *    that doesn't shift as content streams in above it, so the batch no longer
+ *    remounts/flickers. [M4]
+ */
+export function buildMessageRenderModel(
+  message: ChatUiMessage,
+  opts: { debugMode: boolean; isLatestStreaming?: boolean },
+): MessageRenderNode[] {
+  const { debugMode, isLatestStreaming } = opts
+  const nodes: MessageRenderNode[] = []
+
+  let lastTextIndex = -1
+  message.parts.forEach((part, i) => {
+    if (part.type === 'text' && (part.text ?? '').trim()) lastTextIndex = i
+  })
+
+  let work: ToolActivityItem[] = []
+  let workFirstIndex = -1
+  let workActive = false
+  const flushWork = () => {
+    if (work.length === 0) return
+    nodes.push({
+      kind: 'work',
+      key: `${message.id}:work:${workFirstIndex}`,
+      entries: work,
+      active: workActive,
+      stepCount: work.length,
+    })
+    work = []
+    workFirstIndex = -1
+    workActive = false
+  }
+
+  message.parts.forEach((part, index) => {
+    if (part.type === 'reasoning') {
+      flushWork()
+      if (!debugMode) return
+      const reasoningPart = part as {
+        type: 'reasoning'
+        text: string
+        state?: string
+      }
+      if (!reasoningPart.text.trim()) return
+      nodes.push({
+        kind: 'reasoning',
+        key: `${message.id}:reasoning:${index}`,
+        text: reasoningPart.text,
+        isStreaming:
+          Boolean(isLatestStreaming) && reasoningPart.state === 'streaming',
+      })
+      return
+    }
+
+    if (part.type === 'text') {
+      const text =
+        message.role === 'user'
+          ? stripGardenInternalDocumentContext(part.text ?? '')
+          : (part.text ?? '')
+      if (!text.trim()) return
+      flushWork()
+      const textState = (part as { state?: string }).state
+      const isAnimating =
+        Boolean(isLatestStreaming) &&
+        message.role === 'assistant' &&
+        (textState === 'streaming' ||
+          (textState === undefined && index === lastTextIndex))
+      nodes.push({
+        kind: 'text',
+        key: `${message.id}:text:${index}`,
+        text,
+        isAnimating,
+      })
+      return
+    }
+
+    if (isToolUIPart(part)) {
+      const activity = getToolActivityItem({
+        debugMode,
+        index,
+        messageId: message.id,
+        part,
+      })
+      if (activity) {
+        if (work.length === 0) workFirstIndex = index
+        work.push(activity)
+        workActive ||= activity.active
+      }
+
+      const payload = getToolOutputPayload(part)
+      const artifact = normalizeGardenArtifact(payload)
+      if (artifact) {
+        flushWork()
+        nodes.push({
+          kind: 'artifact',
+          key: `${message.id}:tool-artifact:${index}`,
+          artifact,
+        })
+      }
+
+      const edits = getDocumentEditItemsFromPart({
+        index,
+        messageId: message.id,
+        part,
+      })
+      if (edits.length > 0) {
+        flushWork()
+        nodes.push({
+          kind: 'edits',
+          key: `${message.id}:tool-edits:${index}`,
+          edits,
+        })
+      }
+      return
+    }
+
+    flushWork()
+    nodes.push({ kind: 'raw', key: `${message.id}:raw:${index}`, index, part })
+  })
+
+  flushWork()
+  return nodes
+}
+
+/**
+ * Thin renderer over `buildMessageRenderModel`. Owns no interpretation — it maps
+ * each typed node to its element, keeping the parse/group logic testable and out
+ * of the React tree.
+ */
 export function MessageOrderedParts({
   debugMode,
   isLatestStreaming,
@@ -837,140 +814,90 @@ export function MessageOrderedParts({
   onResolved?: (editId: string, status: 'accepted' | 'rejected') => void
   resolvedStatuses?: DocumentEditStatusMap
 }) {
-  const lastPartIndex = message.parts.length - 1
-  const rendered: React.ReactNode[] = []
-  let workItems: React.ReactNode[] = []
-  let workCount = 0
-  let workActive = false
+  const nodes = buildMessageRenderModel(message, { debugMode, isLatestStreaming })
+  if (nodes.length === 0) return null
 
-  const flushWork = () => {
-    if (workItems.length === 0) return
-    rendered.push(
-      <PreResponseWrapper
-        key={`${message.id}:work:${rendered.length}`}
-        isStreaming={workActive}
-        shouldMinimize={false}
-        stepCount={workCount}
-      >
-        {workItems}
-      </PreResponseWrapper>,
-    )
-    workItems = []
-    workCount = 0
-    workActive = false
-  }
-
-  message.parts.forEach((part, index) => {
-    if (part.type === 'reasoning') {
-      flushWork()
-      if (!debugMode) return
-      const reasoningPart = part as { type: 'reasoning'; text: string }
-      if (reasoningPart.text.trim()) {
-        rendered.push(
-          <Reasoning
-            key={`${message.id}:reasoning:${index}`}
-            isStreaming={index === message.parts.length - 1}
-            className="w-full"
-          >
-            <ReasoningTrigger />
-            <ReasoningContent>{reasoningPart.text}</ReasoningContent>
-          </Reasoning>,
-        )
-      }
-      return
-    }
-
-    if (part.type === 'text') {
-      const text =
-        message.role === 'user'
-          ? stripGardenInternalDocumentContext(part.text ?? '')
-          : (part.text ?? '')
-      if (!text.trim()) return
-      flushWork()
-      const isAnimatingText =
-        Boolean(isLatestStreaming) &&
-        message.role === 'assistant' &&
-        index === lastPartIndex
-      rendered.push(
-        <MessageResponse
-          key={`${message.id}:text:${index}`}
-          isAnimating={isAnimatingText}
-          animated={isAnimatingText ? { animation: 'fadeIn', sep: 'word' } : false}
-        >
-          {text}
-        </MessageResponse>,
-      )
-      return
-    }
-
-    if (isToolUIPart(part)) {
-      const activity = getToolActivityItem({
-        debugMode,
-        index,
-        messageId: message.id,
-        part,
-      })
-      if (activity) {
-        workCount += 1
-        workActive ||= activity.active
-        workItems.push(
-          <StreamingWorkEntryRow
-            key={activity.id}
-            entry={activity}
-            showConnector={false}
-          />,
-        )
-      }
-
-      const payload = getToolOutputPayload(part)
-      const artifact = normalizeGardenArtifact(payload)
-      if (artifact) {
-        flushWork()
-        rendered.push(
-          <GardenDocDownloadBlock
-            key={`${message.id}:tool-artifact:${index}`}
-            artifact={artifact}
-            onOpen={onOpenDocument ? () => onOpenDocument(artifact) : undefined}
-          />,
-        )
-      }
-
-      const edits = getDocumentEditItemsFromPart({
-        index,
-        messageId: message.id,
-        part,
-      })
-      if (edits.length > 0) {
-        flushWork()
-        rendered.push(
-          <DocumentEditCardsSection
-            key={`${message.id}:tool-edits:${index}`}
-            edits={edits}
-            onOpenEdit={onOpenEdit}
-            onResolveError={onResolveError}
-            onResolveStart={onResolveStart}
-            onResolved={onResolved}
-            resolvedStatuses={resolvedStatuses}
-          />,
-        )
-      }
-      return
-    }
-
-    flushWork()
-    const artifact = renderArtifactPart({
-      index,
-      messageId: message.id,
-      onOpenDocument,
-      part,
-    })
-    if (artifact) rendered.push(artifact)
-  })
-
-  flushWork()
-
-  if (rendered.length === 0) return null
-  return <>{rendered}</>
+  return (
+    <>
+      {nodes.map((node) => {
+        switch (node.kind) {
+          case 'reasoning':
+            return (
+              <Reasoning
+                key={node.key}
+                isStreaming={node.isStreaming}
+                className="w-full"
+              >
+                <ReasoningTrigger />
+                <ReasoningContent>{node.text}</ReasoningContent>
+              </Reasoning>
+            )
+          case 'text':
+            return (
+              <MessageResponse
+                key={node.key}
+                isAnimating={node.isAnimating}
+                animated={
+                  node.isAnimating
+                    ? { animation: 'fadeIn', sep: 'word' }
+                    : false
+                }
+              >
+                {node.text}
+              </MessageResponse>
+            )
+          case 'work':
+            return (
+              <PreResponseWrapper
+                key={node.key}
+                isStreaming={node.active}
+                shouldMinimize={false}
+                stepCount={node.stepCount}
+              >
+                {node.entries.map((entry) => (
+                  <StreamingWorkEntryRow
+                    key={entry.id}
+                    entry={entry}
+                    showConnector={false}
+                  />
+                ))}
+              </PreResponseWrapper>
+            )
+          case 'artifact':
+            return (
+              <GardenDocDownloadBlock
+                key={node.key}
+                artifact={node.artifact}
+                onOpen={
+                  onOpenDocument
+                    ? () => onOpenDocument(node.artifact)
+                    : undefined
+                }
+              />
+            )
+          case 'edits':
+            return (
+              <DocumentEditCardsSection
+                key={node.key}
+                edits={node.edits}
+                onOpenEdit={onOpenEdit}
+                onResolveError={onResolveError}
+                onResolveStart={onResolveStart}
+                onResolved={onResolved}
+                resolvedStatuses={resolvedStatuses}
+              />
+            )
+          case 'raw':
+            return renderArtifactPart({
+              index: node.index,
+              messageId: message.id,
+              onOpenDocument,
+              part: node.part,
+            })
+        }
+      })}
+    </>
+  )
 }
 
 function renderArtifactPart(args: {

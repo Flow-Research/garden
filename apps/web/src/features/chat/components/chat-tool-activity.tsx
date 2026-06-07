@@ -4,9 +4,8 @@
  * Tool-call activity + approval rendering.
  *
  * Extracted from `chat-message-parts.tsx`. Owns:
- *   - Streaming "work" rendering: PreResponseWrapper, StreamingWorkSection,
- *     StreamingWorkEntryRow, PendingAssistantActivity.
- *   - MessageToolActivity (the read-only tool-call summary).
+ *   - Streaming "work" rendering: PreResponseWrapper, StreamingWorkEntryRow,
+ *     PendingAssistantActivity (rendered by the MessageOrderedParts `work` node).
  *   - MessageToolApprovals (interactive approval cards).
  *   - Pure helpers: toolStateLabel, productToolLabel,
  *     extractApprovalDescription.
@@ -23,7 +22,6 @@ import {
 } from '@cloudflare/ai-chat/react'
 import { getToolName, isToolUIPart } from 'ai'
 import { cn } from '@garden/ui/lib/utils'
-import { isToolStateActive } from './chat-tool-state'
 import { resolveToolApproval as resolveToolApprovalRequest } from '@/lib/api'
 import {
   ChainOfThought,
@@ -53,65 +51,6 @@ import {
   type ChatWorkEntry,
 } from './chat-message-parts'
 
-export function MessageToolActivity({
-  debugMode,
-  message,
-}: {
-  debugMode: boolean
-  message: ChatUiMessage
-}) {
-  const tools = message.parts.flatMap((part, index) => {
-    if (!isToolUIPart(part)) return []
-    const toolName = getToolName(part)
-    const state = String(getToolPartState(part))
-    const input = getToolInput(part)
-    const record = part as unknown as Record<string, unknown>
-    const output = record.output ?? record.result
-    return [
-      {
-        active: isToolStateActive(state),
-        key: `${message.id}:tool:${index}`,
-        input,
-        output,
-        state,
-        toolName,
-      },
-    ]
-  })
-  if (tools.length === 0) return null
-
-  const entries = tools.map((toolItem): ChatWorkEntry => {
-    const label = debugMode
-      ? toolItem.toolName
-      : productToolLabel(toolItem.toolName, toolItem.input)
-    const inputPreview = formatApprovalInput(toolItem.input)
-    const outputPreview = formatApprovalInput(toolItem.output)
-    return {
-      active: toolItem.active,
-      detail: debugMode
-        ? [
-            `state\n${toolItem.state}`,
-            `input\n${inputPreview || '{}'}`,
-            outputPreview ? `output\n${outputPreview}` : null,
-          ]
-            .filter(Boolean)
-            .join('\n\n')
-        : toolStateLabel(toolItem.state),
-      id: toolItem.key,
-      label,
-      tone: toolItem.active ? 'tool' : 'info',
-    }
-  })
-
-  return (
-    <StreamingWorkSection
-      entries={entries}
-      groupLabel="Tool calls"
-      isWorking={tools.some((toolItem) => toolItem.active)}
-    />
-  )
-}
-
 export function PreResponseWrapper({
   children,
   isStreaming,
@@ -133,34 +72,6 @@ export function PreResponseWrapper({
       <ChainOfThoughtHeader>{label}</ChainOfThoughtHeader>
       <ChainOfThoughtContent>
         {children}
-      </ChainOfThoughtContent>
-    </ChainOfThought>
-  )
-}
-
-export function StreamingWorkSection({
-  entries,
-  groupLabel,
-  isWorking,
-}: {
-  entries: ChatWorkEntry[]
-  groupLabel: string
-  isWorking: boolean
-}) {
-  if (entries.length === 0) return null
-
-  return (
-    <ChainOfThought defaultOpen>
-      <ChainOfThoughtHeader>
-        {isWorking ? 'Working' : groupLabel} ({entries.length})
-      </ChainOfThoughtHeader>
-      <ChainOfThoughtContent>
-        {entries.map((entry) => (
-          <StreamingWorkEntryRow
-            key={entry.id}
-            entry={entry}
-          />
-        ))}
       </ChainOfThoughtContent>
     </ChainOfThought>
   )
