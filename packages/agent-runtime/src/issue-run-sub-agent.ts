@@ -67,6 +67,11 @@ import {
 import { assembleFoundationPrompt } from './prompt'
 import { createAgentModel } from './model'
 import {
+  classifyGardenContextOverflow,
+  configureThinkCompaction,
+  createGardenContextOverflow,
+} from './think-compaction'
+import {
   RuntimeMcpConnectionPreparer,
   RuntimeMcpError,
   RuntimeMcpController,
@@ -257,6 +262,8 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override chatRecovery = true
+  override contextOverflow = createGardenContextOverflow()
+  override classifyChatError = classifyGardenContextOverflow
 
   waitForMcpConnections = {
     timeout: mcpRuntimeConfig.connectionWaitTimeoutMs,
@@ -298,7 +305,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async configureSession(session: Session) {
-    return session
+    return configureThinkCompaction(session, this.getModel())
       .withContext('foundation', {
         description:
           'Base Garden operating contract. Later context refines this but does not override it.',

@@ -50,6 +50,11 @@ import {
 } from './sandbox-debug'
 import { createAgentModel } from './model'
 import {
+  classifyGardenContextOverflow,
+  configureThinkCompaction,
+  createGardenContextOverflow,
+} from './think-compaction'
+import {
   R2SkillFileStore,
   createGardenSkillProvider,
   materializeGardenSkills,
@@ -1035,6 +1040,8 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
 
   override messageConcurrency: MessageConcurrency = 'merge'
   override chatRecovery = true
+  override contextOverflow = createGardenContextOverflow()
+  override classifyChatError = classifyGardenContextOverflow
   waitForMcpConnections = {
     timeout: mcpRuntimeConfig.connectionWaitTimeoutMs,
   }
@@ -1082,7 +1089,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   override async configureSession(session: Session) {
     const promptContexts = this.getPromptContextOptions()
 
-    return session
+    return configureThinkCompaction(session, this.getModel())
       .withContext('foundation', promptContexts.foundation)
       .withContext('agent', promptContexts.agent)
       .withContext('workspace', promptContexts.workspace)
