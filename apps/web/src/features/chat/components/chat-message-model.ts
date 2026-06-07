@@ -361,6 +361,22 @@ type MessageRenderNode =
     }
 
 /**
+ * The data-part types `renderArtifactPart` actually draws. Used by the
+ * interpreter so only genuinely-visible parts emit a node and flush the work
+ * batch — keeping this in sync with `renderArtifactPart`'s own guard.
+ */
+function isRenderableArtifactPart(
+  part: ChatUiMessage['parts'][number],
+): boolean {
+  const type = (part as { type?: unknown }).type
+  return (
+    type === 'data-artifact' ||
+    type === 'data-graph' ||
+    type === 'data-document-artifact'
+  )
+}
+
+/**
  * Interpret a message's parts into an ordered render model. Consecutive tool
  * parts accumulate into one "work" batch that flushes when a non-tool
  * renderable (reasoning/text/artifact/edits) interrupts them or the message
@@ -406,7 +422,9 @@ export function buildMessageRenderModel(
 
   message.parts.forEach((part, index) => {
     if (part.type === 'reasoning') {
-      flushWork()
+      // Reasoning is only rendered in debug mode. Guard visibility BEFORE
+      // flushing the work batch — otherwise a hidden reasoning part splits a
+      // contiguous visible work group in two for no on-screen reason.
       if (!debugMode) return
       const reasoningPart = part as {
         type: 'reasoning'
@@ -414,6 +432,7 @@ export function buildMessageRenderModel(
         state?: string
       }
       if (!reasoningPart.text.trim()) return
+      flushWork()
       nodes.push({
         kind: 'reasoning',
         key: `${message.id}:reasoning:${index}`,
@@ -486,8 +505,14 @@ export function buildMessageRenderModel(
       return
     }
 
-    flushWork()
-    nodes.push({ kind: 'raw', key: `${message.id}:raw:${index}`, index, part })
+    // Only data-artifact/data-graph/data-document-artifact parts actually
+    // render (see renderArtifactPart). Everything else is invisible, so emit a
+    // raw node — and disturb the work grouping — ONLY for those, instead of a
+    // catch-all that flushed work for parts the renderer would drop to null.
+    if (isRenderableArtifactPart(part)) {
+      flushWork()
+      nodes.push({ kind: 'raw', key: `${message.id}:raw:${index}`, index, part })
+    }
   })
 
   flushWork()
