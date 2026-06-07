@@ -13,6 +13,7 @@ import { createWorkspaceStateBackend, Workspace } from '@cloudflare/shell'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { createExecuteTool } from '@cloudflare/think/tools/execute'
 import { createBrowserTools } from 'agents/browser/ai'
+import type { Connection } from 'agents'
 import type { McpAgent } from 'agents/mcp'
 import {
   hasToolCall,
@@ -53,6 +54,7 @@ import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { assembleFoundationPrompt } from './prompt'
 import { createSandboxTools } from './sandbox-tools'
 import { createGardenSkillProvider, R2SkillFileStore } from './skills'
+import { logAgentSocketError } from './websocket-errors'
 import {
   addStepUsage,
   normalizeRunUsage,
@@ -241,6 +243,22 @@ function automationAllowsBrowser(
 }
 
 export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
+  /**
+   * Handles automation websocket disconnects as expected lifecycle churn while
+   * preserving non-connection runtime failures as errors. This keeps deploy or
+   * client network closes from masquerading as automation failures in logs.
+   */
+  override onError(connection: Connection, error: unknown): void
+  override onError(error: unknown): void
+  override onError(connectionOrError: Connection | unknown, error?: unknown) {
+    logAgentSocketError({
+      logger: automationRunLogger,
+      component: 'automation-run-sub-agent',
+      connection: error === undefined ? null : (connectionOrError as Connection),
+      error: error ?? connectionOrError,
+    })
+  }
+
   constructor(ctx: DurableObjectState, env: AgentRuntimeEnv) {
     super(ctx, env)
   }

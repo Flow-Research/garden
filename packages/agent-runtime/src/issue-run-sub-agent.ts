@@ -11,6 +11,7 @@ import {
   type TurnContext,
 } from '@cloudflare/think'
 import { Workspace } from '@cloudflare/shell'
+import type { Connection } from 'agents'
 import type { McpAgent } from 'agents/mcp'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import {
@@ -82,6 +83,7 @@ import {
   type RunWorkflowTurnCompleteEvent,
   type RunWorkflowTurnStartResult,
 } from './run-workflow'
+import { logAgentSocketError } from './websocket-errors'
 
 type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_SECRET: string
@@ -234,6 +236,22 @@ function isActiveRunStatus(status: string) {
 }
 
 export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
+  /**
+   * Handles issue-run websocket disconnects as expected lifecycle churn while
+   * preserving non-connection runtime failures as errors. This prevents deploy
+   * or client network closes from polluting observability as app exceptions.
+   */
+  override onError(connection: Connection, error: unknown): void
+  override onError(error: unknown): void
+  override onError(connectionOrError: Connection | unknown, error?: unknown) {
+    logAgentSocketError({
+      logger: issueRunLogger,
+      component: 'issue-run-sub-agent',
+      connection: error === undefined ? null : (connectionOrError as Connection),
+      error: error ?? connectionOrError,
+    })
+  }
+
   constructor(ctx: DurableObjectState, env: AgentRuntimeEnv) {
     super(ctx, env)
   }

@@ -25,7 +25,7 @@ import {
   type TurnContext,
 } from '@cloudflare/think'
 import { Buffer } from 'node:buffer'
-import { Agent, callable } from 'agents'
+import { Agent, callable, type Connection } from 'agents'
 import type { McpAgent } from 'agents/mcp'
 import {
   type LanguageModel,
@@ -80,6 +80,7 @@ import {
   type RunWorkflowBinding,
   type RunWorkflowTurnStartResult,
 } from './run-workflow'
+import { logAgentSocketError } from './websocket-errors'
 
 type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_SECRET: string
@@ -350,6 +351,24 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   private readonly authorizedAutomationRunIds = new Set<string>()
   private identitySyncedAt = 0
   private runtimeAgentIdValue: string | undefined
+
+  /**
+   * Handles Agents SDK websocket errors as lifecycle events. Deploys and client
+   * tab refreshes can close long-lived chat sockets with network/upgrade errors;
+   * before this override the SDK default logged those expected disconnects as
+   * errors. After this override, connection-scoped failures are warn-level and
+   * non-connection runtime errors still surface as errors.
+   */
+  override onError(connection: Connection, error: unknown): void
+  override onError(error: unknown): void
+  override onError(connectionOrError: Connection | unknown, error?: unknown) {
+    logAgentSocketError({
+      logger: agentRuntimeLogger,
+      component: 'agent-do',
+      connection: error === undefined ? null : (connectionOrError as Connection),
+      error: error ?? connectionOrError,
+    })
+  }
 
   @callable()
   async ensureThread(threadId: string): Promise<RuntimeOkPayload> {
@@ -994,6 +1013,22 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
 }
 
 export class ChatSubAgent extends Think<AgentRuntimeEnv> {
+  /**
+   * Handles chat websocket disconnects without promoting normal deploy/client
+   * socket churn to error logs. Runtime errors without a connection still log at
+   * error level so real chat failures remain visible.
+   */
+  override onError(connection: Connection, error: unknown): void
+  override onError(error: unknown): void
+  override onError(connectionOrError: Connection | unknown, error?: unknown) {
+    logAgentSocketError({
+      logger: agentRuntimeLogger,
+      component: 'chat-sub-agent',
+      connection: error === undefined ? null : (connectionOrError as Connection),
+      error: error ?? connectionOrError,
+    })
+  }
+
   constructor(ctx: DurableObjectState, env: AgentRuntimeEnv) {
     super(ctx, env)
   }
