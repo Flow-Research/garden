@@ -88,8 +88,12 @@ export function WorkspaceLayout() {
   const hasSession = Boolean(user)
   const needsOnboarding =
     hasSession && !workspace?.id && !onboardingCompleted
-  const isRestoringWorkspace = hasSession && !needsOnboarding
   const activeWorkspaceId = workspace?.id ?? null
+  // Authenticated route loader data hydrates the singleton auth/workspace stores
+  // in a microtask. During that first client frame, both stores can still be
+  // empty even though the workspace is loading, so show a neutral skeleton
+  // instead of incorrectly asking the user to finish setup.
+  const isRestoringWorkspace = !activeWorkspaceId && !needsOnboarding
 
   return (
     <SidebarProvider className="h-svh">
