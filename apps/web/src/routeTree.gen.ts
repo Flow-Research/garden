@@ -94,6 +94,7 @@ import { Route as ApiWorkspacesIdInvitationsInvitationIdRouteImport } from './ro
 import { Route as ApiIssuesIdSourceBindingsBindingIdRouteImport } from './routes/api/issues/$id/source-bindings/$bindingId'
 import { Route as ApiChatThreadsIdToolApprovalRouteImport } from './routes/api/chat/threads/$id/tool-approval'
 import { Route as ApiChatThreadsIdPrimaryIssueRouteImport } from './routes/api/chat/threads/$id/primary-issue'
+import { Route as ApiChatThreadsIdPermissionRequestsRouteImport } from './routes/api/chat/threads/$id/permission-requests'
 import { Route as ApiChatThreadsIdDocumentsRouteImport } from './routes/api/chat/threads/$id/documents'
 import { Route as ApiAutomationsIdTriggersTriggerIdRouteImport } from './routes/api/automations/$id/triggers/$triggerId'
 import { Route as ApiDocumentsDocumentIdEditsEditIdActionRouteImport } from './routes/api/documents/$documentId/edits/$editId/$action'
@@ -539,6 +540,12 @@ const ApiChatThreadsIdPrimaryIssueRoute =
     path: '/primary-issue',
     getParentRoute: () => ApiChatThreadsIdRoute,
   } as any)
+const ApiChatThreadsIdPermissionRequestsRoute =
+  ApiChatThreadsIdPermissionRequestsRouteImport.update({
+    id: '/permission-requests',
+    path: '/permission-requests',
+    getParentRoute: () => ApiChatThreadsIdRoute,
+  } as any)
 const ApiChatThreadsIdDocumentsRoute =
   ApiChatThreadsIdDocumentsRouteImport.update({
     id: '/documents',
@@ -646,6 +653,7 @@ export interface FileRoutesByFullPath {
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
   '/api/automations/$id/triggers/$triggerId': typeof ApiAutomationsIdTriggersTriggerIdRoute
   '/api/chat/threads/$id/documents': typeof ApiChatThreadsIdDocumentsRoute
+  '/api/chat/threads/$id/permission-requests': typeof ApiChatThreadsIdPermissionRequestsRoute
   '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
   '/api/issues/$id/source-bindings/$bindingId': typeof ApiIssuesIdSourceBindingsBindingIdRoute
@@ -736,6 +744,7 @@ export interface FileRoutesByTo {
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
   '/api/automations/$id/triggers/$triggerId': typeof ApiAutomationsIdTriggersTriggerIdRoute
   '/api/chat/threads/$id/documents': typeof ApiChatThreadsIdDocumentsRoute
+  '/api/chat/threads/$id/permission-requests': typeof ApiChatThreadsIdPermissionRequestsRoute
   '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
   '/api/issues/$id/source-bindings/$bindingId': typeof ApiIssuesIdSourceBindingsBindingIdRoute
@@ -828,6 +837,7 @@ export interface FileRoutesById {
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
   '/api/automations/$id/triggers/$triggerId': typeof ApiAutomationsIdTriggersTriggerIdRoute
   '/api/chat/threads/$id/documents': typeof ApiChatThreadsIdDocumentsRoute
+  '/api/chat/threads/$id/permission-requests': typeof ApiChatThreadsIdPermissionRequestsRoute
   '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
   '/api/issues/$id/source-bindings/$bindingId': typeof ApiIssuesIdSourceBindingsBindingIdRoute
@@ -920,6 +930,7 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id/members'
     | '/api/automations/$id/triggers/$triggerId'
     | '/api/chat/threads/$id/documents'
+    | '/api/chat/threads/$id/permission-requests'
     | '/api/chat/threads/$id/primary-issue'
     | '/api/chat/threads/$id/tool-approval'
     | '/api/issues/$id/source-bindings/$bindingId'
@@ -1010,6 +1021,7 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id/members'
     | '/api/automations/$id/triggers/$triggerId'
     | '/api/chat/threads/$id/documents'
+    | '/api/chat/threads/$id/permission-requests'
     | '/api/chat/threads/$id/primary-issue'
     | '/api/chat/threads/$id/tool-approval'
     | '/api/issues/$id/source-bindings/$bindingId'
@@ -1101,6 +1113,7 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id/members'
     | '/api/automations/$id/triggers/$triggerId'
     | '/api/chat/threads/$id/documents'
+    | '/api/chat/threads/$id/permission-requests'
     | '/api/chat/threads/$id/primary-issue'
     | '/api/chat/threads/$id/tool-approval'
     | '/api/issues/$id/source-bindings/$bindingId'
@@ -1743,6 +1756,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatThreadsIdPrimaryIssueRouteImport
       parentRoute: typeof ApiChatThreadsIdRoute
     }
+    '/api/chat/threads/$id/permission-requests': {
+      id: '/api/chat/threads/$id/permission-requests'
+      path: '/permission-requests'
+      fullPath: '/api/chat/threads/$id/permission-requests'
+      preLoaderRoute: typeof ApiChatThreadsIdPermissionRequestsRouteImport
+      parentRoute: typeof ApiChatThreadsIdRoute
+    }
     '/api/chat/threads/$id/documents': {
       id: '/api/chat/threads/$id/documents'
       path: '/documents'
@@ -2081,12 +2101,15 @@ const ApiWorkspacesRouteWithChildren = ApiWorkspacesRoute._addFileChildren(
 
 interface ApiChatThreadsIdRouteChildren {
   ApiChatThreadsIdDocumentsRoute: typeof ApiChatThreadsIdDocumentsRoute
+  ApiChatThreadsIdPermissionRequestsRoute: typeof ApiChatThreadsIdPermissionRequestsRoute
   ApiChatThreadsIdPrimaryIssueRoute: typeof ApiChatThreadsIdPrimaryIssueRoute
   ApiChatThreadsIdToolApprovalRoute: typeof ApiChatThreadsIdToolApprovalRoute
 }
 
 const ApiChatThreadsIdRouteChildren: ApiChatThreadsIdRouteChildren = {
   ApiChatThreadsIdDocumentsRoute: ApiChatThreadsIdDocumentsRoute,
+  ApiChatThreadsIdPermissionRequestsRoute:
+    ApiChatThreadsIdPermissionRequestsRoute,
   ApiChatThreadsIdPrimaryIssueRoute: ApiChatThreadsIdPrimaryIssueRoute,
   ApiChatThreadsIdToolApprovalRoute: ApiChatThreadsIdToolApprovalRoute,
 }

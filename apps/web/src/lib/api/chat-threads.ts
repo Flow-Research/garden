@@ -16,6 +16,29 @@ export const chatKeys = {
   pendingTasks: (wsId: string) =>
     [...chatKeys.all(wsId), 'pending-tasks'] as const,
   taskMessages: (taskId: string) => ['task-messages', taskId] as const,
+  permissionRequests: (threadId: string) =>
+    ['chat', 'permission-requests', threadId] as const,
+}
+
+export type ThreadPermissionRequest = {
+  id: string
+  status: 'pending' | 'approved' | 'denied'
+  tool_call_id: string
+  pending_agent_id: string | null
+}
+
+/**
+ * Reads this thread's agent_proposal permission requests with their
+ * server-authoritative status. The propose_agent approval card consults this to
+ * reconcile after a reconnect instead of trusting stale tool-output snapshots or
+ * local optimistic state (B2). Scoped to the thread server-side via thread_id.
+ */
+export function listThreadPermissionRequests(
+  threadId: string,
+): Promise<{ ok: boolean; requests: ThreadPermissionRequest[] }> {
+  return getApiTransport().request(
+    `/api/chat/threads/${threadId}/permission-requests`,
+  )
 }
 
 export function rowToSession(row: ChatThreadRow): AgentChatSession {

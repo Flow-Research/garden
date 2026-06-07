@@ -157,6 +157,39 @@ function getAgentProposalApproval(part: ChatUiMessage['parts'][number]) {
   return { permissionRequestId, pendingAgentId }
 }
 
+/**
+ * True when a tool approval is already resolved, from the most authoritative
+ * source available [B2]:
+ *  - propose_agent: the durable permission_request status (server), falling back
+ *    to this client's optimistic ids while a resolve is in flight;
+ *  - any other tool: the SDK's own approval state — `getToolApproval().approved`
+ *    is set once the server records a response — falling back to optimistic ids.
+ * Keeps every approval kind reconciling to server truth on reconnect instead of
+ * trusting local state that's wiped on remount.
+ */
+function isApprovalResolved(args: {
+  part: ChatUiMessage['parts'][number]
+  localApprovalIds: string[]
+  durablePermissionRequestIds: ReadonlySet<string>
+}): boolean {
+  const { part } = args
+  if (!isToolUIPart(part)) return false
+  const proposal =
+    getToolName(part) === 'propose_agent'
+      ? getAgentProposalApproval(part)
+      : null
+  if (proposal) {
+    return (
+      args.durablePermissionRequestIds.has(proposal.permissionRequestId) ||
+      args.localApprovalIds.includes(proposal.permissionRequestId)
+    )
+  }
+  const approval = getToolApproval(part)
+  if (!approval?.id) return false
+  if (approval.approved !== undefined) return true
+  return args.localApprovalIds.includes(approval.id)
+}
+
 export function extractApprovalDescription(input: unknown): string | null {
   if (!input || typeof input !== 'object') return null
   const record = input as Record<string, unknown>
@@ -174,12 +207,18 @@ export function MessageToolApprovals({
   message,
   onResolve,
   resolvedApprovalIds,
+  resolvedPermissionRequestIds,
   resolvingToolCallIds,
 }: {
   debugMode: boolean
   message: ChatUiMessage
   onResolve: (group: ApprovalGroup, approved: boolean) => Promise<void>
   resolvedApprovalIds: string[]
+  /**
+   * Permission-request ids the server reports as no longer pending (B2).
+   * Authoritative over local optimistic state for propose_agent cards.
+   */
+  resolvedPermissionRequestIds: ReadonlySet<string>
   resolvingToolCallIds: string[]
 }) {
   const groups = message.parts.reduce<ApprovalGroup[]>((acc, part) => {
@@ -190,10 +229,16 @@ export function MessageToolApprovals({
     const toolName = getToolName(part)
     const toolCallId = getToolCallId(part)
     const input = getToolInput(part)
+    const resolved = isApprovalResolved({
+      part,
+      localApprovalIds: resolvedApprovalIds,
+      durablePermissionRequestIds: resolvedPermissionRequestIds,
+    })
     const agentProposal =
       toolName === 'propose_agent' ? getAgentProposalApproval(part) : null
     if (agentProposal) {
-      if (resolvedApprovalIds.includes(agentProposal.permissionRequestId)) {
+      // B2: hide once resolved per server-authoritative status (or optimistic).
+      if (resolved) {
         return acc
       }
       return [
@@ -219,12 +264,10 @@ export function MessageToolApprovals({
       return acc
     }
 
-    // B3: hide an approval the moment it's optimistically resolved so the card
-    // can't be clicked again before the server flips the part out of
-    // waiting-approval (the propose_agent branch above already does this). The
-    // handler also guards against duplicate responses, but hiding kills the race
-    // at the source.
-    if (resolvedApprovalIds.includes(approval.id)) {
+    // B2/B3: hide once resolved — SDK-authoritative `approved` after a reconnect,
+    // or this client's optimistic id while the resolve is in flight. Kills the
+    // double-click race at the source and reconciles a resurfaced card.
+    if (resolved) {
       return acc
     }
 

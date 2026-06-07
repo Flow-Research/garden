@@ -18,7 +18,8 @@ import {
   useState,
 } from 'react'
 import { Result } from 'better-result'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { chatKeys, listThreadPermissionRequests } from '@/lib/api/chat-threads'
 import { useAuthStore } from '@garden/core/auth'
 import { useChatStore } from '@garden/core/chat'
 import { useWorkspaceStore } from '@garden/core/workspace'
@@ -426,6 +427,35 @@ export function ConnectedChatPanelInteraction({
     setIsRetrying(false)
   }, [])
 
+  // B2: server-authoritative resolution for propose_agent approvals. The card
+  // used to derive resolved/pending from the embedded tool-output snapshot plus
+  // local `resolvedApprovalIds`, which is wiped on remount — so a reconnect
+  // resurfaced an already-approved proposal. Read the durable permission_request
+  // status instead (mind-map ProposalCard pattern). Only fetch when the thread
+  // actually has a proposal; refetches on reconnect/focus so the card reconciles.
+  const hasAgentProposal = useMemo(
+    () =>
+      messages.some((message) =>
+        message.parts.some(
+          (part) => isToolUIPart(part) && getToolName(part) === 'propose_agent',
+        ),
+      ),
+    [messages],
+  )
+  const permissionRequestsQuery = useQuery({
+    queryKey: chatKeys.permissionRequests(sessionId),
+    queryFn: () => listThreadPermissionRequests(sessionId),
+    enabled: hasAgentProposal,
+    staleTime: 30_000,
+  })
+  const resolvedPermissionRequestIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const request of permissionRequestsQuery.data?.requests ?? []) {
+      if (request.status !== 'pending') ids.add(request.id)
+    }
+    return ids
+  }, [permissionRequestsQuery.data])
+
   const handleResolveToolApproval = useCallback(
     async (group: ApprovalGroup, approved: boolean) => {
       // B3: idempotency — never respond to an approval that's already resolved
@@ -469,6 +499,11 @@ export function ConnectedChatPanelInteraction({
           if (!continuation.ok) {
             setApprovalError(continuation.error)
           }
+          // Refresh durable status so the card reflects approved/denied even if
+          // this client's optimistic state is later dropped (B2).
+          void queryClient.invalidateQueries({
+            queryKey: chatKeys.permissionRequests(sessionId),
+          })
         } else {
           // B4: respond per (toolCallId → approvalId), keyed by the toolCallIds
           // the server actually resolved — not by positional index, which
@@ -496,7 +531,7 @@ export function ConnectedChatPanelInteraction({
         current.filter((toolCallId) => !group.toolCallIds.includes(toolCallId)),
       )
     },
-    [addToolApprovalResponse, resolvedApprovalIds, runtime, sessionId],
+    [addToolApprovalResponse, queryClient, resolvedApprovalIds, runtime, sessionId],
   )
 
   // ── Structured input: detect pending askUserInput tool parts ──────────
@@ -708,6 +743,7 @@ export function ConnectedChatPanelInteraction({
                 onResolveToolApproval={handleResolveToolApproval}
                 resolvedDocumentEditStatuses={resolvedDocumentEditStatuses}
                 resolvedApprovalIds={resolvedApprovalIds}
+                resolvedPermissionRequestIds={resolvedPermissionRequestIds}
                 resolvingToolCallIds={resolvingToolCallIds}
                 onRetry={handleRetry}
                 isRetrying={isRetrying}
