@@ -246,6 +246,13 @@
       "when": 1778710342701,
       "tag": "0034_unique_deadpool",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1780870420624,
+      "tag": "0035_empty_fantastic_four",
+      "breakpoints": true
     }
   ]
 }

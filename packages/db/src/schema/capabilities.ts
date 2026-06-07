@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import {
   check,
+  index,
   jsonb,
   pgTable,
   text,
@@ -9,6 +10,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core'
 import { agent } from './agents.js'
+import { chatThread } from './chat.js'
 import { issue, issueRun } from './issues.js'
 import { user } from './users.js'
 
@@ -91,6 +93,12 @@ export const permissionRequest = pgTable(
     runId: uuid('run_id').references(() => issueRun.id, {
       onDelete: 'set null',
     }),
+    // Chat thread that raised this request (agent_proposal originates in a
+    // ChatSubAgent). Mirrors issueId/runId so the owning surface can scope its
+    // own requests; the propose_agent approval card reads status by thread.
+    threadId: uuid('thread_id').references(() => chatThread.id, {
+      onDelete: 'set null',
+    }),
     argsJson: jsonb('args_json'),
     toolCallId: text('tool_call_id').notNull().default(''),
     requestedAt: timestamp('requested_at', { mode: 'date' })
@@ -110,5 +118,6 @@ export const permissionRequest = pgTable(
       'permission_request_kind_check',
       sql`${table.kind} in ('connector_write', 'agent_proposal')`,
     ),
+    index('permission_request_thread_idx').on(table.threadId),
   ],
 )

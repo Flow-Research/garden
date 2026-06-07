@@ -1,0 +1,3 @@
+ALTER TABLE "permission_request" ADD COLUMN "thread_id" uuid;--> statement-breakpoint
+ALTER TABLE "permission_request" ADD CONSTRAINT "permission_request_thread_id_chat_thread_id_fk" FOREIGN KEY ("thread_id") REFERENCES "public"."chat_thread"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "permission_request_thread_idx" ON "permission_request" USING btree ("thread_id");

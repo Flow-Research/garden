@@ -454,6 +454,7 @@ async function computeInboxSourceItems(args: {
         context: schema.permissionRequest.context,
         issueId: schema.permissionRequest.issueId,
         runId: schema.permissionRequest.runId,
+        threadId: schema.permissionRequest.threadId,
         argsJson: schema.permissionRequest.argsJson,
         toolCallId: schema.permissionRequest.toolCallId,
         requestedAt: schema.permissionRequest.requestedAt,
