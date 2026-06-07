@@ -15,7 +15,6 @@ import {
   buildConnectorSyncPlan,
   extractThreadIdFromAgentName,
   hasWarmStoredConnectorServers,
-  normalizeMcpConnectorId,
   type ActiveConnectorBinding,
   type StoredConnectorServerRow,
 } from './mcp-connectors'
@@ -124,6 +123,7 @@ export type McpHost = {
   readonly getServerStates?: () => RuntimeMcpServerStates
   addRpcMcpServer: (input: {
     connectorId: string
+    id: string
     props: RpcMcpConnectorProps
   }) => Promise<McpRegistration & { id?: string }>
   removeMcpServer: (connectorId: string) => Promise<void>
@@ -148,45 +148,19 @@ export class RuntimeMcpController {
   }
 
   /**
-   * Maps SDK-generated MCP server ids back to Garden connector ids. The Agents
-   * SDK high-level RPC lifecycle persists opaque server ids, while Garden's
-   * permission, audit, and capability tables are keyed by stable connector ids.
+   * Treats the MCP server id as the connector id. Agents SDK 0.14.5 supports
+   * caller-supplied ids, and Garden now registers RPC connectors with stable
+   * connector ids. Older SDK-generated ids are intentionally ignored instead of
+   * being mapped through server name or rpc URL compatibility fallbacks.
    */
   private connectorIdForServerId(serverId: string) {
-    const directConnectorId = normalizeMcpConnectorId(serverId)
-    if (getConnectorById(directConnectorId)) return directConnectorId
-
-    const server = this.host.mcp
-      .listServers()
-      .find((candidate) => candidate.id === serverId)
-    if (!server) return null
-
-    const byName =
-      typeof server.name === 'string'
-        ? normalizeMcpConnectorId(server.name)
-        : null
-    if (byName && getConnectorById(byName)) return byName
-
-    const rpcConnectorId =
-      typeof server.server_url === 'string' &&
-      server.server_url.startsWith('rpc:')
-        ? normalizeMcpConnectorId(server.server_url.slice('rpc:'.length))
-        : null
-    return rpcConnectorId && getConnectorById(rpcConnectorId)
-      ? rpcConnectorId
-      : null
+    return getConnectorById(serverId) ? serverId : null
   }
 
   private serverForConnectorId(connectorId: string) {
-    return this.host.mcp.listServers().find((server) => {
-      const serverName =
-        typeof server.name === 'string'
-          ? normalizeMcpConnectorId(server.name)
-          : null
-      if (serverName === connectorId) return true
-
-      return server.server_url === `rpc:${connectorId}`
-    })
+    return this.host.mcp
+      .listServers()
+      .find((server) => server.id === connectorId)
   }
 
   ensureConnectorServerTable() {
@@ -1121,6 +1095,7 @@ export class RuntimeMcpController {
       try: async () => {
         const registration = await this.host.addRpcMcpServer({
           connectorId: connector.id,
+          id: connector.id,
           props: {
             userId: identity.userId,
             workspaceId: identity.workspaceId,

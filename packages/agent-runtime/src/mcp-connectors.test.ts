@@ -311,18 +311,17 @@ describe('RuntimeMcpController GitHub tools', () => {
       ctx: { storage: { sql: createSqlStorageStub() } },
       mcp,
       addRpcMcpServer: async ({ connectorId, props }) => {
-        const sdkServerId = 'sdk-generated-github'
         connectCalls.push(props)
         servers.push({
-          id: sdkServerId,
+          id: connectorId,
           name: connectorId,
           server_url: `rpc:${connectorId}`,
         })
         toolsByServer.set(
-          sdkServerId,
-          githubTools.map((tool) => ({ ...tool, serverId: sdkServerId })),
+          connectorId,
+          githubTools.map((tool) => ({ ...tool, serverId: connectorId })),
         )
-        return { id: sdkServerId, state: 'connected' }
+        return { id: connectorId, state: 'connected' }
       },
       removeMcpServer: async (connectorId) => {
         const index = servers.findIndex((server) => server.id === connectorId)
@@ -363,9 +362,7 @@ describe('RuntimeMcpController GitHub tools', () => {
       },
     ])
     expect(
-      host.mcp
-        .listTools({ serverId: 'sdk-generated-github' })
-        .map((tool) => tool.name),
+      host.mcp.listTools({ serverId: 'github' }).map((tool) => tool.name),
     ).toEqual(['issue_read', 'create_pull_request'])
 
     const aiTools = controller.wrapGetAITools(host.mcp.getAITools)
@@ -383,7 +380,7 @@ describe('RuntimeMcpController GitHub tools', () => {
       controller.activeToolKeysWithoutRawMcp({
         assembledTools: {
           local_tool: {} as ToolSet[string],
-          [buildMcpAiToolKey('sdk-generated-github', 'create_pull_request')]:
+          [buildMcpAiToolKey('github', 'create_pull_request')]:
             {} as ToolSet[string],
         },
         stableMcpTools: aiTools,

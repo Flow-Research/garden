@@ -9,7 +9,6 @@
 | MCP runtime session state is split between Postgres truth and per-DO warm cache; archive/delete cleanup is now guarded, but connector sessions need a clearer single-source-of-truth model                                                     | `packages/agent-runtime/src/runtime-mcp-controller.ts`, `packages/agent-runtime/src/agent-do.ts`                                                                        | Medium               |
 | MCP proxy hardening: HTTP auth validates agent/workspace but not explicit user membership, approval reuse is scoped by agent+capability+args but not issue/run, audit failures do not fail closed for risky tools, and GitHub App calls rely on upstream repo-selection enforcement. | `workers/mcp-proxy/src/auth.ts`, `workers/mcp-proxy/src/permission.ts`, `workers/mcp-proxy/src/session.ts`, `workers/mcp-proxy/src/audit.ts` | Medium               |
 | Capability awareness is not unified across MCP tools, permission grants, workspace inventory, and agent proposal. Runtime tools can be callable while inventory/proposal still reports only skills unless connectors are explicitly requested. | `packages/agent-runtime/src/runtime-mcp-controller.ts`, `packages/agent-runtime/src/chat-sub-agent-tools.ts`, `packages/agent-runtime/src/agent-tools/propose-agent.ts` | High                 |
-| Agents SDK `addMcpServer()` does not accept a caller-provided stable server id, so connector-style integrations must map SDK-generated MCP server ids back to stable connector ids for permissions, audit, capability sync, and AI SDK tool namespacing until upstream supports explicit ids. | `packages/agent-runtime/src/runtime-mcp-controller.ts`, upstream issue [cloudflare/agents#1564](https://github.com/cloudflare/agents/issues/1564) | Medium               |
 | `GITHUB_TOKEN` not plumbed for skills.sh import API headroom                                                                                                                                                                                   | `apps/web/src/lib/server/skills-sh.ts:7`                                                                                                                                | Low                  |
 | Exa search should be a built-in agent tool, not an MCP connector — web search is a first-class agent capability, not an integration; routing it through the connector system is wrong abstraction                                               | `connectors/exa-search/`                                                                                                                                                | Medium               |
 
@@ -29,13 +28,14 @@
 | `permissionRequest` table                                   | `packages/db/src/schema/capabilities.ts`                                                                                                      |
 | Connector registry                                          | `connectors/registry.ts` — 5 connectors with OAuth/API-key support                                                                            |
 | Connector CI workflow                                       | `.github/workflows/connectors.yml`                                                                                                            |
+| Stable MCP server ids for connectors                        | `agents@0.14.5` adds `id` to `addMcpServer()` / `addRpcMcpServer()`; Garden now passes `id: connector.id` and treats MCP server ids as connector ids. |
 
 ## Accepted Costs
 
 | Item                                                                           | Source                              |
 | ------------------------------------------------------------------------------ | ----------------------------------- |
 | Context bloat from loading all tool schemas per turn — accepted until it hurts | `docs/core/connectors.md`           |
-| Code Mode (sandbox execution escape hatch) documented but not built            | `docs/core/connectors.md`           |
+| Connector tools inside Code Mode are not exposed by default; codemode itself is built through `createExecuteTool` | `docs/core/connectors.md`, `packages/agent-runtime/src/chat-sub-agent-tools.ts` |
 | MCP Elicitation (mid-call prompts) not supported                               | `docs/core/connectors.md` non-goals |
 
 ## Session State Notes
@@ -44,8 +44,8 @@
 - Durable Object state should be treated as warm cache: registered MCP servers, session props, and tool signatures.
 - Delete should destroy runtime cache for the thread. Archive should only pause background refresh and live connector registrations so unarchive can rebuild cheaply.
 - The current code has a defensive orphan guard for missing chat threads and pauses archived chat runtimes, but a broader cleanup pass is still needed for agent archive, issue-run terminal states, and workspace deletion.
-- RPC MCP proxy sessions serialize `handleMcpMessage` calls per connector session so response delivery stays matched to callers under overlapping tool calls. If connector throughput becomes a real bottleneck, optional future split: isolate sessions by request/turn/thread instead of adding a background queue/effect layer. Avoid queue/effect orchestration unless a measured platform gap requires it.
-- Agents SDK owns MCP connection lifecycle. Garden should prefer `addMcpServer()` / `removeMcpServer()` / `waitForConnections()` and keep only the product-policy mapping layer from opaque SDK server ids to stable connector ids. Remove that mapping if upstream adds explicit server ids (tracked in [cloudflare/agents#1564](https://github.com/cloudflare/agents/issues/1564)).
+- Agents SDK owns RPC MCP response routing for overlapping calls (`cloudflare/agents#1558`, shipped in `agents@0.14.5`), so Garden does not serialize `handleMcpMessage()` in the proxy.
+- Agents SDK owns MCP connection lifecycle. Garden should prefer `addMcpServer()` / `removeMcpServer()` / `waitForConnections()`. New registrations pass stable connector ids through the SDK `id` option and runtime lookup is strict on connector ids.
 
 ## Code TODOs
 

@@ -1874,11 +1874,11 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       mcp: this.mcp,
       getServerStates: () =>
         this.getMcpServers().servers as RuntimeMcpServerStates,
-      addRpcMcpServer: async ({ connectorId, props }) =>
+      addRpcMcpServer: async ({ connectorId, id, props }) =>
         await this.addMcpServer(
           connectorId,
           this.env.MCP_SESSION as unknown as DurableObjectNamespace<McpAgent>,
-          { props },
+          { id, props },
         ),
       removeMcpServer: this.removeMcpServer.bind(this),
       resolveRuntimeIdentity: async () =>
