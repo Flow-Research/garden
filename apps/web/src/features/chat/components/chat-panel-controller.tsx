@@ -671,6 +671,7 @@ export function ConnectedChatPanelInteraction({
                 messages={visibleMessages}
                 error={error ?? null}
                 status={status}
+                isStreaming={isStreaming}
                 onOpenDocument={openDocumentArtifact}
                 onOpenEdit={openDocumentEdit}
                 onOpenCitation={openDocumentCitation}

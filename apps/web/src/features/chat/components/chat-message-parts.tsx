@@ -35,6 +35,7 @@ import {
 } from '@cloudflare/ai-chat/react'
 import { getToolName, isToolUIPart } from 'ai'
 import { canonicalizeJson } from '@garden/connectors/capabilities'
+import { isToolStateActive } from './chat-tool-state'
 export { canonicalJsonString } from '@garden/connectors/capabilities'
 import type {
   Edge as FlowEdge,
@@ -202,13 +203,7 @@ export function getToolActivityItem(args: {
   const input = getToolInput(args.part)
   const record = args.part as unknown as Record<string, unknown>
   const output = record.output ?? record.result
-  const active =
-    state === 'streaming' ||
-    state === 'loading' ||
-    state === 'input-streaming' ||
-    state === 'input-available' ||
-    state === 'running' ||
-    state === 'waiting-approval'
+  const active = isToolStateActive(state)
   const label = args.debugMode
     ? toolName
     : productToolLabel(toolName, input, output)

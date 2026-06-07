@@ -23,6 +23,7 @@ import {
 } from '@cloudflare/ai-chat/react'
 import { getToolName, isToolUIPart } from 'ai'
 import { cn } from '@garden/ui/lib/utils'
+import { isToolStateActive } from './chat-tool-state'
 import { resolveToolApproval as resolveToolApprovalRequest } from '@/lib/api'
 import {
   ChainOfThought,
@@ -68,13 +69,7 @@ export function MessageToolActivity({
     const output = record.output ?? record.result
     return [
       {
-        active:
-          state === 'streaming' ||
-          state === 'loading' ||
-          state === 'input-streaming' ||
-          state === 'input-available' ||
-          state === 'running' ||
-          state === 'waiting-approval',
+        active: isToolStateActive(state),
         key: `${message.id}:tool:${index}`,
         input,
         output,
