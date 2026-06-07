@@ -263,7 +263,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     super(ctx, env)
   }
 
-  override chatRecovery = false
+  override chatRecovery = true
 
   waitForMcpConnections = {
     timeout: mcpRuntimeConfig.connectionWaitTimeoutMs,

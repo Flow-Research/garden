@@ -254,6 +254,7 @@ export function ConnectedChatPanelInteraction({
     sendMessage,
     status,
     stop,
+    isRecovering,
     isStreaming,
   } = runtime
 
@@ -696,6 +697,7 @@ export function ConnectedChatPanelInteraction({
                 messages={visibleMessages}
                 error={error ?? null}
                 status={status}
+                isRecovering={isRecovering}
                 isStreaming={isStreaming}
                 onOpenDocument={openDocumentArtifact}
                 onOpenEdit={openDocumentEdit}
@@ -763,7 +765,7 @@ export function ConnectedChatPanelInteraction({
             </AnimatePresence>
             <Composer
               agentId={activeSession.agentId}
-              isStreaming={isStreaming}
+              isStreaming={isStreaming || isRecovering}
               status={status}
               input={input}
               onInputChange={setInput}

@@ -41,6 +41,7 @@ export type ChatRuntime = {
   addToolApprovalResponse: AgentChatApi['addToolApprovalResponse']
   addToolOutput: AgentChatApi['addToolOutput']
   error: AgentChatApi['error']
+  isRecovering: AgentChatApi['isRecovering']
   isServerStreaming: AgentChatApi['isServerStreaming']
   isStreaming: AgentChatApi['isStreaming']
   continueAfterGardenApproval: (input: {
@@ -135,6 +136,7 @@ export function useChatRuntimeConnection({
   const {
     addToolApprovalResponse,
     addToolOutput,
+    isRecovering,
     isServerStreaming,
     isStreaming,
     messages,
@@ -179,6 +181,7 @@ export function useChatRuntimeConnection({
       addToolApprovalResponse,
       addToolOutput,
       error,
+      isRecovering,
       isServerStreaming,
       isStreaming,
       continueAfterGardenApproval: async (input) =>
@@ -199,6 +202,7 @@ export function useChatRuntimeConnection({
       addToolApprovalResponse,
       addToolOutput,
       error,
+      isRecovering,
       isServerStreaming,
       isStreaming,
       agent,
