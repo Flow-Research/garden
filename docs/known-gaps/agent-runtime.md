@@ -30,16 +30,18 @@ Evidence and rationale live in [`docs/core/chat-runtime-model.md`](../core/chat-
 
 Garden now uses Think durable `submitMessages()` for issue and automation turns, with Workflow waiting on `onSubmissionStatus` events. Do not reintroduce DO-local waiter maps, manual recovery queues, or transcript repair loops. `@cloudflare/think@0.8.6` also keeps `Think.chat()` RPC turns inside chat recovery fibers, so helper/agent-tool style child runs recover better after Durable Object eviction.
 
-## Active verification work
+## Gaps
 
-| Issue | Outcome | Priority |
+| Gap | Evidence | Severity |
 | --- | --- | --- |
-| FLO-31 | Prove issue and automation facets survive the full run lifecycle in staging through `RunWorkflow`, including resume after eviction and duplicate-start prevention. | High |
-| FLO-37 | Capture prompt/config snapshots and add secret-safe tracing and regression evaluations across chat, issue, and automation runtimes. | Medium |
-
-## Deferred runtime decisions
-
-Parent-backed shared files, memory/search, a global artifact bucket, workspace-wide runtime warming, app-wide realtime invalidation, and a Workspace/container bridge are not current gaps. Each requires a concrete product workflow or measured failure before implementation. The stream-stall watchdog also stays disabled until observed stall data supports a correct bound.
+| Parent-backed shared runtime resources are not implemented. Chat messages, Shell workspace files, materialized skill files, live MCP registrations, document artifacts, and message search are still per facet/thread. There is no global workspace artifact/document bucket; `workspace_id` is an access boundary, not a shared artifact owner. | `ChatSubAgent.workspace = new Workspace({ sql: this.ctx.storage.sql, name: () => this.name })`; `RuntimeMcpController` is created with child `ctx/mcp/name`; document tools receive `threadId: this.name` | Medium |
+| Chat prompt has no dedicated shared memory/context provider beyond agent/workspace/skills. | `ChatSubAgent.configureSession()` has foundation/agent/workspace; skills are loaded separately through `getSkills()` | Medium |
+| Chat has primary-issue runtime messages, but not a structured active task/primary issue detail block in prompt context. | `chat_thread.primary_issue_id` exists and `loadPrimaryIssueMessages()` hydrates issue-run events; `configureSession()` does not add issue detail context | Medium |
+| Out-of-band Postgres writes do not invalidate live prompt/skill context. Garden API write paths can refresh active runtime state, but direct DB edits do not emit invalidation. | prompt providers cache records; no app-wide realtime publisher | Medium |
+| Stream-stall watchdog is available but not configured. Think 0.8.6 can route stalled streams into bounded recovery through `chatStreamStallTimeoutMs`; Garden leaves it off to avoid aborting long-running tools until measured stall data exists. | no `chatStreamStallTimeoutMs` override in Think subclasses | Low |
+| Agent proposal/setup cannot grant connector capabilities as first-class structured output. `propose_agent` captures `connector_requirements`, but approval does not create capability grants from them. | `packages/agent-runtime/src/agent-tools/propose-agent.ts`, `packages/core/agents/permissions.ts`, `apps/web/src/features/connections/components/connections-page.tsx` | High |
+| View-store workspace sync is a no-op without an app-layer subscription. | `packages/core/issues/stores/view-store.ts:265` TODO | Low |
+| Only mounted chat panels hold a live websocket. Hidden/unopened chats rely on durable Think recovery and refetch when reopened rather than a workspace-level warm runtime registry. | `useChatRuntimeConnection()` is called inside `AgentInteractionScreen`; `ChatRuntimeProvider` currently renders children only | Low |
 
 ## Right implementation patterns
 
@@ -56,7 +58,7 @@ Parent-backed shared files, memory/search, a global artifact bucket, workspace-w
 1. `foundation` — `packages/agent-runtime/src/instructions/base.ts`
 2. `agent` — Postgres `agent.name`, `role_title`, `instructions`
 3. `workspace` — Postgres `organization.name`, `organization.context`
-4. `skills` — assigned skills via `agent_skill` + `skill`, loaded from R2 through Think-native `SkillSource`s created by `createGardenSkillSources`
+4. `skills` — assigned skills via `agent_skill` + `skill`, loaded through `createGardenSkillProvider`
 
 ### Issue runs
 

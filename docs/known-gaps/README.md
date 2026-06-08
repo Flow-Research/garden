@@ -1,34 +1,21 @@
 # Known Gaps
 
-Current, code-verified gaps only. Deferred ideas stay documented in their area files but are not active Flow Research work.
+Extracted from docs, code TODOs, and cross-referenced against the current codebase.
 
-Last updated: 2026-07-12
+Last updated: 2026-06-08
 
-## Active issue map
+## Index
 
-| Priority | Issue | Outcome | Canonical doc |
-| --- | --- | --- | --- |
-| High | FLO-30 | Workspace-isolation regression coverage | [Auth & access](./auth-and-access.md) |
-| High | FLO-31 | Staging proof for issue and automation run lifecycle | [Issue flow](./issue-flow.md) |
-| High | FLO-32 | Health endpoint and beta smoke suite | [Infrastructure](./infrastructure.md) |
-| Medium | FLO-34 | Onboarding and failed-run recovery polish | [UI & product](./ui-and-product.md) |
-| Medium | FLO-36 | Reverse issue-chat breadcrumbs and multi-issue links | [Issue flow](./issue-flow.md) |
-| Medium | FLO-37 | Prompt snapshots, tracing, and evaluation coverage | [Prompt & system spec](./prompt-and-system-spec.md) |
-| Medium | FLO-38 | Automation trigger contracts and concurrency | [Automations](./automations.md) |
-
-## Area index
-
-| File | Scope |
-| --- | --- |
-| [auth-and-access.md](./auth-and-access.md) | Better Auth and workspace isolation |
-| [agent-runtime.md](./agent-runtime.md) | Runtime topology and deferred shared-resource decisions |
-| [automations.md](./automations.md) | Trigger contracts, concurrency, durable run proof |
-| [document-artifacts.md](./document-artifacts.md) | Thread documents and deferred artifact expansion |
-| [infrastructure.md](./infrastructure.md) | Health and beta smoke coverage |
-| [issue-flow.md](./issue-flow.md) | Run lifecycle and issue/chat relationships |
-| [prompt-and-system-spec.md](./prompt-and-system-spec.md) | Prompt snapshots, traces, and evals |
-| [realtime-sync.md](./realtime-sync.md) | Evidence-triggered workspace realtime deferral |
-| [runtime-sandbox-codemode.md](./runtime-sandbox-codemode.md) | Deferred Workspace/container bridge constraints |
-| [ui-and-product.md](./ui-and-product.md) | Onboarding and recovery polish |
-| [deferred.md](./deferred.md) | Post-beta ideas and open design questions |
-| [connectors.md](./connectors.md) | Connector-specific inventory, tracked separately |
+| File | Area | Key gaps |
+|------|------|----------|
+| [auth-and-access.md](./auth-and-access.md) | Security, auth, workspace isolation | Origin and CSRF posture need final ship review |
+| [realtime-sync.md](./realtime-sync.md) | App-wide realtime bus, live cache sync | No workspace-wide WS publisher/binding yet; issue UI uses polling |
+| [connectors.md](./connectors.md) | MCP proxy, OAuth, tools, audit | Catalog sync, audit UI, MCP session-state ownership; stable SDK server ids now adopted |
+| [agent-runtime.md](./agent-runtime.md) | Prompt assembly, shared runtime resources, connector grants | Chat keying, durable submissions, and context overflow are resolved; parent-backed sharing and richer memory remain |
+| [issue-flow.md](./issue-flow.md) | Runs, work products, inbox, issue/chat linking | Small product/data gaps after core issue-run runtime shipped |
+| [automations.md](./automations.md) | Scheduled/manual automation runs, triggers, runtime ledger | Queue concurrency, trigger hardening, richer usage/audit surfaces |
+| [document-artifacts.md](./document-artifacts.md) | DOCX, edits, citations, Review Grid | Existing-document picker; no global workspace artifact/document bucket yet |
+| [prompt-and-system-spec.md](./prompt-and-system-spec.md) | Visual runtime, browser tools, citations, evals | Observability, general provenance, schedule skill; clarification/tracing are partial |
+| [ui-and-product.md](./ui-and-product.md) | Tabs, onboarding, billing, AI Elements | Billing + audit log UI remain |
+| [infrastructure.md](./infrastructure.md) | CI, hooks, tests, error tracking, staging | Pre-commit hooks, E2E, Sentry, staging |
+| [deferred.md](./deferred.md) | Post-MVP decisions, open design questions | Memory, marketplace, workspace-level realtime, enterprise features |

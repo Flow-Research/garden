@@ -11,7 +11,6 @@
 | Doc validation pre-commit check not built | PRD sec. 10A | Low |
 | Health check route (`/api/health`) not built | Technical doc sec. 13 | Low |
 | Custom observability dashboard (recharts) not built | Technical doc sec. 13 | Low |
-| Cloudflare Analytics Engine counters not wired for connector metrics | Connectors implementation plan Phase 11 | Low |
 
 ## Done
 
@@ -19,6 +18,7 @@
 |------|----------|
 | CI/GitHub Actions pipeline | `.github/workflows/ci.yml` — lint, typecheck, test, build |
 | Connector CI workflow | `.github/workflows/connectors.yml` — connector-specific validation |
+| Cloudflare Analytics Engine connector counters | `workers/mcp-proxy/wrangler.jsonc` binds `CONNECTOR_CALLS`; `workers/mcp-proxy/src/audit.ts` writes datapoints per connector/tool/status |
 
 ## Target Pre-Commit Gates (from technical doc, not wired yet)
 

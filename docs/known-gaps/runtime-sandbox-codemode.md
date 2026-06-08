@@ -1,9 +1,9 @@
 # Runtime sandbox + codemode gaps
 
 **Status:** known gap  
-**Last reviewed:** 2026-05-19
+**Last reviewed:** 2026-06-07
 
-This note captures the current Garden runtime boundary after comparing our code with the Project Think assistant starter in `cloudflare/agents/examples/assistant`, installed `@cloudflare/think@0.6.0`, installed `@cloudflare/shell`, installed `@cloudflare/codemode`, and the public `cloudflare/agents` issue tracker.
+This note captures the current Garden runtime boundary after comparing our code with the Project Think assistant starter in `cloudflare/agents/examples/assistant`, installed `@cloudflare/think@0.8.6`, installed `@cloudflare/shell@0.3.9`, installed `@cloudflare/codemode@0.3.8`, and the public Cloudflare Agents changelog.
 
 ## Current Garden behavior
 
@@ -38,7 +38,7 @@ So, when we say “starter kit codemode,” we mean a JS Dynamic Worker sandbox 
 
 ## SDK sandbox export status
 
-`@cloudflare/think/tools/sandbox` exists but is currently a placeholder. In `@cloudflare/think@0.6.0`, `createSandboxTools()` logs a warning and returns `{}`:
+`@cloudflare/think/tools/sandbox` still exists as a placeholder. In `@cloudflare/think@0.8.6`, `createSandboxTools()` logs a warning and returns `{}`:
 
 ```ts
 console.warn("[@cloudflare/think] createSandboxTools is not yet implemented. No tools will be registered.")
@@ -97,8 +97,14 @@ For Cloudflare Workers, `WorkerLoader` + `DynamicWorkerExecutor` is the standard
 4. **Think SDK sandbox tools are no-op.** We cannot rely on `@cloudflare/think/tools/sandbox` until upstream implements it.
 5. **Garden custom sandbox option/id logic is duplicated.** Chat, issue-run, and automation-run classes repeat sandbox id compaction/hash/options.
 6. **Container image/version may drift from SDK package.** `@cloudflare/sandbox` is pinned via pnpm, while `apps/web/Dockerfile` pins a separate image tag. Keep these intentionally aligned.
-7. **Codemode currently mostly exposes `state.*`, not Garden domain tools.** `createExecuteTool` in chat passes `tools: {}` today, unlike the starter which passes `createWorkspaceTools(this.workspace)`. Think still auto-merges workspace tools outside `execute`, but code inside `execute` only gets `state.*` plus any providers we add.
+7. **Codemode currently mostly exposes `state.*`, not Garden domain tools.** `createExecuteTool` in chat passes `tools: {}` today, unlike examples that pass selected host tools through `codemode.*`. Think still auto-merges workspace tools outside `execute`, and `state.*` now exposes the richer Shell filesystem API, but code inside `execute` only gets `state.*` plus any providers we add.
 8. **Permission gates for codemode inner calls remain deferred.** Existing plans correctly move gating to a dispatch wrapper; direct AI SDK `needsApproval` cannot see calls made inside codemode.
+
+## Upgrade audit notes (2026-06-07)
+
+- `@cloudflare/think@0.8.6` adds more built-in workspace behavior, including the default workspace `bash` tool via `workspaceBash`. Garden keeps its custom container sandbox tools because the SDK sandbox tool remains no-op.
+- `@cloudflare/think/tools/execute` now documents `state.*` as the preferred filesystem surface inside codemode. Garden already uses `createWorkspaceStateBackend(this.workspace)`.
+- Direct Garden runtime dependencies are aligned with Think's nested versions: `@cloudflare/shell@0.3.9` and `@cloudflare/codemode@0.3.8`, avoiding duplicate old Shell/Codemode copies in `@garden/agent-runtime`.
 
 ## Related upstream issues found
 
