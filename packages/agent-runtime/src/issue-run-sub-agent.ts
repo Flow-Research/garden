@@ -81,6 +81,7 @@ import {
 } from './runtime-mcp-controller'
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
+import { createGardenSkillSources } from './skills'
 import { addStepUsage, normalizeRunUsage } from './run-usage'
 import {
   getRunWorkflowTurnCompleteEventType,
@@ -325,6 +326,21 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
 
   override async onStart() {
     await loadIssueInteractionSkillMarkdown()
+  }
+
+  override async getSkills() {
+    const db = drizzle(this.env.DATABASE_URL, { schema })
+    const [run] = await db
+      .select({ agentId: schema.issueRun.agentId })
+      .from(schema.issueRun)
+      .innerJoin(schema.issue, eq(schema.issue.activeRunId, schema.issueRun.id))
+      .where(eq(schema.issue.id, this.name))
+      .limit(1)
+
+    return createGardenSkillSources({
+      bucket: this.env.FILES,
+      agentId: run?.agentId ?? null,
+    })
   }
 
   override getTools(): ToolSet {

@@ -58,7 +58,7 @@ import {
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { assembleFoundationPrompt } from './prompt'
 import { createSandboxTools } from './sandbox-tools'
-import { createGardenSkillProvider, R2SkillFileStore } from './skills'
+import { createGardenSkillSources } from './skills'
 import { logAgentSocketError } from './websocket-errors'
 import {
   addStepUsage,
@@ -339,8 +339,21 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
             ].join('\n'),
         },
       })
-      .withContext('skills', this.getSkillsContextOptions())
       .withCachedPrompt()
+  }
+
+  override async getSkills() {
+    const db = drizzle(this.env.DATABASE_URL, { schema })
+    const [run] = await db
+      .select({ agentId: schema.automationRun.agentId })
+      .from(schema.automationRun)
+      .where(eq(schema.automationRun.id, this.name))
+      .limit(1)
+
+    return createGardenSkillSources({
+      bucket: this.env.FILES,
+      agentId: run?.agentId ?? null,
+    })
   }
 
   override getTools(): ToolSet {
@@ -995,30 +1008,6 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
 
   private getDb() {
     return drizzle(this.env.DATABASE_URL, { schema })
-  }
-
-  /**
-   * Exposes assigned workspace skills inside automation runs.
-   *
-   * Chat runs already had `load_context` backed by Garden's skill catalog, but
-   * automation runs could not load the vendored QA workflow pack. QA automation
-   * needs the same inventory/load behavior so the agent can pull `qa-sweep`,
-   * `browser-qa`, `qa-runtime`, and validators on demand while keeping the base
-   * prompt compact. Mirrors `ChatSubAgent.getSkillsContextOptions`; source
-   * reference: Cloudflare Think SkillProvider behavior and Harnessy's QA skill
-   * contract.
-   */
-  private getSkillsContextOptions() {
-    return {
-      description:
-        'Enabled skills assigned to this automation agent. Load by key when needed.',
-      provider: createGardenSkillProvider({
-        agentRuntimeName: this.name,
-        databaseUrl: this.env.DATABASE_URL,
-        workspace: this.workspace,
-        fileStore: new R2SkillFileStore(this.env.FILES),
-      }),
-    }
   }
 
   private getSandboxId() {

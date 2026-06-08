@@ -1,58 +1,7 @@
-import { eq } from 'drizzle-orm'
 import { defaultTrustLevelForRisk } from '@garden/connectors/capabilities'
 import type { getDb, schema } from './db'
 
 type Db = ReturnType<typeof getDb>
-
-export async function bindExistingSkillsToAgent(input: {
-  db: Db
-  schema: typeof schema
-  agentId: string
-  workspaceId: string
-}) {
-  const skills = await input.db
-    .select({ id: input.schema.skill.id })
-    .from(input.schema.skill)
-    .where(eq(input.schema.skill.workspaceId, input.workspaceId))
-
-  if (skills.length === 0) return
-
-  await input.db
-    .insert(input.schema.agentSkill)
-    .values(
-      skills.map((skill) => ({
-        agentId: input.agentId,
-        skillId: skill.id,
-        enabled: true,
-      })),
-    )
-    .onConflictDoNothing()
-}
-
-export async function bindSkillToWorkspaceAgents(input: {
-  db: Db
-  schema: typeof schema
-  skillId: string
-  workspaceId: string
-}) {
-  const agents = await input.db
-    .select({ id: input.schema.agent.id })
-    .from(input.schema.agent)
-    .where(eq(input.schema.agent.workspaceId, input.workspaceId))
-
-  if (agents.length === 0) return
-
-  await input.db
-    .insert(input.schema.agentSkill)
-    .values(
-      agents.map((agent) => ({
-        agentId: agent.id,
-        skillId: input.skillId,
-        enabled: true,
-      })),
-    )
-    .onConflictDoNothing()
-}
 
 export async function bindExistingCapabilitiesToAgent(input: {
   db: Db

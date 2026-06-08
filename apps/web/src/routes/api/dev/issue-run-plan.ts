@@ -11,6 +11,8 @@ import {
 } from '@/lib/server/control-plane'
 import { disposeRpcResult } from '@garden/core/platform/rpc'
 
+const AGENT_ROUTING_RETRY = { maxAttempts: 3 }
+
 export const Route = createFileRoute('/api/dev/issue-run-plan')({
   server: {
     handlers: {
@@ -54,7 +56,9 @@ export const Route = createFileRoute('/api/dev/issue-run-plan')({
 
         const planResult = await Result.tryPromise({
           try: async () => {
-            const stub = await getAgentByName(appEnv.AgentDO, run.hostName)
+            const stub = await getAgentByName(appEnv.AgentDO, run.hostName, {
+              routingRetry: AGENT_ROUTING_RETRY,
+            })
             return disposeRpcResult(
               await stub.getRunPlan({
                 runId: run.id,

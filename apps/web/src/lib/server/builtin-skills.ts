@@ -1,9 +1,12 @@
 import { and, eq } from 'drizzle-orm'
 import { HARNESSY_QA_SKILLS } from '@garden/agent-runtime'
 import issueInteractionSkillMarkdown from '@garden/agent-runtime/src/skills/issue-interaction/SKILL.md?raw'
-import { bindSkillToWorkspaceAgents } from './agent-bindings'
 import { type getDb, schema } from './db'
-import { hashSkillBundle, persistSkillBundleFiles } from './skill-bundles'
+import {
+  hashSkillBundle,
+  persistRuntimeSkillBundle,
+  persistSkillBundleFiles,
+} from './skill-bundles'
 
 type Db = ReturnType<typeof getDb>
 
@@ -44,7 +47,8 @@ const BUILTIN_SEED_SKILLS: readonly BuiltinSeedSkill[] = [
 ]
 
 /**
- * Seeds built-in skills that every workspace agent can use.
+ * Seeds built-in skills into the workspace skill library and standard Agent
+ * Skills R2 layout.
  *
  * Earlier bootstraps only installed the issue-interaction skill, which meant
  * Garden automations had no durable QA operating pack to load. The Harnessy QA
@@ -71,7 +75,19 @@ export async function seedBuiltinSkills(
       )
       .limit(1)
 
-    if (existing.some((skill) => skill.id)) continue
+    if (existing.some((skill) => skill.id)) {
+      const runtimeBundleResult = await persistRuntimeSkillBundle({
+        bucket,
+        workspaceId,
+        slug: seed.slug,
+        content: seed.content,
+        files: seed.files,
+      })
+      if (runtimeBundleResult.isErr()) {
+        throw runtimeBundleResult.error
+      }
+      continue
+    }
 
     const parsed = parseFrontmatter(seed.content)
     const bundleHash = await hashSkillBundle({
@@ -107,11 +123,15 @@ export async function seedBuiltinSkills(
       }
     }
 
-    await bindSkillToWorkspaceAgents({
-      db,
-      schema,
-      skillId,
+    const runtimeBundleResult = await persistRuntimeSkillBundle({
+      bucket,
       workspaceId,
+      slug: seed.slug,
+      content: seed.content,
+      files: seed.files,
     })
+    if (runtimeBundleResult.isErr()) {
+      throw runtimeBundleResult.error
+    }
   }
 }

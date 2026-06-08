@@ -54,11 +54,7 @@ import {
   configureThinkCompaction,
   createGardenContextOverflow,
 } from './think-compaction'
-import {
-  R2SkillFileStore,
-  createGardenSkillProvider,
-  materializeGardenSkills,
-} from './skills'
+import { createGardenSkillSources } from './skills'
 import {
   PostgresAgentPromptCatalog,
   createPromptContextProviders,
@@ -212,9 +208,8 @@ const SLASH_SKILL_TOKEN_PATTERN = /^\/([a-zA-Z0-9_-]+)$/
 /**
  * Extracts text from AI SDK model messages so slash skill invocations can be
  * honored server-side, not just in the composer UI. The composer emits direct
- * `/<slug>` tokens; before this change they were plain text and depended
- * on the model deciding to call `load_context`. Keeping parsing in the runtime
- * makes live fixtures and manual slash loading deterministic.
+ * `/<slug>` tokens; runtime maps them to attached SDK skill names and asks the
+ * model to use Think's native `activate_skill` tool.
  */
 function textFromModelContent(content: ModelMessage['content']): string {
   if (typeof content === 'string') return content
@@ -241,9 +236,10 @@ function latestUserMessageText(messages: readonly ModelMessage[]) {
 }
 
 /**
- * Finds explicit slash-selected skill slugs in the latest user message. This
- * mirrors the web composer format from `skill-invocation.ts` while staying in
- * agent-runtime to avoid coupling the Worker bundle to web UI modules.
+ * Finds explicit slash-selected skill tokens in the latest user message. The
+ * web composer stores readable `/slug` tokens; runtime resolves those tokens to
+ * attached SDK skill names before asking Think's native `activate_skill` tool to
+ * load them.
  */
 function explicitSkillSlugsFromMessages(messages: readonly ModelMessage[]) {
   const text = latestUserMessageText(messages)
@@ -537,14 +533,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
     return thread.resolveDocumentEdit(input)
-  }
-
-  @callable()
-  async refreshThreadSkills(threadId: string): Promise<RuntimeOkPayload> {
-    await this.requireThreadAccess(threadId)
-    const thread = await this.subAgent(ChatSubAgent, threadId)
-    await thread.refreshSkillInventory()
-    return { ok: true }
   }
 
   @callable()
@@ -1093,8 +1081,26 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       .withContext('foundation', promptContexts.foundation)
       .withContext('agent', promptContexts.agent)
       .withContext('workspace', promptContexts.workspace)
-      .withContext('skills', this.getSkillsContextOptions())
       .withCachedPrompt()
+  }
+
+  override async getSkills() {
+    const db = drizzle(this.env.DATABASE_URL, { schema })
+    const [thread] = await db
+      .select({ agentId: schema.chatThread.agentId })
+      .from(schema.chatThread)
+      .where(
+        or(
+          eq(schema.chatThread.id, this.name),
+          eq(schema.chatThread.runtimeKey, this.name),
+        ),
+      )
+      .limit(1)
+
+    return createGardenSkillSources({
+      bucket: this.env.FILES,
+      agentId: thread?.agentId ?? null,
+    })
   }
 
   override getTools() {
@@ -1236,35 +1242,60 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   /**
-   * Loads any `/<slug>` tokens from the latest user message before the
-   * model runs. The slash menu writes those tokens into chat text, but relying
-   * on the model to notice and call `load_context` made explicit selections
-   * flaky in live runtime tests. Calling the existing Think context tool here
-   * preserves the same loaded-skill state while making slash selection a hard
-   * user instruction.
+   * Converts explicit `/slug` selections from the composer into a native Think
+   * Agent Skills instruction. The SDK owns actual loading through
+   * `activate_skill`; Garden only resolves the UI token to the assigned skill's
+   * exact standard name from `agent_skill`.
    */
-  private async loadExplicitSlashSkills(ctx: TurnContext) {
+  private async explicitSlashSkillInstruction(ctx: TurnContext) {
     const slugs = explicitSkillSlugsFromMessages(ctx.messages)
-    if (slugs.length === 0) return []
+    if (slugs.length === 0) return ''
 
-    const toolSet = await this.session.tools()
-    const loadTool = toolSet.load_context as
-      | { execute?: (input: { label: string; key: string }) => Promise<string> }
-      | undefined
-    if (!loadTool?.execute) return []
-    const executeLoadContext = loadTool.execute
+    const db = drizzle(this.env.DATABASE_URL, { schema })
+    const [thread] = await db
+      .select({ agentId: schema.chatThread.agentId })
+      .from(schema.chatThread)
+      .where(
+        or(
+          eq(schema.chatThread.id, this.name),
+          eq(schema.chatThread.runtimeKey, this.name),
+        ),
+      )
+      .limit(1)
+    if (!thread) return ''
 
-    const loaded = await Promise.all(
-      slugs.map(async (slug) => {
-        const document = await executeLoadContext({
-          label: 'skills',
-          key: slug,
-        })
-        return { slug, document }
-      }),
-    )
+    const assignedRows = await db
+      .select({
+        name: schema.skill.name,
+        slug: schema.skill.slug,
+      })
+      .from(schema.agentSkill)
+      .innerJoin(schema.skill, eq(schema.skill.id, schema.agentSkill.skillId))
+      .where(
+        and(
+          eq(schema.agentSkill.agentId, thread.agentId),
+          eq(schema.agentSkill.enabled, true),
+        ),
+      )
 
-    return loaded.filter((entry) => !entry.document.includes('not found'))
+    const assignedByToken = new Map<string, string>()
+    for (const row of assignedRows) {
+      assignedByToken.set(row.slug.toLowerCase(), row.name)
+      assignedByToken.set(row.name.toLowerCase(), row.name)
+    }
+
+    const selectedNames = slugs.flatMap((slug) => {
+      const name = assignedByToken.get(slug.toLowerCase())
+      return name ? [name] : []
+    })
+    const uniqueNames = Array.from(new Set(selectedNames))
+    if (uniqueNames.length === 0) return ''
+
+    return [
+      'The user explicitly selected these attached skills with slash commands:',
+      uniqueNames.map((name) => `- ${name}`).join('\n'),
+      'Before proceeding, call activate_skill with each exact skill name above, then follow the activated skill instructions.',
+    ].join('\n')
   }
 
   override async beforeTurn(ctx: TurnContext) {
@@ -1284,26 +1315,21 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         ? ctx.body.document_context.trim()
         : null
 
-    const explicitSkillLoadResult = await Result.tryPromise({
-      try: async () => await this.loadExplicitSlashSkills(ctx),
+    const explicitSkillInstructionResult = await Result.tryPromise({
+      try: async () => await this.explicitSlashSkillInstruction(ctx),
       catch: (cause) => messageFromUnknown(cause),
     })
-    if (explicitSkillLoadResult.isErr()) {
-      console.warn('[agent-runtime] failed to load slash-invoked skills', {
-        error: explicitSkillLoadResult.error,
+    if (explicitSkillInstructionResult.isErr()) {
+      console.warn('[agent-runtime] failed to resolve slash-invoked skills', {
+        error: explicitSkillInstructionResult.error,
       })
     }
 
-    const explicitSkillContext = explicitSkillLoadResult.isOk()
-      ? explicitSkillLoadResult.value
-          .map(
-            (entry) =>
-              `Explicitly loaded skill from /${entry.slug}:\n${entry.document}`,
-          )
-          .join('\n\n')
+    const explicitSkillInstruction = explicitSkillInstructionResult.isOk()
+      ? explicitSkillInstructionResult.value
       : ''
 
-    const systemAdditions = [documentContext, explicitSkillContext]
+    const systemAdditions = [documentContext, explicitSkillInstruction]
       .filter((part): part is string => Boolean(part?.trim()))
       .join('\n\n')
 
@@ -1491,71 +1517,25 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   private async prepareRuntimeWithRetries(
     reason: string,
   ): Promise<RuntimePrepareResult> {
-    const skillsResult = await Result.tryPromise({
-      try: async () =>
-        materializeGardenSkills({
-          agentRuntimeName: this.getAgentRuntimeName(),
-          databaseUrl: this.env.DATABASE_URL,
-          workspace: this.workspace,
-          fileStore: new R2SkillFileStore(this.env.FILES),
-        }),
-      catch: (cause) =>
-        cause instanceof Error
-          ? cause.message
-          : 'Failed to prepare runtime skills',
-    })
-    if (skillsResult.isErr()) {
-      console.warn('[agent-runtime] failed to prepare runtime skills', {
-        reason,
-        error: skillsResult.error,
-      })
-      return Result.err(skillsResult.error)
-    }
-
     return this.mcpConnectionPreparer.ensureLoaded(reason)
   }
 
   @callable()
   async listRuntimeSkills(): Promise<RuntimeSkillMenuEntry[]> {
-    await materializeGardenSkills({
-      agentRuntimeName: this.getAgentRuntimeName(),
-      databaseUrl: this.env.DATABASE_URL,
-      workspace: this.workspace,
-      fileStore: new R2SkillFileStore(this.env.FILES),
-    })
+    const sources = await this.getSkills()
+    const descriptors = []
+    for (const source of sources) {
+      descriptors.push(...(await source.list()))
+    }
 
-    const skillDirs = await this.workspace
-      .readDir('/.agents/skills', { limit: 500 })
-      .then(
-        (entries) => entries,
-        () => [] as WorkspaceEntry[],
-      )
-
-    const entries = await Promise.all(
-      skillDirs
-        .filter((entry) => entry.type === 'directory')
-        .map(async (entry) => {
-          const content = await this.workspace
-            .readFile(`/.agents/skills/${entry.name}/SKILL.md`)
-            .then(
-              (text) => text,
-              () => null,
-            )
-
-          return content
-            ? parseRuntimeSkillMenuEntry(entry.name, content)
-            : null
-        }),
-    )
-
-    return entries
-      .flatMap((entry) => (entry ? [entry] : []))
+    return descriptors
+      .map((descriptor) => ({
+        id: descriptor.name,
+        slug: descriptor.name,
+        name: descriptor.name,
+        description: descriptor.description,
+      }))
       .sort((left, right) => left.slug.localeCompare(right.slug))
-  }
-
-  async refreshSkillInventory() {
-    await this.reloadSkillContext()
-    return { ok: true }
   }
 
   async refreshPromptConfig() {
@@ -2119,32 +2099,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     })
   }
 
-  private getSkillsContextOptions() {
-    return {
-      description:
-        'Enabled skills assigned to this agent. Load by key when needed.',
-      provider: createGardenSkillProvider({
-        agentRuntimeName: this.getAgentRuntimeName(),
-        databaseUrl: this.env.DATABASE_URL,
-        workspace: this.workspace,
-        fileStore: new R2SkillFileStore(this.env.FILES),
-      }),
-    }
-  }
-
-  private async reloadSkillContext() {
-    const skillOptions = this.getSkillsContextOptions()
-    this.session.removeContext('skills')
-    await this.session.addContext('skills', skillOptions)
-    await this.session.refreshSystemPrompt()
-    await materializeGardenSkills({
-      agentRuntimeName: this.getAgentRuntimeName(),
-      databaseUrl: this.env.DATABASE_URL,
-      workspace: this.workspace,
-      fileStore: new R2SkillFileStore(this.env.FILES),
-    })
-  }
-
   private async reloadPromptContext() {
     const promptContexts = this.getPromptContextOptions()
     this.session.removeContext('agent')
@@ -2210,43 +2164,3 @@ function getThreadPreview(messages: UIMessage[]) {
   return text.length > 120 ? `${text.slice(0, 120).trimEnd()}…` : text
 }
 
-function parseRuntimeSkillMenuEntry(
-  slug: string,
-  content: string,
-): RuntimeSkillMenuEntry {
-  const frontmatter = parseSkillFrontmatter(content)
-  const heading = content.match(/^#\s+(.+)$/m)?.[1]?.trim()
-  const name = frontmatter.name || heading || slug
-  return {
-    id: slug,
-    slug,
-    name,
-    description: frontmatter.description,
-  }
-}
-
-function parseSkillFrontmatter(content: string) {
-  if (!content.startsWith('---\n')) {
-    return { name: '', description: '' }
-  }
-
-  const end = content.indexOf('\n---', 4)
-  if (end < 0) {
-    return { name: '', description: '' }
-  }
-
-  const fields = new Map<string, string>()
-  for (const line of content.slice(4, end).split('\n')) {
-    const separator = line.indexOf(':')
-    if (separator < 0) continue
-
-    const key = line.slice(0, separator).trim().toLowerCase()
-    const rawValue = line.slice(separator + 1).trim()
-    fields.set(key, rawValue.replace(/^['"]|['"]$/g, ''))
-  }
-
-  return {
-    name: fields.get('name') ?? '',
-    description: fields.get('description') ?? '',
-  }
-}

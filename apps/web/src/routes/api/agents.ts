@@ -1,10 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { DEFAULT_AGENT_PERMISSIONS } from '@garden/core/agents/permissions'
-import {
-  bindExistingCapabilitiesToAgent,
-  bindExistingSkillsToAgent,
-} from '@/lib/server/agent-bindings'
+import { bindExistingCapabilitiesToAgent } from '@/lib/server/agent-bindings'
 import {
   createAgentBodySchema,
   parseJsonBody,
@@ -69,12 +66,6 @@ export const Route = createFileRoute('/api/agents')({
           .insert(schema.agent)
           .values(agentValues)
           .returning()
-        await bindExistingSkillsToAgent({
-          db,
-          schema,
-          agentId: agent.id,
-          workspaceId,
-        })
         await bindExistingCapabilitiesToAgent({
           db,
           schema,

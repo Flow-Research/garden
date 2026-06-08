@@ -1,7 +1,18 @@
+import { Result, TaggedError } from 'better-result'
 import type * as schema from '@garden/db/schema'
 import { hashTextHex } from '@/lib/server/skills-sh'
 
 type SkillFileRow = typeof schema.skillFile.$inferSelect
+
+export class SkillRuntimeBundleStorageError extends TaggedError(
+  'SkillRuntimeBundleStorageError',
+)<{
+  message: string
+  path: string
+  phase: 'put' | 'delete'
+  slug: string
+  workspaceId: string
+}>() {}
 
 export type SkillBundleFileInput = {
   path: string
@@ -51,6 +62,236 @@ export async function hashSkillBundle(input: {
   ].join('\n---\n')
 
   return hashTextHex(serialized)
+}
+
+const WORKSPACE_SKILL_R2_PREFIX = 'agent-skills/workspaces'
+const AGENT_SKILL_R2_PREFIX = 'agent-skills/agents'
+
+function workspaceSkillRuntimeKey(input: {
+  workspaceId: string
+  slug: string
+  path: string
+}) {
+  return [
+    WORKSPACE_SKILL_R2_PREFIX,
+    input.workspaceId,
+    input.slug,
+    input.path,
+  ].join('/')
+}
+
+function agentSkillRuntimePrefix(agentId: string) {
+  return `${AGENT_SKILL_R2_PREFIX}/${agentId}/`
+}
+
+function agentSkillRuntimeKey(input: {
+  agentId: string
+  slug: string
+  path: string
+}) {
+  return [AGENT_SKILL_R2_PREFIX, input.agentId, input.slug, input.path].join(
+    '/',
+  )
+}
+
+/**
+ * Mirrors a workspace skill into the standard Agent Skills directory layout that
+ * the SDK `agents/skills` R2 source reads directly. Before this mirror, Garden
+ * had to adapt DB rows and fan out runtime refreshes after every write. After
+ * this mirror, runtime agents can simply return `skills.r2(...)` and let Think
+ * activate skills/resources lazily.
+ */
+export async function persistRuntimeSkillBundle(input: {
+  bucket: R2Bucket
+  workspaceId: string
+  slug: string
+  content: string
+  files: SkillBundleFileInput[]
+}) {
+  const entryResult = await putRuntimeSkillObject({
+    ...input,
+    path: 'SKILL.md',
+    content: input.content,
+    contentType: 'text/markdown; charset=utf-8',
+  })
+  if (entryResult.isErr()) return entryResult
+
+  for (const file of input.files) {
+    const fileResult = await putRuntimeSkillObject({
+      ...input,
+      path: file.path,
+      content: file.content,
+      contentType: inferContentType(file.path),
+    })
+    if (fileResult.isErr()) return fileResult
+  }
+
+  return Result.ok(undefined)
+}
+
+export async function replaceAgentRuntimeSkillBundles(input: {
+  bucket: R2Bucket
+  agentId: string
+  workspaceId: string
+  skills: Array<{ slug: string; files: Array<{ path: string }> }>
+}) {
+  const deleteResult = await deleteR2Prefix({
+    bucket: input.bucket,
+    prefix: agentSkillRuntimePrefix(input.agentId),
+  })
+  if (deleteResult.isErr()) return deleteResult
+
+  for (const skill of input.skills) {
+    const copyEntryResult = await copyRuntimeSkillObject({
+      bucket: input.bucket,
+      workspaceId: input.workspaceId,
+      agentId: input.agentId,
+      slug: skill.slug,
+      path: 'SKILL.md',
+    })
+    if (copyEntryResult.isErr()) return copyEntryResult
+
+    for (const file of skill.files) {
+      const copyFileResult = await copyRuntimeSkillObject({
+        bucket: input.bucket,
+        workspaceId: input.workspaceId,
+        agentId: input.agentId,
+        slug: skill.slug,
+        path: file.path,
+      })
+      if (copyFileResult.isErr()) return copyFileResult
+    }
+  }
+
+  return Result.ok(undefined)
+}
+
+export async function deleteRuntimeSkillBundle(input: {
+  bucket: R2Bucket
+  workspaceId: string
+  slug: string
+  files: Array<{ path: string }>
+}) {
+  for (const path of ['SKILL.md', ...input.files.map((file) => file.path)]) {
+    const deleteResult = await Result.tryPromise({
+      try: async () =>
+        await input.bucket.delete(
+          workspaceSkillRuntimeKey({
+            workspaceId: input.workspaceId,
+            slug: input.slug,
+            path,
+          }),
+        ),
+      catch: (cause) =>
+        new SkillRuntimeBundleStorageError({
+          message: cause instanceof Error ? cause.message : String(cause),
+          phase: 'delete',
+          path,
+          slug: input.slug,
+          workspaceId: input.workspaceId,
+        }),
+    })
+    if (deleteResult.isErr()) return deleteResult
+  }
+
+  return Result.ok(undefined)
+}
+
+function copyRuntimeSkillObject(input: {
+  bucket: R2Bucket
+  workspaceId: string
+  agentId: string
+  slug: string
+  path: string
+}) {
+  return Result.tryPromise({
+    try: async () => {
+      const sourceKey = workspaceSkillRuntimeKey({
+        workspaceId: input.workspaceId,
+        slug: input.slug,
+        path: input.path,
+      })
+      const object = await input.bucket.get(sourceKey)
+      if (!object) return
+
+      await input.bucket.put(
+        agentSkillRuntimeKey({
+          agentId: input.agentId,
+          slug: input.slug,
+          path: input.path,
+        }),
+        object.body,
+        {
+          httpMetadata: object.httpMetadata,
+          customMetadata: object.customMetadata,
+        },
+      )
+    },
+    catch: (cause) =>
+      new SkillRuntimeBundleStorageError({
+        message: cause instanceof Error ? cause.message : String(cause),
+        phase: 'put',
+        path: input.path,
+        slug: input.slug,
+        workspaceId: input.workspaceId,
+      }),
+  })
+}
+
+function deleteR2Prefix(input: { bucket: R2Bucket; prefix: string }) {
+  return Result.tryPromise({
+    try: async () => {
+      let cursor: string | undefined
+      do {
+        const listed = await input.bucket.list({
+          prefix: input.prefix,
+          cursor,
+        })
+        for (const object of listed.objects) {
+          await input.bucket.delete(object.key)
+        }
+        cursor = listed.truncated ? listed.cursor : undefined
+      } while (cursor)
+    },
+    catch: (cause) =>
+      new SkillRuntimeBundleStorageError({
+        message: cause instanceof Error ? cause.message : String(cause),
+        phase: 'delete',
+        path: input.prefix,
+        slug: '*',
+        workspaceId: '*',
+      }),
+  })
+}
+
+function putRuntimeSkillObject(input: {
+  bucket: R2Bucket
+  workspaceId: string
+  slug: string
+  path: string
+  content: string
+  contentType: string
+}) {
+  return Result.tryPromise({
+    try: async () =>
+      await input.bucket.put(
+        workspaceSkillRuntimeKey({
+          workspaceId: input.workspaceId,
+          slug: input.slug,
+          path: input.path,
+        }),
+        input.content,
+        { httpMetadata: { contentType: input.contentType } },
+      ),
+    catch: (cause) =>
+      new SkillRuntimeBundleStorageError({
+        message: cause instanceof Error ? cause.message : String(cause),
+        phase: 'put',
+        path: input.path,
+        slug: input.slug,
+        workspaceId: input.workspaceId,
+      }),
+  })
 }
 
 export async function persistSkillBundleFiles(input: {

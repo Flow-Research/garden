@@ -1,10 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { getAgentByName } from 'agents'
 import type { AgentDO } from '@garden/agent-runtime'
-import {
-  bindExistingCapabilitiesToAgent,
-  bindExistingSkillsToAgent,
-} from './agent-bindings'
+import { bindExistingCapabilitiesToAgent } from './agent-bindings'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { DEFAULT_AGENT_PERMISSIONS } from '@garden/core/agents/permissions'
@@ -12,8 +9,18 @@ import { disposeRpcResult } from '@garden/core/platform/rpc'
 
 type AgentRuntimeStub = DurableObjectStub<AgentDO>
 
+const AGENT_ROUTING_RETRY = { maxAttempts: 3 }
+
+/**
+ * Resolves Garden's AgentDO stub with the SDK's bounded routing retry. The
+ * upgraded Agents SDK documents retry support for transient Durable Object
+ * routing failures, so all chat-thread server RPC helpers share it instead of
+ * each route choosing its own retry shape.
+ */
 async function getAgentRuntimeStub(hostName: string): Promise<AgentRuntimeStub> {
-  return getAgentByName(appEnv.AgentDO, hostName)
+  return getAgentByName(appEnv.AgentDO, hostName, {
+    routingRetry: AGENT_ROUTING_RETRY,
+  })
 }
 
 async function callChatThreadRuntime<T>(
@@ -59,12 +66,6 @@ export async function ensureAgentRow(input: {
     })
     .returning()
 
-  await bindExistingSkillsToAgent({
-    db,
-    schema,
-    agentId: createdAgent.id,
-    workspaceId: input.workspaceId,
-  })
   await bindExistingCapabilitiesToAgent({
     db,
     schema,
@@ -115,15 +116,6 @@ export async function pauseChatThreadAgent(input: {
 }) {
   await callChatThreadRuntime(input, (stub, threadId) =>
     stub.pauseThread(threadId),
-  )
-}
-
-export async function refreshChatThreadSkillInventory(input: {
-  threadId: string
-  hostName: string
-}) {
-  await callChatThreadRuntime(input, (stub, threadId) =>
-    stub.refreshThreadSkills(threadId),
   )
 }
 

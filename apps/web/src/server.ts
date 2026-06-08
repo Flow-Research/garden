@@ -45,6 +45,7 @@ type ServerEnv = AppEnv
 
 const AGENT_DO_AUTH_CACHE_TTL_MS = 60_000
 const RECONCILE_ON_FETCH_INTERVAL_MS = 5_000
+const AGENT_ROUTING_RETRY = { maxAttempts: 3 }
 type AgentDoAuthCacheEntry = {
   expiresAt: number
   agentId: string
@@ -118,7 +119,9 @@ async function routeAgentDoRequest(request: Request, env: ServerEnv) {
   const routedRequest = new Request(request)
   routedRequest.headers.set('x-partykit-namespace', 'agent-d-o')
 
-  const agent = await getAgentByName(env.AgentDO, agentRuntimeName)
+  const agent = await getAgentByName(env.AgentDO, agentRuntimeName, {
+    routingRetry: AGENT_ROUTING_RETRY,
+  })
   return await agent.fetch(routedRequest)
 }
 
@@ -167,7 +170,9 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
   if (!hostName)
     return new Response('Agent hostName is missing', { status: 400 })
 
-  const stub = await getAgentByName(env.AgentDO, hostName)
+  const stub = await getAgentByName(env.AgentDO, hostName, {
+    routingRetry: AGENT_ROUTING_RETRY,
+  })
   if (target === 'chat') {
     const threadId = crypto.randomUUID()
     await db.insert(schema.chatThread).values({
@@ -197,9 +202,9 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
       hasGithubRoutingPrompt: prompt.prompt.includes(
         'search_repositories tool',
       ),
-      hasLoadContextTool: toolNames.includes('load_context'),
-      hasSkillsPrompt: prompt.prompt.includes('Available workspace skills'),
-      loadedSkillKeys: prompt.loadedSkillKeys,
+      hasActivateSkillTool: toolNames.includes('activate_skill'),
+      hasReadSkillResourceTool: toolNames.includes('read_skill_resource'),
+      hasSkillsPrompt: prompt.prompt.includes('Available skills'),
     }
     if (body.mode === 'inspect') return Response.json({ ...base, toolNames })
     const message = typeof body.message === 'string' ? body.message : null
@@ -218,7 +223,7 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
       ...base,
       turn,
       afterTurn: {
-        loadedSkillKeys: afterPrompt.loadedSkillKeys,
+        hasSkillsPrompt: afterPrompt.prompt.includes('Available skills'),
         skillPaths: workspace.samplePaths
           .map((entry) => entry.path)
           .filter((path) => path.includes('/.agents/skills/')),
@@ -466,6 +471,39 @@ function requestCompletionFields(
   }
 }
 
+/**
+ * Logs framework-returned 5xx responses before they leave the Worker. The
+ * TanStack app handler can convert a thrown route error into a generic HTTP 500
+ * response, which means the top-level `Result.tryPromise` sees success and old
+ * logs only said `web.request.completed`. This logging-only boundary keeps the
+ * original response unchanged but records status, route, duration, and a small
+ * redacted body preview so opaque `HTTPError` responses are searchable.
+ */
+async function logReturnedErrorResponse(input: {
+  event: string
+  response: Response
+  startedAt: number
+  logger: GardenLogger
+  fields?: GardenLogFields
+}) {
+  if (input.response.status < 500 || input.response.status > 599) return
+
+  const bodyPreviewResult = await Result.tryPromise({
+    try: async () => await input.response.clone().text(),
+    catch: (cause) => cause,
+  })
+
+  input.logger.error(input.event, {
+    ...requestCompletionFields(input.response, input.startedAt, input.fields),
+    ...(bodyPreviewResult.isOk()
+      ? { responseBodyPreview: bodyPreviewResult.value.slice(0, 1_000) }
+      : {
+          responseBodyPreview: '[unavailable]',
+          ...errorFields(bodyPreviewResult.error),
+        }),
+  })
+}
+
 export default {
   async scheduled(
     _controller: ScheduledController,
@@ -499,10 +537,13 @@ export default {
         sandboxResponse,
         baseRequestFields.requestId,
       )
-      logger.info(
-        'web.request.completed',
-        requestCompletionFields(response, startedAt, { route: 'sandbox' }),
-      )
+      await logReturnedErrorResponse({
+        event: 'web.request.response_error',
+        response,
+        startedAt,
+        logger,
+        fields: { route: 'sandbox' },
+      })
       return response
     }
 
@@ -519,13 +560,16 @@ export default {
           agentAuth.response,
           baseRequestFields.requestId,
         )
-        logger.info(
-          'web.request.completed',
-          requestCompletionFields(response, startedAt, {
+        await logReturnedErrorResponse({
+          event: 'web.request.response_error',
+          response,
+          startedAt,
+          logger,
+          fields: {
             route: 'agent-auth',
             ...(agentAuth.userId ? { userId: agentAuth.userId } : {}),
-          }),
-        )
+          },
+        })
         return response
       }
 
@@ -551,10 +595,13 @@ export default {
           agentResponse.value,
           baseRequestFields.requestId,
         )
-        agentLogger.info(
-          'web.request.completed',
-          requestCompletionFields(response, startedAt, { route: 'agent' }),
-        )
+        await logReturnedErrorResponse({
+          event: 'web.request.response_error',
+          response,
+          startedAt,
+          logger: agentLogger,
+          fields: { route: 'agent' },
+        })
         return response
       }
     }
@@ -587,10 +634,6 @@ export default {
       const response = withRequestIdHeader(
         appResponse.value,
         baseRequestFields.requestId,
-      )
-      appLogger.info(
-        'web.request.completed',
-        requestCompletionFields(response, startedAt, { route: 'app' }),
       )
       return response
     }
