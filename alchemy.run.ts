@@ -19,17 +19,17 @@ import {
 loadDotEnvFile(resolve('apps/web/.dev.vars'))
 loadDotEnvFile(resolve('workers/mcp-proxy/.dev.vars'))
 
-const cloudflareAccountId = 'a6511f2a4e765359622910fd78f8668d'
-const cloudflareApiOptions = { accountId: cloudflareAccountId }
-
 /**
  * Workers Builds exposes Wrangler-compatible CF_* auth in some build contexts.
- * Alchemy reads CLOUDFLARE_* instead, so mirror those values before resources
- * instantiate API clients while still keeping dashboard account vars optional.
+ * Alchemy and Wrangler both read CLOUDFLARE_*; mirror deprecated CF_* values
+ * before resolving the account so both tools target the same account without a
+ * repo-pinned fallback.
  */
 process.env.CLOUDFLARE_API_TOKEN ??= process.env.CF_API_TOKEN
-process.env.CLOUDFLARE_ACCOUNT_ID ??=
-  process.env.CF_ACCOUNT_ID ?? cloudflareAccountId
+process.env.CLOUDFLARE_ACCOUNT_ID ??= process.env.CF_ACCOUNT_ID
+
+const cloudflareAccountId = cloudflareAccountIdFromEnv()
+const cloudflareApiOptions = { accountId: cloudflareAccountId }
 
 const app = await alchemy('garden', {
   stage: 'staging',
@@ -200,6 +200,20 @@ function plainEnv(name: string, fallback?: string) {
   const value = process.env[name] ?? fallback
   if (!value) throw new Error(`Missing ${name}`)
   return value
+}
+
+/**
+ * Keeps Alchemy account selection aligned with Wrangler. Cloudflare docs allow
+ * either wrangler.jsonc `account_id` or CLOUDFLARE_ACCOUNT_ID; Garden uses the
+ * env var so local dev, CI, Alchemy, and Wrangler share one account source.
+ */
+function cloudflareAccountIdFromEnv() {
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
+  if (accountId) return accountId
+
+  throw new Error(
+    'Missing CLOUDFLARE_ACCOUNT_ID. Set it in the shell, CI environment, or apps/web/.dev.vars so Alchemy and Wrangler target the same Cloudflare account.',
+  )
 }
 
 /**
