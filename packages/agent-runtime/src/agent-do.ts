@@ -208,8 +208,8 @@ const SLASH_SKILL_TOKEN_PATTERN = /^\/([a-zA-Z0-9_-]+)$/
 /**
  * Extracts text from AI SDK model messages so slash skill invocations can be
  * honored server-side, not just in the composer UI. The composer emits direct
- * `/<slug>` tokens; runtime maps them to attached SDK skill names and asks the
- * model to use Think's native `activate_skill` tool.
+ * `/<slug>` tokens; runtime maps them to attached SDK skill names and injects
+ * their native `activate_skill` output before generation.
  */
 function textFromModelContent(content: ModelMessage['content']): string {
   if (typeof content === 'string') return content
@@ -238,8 +238,7 @@ function latestUserMessageText(messages: readonly ModelMessage[]) {
 /**
  * Finds explicit slash-selected skill tokens in the latest user message. The
  * web composer stores readable `/slug` tokens; runtime resolves those tokens to
- * attached SDK skill names before asking Think's native `activate_skill` tool to
- * load them.
+ * attached SDK skill names before invoking Think's native `activate_skill` tool.
  */
 function explicitSkillSlugsFromMessages(messages: readonly ModelMessage[]) {
   const text = latestUserMessageText(messages)
@@ -1242,12 +1241,13 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   /**
-   * Converts explicit `/slug` selections from the composer into a native Think
-   * Agent Skills instruction. The SDK owns actual loading through
-   * `activate_skill`; Garden only resolves the UI token to the assigned skill's
-   * exact standard name from `agent_skill`.
+   * Converts explicit `/slug` selections from the composer into activated skill
+   * content for this turn. This mirrors Codex explicit skill invocation: the UI
+   * token selects a skill, then the runtime injects the selected SKILL.md before
+   * the model generates. Garden only resolves tokens to attached skill names;
+   * the SDK `activate_skill` tool owns loading and formatting.
    */
-  private async explicitSlashSkillInstruction(ctx: TurnContext) {
+  private async explicitSlashSkillContext(ctx: TurnContext) {
     const slugs = explicitSkillSlugsFromMessages(ctx.messages)
     if (slugs.length === 0) return ''
 
@@ -1291,11 +1291,20 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     const uniqueNames = Array.from(new Set(selectedNames))
     if (uniqueNames.length === 0) return ''
 
-    return [
-      'The user explicitly selected these attached skills with slash commands:',
-      uniqueNames.map((name) => `- ${name}`).join('\n'),
-      'Before proceeding, call activate_skill with each exact skill name above, then follow the activated skill instructions.',
-    ].join('\n')
+    const activateSkill = ctx.tools.activate_skill as
+      | { execute?: (input: { name: string }) => Promise<unknown> | unknown }
+      | undefined
+    if (!activateSkill?.execute) return ''
+
+    const activated: string[] = []
+    for (const name of uniqueNames) {
+      const result = await activateSkill.execute({ name })
+      if (typeof result === 'string' && result.trim()) {
+        activated.push(`Explicitly activated /${name}:\n${result}`)
+      }
+    }
+
+    return activated.join('\n\n')
   }
 
   override async beforeTurn(ctx: TurnContext) {
@@ -1315,21 +1324,21 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         ? ctx.body.document_context.trim()
         : null
 
-    const explicitSkillInstructionResult = await Result.tryPromise({
-      try: async () => await this.explicitSlashSkillInstruction(ctx),
+    const explicitSkillContextResult = await Result.tryPromise({
+      try: async () => await this.explicitSlashSkillContext(ctx),
       catch: (cause) => messageFromUnknown(cause),
     })
-    if (explicitSkillInstructionResult.isErr()) {
-      console.warn('[agent-runtime] failed to resolve slash-invoked skills', {
-        error: explicitSkillInstructionResult.error,
+    if (explicitSkillContextResult.isErr()) {
+      console.warn('[agent-runtime] failed to activate slash-invoked skills', {
+        error: explicitSkillContextResult.error,
       })
     }
 
-    const explicitSkillInstruction = explicitSkillInstructionResult.isOk()
-      ? explicitSkillInstructionResult.value
+    const explicitSkillContext = explicitSkillContextResult.isOk()
+      ? explicitSkillContextResult.value
       : ''
 
-    const systemAdditions = [documentContext, explicitSkillInstruction]
+    const systemAdditions = [documentContext, explicitSkillContext]
       .filter((part): part is string => Boolean(part?.trim()))
       .join('\n\n')
 
