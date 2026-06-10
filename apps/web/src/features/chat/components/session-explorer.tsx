@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo } from 'react'
 import { Archive, MoreHorizontal, Pencil } from 'lucide-react'
-import { useChatStore } from '@garden/core/chat'
+import { useChatStore } from '@garden/app-state/chat'
 import { Button } from '@garden/ui/components/ui/button'
 import {
   ContextMenu,

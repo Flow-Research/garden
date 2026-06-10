@@ -19,9 +19,9 @@ import {
 } from 'react'
 import { Result } from 'better-result'
 import { useQueryClient } from '@tanstack/react-query'
-import { useAuthStore } from '@garden/core/auth'
-import { useChatStore } from '@garden/core/chat'
-import { useWorkspaceStore } from '@garden/core/workspace'
+import { useAuthStore } from '@garden/app-state/auth'
+import { useChatStore } from '@garden/app-state/chat'
+import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { motion, AnimatePresence } from 'motion/react'
 import {
   Alert,

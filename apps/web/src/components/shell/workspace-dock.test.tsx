@@ -18,7 +18,7 @@ vi.mock('nuqs', () => ({
   useQueryStates: () => [mockQueryState, mockSetQueryState],
 }))
 
-vi.mock('@garden/core/chat', () => ({
+vi.mock('@garden/app-state/chat', () => ({
   useChatStore: Object.assign(
     (
       selector?: (state: {

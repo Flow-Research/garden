@@ -52,7 +52,7 @@ vi.mock('@/lib/inbox/queries', () => ({
   inboxListOptions: () => ({ queryKey: ['inbox'], queryFn: vi.fn() }),
 }))
 
-vi.mock('@garden/core/auth', () => ({
+vi.mock('@garden/app-state/auth', () => ({
   useAuthStore: Object.assign(
     (selector?: (state: typeof mockAuthState) => unknown) =>
       selector ? selector(mockAuthState) : mockAuthState,
@@ -62,7 +62,7 @@ vi.mock('@garden/core/auth', () => ({
   ),
 }))
 
-vi.mock('@garden/core/workspace', () => ({
+vi.mock('@garden/app-state/workspace', () => ({
   useWorkspaceStore: Object.assign(
     (selector?: (state: typeof mockWorkspaceState) => unknown) =>
       selector ? selector(mockWorkspaceState) : mockWorkspaceState,
@@ -72,7 +72,7 @@ vi.mock('@garden/core/workspace', () => ({
   ),
 }))
 
-vi.mock('@garden/core/chat', () => ({
+vi.mock('@garden/app-state/chat', () => ({
   useChatStore: Object.assign(
     (selector?: (state: { activeSessionId: string | null; setActiveSession: typeof mockSetActiveSession }) => unknown) => {
       const state = {
