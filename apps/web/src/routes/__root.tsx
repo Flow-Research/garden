@@ -44,13 +44,6 @@ const APP_COVER_IMAGE = '/garden-cover.png'
 
 const THEME_INIT_SCRIPT = `(function(){try{var stored=window.localStorage.getItem('theme');var mode=(stored==='light'||stored==='dark'||stored==='system')?stored:'system';var storedColorTheme=window.localStorage.getItem('color-theme');var colorTheme=storedColorTheme==='garden'?'garden':'garden';var prefersDark=window.matchMedia('(prefers-color-scheme: dark)').matches;var resolved=mode==='system'?(prefersDark?'dark':'light'):mode;var root=document.documentElement;root.classList.remove('light','dark');root.classList.add(resolved);root.style.colorScheme=resolved;root.dataset.theme=colorTheme;}catch(e){}})();`
 
-// Kill any service worker left over from a previous app on this origin
-// (e.g. an older Next.js project on localhost:3000). SWs are origin-scoped,
-// so they survive project switches and serve stale bytes — including the
-// favicon — until explicitly unregistered. Garden does not register an SW,
-// so this is a no-op on a clean origin.
-const SW_KILLSWITCH = `(function(){if(!('serviceWorker' in navigator))return;navigator.serviceWorker.getRegistrations().then(function(regs){if(!regs.length)return;Promise.all(regs.map(function(r){return r.unregister();})).then(function(){if(!('caches' in window))return location.reload();caches.keys().then(function(keys){return Promise.all(keys.map(function(k){return caches.delete(k);}));}).then(function(){location.reload();});});}).catch(function(){});})();`
-
 export const Route = createRootRoute({
   head: () => ({
     meta: [
@@ -103,7 +96,6 @@ function RootDocument() {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: SW_KILLSWITCH }} />
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <HeadContent />
       </head>
