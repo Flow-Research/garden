@@ -365,6 +365,12 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
       provider: 'pg',
       schema: authSchema,
     }),
+    session: {
+      cookieCache: {
+        enabled: true,
+        strategy: 'compact',
+      },
+    },
     databaseHooks: {
       account: {
         create: {
