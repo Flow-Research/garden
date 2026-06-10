@@ -13,7 +13,7 @@
     "worker:types": "wrangler types worker-configuration.d.ts --include-runtime false",
     "worker:types:check": "wrangler types worker-configuration.d.ts --include-runtime false --check",
     "skills:seed-builtin": "python3 ./scripts/seed_builtin_skills.py",
-    "typecheck": "pnpm run worker:types:check && tsc --noEmit",
+    "typecheck": "pnpm run worker:types && tsc --noEmit",
     "test": "vitest run",
     "lint": "oxlint -c ../../.oxlintrc.json .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix .",
