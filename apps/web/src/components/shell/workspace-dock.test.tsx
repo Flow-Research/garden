@@ -1,61 +1,21 @@
-import type { ButtonHTMLAttributes } from 'react'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ButtonHTMLAttributes } from 'react'
 
-const mockQueryState = vi.hoisted(() => ({
-  chat: null as string | null,
-  panel: null as string | null,
-  panelTitle: null as string | null,
-  panelEntityId: null as string | null,
+vi.mock('@garden/app-state/workspace', () => ({
+  useWorkspaceStore: (
+    selector?: (state: { workspace: { name: string } }) => unknown,
+  ) => {
+    const state = { workspace: { name: 'Workspace One' } }
+    return selector ? selector(state) : state
+  },
 }))
 
-const mockSetQueryState = vi.hoisted(() => vi.fn())
-const mockSetActiveSession = vi.hoisted(() => vi.fn())
-const mockSetVisibleChatSessions = vi.hoisted(() => vi.fn())
-
-vi.mock('nuqs', () => ({
-  parseAsString: {},
-  useQueryStates: () => [mockQueryState, mockSetQueryState],
-}))
-
-vi.mock('@garden/app-state/chat', () => ({
-  useChatStore: Object.assign(
-    (
-      selector?: (state: {
-        activeSessionId: string | null
-        visibleChatSessionIds: string[]
-        setActiveSession: (id: string | null) => void
-        setVisibleChatSessions: (ids: string[]) => void
-      }) => unknown,
-    ) => {
-      const state = {
-        activeSessionId: null,
-        visibleChatSessionIds: [],
-        setActiveSession: mockSetActiveSession,
-        setVisibleChatSessions: mockSetVisibleChatSessions,
-      }
-      return selector ? selector(state) : state
-    },
-    {
-      getState: () => ({
-        activeSessionId: null,
-        visibleChatSessionIds: [],
-        setActiveSession: mockSetActiveSession,
-        setVisibleChatSessions: mockSetVisibleChatSessions,
-      }),
-    },
-  ),
-}))
-
-vi.mock('dockview', () => ({
-  DockviewDefaultTab: () => null,
-  DockviewReact: () => null,
-  themeDark: {},
-  themeLight: {},
-}))
-
-vi.mock('@garden/ui/components/common/theme-provider', () => ({
-  useTheme: () => ({ resolvedTheme: 'light' }),
+vi.mock('@garden/ui/components/ui/sidebar', () => ({
+  useSidebar: () => ({
+    state: 'collapsed',
+    toggleSidebar: vi.fn(),
+  }),
 }))
 
 vi.mock('@garden/ui/components/ui/button', () => ({
@@ -70,12 +30,10 @@ vi.mock('@/features/inbox', () => ({
   InboxPage: () => <div>Inbox page</div>,
 }))
 
-vi.mock('@/features/settings', () => ({
-  SettingsPage: () => <div>Settings page</div>,
-}))
-
 vi.mock('@/features/skills/components', () => ({
-  SkillsPage: () => <div>Skills page</div>,
+  SkillsPage: ({ focusedSkillId }: { focusedSkillId?: string }) => (
+    <div>Skills page {focusedSkillId}</div>
+  ),
 }))
 
 vi.mock('@/features/dashboard', () => ({
@@ -83,990 +41,253 @@ vi.mock('@/features/dashboard', () => ({
 }))
 
 vi.mock('@/features/connections', () => ({
-  ConnectionsPage: () => <div>Connections page</div>,
+  ConnectionsPage: ({
+    focusedConnectorId,
+  }: {
+    focusedConnectorId?: string
+  }) => <div>Connections page {focusedConnectorId}</div>,
 }))
 
 vi.mock('@/features/agents/components', () => ({
   AgentsPage: () => <div>Agents page</div>,
-  AgentDetail: ({ agentId }: { agentId: string }) => <div>{agentId}</div>,
+  AgentDetail: ({ agentId }: { agentId: string }) => <div>Agent {agentId}</div>,
 }))
 
 vi.mock('@/features/issues/components', () => ({
   IssuesPage: () => <div>Issues page</div>,
-  IssueDetail: ({ issueId }: { issueId: string }) => <div>{issueId}</div>,
+  IssueDetail: ({ issueId }: { issueId: string }) => <div>Issue {issueId}</div>,
 }))
 
 vi.mock('@/features/chat/components/agent-interaction-screen', () => ({
-  AgentInteractionScreen: () => <div>Chat page</div>,
+  AgentInteractionScreen: ({ sessionId }: { sessionId: string | null }) => (
+    <div>Chat {sessionId}</div>
+  ),
 }))
 
-type FakePanelKind =
-  | 'blank'
-  | 'dashboard'
-  | 'inbox'
-  | 'issues'
-  | 'issue-detail'
-  | 'chat'
-  | 'skill-editor'
-  | 'capabilities'
+vi.mock('@/features/automations', () => ({
+  AutomationsPage: () => <div>Automations page</div>,
+  AutomationDetailPage: ({ automationId }: { automationId: string }) => (
+    <div>Automation {automationId}</div>
+  ),
+}))
 
-type FakeSerializedPanel = {
-  id: string
-  contentComponent: FakePanelKind
-  title?: string
-  params?: {
-    kind: FakePanelKind
-    title: string
-    entityId?: string
-    canonicalId: string
-  }
-}
-
-type FakeSerializedGroup = {
-  id: string
-  views: string[]
-  activeView?: string | null
-}
-
-type FakeSerializedDock = {
-  grid: {
-    root: {
-      type: 'branch'
-      data: Array<{
-        type: 'leaf'
-        data: FakeSerializedGroup
-      }>
-    }
-    height: number
-    width: number
-    orientation: 'horizontal' | 'vertical'
-  }
-  panels: Record<string, FakeSerializedPanel>
-  activeGroup?: string | null
-}
-
-function makeSerializedDock(
-  groups: Array<{
-    id: string
-    activePanelId?: string | null
-    panels: Array<{
-      id: string
-      kind: FakePanelKind
-      title: string
-      entityId?: string
-    }>
-  }>,
-  activeGroup?: string | null,
-): FakeSerializedDock {
-  const panels = Object.fromEntries(
-    groups.flatMap((group) =>
-      group.panels.map((panel) => [
-        panel.id,
-        {
-          id: panel.id,
-          contentComponent: panel.kind,
-          title: panel.title,
-          params: {
-            kind: panel.kind,
-            title: panel.title,
-            entityId: panel.entityId,
-            canonicalId: panel.entityId
-              ? `${panel.kind}:${panel.entityId}`
-              : `${panel.kind}:singleton`,
-          },
-        } satisfies FakeSerializedPanel,
-      ]),
-    ),
-  )
-
-  return {
-    grid: {
-      root: {
-        type: 'branch',
-        data: groups.map((group) => ({
-          type: 'leaf',
-          data: {
-            id: group.id,
-            views: group.panels.map((panel) => panel.id),
-            activeView: group.activePanelId ?? null,
-          },
-        })),
-      },
-      height: 0,
-      width: 0,
-      orientation: 'horizontal',
-    },
-    panels,
-    activeGroup: activeGroup ?? null,
-  }
-}
-
-type FakePanel = {
-  id: string
-  group: FakeGroup
-  params: {
-    kind: FakePanelKind
-    title: string
-    entityId?: string
-    canonicalId: string
-  }
-  initialApiParametersVisible: boolean
-  api: {
-    id: string
-    title: string
-    renderer?: string
-    getParameters: () => {
-      kind?: FakePanelKind
-      title?: string
-      entityId?: string
-      canonicalId?: string
-    }
-    setActive: () => void
-    setRenderer: (renderer: string) => void
-    close: () => void
-  }
-}
-
-type FakeGroup = {
-  id: string
-  panels: FakePanel[]
-  activePanel: FakePanel | null
-  api: {
-    id: string
-    setActive: () => void
-    maximize: () => void
-  }
-}
-
-function removeListener<T>(listeners: T[], listener: T) {
-  const index = listeners.indexOf(listener)
-  if (index >= 0) {
-    listeners.splice(index, 1)
-  }
-}
-
-class FakeDockApi {
-  groups: FakeGroup[] = []
-  activeGroup: FakeGroup | null = null
-  activePanel: FakePanel | null = null
-  private activePanelListeners: Array<() => void> = []
-  private activeGroupListeners: Array<() => void> = []
-  private layoutListeners: Array<() => void> = []
-  private overlayListeners: Array<
-    (event: { position: string; preventDefault: () => void }) => void
-  > = []
-  private groupCounter = 0
-
-  toJSON = vi.fn(
-    () =>
-      ({
-        grid: {
-          root: {
-            type: 'branch',
-            data: this.groups.map((group) => ({
-              type: 'leaf',
-              data: {
-                id: group.id,
-                views: group.panels.map((panel) => panel.id),
-                activeView: group.activePanel?.id ?? null,
-              },
-            })),
-          },
-          height: 0,
-          width: 0,
-          orientation: 'horizontal',
-        },
-        panels: Object.fromEntries(
-          this.groups.flatMap((group) =>
-            group.panels.map((panel) => {
-              const params = panel.params
-              return [
-                panel.id,
-                {
-                  id: panel.id,
-                  contentComponent: params.kind,
-                  title: panel.api.title,
-                  params,
-                } satisfies FakeSerializedPanel,
-              ]
-            }),
-          ),
-        ),
-        activeGroup: this.activeGroup?.id ?? null,
-      }) satisfies FakeSerializedDock,
-  )
-
-  hasMaximizedGroup() {
-    return false
-  }
-
-  exitMaximizedGroup() {}
-
-  moveToNext() {}
-
-  moveToPrevious() {}
-
-  get panels() {
-    return this.groups.flatMap((group) => group.panels)
-  }
-
-  getPanel(id: string) {
-    return this.panels.find((panel) => panel.id === id)
-  }
-
-  getGroup(id: string) {
-    return this.groups.find((group) => group.id === id)
-  }
-
-  onDidActivePanelChange(listener: () => void) {
-    this.activePanelListeners.push(listener)
-    return {
-      dispose: () => removeListener(this.activePanelListeners, listener),
-    }
-  }
-
-  onDidActiveGroupChange(listener: () => void) {
-    this.activeGroupListeners.push(listener)
-    return {
-      dispose: () => removeListener(this.activeGroupListeners, listener),
-    }
-  }
-
-  onDidLayoutChange(listener: () => void) {
-    this.layoutListeners.push(listener)
-    return {
-      dispose: () => removeListener(this.layoutListeners, listener),
-    }
-  }
-
-  onWillShowOverlay(
-    listener: (event: { position: string; preventDefault: () => void }) => void,
-  ) {
-    this.overlayListeners.push(listener)
-    return {
-      dispose: () => removeListener(this.overlayListeners, listener),
-    }
-  }
-
-  addPanel(options: {
-    id: string
-    title: string
-    params: {
-      kind: FakePanelKind
-      title: string
-      entityId?: string
-      canonicalId: string
-    }
-    position?: {
-      referenceGroup?: string
-      referencePanel?: FakePanel
-      direction?: string
-    }
-  }) {
-    let group =
-      (typeof options.position?.referenceGroup === 'string'
-        ? this.getGroup(options.position.referenceGroup)
-        : undefined) ??
-      options.position?.referencePanel?.group ??
-      this.activeGroup ??
-      this.createGroup()
-
-    if (!this.groups.includes(group)) {
-      this.groups.push(group)
-    }
-
-    const panel = this.createPanel(group, {
-      id: options.id,
-      kind: options.params.kind,
-      title: options.title,
-      entityId: options.params.entityId,
-      canonicalId: options.params.canonicalId,
-    })
-
-    group.panels.push(panel)
-    this.emitLayout()
-    return panel
-  }
-
-  fromJSON(data: FakeSerializedDock) {
-    this.groups = []
-    this.activeGroup = null
-    this.activePanel = null
-
-    for (const node of data.grid.root.data) {
-      const serializedGroup = node.data
-      const group = this.createGroup(serializedGroup.id)
-      for (const panelId of serializedGroup.views) {
-        const serializedPanel = data.panels[panelId]
-        if (!serializedPanel?.params) {
-          continue
-        }
-
-        const panel = this.createPanel(group, {
-          id: serializedPanel.id,
-          kind: serializedPanel.params.kind,
-          title: serializedPanel.title ?? serializedPanel.params.title,
-          entityId: serializedPanel.params.entityId,
-          canonicalId: serializedPanel.params.canonicalId,
-        })
-        group.panels.push(panel)
-        if (serializedGroup.activeView === panel.id) {
-          group.activePanel = panel
-        }
-      }
-      this.groups.push(group)
-    }
-
-    if (data.activeGroup) {
-      const nextGroup = this.getGroup(data.activeGroup) ?? null
-      this.activeGroup = nextGroup
-      this.activePanel = nextGroup?.activePanel ?? null
-    }
-  }
-
-  setActivePanel(panel: FakePanel) {
-    const previousGroupId = this.activeGroup?.id ?? null
-    this.activeGroup = panel.group
-    this.activePanel = panel
-    panel.group.activePanel = panel
-
-    if (previousGroupId !== panel.group.id) {
-      this.activeGroupListeners.forEach((listener) => listener())
-    }
-
-    this.activePanelListeners.forEach((listener) => listener())
-  }
-
-  silentlySetActivePanel(panelId: string) {
-    const panel = this.getPanel(panelId)
-    if (!panel) return
-    this.activeGroup = panel.group
-    this.activePanel = panel
-    panel.group.activePanel = panel
-  }
-
-  setVisibleGroupPanel(
-    groupId: string,
-    panelId: string,
-    options?: { keepContainerActivePanel?: boolean },
-  ) {
-    const group = this.getGroup(groupId)
-    const panel = group?.panels.find((candidate) => candidate.id === panelId)
-    if (!group || !panel) return
-
-    const previousGroupId = this.activeGroup?.id ?? null
-    this.activeGroup = group
-    group.activePanel = panel
-
-    if (!options?.keepContainerActivePanel) {
-      this.activePanel = panel
-    }
-
-    if (previousGroupId !== group.id) {
-      this.activeGroupListeners.forEach((listener) => listener())
-    }
-
-    if (!options?.keepContainerActivePanel) {
-      this.activePanelListeners.forEach((listener) => listener())
-    }
-  }
-
-  private createGroup(id?: string): FakeGroup {
-    this.groupCounter += 1
-    const group: FakeGroup = {
-      id: id ?? `group-${this.groupCounter}`,
-      panels: [],
-      activePanel: null,
-      api: {
-        id: id ?? `group-${this.groupCounter}`,
-        setActive: () => {
-          this.activeGroup = group
-          this.activePanel = group.activePanel
-          this.activeGroupListeners.forEach((listener) => listener())
-        },
-        maximize: () => {},
-      },
-    }
-    return group
-  }
-
-  private createPanel(
-    group: FakeGroup,
-    params: {
-      id: string
-      kind: FakePanelKind
-      title: string
-      entityId?: string
-      canonicalId: string
-    },
-  ): FakePanel {
-    const panel = {
-      id: params.id,
-      group,
-      params: {
-        kind: params.kind,
-        title: params.title,
-        entityId: params.entityId,
-        canonicalId: params.canonicalId,
-      },
-      initialApiParametersVisible: false,
-      api: {
-        id: params.id,
-        title: params.title,
-        renderer: undefined,
-        getParameters: () =>
-          panel.initialApiParametersVisible ? { ...panel.params } : {},
-        setActive: () => this.setActivePanel(panel),
-        setRenderer: (renderer: string) => {
-          panel.api.renderer = renderer
-        },
-        close: () => {},
-      },
-    } satisfies FakePanel
-
-    return panel
-  }
-
-  private emitLayout() {
-    this.layoutListeners.forEach((listener) => listener())
-  }
-}
-
-import { WorkspaceDockProvider, useWorkspaceDock } from './workspace-dock'
+import {
+  WorkspaceDockProvider,
+  WorkspaceDockView,
+  useWorkspaceDock,
+} from './workspace-dock'
 
 let capturedDock: ReturnType<typeof useWorkspaceDock> | null = null
+let rectSpy: { mockRestore: () => void } | null = null
 
-function DockContextCapture() {
+function DockProbe() {
   capturedDock = useWorkspaceDock()
-
+  const active = capturedDock?.activePanel
   return (
-    <div
-      data-group={capturedDock.activeGroupId ?? 'none'}
-      data-panel={capturedDock.activePanel?.kind ?? 'none'}
-      data-testid="dock-state"
-    />
+    <div data-testid="active-panel">
+      {active
+        ? `${active.kind}:${active.entityId ?? ''}:${active.title}`
+        : 'none'}
+    </div>
+  )
+}
+
+function renderDock({ view = false }: { view?: boolean } = {}) {
+  return render(
+    <WorkspaceDockProvider workspaceId="workspace-1">
+      <DockProbe />
+      {view ? <WorkspaceDockView /> : null}
+    </WorkspaceDockProvider>,
+  )
+}
+
+function readPersistedLayout() {
+  const raw = window.localStorage.getItem('garden:flexlayout:workspace-1')
+  expect(raw).toBeTruthy()
+  return raw ?? ''
+}
+
+function readPersistedTabs() {
+  const layout = JSON.parse(readPersistedLayout()) as {
+    layout: { children?: Array<{ children?: Array<{ config?: unknown }> }> }
+  }
+  return (
+    layout.layout.children?.flatMap((tabset) => tabset.children ?? []) ?? []
   )
 }
 
 describe('WorkspaceDockProvider', () => {
-  afterEach(() => {
-    cleanup()
-  })
-
   beforeEach(() => {
-    cleanup()
-    window.localStorage.clear()
-    mockSetQueryState.mockClear()
-    mockSetActiveSession.mockClear()
-    mockSetVisibleChatSessions.mockClear()
-    mockQueryState.chat = null
-    mockQueryState.panel = null
-    mockQueryState.panelTitle = null
-    mockQueryState.panelEntityId = null
     capturedDock = null
+    rectSpy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 1200,
+        bottom: 800,
+        width: 1200,
+        height: 800,
+        toJSON: () => ({}),
+      })
+    window.localStorage.clear()
   })
 
-  it('opens inbox by default when there is no saved layout', async () => {
-    const api = new FakeDockApi()
-
-    render(
-      <WorkspaceDockProvider workspaceId="workspace-1">
-        <DockContextCapture />
-      </WorkspaceDockProvider>,
-    )
-
-    await act(async () => {
-      capturedDock?.handleReady({ api } as never)
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dock-state')).toHaveAttribute(
-        'data-panel',
-        'inbox',
-      )
-    })
-
-    expect(mockSetQueryState).toHaveBeenCalledWith({
-      chat: null,
-      panel: 'inbox',
-      panelTitle: 'Inbox',
-      panelEntityId: null,
-    })
+  afterEach(() => {
+    rectSpy?.mockRestore()
+    rectSpy = null
+    cleanup()
   })
 
-  it('keeps chat focus out of query panel state', async () => {
-    const api = new FakeDockApi()
+  it('starts from the default inbox tab without URL state', () => {
+    renderDock()
 
-    render(
-      <WorkspaceDockProvider workspaceId="workspace-1">
-        <DockContextCapture />
-      </WorkspaceDockProvider>,
-    )
-
-    await act(async () => {
-      capturedDock?.handleReady({ api } as never)
-    })
-
-    await act(async () => {
-      capturedDock?.openPanel({ kind: 'chat', title: 'New Chat' })
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dock-state')).toHaveAttribute(
-        'data-panel',
-        'chat',
-      )
-    })
-
-    expect(mockSetQueryState).not.toHaveBeenLastCalledWith({
-      panel: 'chat',
-      panelTitle: 'New Chat',
-      panelEntityId: null,
-    })
+    expect(screen.getByTestId('active-panel')).toHaveTextContent('inbox::Inbox')
+    expect(
+      window.localStorage.getItem('garden:flexlayout:workspace-1'),
+    ).toBeNull()
   })
 
-  it('keeps a requested chat panel active while restoring a stale saved layout', async () => {
-    const api = new FakeDockApi()
-    mockQueryState.chat = 'thread-1'
+  it('opens and persists a FlexLayout tab from the dock API', async () => {
+    renderDock()
 
-    window.localStorage.setItem(
-      'garden:dockview:workspace-1',
-      JSON.stringify(
-        makeSerializedDock(
-          [
-            {
-              id: 'group-1',
-              activePanelId: 'panel-1',
-              panels: [{ id: 'panel-1', kind: 'dashboard', title: 'Dashboard' }],
-            },
-            {
-              id: 'group-2',
-              activePanelId: 'panel-2',
-              panels: [
-                {
-                  id: 'panel-2',
-                  kind: 'chat',
-                  title: 'Thread 1',
-                  entityId: 'thread-1',
-                },
-              ],
-            },
-          ],
-          'group-1',
-        ),
-      ),
-    )
-
-    render(
-      <WorkspaceDockProvider workspaceId="workspace-1">
-        <DockContextCapture />
-      </WorkspaceDockProvider>,
-    )
-
-    await act(async () => {
-      capturedDock?.handleReady({ api } as never)
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dock-state')).toHaveAttribute(
-        'data-panel',
-        'chat',
-      )
-    })
-
-    expect(mockSetQueryState).not.toHaveBeenCalledWith({
-      chat: null,
-      panel: 'dashboard',
-      panelTitle: 'Dashboard',
-      panelEntityId: null,
-    })
-  })
-
-  it('publishes every visible split chat session to the chat runtime store', async () => {
-    const api = new FakeDockApi()
-
-    window.localStorage.setItem(
-      'garden:dockview:workspace-1',
-      JSON.stringify(
-        makeSerializedDock(
-          [
-            {
-              id: 'group-1',
-              activePanelId: 'panel-1',
-              panels: [
-                {
-                  id: 'panel-1',
-                  kind: 'chat',
-                  title: 'Thread 1',
-                  entityId: 'thread-1',
-                },
-              ],
-            },
-            {
-              id: 'group-2',
-              activePanelId: 'panel-2',
-              panels: [
-                {
-                  id: 'panel-2',
-                  kind: 'chat',
-                  title: 'Thread 2',
-                  entityId: 'thread-2',
-                },
-              ],
-            },
-          ],
-          'group-1',
-        ),
-      ),
-    )
-
-    render(
-      <WorkspaceDockProvider workspaceId="workspace-1">
-        <DockContextCapture />
-      </WorkspaceDockProvider>,
-    )
-
-    await act(async () => {
-      capturedDock?.handleReady({ api } as never)
-    })
-
-    expect(mockSetVisibleChatSessions).toHaveBeenLastCalledWith([
-      'thread-1',
-      'thread-2',
-    ])
-  })
-
-  it('lets local panel opens outrun a stale chat query while the URL write catches up', async () => {
-    const api = new FakeDockApi()
-    mockQueryState.chat = 'thread-1'
-    mockQueryState.panel = 'chat'
-    mockQueryState.panelEntityId = 'thread-1'
-
-    render(
-      <WorkspaceDockProvider workspaceId="workspace-1">
-        <DockContextCapture />
-      </WorkspaceDockProvider>,
-    )
-
-    await act(async () => {
-      capturedDock?.handleReady({ api } as never)
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dock-state')).toHaveAttribute(
-        'data-panel',
-        'chat',
-      )
-    })
-
-    await act(async () => {
-      capturedDock?.openPanel({ kind: 'dashboard', title: 'Dashboard' })
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dock-state')).toHaveAttribute(
-        'data-panel',
-        'dashboard',
-      )
-    })
-
-    expect(mockSetQueryState).toHaveBeenLastCalledWith({
-      chat: null,
-      panel: 'dashboard',
-      panelTitle: 'Dashboard',
-      panelEntityId: null,
-    })
-  })
-
-  it('reads the visible dock panel when react state is stale after a remount', async () => {
-    const api = new FakeDockApi()
-    mockQueryState.chat = 'thread-1'
-    mockQueryState.panel = 'chat'
-    mockQueryState.panelEntityId = 'thread-1'
-
-    const ui = (
-      <WorkspaceDockProvider workspaceId="workspace-1">
-        <DockContextCapture />
-      </WorkspaceDockProvider>
-    )
-    const { rerender } = render(ui)
-
-    await act(async () => {
-      capturedDock?.handleReady({ api } as never)
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dock-state')).toHaveAttribute(
-        'data-panel',
-        'chat',
-      )
-    })
-
-    await act(async () => {
-      capturedDock?.openPanel({ kind: 'dashboard', title: 'Dashboard' })
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dock-state')).toHaveAttribute(
-        'data-panel',
-        'dashboard',
-      )
-    })
-
-    const chatPanelId = api.panels.find(
-      (panel) => panel.params.kind === 'chat',
-    )?.id
-    expect(chatPanelId).toBeDefined()
-
-    await act(async () => {
-      api.silentlySetActivePanel(chatPanelId ?? '')
-      rerender(
-        <WorkspaceDockProvider workspaceId="workspace-1">
-          <DockContextCapture />
-        </WorkspaceDockProvider>,
-      )
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dock-state')).toHaveAttribute(
-        'data-panel',
-        'chat',
-      )
-    })
-  })
-
-  it('opens a new blank tab from the dock action', async () => {
-    const api = new FakeDockApi()
-
-    render(
-      <WorkspaceDockProvider workspaceId="workspace-1">
-        <DockContextCapture />
-      </WorkspaceDockProvider>,
-    )
-
-    await act(async () => {
-      capturedDock?.handleReady({ api } as never)
-    })
-
-    await act(async () => {
-      capturedDock?.openNewTab()
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dock-state')).toHaveAttribute(
-        'data-panel',
-        'blank',
-      )
-    })
-
-    expect(api.panels.at(-1)?.params.kind).toBe('blank')
-    expect(api.panels.at(-1)?.api.title).toBe('New Tab')
-  })
-
-  it('restores a saved layout with no active group by selecting the first real panel', async () => {
-    const api = new FakeDockApi()
-
-    window.localStorage.setItem(
-      'garden:dockview:workspace-1',
-      JSON.stringify(
-        makeSerializedDock(
-          [
-            {
-              id: 'group-1',
-              activePanelId: null,
-              panels: [{ id: 'panel-1', kind: 'chat', title: 'New Chat' }],
-            },
-          ],
-          null,
-        ),
-      ),
-    )
-
-    render(
-      <WorkspaceDockProvider workspaceId="workspace-1">
-        <DockContextCapture />
-      </WorkspaceDockProvider>,
-    )
-
-    await act(async () => {
-      capturedDock?.handleReady({ api } as never)
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dock-state')).toHaveAttribute(
-        'data-panel',
-        'chat',
-      )
-    })
-  })
-
-  it('drops empty saved groups instead of reviving them with blank tabs', async () => {
-    const api = new FakeDockApi()
-
-    window.localStorage.setItem(
-      'garden:dockview:workspace-1',
-      JSON.stringify(
-        makeSerializedDock(
-          [
-            {
-              id: 'group-1',
-              activePanelId: 'panel-1',
-              panels: [{ id: 'panel-1', kind: 'chat', title: 'New Chat' }],
-            },
-            {
-              id: 'group-2',
-              activePanelId: null,
-              panels: [],
-            },
-          ],
-          'group-1',
-        ),
-      ),
-    )
-
-    render(
-      <WorkspaceDockProvider workspaceId="workspace-1">
-        <DockContextCapture />
-      </WorkspaceDockProvider>,
-    )
-
-    await act(async () => {
-      capturedDock?.handleReady({ api } as never)
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dock-state')).toHaveAttribute(
-        'data-group',
-        'group-1',
-      )
-    })
-
-    expect(screen.getByTestId('dock-state')).toHaveAttribute(
-      'data-panel',
-      'chat',
-    )
-    expect(api.getGroup('group-2')).toBeUndefined()
-  })
-
-  it('follows the active group panel when dockview keeps a stale container activePanel', async () => {
-    const api = new FakeDockApi()
-
-    window.localStorage.setItem(
-      'garden:dockview:workspace-1',
-      JSON.stringify(
-        makeSerializedDock(
-          [
-            {
-              id: 'group-1',
-              activePanelId: 'panel-1',
-              panels: [{ id: 'panel-1', kind: 'inbox', title: 'Inbox' }],
-            },
-            {
-              id: 'group-2',
-              activePanelId: 'panel-2',
-              panels: [{ id: 'panel-2', kind: 'chat', title: 'New Chat' }],
-            },
-          ],
-          'group-1',
-        ),
-      ),
-    )
-
-    render(
-      <WorkspaceDockProvider workspaceId="workspace-1">
-        <DockContextCapture />
-      </WorkspaceDockProvider>,
-    )
-
-    await act(async () => {
-      capturedDock?.handleReady({ api } as never)
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dock-state')).toHaveAttribute(
-        'data-panel',
-        'inbox',
-      )
-    })
-
-    await act(async () => {
-      api.setVisibleGroupPanel('group-2', 'panel-2', {
-        keepContainerActivePanel: true,
+    act(() => {
+      capturedDock?.openPanel({
+        kind: 'issue-detail',
+        title: 'Fix dock',
+        entityId: 'issue-1',
       })
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('dock-state')).toHaveAttribute(
-        'data-group',
-        'group-2',
+      expect(screen.getByTestId('active-panel')).toHaveTextContent(
+        'issue-detail:issue-1:Fix dock',
       )
     })
 
-    expect(screen.getByTestId('dock-state')).toHaveAttribute(
-      'data-panel',
-      'chat',
-    )
+    expect(readPersistedLayout()).toContain('issue-detail:issue-1')
   })
 
-  it('drops invalid saved layouts and falls back to inbox', async () => {
-    const api = new FakeDockApi()
+  it('restores the last active tab from the persisted FlexLayout model', async () => {
+    const first = renderDock()
 
-    window.localStorage.setItem(
-      'garden:dockview:workspace-1',
-      JSON.stringify({
-        grid: {
-          root: {
-            type: 'branch',
-            data: [
-              {
-                type: 'leaf',
-                data: {
-                  id: 'group-1',
-                  views: ['panel-1'],
-                  activeView: 'panel-1',
-                },
-              },
-            ],
-          },
-          height: 0,
-          width: 0,
-          orientation: 'horizontal',
-        },
-        panels: {
-          'panel-1': {
-            id: 'panel-1',
-            contentComponent: 'not-a-panel',
-            title: 'Agent',
-            params: {
-              kind: 'not-a-panel',
-              title: 'Agent',
-              canonicalId: 'not-a-panel:singleton',
-            },
-          },
-        },
-        activeGroup: 'group-1',
-      }),
-    )
-
-    render(
-      <WorkspaceDockProvider workspaceId="workspace-1">
-        <DockContextCapture />
-      </WorkspaceDockProvider>,
-    )
-
-    await act(async () => {
-      capturedDock?.handleReady({ api } as never)
+    act(() => {
+      capturedDock?.openPanel({
+        kind: 'agent-detail',
+        title: 'Planner',
+        entityId: 'agent-1',
+      })
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('dock-state')).toHaveAttribute(
-        'data-panel',
-        'inbox',
+      expect(readPersistedLayout()).toContain('agent-detail:agent-1')
+    })
+
+    first.unmount()
+    capturedDock = null
+    renderDock()
+
+    expect(screen.getByTestId('active-panel')).toHaveTextContent(
+      'agent-detail:agent-1:Planner',
+    )
+  })
+
+  it('reuses one tab per non-chat panel kind', async () => {
+    renderDock()
+
+    act(() => {
+      capturedDock?.openPanel({
+        kind: 'issue-detail',
+        title: 'First issue',
+        entityId: 'issue-1',
+      })
+      capturedDock?.openPanel({
+        kind: 'issue-detail',
+        title: 'Second issue',
+        entityId: 'issue-2',
+      })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('active-panel')).toHaveTextContent(
+        'issue-detail:issue-2:Second issue',
+      )
+    })
+    const issueTabs = readPersistedTabs().filter((tab) => {
+      const config = tab.config as { kind?: string } | undefined
+      return config?.kind === 'issue-detail'
+    })
+    expect(issueTabs).toHaveLength(1)
+    expect(readPersistedLayout()).toContain('issue-detail:issue-2')
+  })
+
+  it('replaces a targeted blank tab instead of opening a second non-chat tab', async () => {
+    renderDock()
+    let blankId: string | null = null
+
+    act(() => {
+      blankId = capturedDock?.openNewTab() ?? null
+      capturedDock?.openPanel(
+        { kind: 'issues', title: 'Tasks' },
+        { targetPanelId: blankId ?? undefined },
       )
     })
 
-    expect(window.localStorage.getItem('garden:dockview:workspace-1')).toBe(
-      null,
-    )
+    await waitFor(() => {
+      expect(screen.getByTestId('active-panel')).toHaveTextContent(
+        'issues::Tasks',
+      )
+    })
+    const tabs = readPersistedTabs()
+    expect(tabs).toHaveLength(2)
+    expect(readPersistedLayout()).toContain('issues:singleton')
+  })
+
+  it('keeps chat tabs in the FlexLayout model only', async () => {
+    renderDock()
+
+    act(() => {
+      capturedDock?.openPanel({
+        kind: 'chat',
+        title: 'Design chat',
+        entityId: 'chat-1',
+      })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('active-panel')).toHaveTextContent(
+        'chat:chat-1:Design chat',
+      )
+    })
+    expect(readPersistedLayout()).toContain('chat:chat-1')
+  })
+
+  it('closes tabs by canonical id', async () => {
+    renderDock()
+
+    act(() => {
+      capturedDock?.openPanel({
+        kind: 'chat',
+        title: 'Design chat',
+        entityId: 'chat-1',
+      })
+      capturedDock?.openPanel({ kind: 'issues', title: 'Tasks' })
+      capturedDock?.closePanel('chat:chat-1')
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('active-panel')).toHaveTextContent(
+        'issues::Tasks',
+      )
+    })
+    expect(readPersistedLayout()).not.toContain('chat:chat-1')
+  })
+
+  it('renders FlexLayout panels through the factory', async () => {
+    renderDock({ view: true })
+
+    expect(await screen.findByText('Inbox page')).toBeInTheDocument()
   })
 })

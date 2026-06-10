@@ -108,8 +108,8 @@
   /* Garden palette — parchment, vellum, foliage */
   --parchment: #f9f7f2;
   --parchment-deep: #efebe1;
-  --vellum: rgba(255, 255, 255, 0.74);
-  --vellum-heavy: rgba(255, 255, 255, 0.92);
+  --vellum: rgba(255, 255, 255, 0.88);
+  --vellum-heavy: rgba(255, 255, 255, 0.96);
   --bone: #ffffff;
 
   --ink: #1a1f1c;
@@ -248,3 +248,5 @@
   --scrollbar-thumb-hover: rgba(245, 241, 232, 0.22);
   --scrollbar-track: transparent;
 }
+
+

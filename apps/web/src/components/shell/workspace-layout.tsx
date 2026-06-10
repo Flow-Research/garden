@@ -10,7 +10,7 @@ import { ModalRegistry } from '@/features/modals/registry'
 import { OnboardingOverlay } from '@/features/onboarding'
 import { useOnboardingStore } from '@/features/onboarding'
 import { SettingsDialog } from '@/features/settings'
-import { ConnectorCallbackListener } from '@/features/connections/components/connector-callback-listener'
+import { ConnectorCallbackListener } from '@/features/connections'
 import {
   agentListOptions,
   connectionListOptions,
@@ -84,7 +84,7 @@ export function WorkspaceLayout({
 }: {
   connectorFlowId?: string | null
   connectorId?: string | null
-}) {
+} = {}) {
   const user = useAuthStore((state) => state.user)
   const workspace = useWorkspaceStore((state) => state.workspace)
   const onboardingCompleted = useOnboardingStore((state) => state.completed)
@@ -93,8 +93,7 @@ export function WorkspaceLayout({
   )
 
   const hasSession = Boolean(user)
-  const needsOnboarding =
-    hasSession && !workspace?.id && !onboardingCompleted
+  const needsOnboarding = hasSession && !workspace?.id && !onboardingCompleted
   const activeWorkspaceId = workspace?.id ?? null
   // Authenticated route loader data hydrates the singleton auth/workspace stores
   // in a microtask. During that first client frame, both stores can still be
@@ -111,13 +110,13 @@ export function WorkspaceLayout({
           <WorkspaceIdProvider wsId={activeWorkspaceId}>
             <WorkspaceWarmCaches wsId={activeWorkspaceId} />
             <ConnectorCallbackListener
+              workspaceId={activeWorkspaceId}
               connectorFlowId={connectorFlowId}
               connectorId={connectorId}
-              workspaceId={activeWorkspaceId}
             />
             <ChatRuntimeProvider>
               <WorkspaceSidebar />
-              <SidebarInset className="relative overflow-hidden !my-2 !mr-2 !ml-0 !rounded-[14px] !bg-[color:var(--vellum)] backdrop-blur-xl saturate-110 shadow-[var(--shadow-hairline)]">
+              <SidebarInset className="relative overflow-hidden !my-2 !mr-2 !ml-0 !rounded-[14px] !bg-[color:var(--vellum)] backdrop-blur-xl saturate-110 shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.08)] dark:shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.28)]">
                 <div className="relative flex min-h-0 flex-1 overflow-hidden">
                   <WorkspaceDockView />
                 </div>
@@ -128,7 +127,7 @@ export function WorkspaceLayout({
             </ChatRuntimeProvider>
           </WorkspaceIdProvider>
         ) : (
-          <SidebarInset className="relative overflow-hidden !my-2 !mr-2 !ml-2 !rounded-[14px] !bg-[color:var(--vellum)] backdrop-blur-xl saturate-110 shadow-[var(--shadow-hairline)]">
+          <SidebarInset className="relative overflow-hidden !my-2 !mr-2 !ml-2 !rounded-[14px] !bg-[color:var(--vellum)] backdrop-blur-xl saturate-110 shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.08)] dark:shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.28)]">
             <div className="relative flex min-h-0 flex-1 overflow-hidden">
               {isRestoringWorkspace ? (
                 <WorkspaceLoadingSkeleton />

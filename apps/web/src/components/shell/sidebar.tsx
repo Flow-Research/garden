@@ -1,5 +1,3 @@
-'use client'
-
 import {
   useCallback,
   useEffect,
@@ -17,7 +15,10 @@ import type { ConnectorId } from '@garden/connectors/registry'
 import { listConnections } from '@/lib/api'
 import type { Agent, Skill } from '@garden/core/types'
 import { agentListOptions, skillListOptions } from '@/lib/workspace/queries'
-import { useSkillsBrowseStore, useSkillEditorStore } from '@garden/app-state/skills'
+import {
+  useSkillsBrowseStore,
+  useSkillEditorStore,
+} from '@garden/app-state/skills'
 import { FileTree } from '@/features/skills/components/file-tree'
 import { Button } from '@garden/ui/components/ui/button'
 import {
@@ -157,13 +158,8 @@ function contextFromPanel(kind: WorkspacePanelKind | null): RailContext {
   }
 }
 
-function HomeDashboardIcon({ className }: { className?: string }) {
-  return <IconifyIcon icon="ic:sharp-dashboard" className={className} />
-}
-
 function railUsesContextRail(rail: RailContext): boolean {
   return (
-    rail === 'home' ||
     rail === 'chats' ||
     rail === 'skills' ||
     rail === 'agents' ||
@@ -551,6 +547,9 @@ export function WorkspaceSidebar() {
               </SidebarMenu>
               <div className="mt-2 border-t border-sidebar-border/70 pt-2">
                 <ChatSessionExplorer
+                  activeDockSessionId={
+                    activeType === 'chat' ? activeEntityId : null
+                  }
                   onActivate={(session) => {
                     openPanel({
                       kind: 'chat',
@@ -561,19 +560,6 @@ export function WorkspaceSidebar() {
                   onArchive={(sessionId) => closePanel(`chat:${sessionId}`)}
                 />
               </div>
-            </ExplorerSection>
-          ) : null}
-
-          {effectiveRailId === 'home' ? (
-            <ExplorerSection>
-              <SidebarMenu>
-                <ExplorerActionRow
-                  label="Dashboard"
-                  icon={HomeDashboardIcon}
-                  active={activeType === 'dashboard'}
-                  onClick={openDashboard}
-                />
-              </SidebarMenu>
             </ExplorerSection>
           ) : null}
 
