@@ -386,7 +386,10 @@ export function toSkill(
       created_at: created,
       updated_at: created,
     })),
-    source_type: record.sourceType === 'skills.sh' ? 'skills.sh' : 'manual',
+    source_type:
+      record.sourceType === 'skills.sh' || record.sourceType === 'builtin'
+        ? record.sourceType
+        : 'manual',
     source_url: record.sourceUrl ?? null,
     bundle_hash: record.bundleHash ?? null,
     created_by: record.authorId ?? null,

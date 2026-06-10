@@ -7,20 +7,9 @@ import {
   persistRuntimeSkillBundle,
   persistSkillBundleFiles,
 } from './skill-bundles'
+import { parseGardenSkillDocument } from './skill-documents'
 
 type Db = ReturnType<typeof getDb>
-
-function parseFrontmatter(markdown: string) {
-  const match = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(markdown)
-  if (!match) {
-    return { frontmatter: null, body: markdown }
-  }
-
-  return {
-    frontmatter: match[1],
-    body: match[2],
-  }
-}
 
 type BuiltinSeedSkill = {
   slug: string
@@ -89,7 +78,9 @@ export async function seedBuiltinSkills(
       continue
     }
 
-    const parsed = parseFrontmatter(seed.content)
+    const parsed = parseGardenSkillDocument(seed.content)
+    if (parsed.isErr()) throw parsed.error
+
     const bundleHash = await hashSkillBundle({
       content: seed.content,
       files: seed.files,
@@ -99,11 +90,11 @@ export async function seedBuiltinSkills(
     await db.insert(schema.skill).values({
       id: skillId,
       workspaceId,
-      name: seed.name,
+      name: parsed.value.name,
       slug: seed.slug,
-      description: seed.description,
-      frontmatter: parsed.frontmatter,
-      body: parsed.body,
+      description: parsed.value.description,
+      frontmatter: JSON.stringify(parsed.value.frontmatter),
+      body: seed.content,
       sourceType: 'builtin',
       sourceUrl: seed.sourceUrl ?? null,
       bundleHash,

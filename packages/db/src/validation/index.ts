@@ -63,7 +63,7 @@ export const issuePrioritySchema = z.enum(issuePriorityValues)
 export const issueDbAssigneeTypeSchema = z.enum(issueDbAssigneeTypeValues)
 export const issueCommentAuthorTypeSchema = z.enum(issueCommentAuthorTypeValues)
 
-export const skillSourceTypeValues = ['manual', 'skills.sh'] as const
+export const skillSourceTypeValues = ['manual', 'skills.sh', 'builtin'] as const
 export const skillSourceTypeSchema = z.enum(skillSourceTypeValues)
 
 export const issueCommentMentionsSchema = z

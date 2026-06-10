@@ -1,4 +1,5 @@
 import type { SkillsShSearchResult } from '@garden/core/types'
+import { parseGardenSkillDocument } from './skill-documents'
 
 const SKILLS_SH_ORIGIN = 'https://skills.sh'
 const SKILLS_SH_SEARCH_PATH = '/api/search'
@@ -188,17 +189,19 @@ export async function downloadSkillsShBundle(
     return jsonError('skills.sh bundle is missing SKILL.md')
   }
 
-  const parsedDocument = parseSkillDocument(skillDocument.contents)
+  const parsedDocument = parseGardenSkillDocument(skillDocument.contents)
+  if (parsedDocument.isErr()) return jsonError(parsedDocument.error.message)
 
   return {
     sourceType: 'skills.sh',
     sourceUrl: ref.canonicalUrl,
     bundleHash,
     slug: ref.skill,
-    name: parsedDocument.name || ref.skill,
-    description: parsedDocument.description || '',
+    name: parsedDocument.value.name,
+    description: parsedDocument.value.description,
     content: skillDocument.contents,
     config: {
+      ...parsedDocument.value.frontmatter,
       import: {
         provider: 'skills.sh',
         owner: ref.owner,
@@ -206,7 +209,6 @@ export async function downloadSkillsShBundle(
         skill: ref.skill,
         source: ref.source,
       },
-      frontmatter_raw: parsedDocument.frontmatterRaw,
     },
     files: normalizedFiles.filter(
       (file) => file.path.toLowerCase() !== SKILL_MD_PATH.toLowerCase(),
@@ -233,31 +235,6 @@ function normalizeSkillBundlePath(path: string) {
   if (segments.some((segment) => segment === '..')) return null
 
   return segments.join('/')
-}
-
-function parseSkillDocument(raw: string) {
-  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/)
-  const frontmatterRaw = match?.[1]?.trim() ?? ''
-
-  return {
-    frontmatterRaw,
-    name: extractFrontmatterField(frontmatterRaw, 'name'),
-    description: extractFrontmatterField(frontmatterRaw, 'description'),
-  }
-}
-
-function extractFrontmatterField(frontmatter: string, key: string) {
-  if (!frontmatter) return null
-
-  const pattern = new RegExp(`^${escapeRegExp(key)}:\\s*(.+)$`, 'm')
-  const value = frontmatter.match(pattern)?.[1]?.trim()
-  if (!value) return null
-
-  return value.replace(/^['"]|['"]$/g, '')
-}
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function jsonError(message: string) {
