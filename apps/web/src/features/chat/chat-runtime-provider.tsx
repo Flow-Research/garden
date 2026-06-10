@@ -1,11 +1,14 @@
 'use client'
 
 import { useCallback, useMemo, useRef, type ReactNode } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Result } from 'better-result'
 import { useAgent } from 'agents/react'
 import { useAgentChat } from '@cloudflare/ai-chat/react'
 import type { UIMessage } from 'ai'
+import { useAuthStore } from '@garden/core/auth'
 import { useChatStore } from '@garden/core/chat'
+import { useWorkspaceStore } from '@garden/core/workspace'
 import {
   useAgentSessions,
   type AgentChatSession,
@@ -36,6 +39,7 @@ type ChatContinuationResult =
   | { ok: false; error: string }
 
 type AgentChatApi = ReturnType<typeof useAgentChat<unknown, ChatUiMessage>>
+type WarmRuntimeResult = { ok: true } | { ok: false; error: string }
 
 export type ChatRuntime = {
   addToolApprovalResponse: AgentChatApi['addToolApprovalResponse']
@@ -55,6 +59,7 @@ export type ChatRuntime = {
   setPendingTurn: (pending: PendingTurn | null) => void
   status: RealtimeStatus
   stop: AgentChatApi['stop']
+  warmRuntime: () => void
 }
 
 function getText(parts: ChatUiMessage['parts']) {
@@ -81,8 +86,78 @@ function buildSessionPreview(message: ChatUiMessage | undefined) {
     : ''
 }
 
+function ChatRuntimeWarmConnection({ session }: { session: AgentChatSession }) {
+  const agent = useAgent({
+    agent: 'AgentDO',
+    connectionTimeout: 30_000,
+    name: session.hostName,
+    onError: (event) => {
+      console.warn('[chat.runtime] warm parent websocket error', event)
+    },
+  })
+  useAgent({
+    agent: 'AgentDO',
+    connectionTimeout: 30_000,
+    name: session.hostName,
+    onError: (event) => {
+      console.warn('[chat.runtime] warm chat websocket error', event)
+    },
+    sub: [{ agent: 'ChatSubAgent', name: session.runtime_key }],
+  })
+
+  useQuery({
+    queryKey: [
+      'chat-runtime-warm-hidden',
+      session.hostName,
+      session.runtime_key,
+    ],
+    queryFn: async () => {
+      const result = await agent.call<WarmRuntimeResult>(
+        'warmThreadRuntime',
+        session.runtime_key,
+      )
+      if (!result.ok) throw new Error(result.error)
+      return true
+    },
+    refetchOnWindowFocus: false,
+    retry: false,
+    staleTime: Infinity,
+  })
+
+  return null
+}
+
 export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
-  return <>{children}</>
+  const userId = useAuthStore((state) => state.user?.id ?? null)
+  const workspaceId = useWorkspaceStore((state) => state.workspace?.id ?? null)
+  const { claimWarmSession, sessionsQuery, warmSession } = useAgentSessions()
+  const warmSessionQuery = useQuery({
+    queryKey: [
+      'chat-runtime-warm-session',
+      workspaceId,
+      userId,
+      warmSession?.id ?? 'missing',
+      sessionsQuery.data?.length ?? 0,
+    ],
+    queryFn: claimWarmSession,
+    enabled:
+      Boolean(workspaceId && userId) &&
+      sessionsQuery.status === 'success' &&
+      !warmSession,
+    refetchOnWindowFocus: false,
+    retry: false,
+    staleTime: Infinity,
+  })
+  const sessionToWarm = warmSession ?? warmSessionQuery.data ?? null
+
+  return (
+    <>
+      {sessionToWarm ? (
+        <ChatRuntimeWarmConnection session={sessionToWarm} />
+      ) : null}
+      {children}
+    </>
+  )
 }
 
 /**
@@ -102,6 +177,14 @@ export function useChatRuntimeConnection({
 }) {
   const pendingTurnRef = useRef<PendingTurn | null>(null)
 
+  const parentAgent = useAgent({
+    agent: 'AgentDO',
+    connectionTimeout: 30_000,
+    name: session.hostName,
+    onError: (event) => {
+      console.warn('[chat.runtime] parent websocket connection error', event)
+    },
+  })
   const agent = useAgent({
     agent: 'AgentDO',
     connectionTimeout: 30_000,
@@ -167,6 +250,37 @@ export function useChatRuntimeConnection({
     onError: markTurnError,
   })
 
+  const warmInFlightRef = useRef<Promise<void> | null>(null)
+  const warmRuntime = useCallback(() => {
+    if (warmInFlightRef.current) return
+
+    warmInFlightRef.current = parentAgent
+      .call<WarmRuntimeResult>('warmThreadRuntime', session.runtime_key)
+      .then((result) => {
+        if (!result.ok) {
+          console.warn('[chat.runtime] warm failed', result.error)
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn('[chat.runtime] warm failed', error)
+      })
+      .finally(() => {
+        warmInFlightRef.current = null
+      })
+  }, [agent, parentAgent])
+
+  useQuery({
+    queryKey: ['chat-runtime-warm', session.hostName, session.runtime_key],
+    queryFn: async () => {
+      warmRuntime()
+      await (warmInFlightRef.current ?? Promise.resolve())
+      return true
+    },
+    refetchOnWindowFocus: false,
+    retry: false,
+    staleTime: Infinity,
+  })
+
   const stopCurrentTurn = useCallback(async () => {
     const stopResult = await Result.tryPromise(() => stop())
     if (Result.isError(stopResult)) {
@@ -197,6 +311,7 @@ export function useChatRuntimeConnection({
       },
       status: status as RealtimeStatus,
       stop: stopCurrentTurn,
+      warmRuntime,
     }),
     [
       addToolApprovalResponse,
@@ -211,6 +326,7 @@ export function useChatRuntimeConnection({
       sendMessage,
       status,
       stopCurrentTurn,
+      warmRuntime,
     ],
   )
 

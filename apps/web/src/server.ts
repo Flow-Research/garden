@@ -177,6 +177,9 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
     routingRetry: AGENT_ROUTING_RETRY,
   })
   if (target === 'chat') {
+    const fixtureStartedAt = performance.now()
+    const elapsedMs = () => Math.round(performance.now() - fixtureStartedAt)
+    const timing: Record<string, number> = {}
     const threadId = crypto.randomUUID()
     await db.insert(schema.chatThread).values({
       id: threadId,
@@ -187,11 +190,17 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
       runtimeKey: threadId,
       title: '[fixture] live chat agent',
     })
+    timing.insertThreadMs = elapsedMs()
     await disposeRpcResult(await stub.ensureThread(threadId))
+    timing.ensureThreadMs = elapsedMs()
+    await disposeRpcResult(await stub.warmThreadRuntime(threadId))
+    timing.warmThreadRuntimeMs = elapsedMs()
     const tools = await disposeRpcResult(await stub.debugThreadTools(threadId))
+    timing.debugThreadToolsMs = elapsedMs()
     const prompt = await disposeRpcResult(
       await stub.debugThreadPrompt(threadId),
     )
+    timing.debugThreadPromptMs = elapsedMs()
     const toolNames = tools.inventory.map((tool) => tool.key)
     const base = {
       ok: true,
@@ -207,9 +216,11 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
       ),
       hasActivateSkillTool: toolNames.includes('activate_skill'),
       hasReadSkillResourceTool: toolNames.includes('read_skill_resource'),
+      hasLoadContextTool: toolNames.includes('load_context'),
       hasSkillsPrompt: prompt.prompt.includes('Available skills'),
     }
-    if (body.mode === 'inspect') return Response.json({ ...base, toolNames })
+    if (body.mode === 'inspect')
+      return Response.json({ ...base, timing, toolNames })
     const message = typeof body.message === 'string' ? body.message : null
     if (!message)
       return new Response('message is required unless mode=inspect', {
@@ -218,12 +229,15 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
     const turn = await disposeRpcResult(
       await stub.runThreadFixtureTurn(threadId, { clear: true, message }),
     )
+    timing.runThreadFixtureTurnMs = elapsedMs()
     const [afterPrompt, workspace] = await Promise.all([
       disposeRpcResult(await stub.debugThreadPrompt(threadId)),
       disposeRpcResult(await stub.debugThreadWorkspace(threadId)),
     ])
+    timing.afterTurnDebugMs = elapsedMs()
     return Response.json({
       ...base,
+      timing,
       turn,
       afterTurn: {
         hasSkillsPrompt: afterPrompt.prompt.includes('Available skills'),
@@ -631,7 +645,10 @@ export default {
         })
       : null
     if (sessionResult?.isErr()) {
-      logger.warn('auth.session.log_context_failed', errorFields(sessionResult.error))
+      logger.warn(
+        'auth.session.log_context_failed',
+        errorFields(sessionResult.error),
+      )
     }
     const session = sessionResult?.isOk() ? sessionResult.value : null
     const appLogger = session?.user?.id

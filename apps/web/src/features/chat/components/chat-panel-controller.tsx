@@ -114,7 +114,8 @@ const EMPTY_STATE_TILES: ReadonlyArray<StartTile> = [
     icon: ListTodo,
     label: 'Plan my next move',
     hint: 'priorities, next steps',
-    starter: 'Help me figure out what to focus on next. Here is what is on my plate: ',
+    starter:
+      'Help me figure out what to focus on next. Here is what is on my plate: ',
   },
   {
     icon: Workflow,
@@ -238,6 +239,7 @@ export function ConnectedChatPanelInteraction({
     sendMessage,
     status,
     stop,
+    warmRuntime,
     isRecovering,
     isStreaming,
   } = runtime
@@ -661,6 +663,7 @@ export function ConnectedChatPanelInteraction({
               onInputChange={setInput}
               onSend={handleSend}
               onStop={stop}
+              onWarmRuntime={warmRuntime}
               pendingQuestions={pendingStructuredInput?.questions}
               onSubmitAnswers={handleSubmitAnswers}
             />

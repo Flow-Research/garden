@@ -39,7 +39,7 @@ import { Workspace } from '@cloudflare/shell'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { drizzle } from 'drizzle-orm/neon-serverless'
 import { and, asc, eq, or, type SQL } from 'drizzle-orm'
-import { Result, type Result as ResultValue } from 'better-result'
+import { Result } from 'better-result'
 import { connectorRegistry } from '@garden/connectors'
 import { createGardenLogger } from '@garden/core/observability/logger'
 import * as schema from '@garden/db/schema'
@@ -300,16 +300,8 @@ type DebugPromptPayload = {
   loadedSkillKeys: string[]
 }
 
-type RuntimeSkillMenuEntry = {
-  id: string
-  slug: string
-  name: string
-  description: string
-}
-
 type RuntimeOkPayload = { ok: true }
 type RuntimePreparePayload = { ok: true } | { ok: false; error: string }
-type RuntimePrepareResult = ResultValue<void, string>
 type ThreadDocumentUploadPayload = Awaited<
   ReturnType<typeof registerUploadedDocument>
 >
@@ -365,7 +357,8 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     logAgentSocketError({
       logger: agentRuntimeLogger,
       component: 'agent-do',
-      connection: error === undefined ? null : (connectionOrError as Connection),
+      connection:
+        error === undefined ? null : (connectionOrError as Connection),
       error: error ?? connectionOrError,
     })
   }
@@ -374,7 +367,22 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   async ensureThread(threadId: string): Promise<RuntimeOkPayload> {
     await this.requireThreadAccess(threadId)
     await this.subAgent(ChatSubAgent, threadId)
+    void this.warmThreadRuntime(threadId)
     return { ok: true }
+  }
+
+  /**
+   * Warms the chat facet that will run the turn. Think executes MCP tools from
+   * the agent running inference, so parent AgentDO only orchestrates an early
+   * child warm; it does not proxy or execute MCP tools itself. Source refs:
+   * Think docs say MCP tools are automatically merged into every turn, and
+   * installed `think.js` merges `this.mcp.getAITools()` in `_runInferenceLoop`.
+   */
+  @callable()
+  async warmThreadRuntime(threadId: string): Promise<RuntimePreparePayload> {
+    await this.requireThreadAccess(threadId)
+    const thread = await this.subAgent(ChatSubAgent, threadId)
+    return await thread.warmRuntime()
   }
 
   @callable()
@@ -392,18 +400,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     const thread = await this.subAgent(ChatSubAgent, threadId)
     await thread.pauseRuntime('archive-thread')
     return { ok: true }
-  }
-
-  @callable()
-  async debugThread(threadId: string): Promise<LiveAgentStatePayload> {
-    await this.requireThreadAccess(threadId)
-    const thread = await this.subAgent(ChatSubAgent, threadId)
-    const state = await thread.debugState()
-    return {
-      ...state,
-      requestedSessionId: threadId,
-      effectiveSessionId: threadId,
-    }
   }
 
   @callable()
@@ -430,13 +426,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
     return thread.debugSandbox()
-  }
-
-  @callable()
-  async prepareThreadSandbox(threadId: string) {
-    await this.requireThreadAccess(threadId)
-    const thread = await this.subAgent(ChatSubAgent, threadId)
-    return thread.prepareSandbox()
   }
 
   @callable()
@@ -1016,7 +1005,8 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     logAgentSocketError({
       logger: agentRuntimeLogger,
       component: 'chat-sub-agent',
-      connection: error === undefined ? null : (connectionOrError as Connection),
+      connection:
+        error === undefined ? null : (connectionOrError as Connection),
       error: error ?? connectionOrError,
     })
   }
@@ -1029,10 +1019,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   override chatRecovery = true
   override contextOverflow = createGardenContextOverflow()
   override classifyChatError = classifyGardenContextOverflow
-  waitForMcpConnections = {
-    timeout: mcpRuntimeConfig.connectionWaitTimeoutMs,
-  }
-  private runtimePrepareInFlight: Promise<RuntimePrepareResult> | null = null
   private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
     getController: () => this.getMcpController(),
     fullSyncIntervalMs: mcpRuntimeConfig.connectorFullSyncIntervalMs,
@@ -1042,18 +1028,19 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       this.getMcpServers().servers as RuntimeMcpServerStates,
     connectionWaitTimeoutMs: mcpRuntimeConfig.connectionWaitTimeoutMs,
     backgroundRefreshFailedMessage:
-      '[agent-runtime] MCP background refresh failed',
-    refreshFailedMessage: '[agent-runtime] MCP connector refresh failed',
+      '[agent-runtime] chat MCP background warm failed',
+    refreshFailedMessage: '[agent-runtime] chat MCP connector warm failed',
     continuingWithoutReadyMessage:
-      '[agent-runtime] continuing without ready MCP connectors',
+      '[agent-runtime] continuing without warmed chat MCP connectors',
     onSuccessfulRefresh: (controller) => {
-      const observedChangesResult = controller.captureObservedMcpToolChanges()
-      if (observedChangesResult.isErr()) {
-        console.warn(
-          '[agent-runtime] failed to capture refreshed MCP tool changes',
-          observedChangesResult.error,
-        )
-      }
+      Result.match(controller.captureObservedMcpToolChanges(), {
+        ok: () => undefined,
+        err: (error) =>
+          console.warn(
+            '[agent-runtime] failed to capture warmed chat MCP tool changes',
+            error,
+          ),
+      })
     },
     onThreadNotFound: async (reason, controller) =>
       await this.pauseMcpRuntime(reason, controller),
@@ -1064,8 +1051,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     r2: this.env.FILES,
     name: () => this.name,
   })
-  maxSteps = 20
-
   getModel(): LanguageModel {
     return createAgentModel({
       ai: this.env.AI,
@@ -1308,14 +1293,15 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async beforeTurn(ctx: TurnContext) {
-    const mcpController = await this.ensureProxyMcpConnectionsForTurn()
-    const observedChangesResult = mcpController.captureObservedMcpToolChanges()
-    if (observedChangesResult.isErr()) {
-      console.warn(
-        '[agent-runtime] failed to capture MCP tool changes',
-        observedChangesResult.error,
-      )
-    }
+    const mcpController = this.getMcpController()
+    Result.match(mcpController.captureObservedMcpToolChanges(), {
+      ok: () => undefined,
+      err: (error) =>
+        console.warn(
+          '[agent-runtime] failed to capture MCP tool changes',
+          error,
+        ),
+    })
 
     const documentContext =
       ctx.body &&
@@ -1324,19 +1310,23 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         ? ctx.body.document_context.trim()
         : null
 
-    const explicitSkillContextResult = await Result.tryPromise({
-      try: async () => await this.explicitSlashSkillContext(ctx),
-      catch: (cause) => messageFromUnknown(cause),
-    })
-    if (explicitSkillContextResult.isErr()) {
-      console.warn('[agent-runtime] failed to activate slash-invoked skills', {
-        error: explicitSkillContextResult.error,
+    const explicitSkillContext = (
+      await Result.tryPromise({
+        try: async () => await this.explicitSlashSkillContext(ctx),
+        catch: (cause) => messageFromUnknown(cause),
       })
-    }
-
-    const explicitSkillContext = explicitSkillContextResult.isOk()
-      ? explicitSkillContextResult.value
-      : ''
+    ).match({
+      ok: (context) => context,
+      err: (error) => {
+        console.warn(
+          '[agent-runtime] failed to activate slash-invoked skills',
+          {
+            error,
+          },
+        )
+        return ''
+      },
+    })
 
     const systemAdditions = [documentContext, explicitSkillContext]
       .filter((part): part is string => Boolean(part?.trim()))
@@ -1345,6 +1335,10 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     const stableMcpTools = mcpController.wrapGetAITools(
       this.mcp.getAITools.bind(this.mcp),
     )
+    const activeTools = mcpController.activeToolKeysWithoutRawMcp({
+      assembledTools: ctx.tools,
+      stableMcpTools,
+    })
 
     return {
       experimental_telemetry: {
@@ -1363,10 +1357,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         ? { system: `${ctx.system}\n\n${systemAdditions}` }
         : {}),
       tools: stableMcpTools,
-      activeTools: mcpController.activeToolKeysWithoutRawMcp({
-        assembledTools: ctx.tools,
-        stableMcpTools,
-      }),
+      activeTools,
     } satisfies TurnConfig
   }
 
@@ -1439,11 +1430,13 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   @callable()
-  async prepareRuntime(): Promise<RuntimePreparePayload> {
-    const prepareResult = await this.ensureRuntimePrepared('client-prewarm')
-    return prepareResult.isOk()
-      ? { ok: true }
-      : { ok: false, error: prepareResult.error }
+  async warmRuntime(): Promise<RuntimePreparePayload> {
+    const result =
+      await this.mcpConnectionPreparer.ensureLoaded('client-prewarm')
+    return result.match<RuntimePreparePayload>({
+      ok: () => ({ ok: true }),
+      err: (error) => ({ ok: false, error }),
+    })
   }
 
   @callable()
@@ -1521,30 +1514,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         } satisfies UIMessage,
       ]
     })
-  }
-
-  private async prepareRuntimeWithRetries(
-    reason: string,
-  ): Promise<RuntimePrepareResult> {
-    return this.mcpConnectionPreparer.ensureLoaded(reason)
-  }
-
-  @callable()
-  async listRuntimeSkills(): Promise<RuntimeSkillMenuEntry[]> {
-    const sources = await this.getSkills()
-    const descriptors = []
-    for (const source of sources) {
-      descriptors.push(...(await source.list()))
-    }
-
-    return descriptors
-      .map((descriptor) => ({
-        id: descriptor.name,
-        slug: descriptor.name,
-        name: descriptor.name,
-        description: descriptor.description,
-      }))
-      .sort((left, right) => left.slug.localeCompare(right.slug))
   }
 
   async refreshPromptConfig() {
@@ -1722,15 +1691,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   async debugTools(): Promise<DebugToolsPayload> {
-    const connectionResult =
-      await this.mcpConnectionPreparer.ensureLoaded('debug-tools')
-    if (connectionResult.isErr()) {
-      console.warn(
-        '[agent-runtime] failed to attach MCP connector tools for debug inventory',
-        { error: connectionResult.error },
-      )
-    }
-
     // Mirror what Think does inside `_runInferenceLoop` — the merged ToolSet
     // that actually reaches the model. No hand-written inventories here.
     const workspaceTools = createWorkspaceTools(this.workspace) as ToolSet
@@ -2053,32 +2013,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     return new RuntimeMcpController(host)
   }
 
-  private async ensureProxyMcpConnectionsForTurn() {
-    return await this.mcpConnectionPreparer.ensureForTurn('before-turn')
-  }
-
-  private ensureRuntimePrepared(reason: string) {
-    if (this.runtimePrepareInFlight) return this.runtimePrepareInFlight
-
-    this.runtimePrepareInFlight = this.prepareRuntimeWithRetries(reason).then(
-      (result) => {
-        this.runtimePrepareInFlight = null
-        return result
-      },
-      (cause: unknown) => {
-        const message = cause instanceof Error ? cause.message : String(cause)
-        console.warn('[agent-runtime] runtime background prepare failed', {
-          reason,
-          error: message,
-        })
-        this.runtimePrepareInFlight = null
-        return Result.err(message)
-      },
-    )
-
-    return this.runtimePrepareInFlight
-  }
-
   private async pauseMcpRuntime(
     reason: string,
     mcpController = this.getMcpController(),
@@ -2172,4 +2106,3 @@ function getThreadPreview(messages: UIMessage[]) {
   if (!text) return ''
   return text.length > 120 ? `${text.slice(0, 120).trimEnd()}…` : text
 }
-
