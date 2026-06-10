@@ -416,7 +416,7 @@ export function WorkspaceSidebar() {
     >
       <Sidebar
         collapsible="none"
-        className="w-[calc(var(--sidebar-width-icon)+1px)]! shrink-0 border-r border-[color:var(--hairline-soft)] bg-transparent"
+        className="w-[calc(var(--sidebar-width-icon)+1px)]! shrink-0 bg-transparent"
       >
         <SidebarHeader className="p-0">
           <SidebarMenu>

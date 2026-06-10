@@ -95,7 +95,7 @@
   padding: 0 4px;
   border: 0;
   background: var(--garden-dock-chrome);
-  box-shadow: inset 0 -1px 0 0 var(--color-2);
+  box-shadow: none;
   min-height: 30px;
 }
 
@@ -105,11 +105,11 @@
 
 .garden-flexlayout .flexlayout__tab_button,
 .garden-flexlayout .flexlayout__tab_button_stretch {
-  flex: 0 0 7.25rem;
-  width: 7.25rem;
+  flex: 0 0 6.75rem;
+  width: 6.75rem;
   height: 30px;
   min-width: 0;
-  max-width: 7.25rem;
+  max-width: 6.75rem;
   margin: 0;
   padding: 0 9px 0 10px;
   border: 0;
@@ -178,10 +178,16 @@
   top: 0;
   right: 0;
   bottom: 0;
-  width: 0.35rem;
+  width: 0.08rem;
   pointer-events: none;
   background: linear-gradient(to right, transparent, var(--tab-fade-bg));
   content: '';
+}
+
+.garden-flexlayout
+  .flexlayout__tab_button:hover
+  .garden-flexlayout-tab__content::after {
+  width: 0.28rem;
 }
 
 .garden-flexlayout .flexlayout__tab_button {
@@ -222,18 +228,30 @@
  * size its icon directly. Verified against TabButton's render in
  * flexlayout-react/dist/index.js. */
 .garden-flexlayout .flexlayout__tab_button_trailing {
-  margin-left: 0.125rem;
-  width: 0.875rem;
+  width: 0;
   height: 0.875rem;
+  margin-left: 0;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   border-radius: 4px;
   color: var(--gravel);
-  opacity: 0.72;
+  opacity: 0;
   transition:
     color 140ms ease,
     opacity 140ms ease,
     background-color 140ms ease;
+}
+
+.garden-flexlayout
+  .flexlayout__tab_button:hover
+  .flexlayout__tab_button_trailing,
+.garden-flexlayout
+  .flexlayout__tab_button:focus-within
+  .flexlayout__tab_button_trailing {
+  width: 0.875rem;
+  margin-left: 0.125rem;
+  opacity: 0.72;
 }
 
 .garden-flexlayout .flexlayout__tab_button_trailing:hover {
