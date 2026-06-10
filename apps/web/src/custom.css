@@ -105,11 +105,11 @@
 
 .garden-flexlayout .flexlayout__tab_button,
 .garden-flexlayout .flexlayout__tab_button_stretch {
-  flex: 0 0 10.75rem;
-  width: 10.75rem;
+  flex: 0 0 7.25rem;
+  width: 7.25rem;
   height: 30px;
   min-width: 0;
-  max-width: 10.75rem;
+  max-width: 7.25rem;
   margin: 0;
   padding: 0 9px 0 10px;
   border: 0;
@@ -117,6 +117,7 @@
   color: var(--color-tab-unselected);
   background: var(--color-tab-unselected-background);
   box-shadow: none;
+  font-size: 0.8125rem;
   font-weight: 500;
   transition:
     background-color 140ms cubic-bezier(0.16, 1, 0.3, 1),
@@ -157,23 +158,43 @@
 }
 
 .garden-flexlayout-tab__content {
-  display: inline-flex;
+  position: relative;
+  display: flex;
   width: 100%;
   min-width: 0;
   align-items: center;
   gap: 0.35rem;
+  overflow: hidden;
 }
 
 .garden-flexlayout-tab__content > span:last-child {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
-  mask-image: linear-gradient(to right, #000 calc(100% - 1.15rem), transparent);
-  -webkit-mask-image: linear-gradient(
-    to right,
-    #000 calc(100% - 1.15rem),
-    transparent
-  );
+}
+
+.garden-flexlayout-tab__content::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 0.35rem;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--tab-fade-bg));
+  content: '';
+}
+
+.garden-flexlayout .flexlayout__tab_button {
+  --tab-fade-bg: var(--garden-dock-chrome);
+}
+
+.garden-flexlayout .flexlayout__tab_button:hover {
+  --tab-fade-bg: var(--garden-dock-chrome-hover);
+}
+
+.garden-flexlayout .flexlayout__tab_button--selected,
+.garden-flexlayout .flexlayout__tab_button--selected:hover {
+  --tab-fade-bg: var(--color-tab-selected-background);
 }
 
 .garden-flexlayout-tab__icon {
@@ -201,9 +222,9 @@
  * size its icon directly. Verified against TabButton's render in
  * flexlayout-react/dist/index.js. */
 .garden-flexlayout .flexlayout__tab_button_trailing {
-  margin-left: 0.25rem;
-  width: 1.125rem;
-  height: 1.125rem;
+  margin-left: 0.125rem;
+  width: 0.875rem;
+  height: 0.875rem;
   align-items: center;
   justify-content: center;
   border-radius: 4px;
@@ -222,8 +243,8 @@
 }
 
 .garden-flexlayout .flexlayout__tab_button_trailing svg {
-  width: 0.875rem;
-  height: 0.875rem;
+  width: 0.75rem;
+  height: 0.75rem;
 }
 
 .garden-flexlayout .flexlayout__tab {
