@@ -1,5 +1,5 @@
 import handler from '@tanstack/react-start/server-entry'
-import { getAgentByName } from 'agents'
+import { routeAgentRequest } from 'agents'
 import {
   AgentDO,
   AutomationRunSubAgent,
@@ -92,17 +92,24 @@ function getAgentRuntimeNameFromRequest(request: Request) {
   return agentRuntimeName
 }
 
+/**
+ * Route authenticated agent HTTP/WebSocket traffic through the SDK router.
+ *
+ * Before this used `getAgentByName(...).fetch(...)`, which performs an extra
+ * RPC `setName()` handshake meant for RPC method calls. WebSocket connects then
+ * logged Cloudflare's "RPC result was not disposed properly" warning before the
+ * 101 handoff. The SDK router mirrors PartyServer routing: parse URL, set
+ * routing headers, and call `namespace.get(id).fetch(...)` directly with retry.
+ * Reference checked: installed `agents` / `partyserver` routeAgentRequest path.
+ */
 async function routeAgentDoRequest(request: Request, env: ServerEnv) {
   const agentRuntimeName = getAgentRuntimeNameFromRequest(request)
   if (!agentRuntimeName) return new Response('Not found', { status: 404 })
 
-  const routedRequest = new Request(request)
-  routedRequest.headers.set('x-partykit-namespace', 'agent-d-o')
-
-  const agent = await getAgentByName(env.AgentDO, agentRuntimeName, {
+  const response = await routeAgentRequest(request, env, {
     routingRetry: AGENT_ROUTING_RETRY,
   })
-  return await agent.fetch(routedRequest)
+  return response ?? new Response('Not found', { status: 404 })
 }
 
 
