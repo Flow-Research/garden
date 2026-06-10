@@ -128,6 +128,9 @@ function ChatRuntimeWarmConnection({ session }: { session: AgentChatSession }) {
 export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
   const userId = useAuthStore((state) => state.user?.id ?? null)
   const workspaceId = useWorkspaceStore((state) => state.workspace?.id ?? null)
+  const visibleChatSessionIds = useChatStore(
+    (state) => state.visibleChatSessionIds,
+  )
   const { claimWarmSession, sessionsQuery, warmSession } = useAgentSessions()
   const warmSessionQuery = useQuery({
     queryKey: [
@@ -146,7 +149,19 @@ export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
     retry: false,
     staleTime: Infinity,
   })
-  const sessionToWarm = warmSession ?? warmSessionQuery.data ?? null
+  const warmCandidate = warmSession ?? warmSessionQuery.data ?? null
+  /**
+   * Do not keep the hidden prewarm socket open for a chat that already has a
+   * visible panel runtime. Before this guard, an idle new chat could hold two
+   * parent AgentDO sockets and two ChatSubAgent sockets: one hidden warmer plus
+   * one visible `useChatRuntimeConnection`. Afterward prewarm is only for the
+   * next unopened session, reducing idle websocket/facet/MCP pressure. Source
+   * checked: local Agents SDK `useAgent` / `useAgentChat` connection lifecycle.
+   */
+  const sessionToWarm =
+    warmCandidate && !visibleChatSessionIds.includes(warmCandidate.id)
+      ? warmCandidate
+      : null
 
   return (
     <>
