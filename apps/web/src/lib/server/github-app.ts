@@ -1,7 +1,7 @@
 import { Result, TaggedError } from 'better-result'
 import { eq } from 'drizzle-orm'
 import { getGitHubAppInstallation } from '@garden/connectors/github-app'
-import { getDb, schema } from '@/lib/server/db'
+import { schema, type getDb } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
 
 const textEncoder = new TextEncoder()
@@ -19,12 +19,13 @@ export class GitHubInstallError extends TaggedError('GitHubInstallError')<{
 
 type GitHubAppEnv = Pick<
   AppEnv,
-  | 'DATABASE_URL'
   | 'BETTER_AUTH_SECRET'
   | 'GITHUB_CLIENT_ID'
   | 'GITHUB_APP_ID'
   | 'GITHUB_APP_PRIVATE_KEY'
 >
+
+type GitHubAppDatabase = ReturnType<typeof getDb>
 
 function normalizeGitHubAppEnv(env: GitHubAppEnv) {
   const privateKey = env.GITHUB_APP_PRIVATE_KEY?.trim()
@@ -100,6 +101,7 @@ export async function createGitHubSetupState(args: {
   secret: string
   userId: string
   workspaceId: string
+  flowId?: string | null
 }) {
   const payload = base64Url(
     textEncoder.encode(
@@ -107,6 +109,7 @@ export async function createGitHubSetupState(args: {
         userId: args.userId,
         workspaceId: args.workspaceId,
         issuedAt: Date.now(),
+        ...(args.flowId ? { flowId: args.flowId } : {}),
       }),
     ),
   )
@@ -138,43 +141,44 @@ export async function resolveGitHubSetupState(args: {
     )
   }
 
-  const parsed = Result.try(() => {
-    const decoded = textDecoder.decode(decodeBase64Url(payload))
-    const value = JSON.parse(decoded) as {
-      userId?: unknown
-      workspaceId?: unknown
-      issuedAt?: unknown
-    }
-    if (
-      typeof value.userId !== 'string' ||
-      typeof value.workspaceId !== 'string' ||
-      typeof value.issuedAt !== 'number'
-    ) {
-      throw new Error('GitHub setup state is missing required fields')
-    }
-    if (Date.now() - value.issuedAt > GITHUB_SETUP_STATE_TTL_MS) {
-      throw new Error('GitHub setup state expired')
-    }
-    return {
-      userId: value.userId,
-      workspaceId: value.workspaceId,
-    }
+  return Result.try({
+    try: () => {
+      const decoded = textDecoder.decode(decodeBase64Url(payload))
+      const value = JSON.parse(decoded) as {
+        userId?: unknown
+        workspaceId?: unknown
+        issuedAt?: unknown
+        flowId?: unknown
+      }
+      if (
+        typeof value.userId !== 'string' ||
+        typeof value.workspaceId !== 'string' ||
+        typeof value.issuedAt !== 'number'
+      ) {
+        throw new Error('GitHub setup state is missing required fields')
+      }
+      if (Date.now() - value.issuedAt > GITHUB_SETUP_STATE_TTL_MS) {
+        throw new Error('GitHub setup state expired')
+      }
+      return {
+        userId: value.userId,
+        workspaceId: value.workspaceId,
+        ...(typeof value.flowId === 'string' ? { flowId: value.flowId } : {}),
+      }
+    },
+    catch: (cause) =>
+      new GitHubInstallError({
+        code: 'github_state_invalid',
+        message:
+          cause instanceof Error
+            ? cause.message
+            : 'GitHub setup state is invalid',
+      }),
   })
-
-  return parsed.isOk()
-    ? Result.ok(parsed.value)
-    : Result.err(
-        new GitHubInstallError({
-          code: 'github_state_invalid',
-          message:
-            parsed.error instanceof Error
-              ? parsed.error.message
-              : 'GitHub setup state is invalid',
-        }),
-      )
 }
 
 export async function completeGitHubAppInstallation(args: {
+  db: GitHubAppDatabase
   env: GitHubAppEnv
   userId: string
   workspaceId: string
@@ -203,7 +207,6 @@ export async function completeGitHubAppInstallation(args: {
     )
   }
 
-  const db = getDb(args.env)
   const now = new Date()
   const result = await Result.tryPromise({
     try: async () => {
@@ -218,19 +221,19 @@ export async function completeGitHubAppInstallation(args: {
         updatedAt: now,
       }
 
-      const [existingInstallation] = await db
+      const [existingInstallation] = await args.db
         .select({ id: schema.githubAppInstallation.id })
         .from(schema.githubAppInstallation)
         .where(eq(schema.githubAppInstallation.workspaceId, args.workspaceId))
         .limit(1)
 
       if (existingInstallation) {
-        await db
+        await args.db
           .update(schema.githubAppInstallation)
           .set(installationRecord)
           .where(eq(schema.githubAppInstallation.id, existingInstallation.id))
       } else {
-        await db.insert(schema.githubAppInstallation).values(installationRecord)
+        await args.db.insert(schema.githubAppInstallation).values(installationRecord)
       }
     },
     catch: (cause) =>
@@ -243,5 +246,5 @@ export async function completeGitHubAppInstallation(args: {
       }),
   })
 
-  return result.isOk() ? Result.ok(undefined) : result
+  return result.map(() => ({ accountLogin }))
 }
