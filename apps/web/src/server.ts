@@ -31,7 +31,10 @@ import {
   type GardenLogger,
   type GardenLogFields,
 } from '@garden/core/observability/logger'
-import { createAppRequestContext } from '@/lib/server/context'
+import {
+  createAppRequestContext,
+  getLoggedAuthSession,
+} from '@/lib/server/context'
 
 export { AgentDO }
 export { AutomationRunSubAgent }
@@ -409,7 +412,12 @@ async function authorizeAgentRequest(
   }
 
   const auth = createAuth(env, request)
-  const session = await auth.api.getSession({ headers: request.headers })
+  const session = await getLoggedAuthSession({
+    auth,
+    request,
+    source: 'agent-router',
+    fields: { route: 'agent', agentRuntimeName },
+  })
   if (!session?.user) {
     logger.warn('agent.request.unauthorized')
     return {

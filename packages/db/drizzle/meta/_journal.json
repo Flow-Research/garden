@@ -253,6 +253,13 @@
       "when": 1780870420624,
       "tag": "0035_empty_fantastic_four",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1780928498044,
+      "tag": "0036_swift_pete_wisdom",
+      "breakpoints": true
     }
   ]
 }

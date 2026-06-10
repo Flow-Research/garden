@@ -1,4 +1,5 @@
 import { createAuth } from '@/lib/auth'
+import { getLoggedAuthSession } from '@/lib/server/context'
 import type { AppEnv } from '@/lib/server/env'
 
 export function toCoreUser(input: {
@@ -36,7 +37,11 @@ export async function getAuthSession(
   env: Pick<AppEnv, 'DATABASE_URL' | 'BETTER_AUTH_SECRET' | 'BETTER_AUTH_URL'>,
 ) {
   const auth = createAuth(env, request)
-  const result = await auth.api.getSession({ headers: request.headers })
+  const result = await getLoggedAuthSession({
+    auth,
+    request,
+    source: 'route-helper',
+  })
   if (!result?.session || !result?.user) return null
   return result
 }

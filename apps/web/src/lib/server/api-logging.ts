@@ -90,7 +90,7 @@ export function logApiFailure(input: {
     ? apiRequestLogger.child(requestFields(input.request))
     : apiRequestLogger
   logger[input.level ?? 'error'](input.event, {
-    ...(input.fields ?? {}),
+    ...input.fields,
     ...errorFields(input.error),
   })
 }

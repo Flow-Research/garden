@@ -1,5 +1,6 @@
 import { betterAuth } from 'better-auth'
-import { createAuthMiddleware } from 'better-auth/api'
+import { createAuthMiddleware, getOAuthState } from 'better-auth/api'
+import { Result, matchError } from 'better-result'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { and, eq } from 'drizzle-orm'
 import { createAccessControl } from 'better-auth/plugins/access'
@@ -8,6 +9,10 @@ import { organization } from 'better-auth/plugins'
 import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import { connectorRegistry } from '@garden/connectors'
 import { buildConnectorOAuthConfigs } from '@garden/connectors/oauth'
+import {
+  createGardenLogger,
+  type GardenLogLevel,
+} from '@garden/core/observability/logger'
 import {
   account,
   invitation,
@@ -18,7 +23,13 @@ import {
   verification,
 } from '@garden/db/schema'
 import { syncCapabilities } from '@/lib/server/capability-sync'
+import {
+  ConnectorCallbackDatabaseError,
+  recordConnectorCallbackEvent,
+  type ConnectorCallbackStatus,
+} from '@/lib/server/connector-callback-events'
 import type { AppEnv } from '@/lib/server/env'
+import type { getDb } from '@/lib/server/db'
 
 export type GardenAuthEnv = Pick<
   AppEnv,
@@ -36,7 +47,7 @@ type GardenAuthRuntime = GardenAuthEnv & {
   request?: Request
 }
 
-type AuthDatabase = Parameters<typeof drizzleAdapter>[0]
+type AuthDatabase = ReturnType<typeof getDb>
 type AccountRecord = typeof account.$inferInsert
 type HookSession = {
   session: {
@@ -66,6 +77,31 @@ const authSchema = {
   organization: organizationTable,
   member: memberTable,
   invitation,
+}
+
+const betterAuthLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'better-auth',
+})
+
+/**
+ * Replaces Better Auth's default console logger with Garden's redacting error
+ * logger. The default logger printed Drizzle query params, which exposed session
+ * tokens in Cloudflare logs during auth-session DB failures. Keeping Better Auth
+ * at `level: 'error'` preserves actionable failures only; Garden's logger then
+ * redacts params/cookies and indexes the sanitized args. References: Better Auth
+ * logger option source and local Cloudflare Workers structured logging helper.
+ */
+function logBetterAuthError(
+  level: Exclude<GardenLogLevel, 'success'>,
+  message: string,
+  ...args: unknown[]
+) {
+  if (level !== 'error') return
+  betterAuthLogger.error('better_auth.error', {
+    betterAuthMessage: message,
+    ...(args.length > 0 ? { betterAuthArgs: args } : {}),
+  })
 }
 
 const gardenAccessControl = createAccessControl({
@@ -168,6 +204,135 @@ function getRequestOrigin(request?: Request) {
   return new URL(request.url).origin
 }
 
+function readOAuthCallbackFlow(callbackURL: string | undefined, baseURL: string) {
+  if (!callbackURL || !URL.canParse(callbackURL, baseURL)) {
+    return { flowId: undefined }
+  }
+
+  const url = new URL(callbackURL, baseURL)
+  const flowId = url.searchParams.get('connector_flow')?.trim() || undefined
+  return { flowId }
+}
+
+type OAuthCallbackOutcome = {
+  status: ConnectorCallbackStatus
+  stage: string
+  message: string
+  errorCode?: string | null
+}
+
+function syncResultToOAuthOutcome(args: {
+  connectorLabel: string
+  syncResult: Awaited<ReturnType<typeof syncCapabilities>>
+}): OAuthCallbackOutcome {
+  return Result.match(args.syncResult, {
+    ok: (): OAuthCallbackOutcome => ({
+      status: 'success',
+      stage: 'connected',
+      message: `${args.connectorLabel} connected.`,
+    }),
+    err: (error): OAuthCallbackOutcome => ({
+      status: 'degraded',
+      stage: error.code,
+      message: `${args.connectorLabel} connected. Tool sync needs attention.`,
+      errorCode: error.code,
+    }),
+  })
+}
+
+async function markOAuthAccountDegraded(args: {
+  db: AuthDatabase
+  userId: string
+  workspaceId: string
+  providerId: string
+}) {
+  return Result.tryPromise({
+    try: async () => {
+      await args.db
+        .update(account)
+        .set({
+          status: 'degraded',
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(account.userId, args.userId),
+            eq(account.providerId, args.providerId),
+            eq(account.workspaceId, args.workspaceId),
+          ),
+        )
+    },
+    catch: (cause) =>
+      new ConnectorCallbackDatabaseError({
+        operation: 'update',
+        cause,
+        message:
+          cause instanceof Error
+            ? cause.message
+            : 'Failed to mark OAuth account as degraded',
+      }),
+  })
+}
+
+/**
+ * Converts Better Auth's OAuth callback hook into a single typed callback
+ * workflow. Previously the hook treated capability sync failure as an error
+ * branch and duplicated event writes; after reading better-result v2.9.2 source,
+ * sync failure is modeled as an `Ok(degraded)` product outcome while DB/event
+ * persistence stays `Err`. This keeps callbacks non-blocking beyond critical
+ * writes and avoids URL/tab state as product state.
+ */
+async function finishOAuthConnectorCallback(args: {
+  db: AuthDatabase
+  userId: string
+  workspaceId: string
+  providerId: string
+  connectorId: NonNullable<ReturnType<typeof getConnectorByProviderId>>['id']
+  connectorLabel: string
+  flowId?: string | null
+}) {
+  return Result.gen(async function* () {
+    const syncResult = await syncCapabilities(
+      args.connectorId,
+      args.userId,
+      args.workspaceId,
+    )
+    const outcome = syncResultToOAuthOutcome({
+      connectorLabel: args.connectorLabel,
+      syncResult,
+    })
+
+    if (outcome.status === 'degraded') {
+      yield* Result.await(
+        markOAuthAccountDegraded({
+          db: args.db,
+          userId: args.userId,
+          workspaceId: args.workspaceId,
+          providerId: args.providerId,
+        }),
+      )
+    }
+
+    const event = yield* Result.await(
+      recordConnectorCallbackEvent({
+        db: args.db,
+        userId: args.userId,
+        workspaceId: args.workspaceId,
+        connectorId: args.connectorId,
+        providerId: args.providerId,
+        flowId: args.flowId,
+        source: 'oauth',
+        status: outcome.status,
+        stage: outcome.stage,
+        message: outcome.message,
+        errorCode: outcome.errorCode,
+      }),
+    )
+
+    return Result.ok({ outcome, event })
+  })
+}
+
 export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
   const runtimeOrigin = getRequestOrigin(env.request)
   const baseURL = runtimeOrigin ?? env.BETTER_AUTH_URL ?? 'http://localhost:3000'
@@ -192,6 +357,10 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
     secret: env.BETTER_AUTH_SECRET,
     baseURL,
     trustedOrigins,
+    logger: {
+      level: 'error',
+      log: logBetterAuthError,
+    },
     database: drizzleAdapter(db, {
       provider: 'pg',
       schema: authSchema,
@@ -286,36 +455,49 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
           return
         }
 
-        const syncResult = await syncCapabilities(
-          connector.id,
-          userId,
-          workspaceId,
+        const oauthState = await getOAuthState()
+        const { flowId } = readOAuthCallbackFlow(
+          oauthState?.callbackURL,
+          baseURL,
         )
-
-        if (syncResult.isOk()) {
-          return
-        }
-
-        context.context.logger.error(syncResult.error.message, syncResult.error, {
-          connectorId: connector.id,
-          providerId,
+        const result = await finishOAuthConnectorCallback({
+          db,
           userId,
           workspaceId,
+          providerId,
+          connectorId: connector.id,
+          connectorLabel: connector.label,
+          flowId,
         })
 
-        await db
-          .update(account)
-          .set({
-            status: 'degraded',
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(account.userId, userId),
-              eq(account.providerId, providerId),
-              eq(account.workspaceId, workspaceId),
-            ),
-          )
+        result.match({
+          ok: ({ outcome }) => {
+            if (outcome.status === 'degraded') {
+              context.context.logger.error(outcome.message, {
+                connectorId: connector.id,
+                providerId,
+                userId,
+                workspaceId,
+                errorCode: outcome.errorCode,
+              })
+            }
+          },
+          err: (error) =>
+            matchError(error, {
+              ConnectorCallbackDatabaseError: (databaseError) => {
+                context.context.logger.error(
+                  databaseError.message,
+                  databaseError,
+                  {
+                    connectorId: connector.id,
+                    providerId,
+                    userId,
+                    workspaceId,
+                  },
+                )
+              },
+            }),
+        })
       }),
     },
     user: {

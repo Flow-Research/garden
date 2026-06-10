@@ -42,6 +42,8 @@ export type {
   ConnectionAction,
   ConnectionActivityItem,
   ConnectionActivityResponse,
+  ConnectorCallbackEventItem,
+  ConnectorCallbackEventResponse,
   ConnectionItem,
   ConnectionsSnapshot,
   ConnectionTool,

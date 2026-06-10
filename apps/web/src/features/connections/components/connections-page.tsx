@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { format, formatDistanceToNowStrict } from 'date-fns'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon as IconifyIcon } from '@iconify/react'
+import { useWorkspaceId } from '@garden/core/hooks'
 import {
   ChevronDown,
   ChevronRight,
@@ -16,7 +17,6 @@ import { getConnectorById } from '@garden/connectors'
 import type { ConnectorId } from '@garden/connectors/registry'
 import {
   getConnectorActivity,
-  listConnections,
   mutateConnection,
   updateToolGrant as updateConnectionToolGrant,
   type ConnectionAction,
@@ -27,6 +27,8 @@ import {
   type PermissionTrustLevel,
   type RiskClass,
 } from '@/lib/api'
+import { connectionListOptions, workspaceKeys } from '@/lib/workspace/queries'
+import { notifyConnectionsChanged } from '@/features/connections/events'
 import { Button } from '@garden/ui/components/ui/button'
 import {
   Drawer,
@@ -68,32 +70,27 @@ const TOOL_GROUPS: Array<{
 
 const GRANT_UPDATE_DEBOUNCE_MS = 450
 
-async function loadConnectionsSnapshot() {
-  return listConnections()
+function createConnectorFlowId() {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID()
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 }
 
-function currentCallbackUrl() {
-  return typeof window === 'undefined'
-    ? '/workspace'
-    : `${window.location.pathname}${window.location.search}`
+function connectorCallbackUrl(connectorId: ConnectorId, flowId: string) {
+  const url = new URL(
+    '/workspace',
+    typeof window === 'undefined' ? 'http://localhost:3000' : window.location.origin,
+  )
+  url.searchParams.set('connector_flow', flowId)
+  url.searchParams.set('connector_id', connectorId)
+  return `${url.pathname}${url.search}`
 }
 
-function startGitHubAppInstall() {
-  window.location.href = '/api/github/install'
-}
-
-function consumeGitHubSetupStatus() {
-  if (typeof window === 'undefined') return null
-
-  const url = new URL(window.location.href)
-  if (url.searchParams.get('panelEntityId') !== 'github') return null
-
-  const status = url.searchParams.get('github_setup')
-  if (!status) return null
-
-  url.searchParams.delete('github_setup')
-  window.history.replaceState(window.history.state, '', url.toString())
-  return status
+function startGitHubAppInstall(flowId: string) {
+  const url = new URL('/api/github/install', window.location.origin)
+  url.searchParams.set('connector_flow', flowId)
+  window.location.href = url.toString()
 }
 
 const CONNECTOR_ICON_ID: Record<ConnectorId, string | null> = {
@@ -230,18 +227,16 @@ function pickDefaultConnector(
   return connectors[0] ?? null
 }
 
-function notifyConnectionsChanged() {
-  if (typeof window === 'undefined') return
-  window.dispatchEvent(new Event('garden:connections-changed'))
-}
-
 export function ConnectionsPage({
   focusedConnectorId,
 }: {
   focusedConnectorId?: ConnectorId
 } = {}) {
   const queryClient = useQueryClient()
+  const wsId = useWorkspaceId()
   const [activityOpen, setActivityOpen] = useState(false)
+  const [launchingConnectorId, setLaunchingConnectorId] =
+    useState<ConnectorId | null>(null)
   const pendingGrantUpdates = useRef<
     Map<
       string,
@@ -253,23 +248,11 @@ export function ConnectionsPage({
   >(new Map())
 
   const snapshotQuery = useQuery({
-    queryKey: ['workspace-connections'],
-    queryFn: loadConnectionsSnapshot,
+    ...connectionListOptions(wsId),
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
   })
-
-  useEffect(() => {
-    const status = consumeGitHubSetupStatus()
-    if (!status) return
-
-    void snapshotQuery.refetch()
-    if (status === 'connected') {
-      notifyConnectionsChanged()
-      toast.success('GitHub connected')
-    }
-  }, [snapshotQuery.refetch])
   const connectionMutation = useMutation({
     mutationFn: ({
       connectorId,
@@ -281,7 +264,7 @@ export function ConnectionsPage({
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: ['workspace-connections'],
+          queryKey: workspaceKeys.connections(wsId),
         }),
         queryClient.invalidateQueries({
           queryKey: ['workspace-connections-sidebar'],
@@ -300,7 +283,7 @@ export function ConnectionsPage({
       )
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: ['workspace-connections'],
+          queryKey: workspaceKeys.connections(wsId),
         }),
         queryClient.invalidateQueries({
           queryKey: ['workspace-connections-sidebar'],
@@ -322,7 +305,7 @@ export function ConnectionsPage({
   const updateToolGrant = useCallback(
     (args: Parameters<typeof updateConnectionToolGrant>[0]) => {
       queryClient.setQueryData<ConnectionsSnapshot>(
-        ['workspace-connections'],
+        workspaceKeys.connections(wsId),
         (current) =>
           current ? updateSnapshotToolGrant(current, args) : current,
       )
@@ -340,7 +323,7 @@ export function ConnectionsPage({
 
       pendingGrantUpdates.current.set(key, { timeout, args })
     },
-    [grantMutation, queryClient],
+    [grantMutation, queryClient, wsId],
   )
 
   const snapshot = snapshotQuery.data
@@ -487,19 +470,26 @@ export function ConnectionsPage({
               className="h-7 text-xs"
               disabled={
                 connectionMutation.isPending ||
+                launchingConnectorId === connector.id ||
                 (connector.id !== 'github' && !connectorSpec?.oauth)
               }
               onClick={async () => {
+                const flowId = createConnectorFlowId()
+                setLaunchingConnectorId(connector.id)
                 if (connector.id === 'github') {
-                  startGitHubAppInstall()
+                  startGitHubAppInstall(flowId)
                   return
                 }
-                if (!connectorSpec?.oauth) return
+                if (!connectorSpec?.oauth) {
+                  setLaunchingConnectorId(null)
+                  return
+                }
                 const response = await authClient.oauth2.link({
                   providerId: connectorSpec.oauth.providerId,
-                  callbackURL: currentCallbackUrl(),
+                  callbackURL: connectorCallbackUrl(connector.id, flowId),
                 })
                 if (response.error) {
+                  setLaunchingConnectorId(null)
                   toast.error(
                     response.error.message ??
                       `Failed to start ${connector.label} OAuth`,
@@ -510,16 +500,27 @@ export function ConnectionsPage({
                 // Fall back to a manual nav if not.
                 if (response.data?.url && !response.data.redirect) {
                   window.location.href = response.data.url
+                  return
                 }
+                setLaunchingConnectorId(null)
               }}
             >
-              {connector.id === 'github'
-                ? connector.status === 'degraded'
-                  ? 'Reconnect GitHub App'
-                  : 'Install GitHub App'
-                : connector.status === 'degraded'
-                  ? 'Reconnect'
-                  : 'Connect'}
+              {launchingConnectorId === connector.id ? (
+                <>
+                  <Loader2 className="size-3 animate-spin" />
+                  Opening…
+                </>
+              ) : connector.id === 'github' ? (
+                connector.status === 'degraded' ? (
+                  'Reconnect GitHub App'
+                ) : (
+                  'Install GitHub App'
+                )
+              ) : connector.status === 'degraded' ? (
+                'Reconnect'
+              ) : (
+                'Connect'
+              )}
             </Button>
           ) : null}
 

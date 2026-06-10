@@ -61,6 +61,26 @@ export type ConnectionActivityResponse = {
   activity: ConnectionActivityItem[]
 }
 
+export type ConnectorCallbackEventItem = {
+  id: string
+  connectorId: ConnectorId
+  connectorLabel: string
+  providerId: string | null
+  flowId: string | null
+  source: 'oauth' | 'github_app'
+  status: 'success' | 'degraded' | 'error'
+  stage: string
+  message: string | null
+  errorCode: string | null
+  accountLogin: string | null
+  createdAt: string
+  completedAt: string | null
+}
+
+export type ConnectorCallbackEventResponse = {
+  event: ConnectorCallbackEventItem
+}
+
 export type ConnectionAction = 'disconnect' | 'resync'
 
 export function listConnections(options?: {
@@ -104,5 +124,16 @@ export function getConnectorActivity(
 ): Promise<ConnectionActivityResponse> {
   return getApiTransport().request(
     `/api/connections/${encodeURIComponent(connectorId)}/activity`,
+  )
+}
+
+export function getConnectorCallbackEvent(args: {
+  flowId: string
+  connectorId?: ConnectorId | null
+}): Promise<ConnectorCallbackEventResponse> {
+  const params = new URLSearchParams({ flow_id: args.flowId })
+  if (args.connectorId) params.set('connector_id', args.connectorId)
+  return getApiTransport().request(
+    `/api/connections/callback-events?${params.toString()}`,
   )
 }

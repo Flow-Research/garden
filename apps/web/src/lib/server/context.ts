@@ -1,5 +1,12 @@
+import { Result } from 'better-result'
 import { createAuth } from '@/lib/auth'
 import type { AppEnv } from '@/lib/server/env'
+import {
+  createGardenLogger,
+  errorFields,
+  requestFields,
+  type GardenLogFields,
+} from '@garden/core/observability/logger'
 
 export type GardenAuth = ReturnType<typeof createAuth>
 export type GardenAuthSession = Awaited<
@@ -16,6 +23,71 @@ export type AppRequestContext = {
   env: AppEnv
   request: Request
   auth: GardenAuthState
+}
+
+const authSessionLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'auth-session',
+})
+
+function cookiePresenceFields(request: Request) {
+  const cookie = request.headers.get('cookie') ?? ''
+  const cookieNames = new Set(
+    cookie
+      .split(';')
+      .map((entry) => entry.split('=')[0]?.trim())
+      .filter((name): name is string => Boolean(name)),
+  )
+
+  return {
+    hasCookieHeader: cookie.length > 0,
+    hasSessionToken: cookieNames.has('better-auth.session_token'),
+    hasSecureSessionToken: cookieNames.has(
+      '__Secure-better-auth.session_token',
+    ),
+    hasLegacySessionToken: cookieNames.has('better-auth-session_token'),
+    hasSessionData:
+      cookieNames.has('better-auth.session_data') ||
+      [...cookieNames].some((name) =>
+        name.startsWith('__Secure-better-auth.session_data.'),
+      ),
+  }
+}
+
+/**
+ * Resolves a Better Auth session with Garden-owned structured error logging.
+ * Before this boundary, Better Auth logged Drizzle failures as lossy console text
+ * (`Failed query ...`) and the underlying Neon/Postgres cause was not indexed in
+ * Cloudflare. After this change, the same thrown error still reaches callers,
+ * but Garden logs request, route, and cookie-presence context plus the sanitized
+ * cause chain from `errorFields`. References: Better Auth session endpoint
+ * source, Better Auth session cookie docs, and better-result v2.9.2
+ * `Result.tryPromise` source for no-try/catch boundary wrapping.
+ */
+export async function getLoggedAuthSession(input: {
+  auth: GardenAuth
+  request: Request
+  source: 'request-context' | 'route-helper' | 'agent-router'
+  fields?: GardenLogFields
+}) {
+  const result = await Result.tryPromise({
+    try: async () =>
+      await input.auth.api.getSession({ headers: input.request.headers }),
+    catch: (cause) => cause,
+  })
+
+  if (result.isErr()) {
+    authSessionLogger.error('auth.session.lookup_failed', {
+      ...requestFields(input.request),
+      ...cookiePresenceFields(input.request),
+      sessionLookupSource: input.source,
+      ...input.fields,
+      ...errorFields(result.error),
+    })
+    throw result.error
+  }
+
+  return result.value
 }
 
 /**
@@ -38,7 +110,11 @@ export function createAuthState(env: AppEnv, request: Request): GardenAuthState 
   return {
     getAuth,
     getSession: () => {
-      session ??= getAuth().api.getSession({ headers: request.headers })
+      session ??= getLoggedAuthSession({
+        auth: getAuth(),
+        request,
+        source: 'request-context',
+      })
       return session
     },
     getCachedSession: () => session,
