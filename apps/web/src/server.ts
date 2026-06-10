@@ -47,7 +47,6 @@ export { Sandbox }
 type ServerEnv = AppEnv
 
 const AGENT_DO_AUTH_CACHE_TTL_MS = 60_000
-const RECONCILE_ON_FETCH_INTERVAL_MS = 5_000
 const AGENT_ROUTING_RETRY = { maxAttempts: 3 }
 type AgentDoAuthCacheEntry = {
   expiresAt: number
@@ -55,28 +54,10 @@ type AgentDoAuthCacheEntry = {
   workspaceId: string
 }
 const agentDoAuthCache = new Map<string, AgentDoAuthCacheEntry>()
-let lastFetchReconcileAt = 0
 const webLogger = createGardenLogger({
   service: 'garden-staging',
   component: 'worker-entry',
 })
-
-function scheduleFetchReconcile(env: ServerEnv, ctx?: ExecutionContext) {
-  const now = Date.now()
-  if (now - lastFetchReconcileAt < RECONCILE_ON_FETCH_INTERVAL_MS) return
-  lastFetchReconcileAt = now
-
-  const task = reconcile(env).then((result) => {
-    if (result.isErr()) {
-      webLogger.error('issue_run.reconcile.failed', {
-        message: result.error.message,
-      })
-    }
-  })
-  if (ctx) {
-    ctx.waitUntil(task)
-  }
-}
 
 function responseFromCaughtError(args: {
   event: string
@@ -150,7 +131,6 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
     message?: unknown
     mode?: unknown
     target?: unknown
-    threadId?: unknown
     userId?: unknown
     workspaceId?: unknown
   }
@@ -178,21 +158,6 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
     routingRetry: AGENT_ROUTING_RETRY,
   })
   if (target === 'chat') {
-    const requestedThreadId =
-      typeof body.threadId === 'string' ? body.threadId : null
-    if (body.mode === 'inspect-storage' && requestedThreadId) {
-      const storage = await disposeRpcResult(
-        await stub.debugThreadStorage(requestedThreadId),
-      )
-      return Response.json({
-        ok: true,
-        target,
-        hostName,
-        threadId: requestedThreadId,
-        storage,
-      })
-    }
-
     const fixtureStartedAt = performance.now()
     const elapsedMs = () => Math.round(performance.now() - fixtureStartedAt)
     const timing: Record<string, number> = {}
@@ -561,9 +526,8 @@ export default {
     )
   },
 
-  async fetch(request: Request, env: ServerEnv, ctx?: ExecutionContext) {
+  async fetch(request: Request, env: ServerEnv, _ctx?: ExecutionContext) {
     bindAppEnv(env)
-    scheduleFetchReconcile(env, ctx)
 
     const startedAt = performance.now()
     const baseRequestFields = requestFields(request)

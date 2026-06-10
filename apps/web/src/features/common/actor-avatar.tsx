@@ -1,5 +1,3 @@
-'use client'
-
 import { ActorAvatar as ActorAvatarBase } from '@garden/ui/components/common/actor-avatar'
 import { useActorName } from '@/lib/workspace/hooks'
 

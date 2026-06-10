@@ -1,5 +1,3 @@
-'use client'
-
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
 import { Button } from '@garden/ui/components/ui/button'
 import {

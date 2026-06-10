@@ -1,12 +1,10 @@
-'use client'
-
 import * as React from 'react'
 import {
   Markdown as MarkdownBase,
   type MarkdownProps as MarkdownBaseProps,
   type RenderMode,
 } from '@garden/ui/markdown'
-import { useConfigStore } from '@garden/core/config'
+import { useConfigStore } from '@garden/app-state/config'
 import { IssueMentionCard } from '../issues/components/issue-mention-card'
 
 export type { RenderMode }

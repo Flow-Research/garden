@@ -1,5 +1,3 @@
-'use client'
-
 import { STATUS_CONFIG, PRIORITY_CONFIG } from '@garden/core/issues/config'
 import { useActorName } from '@/lib/workspace/hooks'
 import { StatusIcon, PriorityIcon } from '../../issues/components'

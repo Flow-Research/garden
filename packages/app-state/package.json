@@ -1,0 +1,44 @@
+{
+  "name": "@garden/app-state",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "lint:fix": "oxlint -c ../../.oxlintrc.json --fix ."
+  },
+  "exports": {
+    "./auth": "./src/auth/index.ts",
+    "./workspace": "./src/workspace/index.ts",
+    "./chat": "./src/chat/index.ts",
+    "./chat/structured-input": "./src/chat/structured-input.ts",
+    "./modals": "./src/modals/store.ts",
+    "./skills": "./src/skills/store.ts",
+    "./hooks": "./src/hooks.tsx",
+    "./hooks/*": "./src/hooks/*.ts",
+    "./platform/rpc": "./src/platform/rpc.ts",
+    "./config": "./src/config/index.ts",
+    "./issues/stores/*": "./src/issues/stores/*.ts",
+    "./platform/core-provider": "./src/platform/core-provider.tsx",
+    "./platform/storage": "./src/platform/storage.ts",
+    "./platform/persist-storage": "./src/platform/persist-storage.ts",
+    "./issues/stores/view-store-context": "./src/issues/stores/view-store-context.tsx"
+  },
+  "dependencies": {
+    "@garden/core": "workspace:*",
+    "@tanstack/react-query": "catalog:",
+    "zustand": "catalog:",
+    "@garden/observability": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "catalog:"
+  },
+  "devDependencies": {
+    "@garden/tsconfig": "workspace:*",
+    "@types/react": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

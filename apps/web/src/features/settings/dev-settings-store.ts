@@ -1,8 +1,7 @@
-'use client'
-
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import { createPersistStorage, defaultStorage } from '@garden/core/platform'
+import { createPersistStorage } from '@garden/app-state/platform/persist-storage'
+import { defaultStorage } from '@garden/app-state/platform/storage'
 
 interface DevSettingsState {
   debugMode: boolean

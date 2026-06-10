@@ -1,5 +1,3 @@
-"use client";
-
 import { useControllableState } from "@radix-ui/react-use-controllable-state";
 import { cn } from "@garden/ui/lib/utils";
 import type { Experimental_TranscriptionResult as TranscriptionResult } from "ai";

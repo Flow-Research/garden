@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import { listAvailableConnectorBindings } from '@garden/core/connectors/availability'
+import { listAvailableConnectorBindings } from '@garden/server/connectors/availability'
 import { buildConnectionSurface } from '@/lib/server/connection-surface'
 import { requireWorkspaceContext } from '@/lib/server/control-plane'
 

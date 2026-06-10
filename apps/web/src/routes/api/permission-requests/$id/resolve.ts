@@ -8,7 +8,7 @@ import { getDb, schema } from '@/lib/server/db'
 import { json, requireWorkspaceAccess } from '@/lib/server/control-plane'
 import { parseJsonBody } from '@/lib/server/validation/common'
 import { resolveConnectorWritePermissionRequests } from '@/lib/server/permission-request'
-import { startIssueRun } from '@garden/core/issues/run-service'
+import { startIssueRun } from '@garden/server/issues/run-service'
 import {
   requireWorkspacePermission,
   workspacePermissions,

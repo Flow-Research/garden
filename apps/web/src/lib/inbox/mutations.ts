@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { inboxKeys } from './queries'
-import { useWorkspaceId } from '@garden/core/hooks'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import type { InboxItem } from '@garden/core/types'
 
 export function useMarkInboxRead() {

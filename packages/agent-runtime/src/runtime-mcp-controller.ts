@@ -18,7 +18,7 @@ import {
   type ActiveConnectorBinding,
   type StoredConnectorServerRow,
 } from './mcp-connectors'
-import { listAvailableConnectorBindings } from '@garden/core/connectors/availability'
+import { listAvailableConnectorBindings } from '@garden/server/connectors/availability'
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 
 export { canonicalJsonString } from '@garden/connectors/capabilities'

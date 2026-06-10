@@ -217,18 +217,6 @@ export function unsubscribeFromIssue(
   })
 }
 
-export function listRuns(issueId: string) {
-  return getApiTransport().request<IssueRun[]>(`/api/issues/${issueId}/runs`)
-}
-
-export function manualRun(
-  issueId: string,
-) {
-  return getApiTransport().request(`/api/issues/${issueId}/runs`, {
-    method: 'POST',
-  })
-}
-
 export function getActiveRun(
   issueId: string,
   options?: { signal?: AbortSignal },

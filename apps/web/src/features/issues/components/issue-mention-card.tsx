@@ -1,8 +1,6 @@
-'use client'
-
 import { useQuery } from '@tanstack/react-query'
 import { issueListOptions, issueDetailOptions } from '@/lib/issues/queries'
-import { useWorkspaceId } from '@garden/core/hooks'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import { useWorkspaceDock } from '@/components/shell/workspace-dock'
 import { Badge } from '@garden/ui/components/ui/badge'
 import type { IssueStatus } from '@garden/core/types'

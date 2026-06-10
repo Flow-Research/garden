@@ -13,7 +13,6 @@ const {
   mockOpenPanel,
   mockOpenSettingsDialog,
   mockGetNextIdleSession,
-  mockSetActiveSession,
 } = vi.hoisted(() => ({
   mockSearchIssues: vi.fn(),
   mockSearchProjects: vi.fn(),
@@ -24,7 +23,6 @@ const {
   mockGetNextIdleSession: vi
     .fn()
     .mockResolvedValue({ id: 'session-new', title: 'New Chat' }),
-  mockSetActiveSession: vi.fn(),
 }))
 
 vi.mock('@/lib/api', () => ({
@@ -34,7 +32,7 @@ vi.mock('@/lib/api', () => ({
   },
 }))
 
-vi.mock('@garden/core/issues/stores', () => ({
+vi.mock('@garden/app-state/issues/stores/recent-issues-store', () => ({
   useRecentIssuesStore: (
     selector?: (state: { items: typeof mockRecentItems.current }) => unknown,
   ) => {
@@ -43,7 +41,7 @@ vi.mock('@garden/core/issues/stores', () => ({
   },
 }))
 
-vi.mock('@garden/core/hooks', () => ({
+vi.mock('@garden/app-state/hooks', () => ({
   useWorkspaceId: () => 'ws-test',
 }))
 
@@ -62,29 +60,6 @@ vi.mock('../navigation', () => ({
   useNavigation: () => ({
     push: vi.fn(),
   }),
-}))
-
-vi.mock('@garden/core/chat', () => ({
-  useChatStore: Object.assign(
-    (
-      selector?: (state: {
-        activeSessionId: string | null
-        setActiveSession: typeof mockSetActiveSession
-      }) => unknown,
-    ) => {
-      const state = {
-        activeSessionId: null,
-        setActiveSession: mockSetActiveSession,
-      }
-      return selector ? selector(state) : state
-    },
-    {
-      getState: () => ({
-        activeSessionId: null,
-        setActiveSession: mockSetActiveSession,
-      }),
-    },
-  ),
 }))
 
 vi.mock('@/components/shell/workspace-dock', () => ({
@@ -119,7 +94,6 @@ describe('SearchCommand', () => {
       id: 'session-new',
       title: 'New Chat',
     })
-    mockSetActiveSession.mockReset()
     mockRecentItems.current = []
     mockAllIssues.current = []
 

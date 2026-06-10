@@ -3,15 +3,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { Issue, TimelineEntry } from '@garden/core/types'
-import { WorkspaceIdProvider } from '@garden/core/hooks'
+import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
-// Mock @garden/core/auth
+// Mock @garden/app-state/auth
 const mockAuthUser = { id: 'user-1', email: 'test@test.com', name: 'Test User' }
-vi.mock('@garden/core/auth', () => ({
+vi.mock('@garden/app-state/auth', () => ({
   useAuthStore: Object.assign(
     (selector?: any) => {
       const state = { user: mockAuthUser, isAuthenticated: true }
@@ -19,12 +19,10 @@ vi.mock('@garden/core/auth', () => ({
     },
     { getState: () => ({ user: mockAuthUser, isAuthenticated: true }) },
   ),
-  registerAuthStore: vi.fn(),
-  createAuthStore: vi.fn(),
 }))
 
-// Mock @garden/core/workspace
-vi.mock('@garden/core/workspace', () => ({
+// Mock @garden/app-state/workspace
+vi.mock('@garden/app-state/workspace', () => ({
   useWorkspaceStore: Object.assign(
     (selector?: any) => {
       const state = {
@@ -42,7 +40,6 @@ vi.mock('@garden/core/workspace', () => ({
       }),
     },
   ),
-  registerWorkspaceStore: vi.fn(),
 }))
 
 // Mock @/lib/workspace/hooks
@@ -327,7 +324,7 @@ vi.mock('@garden/core/issues/config', () => ({
 
 // Mock recent issues store
 const mockRecordVisit = vi.fn()
-vi.mock('@garden/core/issues/stores', () => ({
+vi.mock('@garden/app-state/issues/stores/recent-issues-store', () => ({
   useRecentIssuesStore: Object.assign(
     (selector?: any) => {
       const state = { items: [], recordVisit: mockRecordVisit }
@@ -338,7 +335,7 @@ vi.mock('@garden/core/issues/stores', () => ({
 }))
 
 // Mock modals
-vi.mock('@garden/core/modals', () => ({
+vi.mock('@garden/app-state/modals', () => ({
   useModalStore: Object.assign(() => ({ open: vi.fn() }), {
     getState: () => ({ open: vi.fn() }),
   }),
@@ -350,22 +347,10 @@ vi.mock('@garden/core/utils', () => ({
 }))
 
 // Mock core/hooks/use-file-upload
-vi.mock('@garden/core/hooks/use-file-upload', () => ({
+vi.mock('@garden/app-state/hooks/use-file-upload', () => ({
   useFileUpload: () => ({
     uploadWithToast: vi.fn().mockResolvedValue('https://example.com/file.png'),
   }),
-}))
-
-// Mock realtime
-vi.mock('@garden/core/realtime', () => ({
-  useWSEvent: vi.fn(),
-  useWSReconnect: vi.fn(),
-  useWS: () => ({
-    subscribe: vi.fn(() => () => {}),
-    onReconnect: vi.fn(() => () => {}),
-  }),
-  WSProvider: ({ children }: { children: React.ReactNode }) => children,
-  useRealtimeSync: () => {},
 }))
 
 // Mock sonner

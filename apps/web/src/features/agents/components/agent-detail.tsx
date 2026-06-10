@@ -1,5 +1,3 @@
-'use client'
-
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Bot, Loader2 } from 'lucide-react'

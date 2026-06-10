@@ -1,5 +1,3 @@
-'use client'
-
 import { cn } from '@garden/ui/lib/utils'
 import { IconSearch } from '@tabler/icons-react'
 import { Kbd, KbdGroup } from '@garden/ui/components/ui/kbd'

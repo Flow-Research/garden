@@ -1,5 +1,3 @@
-'use client'
-
 import { cn } from '@garden/ui/lib/utils'
 import { Archive } from 'lucide-react'
 import { useActorName } from '@/lib/workspace/hooks'

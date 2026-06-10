@@ -15,7 +15,7 @@ import {
   requireWorkspaceAccess,
   toIssue,
 } from '@/lib/server/control-plane'
-import { cancelIssueRun, startIssueRun } from '@garden/core/issues/run-service'
+import { cancelIssueRun, startIssueRun } from '@garden/server/issues/run-service'
 import {
   cancelLiveRunsOnIssueChange,
 } from '@garden/core/issues/run-sync'

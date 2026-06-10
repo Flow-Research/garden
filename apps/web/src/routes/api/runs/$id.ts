@@ -12,7 +12,7 @@ import {
   listIssueRunEvents,
   listIssueWorkProducts,
   toIssueRun,
-} from '@garden/core/issues/run-service'
+} from '@garden/server/issues/run-service'
 
 function runError(error: IssueRunServiceError) {
   return badRequest(error.message)

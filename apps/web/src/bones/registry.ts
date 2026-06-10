@@ -1,4 +1,3 @@
-"use client"
 // Auto-generated from real app captures and adjusted for TypeScript typing.
 import { registerBones } from 'boneyard-js'
 

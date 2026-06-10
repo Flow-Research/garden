@@ -1,5 +1,3 @@
-'use client'
-
 import { useMemo, type ReactNode } from 'react'
 import { EyeOff, MoreHorizontal, Plus } from 'lucide-react'
 import {
@@ -18,8 +16,8 @@ import {
   DropdownMenuItem,
 } from '@garden/ui/components/ui/dropdown-menu'
 import { STATUS_CONFIG } from '@garden/core/issues/config'
-import { useModalStore } from '@garden/core/modals'
-import { useViewStoreApi } from '@garden/core/issues/stores/view-store-context'
+import { useModalStore } from '@garden/app-state/modals'
+import { useViewStoreApi } from '@garden/app-state/issues/stores/view-store-context'
 import { StatusIcon } from './status-icon'
 import { DraggableBoardCard } from './board-card'
 import type { ChildProgress } from './list-row'

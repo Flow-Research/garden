@@ -1,10 +1,8 @@
-'use client'
-
 import { useEffect, useRef } from 'react'
 import { Result } from 'better-result'
 import { useQuery } from '@tanstack/react-query'
-import { useAuthStore } from '@garden/core/auth'
-import { useWorkspaceStore } from '@garden/core/workspace'
+import { useAuthStore } from '@garden/app-state/auth'
+import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { listThreadDocuments } from '@/lib/api'
 import { useSidebar } from '@garden/ui/components/ui/sidebar'
 import {

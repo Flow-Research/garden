@@ -1,5 +1,3 @@
-'use client'
-
 /**
  * Chat message JSX rendering. The pure interpretation layer (types, tool/edit
  * helpers, buildMessageRenderModel) lives in `chat-message-model` and is

@@ -1,4 +1,4 @@
-import { CoreProvider } from '@garden/core/platform'
+import { CoreProvider } from '@garden/app-state/platform/core-provider'
 import { ThemeProvider } from '@garden/ui/components/common/theme-provider'
 import { Toaster } from '@garden/ui/components/ui/sonner'
 import { WebNavigationProvider } from '@/platform/navigation'

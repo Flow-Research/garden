@@ -1,5 +1,3 @@
-"use client";
-
 import { cn } from "@garden/ui/lib/utils";
 import type { MotionProps } from "motion/react";
 import { motion } from "motion/react";

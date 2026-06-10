@@ -1,5 +1,3 @@
-'use client'
-
 import { useRef, useState, useEffect } from 'react'
 import { ArrowUp, Loader2 } from 'lucide-react'
 import {
@@ -11,7 +9,7 @@ import {
 import { Button } from '@garden/ui/components/ui/button'
 import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
 import { ActorAvatar } from '../../common/actor-avatar'
-import { useFileUpload } from '@garden/core/hooks/use-file-upload'
+import { useFileUpload } from '@garden/app-state/hooks/use-file-upload'
 import { api } from '@/lib/api'
 import { cn } from '@garden/ui/lib/utils'
 

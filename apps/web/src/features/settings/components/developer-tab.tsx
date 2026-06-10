@@ -1,5 +1,3 @@
-'use client'
-
 import { Label } from '@garden/ui/components/ui/label'
 import { Switch } from '@garden/ui/components/ui/switch'
 import { useDevSettingsStore } from '../dev-settings-store'

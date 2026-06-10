@@ -1,15 +1,13 @@
-'use client'
-
 import { useShallow } from 'zustand/react/shallow'
-import { useIssuesScopeStore } from '@garden/core/issues/stores/issues-scope-store'
+import { useIssuesScopeStore } from '@garden/app-state/issues/stores/issues-scope-store'
 import {
   type IssueViewState,
   useIssueViewStore,
-} from '@garden/core/issues/stores/view-store'
+} from '@garden/app-state/issues/stores/view-store'
 import {
   useViewStore,
   useViewStoreApi,
-} from '@garden/core/issues/stores/view-store-context'
+} from '@garden/app-state/issues/stores/view-store-context'
 
 type ScopeStoreState = {
   scope: 'all' | 'members' | 'agents'

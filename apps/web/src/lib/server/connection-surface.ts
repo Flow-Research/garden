@@ -6,7 +6,7 @@ import {
   type RiskClass,
 } from '@garden/connectors/capabilities'
 import { desc } from 'drizzle-orm'
-import type { AvailableConnectorBinding } from '@garden/core/connectors/availability'
+import type { AvailableConnectorBinding } from '@garden/server/connectors/availability'
 import { schema } from './db'
 
 export type ConnectorStatus =

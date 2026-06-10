@@ -1,5 +1,3 @@
-'use client'
-
 import { MessageSquare, Mail, FileText, Search, Sparkles, Bot } from 'lucide-react'
 import { cn } from '@garden/ui/lib/utils'
 

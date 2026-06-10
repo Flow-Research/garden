@@ -1,5 +1,3 @@
-'use client'
-
 import { useMemo } from 'react'
 import { File, FileText, FolderOpen } from 'lucide-react'
 import {

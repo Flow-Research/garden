@@ -1,316 +1,238 @@
-.garden-dockview {
-  height: 100%;
-  min-height: 0;
+.garden-flexlayout {
+  position: relative;
+  min-width: 0;
 }
 
-.garden-dockview .dv-pre-actions-container {
-  display: flex;
-  align-items: center;
-  height: 100%;
-  padding-left: 0.25rem;
-  padding-right: 0.125rem;
-}
-
-.garden-dockview .dv-pre-actions-container:empty {
-  display: none;
-}
-
-.garden-dock-theme {
-  --garden-dock-tab-curve: 6px;
-  --dv-border-radius: 7px;
-  --dv-tab-margin: 2px;
-  --dv-tab-font-size: 13px;
-  --dv-tabs-and-actions-container-height: 29px;
-  --garden-dock-tab-surface: color-mix(
+/* FlexLayout's alpha theme declares ALL of its `--color-*` tokens on the
+ * `.flexlayout__layout` element itself, not on :root. Custom properties resolve
+ * from the nearest ancestor that sets them, so overrides placed on the
+ * `.garden-flexlayout` wrapper (the parent) were clobbered by the theme's own
+ * definitions on the child layout element — the panel/workspace area fell back
+ * to the theme's raw #ffffff. Scoping the overrides to the layout element
+ * out-specifies the theme (0,2,0 > 0,1,0) so the garden palette actually wins.
+ * Verified against the `:root`-less token block in alpha_light.css. */
+.garden-flexlayout .flexlayout__layout {
+  --color-background: transparent;
+  --color-text: var(--ink);
+  --color-base: color-mix(in srgb, var(--vellum) 90%, var(--bone));
+  --color-1: color-mix(in srgb, var(--ink) 3%, transparent);
+  --color-2: var(--hairline-soft);
+  --color-3: var(--hairline);
+  --color-4: var(--gravel);
+  --color-5: var(--slate);
+  --color-6: var(--ink);
+  --font-family: var(--font-sans);
+  --font-size: 13px;
+  --font-weight: 600;
+  --splitter-size: 8px;
+  --splitter-active-size: 10px;
+  --color-tabset-background: transparent;
+  --color-tabset-background-selected: transparent;
+  --color-tabset-background-maximized: transparent;
+  --color-tab-content: color-mix(in srgb, var(--bone) 76%, var(--parchment));
+  --color-tab-selected: var(--ink);
+  --color-tab-selected-background: color-mix(
     in srgb,
     var(--bone) 74%,
     var(--parchment)
   );
-  --garden-dock-tab-strip-surface: color-mix(
-    in srgb,
-    var(--ink) 3%,
-    var(--garden-dock-tab-surface)
-  );
-  --garden-dock-tab-muted-surface: color-mix(
+  --color-tab-unselected: var(--gravel);
+  --color-tab-unselected-background: color-mix(
     in srgb,
     var(--parchment-deep) 76%,
     var(--bone)
   );
-  --garden-dock-tab-muted-hover: color-mix(
-    in srgb,
-    var(--parchment-deep) 86%,
-    var(--bone)
-  );
-  --garden-dock-tab-edge: color-mix(in srgb, var(--ink) 9%, transparent);
-  --garden-dock-tab-muted-edge: color-mix(in srgb, var(--ink) 6%, transparent);
-  --garden-dock-tab-active-glow: transparent;
-  --dv-tabs-container-scrollbar-color: color-mix(
-    in srgb,
-    var(--ink) 22%,
-    transparent
-  );
-  --dv-separator-border: transparent;
-  --dv-tab-divider-color: transparent;
-  --dv-group-view-background-color: transparent;
-  --dv-tabs-and-actions-container-background-color: transparent;
-  --dv-activegroup-visiblepanel-tab-background-color: var(
-    --garden-dock-tab-surface
-  );
-  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
-  --dv-inactivegroup-visiblepanel-tab-background-color: rgba(
-    255,
-    252,
-    247,
-    0.3
-  );
-  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
-  --dv-activegroup-visiblepanel-tab-color: var(--ink);
-  --dv-activegroup-hiddenpanel-tab-color: var(--gravel);
-  --dv-inactivegroup-visiblepanel-tab-color: var(--gravel);
-  --dv-inactivegroup-hiddenpanel-tab-color: var(--slate);
-  --dv-sash-color: var(--hairline-soft);
-  --dv-active-sash-color: var(--hairline);
-  --dv-active-sash-transition-delay: 0s;
-  --dv-active-sash-transition-duration: 60ms;
-  --dv-transition-duration: 200ms;
+  --color-splitter: var(--hairline-soft);
+  --color-splitter-hover: var(--hairline);
+  --color-splitter-drag: var(--hairline);
+  --color-toolbar-button-hover: rgba(255, 252, 247, 0.55);
 }
 
-.dark .garden-dock-theme {
-  --garden-dock-tab-surface: var(--parchment);
-  --garden-dock-tab-edge: color-mix(in srgb, var(--ink) 14%, transparent);
-  --garden-dock-tab-active-glow: color-mix(in srgb, var(--ink) 7%, transparent);
-  --garden-dock-tab-strip-surface: color-mix(
-    in srgb,
-    var(--bone) 8%,
-    var(--garden-dock-tab-surface)
-  );
+.dark .garden-flexlayout .flexlayout__layout {
+  --color-tab-content: var(--parchment);
+  --color-tab-selected-background: var(--parchment);
+  --color-tab-unselected-background: color-mix(in srgb, var(--bone) 8%, transparent);
+  --color-toolbar-button-hover: color-mix(in srgb, var(--bone) 10%, transparent);
 }
 
-/* Chrome-style tabs. Dockview owns layout, so the slot owns active material. */
-.garden-dockview .dv-tab {
-  padding: 0 !important;
+.garden-flexlayout .flexlayout__layout {
+  background: transparent;
+  inset: 0;
+}
+
+.garden-flexlayout .flexlayout__tabset {
+  border-radius: 12px;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* Tab strip surface. FlexLayout's alpha theme names the tab bar
+ * `flexlayout__tabset_tabbar_outer` (there is no `_header` element); the
+ * dockview→flexlayout migration carried over the old selector, so the strip
+ * surface/height/padding silently never applied. Verified against the real
+ * class list in flexlayout-react/style/alpha_light.css. */
+.garden-flexlayout .flexlayout__tabset_tabbar_outer {
+  padding: 0 3px;
+  border: 0;
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+  box-shadow: none;
+  min-height: 29px;
+}
+
+.garden-flexlayout .flexlayout__tab_button,
+.garden-flexlayout .flexlayout__tab_button_stretch {
   height: 28px;
-  align-self: flex-end !important;
-  margin: 0 2px !important;
-  margin-top: 1px !important;
-  background: transparent !important;
-  box-sizing: border-box;
-  font-weight: 600;
-  font-size: 13px;
-  letter-spacing: 0;
-  color: var(--gravel) !important;
-  position: relative;
-  overflow: visible !important;
-  z-index: 2;
+  min-width: 0;
+  margin: 1px 2px 0;
+  padding: 0 8px 0 10px;
+  border-radius: 8px 8px 0 0;
+  border: 0;
+  color: var(--gravel);
+  background: var(--color-tab-unselected-background);
+  box-shadow: inset 0 1px 0 0 color-mix(in srgb, var(--ink) 6%, transparent);
   transition:
     background-color 180ms cubic-bezier(0.16, 1, 0.3, 1),
     color 180ms cubic-bezier(0.16, 1, 0.3, 1),
     box-shadow 220ms cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: none;
 }
 
-.garden-dockview .dv-tab:not(.dv-active-tab) {
-  align-self: flex-end !important;
-  z-index: 2;
+.garden-flexlayout .flexlayout__tab_button:hover,
+.garden-flexlayout .flexlayout__tab_button_stretch:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--parchment-deep) 86%, var(--bone));
 }
 
-.garden-dockview .dv-tab:hover:not(.dv-active-tab) {
-  color: var(--ink) !important;
-}
-
-.garden-dockview .dv-tab:hover:not(.dv-active-tab) .garden-dock-tab {
-  background: var(--garden-dock-tab-muted-hover);
-}
-
-.garden-dockview .dv-tab.dv-active-tab {
-  height: 28px;
-  background: var(--garden-dock-tab-surface) !important;
-  border-radius: 8px 8px 0 0;
-  color: var(--ink) !important;
-  overflow: visible;
-  z-index: 3;
+.garden-flexlayout .flexlayout__tab_button--selected,
+.garden-flexlayout .flexlayout__tab_button--selected:hover {
+  color: var(--ink);
+  background: var(--color-tab-selected-background);
   box-shadow:
-    inset 0 1px 0 0 var(--garden-dock-tab-edge),
-    0 -1px 8px 0 var(--garden-dock-tab-active-glow);
+    inset 0 1px 0 0 color-mix(in srgb, var(--ink) 9%, transparent),
+    0 -1px 8px 0 transparent;
 }
 
-.garden-dock-tab__shoulder {
-  display: none;
-  position: absolute;
-  bottom: 0;
-  width: var(--garden-dock-tab-curve);
-  height: var(--garden-dock-tab-curve);
-  pointer-events: none;
-  background: transparent;
-  z-index: 0;
-}
-
-.garden-dockview .dv-tab.dv-active-tab .garden-dock-tab__shoulder {
-  display: block;
-}
-
-.garden-dock-tab__shoulder--left {
-  left: calc(-1 * var(--garden-dock-tab-curve));
-  border-bottom-right-radius: var(--garden-dock-tab-curve);
-  box-shadow: calc(var(--garden-dock-tab-curve) * 0.55)
-    calc(var(--garden-dock-tab-curve) * 0.55) 0
-    calc(var(--garden-dock-tab-curve) * 0.45) var(--garden-dock-tab-surface);
-}
-
-.garden-dock-tab__shoulder--right {
-  right: calc(-1 * var(--garden-dock-tab-curve));
-  border-bottom-left-radius: var(--garden-dock-tab-curve);
-  box-shadow: calc(var(--garden-dock-tab-curve) * -0.55)
-    calc(var(--garden-dock-tab-curve) * 0.55) 0
-    calc(var(--garden-dock-tab-curve) * 0.45) var(--garden-dock-tab-surface);
-}
-
-.garden-dockview .dv-tab .garden-dock-tab {
-  height: 28px;
-  width: 100%;
-  margin-top: 0;
-  padding: 0 14px;
-  border-radius: 8px 8px 0 0;
-  background: var(--garden-dock-tab-muted-surface);
-  box-sizing: border-box;
-  overflow: visible;
-  position: relative;
-  box-shadow: inset 0 1px 0 0 var(--garden-dock-tab-muted-edge);
-  transition:
-    background-color 180ms cubic-bezier(0.16, 1, 0.3, 1),
-    box-shadow 220ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.garden-dockview .dv-tab.dv-active-tab .garden-dock-tab {
-  height: 28px;
-  margin-top: 0;
-  background: transparent;
-  box-shadow: none;
-  z-index: 1;
-}
-
-/*
- * Sash (splitter between groups) discoverability. Dockview renders a 4px
- * invisible strip by default — users can't find it to drag-resize. Paint a
- * subtle resting line so the divider is visible, and use !important on the
- * hover/active override to beat dockview's transition-delay'd rule.
- */
-.garden-dockview
-  .dv-split-view-container.dv-horizontal
-  > .dv-sash-container
-  > .dv-sash:not(.dv-disabled) {
-  background-color: var(--dv-sash-color);
-}
-
-.garden-dockview
-  .dv-split-view-container.dv-vertical
-  > .dv-sash-container
-  > .dv-sash:not(.dv-disabled) {
-  background-color: var(--dv-sash-color);
-}
-
-.garden-dockview .dv-split-view-container > .dv-sash-container > .dv-sash:hover,
-.garden-dockview
-  .dv-split-view-container
-  > .dv-sash-container
-  > .dv-sash:active {
-  background-color: var(--dv-active-sash-color) !important;
-}
-
-/*
- * Dockview hints will-change: margin-left on shifting tabs but its transition
- * also animates transform. Promote transform for GPU compositing too so the
- * slide-over during reorder doesn't jitter on first-frame layout.
- */
-.garden-dockview .dv-tab.dv-tab--shifting {
-  will-change: transform, margin-left;
-}
-
-.garden-dockview .dv-groupview {
-  border-radius: 12px;
-  border-top: 0 !important;
-  overflow: hidden;
-}
-
-.garden-dockview .dv-groupview.dv-active-group {
-  outline: none;
-}
-
-.garden-dockview .dv-groupview .dv-content-container {
-  border-top: 0 !important;
-  margin-top: -1px;
-  background: var(--garden-dock-tab-surface);
-  box-shadow: none !important;
-}
-
-/* Tab strip reads as a quiet tray; active tab and content share one material. */
-.garden-dockview .dv-tabs-and-actions-container {
-  border-bottom: 0 !important;
-  box-shadow: none !important;
-  padding: 0 3px;
-  background: var(--garden-dock-tab-strip-surface);
-  overflow: visible !important;
-  position: relative;
-}
-
-.garden-dockview .dv-tabs-container,
-.garden-dockview .dv-view-container,
-.garden-dockview .dv-content-container,
-.garden-dockview .dv-branch-node {
-  border-top: 0 !important;
-  border-bottom: 0 !important;
-  box-shadow: none !important;
-}
-
-.garden-dockview .dv-tabs-container {
-  overflow: visible !important;
-}
-
-.garden-dockview .dv-scrollable {
-  overflow: visible !important;
-}
-
-.garden-dock-tab {
-  display: flex;
-  align-items: center;
+.garden-flexlayout .flexlayout__tab_button_content {
   min-width: 0;
-  box-sizing: border-box;
-  overflow: visible;
-  position: relative;
 }
 
-.garden-dock-tab__label {
+.garden-flexlayout-tab__content {
   display: inline-flex;
+  min-width: 0;
   align-items: center;
   gap: 0.375rem;
-  min-width: 0;
 }
 
-.garden-dock-tab__pin {
+.garden-flexlayout-tab__icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex-shrink: 0;
+}
+
+.garden-flexlayout-tab__pin {
+  width: 0.75rem;
+  height: 0.75rem;
+  flex-shrink: 0;
   color: var(--muted-foreground);
 }
 
-.garden-dockview .dv-default-tab-action {
+.garden-flexlayout .flexlayout__tab_button_trailing,
+.garden-flexlayout .flexlayout__tab_button_leading {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+}
+
+/* Close affordance. In this FlexLayout version the trailing element IS the
+ * close button (a div whose only child is our <X> svg) — there is no nested
+ * `> div`, so the migrated selector styled nothing. Style the trailing box and
+ * size its icon directly. Verified against TabButton's render in
+ * flexlayout-react/dist/index.js. */
+.garden-flexlayout .flexlayout__tab_button_trailing {
+  margin-left: 0.25rem;
   width: 1.125rem;
   height: 1.125rem;
-  margin-left: 0.25rem;
+  align-items: center;
+  justify-content: center;
   border-radius: 4px;
-  background: transparent !important;
   color: var(--gravel);
   opacity: 0.72;
   transition:
     color 140ms ease,
-    opacity 140ms ease;
+    opacity 140ms ease,
+    background-color 140ms ease;
 }
 
-.garden-dockview .dv-default-tab-action:hover,
-.garden-dockview .dv-default-tab-action:active {
-  background: transparent !important;
+.garden-flexlayout .flexlayout__tab_button_trailing:hover {
   color: var(--ink);
   opacity: 1;
+  background: var(--color-toolbar-button-hover);
+}
+
+.garden-flexlayout .flexlayout__tab_button_trailing svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.garden-flexlayout .flexlayout__tab {
+  background: var(--color-tab-content);
+}
+
+/* The alpha theme draws hardcoded #ddd vertical ticks between tabs. We render
+ * our own tab surfaces, so suppress the ticks (matches the prior dockview
+ * design, which set the divider color transparent). */
+.garden-flexlayout .flexlayout__tabset_tab_divider {
+  background-color: transparent;
+}
+
+/* Splitter. The raw theme paints the whole 8px hit area in the splitter color,
+ * which reads as a thick slab. Keep the 8px hit target for grabbability but
+ * paint only a 1px centered hairline via a gradient, and transition its color
+ * so hover/drag feels smooth rather than snapping. `realtimeResize` on the
+ * Layout makes the panels track the drag live instead of ghosting + snapping. */
+.garden-flexlayout .flexlayout__splitter {
+  background-color: transparent;
+  transition: background 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.garden-flexlayout .flexlayout__splitter_vert {
+  background: linear-gradient(
+    to right,
+    transparent calc(50% - 0.5px),
+    var(--hairline-soft) calc(50% - 0.5px),
+    var(--hairline-soft) calc(50% + 0.5px),
+    transparent calc(50% + 0.5px)
+  );
+}
+
+.garden-flexlayout .flexlayout__splitter_horz {
+  background: linear-gradient(
+    to bottom,
+    transparent calc(50% - 0.5px),
+    var(--hairline-soft) calc(50% - 0.5px),
+    var(--hairline-soft) calc(50% + 0.5px),
+    transparent calc(50% + 0.5px)
+  );
+}
+
+.garden-flexlayout .flexlayout__splitter_vert:hover,
+.garden-flexlayout .flexlayout__splitter_vert.flexlayout__splitter_drag {
+  background: linear-gradient(
+    to right,
+    transparent calc(50% - 1px),
+    var(--hairline) calc(50% - 1px),
+    var(--hairline) calc(50% + 1px),
+    transparent calc(50% + 1px)
+  );
+}
+
+.garden-flexlayout .flexlayout__splitter_horz:hover,
+.garden-flexlayout .flexlayout__splitter_horz.flexlayout__splitter_drag {
+  background: linear-gradient(
+    to bottom,
+    transparent calc(50% - 1px),
+    var(--hairline) calc(50% - 1px),
+    var(--hairline) calc(50% + 1px),
+    transparent calc(50% + 1px)
+  );
 }
 
 .garden-dock-actions {
@@ -320,47 +242,6 @@
   gap: 0.125rem;
   padding-left: 0.0625rem;
   padding-right: 0.1875rem;
-}
-
-.garden-dock-tabstrip-actions {
-  display: flex;
-  align-items: center;
-  height: 100%;
-  padding-left: 0.25rem;
-  padding-right: 0.1875rem;
-  position: relative;
-  z-index: 4;
-}
-
-.garden-dock-tabstrip-actions__button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.375rem;
-  height: 1.375rem;
-  border: 0;
-  border-radius: 9999px;
-  background: transparent;
-  color: var(--gravel);
-  cursor: pointer;
-  transition:
-    background-color 200ms ease,
-    color 200ms ease;
-}
-
-.garden-dock-tabstrip-actions__button:hover {
-  background: rgba(255, 252, 247, 0.55);
-  color: var(--ink);
-}
-
-.garden-dock-tabstrip-actions__button:disabled {
-  cursor: default;
-  opacity: 0.45;
-}
-
-.garden-dock-tabstrip-actions__button:disabled:hover {
-  background: transparent;
-  color: var(--muted-foreground);
 }
 
 .garden-dock-actions__button {

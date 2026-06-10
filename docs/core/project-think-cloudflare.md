@@ -30,7 +30,16 @@ See [`chat-runtime-model.md`](./chat-runtime-model.md).
 
 ## Long-running work
 
-Issues and automations are separate product ledgers that share one durable execution boundary — `RunWorkflow` on Cloudflare Workflows, driving Think durable submissions turn by turn. Full engine design: [`docs/core/workflows-engine.md`](./workflows-engine.md).
+Issues and automations are separate product ledgers, but they share the same durable execution boundary:
+
+1. server route/service creates an `issue_run` or `automation_run` row;
+2. service calls the owning `AgentDO` RPC (`startIssueRunWorkflow` or `startAutomationRunWorkflow`);
+3. `AgentDO` creates `RUN_WORKFLOW` with `id: runId`;
+4. `RunWorkflow` calls back into `AgentDO.executeRunTurn` / `executeAutomationRunTurn`;
+5. the child Think facet streams and uses tools;
+6. `RunWorkflow` waits for Think submission-complete/control events and records terminal status.
+
+Code evidence: `packages/server/src/issues/run-service.ts`, `packages/server/src/automations/run-service.ts`, `packages/agent-runtime/src/agent-do.ts:477-644`, `packages/agent-runtime/src/run-workflow.ts`.
 
 ## `createExecuteTool`
 

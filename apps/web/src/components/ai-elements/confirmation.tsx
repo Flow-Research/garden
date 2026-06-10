@@ -1,5 +1,3 @@
-"use client";
-
 import { Alert, AlertDescription } from "@garden/ui/components/ui/alert";
 import { Button } from "@garden/ui/components/ui/button";
 import { cn } from "@garden/ui/lib/utils";

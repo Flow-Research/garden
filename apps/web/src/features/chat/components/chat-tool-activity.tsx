@@ -1,5 +1,3 @@
-'use client'
-
 /**
  * Tool-call activity + approval rendering.
  *

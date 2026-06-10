@@ -1,5 +1,3 @@
-"use client";
-
 import { Badge } from "@garden/ui/components/ui/badge";
 import { cn } from "@garden/ui/lib/utils";
 import { ArrowRightIcon, MinusIcon, PackageIcon, PlusIcon } from "lucide-react";

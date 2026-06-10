@@ -16,8 +16,8 @@ import {
   Workflow,
 } from 'alchemy/cloudflare'
 
-loadDotEnvFile(resolve('apps/web/.dev.vars'))
-loadDotEnvFile(resolve('workers/mcp-proxy/.dev.vars'))
+loadDotEnvFile(resolve('apps/web/.env'))
+loadDotEnvFile(resolve('workers/mcp-proxy/.env'))
 
 /**
  * Workers Builds exposes Wrangler-compatible CF_* auth in some build contexts.
@@ -25,8 +25,12 @@ loadDotEnvFile(resolve('workers/mcp-proxy/.dev.vars'))
  * before resolving the account so both tools target the same account without a
  * repo-pinned fallback.
  */
-process.env.CLOUDFLARE_API_TOKEN ??= process.env.CF_API_TOKEN
-process.env.CLOUDFLARE_ACCOUNT_ID ??= process.env.CF_ACCOUNT_ID
+if (!process.env.CLOUDFLARE_API_TOKEN && process.env.CF_API_TOKEN) {
+  process.env.CLOUDFLARE_API_TOKEN = process.env.CF_API_TOKEN
+}
+if (!process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CF_ACCOUNT_ID) {
+  process.env.CLOUDFLARE_ACCOUNT_ID = process.env.CF_ACCOUNT_ID
+}
 
 const cloudflareAccountId = cloudflareAccountIdFromEnv()
 const cloudflareApiOptions = { accountId: cloudflareAccountId }
@@ -181,7 +185,7 @@ export const web = await TanStackStart('web', {
     ]),
   },
   dev: {
-    command: 'pnpm run dev:app',
+    command: 'pnpm exec vite dev --strictPort',
     domain: 'localhost:3000',
   },
   wrangler: {
@@ -212,7 +216,7 @@ function cloudflareAccountIdFromEnv() {
   if (accountId) return accountId
 
   throw new Error(
-    'Missing CLOUDFLARE_ACCOUNT_ID. Set it in the shell, CI environment, or apps/web/.dev.vars so Alchemy and Wrangler target the same Cloudflare account.',
+    'Missing CLOUDFLARE_ACCOUNT_ID. Set it in the shell, CI environment, or apps/web/.env so Alchemy and Wrangler target the same Cloudflare account.',
   )
 }
 
@@ -248,9 +252,9 @@ function optionalPlainBindings(names: string[]) {
 }
 
 /**
- * Loads Wrangler-style .dev.vars files so Alchemy deploy uses the same local
- * runtime configuration the existing Wrangler deploy path used before this
- * migration. Shell-provided env wins, which keeps CI/profile overrides intact.
+ * Loads project-local .env files so Alchemy uses the same local configuration
+ * as Wrangler and the Cloudflare Vite plugin. Shell-provided env wins, which
+ * keeps CI/profile overrides intact.
  */
 function loadDotEnvFile(path: string) {
   if (!existsSync(path)) return

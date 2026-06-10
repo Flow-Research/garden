@@ -34,7 +34,7 @@ import {
 import {
   createGardenLogger,
   type GardenLogFields,
-} from '@garden/core/observability/logger'
+} from '@garden/observability/logger'
 import { connectorRegistry } from '@garden/connectors'
 import {
   derivePermissions,

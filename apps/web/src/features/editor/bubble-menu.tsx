@@ -1,5 +1,3 @@
-'use client'
-
 /**
  * EditorBubbleMenu — floating formatting toolbar for text selection.
  *

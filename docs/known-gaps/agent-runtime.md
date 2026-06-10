@@ -40,7 +40,7 @@ Garden now uses Think durable `submitMessages()` for issue and automation turns,
 | Out-of-band Postgres writes do not invalidate live prompt/skill context. Garden API write paths can refresh active runtime state, but direct DB edits do not emit invalidation. | prompt providers cache records; no app-wide realtime publisher | Medium |
 | Stream-stall watchdog is available but not configured. Think 0.8.6 can route stalled streams into bounded recovery through `chatStreamStallTimeoutMs`; Garden leaves it off to avoid aborting long-running tools until measured stall data exists. | no `chatStreamStallTimeoutMs` override in Think subclasses | Low |
 | Agent proposal/setup cannot grant connector capabilities as first-class structured output. `propose_agent` captures `connector_requirements`, but approval does not create capability grants from them. | `packages/agent-runtime/src/agent-tools/propose-agent.ts`, `packages/core/agents/permissions.ts`, `apps/web/src/features/connections/components/connections-page.tsx` | High |
-| View-store workspace sync is a no-op without an app-layer subscription. | `packages/core/issues/stores/view-store.ts:265` TODO | Low |
+| View-store workspace sync is a no-op without an app-layer subscription. | `packages/app-state/src/issues/stores/view-store.ts:265` TODO | Low |
 | Only mounted chat panels hold a live websocket. Hidden/unopened chats rely on durable Think recovery and refetch when reopened rather than a workspace-level warm runtime registry. | `useChatRuntimeConnection()` is called inside `AgentInteractionScreen`; `ChatRuntimeProvider` currently renders children only | Low |
 
 ## Right implementation patterns
@@ -58,7 +58,7 @@ Garden now uses Think durable `submitMessages()` for issue and automation turns,
 1. `foundation` — `packages/agent-runtime/src/instructions/base.ts`
 2. `agent` — Postgres `agent.name`, `role_title`, `instructions`
 3. `workspace` — Postgres `organization.name`, `organization.context`
-4. `skills` — assigned skills via `agent_skill` + `skill`, loaded through `createGardenSkillProvider`
+4. `skills` — assigned skills via `agent_skill` + `skill`, loaded from R2 through Think-native `SkillSource`s created by `createGardenSkillSources`
 
 ### Issue runs
 

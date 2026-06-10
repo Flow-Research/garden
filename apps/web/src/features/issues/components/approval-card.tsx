@@ -1,5 +1,3 @@
-'use client'
-
 import { useEffect, useState } from 'react'
 import { cn } from '@garden/ui/lib/utils'
 import { Button } from '@garden/ui/components/ui/button'

@@ -5,7 +5,7 @@ import { bindExistingCapabilitiesToAgent } from './agent-bindings'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { DEFAULT_AGENT_PERMISSIONS } from '@garden/core/agents/permissions'
-import { disposeRpcResult } from '@garden/core/platform/rpc'
+import { disposeRpcResult } from '@garden/app-state/platform/rpc'
 
 type AgentRuntimeStub = DurableObjectStub<AgentDO>
 

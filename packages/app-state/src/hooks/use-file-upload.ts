@@ -1,0 +1,56 @@
+import { useState, useCallback } from 'react'
+import type { Api } from '../platform/app-api'
+import type { Attachment } from '@garden/core/types'
+import { MAX_FILE_SIZE } from '@garden/core/constants/upload'
+
+export interface UploadResult {
+  id: string
+  filename: string
+  link: string
+}
+
+export interface UploadContext {
+  issueId?: string
+  commentId?: string
+}
+
+export function useFileUpload(
+  api: Pick<Api, 'uploadFile'>,
+  onError?: (error: Error) => void,
+) {
+  const [uploading, setUploading] = useState(false)
+
+  const upload = useCallback(
+    async (file: File, ctx?: UploadContext): Promise<UploadResult | null> => {
+      if (file.size > MAX_FILE_SIZE) {
+        throw new Error('File exceeds 100 MB limit')
+      }
+
+      setUploading(true)
+      try {
+        const att: Attachment = await api.uploadFile(file, {
+          issueId: ctx?.issueId,
+          commentId: ctx?.commentId,
+        })
+        return { id: att.id, filename: att.filename, link: att.url }
+      } finally {
+        setUploading(false)
+      }
+    },
+    [api],
+  )
+
+  const uploadWithToast = useCallback(
+    async (file: File, ctx?: UploadContext): Promise<UploadResult | null> => {
+      try {
+        return await upload(file, ctx)
+      } catch (err) {
+        onError?.(err instanceof Error ? err : new Error('Upload failed'))
+        return null
+      }
+    },
+    [upload, onError],
+  )
+
+  return { upload, uploadWithToast, uploading }
+}

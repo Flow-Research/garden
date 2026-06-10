@@ -1,21 +1,7 @@
-'use client'
-
 import { useState, useCallback, useMemo } from 'react'
-import {
-  useQuery,
-  useQueryClient,
-  useMutationState,
-} from '@tanstack/react-query'
-import type { Comment, TimelineEntry, Reaction } from '@garden/core/types'
-import type {
-  CommentCreatedPayload,
-  CommentUpdatedPayload,
-  CommentDeletedPayload,
-  ActivityCreatedPayload,
-  ReactionAddedPayload,
-  ReactionRemovedPayload,
-} from '@garden/core/types'
-import { issueTimelineOptions, issueKeys } from '@/lib/issues/queries'
+import { useQuery, useMutationState } from '@tanstack/react-query'
+import type { Reaction } from '@garden/core/types'
+import { issueTimelineOptions } from '@/lib/issues/queries'
 import {
   useCreateComment,
   useUpdateComment,
@@ -23,27 +9,9 @@ import {
   useToggleCommentReaction,
   type ToggleCommentReactionVars,
 } from '@/lib/issues/mutations'
-import { useWSEvent, useWSReconnect } from '@garden/core/realtime'
 import { toast } from 'sonner'
 
-function commentToTimelineEntry(c: Comment): TimelineEntry {
-  return {
-    type: 'comment',
-    id: c.id,
-    actor_type: c.author_type,
-    actor_id: c.author_id,
-    content: c.content,
-    parent_id: c.parent_id,
-    created_at: c.created_at,
-    updated_at: c.updated_at,
-    comment_type: c.type,
-    reactions: c.reactions ?? [],
-    attachments: c.attachments ?? [],
-  }
-}
-
 export function useIssueTimeline(issueId: string, userId?: string) {
-  const qc = useQueryClient()
   const { data: timeline = [], isLoading: loading } = useQuery(
     issueTimelineOptions(issueId),
   )
@@ -53,150 +21,6 @@ export function useIssueTimeline(issueId: string, userId?: string) {
   const updateCommentMutation = useUpdateComment(issueId)
   const deleteCommentMutation = useDeleteComment(issueId)
   const toggleReactionMutation = useToggleCommentReaction(issueId)
-
-  // Reconnect recovery
-  useWSReconnect(
-    useCallback(() => {
-      qc.invalidateQueries({ queryKey: issueKeys.timeline(issueId) })
-    }, [qc, issueId]),
-  )
-
-  // --- WS event handlers ---
-
-  useWSEvent(
-    'comment:created',
-    useCallback(
-      (payload: unknown) => {
-        const { comment } = payload as CommentCreatedPayload
-        if (comment.issue_id !== issueId) return
-        qc.setQueryData<TimelineEntry[]>(issueKeys.timeline(issueId), (old) => {
-          if (!old) return old
-          if (old.some((e) => e.id === comment.id)) return old
-          return [...old, commentToTimelineEntry(comment)].sort((a, b) =>
-            a.created_at.localeCompare(b.created_at),
-          )
-        })
-      },
-      [qc, issueId],
-    ),
-  )
-
-  useWSEvent(
-    'comment:updated',
-    useCallback(
-      (payload: unknown) => {
-        const { comment } = payload as CommentUpdatedPayload
-        if (comment.issue_id === issueId) {
-          qc.setQueryData<TimelineEntry[]>(issueKeys.timeline(issueId), (old) =>
-            old?.map((e) =>
-              e.id === comment.id ? commentToTimelineEntry(comment) : e,
-            ),
-          )
-        }
-      },
-      [qc, issueId],
-    ),
-  )
-
-  useWSEvent(
-    'comment:deleted',
-    useCallback(
-      (payload: unknown) => {
-        const { comment_id, issue_id } = payload as CommentDeletedPayload
-        if (issue_id === issueId) {
-          qc.setQueryData<TimelineEntry[]>(
-            issueKeys.timeline(issueId),
-            (old) => {
-              if (!old) return old
-              const idsToRemove = new Set<string>([comment_id])
-              let added = true
-              while (added) {
-                added = false
-                for (const e of old) {
-                  if (
-                    e.parent_id &&
-                    idsToRemove.has(e.parent_id) &&
-                    !idsToRemove.has(e.id)
-                  ) {
-                    idsToRemove.add(e.id)
-                    added = true
-                  }
-                }
-              }
-              return old.filter((e) => !idsToRemove.has(e.id))
-            },
-          )
-        }
-      },
-      [qc, issueId],
-    ),
-  )
-
-  useWSEvent(
-    'activity:created',
-    useCallback(
-      (payload: unknown) => {
-        const p = payload as ActivityCreatedPayload
-        if (p.issue_id !== issueId) return
-        const entry = p.entry
-        if (!entry || !entry.id) return
-        qc.setQueryData<TimelineEntry[]>(issueKeys.timeline(issueId), (old) => {
-          if (!old) return old
-          if (old.some((e) => e.id === entry.id)) return old
-          return [...old, entry].sort((a, b) =>
-            a.created_at.localeCompare(b.created_at),
-          )
-        })
-      },
-      [qc, issueId],
-    ),
-  )
-
-  useWSEvent(
-    'reaction:added',
-    useCallback(
-      (payload: unknown) => {
-        const { reaction, issue_id } = payload as ReactionAddedPayload
-        if (issue_id !== issueId) return
-        qc.setQueryData<TimelineEntry[]>(issueKeys.timeline(issueId), (old) =>
-          old?.map((e) => {
-            if (e.id !== reaction.comment_id) return e
-            const existing = e.reactions ?? []
-            if (existing.some((r) => r.id === reaction.id)) return e
-            return { ...e, reactions: [...existing, reaction] }
-          }),
-        )
-      },
-      [qc, issueId],
-    ),
-  )
-
-  useWSEvent(
-    'reaction:removed',
-    useCallback(
-      (payload: unknown) => {
-        const p = payload as ReactionRemovedPayload
-        if (p.issue_id !== issueId) return
-        qc.setQueryData<TimelineEntry[]>(issueKeys.timeline(issueId), (old) =>
-          old?.map((e) => {
-            if (e.id !== p.comment_id) return e
-            return {
-              ...e,
-              reactions: (e.reactions ?? []).filter(
-                (r) =>
-                  !(
-                    r.emoji === p.emoji &&
-                    r.actor_type === p.actor_type &&
-                    r.actor_id === p.actor_id
-                  ),
-              ),
-            }
-          }),
-        )
-      },
-      [qc, issueId],
-    ),
-  )
 
   // --- Mutation functions ---
 

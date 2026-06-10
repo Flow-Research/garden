@@ -5,7 +5,7 @@ import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { wakeAgentsForIssueComment } from '@garden/core/issues/server'
+import { wakeAgentsForIssueComment } from '@garden/server/issues/server'
 
 import {
   classifyConnectorError,

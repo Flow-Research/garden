@@ -15,7 +15,6 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiWorkspacesRouteImport } from './routes/api/workspaces'
 import { Route as ApiSkillsRouteImport } from './routes/api/skills'
-import { Route as ApiRuntimesRouteImport } from './routes/api/runtimes'
 import { Route as ApiProjectsRouteImport } from './routes/api/projects'
 import { Route as ApiMeRouteImport } from './routes/api/me'
 import { Route as ApiIssuesRouteImport } from './routes/api/issues'
@@ -128,11 +127,6 @@ const ApiWorkspacesRoute = ApiWorkspacesRouteImport.update({
 const ApiSkillsRoute = ApiSkillsRouteImport.update({
   id: '/api/skills',
   path: '/api/skills',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiRuntimesRoute = ApiRuntimesRouteImport.update({
-  id: '/api/runtimes',
-  path: '/api/runtimes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiProjectsRoute = ApiProjectsRouteImport.update({
@@ -592,7 +586,6 @@ export interface FileRoutesByFullPath {
   '/api/issues': typeof ApiIssuesRouteWithChildren
   '/api/me': typeof ApiMeRoute
   '/api/projects': typeof ApiProjectsRoute
-  '/api/runtimes': typeof ApiRuntimesRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
   '/automations/$id': typeof AuthenticatedAutomationsIdRoute
@@ -684,7 +677,6 @@ export interface FileRoutesByTo {
   '/api/issues': typeof ApiIssuesRouteWithChildren
   '/api/me': typeof ApiMeRoute
   '/api/projects': typeof ApiProjectsRoute
-  '/api/runtimes': typeof ApiRuntimesRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
   '/automations/$id': typeof AuthenticatedAutomationsIdRoute
@@ -778,7 +770,6 @@ export interface FileRoutesById {
   '/api/issues': typeof ApiIssuesRouteWithChildren
   '/api/me': typeof ApiMeRoute
   '/api/projects': typeof ApiProjectsRoute
-  '/api/runtimes': typeof ApiRuntimesRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
   '/_authenticated/automations/$id': typeof AuthenticatedAutomationsIdRoute
@@ -872,7 +863,6 @@ export interface FileRouteTypes {
     | '/api/issues'
     | '/api/me'
     | '/api/projects'
-    | '/api/runtimes'
     | '/api/skills'
     | '/api/workspaces'
     | '/automations/$id'
@@ -964,7 +954,6 @@ export interface FileRouteTypes {
     | '/api/issues'
     | '/api/me'
     | '/api/projects'
-    | '/api/runtimes'
     | '/api/skills'
     | '/api/workspaces'
     | '/automations/$id'
@@ -1057,7 +1046,6 @@ export interface FileRouteTypes {
     | '/api/issues'
     | '/api/me'
     | '/api/projects'
-    | '/api/runtimes'
     | '/api/skills'
     | '/api/workspaces'
     | '/_authenticated/automations/$id'
@@ -1150,7 +1138,6 @@ export interface RootRouteChildren {
   ApiIssuesRoute: typeof ApiIssuesRouteWithChildren
   ApiMeRoute: typeof ApiMeRoute
   ApiProjectsRoute: typeof ApiProjectsRoute
-  ApiRuntimesRoute: typeof ApiRuntimesRoute
   ApiSkillsRoute: typeof ApiSkillsRouteWithChildren
   ApiWorkspacesRoute: typeof ApiWorkspacesRouteWithChildren
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
@@ -1214,13 +1201,6 @@ declare module '@tanstack/react-router' {
       path: '/api/skills'
       fullPath: '/api/skills'
       preLoaderRoute: typeof ApiSkillsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/runtimes': {
-      id: '/api/runtimes'
-      path: '/api/runtimes'
-      fullPath: '/api/runtimes'
-      preLoaderRoute: typeof ApiRuntimesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/projects': {
@@ -2177,7 +2157,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiIssuesRoute: ApiIssuesRouteWithChildren,
   ApiMeRoute: ApiMeRoute,
   ApiProjectsRoute: ApiProjectsRoute,
-  ApiRuntimesRoute: ApiRuntimesRoute,
   ApiSkillsRoute: ApiSkillsRouteWithChildren,
   ApiWorkspacesRoute: ApiWorkspacesRouteWithChildren,
   ApiAuthSplatRoute: ApiAuthSplatRoute,

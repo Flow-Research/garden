@@ -1,5 +1,3 @@
-'use client'
-
 import { useState, useRef } from 'react'
 import { useNavigation } from '../navigation'
 import { useWorkspaceDock } from '@/components/shell/workspace-dock'
@@ -44,10 +42,10 @@ import {
 } from '../issues/components'
 import { BacklogAgentHintContent } from '../issues/components/backlog-agent-hint-dialog'
 import { ProjectPicker } from '../projects/components/project-picker'
-import { useWorkspaceStore } from '@garden/core/workspace'
-import { useIssueDraftStore } from '@garden/core/issues/stores/draft-store'
+import { useWorkspaceStore } from '@garden/app-state/workspace'
+import { useIssueDraftStore } from '@garden/app-state/issues/stores/draft-store'
 import { useCreateIssue, useUpdateIssue } from '@/lib/issues/mutations'
-import { useFileUpload } from '@garden/core/hooks/use-file-upload'
+import { useFileUpload } from '@garden/app-state/hooks/use-file-upload'
 import { api } from '@/lib/api'
 import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
 

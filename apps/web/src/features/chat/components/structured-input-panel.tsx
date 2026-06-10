@@ -1,5 +1,3 @@
-'use client'
-
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Check } from 'lucide-react'
 import {
@@ -11,7 +9,7 @@ import {
   toggleOptionSelection,
   buildAnswers,
   findFirstUnanswered,
-} from '@garden/core/chat'
+} from '@garden/app-state/chat'
 import { cn } from '@garden/ui/lib/utils'
 
 // ── Panel ────────────────────────────────────────────────────────────────────

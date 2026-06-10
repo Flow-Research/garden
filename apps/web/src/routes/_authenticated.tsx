@@ -1,8 +1,8 @@
 import { useRef } from 'react'
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { useAuthStore } from '@garden/core/auth'
-import { useWorkspaceStore } from '@garden/core/workspace'
+import { useAuthStore } from '@garden/app-state/auth'
+import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { workspaceKeys } from '@/lib/workspace/queries'
 import { sanitizeRedirectTarget } from '@/lib/redirect'
 import { getAuthBootstrap } from '@/lib/server/auth-bootstrap'
@@ -41,7 +41,6 @@ function AuthenticatedLayout() {
 
   // Hydrate singleton stores after the render that consumes loader data.
   // Updating them during render trips React's setState-in-render guard because
-  // WSProvider subscribes above this route.
   if (typeof window !== 'undefined') {
     const nextKey = `${user.id}:${workspaces.map((workspace) => workspace.id).join(',')}`
     if (hydratedKey.current !== nextKey) {

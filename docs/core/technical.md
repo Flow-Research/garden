@@ -1,7 +1,7 @@
 # Garden technical architecture
 
 **Status:** current implementation map
-**Last reviewed:** 2026-08-07
+**Last reviewed:** 2026-05-24
 **Stack:** TanStack Start, React, Cloudflare Workers/Durable Objects/Workflows, Cloudflare Agents + Think, Neon Postgres, Drizzle, Better Auth, R2, Cloudflare Sandbox.
 
 This document is code-backed. If it conflicts with a plan/spec elsewhere, prefer the files cited here.
@@ -12,7 +12,7 @@ Garden has three planes:
 
 1. **Control plane** — Postgres via Drizzle. Owns queryable product state: users, workspaces, agents, chat thread metadata, issues, runs, automations, skills, connectors, permissions, documents, and audit.
 2. **Agent plane** — Cloudflare Durable Objects via the Agents SDK and Think. `AgentDO` is the parent runtime for one agent identity; child Think facets handle chats, issue runs, and automation runs.
-3. **Execution plane** — Workflows for durable run orchestration, codemode for bounded JavaScript tool orchestration, Cloudflare Sandbox for shell/native/container execution, and in-process Executor MCP sessions for connector tools.
+3. **Execution plane** — Workflows for durable run orchestration, codemode for bounded JavaScript tool orchestration, Cloudflare Sandbox for shell/native/container execution, and MCP proxy sessions for connector tools.
 
 ```mermaid
 flowchart LR
@@ -26,23 +26,23 @@ flowchart LR
   Start --> AgentRPC[AgentDO RPC]
   AgentRPC --> Workflow[RunWorkflow]
   Workflow --> AgentDO
-  AgentDO --> MCP[EXECUTOR_MCP_SESSION]
+  AgentDO --> MCP[MCP_SESSION / MCP proxy]
   AgentDO --> Sandbox[Cloudflare Sandbox]
   AgentDO --> R2[(R2 FILES)]
 ```
 
 ## 2. Runtime topology
 
-| Runtime                 | Responsibility                                                                             | Code evidence                                                                    |
-| ----------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| `AgentDO`               | Parent agent identity, access checks, callable RPC, Workflow creation, child facet routing | `packages/agent-runtime/src/agent-do.ts`                                         |
-| `ChatSubAgent`          | One Think conversation per chat thread; thread-local workspace/docs/MCP registration       | `packages/agent-runtime/src/agent-do.ts:905`                                     |
-| `IssueRunSubAgent`      | Live issue-run Think turn, issue tools, work products, source bindings                     | `packages/agent-runtime/src/issue-run-sub-agent.ts`                              |
-| `AutomationRunSubAgent` | Live automation-run Think turn and completion tool                                         | `packages/agent-runtime/src/automation-run-sub-agent.ts`                         |
-| `RunWorkflow`           | Durable turn/retry/wait/resume/cancel boundary for issue and automation runs               | `packages/agent-runtime/src/run-workflow.ts`                                     |
-| `AutomationTriggerDO`   | Schedule trigger alarms and trigger-local concurrency state                                | `packages/agent-runtime/src/automation-trigger-do.ts`                            |
-| `ExecutorMcpSession`    | Executor MCP session Durable Object hosted by Garden                                       | `apps/web/src/lib/server/executor-engine/mcp.ts`, `EXECUTOR_MCP_SESSION` binding |
-| `Sandbox`               | Cloudflare Sandbox container binding for shell/native execution                            | `apps/web/wrangler.jsonc`, `packages/agent-runtime/src/sandbox-tools.ts`         |
+| Runtime | Responsibility | Code evidence |
+| --- | --- | --- |
+| `AgentDO` | Parent agent identity, access checks, callable RPC, Workflow creation, child facet routing | `packages/agent-runtime/src/agent-do.ts` |
+| `ChatSubAgent` | One Think conversation per chat thread; thread-local workspace/docs/MCP registration | `packages/agent-runtime/src/agent-do.ts:905` |
+| `IssueRunSubAgent` | Live issue-run Think turn, issue tools, work products, source bindings | `packages/agent-runtime/src/issue-run-sub-agent.ts` |
+| `AutomationRunSubAgent` | Live automation-run Think turn and completion tool | `packages/agent-runtime/src/automation-run-sub-agent.ts` |
+| `RunWorkflow` | Durable turn/retry/wait/resume/cancel boundary for issue and automation runs | `packages/agent-runtime/src/run-workflow.ts` |
+| `AutomationTriggerDO` | Schedule trigger alarms and trigger-local concurrency state | `packages/agent-runtime/src/automation-trigger-do.ts` |
+| `MCP_SESSION` | RPC MCP proxy session Durable Object | `workers/mcp-proxy/src`, binding in `apps/web/wrangler.jsonc` |
+| `Sandbox` | Cloudflare Sandbox container binding for shell/native execution | `apps/web/wrangler.jsonc`, `packages/agent-runtime/src/sandbox-tools.ts` |
 
 `apps/web/src/server.ts` exports the runtime classes and routes `/agents/agent-d-o/:name` to `getAgentByName(env.AgentDO, runtimeName)` after `requireAgentAccess()`.
 
@@ -77,17 +77,17 @@ See `docs/core/chat-runtime-model.md`.
 
 Key Drizzle schemas:
 
-| Area                     | Tables / files                                                                                                                            |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Agents                   | `packages/db/src/schema/agents.ts` — `agent` has `runtimeConfig`, `permissions`, `adapterType`, `hostName`, `runTimeoutSec`               |
-| Chat                     | `packages/db/src/schema/chat.ts` — `chat_thread.agentId`, `runtimeKind`, `runtimeKey`, `primaryIssueId`                                   |
-| Issues                   | `packages/db/src/schema/issues.ts`, `issue-values.ts` — issue ledger, run ledger, events, source bindings, work products, inbox dismissal |
-| Automations              | `packages/db/src/schema/automations.ts`, `automation-values.ts` — automations, triggers, runs                                             |
-| Capabilities/permissions | `packages/db/src/schema/capabilities.ts` — `capability`, `permission_grant`, `permission_request`                                         |
-| Audit                    | `packages/db/src/schema/audit.ts` — `tool_call_audit`                                                                                     |
-| Documents                | `packages/db/src/schema/documents.ts` — documents, versions, edits                                                                        |
-| Skills                   | `packages/db/src/schema/skills.ts`                                                                                                        |
-| Workspaces/users         | `packages/db/src/schema/workspaces.ts`, `users.ts`                                                                                        |
+| Area | Tables / files |
+| --- | --- |
+| Agents | `packages/db/src/schema/agents.ts` — `agent` has `runtimeConfig`, `permissions`, `adapterType`, `hostName`, `runTimeoutSec` |
+| Chat | `packages/db/src/schema/chat.ts` — `chat_thread.agentId`, `runtimeKind`, `runtimeKey`, `primaryIssueId` |
+| Issues | `packages/db/src/schema/issues.ts`, `issue-values.ts` — issue ledger, run ledger, events, source bindings, work products, inbox dismissal |
+| Automations | `packages/db/src/schema/automations.ts`, `automation-values.ts` — automations, triggers, runs |
+| Capabilities/permissions | `packages/db/src/schema/capabilities.ts` — `capability`, `permission_grant`, `permission_request` |
+| Audit | `packages/db/src/schema/audit.ts` — `tool_call_audit` |
+| Documents | `packages/db/src/schema/documents.ts` — documents, versions, edits |
+| Skills | `packages/db/src/schema/skills.ts` |
+| Workspaces/users | `packages/db/src/schema/workspaces.ts`, `users.ts` |
 
 Postgres is the authority for product/queryable state. Child Think facets keep local runtime state in Durable Object SQLite.
 
@@ -141,7 +141,7 @@ Connector model lives in `docs/core/connectors.md`.
 Current code paths:
 
 - connector manifests: `connectors/*/connector.ts`, `packages/connectors/src/registry.ts`;
-- Executor engine and MCP host: `apps/web/src/lib/server/executor-runtime.ts`, `apps/web/src/lib/server/executor-engine/mcp.ts`;
+- MCP proxy worker: `workers/mcp-proxy/src`;
 - runtime MCP controller: `packages/agent-runtime/src/runtime-mcp-controller.ts`;
 - capability/grant tables: `packages/db/src/schema/capabilities.ts`;
 - permission derivation: `packages/core/agents/permissions.ts`;
@@ -182,7 +182,7 @@ Think/Shell `Workspace` files and container `/workspace` files are separate stor
 
 ## 10. Frontend shell
 
-Current shell uses FlexLayout panels and a two-level sidebar.
+Current shell uses Dockview panels and a two-level sidebar.
 
 Code evidence:
 
@@ -197,14 +197,12 @@ Current panel kinds include dashboard, inbox, issues, issue-detail, automations,
 
 `apps/web/wrangler.jsonc` defines:
 
-- Durable Objects: `AgentDO`, `Sandbox`, `AUTOMATION_TRIGGER`, `EXECUTOR_MCP_SESSION`, `EXECUTOR_MCP_EXECUTION_OWNER`;
+- Durable Objects: `AgentDO`, `Sandbox`, `AUTOMATION_TRIGGER`, `MCP_SESSION`;
 - Workflow: `RUN_WORKFLOW`;
-- R2: `FILES`, `EXECUTOR_BLOBS`;
-- D1: `EXECUTOR_DB`;
+- R2: `FILES`;
 - worker loader: `LOADER`;
 - browser binding: `BROWSER`;
-
-Executor is hosted in this Worker; there is no connector service binding.
+- service binding: `MCP_PROXY`.
 
 No `BROADCAST_DO`, `RUN_QUEUE`, `SUB_AGENT_DO`, or `PrimaryAgent` binding exists in the current config.
 

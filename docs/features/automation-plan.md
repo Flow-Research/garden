@@ -38,7 +38,28 @@ automation_run.status: pending | queued | running | completed | failed | cancell
 
 ## Runtime lifecycle
 
-Automations start through `AutomationTriggerDO` (scheduled) or directly (manual/webhook/API), then converge on the same `automation_run` + `AgentDO` + `RunWorkflow` engine issue runs use. Full turn-by-turn lifecycle, resume/cancel, and status vocabulary: [`docs/core/workflows-engine.md`](../core/workflows-engine.md).
+```mermaid
+sequenceDiagram
+  participant UI as UI / API
+  participant DB as Postgres
+  participant Trigger as AutomationTriggerDO
+  participant Agent as AgentDO
+  participant WF as RunWorkflow
+  participant Facet as AutomationRunSubAgent
+
+  UI->>DB: insert/update automation + trigger
+  UI->>Trigger: install/rearm trigger when scheduled
+  Trigger->>DB: insert automation_run
+  Trigger->>Agent: startAutomationRunWorkflow(runId)
+  Agent->>WF: create workflow id=runId
+  WF->>Agent: executeAutomationRunTurn(runId)
+  Agent->>Facet: subAgent(AutomationRunSubAgent, runId)
+  Facet-->>WF: Think submission completes
+  WF->>Agent: completeAutomationRunTurn(runId)
+  Agent->>DB: persist terminal automation_run status/result
+```
+
+Manual/webhook/API runs skip the schedule alarm step and converge on the same `automation_run` + `AgentDO` + `RunWorkflow` path.
 
 ## Concurrency
 

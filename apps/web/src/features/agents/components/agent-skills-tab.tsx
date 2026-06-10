@@ -1,5 +1,3 @@
-'use client'
-
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Sparkles, X } from 'lucide-react'
@@ -10,7 +8,7 @@ import type {
   Skill,
 } from '@garden/core/types'
 import { api } from '@/lib/api'
-import { useWorkspaceId } from '@garden/core/hooks'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import {
   agentSkillListOptions,
   skillListOptions,

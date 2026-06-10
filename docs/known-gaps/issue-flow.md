@@ -8,7 +8,7 @@ Core issue-run runtime has shipped. This file tracks remaining gaps against the 
 | --- | --- |
 | Issue schema and run ledger | `packages/db/src/schema/issues.ts` (`issue`, `issue_run`, `issue_run_event`, `issue_work_product`, `issue_source_binding`) |
 | Run statuses and trigger sources | `packages/db/src/schema/issue-values.ts` |
-| Start/cancel/list run services | `packages/core/issues/run-service.ts` |
+| Start/cancel/list run services | `packages/server/src/issues/run-service.ts` |
 | Run orchestration | `AgentDO.startIssueRunWorkflow`, `AgentDO.executeRunTurn`, `RunWorkflow` in `packages/agent-runtime/src` |
 | Issue Think facet | `packages/agent-runtime/src/issue-run-sub-agent.ts` |
 | Issue tools | `packages/agent-runtime/src/agent-tools/`, `createChatSubAgentTools()` |
@@ -23,7 +23,7 @@ Core issue-run runtime has shipped. This file tracks remaining gaps against the 
 | Item | Evidence |
 | --- | --- |
 | Per-agent Durable Object topology with issue facets | `packages/agent-runtime/src/agent-do.ts`, `IssueRunSubAgent` keyed by issue id |
-| Workflow-backed issue runs | `packages/core/issues/run-service.ts`, `packages/agent-runtime/src/run-workflow.ts` |
+| Workflow-backed issue runs | `packages/server/src/issues/run-service.ts`, `packages/agent-runtime/src/run-workflow.ts` |
 | Run-level timeout and cancellation | `agent.run_timeout_sec`, `issue_run.cancel_requested_at`, `IssueRunSubAgent` watchdog logic |
 | Source binding and source reads | `packages/core/issues/source-binding.ts`, `packages/agent-runtime/src/agent-tools/read-source.ts` |
 | Work product system | `issue_work_product` schema + `apps/web/src/lib/server/work-products.ts` |

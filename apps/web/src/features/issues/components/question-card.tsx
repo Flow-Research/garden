@@ -1,5 +1,3 @@
-'use client'
-
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowUp, Check, MessageCircleQuestion } from 'lucide-react'
 import {
@@ -7,7 +5,7 @@ import {
   type StructuredQuestionDraft,
   resolveQuestionAnswer,
   toggleOptionSelection,
-} from '@garden/core/chat'
+} from '@garden/app-state/chat'
 import { cn } from '@garden/ui/lib/utils'
 import { Button } from '@garden/ui/components/ui/button'
 import {

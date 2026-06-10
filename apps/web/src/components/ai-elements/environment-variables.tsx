@@ -1,5 +1,3 @@
-"use client";
-
 import { Badge } from "@garden/ui/components/ui/badge";
 import { Button } from "@garden/ui/components/ui/button";
 import { Switch } from "@garden/ui/components/ui/switch";

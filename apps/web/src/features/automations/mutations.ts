@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useWorkspaceId } from '@garden/core/hooks'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import { api } from '@/lib/api'
 import type {
   CreateAutomationRequest,

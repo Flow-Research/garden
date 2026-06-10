@@ -1,5 +1,3 @@
-"use client";
-
 import { Button } from "@garden/ui/components/ui/button";
 import { Spinner } from "@garden/ui/components/ui/spinner";
 import { cn } from "@garden/ui/lib/utils";

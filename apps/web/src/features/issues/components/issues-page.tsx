@@ -1,5 +1,3 @@
-'use client'
-
 import { Suspense, useCallback, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import { ChevronRight } from 'lucide-react'
@@ -9,19 +7,19 @@ import { useSuspenseQueries } from '@tanstack/react-query'
 import {
   useIssueViewStore,
   initFilterWorkspaceSync,
-} from '@garden/core/issues/stores/view-store'
-import { ViewStoreProvider } from '@garden/core/issues/stores/view-store-context'
+} from '@garden/app-state/issues/stores/view-store'
+import { ViewStoreProvider } from '@garden/app-state/issues/stores/view-store-context'
 import { filterIssues } from '../utils/filter'
 import { BOARD_STATUSES } from '@garden/core/issues/config'
-import { useWorkspaceStore } from '@garden/core/workspace'
+import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { WorkspaceAvatar } from '../../workspace/workspace-avatar'
-import { useWorkspaceId } from '@garden/core/hooks'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import {
   issueListOptions,
   childIssueProgressOptions,
 } from '@/lib/issues/queries'
 import { useUpdateIssue } from '@/lib/issues/mutations'
-import { useIssueSelectionStore } from '@garden/core/issues/stores/selection-store'
+import { useIssueSelectionStore } from '@garden/app-state/issues/stores/selection-store'
 import { PageHeader } from '../../layout/page-header'
 import { IssuesHeader } from './issues-header'
 import { BoardView } from './board-view'

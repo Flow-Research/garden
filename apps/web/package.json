@@ -6,10 +6,8 @@
     "#/*": "./src/*"
   },
   "scripts": {
-    "dev": "bash ./scripts/dev-portless.sh",
-    "dev:app": "NODE_OPTIONS='--max-old-space-size=3072' bash ./scripts/dev.sh",
-    "dev:containers": "NODE_OPTIONS='--max-old-space-size=3072' REQUIRE_CONTAINERS=1 bash ./scripts/dev.sh --require-containers",
-    "dev:proxy": "pnpm run dev",
+    "dev": "NODE_OPTIONS='--max-old-space-size=3072' CLOUDFLARE_WORKER_CONFIG_PATH=wrangler.containers.jsonc portless garden --app-port 3000 vite dev --strictPort",
+    "dev:local": "NODE_OPTIONS='--max-old-space-size=3072' CLOUDFLARE_VITE_REMOTE_BINDINGS=0 vite dev --strictPort",
     "build": "vite build",
     "preview": "vite preview",
     "worker:types": "wrangler types worker-configuration.d.ts --include-runtime false",
@@ -25,8 +23,8 @@
     "clean": "rm -rf .tanstack .output dist .turbo node_modules/.vite",
     "ui:add": "pnpm dlx shadcn@latest add --cwd ../../packages/ui --path components/ui",
     "ui:diff": "pnpm dlx shadcn@latest diff --cwd ../../packages/ui",
-    "auth:generate": "bash -c 'set -a && source .dev.vars && pnpm dlx @better-auth/cli@latest generate --config src/auth.ts'",
-    "auth:migrate": "bash -c 'set -a && source .dev.vars && pnpm dlx @better-auth/cli@latest migrate --config src/auth.ts'"
+    "auth:generate": "bash -c 'set -a && source .env && pnpm dlx @better-auth/cli@latest generate --config src/auth.ts'",
+    "auth:migrate": "bash -c 'set -a && source .env && pnpm dlx @better-auth/cli@latest migrate --config src/auth.ts'"
   },
   "dependencies": {
     "@ai-sdk/react": "3.0.191",
@@ -99,12 +97,11 @@
     "cmdk": "^1.1.1",
     "cron-parser": "^5.5.0",
     "date-fns": "^4.1.0",
-    "dockview": "^5.2.0",
-    "dockview-core": "^5.2.0",
     "docx-preview": "^0.3.7",
     "drizzle-orm": "catalog:",
     "embla-carousel-react": "^8.6.0",
     "emoji-mart": "^5.6.0",
+    "flexlayout-react": "^0.9.1",
     "hast-util-to-html": "^4.0.1",
     "input-otp": "^1.4.2",
     "linkify-it": "^5.0.0",
@@ -137,7 +134,10 @@
     "workers-ai-provider": "3.1.13",
     "yaml": "^2.9.0",
     "zod": "^4.4.3",
-    "zustand": "^5.0.12"
+    "zustand": "^5.0.12",
+    "@garden/app-state": "workspace:*",
+    "@garden/server": "workspace:*",
+    "@garden/observability": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.16",

@@ -1,5 +1,3 @@
-'use client'
-
 import { useState } from 'react'
 import { NodeViewWrapper, NodeViewContent } from '@tiptap/react'
 import type { NodeViewProps } from '@tiptap/react'

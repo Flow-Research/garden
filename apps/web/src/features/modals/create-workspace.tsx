@@ -1,5 +1,3 @@
-'use client'
-
 import { useState } from 'react'
 import { useForm } from '@tanstack/react-form'
 import { useNavigation } from '../navigation'
@@ -24,7 +22,7 @@ import {
   isWorkspaceSlugConflict,
   nameToWorkspaceSlug,
 } from '../workspace/slug'
-import { createLogger } from '@garden/core/logger'
+import { createLogger } from '@garden/observability/console'
 
 const logger = createLogger('workspace.create')
 

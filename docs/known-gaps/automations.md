@@ -8,7 +8,7 @@ Automations are a first-class product surface backed by `automation`, `automatio
 | --- | --- |
 | Automation tables | `packages/db/src/schema/automations.ts` |
 | Trigger/status/source enums | `packages/db/src/schema/automation-values.ts` |
-| Server run service | `packages/core/automations/run-service.ts` |
+| Server run service | `packages/server/src/automations/run-service.ts` |
 | Web helpers and routes | `apps/web/src/lib/server/automations.ts`, `apps/web/src/routes/api/automations*.ts` |
 | Trigger Durable Object | `packages/agent-runtime/src/automation-trigger-do.ts` |
 | Runtime facet | `packages/agent-runtime/src/automation-run-sub-agent.ts` |

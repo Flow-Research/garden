@@ -6,7 +6,7 @@ import {
   errorFields,
   requestFields,
   type GardenLogFields,
-} from '@garden/core/observability/logger'
+} from '@garden/observability/logger'
 
 export type GardenAuth = ReturnType<typeof createAuth>
 export type GardenAuthSession = Awaited<

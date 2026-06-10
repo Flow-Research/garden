@@ -9,7 +9,7 @@ import {
   notFound,
   requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
-import { disposeRpcResult } from '@garden/core/platform/rpc'
+import { disposeRpcResult } from '@garden/app-state/platform/rpc'
 
 const AGENT_ROUTING_RETRY = { maxAttempts: 3 }
 

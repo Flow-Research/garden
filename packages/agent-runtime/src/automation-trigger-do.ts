@@ -9,12 +9,12 @@ import {
 } from 'better-result'
 import { CronExpressionParser } from 'cron-parser'
 import * as schema from '@garden/db/schema'
-import { createGardenLogger } from '@garden/core/observability/logger'
+import { createGardenLogger } from '@garden/observability/logger'
 import {
   cancelAutomationRun,
   startAutomationRun,
   type AutomationRunEnv,
-} from '@garden/core/automations/run-service'
+} from '@garden/server/automations/run-service'
 
 type AutomationTriggerEnv = Cloudflare.Env & AutomationRunEnv
 type AutomationConcurrencyPolicy = 'skip' | 'replace'

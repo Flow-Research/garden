@@ -1,5 +1,3 @@
-'use client'
-
 import { Badge } from '@garden/ui/components/ui/badge'
 import type { CarouselApi } from '@garden/ui/components/ui/carousel'
 import {

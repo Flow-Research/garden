@@ -24,7 +24,7 @@ import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/neon-serverless'
 import { classifyConnectorError } from '@garden/core/connectors/errors'
-import { createGardenLogger } from '@garden/core/observability/logger'
+import { createGardenLogger } from '@garden/observability/logger'
 import {
   derivePermissions,
   type AgentPermissions,

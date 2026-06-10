@@ -1,5 +1,3 @@
-'use client'
-
 import {
   forwardRef,
   useCallback,
@@ -11,7 +9,7 @@ import {
 import { ReactRenderer } from '@tiptap/react'
 import { computePosition, offset, flip, shift } from '@floating-ui/dom'
 import type { QueryClient } from '@tanstack/react-query'
-import { useWorkspaceStore } from '@garden/core/workspace'
+import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { issueKeys } from '@/lib/issues/queries'
 import { workspaceKeys } from '@/lib/workspace/queries'
 import type {

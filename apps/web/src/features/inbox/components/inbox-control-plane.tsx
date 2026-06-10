@@ -1,8 +1,6 @@
-'use client'
-
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { StructuredQuestion } from '@garden/core/chat'
+import type { StructuredQuestion } from '@garden/app-state/chat'
 import type {
   InboxItem,
   IssueRunEvent,
@@ -15,7 +13,7 @@ import {
   issueKeys,
 } from '@/lib/issues/queries'
 import { inboxKeys } from '@/lib/inbox/queries'
-import { useWorkspaceId } from '@garden/core/hooks'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import {
   ApprovalCard,
   ConnectorWriteBody,

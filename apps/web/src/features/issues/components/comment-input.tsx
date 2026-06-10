@@ -1,5 +1,3 @@
-'use client'
-
 import { useRef, useState } from 'react'
 import { ArrowUp, Loader2 } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
@@ -10,7 +8,7 @@ import {
   FileDropOverlay,
 } from '../../editor'
 import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
-import { useFileUpload } from '@garden/core/hooks/use-file-upload'
+import { useFileUpload } from '@garden/app-state/hooks/use-file-upload'
 import { api } from '@/lib/api'
 
 interface CommentInputProps {

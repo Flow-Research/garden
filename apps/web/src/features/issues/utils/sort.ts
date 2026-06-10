@@ -3,7 +3,7 @@ import { PRIORITY_ORDER } from '@garden/core/issues/config'
 import type {
   SortField,
   SortDirection,
-} from '@garden/core/issues/stores/view-store'
+} from '@garden/app-state/issues/stores/view-store'
 
 const PRIORITY_RANK: Record<string, number> = Object.fromEntries(
   PRIORITY_ORDER.map((p, i) => [p, i]),

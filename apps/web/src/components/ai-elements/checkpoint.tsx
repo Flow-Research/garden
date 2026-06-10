@@ -1,5 +1,3 @@
-"use client";
-
 import { Button } from "@garden/ui/components/ui/button";
 import { Separator } from "@garden/ui/components/ui/separator";
 import {

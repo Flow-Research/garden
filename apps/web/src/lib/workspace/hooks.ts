@@ -1,7 +1,5 @@
-'use client'
-
 import { useQuery } from '@tanstack/react-query'
-import { useWorkspaceId } from '@garden/core/hooks'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import { memberListOptions, agentListOptions } from './queries'
 
 export function useActorName() {

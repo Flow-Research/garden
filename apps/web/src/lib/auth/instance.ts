@@ -12,7 +12,7 @@ import { buildConnectorOAuthConfigs } from '@garden/connectors/oauth'
 import {
   createGardenLogger,
   type GardenLogLevel,
-} from '@garden/core/observability/logger'
+} from '@garden/observability/logger'
 import {
   account,
   invitation,

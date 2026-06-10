@@ -1,12 +1,10 @@
-'use client'
-
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { getToolName, isToolUIPart } from 'ai'
 import { getToolCallId, getToolInput } from '@cloudflare/ai-chat/react'
 import type {
   StructuredQuestion,
   StructuredQuestionAnswers,
-} from '@garden/core/chat'
+} from '@garden/app-state/chat'
 import type { ChatRuntime, ChatUiMessage } from './chat-runtime-provider'
 
 /**

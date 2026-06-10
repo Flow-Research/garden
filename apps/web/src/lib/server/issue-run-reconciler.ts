@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from 'drizzle-orm'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
-import { createLogger } from '@garden/core/logger'
+import { createLogger } from '@garden/observability/console'
 import type { AppEnv } from '@/lib/server/env'
 import { getDb, schema } from '@/lib/server/db'
 

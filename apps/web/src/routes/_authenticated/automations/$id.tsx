@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { WorkspaceIdProvider } from '@garden/core/hooks'
-import { useWorkspaceStore } from '@garden/core/workspace'
+import { WorkspaceIdProvider } from '@garden/app-state/hooks'
+import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { AutomationDetailPage } from '@/features/automations'
 
 export const Route = createFileRoute('/_authenticated/automations/$id')({

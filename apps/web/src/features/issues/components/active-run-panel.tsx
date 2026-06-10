@@ -1,5 +1,3 @@
-'use client'
-
 import { useEffect, useState } from 'react'
 import {
   AlertCircle,
@@ -12,7 +10,7 @@ import {
   Square,
   XCircle,
 } from 'lucide-react'
-import type { StructuredQuestion } from '@garden/core/chat'
+import type { StructuredQuestion } from '@garden/app-state/chat'
 import { cn } from '@garden/ui/lib/utils'
 import { Alert, AlertDescription } from '@garden/ui/components/ui/alert'
 import { Button } from '@garden/ui/components/ui/button'

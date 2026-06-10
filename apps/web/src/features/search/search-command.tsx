@@ -1,5 +1,3 @@
-'use client'
-
 import { useCallback, useEffect, useMemo } from 'react'
 import { Result } from 'better-result'
 import { toast } from 'sonner'
@@ -17,9 +15,9 @@ import {
   type Icon,
 } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
-import { useRecentIssuesStore } from '@garden/core/issues/stores'
+import { useRecentIssuesStore } from '@garden/app-state/issues/stores/recent-issues-store'
 import { issueListOptions } from '@/lib/issues/queries'
-import { useWorkspaceId } from '@garden/core/hooks'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import { STATUS_CONFIG } from '@garden/core/issues/config'
 import { StatusIcon } from '../issues/components'
 import {

@@ -76,7 +76,7 @@ export const CLOSED_PAGE_SIZE = 50
 
 /**
  * CACHE SHAPE NOTE: The raw cache stores ListIssuesResponse ({ issues, total, doneTotal }),
- * but `select` transforms it to Issue[] for consumers. Mutations and ws-updaters
+ * but `select` transforms it to Issue[] for consumers. Mutations
  * must use setQueryData<ListIssuesResponse>(...) — NOT setQueryData<Issue[]>.
  *
  * Fetches all open issues + first page of done issues. Use useLoadMoreDoneIssues()

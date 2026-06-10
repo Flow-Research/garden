@@ -1,5 +1,3 @@
-'use client'
-
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
 import {
   useMutation,
@@ -24,8 +22,6 @@ import {
   MoreHorizontal,
   PanelLeft,
   PanelRight,
-  Pin,
-  PinOff,
   Plus,
   Trash2,
   UserMinus,
@@ -94,7 +90,7 @@ import type {
   Issue,
   IssueRunEvent,
 } from '@garden/core/types'
-import type { StructuredQuestion } from '@garden/core/chat'
+import type { StructuredQuestion } from '@garden/app-state/chat'
 import {
   ALL_STATUSES,
   STATUS_CONFIG,
@@ -120,7 +116,7 @@ import { WorkProductList } from './work-product-card'
 import { BacklogAgentHintDialog } from './backlog-agent-hint-dialog'
 import { ReactionBar } from '@garden/ui/components/common/reaction-bar'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
-import { useModalStore } from '@garden/core/modals'
+import { useModalStore } from '@garden/app-state/modals'
 import { timeAgo } from '@garden/core/utils'
 import { cn } from '@garden/ui/lib/utils'
 import { useIssueSearch } from '../hooks/use-issue-search'
@@ -627,9 +623,6 @@ export function IssueDetail({
     issueReactionState,
     subscriberState,
     usage,
-    createPin,
-    deletePin,
-    isPinned,
     parentIssueId,
     parentIssue,
     childIssues,
@@ -1098,38 +1091,6 @@ export function IssueDetail({
                 <span className="shrink-0">{issue.identifier}</span>
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className={cn(
-                          'text-muted-foreground',
-                          isPinned && 'text-foreground',
-                        )}
-                        onClick={() => {
-                          if (isPinned) {
-                            deletePin.mutate({
-                              itemType: 'issue',
-                              itemId: issue.id,
-                            })
-                          } else {
-                            createPin.mutate({
-                              item_type: 'issue',
-                              item_id: issue.id,
-                            })
-                          }
-                        }}
-                      >
-                        {isPinned ? <PinOff /> : <Pin />}
-                      </Button>
-                    }
-                  />
-                  <TooltipContent side="bottom">
-                    {isPinned ? 'Unpin from sidebar' : 'Pin to sidebar'}
-                  </TooltipContent>
-                </Tooltip>
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     render={
@@ -1371,30 +1332,6 @@ export function IssueDetail({
                     <DropdownMenuItem onClick={() => setChildPickerOpen(true)}>
                       <ArrowDown className="h-3.5 w-3.5" />
                       Add sub-issue...
-                    </DropdownMenuItem>
-
-                    {/* Pin / Unpin */}
-                    <DropdownMenuItem
-                      onClick={() => {
-                        if (isPinned) {
-                          deletePin.mutate({
-                            itemType: 'issue',
-                            itemId: issue.id,
-                          })
-                        } else {
-                          createPin.mutate({
-                            item_type: 'issue',
-                            item_id: issue.id,
-                          })
-                        }
-                      }}
-                    >
-                      {isPinned ? (
-                        <PinOff className="h-3.5 w-3.5" />
-                      ) : (
-                        <Pin className="h-3.5 w-3.5" />
-                      )}
-                      {isPinned ? 'Unpin from sidebar' : 'Pin to sidebar'}
                     </DropdownMenuItem>
 
                     {/* Copy link */}

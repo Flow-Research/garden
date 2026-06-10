@@ -1,5 +1,3 @@
-'use client'
-
 import { useState, useMemo } from 'react'
 import { Pencil, Eye } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'

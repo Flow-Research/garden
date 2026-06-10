@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Result } from 'better-result'
 import { api } from '@/lib/api'
 import { issueKeys, CLOSED_PAGE_SIZE } from './queries'
-import { useWorkspaceId } from '@garden/core/hooks'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import type { Issue, IssueReaction } from '@garden/core/types'
 import type {
   CreateIssueRequest,

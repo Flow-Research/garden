@@ -1,12 +1,10 @@
-'use client'
-
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { useAuthStore } from '@garden/core/auth'
-import { useWorkspaceStore } from '@garden/core/workspace'
+import { useAuthStore } from '@garden/app-state/auth'
+import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { useActorName } from '@/lib/workspace/hooks'
-import { useWorkspaceId } from '@garden/core/hooks'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import {
   issueListOptions,
   issueDetailOptions,
@@ -17,12 +15,11 @@ import {
   memberListOptions,
   agentListOptions,
 } from '@/lib/workspace/queries'
-import { useRecentIssuesStore } from '@garden/core/issues/stores'
+import { useRecentIssuesStore } from '@garden/app-state/issues/stores/recent-issues-store'
 import { useIssueTimeline } from './use-issue-timeline'
 import { useIssueReactions } from './use-issue-reactions'
 import { useIssueSubscribers } from './use-issue-subscribers'
-import { useFileUpload } from '@garden/core/hooks/use-file-upload'
-import { pinListOptions, useCreatePin, useDeletePin } from '@/lib/pins'
+import { useFileUpload } from '@garden/app-state/hooks/use-file-upload'
 import {
   useDeleteIssue,
   useUpdateIssue,
@@ -58,17 +55,6 @@ export function useIssueDetailData(issueId: string) {
   const issueReactionState = useIssueReactions(issueId, user?.id)
   const subscriberState = useIssueSubscribers(issueId, user?.id)
   const { data: usage } = useQuery(issueUsageOptions(issueId))
-  const { data: pinnedItems = [] } = useQuery({
-    ...pinListOptions(wsId, userId ?? ''),
-    enabled: !!userId,
-  })
-
-  const createPin = useCreatePin()
-  const deletePin = useDeletePin()
-  const isPinned = pinnedItems.some(
-    (pinned) => pinned.item_type === 'issue' && pinned.item_id === issueId,
-  )
-
   const parentIssueId = issue?.parent_issue_id
   const { data: parentIssue = null } = useQuery({
     ...issueDetailOptions(wsId, parentIssueId ?? ''),
@@ -101,9 +87,6 @@ export function useIssueDetailData(issueId: string) {
     issueReactionState,
     subscriberState,
     usage,
-    createPin,
-    deletePin,
-    isPinned,
     parentIssueId,
     parentIssue,
     childIssues,

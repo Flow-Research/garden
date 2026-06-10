@@ -1,5 +1,3 @@
-'use client'
-
 /**
  * MentionView — NodeView for rendering @mentions inline in the editor.
  *
@@ -22,7 +20,7 @@ import { NodeViewWrapper } from '@tiptap/react'
 import type { NodeViewProps } from '@tiptap/react'
 import { useQuery } from '@tanstack/react-query'
 import { issueListOptions, issueDetailOptions } from '@/lib/issues/queries'
-import { useWorkspaceId } from '@garden/core/hooks'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import { useWorkspaceDock } from '@/components/shell/workspace-dock'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { StatusIcon } from '../../issues/components/status-icon'

@@ -1,5 +1,3 @@
-'use client'
-
 import React from 'react'
 import { Bug, User, Palette, Settings, Users } from 'lucide-react'
 import {
@@ -8,7 +6,7 @@ import {
   TabsTrigger,
   TabsContent,
 } from '@garden/ui/components/ui/tabs'
-import { useWorkspaceStore } from '@garden/core/workspace'
+import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { AccountTab } from './account-tab'
 import { AppearanceTab } from './appearance-tab'
 import { DeveloperTab } from './developer-tab'

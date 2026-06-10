@@ -1,5 +1,3 @@
-'use client'
-
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
   DndContext,
@@ -29,11 +27,11 @@ import { ALL_STATUSES, STATUS_CONFIG } from '@garden/core/issues/config'
 import {
   useViewStoreApi,
   useViewStore,
-} from '@garden/core/issues/stores/view-store-context'
+} from '@garden/app-state/issues/stores/view-store-context'
 import type {
   SortField,
   SortDirection,
-} from '@garden/core/issues/stores/view-store'
+} from '@garden/app-state/issues/stores/view-store'
 import { sortIssues } from '../utils/sort'
 import { StatusIcon } from './status-icon'
 import { BoardColumn } from './board-column'

@@ -1,5 +1,3 @@
-'use client'
-
 import { useMemo, useState } from 'react'
 import { Result } from 'better-result'
 import {
@@ -18,7 +16,7 @@ import {
   Terminal as TerminalIcon,
   Wrench,
 } from 'lucide-react'
-import { useWorkspaceStore } from '@garden/core/workspace'
+import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { Alert, AlertDescription } from '@garden/ui/components/ui/alert'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'

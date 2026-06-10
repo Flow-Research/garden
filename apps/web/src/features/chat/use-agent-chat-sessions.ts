@@ -1,5 +1,3 @@
-'use client'
-
 import { useCallback, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Result } from 'better-result'
@@ -14,9 +12,9 @@ import {
   updateChatThread,
   type AgentChatSession,
 } from '@/lib/api'
-import { useAuthStore } from '@garden/core/auth'
-import { useChatStore } from '@garden/core/chat'
-import { useWorkspaceStore } from '@garden/core/workspace'
+import { useAuthStore } from '@garden/app-state/auth'
+import { useChatStore } from '@garden/app-state/chat'
+import { useWorkspaceStore } from '@garden/app-state/workspace'
 
 export type { AgentChatSession }
 export { isPendingFirstTurn, NEW_SESSION_TITLE, sortSessions }

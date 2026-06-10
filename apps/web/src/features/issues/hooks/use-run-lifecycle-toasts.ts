@@ -1,5 +1,3 @@
-'use client'
-
 import { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import type { ActiveRunStatus } from '../components/active-run-panel'

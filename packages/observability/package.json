@@ -1,0 +1,22 @@
+{
+  "name": "@garden/observability",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "lint:fix": "oxlint -c ../../.oxlintrc.json --fix ."
+  },
+  "exports": {
+    ".": "./src/observability/logger.ts",
+    "./logger": "./src/observability/logger.ts",
+    "./console": "./src/logger.ts"
+  },
+  "devDependencies": {
+    "@garden/tsconfig": "workspace:*",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

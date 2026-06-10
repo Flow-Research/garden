@@ -11,7 +11,7 @@ import {
   cancelIssueRun,
   getActiveIssueRun,
   type IssueRunServiceError,
-} from '@garden/core/issues/run-service'
+} from '@garden/server/issues/run-service'
 
 function runError(error: IssueRunServiceError) {
   return badRequest(error.message)

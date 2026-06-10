@@ -1,5 +1,3 @@
-'use client'
-
 import { cn } from '@garden/ui/lib/utils'
 
 type LiveDotVariant = 'queued' | 'running' | 'waiting' | 'blocked' | 'failed' | 'succeeded'

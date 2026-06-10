@@ -1,5 +1,3 @@
-'use client'
-
 import { useState } from 'react'
 import { Result } from 'better-result'
 import { useQuery } from '@tanstack/react-query'
@@ -26,7 +24,7 @@ import {
 } from '@garden/core/automations/templates'
 import type { Agent, Skill } from '@garden/core/types'
 import type { Automation, AutomationListItem } from '@/lib/api'
-import { useWorkspaceId } from '@garden/core/hooks'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import { Button } from '@garden/ui/components/ui/button'
 import { Checkbox } from '@garden/ui/components/ui/checkbox'
 import {

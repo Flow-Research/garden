@@ -30,7 +30,7 @@ vi.mock('../navigation', () => ({
   useNavigation: () => ({ push: mockPush }),
 }))
 
-vi.mock('@garden/core/workspace', () => ({
+vi.mock('@garden/app-state/workspace', () => ({
   useWorkspaceStore: Object.assign(
     (selector?: (state: { workspace: { name: string } }) => unknown) => {
       const state = { workspace: { name: 'Test Workspace' } }
@@ -40,7 +40,7 @@ vi.mock('@garden/core/workspace', () => ({
   ),
 }))
 
-vi.mock('@garden/core/issues/stores/draft-store', () => ({
+vi.mock('@garden/app-state/issues/stores/draft-store', () => ({
   useIssueDraftStore: Object.assign(
     (selector?: (state: typeof mockDraftStore) => unknown) =>
       selector ? selector(mockDraftStore) : mockDraftStore,
@@ -57,7 +57,7 @@ vi.mock('@/components/shell/workspace-dock', () => ({
   useWorkspaceDock: () => ({ openPanel: mockOpenPanel }),
 }))
 
-vi.mock('@garden/core/hooks/use-file-upload', () => ({
+vi.mock('@garden/app-state/hooks/use-file-upload', () => ({
   useFileUpload: () => ({ uploadWithToast: vi.fn() }),
 }))
 

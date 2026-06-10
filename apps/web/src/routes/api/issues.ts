@@ -2,8 +2,8 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import { createIssue } from '@garden/core/issues/server'
-import { startIssueRun } from '@garden/core/issues/run-service'
+import { createIssue } from '@garden/server/issues/server'
+import { startIssueRun } from '@garden/server/issues/run-service'
 import {
   createIssueBodySchema,
   issuesListSearchSchema,

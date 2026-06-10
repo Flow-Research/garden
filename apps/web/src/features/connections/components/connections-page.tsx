@@ -1,10 +1,8 @@
-'use client'
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { format, formatDistanceToNowStrict } from 'date-fns'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon as IconifyIcon } from '@iconify/react'
-import { useWorkspaceId } from '@garden/core/hooks'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import {
   ChevronDown,
   ChevronRight,

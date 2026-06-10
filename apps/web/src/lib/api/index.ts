@@ -12,10 +12,8 @@ export * from './issues'
 export * from './workspace'
 export * from './skills'
 export * from './inbox'
-export * from './runtimes'
 export * from './files'
 export * from './projects'
-export * from './pins'
 export * from './connections'
 export * from './chat-threads'
 export * from './documents'
@@ -28,10 +26,8 @@ import * as issues from './issues'
 import * as workspace from './workspace'
 import * as skills from './skills'
 import * as inbox from './inbox'
-import * as runtimes from './runtimes'
 import * as files from './files'
 import * as projects from './projects'
-import * as pins from './pins'
 import * as connections from './connections'
 import * as chatThreads from './chat-threads'
 import * as documents from './documents'
@@ -60,10 +56,8 @@ export const api = {
   ...workspace,
   ...skills,
   ...inbox,
-  ...runtimes,
   ...files,
   ...projects,
-  ...pins,
   ...connections,
   ...chatThreads,
   ...documents,

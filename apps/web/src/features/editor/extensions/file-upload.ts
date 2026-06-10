@@ -1,6 +1,6 @@
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
-import type { UploadResult } from '@garden/core/hooks/use-file-upload'
+import type { UploadResult } from '@garden/app-state/hooks/use-file-upload'
 import { createSafeId } from '@garden/core/utils'
 
 /** Find and remove a fileCard node by uploadId. */

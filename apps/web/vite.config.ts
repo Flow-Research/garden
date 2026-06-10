@@ -50,6 +50,8 @@ const config = defineConfig({
   clearScreen: false,
   customLogger: logger,
   server: {
+    port: Number(process.env.PORT ?? 3000),
+    strictPort: true,
     allowedHosts: ['.ngrok-free.app'],
   },
   resolve: {

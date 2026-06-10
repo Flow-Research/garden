@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { postIssueComment, toIssueComment } from '@garden/core/issues/server'
+import { postIssueComment, toIssueComment } from '@garden/server/issues/server'
 import { archiveInboxItemsByKey } from '@garden/db/inbox'
 import { getDb, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'

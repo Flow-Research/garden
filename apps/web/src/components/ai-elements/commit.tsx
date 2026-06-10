@@ -1,5 +1,3 @@
-"use client";
-
 import { Avatar, AvatarFallback } from "@garden/ui/components/ui/avatar";
 import { Button } from "@garden/ui/components/ui/button";
 import {

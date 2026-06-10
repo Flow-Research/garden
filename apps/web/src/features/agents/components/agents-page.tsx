@@ -1,11 +1,9 @@
-'use client'
-
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Bot, Search } from 'lucide-react'
 import type { Agent } from '@garden/core/types'
 import { agentListOptions } from '@/lib/workspace/queries'
-import { useWorkspaceId } from '@garden/core/hooks'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import {
   Avatar,
   AvatarFallback,

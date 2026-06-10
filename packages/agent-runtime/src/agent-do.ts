@@ -235,169 +235,6 @@ function latestUserMessageText(messages: readonly ModelMessage[]) {
   return ''
 }
 
-function safeSqlText(value: unknown) {
-  return typeof value === 'string' ? value : ''
-}
-
-function safeSqlNumber(value: unknown) {
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0
-}
-
-function sqliteIdentifier(name: string) {
-  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
-    throw new Error(`Unsafe SQLite identifier: ${name}`)
-  }
-
-  return `"${name}"`
-}
-
-function messagePartType(part: unknown) {
-  if (part && typeof part === 'object' && 'type' in part) {
-    return String(part.type)
-  }
-
-  return 'unknown'
-}
-
-function summarizeStorageMessage(
-  message: UIMessage,
-): StorageMessageInspectEntry {
-  const parts = Array.isArray(message.parts) ? message.parts : []
-  let textChars = 0
-  let reasoningChars = 0
-  let toolPartCount = 0
-  const previewParts: string[] = []
-
-  for (const part of parts) {
-    const type = messagePartType(part)
-    if (type === 'text' && 'text' in part) {
-      const text = String(part.text ?? '')
-      textChars += text.length
-      if (previewParts.length < 2) previewParts.push(text.slice(0, 120))
-    } else if (type === 'reasoning' && 'text' in part) {
-      reasoningChars += String(part.text ?? '').length
-    } else if (type.startsWith('tool-')) {
-      toolPartCount += 1
-    }
-  }
-
-  return {
-    id: message.id,
-    role: message.role,
-    partTypes: parts.map(messagePartType),
-    textChars,
-    reasoningChars,
-    toolPartCount,
-    preview: previewParts.join('\n').slice(0, 240),
-  }
-}
-
-type SqlCursorLike = { toArray: () => unknown[] }
-type SqlStorageLike = {
-  exec: (query: string, ...bindings: unknown[]) => SqlCursorLike
-}
-
-function sqlRows(
-  sqlStorage: SqlStorageLike,
-  query: string,
-  ...bindings: unknown[]
-) {
-  return sqlStorage
-    .exec(query, ...bindings)
-    .toArray()
-    .filter(
-      (row): row is Record<string, unknown> =>
-        Boolean(row) && typeof row === 'object',
-    )
-}
-
-function inspectRuntimeStorage(args: {
-  objectName: string
-  sqlStorage: SqlStorageLike
-  messages: UIMessage[]
-}): StorageInspectPayload {
-  const tableRows = sqlRows(
-    args.sqlStorage,
-    "SELECT name, sql FROM sqlite_master WHERE type = 'table' ORDER BY name",
-  )
-  const tables = tableRows.map((row) => {
-    const name = safeSqlText(row.name)
-    const quoted = sqliteIdentifier(name)
-    const [countRow] = sqlRows(
-      args.sqlStorage,
-      `SELECT COUNT(*) as count FROM ${quoted}`,
-    )
-    return {
-      name,
-      rowCount: countRow ? safeSqlNumber(countRow.count) : null,
-      schemaPreview: safeSqlText(row.sql).slice(0, 500),
-    }
-  })
-
-  const tableNames = new Set(tables.map((table) => table.name))
-  const stateRows = tableNames.has('cf_agents_state')
-    ? sqlRows(
-        args.sqlStorage,
-        'SELECT id, length(state) as stateChars FROM cf_agents_state ORDER BY id LIMIT 20',
-      ).map((row) => ({
-        id: safeSqlText(row.id),
-        stateChars: safeSqlNumber(row.stateChars),
-      }))
-    : []
-  const mcpServers = tableNames.has('cf_agents_mcp_servers')
-    ? sqlRows(
-        args.sqlStorage,
-        'SELECT id, name, server_url as serverUrl FROM cf_agents_mcp_servers ORDER BY name LIMIT 50',
-      ).map((row) => ({
-        id: safeSqlText(row.id),
-        name: safeSqlText(row.name),
-        serverUrl: safeSqlText(row.serverUrl),
-      }))
-    : []
-  const pendingRuns = tableNames.has('cf_agents_runs')
-    ? sqlRows(
-        args.sqlStorage,
-        'SELECT id, name, length(snapshot) as snapshotChars FROM cf_agents_runs ORDER BY created_at DESC LIMIT 20',
-      ).map((row) => ({
-        id: safeSqlText(row.id),
-        name: safeSqlText(row.name),
-        snapshotChars: safeSqlNumber(row.snapshotChars),
-      }))
-    : []
-  const persistedMessageRows = tableNames.has('cf_ai_chat_agent_messages')
-    ? sqlRows(
-        args.sqlStorage,
-        'SELECT id, created_at as createdAt, length(message) as messageChars FROM cf_ai_chat_agent_messages ORDER BY created_at LIMIT 100',
-      ).map((row) => ({
-        id: safeSqlText(row.id),
-        createdAt: safeSqlText(row.createdAt) || null,
-        messageChars: safeSqlNumber(row.messageChars),
-      }))
-    : []
-  const liveMessages = args.messages.map(summarizeStorageMessage)
-  const liveMessageTotals = liveMessages.reduce(
-    (acc, message) => ({
-      count: acc.count + 1,
-      textChars: acc.textChars + message.textChars,
-      reasoningChars: acc.reasoningChars + message.reasoningChars,
-      toolPartCount: acc.toolPartCount + message.toolPartCount,
-    }),
-    { count: 0, textChars: 0, reasoningChars: 0, toolPartCount: 0 },
-  )
-
-  return {
-    objectName: args.objectName,
-    tableCount: tables.length,
-    tables,
-    stateRows,
-    mcpServers,
-    pendingRuns,
-    persistedMessageRows,
-    liveMessages,
-    liveMessageTotals,
-  }
-}
-
 /**
  * Finds explicit slash-selected skill tokens in the latest user message. The
  * web composer stores readable `/slug` tokens; runtime resolves those tokens to
@@ -463,48 +300,6 @@ type DebugPromptPayload = {
   loadedSkillKeys: string[]
 }
 
-type StorageTableInspectEntry = {
-  name: string
-  rowCount: number | null
-  schemaPreview: string
-}
-
-type StorageMessageInspectEntry = {
-  id: string
-  role: string
-  partTypes: string[]
-  textChars: number
-  reasoningChars: number
-  toolPartCount: number
-  preview: string
-}
-
-type StorageInspectPayload = {
-  objectName: string
-  tableCount: number
-  tables: StorageTableInspectEntry[]
-  stateRows: Array<{ id: string; stateChars: number }>
-  mcpServers: Array<{ id: string; name: string; serverUrl: string }>
-  pendingRuns: Array<{ id: string; name: string; snapshotChars: number }>
-  persistedMessageRows: Array<{
-    id: string
-    createdAt: string | null
-    messageChars: number
-  }>
-  liveMessages: StorageMessageInspectEntry[]
-  liveMessageTotals: {
-    count: number
-    textChars: number
-    reasoningChars: number
-    toolPartCount: number
-  }
-}
-
-type ThreadStorageInspectPayload = {
-  root: StorageInspectPayload
-  thread: StorageInspectPayload
-}
-
 type RuntimeOkPayload = { ok: true }
 type RuntimePreparePayload = { ok: true } | { ok: false; error: string }
 type ThreadDocumentUploadPayload = Awaited<
@@ -565,14 +360,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       connection:
         error === undefined ? null : (connectionOrError as Connection),
       error: error ?? connectionOrError,
-    })
-  }
-
-  debugStorage(): StorageInspectPayload {
-    return inspectRuntimeStorage({
-      objectName: this.name,
-      sqlStorage: this.ctx.storage.sql,
-      messages: [],
     })
   }
 
@@ -653,18 +440,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
     return thread.debugPrompt()
-  }
-
-  @callable()
-  async debugThreadStorage(
-    threadId: string,
-  ): Promise<ThreadStorageInspectPayload> {
-    await this.requireThreadAccess(threadId)
-    const thread = await this.subAgent(ChatSubAgent, threadId)
-    return {
-      root: this.debugStorage(),
-      thread: await thread.debugStorage(),
-    }
   }
 
   @callable()
@@ -1586,39 +1361,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     } satisfies TurnConfig
   }
 
-  override async onStepFinish(ctx: {
-    finishReason?: string
-    stepNumber?: number
-    usage?: {
-      inputTokens?: number
-      outputTokens?: number
-      totalTokens?: number
-      reasoningTokens?: number
-      cachedInputTokens?: number
-      inputTokenDetails?: { cacheReadTokens?: number }
-      outputTokenDetails?: { reasoningTokens?: number }
-    }
-  }) {
-    const usage = ctx.usage
-    console.info('[agent-runtime] chat step usage', {
-      threadId: this.name,
-      stepNumber: ctx.stepNumber,
-      finishReason: ctx.finishReason,
-      inputTokens: usage?.inputTokens ?? null,
-      outputTokens: usage?.outputTokens ?? null,
-      totalTokens: usage?.totalTokens ?? null,
-      cachedInputTokens:
-        usage?.inputTokenDetails?.cacheReadTokens ??
-        usage?.cachedInputTokens ??
-        null,
-      reasoningTokens:
-        usage?.outputTokenDetails?.reasoningTokens ??
-        usage?.reasoningTokens ??
-        null,
-      storedMessageCount: this.messages.length,
-    })
-  }
-
   override async onRequest(request: Request) {
     const url = new URL(request.url)
     if (url.pathname.endsWith('/debug-state')) {
@@ -1788,14 +1530,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       this.debugPrompt(),
     ])
     return { ...meta, workspace, sandbox, tools, prompt }
-  }
-
-  debugStorage(): StorageInspectPayload {
-    return inspectRuntimeStorage({
-      objectName: this.name,
-      sqlStorage: this.ctx.storage.sql,
-      messages: this.messages,
-    })
   }
 
   async debugMeta(): Promise<DebugMetaPayload> {

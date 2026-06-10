@@ -1,5 +1,3 @@
-'use client'
-
 import { useState } from 'react'
 import {
   Crown,
@@ -50,9 +48,9 @@ import {
 } from '@garden/ui/components/ui/dropdown-menu'
 import { toast } from 'sonner'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useAuthStore } from '@garden/core/auth'
-import { useWorkspaceStore } from '@garden/core/workspace'
-import { useWorkspaceId } from '@garden/core/hooks'
+import { useAuthStore } from '@garden/app-state/auth'
+import { useWorkspaceStore } from '@garden/app-state/workspace'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import {
   memberListOptions,
   invitationListOptions,

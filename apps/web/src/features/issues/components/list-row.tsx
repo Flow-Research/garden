@@ -1,11 +1,9 @@
-'use client'
-
 import { memo, useCallback } from 'react'
 import type { Issue } from '@garden/core/types'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Checkbox } from '@garden/ui/components/ui/checkbox'
 import { ActorAvatar } from '../../common/actor-avatar'
-import { useIssueSelectionStore } from '@garden/core/issues/stores/selection-store'
+import { useIssueSelectionStore } from '@garden/app-state/issues/stores/selection-store'
 import { PriorityIcon } from './priority-icon'
 import { ProgressRing } from './progress-ring'
 

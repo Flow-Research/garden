@@ -6,7 +6,7 @@ import {
   requestFields,
   responseFields,
   type GardenLogFields,
-} from '@garden/core/observability/logger'
+} from '@garden/observability/logger'
 
 const apiRequestLogger = createGardenLogger({
   service: 'garden-staging',

@@ -2,7 +2,7 @@ import type { Connection } from 'agents'
 import {
   errorFields,
   type GardenLogger,
-} from '@garden/core/observability/logger'
+} from '@garden/observability/logger'
 
 function connectionId(connection: Connection | null) {
   const candidate = connection as { id?: unknown } | null

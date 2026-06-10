@@ -1,5 +1,3 @@
-"use client";
-
 import { cn } from "@garden/ui/lib/utils";
 import type { RiveParameters } from "@rive-app/react-webgl2";
 import {

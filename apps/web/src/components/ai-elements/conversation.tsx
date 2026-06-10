@@ -1,5 +1,3 @@
-'use client'
-
 import { Button } from '@garden/ui/components/ui/button'
 import { cn } from '@garden/ui/lib/utils'
 import { LegendList, type LegendListRef } from '@legendapp/list/react'

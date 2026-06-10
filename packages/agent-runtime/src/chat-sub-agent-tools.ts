@@ -20,7 +20,7 @@ import { drizzle } from "drizzle-orm/neon-serverless";
 import { z } from "zod";
 import { connectorRegistry } from "@garden/connectors";
 import { formatIssueIdentifier } from "@garden/core/issues/identifier";
-import { disposeRpcResult } from "@garden/core/platform/rpc";
+import { disposeRpcResult } from "@garden/app-state/platform/rpc";
 import {
   isTerminalIssueStatus,
   LIVE_RUN_STATUSES,
@@ -43,7 +43,7 @@ import {
   type DocumentToolContext,
 } from "./documents/document-tools";
 import { createProposeAgentTool } from "./agent-tools/propose-agent";
-import { listAvailableConnectorBindings } from "@garden/core/connectors/availability";
+import { listAvailableConnectorBindings } from "@garden/server/connectors/availability";
 import { createSandboxTools } from "./sandbox-tools";
 import {
   createIssue as createIssueService,
@@ -51,11 +51,11 @@ import {
   postIssueComment as postIssueCommentService,
   readIssue as readIssueService,
   type IssueSummary,
-} from "@garden/core/issues/server";
+} from "@garden/server/issues/server";
 import {
   startIssueRun,
   type IssueRunEnv,
-} from "@garden/core/issues/run-service";
+} from "@garden/server/issues/run-service";
 
 type ChatSubAgentToolsInput = {
   databaseUrl?: string;

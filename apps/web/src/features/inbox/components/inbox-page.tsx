@@ -1,8 +1,6 @@
-'use client'
-
 import { useState, useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useWorkspaceId } from '@garden/core/hooks'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import { inboxListOptions, deduplicateInboxItems } from '@/lib/inbox/queries'
 import {
   useMarkInboxRead,

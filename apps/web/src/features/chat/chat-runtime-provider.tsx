@@ -1,14 +1,12 @@
-'use client'
-
 import { useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Result } from 'better-result'
 import { useAgent } from 'agents/react'
 import { useAgentChat } from '@cloudflare/ai-chat/react'
 import type { UIMessage } from 'ai'
-import { useAuthStore } from '@garden/core/auth'
-import { useChatStore } from '@garden/core/chat'
-import { useWorkspaceStore } from '@garden/core/workspace'
+import { useAuthStore } from '@garden/app-state/auth'
+import { useChatStore } from '@garden/app-state/chat'
+import { useWorkspaceStore } from '@garden/app-state/workspace'
 import {
   useAgentSessions,
   type AgentChatSession,
@@ -114,7 +112,7 @@ function ChatRuntimeWarmConnection({ session }: { session: AgentChatSession }) {
     queryFn: async () => {
       const result = await agent.call<WarmRuntimeResult>(
         'warmThreadRuntime',
-        session.runtime_key,
+        [session.runtime_key],
       )
       if (!result.ok) throw new Error(result.error)
       return true
@@ -255,7 +253,7 @@ export function useChatRuntimeConnection({
     if (warmInFlightRef.current) return
 
     warmInFlightRef.current = parentAgent
-      .call<WarmRuntimeResult>('warmThreadRuntime', session.runtime_key)
+      .call<WarmRuntimeResult>('warmThreadRuntime', [session.runtime_key])
       .then((result) => {
         if (!result.ok) {
           console.warn('[chat.runtime] warm failed', result.error)

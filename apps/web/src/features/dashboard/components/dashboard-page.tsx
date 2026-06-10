@@ -1,5 +1,3 @@
-'use client'
-
 import { Component, Suspense, useCallback, useMemo } from 'react'
 import { Skeleton as BoneyardSkeleton } from 'boneyard-js/react'
 import {
@@ -33,7 +31,7 @@ import {
   EmptyTitle,
 } from '@garden/ui/components/ui/empty'
 import { cn } from '@garden/ui/lib/utils'
-import { useWorkspaceId } from '@garden/core/hooks'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import { STATUS_CONFIG } from '@garden/core/issues/config'
 import { PriorityIcon, StatusIcon } from '@/features/issues/components'
 import { useWorkspaceDock } from '@/components/shell/workspace-dock'

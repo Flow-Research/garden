@@ -1,5 +1,3 @@
-'use client'
-
 import { useState, useMemo, useDeferredValue, useRef } from 'react'
 import {
   Plus,
@@ -73,8 +71,8 @@ import { toast } from 'sonner'
 import { cn } from '@garden/ui/lib/utils'
 import { api } from '@/lib/api'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
-import { useWorkspaceId } from '@garden/core/hooks'
-import { useSkillsBrowseStore, useSkillEditorStore } from '@garden/core/skills'
+import { useWorkspaceId } from '@garden/app-state/hooks'
+import { useSkillsBrowseStore, useSkillEditorStore } from '@garden/app-state/skills'
 import { skillListOptions, workspaceKeys } from '@/lib/workspace/queries'
 
 import { FileTree } from './file-tree'

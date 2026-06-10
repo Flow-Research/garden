@@ -1,7 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import 'dockview/dist/styles/dockview.css';
+@import 'flexlayout-react/style/alpha_light.css';
 @import '../../../packages/ui/styles/tokens.css';
 @import '../../../packages/ui/styles/base.css';
 @import './custom.css';

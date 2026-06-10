@@ -1,7 +1,7 @@
 import { Result } from 'better-result'
 import { tool } from 'ai'
 import { z } from 'zod'
-import type { StructuredQuestion } from '@garden/core/chat/structured-input'
+import type { StructuredQuestion } from '@garden/app-state/chat/structured-input'
 import * as schema from '@garden/db/schema'
 import { upsertWaitingForInputInbox } from '@garden/db/inbox'
 import {

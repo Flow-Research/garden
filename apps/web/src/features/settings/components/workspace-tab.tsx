@@ -1,5 +1,3 @@
-'use client'
-
 import { useEffect, useState } from 'react'
 import { Result } from 'better-result'
 import { Save } from 'lucide-react'
@@ -19,13 +17,13 @@ import {
 } from '@garden/ui/components/ui/alert-dialog'
 import { toast } from 'sonner'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useAuthStore } from '@garden/core/auth'
-import { useWorkspaceStore } from '@garden/core/workspace'
+import { useAuthStore } from '@garden/app-state/auth'
+import { useWorkspaceStore } from '@garden/app-state/workspace'
 import {
   useLeaveWorkspace,
   useDeleteWorkspace,
 } from '@/lib/workspace/mutations'
-import { useWorkspaceId } from '@garden/core/hooks'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import {
   memberListOptions,
   workspaceKeys,

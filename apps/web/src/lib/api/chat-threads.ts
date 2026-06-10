@@ -41,7 +41,7 @@ export function listThreadPermissionRequests(
   )
 }
 
-export function rowToSession(row: ChatThreadRow): AgentChatSession {
+function rowToSession(row: ChatThreadRow): AgentChatSession {
   return {
     ...row,
     status: row.archivedAt ? 'archived' : 'idle',

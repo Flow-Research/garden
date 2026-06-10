@@ -1,5 +1,3 @@
-'use client'
-
 /**
  * Artifact rendering for chat messages: garden document download blocks, code
  * blocks, and graph/canvas artifacts. Split out of chat-message-parts.tsx;

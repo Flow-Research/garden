@@ -4,7 +4,7 @@ import { CronExpressionParser } from 'cron-parser'
 import {
   cancelAutomationRun,
   startAutomationRun,
-} from '@garden/core/automations/run-service'
+} from '@garden/server/automations/run-service'
 import { getDb, schema } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
 

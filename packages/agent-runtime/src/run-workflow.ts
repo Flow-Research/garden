@@ -4,8 +4,8 @@ import {
   type AgentWorkflowStep,
 } from 'agents/workflows'
 import { TaggedError } from 'better-result'
-import { disposeRpcResult } from '@garden/core/platform/rpc'
-import { createGardenLogger } from '@garden/core/observability/logger'
+import { disposeRpcResult } from '@garden/app-state/platform/rpc'
+import { createGardenLogger } from '@garden/observability/logger'
 import type { AgentDO } from './agent-do'
 
 /**

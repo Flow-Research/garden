@@ -42,7 +42,7 @@ Not first:
 
 ## 4. Current product surface
 
-Garden uses one authenticated workspace shell with a left rail, context explorer, and FlexLayout panel area.
+Garden uses one authenticated workspace shell with a left rail, context explorer, and Dockview panel area.
 
 Code evidence:
 
@@ -65,20 +65,20 @@ Settings is currently a dialog (`apps/web/src/features/settings`) rather than a 
 
 ## 5. Primary entities
 
-| Primitive            | Source of truth                                                          | Runtime/UI notes                                                            |
-| -------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------- | ----- | ------------------ |
-| Workspace/company    | Postgres `organization` / membership tables                              | Tenancy boundary.                                                           |
-| User/member          | Better Auth + Postgres                                                   | Authenticated actor.                                                        |
-| Agent                | Postgres `agent` + `AgentDO`                                             | Data-driven persona/config/permissions; runtime identity via `hostName`/id. |
-| Chat thread          | Postgres `chat_thread` + `ChatSubAgent`                                  | Metadata in Postgres; Think messages in child facet.                        |
-| Issue/task           | Postgres `issue`                                                         | Assignable to user or agent.                                                |
-| Issue run            | Postgres `issue_run` + `IssueRunSubAgent` + `RunWorkflow`                | Durable issue work ledger.                                                  |
-| Automation           | Postgres `automation` / `automation_trigger`                             | Top-level scheduled/manual/webhook/API work surface.                        |
-| Automation run       | Postgres `automation_run` + `AutomationRunSubAgent` + `RunWorkflow`      | Durable automation execution ledger.                                        |
-| Skill                | Postgres catalog/assignments + R2 SKILL.md bundles + Think skill sources | Workspace-scoped, assignable to agents.                                     |
-| Connector/capability | Executor + Postgres capability/grant tables + local MCP session DOs      | Tools exposed with `auto                                                    | allow | ask` trust levels. |
-| Document artifact    | Postgres document tables + R2/Shell workspace                            | Thread-scoped artifacts with versions/edits.                                |
-| Inbox item           | Computed server surface + dismissal records                              | Approvals, mentions, blockers, failures.                                    |
+| Primitive | Source of truth | Runtime/UI notes |
+| --- | --- | --- |
+| Workspace/company | Postgres `organization` / membership tables | Tenancy boundary. |
+| User/member | Better Auth + Postgres | Authenticated actor. |
+| Agent | Postgres `agent` + `AgentDO` | Data-driven persona/config/permissions; runtime identity via `hostName`/id. |
+| Chat thread | Postgres `chat_thread` + `ChatSubAgent` | Metadata in Postgres; Think messages in child facet. |
+| Issue/task | Postgres `issue` | Assignable to user or agent. |
+| Issue run | Postgres `issue_run` + `IssueRunSubAgent` + `RunWorkflow` | Durable issue work ledger. |
+| Automation | Postgres `automation` / `automation_trigger` | Top-level scheduled/manual/webhook/API work surface. |
+| Automation run | Postgres `automation_run` + `AutomationRunSubAgent` + `RunWorkflow` | Durable automation execution ledger. |
+| Skill | Postgres catalog/assignments + R2 SKILL.md bundles + Think skill sources | Workspace-scoped, assignable to agents. |
+| Connector/capability | Connector registry + Postgres capability/grant tables + MCP proxy | Tools exposed with `auto | allow | ask` trust levels. |
+| Document artifact | Postgres document tables + R2/Shell workspace | Thread-scoped artifacts with versions/edits. |
+| Inbox item | Computed server surface + dismissal records | Approvals, mentions, blockers, failures. |
 
 ## 6. MVP/current scope
 
@@ -95,7 +95,7 @@ In or underway:
 9. Inbox/approval surfaces.
 10. Document artifacts: upload, generate, preview, edit, accept/reject, citation highlighting.
 11. Codemode and Cloudflare Sandbox execution paths.
-12. FlexLayout panel workspace.
+12. Dockview panel workspace.
 
 Out of current scope / deferred:
 
@@ -121,7 +121,7 @@ Code evidence:
 
 - `packages/db/src/schema/capabilities.ts`
 - `packages/core/agents/permissions.ts`
-- `packages/agent-runtime/src/runtime-mcp-controller.ts`
+- `workers/mcp-proxy/src/permission.ts`
 - `packages/agent-runtime/src/runtime-mcp-controller.ts`
 - `apps/web/src/features/connections/components/connections-page.tsx`
 
@@ -137,7 +137,7 @@ Do not use old planning terms (`ask_always`, `ask_on_risky`, `never_ask`) for cu
 - Do not add queue dispatch between `AgentDO` and `RunWorkflow`.
 - Do not switch live chats by mutating Think `this.session`.
 
-Code evidence: `docs/core/technical.md`, `docs/core/chat-runtime-model.md`, `docs/core/workflows-engine.md`.
+Code evidence: `docs/core/technical.md`, `docs/core/chat-runtime-model.md`, `docs/features/agent-runtime-rearchitecture.md`.
 
 ## 9. Success criteria
 
@@ -167,6 +167,6 @@ Engineering success means docs and code agree. Any future architecture doc shoul
 
 - Current technical architecture: `docs/core/technical.md`
 - Chat runtime model: `docs/core/chat-runtime-model.md`
-- Durable run engine: `docs/core/workflows-engine.md`
+- Agent runtime rearchitecture: `docs/features/agent-runtime-rearchitecture.md`
 - Known gaps: `docs/known-gaps/`
 - Current code: `packages/agent-runtime/src`, `packages/db/src/schema`, `apps/web/src/features`

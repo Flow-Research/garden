@@ -1,0 +1,29 @@
+{
+  "name": "@garden/connectors",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "lint:fix": "oxlint -c ../../.oxlintrc.json --fix .",
+    "verify:coverage": "node --experimental-strip-types scripts/verify-connector-coverage.ts",
+    "check:github-mcp": "node --experimental-strip-types scripts/check-github-mcp.ts"
+  },
+  "exports": {
+    ".": "./src/registry.ts",
+    "./capabilities": "./src/capabilities.ts",
+    "./registry": "./src/registry.ts",
+    "./oauth": "./src/oauth.ts",
+    "./proxy-jwt": "./src/proxy-jwt.ts",
+    "./github": "./src/github/connector.ts",
+    "./github-app": "./src/github-app.ts",
+    "./sdk": "./src/sdk.ts"
+  },
+  "devDependencies": {
+    "@garden/tsconfig": "workspace:*",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

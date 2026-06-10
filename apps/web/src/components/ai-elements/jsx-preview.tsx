@@ -1,5 +1,3 @@
-'use client'
-
 import { cn } from '@garden/ui/lib/utils'
 import { AlertCircle } from 'lucide-react'
 import type { ComponentProps, ReactNode } from 'react'
