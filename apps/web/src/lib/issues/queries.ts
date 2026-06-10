@@ -81,6 +81,11 @@ export const CLOSED_PAGE_SIZE = 50
  *
  * Fetches all open issues + first page of done issues. Use useLoadMoreDoneIssues()
  * to paginate additional done items into the cache.
+ *
+ * Product feel: issue lists are user-generated but not tick-by-tick realtime.
+ * Keeping them fresh briefly and retaining previous data avoids full-board
+ * suspense/remount churn when users move between tabs or a mutation marks the
+ * list stale after its optimistic cache write.
  */
 export function issueListOptions(wsId: string) {
   return queryOptions({
@@ -108,6 +113,8 @@ export function issueListOptions(wsId: string) {
       if (realCall.isOk()) return realCall.value
       throw realCall.error
     },
+    staleTime: 30_000,
+    placeholderData: (previous) => previous,
     select: (data) => data.issues,
   })
 }
@@ -126,6 +133,11 @@ export function issueDetailOptions(wsId: string, id: string) {
   })
 }
 
+/**
+ * Child progress changes only when child issue membership/status changes. Keep
+ * previous progress visible during refresh so parent cards do not blink while
+ * issue mutations settle.
+ */
 export function childIssueProgressOptions(wsId: string) {
   return queryOptions({
     queryKey: issueKeys.childProgress(wsId),
@@ -137,6 +149,8 @@ export function childIssueProgressOptions(wsId: string) {
       if (realCall.isOk()) return realCall.value
       throw realCall.error
     },
+    staleTime: 30_000,
+    placeholderData: (previous) => previous,
     select: (data) => {
       const map = new Map<string, { done: number; total: number }>()
       for (const entry of data.progress) {

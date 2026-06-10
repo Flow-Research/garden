@@ -110,14 +110,28 @@ function useInboxActionInvalidation(issueId: string | null) {
   const queryClient = useQueryClient()
   const wsId = useWorkspaceId()
   return () => {
-    queryClient.invalidateQueries({ queryKey: inboxKeys.list(wsId) })
-    queryClient.invalidateQueries({ queryKey: issueKeys.list(wsId) })
+    queryClient.invalidateQueries({
+      queryKey: inboxKeys.list(wsId),
+      exact: true,
+    })
+    queryClient.invalidateQueries({
+      queryKey: issueKeys.list(wsId),
+      exact: true,
+      refetchType: 'none',
+    })
     if (issueId) {
-      queryClient.invalidateQueries({ queryKey: issueKeys.activeRun(issueId) })
+      queryClient.invalidateQueries({
+        queryKey: issueKeys.activeRun(issueId),
+        exact: true,
+      })
       queryClient.invalidateQueries({
         queryKey: issueKeys.detail(wsId, issueId),
+        exact: true,
       })
-      queryClient.invalidateQueries({ queryKey: issueKeys.timeline(issueId) })
+      queryClient.invalidateQueries({
+        queryKey: issueKeys.timeline(issueId),
+        exact: true,
+      })
     }
   }
 }
@@ -287,9 +301,7 @@ export function InboxControlPlane({ item }: { item: InboxItem }) {
           <WorkProductList
             workProducts={remainingWorkProducts}
             connectorId={connectorId}
-            onApprove={(id) =>
-              reviewMutation.mutate({ id, action: 'approve' })
-            }
+            onApprove={(id) => reviewMutation.mutate({ id, action: 'approve' })}
             onRequestChanges={(id) =>
               reviewMutation.mutate({ id, action: 'request_changes' })
             }

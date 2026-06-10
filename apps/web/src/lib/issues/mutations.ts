@@ -87,10 +87,11 @@ export function useLoadMoreDoneIssues() {
 export function useCreateIssue() {
   const qc = useQueryClient()
   const wsId = useWorkspaceId()
+  const listKey = issueKeys.list(wsId)
   return useMutation({
     mutationFn: (data: CreateIssueRequest) => api.createIssue(data),
     onSuccess: (newIssue) => {
-      qc.setQueryData<ListIssuesResponse>(issueKeys.list(wsId), (old) =>
+      qc.setQueryData<ListIssuesResponse>(listKey, (old) =>
         old && !old.issues.some((i) => i.id === newIssue.id)
           ? {
               ...old,
@@ -101,16 +102,22 @@ export function useCreateIssue() {
             }
           : old,
       )
+      qc.invalidateQueries({
+        queryKey: listKey,
+        exact: true,
+        refetchType: 'none',
+      })
       // Invalidate parent's children query so sub-issues list updates immediately
       if (newIssue.parent_issue_id) {
         qc.invalidateQueries({
           queryKey: issueKeys.children(wsId, newIssue.parent_issue_id),
+          exact: true,
         })
-        qc.invalidateQueries({ queryKey: issueKeys.childProgress(wsId) })
+        qc.invalidateQueries({
+          queryKey: issueKeys.childProgress(wsId),
+          exact: true,
+        })
       }
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: issueKeys.list(wsId) })
     },
   })
 }
@@ -118,6 +125,7 @@ export function useCreateIssue() {
 export function useUpdateIssue() {
   const qc = useQueryClient()
   const wsId = useWorkspaceId()
+  const listKey = issueKeys.list(wsId)
   return useMutation({
     mutationFn: async ({
       id,
@@ -130,8 +138,8 @@ export function useUpdateIssue() {
       // cache update happens in the same tick as mutate(). Awaiting would
       // yield to the event loop, letting @dnd-kit reset its visual state
       // before the optimistic update lands.
-      qc.cancelQueries({ queryKey: issueKeys.list(wsId) })
-      const prevList = qc.getQueryData<ListIssuesResponse>(issueKeys.list(wsId))
+      qc.cancelQueries({ queryKey: listKey })
+      const prevList = qc.getQueryData<ListIssuesResponse>(listKey)
       const prevDetail = qc.getQueryData<Issue>(issueKeys.detail(wsId, id))
 
       // Resolve parent_issue_id from the freshest source so we can keep the
@@ -145,7 +153,7 @@ export function useUpdateIssue() {
         ? qc.getQueryData<Issue[]>(issueKeys.children(wsId, parentId))
         : undefined
 
-      qc.setQueryData<ListIssuesResponse>(issueKeys.list(wsId), (old) =>
+      qc.setQueryData<ListIssuesResponse>(listKey, (old) =>
         old
           ? {
               ...old,
@@ -166,7 +174,7 @@ export function useUpdateIssue() {
       return { prevList, prevDetail, prevChildren, parentId, id }
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prevList) qc.setQueryData(issueKeys.list(wsId), ctx.prevList)
+      if (ctx?.prevList) qc.setQueryData(listKey, ctx.prevList)
       if (ctx?.prevDetail)
         qc.setQueryData(issueKeys.detail(wsId, ctx.id), ctx.prevDetail)
       if (ctx?.parentId && ctx.prevChildren !== undefined) {
@@ -176,25 +184,59 @@ export function useUpdateIssue() {
         )
       }
     },
-    onSettled: (_data, _err, vars, ctx) => {
-      qc.invalidateQueries({ queryKey: issueKeys.detail(wsId, vars.id) })
-      qc.invalidateQueries({ queryKey: issueKeys.list(wsId) })
-      qc.invalidateQueries({ queryKey: issueKeys.activeRun(vars.id) })
-      qc.invalidateQueries({ queryKey: issueKeys.runEvents(vars.id) })
+    onSuccess: (updatedIssue, vars, ctx) => {
+      qc.setQueryData<ListIssuesResponse>(listKey, (old) =>
+        old
+          ? {
+              ...old,
+              issues: old.issues.map((i) =>
+                i.id === updatedIssue.id ? updatedIssue : i,
+              ),
+            }
+          : old,
+      )
+      qc.setQueryData<Issue>(issueKeys.detail(wsId, vars.id), updatedIssue)
+      if (ctx?.parentId) {
+        qc.setQueryData<Issue[]>(
+          issueKeys.children(wsId, ctx.parentId),
+          (old) =>
+            old?.map((child) =>
+              child.id === updatedIssue.id ? updatedIssue : child,
+            ),
+        )
+      }
+      qc.invalidateQueries({
+        queryKey: issueKeys.detail(wsId, vars.id),
+        exact: true,
+        refetchType: 'none',
+      })
+      qc.invalidateQueries({
+        queryKey: listKey,
+        exact: true,
+        refetchType: 'none',
+      })
       // Invalidate old parent's children cache
       if (ctx?.parentId) {
         qc.invalidateQueries({
           queryKey: issueKeys.children(wsId, ctx.parentId),
+          exact: true,
         })
-        qc.invalidateQueries({ queryKey: issueKeys.childProgress(wsId) })
+        qc.invalidateQueries({
+          queryKey: issueKeys.childProgress(wsId),
+          exact: true,
+        })
       }
       // Invalidate new parent's children cache when parent_issue_id changed
       const newParentId = vars.parent_issue_id
       if (newParentId && newParentId !== ctx?.parentId) {
         qc.invalidateQueries({
           queryKey: issueKeys.children(wsId, newParentId),
+          exact: true,
         })
-        qc.invalidateQueries({ queryKey: issueKeys.childProgress(wsId) })
+        qc.invalidateQueries({
+          queryKey: issueKeys.childProgress(wsId),
+          exact: true,
+        })
       }
     },
   })
@@ -203,13 +245,14 @@ export function useUpdateIssue() {
 export function useDeleteIssue() {
   const qc = useQueryClient()
   const wsId = useWorkspaceId()
+  const listKey = issueKeys.list(wsId)
   return useMutation({
     mutationFn: (id: string) => api.deleteIssue(id),
     onMutate: async (id) => {
-      await qc.cancelQueries({ queryKey: issueKeys.list(wsId) })
-      const prevList = qc.getQueryData<ListIssuesResponse>(issueKeys.list(wsId))
+      await qc.cancelQueries({ queryKey: listKey })
+      const prevList = qc.getQueryData<ListIssuesResponse>(listKey)
       const deleted = prevList?.issues.find((i) => i.id === id)
-      qc.setQueryData<ListIssuesResponse>(issueKeys.list(wsId), (old) => {
+      qc.setQueryData<ListIssuesResponse>(listKey, (old) => {
         if (!old) return old
         const d = old.issues.find((i) => i.id === id)
         return {
@@ -223,15 +266,23 @@ export function useDeleteIssue() {
       return { prevList, parentIssueId: deleted?.parent_issue_id }
     },
     onError: (_err, _id, ctx) => {
-      if (ctx?.prevList) qc.setQueryData(issueKeys.list(wsId), ctx.prevList)
+      if (ctx?.prevList) qc.setQueryData(listKey, ctx.prevList)
     },
-    onSettled: (_data, _err, _id, ctx) => {
-      qc.invalidateQueries({ queryKey: issueKeys.list(wsId) })
+    onSuccess: (_data, _id, ctx) => {
+      qc.invalidateQueries({
+        queryKey: listKey,
+        exact: true,
+        refetchType: 'none',
+      })
       if (ctx?.parentIssueId) {
         qc.invalidateQueries({
           queryKey: issueKeys.children(wsId, ctx.parentIssueId),
+          exact: true,
         })
-        qc.invalidateQueries({ queryKey: issueKeys.childProgress(wsId) })
+        qc.invalidateQueries({
+          queryKey: issueKeys.childProgress(wsId),
+          exact: true,
+        })
       }
     },
   })
@@ -240,6 +291,7 @@ export function useDeleteIssue() {
 export function useBatchUpdateIssues() {
   const qc = useQueryClient()
   const wsId = useWorkspaceId()
+  const listKey = issueKeys.list(wsId)
   return useMutation({
     mutationFn: ({
       ids,
@@ -249,9 +301,9 @@ export function useBatchUpdateIssues() {
       updates: UpdateIssueRequest
     }) => api.batchUpdateIssues(ids, updates),
     onMutate: async ({ ids, updates }) => {
-      await qc.cancelQueries({ queryKey: issueKeys.list(wsId) })
-      const prevList = qc.getQueryData<ListIssuesResponse>(issueKeys.list(wsId))
-      qc.setQueryData<ListIssuesResponse>(issueKeys.list(wsId), (old) =>
+      await qc.cancelQueries({ queryKey: listKey })
+      const prevList = qc.getQueryData<ListIssuesResponse>(listKey)
+      qc.setQueryData<ListIssuesResponse>(listKey, (old) =>
         old
           ? {
               ...old,
@@ -264,10 +316,14 @@ export function useBatchUpdateIssues() {
       return { prevList }
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prevList) qc.setQueryData(issueKeys.list(wsId), ctx.prevList)
+      if (ctx?.prevList) qc.setQueryData(listKey, ctx.prevList)
     },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: issueKeys.list(wsId) })
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: listKey,
+        exact: true,
+        refetchType: 'none',
+      })
     },
   })
 }
@@ -275,18 +331,19 @@ export function useBatchUpdateIssues() {
 export function useBatchDeleteIssues() {
   const qc = useQueryClient()
   const wsId = useWorkspaceId()
+  const listKey = issueKeys.list(wsId)
   return useMutation({
     mutationFn: (ids: string[]) => api.batchDeleteIssues(ids),
     onMutate: async (ids) => {
-      await qc.cancelQueries({ queryKey: issueKeys.list(wsId) })
-      const prevList = qc.getQueryData<ListIssuesResponse>(issueKeys.list(wsId))
+      await qc.cancelQueries({ queryKey: listKey })
+      const prevList = qc.getQueryData<ListIssuesResponse>(listKey)
       const idSet = new Set(ids)
       const parentIssueIds = new Set(
         prevList?.issues
           .filter((i) => idSet.has(i.id) && i.parent_issue_id)
           .map((i) => i.parent_issue_id!) ?? [],
       )
-      qc.setQueryData<ListIssuesResponse>(issueKeys.list(wsId), (old) => {
+      qc.setQueryData<ListIssuesResponse>(listKey, (old) => {
         if (!old) return old
         const doneDeleted = old.issues.filter(
           (i) => idSet.has(i.id) && i.status === 'done',
@@ -301,15 +358,25 @@ export function useBatchDeleteIssues() {
       return { prevList, parentIssueIds }
     },
     onError: (_err, _ids, ctx) => {
-      if (ctx?.prevList) qc.setQueryData(issueKeys.list(wsId), ctx.prevList)
+      if (ctx?.prevList) qc.setQueryData(listKey, ctx.prevList)
     },
-    onSettled: (_data, _err, _ids, ctx) => {
-      qc.invalidateQueries({ queryKey: issueKeys.list(wsId) })
+    onSuccess: (_data, _ids, ctx) => {
+      qc.invalidateQueries({
+        queryKey: listKey,
+        exact: true,
+        refetchType: 'none',
+      })
       if (ctx?.parentIssueIds && ctx.parentIssueIds.size > 0) {
         for (const parentId of ctx.parentIssueIds) {
-          qc.invalidateQueries({ queryKey: issueKeys.children(wsId, parentId) })
+          qc.invalidateQueries({
+            queryKey: issueKeys.children(wsId, parentId),
+            exact: true,
+          })
         }
-        qc.invalidateQueries({ queryKey: issueKeys.childProgress(wsId) })
+        qc.invalidateQueries({
+          queryKey: issueKeys.childProgress(wsId),
+          exact: true,
+        })
       }
     },
   })
