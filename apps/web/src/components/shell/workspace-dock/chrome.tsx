@@ -61,7 +61,6 @@ export function WorkspaceTabSetToolbar({
   const railOpen = sidebar.state === 'expanded'
   const expanded = panelId ? dock.isPanelExpanded(panelId) : false
   const pinned = panelId ? dock.isPanelPinned(panelId) : false
-  const tabsetId = node instanceof TabSetNode ? node.getId() : null
 
   return (
     <div
@@ -125,21 +124,36 @@ export function WorkspaceTabSetToolbar({
           <Pin className="size-3.5" />
         )}
       </button>
-      <button
-        type="button"
-        className="garden-dock-actions__button"
-        disabled={!tabsetId}
-        onClick={() =>
-          tabsetId &&
-          dock.openPanel(
-            { kind: 'blank', title: 'New Tab' },
-            { forceNew: true, targetPanelId: tabsetId },
-          )
-        }
-        title="New tab"
-      >
-        <Plus className="size-3.5" />
-      </button>
     </div>
+  )
+}
+
+/** Keeps New Tab beside the tab strip instead of grouped with left-side actions. */
+export function WorkspaceNewTabButton({
+  node,
+}: {
+  node: TabSetNode | BorderNode
+}) {
+  const dock = useRequiredWorkspaceDock()
+  const tabsetId = node instanceof TabSetNode ? node.getId() : null
+
+  return (
+    <button
+      type="button"
+      className="garden-dock-tab-add"
+      disabled={!tabsetId}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={() =>
+        tabsetId &&
+        dock.openPanel(
+          { kind: 'blank', title: 'New Tab' },
+          { forceNew: true, targetPanelId: tabsetId },
+        )
+      }
+      title="New tab"
+      aria-label="New tab"
+    >
+      <Plus className="size-3.5" />
+    </button>
   )
 }

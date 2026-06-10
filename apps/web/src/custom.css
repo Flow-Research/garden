@@ -105,8 +105,11 @@
 
 .garden-flexlayout .flexlayout__tab_button,
 .garden-flexlayout .flexlayout__tab_button_stretch {
+  flex: 0 0 10.75rem;
+  width: 10.75rem;
   height: 30px;
   min-width: 0;
+  max-width: 10.75rem;
   margin: 0;
   padding: 0 9px 0 10px;
   border: 0;
@@ -149,13 +152,28 @@
 
 .garden-flexlayout .flexlayout__tab_button_content {
   min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .garden-flexlayout-tab__content {
   display: inline-flex;
+  width: 100%;
   min-width: 0;
   align-items: center;
   gap: 0.35rem;
+}
+
+.garden-flexlayout-tab__content > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  mask-image: linear-gradient(to right, #000 calc(100% - 1.15rem), transparent);
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - 1.15rem),
+    transparent
+  );
 }
 
 .garden-flexlayout-tab__icon {
@@ -316,6 +334,39 @@
   gap: 0.125rem;
   padding-left: 0.0625rem;
   padding-right: 0.1875rem;
+}
+
+.garden-flexlayout .flexlayout__tab_toolbar_sticky_buttons_container {
+  flex: 0 0 auto;
+  gap: 0;
+  padding-left: 0;
+}
+
+.garden-dock-tab-add {
+  display: inline-flex;
+  width: 2rem;
+  height: 30px;
+  flex: 0 0 2rem;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--gravel);
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.garden-dock-tab-add:hover {
+  background: var(--garden-dock-chrome-hover);
+  color: var(--ink);
+}
+
+.garden-dock-tab-add:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .garden-dock-actions__button {

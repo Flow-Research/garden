@@ -26,6 +26,7 @@ import {
 } from 'flexlayout-react'
 import {
   WorkspaceDockWatermark,
+  WorkspaceNewTabButton,
   WorkspaceTabSetToolbar,
 } from './workspace-dock/chrome'
 import {
@@ -430,7 +431,7 @@ export function WorkspaceDockView() {
       renderValues.content = (
         <span className="garden-flexlayout-tab__content">
           {panel.pinned ? <Pin className="garden-flexlayout-tab__pin" /> : null}
-          <span className="truncate">{node.getName() || panel.title}</span>
+          <span>{node.getName() || panel.title}</span>
         </span>
       )
     },
@@ -444,6 +445,9 @@ export function WorkspaceDockView() {
           {renderValues.leading}
           <WorkspaceTabSetToolbar key="workspace-actions" node={node} />
         </>
+      )
+      renderValues.stickyButtons.push(
+        <WorkspaceNewTabButton key="workspace-new-tab" node={node} />,
       )
     },
     [],
