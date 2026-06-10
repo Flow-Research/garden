@@ -43,6 +43,50 @@ const CONSOLE_METHOD: Record<GardenLogLevel, 'debug' | 'info' | 'warn' | 'error'
   warn: 'warn',
   error: 'error',
 }
+const LOG_LEVEL_PRIORITY: Record<GardenLogLevel, number> = {
+  debug: 10,
+  info: 20,
+  warn: 30,
+  error: 40,
+}
+
+let configuredGardenLogLevel: GardenLogLevel | null = null
+
+/**
+ * Applies the Worker-provided Garden log threshold to every logger instance.
+ * Before this gate, local dev printed every info/debug lifecycle record because
+ * `console.info` and `console.debug` are always visible in Wrangler/Vite. After
+ * binding `GARDEN_LOG_LEVEL`, high-volume success logs can be hidden while warn
+ * and error records remain visible. Reference: Cloudflare Sandbox SDK's
+ * `SANDBOX_LOG_LEVEL` pattern verified in docs and installed source.
+ */
+export function setGardenLogLevel(level: GardenLogLevel | null | undefined) {
+  configuredGardenLogLevel = normalizeLogLevel(level)
+}
+
+function normalizeLogLevel(value: unknown): GardenLogLevel | null {
+  return value === 'debug' ||
+    value === 'info' ||
+    value === 'warn' ||
+    value === 'error'
+    ? value
+    : null
+}
+
+function processGardenLogLevel() {
+  const processEnv = (
+    globalThis as { process?: { env?: Record<string, string | undefined> } }
+  ).process?.env
+  return normalizeLogLevel(processEnv?.GARDEN_LOG_LEVEL)
+}
+
+function activeGardenLogLevel() {
+  return configuredGardenLogLevel ?? processGardenLogLevel() ?? 'info'
+}
+
+function shouldEmitLogLevel(level: GardenLogLevel) {
+  return LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY[activeGardenLogLevel()]
+}
 
 /**
  * Creates the Cloudflare-native Garden logger. Cloudflare Workers Logs indexes
@@ -58,6 +102,8 @@ export function createGardenLogger(
   const base = normalizeFields(options.base ?? {})
 
   const emit = (level: GardenLogLevel, event: string, fields?: GardenLogFields) => {
+    if (!shouldEmitLogLevel(level)) return
+
     const record = normalizeFields({
       source: SOURCE,
       schemaVersion: SCHEMA_VERSION,

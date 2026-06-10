@@ -1,7 +1,10 @@
+import { setGardenLogLevel, type GardenLogLevel } from '@garden/observability/logger'
+
 type RequiredEnvBinding<Key extends keyof Env> = NonNullable<Env[Key]>
 
 export type AppEnv = {
   DATABASE_URL: RequiredEnvBinding<'DATABASE_URL'>
+  HYPERDRIVE: RequiredEnvBinding<'HYPERDRIVE'>
   BETTER_AUTH_SECRET: RequiredEnvBinding<'BETTER_AUTH_SECRET'>
   BETTER_AUTH_URL?: string
   AI: RequiredEnvBinding<'AI'>
@@ -11,6 +14,7 @@ export type AppEnv = {
   BROWSER: RequiredEnvBinding<'BROWSER'>
   MCP_PROXY: RequiredEnvBinding<'MCP_PROXY'>
   SANDBOX_TRANSPORT: RequiredEnvBinding<'SANDBOX_TRANSPORT'>
+  GARDEN_LOG_LEVEL?: GardenLogLevel
   AgentDO: RequiredEnvBinding<'AgentDO'>
   AUTOMATION_TRIGGER: RequiredEnvBinding<'AUTOMATION_TRIGGER'>
   MCP_SESSION: RequiredEnvBinding<'MCP_SESSION'>
@@ -35,6 +39,8 @@ export type AppEnv = {
 // unavailable, and `server.ts` refreshes the live binding at request start.
 export let appEnv = {} as AppEnv
 
+/** Updates live Worker bindings and applies runtime log-level configuration. */
 export function bindAppEnv(nextEnv: AppEnv) {
   appEnv = nextEnv
+  setGardenLogLevel(nextEnv.GARDEN_LOG_LEVEL)
 }

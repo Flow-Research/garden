@@ -1,10 +1,16 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createGardenLogger,
   errorFields,
   requestFields,
+  setGardenLogLevel,
   withRequestIdHeader,
 } from './logger'
+
+afterEach(() => {
+  setGardenLogLevel(null)
+  vi.restoreAllMocks()
+})
 
 describe('createGardenLogger', () => {
   it('emits structured JSON and preserves user ids', () => {
@@ -33,7 +39,27 @@ describe('createGardenLogger', () => {
       authorization: '[redacted]',
     })
 
-    info.mockRestore()
+  })
+
+  it('filters records below the configured log level', () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const logger = createGardenLogger({
+      service: 'garden-staging',
+      component: 'test',
+    })
+
+    setGardenLogLevel('warn')
+
+    logger.info('agent.request.connecting')
+    logger.warn('agent.request.access_denied')
+
+    expect(info).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0]?.[0]).toMatchObject({
+      level: 'warn',
+      event: 'agent.request.access_denied',
+    })
   })
 
   it('redacts secret-looking nested values', () => {

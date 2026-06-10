@@ -8,6 +8,7 @@ import {
   BrowserRendering,
   Container,
   DurableObjectNamespace,
+  Hyperdrive,
   R2Bucket,
   TanStackStart,
   Worker,
@@ -76,6 +77,19 @@ const aiGateway = await AiGateway('ai-gateway', {
 const files = await R2Bucket('files', {
   ...cloudflareApiOptions,
   name: 'garden-files-staging',
+  adopt: true,
+})
+
+/**
+ * Runtime Postgres traffic goes through Hyperdrive while migrations and other
+ * Node-only tooling keep using the direct DATABASE_URL. Hyperdrive owns origin
+ * pooling, so Worker code creates short-lived pg.Client instances against the
+ * binding instead of app-managed Pools or module-scope database clients.
+ */
+const database = await Hyperdrive('database', {
+  ...cloudflareApiOptions,
+  name: 'garden-database-staging',
+  origin: plainEnv('DATABASE_URL'),
   adopt: true,
 })
 
@@ -168,12 +182,15 @@ export const web = await TanStackStart('web', {
       className: 'RunWorkflow',
     }),
     FILES: files,
+    HYPERDRIVE: database,
     LOADER: WorkerLoader(),
     BROWSER: BrowserRendering(),
     AI: Ai(),
     AI_GATEWAY_ID: plainEnv('AI_GATEWAY_ID', aiGateway.id),
     MCP_PROXY: mcpProxy,
     SANDBOX_TRANSPORT: plainEnv('SANDBOX_TRANSPORT', 'websocket'),
+    SANDBOX_LOG_LEVEL: plainEnv('SANDBOX_LOG_LEVEL', 'warn'),
+    GARDEN_LOG_LEVEL: plainEnv('GARDEN_LOG_LEVEL', 'warn'),
     ...optionalPlainBindings(['BETTER_AUTH_URL']),
     ENVIRONMENT: plainEnv('ENVIRONMENT', 'production'),
     ...optionalPlainBindings([
