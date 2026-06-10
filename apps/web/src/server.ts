@@ -21,7 +21,7 @@ import {
 import { reconcile } from '@/lib/server/issue-run-reconciler'
 import { ensureAgentRow } from '@/lib/server/chat-agents'
 import { getDb, schema } from '@/lib/server/db'
-import { disposeRpcResult } from '@garden/core/platform/rpc'
+import { disposeRpcResult } from '@garden/app-state/platform/rpc'
 import {
   createGardenLogger,
   errorFields,
@@ -30,7 +30,7 @@ import {
   withRequestIdHeader,
   type GardenLogger,
   type GardenLogFields,
-} from '@garden/core/observability/logger'
+} from '@garden/observability/logger'
 import {
   createAppRequestContext,
   getLoggedAuthSession,
@@ -150,6 +150,7 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
     message?: unknown
     mode?: unknown
     target?: unknown
+    threadId?: unknown
     userId?: unknown
     workspaceId?: unknown
   }
@@ -177,6 +178,21 @@ async function handleChatAgentFixtureRequest(request: Request, env: ServerEnv) {
     routingRetry: AGENT_ROUTING_RETRY,
   })
   if (target === 'chat') {
+    const requestedThreadId =
+      typeof body.threadId === 'string' ? body.threadId : null
+    if (body.mode === 'inspect-storage' && requestedThreadId) {
+      const storage = await disposeRpcResult(
+        await stub.debugThreadStorage(requestedThreadId),
+      )
+      return Response.json({
+        ok: true,
+        target,
+        hostName,
+        threadId: requestedThreadId,
+        storage,
+      })
+    }
+
     const fixtureStartedAt = performance.now()
     const elapsedMs = () => Math.round(performance.now() - fixtureStartedAt)
     const timing: Record<string, number> = {}
