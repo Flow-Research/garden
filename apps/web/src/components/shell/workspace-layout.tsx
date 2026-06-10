@@ -10,6 +10,7 @@ import { ModalRegistry } from '@/features/modals/registry'
 import { OnboardingOverlay } from '@/features/onboarding'
 import { useOnboardingStore } from '@/features/onboarding'
 import { SettingsDialog } from '@/features/settings'
+import { ConnectorCallbackListener } from '@/features/connections/components/connector-callback-listener'
 import {
   agentListOptions,
   connectionListOptions,
@@ -77,7 +78,13 @@ function WorkspaceSetupState() {
   )
 }
 
-export function WorkspaceLayout() {
+export function WorkspaceLayout({
+  connectorFlowId = null,
+  connectorId = null,
+}: {
+  connectorFlowId?: string | null
+  connectorId?: string | null
+}) {
   const user = useAuthStore((state) => state.user)
   const workspace = useWorkspaceStore((state) => state.workspace)
   const onboardingCompleted = useOnboardingStore((state) => state.completed)
@@ -103,6 +110,11 @@ export function WorkspaceLayout() {
         {activeWorkspaceId ? (
           <WorkspaceIdProvider wsId={activeWorkspaceId}>
             <WorkspaceWarmCaches wsId={activeWorkspaceId} />
+            <ConnectorCallbackListener
+              connectorFlowId={connectorFlowId}
+              connectorId={connectorId}
+              workspaceId={activeWorkspaceId}
+            />
             <ChatRuntimeProvider>
               <WorkspaceSidebar />
               <SidebarInset className="relative overflow-hidden !my-2 !mr-2 !ml-0 !rounded-[14px] !bg-[color:var(--vellum)] backdrop-blur-xl saturate-110 shadow-[var(--shadow-hairline)]">

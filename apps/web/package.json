@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "NODE_OPTIONS='--max-old-space-size=3072' CLOUDFLARE_WORKER_CONFIG_PATH=wrangler.containers.jsonc portless garden --app-port 3000 vite dev --strictPort",
     "dev:local": "NODE_OPTIONS='--max-old-space-size=3072' CLOUDFLARE_VITE_REMOTE_BINDINGS=0 vite dev --strictPort",
-    "build": "vite build",
+    "build": "pnpm run typecheck && vite build",
     "preview": "vite preview",
     "worker:types": "wrangler types worker-configuration.d.ts --include-runtime false",
     "worker:types:check": "wrangler types worker-configuration.d.ts --include-runtime false --check",

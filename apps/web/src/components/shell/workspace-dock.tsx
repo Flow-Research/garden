@@ -1495,10 +1495,12 @@ export function WorkspaceDockProvider({
       ? {
           ...themeDark,
           className: 'dockview-theme-dark garden-dock-theme',
+          tabAnimation: 'smooth' as const,
         }
       : {
           ...themeLight,
           className: 'dockview-theme-light garden-dock-theme',
+          tabAnimation: 'smooth' as const,
         }
 
   const getVisiblePanelFromApi = useCallback(
@@ -2182,7 +2184,6 @@ export function WorkspaceDockView() {
       onReady={handleReady}
       singleTabMode="default"
       scrollbars="custom"
-      tabAnimation="smooth"
       theme={dockTheme}
     />
   )
