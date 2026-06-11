@@ -1,8 +1,5 @@
-'use client'
-
 import { useCallback, useMemo } from 'react'
 import { Archive, MoreHorizontal, Pencil } from 'lucide-react'
-import { useChatStore } from '@garden/app-state/chat'
 import { Button } from '@garden/ui/components/ui/button'
 import {
   ContextMenu,
@@ -178,13 +175,14 @@ function SessionRow({
 }
 
 export function ChatSessionExplorer({
+  activeDockSessionId,
   onActivate,
   onArchive: onArchiveExternal,
 }: {
+  activeDockSessionId?: string | null
   onActivate?: (session: AgentChatSession) => void
   onArchive?: (sessionId: string) => void
 }) {
-  const activeSessionId = useChatStore((state) => state.activeSessionId)
   const { archiveSession, renameSession, sessions, sessionsQuery } =
     useAgentSessions()
 
@@ -231,7 +229,7 @@ export function ChatSessionExplorer({
             <SessionRow
               key={session.id}
               session={session}
-              active={session.id === activeSessionId}
+              active={session.id === activeDockSessionId}
               onArchive={() => void handleArchive(session.id)}
               onSelect={() => handleSelect(session)}
               onRename={() => void handleRename(session.id)}
