@@ -1,8 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import type { ConnectorError } from '@garden/core/connectors/errors'
 import { archiveInboxItemsByKey } from '@garden/db/inbox'
 import { appEnv } from '@/lib/server/env'
-import { getDb } from '@/lib/server/db'
 import { json, requireWorkspaceAccess } from '@/lib/server/control-plane'
 import { parseJsonBody } from '@/lib/server/validation/common'
 import {
@@ -39,7 +39,9 @@ function connectorErrorBody(error: ConnectorError) {
 export const Route = createFileRoute('/api/work-products/$id/review')({
   server: {
     handlers: {
-      POST: async ({ request, params }) => {
+      POST: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
         const bodyResult = await parseJsonBody(
           request,
           workProductReviewBodySchema,
@@ -87,7 +89,7 @@ export const Route = createFileRoute('/api/work-products/$id/review')({
           )
         }
         await archiveInboxItemsByKey({
-          db: getDb(appEnv),
+          db: await appContext.db(),
           workspaceId: workspaceResult.value.workspaceId,
           itemKeys: [`wp_review:${params.id}`],
         })

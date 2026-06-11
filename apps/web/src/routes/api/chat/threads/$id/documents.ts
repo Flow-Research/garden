@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer'
 import { Result, TaggedError } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { and, desc, eq } from 'drizzle-orm'
 import { uploadChatThreadDocument } from '@/lib/server/chat-agents'
 import { badRequest } from '@/lib/server/control-plane'
@@ -15,9 +16,10 @@ class DocumentUploadError extends TaggedError('DocumentUploadError')<{
 export const Route = createFileRoute('/api/chat/threads/$id/documents')({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
+      GET: async ({ context, params }) => {
+        const appContext = requireAppRequestContext(context)
         const routeParams = params as { id: string }
-        const access = await getThreadAccess(request, routeParams.id)
+        const access = await getThreadAccess(appContext, routeParams.id)
         if (access instanceof Response) return access
 
         const rows = await access.db
@@ -63,9 +65,10 @@ export const Route = createFileRoute('/api/chat/threads/$id/documents')({
           })),
         })
       },
-      POST: async ({ request, params }) => {
+      POST: async ({ context, request, params }) => {
+        const appContext = requireAppRequestContext(context)
         const routeParams = params as { id: string }
-        const access = await getThreadAccess(request, routeParams.id)
+        const access = await getThreadAccess(appContext, routeParams.id)
         if (access instanceof Response) return access
 
         const formResult = await Result.tryPromise({

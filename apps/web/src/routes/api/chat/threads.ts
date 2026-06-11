@@ -5,8 +5,8 @@ import {
   parseJsonBody,
 } from '@/lib/server/validation/chat'
 import { ensureAgentRow } from '@/lib/server/chat-agents'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import {
   badRequest,
   forbidden,
@@ -21,19 +21,20 @@ const NEW_CHAT_TITLE = 'New Chat'
 export const Route = createFileRoute('/api/chat/threads')({
   server: {
     handlers: {
-      GET: async ({ request }) => {
-        const session = await requireSession(request)
+      GET: async ({ context }) => {
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
+        const workspaceId = await resolveWorkspaceId(appContext, session.user.id)
         if (!workspaceId) return Response.json([])
 
+        const db = await appContext.db()
         await ensureAgentRow({
+          db,
           workspaceId,
           ownerUserId: session.user.id,
         })
-
-        const db = getDb(appEnv)
         const rows = await db
           .select({
             thread: schema.chatThread,
@@ -89,11 +90,12 @@ export const Route = createFileRoute('/api/chat/threads')({
           }),
         )
       },
-      POST: async ({ request }) => {
-        const session = await requireSession(request)
+      POST: async ({ context, request }) => {
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
+        const workspaceId = await resolveWorkspaceId(appContext, session.user.id)
         if (!workspaceId) {
           return Response.json(
             { error: 'Workspace not found' },
@@ -116,9 +118,10 @@ export const Route = createFileRoute('/api/chat/threads')({
         const runtimeKind = primaryIssueId ? 'issue_run' : 'chat'
         const runtimeKey = primaryIssueId ?? id
         const now = new Date()
-        const db = getDb(appEnv)
+        const db = await appContext.db()
 
         const defaultAgentRow = await ensureAgentRow({
+          db,
           workspaceId,
           ownerUserId: session.user.id,
         })

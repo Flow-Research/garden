@@ -266,7 +266,7 @@ export async function requireAutomation(
   env: AppEnv,
   automationId: string,
 ): Promise<ResultValue<AutomationRow | null, AutomationApiError>> {
-  const db = getDb(env)
+  const db = await getDb(env)
   const result = await Result.tryPromise({
     try: async () => {
       const [row] = await db
@@ -287,7 +287,7 @@ export async function ensureAgentInWorkspace(args: {
   workspaceId: string
   agentId: string
 }): Promise<ResultValue<void, AutomationApiError>> {
-  const db = getDb(args.env)
+  const db = await getDb(args.env)
   const result = await Result.tryPromise({
     try: async () => {
       const [agent] = await db
@@ -392,7 +392,7 @@ export async function uninstallAutomationSchedules(
   env: AppEnv,
   automationId: string,
 ): Promise<ResultValue<void, AutomationApiError>> {
-  const db = getDb(env)
+  const db = await getDb(env)
   const rowsResult = await Result.tryPromise({
     try: async () =>
       await db
@@ -434,7 +434,7 @@ export async function syncAutomationSchedules(
   env: AppEnv,
   automation: Pick<AutomationRow, 'id' | 'status' | 'concurrencyPolicy'>,
 ): Promise<ResultValue<void, AutomationApiError>> {
-  const db = getDb(env)
+  const db = await getDb(env)
   const rowsResult = await Result.tryPromise({
     try: async () =>
       await db
@@ -477,7 +477,7 @@ async function loadActiveAutomationRun(args: {
   env: AppEnv
   automationId: string
 }): Promise<ResultValue<ActiveAutomationRun | null, AutomationApiError>> {
-  const db = getDb(args.env)
+  const db = await getDb(args.env)
   const result = await Result.tryPromise({
     try: async () => {
       const rows = await db.execute<ActiveAutomationRun>(sql`
@@ -520,7 +520,7 @@ async function applyDispatchConcurrency(args: {
   const active = activeResult.value
   if (!active) return Result.ok('fire')
 
-  const db = getDb(args.env)
+  const db = await getDb(args.env)
   const now = new Date()
   if (policyResult.value === 'skip') {
     const insertResult = await Result.tryPromise({
@@ -611,7 +611,7 @@ export async function dispatchAutomation(
   if (concurrencyResult.value !== 'fire')
     return Result.ok(concurrencyResult.value)
 
-  const db = getDb(input.env)
+  const db = await getDb(input.env)
   const now = new Date()
   const runId = crypto.randomUUID()
   const startResult = await startAutomationRun(input.env, {
@@ -685,7 +685,7 @@ async function markAutomationRunFailed(args: {
   runId: string
   message: string
 }): Promise<ResultValue<void, AutomationApiError>> {
-  const db = getDb(args.env)
+  const db = await getDb(args.env)
   const now = new Date()
   const result = await Result.tryPromise({
     try: async () => {
@@ -713,7 +713,7 @@ export async function listAutomationRuns(args: {
   limit?: number
   offset?: number
 }): Promise<ResultValue<AutomationRunRow[], AutomationApiError>> {
-  const db = getDb(args.env)
+  const db = await getDb(args.env)
   const conditions = [eq(schema.automationRun.automationId, args.automationId)]
   if (args.source) conditions.push(eq(schema.automationRun.source, args.source))
   const result = await Result.tryPromise({
@@ -735,7 +735,7 @@ export async function listAutomationTriggers(args: {
   env: AppEnv
   automationId: string
 }): Promise<ResultValue<AutomationTriggerRow[], AutomationApiError>> {
-  const db = getDb(args.env)
+  const db = await getDb(args.env)
   const result = await Result.tryPromise({
     try: async () =>
       await db

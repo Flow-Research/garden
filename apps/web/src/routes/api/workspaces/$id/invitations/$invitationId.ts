@@ -1,6 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { createAuth } from '@/lib/auth'
-import { appEnv } from '@/lib/server/env'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { requireSession, unauthorized } from '@/lib/server/control-plane'
 
 export const Route = createFileRoute(
@@ -8,10 +7,12 @@ export const Route = createFileRoute(
 )({
   server: {
     handlers: {
-      DELETE: async ({ request, params }) => {
-        const session = await requireSession(request)
+      DELETE: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
-        const auth = createAuth(appEnv, request)
+        const auth = await appContext.auth.getAuth()
         await auth.api.cancelInvitation({
           headers: request.headers,
           body: {

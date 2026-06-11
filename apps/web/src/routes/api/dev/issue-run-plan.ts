@@ -2,7 +2,8 @@ import { and, eq } from 'drizzle-orm'
 import { getAgentByName } from 'agents'
 import { Result } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   badRequest,
@@ -16,7 +17,9 @@ const AGENT_ROUTING_RETRY = { maxAttempts: 3 }
 export const Route = createFileRoute('/api/dev/issue-run-plan')({
   server: {
     handlers: {
-      GET: async ({ request }) => {
+      GET: async ({ context, request }) => {
+
+        const appContext = requireAppRequestContext(context)
         if (appEnv.ENVIRONMENT === 'production') {
           return notFound('Not found')
         }
@@ -25,7 +28,7 @@ export const Route = createFileRoute('/api/dev/issue-run-plan')({
         const runId = url.searchParams.get('runId')?.trim()
         if (!runId) return badRequest('Missing runId')
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const [run] = await db
           .select({
             id: schema.issueRun.id,
@@ -39,7 +42,7 @@ export const Route = createFileRoute('/api/dev/issue-run-plan')({
         if (!run) return notFound('Issue run not found')
         if (!run.issueId) return badRequest('Issue run has no issue')
 
-        const access = await requireWorkspaceAccess(request, run.workspaceId)
+        const access = await requireWorkspaceAccess(appContext, run.workspaceId)
         if (access instanceof Response) return access
 
         const issueAccess = await db

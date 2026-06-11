@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { archiveAllVisible } from '@/lib/server/inbox-dismissal'
 import {
   requireSession,
@@ -9,8 +10,10 @@ import {
 export const Route = createFileRoute('/api/inbox/archive-completed')({
   server: {
     handlers: {
-      POST: async ({ request }) => {
-        const session = await requireSession(request)
+      POST: async ({ context, request }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
         if (!workspaceId) return Response.json({ count: 0 })

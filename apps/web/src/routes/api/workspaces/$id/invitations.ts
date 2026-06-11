@@ -1,6 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { createAuth } from '@/lib/auth'
-import { appEnv } from '@/lib/server/env'
+import { requireAppRequestContext } from '@/lib/server/context'
 import {
   requireSession,
   toInvitation,
@@ -10,10 +9,12 @@ import {
 export const Route = createFileRoute('/api/workspaces/$id/invitations')({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
-        const session = await requireSession(request)
+      GET: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
-        const auth = createAuth(appEnv, request)
+        const auth = await appContext.auth.getAuth()
         const rows = (await auth.api.listInvitations({
           headers: request.headers,
           query: {

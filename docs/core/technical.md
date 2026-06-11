@@ -182,7 +182,7 @@ Think/Shell `Workspace` files and container `/workspace` files are separate stor
 
 ## 10. Frontend shell
 
-Current shell uses Dockview panels and a two-level sidebar.
+Current shell uses FlexLayout panels and a two-level sidebar.
 
 Code evidence:
 

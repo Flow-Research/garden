@@ -19,7 +19,7 @@
 
 | Item | Evidence |
 |------|----------|
-| Tab-preserving panel system via dockview (replaces `<Activity>` pattern) | `apps/web/src/components/shell/workspace-dock.tsx` — pinning, splitting, state persistence |
+| Tab-preserving panel system via FlexLayout (replaces `<Activity>` pattern) | `apps/web/src/components/shell/workspace-dock.tsx` — pinning, splitting, state persistence |
 | AI Elements wired into app | `@cloudflare/ai-chat` used in `chat-runtime-provider.tsx`, `@cloudflare/sandbox` wired in `server.ts`, active in agent-interaction-screen |
 | Org chart view | `apps/web/src/features/agents/components/org-chart.tsx` |
 | Connector permission toggles UI (Auto/Allow/Ask) | `apps/web/src/features/connections/components/connections-page.tsx` |

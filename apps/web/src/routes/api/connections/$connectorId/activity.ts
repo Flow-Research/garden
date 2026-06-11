@@ -1,5 +1,6 @@
 import { and, desc, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { getConnectorById } from '@garden/connectors'
 import {
   notFound,
@@ -7,14 +8,15 @@ import {
   resolveWorkspaceId,
   unauthorized,
 } from '@/lib/server/control-plane'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { schema } from '@/lib/server/db'
 
 export const Route = createFileRoute('/api/connections/$connectorId/activity')({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
-        const session = await requireSession(request)
+      GET: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
@@ -25,7 +27,7 @@ export const Route = createFileRoute('/api/connections/$connectorId/activity')({
         const connector = getConnectorById(params.connectorId)
         if (!connector) return notFound('Connector not found')
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const activity = await db
           .select({
             id: schema.toolCallAudit.id,

@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { createIssue } from '@garden/server/issues/server'
 import { startIssueRun } from '@garden/server/issues/run-service'
@@ -19,13 +20,14 @@ import {
 export const Route = createFileRoute('/api/issues')({
   server: {
     handlers: {
-      GET: async ({ request }) => {
-        const context = await requireWorkspaceContext(request, {
+      GET: async ({ context, request }) => {
+        const appContext = requireAppRequestContext(context)
+        const workspaceContext = await requireWorkspaceContext(appContext, {
           missingWorkspaceResponse: () =>
             Response.json({ issues: [], total: 0 }),
         })
-        if (context instanceof Response) return context
-        const { workspaceId } = context
+        if (workspaceContext instanceof Response) return workspaceContext
+        const { workspaceId } = workspaceContext
         const searchResult = parseSearchParams(
           request,
           issuesListSearchSchema,
@@ -43,7 +45,7 @@ export const Route = createFileRoute('/api/issues')({
           priority,
           status,
         } = searchResult.value
-        const db = getDb(appEnv)
+        const db = await appContext.db()
 
         const conditions = [eq(schema.issue.workspaceId, workspaceId)]
         if (status) conditions.push(eq(schema.issue.status, status))
@@ -88,10 +90,11 @@ export const Route = createFileRoute('/api/issues')({
           total: count,
         })
       },
-      POST: async ({ request }) => {
-        const context = await requireWorkspaceContext(request)
-        if (context instanceof Response) return context
-        const { session, workspaceId } = context
+      POST: async ({ context, request }) => {
+        const appContext = requireAppRequestContext(context)
+        const workspaceContext = await requireWorkspaceContext(appContext)
+        if (workspaceContext instanceof Response) return workspaceContext
+        const { session, workspaceId } = workspaceContext
         const bodyResult = await parseJsonBody(
           request,
           createIssueBodySchema,

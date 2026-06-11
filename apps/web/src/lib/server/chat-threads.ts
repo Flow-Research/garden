@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { schema } from '@/lib/server/db'
+import type { AppRequestContext } from '@/lib/server/context'
 import {
   notFound,
   requireSession,
@@ -8,11 +8,14 @@ import {
   unauthorized,
 } from '@/lib/server/control-plane'
 
-export async function getThreadAccess(request: Request, threadId: string) {
-  const session = await requireSession(request)
+export async function getThreadAccess(
+  appContext: AppRequestContext,
+  threadId: string,
+) {
+  const session = await requireSession(appContext)
   if (!session) return unauthorized()
 
-  const db = getDb(appEnv)
+  const db = await appContext.db()
   const [row] = await db
     .select({
       thread: schema.chatThread,
@@ -27,7 +30,7 @@ export async function getThreadAccess(request: Request, threadId: string) {
   if (row.thread.ownerUserId !== session.user.id) {
     return notFound('Chat thread not found')
   }
-  const access = await requireWorkspaceAccess(request, row.thread.workspaceId)
+  const access = await requireWorkspaceAccess(appContext, row.thread.workspaceId)
   if (access instanceof Response) return access
 
   return {

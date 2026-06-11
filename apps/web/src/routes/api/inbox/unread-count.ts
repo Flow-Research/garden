@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { computeInboxUnreadCount } from '@/lib/server/inbox-compute'
 import {
   requireSession,
@@ -9,8 +10,10 @@ import {
 export const Route = createFileRoute('/api/inbox/unread-count')({
   server: {
     handlers: {
-      GET: async ({ request }) => {
-        const session = await requireSession(request)
+      GET: async ({ context, request }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
         const workspaceId = await resolveWorkspaceId(request, session.user.id)

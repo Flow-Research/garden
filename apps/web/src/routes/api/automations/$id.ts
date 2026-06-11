@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   automationErr,
@@ -55,7 +56,9 @@ export const Route = createFileRoute('/api/automations/$id')({
           runs: runsResult.value.map((run) => toAutomationRun(run)),
         })
       },
-      PATCH: async ({ request, params }) => {
+      PATCH: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
         const automationResult = await requireAutomation(appEnv, params.id)
         if (automationResult.isErr())
           return automationErr(automationResult.error)
@@ -143,7 +146,7 @@ export const Route = createFileRoute('/api/automations/$id')({
         values.updatedAt = new Date()
         values.updatedBy = access.session.user.id
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const [updated] = await db
           .update(schema.automation)
           .set(values)
@@ -159,7 +162,9 @@ export const Route = createFileRoute('/api/automations/$id')({
 
         return automationOk(toAutomation(updated))
       },
-      DELETE: async ({ request, params }) => {
+      DELETE: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
         const automationResult = await requireAutomation(appEnv, params.id)
         if (automationResult.isErr())
           return automationErr(automationResult.error)
@@ -172,7 +177,7 @@ export const Route = createFileRoute('/api/automations/$id')({
         )
         if (access instanceof Response) return access
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const [updated] = await db
           .update(schema.automation)
           .set({ status: 'archived', updatedAt: new Date() })

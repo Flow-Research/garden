@@ -1,5 +1,6 @@
 import { Buffer } from 'node:buffer'
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { and, eq } from 'drizzle-orm'
 import { Result } from 'better-result'
 import {
@@ -18,9 +19,10 @@ type ChatDocumentAccess = Exclude<
 export const Route = createFileRoute('/api/documents/$id/docx')({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
+      GET: async ({ context, request, params }) => {
+        const appContext = requireAppRequestContext(context)
         const routeParams = params as { id: string }
-        const access = await getChatDocumentAccess(request, routeParams.id)
+        const access = await getChatDocumentAccess(appContext, routeParams.id)
         if (access instanceof Response) return access
 
         const url = new URL(request.url)

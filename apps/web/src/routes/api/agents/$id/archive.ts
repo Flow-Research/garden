@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import {
   notFound,
   requireWorkspaceAccess,
@@ -11,8 +11,10 @@ import {
 export const Route = createFileRoute('/api/agents/$id/archive')({
   server: {
     handlers: {
-      POST: async ({ request, params }) => {
-        const db = getDb(appEnv)
+      POST: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const db = await appContext.db()
         const [existingAgent] = await db
           .select({ workspaceId: schema.agent.workspaceId })
           .from(schema.agent)

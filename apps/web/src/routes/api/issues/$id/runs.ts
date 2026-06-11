@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   badRequest,
@@ -20,8 +21,10 @@ function runError(error: IssueRunServiceError) {
 export const Route = createFileRoute('/api/issues/$id/runs')({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
-        const db = getDb(appEnv)
+      GET: async ({ context, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const db = await appContext.db()
         const [issue] = await db
           .select({ workspaceId: schema.issue.workspaceId })
           .from(schema.issue)
@@ -29,7 +32,7 @@ export const Route = createFileRoute('/api/issues/$id/runs')({
           .limit(1)
         if (!issue) return notFound('Issue not found')
 
-        const access = await requireWorkspaceAccess(request, issue.workspaceId)
+        const access = await requireWorkspaceAccess(appContext, issue.workspaceId)
         if (access instanceof Response) return access
 
         const runsResult = await listIssueRuns({
@@ -40,8 +43,10 @@ export const Route = createFileRoute('/api/issues/$id/runs')({
         if (runsResult.isErr()) return runError(runsResult.error)
         return Response.json(runsResult.value)
       },
-      POST: async ({ request, params }) => {
-        const db = getDb(appEnv)
+      POST: async ({ context, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const db = await appContext.db()
         const [issue] = await db
           .select({
             id: schema.issue.id,
@@ -54,7 +59,7 @@ export const Route = createFileRoute('/api/issues/$id/runs')({
           .limit(1)
         if (!issue) return notFound('Issue not found')
 
-        const access = await requireWorkspaceAccess(request, issue.workspaceId)
+        const access = await requireWorkspaceAccess(appContext, issue.workspaceId)
         if (access instanceof Response) return access
 
         if (issue.assigneeType !== 'agent' || !issue.assigneeId) {

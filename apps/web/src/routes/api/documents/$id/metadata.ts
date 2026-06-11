@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { eq } from 'drizzle-orm'
 import { schema } from '@/lib/server/db'
 import { getChatDocumentAccess } from '@/lib/server/document-access'
@@ -6,9 +7,10 @@ import { getChatDocumentAccess } from '@/lib/server/document-access'
 export const Route = createFileRoute('/api/documents/$id/metadata')({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
+      GET: async ({ context, params }) => {
+        const appContext = requireAppRequestContext(context)
         const routeParams = params as { id: string }
-        const access = await getChatDocumentAccess(request, routeParams.id)
+        const access = await getChatDocumentAccess(appContext, routeParams.id)
         if (access instanceof Response) return access
 
         const [row] = await access.db

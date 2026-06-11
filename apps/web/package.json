@@ -6,8 +6,8 @@
     "#/*": "./src/*"
   },
   "scripts": {
-    "dev": "NODE_OPTIONS='--max-old-space-size=3072' CLOUDFLARE_WORKER_CONFIG_PATH=wrangler.containers.jsonc portless garden --app-port 3000 vite dev --strictPort",
-    "dev:local": "NODE_OPTIONS='--max-old-space-size=3072' CLOUDFLARE_VITE_REMOTE_BINDINGS=0 vite dev --strictPort",
+    "dev": "node ./scripts/dev.mjs --containers",
+    "dev:local": "node ./scripts/dev.mjs --local",
     "build": "pnpm run typecheck && vite build",
     "preview": "vite preview",
     "worker:types": "wrangler types worker-configuration.d.ts --include-runtime false",
@@ -100,8 +100,6 @@
     "cmdk": "^1.1.1",
     "cron-parser": "^5.5.0",
     "date-fns": "^4.1.0",
-    "dockview": "^6.6.1",
-    "dockview-core": "^6.6.1",
     "docx-preview": "^0.3.7",
     "drizzle-orm": "catalog:",
     "embla-carousel-react": "^8.6.0",
@@ -155,7 +153,6 @@
     "@vitejs/plugin-react": "^6.0.1",
     "alchemy": "^0.93.10",
     "jsdom": "^29.0.1",
-    "portless": "^0.13.0",
     "typescript": "^5.9.3",
     "vite": "^8.0.0",
     "vitest": "^4.1.0",

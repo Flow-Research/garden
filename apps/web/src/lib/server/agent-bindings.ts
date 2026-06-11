@@ -1,7 +1,5 @@
 import { defaultTrustLevelForRisk } from '@garden/connectors/capabilities'
-import type { getDb, schema } from './db'
-
-type Db = ReturnType<typeof getDb>
+import type { Db, schema } from './db'
 
 export async function bindExistingCapabilitiesToAgent(input: {
   db: Db

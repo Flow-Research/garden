@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import {
   debugChatThreadMeta,
   debugChatThreadPrompt,
@@ -8,8 +9,7 @@ import {
   debugChatThreadWorkspace,
   refreshChatThreadPromptConfig,
 } from '@/lib/server/chat-agents'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { schema } from '@/lib/server/db'
 import {
   parseJsonBody,
   parseSearchParams,
@@ -33,8 +33,10 @@ import {
 export const Route = createFileRoute('/api/debug-stream')({
   server: {
     handlers: {
-      POST: async ({ request }) => {
-        const session = await requireSession(request)
+      POST: async ({ context, request }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
@@ -66,7 +68,7 @@ export const Route = createFileRoute('/api/debug-stream')({
 
         if (!threadId) return badRequest('Chat thread is required')
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const [thread] = await db
           .select({
             hostName: schema.agent.hostName,
@@ -101,8 +103,10 @@ export const Route = createFileRoute('/api/debug-stream')({
 
         return Response.json({ ok: true })
       },
-      GET: async ({ request }) => {
-        const session = await requireSession(request)
+      GET: async ({ context, request }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
@@ -129,7 +133,7 @@ export const Route = createFileRoute('/api/debug-stream')({
           return new Response(null, { status: 204 })
         }
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const [thread] = await db
           .select({
             hostName: schema.agent.hostName,

@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { parseJsonBody, reactionBodySchema } from '@/lib/server/validation/issues'
 import {
   badRequest,
@@ -9,8 +10,10 @@ import {
 export const Route = createFileRoute('/api/comments/$id/reactions')({
   server: {
     handlers: {
-      POST: async ({ request, params }) => {
-        const session = await requireSession(request)
+      POST: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
         const bodyResult = await parseJsonBody(
@@ -30,8 +33,10 @@ export const Route = createFileRoute('/api/comments/$id/reactions')({
           created_at: new Date().toISOString(),
         })
       },
-      DELETE: async ({ request }) => {
-        const session = await requireSession(request)
+      DELETE: async ({ context }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
         return new Response(null, { status: 204 })
       },

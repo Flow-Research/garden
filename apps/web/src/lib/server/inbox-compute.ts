@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, count, desc, eq, inArray, ne, notInArray, or, sql } from "drizzle-orm";
-import { getDb, schema } from "@/lib/server/db";
+import { getDb, schema, type Db } from "@/lib/server/db";
 import { appEnv } from "@/lib/server/env";
 import type {
   InboxItem,
@@ -395,7 +395,7 @@ async function computeInboxSourceItems(args: {
 }): Promise<{
   sources: SourceItem[];
 }> {
-  const db = getDb(appEnv);
+  const db = await getDb(appEnv);
   const { workspaceId, userId } = args;
 
   const [
@@ -719,7 +719,7 @@ async function persistInboxSourceItems(args: {
   sources: SourceItem[];
   limit?: number;
 }): Promise<InboxItem[]> {
-  const db = getDb(appEnv);
+  const db = await getDb(appEnv);
   const now = new Date();
   const sourceKeys = args.sources.map((source) => source.key);
 
@@ -805,11 +805,12 @@ async function persistInboxSourceItems(args: {
 }
 
 export async function computeInboxItems(args: {
+  db?: Db;
   workspaceId: string;
   userId: string;
   limit?: number;
 }): Promise<InboxItem[]> {
-  const db = getDb(appEnv);
+  const db = args.db ?? (await getDb(appEnv));
   const rows = await db
     .select()
     .from(schema.inboxItem)
@@ -861,7 +862,7 @@ export async function computeInboxUnreadCount(args: {
   workspaceId: string;
   userId: string;
 }): Promise<number> {
-  const db = getDb(appEnv);
+  const db = await getDb(appEnv);
   const [row] = await db
     .select({ count: count() })
     .from(schema.inboxItem)

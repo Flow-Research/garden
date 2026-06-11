@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   automationErr,
@@ -22,7 +23,9 @@ export const Route = createFileRoute(
 )({
   server: {
     handlers: {
-      PATCH: async ({ request, params }) => {
+      PATCH: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
         const automationResult = await requireAutomation(appEnv, params.id)
         if (automationResult.isErr())
           return automationErr(automationResult.error)
@@ -42,7 +45,7 @@ export const Route = createFileRoute(
         )
         if (bodyResult.isErr()) return automationErr(bodyResult.error.message)
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const [existing] = await db
           .select()
           .from(schema.automationTrigger)
@@ -105,7 +108,9 @@ export const Route = createFileRoute(
 
         return automationOk(toAutomationTrigger(updated))
       },
-      DELETE: async ({ request, params }) => {
+      DELETE: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
         const automationResult = await requireAutomation(appEnv, params.id)
         if (automationResult.isErr())
           return automationErr(automationResult.error)
@@ -118,7 +123,7 @@ export const Route = createFileRoute(
         )
         if (access instanceof Response) return access
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const [trigger] = await db
           .delete(schema.automationTrigger)
           .where(

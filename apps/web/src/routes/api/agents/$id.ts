@@ -1,12 +1,12 @@
 import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import {
   parseJsonBody,
   updateAgentBodySchema,
 } from '@/lib/server/validation/agents'
 import { refreshChatThreadPromptConfig } from '@/lib/server/chat-agents'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { schema } from '@/lib/server/db'
 import {
   badRequest,
   notFound,
@@ -21,20 +21,24 @@ import {
 export const Route = createFileRoute('/api/agents/$id')({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
-        const db = getDb(appEnv)
+      GET: async ({ context, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const db = await appContext.db()
         const [agent] = await db
           .select()
           .from(schema.agent)
           .where(eq(schema.agent.id, params.id))
         if (!agent) return notFound('Agent not found')
 
-        const access = await requireWorkspaceAccess(request, agent.workspaceId)
+        const access = await requireWorkspaceAccess(appContext, agent.workspaceId)
         if (access instanceof Response) return access
 
         return Response.json(toAgent(agent))
       },
-      PUT: async ({ request, params }) => {
+      PUT: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
         const bodyResult = await parseJsonBody(
           request,
           updateAgentBodySchema,
@@ -58,7 +62,7 @@ export const Route = createFileRoute('/api/agents/$id')({
               : null
         }
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const [existingAgent] = await db
           .select({
             workspaceId: schema.agent.workspaceId,
@@ -74,6 +78,7 @@ export const Route = createFileRoute('/api/agents/$id')({
         )
         if (access instanceof Response) return access
         const permission = await requireWorkspacePermission({
+          appContext,
           request,
           workspaceId: existingAgent.workspaceId,
           permissions: workspacePermissions.agentManage,

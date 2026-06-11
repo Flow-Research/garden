@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm'
-import { getDb, schema } from '@/lib/server/db'
+import { getDb, schema, type Db } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
+import type { AppRequestContext } from '@/lib/server/context'
 import { formatIssueIdentifier } from '@garden/core/issues/identifier'
 import { getAuthSession, toCoreUser } from '@/lib/server/session'
 import type { MemberRole } from '@garden/core/types'
@@ -25,17 +26,28 @@ export function notFound(message = 'Not found') {
   return json({ error: message }, 404)
 }
 
-export async function requireSession(request: Request) {
-  return getAuthSession(request, appEnv)
+type RequestBoundary = Request | AppRequestContext
+
+function requestFrom(input: RequestBoundary) {
+  return input instanceof Request ? input : input.request
 }
 
-export async function resolveWorkspaceId(request: Request, userId: string) {
+async function dbFrom(input: RequestBoundary): Promise<Db> {
+  return input instanceof Request ? getDb(appEnv) : input.db()
+}
+
+export async function requireSession(input: RequestBoundary) {
+  return input instanceof Request ? getAuthSession(input, appEnv) : input.auth.getSession()
+}
+
+export async function resolveWorkspaceId(input: RequestBoundary, userId: string) {
+  const request = requestFrom(input)
   const url = new URL(request.url)
   const candidate =
     request.headers.get('X-Workspace-ID') ??
     url.searchParams.get('workspace_id') ??
     null
-  const db = getDb(appEnv)
+  const db = await dbFrom(input)
 
   if (candidate) {
     const [membership] = await db
@@ -59,13 +71,13 @@ export async function resolveWorkspaceId(request: Request, userId: string) {
 }
 
 export async function requireWorkspaceContext(
-  request: Request,
+  input: RequestBoundary,
   options: { missingWorkspaceResponse?: () => Response } = {},
 ) {
-  const session = await requireSession(request)
+  const session = await requireSession(input)
   if (!session) return unauthorized()
 
-  const workspaceId = await resolveWorkspaceId(request, session.user.id)
+  const workspaceId = await resolveWorkspaceId(input, session.user.id)
   if (!workspaceId) {
     return options.missingWorkspaceResponse
       ? options.missingWorkspaceResponse()
@@ -76,13 +88,13 @@ export async function requireWorkspaceContext(
 }
 
 export async function requireWorkspaceAccess(
-  request: Request,
+  input: RequestBoundary,
   workspaceId: string,
 ) {
-  const session = await requireSession(request)
+  const session = await requireSession(input)
   if (!session) return unauthorized()
 
-  const db = getDb(appEnv)
+  const db = await dbFrom(input)
   const [membership] = await db
     .select({
       organizationId: schema.member.organizationId,

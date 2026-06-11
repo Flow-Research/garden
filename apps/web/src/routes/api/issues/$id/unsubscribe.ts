@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import {
   requireSession,
   unauthorized,
@@ -7,8 +8,10 @@ import {
 export const Route = createFileRoute('/api/issues/$id/unsubscribe')({
   server: {
     handlers: {
-      POST: async ({ request }) => {
-        const session = await requireSession(request)
+      POST: async ({ context }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
         return new Response(null, { status: 204 })
       },

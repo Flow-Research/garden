@@ -1,6 +1,7 @@
 import { Result, TaggedError } from 'better-result'
 import { createAuth } from '@/lib/auth'
 import { appEnv } from '@/lib/server/env'
+import type { AppRequestContext } from '@/lib/server/context'
 import { forbidden, unauthorized } from './control-plane'
 
 export type WorkspacePermission = Record<string, string[]>
@@ -19,11 +20,14 @@ class WorkspacePermissionError extends TaggedError('WorkspacePermissionError')<{
 }>() {}
 
 async function hasWorkspacePermission(args: {
+  appContext?: AppRequestContext
   request: Request
   workspaceId: string
   permissions: WorkspacePermission
 }) {
-  const auth = createAuth(appEnv, args.request)
+  const auth = args.appContext
+    ? await args.appContext.auth.getAuth()
+    : await createAuth(appEnv, args.request)
   const result = await Result.tryPromise({
     try: async () =>
       auth.api.hasPermission({
@@ -45,6 +49,7 @@ async function hasWorkspacePermission(args: {
 }
 
 export async function requireWorkspacePermission(args: {
+  appContext?: AppRequestContext
   request: Request
   workspaceId: string
   permissions: WorkspacePermission

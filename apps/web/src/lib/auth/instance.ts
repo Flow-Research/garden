@@ -29,7 +29,7 @@ import {
   type ConnectorCallbackStatus,
 } from '@/lib/server/connector-callback-events'
 import type { AppEnv } from '@/lib/server/env'
-import type { getDb } from '@/lib/server/db'
+import type { Db } from '@/lib/server/db'
 
 export type GardenAuthEnv = Pick<
   AppEnv,
@@ -47,7 +47,7 @@ type GardenAuthRuntime = GardenAuthEnv & {
   request?: Request
 }
 
-type AuthDatabase = ReturnType<typeof getDb>
+type AuthDatabase = Db
 type AccountRecord = typeof account.$inferInsert
 type HookSession = {
   session: {

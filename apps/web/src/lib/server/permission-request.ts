@@ -1,10 +1,9 @@
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { canonicalJsonString } from '@garden/connectors/capabilities'
-import type { getDb } from './db'
-import { schema } from './db'
+import { schema, type Db } from './db'
 
-type ServerDb = ReturnType<typeof getDb>
+type ServerDb = Db
 
 type PermissionRequestRow = {
   id: string

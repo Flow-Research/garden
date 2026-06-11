@@ -1,15 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { matchError } from 'better-result'
 import { z } from 'zod'
 import { getConnectorById } from '@garden/connectors'
 import type { ConnectorId } from '@garden/connectors/registry'
-import { appEnv } from '@/lib/server/env'
 import {
   badRequest,
   notFound,
   requireWorkspaceContext,
 } from '@/lib/server/control-plane'
-import { getDb } from '@/lib/server/db'
 import { getConnectorCallbackEventByFlow } from '@/lib/server/connector-callback-events'
 import { parseSearchParams } from '@/lib/server/validation/common'
 
@@ -21,9 +20,11 @@ const connectorCallbackEventQuerySchema = z.object({
 export const Route = createFileRoute('/api/connections/callback-events')({
   server: {
     handlers: {
-      GET: async ({ request }) => {
-        const context = await requireWorkspaceContext(request)
-        if (context instanceof Response) return context
+      GET: async ({ context, request }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const workspaceContext = await requireWorkspaceContext(appContext)
+        if (workspaceContext instanceof Response) return workspaceContext
 
         const query = parseSearchParams(
           request,
@@ -38,8 +39,8 @@ export const Route = createFileRoute('/api/connections/callback-events')({
         }
 
         const event = await getConnectorCallbackEventByFlow({
-          db: getDb(appEnv),
-          workspaceId: context.workspaceId,
+          db: await appContext.db(),
+          workspaceId: workspaceContext.workspaceId,
           flowId: query.value.flow_id,
           connectorId: connectorId ? (connectorId as ConnectorId) : null,
         })

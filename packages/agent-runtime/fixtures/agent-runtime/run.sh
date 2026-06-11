@@ -17,7 +17,7 @@ if bash -c "</dev/tcp/127.0.0.1/${port}" >/dev/null 2>&1; then
 fi
 (
   cd apps/web
-  GARDEN_ENABLE_MCP_AUXILIARY_WORKER=1 PORT="${port}" pnpm exec vite dev --strictPort
+  GARDEN_ENABLE_MCP_AUXILIARY_WORKER=1 PORT="${port}" pnpm exec vite dev
 ) >"${web_log}" 2>&1 &
 web_pid=$!
 cleanup() {

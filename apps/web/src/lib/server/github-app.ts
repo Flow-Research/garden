@@ -1,7 +1,7 @@
 import { Result, TaggedError } from 'better-result'
 import { eq } from 'drizzle-orm'
 import { getGitHubAppInstallation } from '@garden/connectors/github-app'
-import { schema, type getDb } from '@/lib/server/db'
+import { schema, type Db } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
 
 const textEncoder = new TextEncoder()
@@ -25,7 +25,7 @@ type GitHubAppEnv = Pick<
   | 'GITHUB_APP_PRIVATE_KEY'
 >
 
-type GitHubAppDatabase = ReturnType<typeof getDb>
+type GitHubAppDatabase = Db
 
 function normalizeGitHubAppEnv(env: GitHubAppEnv) {
   const privateKey = env.GITHUB_APP_PRIVATE_KEY?.trim()

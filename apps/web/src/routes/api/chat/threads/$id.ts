@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { Result } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import {
   parseJsonBody,
   updateChatThreadBodySchema,
@@ -20,8 +21,9 @@ import { getThreadAccess } from '@/lib/server/chat-threads'
 export const Route = createFileRoute('/api/chat/threads/$id')({
   server: {
     handlers: {
-      PATCH: async ({ request, params }) => {
-        const access = await getThreadAccess(request, params.id)
+      PATCH: async ({ context, request, params }) => {
+        const appContext = requireAppRequestContext(context)
+        const access = await getThreadAccess(appContext, params.id)
         if (access instanceof Response) return access
 
         const bodyResult = await parseJsonBody(
@@ -92,8 +94,9 @@ export const Route = createFileRoute('/api/chat/threads/$id')({
 
         return Response.json(toChatThread(thread, access.hostName))
       },
-      DELETE: async ({ request, params }) => {
-        const access = await getThreadAccess(request, params.id)
+      DELETE: async ({ context, params }) => {
+        const appContext = requireAppRequestContext(context)
+        const access = await getThreadAccess(appContext, params.id)
         if (access instanceof Response) return access
 
         await deleteChatThreadAgent({

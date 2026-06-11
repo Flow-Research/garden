@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { createServerFn } from '@tanstack/react-start'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { toWorkspaceFromOrganization } from '@/lib/server/control-plane'
-import { getDb, schema } from '@/lib/server/db'
+import { schema } from '@/lib/server/db'
 import { toCoreUser } from '@/lib/server/session'
 import type { User, Workspace } from '@garden/core/types'
 
@@ -25,14 +25,14 @@ const rawGetAuthBootstrap = createServerFn({ method: 'GET' }).handler(
     const session = await appContext.auth.getSession()
     if (!session) return null
 
-    const db = getDb(appContext.env)
+    const db = await appContext.db()
     const [userRow] = await db
       .select()
       .from(schema.user)
       .where(eq(schema.user.id, session.user.id))
     if (!userRow) return null
 
-    const auth = appContext.auth.getAuth()
+    const auth = await appContext.auth.getAuth()
     const organizations = await auth.api.listOrganizations({
       headers: appContext.request.headers,
     })

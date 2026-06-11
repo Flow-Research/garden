@@ -502,7 +502,7 @@ async function loadWorkProductContext(args: {
   workProductId: string
   workspaceId?: string
 }): Promise<ResultValue<IssueReviewContext, WorkProductReviewError>> {
-  const db = getDb(args.env)
+  const db = await getDb(args.env)
   const workspaceFilter = args.workspaceId
     ? eq(schema.issueWorkProduct.workspaceId, args.workspaceId)
     : undefined
@@ -583,7 +583,7 @@ async function approveWorkProduct(args: {
     return Result.err(invalidState('Work product is not tied to an issue run'))
   }
 
-  const db = getDb(args.env)
+  const db = await getDb(args.env)
   const now = new Date()
   const editedBody = args.editedBody
   const result = await Result.tryPromise({
@@ -673,7 +673,7 @@ async function requestWorkProductChanges(args: {
     )
   }
 
-  const db = getDb(args.env)
+  const db = await getDb(args.env)
   const now = new Date()
   const bodySuffix = args.comment?.trim()
   const commentBody = bodySuffix
@@ -740,7 +740,7 @@ async function loadSourceBinding(args: {
   issueId: string
   workspaceId: string
 }) {
-  const db = getDb(args.env)
+  const db = await getDb(args.env)
   const result = await Result.tryPromise({
     try: async () =>
       db
@@ -792,7 +792,7 @@ async function markWorkProductApplied(args: {
     return Result.err(invalidState('Work product is not tied to an issue run'))
   }
 
-  const db = getDb(args.env)
+  const db = await getDb(args.env)
   const now = new Date()
   return Result.tryPromise({
     try: async () => {
@@ -878,7 +878,7 @@ async function callWritebackWithApproval(args: {
     })
   }
 
-  const db = getDb(args.env)
+  const db = await getDb(args.env)
   const approvalResult = await resolveConnectorWritePermissionRequests({
     approved: true,
     actorUserId: args.actorUserId,

@@ -1,5 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { z } from 'zod'
 import { parseJsonBody } from '@/lib/server/validation/chat'
 import {
@@ -20,8 +21,9 @@ const primaryIssueBodySchema = z
 export const Route = createFileRoute('/api/chat/threads/$id/primary-issue')({
   server: {
     handlers: {
-      POST: async ({ request, params }) => {
-        const access = await getThreadAccess(request, params.id)
+      POST: async ({ context, request, params }) => {
+        const appContext = requireAppRequestContext(context)
+        const access = await getThreadAccess(appContext, params.id)
         if (access instanceof Response) return access
 
         const bodyResult = await parseJsonBody(

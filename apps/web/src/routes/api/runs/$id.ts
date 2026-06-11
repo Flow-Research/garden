@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   badRequest,
@@ -21,8 +22,10 @@ function runError(error: IssueRunServiceError) {
 export const Route = createFileRoute('/api/runs/$id')({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
-        const db = getDb(appEnv)
+      GET: async ({ context, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const db = await appContext.db()
         const [run] = await db
           .select()
           .from(schema.issueRun)
@@ -30,7 +33,7 @@ export const Route = createFileRoute('/api/runs/$id')({
           .limit(1)
         if (!run) return notFound('Run not found')
 
-        const access = await requireWorkspaceAccess(request, run.workspaceId)
+        const access = await requireWorkspaceAccess(appContext, run.workspaceId)
         if (access instanceof Response) return access
 
         const eventsResult = await listIssueRunEvents({

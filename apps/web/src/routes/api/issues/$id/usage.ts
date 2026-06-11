@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import { notFound, requireWorkspaceAccess } from '@/lib/server/control-plane'
 
 function numericUsage(usage: Record<string, unknown>, keys: string[]) {
@@ -15,8 +15,10 @@ function numericUsage(usage: Record<string, unknown>, keys: string[]) {
 export const Route = createFileRoute('/api/issues/$id/usage')({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
-        const db = getDb(appEnv)
+      GET: async ({ context, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const db = await appContext.db()
         const [issue] = await db
           .select({ workspaceId: schema.issue.workspaceId })
           .from(schema.issue)
@@ -24,7 +26,7 @@ export const Route = createFileRoute('/api/issues/$id/usage')({
           .limit(1)
         if (!issue) return notFound('Issue not found')
 
-        const access = await requireWorkspaceAccess(request, issue.workspaceId)
+        const access = await requireWorkspaceAccess(appContext, issue.workspaceId)
         if (access instanceof Response) return access
 
         const runs = await db

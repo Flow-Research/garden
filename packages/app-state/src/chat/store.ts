@@ -94,13 +94,13 @@ const chatStore = create<ChatState>()(
           set({ selectedAgentId: id })
         },
         /**
-         * Tracks the active Dockview chat session for sidebar highlighting.
+         * Tracks the active workspace-dock chat session for sidebar highlighting.
          *
          * Before this existed, workspace dock code called an action that was
          * only present in test mocks, so Vite emitted a production bundle that
-         * crashed in Dockview `onReady`. The dock layout remains the source of
+         * crashed during dock startup. The dock layout remains the source of
          * truth; this transient store field only mirrors active tab state for
-         * components outside Dockview.
+         * components outside the dock.
          */
         setActiveSession: (id) => {
           logger.debug('setActiveSession', {
@@ -110,11 +110,11 @@ const chatStore = create<ChatState>()(
           set({ activeSessionId: id })
         },
         /**
-         * Mirrors currently visible Dockview chat sessions.
+         * Mirrors currently visible workspace-dock chat sessions.
          *
          * This lets chat navigation surfaces know which sessions are mounted
-         * without persisting layout-derived state. Dockview recomputes this on
-         * ready and layout changes.
+         * without persisting layout-derived state. FlexLayout recomputes this on
+         * model changes.
          */
         setVisibleChatSessions: (ids) => {
           set({ visibleChatSessionIds: [...new Set(ids)] })

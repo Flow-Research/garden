@@ -1,13 +1,12 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { createAuth } from '@/lib/auth'
+import { requireAppRequestContext } from '@/lib/server/context'
 import {
   parseJsonBody,
   updateWorkspaceBodySchema,
 } from '@/lib/server/validation/workspaces'
 import { refreshChatThreadPromptConfig } from '@/lib/server/chat-agents'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { schema } from '@/lib/server/db'
 import {
   badRequest,
   notFound,
@@ -37,11 +36,13 @@ type FullOrganization = {
 export const Route = createFileRoute('/api/workspaces/$id')({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
-        const session = await requireSession(request)
+      GET: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
-        const auth = createAuth(appEnv, request)
+        const auth = await appContext.auth.getAuth()
         const organization = (await auth.api.getFullOrganization({
           headers: request.headers,
           query: {
@@ -58,8 +59,10 @@ export const Route = createFileRoute('/api/workspaces/$id')({
 
         return Response.json(toWorkspaceFromOrganization(organization, role))
       },
-      PATCH: async ({ request, params }) => {
-        const session = await requireSession(request)
+      PATCH: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
         const bodyResult = await parseJsonBody(
@@ -70,7 +73,7 @@ export const Route = createFileRoute('/api/workspaces/$id')({
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
 
-        const auth = createAuth(appEnv, request)
+        const auth = await appContext.auth.getAuth()
         const data: Record<string, unknown> = {}
         if (typeof body.name === 'string') data.name = body.name
         if (typeof body.slug === 'string') data.slug = body.slug
@@ -104,7 +107,7 @@ export const Route = createFileRoute('/api/workspaces/$id')({
             (member) => member.userId === session.user.id,
           )?.role ?? 'member'
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const threads = await db
           .select({
             id: schema.chatThread.id,

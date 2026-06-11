@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { and, desc, eq } from 'drizzle-orm'
 import { schema } from '@/lib/server/db'
 import { getThreadAccess } from '@/lib/server/chat-threads'
@@ -21,9 +22,10 @@ export const Route = createFileRoute(
 )({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
+      GET: async ({ context, params }) => {
+        const appContext = requireAppRequestContext(context)
         const routeParams = params as { id: string }
-        const access = await getThreadAccess(request, routeParams.id)
+        const access = await getThreadAccess(appContext, routeParams.id)
         if (access instanceof Response) return access
 
         const rows = await access.db

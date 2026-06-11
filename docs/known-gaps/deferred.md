@@ -9,7 +9,7 @@ Documented decisions from `docs/core/DEFERRED.md`, cross-checked against current
 | Knowledge graph / relationship layer | Nice once connector data flows; not needed day one. |
 | In-flow skill recommender | Needs stronger skill/memory usage signals. |
 | Memory synthesis pipeline | Current prompt has agent/workspace/skills context, not a shared memory pipeline. |
-| Workspace-as-split-panes beyond current Dockview panels | Dockview panel system exists; richer Glass-style multi-pane workflows can wait. |
+| Workspace-as-split-panes beyond current FlexLayout panels | FlexLayout panel system exists; richer Glass-style multi-pane workflows can wait. |
 | Slack-native assistants | Requires stable runtime across invocation surfaces beyond web. |
 | Headless mode + mobile approvals | Requires push notifications and stable mobile approval UX. |
 | Agent skill marketplace (cross-workspace) | Day one is workspace-scoped skills. |
@@ -34,7 +34,7 @@ Documented decisions from `docs/core/DEFERRED.md`, cross-checked against current
 | Scheduled automations | `packages/db/src/schema/automations.ts`, `AutomationTriggerDO`, `automation_run` |
 | Sandboxed/code execution paths | `createExecuteTool` usage, `packages/agent-runtime/src/sandbox-tools.ts`, `Sandbox` binding |
 | Document artifact subsystem | `packages/db/src/schema/documents.ts`, `packages/agent-runtime/src/documents`, document routes/UI |
-| Dockview workspace panels | `apps/web/src/components/shell/workspace-dock.tsx` |
+| FlexLayout workspace panels | `apps/web/src/components/shell/workspace-dock.tsx` |
 
 ## v2+ enterprise
 

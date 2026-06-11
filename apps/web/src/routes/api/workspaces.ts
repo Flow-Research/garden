@@ -1,11 +1,10 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { Result, TaggedError } from 'better-result'
 import { DEFAULT_AGENT_PERMISSIONS } from '@garden/core/agents/permissions'
 import { deriveIssuePrefix } from '@garden/core/issues/identifier'
-import { appEnv } from '@/lib/server/env'
-import { createAuth } from '@/lib/auth'
-import { getDb, schema } from '@/lib/server/db'
+import { schema, type Db } from '@/lib/server/db'
 import {
   createWorkspaceBodySchema,
   parseJsonBody,
@@ -29,7 +28,9 @@ class WorkspaceCreateError extends TaggedError('WorkspaceCreateError')<{
 }>() {}
 
 type CreateWorkspaceInput = {
+  bucket: R2Bucket
   context?: string | null
+  db: Db
   description?: string | null
   name: string
   sessionId: string
@@ -38,7 +39,7 @@ type CreateWorkspaceInput = {
 }
 
 async function createWorkspaceWithGarden(input: CreateWorkspaceInput) {
-  const db = getDb(appEnv)
+  const db = input.db
   const transactionResult = await Result.tryPromise({
     try: async () =>
       await db.transaction(async (tx) => {
@@ -97,8 +98,8 @@ async function createWorkspaceWithGarden(input: CreateWorkspaceInput) {
 
         await seedBuiltinSkills(
           workspaceId,
-          tx as unknown as ReturnType<typeof getDb>,
-          appEnv.FILES,
+          tx as unknown as Db,
+          input.bucket,
         )
 
         await tx
@@ -128,10 +129,12 @@ async function createWorkspaceWithGarden(input: CreateWorkspaceInput) {
 export const Route = createFileRoute('/api/workspaces')({
   server: {
     handlers: {
-      GET: async ({ request }) => {
-        const session = await requireSession(request)
+      GET: async ({ context, request }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
-        const auth = createAuth(appEnv, request)
+        const auth = await appContext.auth.getAuth()
         const organizations = await auth.api.listOrganizations({
           headers: request.headers,
         })
@@ -141,8 +144,10 @@ export const Route = createFileRoute('/api/workspaces')({
           ),
         )
       },
-      POST: async ({ request }) => {
-        const session = await requireSession(request)
+      POST: async ({ context, request }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
         const bodyResult = await parseJsonBody(
           request,
@@ -152,6 +157,8 @@ export const Route = createFileRoute('/api/workspaces')({
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
         const workspaceResult = await createWorkspaceWithGarden({
+          bucket: appContext.env.FILES,
+          db: await appContext.db(),
           name: body.name,
           slug: body.slug,
           description: body.description,

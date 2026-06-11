@@ -1,8 +1,9 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { postIssueComment, toIssueComment } from '@garden/server/issues/server'
 import { archiveInboxItemsByKey } from '@garden/db/inbox'
-import { getDb, schema } from '@/lib/server/db'
+import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   commentBodySchema,
@@ -17,8 +18,10 @@ import {
 export const Route = createFileRoute('/api/issues/$id/comments')({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
-        const db = getDb(appEnv)
+      GET: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const db = await appContext.db()
         const [existingIssue] = await db
           .select({ workspaceId: schema.issue.workspaceId })
           .from(schema.issue)
@@ -38,7 +41,9 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
 
         return Response.json(comments.map(toIssueComment))
       },
-      POST: async ({ request, params }) => {
+      POST: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
         const bodyResult = await parseJsonBody(
           request,
           commentBodySchema,
@@ -47,7 +52,7 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const [existingIssue] = await db
           .select({
             id: schema.issue.id,

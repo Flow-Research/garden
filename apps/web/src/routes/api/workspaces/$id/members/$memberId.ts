@@ -1,6 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { createAuth } from '@/lib/auth'
-import { appEnv } from '@/lib/server/env'
+import { requireAppRequestContext } from '@/lib/server/context'
 import {
   badRequest,
   requireSession,
@@ -14,8 +13,10 @@ import {
 export const Route = createFileRoute('/api/workspaces/$id/members/$memberId')({
   server: {
     handlers: {
-      PATCH: async ({ request, params }) => {
-        const session = await requireSession(request)
+      PATCH: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
         const bodyResult = await parseJsonBody(
           request,
@@ -24,7 +25,7 @@ export const Route = createFileRoute('/api/workspaces/$id/members/$memberId')({
         )
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
-        const auth = createAuth(appEnv, request)
+        const auth = await appContext.auth.getAuth()
         await auth.api.updateMemberRole({
           headers: request.headers,
           body: {
@@ -54,10 +55,12 @@ export const Route = createFileRoute('/api/workspaces/$id/members/$memberId')({
           avatar_url: member.user.image ?? null,
         })
       },
-      DELETE: async ({ request, params }) => {
-        const session = await requireSession(request)
+      DELETE: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
-        const auth = createAuth(appEnv, request)
+        const auth = await appContext.auth.getAuth()
         await auth.api.removeMember({
           headers: request.headers,
           body: {

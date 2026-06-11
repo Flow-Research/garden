@@ -1,5 +1,6 @@
 import { Buffer } from 'node:buffer'
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { buildContentDisposition } from '@garden/agent-runtime'
 import { readChatThreadDocumentVersionBytes } from '@/lib/server/chat-agents'
 import { getChatDocumentAccess } from '@/lib/server/document-access'
@@ -7,9 +8,10 @@ import { getChatDocumentAccess } from '@/lib/server/document-access'
 export const Route = createFileRoute('/api/documents/$id/display')({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
+      GET: async ({ context, request, params }) => {
+        const appContext = requireAppRequestContext(context)
         const routeParams = params as { id: string }
-        const access = await getChatDocumentAccess(request, routeParams.id)
+        const access = await getChatDocumentAccess(appContext, routeParams.id)
         if (access instanceof Response) return access
 
         const url = new URL(request.url)

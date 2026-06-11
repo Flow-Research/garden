@@ -2,9 +2,9 @@ import { and, desc, eq } from 'drizzle-orm'
 import { Result, TaggedError } from 'better-result'
 import { getConnectorById } from '@garden/connectors'
 import type { ConnectorId } from '@garden/connectors/registry'
-import { schema, type getDb } from '@/lib/server/db'
+import { schema, type Db } from '@/lib/server/db'
 
-type ConnectorCallbackEventDb = ReturnType<typeof getDb>
+type ConnectorCallbackEventDb = Db
 
 export type ConnectorCallbackSource = 'oauth' | 'github_app'
 export type ConnectorCallbackStatus = 'success' | 'degraded' | 'error'

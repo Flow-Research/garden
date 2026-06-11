@@ -207,11 +207,11 @@ This is what we'll actually touch in the next pass. Three surfaces:
 
 ### 3. Dock tabstrip + tabs
 
-**Now**: dockview tabs at 34px, 6px radius, font-size 12px, muted background gradient.
+**Now**: FlexLayout tabs at 34px, 6px radius, font-size 12px, muted background gradient.
 
 **Vibe**:
 - Tabstrip background: vellum with stronger blur (`backdrop-blur-2xl`).
-- Tab radius: keep 6px on the *underlying* dockview group (dockview needs it), but the tab *content* rendered inside `WorkspaceDockTab` becomes a `rounded-full` pill that sits inset 4px on each side.
+- Tab radius: keep 6px on the *underlying* FlexLayout group (FlexLayout needs it), but the tab *content* rendered inside `WorkspaceDockTab` becomes a `rounded-full` pill that sits inset 4px on each side.
 - Inactive tab: `text-gravel`, transparent background.
 - Active tab: `bg-white/85 backdrop-blur-md`, `text-ink`, hairline inset, slight pill scale-in animation on activation.
 - Tab close button: `rounded-full`, hover `bg-white/50`.

@@ -1,5 +1,3 @@
-'use client'
-
 /**
  * `ConnectedChatPanelInteraction` — the data-bound controller for the chat
  * panel. Wires runtime, sessions, and dock state to render a working

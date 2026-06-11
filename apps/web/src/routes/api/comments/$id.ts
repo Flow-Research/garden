@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import { commentBodySchema, parseJsonBody } from '@/lib/server/validation/issues'
 import {
   badRequest,
@@ -31,8 +31,10 @@ function toComment(row: typeof schema.issueComment.$inferSelect) {
 export const Route = createFileRoute('/api/comments/$id')({
   server: {
     handlers: {
-      PUT: async ({ request, params }) => {
-        const session = await requireSession(request)
+      PUT: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
         const bodyResult = await parseJsonBody(
@@ -43,7 +45,7 @@ export const Route = createFileRoute('/api/comments/$id')({
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const [existingComment] = await db
           .select()
           .from(schema.issueComment)
@@ -66,11 +68,13 @@ export const Route = createFileRoute('/api/comments/$id')({
         if (!updatedComment) return notFound('Comment not found')
         return Response.json(toComment(updatedComment))
       },
-      DELETE: async ({ request, params }) => {
-        const session = await requireSession(request)
+      DELETE: async ({ context, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const [existingComment] = await db
           .select()
           .from(schema.issueComment)

@@ -42,7 +42,7 @@ Not first:
 
 ## 4. Current product surface
 
-Garden uses one authenticated workspace shell with a left rail, context explorer, and Dockview panel area.
+Garden uses one authenticated workspace shell with a left rail, context explorer, and FlexLayout panel area.
 
 Code evidence:
 
@@ -95,7 +95,7 @@ In or underway:
 9. Inbox/approval surfaces.
 10. Document artifacts: upload, generate, preview, edit, accept/reject, citation highlighting.
 11. Codemode and Cloudflare Sandbox execution paths.
-12. Dockview panel workspace.
+12. FlexLayout panel workspace.
 
 Out of current scope / deferred:
 

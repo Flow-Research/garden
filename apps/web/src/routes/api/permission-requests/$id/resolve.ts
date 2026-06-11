@@ -1,10 +1,11 @@
 import { Result, TaggedError } from 'better-result'
 import { and, eq, sql } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { z } from 'zod'
 import { archiveInboxItemsByKey } from '@garden/db/inbox'
 import { appEnv } from '@/lib/server/env'
-import { getDb, schema } from '@/lib/server/db'
+import { schema, type Db } from '@/lib/server/db'
 import { json, requireWorkspaceAccess } from '@/lib/server/control-plane'
 import { parseJsonBody } from '@/lib/server/validation/common'
 import { resolveConnectorWritePermissionRequests } from '@/lib/server/permission-request'
@@ -44,8 +45,7 @@ function pendingAgentIdFromContext(value: string | null) {
   return value?.startsWith(prefix) ? value.slice(prefix.length) : null
 }
 
-async function loadPermissionRequest(id: string) {
-  const db = getDb(appEnv)
+async function loadPermissionRequest(db: Db, id: string) {
   return Result.tryPromise({
     try: async () => {
       const rows = await db
@@ -80,6 +80,7 @@ async function loadPermissionRequest(id: string) {
 async function resolveAgentProposal(args: {
   actorUserId: string
   approved: boolean
+  db: Db
   request: PermissionRequestRow
 }) {
   const pendingAgentId = pendingAgentIdFromContext(args.request.context)
@@ -106,7 +107,7 @@ async function resolveAgentProposal(args: {
     )
   }
 
-  const db = getDb(appEnv)
+  const db = args.db
   const resolvedAt = new Date()
   const sourceIssueId = payload.data.source_issue_id ?? args.request.issueId
   const updateResult = await Result.tryPromise({
@@ -196,7 +197,9 @@ async function resolveAgentProposal(args: {
 export const Route = createFileRoute('/api/permission-requests/$id/resolve')({
   server: {
     handlers: {
-      POST: async ({ request, params }) => {
+      POST: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
         const bodyResult = await parseJsonBody(
           request,
           resolvePermissionBodySchema,
@@ -206,7 +209,8 @@ export const Route = createFileRoute('/api/permission-requests/$id/resolve')({
           return json({ error: bodyResult.error.message }, 400)
         }
 
-        const requestResult = await loadPermissionRequest(params.id)
+        const db = await appContext.db()
+        const requestResult = await loadPermissionRequest(db, params.id)
         if (requestResult.isErr()) {
           return json(
             { error: requestResult.error.message },
@@ -218,11 +222,12 @@ export const Route = createFileRoute('/api/permission-requests/$id/resolve')({
 
         const permissionRequest = requestResult.value
         const access = await requireWorkspaceAccess(
-          request,
+          appContext,
           permissionRequest.workspaceId,
         )
         if (access instanceof Response) return access
         const permission = await requireWorkspacePermission({
+          appContext,
           request,
           workspaceId: permissionRequest.workspaceId,
           permissions: workspacePermissions.permissionManage,
@@ -233,6 +238,7 @@ export const Route = createFileRoute('/api/permission-requests/$id/resolve')({
           const proposalResult = await resolveAgentProposal({
             actorUserId: access.session.user.id,
             approved: bodyResult.value.approved,
+            db,
             request: permissionRequest,
           })
           if (proposalResult.isErr()) {
@@ -242,7 +248,7 @@ export const Route = createFileRoute('/api/permission-requests/$id/resolve')({
             )
           }
           await archiveInboxItemsByKey({
-            db: getDb(appEnv),
+            db,
             workspaceId: permissionRequest.workspaceId,
             itemKeys: [`approval:${permissionRequest.id}`],
           })
@@ -259,7 +265,7 @@ export const Route = createFileRoute('/api/permission-requests/$id/resolve')({
         const resolutionResult = await resolveConnectorWritePermissionRequests({
           approved: bodyResult.value.approved,
           actorUserId: access.session.user.id,
-          db: getDb(appEnv),
+          db,
           permissionRequestId: permissionRequest.id,
           workspaceId: permissionRequest.workspaceId,
         })
@@ -270,7 +276,7 @@ export const Route = createFileRoute('/api/permission-requests/$id/resolve')({
           )
         }
         await archiveInboxItemsByKey({
-          db: getDb(appEnv),
+          db,
           workspaceId: permissionRequest.workspaceId,
           itemKeys: [`approval:${permissionRequest.id}`],
         })

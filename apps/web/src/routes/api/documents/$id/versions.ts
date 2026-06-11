@@ -1,13 +1,15 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { listChatThreadDocumentVersions } from '@/lib/server/chat-agents'
 import { getChatDocumentAccess } from '@/lib/server/document-access'
 
 export const Route = createFileRoute('/api/documents/$id/versions')({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
+      GET: async ({ context, params }) => {
+        const appContext = requireAppRequestContext(context)
         const routeParams = params as { id: string }
-        const access = await getChatDocumentAccess(request, routeParams.id)
+        const access = await getChatDocumentAccess(appContext, routeParams.id)
         if (access instanceof Response) return access
 
         const result = await listChatThreadDocumentVersions({

@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import {
   notFound,
   requireWorkspaceAccess,
@@ -10,15 +10,17 @@ import {
 export const Route = createFileRoute('/api/issues/$id/subscribers')({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
-        const db = getDb(appEnv)
+      GET: async ({ context, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const db = await appContext.db()
         const [issue] = await db
           .select()
           .from(schema.issue)
           .where(eq(schema.issue.id, params.id))
         if (!issue) return notFound('Issue not found')
 
-        const access = await requireWorkspaceAccess(request, issue.workspaceId)
+        const access = await requireWorkspaceAccess(appContext, issue.workspaceId)
         if (access instanceof Response) return access
 
         const subscribers = [

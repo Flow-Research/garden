@@ -112,7 +112,6 @@ async function routeAgentDoRequest(request: Request, env: ServerEnv) {
   return response ?? new Response('Not found', { status: 404 })
 }
 
-
 /**
  * Captures attribution fields before an agent request enters the Durable Object.
  * The websocket incident showed that a 101 handoff can fail after auth but before
@@ -149,7 +148,7 @@ async function authorizeAgentRequest(
     }
   }
 
-  const auth = createAuth(env, request)
+  const auth = await createAuth(env, request)
   const session = await getLoggedAuthSession({
     auth,
     request,

@@ -1,13 +1,13 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { DEFAULT_AGENT_PERMISSIONS } from '@garden/core/agents/permissions'
 import { bindExistingCapabilitiesToAgent } from '@/lib/server/agent-bindings'
 import {
   createAgentBodySchema,
   parseJsonBody,
 } from '@/lib/server/validation/agents'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { schema } from '@/lib/server/db'
 import {
   badRequest,
   requireWorkspaceContext,
@@ -17,23 +17,27 @@ import {
 export const Route = createFileRoute('/api/agents')({
   server: {
     handlers: {
-      GET: async ({ request }) => {
-        const context = await requireWorkspaceContext(request, {
+      GET: async ({ context }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const workspaceContext = await requireWorkspaceContext(appContext, {
           missingWorkspaceResponse: () => Response.json([]),
         })
-        if (context instanceof Response) return context
-        const { workspaceId } = context
-        const db = getDb(appEnv)
+        if (workspaceContext instanceof Response) return workspaceContext
+        const { workspaceId } = workspaceContext
+        const db = await appContext.db()
         const rows = await db
           .select()
           .from(schema.agent)
           .where(eq(schema.agent.workspaceId, workspaceId))
         return Response.json(rows.map(toAgent))
       },
-      POST: async ({ request }) => {
-        const context = await requireWorkspaceContext(request)
-        if (context instanceof Response) return context
-        const { session, workspaceId } = context
+      POST: async ({ context, request }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const workspaceContext = await requireWorkspaceContext(appContext)
+        if (workspaceContext instanceof Response) return workspaceContext
+        const { session, workspaceId } = workspaceContext
 
         const bodyResult = await parseJsonBody(
           request,
@@ -61,7 +65,7 @@ export const Route = createFileRoute('/api/agents')({
           hostName: agentId,
           permissions: DEFAULT_AGENT_PERMISSIONS,
         } as typeof schema.agent.$inferInsert
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const [agent] = await db
           .insert(schema.agent)
           .values(agentValues)

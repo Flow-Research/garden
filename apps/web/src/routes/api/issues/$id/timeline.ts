@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import {
   notFound,
   requireWorkspaceAccess,
@@ -68,8 +68,10 @@ function toTimelineRunEvent(row: {
 export const Route = createFileRoute('/api/issues/$id/timeline')({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
-        const db = getDb(appEnv)
+      GET: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const db = await appContext.db()
         const [existingIssue] = await db
           .select({
             id: schema.issue.id,

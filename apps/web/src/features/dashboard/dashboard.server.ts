@@ -1,12 +1,11 @@
 import { and, desc, eq } from 'drizzle-orm'
-import { getRequest } from '@tanstack/react-start/server'
-import { getDb, schema } from '@/lib/server/db'
+import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
+import type { AppRequestContext } from '@/lib/server/context'
 import { computeInboxItems } from '@/lib/server/inbox-compute'
 import { sortIssuesByUpdatedAt } from '@/lib/server/inbox-surface'
 import { listAvailableConnectorBindings } from '@garden/server/connectors/availability'
 import { buildConnectionSurface } from '@/lib/server/connection-surface'
-import { requireSession } from '@/lib/server/control-plane'
 import type { IssuePriority, IssueStatus } from '@garden/core/types'
 
 export type DashboardIssue = {
@@ -128,15 +127,17 @@ function toIssuePriority(value: string | null): IssuePriority {
   return 'medium'
 }
 
-async function requireDashboardAccess(workspaceId: string) {
-  const request = getRequest()
-  const session = await requireSession(request)
+async function requireDashboardAccess(
+  appContext: AppRequestContext,
+  workspaceId: string,
+) {
+  const session = await appContext.auth.getSession()
 
   if (!session) {
     throw new Error('Unauthorized')
   }
 
-  const db = getDb(appEnv)
+  const db = await appContext.db()
   const [membership] = await db
     .select({ organizationId: schema.member.organizationId })
     .from(schema.member)
@@ -157,8 +158,11 @@ async function requireDashboardAccess(workspaceId: string) {
   }
 }
 
-async function loadDashboardConnections(workspaceId: string) {
-  const { db, session } = await requireDashboardAccess(workspaceId)
+async function loadDashboardConnections(
+  appContext: AppRequestContext,
+  workspaceId: string,
+) {
+  const { db, session } = await requireDashboardAccess(appContext, workspaceId)
   const [
     connections,
     availableConnectors,
@@ -199,8 +203,11 @@ async function loadDashboardConnections(workspaceId: string) {
   })
 }
 
-async function loadDashboardIssues(workspaceId: string) {
-  const { db } = await requireDashboardAccess(workspaceId)
+async function loadDashboardIssues(
+  appContext: AppRequestContext,
+  workspaceId: string,
+) {
+  const { db } = await requireDashboardAccess(appContext, workspaceId)
 
   return db
     .select()
@@ -208,8 +215,11 @@ async function loadDashboardIssues(workspaceId: string) {
     .where(eq(schema.issue.workspaceId, workspaceId))
 }
 
-export async function getDashboardOverviewSnapshot(workspaceId: string) {
-  const { db } = await requireDashboardAccess(workspaceId)
+export async function getDashboardOverviewSnapshot(
+  appContext: AppRequestContext,
+  workspaceId: string,
+) {
+  const { db } = await requireDashboardAccess(appContext, workspaceId)
   const [issues, agents, skills, connectionSurface] = await Promise.all([
     db
       .select()
@@ -223,7 +233,7 @@ export async function getDashboardOverviewSnapshot(workspaceId: string) {
       .select()
       .from(schema.skill)
       .where(eq(schema.skill.workspaceId, workspaceId)),
-    loadDashboardConnections(workspaceId),
+    loadDashboardConnections(appContext, workspaceId),
   ])
 
   return {
@@ -243,8 +253,11 @@ export async function getDashboardOverviewSnapshot(workspaceId: string) {
   } satisfies DashboardOverviewSnapshot
 }
 
-export async function getDashboardDistributionSnapshot(workspaceId: string) {
-  const issues = await loadDashboardIssues(workspaceId)
+export async function getDashboardDistributionSnapshot(
+  appContext: AppRequestContext,
+  workspaceId: string,
+) {
+  const issues = await loadDashboardIssues(appContext, workspaceId)
 
   const issueStatus = Array.from(
     issues.reduce((map, issue) => {
@@ -280,11 +293,14 @@ export async function getDashboardDistributionSnapshot(workspaceId: string) {
   } satisfies DashboardDistributionSnapshot
 }
 
-export async function getDashboardActivitySnapshot(workspaceId: string) {
-  const { session } = await requireDashboardAccess(workspaceId)
+export async function getDashboardActivitySnapshot(
+  appContext: AppRequestContext,
+  workspaceId: string,
+) {
+  const { db, session } = await requireDashboardAccess(appContext, workspaceId)
   const [issues, inbox] = await Promise.all([
-    loadDashboardIssues(workspaceId),
-    computeInboxItems({ workspaceId, userId: session.user.id }),
+    loadDashboardIssues(appContext, workspaceId),
+    computeInboxItems({ db, workspaceId, userId: session.user.id }),
   ])
 
   const recentIssues = sortIssuesByUpdatedAt(issues)
@@ -317,8 +333,11 @@ export async function getDashboardActivitySnapshot(workspaceId: string) {
   } satisfies DashboardActivitySnapshot
 }
 
-export async function getDashboardResourcesSnapshot(workspaceId: string) {
-  const { db } = await requireDashboardAccess(workspaceId)
+export async function getDashboardResourcesSnapshot(
+  appContext: AppRequestContext,
+  workspaceId: string,
+) {
+  const { db } = await requireDashboardAccess(appContext, workspaceId)
   const [issues, agents, connectionSurface] = await Promise.all([
     db
       .select()
@@ -328,7 +347,7 @@ export async function getDashboardResourcesSnapshot(workspaceId: string) {
       .select()
       .from(schema.agent)
       .where(eq(schema.agent.workspaceId, workspaceId)),
-    loadDashboardConnections(workspaceId),
+    loadDashboardConnections(appContext, workspaceId),
   ])
 
   const activeIssueCountByAgentId = issues.reduce((map, issue) => {

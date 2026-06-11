@@ -1,7 +1,7 @@
 import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import {
   issueSearchQuerySchema,
   parseSearchParams,
@@ -17,8 +17,10 @@ import {
 export const Route = createFileRoute('/api/issues/search')({
   server: {
     handlers: {
-      GET: async ({ request }) => {
-        const session = await requireSession(request)
+      GET: async ({ context, request }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
@@ -40,7 +42,7 @@ export const Route = createFileRoute('/api/issues/search')({
           return Response.json({ issues: [], total: 0 })
         }
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const issueWhere = and(
           eq(schema.issue.workspaceId, workspaceId),
           includeClosed ? undefined : sql`${schema.issue.status} <> 'done'`,

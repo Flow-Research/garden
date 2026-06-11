@@ -10,7 +10,7 @@ type DismissArgs = {
 }
 
 export async function markInboxItemRead(args: DismissArgs): Promise<void> {
-  const db = getDb(appEnv)
+  const db = await getDb(appEnv)
   await db
     .update(schema.inboxItem)
     .set({ read: true, updatedAt: new Date() })
@@ -25,7 +25,7 @@ export async function markInboxItemRead(args: DismissArgs): Promise<void> {
 }
 
 export async function archiveInboxItem(args: DismissArgs): Promise<void> {
-  const db = getDb(appEnv)
+  const db = await getDb(appEnv)
   await db
     .update(schema.inboxItem)
     .set({ read: true, archived: true, updatedAt: new Date() })
@@ -45,7 +45,7 @@ export async function markInboxItemsRead(args: {
   itemKeys: string[]
 }): Promise<number> {
   if (args.itemKeys.length === 0) return 0
-  const db = getDb(appEnv)
+  const db = await getDb(appEnv)
   const updatedAt = new Date()
   await db
     .update(schema.inboxItem)
@@ -67,7 +67,7 @@ export async function archiveInboxItems(args: {
   itemKeys: string[]
 }): Promise<number> {
   if (args.itemKeys.length === 0) return 0
-  const db = getDb(appEnv)
+  const db = await getDb(appEnv)
   const updatedAt = new Date()
   await db
     .update(schema.inboxItem)
@@ -121,7 +121,7 @@ export async function deleteAllDismissals(args: {
   workspaceId: string
   userId: string
 }): Promise<void> {
-  const db = getDb(appEnv)
+  const db = await getDb(appEnv)
   await db
     .update(schema.inboxItem)
     .set({ read: false, archived: false, updatedAt: new Date() })

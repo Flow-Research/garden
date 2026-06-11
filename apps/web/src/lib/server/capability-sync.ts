@@ -38,7 +38,7 @@ async function sha256Hex(value: string) {
 }
 
 async function resolveSyncAgentId(userId: string, workspaceId: string) {
-  const db = getDb(appEnv)
+  const db = await getDb(appEnv)
   const ownedAgentsResult = await Result.tryPromise({
     try: async () =>
       db
@@ -109,7 +109,7 @@ async function seedDefaultPermissionGrants(args: {
     return Result.ok(undefined)
   }
 
-  const db = getDb(appEnv)
+  const db = await getDb(appEnv)
   const agentsResult = await Result.tryPromise({
     try: async () =>
       db
@@ -209,7 +209,7 @@ async function deleteStaleCapabilityDependencies(staleCapabilityIds: string[]) {
     return Result.ok(undefined)
   }
 
-  const db = getDb(appEnv)
+  const db = await getDb(appEnv)
   return Result.tryPromise({
     try: async () => {
       await db
@@ -396,7 +396,7 @@ export async function syncCapabilities(
   }
   const capabilityRows = dedupeCapabilityRows(discoveredCapabilityRows)
 
-  const db = getDb(appEnv)
+  const db = await getDb(appEnv)
   const upsertResult = await Result.tryPromise({
     try: async () => {
       for (const capability of capabilityRows) {

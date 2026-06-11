@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import {
   requireSession,
   resolveWorkspaceId,
@@ -11,14 +11,16 @@ import {
 export const Route = createFileRoute('/api/issues/child-progress')({
   server: {
     handlers: {
-      GET: async ({ request }) => {
-        const session = await requireSession(request)
+      GET: async ({ context, request }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
         if (!workspaceId) return Response.json({ progress: [] })
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const rows = await db
           .select()
           .from(schema.issue)

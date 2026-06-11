@@ -13,16 +13,7 @@ pnpm --filter @garden/db db:migrate
 pnpm dev
 ```
 
-The root dev command starts the MCP proxy and web app through Turbo's TUI. The web app runs through Portless at `https://garden.localhost`; Vite uses `strictPort` so it fails fast instead of silently moving away from port `3000`.
-
-For the stable local HTTPS URL:
-
-```bash
-pnpm --filter @garden/web exec portless trust
-pnpm --filter @garden/web dev
-```
-
-That serves the app at `https://garden.localhost`. Keep using `localhost:3000` for Better Auth or OAuth callback testing until the local callback URLs move to portless.
+The root dev command starts the MCP proxy and web app through Turbo's TUI. The web app runs at `http://localhost:3000` by default.
 
 ## Environment
 
@@ -44,7 +35,7 @@ GitHub connector development also needs the GitHub app fields from the root `.en
 
 | Command | Description |
 |---|---|
-| `pnpm --filter @garden/web dev` | Start TanStack Start through Portless with full bindings |
+| `pnpm --filter @garden/web dev` | Start TanStack Start on `localhost` with full bindings |
 | `pnpm --filter @garden/web dev:local` | Start TanStack Start directly on `localhost` with local bindings |
 | `pnpm --filter @garden/web build` | Build production worker bundle |
 | `pnpm --filter @garden/web typecheck` | Run TypeScript without emit |

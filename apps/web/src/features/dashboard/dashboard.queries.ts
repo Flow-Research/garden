@@ -1,5 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 import { queryOptions } from '@tanstack/react-query'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { z } from 'zod'
 import {
   getDashboardActivitySnapshot,
@@ -26,21 +27,39 @@ export const dashboardKeys = {
 
 const getDashboardOverview = createServerFn({ method: 'GET' })
   .inputValidator(dashboardInputSchema)
-  .handler(async ({ data }) => getDashboardOverviewSnapshot(data.workspaceId))
+  .handler(async ({ context, data }) =>
+    getDashboardOverviewSnapshot(
+      requireAppRequestContext(context),
+      data.workspaceId,
+    ),
+  )
 
 const getDashboardDistribution = createServerFn({ method: 'GET' })
   .inputValidator(dashboardInputSchema)
-  .handler(async ({ data }) =>
-    getDashboardDistributionSnapshot(data.workspaceId),
+  .handler(async ({ context, data }) =>
+    getDashboardDistributionSnapshot(
+      requireAppRequestContext(context),
+      data.workspaceId,
+    ),
   )
 
 const getDashboardActivity = createServerFn({ method: 'GET' })
   .inputValidator(dashboardInputSchema)
-  .handler(async ({ data }) => getDashboardActivitySnapshot(data.workspaceId))
+  .handler(async ({ context, data }) =>
+    getDashboardActivitySnapshot(
+      requireAppRequestContext(context),
+      data.workspaceId,
+    ),
+  )
 
 const getDashboardResources = createServerFn({ method: 'GET' })
   .inputValidator(dashboardInputSchema)
-  .handler(async ({ data }) => getDashboardResourcesSnapshot(data.workspaceId))
+  .handler(async ({ context, data }) =>
+    getDashboardResourcesSnapshot(
+      requireAppRequestContext(context),
+      data.workspaceId,
+    ),
+  )
 
 export function dashboardOverviewOptions(workspaceId: string) {
   return queryOptions({

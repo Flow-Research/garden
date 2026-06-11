@@ -9,7 +9,7 @@ This note documents the low-latency chat switching path after the runtime regist
 
 | Concern | Owner | Evidence |
 | --- | --- | --- |
-| Active dock panel and tab/panel persistence | `WorkspaceDockProvider` / Dockview | `apps/web/src/components/shell/workspace-dock.tsx` |
+| Active dock panel and tab/panel persistence | `WorkspaceDockProvider` / FlexLayout | `apps/web/src/components/shell/workspace-dock.tsx` |
 | Active chat selection signal | `useChatStore.activeSessionId` | `packages/app-state/src/chat/store.ts`, `workspace-dock.tsx` commits panel state into store |
 | Chat session list and warm first-turn bookkeeping | `useAgentSessions` + React Query/cache/store | `apps/web/src/features/chat/use-agent-chat-sessions.ts` |
 | Live chat websocket | Mounted `AgentInteractionScreen` via `useChatRuntimeConnection()` | `apps/web/src/features/chat/components/agent-interaction-screen.tsx`, `chat-runtime-provider.tsx` |
@@ -35,7 +35,7 @@ Switching to a chat that already has cached metadata should update shell/sidebar
 
 ## URL sync
 
-The URL is still persistence/shareability, not the fast-path render source. In-app chat selection should route through Dockview/open-panel state, then query state. Avoid adding a second URL/store bridge that races Dockview.
+The URL is still persistence/shareability, not the fast-path render source. In-app chat selection should route through FlexLayout/open-panel state, then query state. Avoid adding a second URL/store bridge that races FlexLayout.
 
 ## Remount rules
 

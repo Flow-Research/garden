@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { createAuth } from '@/lib/auth'
+import { requireAppRequestContext } from '@/lib/server/context'
 import {
   createWorkspaceMemberBodySchema,
   parseJsonBody,
@@ -10,15 +10,16 @@ import {
   unauthorized,
   badRequest,
 } from '@/lib/server/control-plane'
-import { appEnv } from '@/lib/server/env'
 
 export const Route = createFileRoute('/api/workspaces/$id/members')({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
-        const session = await requireSession(request)
+      GET: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
-        const auth = createAuth(appEnv, request)
+        const auth = await appContext.auth.getAuth()
         const result = (await auth.api.listMembers({
           headers: request.headers,
           query: {
@@ -53,8 +54,10 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
           })),
         )
       },
-      POST: async ({ request, params }) => {
-        const session = await requireSession(request)
+      POST: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
         const bodyResult = await parseJsonBody(
           request,
@@ -63,7 +66,7 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
         )
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
-        const auth = createAuth(appEnv, request)
+        const auth = await appContext.auth.getAuth()
         const invitation = (await auth.api.createInvitation({
           headers: request.headers,
           body: {

@@ -6,18 +6,19 @@ import {
   unauthorized,
 } from '@/lib/server/control-plane'
 import { parseJsonBody, updateMeBodySchema } from '@/lib/server/validation/me'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import { toCoreUser } from '@/lib/server/session'
 
 export const Route = createFileRoute('/api/me')({
   server: {
     handlers: {
-      GET: async ({ request }) => {
-        const session = await requireSession(request)
+      GET: async ({ context }) => {
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const [user] = await db
           .select()
           .from(schema.user)
@@ -36,8 +37,9 @@ export const Route = createFileRoute('/api/me')({
           }),
         )
       },
-      PATCH: async ({ request }) => {
-        const session = await requireSession(request)
+      PATCH: async ({ context, request }) => {
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
         const bodyResult = await parseJsonBody(
@@ -64,7 +66,7 @@ export const Route = createFileRoute('/api/me')({
 
         updateValues.updatedAt = new Date()
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const [updated] = await db
           .update(schema.user)
           .set(updateValues)

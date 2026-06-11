@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   automationErr,
@@ -39,7 +40,9 @@ export const Route = createFileRoute('/api/automations/$id/triggers')({
         if (triggersResult.isErr()) return automationErr(triggersResult.error)
         return automationOk(triggersResult.value.map(toAutomationTrigger))
       },
-      POST: async ({ request, params }) => {
+      POST: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
         const automationResult = await requireAutomation(appEnv, params.id)
         if (automationResult.isErr())
           return automationErr(automationResult.error)
@@ -70,7 +73,7 @@ export const Route = createFileRoute('/api/automations/$id/triggers')({
             : null
         if (nextRunResult?.isErr()) return automationErr(nextRunResult.error)
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const [trigger] = await db
           .insert(schema.automationTrigger)
           .values({

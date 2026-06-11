@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { matchError } from 'better-result'
 import { and, eq } from 'drizzle-orm'
 import {
@@ -7,7 +8,7 @@ import {
   resolveWorkspaceId,
   unauthorized,
 } from '@/lib/server/control-plane'
-import { getDb, schema } from '@/lib/server/db'
+import { schema, type Db } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   connectorCallbackSearchParams,
@@ -36,7 +37,7 @@ function redirectToGitHubPanel(request: Request, flowId?: string | null) {
   })
 }
 
-type GitHubInstallDb = ReturnType<typeof getDb>
+type GitHubInstallDb = Db
 
 async function hasConnectedGitHubInstall(args: {
   db: GitHubInstallDb
@@ -59,14 +60,16 @@ async function hasConnectedGitHubInstall(args: {
 export const Route = createFileRoute('/api/github/install')({
   server: {
     handlers: {
-      GET: async ({ request }) => {
-        const session = await requireSession(request)
+      GET: async ({ context, request }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
         if (!workspaceId) return badRequest('Workspace not found')
         const flowId = readConnectorFlowId(request)
-        const db = getDb(appEnv)
+        const db = await appContext.db()
 
         if (await hasConnectedGitHubInstall({ db, workspaceId })) {
           const event = await recordConnectorCallbackEvent({

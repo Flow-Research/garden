@@ -1,15 +1,13 @@
 import { and, eq } from 'drizzle-orm'
 import { HARNESSY_QA_SKILLS } from '@garden/agent-runtime'
 import issueInteractionSkillMarkdown from '@garden/agent-runtime/src/skills/issue-interaction/SKILL.md?raw'
-import { type getDb, schema } from './db'
+import { schema, type Db } from './db'
 import {
   hashSkillBundle,
   persistRuntimeSkillBundle,
   persistSkillBundleFiles,
 } from './skill-bundles'
 import { parseGardenSkillDocument } from './skill-documents'
-
-type Db = ReturnType<typeof getDb>
 
 type BuiltinSeedSkill = {
   slug: string

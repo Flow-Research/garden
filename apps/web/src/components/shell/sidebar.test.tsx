@@ -16,8 +16,6 @@ const mockCreateSession = vi.hoisted(() => ({
 const mockClaimWarmSession = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ id: 'session-new', title: 'New Chat' }),
 )
-const mockSetActiveSession = vi.hoisted(() => vi.fn())
-
 const mockDockState = vi.hoisted(() => ({
   activePanel: {
     kind: 'inbox',
@@ -68,24 +66,6 @@ vi.mock('@garden/app-state/workspace', () => ({
       selector ? selector(mockWorkspaceState) : mockWorkspaceState,
     {
       getState: () => mockWorkspaceState,
-    },
-  ),
-}))
-
-vi.mock('@garden/app-state/chat', () => ({
-  useChatStore: Object.assign(
-    (selector?: (state: { activeSessionId: string | null; setActiveSession: typeof mockSetActiveSession }) => unknown) => {
-      const state = {
-        activeSessionId: null,
-        setActiveSession: mockSetActiveSession,
-      }
-      return selector ? selector(state) : state
-    },
-    {
-      getState: () => ({
-        activeSessionId: null,
-        setActiveSession: mockSetActiveSession,
-      }),
     },
   ),
 }))

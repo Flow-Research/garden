@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { listAvailableConnectorBindings } from '@garden/server/connectors/availability'
 import { buildConnectionSurface } from '@/lib/server/connection-surface'
@@ -9,12 +10,14 @@ import { requireWorkspaceContext } from '@/lib/server/control-plane'
 export const Route = createFileRoute('/api/connections')({
   server: {
     handlers: {
-      GET: async ({ request }) => {
-        const context = await requireWorkspaceContext(request)
-        if (context instanceof Response) return context
-        const { workspaceId } = context
+      GET: async ({ context, request }) => {
 
-        const db = getDb(appEnv)
+        const appContext = requireAppRequestContext(context)
+        const workspaceContext = await requireWorkspaceContext(appContext)
+        if (workspaceContext instanceof Response) return workspaceContext
+        const { workspaceId } = workspaceContext
+
+        const db = await appContext.db()
         const summaryOnly = new URL(request.url).searchParams.get('summary') === '1'
         const agents = await db
           .select()
@@ -39,7 +42,7 @@ export const Route = createFileRoute('/api/connections')({
                 const value = (appEnv as Record<string, unknown>)[name]
                 return typeof value === 'string' ? value : undefined
               },
-              userId: context.session.user.id,
+              userId: workspaceContext.session.user.id,
               workspaceId,
             }),
           ])
@@ -94,7 +97,7 @@ export const Route = createFileRoute('/api/connections')({
                 const value = (appEnv as Record<string, unknown>)[name]
                 return typeof value === 'string' ? value : undefined
               },
-              userId: context.session.user.id,
+              userId: workspaceContext.session.user.id,
               workspaceId,
             }),
             db.select().from(schema.capability),

@@ -1,12 +1,13 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { LIVE_RUN_STATUSES } from '@garden/core/issues/run-sync'
 import type { IssueStatus } from '@garden/core/types/issue'
 import {
   archiveTerminalIssueInbox,
   upsertIssueAssignmentInbox,
 } from '@garden/db/inbox'
-import { getDb, schema } from '@/lib/server/db'
+import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { parseJsonBody, updateIssueBodySchema } from '@/lib/server/validation/issues'
 import {
@@ -23,8 +24,10 @@ import {
 export const Route = createFileRoute('/api/issues/$id')({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
-        const db = getDb(appEnv)
+      GET: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const db = await appContext.db()
         const [existingIssue] = await db
           .select({ workspaceId: schema.issue.workspaceId })
           .from(schema.issue)
@@ -50,7 +53,9 @@ export const Route = createFileRoute('/api/issues/$id')({
         if (!issue) return notFound('Issue not found')
         return Response.json(toIssue(issue))
       },
-      PUT: async ({ request, params }) => {
+      PUT: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
         const bodyResult = await parseJsonBody(
           request,
           updateIssueBodySchema,
@@ -92,7 +97,7 @@ export const Route = createFileRoute('/api/issues/$id')({
 
         updateValues.updatedAt = new Date()
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const [existingIssue] = await db
           .select({
             workspaceId: schema.issue.workspaceId,
@@ -200,8 +205,10 @@ export const Route = createFileRoute('/api/issues/$id')({
         }
         return Response.json(toIssue(issue))
       },
-      DELETE: async ({ request, params }) => {
-        const db = getDb(appEnv)
+      DELETE: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const db = await appContext.db()
         const [existingIssue] = await db
           .select({ workspaceId: schema.issue.workspaceId })
           .from(schema.issue)

@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import { getAgentByName } from 'agents'
 import type { AgentDO } from '@garden/agent-runtime'
 import { bindExistingCapabilitiesToAgent } from './agent-bindings'
-import { getDb, schema } from '@/lib/server/db'
+import { getDb, schema, type Db } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { DEFAULT_AGENT_PERMISSIONS } from '@garden/core/agents/permissions'
 import { disposeRpcResult } from '@garden/app-state/platform/rpc'
@@ -34,8 +34,9 @@ async function callChatThreadRuntime<T>(
 export async function ensureAgentRow(input: {
   workspaceId: string
   ownerUserId: string
+  db?: Db
 }) {
-  const db = getDb(appEnv)
+  const db = input.db ?? (await getDb(appEnv))
   const [existingAgent] = await db
     .select()
     .from(schema.agent)

@@ -1,5 +1,6 @@
 import { Result } from 'better-result'
-import { createAuth } from '@/lib/auth'
+import { createBetterAuth } from '@/lib/auth/instance'
+import { createDbProvider, type DbProvider } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
 import {
   createGardenLogger,
@@ -8,13 +9,13 @@ import {
   type GardenLogFields,
 } from '@garden/observability/logger'
 
-export type GardenAuth = ReturnType<typeof createAuth>
+export type GardenAuth = ReturnType<typeof createBetterAuth>
 export type GardenAuthSession = Awaited<
   ReturnType<GardenAuth['api']['getSession']>
 >
 
 export type GardenAuthState = {
-  getAuth: () => GardenAuth
+  getAuth: () => Promise<GardenAuth>
   getSession: () => Promise<GardenAuthSession>
   getCachedSession: () => Promise<GardenAuthSession> | undefined
 }
@@ -22,6 +23,7 @@ export type GardenAuthState = {
 export type AppRequestContext = {
   env: AppEnv
   request: Request
+  db: DbProvider
   auth: GardenAuthState
 }
 
@@ -98,23 +100,38 @@ export async function getLoggedAuthSession(input: {
  * together for the whole Start request. Reference: TanStack Start request
  * context and Better Auth request-bound handlers.
  */
-export function createAuthState(env: AppEnv, request: Request): GardenAuthState {
-  let auth: GardenAuth | undefined
+export function createAuthState(
+  env: AppEnv,
+  dbProvider: DbProvider,
+  request: Request,
+): GardenAuthState {
+  let auth: Promise<GardenAuth> | undefined
   let session: Promise<GardenAuthSession> | undefined
 
   const getAuth = () => {
-    auth ??= createAuth(env, request)
+    if (!auth) {
+      auth = dbProvider().then((db) =>
+        createBetterAuth(db, {
+          ...env,
+          request,
+        }),
+      )
+    }
     return auth
   }
 
   return {
     getAuth,
     getSession: () => {
-      session ??= getLoggedAuthSession({
-        auth: getAuth(),
-        request,
-        source: 'request-context',
-      })
+      if (!session) {
+        session = getAuth().then((auth) =>
+          getLoggedAuthSession({
+            auth,
+            request,
+            source: 'request-context',
+          }),
+        )
+      }
       return session
     },
     getCachedSession: () => session,
@@ -130,10 +147,13 @@ export function createAppRequestContext(
   env: AppEnv,
   request: Request,
 ): AppRequestContext {
+  const db = createDbProvider(env)
+
   return {
     env,
     request,
-    auth: createAuthState(env, request),
+    db,
+    auth: createAuthState(env, db, request),
   }
 }
 

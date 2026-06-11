@@ -17,7 +17,7 @@ export type AgentAccessAction =
   | 'debug'
   | 'tool_approval'
 
-type AgentDoEnv = Pick<AppEnv, 'AgentDO' | 'DATABASE_URL'>
+type AgentDoEnv = Pick<AppEnv, 'AgentDO' | 'HYPERDRIVE'>
 type AgentSession = { user?: { id?: string | null } | null } | null | undefined
 
 const agentAccessRecordSchema = agentSelectSchema.pick({
@@ -70,7 +70,8 @@ export async function requireAgentAccess(
 
   const result = await Result.tryPromise({
     try: async () => {
-      const [row] = await getDb(env)
+      const db = await getDb(env)
+      const [row] = await db
         .select({ agent: schema.agent })
         .from(schema.agent)
         .innerJoin(

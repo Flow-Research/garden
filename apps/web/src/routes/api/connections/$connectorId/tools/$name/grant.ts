@@ -1,6 +1,7 @@
 import { Result, TaggedError } from 'better-result'
 import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import {
   connectionGrantBodySchema,
   parseJsonBody,
@@ -13,8 +14,7 @@ import {
   resolveWorkspaceId,
   unauthorized,
 } from '@/lib/server/control-plane'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { schema } from '@/lib/server/db'
 
 type PermissionTrustLevel = 'auto' | 'allow' | 'ask'
 
@@ -52,8 +52,10 @@ export const Route = createFileRoute(
 )({
   server: {
     handlers: {
-      PATCH: async ({ request, params }) => {
-        const session = await requireSession(request)
+      PATCH: async ({ context, request, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
@@ -69,7 +71,7 @@ export const Route = createFileRoute(
           )
         }
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
 
         const agentResult = await Result.tryPromise({
           try: async () =>

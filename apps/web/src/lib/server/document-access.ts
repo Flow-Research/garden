@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { Result, TaggedError } from 'better-result'
-import { getDb, schema } from '@/lib/server/db'
-import { appEnv } from '@/lib/server/env'
+import { schema } from '@/lib/server/db'
+import type { AppRequestContext } from '@/lib/server/context'
 import {
   forbidden,
   notFound,
@@ -14,13 +14,13 @@ class DocumentAccessError extends TaggedError('DocumentAccessError')<{
 }>() {}
 
 export async function getChatDocumentAccess(
-  request: Request,
+  appContext: AppRequestContext,
   documentId: string,
 ) {
-  const session = await requireSession(request)
+  const session = await requireSession(appContext)
   if (!session) return unauthorized()
 
-  const db = getDb(appEnv)
+  const db = await appContext.db()
   const rowResult = await Result.tryPromise({
     try: async () => {
       const [row] = await db

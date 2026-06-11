@@ -59,7 +59,7 @@ async function sweepStaleApprovals(
   env: AppEnv,
   now: Date,
 ): Promise<ResultValue<number, IssueRunReconcilerError>> {
-  const db = getDb(env)
+  const db = await getDb(env)
   const staleBefore = new Date(now.getTime() - APPROVAL_TTL_MS)
   const rowsResult = await Result.tryPromise({
     try: async () => {

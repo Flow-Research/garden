@@ -1,5 +1,6 @@
 import { parseServerEnv } from '@garden/env'
-import { createAuth } from './lib/auth'
+import { db } from '@garden/db'
+import { createBetterAuth } from './lib/auth/instance'
 
 const env = parseServerEnv({
   DATABASE_URL: process.env.DATABASE_URL,
@@ -24,8 +25,7 @@ if (!env.BETTER_AUTH_SECRET || !env.BETTER_AUTH_URL) {
   )
 }
 
-export const auth = createAuth({
-  DATABASE_URL: env.DATABASE_URL,
+export const auth = createBetterAuth(db, {
   BETTER_AUTH_SECRET: env.BETTER_AUTH_SECRET,
   BETTER_AUTH_URL: env.BETTER_AUTH_URL,
 })

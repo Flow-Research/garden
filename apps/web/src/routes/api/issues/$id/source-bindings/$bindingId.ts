@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   badRequest,
@@ -23,8 +24,10 @@ export const Route = createFileRoute(
 )({
   server: {
     handlers: {
-      DELETE: async ({ request, params }) => {
-        const db = getDb(appEnv)
+      DELETE: async ({ context, params }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const db = await appContext.db()
         const [binding] = await db
           .select({ workspaceId: schema.issueSourceBinding.workspaceId })
           .from(schema.issueSourceBinding)
@@ -37,7 +40,7 @@ export const Route = createFileRoute(
           .limit(1)
         if (!binding) return notFound('Source binding not found')
 
-        const access = await requireWorkspaceAccess(request, binding.workspaceId)
+        const access = await requireWorkspaceAccess(appContext, binding.workspaceId)
         if (access instanceof Response) return access
 
         const removeResult = await removeSourceBinding({

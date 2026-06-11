@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { requireAppRequestContext } from '@/lib/server/context'
 import { Result, matchError } from 'better-result'
 import { and, eq } from 'drizzle-orm'
 import {
@@ -11,7 +12,7 @@ import {
   parseSearchParams,
 } from '@/lib/server/validation/github'
 import { syncCapabilities } from '@/lib/server/capability-sync'
-import { getDb, schema } from '@/lib/server/db'
+import { schema, type Db } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   ConnectorCallbackDatabaseError,
@@ -44,7 +45,7 @@ function redirectToConnections(request: Request, flowId?: string | null) {
   })
 }
 
-type GitHubSetupDb = ReturnType<typeof getDb>
+type GitHubSetupDb = Db
 
 type GitHubSetupOutcome = {
   status: ConnectorCallbackStatus
@@ -196,7 +197,9 @@ async function finishGitHubSetupCallback(args: {
 export const Route = createFileRoute('/api/github/setup')({
   server: {
     handlers: {
-      GET: async ({ request }) => {
+      GET: async ({ context, request }) => {
+
+        const appContext = requireAppRequestContext(context)
         const query = parseSearchParams(
           request,
           githubSetupQuerySchema,
@@ -218,12 +221,12 @@ export const Route = createFileRoute('/api/github/setup')({
         if (!workspaceId) return badRequest('Workspace not found')
 
         if (!isDevelopmentEnv()) {
-          const session = await requireSession(request)
+          const session = await requireSession(appContext)
           if (!session) return unauthorized()
           if (session.user.id !== userId) return unauthorized()
         }
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const [membership] = await db
           .select({ id: schema.member.id })
           .from(schema.member)

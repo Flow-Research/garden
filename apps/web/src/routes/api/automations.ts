@@ -1,6 +1,7 @@
 import { and, desc, eq, ne } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
-import { getDb, schema } from '@/lib/server/db'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   automationErr,
@@ -23,12 +24,14 @@ import {
 export const Route = createFileRoute('/api/automations')({
   server: {
     handlers: {
-      GET: async ({ request }) => {
-        const context = await requireWorkspaceContext(request, {
+      GET: async ({ context, request }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const workspaceContext = await requireWorkspaceContext(appContext, {
           missingWorkspaceResponse: () =>
             automationOk({ automations: [] }),
         })
-        if (context instanceof Response) return context
+        if (workspaceContext instanceof Response) return workspaceContext
 
         const searchResult = parseSearchParams(
           request,
@@ -38,9 +41,9 @@ export const Route = createFileRoute('/api/automations')({
         if (searchResult.isErr())
           return automationErr(searchResult.error.message)
 
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const conditions = [
-          eq(schema.automation.workspaceId, context.workspaceId),
+          eq(schema.automation.workspaceId, workspaceContext.workspaceId),
         ]
         if (searchResult.value.status) {
           conditions.push(
@@ -73,9 +76,11 @@ export const Route = createFileRoute('/api/automations')({
           automations: rows.map(toAutomationListItem),
         })
       },
-      POST: async ({ request }) => {
-        const context = await requireWorkspaceContext(request)
-        if (context instanceof Response) return context
+      POST: async ({ context, request }) => {
+
+        const appContext = requireAppRequestContext(context)
+        const workspaceContext = await requireWorkspaceContext(appContext)
+        if (workspaceContext instanceof Response) return workspaceContext
 
         const bodyResult = await parseJsonBody(
           request,
@@ -92,7 +97,7 @@ export const Route = createFileRoute('/api/automations')({
 
         const agentResult = await ensureAgentInWorkspace({
           env: appEnv,
-          workspaceId: context.workspaceId,
+          workspaceId: workspaceContext.workspaceId,
           agentId: body.assignee_agent_id,
         })
         if (agentResult.isErr()) return automationErr(agentResult.error)
@@ -112,13 +117,13 @@ export const Route = createFileRoute('/api/automations')({
 
         const automationId = crypto.randomUUID()
         const triggerId = triggerInput ? crypto.randomUUID() : null
-        const db = getDb(appEnv)
+        const db = await appContext.db()
         const [automation, trigger] = await db.transaction(async (tx) => {
           const [automationRow] = await tx
             .insert(schema.automation)
             .values({
               id: automationId,
-              workspaceId: context.workspaceId,
+              workspaceId: workspaceContext.workspaceId,
               projectId: body.project_id ?? null,
               title: body.title,
               description: body.description ?? null,
@@ -126,7 +131,7 @@ export const Route = createFileRoute('/api/automations')({
               priority: body.priority ?? 'medium',
               status: automationStatus,
               concurrencyPolicy: body.concurrency_policy ?? 'skip',
-              createdBy: context.session.user.id,
+              createdBy: workspaceContext.session.user.id,
 
               systemPrompt: body.system_prompt ?? null,
               inputSchema: body.input_schema ?? null,
