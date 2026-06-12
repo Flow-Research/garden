@@ -71,6 +71,26 @@ describe('LoginPage', () => {
     })
   })
 
+  it('prefills and locks invite email during sign-up', async () => {
+    const user = userEvent.setup()
+    renderLoginPage({
+      initialEmail: 'invitee@example.com',
+      initialMode: 'signup',
+      invitationWorkspaceName: 'Garden Dev',
+      lockedEmail: true,
+    })
+
+    const emailInput = screen.getByLabelText(/email/i)
+    expect(emailInput).toHaveValue('invitee@example.com')
+    expect(emailInput).toHaveAttribute('readonly')
+    expect(
+      screen.getByText('Use this invite email to join Garden Dev.'),
+    ).toBeInTheDocument()
+
+    await user.type(emailInput, 'wrong@example.com')
+    expect(emailInput).toHaveValue('invitee@example.com')
+  })
+
   it('switches to sign-up mode and creates an account', async () => {
     const user = userEvent.setup()
     const { onSuccess } = renderLoginPage({ initialMode: 'signup' })
@@ -88,6 +108,20 @@ describe('LoginPage', () => {
       })
       expect(onSuccess).toHaveBeenCalledTimes(1)
     })
+  })
+
+  it('toggles password visibility', async () => {
+    const user = userEvent.setup()
+    renderLoginPage()
+
+    const passwordInput = screen.getByLabelText(/^password$/i)
+    expect(passwordInput).toHaveAttribute('type', 'password')
+
+    await user.click(screen.getByRole('button', { name: /show password/i }))
+    expect(passwordInput).toHaveAttribute('type', 'text')
+
+    await user.click(screen.getByRole('button', { name: /hide password/i }))
+    expect(passwordInput).toHaveAttribute('type', 'password')
   })
 
   it('shows the auth error when Better Auth rejects the request', async () => {

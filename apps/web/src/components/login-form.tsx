@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { cn } from '@garden/ui/lib/utils'
 import { Button } from '@garden/ui/components/ui/button'
 import { Card, CardContent } from '@garden/ui/components/ui/card'
@@ -10,13 +11,15 @@ import {
 } from '@garden/ui/components/ui/field'
 import { Input } from '@garden/ui/components/ui/input'
 import { BrandIcon } from '@garden/ui/components/common/brand-icon'
-import { ArrowRightIcon, Loader2Icon } from 'lucide-react'
+import { ArrowRightIcon, EyeIcon, EyeOffIcon, Loader2Icon } from 'lucide-react'
 
 export function LoginForm({
   className,
   mode,
   name,
   email,
+  emailReadonly,
+  invitationWorkspaceName,
   password,
   error,
   loading,
@@ -29,6 +32,8 @@ export function LoginForm({
   mode: 'signin' | 'signup'
   name: string
   email: string
+  emailReadonly?: boolean
+  invitationWorkspaceName?: string
   password: string
   error?: string
   loading?: boolean
@@ -38,10 +43,13 @@ export function LoginForm({
   onPasswordChange: (value: string) => void
   onToggleMode: () => void
 }) {
+  const [showPassword, setShowPassword] = useState(false)
   const isSignup = mode === 'signup'
   const title = isSignup ? 'Create your workspace account' : 'Welcome back'
   const subtitle = isSignup
-    ? 'Start with email and password. The workspace opens right after.'
+    ? invitationWorkspaceName
+      ? `Use this invite email to join ${invitationWorkspaceName}.`
+      : 'Start with email and password. The workspace opens right after.'
     : 'Sign in to pick up where the workspace left off.'
 
   return (
@@ -85,22 +93,44 @@ export function LoginForm({
                   onChange={(event) => onEmailChange(event.target.value)}
                   placeholder="you@company.com"
                   autoComplete="email"
+                  readOnly={emailReadonly}
                   required
                 />
+                {emailReadonly ? (
+                  <FieldDescription>
+                    This email comes from your workspace invitation.
+                  </FieldDescription>
+                ) : null}
               </Field>
 
               <Field>
                 <FieldLabel htmlFor="password">Password</FieldLabel>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(event) => onPasswordChange(event.target.value)}
-                  placeholder="Password"
-                  autoComplete={isSignup ? 'new-password' : 'current-password'}
-                  minLength={8}
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(event) => onPasswordChange(event.target.value)}
+                    placeholder="Password"
+                    autoComplete={isSignup ? 'new-password' : 'current-password'}
+                    minLength={8}
+                    required
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                    onClick={() => setShowPassword((current) => !current)}
+                    className="absolute right-2 top-1/2 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {showPassword ? (
+                      <EyeOffIcon className="size-4" />
+                    ) : (
+                      <EyeIcon className="size-4" />
+                    )}
+                  </button>
+                </div>
               </Field>
 
               <FieldError>{error}</FieldError>

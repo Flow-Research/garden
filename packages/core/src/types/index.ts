@@ -53,7 +53,6 @@ export type {
 } from './issue-work-product'
 export type {
   Workspace,
-  WorkspaceRepo,
   Member,
   MemberRole,
   User,
@@ -92,5 +91,3 @@ export type {
   UpdateProjectRequest,
   ListProjectsResponse,
 } from './project'
-export type {
-} from './pin'

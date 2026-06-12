@@ -7,8 +7,6 @@ import { workspaceKeys } from '@/lib/workspace/queries'
 import { sanitizeRedirectTarget } from '@/lib/redirect'
 import { getAuthBootstrap } from '@/lib/server/auth-bootstrap'
 
-const PREFERRED_WORKSPACE_KEY = 'garden_workspace_id'
-
 function scheduleClientStoreHydration(callback: () => void) {
   if (typeof queueMicrotask === 'function') {
     queueMicrotask(callback)
@@ -35,7 +33,7 @@ export const Route = createFileRoute('/_authenticated')({
 })
 
 function AuthenticatedLayout() {
-  const { user, workspaces } = Route.useLoaderData()
+  const { preferredWorkspaceId, user, workspaces } = Route.useLoaderData()
   const qc = useQueryClient()
   const hydratedKey = useRef('')
 
@@ -48,9 +46,14 @@ function AuthenticatedLayout() {
       scheduleClientStoreHydration(() => {
         qc.setQueryData(workspaceKeys.list(), workspaces)
         useAuthStore.setState({ user })
-        if (!useWorkspaceStore.getState().workspace) {
-          const preferred = window.localStorage.getItem(PREFERRED_WORKSPACE_KEY)
-          useWorkspaceStore.getState().hydrateWorkspace(workspaces, preferred)
+        const currentWorkspace = useWorkspaceStore.getState().workspace
+        const shouldHydratePreferred =
+          preferredWorkspaceId && currentWorkspace?.id !== preferredWorkspaceId
+
+        if (!currentWorkspace || shouldHydratePreferred) {
+          useWorkspaceStore
+            .getState()
+            .hydrateWorkspace(workspaces, preferredWorkspaceId)
         }
       })
     }

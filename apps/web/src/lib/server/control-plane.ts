@@ -137,7 +137,6 @@ export function toWorkspace(
       !Array.isArray(record.settings)
         ? record.settings
         : {},
-    repos: [],
     issue_prefix: 'ACC',
     created_at: created,
     updated_at: record.updatedAt
@@ -178,7 +177,6 @@ export function toWorkspaceFromOrganization(
       !Array.isArray(record.settings)
         ? (record.settings as Record<string, unknown>)
         : {},
-    repos: [],
     issue_prefix: 'ACC',
     created_at: created,
     updated_at: record.updatedAt

@@ -7,6 +7,7 @@ import { toCoreUser } from '@/lib/server/session'
 import type { User, Workspace } from '@garden/core/types'
 
 export interface AuthBootstrap {
+  preferredWorkspaceId: string | null
   user: User
   workspaces: Workspace[]
 }
@@ -36,8 +37,17 @@ const rawGetAuthBootstrap = createServerFn({ method: 'GET' }).handler(
     const organizations = await auth.api.listOrganizations({
       headers: appContext.request.headers,
     })
+    const requestedWorkspaceId = new URL(appContext.request.url).searchParams.get(
+      'workspace_id',
+    )
+    const preferredWorkspaceId = organizations.some(
+      (organization) => organization.id === requestedWorkspaceId,
+    )
+      ? requestedWorkspaceId
+      : null
 
     return {
+      preferredWorkspaceId,
       user: toCoreUser({
         id: userRow.id,
         email: userRow.email,

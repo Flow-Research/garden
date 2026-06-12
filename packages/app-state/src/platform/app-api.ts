@@ -29,7 +29,6 @@ import type {
   UpdateMeRequest,
   UpdateMemberRequest,
   Workspace,
-  WorkspaceRepo,
 } from '@garden/core/types'
 
 export type Api = {
@@ -55,7 +54,6 @@ export type Api = {
       context?: string
       description?: string
       name?: string
-      repos?: WorkspaceRepo[]
       settings?: Record<string, unknown>
     },
   ) => Promise<Workspace>

@@ -9,7 +9,6 @@ import type {
   Skill,
   UpdateMemberRequest,
   Workspace,
-  WorkspaceRepo,
 } from '@garden/core/types'
 import { getApiTransport } from './state'
 
@@ -36,7 +35,6 @@ export function updateWorkspace(
     description?: string
     context?: string
     settings?: Record<string, unknown>
-    repos?: WorkspaceRepo[]
   },
 ): Promise<Workspace> {
   return getApiTransport().request(`/api/workspaces/${id}`, {

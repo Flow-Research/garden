@@ -25,6 +25,8 @@ export const Route = createFileRoute('/_authenticated/workspace')({
         : undefined,
     connector_id:
       typeof search.connector_id === 'string' ? search.connector_id : undefined,
+    workspace_id:
+      typeof search.workspace_id === 'string' ? search.workspace_id : undefined,
   }),
   component: WorkspaceRoute,
 })

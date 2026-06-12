@@ -5,42 +5,52 @@ import { LoginForm } from '@/components/login-form'
 
 export function LoginPage({
   onSuccess,
+  initialEmail,
   initialMode = 'signin',
+  invitationWorkspaceName,
+  lockedEmail = false,
 }: {
   onSuccess: () => void
+  initialEmail?: string
   initialMode?: 'signin' | 'signup'
+  invitationWorkspaceName?: string
+  lockedEmail?: boolean
 }) {
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode)
   const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(initialEmail ?? '')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
     setLoading(true)
     setError('')
-    try {
-      const result =
-        mode === 'signin'
-          ? await authClient.signIn.email({ email, password })
-          : await authClient.signUp.email({ name, email, password })
 
-      if (result?.error) {
-        throw new Error(result.error.message || 'Authentication failed')
-      }
+    const request =
+      mode === 'signin'
+        ? authClient.signIn.email({ email, password })
+        : authClient.signUp.email({ name, email, password })
 
-      toast.success(mode === 'signin' ? 'Signed in' : 'Account created')
-      onSuccess()
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Authentication failed'
-      setError(message)
-      toast.error(message)
-    } finally {
-      setLoading(false)
-    }
+    void request
+      .then((result) => {
+        if (result?.error) {
+          const message = result.error.message || 'Authentication failed'
+          setError(message)
+          toast.error(message)
+          return
+        }
+
+        toast.success(mode === 'signin' ? 'Signed in' : 'Account created')
+        onSuccess()
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : 'Authentication failed'
+        setError(message)
+        toast.error(message)
+      })
+      .finally(() => setLoading(false))
   }
 
   return (
@@ -55,7 +65,9 @@ export function LoginPage({
         loading={loading}
         onSubmit={handleSubmit}
         onNameChange={setName}
-        onEmailChange={setEmail}
+        emailReadonly={lockedEmail}
+        invitationWorkspaceName={invitationWorkspaceName}
+        onEmailChange={lockedEmail ? () => undefined : setEmail}
         onPasswordChange={setPassword}
         onToggleMode={() =>
           setMode((current) => (current === 'signin' ? 'signup' : 'signin'))

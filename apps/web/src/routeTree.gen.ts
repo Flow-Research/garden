@@ -53,6 +53,7 @@ import { Route as ApiChatThreadsRouteImport } from './routes/api/chat/threads'
 import { Route as ApiAutomationsIdRouteImport } from './routes/api/automations/$id'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiAgentsIdRouteImport } from './routes/api/agents/$id'
+import { Route as AuthenticatedInvitationsIdRouteImport } from './routes/_authenticated/invitations/$id'
 import { Route as AuthenticatedAutomationsIdRouteImport } from './routes/_authenticated/automations/$id'
 import { Route as ApiWorkspacesIdMembersRouteImport } from './routes/api/workspaces/$id/members'
 import { Route as ApiWorkspacesIdInvitationsRouteImport } from './routes/api/workspaces/$id/invitations'
@@ -324,6 +325,12 @@ const ApiAgentsIdRoute = ApiAgentsIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => ApiAgentsRoute,
 } as any)
+const AuthenticatedInvitationsIdRoute =
+  AuthenticatedInvitationsIdRouteImport.update({
+    id: '/invitations/$id',
+    path: '/invitations/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedAutomationsIdRoute =
   AuthenticatedAutomationsIdRouteImport.update({
     id: '/automations/$id',
@@ -589,6 +596,7 @@ export interface FileRoutesByFullPath {
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
   '/automations/$id': typeof AuthenticatedAutomationsIdRoute
+  '/invitations/$id': typeof AuthenticatedInvitationsIdRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/automations/$id': typeof ApiAutomationsIdRouteWithChildren
@@ -680,6 +688,7 @@ export interface FileRoutesByTo {
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
   '/automations/$id': typeof AuthenticatedAutomationsIdRoute
+  '/invitations/$id': typeof AuthenticatedInvitationsIdRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/automations/$id': typeof ApiAutomationsIdRouteWithChildren
@@ -773,6 +782,7 @@ export interface FileRoutesById {
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
   '/_authenticated/automations/$id': typeof AuthenticatedAutomationsIdRoute
+  '/_authenticated/invitations/$id': typeof AuthenticatedInvitationsIdRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/automations/$id': typeof ApiAutomationsIdRouteWithChildren
@@ -866,6 +876,7 @@ export interface FileRouteTypes {
     | '/api/skills'
     | '/api/workspaces'
     | '/automations/$id'
+    | '/invitations/$id'
     | '/api/agents/$id'
     | '/api/auth/$'
     | '/api/automations/$id'
@@ -957,6 +968,7 @@ export interface FileRouteTypes {
     | '/api/skills'
     | '/api/workspaces'
     | '/automations/$id'
+    | '/invitations/$id'
     | '/api/agents/$id'
     | '/api/auth/$'
     | '/api/automations/$id'
@@ -1049,6 +1061,7 @@ export interface FileRouteTypes {
     | '/api/skills'
     | '/api/workspaces'
     | '/_authenticated/automations/$id'
+    | '/_authenticated/invitations/$id'
     | '/api/agents/$id'
     | '/api/auth/$'
     | '/api/automations/$id'
@@ -1469,6 +1482,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAgentsIdRouteImport
       parentRoute: typeof ApiAgentsRoute
     }
+    '/_authenticated/invitations/$id': {
+      id: '/_authenticated/invitations/$id'
+      path: '/invitations/$id'
+      fullPath: '/invitations/$id'
+      preLoaderRoute: typeof AuthenticatedInvitationsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/automations/$id': {
       id: '/_authenticated/automations/$id'
       path: '/automations/$id'
@@ -1797,12 +1817,14 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteChildren {
   AuthenticatedWorkspaceRoute: typeof AuthenticatedWorkspaceRoute
   AuthenticatedAutomationsIdRoute: typeof AuthenticatedAutomationsIdRoute
+  AuthenticatedInvitationsIdRoute: typeof AuthenticatedInvitationsIdRoute
   AuthenticatedAutomationsIndexRoute: typeof AuthenticatedAutomationsIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedWorkspaceRoute: AuthenticatedWorkspaceRoute,
   AuthenticatedAutomationsIdRoute: AuthenticatedAutomationsIdRoute,
+  AuthenticatedInvitationsIdRoute: AuthenticatedInvitationsIdRoute,
   AuthenticatedAutomationsIndexRoute: AuthenticatedAutomationsIndexRoute,
 }
 

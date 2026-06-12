@@ -1,11 +1,6 @@
 export type MemberRole = 'owner' | 'admin' | 'member'
 export type InvitationStatus = 'pending' | 'accepted' | 'rejected' | 'canceled'
 
-export interface WorkspaceRepo {
-  url: string
-  description: string
-}
-
 export interface Workspace {
   id: string
   name: string
@@ -13,7 +8,6 @@ export interface Workspace {
   description: string | null
   context: string | null
   settings: Record<string, unknown>
-  repos: WorkspaceRepo[]
   issue_prefix: string
   created_at: string
   updated_at: string

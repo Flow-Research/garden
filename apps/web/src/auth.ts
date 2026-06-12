@@ -16,6 +16,7 @@ const env = parseServerEnv({
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   SLACK_CLIENT_ID: process.env.SLACK_CLIENT_ID,
   SLACK_CLIENT_SECRET: process.env.SLACK_CLIENT_SECRET,
+  RESEND_API_KEY: process.env.RESEND_API_KEY,
   ENVIRONMENT: process.env.ENVIRONMENT,
 })
 
@@ -28,4 +29,5 @@ if (!env.BETTER_AUTH_SECRET || !env.BETTER_AUTH_URL) {
 export const auth = createBetterAuth(db, {
   BETTER_AUTH_SECRET: env.BETTER_AUTH_SECRET,
   BETTER_AUTH_URL: env.BETTER_AUTH_URL,
+  RESEND_API_KEY: env.RESEND_API_KEY,
 })

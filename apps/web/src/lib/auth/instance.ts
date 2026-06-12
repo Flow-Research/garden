@@ -23,6 +23,7 @@ import {
   verification,
 } from '@garden/db/schema'
 import { syncCapabilities } from '@/lib/server/capability-sync'
+import { sendOrganizationInvitationEmail } from '@/lib/server/email/invitation'
 import {
   ConnectorCallbackDatabaseError,
   recordConnectorCallbackEvent,
@@ -41,6 +42,7 @@ export type GardenAuthEnv = Pick<
   | 'GOOGLE_CLIENT_SECRET'
   | 'SLACK_CLIENT_ID'
   | 'SLACK_CLIENT_SECRET'
+  | 'RESEND_API_KEY'
 >
 
 type GardenAuthRuntime = GardenAuthEnv & {
@@ -415,6 +417,13 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
           owner: gardenOwnerRole,
           admin: gardenAdminRole,
           member: gardenMemberRole,
+        },
+        sendInvitationEmail: async (data) => {
+          await sendOrganizationInvitationEmail({
+            baseURL,
+            data,
+            env,
+          })
         },
         schema: {
           session: {

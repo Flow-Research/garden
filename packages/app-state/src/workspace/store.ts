@@ -36,7 +36,6 @@ interface WorkspaceActions {
 export type WorkspaceStore = WorkspaceState & WorkspaceActions
 
 let workspaceApi: Pick<Api, 'setWorkspaceId'> | null = null
-let workspaceStorage: StorageAdapter | undefined
 
 function getWorkspaceApi() {
   if (!workspaceApi) throw new Error('Workspace store not configured')
@@ -48,7 +47,7 @@ export function configureWorkspaceStore(
   options?: WorkspaceStoreOptions,
 ) {
   workspaceApi = api
-  workspaceStorage = options?.storage
+  void options
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
@@ -58,7 +57,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
 
   hydrateWorkspace: (wsList, preferredWorkspaceId) => {
     const api = getWorkspaceApi()
-    const storage = workspaceStorage
     const nextWorkspace =
       (preferredWorkspaceId
         ? wsList.find((item) => item.id === preferredWorkspaceId)
@@ -70,7 +68,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
       api.setWorkspaceId(null)
       setCurrentWorkspaceId(null)
       rehydrateAllWorkspaceStores()
-      storage?.removeItem('garden_workspace_id')
       set({ workspace: null })
       return null
     }
@@ -78,7 +75,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
     api.setWorkspaceId(nextWorkspace.id)
     setCurrentWorkspaceId(nextWorkspace.id)
     rehydrateAllWorkspaceStores()
-    storage?.setItem('garden_workspace_id', nextWorkspace.id)
     set({ workspace: nextWorkspace })
     logger.debug('hydrate workspace', nextWorkspace.name, nextWorkspace.id)
 
@@ -87,12 +83,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
 
   switchWorkspace: (ws) => {
     const api = getWorkspaceApi()
-    const storage = workspaceStorage
     logger.info('switching to', ws.id)
     api.setWorkspaceId(ws.id)
     setCurrentWorkspaceId(ws.id)
     rehydrateAllWorkspaceStores()
-    storage?.setItem('garden_workspace_id', ws.id)
     set({ workspace: ws })
   },
 
