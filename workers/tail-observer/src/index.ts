@@ -88,8 +88,9 @@ function shouldLogSummary(summary: TailSummary) {
  * Emits observer summaries with a dashboard-readable top-level message. Before
  * this, Cloudflare's Tail Worker invocation rows rendered as repeated "tail"
  * entries, which hid the producer route/error signal unless every row was
- * expanded. After this, persisted observer rows carry the producer, route,
- * outcome, and first app event/exception in the row text. Reference: Workers
+ * expanded. Persisted observer rows carry the route, outcome, and first app
+ * event/exception in the row text while producerService stays filterable as a
+ * structured field. Reference: Workers
  * Logs structured JSON guidance says object logs are indexed and `message`
  * remains the human-readable field.
  */
@@ -124,9 +125,7 @@ function summaryMessage(
           .join(' ')
       : event.outcome
 
-  return [event.scriptName ?? 'unknown-worker', route, signal]
-    .filter(Boolean)
-    .join(' | ')
+  return [route, signal].filter(Boolean).join(' | ')
 }
 
 function extractGardenLogs(event: TraceItem): GardenStructuredLog[] {
