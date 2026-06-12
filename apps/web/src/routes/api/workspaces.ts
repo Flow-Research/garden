@@ -33,59 +33,61 @@ type CreateWorkspaceInput = {
   db: Db
   description?: string | null
   name: string
-  sessionId: string
   slug: string
   userId: string
 }
 
-async function createWorkspaceWithGarden(input: CreateWorkspaceInput) {
+type WorkspaceOrganizationAuth = {
+  api: {
+    createOrganization: (args: {
+      headers: Headers
+      body: {
+        name: string
+        slug: string
+        description?: string
+        context?: string
+      }
+    }) => Promise<unknown>
+  }
+}
+
+/**
+ * Creates Garden-owned default records after Better Auth creates the workspace
+ * organization and owner membership. Before this, the route inserted Better Auth
+ * organization/member rows by hand, bypassing organization plugin hooks and
+ * active-organization session handling. Better Auth's organization create API now
+ * owns those auth tables; this helper only adds Garden-specific data that Better
+ * Auth does not know about: issue prefix, default Garden agent, and bundled
+ * skills. Reference: Better Auth organization plugin createOrganization route.
+ */
+async function finishGardenWorkspaceCreate(input: CreateWorkspaceInput) {
   const db = input.db
-  const transactionResult = await Result.tryPromise({
+  const result = await Result.tryPromise({
     try: async () =>
       await db.transaction(async (tx) => {
-        const [existingWorkspace] = await tx
-          .select({ id: schema.organization.id })
-          .from(schema.organization)
+        const now = new Date()
+        const agentId = crypto.randomUUID()
+        const [workspace] = await tx
+          .update(schema.organization)
+          .set({
+            issuePrefix: deriveIssuePrefix(input.name),
+            updatedAt: now,
+          })
           .where(eq(schema.organization.slug, input.slug))
-          .limit(1)
+          .returning()
 
-        if (existingWorkspace) {
+        if (!workspace) {
           return Result.err(
             new WorkspaceCreateError({
-              message: 'Workspace slug already exists',
-              status: 400,
+              message: 'Workspace was not created',
+              status: 500,
             }),
           )
         }
 
-        const now = new Date()
-        const workspaceId = crypto.randomUUID()
-        const agentId = crypto.randomUUID()
-        const [workspace] = await tx
-          .insert(schema.organization)
-          .values({
-            id: workspaceId,
-            name: input.name,
-            slug: input.slug,
-            issuePrefix: deriveIssuePrefix(input.name),
-            description: input.description ?? null,
-            context: input.context ?? null,
-            createdAt: now,
-            updatedAt: now,
-          })
-          .returning()
-
-        await tx.insert(schema.member).values({
-          id: crypto.randomUUID(),
-          organizationId: workspaceId,
-          userId: input.userId,
-          role: 'owner',
-          createdAt: now,
-        })
-
         await tx.insert(schema.agent).values({
           id: agentId,
-          workspaceId,
+          workspaceId: workspace.id,
           ownerUserId: input.userId,
           name: 'Garden',
           roleTitle: GARDEN_DESCRIPTION,
@@ -97,40 +99,90 @@ async function createWorkspaceWithGarden(input: CreateWorkspaceInput) {
         })
 
         await seedBuiltinSkills(
-          workspaceId,
+          workspace.id,
           tx as unknown as Db,
           input.bucket,
         )
 
-        await tx
-          .update(schema.session)
-          .set({
-            activeOrganizationId: workspaceId,
-            updatedAt: now,
-          })
-          .where(eq(schema.session.id, input.sessionId))
-
-        return Result.ok(workspace!)
+        return Result.ok(workspace)
       }),
     catch: (cause) =>
       cause instanceof WorkspaceCreateError
         ? cause
         : new WorkspaceCreateError({
-            message: 'Failed to create workspace',
+            message: 'Failed to finish workspace setup',
             status: 500,
             cause,
           }),
   })
 
-  if (transactionResult.isErr()) return Result.err(transactionResult.error)
-  return transactionResult.value
+  if (result.isErr()) return Result.err(result.error)
+  return result.value
+}
+
+/**
+ * Creates a workspace through Better Auth's organization API, then attaches the
+ * Garden domain defaults. This keeps the product language as "workspace" while
+ * letting Better Auth own organization creation, owner membership, and active
+ * organization session updates.
+ */
+async function createWorkspaceFromOrganizationApi(
+  input: CreateWorkspaceInput & {
+    auth: WorkspaceOrganizationAuth
+    headers: Headers
+  },
+) {
+  const createResult = await Result.tryPromise({
+    try: async () =>
+      await input.auth.api.createOrganization({
+        headers: input.headers,
+        body: {
+          name: input.name,
+          slug: input.slug,
+          description: input.description ?? undefined,
+          context: input.context ?? undefined,
+        },
+      }),
+    catch: (cause) =>
+      new WorkspaceCreateError({
+        message: readWorkspaceCreateErrorMessage(cause),
+        status: readWorkspaceCreateErrorStatus(cause),
+        cause,
+      }),
+  })
+
+  if (createResult.isErr()) return Result.err(createResult.error)
+
+  return finishGardenWorkspaceCreate(input)
+}
+
+function readWorkspaceCreateErrorMessage(cause: unknown) {
+  if (cause && typeof cause === 'object' && 'message' in cause) {
+    const message = (cause as { message?: unknown }).message
+    if (typeof message === 'string' && message.length > 0) {
+      if (message.toLowerCase().includes('already exists')) {
+        return 'Workspace slug already exists'
+      }
+      return message
+    }
+  }
+
+  return 'Failed to create workspace'
+}
+
+function readWorkspaceCreateErrorStatus(cause: unknown) {
+  if (cause && typeof cause === 'object' && 'status' in cause) {
+    const status = (cause as { status?: unknown }).status
+    if (typeof status === 'number') return status
+  }
+
+  return 500
 }
 
 export const Route = createFileRoute('/api/workspaces')({
   server: {
     handlers: {
       GET: async ({ context, request }) => {
-
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
@@ -145,7 +197,6 @@ export const Route = createFileRoute('/api/workspaces')({
         )
       },
       POST: async ({ context, request }) => {
-
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
@@ -156,7 +207,9 @@ export const Route = createFileRoute('/api/workspaces')({
         )
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
-        const workspaceResult = await createWorkspaceWithGarden({
+        const workspaceResult = await createWorkspaceFromOrganizationApi({
+          auth: await appContext.auth.getAuth(),
+          headers: request.headers,
           bucket: appContext.env.FILES,
           db: await appContext.db(),
           name: body.name,
@@ -164,7 +217,6 @@ export const Route = createFileRoute('/api/workspaces')({
           description: body.description,
           context: body.context,
           userId: session.user.id,
-          sessionId: session.session.id,
         })
         if (workspaceResult.isErr()) {
           return Response.json(

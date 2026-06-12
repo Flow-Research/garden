@@ -18,11 +18,17 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@garden/ui/components/ui/sidebar'
-import { BadgeCheckIcon, LogOutIcon, ShieldIcon } from 'lucide-react'
+import {
+  BadgeCheckIcon,
+  Building2Icon,
+  LogOutIcon,
+  ShieldIcon,
+} from 'lucide-react'
 
 export function NavUser({
   user,
   onAccount,
+  onCreateWorkspace,
   onLogout,
 }: {
   user: {
@@ -31,6 +37,7 @@ export function NavUser({
     avatar?: string | null
   }
   onAccount: () => void
+  onCreateWorkspace: () => void
   onLogout: () => void
 }) {
   const { isMobile } = useSidebar()
@@ -83,6 +90,10 @@ export function NavUser({
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onCreateWorkspace}>
+                <Building2Icon />
+                New workspace
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={onAccount}>
                 <BadgeCheckIcon />
                 Account

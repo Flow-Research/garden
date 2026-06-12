@@ -133,7 +133,7 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
                 >
                   {(field) => (
                     <div className="space-y-1.5">
-                      <Label htmlFor={field.name}>Workspace Name</Label>
+                      <Label htmlFor={field.name}>Workspace name</Label>
                       <Input
                         id={field.name}
                         autoFocus
