@@ -21,24 +21,32 @@ import {
 import {
   BadgeCheckIcon,
   Building2Icon,
+  CheckIcon,
   LogOutIcon,
   ShieldIcon,
 } from 'lucide-react'
+import type { Workspace } from '@garden/core/types'
 
 export function NavUser({
   user,
+  currentWorkspaceId,
   onAccount,
   onCreateWorkspace,
   onLogout,
+  onSwitchWorkspace,
+  workspaces,
 }: {
   user: {
     name: string
     email: string
     avatar?: string | null
   }
+  currentWorkspaceId?: string | null
   onAccount: () => void
   onCreateWorkspace: () => void
   onLogout: () => void
+  onSwitchWorkspace: (workspace: Workspace) => void
+  workspaces: Workspace[]
 }) {
   const { isMobile } = useSidebar()
   const initials = user.name
@@ -90,10 +98,34 @@ export function NavUser({
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuLabel className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                Workspaces
+              </DropdownMenuLabel>
+              {workspaces.length > 0 ? (
+                <div className="max-h-48 overflow-y-auto py-1">
+                  {workspaces.map((workspace) => {
+                    const active = workspace.id === currentWorkspaceId
+                    return (
+                      <DropdownMenuItem
+                        key={workspace.id}
+                        disabled={active}
+                        onClick={() => onSwitchWorkspace(workspace)}
+                      >
+                        <Building2Icon />
+                        <span className="min-w-0 flex-1 truncate">
+                          {workspace.name}
+                        </span>
+                        {active ? <CheckIcon className="ml-auto" /> : null}
+                      </DropdownMenuItem>
+                    )
+                  })}
+                </div>
+              ) : null}
               <DropdownMenuItem onClick={onCreateWorkspace}>
                 <Building2Icon />
                 New workspace
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onAccount}>
                 <BadgeCheckIcon />
                 Account

@@ -14,7 +14,11 @@ import { BrandIcon } from '@garden/ui/components/common/brand-icon'
 import type { ConnectorId } from '@garden/connectors/registry'
 import { listConnections } from '@/lib/api'
 import type { Agent, Skill } from '@garden/core/types'
-import { agentListOptions, skillListOptions } from '@/lib/workspace/queries'
+import {
+  agentListOptions,
+  skillListOptions,
+  workspaceListOptions,
+} from '@/lib/workspace/queries'
 import {
   useSkillsBrowseStore,
   useSkillEditorStore,
@@ -265,6 +269,7 @@ export function WorkspaceSidebar() {
   const { claimWarmSession, sessions } = useAgentSessions()
   const workspace = useWorkspaceStore((state) => state.workspace)
   const clearWorkspace = useWorkspaceStore((state) => state.clearWorkspace)
+  const switchWorkspace = useWorkspaceStore((state) => state.switchWorkspace)
   const openModal = useModalStore((state) => state.open)
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)
@@ -285,6 +290,7 @@ export function WorkspaceSidebar() {
       ? pendingRail.id
       : activeRailId
   const workspaceId = workspace?.id ?? ''
+  const workspaceListQuery = useQuery(workspaceListOptions())
 
   const { data: rawInboxItems = [] } = useQuery({
     ...inboxListOptions(workspaceId),
@@ -393,6 +399,16 @@ export function WorkspaceSidebar() {
     ],
   )
 
+  const handleSwitchWorkspace = useCallback(
+    (nextWorkspace: NonNullable<typeof workspace>) => {
+      if (nextWorkspace.id === workspace?.id) return
+      switchWorkspace(nextWorkspace)
+      queryClient.invalidateQueries()
+      toast.success(`Switched to ${nextWorkspace.name}`)
+    },
+    [queryClient, switchWorkspace, workspace?.id],
+  )
+
   const handleLogout = useCallback(async () => {
     const result = await Result.tryPromise(() => logout())
     if (Result.isError(result)) {
@@ -498,8 +514,11 @@ export function WorkspaceSidebar() {
               email: user?.email ?? 'Signed out',
               avatar: user?.avatar_url ?? null,
             }}
+            currentWorkspaceId={workspace?.id ?? null}
+            workspaces={workspaceListQuery.data ?? []}
             onAccount={openSettings}
             onCreateWorkspace={() => openModal('create-workspace')}
+            onSwitchWorkspace={handleSwitchWorkspace}
             onLogout={() => {
               void handleLogout()
             }}
