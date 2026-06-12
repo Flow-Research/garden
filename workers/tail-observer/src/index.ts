@@ -31,12 +31,6 @@ type TailSummary = {
   path?: string
   status?: number
   colo?: string
-  producerLevel?: string
-  producerComponent?: string
-  producerEvent?: string
-  producerRequestId?: string
-  exceptionName?: string
-  exceptionMessage?: string
   cpuTime?: number
   wallTime?: number
   truncated?: boolean
@@ -77,7 +71,6 @@ export default {
         appEvents,
         exceptions,
         message: summaryMessage(event, appEvents, exceptions),
-        ...summarySignalFields(appEvents, exceptions),
       }
 
       if (shouldLogSummary(summary)) emitSummary(summary)
@@ -120,48 +113,20 @@ function summaryMessage(
   exceptions: Array<{ name: string; message: string }>,
 ) {
   const fields = fetchEventFields(event.event)
-  const route =
-    fields.method && fields.path
-      ? `${fields.method} ${fields.path}`
-      : triggerName(event.event)
-  const signalFields = summarySignalFields(appEvents, exceptions)
-  const signal = signalFields.exceptionMessage
-    ? `${signalFields.exceptionName ?? 'Exception'}: ${signalFields.exceptionMessage}`
-    : [
-        signalFields.producerLevel,
-        signalFields.producerComponent,
-        signalFields.producerEvent,
-      ]
-        .filter(Boolean)
-        .join(' ') || event.outcome
+  const route = fields.method && fields.path ? `${fields.method} ${fields.path}` : triggerName(event.event)
+  const firstAppEvent = appEvents.find((entry) => ERROR_LEVELS.has(entry.level ?? '')) ?? appEvents[0]
+  const firstException = exceptions[0]
+  const signal = firstException
+    ? `${firstException.name}: ${firstException.message}`
+    : firstAppEvent
+      ? [firstAppEvent.level, firstAppEvent.component, firstAppEvent.event]
+          .filter(Boolean)
+          .join(' ')
+      : event.outcome
 
   return [event.scriptName ?? 'unknown-worker', route, signal]
     .filter(Boolean)
     .join(' | ')
-}
-
-function summarySignalFields(
-  appEvents: GardenStructuredLog[],
-  exceptions: Array<{ name: string; message: string }>,
-) {
-  const firstAppEvent =
-    appEvents.find((entry) => ERROR_LEVELS.has(entry.level ?? '')) ?? appEvents[0]
-  const firstException = exceptions[0]
-
-  return {
-    ...(firstAppEvent?.level ? { producerLevel: firstAppEvent.level } : {}),
-    ...(firstAppEvent?.component
-      ? { producerComponent: firstAppEvent.component }
-      : {}),
-    ...(firstAppEvent?.event ? { producerEvent: firstAppEvent.event } : {}),
-    ...(firstAppEvent?.requestId
-      ? { producerRequestId: firstAppEvent.requestId }
-      : {}),
-    ...(firstException?.name ? { exceptionName: firstException.name } : {}),
-    ...(firstException?.message
-      ? { exceptionMessage: firstException.message }
-      : {}),
-  }
 }
 
 function extractGardenLogs(event: TraceItem): GardenStructuredLog[] {
