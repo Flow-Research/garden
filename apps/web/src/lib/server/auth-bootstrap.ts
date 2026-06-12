@@ -40,11 +40,12 @@ const rawGetAuthBootstrap = createServerFn({ method: 'GET' }).handler(
     const requestedWorkspaceId = new URL(appContext.request.url).searchParams.get(
       'workspace_id',
     )
-    const preferredWorkspaceId = organizations.some(
-      (organization) => organization.id === requestedWorkspaceId,
+    const activeOrganizationId = session.session.activeOrganizationId ?? null
+    const preferredWorkspaceId = resolvePreferredWorkspaceId(
+      organizations,
+      requestedWorkspaceId,
+      activeOrganizationId,
     )
-      ? requestedWorkspaceId
-      : null
 
     return {
       preferredWorkspaceId,
@@ -65,6 +66,28 @@ const rawGetAuthBootstrap = createServerFn({ method: 'GET' }).handler(
     }
   },
 )
+
+function resolvePreferredWorkspaceId(
+  organizations: Array<{ id: string }>,
+  requestedWorkspaceId: string | null,
+  activeOrganizationId: string | null,
+) {
+  if (
+    requestedWorkspaceId &&
+    organizations.some((organization) => organization.id === requestedWorkspaceId)
+  ) {
+    return requestedWorkspaceId
+  }
+
+  if (
+    activeOrganizationId &&
+    organizations.some((organization) => organization.id === activeOrganizationId)
+  ) {
+    return activeOrganizationId
+  }
+
+  return null
+}
 
 export const getAuthBootstrap: () => Promise<AuthBootstrap | null> = () =>
   rawGetAuthBootstrap() as Promise<AuthBootstrap | null>
