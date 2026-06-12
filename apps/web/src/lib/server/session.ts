@@ -34,7 +34,10 @@ export function toCoreUser(input: {
  */
 export async function getAuthSession(
   request: Request,
-  env: Pick<AppEnv, 'HYPERDRIVE' | 'BETTER_AUTH_SECRET' | 'BETTER_AUTH_URL'>,
+  env: Pick<
+    AppEnv,
+    'HYPERDRIVE' | 'BETTER_AUTH_SECRET' | 'BETTER_AUTH_URL' | 'RESEND_API_KEY'
+  >,
 ) {
   const auth = await createAuth(env, request)
   const result = await getLoggedAuthSession({

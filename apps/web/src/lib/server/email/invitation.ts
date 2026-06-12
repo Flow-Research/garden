@@ -1,10 +1,12 @@
 import { Resend } from 'resend'
+import { createLogger } from '@garden/observability/console'
 import type { AppEnv } from '@/lib/server/env'
 import { renderInvitationEmailHtml } from '@/lib/server/email/invitation-email'
 
 type InvitationEmailEnv = Pick<AppEnv, 'RESEND_API_KEY'>
 
 const INVITATION_FROM_EMAIL = 'Garden <hello@garden.flowresearch.tech>'
+const logger = createLogger('invitation-email')
 
 type OrganizationInvitationEmailData = {
   id: string
@@ -62,6 +64,14 @@ export async function sendOrganizationInvitationEmail({
   })
 
   if (response.error) {
+    logger.error('send_failed', {
+      errorMessage: response.error.message,
+      errorName: response.error.name,
+      invitationId: data.id,
+      provider: 'resend',
+      statusCode: response.error.statusCode ?? null,
+      toDomain: readEmailDomain(data.email),
+    })
     throw new Error(
       `Resend invitation email failed: ${response.error.name} ${response.error.statusCode ?? 'unknown'} ${response.error.message}`,
     )
@@ -128,6 +138,10 @@ function renderInvitationEmailText({
   if (expiresAt) lines.push(`Expires: ${expiresAt}`)
 
   return lines.join('\n')
+}
+
+function readEmailDomain(email: string) {
+  return email.split('@')[1]?.toLowerCase() ?? 'unknown'
 }
 
 function readRequiredEnv(value: string | undefined, name: string) {

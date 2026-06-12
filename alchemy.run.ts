@@ -183,6 +183,9 @@ export const web = await TanStackStart('web', {
     }),
     FILES: files,
     HYPERDRIVE: database,
+    DATABASE_URL: alchemy.secret.env.DATABASE_URL,
+    BETTER_AUTH_SECRET: alchemy.secret.env.BETTER_AUTH_SECRET,
+    RESEND_API_KEY: alchemy.secret.env.RESEND_API_KEY,
     LOADER: WorkerLoader(),
     BROWSER: BrowserRendering(),
     AI: Ai(),
@@ -199,6 +202,13 @@ export const web = await TanStackStart('web', {
       'GITHUB_APP_SLUG',
       'GOOGLE_CLIENT_ID',
       'SLACK_CLIENT_ID',
+    ]),
+    ...optionalSecretBindings([
+      'GITHUB_CLIENT_SECRET',
+      'GITHUB_APP_PRIVATE_KEY',
+      'GITHUB_WEBHOOK_SECRET',
+      'GOOGLE_CLIENT_SECRET',
+      'SLACK_CLIENT_SECRET',
     ]),
   },
   dev: {
@@ -256,15 +266,23 @@ function createCiStateStore() {
 }
 
 /**
- * Runtime secrets are intentionally omitted from Alchemy bindings. Workers
- * deployments preserve existing script secrets, so Cloudflare push-to-deploy can
- * run without secret values while dashboard/API-managed secrets stay intact.
+ * Optional public runtime bindings are attached only when available in the
+ * deploy environment. Secret runtime bindings use `alchemy.secret.env` below so
+ * Workers Builds build secrets become Cloudflare Worker secret_text bindings.
  */
 function optionalPlainBindings(names: string[]) {
   return Object.fromEntries(
     names
       .filter((name) => process.env[name])
       .map((name) => [name, plainEnv(name)]),
+  )
+}
+
+function optionalSecretBindings(names: string[]) {
+  return Object.fromEntries(
+    names
+      .filter((name) => process.env[name])
+      .map((name) => [name, alchemy.secret.env(name)]),
   )
 }
 

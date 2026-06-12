@@ -22,7 +22,7 @@ const serverSchema = {
   GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
   SLACK_CLIENT_ID: z.string().min(1).optional(),
   SLACK_CLIENT_SECRET: z.string().min(1).optional(),
-  RESEND_API_KEY: z.string().min(1).optional(),
+  RESEND_API_KEY: z.string().min(1),
   ENVIRONMENT: z
     .enum(['development', 'test', 'production'])
     .default('development'),
