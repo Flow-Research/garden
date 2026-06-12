@@ -8,7 +8,7 @@
     "logs": {
       "enabled": true,
       "persist": true,
-      "invocation_logs": true,
+      "invocation_logs": false,
     },
   },
 }

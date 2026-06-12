@@ -26,6 +26,7 @@ type TailSummary = {
   producerService: string | null
   outcome: string
   trigger: string
+  message: string
   method?: string
   path?: string
   status?: number
@@ -69,9 +70,10 @@ export default {
         truncated: event.truncated,
         appEvents,
         exceptions,
+        message: summaryMessage(event, appEvents, exceptions),
       }
 
-      if (shouldLogSummary(summary)) console.log(summary)
+      if (shouldLogSummary(summary)) emitSummary(summary)
     }
   },
 } satisfies ExportedHandler
@@ -80,6 +82,51 @@ function shouldLogSummary(summary: TailSummary) {
   if (summary.outcome !== 'ok') return true
   if (summary.exceptions.length > 0) return true
   return summary.appEvents.some((event) => ERROR_LEVELS.has(event.level ?? ''))
+}
+
+/**
+ * Emits observer summaries with a dashboard-readable top-level message. Before
+ * this, Cloudflare's Tail Worker invocation rows rendered as repeated "tail"
+ * entries, which hid the producer route/error signal unless every row was
+ * expanded. After this, persisted observer rows carry the producer, route,
+ * outcome, and first app event/exception in the row text. Reference: Workers
+ * Logs structured JSON guidance says object logs are indexed and `message`
+ * remains the human-readable field.
+ */
+function emitSummary(summary: TailSummary) {
+  const hasError =
+    summary.outcome !== 'ok' ||
+    summary.exceptions.length > 0 ||
+    summary.appEvents.some((event) => event.level === 'error')
+
+  if (hasError) {
+    console.error(summary)
+    return
+  }
+
+  console.warn(summary)
+}
+
+function summaryMessage(
+  event: TraceItem,
+  appEvents: GardenStructuredLog[],
+  exceptions: Array<{ name: string; message: string }>,
+) {
+  const fields = fetchEventFields(event.event)
+  const route = fields.method && fields.path ? `${fields.method} ${fields.path}` : triggerName(event.event)
+  const firstAppEvent = appEvents.find((entry) => ERROR_LEVELS.has(entry.level ?? '')) ?? appEvents[0]
+  const firstException = exceptions[0]
+  const signal = firstException
+    ? `${firstException.name}: ${firstException.message}`
+    : firstAppEvent
+      ? [firstAppEvent.level, firstAppEvent.component, firstAppEvent.event]
+          .filter(Boolean)
+          .join(' ')
+      : event.outcome
+
+  return [event.scriptName ?? 'unknown-worker', route, signal]
+    .filter(Boolean)
+    .join(' | ')
 }
 
 function extractGardenLogs(event: TraceItem): GardenStructuredLog[] {
