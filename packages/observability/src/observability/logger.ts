@@ -114,6 +114,7 @@ export function createGardenLogger(
       ...(options.environment ? { environment: options.environment } : {}),
       ...base,
       event,
+      message: event,
       ...fields,
     })
 

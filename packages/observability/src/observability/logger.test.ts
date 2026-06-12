@@ -35,6 +35,7 @@ describe('createGardenLogger', () => {
       component: 'test',
       environment: 'test',
       event: 'auth.session.loaded',
+      message: 'auth.session.loaded',
       userId: 'user-123',
       authorization: '[redacted]',
     })
@@ -59,6 +60,7 @@ describe('createGardenLogger', () => {
     expect(warn.mock.calls[0]?.[0]).toMatchObject({
       level: 'warn',
       event: 'agent.request.access_denied',
+      message: 'agent.request.access_denied',
     })
   })
 
