@@ -19,6 +19,7 @@ export function LoginForm({
   name,
   email,
   emailReadonly,
+  invitationStatusMessage,
   invitationWorkspaceName,
   password,
   error,
@@ -33,6 +34,7 @@ export function LoginForm({
   name: string
   email: string
   emailReadonly?: boolean
+  invitationStatusMessage?: string
   invitationWorkspaceName?: string
   password: string
   error?: string
@@ -45,12 +47,18 @@ export function LoginForm({
 }) {
   const [showPassword, setShowPassword] = useState(false)
   const isSignup = mode === 'signup'
-  const title = isSignup ? 'Create your workspace account' : 'Welcome back'
+  const title = isSignup
+    ? 'Create your workspace account'
+    : invitationWorkspaceName
+      ? 'Sign in to accept invitation'
+      : 'Welcome back'
   const subtitle = isSignup
     ? invitationWorkspaceName
       ? `Use this invite email to join ${invitationWorkspaceName}.`
       : 'Start with email and password. The workspace opens right after.'
-    : 'Sign in to pick up where the workspace left off.'
+    : invitationWorkspaceName
+      ? `Use the invited account to join ${invitationWorkspaceName}.`
+      : 'Sign in to pick up where the workspace left off.'
 
   return (
     <div className={cn('flex flex-col gap-6', className)}>
@@ -67,6 +75,16 @@ export function LoginForm({
                     {title}
                   </h1>
                   <p className="text-sm text-muted-foreground">{subtitle}</p>
+                  {invitationStatusMessage ? (
+                    <p
+                      aria-atomic="true"
+                      aria-live="polite"
+                      role="status"
+                      className="text-sm font-medium text-destructive"
+                    >
+                      {invitationStatusMessage}
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
@@ -112,14 +130,18 @@ export function LoginForm({
                     value={password}
                     onChange={(event) => onPasswordChange(event.target.value)}
                     placeholder="Password"
-                    autoComplete={isSignup ? 'new-password' : 'current-password'}
+                    autoComplete={
+                      isSignup ? 'new-password' : 'current-password'
+                    }
                     minLength={8}
                     required
                     className="pr-10"
                   />
                   <button
                     type="button"
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-label={
+                      showPassword ? 'Hide password' : 'Show password'
+                    }
                     aria-pressed={showPassword}
                     onClick={() => setShowPassword((current) => !current)}
                     className="absolute right-2 top-1/2 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

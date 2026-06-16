@@ -402,9 +402,22 @@ export function WorkspaceSidebar() {
   const handleSwitchWorkspace = useCallback(
     (nextWorkspace: NonNullable<typeof workspace>) => {
       if (nextWorkspace.id === workspace?.id) return
-      switchWorkspace(nextWorkspace)
-      queryClient.invalidateQueries()
-      toast.success(`Switched to ${nextWorkspace.name}`)
+      void Result.tryPromise(() => switchWorkspace(nextWorkspace)).then(
+        (result) =>
+          result.tapBoth({
+            ok: () => {
+              queryClient.invalidateQueries()
+              toast.success(`Switched to ${nextWorkspace.name}`)
+            },
+            err: (error) => {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Failed to switch workspace',
+              )
+            },
+          }),
+      )
     },
     [queryClient, switchWorkspace, workspace?.id],
   )

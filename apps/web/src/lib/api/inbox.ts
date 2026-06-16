@@ -1,8 +1,11 @@
 import type { InboxItem } from '@garden/core/types'
 import { getApiTransport } from './state'
 
-export function listInbox(): Promise<InboxItem[]> {
-  return getApiTransport().request('/api/inbox')
+export function listInbox(params?: { workspace_id?: string }): Promise<InboxItem[]> {
+  const search = new URLSearchParams()
+  if (params?.workspace_id) search.set('workspace_id', params.workspace_id)
+  const suffix = search.size ? `?${search}` : ''
+  return getApiTransport().request(`/api/inbox${suffix}`)
 }
 
 export function markInboxRead(id: string): Promise<InboxItem> {

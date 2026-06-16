@@ -18,7 +18,9 @@ import type {
 } from '@garden/core/types'
 import { getApiTransport } from './state'
 
-export function listIssues(params?: ListIssuesParams): Promise<ListIssuesResponse> {
+export function listIssues(
+  params?: ListIssuesParams,
+): Promise<ListIssuesResponse> {
   const search = new URLSearchParams()
   if (params?.limit) search.set('limit', String(params.limit))
   if (params?.offset) search.set('offset', String(params.offset))
@@ -62,7 +64,10 @@ export function createIssue(data: CreateIssueRequest): Promise<Issue> {
   })
 }
 
-export function updateIssue(id: string, data: UpdateIssueRequest): Promise<Issue> {
+export function updateIssue(
+  id: string,
+  data: UpdateIssueRequest,
+): Promise<Issue> {
   return getApiTransport().request(`/api/issues/${id}`, {
     method: 'PUT',
     body: JSON.stringify(data),
@@ -73,10 +78,15 @@ export function listChildIssues(id: string): Promise<{ issues: Issue[] }> {
   return getApiTransport().request(`/api/issues/${id}/children`)
 }
 
-export function getChildIssueProgress(): Promise<{
+export function getChildIssueProgress(params?: {
+  workspace_id?: string
+}): Promise<{
   progress: { parent_issue_id: string; total: number; done: number }[]
 }> {
-  return getApiTransport().request('/api/issues/child-progress')
+  const search = new URLSearchParams()
+  if (params?.workspace_id) search.set('workspace_id', params.workspace_id)
+  const suffix = search.size ? `?${search}` : ''
+  return getApiTransport().request(`/api/issues/child-progress${suffix}`)
 }
 
 export function deleteIssue(id: string): Promise<void> {
@@ -120,8 +130,10 @@ export function listTimeline(issueId: string): Promise<TimelineEntry[]> {
   return getApiTransport().request(`/api/issues/${issueId}/timeline`)
 }
 
-export function getAssigneeFrequency(): Promise<AssigneeFrequencyEntry[]> {
-  return listIssues().then((response) => {
+export function getAssigneeFrequency(params?: {
+  workspace_id?: string
+}): Promise<AssigneeFrequencyEntry[]> {
+  return listIssues(params).then((response) => {
     const counts = new Map<string, AssigneeFrequencyEntry>()
     for (const issue of response.issues) {
       if (!issue.assignee_type || !issue.assignee_id) continue
@@ -141,7 +153,10 @@ export function getAssigneeFrequency(): Promise<AssigneeFrequencyEntry[]> {
   })
 }
 
-export function updateComment(commentId: string, content: string): Promise<Comment> {
+export function updateComment(
+  commentId: string,
+  content: string,
+): Promise<Comment> {
   return getApiTransport().request(`/api/comments/${commentId}`, {
     method: 'PUT',
     body: JSON.stringify({ content }),
@@ -154,14 +169,20 @@ export function deleteComment(commentId: string): Promise<void> {
   })
 }
 
-export function addReaction(commentId: string, emoji: string): Promise<Reaction> {
+export function addReaction(
+  commentId: string,
+  emoji: string,
+): Promise<Reaction> {
   return getApiTransport().request(`/api/comments/${commentId}/reactions`, {
     method: 'POST',
     body: JSON.stringify({ emoji }),
   })
 }
 
-export function removeReaction(commentId: string, emoji: string): Promise<void> {
+export function removeReaction(
+  commentId: string,
+  emoji: string,
+): Promise<void> {
   return getApiTransport().request(`/api/comments/${commentId}/reactions`, {
     method: 'DELETE',
     body: JSON.stringify({ emoji }),
@@ -178,14 +199,19 @@ export function addIssueReaction(
   })
 }
 
-export function removeIssueReaction(issueId: string, emoji: string): Promise<void> {
+export function removeIssueReaction(
+  issueId: string,
+  emoji: string,
+): Promise<void> {
   return getApiTransport().request(`/api/issues/${issueId}/reactions`, {
     method: 'DELETE',
     body: JSON.stringify({ emoji }),
   })
 }
 
-export function listIssueSubscribers(issueId: string): Promise<IssueSubscriber[]> {
+export function listIssueSubscribers(
+  issueId: string,
+): Promise<IssueSubscriber[]> {
   return getApiTransport().request(`/api/issues/${issueId}/subscribers`)
 }
 
@@ -234,9 +260,7 @@ export function getActiveRun(
 export function listIssueWorkProducts(
   issueId: string,
 ): Promise<IssueWorkProduct[]> {
-  return getApiTransport().request(
-    `/api/issues/${issueId}/work-products`,
-  )
+  return getApiTransport().request(`/api/issues/${issueId}/work-products`)
 }
 
 export function getRunEvents(
@@ -268,8 +292,11 @@ export function reviewWorkProduct(
     note?: string
   },
 ): Promise<IssueWorkProduct> {
-  return getApiTransport().request(`/api/work-products/${workProductId}/review`, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  })
+  return getApiTransport().request(
+    `/api/work-products/${workProductId}/review`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    },
+  )
 }

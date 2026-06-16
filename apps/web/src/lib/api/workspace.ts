@@ -1,3 +1,5 @@
+import { authClient } from '@/lib/auth/client'
+import { ApiError } from './errors'
 import type {
   Agent,
   AgentSkill,
@@ -43,12 +45,6 @@ export function updateWorkspace(
   })
 }
 
-export function deleteWorkspace(workspaceId: string): Promise<void> {
-  return getApiTransport().request(`/api/workspaces/${workspaceId}`, {
-    method: 'DELETE',
-  })
-}
-
 export function listMembers(workspaceId: string): Promise<MemberWithUser[]> {
   return getApiTransport().request(`/api/workspaces/${workspaceId}/members`)
 }
@@ -77,21 +73,34 @@ export function updateMember(
   )
 }
 
-export function deleteMember(workspaceId: string, memberId: string): Promise<void> {
+export function deleteMember(
+  workspaceId: string,
+  memberId: string,
+): Promise<void> {
   return getApiTransport().request(
     `/api/workspaces/${workspaceId}/members/${memberId}`,
     { method: 'DELETE' },
   )
 }
 
-export function leaveWorkspace(args: {
-  memberId: string
+export async function leaveWorkspace(args: {
   workspaceId: string
 }): Promise<void> {
-  return deleteMember(args.workspaceId, args.memberId)
+  const result = await authClient.organization.leave({
+    organizationId: args.workspaceId,
+  })
+  if (result.error) {
+    throw new ApiError({
+      message: result.error.message || 'Failed to leave workspace',
+      status: result.error.status ?? 400,
+      statusText: result.error.statusText ?? 'Bad Request',
+    })
+  }
 }
 
-export function listWorkspaceInvitations(workspaceId: string): Promise<Invitation[]> {
+export function listWorkspaceInvitations(
+  workspaceId: string,
+): Promise<Invitation[]> {
   return getApiTransport().request(`/api/workspaces/${workspaceId}/invitations`)
 }
 
@@ -103,20 +112,6 @@ export function revokeInvitation(
     `/api/workspaces/${workspaceId}/invitations/${invitationId}`,
     { method: 'DELETE' },
   )
-}
-
-export function listMyInvitations(): Promise<Invitation[]> {
-  return getApiTransport().request('/api/invitations')
-}
-
-export function getInvitation(invitationId: string): Promise<Invitation> {
-  return getApiTransport().request(`/api/invitations/${invitationId}`)
-}
-
-export function acceptInvitation(invitationId: string): Promise<MemberWithUser> {
-  return getApiTransport().request(`/api/invitations/${invitationId}/accept`, {
-    method: 'POST',
-  })
 }
 
 export function listAgents(params?: {
@@ -154,6 +149,11 @@ export function setAgentSkills(
   })
 }
 
-export function listSkills(): Promise<Skill[]> {
-  return getApiTransport().request('/api/skills')
+export function listSkills(params?: {
+  workspace_id?: string
+}): Promise<Skill[]> {
+  const search = new URLSearchParams()
+  if (params?.workspace_id) search.set('workspace_id', params.workspace_id)
+  const suffix = search.size ? `?${search}` : ''
+  return getApiTransport().request(`/api/skills${suffix}`)
 }

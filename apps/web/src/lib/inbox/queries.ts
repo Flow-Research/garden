@@ -10,7 +10,7 @@ export const inboxKeys = {
 export function inboxListOptions(wsId: string) {
   return queryOptions({
     queryKey: inboxKeys.list(wsId),
-    queryFn: () => api.listInbox(),
+    queryFn: () => api.listInbox({ workspace_id: wsId }),
     staleTime: 30_000,
     refetchInterval: 60_000,
     refetchOnMount: false,

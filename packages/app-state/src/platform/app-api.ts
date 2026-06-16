@@ -34,7 +34,8 @@ import type {
 export type Api = {
   getBaseUrl: () => string
   logout: () => Promise<void>
-  setWorkspaceId: (id: string | null) => void
+  setWorkspaceHeader: (id: string | null) => void
+  setWorkspaceId: (id: string | null) => Promise<void>
   updateMe: (data: UpdateMeRequest) => Promise<unknown>
   uploadFile: (
     file: File,
@@ -57,7 +58,6 @@ export type Api = {
       settings?: Record<string, unknown>
     },
   ) => Promise<Workspace>
-  deleteWorkspace: (workspaceId: string) => Promise<void>
   leaveWorkspace: (args: {
     memberId: string
     workspaceId: string
@@ -74,13 +74,7 @@ export type Api = {
   ) => Promise<MemberWithUser>
   deleteMember: (workspaceId: string, memberId: string) => Promise<void>
   listWorkspaceInvitations: (workspaceId: string) => Promise<Invitation[]>
-  revokeInvitation: (
-    workspaceId: string,
-    invitationId: string,
-  ) => Promise<void>
-  listMyInvitations: () => Promise<Invitation[]>
-  getInvitation: (invitationId: string) => Promise<Invitation>
-  acceptInvitation: (invitationId: string) => Promise<MemberWithUser>
+  revokeInvitation: (workspaceId: string, invitationId: string) => Promise<void>
   listAgents: (params?: {
     include_archived?: boolean
     workspace_id?: string
@@ -92,8 +86,10 @@ export type Api = {
     agentId: string,
     data: SetAgentSkillsRequest,
   ) => Promise<void>
-  listSkills: () => Promise<Skill[]>
-  getAssigneeFrequency: () => Promise<AssigneeFrequencyEntry[]>
+  listSkills: (params?: { workspace_id?: string }) => Promise<Skill[]>
+  getAssigneeFrequency: (params?: {
+    workspace_id?: string
+  }) => Promise<AssigneeFrequencyEntry[]>
 
   listIssues: (params?: ListIssuesParams) => Promise<ListIssuesResponse>
   searchIssues: (params: {
@@ -113,7 +109,7 @@ export type Api = {
   ) => Promise<{ updated: number }>
   batchDeleteIssues: (issueIds: string[]) => Promise<{ deleted: number }>
   listChildIssues: (id: string) => Promise<{ issues: Issue[] }>
-  getChildIssueProgress: () => Promise<{
+  getChildIssueProgress: (params?: { workspace_id?: string }) => Promise<{
     progress: { done: number; parent_issue_id: string; total: number }[]
   }>
   createComment: (
@@ -153,7 +149,7 @@ export type Api = {
   cancelRun: (issueId: string, reason?: string) => Promise<unknown>
   getIssueUsage: (issueId: string) => Promise<IssueUsageSummary>
 
-  listInbox: () => Promise<InboxItem[]>
+  listInbox: (params?: { workspace_id?: string }) => Promise<InboxItem[]>
   markInboxRead: (id: string) => Promise<unknown>
   archiveInbox: (id: string) => Promise<unknown>
   markAllInboxRead: () => Promise<unknown>

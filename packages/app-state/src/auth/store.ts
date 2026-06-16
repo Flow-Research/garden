@@ -14,7 +14,7 @@ export interface AuthState {
   setUser: (user: User | null) => void
 }
 
-let authApi: Pick<Api, 'logout' | 'setWorkspaceId'> | null = null
+let authApi: Pick<Api, 'logout' | 'setWorkspaceHeader'> | null = null
 let onLogoutCallback: (() => void) | undefined
 
 function getAuthApi() {
@@ -33,7 +33,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: async () => {
     const api = getAuthApi()
     await api.logout()
-    api.setWorkspaceId(null)
+    api.setWorkspaceHeader(null)
     onLogoutCallback?.()
     set({ user: null })
   },

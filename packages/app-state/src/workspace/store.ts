@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Workspace, StorageAdapter } from '@garden/core/types'
+import type { Workspace } from '@garden/core/types'
 import type { Api } from '../platform/app-api'
 import { createLogger } from '@garden/observability/console'
 import {
@@ -8,10 +8,6 @@ import {
 } from '../platform/workspace-storage'
 
 const logger = createLogger('workspace-store')
-
-export interface WorkspaceStoreOptions {
-  storage?: StorageAdapter
-}
 
 interface WorkspaceState {
   workspace: Workspace | null
@@ -26,8 +22,11 @@ interface WorkspaceActions {
     wsList: Workspace[],
     preferredWorkspaceId?: string | null,
   ) => Workspace | null
-  /** Switch to a workspace. Caller provides the full object (from React Query). */
-  switchWorkspace: (ws: Workspace) => void
+  /**
+   * Switch to a workspace. Caller provides the full object from React Query.
+   * Throws when the API cannot persist Better Auth's active organization.
+   */
+  switchWorkspace: (ws: Workspace) => Promise<void>
   /** Update current workspace data in place (e.g. after rename). */
   updateWorkspace: (ws: Workspace) => void
   clearWorkspace: () => void
@@ -35,7 +34,8 @@ interface WorkspaceActions {
 
 export type WorkspaceStore = WorkspaceState & WorkspaceActions
 
-let workspaceApi: Pick<Api, 'setWorkspaceId'> | null = null
+let workspaceApi: Pick<Api, 'setWorkspaceHeader' | 'setWorkspaceId'> | null =
+  null
 
 function getWorkspaceApi() {
   if (!workspaceApi) throw new Error('Workspace store not configured')
@@ -43,11 +43,9 @@ function getWorkspaceApi() {
 }
 
 export function configureWorkspaceStore(
-  api: Pick<Api, 'setWorkspaceId'>,
-  options?: WorkspaceStoreOptions,
+  api: Pick<Api, 'setWorkspaceHeader' | 'setWorkspaceId'>,
 ) {
   workspaceApi = api
-  void options
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
@@ -65,14 +63,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
       null
 
     if (!nextWorkspace) {
-      api.setWorkspaceId(null)
+      api.setWorkspaceHeader(null)
       setCurrentWorkspaceId(null)
       rehydrateAllWorkspaceStores()
       set({ workspace: null })
       return null
     }
 
-    api.setWorkspaceId(nextWorkspace.id)
+    api.setWorkspaceHeader(nextWorkspace.id)
     setCurrentWorkspaceId(nextWorkspace.id)
     rehydrateAllWorkspaceStores()
     set({ workspace: nextWorkspace })
@@ -81,10 +79,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
     return nextWorkspace
   },
 
-  switchWorkspace: (ws) => {
+  switchWorkspace: async (ws) => {
     const api = getWorkspaceApi()
     logger.info('switching to', ws.id)
-    api.setWorkspaceId(ws.id)
+    await api.setWorkspaceId(ws.id)
     setCurrentWorkspaceId(ws.id)
     rehydrateAllWorkspaceStores()
     set({ workspace: ws })
@@ -98,7 +96,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
 
   clearWorkspace: () => {
     const api = getWorkspaceApi()
-    api.setWorkspaceId(null)
+    api.setWorkspaceHeader(null)
     setCurrentWorkspaceId(null)
     rehydrateAllWorkspaceStores()
     set({ workspace: null })

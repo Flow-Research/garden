@@ -85,10 +85,13 @@ export type ConnectionAction = 'disconnect' | 'resync'
 
 export function listConnections(options?: {
   summary?: boolean
+  workspace_id?: string
 }): Promise<ConnectionsSnapshot> {
-  return getApiTransport().request(
-    options?.summary ? '/api/connections?summary=1' : '/api/connections',
-  )
+  const search = new URLSearchParams()
+  if (options?.summary) search.set('summary', '1')
+  if (options?.workspace_id) search.set('workspace_id', options.workspace_id)
+  const suffix = search.size ? `?${search}` : ''
+  return getApiTransport().request(`/api/connections${suffix}`)
 }
 
 export function mutateConnection(

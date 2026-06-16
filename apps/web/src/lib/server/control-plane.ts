@@ -37,29 +37,59 @@ async function dbFrom(input: RequestBoundary): Promise<Db> {
 }
 
 export async function requireSession(input: RequestBoundary) {
-  return input instanceof Request ? getAuthSession(input, appEnv) : input.auth.getSession()
+  return input instanceof Request
+    ? getAuthSession(input, appEnv)
+    : input.auth.getSession()
 }
 
-export async function resolveWorkspaceId(input: RequestBoundary, userId: string) {
+/**
+ * Resolves the workspace for Garden control-plane APIs.
+ *
+ * Explicit request context wins for transition URLs and workspace-scoped query
+ * keys. When no explicit workspace is present, Better Auth's active
+ * organization is canonical. The first-membership fallback is kept only as a
+ * no-workspace landing bridge for accounts that predate active-org selection.
+ * Reference: Better Auth organization active session docs and the local
+ * auth/onboarding/workspace audit from 2026-06-16.
+ */
+export async function resolveWorkspaceId(
+  input: RequestBoundary,
+  userId: string,
+) {
   const request = requestFrom(input)
   const url = new URL(request.url)
-  const candidate =
+  const explicitCandidate =
     request.headers.get('X-Workspace-ID') ??
     url.searchParams.get('workspace_id') ??
     null
   const db = await dbFrom(input)
 
-  if (candidate) {
+  if (explicitCandidate) {
     const [membership] = await db
       .select()
       .from(schema.member)
       .where(
         and(
-          eq(schema.member.organizationId, candidate),
+          eq(schema.member.organizationId, explicitCandidate),
           eq(schema.member.userId, userId),
         ),
       )
-    if (membership) return candidate
+    if (membership) return explicitCandidate
+  }
+
+  const session = await requireSession(input)
+  const activeOrganizationId = session?.session.activeOrganizationId ?? null
+  if (activeOrganizationId) {
+    const [membership] = await db
+      .select()
+      .from(schema.member)
+      .where(
+        and(
+          eq(schema.member.organizationId, activeOrganizationId),
+          eq(schema.member.userId, userId),
+        ),
+      )
+    if (membership) return activeOrganizationId
   }
 
   const [membership] = await db
@@ -137,7 +167,8 @@ export function toWorkspace(
       !Array.isArray(record.settings)
         ? record.settings
         : {},
-    issue_prefix: 'ACC',
+    issue_prefix:
+      typeof record.issuePrefix === 'string' ? record.issuePrefix : 'ISS',
     created_at: created,
     updated_at: record.updatedAt
       ? new Date(record.updatedAt).toISOString()
@@ -155,6 +186,7 @@ type OrganizationRecord = {
   metadata?: unknown
   description?: string | null
   context?: string | null
+  issuePrefix?: string | null
   settings?: unknown
   plan?: string | null
   updatedAt?: Date | string | null
@@ -177,7 +209,8 @@ export function toWorkspaceFromOrganization(
       !Array.isArray(record.settings)
         ? (record.settings as Record<string, unknown>)
         : {},
-    issue_prefix: 'ACC',
+    issue_prefix:
+      typeof record.issuePrefix === 'string' ? record.issuePrefix : 'ISS',
     created_at: created,
     updated_at: record.updatedAt
       ? new Date(record.updatedAt).toISOString()

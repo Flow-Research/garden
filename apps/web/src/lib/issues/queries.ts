@@ -94,8 +94,9 @@ export function issueListOptions(wsId: string) {
       const realCall = await Result.tryPromise({
         try: async () => {
           const [openRes, closedRes] = await Promise.all([
-            api.listIssues({ open_only: true }),
+            api.listIssues({ open_only: true, workspace_id: wsId }),
             api.listIssues({
+              workspace_id: wsId,
               status: 'done',
               limit: CLOSED_PAGE_SIZE,
               offset: 0,
@@ -143,7 +144,7 @@ export function childIssueProgressOptions(wsId: string) {
     queryKey: issueKeys.childProgress(wsId),
     queryFn: async () => {
       const realCall = await Result.tryPromise({
-        try: async () => api.getChildIssueProgress(),
+        try: async () => api.getChildIssueProgress({ workspace_id: wsId }),
         catch: (e) => (e instanceof Error ? e : new Error(String(e))),
       })
       if (realCall.isOk()) return realCall.value

@@ -5,6 +5,7 @@ export {
   configureApi,
   getApiTransport,
   getBaseUrl,
+  setWorkspaceHeader,
   setWorkspaceId,
 } from './state'
 export * from './auth'
@@ -32,7 +33,7 @@ import * as connections from './connections'
 import * as chatThreads from './chat-threads'
 import * as documents from './documents'
 import * as automations from './automations'
-import { getBaseUrl, setWorkspaceId } from './state'
+import { getBaseUrl, setWorkspaceHeader, setWorkspaceId } from './state'
 
 export type {
   ConnectionAction,
@@ -50,6 +51,7 @@ export type { DocumentVersionItem, ThreadDocumentsResponse } from './documents'
 
 export const api = {
   getBaseUrl,
+  setWorkspaceHeader,
   setWorkspaceId,
   ...auth,
   ...issues,

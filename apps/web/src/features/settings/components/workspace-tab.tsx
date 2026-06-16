@@ -19,15 +19,9 @@ import { toast } from 'sonner'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/app-state/auth'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
-import {
-  useLeaveWorkspace,
-  useDeleteWorkspace,
-} from '@/lib/workspace/mutations'
+import { useLeaveWorkspace } from '@/lib/workspace/mutations'
 import { useWorkspaceId } from '@garden/app-state/hooks'
-import {
-  memberListOptions,
-  workspaceKeys,
-} from '@/lib/workspace/queries'
+import { memberListOptions, workspaceKeys } from '@/lib/workspace/queries'
 import { api } from '@/lib/api'
 import type { Workspace } from '@garden/core/types'
 
@@ -39,7 +33,6 @@ export function WorkspaceTab() {
   const qc = useQueryClient()
   const updateWorkspace = useWorkspaceStore((s) => s.updateWorkspace)
   const leaveWorkspace = useLeaveWorkspace()
-  const deleteWorkspace = useDeleteWorkspace()
 
   const [name, setName] = useState(workspace?.name ?? '')
   const [description, setDescription] = useState(workspace?.description ?? '')
@@ -56,8 +49,6 @@ export function WorkspaceTab() {
   const currentMember = members.find((m) => m.user_id === user?.id) ?? null
   const canManageWorkspace =
     currentMember?.role === 'owner' || currentMember?.role === 'admin'
-  const isOwner = currentMember?.role === 'owner'
-
   useEffect(() => {
     setName(workspace?.name ?? '')
     setDescription(workspace?.description ?? '')
@@ -100,31 +91,7 @@ export function WorkspaceTab() {
         setActionId('leave')
         const result = await Result.tryPromise({
           try: async () =>
-            await leaveWorkspace.mutateAsync({
-              memberId: currentMember.id,
-              workspaceId: workspace.id,
-            }),
-          catch: (error) =>
-            error instanceof Error ? error : new Error(String(error)),
-        })
-        if (result.isErr()) {
-          toast.error(result.error.message)
-        }
-        setActionId(null)
-      },
-    })
-  }
-
-  const handleDeleteWorkspace = () => {
-    if (!workspace) return
-    setConfirmAction({
-      title: 'Delete workspace',
-      description: `Delete ${workspace.name}? This cannot be undone. All issues, agents, and data will be permanently removed.`,
-      variant: 'destructive',
-      onConfirm: async () => {
-        setActionId('delete-workspace')
-        const result = await Result.tryPromise({
-          try: async () => await deleteWorkspace.mutateAsync(workspace.id),
+            await leaveWorkspace.mutateAsync({ workspaceId: workspace.id }),
           catch: (error) =>
             error instanceof Error ? error : new Error(String(error)),
         })
@@ -208,7 +175,7 @@ export function WorkspaceTab() {
         <header>
           <h2 className="text-base font-semibold">Danger zone</h2>
           <p className="text-sm text-muted-foreground">
-            Leaving or deleting is immediate and can't be undone.
+            Leaving is immediate. Rejoin with a fresh invitation.
           </p>
         </header>
 
@@ -229,29 +196,6 @@ export function WorkspaceTab() {
               {actionId === 'leave' ? 'Leaving...' : 'Leave workspace'}
             </Button>
           </li>
-
-          {isOwner && (
-            <li className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-medium text-destructive">
-                  Delete workspace
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Permanently delete this workspace and its data.
-                </p>
-              </div>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleDeleteWorkspace}
-                disabled={actionId === 'delete-workspace'}
-              >
-                {actionId === 'delete-workspace'
-                  ? 'Deleting...'
-                  : 'Delete workspace'}
-              </Button>
-            </li>
-          )}
         </ul>
       </section>
 

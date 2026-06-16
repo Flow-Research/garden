@@ -1,14 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/app-state/auth'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
+import { useModalStore } from '@garden/app-state/modals'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
+import { Button } from '@garden/ui/components/ui/button'
 import { SidebarInset, SidebarProvider } from '@garden/ui/components/ui/sidebar'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { SearchCommand } from '@/features/search'
 import { ChatRuntimeProvider } from '@/features/chat/chat-runtime-provider'
 import { ModalRegistry } from '@/features/modals/registry'
-import { OnboardingOverlay } from '@/features/onboarding'
-import { useOnboardingStore } from '@/features/onboarding'
 import { SettingsDialog } from '@/features/settings'
 import { ConnectorCallbackListener } from '@/features/connections'
 import {
@@ -61,18 +61,22 @@ function WorkspaceLoadingSkeleton() {
   )
 }
 
-function WorkspaceSetupState() {
+function WorkspaceSetupState({ onCreate }: { onCreate: () => void }) {
   return (
     <section className="flex h-full flex-1 items-center justify-center px-6">
-      <div className="flex max-w-sm flex-col items-center gap-3 text-center">
-        <div className="space-y-1">
+      <div className="flex max-w-sm flex-col items-center gap-4 text-center">
+        <div className="space-y-1.5">
           <h2 className="text-sm font-medium text-foreground">
-            Finish workspace setup
+            Create a workspace
           </h2>
           <p className="text-sm text-muted-foreground">
-            Create or choose a workspace to start working.
+            Your account is ready. Create a workspace or open an invitation link
+            to join one.
           </p>
         </div>
+        <Button size="sm" onClick={onCreate}>
+          New workspace
+        </Button>
       </div>
     </section>
   )
@@ -87,19 +91,15 @@ export function WorkspaceLayout({
 } = {}) {
   const user = useAuthStore((state) => state.user)
   const workspace = useWorkspaceStore((state) => state.workspace)
-  const onboardingCompleted = useOnboardingStore((state) => state.completed)
-  const markOnboardingCompleted = useOnboardingStore(
-    (state) => state.markCompleted,
-  )
+  const openModal = useModalStore((state) => state.open)
 
   const hasSession = Boolean(user)
-  const needsOnboarding = hasSession && !workspace?.id && !onboardingCompleted
   const activeWorkspaceId = workspace?.id ?? null
   // Authenticated route loader data hydrates the singleton auth/workspace stores
   // in a microtask. During that first client frame, both stores can still be
   // empty even though the workspace is loading, so show a neutral skeleton
   // instead of incorrectly asking the user to finish setup.
-  const isRestoringWorkspace = !activeWorkspaceId && !needsOnboarding
+  const isRestoringWorkspace = !hasSession && !activeWorkspaceId
 
   return (
     <SidebarProvider className="h-svh">
@@ -123,7 +123,6 @@ export function WorkspaceLayout({
               </SidebarInset>
               <SearchCommand />
               <SettingsDialog />
-              <ModalRegistry />
             </ChatRuntimeProvider>
           </WorkspaceIdProvider>
         ) : (
@@ -132,17 +131,15 @@ export function WorkspaceLayout({
               {isRestoringWorkspace ? (
                 <WorkspaceLoadingSkeleton />
               ) : (
-                <WorkspaceSetupState />
+                <WorkspaceSetupState
+                  onCreate={() => openModal('create-workspace')}
+                />
               )}
             </div>
           </SidebarInset>
         )}
       </WorkspaceDockProvider>
-
-      <OnboardingOverlay
-        open={needsOnboarding}
-        onComplete={markOnboardingCompleted}
-      />
+      <ModalRegistry />
     </SidebarProvider>
   )
 }

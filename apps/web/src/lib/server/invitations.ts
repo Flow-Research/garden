@@ -1,6 +1,7 @@
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { redirect } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
+import { z } from 'zod'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import { toInvitation } from '@/lib/server/control-plane'
@@ -9,8 +10,13 @@ export type SignupInvitationPreview = {
   email: string
   id: string
   organizationName?: string
-  status: 'pending' | 'accepted' | 'rejected' | 'canceled'
+  status: 'pending' | 'accepted' | 'rejected' | 'canceled' | 'expired'
+  userExists: boolean
 } | null
+
+const invitationInputSchema = z.object({
+  invitationId: z.string().min(1),
+})
 
 export type InvitationAutoAcceptResult =
   | { status: 'accepted'; workspaceId: string }
@@ -27,17 +33,23 @@ export function invitationIdFromRedirect(redirectTarget: string | undefined) {
   if (!redirectTarget) return null
   const url = new URL(redirectTarget, 'https://garden.local')
   const match = /^\/invitations\/([^/]+)$/.exec(url.pathname)
-  return match?.[1] ? decodeURIComponent(match[1]) : null
+  return match?.[1] ?? null
 }
 
 /**
- * Loads minimal invite data for signup seeding without requiring auth. The id is
- * already a bearer capability from the email link, and this returns only enough
- * data to prefill and lock the email field so the invite can be accepted without
- * a second confirmation hop after account creation.
+ * Loads minimal invite data for auth routing without requiring a session. Better
+ * Auth's organization flow intentionally starts from an invitation ID but still
+ * requires an authenticated matching-email session before acceptInvitation runs.
+ * That leaves login-vs-signup UX to the app, so this preview checks whether the
+ * invited email already has a Garden user and lets routes send the user directly
+ * to locked-email sign-in or sign-up instead of making them discover the wrong
+ * auth mode after a failed submit. It also marks expired links before account
+ * creation so users do not create an account expecting a join that cannot
+ * complete. References: Better Auth Organization docs, Accept Invitation section;
+ * local better-auth crud-invites.mjs requires session + recipient email match.
  */
 export const getSignupInvitationPreview = createServerFn({ method: 'GET' })
-  .inputValidator((data: { invitationId: string }) => data)
+  .inputValidator(invitationInputSchema)
   .handler(async ({ context, data }): Promise<SignupInvitationPreview> => {
     const appContext = requireAppRequestContext(context)
     const db = await appContext.db()
@@ -60,15 +72,27 @@ export const getSignupInvitationPreview = createServerFn({ method: 'GET' })
       organizationName: row.organizationName,
     })
 
+    const [existingUser] = await db
+      .select({ id: schema.user.id })
+      .from(schema.user)
+      .where(sql`lower(${schema.user.email}) = lower(${invitation.email})`)
+      .limit(1)
+
     return {
       email: invitation.email,
       id: invitation.id,
       organizationName: invitation.organizationName,
-      status: toSignupInvitationStatus(invitation.status),
+      status:
+        new Date(invitation.expiresAt).getTime() <= Date.now()
+          ? 'expired'
+          : toSignupInvitationStatus(invitation.status),
+      userExists: Boolean(existingUser),
     }
   })
 
-function toSignupInvitationStatus(status: string) {
+function toSignupInvitationStatus(
+  status: string,
+): Exclude<NonNullable<SignupInvitationPreview>['status'], 'expired'> {
   switch (status) {
     case 'accepted':
     case 'rejected':
@@ -86,7 +110,7 @@ function toSignupInvitationStatus(status: string) {
  * mismatch, expired, revoked, or already-used invites.
  */
 export const acceptInvitationForCurrentUser = createServerFn({ method: 'POST' })
-  .inputValidator((data: { invitationId: string }) => data)
+  .inputValidator(invitationInputSchema)
   .handler(async ({ context, data }): Promise<InvitationAutoAcceptResult> => {
     const appContext = requireAppRequestContext(context)
     const session = await appContext.auth.getSession()

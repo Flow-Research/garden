@@ -16,7 +16,6 @@ function scheduleClientStoreHydration(callback: () => void) {
 }
 
 export const Route = createFileRoute('/_authenticated')({
-  staleTime: Number.POSITIVE_INFINITY,
   loader: async ({ location }) => {
     const bootstrap = await getAuthBootstrap()
     if (!bootstrap) {
@@ -40,7 +39,7 @@ function AuthenticatedLayout() {
   // Hydrate singleton stores after the render that consumes loader data.
   // Updating them during render trips React's setState-in-render guard because
   if (typeof window !== 'undefined') {
-    const nextKey = `${user.id}:${workspaces.map((workspace) => workspace.id).join(',')}`
+    const nextKey = `${user.id}:${preferredWorkspaceId ?? ''}:${workspaces.map((workspace) => `${workspace.id}:${workspace.updated_at}`).join(',')}`
     if (hydratedKey.current !== nextKey) {
       hydratedKey.current = nextKey
       scheduleClientStoreHydration(() => {

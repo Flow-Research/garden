@@ -6,7 +6,6 @@ export const workspaceKeys = {
   list: () => ['workspaces', 'list'] as const,
   members: (wsId: string) => ['workspaces', wsId, 'members'] as const,
   invitations: (wsId: string) => ['workspaces', wsId, 'invitations'] as const,
-  myInvitations: () => ['invitations', 'mine'] as const,
   agents: (wsId: string) => ['workspaces', wsId, 'agents'] as const,
   agent: (agentId: string) => ['agent', agentId] as const,
   agentSkills: (agentId: string) => ['agent', agentId, 'skills'] as const,
@@ -57,14 +56,14 @@ export function agentSkillListOptions(agentId: string) {
 export function skillListOptions(wsId: string) {
   return queryOptions({
     queryKey: workspaceKeys.skills(wsId),
-    queryFn: () => api.listSkills(),
+    queryFn: () => api.listSkills({ workspace_id: wsId }),
   })
 }
 
 export function connectionListOptions(wsId: string) {
   return queryOptions({
     queryKey: workspaceKeys.connections(wsId),
-    queryFn: () => listConnections(),
+    queryFn: () => listConnections({ workspace_id: wsId }),
   })
 }
 
@@ -75,16 +74,9 @@ export function invitationListOptions(wsId: string) {
   })
 }
 
-export function myInvitationListOptions() {
-  return queryOptions({
-    queryKey: workspaceKeys.myInvitations(),
-    queryFn: () => api.listMyInvitations(),
-  })
-}
-
 export function assigneeFrequencyOptions(wsId: string) {
   return queryOptions({
     queryKey: workspaceKeys.assigneeFrequency(wsId),
-    queryFn: () => api.getAssigneeFrequency(),
+    queryFn: () => api.getAssigneeFrequency({ workspace_id: wsId }),
   })
 }

@@ -17,6 +17,9 @@ import {
   unauthorized,
 } from '@/lib/server/control-plane'
 import { seedBuiltinSkills } from '@/lib/server/builtin-skills'
+import { createLogger } from '@garden/observability/console'
+
+const logger = createLogger('workspace-api')
 
 const GARDEN_DESCRIPTION =
   'Garden powers chat, can read across the workspace, and can propose new agents for specialised work.'
@@ -57,8 +60,11 @@ type WorkspaceOrganizationAuth = {
  * organization/member rows by hand, bypassing organization plugin hooks and
  * active-organization session handling. Better Auth's organization create API now
  * owns those auth tables; this helper only adds Garden-specific data that Better
- * Auth does not know about: issue prefix, default Garden agent, and bundled
- * skills. Reference: Better Auth organization plugin createOrganization route.
+ * Auth does not know about: issue prefix and the default Garden agent. Built-in
+ * skill seeding is best-effort after that required workspace shape exists, so a
+ * transient R2/skill-bundle failure does not make a created Better Auth org look
+ * like a failed create action. Reference: Better Auth organization plugin
+ * createOrganization route and local pre-PR lifecycle audit.
  */
 async function finishGardenWorkspaceCreate(input: CreateWorkspaceInput) {
   const db = input.db
@@ -98,12 +104,6 @@ async function finishGardenWorkspaceCreate(input: CreateWorkspaceInput) {
           createdAt: now,
         })
 
-        await seedBuiltinSkills(
-          workspace.id,
-          tx as unknown as Db,
-          input.bucket,
-        )
-
         return Result.ok(workspace)
       }),
     catch: (cause) =>
@@ -117,7 +117,24 @@ async function finishGardenWorkspaceCreate(input: CreateWorkspaceInput) {
   })
 
   if (result.isErr()) return Result.err(result.error)
-  return result.value
+  if (result.value.isErr()) return Result.err(result.value.error)
+
+  const workspace = result.value.value
+  const seedResult = await Result.tryPromise({
+    try: async () => await seedBuiltinSkills(workspace.id, db, input.bucket),
+    catch: (cause) => cause,
+  })
+  if (seedResult.isErr()) {
+    logger.error('workspace.seed_builtin_skills_failed', {
+      workspaceId: workspace.id,
+      error:
+        seedResult.error instanceof Error
+          ? seedResult.error.message
+          : String(seedResult.error),
+    })
+  }
+
+  return Result.ok(workspace)
 }
 
 /**

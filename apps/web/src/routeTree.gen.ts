@@ -18,7 +18,6 @@ import { Route as ApiSkillsRouteImport } from './routes/api/skills'
 import { Route as ApiProjectsRouteImport } from './routes/api/projects'
 import { Route as ApiMeRouteImport } from './routes/api/me'
 import { Route as ApiIssuesRouteImport } from './routes/api/issues'
-import { Route as ApiInvitationsRouteImport } from './routes/api/invitations'
 import { Route as ApiInboxRouteImport } from './routes/api/inbox'
 import { Route as ApiDebugStreamRouteImport } from './routes/api/debug-stream'
 import { Route as ApiConnectionsRouteImport } from './routes/api/connections'
@@ -35,7 +34,6 @@ import { Route as ApiRunsIdRouteImport } from './routes/api/runs/$id'
 import { Route as ApiIssuesSearchRouteImport } from './routes/api/issues/search'
 import { Route as ApiIssuesChildProgressRouteImport } from './routes/api/issues/child-progress'
 import { Route as ApiIssuesIdRouteImport } from './routes/api/issues/$id'
-import { Route as ApiInvitationsIdRouteImport } from './routes/api/invitations/$id'
 import { Route as ApiInternalCapabilitySyncRouteImport } from './routes/api/internal/capability-sync'
 import { Route as ApiInboxUnreadCountRouteImport } from './routes/api/inbox/unread-count'
 import { Route as ApiInboxMarkAllReadRouteImport } from './routes/api/inbox/mark-all-read'
@@ -72,8 +70,6 @@ import { Route as ApiIssuesIdEventsRouteImport } from './routes/api/issues/$id/e
 import { Route as ApiIssuesIdCommentsRouteImport } from './routes/api/issues/$id/comments'
 import { Route as ApiIssuesIdCancelRouteImport } from './routes/api/issues/$id/cancel'
 import { Route as ApiIssuesIdActiveRunRouteImport } from './routes/api/issues/$id/active-run'
-import { Route as ApiInvitationsIdDeclineRouteImport } from './routes/api/invitations/$id/decline'
-import { Route as ApiInvitationsIdAcceptRouteImport } from './routes/api/invitations/$id/accept'
 import { Route as ApiInboxIdReadRouteImport } from './routes/api/inbox/$id/read'
 import { Route as ApiInboxIdArchiveRouteImport } from './routes/api/inbox/$id/archive'
 import { Route as ApiDocumentsIdVersionsRouteImport } from './routes/api/documents/$id/versions'
@@ -143,11 +139,6 @@ const ApiMeRoute = ApiMeRouteImport.update({
 const ApiIssuesRoute = ApiIssuesRouteImport.update({
   id: '/api/issues',
   path: '/api/issues',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiInvitationsRoute = ApiInvitationsRouteImport.update({
-  id: '/api/invitations',
-  path: '/api/invitations',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiInboxRoute = ApiInboxRouteImport.update({
@@ -230,11 +221,6 @@ const ApiIssuesIdRoute = ApiIssuesIdRouteImport.update({
   id: '/$id',
   path: '/$id',
   getParentRoute: () => ApiIssuesRoute,
-} as any)
-const ApiInvitationsIdRoute = ApiInvitationsIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
-  getParentRoute: () => ApiInvitationsRoute,
 } as any)
 const ApiInternalCapabilitySyncRoute =
   ApiInternalCapabilitySyncRouteImport.update({
@@ -425,16 +411,6 @@ const ApiIssuesIdActiveRunRoute = ApiIssuesIdActiveRunRouteImport.update({
   path: '/active-run',
   getParentRoute: () => ApiIssuesIdRoute,
 } as any)
-const ApiInvitationsIdDeclineRoute = ApiInvitationsIdDeclineRouteImport.update({
-  id: '/decline',
-  path: '/decline',
-  getParentRoute: () => ApiInvitationsIdRoute,
-} as any)
-const ApiInvitationsIdAcceptRoute = ApiInvitationsIdAcceptRouteImport.update({
-  id: '/accept',
-  path: '/accept',
-  getParentRoute: () => ApiInvitationsIdRoute,
-} as any)
 const ApiInboxIdReadRoute = ApiInboxIdReadRouteImport.update({
   id: '/$id/read',
   path: '/$id/read',
@@ -589,7 +565,6 @@ export interface FileRoutesByFullPath {
   '/api/connections': typeof ApiConnectionsRouteWithChildren
   '/api/debug-stream': typeof ApiDebugStreamRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
-  '/api/invitations': typeof ApiInvitationsRouteWithChildren
   '/api/issues': typeof ApiIssuesRouteWithChildren
   '/api/me': typeof ApiMeRoute
   '/api/projects': typeof ApiProjectsRoute
@@ -614,7 +589,6 @@ export interface FileRoutesByFullPath {
   '/api/inbox/mark-all-read': typeof ApiInboxMarkAllReadRoute
   '/api/inbox/unread-count': typeof ApiInboxUnreadCountRoute
   '/api/internal/capability-sync': typeof ApiInternalCapabilitySyncRoute
-  '/api/invitations/$id': typeof ApiInvitationsIdRouteWithChildren
   '/api/issues/$id': typeof ApiIssuesIdRouteWithChildren
   '/api/issues/child-progress': typeof ApiIssuesChildProgressRoute
   '/api/issues/search': typeof ApiIssuesSearchRoute
@@ -641,8 +615,6 @@ export interface FileRoutesByFullPath {
   '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
   '/api/inbox/$id/read': typeof ApiInboxIdReadRoute
-  '/api/invitations/$id/accept': typeof ApiInvitationsIdAcceptRoute
-  '/api/invitations/$id/decline': typeof ApiInvitationsIdDeclineRoute
   '/api/issues/$id/active-run': typeof ApiIssuesIdActiveRunRoute
   '/api/issues/$id/cancel': typeof ApiIssuesIdCancelRoute
   '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
@@ -681,7 +653,6 @@ export interface FileRoutesByTo {
   '/api/connections': typeof ApiConnectionsRouteWithChildren
   '/api/debug-stream': typeof ApiDebugStreamRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
-  '/api/invitations': typeof ApiInvitationsRouteWithChildren
   '/api/issues': typeof ApiIssuesRouteWithChildren
   '/api/me': typeof ApiMeRoute
   '/api/projects': typeof ApiProjectsRoute
@@ -706,7 +677,6 @@ export interface FileRoutesByTo {
   '/api/inbox/mark-all-read': typeof ApiInboxMarkAllReadRoute
   '/api/inbox/unread-count': typeof ApiInboxUnreadCountRoute
   '/api/internal/capability-sync': typeof ApiInternalCapabilitySyncRoute
-  '/api/invitations/$id': typeof ApiInvitationsIdRouteWithChildren
   '/api/issues/$id': typeof ApiIssuesIdRouteWithChildren
   '/api/issues/child-progress': typeof ApiIssuesChildProgressRoute
   '/api/issues/search': typeof ApiIssuesSearchRoute
@@ -733,8 +703,6 @@ export interface FileRoutesByTo {
   '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
   '/api/inbox/$id/read': typeof ApiInboxIdReadRoute
-  '/api/invitations/$id/accept': typeof ApiInvitationsIdAcceptRoute
-  '/api/invitations/$id/decline': typeof ApiInvitationsIdDeclineRoute
   '/api/issues/$id/active-run': typeof ApiIssuesIdActiveRunRoute
   '/api/issues/$id/cancel': typeof ApiIssuesIdCancelRoute
   '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
@@ -775,7 +743,6 @@ export interface FileRoutesById {
   '/api/connections': typeof ApiConnectionsRouteWithChildren
   '/api/debug-stream': typeof ApiDebugStreamRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
-  '/api/invitations': typeof ApiInvitationsRouteWithChildren
   '/api/issues': typeof ApiIssuesRouteWithChildren
   '/api/me': typeof ApiMeRoute
   '/api/projects': typeof ApiProjectsRoute
@@ -800,7 +767,6 @@ export interface FileRoutesById {
   '/api/inbox/mark-all-read': typeof ApiInboxMarkAllReadRoute
   '/api/inbox/unread-count': typeof ApiInboxUnreadCountRoute
   '/api/internal/capability-sync': typeof ApiInternalCapabilitySyncRoute
-  '/api/invitations/$id': typeof ApiInvitationsIdRouteWithChildren
   '/api/issues/$id': typeof ApiIssuesIdRouteWithChildren
   '/api/issues/child-progress': typeof ApiIssuesChildProgressRoute
   '/api/issues/search': typeof ApiIssuesSearchRoute
@@ -827,8 +793,6 @@ export interface FileRoutesById {
   '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
   '/api/inbox/$id/read': typeof ApiInboxIdReadRoute
-  '/api/invitations/$id/accept': typeof ApiInvitationsIdAcceptRoute
-  '/api/invitations/$id/decline': typeof ApiInvitationsIdDeclineRoute
   '/api/issues/$id/active-run': typeof ApiIssuesIdActiveRunRoute
   '/api/issues/$id/cancel': typeof ApiIssuesIdCancelRoute
   '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
@@ -869,7 +833,6 @@ export interface FileRouteTypes {
     | '/api/connections'
     | '/api/debug-stream'
     | '/api/inbox'
-    | '/api/invitations'
     | '/api/issues'
     | '/api/me'
     | '/api/projects'
@@ -894,7 +857,6 @@ export interface FileRouteTypes {
     | '/api/inbox/mark-all-read'
     | '/api/inbox/unread-count'
     | '/api/internal/capability-sync'
-    | '/api/invitations/$id'
     | '/api/issues/$id'
     | '/api/issues/child-progress'
     | '/api/issues/search'
@@ -921,8 +883,6 @@ export interface FileRouteTypes {
     | '/api/documents/$id/versions'
     | '/api/inbox/$id/archive'
     | '/api/inbox/$id/read'
-    | '/api/invitations/$id/accept'
-    | '/api/invitations/$id/decline'
     | '/api/issues/$id/active-run'
     | '/api/issues/$id/cancel'
     | '/api/issues/$id/comments'
@@ -961,7 +921,6 @@ export interface FileRouteTypes {
     | '/api/connections'
     | '/api/debug-stream'
     | '/api/inbox'
-    | '/api/invitations'
     | '/api/issues'
     | '/api/me'
     | '/api/projects'
@@ -986,7 +945,6 @@ export interface FileRouteTypes {
     | '/api/inbox/mark-all-read'
     | '/api/inbox/unread-count'
     | '/api/internal/capability-sync'
-    | '/api/invitations/$id'
     | '/api/issues/$id'
     | '/api/issues/child-progress'
     | '/api/issues/search'
@@ -1013,8 +971,6 @@ export interface FileRouteTypes {
     | '/api/documents/$id/versions'
     | '/api/inbox/$id/archive'
     | '/api/inbox/$id/read'
-    | '/api/invitations/$id/accept'
-    | '/api/invitations/$id/decline'
     | '/api/issues/$id/active-run'
     | '/api/issues/$id/cancel'
     | '/api/issues/$id/comments'
@@ -1054,7 +1010,6 @@ export interface FileRouteTypes {
     | '/api/connections'
     | '/api/debug-stream'
     | '/api/inbox'
-    | '/api/invitations'
     | '/api/issues'
     | '/api/me'
     | '/api/projects'
@@ -1079,7 +1034,6 @@ export interface FileRouteTypes {
     | '/api/inbox/mark-all-read'
     | '/api/inbox/unread-count'
     | '/api/internal/capability-sync'
-    | '/api/invitations/$id'
     | '/api/issues/$id'
     | '/api/issues/child-progress'
     | '/api/issues/search'
@@ -1106,8 +1060,6 @@ export interface FileRouteTypes {
     | '/api/documents/$id/versions'
     | '/api/inbox/$id/archive'
     | '/api/inbox/$id/read'
-    | '/api/invitations/$id/accept'
-    | '/api/invitations/$id/decline'
     | '/api/issues/$id/active-run'
     | '/api/issues/$id/cancel'
     | '/api/issues/$id/comments'
@@ -1147,7 +1099,6 @@ export interface RootRouteChildren {
   ApiConnectionsRoute: typeof ApiConnectionsRouteWithChildren
   ApiDebugStreamRoute: typeof ApiDebugStreamRoute
   ApiInboxRoute: typeof ApiInboxRouteWithChildren
-  ApiInvitationsRoute: typeof ApiInvitationsRouteWithChildren
   ApiIssuesRoute: typeof ApiIssuesRouteWithChildren
   ApiMeRoute: typeof ApiMeRoute
   ApiProjectsRoute: typeof ApiProjectsRoute
@@ -1235,13 +1186,6 @@ declare module '@tanstack/react-router' {
       path: '/api/issues'
       fullPath: '/api/issues'
       preLoaderRoute: typeof ApiIssuesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/invitations': {
-      id: '/api/invitations'
-      path: '/api/invitations'
-      fullPath: '/api/invitations'
-      preLoaderRoute: typeof ApiInvitationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/inbox': {
@@ -1355,13 +1299,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/issues/$id'
       preLoaderRoute: typeof ApiIssuesIdRouteImport
       parentRoute: typeof ApiIssuesRoute
-    }
-    '/api/invitations/$id': {
-      id: '/api/invitations/$id'
-      path: '/$id'
-      fullPath: '/api/invitations/$id'
-      preLoaderRoute: typeof ApiInvitationsIdRouteImport
-      parentRoute: typeof ApiInvitationsRoute
     }
     '/api/internal/capability-sync': {
       id: '/api/internal/capability-sync'
@@ -1614,20 +1551,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/issues/$id/active-run'
       preLoaderRoute: typeof ApiIssuesIdActiveRunRouteImport
       parentRoute: typeof ApiIssuesIdRoute
-    }
-    '/api/invitations/$id/decline': {
-      id: '/api/invitations/$id/decline'
-      path: '/decline'
-      fullPath: '/api/invitations/$id/decline'
-      preLoaderRoute: typeof ApiInvitationsIdDeclineRouteImport
-      parentRoute: typeof ApiInvitationsIdRoute
-    }
-    '/api/invitations/$id/accept': {
-      id: '/api/invitations/$id/accept'
-      path: '/accept'
-      fullPath: '/api/invitations/$id/accept'
-      preLoaderRoute: typeof ApiInvitationsIdAcceptRouteImport
-      parentRoute: typeof ApiInvitationsIdRoute
     }
     '/api/inbox/$id/read': {
       id: '/api/inbox/$id/read'
@@ -1958,31 +1881,6 @@ const ApiInboxRouteWithChildren = ApiInboxRoute._addFileChildren(
   ApiInboxRouteChildren,
 )
 
-interface ApiInvitationsIdRouteChildren {
-  ApiInvitationsIdAcceptRoute: typeof ApiInvitationsIdAcceptRoute
-  ApiInvitationsIdDeclineRoute: typeof ApiInvitationsIdDeclineRoute
-}
-
-const ApiInvitationsIdRouteChildren: ApiInvitationsIdRouteChildren = {
-  ApiInvitationsIdAcceptRoute: ApiInvitationsIdAcceptRoute,
-  ApiInvitationsIdDeclineRoute: ApiInvitationsIdDeclineRoute,
-}
-
-const ApiInvitationsIdRouteWithChildren =
-  ApiInvitationsIdRoute._addFileChildren(ApiInvitationsIdRouteChildren)
-
-interface ApiInvitationsRouteChildren {
-  ApiInvitationsIdRoute: typeof ApiInvitationsIdRouteWithChildren
-}
-
-const ApiInvitationsRouteChildren: ApiInvitationsRouteChildren = {
-  ApiInvitationsIdRoute: ApiInvitationsIdRouteWithChildren,
-}
-
-const ApiInvitationsRouteWithChildren = ApiInvitationsRoute._addFileChildren(
-  ApiInvitationsRouteChildren,
-)
-
 interface ApiIssuesIdSourceBindingsRouteChildren {
   ApiIssuesIdSourceBindingsBindingIdRoute: typeof ApiIssuesIdSourceBindingsBindingIdRoute
 }
@@ -2175,7 +2073,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiConnectionsRoute: ApiConnectionsRouteWithChildren,
   ApiDebugStreamRoute: ApiDebugStreamRoute,
   ApiInboxRoute: ApiInboxRouteWithChildren,
-  ApiInvitationsRoute: ApiInvitationsRouteWithChildren,
   ApiIssuesRoute: ApiIssuesRouteWithChildren,
   ApiMeRoute: ApiMeRoute,
   ApiProjectsRoute: ApiProjectsRoute,
@@ -2203,13 +2100,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

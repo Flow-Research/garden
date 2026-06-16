@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { Result, TaggedError } from 'better-result'
+import { createLogger } from '@garden/observability/console'
 import { requireAppRequestContext } from '@/lib/server/context'
 import {
   createWorkspaceMemberBodySchema,
@@ -14,6 +15,15 @@ import {
 } from '@/lib/server/control-plane'
 import { schema, type Db } from '@/lib/server/db'
 import { sendOrganizationInvitationEmail } from '@/lib/server/email/invitation'
+
+const logger = createLogger('workspace-members-api')
+
+class WorkspaceInvitationRequestError extends TaggedError(
+  'WorkspaceInvitationRequestError',
+)<{
+  message: string
+  status: number
+}>() {}
 
 class WorkspaceInvitationEmailError extends TaggedError(
   'WorkspaceInvitationEmailError',
@@ -39,6 +49,8 @@ type AuthInvitation = {
  * background hook. Before this, Better Auth swallowed Resend failures after
  * creating the invitation, so users saw success while no email arrived. Keeping
  * delivery here lets the API return a visible failure and logs stay app-owned.
+ * The caller cancels the just-created Better Auth invite when this fails so the
+ * admin does not get a hidden pending invitation after a failed send toast.
  * Reference: Better Auth organization invite route uses runInBackgroundOrAwait;
  * Resend failures need to affect this product action.
  */
@@ -124,9 +136,7 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
             workspace_id: row.organizationId,
             user_id: row.userId,
             role: row.role,
-            created_at: row.createdAt
-              ? new Date(row.createdAt).toISOString()
-              : new Date().toISOString(),
+            created_at: new Date(row.createdAt).toISOString(),
             name: row.user.name,
             email: row.user.email,
             avatar_url: row.user.image ?? null,
@@ -137,41 +147,94 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
-        const bodyResult = await parseJsonBody(
-          request,
-          createWorkspaceMemberBodySchema,
-          'Invalid invite payload',
-        )
-        if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
-        const body = bodyResult.value
         const auth = await appContext.auth.getAuth()
-        const invitation = (await auth.api.createInvitation({
-          headers: request.headers,
-          body: {
-            email: body.email,
-            role: body.role ?? 'member',
-            organizationId: params.id,
-          },
-        })) as AuthInvitation
-        const emailResult = await sendInvitationForRoute({
-          baseURL: new URL(request.url).origin,
-          db: await appContext.db(),
-          env: appContext.env,
-          invitation,
-          inviter: {
-            email: session.user.email,
-            name: session.user.name,
-          },
+        const result = await Result.gen(async function* () {
+          const bodyResult = await parseJsonBody(
+            request,
+            createWorkspaceMemberBodySchema,
+            'Invalid invite payload',
+          )
+          if (bodyResult.isErr()) {
+            return Result.err(
+              new WorkspaceInvitationRequestError({
+                message: bodyResult.error.message,
+                status: 400,
+              }),
+            )
+          }
+          const body = bodyResult.value
+          const invitation = yield* Result.await(
+            Result.tryPromise({
+              try: async () =>
+                (await auth.api.createInvitation({
+                  headers: request.headers,
+                  body: {
+                    email: body.email,
+                    role: body.role ?? 'member',
+                    organizationId: params.id,
+                  },
+                })) as AuthInvitation,
+              catch: (cause) =>
+                new WorkspaceInvitationRequestError({
+                  message:
+                    cause instanceof Error
+                      ? cause.message
+                      : 'Failed to create invitation',
+                  status: 400,
+                }),
+            }),
+          )
+          const emailResult = await sendInvitationForRoute({
+            baseURL: new URL(request.url).origin,
+            db: await appContext.db(),
+            env: appContext.env,
+            invitation,
+            inviter: {
+              email: session.user.email,
+              name: session.user.name,
+            },
+          })
+
+          if (emailResult.isErr()) {
+            const cancelResult = await Result.tryPromise({
+              try: async () => {
+                await auth.api.cancelInvitation({
+                  headers: request.headers,
+                  body: { invitationId: invitation.id },
+                })
+              },
+              catch: (cause) => cause,
+            })
+            if (cancelResult.isErr()) {
+              logger.error(
+                'workspace.invitation_cancel_after_email_failure_failed',
+                {
+                  invitationId: invitation.id,
+                  workspaceId: params.id,
+                  error:
+                    cancelResult.error instanceof Error
+                      ? cancelResult.error.message
+                      : String(cancelResult.error),
+                },
+              )
+            }
+
+            return Result.err(emailResult.error)
+          }
+
+          return Result.ok(toInvitation(invitation))
         })
 
-        if (emailResult.isErr()) {
-          return Response.json(
-            { error: emailResult.error.message },
-            { status: emailResult.error.status },
-          )
-        }
-
-        return Response.json(toInvitation(invitation))
+        return result.match({
+          ok: (invitation) => Response.json(invitation),
+          err: (error) =>
+            error instanceof WorkspaceInvitationRequestError
+              ? badRequest(error.message)
+              : Response.json(
+                  { error: error.message },
+                  { status: error.status },
+                ),
+        })
       },
     },
   },
