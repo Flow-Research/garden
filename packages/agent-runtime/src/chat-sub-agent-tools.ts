@@ -58,6 +58,7 @@ import {
 } from "@garden/server/issues/run-service";
 
 type ChatSubAgentToolsInput = {
+  ctx: DurableObjectState;
   databaseUrl?: string;
   threadId?: string;
   workspace: WorkspaceFsLike;
@@ -1364,6 +1365,7 @@ async function postIssueCommentFromChat(
 }
 
 export function createChatSubAgentTools({
+  ctx,
   databaseUrl,
   threadId,
   workspace,
@@ -1385,6 +1387,7 @@ export function createChatSubAgentTools({
 
   return {
     execute: createExecuteTool({
+      ctx,
       tools: {},
       state: createWorkspaceStateBackend(workspace),
       loader,

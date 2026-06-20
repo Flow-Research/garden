@@ -1089,6 +1089,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
 
   override getTools() {
     return createChatSubAgentTools({
+      ctx: this.ctx,
       databaseUrl: this.env.DATABASE_URL,
       threadId: this.name,
       workspace: this.workspace,

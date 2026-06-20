@@ -347,6 +347,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     const context = this.getIssueToolContext()
     return {
       ...createChatSubAgentTools({
+        ctx: this.ctx,
         databaseUrl: this.env.DATABASE_URL,
         threadId: this.name,
         workspace: this.workspace,

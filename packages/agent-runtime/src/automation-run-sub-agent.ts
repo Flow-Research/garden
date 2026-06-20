@@ -359,6 +359,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   override getTools(): ToolSet {
     return {
       execute: createExecuteTool({
+        ctx: this.ctx,
         tools: {},
         state: createWorkspaceStateBackend(this.workspace),
         loader: this.env.LOADER,
