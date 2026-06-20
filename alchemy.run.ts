@@ -309,7 +309,7 @@ function postHogBuildHost() {
  * process. Runtime gets the public Vite token/host bindings above; the personal
  * API key is not attached as a Worker binding. PostHog is a required production
  * dependency for Garden, so deploys should fail fast if the Alchemy environment
- * is missing the upload key or project ID. `GARDEN_REQUIRE_POSTHOG=1` also tells
+ * is missing the CLI upload key or project ID. `GARDEN_REQUIRE_POSTHOG=1` also tells
  * vite.config.ts to fail if someone bypasses this helper and runs an Alchemy
  * build without the required values. References: Alchemy Website build.env docs
  * and PostHog Vite source-map upload docs.
@@ -317,8 +317,8 @@ function postHogBuildHost() {
 function postHogBuildEnv() {
   return {
     GARDEN_REQUIRE_POSTHOG: '1',
-    POSTHOG_API_KEY: plainEnv('POSTHOG_API_KEY'),
-    POSTHOG_PROJECT_ID: plainEnv('POSTHOG_PROJECT_ID'),
+    POSTHOG_CLI_API_KEY: plainEnv('POSTHOG_CLI_API_KEY'),
+    POSTHOG_CLI_PROJECT_ID: plainEnv('POSTHOG_CLI_PROJECT_ID'),
     POSTHOG_HOST: postHogBuildHost(),
     ...(process.env.POSTHOG_RELEASE_VERSION
       ? { POSTHOG_RELEASE_VERSION: plainEnv('POSTHOG_RELEASE_VERSION') }

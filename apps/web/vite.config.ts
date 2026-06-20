@@ -15,8 +15,8 @@ const cloudflareConfigPath =
 const remoteBindings = process.env.CLOUDFLARE_VITE_REMOTE_BINDINGS !== '0'
 const enableMcpAuxiliaryWorker =
   process.env.GARDEN_ENABLE_MCP_AUXILIARY_WORKER === '1'
-const postHogSourcemapApiKey = process.env.POSTHOG_API_KEY
-const postHogSourcemapProjectId = process.env.POSTHOG_PROJECT_ID
+const postHogSourcemapApiKey = process.env.POSTHOG_CLI_API_KEY
+const postHogSourcemapProjectId = process.env.POSTHOG_CLI_PROJECT_ID
 const postHogSourcemapHost = process.env.POSTHOG_HOST
 const postHogReleaseVersion =
   process.env.POSTHOG_RELEASE_VERSION ??
@@ -67,7 +67,7 @@ function postHogSourcemapPlugins() {
   if (!postHogSourcemapApiKey || !postHogSourcemapProjectId) {
     if (requirePostHogSourcemaps) {
       throw new Error(
-        'Missing POSTHOG_API_KEY or POSTHOG_PROJECT_ID for required PostHog source-map upload.',
+        'Missing POSTHOG_CLI_API_KEY or POSTHOG_CLI_PROJECT_ID for required PostHog source-map upload.',
       )
     }
 
