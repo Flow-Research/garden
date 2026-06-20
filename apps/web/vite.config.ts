@@ -4,6 +4,7 @@ import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { cloudflare } from '@cloudflare/vite-plugin'
+import posthogRollupPlugin from '@posthog/rollup-plugin'
 import agents from 'agents/vite'
 
 const enableDevtools =
@@ -14,6 +15,13 @@ const cloudflareConfigPath =
 const remoteBindings = process.env.CLOUDFLARE_VITE_REMOTE_BINDINGS !== '0'
 const enableMcpAuxiliaryWorker =
   process.env.GARDEN_ENABLE_MCP_AUXILIARY_WORKER === '1'
+const postHogSourcemapApiKey = process.env.POSTHOG_API_KEY
+const postHogSourcemapProjectId = process.env.POSTHOG_PROJECT_ID
+const postHogSourcemapHost = process.env.POSTHOG_HOST
+const postHogReleaseVersion =
+  process.env.POSTHOG_RELEASE_VERSION ??
+  process.env.CF_PAGES_COMMIT_SHA ??
+  process.env.GITHUB_SHA
 const baseLogger = createLogger()
 
 function isSandboxInfoLog(message: unknown) {
@@ -44,6 +52,33 @@ const logger: Logger = {
 
     baseLogger.info(message, options)
   },
+}
+
+/**
+ * Enables PostHog source-map upload only in CI environments that provide the
+ * required upload credentials. PostHog's Vite docs require the Rollup plugin for
+ * production stack trace de-minification, but its config resolver throws when
+ * sourcemaps are enabled without `personalApiKey` or `projectId`. Before this
+ * gate, adding the plugin directly would break normal CI/typecheck builds that
+ * do not expose secrets; after it, source maps upload only when explicitly
+ * configured. References: PostHog Vite source-map upload docs and installed
+ * `@posthog/plugin-utils` config resolver.
+ */
+function postHogSourcemapPlugins() {
+  if (!postHogSourcemapApiKey || !postHogSourcemapProjectId) return []
+
+  return [
+    posthogRollupPlugin({
+      personalApiKey: postHogSourcemapApiKey,
+      projectId: postHogSourcemapProjectId,
+      host: postHogSourcemapHost,
+      sourcemaps: {
+        releaseName: 'garden-web',
+        releaseVersion: postHogReleaseVersion,
+        deleteAfterUpload: true,
+      },
+    }),
+  ]
 }
 
 const config = defineConfig({
@@ -97,6 +132,7 @@ const config = defineConfig({
     tailwindcss(),
     tanstackStart(),
     viteReact(),
+    ...postHogSourcemapPlugins(),
   ],
 })
 
