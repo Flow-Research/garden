@@ -17,6 +17,7 @@ import {
   unauthorized,
 } from '@/lib/server/control-plane'
 import { seedBuiltinSkills } from '@/lib/server/builtin-skills'
+import { getPostHogClient } from '@/lib/posthog-server'
 import { createLogger } from '@garden/observability/console'
 
 const logger = createLogger('workspace-api')
@@ -242,6 +243,17 @@ export const Route = createFileRoute('/api/workspaces')({
           )
         }
 
+        const posthog = getPostHogClient()
+        posthog.capture({
+          distinctId: session.user.id,
+          event: 'workspace_created',
+          properties: {
+            workspace_id: workspaceResult.value.id,
+            workspace_name: body.name,
+            workspace_slug: body.slug,
+          },
+        })
+        await posthog.flush()
         return Response.json(toWorkspace(workspaceResult.value, 'owner'), {
           status: 201,
         })

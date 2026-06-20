@@ -15,10 +15,13 @@ import {
   unauthorized,
 } from '@/lib/server/control-plane'
 import { schema } from '@/lib/server/db'
+import { getPostHogClient } from '@/lib/posthog-server'
 
 type PermissionTrustLevel = 'auto' | 'allow' | 'ask'
 
-class ConnectionGrantRouteError extends TaggedError('ConnectionGrantRouteError')<{
+class ConnectionGrantRouteError extends TaggedError(
+  'ConnectionGrantRouteError',
+)<{
   status: number
   message: string
 }>() {}
@@ -53,7 +56,6 @@ export const Route = createFileRoute(
   server: {
     handlers: {
       PATCH: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
@@ -92,7 +94,10 @@ export const Route = createFileRoute(
             }),
         })
         if (agentResult.isErr()) {
-          return json({ error: agentResult.error.message }, agentResult.error.status)
+          return json(
+            { error: agentResult.error.message },
+            agentResult.error.status,
+          )
         }
 
         if (!agentResult.value[0]) {
@@ -178,6 +183,18 @@ export const Route = createFileRoute(
           )
         }
 
+        const posthog = getPostHogClient()
+        posthog.capture({
+          distinctId: session.user.id,
+          event: 'tool_permission_granted',
+          properties: {
+            connector_id: params.connectorId,
+            tool_name: params.name,
+            agent_id: payloadResult.value.agentId,
+            trust_level: payloadResult.value.trustLevel,
+          },
+        })
+        await posthog.flush()
         return Response.json({ ok: true })
       },
     },

@@ -13,12 +13,12 @@ import {
   requireWorkspaceContext,
   toAgent,
 } from '@/lib/server/control-plane'
+import { getPostHogClient } from '@/lib/posthog-server'
 
 export const Route = createFileRoute('/api/agents')({
   server: {
     handlers: {
       GET: async ({ context }) => {
-
         const appContext = requireAppRequestContext(context)
         const workspaceContext = await requireWorkspaceContext(appContext, {
           missingWorkspaceResponse: () => Response.json([]),
@@ -33,7 +33,6 @@ export const Route = createFileRoute('/api/agents')({
         return Response.json(rows.map(toAgent))
       },
       POST: async ({ context, request }) => {
-
         const appContext = requireAppRequestContext(context)
         const workspaceContext = await requireWorkspaceContext(appContext)
         if (workspaceContext instanceof Response) return workspaceContext
@@ -76,6 +75,16 @@ export const Route = createFileRoute('/api/agents')({
           agentId: agent.id,
           grantedBy: session.user.id,
         })
+        const posthog = getPostHogClient()
+        posthog.capture({
+          distinctId: session.user.id,
+          event: 'agent_created',
+          properties: {
+            agent_id: agent.id,
+            agent_name: body.name,
+          },
+        })
+        await posthog.flush()
         return Response.json(toAgent(agent), { status: 201 })
       },
     },

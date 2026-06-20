@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-router'
 import { NuqsAdapter } from 'nuqs/adapters/tanstack-router'
 import { Suspense, lazy } from 'react'
+import { PostHogProvider } from '@posthog/react'
 import { WebProviders } from '@/components/web-providers'
 import appCss from '../styles.css?url'
 import '../bones/registry'
@@ -100,11 +101,20 @@ function RootDocument() {
         <HeadContent />
       </head>
       <body className="h-full overflow-hidden antialiased">
-        <NuqsAdapter>
-          <WebProviders>
-            <Outlet />
-          </WebProviders>
-        </NuqsAdapter>
+        <PostHogProvider
+          apiKey={import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN!}
+          options={{
+            api_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
+            defaults: '2026-01-30',
+            capture_exceptions: true,
+          }}
+        >
+          <NuqsAdapter>
+            <WebProviders>
+              <Outlet />
+            </WebProviders>
+          </NuqsAdapter>
+        </PostHogProvider>
         {Devtools ? (
           <Suspense fallback={null}>
             <Devtools />

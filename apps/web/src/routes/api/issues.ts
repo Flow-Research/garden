@@ -16,6 +16,7 @@ import {
   requireWorkspaceContext,
   toIssue,
 } from '@/lib/server/control-plane'
+import { getPostHogClient } from '@/lib/posthog-server'
 
 export const Route = createFileRoute('/api/issues')({
   server: {
@@ -144,6 +145,28 @@ export const Route = createFileRoute('/api/issues')({
             if (startResult.isErr()) console.error(startResult.error.message)
           })
         }
+        const posthog = getPostHogClient()
+        posthog.capture({
+          distinctId: session.user.id,
+          event: 'issue_created',
+          properties: {
+            issue_id: issue.id,
+            status: issue.status,
+            priority: issue.priority,
+            assignee_type: issue.assignee_type,
+            has_parent: !!body.parent_issue_id,
+            auto_started: !!(
+              body.auto_start !== false &&
+              issue.assignee_type === 'agent' &&
+              issue.assignee_id &&
+              issue.status !== 'backlog' &&
+              issue.status !== 'blocked' &&
+              issue.status !== 'done' &&
+              issue.status !== 'cancelled'
+            ),
+          },
+        })
+        await posthog.flush()
         return Response.json(issue, { status: 201 })
       },
     },

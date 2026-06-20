@@ -8,6 +8,7 @@ import {
   toAutomationRun,
 } from '@/lib/server/automations'
 import { notFound, requireWorkspaceAccess } from '@/lib/server/control-plane'
+import { getPostHogClient } from '@/lib/posthog-server'
 import {
   parseJsonBody,
   triggerAutomationBodySchema,
@@ -45,6 +46,16 @@ export const Route = createFileRoute('/api/automations/$id/trigger')({
         })
         if (dispatchResult.isErr()) return automationErr(dispatchResult.error)
 
+        const posthog = getPostHogClient()
+        posthog.capture({
+          distinctId: access.session.user.id,
+          event: 'automation_triggered',
+          properties: {
+            automation_id: automation.id,
+            source: bodyResult.value.source ?? 'manual',
+          },
+        })
+        await posthog.flush()
         return automationOk(toAutomationRun(dispatchResult.value), 202)
       },
     },

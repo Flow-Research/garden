@@ -14,6 +14,7 @@ import {
   toAutomationTrigger,
 } from '@/lib/server/automations'
 import { requireWorkspaceContext } from '@/lib/server/control-plane'
+import { getPostHogClient } from '@/lib/posthog-server'
 import {
   automationsListSearchSchema,
   createAutomationBodySchema,
@@ -25,11 +26,9 @@ export const Route = createFileRoute('/api/automations')({
   server: {
     handlers: {
       GET: async ({ context, request }) => {
-
         const appContext = requireAppRequestContext(context)
         const workspaceContext = await requireWorkspaceContext(appContext, {
-          missingWorkspaceResponse: () =>
-            automationOk({ automations: [] }),
+          missingWorkspaceResponse: () => automationOk({ automations: [] }),
         })
         if (workspaceContext instanceof Response) return workspaceContext
 
@@ -77,7 +76,6 @@ export const Route = createFileRoute('/api/automations')({
         })
       },
       POST: async ({ context, request }) => {
-
         const appContext = requireAppRequestContext(context)
         const workspaceContext = await requireWorkspaceContext(appContext)
         if (workspaceContext instanceof Response) return workspaceContext
@@ -173,6 +171,19 @@ export const Route = createFileRoute('/api/automations')({
           if (installResult.isErr()) return automationErr(installResult.error)
         }
 
+        const posthog = getPostHogClient()
+        posthog.capture({
+          distinctId: workspaceContext.session.user.id,
+          event: 'automation_created',
+          properties: {
+            automation_id: automation.id,
+            automation_title: body.title,
+            status: automation.status,
+            has_trigger: !!trigger,
+            trigger_kind: trigger ? 'schedule' : null,
+          },
+        })
+        await posthog.flush()
         return automationOk(
           {
             automation: toAutomation(automation),

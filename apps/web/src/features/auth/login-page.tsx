@@ -1,7 +1,8 @@
+import { usePostHog } from "@posthog/react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { authClient } from "@/lib/auth/client";
 import { LoginForm } from "@/components/login-form";
+import { authClient } from "@/lib/auth/client";
 
 export function LoginPage({
   onSuccess,
@@ -24,6 +25,7 @@ export function LoginPage({
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const posthog = usePostHog();
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -42,6 +44,13 @@ export function LoginPage({
           setError(message);
           toast.error(message);
           return;
+        }
+
+        posthog.identify(email, { email, ...(name ? { name } : {}) });
+        if (mode === "signin") {
+          posthog.capture("user_signed_in", { email });
+        } else {
+          posthog.capture("user_signed_up", { email, name });
         }
 
         toast.success(mode === "signin" ? "Signed in" : "Account created");

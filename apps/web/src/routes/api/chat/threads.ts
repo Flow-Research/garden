@@ -15,6 +15,7 @@ import {
   toChatThread,
   unauthorized,
 } from '@/lib/server/control-plane'
+import { getPostHogClient } from '@/lib/posthog-server'
 
 const NEW_CHAT_TITLE = 'New Chat'
 
@@ -26,7 +27,10 @@ export const Route = createFileRoute('/api/chat/threads')({
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
-        const workspaceId = await resolveWorkspaceId(appContext, session.user.id)
+        const workspaceId = await resolveWorkspaceId(
+          appContext,
+          session.user.id,
+        )
         if (!workspaceId) return Response.json([])
 
         const db = await appContext.db()
@@ -73,8 +77,7 @@ export const Route = createFileRoute('/api/chat/threads')({
               row.primaryIssue,
             )
             if (
-              thread.title.trim().toLowerCase() !==
-              NEW_CHAT_TITLE.toLowerCase()
+              thread.title.trim().toLowerCase() !== NEW_CHAT_TITLE.toLowerCase()
             ) {
               return [thread]
             }
@@ -95,7 +98,10 @@ export const Route = createFileRoute('/api/chat/threads')({
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
-        const workspaceId = await resolveWorkspaceId(appContext, session.user.id)
+        const workspaceId = await resolveWorkspaceId(
+          appContext,
+          session.user.id,
+        )
         if (!workspaceId) {
           return Response.json(
             { error: 'Workspace not found' },
@@ -256,6 +262,17 @@ export const Route = createFileRoute('/api/chat/threads')({
           return createdThread
         })
 
+        const posthog = getPostHogClient()
+        posthog.capture({
+          distinctId: session.user.id,
+          event: 'chat_thread_created',
+          properties: {
+            thread_id: thread.id,
+            runtime_kind: runtimeKind,
+            has_primary_issue: !!primaryIssueId,
+          },
+        })
+        await posthog.flush()
         return Response.json(
           toChatThread(thread, agentRuntimeName, primaryIssue),
           {
