@@ -31,6 +31,7 @@ import {
   createAppRequestContext,
   getLoggedAuthSession,
 } from '@/lib/server/context'
+import { capturePostHogException } from '@/lib/posthog-server'
 
 export { AgentDO }
 export { AutomationRunSubAgent }
@@ -54,6 +55,41 @@ const webLogger = createGardenLogger({
   service: 'garden-staging',
   component: 'worker-entry',
 })
+
+/**
+ * Sends worker-boundary exceptions to PostHog without delaying the response.
+ * PostHog's Cloudflare Workers docs recommend `ctx.waitUntil()` with immediate
+ * capture because isolates can end before queued flushes. Before this hook,
+ * `Result.tryPromise` logged thrown request errors but did not create PostHog
+ * Error Tracking events; after it, response behavior stays unchanged while the
+ * edge-safe SDK records the exception. References: PostHog Cloudflare Workers
+ * and Node error-tracking installation docs.
+ */
+function captureWorkerException(args: {
+  ctx?: ExecutionContext
+  error: unknown
+  logger: GardenLogger
+  distinctId?: string
+  properties: Record<string | number, unknown>
+}) {
+  args.ctx?.waitUntil(
+    Result.tryPromise({
+      try: async () =>
+        await capturePostHogException({
+          error: args.error,
+          distinctId: args.distinctId,
+          properties: args.properties,
+        }),
+      catch: (cause) => cause,
+    }).then((result) => {
+      if (result.isErr()) {
+        args.logger.warn('posthog.exception_capture.failed', {
+          ...errorFields(result.error),
+        })
+      }
+    }),
+  )
+}
 
 function responseFromCaughtError(args: {
   event: string
@@ -268,7 +304,7 @@ export default {
     )
   },
 
-  async fetch(request: Request, env: ServerEnv, _ctx?: ExecutionContext) {
+  async fetch(request: Request, env: ServerEnv, ctx?: ExecutionContext) {
     bindAppEnv(env)
 
     const startedAt = performance.now()
@@ -321,6 +357,17 @@ export default {
         catch: (cause) => cause,
       })
       if (agentResponse.isErr()) {
+        captureWorkerException({
+          ctx,
+          error: agentResponse.error,
+          logger: agentLogger,
+          distinctId: agentAuth.userId ?? undefined,
+          properties: {
+            event: 'agent.request.failed',
+            route: 'agent',
+            ...baseRequestFields,
+          },
+        })
         return responseFromCaughtError({
           event: 'agent.request.failed',
           status: 502,
@@ -380,6 +427,18 @@ export default {
       )
       return response
     }
+
+    captureWorkerException({
+      ctx,
+      error: appResponse.error,
+      logger: appLogger,
+      distinctId: session?.user?.id,
+      properties: {
+        event: 'web.request.failed',
+        route: 'tanstack-start',
+        ...baseRequestFields,
+      },
+    })
 
     return responseFromCaughtError({
       event: 'web.request.failed',

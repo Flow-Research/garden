@@ -32,6 +32,8 @@ export type AppEnv = {
   SLACK_CLIENT_ID?: string
   SLACK_CLIENT_SECRET?: string
   RESEND_API_KEY: RequiredEnvBinding<'RESEND_API_KEY'>
+  VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
+  VITE_PUBLIC_POSTHOG_HOST?: string
 }
 
 // The custom Worker entry receives the authoritative Cloudflare bindings as the
