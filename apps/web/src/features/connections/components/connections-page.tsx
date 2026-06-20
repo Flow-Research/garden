@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { getConnectorById } from '@garden/connectors'
+import { defaultTrustLevelForRisk } from '@garden/connectors/capabilities'
 import type { ConnectorId } from '@garden/connectors/registry'
 import {
   getConnectorActivity,
@@ -159,14 +160,25 @@ function activityStatusColor(
   }
 }
 
+/**
+ * Mirrors the MCP proxy's missing-row behavior so old workspaces display the
+ * same default the runtime will enforce: read=auto, write=allow, sensitive=ask.
+ */
+function grantForTool(
+  tool: ConnectionTool,
+  agentId: string,
+): PermissionTrustLevel {
+  return tool.grantsByAgent[agentId] ?? defaultTrustLevelForRisk(tool.riskClass)
+}
+
 function bulkValueForTools(
   tools: ConnectionTool[],
   agentId: string | null,
 ): PermissionTrustLevel | 'mixed' {
   if (!tools.length || !agentId) return 'mixed'
-  const first = tools[0].grantsByAgent[agentId] ?? 'auto'
+  const first = grantForTool(tools[0], agentId)
   for (const tool of tools) {
-    const value = tool.grantsByAgent[agentId] ?? 'auto'
+    const value = grantForTool(tool, agentId)
     if (value !== first) return 'mixed'
   }
   return first
@@ -392,7 +404,7 @@ export function ConnectionsPage({
   ) => {
     if (!selectedAgent) return
     for (const tool of groupTools) {
-      const current = tool.grantsByAgent[selectedAgent.id] ?? 'auto'
+      const current = grantForTool(tool, selectedAgent.id)
       if (current === value) continue
       updateToolGrant({
         connectorId: connector.id,
@@ -676,7 +688,7 @@ function ToolGroup({
       {expanded ? (
         <ul className="mt-2">
           {tools.map((tool) => {
-            const value = (agentId && tool.grantsByAgent[agentId]) || 'auto'
+            const value = agentId ? grantForTool(tool, agentId) : 'ask'
             return (
               <li
                 key={tool.name}
