@@ -172,6 +172,13 @@ export const web = await TanStackStart('web', {
   },
   crons: ['* * * * *'],
   tailConsumers: [tailConsumer],
+  // Alchemy owns the production build environment. PostHog is required for
+  // Garden deploys, so missing analytics or source-map credentials should fail
+  // here with a clear configuration error instead of silently shipping an
+  // uninstrumented Worker.
+  build: {
+    env: postHogBuildEnv(),
+  },
   bindings: {
     AgentDO: agentDo,
     ...(sandbox ? { Sandbox: sandbox } : {}),
@@ -194,6 +201,13 @@ export const web = await TanStackStart('web', {
     SANDBOX_TRANSPORT: plainEnv('SANDBOX_TRANSPORT', 'websocket'),
     SANDBOX_LOG_LEVEL: plainEnv('SANDBOX_LOG_LEVEL', 'warn'),
     GARDEN_LOG_LEVEL: plainEnv('GARDEN_LOG_LEVEL', 'warn'),
+    // Public PostHog runtime config is still bound through Alchemy so the
+    // browser bundle and Worker-side event capture agree on the same project.
+    // The project token is not a secret, but it is required for this product.
+    VITE_PUBLIC_POSTHOG_PROJECT_TOKEN: plainEnv(
+      'VITE_PUBLIC_POSTHOG_PROJECT_TOKEN',
+    ),
+    VITE_PUBLIC_POSTHOG_HOST: plainEnv('VITE_PUBLIC_POSTHOG_HOST'),
     ...optionalPlainBindings(['BETTER_AUTH_URL']),
     ENVIRONMENT: plainEnv('ENVIRONMENT', 'production'),
     ...optionalPlainBindings([
@@ -284,6 +298,32 @@ function optionalSecretBindings(names: string[]) {
       .filter((name) => process.env[name])
       .map((name) => [name, alchemy.secret.env(name)]),
   )
+}
+
+function postHogBuildHost() {
+  return process.env.POSTHOG_HOST ?? plainEnv('VITE_PUBLIC_POSTHOG_HOST')
+}
+
+/**
+ * Supplies PostHog source-map upload credentials only to the Alchemy build
+ * process. Runtime gets the public Vite token/host bindings above; the personal
+ * API key is not attached as a Worker binding. PostHog is a required production
+ * dependency for Garden, so deploys should fail fast if the Alchemy environment
+ * is missing the upload key or project ID. `GARDEN_REQUIRE_POSTHOG=1` also tells
+ * vite.config.ts to fail if someone bypasses this helper and runs an Alchemy
+ * build without the required values. References: Alchemy Website build.env docs
+ * and PostHog Vite source-map upload docs.
+ */
+function postHogBuildEnv() {
+  return {
+    GARDEN_REQUIRE_POSTHOG: '1',
+    POSTHOG_API_KEY: plainEnv('POSTHOG_API_KEY'),
+    POSTHOG_PROJECT_ID: plainEnv('POSTHOG_PROJECT_ID'),
+    POSTHOG_HOST: postHogBuildHost(),
+    ...(process.env.POSTHOG_RELEASE_VERSION
+      ? { POSTHOG_RELEASE_VERSION: plainEnv('POSTHOG_RELEASE_VERSION') }
+      : {}),
+  }
 }
 
 /**

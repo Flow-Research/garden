@@ -22,6 +22,7 @@ const postHogReleaseVersion =
   process.env.POSTHOG_RELEASE_VERSION ??
   process.env.CF_PAGES_COMMIT_SHA ??
   process.env.GITHUB_SHA
+const requirePostHogSourcemaps = process.env.GARDEN_REQUIRE_POSTHOG === '1'
 const baseLogger = createLogger()
 
 function isSandboxInfoLog(message: unknown) {
@@ -55,17 +56,23 @@ const logger: Logger = {
 }
 
 /**
- * Enables PostHog source-map upload only in CI environments that provide the
- * required upload credentials. PostHog's Vite docs require the Rollup plugin for
- * production stack trace de-minification, but its config resolver throws when
- * sourcemaps are enabled without `personalApiKey` or `projectId`. Before this
- * gate, adding the plugin directly would break normal CI/typecheck builds that
- * do not expose secrets; after it, source maps upload only when explicitly
- * configured. References: PostHog Vite source-map upload docs and installed
- * `@posthog/plugin-utils` config resolver.
+ * Adds PostHog's Rollup source-map uploader for production builds. Alchemy sets
+ * `GARDEN_REQUIRE_POSTHOG=1` for deploy builds because PostHog is required in
+ * Garden production; local ad hoc builds can omit the upload secrets and skip
+ * the plugin. The explicit guard avoids the plugin-utils resolver's generic
+ * missing-key throw and gives CI a clearer action item. References: PostHog Vite
+ * source-map upload docs and installed `@posthog/plugin-utils` config resolver.
  */
 function postHogSourcemapPlugins() {
-  if (!postHogSourcemapApiKey || !postHogSourcemapProjectId) return []
+  if (!postHogSourcemapApiKey || !postHogSourcemapProjectId) {
+    if (requirePostHogSourcemaps) {
+      throw new Error(
+        'Missing POSTHOG_API_KEY or POSTHOG_PROJECT_ID for required PostHog source-map upload.',
+      )
+    }
+
+    return []
+  }
 
   return [
     posthogRollupPlugin({
