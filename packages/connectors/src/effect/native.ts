@@ -22,10 +22,13 @@ export type NativeConnectorToolDefinition<
   TInput = unknown,
   TOutput = unknown,
   R = never,
-> = NativeConnectorTool & {
+> = Omit<NativeConnectorTool, 'execute'> & {
   readonly input: Schema.Decoder<TInput>
   readonly output?: Schema.Schema<TOutput>
   readonly handler: NativeConnectorToolHandler<TInput, TOutput, R>
+  readonly execute: (
+    input: unknown,
+  ) => Effect.Effect<TOutput, ConnectorError, R>
 }
 
 function standardJsonSchema(schema: Schema.Top, side: 'input' | 'output') {

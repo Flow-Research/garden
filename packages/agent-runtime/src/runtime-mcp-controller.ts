@@ -1,9 +1,13 @@
 import type { MCPServerFilter } from 'agents/mcp/client'
-import type { ModelMessage, ToolSet } from 'ai'
+import { jsonSchema, tool, type ModelMessage, type ToolSet } from 'ai'
+import { Effect } from 'effect'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, desc, eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/neon-serverless'
 import { getConnectorById } from '@garden/connectors'
+import { discordNativeTools } from '@garden/connectors/discord/tools'
+import { makeDiscordBaseLayer } from '@garden/connectors/discord/services'
+import { isNativeConnector } from '@garden/connectors/sdk'
 import {
   buildMcpAiToolKey,
   canonicalJsonString,
@@ -73,6 +77,7 @@ export type McpHostEnv = {
   BETTER_AUTH_SECRET: string
   BETTER_AUTH_URL: string
   DATABASE_URL: string
+  DISCORD_BOT_TOKEN?: string
 }
 
 export type McpRegistration =
@@ -98,6 +103,14 @@ export type McpToolRecord = {
   inputSchema?: unknown
   outputSchema?: unknown
   serverId: string
+}
+
+type AiJsonSchemaInput = Parameters<typeof jsonSchema>[0]
+
+function asAiJsonSchema(schemaValue: unknown): AiJsonSchemaInput {
+  return (schemaValue && typeof schemaValue === 'object'
+    ? schemaValue
+    : { type: 'object', additionalProperties: true }) as AiJsonSchemaInput
 }
 
 export type McpClientFacade = {
@@ -141,6 +154,8 @@ export function isMcpFailedConnectionStateMessage(message: string | undefined) {
 }
 
 export class RuntimeMcpController {
+  private activeNativeConnectorIds = new Set<string>()
+
   constructor(private readonly host: McpHost) {}
 
   private getDb() {
@@ -275,7 +290,7 @@ export class RuntimeMcpController {
               return true
             }
 
-            const approvalResult = await this.ensureMcpToolNeedsApproval({
+            const approvalResult = await this.ensureConnectorToolNeedsApproval({
               connectorId,
               toolName: tool.name,
               toolCallId: options.toolCallId,
@@ -299,10 +314,95 @@ export class RuntimeMcpController {
         ),
       ),
       ...wrappedTools,
+      ...this.buildNativeAITools(wrapOptions),
     }
   }
 
-  private async ensureMcpToolNeedsApproval(args: {
+  /**
+   * Adapts active provider-native connector tools into AI SDK tools. Native
+   * connectors are activated by the same availability pass as MCP connectors,
+   * but they execute through Effect services instead of proxy MCP sessions.
+   */
+  private buildNativeAITools(wrapOptions?: {
+    shouldAutoApprove?: (input: {
+      connectorId: string
+      toolName: string
+      riskClass: string
+    }) => boolean
+  }) {
+    if (!this.activeNativeConnectorIds.has('discord')) return {}
+
+    return Object.fromEntries(
+      discordNativeTools.map((nativeTool) => {
+        const toolKey = buildMcpAiToolKey('discord', nativeTool.name)
+        return [
+          toolKey,
+          tool({
+            description: guardedMcpToolDescription({
+              connectorId: 'discord',
+              toolName: nativeTool.name,
+              description: nativeTool.description,
+            }),
+            inputSchema: jsonSchema(asAiJsonSchema(nativeTool.inputSchema)),
+            execute: async (input) => {
+              const result = await Result.tryPromise({
+                try: async () =>
+                  await Effect.runPromise(
+                    nativeTool
+                      .execute(input)
+                      .pipe(
+                        Effect.provide(
+                          makeDiscordBaseLayer({
+                            botToken: this.host.env.DISCORD_BOT_TOKEN ?? '',
+                          }),
+                        ),
+                      ),
+                  ),
+                catch: (cause) =>
+                  cause instanceof Error ? cause : new Error(String(cause)),
+              })
+
+              if (result.isOk()) return result.value
+
+              console.warn('[agent-runtime] native connector tool call failed', {
+                connectorId: 'discord',
+                toolName: nativeTool.name,
+                error: result.error.message,
+              })
+
+              return {
+                error: true,
+                message: `discord.${nativeTool.name} failed: ${result.error.message}`,
+              }
+            },
+            needsApproval: async (
+              input: unknown,
+              options: {
+                toolCallId: string
+                messages: ModelMessage[]
+                experimental_context?: unknown
+              },
+            ) => {
+              const approvalResult = await this.ensureConnectorToolNeedsApproval({
+                connectorId: 'discord',
+                toolName: nativeTool.name,
+                toolCallId: options.toolCallId,
+                toolArgs: input,
+                shouldAutoApprove: wrapOptions?.shouldAutoApprove,
+              })
+              if (approvalResult.isErr()) {
+                throw approvalResult.error
+              }
+
+              return approvalResult.value
+            },
+          }),
+        ]
+      }),
+    ) satisfies ToolSet
+  }
+
+  private async ensureConnectorToolNeedsApproval(args: {
     connectorId: string
     toolName: string
     toolCallId: string
@@ -775,13 +875,15 @@ export class RuntimeMcpController {
     )
     if (bindingsResult.isErr()) return bindingsResult
 
+    const mcpBindings = this.activateNativeConnectorBindings(bindingsResult.value)
+
     const staleTransportResult = await this.removeNonRpcConnectorServers(
-      bindingsResult.value,
+      mcpBindings,
     )
     if (staleTransportResult.isErr()) return staleTransportResult
 
     const failedServerResult = await this.removeFailedConnectorServers(
-      bindingsResult.value,
+      mcpBindings,
     )
     if (failedServerResult.isErr()) return failedServerResult
     const precleanedConnectorIds = new Set([
@@ -793,7 +895,7 @@ export class RuntimeMcpController {
     if (storedRowsResult.isErr()) return storedRowsResult
 
     const plan = buildConnectorSyncPlan({
-      bindings: bindingsResult.value,
+      bindings: mcpBindings,
       registeredServerIds: this.host.mcp
         .listServers()
         .map((server) => server.id),
@@ -845,6 +947,28 @@ export class RuntimeMcpController {
     }
 
     return Result.ok(undefined)
+  }
+
+  /**
+   * Splits native connectors out of the MCP refresh plan while keeping their
+   * active ids in memory for the current turn's AI tool assembly.
+   */
+  private activateNativeConnectorBindings(bindings: ActiveConnectorBinding[]) {
+    const mcpBindings: ActiveConnectorBinding[] = []
+    const nativeConnectorIds = new Set<string>()
+
+    for (const binding of bindings) {
+      const connector = getConnectorById(binding.connectorId)
+      if (connector && isNativeConnector(connector)) {
+        nativeConnectorIds.add(connector.id)
+        continue
+      }
+
+      mcpBindings.push(binding)
+    }
+
+    this.activeNativeConnectorIds = nativeConnectorIds
+    return mcpBindings
   }
 
   private async removeNonRpcConnectorServers(

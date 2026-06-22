@@ -76,6 +76,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_SECRET: string
   BETTER_AUTH_URL: string
   DATABASE_URL: string
+  DISCORD_BOT_TOKEN?: string
   AI: Ai
   AI_GATEWAY_ID?: string
   FILES: R2Bucket
