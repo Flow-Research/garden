@@ -44,6 +44,8 @@ import { Route as ApiInboxArchiveAllRouteImport } from './routes/api/inbox/archi
 import { Route as ApiGithubSetupRouteImport } from './routes/api/github/setup'
 import { Route as ApiGithubInstallRouteImport } from './routes/api/github/install'
 import { Route as ApiGithubCallbackRouteImport } from './routes/api/github/callback'
+import { Route as ApiDiscordSetupRouteImport } from './routes/api/discord/setup'
+import { Route as ApiDiscordInstallRouteImport } from './routes/api/discord/install'
 import { Route as ApiDevIssueRunPlanRouteImport } from './routes/api/dev/issue-run-plan'
 import { Route as ApiConnectionsCallbackEventsRouteImport } from './routes/api/connections/callback-events'
 import { Route as ApiConnectionsConnectorIdRouteImport } from './routes/api/connections/$connectorId'
@@ -273,6 +275,16 @@ const ApiGithubInstallRoute = ApiGithubInstallRouteImport.update({
 const ApiGithubCallbackRoute = ApiGithubCallbackRouteImport.update({
   id: '/api/github/callback',
   path: '/api/github/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDiscordSetupRoute = ApiDiscordSetupRouteImport.update({
+  id: '/api/discord/setup',
+  path: '/api/discord/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDiscordInstallRoute = ApiDiscordInstallRouteImport.update({
+  id: '/api/discord/install',
+  path: '/api/discord/install',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiDevIssueRunPlanRoute = ApiDevIssueRunPlanRouteImport.update({
@@ -587,6 +599,8 @@ export interface FileRoutesByFullPath {
   '/api/connections/$connectorId': typeof ApiConnectionsConnectorIdRouteWithChildren
   '/api/connections/callback-events': typeof ApiConnectionsCallbackEventsRoute
   '/api/dev/issue-run-plan': typeof ApiDevIssueRunPlanRoute
+  '/api/discord/install': typeof ApiDiscordInstallRoute
+  '/api/discord/setup': typeof ApiDiscordSetupRoute
   '/api/github/callback': typeof ApiGithubCallbackRoute
   '/api/github/install': typeof ApiGithubInstallRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
@@ -676,6 +690,8 @@ export interface FileRoutesByTo {
   '/api/connections/$connectorId': typeof ApiConnectionsConnectorIdRouteWithChildren
   '/api/connections/callback-events': typeof ApiConnectionsCallbackEventsRoute
   '/api/dev/issue-run-plan': typeof ApiDevIssueRunPlanRoute
+  '/api/discord/install': typeof ApiDiscordInstallRoute
+  '/api/discord/setup': typeof ApiDiscordSetupRoute
   '/api/github/callback': typeof ApiGithubCallbackRoute
   '/api/github/install': typeof ApiGithubInstallRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
@@ -767,6 +783,8 @@ export interface FileRoutesById {
   '/api/connections/$connectorId': typeof ApiConnectionsConnectorIdRouteWithChildren
   '/api/connections/callback-events': typeof ApiConnectionsCallbackEventsRoute
   '/api/dev/issue-run-plan': typeof ApiDevIssueRunPlanRoute
+  '/api/discord/install': typeof ApiDiscordInstallRoute
+  '/api/discord/setup': typeof ApiDiscordSetupRoute
   '/api/github/callback': typeof ApiGithubCallbackRoute
   '/api/github/install': typeof ApiGithubInstallRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
@@ -858,6 +876,8 @@ export interface FileRouteTypes {
     | '/api/connections/$connectorId'
     | '/api/connections/callback-events'
     | '/api/dev/issue-run-plan'
+    | '/api/discord/install'
+    | '/api/discord/setup'
     | '/api/github/callback'
     | '/api/github/install'
     | '/api/github/setup'
@@ -947,6 +967,8 @@ export interface FileRouteTypes {
     | '/api/connections/$connectorId'
     | '/api/connections/callback-events'
     | '/api/dev/issue-run-plan'
+    | '/api/discord/install'
+    | '/api/discord/setup'
     | '/api/github/callback'
     | '/api/github/install'
     | '/api/github/setup'
@@ -1037,6 +1059,8 @@ export interface FileRouteTypes {
     | '/api/connections/$connectorId'
     | '/api/connections/callback-events'
     | '/api/dev/issue-run-plan'
+    | '/api/discord/install'
+    | '/api/discord/setup'
     | '/api/github/callback'
     | '/api/github/install'
     | '/api/github/setup'
@@ -1121,6 +1145,8 @@ export interface RootRouteChildren {
   ApiChatThreadsRoute: typeof ApiChatThreadsRouteWithChildren
   ApiCommentsIdRoute: typeof ApiCommentsIdRouteWithChildren
   ApiDevIssueRunPlanRoute: typeof ApiDevIssueRunPlanRoute
+  ApiDiscordInstallRoute: typeof ApiDiscordInstallRoute
+  ApiDiscordSetupRoute: typeof ApiDiscordSetupRoute
   ApiGithubCallbackRoute: typeof ApiGithubCallbackRoute
   ApiGithubInstallRoute: typeof ApiGithubInstallRoute
   ApiGithubSetupRoute: typeof ApiGithubSetupRoute
@@ -1381,6 +1407,20 @@ declare module '@tanstack/react-router' {
       path: '/api/github/callback'
       fullPath: '/api/github/callback'
       preLoaderRoute: typeof ApiGithubCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/discord/setup': {
+      id: '/api/discord/setup'
+      path: '/api/discord/setup'
+      fullPath: '/api/discord/setup'
+      preLoaderRoute: typeof ApiDiscordSetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/discord/install': {
+      id: '/api/discord/install'
+      path: '/api/discord/install'
+      fullPath: '/api/discord/install'
+      preLoaderRoute: typeof ApiDiscordInstallRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/dev/issue-run-plan': {
@@ -2103,6 +2143,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiChatThreadsRoute: ApiChatThreadsRouteWithChildren,
   ApiCommentsIdRoute: ApiCommentsIdRouteWithChildren,
   ApiDevIssueRunPlanRoute: ApiDevIssueRunPlanRoute,
+  ApiDiscordInstallRoute: ApiDiscordInstallRoute,
+  ApiDiscordSetupRoute: ApiDiscordSetupRoute,
   ApiGithubCallbackRoute: ApiGithubCallbackRoute,
   ApiGithubInstallRoute: ApiGithubInstallRoute,
   ApiGithubSetupRoute: ApiGithubSetupRoute,
@@ -2121,13 +2163,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
