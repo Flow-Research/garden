@@ -170,7 +170,13 @@ export const web = await TanStackStart('web', {
       persist: true,
     },
   },
-  crons: ['* * * * *'],
+  // Source of truth for the deployed garden-staging cron (Alchemy owns the
+  // deploy, not wrangler.jsonc). The issue-run reconciler only does
+  // product-ledger cleanup with no durable deadline, so it does not need
+  // frequent wakeups. It was firing every minute and hammering Neon compute,
+  // which exhausted the DB quota and 500'd session lookups / login
+  // (2026-06-22 incident). Widened to every 3 hours to stop the compute bleed.
+  crons: ['0 */3 * * *'],
   tailConsumers: [tailConsumer],
   // Alchemy owns the production build environment. PostHog is required for
   // Garden deploys, so missing analytics or source-map credentials should fail
