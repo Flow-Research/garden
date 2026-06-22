@@ -98,7 +98,6 @@ const CONNECTOR_ICON_ID: Record<ConnectorId, string | null> = {
   'google-drive': 'logos:google-drive',
   github: 'logos:github-icon',
   'exa-search': 'simple-icons:exa',
-  discord: 'simple-icons:discord',
 }
 
 function ConnectorIcon({
