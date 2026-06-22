@@ -1,4 +1,5 @@
 import { connectorRegistry } from '@garden/connectors'
+import { isNativeConnector } from '@garden/connectors/sdk'
 import type { ConnectorId } from '@garden/connectors/registry'
 import {
   defaultTrustLevelForRisk,
@@ -146,11 +147,13 @@ export function buildConnectionSurface(args: {
     )
 
     const hasDiscoveredTools = dbTools.length > 0
+    const requiresNativeInstall =
+      isNativeConnector(connector) && connector.native.availability === 'installation'
     const resolvedStatus: ConnectorStatus = availableConnector
       ? availableConnector.status
       : connection
         ? ((connection.status as ConnectorStatus | undefined) ?? 'connected')
-        : connector.oauth || connector.apiKey
+        : connector.oauth || connector.apiKey || requiresNativeInstall
           ? 'available'
           : hasDiscoveredTools
             ? 'connected'
@@ -175,9 +178,9 @@ export function buildConnectionSurface(args: {
               : []),
           ]
         : (connection?.scopes ?? []),
-      connectedAt: connection?.createdAt
+      connectedAt: availableConnector?.connectedAt ?? (connection?.createdAt
         ? new Date(connection.createdAt).toISOString()
-        : null,
+        : null),
       toolCount: tools.length,
       recentInvocations,
       grants,

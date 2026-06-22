@@ -137,7 +137,7 @@ export const connectorCallbackEvent = pgTable(
     ),
     check(
       'connector_callback_event_source_check',
-      sql`${table.source} in ('oauth', 'github_app')`,
+      sql`${table.source} in ('oauth', 'github_app', 'discord_bot')`,
     ),
     check(
       'connector_callback_event_status_check',

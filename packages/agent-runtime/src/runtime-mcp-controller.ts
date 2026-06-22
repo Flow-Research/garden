@@ -875,7 +875,10 @@ export class RuntimeMcpController {
     )
     if (bindingsResult.isErr()) return bindingsResult
 
-    const mcpBindings = this.activateNativeConnectorBindings(bindingsResult.value)
+    const activeBindings = bindingsResult.value.filter(
+      (binding) => !('status' in binding) || binding.status === 'connected',
+    )
+    const mcpBindings = this.activateNativeConnectorBindings(activeBindings)
 
     const staleTransportResult = await this.removeNonRpcConnectorServers(
       mcpBindings,

@@ -51,6 +51,11 @@ export class ConnectorHttpError extends ConnectorError<'ConnectorHttpError'> {
   readonly _tag = 'ConnectorHttpError' as const
 }
 
+/** Marks connector-owned persistence failures at app/server boundaries. */
+export class ConnectorDatabaseError extends ConnectorError<'ConnectorDatabaseError'> {
+  readonly _tag = 'ConnectorDatabaseError' as const
+}
+
 /** Marks successful HTTP responses whose body did not match the expected shape. */
 export class ConnectorDecodeError extends ConnectorError<'ConnectorDecodeError'> {
   readonly _tag = 'ConnectorDecodeError' as const
