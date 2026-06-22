@@ -18,7 +18,6 @@
     "./oauth": "./src/oauth.ts",
     "./proxy-jwt": "./src/proxy-jwt.ts",
     "./discord": "./src/discord/connector.ts",
-    "./discord/install": "./src/discord/install.ts",
     "./discord/rest-client": "./src/discord/rest-client.ts",
     "./discord/services": "./src/discord/services.ts",
     "./discord/tools": "./src/discord/tools.ts",

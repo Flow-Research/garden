@@ -22,7 +22,7 @@ export type ConnectionItem = {
   label: string
   description: string
   status: ConnectorStatus
-  authKind: 'oauth' | 'github_app' | 'discord_bot' | 'api_key' | 'none' | null
+  authKind: 'oauth' | 'github_app' | 'api_key' | 'none' | null
   accountLogin: string | null
   repositorySelection: string | null
   scopes: string[]
@@ -67,7 +67,7 @@ export type ConnectorCallbackEventItem = {
   connectorLabel: string
   providerId: string | null
   flowId: string | null
-  source: 'oauth' | 'github_app' | 'discord_bot'
+  source: 'oauth' | 'github_app'
   status: 'success' | 'degraded' | 'error'
   stage: string
   message: string | null

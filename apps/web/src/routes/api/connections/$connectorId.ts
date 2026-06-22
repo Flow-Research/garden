@@ -1,10 +1,8 @@
-import { Effect } from 'effect'
 import { Result } from 'better-result'
 import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { getConnectorById } from '@garden/connectors'
-import { isMcpConnector } from '@garden/connectors/sdk'
 import {
   connectionActionBodySchema,
   parseJsonBody,
@@ -18,7 +16,6 @@ import {
   unauthorized,
 } from '@/lib/server/control-plane'
 import { schema } from '@/lib/server/db'
-import { markDiscordInstallStatus } from '@/lib/server/discord-install'
 
 function syncErrorStatus(code: string) {
   switch (code) {
@@ -69,33 +66,7 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
         const db = await appContext.db()
 
         if (actionResult.value === 'disconnect') {
-          if (connector.id === 'discord') {
-            const result = await Effect.runPromise(
-              markDiscordInstallStatus({
-                db,
-                workspaceId,
-                status: 'disconnected',
-              }).pipe(
-                Effect.match({
-                  onFailure: (error) => ({ ok: false as const, error }),
-                  onSuccess: (updated) => ({ ok: true as const, updated }),
-                }),
-              ),
-            )
-
-            if (!result.ok) {
-              return Response.json(
-                { error: result.error.message },
-                { status: 500 },
-              )
-            }
-
-            return result.updated
-              ? Response.json({ ok: true })
-              : notFound('Connection not found')
-          }
-
-          if (!isMcpConnector(connector) || !connector.oauth) {
+          if (!connector.oauth) {
             return badRequest('Connector does not support disconnect')
           }
 
@@ -132,27 +103,7 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
           workspaceId,
         )
 
-        if (connector.id === 'discord') {
-          const result = await Effect.runPromise(
-            markDiscordInstallStatus({
-              db,
-              workspaceId,
-              status: syncResult.isOk() ? 'connected' : 'degraded',
-            }).pipe(
-              Effect.match({
-                onFailure: (error) => ({ ok: false as const, error }),
-                onSuccess: (updated) => ({ ok: true as const, updated }),
-              }),
-            ),
-          )
-
-          if (!result.ok) {
-            return Response.json({ error: result.error.message }, { status: 500 })
-          }
-          if (!result.updated) return notFound('Connection not found')
-        }
-
-        if (isMcpConnector(connector) && connector.oauth) {
+        if (connector.oauth) {
           await db
             .update(schema.account)
             .set({

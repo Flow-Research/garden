@@ -92,12 +92,6 @@ function startGitHubAppInstall(flowId: string) {
   window.location.href = url.toString()
 }
 
-function startDiscordBotInstall(flowId: string) {
-  const url = new URL('/api/discord/install', window.location.origin)
-  url.searchParams.set('connector_flow', flowId)
-  window.location.href = url.toString()
-}
-
 const CONNECTOR_ICON_ID: Record<ConnectorId, string | null> = {
   slack: 'logos:slack-icon',
   gmail: 'logos:google-gmail',
@@ -386,8 +380,7 @@ export function ConnectionsPage({
 
   const connectorSpec = getConnectorById(connector.id)
   const isConnected = connector.status === 'connected'
-  const isDiscordConnector = connector.id === 'discord'
-  const isManaged = !connectorSpec?.oauth && !isDiscordConnector
+  const isManaged = !connectorSpec?.oauth
   const canConfigureTools = isConnected && connector.tools.length > 0
   const statusLabel = isConnected
     ? 'Connected'
@@ -489,19 +482,13 @@ export function ConnectionsPage({
               disabled={
                 connectionMutation.isPending ||
                 launchingConnectorId === connector.id ||
-                (connector.id !== 'github' &&
-                  connector.id !== 'discord' &&
-                  !connectorSpec?.oauth)
+                (connector.id !== 'github' && !connectorSpec?.oauth)
               }
               onClick={async () => {
                 const flowId = createConnectorFlowId()
                 setLaunchingConnectorId(connector.id)
                 if (connector.id === 'github') {
                   startGitHubAppInstall(flowId)
-                  return
-                }
-                if (connector.id === 'discord') {
-                  startDiscordBotInstall(flowId)
                   return
                 }
                 if (!connectorSpec?.oauth) {
@@ -539,12 +526,6 @@ export function ConnectionsPage({
                   'Reconnect GitHub App'
                 ) : (
                   'Install GitHub App'
-                )
-              ) : connector.id === 'discord' ? (
-                connector.status === 'degraded' ? (
-                  'Reconnect Discord Bot'
-                ) : (
-                  'Install Discord Bot'
                 )
               ) : connector.status === 'degraded' ? (
                 'Reconnect'
@@ -622,9 +603,7 @@ export function ConnectionsPage({
                 ? 'Sync this provider to load its tools.'
                 : connector.id === 'github'
                   ? 'Install the GitHub App to enable repository tools.'
-                  : connector.id === 'discord'
-                    ? 'Install the shared Garden Discord bot to enable server tools.'
-                    : 'Connect this provider to load its tools.'}
+                  : 'Connect this provider to load its tools.'}
             </div>
           ) : !canConfigureTools ? (
             <div className="mt-10 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">

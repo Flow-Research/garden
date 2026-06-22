@@ -18,13 +18,12 @@ import {
 import {
   DiscordChannel,
   DiscordChannels,
-  DiscordGuild,
   DiscordGuilds,
   DiscordMessages,
   DiscordSearchMessages,
   DiscordSendMessageResponse,
   type DiscordChannel as DiscordChannelValue,
-  type DiscordGuild as DiscordGuildValue,
+  type DiscordGuild,
   type DiscordMessage as DiscordMessageValue,
 } from './schemas.ts'
 
@@ -40,8 +39,7 @@ export class DiscordBotConfig extends Context.Service<
 >()('@garden/connectors/DiscordBotConfig') {}
 
 export type DiscordRestClientShape = {
-  readonly listServers: () => Effect.Effect<readonly DiscordGuildValue[], ConnectorError>
-  readonly getServer: (guildId: string) => Effect.Effect<DiscordGuildValue, ConnectorError>
+  readonly listServers: () => Effect.Effect<readonly DiscordGuild[], ConnectorError>
   readonly listChannels: (
     guildId: string,
   ) => Effect.Effect<readonly DiscordChannelValue[], ConnectorError>
@@ -325,12 +323,6 @@ function makeDiscordRestClient(
         operation: 'discord.listServers',
         path: '/users/@me/guilds',
         schema: DiscordGuilds,
-      }),
-    getServer: (guildId) =>
-      requestJson(client, config, {
-        operation: 'discord.getServer',
-        path: `/guilds/${encodeURIComponent(guildId)}`,
-        schema: DiscordGuild,
       }),
     listChannels: (guildId) =>
       requestJson(client, config, {

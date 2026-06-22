@@ -6,7 +6,7 @@ import { schema, type Db } from '@/lib/server/db'
 
 type ConnectorCallbackEventDb = Db
 
-export type ConnectorCallbackSource = 'oauth' | 'github_app' | 'discord_bot'
+export type ConnectorCallbackSource = 'oauth' | 'github_app'
 export type ConnectorCallbackStatus = 'success' | 'degraded' | 'error'
 
 type ConnectorCallbackPayload = Record<string, unknown>

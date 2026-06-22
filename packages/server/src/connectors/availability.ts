@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import type { NeonDatabase } from 'drizzle-orm/neon-serverless'
 import { connectorRegistry, getConnectorById } from '@garden/connectors'
 import {
@@ -8,21 +8,15 @@ import {
 } from '@garden/connectors/sdk'
 import * as schema from '@garden/db/schema'
 
-export type ConnectorAuthKind =
-  | 'oauth'
-  | 'github_app'
-  | 'discord_bot'
-  | 'api_key'
-  | 'none'
+export type ConnectorAuthKind = 'oauth' | 'github_app' | 'api_key' | 'none'
 
 export type AvailableConnectorBinding = {
   connectorId: string
-  status: 'connected' | 'degraded'
+  status: 'connected'
   authKind: ConnectorAuthKind
   accountId: string | null
   accountLogin: string | null
   repositorySelection?: string | null
-  connectedAt?: string | null
 }
 
 type ConnectorAvailabilityDb = NeonDatabase<typeof schema>
@@ -34,7 +28,7 @@ export async function listAvailableConnectorBindings(args: {
   workspaceId: string
 }): Promise<AvailableConnectorBinding[]> {
   const db = args.db
-  const [accounts, githubInstallations, discordInstallations] = await Promise.all([
+  const [accounts, githubInstallations] = await Promise.all([
     db
       .select({
         accountId: schema.account.id,
@@ -54,31 +48,12 @@ export async function listAvailableConnectorBindings(args: {
         accountLogin: schema.githubAppInstallation.accountLogin,
         id: schema.githubAppInstallation.id,
         repositorySelection: schema.githubAppInstallation.repositorySelection,
-        connectedAt: schema.githubAppInstallation.createdAt,
       })
       .from(schema.githubAppInstallation)
       .where(
         and(
           eq(schema.githubAppInstallation.workspaceId, args.workspaceId),
           eq(schema.githubAppInstallation.status, 'connected'),
-        ),
-      )
-      .limit(1),
-    db
-      .select({
-        guildName: schema.discordBotInstallation.guildName,
-        id: schema.discordBotInstallation.id,
-        status: schema.discordBotInstallation.status,
-        connectedAt: schema.discordBotInstallation.createdAt,
-      })
-      .from(schema.discordBotInstallation)
-      .where(
-        and(
-          eq(schema.discordBotInstallation.workspaceId, args.workspaceId),
-          inArray(schema.discordBotInstallation.status, [
-            'connected',
-            'degraded',
-          ]),
         ),
       )
       .limit(1),
@@ -98,7 +73,6 @@ export async function listAvailableConnectorBindings(args: {
         authKind: 'oauth' as const,
         accountId: row.accountId,
         accountLogin: row.accountLogin,
-        connectedAt: null,
       },
     ]
   })
@@ -114,24 +88,6 @@ export async function listAvailableConnectorBindings(args: {
             accountLogin: githubInstallations[0]?.accountLogin ?? null,
             repositorySelection:
               githubInstallations[0]?.repositorySelection ?? null,
-            connectedAt: githubInstallations[0]?.connectedAt.toISOString() ?? null,
-          },
-        ]
-      : []
-
-  const discordBindings =
-    discordInstallations.length > 0
-      ? [
-          {
-            connectorId: 'discord',
-            status: (discordInstallations[0]?.status ?? 'connected') as
-              | 'connected'
-              | 'degraded',
-            authKind: 'discord_bot' as const,
-            accountId: null,
-            accountLogin: discordInstallations[0]?.guildName ?? null,
-            repositorySelection: null,
-            connectedAt: discordInstallations[0]?.connectedAt.toISOString() ?? null,
           },
         ]
       : []
@@ -146,7 +102,6 @@ export async function listAvailableConnectorBindings(args: {
               authKind: 'none' as const,
               accountId: null,
               accountLogin: null,
-              connectedAt: null,
             },
           ]
         : []
@@ -160,7 +115,6 @@ export async function listAvailableConnectorBindings(args: {
           authKind: 'none' as const,
           accountId: null,
           accountLogin: null,
-          connectedAt: null,
         },
       ]
     }
@@ -177,11 +131,10 @@ export async function listAvailableConnectorBindings(args: {
             authKind: 'api_key' as const,
             accountId: null,
             accountLogin: null,
-            connectedAt: null,
           },
         ]
       : []
   })
 
-  return [...oauthBindings, ...githubBindings, ...discordBindings, ...nonOAuthBindings]
+  return [...oauthBindings, ...githubBindings, ...nonOAuthBindings]
 }
