@@ -12,6 +12,7 @@ import {
   type ConnectorError,
 } from '@garden/core/connectors/errors'
 import { getConnectorById } from '@garden/connectors'
+import { isMcpConnector } from '@garden/connectors/sdk'
 import { mintMcpProxyJwt } from '@garden/connectors/proxy-jwt'
 import {
   issueSourceBindingSelectSchema,
@@ -418,12 +419,14 @@ async function callConnectorTool(args: {
   >
 > {
   const connector = getConnectorById(args.connectorId)
-  if (!connector) {
+  if (!connector || !isMcpConnector(connector)) {
     return Result.err(
       new WorkProductReviewError({
         code: 'unsupported_writeback',
         status: 400,
-        message: `Unknown connector: ${args.connectorId}`,
+        message: !connector
+          ? `Unknown connector: ${args.connectorId}`
+          : `Connector ${args.connectorId} does not support MCP writeback`,
       }),
     )
   }

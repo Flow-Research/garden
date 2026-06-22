@@ -78,13 +78,16 @@ function syncResultToGitHubOutcome(args: {
       message: 'GitHub connected.',
       accountLogin: args.accountLogin,
     }),
-    err: (error): GitHubSetupOutcome => ({
-      status: 'degraded',
-      stage: error.code,
-      message: 'GitHub connected. Tool sync needs attention.',
-      errorCode: error.code,
-      accountLogin: args.accountLogin,
-    }),
+    err: (error): GitHubSetupOutcome => {
+      const syncError = error as { code: string }
+      return {
+        status: 'degraded',
+        stage: syncError.code,
+        message: 'GitHub connected. Tool sync needs attention.',
+        errorCode: syncError.code,
+        accountLogin: args.accountLogin,
+      }
+    },
   })
 }
 

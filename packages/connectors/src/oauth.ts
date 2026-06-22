@@ -1,4 +1,5 @@
 import { connectorRegistry, type ConnectorId, type RegisteredConnector } from './registry'
+import { isMcpConnector } from './sdk.ts'
 
 export type ConnectorOAuthProviderConfig = {
   providerId: string
@@ -58,7 +59,9 @@ export function getConnectorOAuthEnvVarNames(
   connector: RegisteredConnector | ConnectorId,
 ) {
   const resolvedConnector = resolveConnector(connector)
-  if (!resolvedConnector?.oauth) return undefined
+  if (!resolvedConnector || !isMcpConnector(resolvedConnector) || !resolvedConnector.oauth) {
+    return undefined
+  }
   return connectorOAuthEnvVarNames[
     resolvedConnector.id as keyof typeof connectorOAuthEnvVarNames
   ]
@@ -86,7 +89,7 @@ export function buildConnectorOAuthConfig(
   env: ConnectorOAuthEnv,
   connector: RegisteredConnector,
 ): ConnectorOAuthProviderConfig | undefined {
-  if (!connector.oauth) return undefined
+  if (!isMcpConnector(connector) || !connector.oauth) return undefined
 
   const credentials = getConnectorOAuthCredentials(env, connector)
   if (!credentials) return undefined

@@ -5,7 +5,11 @@ import { Result, TaggedError } from 'better-result'
 import { access, readdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import type { ConnectorSpec } from '@garden/connectors/sdk'
+import {
+  isNativeConnector,
+  type ConnectorMcpSpec,
+  type ConnectorSpec,
+} from '@garden/connectors/sdk'
 
 type RegisteredConnector = ConnectorSpec
 
@@ -29,7 +33,7 @@ function uniqueSorted(values: Iterable<string>) {
  * from the removed connector generator; after the cleanup it owns the small MCP
  * probe directly so coverage checks remain available without a CLI package.
  */
-function buildUpstreamHeaders(connector: RegisteredConnector) {
+function buildUpstreamHeaders(connector: ConnectorMcpSpec) {
   const headers = new Headers(connector.upstream.headers ?? {})
   const apiKeyEnvVar = connector.apiKey?.envVar
   const apiKeyHeaderName = connector.apiKey?.headerName
@@ -52,7 +56,7 @@ function buildUpstreamHeaders(connector: RegisteredConnector) {
  * intentionally script-local so connector manifests stay data-only and the old
  * scaffolder does not survive just to support coverage verification.
  */
-function buildUpstreamTransport(connector: RegisteredConnector) {
+function buildUpstreamTransport(connector: ConnectorMcpSpec) {
   const requestInit = {
     headers: buildUpstreamHeaders(connector),
   }
@@ -68,7 +72,7 @@ function buildUpstreamTransport(connector: RegisteredConnector) {
  * old behavior depended on the removed generator package; the intended behavior
  * is equivalent coverage verification with no package scaffold dependency.
  */
-async function listUpstreamToolNames(connector: RegisteredConnector) {
+async function listUpstreamToolNames(connector: ConnectorMcpSpec) {
   const client = new Client(
     {
       name: 'garden-connector-tool-list',
@@ -136,7 +140,7 @@ function bearerTokenEnvVarName(connectorId: string) {
   return `${connectorId.replaceAll('-', '_').toUpperCase()}_MCP_BEARER_TOKEN`
 }
 
-function hasUpstreamCredentials(connector: RegisteredConnector) {
+function hasUpstreamCredentials(connector: ConnectorMcpSpec) {
   const apiKeyEnvVar = (connector as { apiKey?: { envVar?: string } }).apiKey
     ?.envVar
   const hasOAuth = Boolean((connector as { oauth?: unknown }).oauth)
@@ -154,6 +158,14 @@ function hasUpstreamCredentials(connector: RegisteredConnector) {
 }
 
 async function verifyConnector(connector: RegisteredConnector) {
+  if (isNativeConnector(connector)) {
+    return Result.ok({
+      connectorId: connector.id,
+      toolCount: Object.keys(connector.tools).length,
+      skipped: true as const,
+    })
+  }
+
   if (!hasUpstreamCredentials(connector)) {
     console.warn(
       `${connector.id}: skipped — no upstream credentials in env (set ${bearerTokenEnvVarName(connector.id)} or the connector apiKey env var to enforce)`,

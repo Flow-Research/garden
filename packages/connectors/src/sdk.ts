@@ -1,3 +1,5 @@
+import type { NativeConnectorTool } from './effect/native.ts'
+
 export type RiskClass = 'read' | 'write' | 'send_external' | 'destructive'
 
 export type ConnectorToolClassification = {
@@ -33,24 +35,63 @@ type ConnectorSpecBase = {
   label: string
   description: string
   icon?: string
-  upstream: ConnectorUpstream
   tools: Record<string, ConnectorToolClassification>
 }
 
-export type ConnectorSpec =
-  | (ConnectorSpecBase & {
+type ConnectorMcpSpecBase = ConnectorSpecBase & {
+  kind?: 'mcp'
+  upstream: ConnectorUpstream
+  native?: never
+}
+
+export type ConnectorNativeSpec = ConnectorSpecBase & {
+  kind: 'native'
+  native: {
+    /**
+     * Installation-scoped native connectors are not auto-connected just because
+     * the registry knows about them. They need provider install state before the
+     * runtime can expose their tools to an agent.
+     */
+    availability: 'installation' | 'always'
+    tools: readonly NativeConnectorTool[]
+  }
+  upstream?: never
+  oauth?: never
+  apiKey?: never
+}
+
+export type ConnectorMcpSpec =
+  | (ConnectorMcpSpecBase & {
       oauth: ConnectorOAuth
       apiKey?: never
     })
-  | (ConnectorSpecBase & {
+  | (ConnectorMcpSpecBase & {
       oauth?: never
       apiKey: ConnectorApiKey
     })
-  | (ConnectorSpecBase & {
+  | (ConnectorMcpSpecBase & {
       oauth?: never
       apiKey?: never
     })
 
-export function defineConnector(spec: ConnectorSpec): ConnectorSpec {
+export type ConnectorSpec = ConnectorMcpSpec | ConnectorNativeSpec
+
+export function defineConnector<TId extends string>(
+  spec: ConnectorSpec & { readonly id: TId },
+): ConnectorSpec & { readonly id: TId } {
   return spec
+}
+
+/** Narrows a registry entry to upstream-MCP connectors before proxy access. */
+export function isMcpConnector(
+  connector: ConnectorSpec,
+): connector is ConnectorMcpSpec {
+  return connector.kind !== 'native'
+}
+
+/** Narrows a registry entry to provider-native connectors. */
+export function isNativeConnector(
+  connector: ConnectorSpec,
+): connector is ConnectorNativeSpec {
+  return connector.kind === 'native'
 }

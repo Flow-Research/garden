@@ -17,11 +17,20 @@
     "./registry": "./src/registry.ts",
     "./oauth": "./src/oauth.ts",
     "./proxy-jwt": "./src/proxy-jwt.ts",
+    "./discord": "./src/discord/connector.ts",
+    "./discord/rest-client": "./src/discord/rest-client.ts",
+    "./discord/services": "./src/discord/services.ts",
+    "./effect/errors": "./src/effect/errors.ts",
+    "./effect/native": "./src/effect/native.ts",
     "./github": "./src/github/connector.ts",
     "./github-app": "./src/github-app.ts",
     "./sdk": "./src/sdk.ts"
   },
+  "dependencies": {
+    "effect": "catalog:"
+  },
   "devDependencies": {
+    "@effect/vitest": "catalog:",
     "@garden/tsconfig": "workspace:*",
     "typescript": "catalog:",
     "vitest": "catalog:"

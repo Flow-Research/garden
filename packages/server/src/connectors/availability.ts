@@ -1,6 +1,11 @@
 import { and, eq } from 'drizzle-orm'
 import type { NeonDatabase } from 'drizzle-orm/neon-serverless'
 import { connectorRegistry, getConnectorById } from '@garden/connectors'
+import {
+  isMcpConnector,
+  isNativeConnector,
+  type ConnectorSpec,
+} from '@garden/connectors/sdk'
 import * as schema from '@garden/db/schema'
 
 export type ConnectorAuthKind = 'oauth' | 'github_app' | 'api_key' | 'none'
@@ -57,7 +62,9 @@ export async function listAvailableConnectorBindings(args: {
   const oauthBindings = accounts.flatMap((row) => {
     const connectorId = row.connectorId?.trim()
     const connector = connectorId ? getConnectorById(connectorId) : undefined
-    if (!connectorId || !connector?.oauth) return []
+    if (!connectorId || !connector || !isMcpConnector(connector) || !connector.oauth) {
+      return []
+    }
 
     return [
       {
@@ -85,7 +92,21 @@ export async function listAvailableConnectorBindings(args: {
         ]
       : []
 
-  const nonOAuthBindings = connectorRegistry.flatMap<AvailableConnectorBinding>((connector) => {
+  const nonOAuthBindings = (connectorRegistry as readonly ConnectorSpec[]).flatMap<AvailableConnectorBinding>((connector) => {
+    if (isNativeConnector(connector)) {
+      return connector.native.availability === 'always'
+        ? [
+            {
+              connectorId: connector.id,
+              status: 'connected' as const,
+              authKind: 'none' as const,
+              accountId: null,
+              accountLogin: null,
+            },
+          ]
+        : []
+    }
+
     if (!connector.oauth && !connector.apiKey) {
       return [
         {

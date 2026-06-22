@@ -2,10 +2,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
-import type { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { Result, TaggedError } from 'better-result'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getConnectorById } from '@garden/connectors'
+import { isNativeConnector } from '@garden/connectors/sdk'
 import {
   canonicalJsonString,
   defaultTrustLevelForRisk,
@@ -307,9 +307,16 @@ async function listConnectorTools(args: {
   })
 }
 
+type CapabilityToolLike = {
+  name: string
+  description?: string | null
+  inputSchema?: unknown
+  outputSchema?: unknown
+}
+
 async function toCapabilityValue(args: {
   connectorId: string
-  tool: Tool
+  tool: CapabilityToolLike
 }) {
   const connector = getConnectorById(args.connectorId)
   const classification = connector?.tools[args.tool.name]
@@ -357,36 +364,40 @@ export async function syncCapabilities(
   const syncAgentIdResult = await resolveSyncAgentId(userId, workspaceId)
   if (syncAgentIdResult.isErr()) return syncAgentIdResult
 
-  const tokenResult = await Result.tryPromise({
-    try: async () =>
-      mintMcpProxyJwt({
-        secret: appEnv.BETTER_AUTH_SECRET,
-        sub: userId,
-        workspaceId,
-        agentId: syncAgentIdResult.value,
-        connectorId,
-      }),
-    catch: (cause) =>
-      new CapabilitySyncError({
-        code: 'tool_list_failed',
-        message:
-          cause instanceof Error
-            ? cause.message
-            : `Failed to mint proxy token for ${connectorId}`,
-      }),
-  })
-  if (tokenResult.isErr()) return tokenResult
+  const discoveredToolsResult = isNativeConnector(connector)
+    ? Result.ok([...connector.native.tools])
+    : await (async () => {
+        const tokenResult = await Result.tryPromise({
+          try: async () =>
+            mintMcpProxyJwt({
+              secret: appEnv.BETTER_AUTH_SECRET,
+              sub: userId,
+              workspaceId,
+              agentId: syncAgentIdResult.value,
+              connectorId,
+            }),
+          catch: (cause) =>
+            new CapabilitySyncError({
+              code: 'tool_list_failed',
+              message:
+                cause instanceof Error
+                  ? cause.message
+                  : `Failed to mint proxy token for ${connectorId}`,
+            }),
+        })
+        if (tokenResult.isErr()) return tokenResult
 
-  const toolsResult = await listConnectorTools({
-    connectorId,
-    bearerToken: tokenResult.value,
-    transport: connector.upstream.transport,
-  })
-  if (toolsResult.isErr()) return toolsResult
+        return await listConnectorTools({
+          connectorId,
+          bearerToken: tokenResult.value,
+          transport: connector.upstream.transport,
+        })
+      })()
+  if (discoveredToolsResult.isErr()) return discoveredToolsResult
 
   const discoveredCapabilityRows: Array<typeof schema.capability.$inferInsert> =
     []
-  for (const tool of toolsResult.value) {
+  for (const tool of discoveredToolsResult.value) {
     const capabilityResult = await toCapabilityValue({
       connectorId,
       tool,

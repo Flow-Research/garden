@@ -678,6 +678,7 @@ const CONNECTOR_ROW_ICON: Record<ConnectorId, string | null> = {
   'google-drive': 'logos:google-drive',
   github: 'logos:github-icon',
   'exa-search': 'simple-icons:exa',
+  discord: 'simple-icons:discord',
 }
 
 function ConnectorRowIcon({

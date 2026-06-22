@@ -232,12 +232,15 @@ function syncResultToOAuthOutcome(args: {
       stage: 'connected',
       message: `${args.connectorLabel} connected.`,
     }),
-    err: (error): OAuthCallbackOutcome => ({
-      status: 'degraded',
-      stage: error.code,
-      message: `${args.connectorLabel} connected. Tool sync needs attention.`,
-      errorCode: error.code,
-    }),
+    err: (error): OAuthCallbackOutcome => {
+      const syncError = error as { code: string }
+      return {
+        status: 'degraded',
+        stage: syncError.code,
+        message: `${args.connectorLabel} connected. Tool sync needs attention.`,
+        errorCode: syncError.code,
+      }
+    },
   })
 }
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { isMcpConnector, isNativeConnector } from './sdk.ts'
 import { connectorRegistry } from './registry.ts'
 
 describe('connectorRegistry', () => {
@@ -21,14 +22,16 @@ describe('connectorRegistry', () => {
 
   it('keeps oauth provider ids unique', () => {
     const providerIds = connectorRegistry.flatMap((connector) =>
-      connector.oauth ? [connector.oauth.providerId] : [],
+      isMcpConnector(connector) && connector.oauth
+        ? [connector.oauth.providerId]
+        : [],
     )
     expect(new Set(providerIds)).toHaveLength(providerIds.length)
   })
 
   it('keeps oauth tool scopes inside the connector scope set', () => {
     for (const connector of connectorRegistry) {
-      if (!connector.oauth) {
+      if (!isMcpConnector(connector) || !connector.oauth) {
         continue
       }
 
@@ -40,9 +43,12 @@ describe('connectorRegistry', () => {
     }
   })
 
-  it('keeps non-oauth connectors scope-free at the tool level', () => {
+  it('keeps unauthenticated MCP connectors scope-free at the tool level', () => {
     for (const connector of connectorRegistry) {
-      if (connector.oauth) {
+      if (
+        isNativeConnector(connector) ||
+        (isMcpConnector(connector) && connector.oauth)
+      ) {
         continue
       }
 
