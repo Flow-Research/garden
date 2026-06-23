@@ -420,6 +420,17 @@ export default {
       ? logger.child({ userId: session.user.id })
       : logger
 
+    const closeResult = await Result.tryPromise({
+      try: async () => await appContext.close(),
+      catch: (cause) => cause,
+    })
+    if (closeResult.isErr()) {
+      appLogger.warn(
+        'web.request.db_close_failed',
+        errorFields(closeResult.error),
+      )
+    }
+
     if (appResponse.isOk()) {
       const response = withRequestIdHeader(
         appResponse.value,

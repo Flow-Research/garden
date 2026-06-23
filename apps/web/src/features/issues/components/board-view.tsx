@@ -112,6 +112,7 @@ export function BoardView({
   onMoveIssue,
   childProgressMap = EMPTY_PROGRESS_MAP,
   doneTotal: doneTotalOverride,
+  onCreateIssue,
 }: {
   issues: Issue[]
   allIssues: Issue[]
@@ -125,6 +126,7 @@ export function BoardView({
   childProgressMap?: Map<string, ChildProgress>
   /** Override the done-column count (e.g. with a server-filtered total). */
   doneTotal?: number
+  onCreateIssue: (data?: Record<string, unknown> | null) => void
 }) {
   const sortBy = useViewStore((s) => s.sortBy)
   const sortDirection = useViewStore((s) => s.sortDirection)
@@ -296,6 +298,7 @@ export function BoardView({
             issueMap={issueMapRef.current}
             childProgressMap={childProgressMap}
             totalCount={status === 'done' ? displayDoneTotal : undefined}
+            onCreateIssue={onCreateIssue}
             footer={
               status === 'done' && hasMore ? (
                 <InfiniteScrollSentinel

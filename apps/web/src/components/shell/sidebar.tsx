@@ -46,7 +46,6 @@ import {
 import { deduplicateInboxItems, inboxListOptions } from '@/lib/inbox/queries'
 import { automationListOptions } from '@/features/automations/queries'
 import { useAuthStore } from '@garden/app-state/auth'
-import { useModalStore } from '@garden/app-state/modals'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { SearchTrigger } from '@/features/search'
 import { ChatSessionExplorer } from '@/features/chat'
@@ -247,7 +246,11 @@ function ExplorerActionRow({
   )
 }
 
-export function WorkspaceSidebar() {
+type WorkspaceSidebarProps = {
+  onCreateWorkspace: () => void
+}
+
+export function WorkspaceSidebar({ onCreateWorkspace }: WorkspaceSidebarProps) {
   const queryClient = useQueryClient()
   const workspaceSidebar = useSidebar()
   const { replace } = useNavigation()
@@ -270,7 +273,6 @@ export function WorkspaceSidebar() {
   const workspace = useWorkspaceStore((state) => state.workspace)
   const clearWorkspace = useWorkspaceStore((state) => state.clearWorkspace)
   const switchWorkspace = useWorkspaceStore((state) => state.switchWorkspace)
-  const openModal = useModalStore((state) => state.open)
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)
   const openSettingsDialog = useSettingsDialogStore((s) => s.openSettings)
@@ -530,7 +532,7 @@ export function WorkspaceSidebar() {
             currentWorkspaceId={workspace?.id ?? null}
             workspaces={workspaceListQuery.data ?? []}
             onAccount={openSettings}
-            onCreateWorkspace={() => openModal('create-workspace')}
+            onCreateWorkspace={onCreateWorkspace}
             onSwitchWorkspace={handleSwitchWorkspace}
             onLogout={() => {
               void handleLogout()

@@ -33,7 +33,7 @@ const workersai = createWorkersAI({
   apiKey,
   gateway: { id: 'garden-staging' },
 })
-const model = workersai('@cf/moonshotai/kimi-k2.6')
+const model = workersai('@cf/moonshotai/kimi-k2.7-code')
 
 const promptVariant = process.argv[2] ?? 'current'
 

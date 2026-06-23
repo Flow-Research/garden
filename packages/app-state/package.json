@@ -14,7 +14,6 @@
     "./workspace": "./src/workspace/index.ts",
     "./chat": "./src/chat/index.ts",
     "./chat/structured-input": "./src/chat/structured-input.ts",
-    "./modals": "./src/modals/store.ts",
     "./skills": "./src/skills/store.ts",
     "./hooks": "./src/hooks.tsx",
     "./hooks/*": "./src/hooks/*.ts",

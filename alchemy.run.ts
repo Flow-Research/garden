@@ -232,7 +232,7 @@ export const web = await TanStackStart('web', {
     ]),
   },
   dev: {
-    command: 'pnpm exec vite dev --strictPort',
+    command: 'pnpm exec vite dev',
     domain: 'localhost:3000',
   },
   wrangler: {

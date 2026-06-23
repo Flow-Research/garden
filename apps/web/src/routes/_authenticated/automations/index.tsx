@@ -1,5 +1,4 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { AutomationsPage } from '@/features/automations'
 
@@ -20,15 +19,13 @@ function AutomationsRoute() {
   }
 
   return (
-    <WorkspaceIdProvider wsId={workspaceId}>
-      <AutomationsPage
-        onOpenAutomation={(automation) => {
-          void navigate({
-            to: '/automations/$id',
-            params: { id: automation.id },
-          })
-        }}
-      />
-    </WorkspaceIdProvider>
+    <AutomationsPage
+      onOpenAutomation={(automation) => {
+        void navigate({
+          to: '/automations/$id',
+          params: { id: automation.id },
+        })
+      }}
+    />
   )
 }

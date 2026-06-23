@@ -16,7 +16,6 @@ import {
   DropdownMenuItem,
 } from '@garden/ui/components/ui/dropdown-menu'
 import { STATUS_CONFIG } from '@garden/core/issues/config'
-import { useModalStore } from '@garden/app-state/modals'
 import { useViewStoreApi } from '@garden/app-state/issues/stores/view-store-context'
 import { StatusIcon } from './status-icon'
 import { DraggableBoardCard } from './board-card'
@@ -29,6 +28,7 @@ export function BoardColumn({
   childProgressMap,
   totalCount,
   footer,
+  onCreateIssue,
 }: {
   status: IssueStatus
   issueIds: string[]
@@ -36,6 +36,7 @@ export function BoardColumn({
   childProgressMap?: Map<string, ChildProgress>
   totalCount?: number
   footer?: ReactNode
+  onCreateIssue: (data?: Record<string, unknown> | null) => void
 }) {
   const cfg = STATUS_CONFIG[status]
   const { setNodeRef, isOver } = useDroppable({ id: status })
@@ -99,9 +100,7 @@ export function BoardColumn({
                   variant="ghost"
                   size="icon-sm"
                   className="rounded-full text-muted-foreground"
-                  onClick={() =>
-                    useModalStore.getState().open('create-issue', { status })
-                  }
+                  onClick={() => onCreateIssue({ status })}
                 >
                   <Plus className="size-3.5" />
                 </Button>

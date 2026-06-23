@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useMemo } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { ChevronRight } from 'lucide-react'
 import type { IssueStatus } from '@garden/core/types'
@@ -25,6 +25,7 @@ import { IssuesHeader } from './issues-header'
 import { BoardView } from './board-view'
 import { ListView } from './list-view'
 import { BatchActionToolbar } from './batch-action-toolbar'
+import { CreateIssueModal } from '../../modals/create-issue'
 import { useIssuesPageViewState } from '../hooks/use-issues-view-state'
 
 function IssuesPageSkeleton({ viewMode }: { viewMode: 'board' | 'list' }) {
@@ -122,10 +123,25 @@ export function IssuesPage() {
 
 function IssuesPageContent() {
   const wsId = useWorkspaceId()
-  const [{ data: allIssues }, { data: childProgressMap }] =
-    useSuspenseQueries({
-      queries: [issueListOptions(wsId), childIssueProgressOptions(wsId)],
-    })
+  const [createIssueOpen, setCreateIssueOpen] = useState(false)
+  const [createIssueData, setCreateIssueData] = useState<Record<
+    string,
+    unknown
+  > | null>(null)
+  const openCreateIssue = useCallback(
+    (data?: Record<string, unknown> | null) => {
+      setCreateIssueData(data ?? null)
+      setCreateIssueOpen(true)
+    },
+    [],
+  )
+  const closeCreateIssue = useCallback(() => {
+    setCreateIssueOpen(false)
+    setCreateIssueData(null)
+  }, [])
+  const [{ data: allIssues }, { data: childProgressMap }] = useSuspenseQueries({
+    queries: [issueListOptions(wsId), childIssueProgressOptions(wsId)],
+  })
 
   const workspace = useWorkspaceStore((s) => s.workspace)
   const {
@@ -229,7 +245,10 @@ function IssuesPageContent() {
 
       <ViewStoreProvider store={useIssueViewStore}>
         {/* Header 2: Scope tabs + filters */}
-        <IssuesHeader scopedIssues={scopedIssues} />
+        <IssuesHeader
+          scopedIssues={scopedIssues}
+          onCreateIssue={openCreateIssue}
+        />
 
         {/* Content — kanban/list always renders; per-column "No issues"
             placeholders carry the empty state so the board still shows. */}
@@ -242,17 +261,22 @@ function IssuesPageContent() {
               hiddenStatuses={hiddenStatuses}
               onMoveIssue={handleMoveIssue}
               childProgressMap={childProgressMap}
+              onCreateIssue={openCreateIssue}
             />
           ) : (
             <ListView
               issues={issues}
               visibleStatuses={visibleStatuses}
               childProgressMap={childProgressMap}
+              onCreateIssue={openCreateIssue}
             />
           )}
         </div>
         {viewMode === 'list' && <BatchActionToolbar />}
       </ViewStoreProvider>
+      {createIssueOpen ? (
+        <CreateIssueModal onClose={closeCreateIssue} data={createIssueData} />
+      ) : null}
     </div>
   )
 }

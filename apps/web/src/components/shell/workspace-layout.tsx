@@ -1,14 +1,13 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/app-state/auth'
-import { WorkspaceIdProvider } from '@garden/app-state/hooks'
-import { useModalStore } from '@garden/app-state/modals'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { Button } from '@garden/ui/components/ui/button'
 import { SidebarInset, SidebarProvider } from '@garden/ui/components/ui/sidebar'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { SearchCommand } from '@/features/search'
 import { ChatRuntimeProvider } from '@/features/chat/chat-runtime-provider'
-import { ModalRegistry } from '@/features/modals/registry'
+import { CreateWorkspaceModal } from '@/features/modals/create-workspace'
 import { SettingsDialog } from '@/features/settings'
 import { ConnectorCallbackListener } from '@/features/connections'
 import {
@@ -91,7 +90,7 @@ export function WorkspaceLayout({
 } = {}) {
   const user = useAuthStore((state) => state.user)
   const workspace = useWorkspaceStore((state) => state.workspace)
-  const openModal = useModalStore((state) => state.open)
+  const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false)
 
   const hasSession = Boolean(user)
   const activeWorkspaceId = workspace?.id ?? null
@@ -107,7 +106,7 @@ export function WorkspaceLayout({
         workspaceId={activeWorkspaceId ?? 'workspace-shell'}
       >
         {activeWorkspaceId ? (
-          <WorkspaceIdProvider wsId={activeWorkspaceId}>
+          <>
             <WorkspaceWarmCaches wsId={activeWorkspaceId} />
             <ConnectorCallbackListener
               workspaceId={activeWorkspaceId}
@@ -115,7 +114,9 @@ export function WorkspaceLayout({
               connectorId={connectorId}
             />
             <ChatRuntimeProvider>
-              <WorkspaceSidebar />
+              <WorkspaceSidebar
+                onCreateWorkspace={() => setCreateWorkspaceOpen(true)}
+              />
               <SidebarInset className="relative overflow-hidden !my-2 !mr-2 !ml-0 !rounded-[14px] !bg-[color:var(--vellum)] backdrop-blur-xl saturate-110 shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.08)] dark:shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.28)]">
                 <div className="relative flex min-h-0 flex-1 overflow-hidden">
                   <WorkspaceDockView />
@@ -124,7 +125,7 @@ export function WorkspaceLayout({
               <SearchCommand />
               <SettingsDialog />
             </ChatRuntimeProvider>
-          </WorkspaceIdProvider>
+          </>
         ) : (
           <SidebarInset className="relative overflow-hidden !my-2 !mr-2 !ml-2 !rounded-[14px] !bg-[color:var(--vellum)] backdrop-blur-xl saturate-110 shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.08)] dark:shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.28)]">
             <div className="relative flex min-h-0 flex-1 overflow-hidden">
@@ -132,14 +133,16 @@ export function WorkspaceLayout({
                 <WorkspaceLoadingSkeleton />
               ) : (
                 <WorkspaceSetupState
-                  onCreate={() => openModal('create-workspace')}
+                  onCreate={() => setCreateWorkspaceOpen(true)}
                 />
               )}
             </div>
           </SidebarInset>
         )}
       </WorkspaceDockProvider>
-      <ModalRegistry />
+      {createWorkspaceOpen ? (
+        <CreateWorkspaceModal onClose={() => setCreateWorkspaceOpen(false)} />
+      ) : null}
     </SidebarProvider>
   )
 }

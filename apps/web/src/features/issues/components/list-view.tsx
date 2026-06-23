@@ -10,7 +10,6 @@ import { Button } from '@garden/ui/components/ui/button'
 import type { Issue, IssueStatus } from '@garden/core/types'
 import { useLoadMoreDoneIssues } from '@/lib/issues/mutations'
 import { STATUS_CONFIG } from '@garden/core/issues/config'
-import { useModalStore } from '@garden/app-state/modals'
 import { useViewStore } from '@garden/app-state/issues/stores/view-store-context'
 import { useIssueSelectionStore } from '@garden/app-state/issues/stores/selection-store'
 import { useWorkspaceDock } from '@/components/shell/workspace-dock'
@@ -26,12 +25,14 @@ export function ListView({
   visibleStatuses,
   childProgressMap = EMPTY_PROGRESS_MAP,
   doneTotal: doneTotalOverride,
+  onCreateIssue,
 }: {
   issues: Issue[]
   visibleStatuses: IssueStatus[]
   childProgressMap?: Map<string, ChildProgress>
   /** Override the done-group count (e.g. with a server-filtered total). */
   doneTotal?: number
+  onCreateIssue: (data?: Record<string, unknown> | null) => void
 }) {
   const dock = useWorkspaceDock()
   const handleOpenIssue = useCallback(
@@ -144,11 +145,7 @@ export function ListView({
                           variant="ghost"
                           size="icon-sm"
                           className="rounded-full text-muted-foreground opacity-0 group-hover/header:opacity-100 transition-opacity"
-                          onClick={() =>
-                            useModalStore
-                              .getState()
-                              .open('create-issue', { status })
-                          }
+                          onClick={() => onCreateIssue({ status })}
                         />
                       }
                     >

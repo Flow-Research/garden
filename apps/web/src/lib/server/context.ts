@@ -1,6 +1,6 @@
 import { Result } from 'better-result'
 import { createBetterAuth } from '@/lib/auth/instance'
-import { createDbProvider, type DbProvider } from '@/lib/server/db'
+import { createRequestDbProvider, type DbProvider } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
 import {
   createGardenLogger,
@@ -24,6 +24,7 @@ export type AppRequestContext = {
   env: AppEnv
   request: Request
   db: DbProvider
+  close: () => Promise<void>
   auth: GardenAuthState
 }
 
@@ -147,13 +148,14 @@ export function createAppRequestContext(
   env: AppEnv,
   request: Request,
 ): AppRequestContext {
-  const db = createDbProvider(env)
+  const requestDb = createRequestDbProvider(env)
 
   return {
     env,
     request,
-    db,
-    auth: createAuthState(env, db, request),
+    db: requestDb.db,
+    close: requestDb.close,
+    auth: createAuthState(env, requestDb.db, request),
   }
 }
 

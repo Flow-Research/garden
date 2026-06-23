@@ -116,7 +116,7 @@ import { WorkProductList } from './work-product-card'
 import { BacklogAgentHintDialog } from './backlog-agent-hint-dialog'
 import { ReactionBar } from '@garden/ui/components/common/reaction-bar'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
-import { useModalStore } from '@garden/app-state/modals'
+import { CreateIssueModal } from '../../modals/create-issue'
 import { timeAgo } from '@garden/core/utils'
 import { cn } from '@garden/ui/lib/utils'
 import { useIssueSearch } from '../hooks/use-issue-search'
@@ -769,6 +769,22 @@ export function IssueDetail({
   const didHighlightRef = useRef<string | null>(null)
   const [parentPickerOpen, setParentPickerOpen] = useState(false)
   const [childPickerOpen, setChildPickerOpen] = useState(false)
+  const [createIssueOpen, setCreateIssueOpen] = useState(false)
+  const [createIssueData, setCreateIssueData] = useState<Record<
+    string,
+    unknown
+  > | null>(null)
+  const openCreateIssue = useCallback(
+    (data?: Record<string, unknown> | null) => {
+      setCreateIssueData(data ?? null)
+      setCreateIssueOpen(true)
+    },
+    [],
+  )
+  const closeCreateIssue = useCallback(() => {
+    setCreateIssueOpen(false)
+    setCreateIssueData(null)
+  }, [])
 
   const {
     timeline,
@@ -1312,7 +1328,7 @@ export function IssueDetail({
                     {/* Create sub-issue */}
                     <DropdownMenuItem
                       onClick={() => {
-                        useModalStore.getState().open('create-issue', {
+                        openCreateIssue({
                           parent_issue_id: issue.id,
                           parent_issue_identifier: issue.identifier,
                         })
@@ -1596,7 +1612,7 @@ export function IssueDetail({
                       type="button"
                       className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
                       onClick={() =>
-                        useModalStore.getState().open('create-issue', {
+                        openCreateIssue({
                           parent_issue_id: issue.id,
                           parent_issue_identifier: issue.identifier,
                         })
@@ -1646,13 +1662,10 @@ export function IssueDetail({
                                   type="button"
                                   className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                                   onClick={() =>
-                                    useModalStore
-                                      .getState()
-                                      .open('create-issue', {
-                                        parent_issue_id: issue.id,
-                                        parent_issue_identifier:
-                                          issue.identifier,
-                                      })
+                                    openCreateIssue({
+                                      parent_issue_id: issue.id,
+                                      parent_issue_identifier: issue.identifier,
+                                    })
                                   }
                                   aria-label="Add sub-issue"
                                 >
@@ -2146,16 +2159,15 @@ export function IssueDetail({
             This issue does not exist or has been deleted in this workspace.
           </p>
           {!onDelete && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleOpenIssues}
-            >
+            <Button variant="outline" size="sm" onClick={handleOpenIssues}>
               <ChevronLeft className="mr-1 h-3.5 w-3.5" />
               Back to Issues
             </Button>
           )}
         </div>
+      ) : null}
+      {createIssueOpen ? (
+        <CreateIssueModal onClose={closeCreateIssue} data={createIssueData} />
       ) : null}
     </BoneyardSkeleton>
   )

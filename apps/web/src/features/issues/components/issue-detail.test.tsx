@@ -334,13 +334,6 @@ vi.mock('@garden/app-state/issues/stores/recent-issues-store', () => ({
   ),
 }))
 
-// Mock modals
-vi.mock('@garden/app-state/modals', () => ({
-  useModalStore: Object.assign(() => ({ open: vi.fn() }), {
-    getState: () => ({ open: vi.fn() }),
-  }),
-}))
-
 // Mock core/utils
 vi.mock('@garden/core/utils', () => ({
   timeAgo: () => '1d ago',

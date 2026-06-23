@@ -58,20 +58,21 @@ const logger: Logger = {
 /**
  * Adds PostHog's Rollup source-map uploader for production builds. Alchemy sets
  * `GARDEN_REQUIRE_POSTHOG=1` for deploy builds because PostHog is required in
- * Garden production; local ad hoc builds can omit the upload secrets and skip
- * the plugin. The explicit guard avoids the plugin-utils resolver's generic
- * missing-key throw and gives CI a clearer action item. References: PostHog Vite
- * source-map upload docs and installed `@posthog/plugin-utils` config resolver.
+ * Garden production. Local ad hoc builds must not upload just because `.env`
+ * contains PostHog credentials, so the explicit flag is the only opt-in. The
+ * guard also avoids the plugin-utils resolver's generic missing-key throw and
+ * gives CI a clearer action item. References: PostHog Vite source-map upload
+ * docs and installed `@posthog/plugin-utils` config resolver.
  */
 function postHogSourcemapPlugins() {
-  if (!postHogSourcemapApiKey || !postHogSourcemapProjectId) {
-    if (requirePostHogSourcemaps) {
-      throw new Error(
-        'Missing POSTHOG_CLI_API_KEY or POSTHOG_CLI_PROJECT_ID for required PostHog source-map upload.',
-      )
-    }
-
+  if (!requirePostHogSourcemaps) {
     return []
+  }
+
+  if (!postHogSourcemapApiKey || !postHogSourcemapProjectId) {
+    throw new Error(
+      'Missing POSTHOG_CLI_API_KEY or POSTHOG_CLI_PROJECT_ID for required PostHog source-map upload.',
+    )
   }
 
   return [

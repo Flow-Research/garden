@@ -21,7 +21,7 @@ if (process.env.DATABASE_URL) {
 }
 process.env.CLOUDFLARE_INCLUDE_PROCESS_ENV ??= 'true'
 
-const child = spawn('pnpm', ['exec', 'vite', 'dev', '--strictPort'], {
+const child = spawn('pnpm', ['exec', 'vite', 'dev'], {
   env: process.env,
   shell: true,
   stdio: 'inherit',

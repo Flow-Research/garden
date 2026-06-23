@@ -46,10 +46,10 @@ function createPiStyleCompactionPolicy(
 }
 
 export const agentModelProfiles = {
-  kimiK26WorkersAi: {
+  kimiK27CodeWorkersAi: {
     contextWindowTokens: 262_144,
-    docs: 'Cloudflare Workers AI model docs: @cf/moonshotai/kimi-k2.6 context window is 262,144 tokens.',
-    id: '@cf/moonshotai/kimi-k2.6',
+    docs: 'Cloudflare Workers AI model docs: @cf/moonshotai/kimi-k2.7-code context window is 262,144 tokens.',
+    id: '@cf/moonshotai/kimi-k2.7-code',
     provider: 'workers-ai',
     compaction: createPiStyleCompactionPolicy(262_144),
   },
@@ -57,7 +57,7 @@ export const agentModelProfiles = {
 
 export type AgentModelProfileKey = keyof typeof agentModelProfiles
 
-const DEFAULT_AGENT_MODEL_PROFILE_KEY = 'kimiK26WorkersAi'
+const DEFAULT_AGENT_MODEL_PROFILE_KEY = 'kimiK27CodeWorkersAi'
 
 export function getDefaultAgentModelProfile(): AgentModelProfile {
   return agentModelProfiles[DEFAULT_AGENT_MODEL_PROFILE_KEY]
@@ -65,7 +65,7 @@ export function getDefaultAgentModelProfile(): AgentModelProfile {
 
 /**
  * Creates the Garden runtime model from a profile. Today all runtime agents use
- * Workers AI Kimi K2.6; callers can pass a different profile later without
+ * Workers AI Kimi K2.7 Code; callers can pass a different profile later without
  * touching compaction or context-overflow plumbing.
  */
 export function createAgentModel(config: AgentModelConfig): LanguageModel {
