@@ -157,6 +157,25 @@ function priorityLabel(priority: string): string {
   return PRIORITY_CONFIG[priority as IssuePriority]?.label ?? priority
 }
 
+/**
+ * Human label for why a participant is on the issue. Surfaced in the
+ * participants popover so a tagged agent reads as "joined via mention" rather
+ * than an opaque checkbox — ties the @mention → join model to the UI. Reasons
+ * come from the issue_subscriber table (@garden/db/subscribers).
+ */
+const SUBSCRIBER_REASON_LABEL: Record<string, string> = {
+  creator: 'Creator',
+  assignee: 'Assignee',
+  commenter: 'Commented',
+  mentioned: 'Mentioned',
+  manual: 'Added',
+}
+
+function subscriberReasonLabel(reason: string | undefined): string | null {
+  if (!reason) return null
+  return SUBSCRIBER_REASON_LABEL[reason] ?? null
+}
+
 function formatActivity(
   entry: TimelineEntry,
   resolveActorName?: (type: string, id: string) => string,
@@ -1824,6 +1843,16 @@ export function IssueDetail({
                                                 <span className="truncate flex-1">
                                                   {m.name}
                                                 </span>
+                                                {isSubbed &&
+                                                  subscriberReasonLabel(
+                                                    sub?.reason,
+                                                  ) && (
+                                                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                                                      {subscriberReasonLabel(
+                                                        sub?.reason,
+                                                      )}
+                                                    </span>
+                                                  )}
                                               </CommandItem>
                                             )
                                           })}
@@ -1865,6 +1894,16 @@ export function IssueDetail({
                                                 <span className="truncate flex-1">
                                                   {a.name}
                                                 </span>
+                                                {isSubbed &&
+                                                  subscriberReasonLabel(
+                                                    sub?.reason,
+                                                  ) && (
+                                                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                                                      {subscriberReasonLabel(
+                                                        sub?.reason,
+                                                      )}
+                                                    </span>
+                                                  )}
                                               </CommandItem>
                                             )
                                           })}
