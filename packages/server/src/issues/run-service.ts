@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
-import { drizzle } from 'drizzle-orm/neon-serverless'
+import { getPooledDb } from '@garden/db/runtime'
 import type {
   IssueRun,
   IssueRunEvent,
@@ -59,8 +59,17 @@ export type StartIssueRunInput = {
   actor: { type: 'member' | 'agent' | 'system'; id: string }
 }
 
+/**
+ * Minimal structural shape of the Cloudflare Hyperdrive binding this package
+ * consumes. `@garden/server` does not pull in `@cloudflare/workers-types` as an
+ * ambient global, and the run service only reads `connectionString`. Workers
+ * (web app, agent runtime) pass the full global `Hyperdrive` binding here, which
+ * is structurally assignable to this narrower type.
+ */
+type HyperdriveConnection = { readonly connectionString: string }
+
 export type IssueRunEnv = {
-  DATABASE_URL: string
+  HYPERDRIVE: HyperdriveConnection
   RUN_WORKFLOW?: RunWorkflowBinding
   AgentDO?: {
     idFromName: (name: string) => any
@@ -105,8 +114,16 @@ function getIssueRunAgentDoStub(
   return Result.ok(env.AgentDO.get(env.AgentDO.idFromName(agentRuntimeName)))
 }
 
+/**
+ * Resolves the issue-run-service Drizzle client through Hyperdrive's pooled
+ * connection string. This previously called `drizzle(env.DATABASE_URL)` from
+ * the neon-serverless driver, opening a fresh direct-to-Neon WebSocket pool per
+ * call that bypassed Hyperdrive, never closed, and defeated Neon autosuspend.
+ * `getPooledDb` memoizes one node-postgres pool per connection string per
+ * isolate so Hyperdrive owns origin pooling and reaps idle connections.
+ */
 function getDb(env: IssueRunEnv) {
-  return drizzle(env.DATABASE_URL, { schema })
+  return getPooledDb(env.HYPERDRIVE.connectionString)
 }
 
 export type StartIssueRunOutcome =

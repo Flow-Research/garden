@@ -713,7 +713,7 @@ async function requestWorkProductChanges(args: {
   if (updateResult.isErr()) return Result.err(updateResult.error)
 
   const wakeResult = await wakeAgentsForIssueComment({
-    databaseUrl: args.env.DATABASE_URL,
+    databaseUrl: args.env.HYPERDRIVE.connectionString,
     issueRunEnv: args.env,
     workspaceId: issue.workspaceId,
     issueId: issue.id,

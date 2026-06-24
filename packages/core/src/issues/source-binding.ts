@@ -1,5 +1,5 @@
 import { desc, eq } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/neon-serverless'
+import { getPooledDb } from '@garden/db/runtime'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import type { IssueSourceBinding } from '../types/issue-work-product'
 import * as schema from '@garden/db/schema'
@@ -61,8 +61,16 @@ type IssueSourceBindingTx = Parameters<
 >[0]
 type IssueSourceBindingExecutor = IssueSourceBindingDb | IssueSourceBindingTx
 
+/**
+ * Resolves the issue-source-binding Drizzle client through Hyperdrive's pooled
+ * connection string. Callers pass `env.HYPERDRIVE.connectionString`. Previously
+ * called `drizzle(databaseUrl)` from the neon-serverless driver, opening a fresh
+ * direct-to-Neon WebSocket pool per call that bypassed Hyperdrive, never closed,
+ * and defeated Neon autosuspend. `getPooledDb` memoizes one node-postgres pool
+ * per connection string per isolate so Hyperdrive owns origin pooling.
+ */
 export function getIssueSourceBindingDb(databaseUrl: string) {
-  return drizzle(databaseUrl, { schema })
+  return getPooledDb(databaseUrl)
 }
 
 function serviceDbError(operation: string, cause: unknown) {

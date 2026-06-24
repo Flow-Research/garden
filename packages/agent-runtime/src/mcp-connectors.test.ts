@@ -306,7 +306,9 @@ describe('RuntimeMcpController GitHub tools', () => {
       env: {
         BETTER_AUTH_SECRET: 'secret',
         BETTER_AUTH_URL: 'https://garden.test',
-        DATABASE_URL: 'postgres://garden.test/db',
+        HYPERDRIVE: {
+          connectionString: 'postgres://garden.test/db',
+        } as unknown as Hyperdrive,
       },
       ctx: { storage: { sql: createSqlStorageStub() } },
       mcp,
@@ -399,7 +401,9 @@ describe('RuntimeMcpController GitHub tools', () => {
       env: {
         BETTER_AUTH_SECRET: 'secret',
         BETTER_AUTH_URL: 'https://garden.test',
-        DATABASE_URL: 'postgres://garden.test/db',
+        HYPERDRIVE: {
+          connectionString: 'postgres://garden.test/db',
+        } as unknown as Hyperdrive,
       },
       ctx: { storage: { sql: createSqlStorageStub() } },
       mcp: {
@@ -502,7 +506,9 @@ describe('RuntimeMcpController GitHub tools', () => {
       env: {
         BETTER_AUTH_SECRET: 'secret',
         BETTER_AUTH_URL: 'https://garden.test',
-        DATABASE_URL: 'postgres://garden.test/db',
+        HYPERDRIVE: {
+          connectionString: 'postgres://garden.test/db',
+        } as unknown as Hyperdrive,
       },
       ctx: {
         storage: {
@@ -600,7 +606,9 @@ describe('RuntimeMcpController GitHub tools', () => {
       env: {
         BETTER_AUTH_SECRET: 'secret',
         BETTER_AUTH_URL: 'https://garden.test',
-        DATABASE_URL: 'postgres://garden.test/db',
+        HYPERDRIVE: {
+          connectionString: 'postgres://garden.test/db',
+        } as unknown as Hyperdrive,
       },
       ctx: {
         storage: {
@@ -689,7 +697,9 @@ describe('RuntimeMcpController GitHub tools', () => {
       env: {
         BETTER_AUTH_SECRET: 'secret',
         BETTER_AUTH_URL: 'https://garden.test',
-        DATABASE_URL: 'postgres://garden.test/db',
+        HYPERDRIVE: {
+          connectionString: 'postgres://garden.test/db',
+        } as unknown as Hyperdrive,
       },
       ctx: { storage: { sql: createSqlStorageStub() } },
       mcp: {
@@ -765,7 +775,9 @@ describe('RuntimeMcpController GitHub tools', () => {
       env: {
         BETTER_AUTH_SECRET: 'secret',
         BETTER_AUTH_URL: 'https://garden.test',
-        DATABASE_URL: 'postgres://garden.test/db',
+        HYPERDRIVE: {
+          connectionString: 'postgres://garden.test/db',
+        } as unknown as Hyperdrive,
       },
       ctx: { storage: { sql: createSqlStorageStub() } },
       mcp: {
@@ -833,7 +845,9 @@ describe('RuntimeMcpController GitHub tools', () => {
       env: {
         BETTER_AUTH_SECRET: 'secret',
         BETTER_AUTH_URL: 'https://garden.test',
-        DATABASE_URL: 'postgres://garden.test/db',
+        HYPERDRIVE: {
+          connectionString: 'postgres://garden.test/db',
+        } as unknown as Hyperdrive,
       },
       ctx: { storage: { sql: createSqlStorageStub() } },
       mcp: {
@@ -882,7 +896,9 @@ describe('RuntimeMcpController GitHub tools', () => {
       env: {
         BETTER_AUTH_SECRET: 'secret',
         BETTER_AUTH_URL: 'https://garden.test',
-        DATABASE_URL: 'postgres://garden.test/db',
+        HYPERDRIVE: {
+          connectionString: 'postgres://garden.test/db',
+        } as unknown as Hyperdrive,
       },
       ctx: { storage: { sql: createSqlStorageStub() } },
       mcp: {

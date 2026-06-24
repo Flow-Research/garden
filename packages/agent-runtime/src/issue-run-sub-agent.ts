@@ -22,7 +22,7 @@ import {
 } from 'ai'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/neon-serverless'
+import { getPooledDb } from '@garden/db/runtime'
 import { classifyConnectorError } from '@garden/core/connectors/errors'
 import { createGardenLogger } from '@garden/observability/logger'
 import {
@@ -94,7 +94,7 @@ import { logAgentSocketError } from './websocket-errors'
 type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_SECRET: string
   BETTER_AUTH_URL: string
-  DATABASE_URL: string
+  HYPERDRIVE: Hyperdrive
   DISCORD_BOT_TOKEN?: string
   AI: Ai
   AI_GATEWAY_ID?: string
@@ -330,7 +330,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async getSkills() {
-    const db = drizzle(this.env.DATABASE_URL, { schema })
+    const db = getPooledDb(this.env.HYPERDRIVE.connectionString)
     const [run] = await db
       .select({ agentId: schema.issueRun.agentId })
       .from(schema.issueRun)
@@ -349,7 +349,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     return {
       ...createChatSubAgentTools({
         ctx: this.ctx,
-        databaseUrl: this.env.DATABASE_URL,
+        databaseUrl: this.env.HYPERDRIVE.connectionString,
         threadId: this.name,
         workspace: this.workspace,
         loader: this.env.LOADER,
@@ -473,7 +473,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       step: ctx.stepNumber,
     })
 
-    const db = getIssueRunDb(this.env.DATABASE_URL)
+    const db = getIssueRunDb(this.env.HYPERDRIVE.connectionString)
     const eventResult = await appendIssueRunEvent({
       db,
       run,
@@ -514,7 +514,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       durationMs: ctx.durationMs,
       ok,
     })
-    const db = getIssueRunDb(this.env.DATABASE_URL)
+    const db = getIssueRunDb(this.env.HYPERDRIVE.connectionString)
     const eventResult = await appendIssueRunEvent({
       db,
       run,
@@ -1029,8 +1029,16 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     }
   }
 
+  /**
+   * Resolves the issue-run-sub-agent Drizzle client through Hyperdrive's pooled
+   * connection string. Previously called `drizzle(this.env.DATABASE_URL)` from
+   * the neon-serverless driver, opening a fresh direct-to-Neon WebSocket pool
+   * per call that bypassed Hyperdrive, never closed, and defeated Neon
+   * autosuspend. `getPooledDb` memoizes one node-postgres pool per connection
+   * string per isolate so Hyperdrive owns origin pooling.
+   */
   private getDb() {
-    return drizzle(this.env.DATABASE_URL, { schema })
+    return getPooledDb(this.env.HYPERDRIVE.connectionString)
   }
 
   private getSandboxId() {
@@ -1677,7 +1685,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     })
     if (result.isErr()) return Result.err(result.error)
 
-    const db = getIssueRunDb(this.env.DATABASE_URL)
+    const db = getIssueRunDb(this.env.HYPERDRIVE.connectionString)
     const eventResult = await appendIssueRunEvent({
       db,
       run: loaded.runState,
@@ -1714,7 +1722,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     })
     if (result.isErr()) return Result.err(result.error)
 
-    const db = getIssueRunDb(this.env.DATABASE_URL)
+    const db = getIssueRunDb(this.env.HYPERDRIVE.connectionString)
     const eventResult = await appendIssueRunEvent({
       db,
       run: loaded.runState,
@@ -1866,7 +1874,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       .limit(1)
     if (!run || run.status !== 'running') return Result.ok()
 
-    const db = getIssueRunDb(this.env.DATABASE_URL)
+    const db = getIssueRunDb(this.env.HYPERDRIVE.connectionString)
     const statusResult = await updateRunStatus({
       db,
       run: runStateResult.value,
@@ -2009,7 +2017,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
 
     const runStateResult = await this.loadRunState(runId)
     if (runStateResult.isErr()) return Result.err(runStateResult.error)
-    const db = getIssueRunDb(this.env.DATABASE_URL)
+    const db = getIssueRunDb(this.env.HYPERDRIVE.connectionString)
     const eventResult = await appendIssueRunEvent({
       db,
       run: runStateResult.value,
@@ -2055,7 +2063,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     run: IssueRunToolState,
     reason: string,
   ): Promise<ResultValue<void, IssueRunSubAgentError>> {
-    const db = getIssueRunDb(this.env.DATABASE_URL)
+    const db = getIssueRunDb(this.env.HYPERDRIVE.connectionString)
     const statusResult = await updateRunStatus({
       db,
       run,
@@ -2129,7 +2137,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     })
     if (writeResult.isErr()) return Result.err(writeResult.error)
 
-    const eventDb = getIssueRunDb(this.env.DATABASE_URL)
+    const eventDb = getIssueRunDb(this.env.HYPERDRIVE.connectionString)
     const eventResult = await appendIssueRunEvent({
       db: eventDb,
       run,

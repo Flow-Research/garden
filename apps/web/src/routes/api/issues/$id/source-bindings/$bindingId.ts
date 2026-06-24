@@ -44,7 +44,7 @@ export const Route = createFileRoute(
         if (access instanceof Response) return access
 
         const removeResult = await removeSourceBinding({
-          databaseUrl: appEnv.DATABASE_URL,
+          databaseUrl: appEnv.HYPERDRIVE.connectionString,
           bindingId: params.bindingId,
         })
         if (removeResult.isErr()) return sourceBindingError(removeResult.error)

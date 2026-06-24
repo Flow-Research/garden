@@ -3,7 +3,7 @@ import { jsonSchema, tool, type ModelMessage, type ToolSet } from 'ai'
 import { Effect } from 'effect'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, desc, eq } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/neon-serverless'
+import { getPooledDb } from '@garden/db/runtime'
 import { getConnectorById } from '@garden/connectors'
 import { discordNativeTools } from '@garden/connectors/discord/tools'
 import { makeDiscordBaseLayer } from '@garden/connectors/discord/services'
@@ -76,7 +76,7 @@ type StoredConnectorServerRowRecord = {
 export type McpHostEnv = {
   BETTER_AUTH_SECRET: string
   BETTER_AUTH_URL: string
-  DATABASE_URL: string
+  HYPERDRIVE: Hyperdrive
   DISCORD_BOT_TOKEN?: string
 }
 
@@ -158,8 +158,16 @@ export class RuntimeMcpController {
 
   constructor(private readonly host: McpHost) {}
 
+  /**
+   * Resolves the MCP-controller Drizzle client through Hyperdrive's pooled
+   * connection string. Previously called `drizzle(this.host.env.DATABASE_URL)`
+   * from the neon-serverless driver, opening a fresh direct-to-Neon WebSocket
+   * pool per call that bypassed Hyperdrive, never closed, and defeated Neon
+   * autosuspend. `getPooledDb` memoizes one node-postgres pool per connection
+   * string per isolate so Hyperdrive owns origin pooling.
+   */
   private getDb() {
-    return drizzle(this.host.env.DATABASE_URL, { schema })
+    return getPooledDb(this.host.env.HYPERDRIVE.connectionString)
   }
 
   /**

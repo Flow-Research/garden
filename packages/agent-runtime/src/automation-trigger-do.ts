@@ -1,6 +1,6 @@
 import { Agent } from 'agents'
 import { eq, sql } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/neon-serverless'
+import { getPooledDb } from '@garden/db/runtime'
 import {
   Result,
   TaggedError,
@@ -178,8 +178,16 @@ function emptyState(): AutomationState {
 }
 
 export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
+  /**
+   * Resolves the automation-trigger Drizzle client through Hyperdrive's pooled
+   * connection string. Previously called `drizzle(this.env.DATABASE_URL)` from
+   * the neon-serverless driver, opening a fresh direct-to-Neon WebSocket pool
+   * per call that bypassed Hyperdrive, never closed, and defeated Neon
+   * autosuspend. `getPooledDb` memoizes one node-postgres pool per connection
+   * string per isolate so Hyperdrive owns origin pooling.
+   */
   private db() {
-    return drizzle(this.env.DATABASE_URL, { schema })
+    return getPooledDb(this.env.HYPERDRIVE.connectionString)
   }
 
   async install(args: {

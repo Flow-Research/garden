@@ -105,7 +105,7 @@ export const Route = createFileRoute('/api/issues')({
         const body = bodyResult.value
 
         const issueResult = await createIssue({
-          databaseUrl: appEnv.DATABASE_URL,
+          databaseUrl: appEnv.HYPERDRIVE.connectionString,
           workspaceId,
           title: body.title,
           description:

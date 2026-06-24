@@ -1,5 +1,5 @@
 import process from 'node:process'
-import { drizzle } from 'drizzle-orm/neon-serverless'
+import { drizzle } from 'drizzle-orm/node-postgres'
 import { eq } from 'drizzle-orm'
 import * as schema from '../../../../packages/db/src/schema/index.ts'
 

@@ -249,7 +249,7 @@ async function loadSourceBindings(args: {
   issueId: string
   bindingId?: string
 }): Promise<ResultValue<SourceBindingRow[], IssueRunToolError>> {
-  const db = getIssueRunDb(args.context.env.DATABASE_URL)
+  const db = getIssueRunDb(args.context.env.HYPERDRIVE.connectionString)
   const result = await Result.tryPromise({
     try: async () =>
       await db
@@ -416,7 +416,7 @@ export function createReadSourceTool(context: IssueRunToolContext) {
         sources.push(sourceResult.value)
       }
 
-      const db = getIssueRunDb(context.env.DATABASE_URL)
+      const db = getIssueRunDb(context.env.HYPERDRIVE.connectionString)
       const eventResult = await appendIssueRunEvent({
         db,
         run,

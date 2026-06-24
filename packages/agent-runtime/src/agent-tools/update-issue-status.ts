@@ -43,7 +43,7 @@ export function createUpdateIssueStatusTool(context: IssueRunToolContext) {
         )
       }
 
-      const db = getIssueRunDb(context.env.DATABASE_URL)
+      const db = getIssueRunDb(context.env.HYPERDRIVE.connectionString)
       const now = new Date()
       const writeResult = await Result.tryPromise({
         try: async () => {

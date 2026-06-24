@@ -42,7 +42,7 @@ export const Route = createFileRoute('/api/issues/$id/source-bindings')({
         if (access instanceof Response) return access
 
         const bindingsResult = await listIssueSourceBindings({
-          databaseUrl: appEnv.DATABASE_URL,
+          databaseUrl: appEnv.HYPERDRIVE.connectionString,
           issueId: params.id,
         })
         if (bindingsResult.isErr()) {
@@ -73,7 +73,7 @@ export const Route = createFileRoute('/api/issues/$id/source-bindings')({
         if (access instanceof Response) return access
 
         const attachResult = await attachSourceBinding({
-          databaseUrl: appEnv.DATABASE_URL,
+          databaseUrl: appEnv.HYPERDRIVE.connectionString,
           workspaceId: issue.workspaceId,
           issueId: params.id,
           connectorId: body.connector_id,

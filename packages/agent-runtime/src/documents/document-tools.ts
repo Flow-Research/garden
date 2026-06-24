@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer'
 import type { WorkspaceFsLike } from '@cloudflare/shell'
 import { and, desc, eq, max, or } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/neon-serverless'
+import { getPooledDb } from '@garden/db/runtime'
 import {
   AlignmentType,
   BorderStyle,
@@ -115,8 +115,16 @@ export type EditAnnotation = {
   status: 'pending'
 }
 
+/**
+ * Resolves the document-tools Drizzle client through Hyperdrive's pooled
+ * connection string. Callers pass `env.HYPERDRIVE.connectionString`. Previously
+ * called `drizzle(databaseUrl)` from the neon-serverless driver, opening a fresh
+ * direct-to-Neon WebSocket pool per call that bypassed Hyperdrive, never closed,
+ * and defeated Neon autosuspend. `getPooledDb` memoizes one node-postgres pool
+ * per connection string per isolate so Hyperdrive owns origin pooling.
+ */
 function getDb(databaseUrl: string) {
-  return drizzle(databaseUrl, { schema })
+  return getPooledDb(databaseUrl)
 }
 
 function contentTypeForFileType(fileType: string) {

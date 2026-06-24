@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import type { NeonDatabase } from 'drizzle-orm/neon-serverless'
+import type { GardenDatabase } from './client.js'
 import * as schema from './schema/index.js'
 
-type GardenDb = NeonDatabase<typeof schema>
+type GardenDb = GardenDatabase
 
 type InboxActorType = 'member' | 'agent' | null
 type InboxSeverity = 'action_required' | 'attention' | 'info'

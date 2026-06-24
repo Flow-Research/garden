@@ -43,7 +43,7 @@ export function createAskQuestionTool(context: IssueRunToolContext) {
       const runResult = requireRunState(context)
       if (runResult.isErr()) return toolErrorResult(runResult.error)
       const run = runResult.value
-      const db = getIssueRunDb(context.env.DATABASE_URL)
+      const db = getIssueRunDb(context.env.HYPERDRIVE.connectionString)
       const question: StructuredQuestion = {
         id: crypto.randomUUID(),
         ...(input.header ? { header: input.header } : {}),

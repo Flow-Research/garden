@@ -1,6 +1,6 @@
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { eq, sql } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/neon-serverless'
+import { getPooledDb } from '@garden/db/runtime'
 import type { ConnectorError } from '@garden/core/connectors/errors'
 import type {
   IssueRunEventLevel,
@@ -27,7 +27,7 @@ export type AgentDoNamespace = {
 export type IssueRunToolEnv = {
   BETTER_AUTH_SECRET: string
   BETTER_AUTH_URL: string
-  DATABASE_URL: string
+  HYPERDRIVE: Hyperdrive
   AgentDO?: AgentDoNamespace
 }
 
@@ -90,8 +90,14 @@ export class IssueRunToolError extends TaggedError('IssueRunToolError')<{
 
 export type IssueRunDb = ReturnType<typeof getIssueRunDb>
 
-export function getIssueRunDb(databaseUrl: string) {
-  return drizzle(databaseUrl, { schema })
+/**
+ * Resolves the issue-run Drizzle client from a Hyperdrive connection string.
+ * Callers pass `env.HYPERDRIVE.connectionString`; pooling/closing is owned by
+ * Hyperdrive + the memoized pool in `@garden/db/runtime`, so this no longer
+ * opens a fresh direct-to-Neon serverless pool per tool invocation.
+ */
+export function getIssueRunDb(connectionString: string) {
+  return getPooledDb(connectionString)
 }
 
 export function dbError(operation: string, cause: unknown) {

@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/neon-serverless'
+import { getPooledDb } from '@garden/db/runtime'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { formatIssueIdentifier } from '@garden/core/issues/identifier'
 import { LIVE_RUN_STATUSES, WAKEUP_DEDUPING_RUN_STATUSES } from '@garden/core/issues/run-sync'
@@ -147,8 +147,16 @@ export type IssueSummary = {
   blocked_reason?: string | null
 }
 
+/**
+ * Resolves the issue read/write Drizzle client through Hyperdrive's pooled
+ * connection string. Callers pass `env.HYPERDRIVE.connectionString`. Previously
+ * called `drizzle(databaseUrl)` from the neon-serverless driver, opening a fresh
+ * direct-to-Neon WebSocket pool per call that bypassed Hyperdrive, never closed,
+ * and defeated Neon autosuspend. `getPooledDb` memoizes one node-postgres pool
+ * per connection string per isolate so Hyperdrive owns origin pooling.
+ */
 export function getIssueDb(databaseUrl: string) {
-  return drizzle(databaseUrl, { schema })
+  return getPooledDb(databaseUrl)
 }
 
 function serviceDbError(operation: string, cause: unknown) {

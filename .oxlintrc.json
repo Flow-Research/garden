@@ -17,5 +17,21 @@
     "**/.output/**",
     "**/.tanstack/**"
   ],
-  "rules": {}
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "drizzle-orm/neon-serverless",
+            "message": "Don't connect straight to Neon — direct neon-serverless connections bypass Hyperdrive and keep Neon's compute awake (autosuspend defeated, compute quota burned). Route Postgres through Hyperdrive via getPooledDb / getPooledDbWith from @garden/db/runtime, passing env.HYPERDRIVE.connectionString."
+          },
+          {
+            "name": "@neondatabase/serverless",
+            "message": "Don't use the Neon serverless driver directly — it bypasses Hyperdrive and burns Neon compute. Go through @garden/db/runtime (Hyperdrive-backed node-postgres)."
+          }
+        ]
+      }
+    ]
+  }
 }

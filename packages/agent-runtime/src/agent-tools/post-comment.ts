@@ -28,7 +28,7 @@ export function createPostCommentTool(context: IssueRunToolContext) {
       const runResult = requireRunState(context)
       if (runResult.isErr()) return toolErrorResult(runResult.error)
       const run = runResult.value
-      const db = getIssueRunDb(context.env.DATABASE_URL)
+      const db = getIssueRunDb(context.env.HYPERDRIVE.connectionString)
       const commentId = crypto.randomUUID()
 
       const writeResult = await Result.tryPromise({

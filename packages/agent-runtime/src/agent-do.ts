@@ -37,7 +37,7 @@ import {
 import { createWorkspaceTools } from '@cloudflare/think/tools/workspace'
 import { Workspace } from '@cloudflare/shell'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
-import { drizzle } from 'drizzle-orm/neon-serverless'
+import { getPooledDb } from '@garden/db/runtime'
 import { and, asc, eq, or, type SQL } from 'drizzle-orm'
 import { Result } from 'better-result'
 import { connectorRegistry } from '@garden/connectors'
@@ -86,7 +86,7 @@ import { logAgentSocketError } from './websocket-errors'
 type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_SECRET: string
   BETTER_AUTH_URL: string
-  DATABASE_URL: string
+  HYPERDRIVE: Hyperdrive
   DISCORD_BOT_TOKEN?: string
   AI: Ai
   AI_GATEWAY_ID?: string
@@ -775,8 +775,16 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return undefined
   }
 
+  /**
+   * Resolves the AgentDO Drizzle client through Hyperdrive's pooled connection
+   * string. Previously called `drizzle(this.env.DATABASE_URL)` from the
+   * neon-serverless driver, opening a fresh direct-to-Neon WebSocket pool per
+   * call that bypassed Hyperdrive, never closed, and defeated Neon autosuspend.
+   * `getPooledDb` memoizes one node-postgres pool per connection string per
+   * isolate so Hyperdrive owns origin pooling.
+   */
   private getDb() {
-    return drizzle(this.env.DATABASE_URL, { schema })
+    return getPooledDb(this.env.HYPERDRIVE.connectionString)
   }
 
   private agentRuntimeWhere(): SQL {
@@ -1070,7 +1078,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async getSkills() {
-    const db = drizzle(this.env.DATABASE_URL, { schema })
+    const db = getPooledDb(this.env.HYPERDRIVE.connectionString)
     const [thread] = await db
       .select({ agentId: schema.chatThread.agentId })
       .from(schema.chatThread)
@@ -1091,7 +1099,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   override getTools() {
     return createChatSubAgentTools({
       ctx: this.ctx,
-      databaseUrl: this.env.DATABASE_URL,
+      databaseUrl: this.env.HYPERDRIVE.connectionString,
       threadId: this.name,
       workspace: this.workspace,
       loader: this.env.LOADER,
@@ -1189,14 +1197,22 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
 
   private getDocumentToolContext() {
     return {
-      databaseUrl: this.env.DATABASE_URL,
+      databaseUrl: this.env.HYPERDRIVE.connectionString,
       workspace: this.workspace,
       threadId: this.name,
     }
   }
 
+  /**
+   * Resolves the ChatSubAgent Drizzle client through Hyperdrive's pooled
+   * connection string. Previously called `drizzle(this.env.DATABASE_URL)` from
+   * the neon-serverless driver, opening a fresh direct-to-Neon WebSocket pool
+   * per call that bypassed Hyperdrive, never closed, and defeated Neon
+   * autosuspend. `getPooledDb` memoizes one node-postgres pool per connection
+   * string per isolate so Hyperdrive owns origin pooling.
+   */
   private getDb() {
-    return drizzle(this.env.DATABASE_URL, { schema })
+    return getPooledDb(this.env.HYPERDRIVE.connectionString)
   }
 
   async pauseRuntime(reason: string): Promise<RuntimeOkPayload> {
@@ -1238,7 +1254,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     const slugs = explicitSkillSlugsFromMessages(ctx.messages)
     if (slugs.length === 0) return ''
 
-    const db = drizzle(this.env.DATABASE_URL, { schema })
+    const db = getPooledDb(this.env.HYPERDRIVE.connectionString)
     const [thread] = await db
       .select({ agentId: schema.chatThread.agentId })
       .from(schema.chatThread)
@@ -2040,7 +2056,9 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   private getPromptContextOptions() {
     return createPromptContextProviders({
       agentRuntimeName: this.getAgentRuntimeName(),
-      catalog: new PostgresAgentPromptCatalog(this.env.DATABASE_URL),
+      catalog: new PostgresAgentPromptCatalog(
+        this.env.HYPERDRIVE.connectionString,
+      ),
     })
   }
 

@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm'
-import type { NeonDatabase } from 'drizzle-orm/neon-serverless'
+import type { GardenDatabase } from '@garden/db'
 import { connectorRegistry, getConnectorById } from '@garden/connectors'
 import {
   isMcpConnector,
@@ -19,7 +19,7 @@ export type AvailableConnectorBinding = {
   repositorySelection?: string | null
 }
 
-type ConnectorAvailabilityDb = NeonDatabase<typeof schema>
+type ConnectorAvailabilityDb = GardenDatabase
 
 export async function listAvailableConnectorBindings(args: {
   db: ConnectorAvailabilityDb

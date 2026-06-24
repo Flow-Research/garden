@@ -62,7 +62,7 @@ export function createCreateChildIssueTool(context: IssueRunToolContext) {
       const runResult = requireRunState(context)
       if (runResult.isErr()) return toolErrorResult(runResult.error)
       const run = runResult.value
-      const db = getIssueRunDb(context.env.DATABASE_URL)
+      const db = getIssueRunDb(context.env.HYPERDRIVE.connectionString)
 
       const depthResult = await loadIssueDepth({ db, issueId: run.issueId })
       if (depthResult.isErr()) return toolErrorResult(depthResult.error)
@@ -76,7 +76,7 @@ export function createCreateChildIssueTool(context: IssueRunToolContext) {
       }
 
       const issueResult = await createIssueService({
-        databaseUrl: context.env.DATABASE_URL,
+        databaseUrl: context.env.HYPERDRIVE.connectionString,
         workspaceId: run.workspaceId,
         title: input.title,
         description: input.description,

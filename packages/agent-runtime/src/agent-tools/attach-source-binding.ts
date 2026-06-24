@@ -50,7 +50,7 @@ export function createAttachSourceBindingTool(context: IssueRunToolContext) {
       const run = runResult.value
 
       const bindingResult = await attachSourceBinding({
-        databaseUrl: context.env.DATABASE_URL,
+        databaseUrl: context.env.HYPERDRIVE.connectionString,
         workspaceId: run.workspaceId,
         issueId: run.issueId,
         connectorId: input.connector_id,
@@ -62,7 +62,7 @@ export function createAttachSourceBindingTool(context: IssueRunToolContext) {
         return toolErrorResult(sourceBindingToolError(bindingResult.error))
       }
 
-      const db = getIssueRunDb(context.env.DATABASE_URL)
+      const db = getIssueRunDb(context.env.HYPERDRIVE.connectionString)
       const eventResult = await appendIssueRunEvent({
         db,
         run,

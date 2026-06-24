@@ -24,7 +24,7 @@ import {
 } from 'ai'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/neon-serverless'
+import { getPooledDb } from '@garden/db/runtime'
 import { z } from 'zod'
 import {
   parseAutomationExecutionConfig,
@@ -75,7 +75,7 @@ import {
 type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_SECRET: string
   BETTER_AUTH_URL: string
-  DATABASE_URL: string
+  HYPERDRIVE: Hyperdrive
   DISCORD_BOT_TOKEN?: string
   AI: Ai
   AI_GATEWAY_ID?: string
@@ -344,7 +344,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async getSkills() {
-    const db = drizzle(this.env.DATABASE_URL, { schema })
+    const db = getPooledDb(this.env.HYPERDRIVE.connectionString)
     const [run] = await db
       .select({ agentId: schema.automationRun.agentId })
       .from(schema.automationRun)
@@ -1008,8 +1008,16 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     })
   }
 
+  /**
+   * Resolves the automation-run-sub-agent Drizzle client through Hyperdrive's
+   * pooled connection string. Previously called `drizzle(this.env.DATABASE_URL)`
+   * from the neon-serverless driver, opening a fresh direct-to-Neon WebSocket
+   * pool per call that bypassed Hyperdrive, never closed, and defeated Neon
+   * autosuspend. `getPooledDb` memoizes one node-postgres pool per connection
+   * string per isolate so Hyperdrive owns origin pooling.
+   */
   private getDb() {
-    return drizzle(this.env.DATABASE_URL, { schema })
+    return getPooledDb(this.env.HYPERDRIVE.connectionString)
   }
 
   private getSandboxId() {

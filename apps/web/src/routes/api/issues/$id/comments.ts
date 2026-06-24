@@ -70,7 +70,7 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
         if (access instanceof Response) return access
 
         const commentResult = await postIssueComment({
-          databaseUrl: appEnv.DATABASE_URL,
+          databaseUrl: appEnv.HYPERDRIVE.connectionString,
           workspaceId: existingIssue.workspaceId,
           issueIdOrIdentifier: params.id,
           authorUserId: access.session.user.id,

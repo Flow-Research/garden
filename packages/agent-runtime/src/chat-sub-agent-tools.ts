@@ -16,7 +16,7 @@ import {
   sql,
   type SQLWrapper,
 } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/neon-serverless";
+import { getPooledDb } from "@garden/db/runtime";
 import { z } from "zod";
 import { connectorRegistry } from "@garden/connectors";
 import { formatIssueIdentifier } from "@garden/core/issues/identifier";
@@ -387,8 +387,16 @@ type IssueWorkProductRow = {
   status: string;
 };
 
+/**
+ * Resolves the chat-tools read Drizzle client through Hyperdrive's pooled
+ * connection string. Callers pass `env.HYPERDRIVE.connectionString`. Previously
+ * called `drizzle(databaseUrl)` from the neon-serverless driver, opening a fresh
+ * direct-to-Neon WebSocket pool per call that bypassed Hyperdrive, never closed,
+ * and defeated Neon autosuspend. `getPooledDb` memoizes one node-postgres pool
+ * per connection string per isolate so Hyperdrive owns origin pooling.
+ */
 function getReadRunDb(databaseUrl: string) {
-  return drizzle(databaseUrl, { schema });
+  return getPooledDb(databaseUrl);
 }
 
 function errorMessage(error: unknown) {
