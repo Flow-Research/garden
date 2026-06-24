@@ -100,30 +100,19 @@ export async function addIssueSubscribers(
 }
 
 /**
- * List an issue's participants. Reads the persisted table and merges in the
- * derived creator + assignee so issues created before this feature (or before
- * their first comment) still surface their implicit participants. Table rows
- * win on conflict because they carry the authoritative reason.
+ * List an issue's participants.
+ *
+ * The table is authoritative: creator and assignee are seeded at creation /
+ * assignment time (createIssue + the issue PUT route), and the 0037 migration
+ * backfills both for issues that predate this table. We deliberately do NOT
+ * re-derive creator/assignee here — doing so would resurrect a participant who
+ * explicitly unsubscribed (their row is deleted, so a derived fallback would
+ * silently re-add them on the next read).
  */
 export async function listIssueSubscribers(
   db: GardenDb,
   args: { issueId: string },
 ): Promise<IssueSubscriberRecord[]> {
-  const [issue] = await db
-    .select({
-      id: schema.issue.id,
-      workspaceId: schema.issue.workspaceId,
-      createdBy: schema.issue.createdBy,
-      assigneeType: schema.issue.assigneeType,
-      assigneeId: schema.issue.assigneeId,
-      createdAt: schema.issue.createdAt,
-      updatedAt: schema.issue.updatedAt,
-    })
-    .from(schema.issue)
-    .where(eq(schema.issue.id, args.issueId))
-    .limit(1)
-  if (!issue) return []
-
   const rows = await db
     .select({
       issueId: schema.issueSubscriber.issueId,
@@ -136,43 +125,7 @@ export async function listIssueSubscribers(
     .from(schema.issueSubscriber)
     .where(eq(schema.issueSubscriber.issueId, args.issueId))
 
-  const byKey = new Map<string, IssueSubscriberRecord>()
-  const put = (record: IssueSubscriberRecord, override: boolean) => {
-    const key = `${record.userType}:${record.userId}`
-    if (override || !byKey.has(key)) byKey.set(key, record)
-  }
-
-  // Derived participants first (lowest precedence), then persisted rows override.
-  put(
-    {
-      issueId: issue.id,
-      workspaceId: issue.workspaceId,
-      userType: 'member',
-      userId: issue.createdBy,
-      reason: 'creator',
-      createdAt: issue.createdAt ?? new Date(),
-    },
-    false,
-  )
-  const assigneeType = assigneeToSubscriberType(issue.assigneeType)
-  if (assigneeType && issue.assigneeId) {
-    put(
-      {
-        issueId: issue.id,
-        workspaceId: issue.workspaceId,
-        userType: assigneeType,
-        userId: issue.assigneeId,
-        reason: 'assignee',
-        createdAt: issue.updatedAt ?? issue.createdAt ?? new Date(),
-      },
-      false,
-    )
-  }
-  for (const row of rows) {
-    put(row as IssueSubscriberRecord, true)
-  }
-
-  return [...byKey.values()]
+  return rows as IssueSubscriberRecord[]
 }
 
 /**
