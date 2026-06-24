@@ -143,17 +143,28 @@ export const Route = createFileRoute('/api/issues/$id')({
           existingIssue.assigneeId !== issue.assigneeId
         const newAssigneeType = assigneeToSubscriberType(issue.assigneeType)
         if (assigneeChanged && newAssigneeType && issue.assigneeId) {
-          await addIssueSubscribers(db, {
-            workspaceId: existingIssue.workspaceId,
-            issueId: issue.id,
-            entries: [
-              {
-                userType: newAssigneeType,
-                userId: issue.assigneeId,
-                reason: 'assignee',
-              },
-            ],
+          // Best-effort per the note above: the assignment write is the source of
+          // truth, so a participants-join failure (e.g. a not-yet-applied
+          // issue_subscriber migration) must not 500 the assignment or skip the
+          // downstream inbox + assignment email.
+          const assigneeId = issue.assigneeId
+          const subscriberResult = await Result.tryPromise({
+            try: () =>
+              addIssueSubscribers(db, {
+                workspaceId: existingIssue.workspaceId,
+                issueId: issue.id,
+                entries: [
+                  {
+                    userType: newAssigneeType,
+                    userId: assigneeId,
+                    reason: 'assignee',
+                  },
+                ],
+              }),
+            catch: (cause) => cause,
           })
+          if (subscriberResult.isErr())
+            console.error('issue_subscriber_add_failed', subscriberResult.error)
         }
 
         if (
