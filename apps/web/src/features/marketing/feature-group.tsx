@@ -1,6 +1,6 @@
 import type { FeatureGroup, GardenFeature } from './feature-copy'
 import { FeatureSection } from './feature-section'
-import { StatusBadge } from './status-badge'
+import { StatusBadge, UpdatedBadge } from './status-badge'
 
 /**
  * One product group on /features: scan table at top, then full detail per feature.
@@ -53,7 +53,10 @@ export function FeatureGroupSection({
                   </a>
                 </td>
                 <td className="py-2.5 pr-4">
-                  <StatusBadge status={feature.status} />
+                  <span className="inline-flex items-center gap-1.5">
+                    <StatusBadge status={feature.status} />
+                    {feature.updated && <UpdatedBadge />}
+                  </span>
                 </td>
                 <td className="hidden py-2.5 text-muted-foreground sm:table-cell">
                   {feature.tagline}

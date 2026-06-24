@@ -1,6 +1,6 @@
 import type { GardenFeature } from './feature-copy'
 import { featuresPageCopy } from './feature-copy'
-import { StatusBadge } from './status-badge'
+import { StatusBadge, UpdatedBadge } from './status-badge'
 
 /**
  * Full detail for one feature — single-column so designers can read top to bottom.
@@ -14,6 +14,7 @@ export function FeatureSection({ feature }: { feature: GardenFeature }) {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <h3 className="text-base font-semibold">{feature.name}</h3>
         <StatusBadge status={feature.status} />
+        {feature.updated && <UpdatedBadge />}
       </div>
       <p className="mt-1 text-sm text-muted-foreground">{feature.tagline}</p>
 

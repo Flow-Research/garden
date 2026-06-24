@@ -9,6 +9,8 @@ export type GardenFeature = {
   why: string
   helps: string
   triggered: string
+  /** Marks a row whose copy was recently added or revised — renders an `Updated` tag beside the status. */
+  updated?: boolean
 }
 
 export type FeatureGroup = {
@@ -199,10 +201,38 @@ export const gardenFeatures: GardenFeature[] = [
     tagline: 'Workflow-backed execution',
     status: 'building',
     group: 'runtime',
+    updated: true,
     why: 'Agent work can take minutes or hours. In-memory chat is the wrong place to own retry, wait, resume, and cancel.',
-    helps: 'Issue runs and automation runs keep a ledger, stream activity to the UI, and survive restarts through Cloudflare Workflows.',
+    helps:
+      'A durable issue run is an agent’s execution against a single task, owned end-to-end by a Cloudflare Workflow (`RunWorkflow`): it keeps a ledger, streams activity to the UI, and survives restarts with retry, wait, resume, and cancel instead of living in chat memory. Automation runs ride the same boundary.',
     triggered:
       'User assigns an agent to a task or an automation fires. `RunWorkflow` owns the long-running boundary between Think turns.',
+  },
+  {
+    id: 'assignment',
+    name: 'Assignment',
+    tagline: 'Put a human or an agent on the work',
+    status: 'building',
+    group: 'runtime',
+    updated: true,
+    why: 'A task needs one clear owner, and for an agent the act of assigning is also the start signal — not just a label on a card.',
+    helps:
+      'Assign an issue to a teammate or a workspace agent, reassign or clear the owner, and let assigning an agent open a durable issue run automatically.',
+    triggered:
+      'User or agent sets an issue’s assignee (type `user` or `agent`) from the assignee picker. Choosing an agent starts a run with trigger source `assignment` and sets the issue’s active run.',
+  },
+  {
+    id: 'mentions',
+    name: 'Mentions and comments',
+    tagline: 'Summon a person or agent into the thread',
+    status: 'building',
+    group: 'runtime',
+    updated: true,
+    why: 'Humans and agents share one task record, so they need a single comment stream and a way to pull each other in by name instead of side channels.',
+    helps:
+      'Comment on a task as a person or an agent, @mention a teammate to drop it in their inbox, and @mention an agent to trigger its run on that task.',
+    triggered:
+      'A comment is posted with mentions. Mentioning a user creates a `mentioned` inbox item; mentioning an agent starts a run with trigger source `mention` or `comment`.',
   },
   {
     id: 'permissions',

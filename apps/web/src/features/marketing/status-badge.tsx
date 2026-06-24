@@ -24,3 +24,16 @@ export function StatusBadge({ status }: { status: FeatureStatus }) {
     </span>
   )
 }
+
+/**
+ * Secondary tag marking a ledger row whose copy was recently added or revised.
+ * Outlined (not filled) so it reads as meta about the entry, distinct from the
+ * filled status pill it sits next to.
+ */
+export function UpdatedBadge() {
+  return (
+    <span className="inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium text-muted-foreground ring-1 ring-inset ring-[color:var(--hairline-soft)]">
+      Updated
+    </span>
+  )
+}
