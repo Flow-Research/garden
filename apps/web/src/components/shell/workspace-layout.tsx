@@ -10,6 +10,7 @@ import { ChatRuntimeProvider } from '@/features/chat/chat-runtime-provider'
 import { CreateWorkspaceModal } from '@/features/modals/create-workspace'
 import { SettingsDialog } from '@/features/settings'
 import { ConnectorCallbackListener } from '@/features/connections'
+import { IssueDeepLinkListener } from '@/features/issues/components/issue-deep-link-listener'
 import {
   agentListOptions,
   connectionListOptions,
@@ -84,9 +85,11 @@ function WorkspaceSetupState({ onCreate }: { onCreate: () => void }) {
 export function WorkspaceLayout({
   connectorFlowId = null,
   connectorId = null,
+  issueId = null,
 }: {
   connectorFlowId?: string | null
   connectorId?: string | null
+  issueId?: string | null
 } = {}) {
   const user = useAuthStore((state) => state.user)
   const workspace = useWorkspaceStore((state) => state.workspace)
@@ -112,6 +115,10 @@ export function WorkspaceLayout({
               workspaceId={activeWorkspaceId}
               connectorFlowId={connectorFlowId}
               connectorId={connectorId}
+            />
+            <IssueDeepLinkListener
+              workspaceId={activeWorkspaceId}
+              issueId={issueId}
             />
             <ChatRuntimeProvider>
               <WorkspaceSidebar

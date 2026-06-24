@@ -1,6 +1,8 @@
 import { and, eq, inArray } from 'drizzle-orm'
+import { Result } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
+import { sendIssueAssignmentEmail } from '@/lib/server/email/issue-assignment'
 import { LIVE_RUN_STATUSES } from '@garden/core/issues/run-sync'
 import type { IssueStatus } from '@garden/core/types/issue'
 import {
@@ -141,6 +143,48 @@ export const Route = createFileRoute('/api/issues/$id')({
             actorType: 'member',
             actorId: access.session.user.id,
           })
+
+          // Out-of-app nudge for the new assignee. Skip self-assignment (no
+          // point emailing yourself) and keep it best-effort so a Resend failure
+          // never fails the assignment write.
+          if (issue.assigneeId !== access.session.user.id) {
+            const [assignee] = await db
+              .select({ email: schema.user.email })
+              .from(schema.user)
+              .where(eq(schema.user.id, issue.assigneeId))
+            const [workspace] = await db
+              .select({ name: schema.organization.name })
+              .from(schema.organization)
+              .where(eq(schema.organization.id, existingIssue.workspaceId))
+
+            if (assignee?.email) {
+              const assignerName =
+                access.session.user.name?.trim() || access.session.user.email
+              const emailResult = await Result.tryPromise({
+                try: () =>
+                  sendIssueAssignmentEmail({
+                    baseURL:
+                      appEnv.BETTER_AUTH_URL ?? new URL(request.url).origin,
+                    data: {
+                      issue: { id: issue.id, title: issue.title },
+                      workspace: {
+                        id: existingIssue.workspaceId,
+                        name: workspace?.name ?? 'your workspace',
+                      },
+                      assignee: { email: assignee.email },
+                      assignerName,
+                    },
+                    env: appEnv,
+                  }),
+                catch: (cause) => cause,
+              })
+              if (emailResult.isErr())
+                console.error(
+                  'issue_assignment_email_failed',
+                  emailResult.error,
+                )
+            }
+          }
         }
         if (issue.status === 'done' || issue.status === 'cancelled') {
           await archiveTerminalIssueInbox({

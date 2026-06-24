@@ -27,6 +27,7 @@ export const Route = createFileRoute('/_authenticated/workspace')({
       typeof search.connector_id === 'string' ? search.connector_id : undefined,
     workspace_id:
       typeof search.workspace_id === 'string' ? search.workspace_id : undefined,
+    issue: typeof search.issue === 'string' ? search.issue : undefined,
   }),
   component: WorkspaceRoute,
 })
@@ -37,6 +38,7 @@ function WorkspaceRoute() {
     <WorkspaceLayout
       connectorFlowId={search.connector_flow ?? null}
       connectorId={search.connector_id ?? null}
+      issueId={search.issue ?? null}
     />
   )
 }

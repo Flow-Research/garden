@@ -18,6 +18,7 @@ export const Route = createFileRoute('/_authenticated/invitations/$id')({
           connector_flow: undefined,
           connector_id: undefined,
           workspace_id: result.workspaceId,
+          issue: undefined,
         },
       })
     }
@@ -57,6 +58,7 @@ function InvitationRoute() {
                 connector_flow: undefined,
                 connector_id: undefined,
                 workspace_id: undefined,
+                issue: undefined,
               },
             })
           }
@@ -82,6 +84,7 @@ function InvitationRoute() {
               connector_flow: undefined,
               connector_id: undefined,
               workspace_id: undefined,
+              issue: undefined,
             },
           })
         }
