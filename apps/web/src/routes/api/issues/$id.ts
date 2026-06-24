@@ -9,6 +9,10 @@ import {
   archiveTerminalIssueInbox,
   upsertIssueAssignmentInbox,
 } from '@garden/db/inbox'
+import {
+  addIssueSubscribers,
+  assigneeToSubscriberType,
+} from '@garden/db/subscribers'
 import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { parseJsonBody, updateIssueBodySchema } from '@/lib/server/validation/issues'
@@ -130,6 +134,28 @@ export const Route = createFileRoute('/api/issues/$id')({
           .returning()
 
         if (!issue) return notFound('Issue not found')
+
+        // Assigning (member or agent) durably joins them to the issue so they
+        // appear in the participants panel. Idempotent + best-effort; the
+        // assignment write above is the source of truth.
+        const assigneeChanged =
+          existingIssue.assigneeType !== issue.assigneeType ||
+          existingIssue.assigneeId !== issue.assigneeId
+        const newAssigneeType = assigneeToSubscriberType(issue.assigneeType)
+        if (assigneeChanged && newAssigneeType && issue.assigneeId) {
+          await addIssueSubscribers(db, {
+            workspaceId: existingIssue.workspaceId,
+            issueId: issue.id,
+            entries: [
+              {
+                userType: newAssigneeType,
+                userId: issue.assigneeId,
+                reason: 'assignee',
+              },
+            ],
+          })
+        }
+
         if (
           issue.assigneeType === 'user' &&
           issue.assigneeId &&

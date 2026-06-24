@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import { listIssueSubscribers } from '@garden/db/subscribers'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import {
@@ -10,12 +11,18 @@ import {
 export const Route = createFileRoute('/api/issues/$id/subscribers')({
   server: {
     handlers: {
+      /**
+       * List an issue's participants. Reads the persisted issue_subscriber table
+       * (creator, assignee, commenters, mentioned agents/members, manual joins)
+       * and merges in the derived creator+assignee for resilience — see
+       * @garden/db/subscribers#listIssueSubscribers. Previously this computed
+       * creator+assignee on the fly with no backing table.
+       */
       GET: async ({ context, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const db = await appContext.db()
         const [issue] = await db
-          .select()
+          .select({ workspaceId: schema.issue.workspaceId })
           .from(schema.issue)
           .where(eq(schema.issue.id, params.id))
         if (!issue) return notFound('Issue not found')
@@ -23,47 +30,16 @@ export const Route = createFileRoute('/api/issues/$id/subscribers')({
         const access = await requireWorkspaceAccess(appContext, issue.workspaceId)
         if (access instanceof Response) return access
 
-        const subscribers = [
-          {
-            issue_id: issue.id,
-            user_type: 'member',
-            user_id: issue.createdBy,
-            reason: 'creator',
-            created_at: (issue.createdAt ?? new Date()).toISOString(),
-          },
-          ...(issue.assigneeType === 'user' && issue.assigneeId
-            ? [
-                {
-                  issue_id: issue.id,
-                  user_type: 'member',
-                  user_id: issue.assigneeId,
-                  reason: 'assignee',
-                  created_at: (issue.updatedAt ?? issue.createdAt ?? new Date()).toISOString(),
-                },
-              ]
-            : []),
-          ...(issue.assigneeType === 'agent' && issue.assigneeId
-            ? [
-                {
-                  issue_id: issue.id,
-                  user_type: 'agent',
-                  user_id: issue.assigneeId,
-                  reason: 'assignee',
-                  created_at: (issue.updatedAt ?? issue.createdAt ?? new Date()).toISOString(),
-                },
-              ]
-            : []),
-        ]
+        const subscribers = await listIssueSubscribers(db, { issueId: params.id })
 
         return Response.json(
-          subscribers.filter(
-            (subscriber, index, items) =>
-              items.findIndex(
-                (candidate) =>
-                  candidate.user_type === subscriber.user_type &&
-                  candidate.user_id === subscriber.user_id,
-              ) === index,
-          ),
+          subscribers.map((subscriber) => ({
+            issue_id: subscriber.issueId,
+            user_type: subscriber.userType,
+            user_id: subscriber.userId,
+            reason: subscriber.reason,
+            created_at: subscriber.createdAt.toISOString(),
+          })),
         )
       },
     },

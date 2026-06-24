@@ -1,5 +1,10 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
+import {
+  addIssueSubscribers,
+  assigneeToSubscriberType,
+  type SubscriberEntry,
+} from '@garden/db/subscribers'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { formatIssueIdentifier } from '@garden/core/issues/identifier'
 import { LIVE_RUN_STATUSES, WAKEUP_DEDUPING_RUN_STATUSES } from '@garden/core/issues/run-sync'
@@ -597,6 +602,35 @@ export async function createIssue(
     catch: (cause) => serviceDbError('create issue', cause),
   })
   if (result.isErr()) return Result.err(result.error)
+
+  // Durably record the issue's initial participants so the creator (and any
+  // up-front assignee, including an agent) show up in the participants panel
+  // and receive activity. Idempotent + best-effort: a failure here must not
+  // fail issue creation, which already committed above.
+  const createdIssue = result.value
+  const initialSubscribers: SubscriberEntry[] = [
+    { userType: 'member', userId: parsed.data.createdBy, reason: 'creator' },
+  ]
+  const createdAssigneeType = assigneeToSubscriberType(createdIssue.assigneeType)
+  if (createdAssigneeType && createdIssue.assigneeId) {
+    initialSubscribers.push({
+      userType: createdAssigneeType,
+      userId: createdIssue.assigneeId,
+      reason: 'assignee',
+    })
+  }
+  const subscribeResult = await Result.tryPromise({
+    try: () =>
+      addIssueSubscribers(db, {
+        workspaceId: parsed.data.workspaceId,
+        issueId: createdIssue.id,
+        entries: initialSubscribers,
+      }),
+    catch: (cause) => serviceDbError('add issue subscribers', cause),
+  })
+  if (subscribeResult.isErr())
+    logger.error('addIssueSubscribers failed', subscribeResult.error.message)
+
   const prefixResult = await Result.tryPromise({
     try: async () => await loadIssuePrefix(db, parsed.data.workspaceId),
     catch: (cause) => serviceDbError('load issue prefix', cause),
@@ -751,6 +785,34 @@ export async function postIssueComment(
         })
       }
       const comment = insertedComment
+
+      // Joining the issue durably: the comment author becomes a participant,
+      // and every mentioned agent/member is recorded as 'mentioned'. This is
+      // the persistence half of "tag an agent → it joins the issue" — the run
+      // itself is still kicked off by wakeAgentsForIssueComment below.
+      // onConflictDoNothing keeps a stronger pre-existing reason (e.g. creator).
+      await addIssueSubscribers(db, {
+        workspaceId: parsed.data.workspaceId,
+        issueId: issue.id,
+        entries: [
+          {
+            userType: 'member' as const,
+            userId: parsed.data.authorUserId,
+            reason: 'commenter' as const,
+          },
+          ...mentions.agents.map((agentId) => ({
+            userType: 'agent' as const,
+            userId: agentId,
+            reason: 'mentioned' as const,
+          })),
+          ...mentions.users.map((userId) => ({
+            userType: 'member' as const,
+            userId,
+            reason: 'mentioned' as const,
+          })),
+        ],
+      })
+
       return {
         kind: 'posted' as const,
         comment,

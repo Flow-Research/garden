@@ -121,6 +121,15 @@ export const issueWorkProductReviewStateValues = [
   'changes_requested',
 ] as const
 
+export const issueSubscriberUserTypeValues = ['member', 'agent'] as const
+export const issueSubscriberReasonValues = [
+  'creator',
+  'assignee',
+  'commenter',
+  'mentioned',
+  'manual',
+] as const
+
 export const inboxRecipientTypeValues = ['member', 'agent'] as const
 export const inboxActorTypeValues = ['member', 'agent'] as const
 export const inboxSeverityValues = [

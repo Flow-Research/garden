@@ -31,6 +31,7 @@
     ".": "./src/client.ts",
     "./runtime": "./src/runtime.ts",
     "./inbox": "./src/inbox.ts",
+    "./subscribers": "./src/subscribers.ts",
     "./schema": "./src/schema/index.ts",
     "./schema/*": "./src/schema/*.ts",
     "./validation": "./src/validation/index.ts",
