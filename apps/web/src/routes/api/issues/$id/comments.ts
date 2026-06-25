@@ -1,7 +1,11 @@
-import { eq } from 'drizzle-orm'
+import { asc, eq, inArray } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { postIssueComment, toIssueComment } from '@garden/server/issues/server'
+import {
+  postIssueComment,
+  toIssueAttachment,
+  toIssueComment,
+} from '@garden/server/issues/server'
 import { archiveInboxItemsByKey } from '@garden/db/inbox'
 import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
@@ -19,7 +23,6 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
   server: {
     handlers: {
       GET: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const db = await appContext.db()
         const [existingIssue] = await db
@@ -38,11 +41,35 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
           .select()
           .from(schema.issueComment)
           .where(eq(schema.issueComment.issueId, params.id))
+        const commentIds = comments.map((comment) => comment.id)
+        const attachments = commentIds.length
+          ? (
+              await db
+                .select()
+                .from(schema.issueAttachment)
+                .where(inArray(schema.issueAttachment.commentId, commentIds))
+                .orderBy(asc(schema.issueAttachment.createdAt))
+            ).map(toIssueAttachment)
+          : []
+        const attachmentsByCommentId = new Map(
+          commentIds.map((commentId) => [
+            commentId,
+            attachments.filter(
+              (attachment) => attachment.comment_id === commentId,
+            ),
+          ]),
+        )
 
-        return Response.json(comments.map(toIssueComment))
+        return Response.json(
+          comments.map((comment) =>
+            toIssueComment(
+              comment,
+              attachmentsByCommentId.get(comment.id) ?? [],
+            ),
+          ),
+        )
       },
       POST: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const bodyResult = await parseJsonBody(
           request,
@@ -76,9 +103,11 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
           authorUserId: access.session.user.id,
           body: body.content,
           parentId: body.parent_id ?? null,
+          attachmentIds: body.attachment_ids,
           issueRunEnv: appEnv,
         })
-        if (commentResult.isErr()) return badRequest(commentResult.error.message)
+        if (commentResult.isErr())
+          return badRequest(commentResult.error.message)
         if (existingIssue.activeRunId) {
           await archiveInboxItemsByKey({
             db,

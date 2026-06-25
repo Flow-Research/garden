@@ -1,14 +1,14 @@
-import { eq } from 'drizzle-orm'
+import { asc, eq, inArray } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
-import {
-  notFound,
-  requireWorkspaceAccess,
-} from '@/lib/server/control-plane'
+import { toIssueAttachment } from '@garden/server/issues/server'
+import type { Attachment } from '@garden/core/types'
+import { notFound, requireWorkspaceAccess } from '@/lib/server/control-plane'
 
 function toTimelineComment(
   row: typeof schema.issueComment.$inferSelect,
+  attachments: Attachment[] = [],
 ) {
   const createdAt = (row.createdAt ?? new Date()).toISOString()
 
@@ -21,7 +21,7 @@ function toTimelineComment(
     parent_id: null,
     comment_type: 'comment',
     reactions: [],
-    attachments: [],
+    attachments,
     created_at: createdAt,
     updated_at: createdAt,
   }
@@ -69,7 +69,6 @@ export const Route = createFileRoute('/api/issues/$id/timeline')({
   server: {
     handlers: {
       GET: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const db = await appContext.db()
         const [existingIssue] = await db
@@ -94,6 +93,25 @@ export const Route = createFileRoute('/api/issues/$id/timeline')({
           .from(schema.issueComment)
           .where(eq(schema.issueComment.issueId, params.id))
 
+        const commentIds = comments.map((comment) => comment.id)
+        const attachments = commentIds.length
+          ? (
+              await db
+                .select()
+                .from(schema.issueAttachment)
+                .where(inArray(schema.issueAttachment.commentId, commentIds))
+                .orderBy(asc(schema.issueAttachment.createdAt))
+            ).map(toIssueAttachment)
+          : []
+        const attachmentsByCommentId = new Map(
+          commentIds.map((commentId) => [
+            commentId,
+            attachments.filter(
+              (attachment) => attachment.comment_id === commentId,
+            ),
+          ]),
+        )
+
         const runEvents = await db
           .select({
             event: schema.issueRunEvent,
@@ -116,7 +134,12 @@ export const Route = createFileRoute('/api/issues/$id/timeline')({
             details: {},
             created_at: (existingIssue.createdAt ?? new Date()).toISOString(),
           },
-          ...comments.map(toTimelineComment),
+          ...comments.map((comment) =>
+            toTimelineComment(
+              comment,
+              attachmentsByCommentId.get(comment.id) ?? [],
+            ),
+          ),
           ...runEvents.map(toTimelineRunEvent),
         ].sort(
           (a, b) =>

@@ -132,6 +132,23 @@ const readIssueInputSchema = z
       .string()
       .min(1)
       .describe("Issue identifier like ISS-43, or an issue UUID."),
+    comments_page: z
+      .enum(["tail", "head"])
+      .optional()
+      .describe("Which bounded comment page to load. Default tail returns newest comments."),
+    comments_limit: z
+      .number()
+      .int()
+      .positive()
+      .max(100)
+      .optional()
+      .describe("Maximum comments to load for this read. Default 20, max 100."),
+    comments_offset: z
+      .number()
+      .int()
+      .nonnegative()
+      .optional()
+      .describe("Offset into the selected head/tail page. For tail, offset 20 gets the next older page."),
   })
   .strict();
 
@@ -1317,7 +1334,7 @@ async function listWorkspaceInventoryFromChat(
 
 async function readIssueFromChat(
   context: ChatIssueToolContext,
-  issueIdOrIdentifier: string,
+  input: z.infer<typeof readIssueInputSchema>,
 ): Promise<ResultValue<IssueSummary, string>> {
   const identityResult = await loadChatIssueIdentity(context);
   if (identityResult.isErr()) return Result.err(identityResult.error);
@@ -1325,7 +1342,10 @@ async function readIssueFromChat(
   const issueResult = await readIssueService({
     databaseUrl: context.databaseUrl,
     workspaceId: identityResult.value.workspaceId,
-    issueIdOrIdentifier,
+    issueIdOrIdentifier: input.issue_id_or_identifier,
+    commentsPage: input.comments_page,
+    commentsLimit: input.comments_limit,
+    commentsOffset: input.comments_offset,
   });
   if (issueResult.isErr()) return issueToolErr(issueResult.error.message);
   return Result.ok(issueResult.value);
@@ -1509,10 +1529,10 @@ export function createChatSubAgentTools({
 
     read_issue: tool({
       description:
-        "Read a Garden issue summary for an issue identifier like ISS-43 or an issue UUID. " +
-        "Use this when the user asks what is happening with an issue or what an assigned agent is doing.",
+        "Read a Garden issue with its description and a bounded comment thread page for an issue identifier like ISS-43 or an issue UUID. " +
+        "Defaults to a tail page of the newest comments; pass comments_limit/comments_offset/comments_page to page like head/tail instead of loading the whole thread.",
       inputSchema: readIssueInputSchema,
-      execute: async ({ issue_id_or_identifier }) => {
+      execute: async (input) => {
         const context = chatIssueContext();
         if (!context) {
           return Result.serialize(
@@ -1521,9 +1541,7 @@ export function createChatSubAgentTools({
             ),
           );
         }
-        return Result.serialize(
-          await readIssueFromChat(context, issue_id_or_identifier),
-        );
+        return Result.serialize(await readIssueFromChat(context, input));
       },
     }),
 

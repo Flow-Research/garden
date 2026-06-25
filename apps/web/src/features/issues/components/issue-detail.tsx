@@ -880,11 +880,11 @@ export function IssueDetail({
       onDrop: (files) =>
         files.forEach((f) => descEditorRef.current?.uploadFile(f)),
     })
-  // Description uploads don't pass issueId — the URL lives in the markdown.
-  // This avoids stale attachment records when users delete images from the editor.
+  // Description uploads pass issueId so agents can list issue body attachments,
+  // while the markdown still keeps the stable URL for inline rendering.
   const handleDescriptionUpload = useCallback(
-    (file: File) => uploadWithToast(file),
-    [uploadWithToast],
+    (file: File) => uploadWithToast(file, { issueId: id }),
+    [id, uploadWithToast],
   )
 
   const handleDelete = async () => {

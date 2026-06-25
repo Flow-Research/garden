@@ -15,6 +15,7 @@ import { Route as FeaturesRouteImport } from './routes/features'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiWorkspacesRouteImport } from './routes/api/workspaces'
+import { Route as ApiUploadFileRouteImport } from './routes/api/upload-file'
 import { Route as ApiSkillsRouteImport } from './routes/api/skills'
 import { Route as ApiProjectsRouteImport } from './routes/api/projects'
 import { Route as ApiMeRouteImport } from './routes/api/me'
@@ -51,6 +52,7 @@ import { Route as ApiCommentsIdRouteImport } from './routes/api/comments/$id'
 import { Route as ApiChatThreadsRouteImport } from './routes/api/chat/threads'
 import { Route as ApiAutomationsIdRouteImport } from './routes/api/automations/$id'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiAttachmentsIdRouteImport } from './routes/api/attachments/$id'
 import { Route as ApiAgentsIdRouteImport } from './routes/api/agents/$id'
 import { Route as AuthenticatedInvitationsIdRouteImport } from './routes/_authenticated/invitations/$id'
 import { Route as AuthenticatedAutomationsIdRouteImport } from './routes/_authenticated/automations/$id'
@@ -125,6 +127,11 @@ const IndexRoute = IndexRouteImport.update({
 const ApiWorkspacesRoute = ApiWorkspacesRouteImport.update({
   id: '/api/workspaces',
   path: '/api/workspaces',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiUploadFileRoute = ApiUploadFileRouteImport.update({
+  id: '/api/upload-file',
+  path: '/api/upload-file',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiSkillsRoute = ApiSkillsRouteImport.update({
@@ -310,6 +317,11 @@ const ApiAutomationsIdRoute = ApiAutomationsIdRouteImport.update({
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAttachmentsIdRoute = ApiAttachmentsIdRouteImport.update({
+  id: '/api/attachments/$id',
+  path: '/api/attachments/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAgentsIdRoute = ApiAgentsIdRouteImport.update({
@@ -576,10 +588,12 @@ export interface FileRoutesByFullPath {
   '/api/me': typeof ApiMeRoute
   '/api/projects': typeof ApiProjectsRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
+  '/api/upload-file': typeof ApiUploadFileRoute
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
   '/automations/$id': typeof AuthenticatedAutomationsIdRoute
   '/invitations/$id': typeof AuthenticatedInvitationsIdRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
+  '/api/attachments/$id': typeof ApiAttachmentsIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/automations/$id': typeof ApiAutomationsIdRouteWithChildren
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
@@ -665,10 +679,12 @@ export interface FileRoutesByTo {
   '/api/me': typeof ApiMeRoute
   '/api/projects': typeof ApiProjectsRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
+  '/api/upload-file': typeof ApiUploadFileRoute
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
   '/automations/$id': typeof AuthenticatedAutomationsIdRoute
   '/invitations/$id': typeof AuthenticatedInvitationsIdRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
+  '/api/attachments/$id': typeof ApiAttachmentsIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/automations/$id': typeof ApiAutomationsIdRouteWithChildren
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
@@ -756,10 +772,12 @@ export interface FileRoutesById {
   '/api/me': typeof ApiMeRoute
   '/api/projects': typeof ApiProjectsRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
+  '/api/upload-file': typeof ApiUploadFileRoute
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
   '/_authenticated/automations/$id': typeof AuthenticatedAutomationsIdRoute
   '/_authenticated/invitations/$id': typeof AuthenticatedInvitationsIdRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
+  '/api/attachments/$id': typeof ApiAttachmentsIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/automations/$id': typeof ApiAutomationsIdRouteWithChildren
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
@@ -847,10 +865,12 @@ export interface FileRouteTypes {
     | '/api/me'
     | '/api/projects'
     | '/api/skills'
+    | '/api/upload-file'
     | '/api/workspaces'
     | '/automations/$id'
     | '/invitations/$id'
     | '/api/agents/$id'
+    | '/api/attachments/$id'
     | '/api/auth/$'
     | '/api/automations/$id'
     | '/api/chat/threads'
@@ -936,10 +956,12 @@ export interface FileRouteTypes {
     | '/api/me'
     | '/api/projects'
     | '/api/skills'
+    | '/api/upload-file'
     | '/api/workspaces'
     | '/automations/$id'
     | '/invitations/$id'
     | '/api/agents/$id'
+    | '/api/attachments/$id'
     | '/api/auth/$'
     | '/api/automations/$id'
     | '/api/chat/threads'
@@ -1026,10 +1048,12 @@ export interface FileRouteTypes {
     | '/api/me'
     | '/api/projects'
     | '/api/skills'
+    | '/api/upload-file'
     | '/api/workspaces'
     | '/_authenticated/automations/$id'
     | '/_authenticated/invitations/$id'
     | '/api/agents/$id'
+    | '/api/attachments/$id'
     | '/api/auth/$'
     | '/api/automations/$id'
     | '/api/chat/threads'
@@ -1116,7 +1140,9 @@ export interface RootRouteChildren {
   ApiMeRoute: typeof ApiMeRoute
   ApiProjectsRoute: typeof ApiProjectsRoute
   ApiSkillsRoute: typeof ApiSkillsRouteWithChildren
+  ApiUploadFileRoute: typeof ApiUploadFileRoute
   ApiWorkspacesRoute: typeof ApiWorkspacesRouteWithChildren
+  ApiAttachmentsIdRoute: typeof ApiAttachmentsIdRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiChatThreadsRoute: typeof ApiChatThreadsRouteWithChildren
   ApiCommentsIdRoute: typeof ApiCommentsIdRouteWithChildren
@@ -1178,6 +1204,13 @@ declare module '@tanstack/react-router' {
       path: '/api/workspaces'
       fullPath: '/api/workspaces'
       preLoaderRoute: typeof ApiWorkspacesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/upload-file': {
+      id: '/api/upload-file'
+      path: '/api/upload-file'
+      fullPath: '/api/upload-file'
+      preLoaderRoute: typeof ApiUploadFileRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/skills': {
@@ -1430,6 +1463,13 @@ declare module '@tanstack/react-router' {
       path: '/api/auth/$'
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/attachments/$id': {
+      id: '/api/attachments/$id'
+      path: '/api/attachments/$id'
+      fullPath: '/api/attachments/$id'
+      preLoaderRoute: typeof ApiAttachmentsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/agents/$id': {
@@ -2098,7 +2138,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiMeRoute: ApiMeRoute,
   ApiProjectsRoute: ApiProjectsRoute,
   ApiSkillsRoute: ApiSkillsRouteWithChildren,
+  ApiUploadFileRoute: ApiUploadFileRoute,
   ApiWorkspacesRoute: ApiWorkspacesRouteWithChildren,
+  ApiAttachmentsIdRoute: ApiAttachmentsIdRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiChatThreadsRoute: ApiChatThreadsRouteWithChildren,
   ApiCommentsIdRoute: ApiCommentsIdRouteWithChildren,
@@ -2121,13 +2163,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

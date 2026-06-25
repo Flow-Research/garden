@@ -123,6 +123,7 @@ export const Route = createFileRoute('/api/issues')({
           parentId: body.parent_issue_id ?? null,
           projectId: body.project_id ?? null,
           dueDate: body.due_date ? new Date(body.due_date) : null,
+          attachmentIds: body.attachment_ids,
         })
         if (issueResult.isErr()) return badRequest(issueResult.error.message)
         const issue = issueResult.value

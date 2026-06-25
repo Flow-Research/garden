@@ -6,6 +6,7 @@ import {
   chatThread,
   invitation,
   issue,
+  issueAttachment,
   issueComment,
   member,
   organization,
@@ -261,6 +262,30 @@ export const issueCommentUpdateSchema = createUpdateSchema(issueComment, {
   authorType: () => issueCommentAuthorTypeSchema,
   body: (schema) => schema.trim().min(1),
   mentions: () => issueCommentMentionsSchema.nullable(),
+})
+
+export const issueAttachmentSelectSchema = createSelectSchema(issueAttachment, {
+  id: () => uuidSchema,
+  workspaceId: () => uuidSchema,
+  issueId: () => uuidSchema.nullable(),
+  commentId: () => uuidSchema.nullable(),
+  uploaderType: (schema) => schema.refine((value) => value === 'member' || value === 'agent'),
+  uploaderId: () => uuidSchema,
+  filename: (schema) => schema.trim().min(1),
+  r2Key: (schema) => schema.trim().min(1),
+  contentType: (schema) => schema.trim().min(1),
+})
+
+export const issueAttachmentInsertSchema = createInsertSchema(issueAttachment, {
+  id: () => uuidSchema,
+  workspaceId: () => uuidSchema,
+  issueId: () => uuidSchema.optional().nullable(),
+  commentId: () => uuidSchema.optional().nullable(),
+  uploaderType: (schema) => schema.refine((value) => value === 'member' || value === 'agent'),
+  uploaderId: () => uuidSchema,
+  filename: (schema) => schema.trim().min(1),
+  r2Key: (schema) => schema.trim().min(1),
+  contentType: (schema) => schema.trim().min(1),
 })
 
 export const permissionRequestStatusValues = [

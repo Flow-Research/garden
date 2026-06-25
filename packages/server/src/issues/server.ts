@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
 import {
   addIssueSubscribers,
@@ -10,6 +10,7 @@ import { formatIssueIdentifier } from '@garden/core/issues/identifier'
 import { LIVE_RUN_STATUSES, WAKEUP_DEDUPING_RUN_STATUSES } from '@garden/core/issues/run-sync'
 import { decideWakeups } from '@garden/core/issues/triggers'
 import { createLogger } from '@garden/observability/console'
+import type { Attachment } from '@garden/core/types/attachment'
 import type { Comment } from '@garden/core/types/comment'
 import type { Issue, IssueAssigneeType, IssueStatus } from '@garden/core/types/issue'
 
@@ -61,6 +62,7 @@ const createIssueInputSchema = z
     projectId: issueInsertSchema.shape.projectId.optional().nullable(),
     dueDate: z.date().optional().nullable(),
     source: sourceInputSchema.optional(),
+    attachmentIds: z.array(z.string().uuid()).optional(),
   })
   .strict()
 
@@ -69,6 +71,9 @@ const readIssueInputSchema = z
     databaseUrl: z.string().trim().min(1),
     workspaceId: issueInsertSchema.shape.workspaceId,
     issueIdOrIdentifier: z.string().trim().min(1),
+    commentsPage: z.enum(['head', 'tail']).optional(),
+    commentsLimit: z.number().int().positive().max(100).optional(),
+    commentsOffset: z.number().int().nonnegative().optional(),
   })
   .strict()
 
@@ -92,6 +97,7 @@ const postIssueCommentInputSchema = z
     authorUserId: issueCommentInsertSchema.shape.authorId,
     body: issueCommentInsertSchema.shape.body,
     parentId: issueCommentInsertSchema.shape.id.optional().nullable(),
+    attachmentIds: z.array(z.string().uuid()).optional(),
   })
   .strict()
 
@@ -119,6 +125,7 @@ type IssueCommentWakeupInput = {
 }
 
 type IssueDb = ReturnType<typeof getIssueDb>
+type IssueTransaction = Parameters<Parameters<IssueDb['transaction']>[0]>[0]
 
 type IssueRunSummary = {
   run_id: string
@@ -149,6 +156,17 @@ export type IssueSummary = {
     title: string
     status: string
   }>
+  description?: string | null
+  comments?: Comment[]
+  attachments?: Attachment[]
+  comments_page?: {
+    mode: 'head' | 'tail'
+    limit: number
+    offset: number
+    returned: number
+    total: number
+    has_more: boolean
+  }
   blocked_reason?: string | null
 }
 
@@ -223,8 +241,33 @@ export function toIssue(
   }
 }
 
+export function issueAttachmentUrl(attachmentId: string) {
+  return `/api/attachments/${attachmentId}`
+}
+
+export function toIssueAttachment(
+  row: typeof schema.issueAttachment.$inferSelect,
+): Attachment {
+  const url = issueAttachmentUrl(row.id)
+  return {
+    id: row.id,
+    workspace_id: row.workspaceId,
+    issue_id: row.issueId ?? null,
+    comment_id: row.commentId ?? null,
+    uploader_type: row.uploaderType,
+    uploader_id: row.uploaderId,
+    filename: row.filename,
+    url,
+    download_url: `${url}?download=1`,
+    content_type: row.contentType,
+    size_bytes: row.sizeBytes,
+    created_at: dateToIso(row.createdAt) ?? new Date().toISOString(),
+  }
+}
+
 export function toIssueComment(
   row: typeof schema.issueComment.$inferSelect,
+  attachments: Attachment[] = [],
 ): Comment {
   const createdAt = (row.createdAt ?? new Date()).toISOString()
 
@@ -239,7 +282,7 @@ export function toIssueComment(
     type: 'comment',
     parent_id: null,
     reactions: [],
-    attachments: [],
+    attachments,
     created_at: createdAt,
     updated_at: createdAt,
   }
@@ -332,6 +375,122 @@ function mentionsJson(mentions: { agents: string[]; users: string[] }) {
   return mentions.agents.length > 0 || mentions.users.length > 0
     ? mentions
     : null
+}
+
+function groupAttachmentsByCommentId(attachments: Attachment[]) {
+  const grouped = new Map<string, Attachment[]>()
+  for (const attachment of attachments) {
+    if (!attachment.comment_id) continue
+    grouped.set(attachment.comment_id, [
+      ...(grouped.get(attachment.comment_id) ?? []),
+      attachment,
+    ])
+  }
+  return grouped
+}
+
+async function loadIssueBodyAttachments(db: IssueDb, issueId: string) {
+  const rows = await db
+    .select()
+    .from(schema.issueAttachment)
+    .where(
+      and(
+        eq(schema.issueAttachment.issueId, issueId),
+        isNull(schema.issueAttachment.commentId),
+      ),
+    )
+    .orderBy(asc(schema.issueAttachment.createdAt))
+  return rows.map(toIssueAttachment)
+}
+
+/**
+ * Loads a bounded issue thread slice for agent context. Before this, read_issue
+ * returned only a card summary, so agents could not inspect the issue body or
+ * conversation; returning every comment would overfill prompts. The default is a
+ * tail page (newest comments) returned oldest-to-newest inside the page, with an
+ * offset for paging older chunks like `tail/head` rather than an unbounded dump.
+ */
+async function loadIssueCommentPage(input: {
+  db: IssueDb
+  issueId: string
+  mode: 'head' | 'tail'
+  limit: number
+  offset: number
+}) {
+  const [{ count }] = (await input.db
+    .select({ count: sql<number>`cast(count(*) as int)` })
+    .from(schema.issueComment)
+    .where(eq(schema.issueComment.issueId, input.issueId))) as [{ count: number }]
+
+  const rows = await input.db
+    .select()
+    .from(schema.issueComment)
+    .where(eq(schema.issueComment.issueId, input.issueId))
+    .orderBy(
+      input.mode === 'head'
+        ? asc(schema.issueComment.createdAt)
+        : desc(schema.issueComment.createdAt),
+    )
+    .limit(input.limit)
+    .offset(input.offset)
+
+  const orderedRows = input.mode === 'tail' ? [...rows].reverse() : rows
+  const commentIds = orderedRows.map((comment) => comment.id)
+  const attachmentRows = commentIds.length
+    ? await input.db
+        .select()
+        .from(schema.issueAttachment)
+        .where(inArray(schema.issueAttachment.commentId, commentIds))
+        .orderBy(asc(schema.issueAttachment.createdAt))
+    : []
+  const attachmentsByCommentId = groupAttachmentsByCommentId(
+    attachmentRows.map(toIssueAttachment),
+  )
+
+  return {
+    comments: orderedRows.map((comment) =>
+      toIssueComment(comment, attachmentsByCommentId.get(comment.id) ?? []),
+    ),
+    page: {
+      mode: input.mode,
+      limit: input.limit,
+      offset: input.offset,
+      returned: orderedRows.length,
+      total: count,
+      has_more: input.offset + orderedRows.length < count,
+    },
+  }
+}
+
+/**
+ * Claims upload rows that were created before their parent issue/comment existed.
+ * The editor uploads first so it can insert stable R2-backed markdown URLs; this
+ * second step binds those pending rows to the issue thread once the issue or
+ * comment id is available. Matching workspace + uploader prevents a caller from
+ * attaching someone else's uploaded object by guessing an id.
+ */
+async function linkIssueAttachments(input: {
+  db: IssueDb | IssueTransaction
+  workspaceId: string
+  attachmentIds?: string[]
+  issueId: string
+  commentId?: string | null
+  uploaderType: 'member' | 'agent'
+  uploaderId: string
+}) {
+  if (!input.attachmentIds?.length) return
+  const uniqueIds = [...new Set(input.attachmentIds)]
+  await input.db
+    .update(schema.issueAttachment)
+    .set({ issueId: input.issueId, commentId: input.commentId ?? null })
+    .where(
+      and(
+        eq(schema.issueAttachment.workspaceId, input.workspaceId),
+        eq(schema.issueAttachment.uploaderType, input.uploaderType),
+        eq(schema.issueAttachment.uploaderId, input.uploaderId),
+        inArray(schema.issueAttachment.id, uniqueIds),
+      ),
+    )
 }
 
 function parseIssueIdentifier(value: string) {
@@ -597,6 +756,15 @@ export async function createIssue(
           } satisfies Omit<AttachSourceBindingInput, 'databaseUrl'>)
         }
 
+        await linkIssueAttachments({
+          db: tx,
+          workspaceId: parsed.data.workspaceId,
+          attachmentIds: parsed.data.attachmentIds,
+          issueId: issue.id,
+          uploaderType: 'member',
+          uploaderId: parsed.data.createdBy,
+        })
+
         return issue
       }),
     catch: (cause) => serviceDbError('create issue', cause),
@@ -678,9 +846,30 @@ export async function readIssue(
         )
         .limit(1)
       if (!issue) return null
-      return await toIssueSummary(db, issue.issue, {
-        issuePrefix: issue.issuePrefix,
-      })
+      const commentsLimit = parsed.data.commentsLimit ?? 20
+      const commentsOffset = parsed.data.commentsOffset ?? 0
+      const commentsPageMode = parsed.data.commentsPage ?? 'tail'
+      const [summary, attachments, thread] = await Promise.all([
+        toIssueSummary(db, issue.issue, {
+          issuePrefix: issue.issuePrefix,
+        }),
+        loadIssueBodyAttachments(db, issue.issue.id),
+        loadIssueCommentPage({
+          db,
+          issueId: issue.issue.id,
+          mode: commentsPageMode,
+          limit: commentsLimit,
+          offset: commentsOffset,
+        }),
+      ])
+
+      return {
+        ...summary,
+        description: issue.issue.description ?? null,
+        attachments,
+        comments: thread.comments,
+        comments_page: thread.page,
+      }
     },
     catch: (cause) => serviceDbError('read issue', cause),
   })
@@ -785,6 +974,24 @@ export async function postIssueComment(
         })
       }
       const comment = insertedComment
+      await linkIssueAttachments({
+        db,
+        workspaceId: parsed.data.workspaceId,
+        attachmentIds: parsed.data.attachmentIds,
+        issueId: issue.id,
+        commentId: comment.id,
+        uploaderType: 'member',
+        uploaderId: parsed.data.authorUserId,
+      })
+      const commentAttachments = parsed.data.attachmentIds?.length
+        ? (
+            await db
+              .select()
+              .from(schema.issueAttachment)
+              .where(eq(schema.issueAttachment.commentId, comment.id))
+              .orderBy(asc(schema.issueAttachment.createdAt))
+          ).map(toIssueAttachment)
+        : []
 
       // Joining the issue durably: the comment author becomes a participant,
       // and every mentioned agent/member is recorded as 'mentioned'. This is
@@ -815,7 +1022,8 @@ export async function postIssueComment(
 
       return {
         kind: 'posted' as const,
-        comment,
+        comment: toIssueComment(comment, commentAttachments),
+        dbComment: comment,
         issueId: issue.id,
         mentionedAgentIds: mentions.agents,
       }
@@ -837,10 +1045,10 @@ export async function postIssueComment(
     workspaceId: parsed.data.workspaceId,
     issueId: result.value.issueId,
     comment: {
-      id: result.value.comment.id,
-      authorType: result.value.comment.authorType as 'user' | 'agent',
-      authorId: result.value.comment.authorId,
-      body: result.value.comment.body,
+      id: result.value.dbComment.id,
+      authorType: result.value.dbComment.authorType as 'user' | 'agent',
+      authorId: result.value.dbComment.authorId,
+      body: result.value.dbComment.body,
       parentId: parsed.data.parentId ?? null,
     },
     mentionedAgentIds: result.value.mentionedAgentIds,
@@ -850,7 +1058,7 @@ export async function postIssueComment(
 
   return Result.ok({
     comment_id: result.value.comment.id,
-    comment: toIssueComment(result.value.comment),
+    comment: result.value.comment,
   })
 }
 
