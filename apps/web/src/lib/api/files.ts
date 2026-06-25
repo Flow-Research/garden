@@ -11,3 +11,9 @@ export function uploadFile(
   if (opts?.commentId) formData.append('comment_id', opts.commentId)
   return getApiTransport().requestForm('/api/upload-file', formData)
 }
+
+export function deleteAttachment(id: string): Promise<void> {
+  return getApiTransport().request(`/api/attachments/${id}`, {
+    method: 'DELETE',
+  })
+}

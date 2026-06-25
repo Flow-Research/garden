@@ -41,6 +41,7 @@ export type Api = {
     file: File,
     context?: { commentId?: string; issueId?: string },
   ) => Promise<Attachment>
+  deleteAttachment: (id: string) => Promise<void>
 
   listWorkspaces: () => Promise<Workspace[]>
   createWorkspace: (data: {

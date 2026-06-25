@@ -10,15 +10,19 @@ import {
   requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
 
-class IssueAttachmentReadError extends TaggedError('IssueAttachmentReadError')<{
+class IssueAttachmentStorageError extends TaggedError(
+  'IssueAttachmentStorageError',
+)<{
   message: string
 }>() {}
 
 /**
- * Serves issue attachment bytes from FILES only after workspace membership is
- * verified from the attachment row. Before this route, markdown image URLs could
- * point at an API path that did not exist; after it, agents/users can reload the
- * same stable `/api/attachments/<id>` URLs stored in issue bodies and comments.
+ * Serves and deletes issue attachment bytes from FILES only after workspace
+ * membership is verified from the attachment row. Before this route, markdown
+ * image URLs could point at an API path that did not exist and uploaded objects
+ * had no cleanup boundary. After it, agents/users can reload the same stable
+ * `/api/attachments/<id>` URLs stored in issue bodies and comments, and the app
+ * can remove both the R2 object and database row when an attachment is deleted.
  */
 export const Route = createFileRoute('/api/attachments/$id')({
   server: {
@@ -42,7 +46,7 @@ export const Route = createFileRoute('/api/attachments/$id')({
         const objectResult = await Result.tryPromise({
           try: async () => await appContext.env.FILES.get(attachment.r2Key),
           catch: (cause) =>
-            new IssueAttachmentReadError({
+            new IssueAttachmentStorageError({
               message: cause instanceof Error ? cause.message : String(cause),
             }),
         })
@@ -62,6 +66,49 @@ export const Route = createFileRoute('/api/attachments/$id')({
         )
         headers.set('Cache-Control', 'private, max-age=3600')
         return new Response(objectResult.value.body, { headers })
+      },
+      DELETE: async ({ context, request, params }) => {
+        const appContext = requireAppRequestContext(context)
+        const db = await appContext.db()
+        const [attachment] = await db
+          .select()
+          .from(schema.issueAttachment)
+          .where(eq(schema.issueAttachment.id, params.id))
+          .limit(1)
+        if (!attachment) return notFound('Attachment not found')
+
+        const access = await requireWorkspaceAccess(
+          request,
+          attachment.workspaceId,
+        )
+        if (access instanceof Response) return access
+
+        const deleteObjectResult = await Result.tryPromise({
+          try: async () => await appContext.env.FILES.delete(attachment.r2Key),
+          catch: (cause) =>
+            new IssueAttachmentStorageError({
+              message: cause instanceof Error ? cause.message : String(cause),
+            }),
+        })
+        if (deleteObjectResult.isErr()) {
+          return badRequest(deleteObjectResult.error.message)
+        }
+
+        const deleteRowResult = await Result.tryPromise({
+          try: async () =>
+            await db
+              .delete(schema.issueAttachment)
+              .where(eq(schema.issueAttachment.id, attachment.id)),
+          catch: (cause) =>
+            new IssueAttachmentStorageError({
+              message: cause instanceof Error ? cause.message : String(cause),
+            }),
+        })
+        if (deleteRowResult.isErr()) {
+          return badRequest(deleteRowResult.error.message)
+        }
+
+        return new Response(null, { status: 204 })
       },
     },
   },
