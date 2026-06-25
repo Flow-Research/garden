@@ -26,7 +26,7 @@ import {
   useMemo,
   useState,
 } from 'react'
-import { Streamdown } from 'streamdown'
+import { Streamdown, defaultRehypePlugins } from 'streamdown'
 import { IssueMentionCard } from '@/features/issues/components/issue-mention-card'
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
@@ -322,6 +322,43 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown>
 
 const streamdownPlugins = { cjk, code, math, mermaid }
 
+/**
+ * Why this exists: agents emit issue/agent references as `mention://<type>/<id>`
+ * markdown links (see packages/agent-runtime instructions). Streamdown's default
+ * `rehype-sanitize` schema only whitelists standard href protocols (http(s),
+ * mailto, plus `tel`), so the `mention://` href was stripped during sanitization.
+ *
+ * Observed before: by the time `MentionAwareAnchor` ran, `href` was `undefined`
+ * — the regex never matched, so issue references rendered as inert plain `<a>`
+ * tags (no chip, not clickable, "undefined" url). The non-chat renderer
+ * (packages/ui/markdown/Markdown.tsx) already allows `mention` in its schema;
+ * the chat path on Streamdown never did.
+ *
+ * Fix: reuse Streamdown's own default plugin pipeline (raw → sanitize → harden,
+ * exported as `defaultRehypePlugins`) and extend only the sanitize schema's
+ * allowed href protocols with `mention`. Reusing the bundled plugins keeps the
+ * `tel` href + code `metastring` allowances Streamdown adds for shiki, and
+ * avoids a version-skewed standalone `rehype-sanitize` import.
+ */
+const [sanitizePlugin, sanitizeSchema] = defaultRehypePlugins.sanitize as [
+  unknown,
+  { protocols?: { href?: string[] } } | undefined,
+]
+const mentionAwareRehypePlugins = [
+  defaultRehypePlugins.raw,
+  [
+    sanitizePlugin,
+    {
+      ...sanitizeSchema,
+      protocols: {
+        ...sanitizeSchema?.protocols,
+        href: [...(sanitizeSchema?.protocols?.href ?? []), 'mention'],
+      },
+    },
+  ],
+  defaultRehypePlugins.harden,
+] as ComponentProps<typeof Streamdown>['rehypePlugins']
+
 // Renderer for `[label](mention://<type>/<UUID>)` markdown links in chat
 // messages. Issues become IssueMentionCard chips so the user can hover-preview
 // and click-to-open without leaving the conversation. Other mention types
@@ -376,6 +413,7 @@ export const MessageResponse = memo(
         className,
       )}
       plugins={streamdownPlugins}
+      rehypePlugins={mentionAwareRehypePlugins}
       components={{ ...messageComponents, ...components }}
       {...props}
     />
