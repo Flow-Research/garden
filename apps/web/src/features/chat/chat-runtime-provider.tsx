@@ -229,11 +229,6 @@ export function useChatRuntimeConnection({
     [session.id, updateSessionPreview],
   )
 
-  // Latest `sendMessage` for use inside `onFinish` (which closes over this
-  // render's config but runs after the hook returns). A ref avoids a stale
-  // binding without threading `sendMessage` through deps.
-  const sendMessageRef = useRef<AgentChatApi['sendMessage'] | null>(null)
-
   const {
     addToolApprovalResponse,
     addToolOutput,
@@ -264,27 +259,9 @@ export function useChatRuntimeConnection({
       // A successful turn recovers the chat — clear any prior errored mark
       // so it's once again a normal, non-errored chat.
       useChatStore.getState().setSessionErrored(session.id, false)
-
-      // Drain follow-ups the user staged while this turn was streaming. They are
-      // fired together (not one-per-turn) so the server agent's
-      // `messageConcurrency = 'merge'` collapses the overlapping submits into a
-      // single combined user turn. Each combined turn's own completion re-enters
-      // here, so anything queued during it flushes next.
-      const queued = useChatStore.getState().takeQueuedMessages(session.id)
-      if (queued.length > 0) {
-        pendingTurnRef.current = {
-          title: null,
-          preview: queued[queued.length - 1]?.text ?? '',
-        }
-        for (const item of queued) {
-          void sendMessageRef.current?.({ text: item.text })
-        }
-      }
     },
     onError: markTurnError,
   })
-
-  sendMessageRef.current = sendMessage
 
   const warmInFlightRef = useRef<Promise<void> | null>(null)
   const warmRuntime = useCallback(() => {

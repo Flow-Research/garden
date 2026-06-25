@@ -5,7 +5,7 @@ export {
   CHAT_DEFAULT_W,
   CHAT_DEFAULT_H,
 } from './store'
-export type { ChatState, ChatTimelineItem, QueuedMessage } from './store'
+export type { ChatState, ChatTimelineItem } from './store'
 
 export {
   resolveQuestionAnswer,
