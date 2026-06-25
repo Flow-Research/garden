@@ -18,7 +18,7 @@ import {
 import { Result } from 'better-result'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/app-state/auth'
-import { useChatStore } from '@garden/app-state/chat'
+import { useChatStore, type QueuedMessage } from '@garden/app-state/chat'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { motion, AnimatePresence } from 'motion/react'
 import {
@@ -77,6 +77,10 @@ import { IssueMentionCard } from '@/features/issues/components/issue-mention-car
 
 // Single ease shared across the few motions that remain.
 const EMPTY_INTRO_EASE = [0.32, 0.72, 0, 1] as const
+
+// Stable empty-queue reference so the composer doesn't re-render when a session
+// simply has no staged follow-ups (the store selector returns `undefined`).
+const EMPTY_QUEUE: QueuedMessage[] = []
 
 // Quiet agent prompt — serif, in repose. The agent's voice greeting the
 // person by first name when we have it, otherwise just a soft open.
@@ -228,6 +232,13 @@ export function ConnectedChatPanelInteraction({
   const [optimisticPendingTurn, setOptimisticPendingTurn] = useState(false)
   const lastSentTextRef = useRef<string | null>(null)
   const pendingMessageCountRef = useRef<number | null>(null)
+  // Follow-ups the user staged while a turn was streaming. Held in the chat
+  // store (per session, ephemeral) and drained by the runtime's `onFinish`
+  // event — flushing them together so the server's `messageConcurrency='merge'`
+  // collapses them into one combined turn. See chat-runtime-provider.
+  const queuedMessages = useChatStore((s) => s.queuedMessages[sessionId])
+  const enqueueMessage = useChatStore((s) => s.enqueueMessage)
+  const removeQueuedMessage = useChatStore((s) => s.removeQueuedMessage)
   const {
     addToolApprovalResponse,
     addToolOutput,
@@ -343,7 +354,7 @@ export function ConnectedChatPanelInteraction({
 
     const uploadedDocsContext =
       uploadResult.value.length > 0
-        ? `The user uploaded these workspace documents for this turn. Internal document handles for this turn follow. Use these handles only in document tool calls. Do not mention handles, ids, or UUIDs to the user; refer to documents by filename:\n${uploadResult.value
+        ? `The user uploaded these workspace attachments for this turn. Internal handles follow. Use readDocument with a handle to inspect attachments lazily, including images. Do not mention handles, ids, or UUIDs to the user; refer to attachments by filename:\n${uploadResult.value
             .map(
               (document) =>
                 `- handle: ${document.document_id}; filename: ${document.filename}${
@@ -417,6 +428,55 @@ export function ConnectedChatPanelInteraction({
       )
     }
   }
+
+  /** Stage a follow-up typed while a turn is streaming (composer Enter). */
+  const handleQueueAdd = useCallback(
+    (text: string) => {
+      enqueueMessage(sessionId, { id: crypto.randomUUID(), text })
+    },
+    [enqueueMessage, sessionId],
+  )
+
+  /** Drop a staged follow-up (trash icon). */
+  const handleQueueRemove = useCallback(
+    (id: string) => {
+      removeQueuedMessage(sessionId, id)
+    },
+    [removeQueuedMessage, sessionId],
+  )
+
+  /**
+   * Send a staged follow-up immediately (up-arrow). While a turn streams this
+   * overlaps the active turn, so the server's merge strategy folds it in; when
+   * idle it just sends normally.
+   */
+  const handleQueueSendNow = useCallback(
+    (id: string) => {
+      const message = (queuedMessages ?? []).find((m) => m.id === id)
+      if (!message) return
+      removeQueuedMessage(sessionId, id)
+      void handleSend({ text: message.text, files: [] })
+    },
+    // handleSend is defined inline each render; queuedMessages/sessionId cover
+    // the inputs we actually read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [queuedMessages, removeQueuedMessage, sessionId],
+  )
+
+  /**
+   * Pull a staged follow-up back into the composer to edit it. Appends to any
+   * in-progress draft (newline-separated) so nothing the user already typed is
+   * lost in the rare case the input isn't empty.
+   */
+  const handleQueueEdit = useCallback(
+    (id: string) => {
+      const message = (queuedMessages ?? []).find((m) => m.id === id)
+      if (!message) return
+      removeQueuedMessage(sessionId, id)
+      setInput(input.trim() ? `${input}\n${message.text}` : message.text)
+    },
+    [queuedMessages, removeQueuedMessage, sessionId, input, setInput],
+  )
 
   const handleRetry = useCallback(async () => {
     const text = lastSentTextRef.current
@@ -664,6 +724,11 @@ export function ConnectedChatPanelInteraction({
               onWarmRuntime={warmRuntime}
               pendingQuestions={pendingStructuredInput?.questions}
               onSubmitAnswers={handleSubmitAnswers}
+              queued={queuedMessages ?? EMPTY_QUEUE}
+              onQueueAdd={handleQueueAdd}
+              onQueueRemove={handleQueueRemove}
+              onQueueSendNow={handleQueueSendNow}
+              onQueueEdit={handleQueueEdit}
             />
             <AnimatePresence initial={false}>
               {showEmptyChatState ? (

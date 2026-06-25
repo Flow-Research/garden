@@ -28,6 +28,21 @@ export interface ChatTimelineItem {
   output?: string
 }
 
+/**
+ * A plain-text follow-up the user composed while a turn was still streaming.
+ * Staged here (per session) so the composer can render, edit, and reorder it
+ * before it is sent. Drained by the chat runtime's `onFinish` event — flushing
+ * the whole queue together lets the server's `messageConcurrency = 'merge'`
+ * collapse the overlapping submits into one combined user turn.
+ *
+ * Ephemeral: deliberately excluded from `partialize`, so a reload drops queued
+ * follow-ups rather than firing stale messages on the next session load.
+ */
+export type QueuedMessage = {
+  id: string
+  text: string
+}
+
 export interface ChatState {
   isOpen: boolean
   selectedAgentId: string | null
@@ -47,6 +62,8 @@ export interface ChatState {
    * We store ids as a record for O(1) lookup; presence is what matters.
    */
   erroredSessionIds: Record<string, true>
+  /** Staged follow-ups per session: sessionId → queued messages (FIFO). */
+  queuedMessages: Record<string, QueuedMessage[]>
   /** Raw user-chosen size — no clamp applied. UI layer clamps at render time. */
   chatWidth: number
   chatHeight: number
@@ -59,6 +76,12 @@ export interface ChatState {
   setShowHistory: (show: boolean) => void
   setInputDraft: (sessionId: string, draft: string) => void
   clearInputDraft: (sessionId: string) => void
+  /** Append a follow-up to a session's queue. */
+  enqueueMessage: (sessionId: string, message: QueuedMessage) => void
+  /** Drop a single queued follow-up by id. */
+  removeQueuedMessage: (sessionId: string, id: string) => void
+  /** Remove and return every queued follow-up for a session (drains it). */
+  takeQueuedMessages: (sessionId: string) => QueuedMessage[]
   setSessionErrored: (sessionId: string, errored: boolean) => void
   setChatSize: (width: number, height: number) => void
   setExpanded: (expanded: boolean) => void
@@ -74,6 +97,7 @@ const chatStore = create<ChatState>()(
         showHistory: false,
         inputDrafts: {},
         erroredSessionIds: {},
+        queuedMessages: {},
         chatWidth: CHAT_DEFAULT_W,
         chatHeight: CHAT_DEFAULT_H,
         isExpanded: false,
@@ -133,6 +157,34 @@ const chatStore = create<ChatState>()(
           const next = { ...current }
           delete next[sessionId]
           set({ inputDrafts: next })
+        },
+        enqueueMessage: (sessionId, message) => {
+          const current = get().queuedMessages
+          set({
+            queuedMessages: {
+              ...current,
+              [sessionId]: [...(current[sessionId] ?? []), message],
+            },
+          })
+        },
+        removeQueuedMessage: (sessionId, id) => {
+          const current = get().queuedMessages
+          const list = current[sessionId]
+          if (!list?.length) return
+          const nextList = list.filter((m) => m.id !== id)
+          const next = { ...current }
+          if (nextList.length) next[sessionId] = nextList
+          else delete next[sessionId]
+          set({ queuedMessages: next })
+        },
+        takeQueuedMessages: (sessionId) => {
+          const current = get().queuedMessages
+          const list = current[sessionId]
+          if (!list?.length) return []
+          const next = { ...current }
+          delete next[sessionId]
+          set({ queuedMessages: next })
+          return list
         },
         setSessionErrored: (sessionId, errored) => {
           const current = get().erroredSessionIds
