@@ -79,7 +79,7 @@ function IssueMention({
       <Badge
         variant="outline"
         className={cardClass}
-        render={<a href={`/issues/${issueId}`} onClick={handleClick} />}
+        render={<button type="button" onClick={handleClick} />}
       >
         <span className="font-medium text-muted-foreground">
           {fallbackLabel ?? issueId.slice(0, 8)}
