@@ -265,20 +265,30 @@ export function useChatRuntimeConnection({
       // so it's once again a normal, non-errored chat.
       useChatStore.getState().setSessionErrored(session.id, false)
 
-      // Drain follow-ups the user staged while this turn was streaming. They are
-      // fired together (not one-per-turn) so the server agent's
-      // `messageConcurrency = 'merge'` collapses the overlapping submits into a
-      // single combined user turn. Each combined turn's own completion re-enters
-      // here, so anything queued during it flushes next.
+      // Drain follow-ups the user staged while this turn was streaming, as ONE
+      // combined turn.
+      //
+      // We deliberately combine client-side rather than fire N separate sends
+      // and lean on the server's `messageConcurrency = 'merge'`. Reading the
+      // SDK (`AIChatAgent._getSubmitConcurrencyDecision` / `_mergeQueuedUserMessages`):
+      // merge only collapses a *contiguous run of ≥2 overlapping* user messages
+      // within one turn-queue generation, and the submit that *initiates* a turn
+      // is not part of that run. Firing N sends from idle would make the first
+      // start its own turn while only the rest overlap — so two queued messages
+      // would yield two separate turns (a run of 1 never merges). Joining the
+      // texts with the same `\n\n` separator `_mergeUserMessages` uses gives the
+      // intended single combined turn deterministically, with no timing race.
+      //
+      // Deferred to a microtask so the send happens *after* this onFinish frame
+      // unwinds — calling `sendMessage` re-entrantly while the SDK is still
+      // finalizing the just-finished stream risks dropping the submit.
       const queued = useChatStore.getState().takeQueuedMessages(session.id)
       if (queued.length > 0) {
-        pendingTurnRef.current = {
-          title: null,
-          preview: queued[queued.length - 1]?.text ?? '',
-        }
-        for (const item of queued) {
-          void sendMessageRef.current?.({ text: item.text })
-        }
+        const combined = queued.map((item) => item.text).join('\n\n')
+        pendingTurnRef.current = { title: null, preview: combined }
+        queueMicrotask(() => {
+          void sendMessageRef.current?.({ text: combined })
+        })
       }
     },
     onError: markTurnError,

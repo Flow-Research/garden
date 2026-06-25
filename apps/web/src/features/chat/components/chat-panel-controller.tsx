@@ -429,6 +429,13 @@ export function ConnectedChatPanelInteraction({
     }
   }
 
+  // `handleSend` is reconstructed every render and closes over render-scoped
+  // state (documentPanelView, session, etc.). Queue callbacks below are memoized
+  // and would otherwise capture a stale copy, so they invoke it through this ref
+  // to always run the latest closure.
+  const handleSendRef = useRef(handleSend)
+  handleSendRef.current = handleSend
+
   /** Stage a follow-up typed while a turn is streaming (composer Enter). */
   const handleQueueAdd = useCallback(
     (text: string) => {
@@ -455,11 +462,8 @@ export function ConnectedChatPanelInteraction({
       const message = (queuedMessages ?? []).find((m) => m.id === id)
       if (!message) return
       removeQueuedMessage(sessionId, id)
-      void handleSend({ text: message.text, files: [] })
+      void handleSendRef.current({ text: message.text, files: [] })
     },
-    // handleSend is defined inline each render; queuedMessages/sessionId cover
-    // the inputs we actually read.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [queuedMessages, removeQueuedMessage, sessionId],
   )
 
