@@ -1,5 +1,4 @@
 import { Result, TaggedError } from 'better-result'
-import { eq } from 'drizzle-orm'
 import { getGitHubAppInstallation } from '@garden/connectors/github-app'
 import { schema, type Db } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
@@ -49,7 +48,9 @@ export function buildGitHubAppInstallUrl(args: {
   appSlug: string
   state?: string
 }) {
-  const url = new URL(`https://github.com/apps/${args.appSlug}/installations/new`)
+  const url = new URL(
+    `https://github.com/apps/${args.appSlug}/installations/new`,
+  )
   if (args.state) url.searchParams.set('state', args.state)
   return url.toString()
 }
@@ -177,6 +178,14 @@ export async function resolveGitHubSetupState(args: {
   })
 }
 
+/**
+ * Persists GitHub App install state as a workspace-scoped upsert. A retry after
+ * the earlier tool-sync failure can already have a degraded row, and the old
+ * select-then-insert path surfaced duplicate/laggy-read DB errors instead of
+ * idempotently refreshing the installation. After this, every callback rewrites
+ * the workspace row and preserves its original createdAt. References consulted:
+ * better-result outcome modeling source and Drizzle/Postgres on-conflict usage.
+ */
 export async function completeGitHubAppInstallation(args: {
   db: GitHubAppDatabase
   env: GitHubAppEnv
@@ -208,33 +217,32 @@ export async function completeGitHubAppInstallation(args: {
   }
 
   const now = new Date()
+  const installationRecord = {
+    workspaceId: args.workspaceId,
+    installationId: args.installationId,
+    accountLogin,
+    repositorySelection: installation.value.repository_selection ?? 'selected',
+    status: 'connected',
+    connectedBy: args.userId,
+    updatedAt: now,
+  } satisfies typeof schema.githubAppInstallation.$inferInsert
+
   const result = await Result.tryPromise({
     try: async () => {
-      const installationRecord = {
-        workspaceId: args.workspaceId,
-        installationId: args.installationId,
-        accountLogin,
-        repositorySelection:
-          installation.value.repository_selection ?? 'selected',
-        status: 'connected',
-        connectedBy: args.userId,
-        updatedAt: now,
-      }
-
-      const [existingInstallation] = await args.db
-        .select({ id: schema.githubAppInstallation.id })
-        .from(schema.githubAppInstallation)
-        .where(eq(schema.githubAppInstallation.workspaceId, args.workspaceId))
-        .limit(1)
-
-      if (existingInstallation) {
-        await args.db
-          .update(schema.githubAppInstallation)
-          .set(installationRecord)
-          .where(eq(schema.githubAppInstallation.id, existingInstallation.id))
-      } else {
-        await args.db.insert(schema.githubAppInstallation).values(installationRecord)
-      }
+      await args.db
+        .insert(schema.githubAppInstallation)
+        .values(installationRecord)
+        .onConflictDoUpdate({
+          target: schema.githubAppInstallation.workspaceId,
+          set: {
+            installationId: installationRecord.installationId,
+            accountLogin: installationRecord.accountLogin,
+            repositorySelection: installationRecord.repositorySelection,
+            status: installationRecord.status,
+            connectedBy: installationRecord.connectedBy,
+            updatedAt: installationRecord.updatedAt,
+          },
+        })
     },
     catch: (cause) =>
       new GitHubInstallError({

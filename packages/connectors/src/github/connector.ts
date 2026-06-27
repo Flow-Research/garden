@@ -97,6 +97,10 @@ export default defineConnector({
       riskClass: 'read',
       requiredScopes: ['read:org'],
     },
+    list_issue_fields: {
+      riskClass: 'read',
+      requiredScopes: repoScope,
+    },
     list_branches: {
       riskClass: 'read',
       requiredScopes: repoScope,
@@ -110,6 +114,10 @@ export default defineConnector({
       requiredScopes: repoScope,
     },
     list_pull_requests: {
+      riskClass: 'read',
+      requiredScopes: repoScope,
+    },
+    list_repository_collaborators: {
       riskClass: 'read',
       requiredScopes: repoScope,
     },
@@ -138,6 +146,10 @@ export default defineConnector({
       requiredScopes: repoScope,
     },
     search_code: {
+      riskClass: 'read',
+      requiredScopes: repoScope,
+    },
+    search_commits: {
       riskClass: 'read',
       requiredScopes: repoScope,
     },

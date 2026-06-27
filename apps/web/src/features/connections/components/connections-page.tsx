@@ -79,7 +79,9 @@ function createConnectorFlowId() {
 function connectorCallbackUrl(connectorId: ConnectorId, flowId: string) {
   const url = new URL(
     '/workspace',
-    typeof window === 'undefined' ? 'http://localhost:3000' : window.location.origin,
+    typeof window === 'undefined'
+      ? 'http://localhost:3000'
+      : window.location.origin,
   )
   url.searchParams.set('connector_flow', flowId)
   url.searchParams.set('connector_id', connectorId)
@@ -379,8 +381,9 @@ export function ConnectionsPage({
 
   const connectorSpec = getConnectorById(connector.id)
   const isConnected = connector.status === 'connected'
+  const hasActiveConnection = isConnected || connector.status === 'degraded'
   const isManaged = !connectorSpec?.oauth
-  const canConfigureTools = isConnected && connector.tools.length > 0
+  const canConfigureTools = hasActiveConnection && connector.tools.length > 0
   const statusLabel = isConnected
     ? 'Connected'
     : connector.status === 'degraded'
@@ -459,7 +462,7 @@ export function ConnectionsPage({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          {isManaged && !isConnected ? (
+          {isManaged && !hasActiveConnection ? (
             <Button
               size="sm"
               className="h-7 text-xs"
@@ -551,7 +554,7 @@ export function ConnectionsPage({
               <DropdownMenuItem onClick={() => setActivityOpen(true)}>
                 Recent activity
               </DropdownMenuItem>
-              {isConnected || isManaged ? (
+              {hasActiveConnection || isManaged ? (
                 <DropdownMenuItem
                   onClick={() =>
                     connectionMutation.mutate({
@@ -564,7 +567,7 @@ export function ConnectionsPage({
                   Resync tools
                 </DropdownMenuItem>
               ) : null}
-              {!isManaged && isConnected ? (
+              {!isManaged && hasActiveConnection ? (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -595,7 +598,7 @@ export function ConnectionsPage({
             these tools.
           </p>
 
-          {!isConnected ? (
+          {!hasActiveConnection ? (
             <div className="mt-10 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
               <Plug className="size-5 opacity-60" />
               {isManaged

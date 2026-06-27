@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, ne } from 'drizzle-orm'
 import type { GardenDatabase } from '@garden/db'
 import { connectorRegistry, getConnectorById } from '@garden/connectors'
 import {
@@ -12,7 +12,7 @@ export type ConnectorAuthKind = 'oauth' | 'github_app' | 'api_key' | 'none'
 
 export type AvailableConnectorBinding = {
   connectorId: string
-  status: 'connected'
+  status: 'connected' | 'degraded'
   authKind: ConnectorAuthKind
   accountId: string | null
   accountLogin: string | null
@@ -21,6 +21,14 @@ export type AvailableConnectorBinding = {
 
 type ConnectorAvailabilityDb = GardenDatabase
 
+/**
+ * Builds the connector auth surface from durable install/account state. GitHub
+ * App installs can be degraded when the callback saved the installation but tool
+ * sync failed; before this query hid degraded rows, so the UI looked unchanged
+ * after install. After this, disconnected rows stay hidden while degraded rows
+ * keep their account metadata visible for reconnect/resync. References consulted:
+ * local GitHub App callback ledger and Cloudflare Workers binding best practices.
+ */
 export async function listAvailableConnectorBindings(args: {
   db: ConnectorAvailabilityDb
   getEnvVar?: (name: string) => string | undefined
@@ -48,12 +56,13 @@ export async function listAvailableConnectorBindings(args: {
         accountLogin: schema.githubAppInstallation.accountLogin,
         id: schema.githubAppInstallation.id,
         repositorySelection: schema.githubAppInstallation.repositorySelection,
+        status: schema.githubAppInstallation.status,
       })
       .from(schema.githubAppInstallation)
       .where(
         and(
           eq(schema.githubAppInstallation.workspaceId, args.workspaceId),
-          eq(schema.githubAppInstallation.status, 'connected'),
+          ne(schema.githubAppInstallation.status, 'disconnected'),
         ),
       )
       .limit(1),
@@ -62,7 +71,12 @@ export async function listAvailableConnectorBindings(args: {
   const oauthBindings = accounts.flatMap((row) => {
     const connectorId = row.connectorId?.trim()
     const connector = connectorId ? getConnectorById(connectorId) : undefined
-    if (!connectorId || !connector || !isMcpConnector(connector) || !connector.oauth) {
+    if (
+      !connectorId ||
+      !connector ||
+      !isMcpConnector(connector) ||
+      !connector.oauth
+    ) {
       return []
     }
 
@@ -82,7 +96,10 @@ export async function listAvailableConnectorBindings(args: {
       ? [
           {
             connectorId: 'github',
-            status: 'connected' as const,
+            status:
+              githubInstallations[0]?.status === 'degraded'
+                ? ('degraded' as const)
+                : ('connected' as const),
             authKind: 'github_app' as const,
             accountId: null,
             accountLogin: githubInstallations[0]?.accountLogin ?? null,
@@ -92,7 +109,9 @@ export async function listAvailableConnectorBindings(args: {
         ]
       : []
 
-  const nonOAuthBindings = (connectorRegistry as readonly ConnectorSpec[]).flatMap<AvailableConnectorBinding>((connector) => {
+  const nonOAuthBindings = (
+    connectorRegistry as readonly ConnectorSpec[]
+  ).flatMap<AvailableConnectorBinding>((connector) => {
     if (isNativeConnector(connector)) {
       return connector.native.availability === 'always'
         ? [

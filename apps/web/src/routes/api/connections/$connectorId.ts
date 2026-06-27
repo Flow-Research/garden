@@ -15,7 +15,7 @@ import {
   resolveWorkspaceId,
   unauthorized,
 } from '@/lib/server/control-plane'
-import { schema } from '@/lib/server/db'
+import { schema, type Db } from '@/lib/server/db'
 
 function syncErrorStatus(code: string) {
   switch (code) {
@@ -41,18 +41,44 @@ async function parseAction(request: Request) {
     : Result.err('invalid-action')
 }
 
+/**
+ * Updates the GitHub App install row rather than the OAuth account table.
+ * GitHub uses the connector.oauth metadata only for upstream host/scopes, while
+ * the actual install state lives in github_app_installation. Previously resync
+ * and disconnect wrote account rows that do not exist for GitHub App installs,
+ * so degraded installs could not recover or disappear cleanly. After this, the
+ * API boundary keeps GitHub App status in its canonical table. References
+ * consulted: local GitHub App schema/callback flow and better-result boundary
+ * handling guidance.
+ */
+async function updateGitHubInstallationStatus(args: {
+  db: Db
+  workspaceId: string
+  status: 'connected' | 'degraded' | 'disconnected'
+}) {
+  const [installation] = await args.db
+    .update(schema.githubAppInstallation)
+    .set({ status: args.status, updatedAt: new Date() })
+    .where(eq(schema.githubAppInstallation.workspaceId, args.workspaceId))
+    .returning({ id: schema.githubAppInstallation.id })
+
+  return installation
+}
+
 export const Route = createFileRoute('/api/connections/$connectorId')({
   server: {
     handlers: {
       POST: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
         const workspaceId = await resolveWorkspaceId(request, session.user.id)
         if (!workspaceId) {
-          return Response.json({ error: 'Workspace not found' }, { status: 404 })
+          return Response.json(
+            { error: 'Workspace not found' },
+            { status: 404 },
+          )
         }
 
         const connector = getConnectorById(params.connectorId)
@@ -66,6 +92,18 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
         const db = await appContext.db()
 
         if (actionResult.value === 'disconnect') {
+          if (connector.id === 'github') {
+            const installation = await updateGitHubInstallationStatus({
+              db,
+              workspaceId,
+              status: 'disconnected',
+            })
+
+            return installation
+              ? Response.json({ ok: true })
+              : notFound('Connection not found')
+          }
+
           if (!connector.oauth) {
             return badRequest('Connector does not support disconnect')
           }
@@ -103,7 +141,13 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
           workspaceId,
         )
 
-        if (connector.oauth) {
+        if (connector.id === 'github') {
+          await updateGitHubInstallationStatus({
+            db,
+            workspaceId,
+            status: syncResult.isOk() ? 'connected' : 'degraded',
+          })
+        } else if (connector.oauth) {
           await db
             .update(schema.account)
             .set({
