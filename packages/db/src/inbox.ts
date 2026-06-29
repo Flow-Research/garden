@@ -108,6 +108,28 @@ async function workspaceMemberIds(
   return rows.map((row) => row.userId)
 }
 
+/**
+ * Permission approvals are actionable only for owner/admin roles because those
+ * roles map to Better Auth `permission.approve` / `permission.grant`. Before
+ * this filter every member received an approval card, then non-approvers hit a
+ * forbidden or missing-request path after stale cleanup.
+ */
+async function workspacePermissionApproverIds(
+  db: GardenDb,
+  workspaceId: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ userId: schema.member.userId })
+    .from(schema.member)
+    .where(
+      and(
+        eq(schema.member.organizationId, workspaceId),
+        inArray(schema.member.role, ['owner', 'admin']),
+      ),
+    )
+  return rows.map((row) => row.userId)
+}
+
 async function issueRecipientIds(
   db: GardenDb,
   issue: typeof schema.issue.$inferSelect,
@@ -329,7 +351,10 @@ export async function upsertPermissionRequestInbox(args: {
   if (!row || row.request.status !== 'pending') return
   if (row.issue && (row.issue.status === 'done' || row.issue.status === 'cancelled')) return
 
-  const recipients = await workspaceMemberIds(args.db, args.workspaceId)
+  const recipients = await workspacePermissionApproverIds(
+    args.db,
+    args.workspaceId,
+  )
   const titleSuffix = row.issue ? ` on ${row.issue.title}` : ''
   await Promise.all(
     recipients.map((recipientId) =>

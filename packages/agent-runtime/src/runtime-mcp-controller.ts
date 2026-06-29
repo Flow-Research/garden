@@ -11,6 +11,7 @@ import { isNativeConnector } from '@garden/connectors/sdk'
 import {
   buildMcpAiToolKey,
   canonicalJsonString,
+  defaultTrustLevelForRisk,
   guardedMcpToolDescription,
 } from '@garden/connectors/capabilities'
 import * as schema from '@garden/db/schema'
@@ -410,6 +411,13 @@ export class RuntimeMcpController {
     ) satisfies ToolSet
   }
 
+  /**
+   * Keeps the chat-side approval preflight aligned with MCP proxy defaults.
+   * Before this, old workspaces with missing grant rows were forced into `ask`
+   * here even though the proxy and Connections UI derive defaults from risk.
+   * That created stale approval cards for read tools and blocked connector
+   * writes that had product-default grants backfilled later.
+   */
   private async ensureConnectorToolNeedsApproval(args: {
     connectorId: string
     toolName: string
@@ -536,7 +544,10 @@ export class RuntimeMcpController {
     })
     if (grantResult.isErr()) return grantResult
 
-    if ((grantResult.value[0]?.trustLevel ?? 'ask') !== 'ask') {
+    const trustLevel =
+      grantResult.value[0]?.trustLevel ??
+      defaultTrustLevelForRisk(capability.riskClass)
+    if (trustLevel !== 'ask') {
       return Result.ok(false)
     }
 
