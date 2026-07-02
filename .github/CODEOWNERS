@@ -1,0 +1,18 @@
+# CODEOWNERS for Flow-Research/garden
+# Security team must review changes to auth and MCP proxy paths
+
+# Auth paths - require security review
+apps/web/src/lib/auth/                    @Flow-Research/security
+apps/web/src/app/api/auth/               @Flow-Research/security
+
+# MCP proxy - require security review
+workers/mcp-proxy/                        @Flow-Research/security
+
+# CSRF and transport layer
+apps/web/src/lib/api/transport/          @Flow-Research/security
+
+# Autonomy and policy docs
+docs/protocol/                            @Flow-Research/security
+
+# Environment / secrets config
+.env*                                     @Flow-Research/security
