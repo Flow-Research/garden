@@ -175,8 +175,8 @@ export const web = await TanStackStart('web', {
   // product-ledger cleanup with no durable deadline, so it does not need
   // frequent wakeups. It was firing every minute and hammering Neon compute,
   // which exhausted the DB quota and 500'd session lookups / login
-  // (2026-06-22 incident). Widened to every 3 hours to stop the compute bleed.
-  crons: ['0 */3 * * *'],
+  // (2026-06-22 incident). Widened to every 12 hours to stop the compute bleed.
+  crons: ['0 */12 * * *'],
   tailConsumers: [tailConsumer],
   // Alchemy owns the production build environment. PostHog is required for
   // Garden deploys, so missing analytics or source-map credentials should fail
