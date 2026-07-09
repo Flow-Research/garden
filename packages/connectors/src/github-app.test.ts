@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createGitHubAppJwt } from './github-app'
+import { createGitHubAppJwt, deleteGitHubAppInstallation } from './github-app'
 
 function base64UrlJson(segment: string) {
   return JSON.parse(Buffer.from(segment, 'base64url').toString('utf8')) as {
@@ -54,5 +54,44 @@ describe('createGitHubAppJwt', () => {
     expect(payload.exp - payload.iat).toBe(600)
 
     vi.useRealTimers()
+  })
+})
+
+describe('deleteGitHubAppInstallation', () => {
+  it('uninstalls through the authenticated app endpoint', async () => {
+    const request = vi.fn(async () => new Response(null, { status: 204 }))
+    const result = await deleteGitHubAppInstallation({
+      env: {
+        GITHUB_APP_ID: '12345',
+        GITHUB_APP_PRIVATE_KEY: await createPrivateKeyPem(),
+      },
+      installationId: '98765',
+      fetch: request,
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(request).toHaveBeenCalledWith(
+      'https://api.github.com/app/installations/98765',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({
+          authorization: expect.stringMatching(/^Bearer /),
+        }),
+      }),
+    )
+  })
+
+  it('treats an already-missing installation as disconnected', async () => {
+    const request = vi.fn(async () => new Response(null, { status: 404 }))
+    const result = await deleteGitHubAppInstallation({
+      env: {
+        GITHUB_APP_ID: '12345',
+        GITHUB_APP_PRIVATE_KEY: await createPrivateKeyPem(),
+      },
+      installationId: '98765',
+      fetch: request,
+    })
+
+    expect(result.isOk()).toBe(true)
   })
 })

@@ -242,6 +242,57 @@ export async function createGitHubInstallationAccessToken(args: {
   return responseResult
 }
 
+/**
+ * Uninstalls Garden's GitHub App instead of only hiding the installation
+ * locally. GitHub documents DELETE /app/installations/{installation_id} for
+ * authenticated apps; a missing installation is already disconnected.
+ */
+export async function deleteGitHubAppInstallation(args: {
+  env: GitHubAppEnv
+  installationId: string
+  fetch?: typeof fetch
+}) {
+  const jwt = await createGitHubAppJwt(args.env)
+  if (jwt.isErr()) return jwt
+
+  return await Result.tryPromise({
+    try: async () => {
+      const response = await (args.fetch ?? fetch)(
+        `https://api.github.com/app/installations/${args.installationId}`,
+        {
+          method: 'DELETE',
+          headers: {
+            authorization: `Bearer ${jwt.value}`,
+            accept: 'application/vnd.github+json',
+            'x-github-api-version': '2022-11-28',
+            'user-agent': 'garden-github-app',
+          },
+        },
+      )
+      if (response.ok || response.status === 404) return
+
+      const body = (await response.json()) as { message?: string }
+      throw new GitHubAppAuthError({
+        code: 'token_request_failed',
+        status: response.status,
+        message:
+          body.message ??
+          `Failed to delete GitHub installation (${response.status})`,
+      })
+    },
+    catch: (cause) =>
+      cause instanceof GitHubAppAuthError
+        ? cause
+        : new GitHubAppAuthError({
+            code: 'token_request_failed',
+            message:
+              cause instanceof Error
+                ? cause.message
+                : 'Failed to delete GitHub installation',
+          }),
+  })
+}
+
 export async function getGitHubAppInstallation(args: {
   env: GitHubAppEnv
   installationId: string

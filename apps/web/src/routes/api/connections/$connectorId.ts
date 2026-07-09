@@ -2,7 +2,10 @@ import { Result } from 'better-result'
 import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
+import { revokeOAuthConnector } from '@/lib/server/connector-revocation'
+import { appEnv } from '@/lib/server/env'
 import { getConnectorById } from '@garden/connectors'
+import { deleteGitHubAppInstallation } from '@garden/connectors/github-app'
 import {
   connectionActionBodySchema,
   parseJsonBody,
@@ -93,22 +96,72 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
 
         if (actionResult.value === 'disconnect') {
           if (connector.id === 'github') {
-            const installation = await updateGitHubInstallationStatus({
+            const [installation] = await db
+              .select({
+                installationId: schema.githubAppInstallation.installationId,
+              })
+              .from(schema.githubAppInstallation)
+              .where(eq(schema.githubAppInstallation.workspaceId, workspaceId))
+              .limit(1)
+            if (!installation) return notFound('Connection not found')
+
+            const revokeResult = await deleteGitHubAppInstallation({
+              env: {
+                GITHUB_APP_ID: appEnv.GITHUB_APP_ID,
+                GITHUB_CLIENT_ID: appEnv.GITHUB_CLIENT_ID,
+                GITHUB_APP_PRIVATE_KEY: appEnv.GITHUB_APP_PRIVATE_KEY,
+              },
+              installationId: installation.installationId,
+            })
+            if (revokeResult.isErr()) {
+              return Response.json(
+                { error: revokeResult.error.message },
+                { status: 502 },
+              )
+            }
+
+            await updateGitHubInstallationStatus({
               db,
               workspaceId,
               status: 'disconnected',
             })
-
-            return installation
-              ? Response.json({ ok: true })
-              : notFound('Connection not found')
+            return Response.json({ ok: true })
           }
 
           if (!connector.oauth) {
             return badRequest('Connector does not support disconnect')
           }
 
-          const [connection] = await db
+          const [account] = await db
+            .select({
+              id: schema.account.id,
+              accessToken: schema.account.accessToken,
+              refreshToken: schema.account.refreshToken,
+            })
+            .from(schema.account)
+            .where(
+              and(
+                eq(schema.account.userId, session.user.id),
+                eq(schema.account.workspaceId, workspaceId),
+                eq(schema.account.providerId, connector.oauth.providerId),
+              ),
+            )
+            .limit(1)
+          if (!account) return notFound('Connection not found')
+
+          const revokeResult = await revokeOAuthConnector({
+            connectorId: connector.id,
+            accessToken: account.accessToken,
+            refreshToken: account.refreshToken,
+          })
+          if (revokeResult.isErr()) {
+            return Response.json(
+              { error: revokeResult.error.message },
+              { status: 502 },
+            )
+          }
+
+          await db
             .update(schema.account)
             .set({
               accessToken: null,
@@ -121,18 +174,9 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
               status: 'disconnected',
               updatedAt: new Date(),
             })
-            .where(
-              and(
-                eq(schema.account.userId, session.user.id),
-                eq(schema.account.workspaceId, workspaceId),
-                eq(schema.account.providerId, connector.oauth.providerId),
-              ),
-            )
-            .returning({ id: schema.account.id })
+            .where(eq(schema.account.id, account.id))
 
-          return connection
-            ? Response.json({ ok: true })
-            : notFound('Connection not found')
+          return Response.json({ ok: true })
         }
 
         const syncResult = await syncCapabilities(
