@@ -6,6 +6,7 @@ import {
 } from '@garden/ui/markdown'
 import { useConfigStore } from '@garden/app-state/config'
 import { IssueMentionCard } from '../issues/components/issue-mention-card'
+import { MemberMentionTag } from './member-mention-tag'
 
 export type { RenderMode }
 
@@ -18,12 +19,17 @@ export type MarkdownProps = MarkdownBaseProps
 function defaultRenderMention({
   type,
   id,
+  label,
 }: {
   type: string
   id: string
+  label?: string
 }): React.ReactNode {
   if (type === 'issue') {
     return <IssueMentionCard issueId={id} />
+  }
+  if (type === 'member' || type === 'agent' || type === 'all') {
+    return <MemberMentionTag type={type} id={id} label={label} />
   }
   return null
 }

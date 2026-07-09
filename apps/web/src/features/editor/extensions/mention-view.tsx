@@ -24,6 +24,7 @@ import { useWorkspaceId } from '@garden/app-state/hooks'
 import { useWorkspaceDock } from '@/components/shell/workspace-dock'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { StatusIcon } from '../../issues/components/status-icon'
+import { MemberMentionTag } from '../../common/member-mention-tag'
 
 export function MentionView({ node }: NodeViewProps) {
   const { type, id, label } = node.attrs
@@ -38,7 +39,7 @@ export function MentionView({ node }: NodeViewProps) {
 
   return (
     <NodeViewWrapper as="span" className="inline">
-      <span className="mention">@{label ?? id}</span>
+      <MemberMentionTag type={type} id={id} label={label} />
     </NodeViewWrapper>
   )
 }

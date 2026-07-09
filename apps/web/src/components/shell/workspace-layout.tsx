@@ -14,6 +14,7 @@ import { IssueDeepLinkListener } from '@/features/issues/components/issue-deep-l
 import {
   agentListOptions,
   connectionListOptions,
+  memberListOptions,
   skillListOptions,
 } from '@/lib/workspace/queries'
 import { WorkspaceSidebar } from './sidebar'
@@ -34,6 +35,7 @@ import { WorkspaceDockProvider, WorkspaceDockView } from './workspace-dock'
  */
 function WorkspaceWarmCaches({ wsId }: { wsId: string }) {
   useQuery(agentListOptions(wsId))
+  useQuery(memberListOptions(wsId))
   useQuery(skillListOptions(wsId))
   useQuery(connectionListOptions(wsId))
   return null

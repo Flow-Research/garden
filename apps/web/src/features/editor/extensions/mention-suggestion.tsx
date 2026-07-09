@@ -1,7 +1,6 @@
 import {
   forwardRef,
   useCallback,
-  useEffect,
   useImperativeHandle,
   useRef,
   useState,
@@ -57,19 +56,19 @@ interface MentionGroup {
 }
 
 function groupItems(items: MentionItem[]): MentionGroup[] {
-  const users: MentionItem[] = []
+  const members: MentionItem[] = []
+  const agents: MentionItem[] = []
   const issues: MentionItem[] = []
 
   for (const item of items) {
-    if (item.type === 'issue') {
-      issues.push(item)
-    } else {
-      users.push(item)
-    }
+    if (item.type === 'issue') issues.push(item)
+    else if (item.type === 'agent') agents.push(item)
+    else members.push(item)
   }
 
   const groups: MentionGroup[] = []
-  if (users.length > 0) groups.push({ label: 'Users', items: users })
+  if (members.length > 0) groups.push({ label: 'Members', items: members })
+  if (agents.length > 0) groups.push({ label: 'Agents', items: agents })
   if (issues.length > 0) groups.push({ label: 'Issues', items: issues })
   return groups
 }
@@ -80,16 +79,17 @@ function groupItems(items: MentionItem[]): MentionGroup[] {
 
 const MentionList = forwardRef<MentionListRef, MentionListProps>(
   function MentionList({ items, command }, ref) {
-    const [selectedIndex, setSelectedIndex] = useState(0)
+    const [requestedIndex, setRequestedIndex] = useState(0)
     const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
+    const selectedIndex =
+      items.length > 0 ? Math.min(requestedIndex, items.length - 1) : 0
 
-    useEffect(() => {
-      setSelectedIndex(0)
-    }, [items])
-
-    useEffect(() => {
-      itemRefs.current[selectedIndex]?.scrollIntoView({ block: 'nearest' })
-    }, [selectedIndex])
+    const moveSelection = useCallback((nextIndex: number) => {
+      setRequestedIndex(nextIndex)
+      requestAnimationFrame(() => {
+        itemRefs.current[nextIndex]?.scrollIntoView({ block: 'nearest' })
+      })
+    }, [])
 
     const selectItem = useCallback(
       (index: number) => {
@@ -101,15 +101,16 @@ const MentionList = forwardRef<MentionListRef, MentionListProps>(
 
     useImperativeHandle(ref, () => ({
       onKeyDown: ({ event }) => {
+        if (items.length === 0) return false
         if (event.key === 'ArrowUp') {
-          setSelectedIndex((i) => (i + items.length - 1) % items.length)
+          moveSelection((selectedIndex + items.length - 1) % items.length)
           return true
         }
         if (event.key === 'ArrowDown') {
-          setSelectedIndex((i) => (i + 1) % items.length)
+          moveSelection((selectedIndex + 1) % items.length)
           return true
         }
-        if (event.key === 'Enter') {
+        if (event.key === 'Enter' || event.key === 'Tab') {
           selectItem(selectedIndex)
           return true
         }
@@ -119,8 +120,8 @@ const MentionList = forwardRef<MentionListRef, MentionListProps>(
 
     if (items.length === 0) {
       return (
-        <div className="rounded-md border bg-popover p-2 text-xs text-muted-foreground shadow-md">
-          No results
+        <div className="rounded-xl bg-popover p-2 text-xs text-muted-foreground shadow-[var(--shadow-float-1)]">
+          No members, agents, or issues found
         </div>
       )
     }
@@ -131,7 +132,11 @@ const MentionList = forwardRef<MentionListRef, MentionListProps>(
     let globalIndex = 0
 
     return (
-      <div className="rounded-md border bg-popover py-1 shadow-md w-72 max-h-[300px] overflow-y-auto">
+      <div
+        role="listbox"
+        aria-label="Mention suggestions"
+        className="max-h-[300px] w-72 overflow-y-auto rounded-xl bg-popover py-1 shadow-[var(--shadow-float-1)]"
+      >
         {groups.map((group) => (
           <div key={group.label}>
             <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
@@ -177,9 +182,13 @@ function MentionRow({
     return (
       <button
         ref={buttonRef}
+        type="button"
+        role="option"
+        aria-selected={selected}
         className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-xs transition-colors ${
           selected ? 'bg-accent' : 'hover:bg-accent/50'
         }`}
+        onMouseDown={(event) => event.preventDefault()}
         onClick={onSelect}
       >
         {item.status && (
@@ -198,9 +207,13 @@ function MentionRow({
   return (
     <button
       ref={buttonRef}
+      type="button"
+      role="option"
+      aria-selected={selected}
       className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-xs transition-colors ${
         selected ? 'bg-accent' : 'hover:bg-accent/50'
       }`}
+      onMouseDown={(event) => event.preventDefault()}
       onClick={onSelect}
     >
       <ActorAvatar
@@ -239,7 +252,7 @@ export function createMentionSuggestion(
           [])
         : []
 
-      const q = query.toLowerCase()
+      const q = query.trim().toLocaleLowerCase()
 
       // Show "All members" option when query is empty or matches "all"
       const allItem: MentionItem[] =
@@ -248,7 +261,11 @@ export function createMentionSuggestion(
           : []
 
       const memberItems: MentionItem[] = members
-        .filter((m) => m.name.toLowerCase().includes(q))
+        .filter(
+          (member) =>
+            member.name.toLocaleLowerCase().includes(q) ||
+            member.email.toLocaleLowerCase().includes(q),
+        )
         .map((m) => ({
           id: m.user_id,
           label: m.name,
@@ -275,7 +292,7 @@ export function createMentionSuggestion(
 
       return [...allItem, ...memberItems, ...agentItems, ...issueItems].slice(
         0,
-        10,
+        12,
       )
     },
 

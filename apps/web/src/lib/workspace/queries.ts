@@ -26,6 +26,7 @@ export function memberListOptions(wsId: string) {
   return queryOptions({
     queryKey: workspaceKeys.members(wsId),
     queryFn: () => api.listMembers(wsId),
+    staleTime: 5 * 60_000,
   })
 }
 
