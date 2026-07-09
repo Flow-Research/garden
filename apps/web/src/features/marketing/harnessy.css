@@ -1,0 +1,52 @@
+/* =============================================================================
+ * Harnessy direction page — self-contained dark surface.
+ *
+ * The app ships light "parchment" by default and the global `.dark` palette is
+ * keyed on `:root.dark`, which can't be scoped to a subtree. So, like the
+ * /architecture page, the /harnessy page redefines the Garden token values on a
+ * local `.harnessy-root` scope. CSS custom properties resolve at the use site by
+ * cascade, so every Tailwind token utility (`text-foreground`,
+ * `text-muted-foreground`, `bg-muted`, `border-[color:var(--hairline-soft)]`,
+ * etc.) inside the page picks up these dark values. Values mirror the dark block
+ * in packages/ui/styles/tokens.css so the page stays on-palette regardless of
+ * the user's chosen theme.
+ * ========================================================================== */
+.harnessy-root {
+  --parchment: #14181500;
+  --parchment-solid: #121613;
+  --parchment-deep: #1b211d;
+  --vellum: rgba(40, 48, 42, 0.55);
+  --vellum-heavy: rgba(40, 48, 42, 0.82);
+  --bone: #1e241f;
+
+  --ink: #f3efe6;
+  --gravel: #b4aea4;
+  --slate: #8a8478;
+  --stone: #6b655c;
+
+  --hairline: rgba(243, 239, 230, 0.12);
+  --hairline-soft: rgba(243, 239, 230, 0.07);
+
+  --moss: #8bab7f;
+  --sage: #9bb491;
+  --amber: #e0b46a;
+  --clay: #cf8763;
+
+  --foreground: var(--ink);
+  --muted: var(--parchment-deep);
+  --muted-foreground: var(--gravel);
+  --card: var(--bone);
+  --card-foreground: var(--ink);
+  --popover: var(--vellum-heavy);
+  --popover-foreground: var(--ink);
+  --border: var(--hairline);
+  --ring: var(--moss);
+  --brand: var(--moss);
+
+  color: var(--ink);
+  background-color: var(--parchment-solid);
+  /* Same film-grain tooth the app body uses, tuned slightly stronger for dark. */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.78' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/></svg>");
+  background-size: 220px 220px;
+  background-repeat: repeat;
+}

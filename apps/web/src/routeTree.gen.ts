@@ -11,7 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as HarnessyRouteImport } from './routes/harnessy'
 import { Route as FeaturesRouteImport } from './routes/features'
+import { Route as ArchitectureRouteImport } from './routes/architecture'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiWorkspacesRouteImport } from './routes/api/workspaces'
@@ -110,9 +112,19 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HarnessyRoute = HarnessyRouteImport.update({
+  id: '/harnessy',
+  path: '/harnessy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FeaturesRoute = FeaturesRouteImport.update({
   id: '/features',
   path: '/features',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ArchitectureRoute = ArchitectureRouteImport.update({
+  id: '/architecture',
+  path: '/architecture',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -575,7 +587,9 @@ const ApiConnectionsConnectorIdToolsNameGrantRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/architecture': typeof ArchitectureRoute
   '/features': typeof FeaturesRoute
+  '/harnessy': typeof HarnessyRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof AuthenticatedWorkspaceRoute
@@ -666,7 +680,9 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/architecture': typeof ArchitectureRoute
   '/features': typeof FeaturesRoute
+  '/harnessy': typeof HarnessyRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof AuthenticatedWorkspaceRoute
@@ -759,7 +775,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/architecture': typeof ArchitectureRoute
   '/features': typeof FeaturesRoute
+  '/harnessy': typeof HarnessyRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/_authenticated/workspace': typeof AuthenticatedWorkspaceRoute
@@ -852,7 +870,9 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/architecture'
     | '/features'
+    | '/harnessy'
     | '/login'
     | '/signup'
     | '/workspace'
@@ -943,7 +963,9 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/architecture'
     | '/features'
+    | '/harnessy'
     | '/login'
     | '/signup'
     | '/workspace'
@@ -1035,7 +1057,9 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_authenticated'
+    | '/architecture'
     | '/features'
+    | '/harnessy'
     | '/login'
     | '/signup'
     | '/_authenticated/workspace'
@@ -1128,7 +1152,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  ArchitectureRoute: typeof ArchitectureRoute
   FeaturesRoute: typeof FeaturesRoute
+  HarnessyRoute: typeof HarnessyRoute
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   ApiAgentsRoute: typeof ApiAgentsRouteWithChildren
@@ -1178,11 +1204,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/harnessy': {
+      id: '/harnessy'
+      path: '/harnessy'
+      fullPath: '/harnessy'
+      preLoaderRoute: typeof HarnessyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/features': {
       id: '/features'
       path: '/features'
       fullPath: '/features'
       preLoaderRoute: typeof FeaturesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/architecture': {
+      id: '/architecture'
+      path: '/architecture'
+      fullPath: '/architecture'
+      preLoaderRoute: typeof ArchitectureRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -2126,7 +2166,9 @@ const ApiCommentsIdRouteWithChildren = ApiCommentsIdRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  ArchitectureRoute: ArchitectureRoute,
   FeaturesRoute: FeaturesRoute,
+  HarnessyRoute: HarnessyRoute,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   ApiAgentsRoute: ApiAgentsRouteWithChildren,
@@ -2163,3 +2205,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
