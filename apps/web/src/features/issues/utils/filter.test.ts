@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Issue } from '@garden/core/types'
-import { filterIssues, type IssueFilters } from './filter'
+import { filterIssues, matchesIssueSearch, type IssueFilters } from './filter'
 
 const NO_FILTER: IssueFilters = {
   statusFilters: [],
@@ -78,6 +78,34 @@ const issues: Issue[] = [
     project_id: 'p-1',
   }),
 ]
+
+describe('matchesIssueSearch', () => {
+  const searchableIssue = makeIssue({
+    identifier: 'FLO-14',
+    title: 'Restore active workspace',
+    description: 'Keep navigation context stable after returning reliably',
+  })
+
+  it('matches visible identifier, title, and description', () => {
+    expect(matchesIssueSearch(searchableIssue, 'flo-14')).toBe(true)
+    expect(matchesIssueSearch(searchableIssue, 'active workspace')).toBe(true)
+    expect(matchesIssueSearch(searchableIssue, 'navigation context')).toBe(true)
+    expect(matchesIssueSearch(searchableIssue, 'reliably')).toBe(true)
+  })
+
+  it('requires every query term while ignoring case and extra whitespace', () => {
+    expect(matchesIssueSearch(searchableIssue, '  RESTORE   Workspace ')).toBe(
+      true,
+    )
+    expect(matchesIssueSearch(searchableIssue, 'workspace connector')).toBe(
+      false,
+    )
+  })
+
+  it('matches every issue when the query is empty', () => {
+    expect(matchesIssueSearch(searchableIssue, '   ')).toBe(true)
+  })
+})
 
 describe('filterIssues', () => {
   it('returns all issues when no filters are active', () => {

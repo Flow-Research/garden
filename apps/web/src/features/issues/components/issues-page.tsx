@@ -9,7 +9,7 @@ import {
   initFilterWorkspaceSync,
 } from '@garden/app-state/issues/stores/view-store'
 import { ViewStoreProvider } from '@garden/app-state/issues/stores/view-store-context'
-import { filterIssues } from '../utils/filter'
+import { filterIssues, matchesIssueSearch } from '../utils/filter'
 import { BOARD_STATUSES } from '@garden/core/issues/config'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { WorkspaceAvatar } from '../../workspace/workspace-avatar'
@@ -123,6 +123,7 @@ export function IssuesPage() {
 
 function IssuesPageContent() {
   const wsId = useWorkspaceId()
+  const [searchQuery, setSearchQuery] = useState('')
   const [createIssueOpen, setCreateIssueOpen] = useState(false)
   const [createIssueData, setCreateIssueData] = useState<Record<
     string,
@@ -175,9 +176,15 @@ function IssuesPageContent() {
     return allIssues
   }, [allIssues, scope])
 
+  const searchedIssues = useMemo(
+    () =>
+      scopedIssues.filter((issue) => matchesIssueSearch(issue, searchQuery)),
+    [scopedIssues, searchQuery],
+  )
+
   const issues = useMemo(
     () =>
-      filterIssues(scopedIssues, {
+      filterIssues(searchedIssues, {
         statusFilters,
         priorityFilters,
         assigneeFilters,
@@ -187,7 +194,7 @@ function IssuesPageContent() {
         includeNoProject,
       }),
     [
-      scopedIssues,
+      searchedIssues,
       statusFilters,
       priorityFilters,
       assigneeFilters,
@@ -246,7 +253,9 @@ function IssuesPageContent() {
       <ViewStoreProvider store={useIssueViewStore}>
         {/* Header 2: Scope tabs + filters */}
         <IssuesHeader
-          scopedIssues={scopedIssues}
+          scopedIssues={searchedIssues}
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
           onCreateIssue={openCreateIssue}
         />
 
@@ -256,7 +265,7 @@ function IssuesPageContent() {
           {viewMode === 'board' ? (
             <BoardView
               issues={issues}
-              allIssues={scopedIssues}
+              allIssues={searchedIssues}
               visibleStatuses={visibleStatuses}
               hiddenStatuses={hiddenStatuses}
               onMoveIssue={handleMoveIssue}
