@@ -14,6 +14,7 @@
     "./types/*": "./src/types/*.ts",
     "./agents/permissions": "./src/agents/permissions.ts",
     "./automations/templates": "./src/automations/templates.ts",
+    "./issues/deep-link": "./src/issues/deep-link.ts",
     "./issues/identifier": "./src/issues/identifier.ts",
     "./issues/run-sync": "./src/issues/run-sync.ts",
     "./issues/source-binding": "./src/issues/source-binding.ts",

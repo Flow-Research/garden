@@ -97,6 +97,7 @@ import {
   PRIORITY_ORDER,
   PRIORITY_CONFIG,
 } from '@garden/core/issues/config'
+import { buildIssueDeepLinkPath } from '@garden/core/issues/deep-link'
 import {
   StatusIcon,
   PriorityIcon,
@@ -1372,11 +1373,19 @@ export function IssueDetail({
                     {/* Copy link */}
                     <DropdownMenuItem
                       onClick={() => {
+                        if (!workspace) {
+                          toast.error('Workspace unavailable')
+                          return
+                        }
+
+                        const path = buildIssueDeepLinkPath(workspace.id, id)
                         const url = router.getShareableUrl
-                          ? router.getShareableUrl(router.pathname)
-                          : window.location.href
-                        navigator.clipboard.writeText(url)
-                        toast.success('Link copied')
+                          ? router.getShareableUrl(path)
+                          : new URL(path, window.location.origin).toString()
+                        void navigator.clipboard.writeText(url).then(
+                          () => toast.success('Link copied'),
+                          () => toast.error('Could not copy link'),
+                        )
                       }}
                     >
                       <Link2 className="h-3.5 w-3.5" />

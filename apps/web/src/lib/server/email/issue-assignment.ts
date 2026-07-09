@@ -1,4 +1,5 @@
 import { Resend } from 'resend'
+import { buildIssueDeepLink } from '@garden/core/issues/deep-link'
 import { createLogger } from '@garden/observability/console'
 import type { AppEnv } from '@/lib/server/env'
 import { renderIssueAssignmentEmailHtml } from '@/lib/server/email/issue-assignment-email'
@@ -77,23 +78,6 @@ export async function sendIssueAssignmentEmail({
   }
 
   return response.data
-}
-
-/**
- * Deep-links straight to the task. Issues open inside the `/workspace` shell
- * rather than a standalone route, so the URL carries `workspace_id` (to select
- * the right workspace) and `issue` (consumed by IssueDeepLinkListener to open the
- * issue-detail panel on load).
- */
-export function buildIssueDeepLink(
-  baseURL: string,
-  workspaceId: string,
-  issueId: string,
-) {
-  const url = new URL('/workspace', baseURL)
-  url.searchParams.set('workspace_id', workspaceId)
-  url.searchParams.set('issue', issueId)
-  return url.href
 }
 
 /** Plain-text fallback for clients that block HTML. */
