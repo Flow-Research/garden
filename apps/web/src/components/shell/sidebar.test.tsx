@@ -9,9 +9,16 @@ const mockSidebarState = vi.hoisted(() => ({
 }))
 const mockOpenPanel = vi.hoisted(() => vi.fn())
 const mockReplace = vi.hoisted(() => vi.fn())
+const mockInvalidateQueries = vi.hoisted(() => vi.fn())
 const mockQueryClear = vi.hoisted(() => vi.fn())
+const mockNavigationState = vi.hoisted(() => ({
+  pathname: '/workspace',
+  searchParams: new URLSearchParams('workspace_id=workspace-1&issue=issue-1'),
+}))
 const mockCreateSession = vi.hoisted(() => ({
-  mutateAsync: vi.fn().mockResolvedValue({ id: 'session-new', title: 'New Chat' }),
+  mutateAsync: vi
+    .fn()
+    .mockResolvedValue({ id: 'session-new', title: 'New Chat' }),
 }))
 const mockClaimWarmSession = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ id: 'session-new', title: 'New Chat' }),
@@ -28,6 +35,7 @@ const mockDockState = vi.hoisted(() => ({
 const mockWorkspaceState = vi.hoisted(() => ({
   workspace: { id: 'workspace-1', name: 'Acme' },
   clearWorkspace: vi.fn(),
+  switchWorkspace: vi.fn().mockResolvedValue(undefined),
 }))
 
 const mockAuthState = vi.hoisted(() => ({
@@ -42,7 +50,11 @@ const mockAuthState = vi.hoisted(() => ({
 vi.mock('@tanstack/react-query', () => ({
   queryOptions: (options: unknown) => options,
   useQuery: () => ({ data: [] }),
-  useQueryClient: () => ({ clear: mockQueryClear, prefetchQuery: vi.fn() }),
+  useQueryClient: () => ({
+    clear: mockQueryClear,
+    invalidateQueries: mockInvalidateQueries,
+    prefetchQuery: vi.fn(),
+  }),
 }))
 
 vi.mock('@/lib/inbox/queries', () => ({
@@ -78,7 +90,9 @@ vi.mock('@garden/ui/components/ui/sidebar', () => ({
   SidebarFooter: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
-  SidebarGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SidebarGroup: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
   SidebarGroupContent: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
@@ -147,12 +161,25 @@ vi.mock('@/features/chat/use-agent-chat-sessions', () => ({
 
 vi.mock('@/features/navigation', () => ({
   useNavigation: () => ({
+    pathname: mockNavigationState.pathname,
     replace: mockReplace,
+    searchParams: mockNavigationState.searchParams,
   }),
 }))
 
 vi.mock('@/components/nav-user', () => ({
-  NavUser: () => <div>Nav user</div>,
+  NavUser: ({
+    onSwitchWorkspace,
+  }: {
+    onSwitchWorkspace: (workspace: { id: string; name: string }) => void
+  }) => (
+    <button
+      type="button"
+      onClick={() => onSwitchWorkspace({ id: 'workspace-2', name: 'Research' })}
+    >
+      Switch workspace
+    </button>
+  ),
 }))
 
 vi.mock('./workspace-dock', () => ({
@@ -206,6 +233,11 @@ describe('WorkspaceSidebar', () => {
       entityId: undefined,
     }
     mockSidebarState.open = true
+    mockNavigationState.pathname = '/workspace'
+    mockNavigationState.searchParams = new URLSearchParams(
+      'workspace_id=workspace-1&issue=issue-1',
+    )
+    mockWorkspaceState.switchWorkspace.mockResolvedValue(undefined)
   })
 
   it('switches explorer content from the selected rail context', async () => {
@@ -294,6 +326,23 @@ describe('WorkspaceSidebar', () => {
     rerender(<WorkspaceSidebar />)
 
     expect(screen.getByText('Chat session explorer')).toBeInTheDocument()
+  })
+
+  it('removes a consumed workspace deep link after switching workspaces', async () => {
+    render(<WorkspaceSidebar />)
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Switch workspace' }),
+    )
+
+    await waitFor(() => {
+      expect(mockWorkspaceState.switchWorkspace).toHaveBeenCalledWith({
+        id: 'workspace-2',
+        name: 'Research',
+      })
+    })
+    expect(mockReplace).toHaveBeenCalledWith('/workspace?issue=issue-1')
+    expect(mockInvalidateQueries).toHaveBeenCalled()
   })
 
   it('does not render an agent rail entry', () => {

@@ -253,7 +253,7 @@ type WorkspaceSidebarProps = {
 export function WorkspaceSidebar({ onCreateWorkspace }: WorkspaceSidebarProps) {
   const queryClient = useQueryClient()
   const workspaceSidebar = useSidebar()
-  const { replace } = useNavigation()
+  const { pathname, replace, searchParams } = useNavigation()
   const dock = useWorkspaceDock()
   const activePanel = dock?.activePanel ?? null
   const openPanel = useCallback(
@@ -408,6 +408,12 @@ export function WorkspaceSidebar({ onCreateWorkspace }: WorkspaceSidebarProps) {
         (result) =>
           result.tapBoth({
             ok: () => {
+              const nextSearch = new URLSearchParams(searchParams)
+              nextSearch.delete('workspace_id')
+              const serializedSearch = nextSearch.toString()
+              replace(
+                `${pathname}${serializedSearch ? `?${serializedSearch}` : ''}`,
+              )
               queryClient.invalidateQueries()
               toast.success(`Switched to ${nextWorkspace.name}`)
             },
@@ -421,7 +427,14 @@ export function WorkspaceSidebar({ onCreateWorkspace }: WorkspaceSidebarProps) {
           }),
       )
     },
-    [queryClient, switchWorkspace, workspace?.id],
+    [
+      pathname,
+      queryClient,
+      replace,
+      searchParams,
+      switchWorkspace,
+      workspace?.id,
+    ],
   )
 
   const handleLogout = useCallback(async () => {
