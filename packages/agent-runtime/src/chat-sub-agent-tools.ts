@@ -53,9 +53,16 @@ import {
   type IssueSummary,
 } from "@garden/server/issues/server";
 import {
+  cancelIssueRun as cancelIssueRunService,
   startIssueRun,
   type IssueRunEnv,
 } from "@garden/server/issues/run-service";
+import { addIssueSubscribers } from "@garden/db/subscribers";
+import { upsertIssueAssignmentInbox } from "@garden/db/inbox";
+import {
+  resolveWorkspaceMember,
+  type WorkspaceMemberCandidate,
+} from "./chat-member-resolution";
 
 type ChatSubAgentToolsInput = {
   ctx: DurableObjectState;
@@ -161,9 +168,28 @@ const assignIssueInputSchema = z
     assignee_agent_id: z
       .string()
       .uuid()
+      .optional()
       .describe("Active workspace agent id to assign and start."),
+    assignee_member: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe(
+        "Workspace member name, email, user id, or membership id. Human assignments do not start an agent run.",
+      ),
   })
-  .strict();
+  .strict()
+  .refine(
+    (input) =>
+      Number(Boolean(input.assignee_agent_id)) +
+        Number(Boolean(input.assignee_member)) ===
+      1,
+    {
+      message:
+        "Provide exactly one of assignee_agent_id or assignee_member.",
+    },
+  );
 
 const updateIssueStatusInputSchema = z
   .object({
@@ -179,6 +205,7 @@ const updateIssueStatusInputSchema = z
 
 const workspaceInventorySectionSchema = z.enum([
   "agents",
+  "members",
   "skills",
   "connectors",
 ]);
@@ -187,7 +214,7 @@ const listWorkspaceInventoryInputSchema = z
   .object({
     include: z
       .array(workspaceInventorySectionSchema)
-      .max(3)
+      .max(4)
       .optional()
       .describe(
         "Inventory sections to include. Defaults to agents only for compactness.",
@@ -252,7 +279,10 @@ type CreateIssueToolResult = {
 type AssignIssueToolResult = {
   issue_id: string;
   identifier: string;
-  assignee_agent_id: string;
+  assignee:
+    | { type: "agent"; id: string }
+    | { type: "member"; id: string; name: string; email: string };
+  assignee_agent_id?: string;
   run:
     | { kind: "started"; run_id: string }
     | { kind: "resumed"; run_id: string }
@@ -269,13 +299,14 @@ type UpdateIssueStatusToolResult = {
 
 type WorkspaceInventoryToolResult = {
   current_agent_id: string;
-  sections: Array<"agents" | "skills" | "connectors">;
-  omitted_sections: Array<"agents" | "skills" | "connectors">;
+  sections: Array<"agents" | "members" | "skills" | "connectors">;
+  omitted_sections: Array<"agents" | "members" | "skills" | "connectors">;
   guidance: string[];
   limit: number;
   query: string | null;
   truncated: {
     agents: boolean;
+    members: boolean;
     skills: boolean;
     connectors: boolean;
   };
@@ -285,6 +316,13 @@ type WorkspaceInventoryToolResult = {
     role: string | null;
     is_default: boolean;
     status: string;
+  }>;
+  members: Array<{
+    id: string;
+    membership_id: string;
+    name: string;
+    email: string;
+    role: string;
   }>;
   skills: Array<{
     slug: string;
@@ -564,6 +602,32 @@ async function requireActiveWorkspaceAgent(args: {
     : issueToolErr(
         "assignee_agent_id must be an active agent in this workspace.",
       );
+}
+
+/** Loads human assignee candidates from the current workspace only. */
+async function loadWorkspaceMemberCandidates(args: {
+  db: ReadRunDb;
+  workspaceId: string;
+}): Promise<ResultValue<WorkspaceMemberCandidate[], string>> {
+  const result = await Result.tryPromise<WorkspaceMemberCandidate[], string>({
+    try: async () => {
+      const rows = await args.db
+        .select({
+          membershipId: schema.member.id,
+          userId: schema.user.id,
+          name: schema.user.name,
+          email: schema.user.email,
+          role: schema.member.role,
+        })
+        .from(schema.member)
+        .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
+        .where(eq(schema.member.organizationId, args.workspaceId))
+        .orderBy(schema.user.name, schema.user.email);
+      return rows;
+    },
+    catch: errorMessage,
+  });
+  return result.isErr() ? issueToolErr(result.error) : Result.ok(result.value);
 }
 
 async function resolveChatIssue(args: {
@@ -938,6 +1002,12 @@ async function createIssueFromChat(
   });
 }
 
+/**
+ * Assigns an existing issue to either an agent or a human workspace member.
+ * Agent assignment keeps the existing start/wake behavior. Human assignment
+ * stores the canonical user id, joins/notifies the assignee, and cancels the
+ * prior active agent run so work does not continue under stale ownership.
+ */
 async function assignIssueFromChat(
   context: ChatIssueToolContext,
   input: z.infer<typeof assignIssueInputSchema>,
@@ -946,18 +1016,6 @@ async function assignIssueFromChat(
   if (identityResult.isErr()) return Result.err(identityResult.error);
   const identity = identityResult.value;
   const db = getReadRunDb(context.databaseUrl);
-  const assigneeAgentId = input.assignee_agent_id;
-  if (!assigneeAgentId) {
-    return issueToolErr("assign_issue: assignee_agent_id is required.");
-  }
-
-  const assigneeResult = await requireActiveWorkspaceAgent({
-    db,
-    workspaceId: identity.workspaceId,
-    agentId: assigneeAgentId,
-  });
-  if (assigneeResult.isErr())
-    return issueToolErr(`assign_issue: ${assigneeResult.error}`);
 
   const issueResult = await resolveChatIssue({
     db,
@@ -968,7 +1026,124 @@ async function assignIssueFromChat(
   const issue = issueResult.value;
   const currentStatus = issue.status ?? "backlog";
   if (currentStatus === "done" || currentStatus === "cancelled") {
-    return issueToolErr(`assign_issue: cannot start a ${currentStatus} issue.`);
+    return issueToolErr(`assign_issue: cannot assign a ${currentStatus} issue.`);
+  }
+
+  if (input.assignee_member) {
+    const membersResult = await loadWorkspaceMemberCandidates({
+      db,
+      workspaceId: identity.workspaceId,
+    });
+    if (membersResult.isErr()) return issueToolErr(membersResult.error);
+    const memberResult = resolveWorkspaceMember(
+      membersResult.value,
+      input.assignee_member,
+    );
+    if (memberResult.isErr()) {
+      return issueToolErr(`assign_issue: ${memberResult.error}`);
+    }
+    const member = memberResult.value;
+
+    const updateResult = await Result.tryPromise<void, string>({
+      try: async () => {
+        await db
+          .update(schema.issue)
+          .set({
+            assigneeType: "user",
+            assigneeId: member.userId,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(schema.issue.id, issue.id),
+              eq(schema.issue.workspaceId, identity.workspaceId),
+            ),
+          );
+      },
+      catch: errorMessage,
+    });
+    if (updateResult.isErr()) return issueToolErr(updateResult.error);
+
+    if (issue.activeRunId) {
+      const cancelResult = await cancelIssueRunService(context.issueRunEnv, {
+        workspaceId: identity.workspaceId,
+        runId: issue.activeRunId,
+        actor: { type: "agent", id: identity.agentId },
+        reason: "issue_reassigned_to_member",
+      });
+      if (cancelResult.isErr()) {
+        console.error("assign_issue_cancel_previous_run_failed", {
+          issueId: issue.id,
+          runId: issue.activeRunId,
+          error: cancelResult.error.message,
+        });
+      }
+    }
+
+    const notificationResult = await Result.tryPromise<void, string>({
+      try: async () => {
+        await addIssueSubscribers(db, {
+          workspaceId: identity.workspaceId,
+          issueId: issue.id,
+          entries: [
+            {
+              userType: "member",
+              userId: member.userId,
+              reason: "assignee",
+            },
+          ],
+        });
+        await upsertIssueAssignmentInbox({
+          db,
+          workspaceId: identity.workspaceId,
+          issueId: issue.id,
+          actorType: "agent",
+          actorId: identity.agentId,
+        });
+      },
+      catch: errorMessage,
+    });
+    if (notificationResult.isErr()) {
+      console.error("assign_issue_member_notification_failed", {
+        issueId: issue.id,
+        memberId: member.userId,
+        error: notificationResult.error,
+      });
+    }
+
+    const summaryResult = await readIssueService({
+      databaseUrl: context.databaseUrl,
+      workspaceId: identity.workspaceId,
+      issueIdOrIdentifier: issue.id,
+    });
+    if (summaryResult.isErr()) return issueToolErr(summaryResult.error.message);
+
+    return Result.ok({
+      issue_id: issue.id,
+      identifier: summaryResult.value.identifier,
+      assignee: {
+        type: "member",
+        id: member.userId,
+        name: member.name,
+        email: member.email,
+      },
+      run: { kind: "skipped", reason: "Assigned to a human workspace member." },
+    });
+  }
+
+  const assigneeAgentId = input.assignee_agent_id;
+  if (!assigneeAgentId) {
+    return issueToolErr(
+      "assign_issue: provide assignee_agent_id or assignee_member.",
+    );
+  }
+  const assigneeResult = await requireActiveWorkspaceAgent({
+    db,
+    workspaceId: identity.workspaceId,
+    agentId: assigneeAgentId,
+  });
+  if (assigneeResult.isErr()) {
+    return issueToolErr(`assign_issue: ${assigneeResult.error}`);
   }
 
   const updateResult = await Result.tryPromise<void, string>({
@@ -1011,6 +1186,7 @@ async function assignIssueFromChat(
   return Result.ok({
     issue_id: issue.id,
     identifier: summaryResult.value.identifier,
+    assignee: { type: "agent", id: assigneeAgentId },
     assignee_agent_id: assigneeAgentId,
     run:
       startResult.value.kind === "started"
@@ -1134,11 +1310,15 @@ async function listWorkspaceInventoryFromChat(
   const db = getReadRunDb(context.databaseUrl);
   const sections = input.include?.length ? input.include : ["agents" as const];
   const includeAgents = sections.includes("agents");
+  const includeMembers = sections.includes("members");
   const includeSkills = sections.includes("skills");
   const includeConnectors = sections.includes("connectors");
-  const omittedSections = (["agents", "skills", "connectors"] as const).filter(
-    (section) => !sections.includes(section),
-  );
+  const omittedSections = ([
+    "agents",
+    "members",
+    "skills",
+    "connectors",
+  ] as const).filter((section) => !sections.includes(section));
   const limit = input.limit ?? 20;
   const normalizedQuery = input.query?.toLowerCase() ?? null;
 
@@ -1148,22 +1328,42 @@ async function listWorkspaceInventoryFromChat(
 
   const result = await Result.tryPromise<WorkspaceInventoryToolResult, string>({
     try: async () => {
-      const [agents, skills, assignedSkills, connectorBindings, capabilityRows] =
-        await Promise.all([
-          includeAgents
-            ? db
-                .select({
-                  id: schema.agent.id,
-                  name: schema.agent.name,
-                  role: schema.agent.roleTitle,
-                  isDefault: schema.agent.isDefault,
-                  status: schema.agent.status,
-                })
-                .from(schema.agent)
-                .where(eq(schema.agent.workspaceId, identity.workspaceId))
-                .orderBy(schema.agent.name)
-            : [],
-          includeSkills
+      const [
+        agents,
+        members,
+        skills,
+        assignedSkills,
+        connectorBindings,
+        capabilityRows,
+      ] = await Promise.all([
+        includeAgents
+          ? db
+              .select({
+                id: schema.agent.id,
+                name: schema.agent.name,
+                role: schema.agent.roleTitle,
+                isDefault: schema.agent.isDefault,
+                status: schema.agent.status,
+              })
+              .from(schema.agent)
+              .where(eq(schema.agent.workspaceId, identity.workspaceId))
+              .orderBy(schema.agent.name)
+          : [],
+        includeMembers
+          ? db
+              .select({
+                id: schema.user.id,
+                membershipId: schema.member.id,
+                name: schema.user.name,
+                email: schema.user.email,
+                role: schema.member.role,
+              })
+              .from(schema.member)
+              .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
+              .where(eq(schema.member.organizationId, identity.workspaceId))
+              .orderBy(schema.user.name, schema.user.email)
+          : [],
+        includeSkills
             ? db
                 .select({
                   slug: schema.skill.slug,
@@ -1241,6 +1441,15 @@ async function listWorkspaceInventoryFromChat(
       const filteredAgents = agents.filter((agent) =>
         matchesQuery(agent.id, agent.name, agent.role, agent.status),
       );
+      const filteredMembers = members.filter((member) =>
+        matchesQuery(
+          member.id,
+          member.membershipId,
+          member.name,
+          member.email,
+          member.role,
+        ),
+      );
       const filteredSkills = skills.filter((skill) =>
         matchesQuery(skill.slug, skill.name, skill.description),
       );
@@ -1298,6 +1507,9 @@ async function listWorkspaceInventoryFromChat(
         guidance: [
           "Use current_agent_id when the current agent is an appropriate assignee for a generic or follow-up task.",
           "Prefer assigning to an existing active agent from this inventory. Propose a new agent only when the task calls for a reusable role that is not already represented.",
+          includeMembers
+            ? "Human workspace members are included. Use their user id, name, or email with assignee_member; membership_id is accepted only as a lookup convenience."
+            : "Human members were not requested. Pass a named person directly to assign_issue; request members only if resolution is ambiguous or the user asks who is available.",
           includeConnectors
             ? "Connector/MCP capabilities are included. They are separate from skills; do not require a skill slug for connector tools."
             : "Connector/MCP capabilities were not requested. Do not conclude a capability is unavailable from skills/agents alone; call list_workspace_inventory with include:['connectors'] and a query when connector capability matters.",
@@ -1307,6 +1519,7 @@ async function listWorkspaceInventoryFromChat(
         query: input.query ?? null,
         truncated: {
           agents: filteredAgents.length > limit,
+          members: filteredMembers.length > limit,
           skills: filteredSkills.length > limit,
           connectors: filteredConnectors.length > limit,
         },
@@ -1316,6 +1529,13 @@ async function listWorkspaceInventoryFromChat(
           role: agent.role,
           is_default: agent.isDefault,
           status: agent.status,
+        })),
+        members: filteredMembers.slice(0, limit).map((member) => ({
+          id: member.id,
+          membership_id: member.membershipId,
+          name: member.name,
+          email: member.email,
+          role: member.role,
         })),
         skills: filteredSkills.slice(0, limit).map((skill) => ({
           slug: skill.slug,
@@ -1489,9 +1709,9 @@ export function createChatSubAgentTools({
 
     assign_issue: tool({
       description:
-        "Assign an existing Garden issue to an active workspace agent and start that agent immediately. " +
-        "Use this when the user says to assign, start, hand off, or wake an agent for an issue that already exists. " +
-        "Before assigning, list workspace agents and choose an existing active agent; the current agent is a valid assignee when it is the right owner.",
+        "Assign an existing Garden issue to either an active workspace agent or a human workspace member. " +
+        "Agent assignment starts that agent immediately; human assignment notifies the member and does not start an agent run. " +
+        "When the user names a human, pass that name/email/id directly as assignee_member; use member inventory only after an ambiguous/missing result. Never guess between people with similar names.",
       inputSchema: assignIssueInputSchema,
       execute: async (input) => {
         const context = chatIssueContext();
@@ -1508,9 +1728,9 @@ export function createChatSubAgentTools({
 
     list_workspace_inventory: tool({
       description:
-        "List bounded current workspace inventory. Defaults to agents only; request skills/connectors only when needed. " +
-        "Use before assigning work, proposing an agent, or mentioning skills/connectors when the current workspace inventory matters. " +
-        "Use current_agent_id for self-assignment when appropriate.",
+        "List bounded current workspace inventory. Defaults to agents only; request members, skills, or connectors when needed. " +
+        "Use when browsing possible owners, proposing an agent, resolving an ambiguous person, or checking skills/connectors. " +
+        "Use current_agent_id for agent self-assignment; direct named human assignments do not need an inventory preflight.",
       inputSchema: listWorkspaceInventoryInputSchema,
       execute: async (input) => {
         const context = chatIssueContext();
