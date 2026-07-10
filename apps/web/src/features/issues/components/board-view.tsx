@@ -137,6 +137,7 @@ export function BoardView({
     doneTotal: hookDoneTotal,
   } = useLoadMoreDoneIssues()
   const displayDoneTotal = doneTotalOverride ?? hookDoneTotal
+  const canLoadMoreDone = doneTotalOverride === undefined && hasMore
 
   // --- Drag state ---
   const [activeIssue, setActiveIssue] = useState<Issue | null>(null)
@@ -300,7 +301,7 @@ export function BoardView({
             totalCount={status === 'done' ? displayDoneTotal : undefined}
             onCreateIssue={onCreateIssue}
             footer={
-              status === 'done' && hasMore ? (
+              status === 'done' && canLoadMoreDone ? (
                 <InfiniteScrollSentinel
                   onVisible={loadMore}
                   loading={loadingMore}

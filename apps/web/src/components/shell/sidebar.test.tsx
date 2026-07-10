@@ -341,7 +341,7 @@ describe('WorkspaceSidebar', () => {
         name: 'Research',
       })
     })
-    expect(mockReplace).toHaveBeenCalledWith('/workspace?issue=issue-1')
+    expect(mockReplace).toHaveBeenCalledWith('/workspace')
     expect(mockInvalidateQueries).toHaveBeenCalled()
   })
 

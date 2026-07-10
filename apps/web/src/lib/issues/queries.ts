@@ -1,10 +1,14 @@
 import { queryOptions } from '@tanstack/react-query'
 import { Result } from 'better-result'
+import type { Issue } from '@garden/core/types'
 import { api } from '@/lib/api'
 
 export const issueKeys = {
   all: (wsId: string) => ['issues', wsId] as const,
   list: (wsId: string) => [...issueKeys.all(wsId), 'list'] as const,
+  search: (wsId: string, query: string) =>
+    [...issueKeys.all(wsId), 'search', query] as const,
+  allDone: (wsId: string) => [...issueKeys.all(wsId), 'all-done'] as const,
   detail: (wsId: string, id: string) =>
     [...issueKeys.all(wsId), 'detail', id] as const,
   children: (wsId: string, id: string) =>
@@ -73,6 +77,88 @@ export function issueWorkProductsOptions(issueId: string) {
 }
 
 export const CLOSED_PAGE_SIZE = 50
+const SEARCH_PAGE_SIZE = 100
+
+/** Loads all done issues only while client-side filters need a complete set. */
+export function allDoneIssuesOptions(wsId: string, enabled: boolean) {
+  return queryOptions({
+    queryKey: issueKeys.allDone(wsId),
+    queryFn: async () => {
+      const loadResult = await Result.tryPromise({
+        try: async () => {
+          const firstPage = await api.listIssues({
+            workspace_id: wsId,
+            status: 'done',
+            limit: CLOSED_PAGE_SIZE,
+            offset: 0,
+          })
+          const issues: Issue[] = [...firstPage.issues]
+          while (issues.length < firstPage.total) {
+            const page = await api.listIssues({
+              workspace_id: wsId,
+              status: 'done',
+              limit: CLOSED_PAGE_SIZE,
+              offset: issues.length,
+            })
+            if (page.issues.length === 0) break
+            issues.push(...page.issues)
+          }
+          return issues
+        },
+        catch: (error) =>
+          error instanceof Error ? error : new Error(String(error)),
+      })
+      if (loadResult.isOk()) return loadResult.value
+      throw loadResult.error
+    },
+    enabled,
+    staleTime: 30_000,
+  })
+}
+
+/**
+ * Fetches every server-matched issue page so search is authoritative across
+ * closed-issue pagination. The prior local-only filter silently omitted done
+ * issues beyond the warm first page and displayed misleading column counts.
+ */
+export function issueSearchOptions(wsId: string, query: string) {
+  const normalizedQuery = query.trim()
+  return queryOptions({
+    queryKey: issueKeys.search(wsId, normalizedQuery),
+    queryFn: async () => {
+      const searchResult = await Result.tryPromise({
+        try: async () => {
+          const firstPage = await api.searchIssues({
+            q: normalizedQuery,
+            limit: SEARCH_PAGE_SIZE,
+            offset: 0,
+            include_closed: true,
+            workspace_id: wsId,
+          })
+          const issues: Issue[] = [...firstPage.issues]
+          while (issues.length < firstPage.total) {
+            const page = await api.searchIssues({
+              q: normalizedQuery,
+              limit: SEARCH_PAGE_SIZE,
+              offset: issues.length,
+              include_closed: true,
+              workspace_id: wsId,
+            })
+            if (page.issues.length === 0) break
+            issues.push(...page.issues)
+          }
+          return issues
+        },
+        catch: (error) =>
+          error instanceof Error ? error : new Error(String(error)),
+      })
+      if (searchResult.isOk()) return searchResult.value
+      throw searchResult.error
+    },
+    enabled: normalizedQuery.length > 0,
+    staleTime: 30_000,
+  })
+}
 
 /**
  * CACHE SHAPE NOTE: The raw cache stores ListIssuesResponse ({ issues, total, doneTotal }),

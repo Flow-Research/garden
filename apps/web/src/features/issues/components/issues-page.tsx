@@ -1,9 +1,16 @@
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  Suspense,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import { toast } from 'sonner'
 import { ChevronRight } from 'lucide-react'
 import type { IssueStatus } from '@garden/core/types'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
-import { useSuspenseQueries } from '@tanstack/react-query'
+import { useQuery, useSuspenseQueries } from '@tanstack/react-query'
 import {
   useIssueViewStore,
   initFilterWorkspaceSync,
@@ -17,6 +24,8 @@ import { useWorkspaceId } from '@garden/app-state/hooks'
 import {
   issueListOptions,
   childIssueProgressOptions,
+  allDoneIssuesOptions,
+  issueSearchOptions,
 } from '@/lib/issues/queries'
 import { useUpdateIssue } from '@/lib/issues/mutations'
 import { useIssueSelectionStore } from '@garden/app-state/issues/stores/selection-store'
@@ -167,20 +176,67 @@ function IssuesPageContent() {
     useIssueSelectionStore.getState().clear()
   }, [viewMode, scope])
 
-  // Scope pre-filter: narrow by assignee type
+  const deferredSearchQuery = useDeferredValue(searchQuery.trim())
+  const hasClientFilters =
+    scope !== 'all' ||
+    statusFilters.length > 0 ||
+    priorityFilters.length > 0 ||
+    assigneeFilters.length > 0 ||
+    includeNoAssignee ||
+    creatorFilters.length > 0 ||
+    projectFilters.length > 0 ||
+    includeNoProject
+  const needsAllDoneIssues =
+    deferredSearchQuery.length === 0 && hasClientFilters
+  const { data: allDoneIssues } = useQuery(
+    allDoneIssuesOptions(wsId, needsAllDoneIssues),
+  )
+
+  const completeIssues = useMemo(() => {
+    if (!needsAllDoneIssues || !allDoneIssues) return allIssues
+    return [
+      ...allIssues.filter((issue) => issue.status !== 'done'),
+      ...allDoneIssues,
+    ]
+  }, [allIssues, allDoneIssues, needsAllDoneIssues])
+
+  // Scope pre-filter: narrow by assignee type.
   const scopedIssues = useMemo(() => {
     if (scope === 'members')
-      return allIssues.filter((i) => i.assignee_type === 'member')
+      return completeIssues.filter((i) => i.assignee_type === 'member')
     if (scope === 'agents')
-      return allIssues.filter((i) => i.assignee_type === 'agent')
-    return allIssues
-  }, [allIssues, scope])
+      return completeIssues.filter((i) => i.assignee_type === 'agent')
+    return completeIssues
+  }, [completeIssues, scope])
 
-  const searchedIssues = useMemo(
+  const localSearchPlaceholder = useMemo(
     () =>
-      scopedIssues.filter((issue) => matchesIssueSearch(issue, searchQuery)),
-    [scopedIssues, searchQuery],
+      scopedIssues.filter((issue) =>
+        matchesIssueSearch(issue, deferredSearchQuery),
+      ),
+    [scopedIssues, deferredSearchQuery],
   )
+  const { data: authoritativeSearchIssues } = useQuery({
+    ...issueSearchOptions(wsId, deferredSearchQuery),
+    placeholderData: localSearchPlaceholder,
+  })
+  const searchedIssues = useMemo(() => {
+    const source =
+      deferredSearchQuery.length > 0
+        ? (authoritativeSearchIssues ?? localSearchPlaceholder)
+        : scopedIssues
+    if (scope === 'members')
+      return source.filter((issue) => issue.assignee_type === 'member')
+    if (scope === 'agents')
+      return source.filter((issue) => issue.assignee_type === 'agent')
+    return source
+  }, [
+    authoritativeSearchIssues,
+    deferredSearchQuery,
+    localSearchPlaceholder,
+    scope,
+    scopedIssues,
+  ])
 
   const issues = useMemo(
     () =>
@@ -204,6 +260,11 @@ function IssuesPageContent() {
       includeNoProject,
     ],
   )
+
+  const filteredDoneTotal =
+    deferredSearchQuery.length > 0 || hasClientFilters
+      ? issues.filter((issue) => issue.status === 'done').length
+      : undefined
 
   const visibleStatuses = useMemo(() => {
     if (statusFilters.length > 0)
@@ -270,6 +331,7 @@ function IssuesPageContent() {
               hiddenStatuses={hiddenStatuses}
               onMoveIssue={handleMoveIssue}
               childProgressMap={childProgressMap}
+              doneTotal={filteredDoneTotal}
               onCreateIssue={openCreateIssue}
             />
           ) : (
@@ -277,6 +339,7 @@ function IssuesPageContent() {
               issues={issues}
               visibleStatuses={visibleStatuses}
               childProgressMap={childProgressMap}
+              doneTotal={filteredDoneTotal}
               onCreateIssue={openCreateIssue}
             />
           )}

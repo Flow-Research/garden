@@ -3,15 +3,19 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useRequiredWorkspaceDock } from '@/components/shell/workspace-dock'
 import { issueDetailOptions } from '@/lib/issues/queries'
+import { useNavigation } from '@/features/navigation'
 
 const handledIssueDeepLinks = new Set<string>()
 
-/** Strips only the `issue` deep-link param, leaving other workspace params intact. */
-function removeIssueDeepLinkSearchParam() {
-  if (typeof window === 'undefined') return
-  const url = new URL(window.location.href)
-  url.searchParams.delete('issue')
-  window.history.replaceState(window.history.state, '', url.toString())
+/** Builds the route replacement used after consuming a one-shot issue link. */
+export function withoutIssueDeepLink(
+  pathname: string,
+  searchParams: URLSearchParams,
+) {
+  const nextSearch = new URLSearchParams(searchParams)
+  nextSearch.delete('issue')
+  const serializedSearch = nextSearch.toString()
+  return `${pathname}${serializedSearch ? `?${serializedSearch}` : ''}`
 }
 
 /**
@@ -33,6 +37,7 @@ export function IssueDeepLinkListener({
 }) {
   const queryClient = useQueryClient()
   const dock = useRequiredWorkspaceDock()
+  const { pathname, searchParams, replace } = useNavigation()
 
   useLayoutEffect(() => {
     const id = issueId?.trim()
@@ -40,11 +45,11 @@ export function IssueDeepLinkListener({
 
     const handledKey = `${workspaceId}:${id}`
     if (handledIssueDeepLinks.has(handledKey)) {
-      removeIssueDeepLinkSearchParam()
+      replace(withoutIssueDeepLink(pathname, searchParams))
       return
     }
     handledIssueDeepLinks.add(handledKey)
-    removeIssueDeepLinkSearchParam()
+    replace(withoutIssueDeepLink(pathname, searchParams))
 
     void queryClient.fetchQuery(issueDetailOptions(workspaceId, id)).then(
       (issue) => {
@@ -60,7 +65,7 @@ export function IssueDeepLinkListener({
         })
       },
     )
-  }, [issueId, workspaceId, queryClient, dock])
+  }, [issueId, workspaceId, queryClient, dock, pathname, searchParams, replace])
 
   return null
 }

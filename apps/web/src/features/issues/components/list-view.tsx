@@ -59,6 +59,7 @@ export function ListView({
     doneTotal: hookDoneTotal,
   } = useLoadMoreDoneIssues()
   const displayDoneTotal = doneTotalOverride ?? hookDoneTotal
+  const canLoadMoreDone = doneTotalOverride === undefined && hasMore
 
   const issuesByStatus = useMemo(() => {
     const map = new Map<IssueStatus, Issue[]>()
@@ -166,7 +167,7 @@ export function ListView({
                         onOpen={handleOpenIssue}
                       />
                     ))}
-                    {status === 'done' && hasMore && (
+                    {status === 'done' && canLoadMoreDone && (
                       <InfiniteScrollSentinel
                         onVisible={loadMore}
                         loading={loadingMore}

@@ -410,6 +410,7 @@ export function WorkspaceSidebar({ onCreateWorkspace }: WorkspaceSidebarProps) {
             ok: () => {
               const nextSearch = new URLSearchParams(searchParams)
               nextSearch.delete('workspace_id')
+              nextSearch.delete('issue')
               const serializedSearch = nextSearch.toString()
               replace(
                 `${pathname}${serializedSearch ? `?${serializedSearch}` : ''}`,

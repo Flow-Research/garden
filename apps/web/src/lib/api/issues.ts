@@ -41,12 +41,14 @@ export function searchIssues(params: {
   limit?: number
   offset?: number
   include_closed?: boolean
+  workspace_id?: string
   signal?: AbortSignal
 }): Promise<SearchIssuesResponse> {
   const search = new URLSearchParams({ q: params.q })
   if (params.limit !== undefined) search.set('limit', String(params.limit))
   if (params.offset !== undefined) search.set('offset', String(params.offset))
   if (params.include_closed) search.set('include_closed', 'true')
+  if (params.workspace_id) search.set('workspace_id', params.workspace_id)
   return getApiTransport().request(
     `/api/issues/search?${search}`,
     params.signal ? { signal: params.signal } : undefined,
