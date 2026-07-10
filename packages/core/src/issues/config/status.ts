@@ -20,11 +20,11 @@ export const ALL_STATUSES: IssueStatus[] = [
 
 /** Statuses shown as board columns (excludes cancelled). */
 export const BOARD_STATUSES: IssueStatus[] = [
+  'blocked',
   'todo',
   'in_progress',
   'in_review',
   'done',
-  'blocked',
 ]
 
 export const STATUS_CONFIG: Record<

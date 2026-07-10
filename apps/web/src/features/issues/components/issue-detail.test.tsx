@@ -227,7 +227,7 @@ vi.mock('@garden/core/issues/config', () => ({
     'blocked',
     'cancelled',
   ],
-  BOARD_STATUSES: ['todo', 'in_progress', 'in_review', 'done', 'blocked'],
+  BOARD_STATUSES: ['blocked', 'todo', 'in_progress', 'in_review', 'done'],
   STATUS_ORDER: [
     'todo',
     'in_progress',
