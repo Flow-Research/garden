@@ -13,13 +13,27 @@ describe('mention markdown', () => {
         label: 'A](https://evil.example) [x',
         type: 'member',
       }),
-    ).toBe('[@A\\](https://evil.example) \\[x](mention://member/user-1)')
+    ).toBe(
+      '[@A\\]\\(https\\:\\/\\/evil\\.example\\) \\[x](mention://member/user-1)',
+    )
+  })
+
+  it('prevents emphasis, code, and HTML syntax in labels', () => {
+    expect(
+      serializeMentionMarkdown({
+        id: 'user-1',
+        label: '*Alex* `code` <b>x</b>',
+        type: 'member',
+      }),
+    ).toBe(
+      '[@\\*Alex\\* \\`code\\` \\<b\\>x\\<\\/b\\>](mention://member/user-1)',
+    )
   })
 
   it('round-trips escaped labels for editor tokenization', () => {
-    expect(unescapeMentionLabel('A\\](https://evil.example) \\[x')).toBe(
-      'A](https://evil.example) [x',
-    )
+    expect(
+      unescapeMentionLabel('A\\]\\(https\\:\\/\\/evil\\.example\\) \\[x'),
+    ).toBe('A](https://evil.example) [x')
   })
 
   it('normalizes legacy shortcodes through the canonical serializer', () => {

@@ -14,6 +14,12 @@ export type SelectedMemberMention = {
   end: number
 }
 
+export type MemberMentionTextEdit = {
+  previousStart: number
+  previousEnd: number
+  nextEnd: number
+}
+
 /** Detects the active `@query` token immediately before the textarea caret. */
 export function detectMemberMentionTrigger(
   input: string,
@@ -30,6 +36,14 @@ export function detectMemberMentionTrigger(
     rangeStart: atIndex,
     rangeEnd: cursor,
   }
+}
+
+/** Prevents IME confirmation Enter from selecting a mention candidate. */
+export function isMemberMentionSelectionKey(args: {
+  key: string
+  isComposing: boolean
+}) {
+  return !args.isComposing && (args.key === 'Tab' || args.key === 'Enter')
 }
 
 /** Ranks warm-cache members by name/email prefix before substring matches. */
@@ -76,35 +90,41 @@ export function rebaseMemberMentions(
   previousInput: string,
   nextInput: string,
   mentions: readonly SelectedMemberMention[],
+  knownEdit?: MemberMentionTextEdit,
 ): SelectedMemberMention[] {
-  let prefixLength = 0
-  const sharedLength = Math.min(previousInput.length, nextInput.length)
-  while (
-    prefixLength < sharedLength &&
-    previousInput[prefixLength] === nextInput[prefixLength]
-  ) {
-    prefixLength += 1
+  let previousStart = knownEdit?.previousStart ?? 0
+  let previousEnd = knownEdit?.previousEnd ?? 0
+  let nextEnd = knownEdit?.nextEnd ?? 0
+
+  if (!knownEdit) {
+    const sharedLength = Math.min(previousInput.length, nextInput.length)
+    while (
+      previousStart < sharedLength &&
+      previousInput[previousStart] === nextInput[previousStart]
+    ) {
+      previousStart += 1
+    }
+
+    let suffixLength = 0
+    while (
+      suffixLength < previousInput.length - previousStart &&
+      suffixLength < nextInput.length - previousStart &&
+      previousInput[previousInput.length - suffixLength - 1] ===
+        nextInput[nextInput.length - suffixLength - 1]
+    ) {
+      suffixLength += 1
+    }
+    previousEnd = previousInput.length - suffixLength
+    nextEnd = nextInput.length - suffixLength
   }
 
-  let suffixLength = 0
-  while (
-    suffixLength < previousInput.length - prefixLength &&
-    suffixLength < nextInput.length - prefixLength &&
-    previousInput[previousInput.length - suffixLength - 1] ===
-      nextInput[nextInput.length - suffixLength - 1]
-  ) {
-    suffixLength += 1
-  }
-
-  const previousEditEnd = previousInput.length - suffixLength
-  const nextEditEnd = nextInput.length - suffixLength
-  const delta = nextEditEnd - previousEditEnd
+  const delta = nextEnd - previousEnd
 
   return mentions.flatMap((mention) => {
     const rebased =
-      mention.end <= prefixLength
+      mention.end <= previousStart
         ? mention
-        : mention.start >= previousEditEnd
+        : mention.start >= previousEnd
           ? {
               ...mention,
               start: mention.start + delta,

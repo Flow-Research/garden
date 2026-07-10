@@ -107,7 +107,7 @@ const MentionList = forwardRef<MentionListRef, MentionListProps>(
 
     useImperativeHandle(ref, () => ({
       onKeyDown: ({ event }) => {
-        if (items.length === 0) return false
+        if (event.isComposing || items.length === 0) return false
         if (event.key === 'ArrowUp') {
           moveSelection((selectedIndex + items.length - 1) % items.length)
           return true

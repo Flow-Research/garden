@@ -3,15 +3,16 @@ export type MentionLinkType = 'member' | 'agent' | 'issue' | 'all'
 /** Escapes user-controlled labels without changing their rendered text. */
 export function escapeMentionLabel(label: string): string {
   return label
-    .replaceAll('\\', '\\\\')
-    .replaceAll('[', '\\[')
-    .replaceAll(']', '\\]')
     .replace(/[\r\n]+/g, ' ')
+    .replace(
+      /[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g,
+      (character) => `\\${character}`,
+    )
 }
 
 /** Reverses Markdown escapes captured by the editor mention tokenizer. */
 export function unescapeMentionLabel(label: string): string {
-  return label.replace(/\\([\\[\]])/g, '$1')
+  return label.replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/g, '$1')
 }
 
 /** Serializes every mention surface through one safe canonical contract. */
