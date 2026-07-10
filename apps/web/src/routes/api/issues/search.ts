@@ -18,7 +18,6 @@ export const Route = createFileRoute('/api/issues/search')({
   server: {
     handlers: {
       GET: async ({ context, request }) => {
-
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
@@ -41,15 +40,33 @@ export const Route = createFileRoute('/api/issues/search')({
         if (!q) {
           return Response.json({ issues: [], total: 0 })
         }
+        const searchTerms = q.toLocaleLowerCase().split(/\s+/)
 
         const db = await appContext.db()
+        const [workspace] = await db
+          .select({ issuePrefix: schema.organization.issuePrefix })
+          .from(schema.organization)
+          .where(eq(schema.organization.id, workspaceId))
+          .limit(1)
+        const issuePrefix = workspace?.issuePrefix.toLocaleLowerCase() ?? 'iss'
         const issueWhere = and(
           eq(schema.issue.workspaceId, workspaceId),
           includeClosed ? undefined : sql`${schema.issue.status} <> 'done'`,
-          or(
-            ilike(schema.issue.title, `%${q}%`),
-            ilike(schema.issue.description, `%${q}%`),
-          ),
+          ...searchTerms.map((term) => {
+            const identifierMatch = term.match(
+              new RegExp(`^${issuePrefix}-(\\d+)$`),
+            )
+            const issueNumber = identifierMatch?.[1]
+              ? Number(identifierMatch[1])
+              : null
+            return or(
+              ilike(schema.issue.title, `%${term}%`),
+              ilike(schema.issue.description, `%${term}%`),
+              issueNumber === null
+                ? undefined
+                : eq(schema.issue.number, issueNumber),
+            )
+          }),
         )
 
         const commentMatches = await db
@@ -63,7 +80,9 @@ export const Route = createFileRoute('/api/issues/search')({
             and(
               eq(schema.issue.workspaceId, workspaceId),
               includeClosed ? undefined : sql`${schema.issue.status} <> 'done'`,
-              ilike(schema.issueComment.body, `%${q}%`),
+              ...searchTerms.map((term) =>
+                ilike(schema.issueComment.body, `%${term}%`),
+              ),
             ),
           )
 
@@ -103,10 +122,12 @@ export const Route = createFileRoute('/api/issues/search')({
           })
           .map((issue) => {
             const baseIssue = toIssue(issue)
-            const titleHit = issue.title.toLowerCase().includes(q.toLowerCase())
-            const descriptionHit = issue.description
-              ?.toLowerCase()
-              .includes(q.toLowerCase())
+            const title = issue.title.toLocaleLowerCase()
+            const description = issue.description?.toLocaleLowerCase()
+            const titleHit = searchTerms.every((term) => title.includes(term))
+            const descriptionHit = searchTerms.every((term) =>
+              description?.includes(term),
+            )
 
             return {
               ...baseIssue,
