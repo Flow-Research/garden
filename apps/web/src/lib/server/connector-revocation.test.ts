@@ -87,6 +87,39 @@ describe('revokeOAuthConnector', () => {
     )
   })
 
+  it('still revokes access when refresh-token revocation fails', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: false, error: 'invalid_auth' }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true, revoked: true }), {
+          status: 200,
+        }),
+      )
+
+    const result = await revokeOAuthConnector({
+      connectorId: 'slack',
+      accessToken: 'slack-token',
+      refreshToken: 'slack-refresh-token',
+      fetch: request,
+    })
+
+    expect(result.isErr()).toBe(true)
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(request).toHaveBeenLastCalledWith(
+      'https://slack.com/api/auth.revoke',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: 'Bearer slack-token',
+        }),
+      }),
+    )
+  })
+
   it('treats already-revoked provider tokens as disconnected', async () => {
     const request = vi.fn(
       async () =>

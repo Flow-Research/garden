@@ -107,6 +107,7 @@ export async function revokeOAuthConnector(args: {
     )
     if (tokens.length === 0) return Result.ok(undefined)
 
+    const failures: ConnectorRevocationError[] = []
     for (const token of tokens) {
       const result = await Result.tryPromise({
         try: async () => {
@@ -148,10 +149,10 @@ export async function revokeOAuthConnector(args: {
                     : 'Slack token revocation failed',
               }),
       })
-      if (result.isErr()) return result
+      if (result.isErr()) failures.push(result.error)
     }
 
-    return Result.ok(undefined)
+    return failures[0] ? Result.err(failures[0]) : Result.ok(undefined)
   }
 
   return Result.err(
