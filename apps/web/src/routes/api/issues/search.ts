@@ -48,7 +48,7 @@ export const Route = createFileRoute('/api/issues/search')({
           .from(schema.organization)
           .where(eq(schema.organization.id, workspaceId))
           .limit(1)
-        const issuePrefix = workspace?.issuePrefix.toLocaleLowerCase() ?? 'iss'
+        const issuePrefix = workspace?.issuePrefix ?? 'ISS'
         const issueWhere = and(
           eq(schema.issue.workspaceId, workspaceId),
           includeClosed ? undefined : sql`${schema.issue.status} <> 'done'`,
@@ -113,7 +113,7 @@ export const Route = createFileRoute('/api/issues/search')({
             return true
           })
           .map((issue) => {
-            const baseIssue = toIssue(issue)
+            const baseIssue = toIssue(issue, { issuePrefix })
             const title = issue.title.toLocaleLowerCase()
             const description = issue.description?.toLocaleLowerCase()
             const titleHit = searchTerms.every((term) => title.includes(term))
