@@ -52,21 +52,13 @@ export const Route = createFileRoute('/api/issues/search')({
         const issueWhere = and(
           eq(schema.issue.workspaceId, workspaceId),
           includeClosed ? undefined : sql`${schema.issue.status} <> 'done'`,
-          ...searchTerms.map((term) => {
-            const identifierMatch = term.match(
-              new RegExp(`^${issuePrefix}-(\\d+)$`),
-            )
-            const issueNumber = identifierMatch?.[1]
-              ? Number(identifierMatch[1])
-              : null
-            return or(
+          ...searchTerms.map((term) =>
+            or(
               ilike(schema.issue.title, `%${term}%`),
               ilike(schema.issue.description, `%${term}%`),
-              issueNumber === null
-                ? undefined
-                : eq(schema.issue.number, issueNumber),
-            )
-          }),
+              sql`concat(${issuePrefix}, '-', ${schema.issue.number}::text) ilike ${`%${term}%`}`,
+            ),
+          ),
         )
 
         const commentMatches = await db
