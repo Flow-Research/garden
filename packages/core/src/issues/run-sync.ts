@@ -33,16 +33,13 @@ export type IssueRunStartTrigger = {
   correlationId?: string
 }
 
-export type SkipIssueRunStartReason = 'terminal_issue' | 'backlog_assignment'
+export type SkipIssueRunStartReason = 'terminal_issue' | 'todo_assignment'
 
 export function nextIssueStatusForRunStatus(
   runStatus: IssueRunStatus,
   currentIssueStatus: IssueStatus,
 ): IssueStatus | null {
-  if (
-    runStatus === 'running' &&
-    (currentIssueStatus === 'todo' || currentIssueStatus === 'backlog')
-  ) {
+  if (runStatus === 'running' && currentIssueStatus === 'todo') {
     return 'in_progress'
   }
 
@@ -68,10 +65,9 @@ export function shouldSkipIssueRunStart(input: {
   source: IssueRunTriggerSource
 }): SkipIssueRunStartReason | null {
   if (isTerminalIssueStatus(input.issueStatus)) return 'terminal_issue'
-  if (input.source === 'assignment' && input.issueStatus === 'backlog') {
-    return 'backlog_assignment'
+  if (input.source === 'assignment' && input.issueStatus === 'todo') {
+    return 'todo_assignment'
   }
-
   return null
 }
 
@@ -113,7 +109,7 @@ export function cancelLiveRunsOnIssueChange(input: {
     cancelAgentId: assigneeChanged ? input.currentAssigneeId : null,
     shouldWakeAgent:
       input.nextAssigneeType === 'agent' &&
-      input.nextStatus !== 'backlog' &&
+      input.nextStatus !== 'todo' &&
       input.nextStatus !== 'done' &&
       input.nextStatus !== 'cancelled',
   }

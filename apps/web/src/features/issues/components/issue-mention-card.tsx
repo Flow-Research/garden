@@ -20,7 +20,6 @@ interface IssueMentionCardProps {
 
 function normalizeIssueStatus(status: string): IssueStatus {
   if (
-    status === 'backlog' ||
     status === 'todo' ||
     status === 'in_progress' ||
     status === 'in_review' ||
@@ -30,7 +29,7 @@ function normalizeIssueStatus(status: string): IssueStatus {
   ) {
     return status
   }
-  return 'backlog'
+  return 'todo'
 }
 
 export function IssueMentionCard({

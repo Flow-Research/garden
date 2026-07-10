@@ -133,7 +133,7 @@ const TEMPLATES: AutomationTemplate[] = [
   {
     title: 'Bug triage',
     summary: 'Assess and prioritize new bug reports',
-    prompt: `1. List all issues with status "triage" or "backlog" that have not been prioritized
+    prompt: `1. List all issues with status "todo" that have not been prioritized
 2. For each issue, read the description and any attached logs or screenshots
 3. Assess severity (critical / high / medium / low) based on user impact and scope
 4. Set the priority field on the issue accordingly

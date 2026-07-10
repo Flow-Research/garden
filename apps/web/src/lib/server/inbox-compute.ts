@@ -123,7 +123,7 @@ function buildAssignedSource(
     details: {
       issue_number: String(issue.number),
       priority: issue.priority ?? "medium",
-      status: issue.status ?? "backlog",
+      status: issue.status ?? "todo",
     },
   };
 }

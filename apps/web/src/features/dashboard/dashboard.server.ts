@@ -77,7 +77,6 @@ export type DashboardResourcesSnapshot = {
 }
 
 const statusColors: Record<string, string> = {
-  backlog: '#9ca3af',
   todo: '#60a5fa',
   in_progress: '#14b8a6',
   in_review: '#f59e0b',
@@ -94,7 +93,6 @@ const priorityColors: Record<string, string> = {
 }
 
 const issueStatuses = new Set<IssueStatus>([
-  'backlog',
   'todo',
   'in_progress',
   'in_review',
@@ -116,7 +114,7 @@ function toIssueStatus(value: string | null): IssueStatus {
     return value as IssueStatus
   }
 
-  return 'backlog'
+  return 'todo'
 }
 
 function toIssuePriority(value: string | null): IssuePriority {
@@ -261,7 +259,7 @@ export async function getDashboardDistributionSnapshot(
 
   const issueStatus = Array.from(
     issues.reduce((map, issue) => {
-      const status = issue.status ?? 'backlog'
+      const status = issue.status ?? 'todo'
       map.set(status, (map.get(status) ?? 0) + 1)
       return map
     }, new Map<string, number>()),

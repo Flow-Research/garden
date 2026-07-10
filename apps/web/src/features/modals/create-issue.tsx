@@ -40,7 +40,7 @@ import {
   AssigneePicker,
   DueDatePicker,
 } from '../issues/components'
-import { BacklogAgentHintContent } from '../issues/components/backlog-agent-hint-dialog'
+import { TodoAgentHintContent } from '../issues/components/todo-agent-hint-dialog'
 import { ProjectPicker } from '../projects/components/project-picker'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { useIssueDraftStore } from '@garden/app-state/issues/stores/draft-store'
@@ -118,7 +118,7 @@ export function CreateIssueModal({
   )
   const [autoStart, setAutoStart] = useState(true)
   const [isExpanded, setIsExpanded] = useState(false)
-  const [backlogHintIssueId, setBacklogHintIssueId] = useState<string | null>(
+  const [todoHintIssueId, setTodoHintIssueId] = useState<string | null>(
     null,
   )
 
@@ -176,19 +176,19 @@ export function CreateIssueModal({
         project_id: projectId,
       })
       clearDraft()
-      const shouldShowBacklogHint =
-        status === 'backlog' &&
+      const shouldShowTodoHint =
+        status === 'todo' &&
         assigneeType === 'agent' &&
         assigneeId &&
-        localStorage.getItem('garden:backlog-agent-hint-dismissed') !== 'true'
+        localStorage.getItem('garden:todo-agent-hint-dismissed') !== 'true'
 
-      if (shouldShowBacklogHint) {
-        setBacklogHintIssueId(issue.id)
+      if (shouldShowTodoHint) {
+        setTodoHintIssueId(issue.id)
       } else {
         onClose()
       }
 
-      if (!shouldShowBacklogHint) {
+      if (!shouldShowTodoHint) {
         toast.custom(
           (t) => (
             <div className="bg-popover text-popover-foreground border rounded-lg shadow-lg p-4 w-[360px]">
@@ -238,7 +238,7 @@ export function CreateIssueModal({
       open
       onOpenChange={(v) => {
         if (!v) {
-          setBacklogHintIssueId(null)
+          setTodoHintIssueId(null)
           onClose()
         }
       }}
@@ -249,34 +249,34 @@ export function CreateIssueModal({
         className={cn(
           'p-0 gap-0 flex flex-col overflow-hidden',
           '!top-1/2 !left-1/2 !-translate-x-1/2',
-          backlogHintIssueId
+          todoHintIssueId
             ? '!max-w-[480px] !w-[calc(100vw-2rem)] !h-auto !-translate-y-1/2 !transition-none !duration-0'
             : '!transition-all !duration-300 !ease-out',
-          !backlogHintIssueId && isExpanded
+          !todoHintIssueId && isExpanded
             ? '!max-w-4xl !w-full !h-5/6 !-translate-y-1/2'
-            : !backlogHintIssueId
+            : !todoHintIssueId
               ? '!max-w-2xl !w-full !h-96 !-translate-y-1/2'
               : '',
         )}
       >
-        {backlogHintIssueId ? (
-          <BacklogAgentHintContent
-            onKeepInBacklog={() => {
-              setBacklogHintIssueId(null)
+        {todoHintIssueId ? (
+          <TodoAgentHintContent
+            onKeepInTodo={() => {
+              setTodoHintIssueId(null)
               onClose()
             }}
             onDismissPermanently={() => {
               localStorage.setItem(
-                'garden:backlog-agent-hint-dismissed',
+                'garden:todo-agent-hint-dismissed',
                 'true',
               )
             }}
-            onMoveToTodo={() => {
+            onMoveToInProgress={() => {
               updateIssueMutation.mutate(
-                { id: backlogHintIssueId, status: 'todo' },
+                { id: todoHintIssueId, status: 'in_progress' },
                 { onError: () => toast.error('Failed to update status') },
               )
-              setBacklogHintIssueId(null)
+              setTodoHintIssueId(null)
               onClose()
             }}
           />
@@ -426,7 +426,7 @@ export function CreateIssueModal({
               <div className="flex items-center gap-3">
                 {assigneeType === 'agent' &&
                 assigneeId &&
-                !['backlog', 'blocked', 'done', 'cancelled'].includes(
+                !['todo', 'blocked', 'done', 'cancelled'].includes(
                   status,
                 ) ? (
                   <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">

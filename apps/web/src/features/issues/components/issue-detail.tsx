@@ -114,7 +114,7 @@ import { AgentStatusEntry } from './agent-status-entry'
 import { ActiveRunPanel, LastRunSummary } from './active-run-panel'
 import { RunPlanCard, type RunPlanTodo } from './run-plan-card'
 import { WorkProductList } from './work-product-card'
-import { BacklogAgentHintDialog } from './backlog-agent-hint-dialog'
+import { TodoAgentHintDialog } from './todo-agent-hint-dialog'
 import { ReactionBar } from '@garden/ui/components/common/reaction-bar'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { CreateIssueModal } from '../../modals/create-issue'
@@ -779,7 +779,7 @@ export function IssueDetail({
   }, [isMobile])
   const [deleting, setDeleting] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [backlogHintOpen, setBacklogHintOpen] = useState(false)
+  const [todoHintOpen, setTodoHintOpen] = useState(false)
   const [propertiesOpen, setPropertiesOpen] = useState(true)
   const [detailsOpen, setDetailsOpen] = useState(true)
   const [parentIssueOpen, setParentIssueOpen] = useState(true)
@@ -861,15 +861,15 @@ export function IssueDetail({
         { id, ...updates },
         { onError: () => toast.error('Failed to update issue') },
       )
-      // Hint: assigning an agent to a backlog issue won't trigger execution
+      // Hint: assigning an agent to a todo issue won't trigger execution
       // until the issue is moved to an active status.
       if (
         updates.assignee_type === 'agent' &&
         updates.assignee_id &&
-        issue.status === 'backlog' &&
-        localStorage.getItem('garden:backlog-agent-hint-dismissed') !== 'true'
+        issue.status === 'todo' &&
+        localStorage.getItem('garden:todo-agent-hint-dismissed') !== 'true'
       ) {
-        setBacklogHintOpen(true)
+        setTodoHintOpen(true)
       }
     },
     [issue, id, updateIssueMutation],
@@ -1452,21 +1452,21 @@ export function IssueDetail({
               </AlertDialogContent>
             </AlertDialog>
 
-            <BacklogAgentHintDialog
-              open={backlogHintOpen}
-              onOpenChange={setBacklogHintOpen}
+            <TodoAgentHintDialog
+              open={todoHintOpen}
+              onOpenChange={setTodoHintOpen}
               onDismissPermanently={() => {
                 localStorage.setItem(
-                  'garden:backlog-agent-hint-dismissed',
+                  'garden:todo-agent-hint-dismissed',
                   'true',
                 )
               }}
-              onMoveToTodo={() => {
+              onMoveToInProgress={() => {
                 updateIssueMutation.mutate(
-                  { id, status: 'todo' },
+                  { id, status: 'in_progress' },
                   { onError: () => toast.error('Failed to update status') },
                 )
-                setBacklogHintOpen(false)
+                setTodoHintOpen(false)
               }}
             />
 

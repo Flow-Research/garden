@@ -1486,7 +1486,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       identifier: issueIdentifier(input.issue.number),
       title: input.issue.title,
       description: input.issue.description ?? '',
-      status: input.issue.status ?? 'backlog',
+      status: input.issue.status ?? 'todo',
       priority: input.issue.priority ?? 'medium',
       assignee:
         input.issue.assigneeType === 'agent'
@@ -1543,7 +1543,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       id: child.id,
       identifier: issueIdentifier(child.number),
       title: child.title,
-      status: child.status ?? 'backlog',
+      status: child.status ?? 'todo',
       assignee_type: child.assigneeType,
       assignee_id: child.assigneeId,
     }))
@@ -1674,7 +1674,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
               status:
                 nextIssueStatusForRunStatus(
                   'running',
-                  (loaded.issue.status ?? 'backlog') as IssueStatus,
+                  (loaded.issue.status ?? 'todo') as IssueStatus,
                 ) ?? loaded.issue.status,
               updatedAt: now,
             })

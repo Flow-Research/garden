@@ -381,7 +381,7 @@ export function toChatThread(
           id: primaryIssue.id,
           identifier: formatIssueIdentifier('ISS', primaryIssue.number),
           title: primaryIssue.title,
-          status: primaryIssue.status ?? 'backlog',
+          status: primaryIssue.status ?? 'todo',
         }
       : null,
     lastMessage: record.lastMessage,

@@ -1,5 +1,4 @@
 export const issueStatusValues = [
-  'backlog',
   'todo',
   'in_progress',
   'in_review',

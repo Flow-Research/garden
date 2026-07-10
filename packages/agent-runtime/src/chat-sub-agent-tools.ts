@@ -935,7 +935,7 @@ async function createIssueFromChat(
     workspaceId: identity.workspaceId,
     title: input.title,
     description: input.description ?? null,
-    status: input.assignee_agent_id ? "todo" : "backlog",
+    status: "todo",
     priority: "medium",
     createdBy: identity.ownerUserId,
     assigneeType: input.assignee_agent_id ? "agent" : null,
@@ -968,17 +968,6 @@ async function createIssueFromChat(
   });
   if (linkResult.isErr()) return issueToolErr(linkResult.error);
 
-  if (input.assignee_agent_id) {
-    const startResult = await startIssueRun(context.issueRunEnv, {
-      workspaceId: identity.workspaceId,
-      issueId: issue.id,
-      agentId: input.assignee_agent_id,
-      source: "manual",
-      actor: { type: "agent", id: identity.agentId },
-    });
-    if (startResult.isErr()) return issueToolErr(startResult.error.message);
-  }
-
   return Result.ok({
     issue_id: issue.id,
     identifier: issue.identifier,
@@ -987,9 +976,9 @@ async function createIssueFromChat(
 
 /**
  * Assigns an existing issue to either an agent or a human workspace member.
- * Agent assignment keeps the existing start/wake behavior. Human assignment
- * stores the canonical user id, joins/notifies the assignee, and cancels the
- * prior active agent run so work does not continue under stale ownership.
+ * Agent assignment starts active work but leaves todo issues queued. Human
+ * assignment stores the canonical user id, joins/notifies the assignee, and
+ * cancels the prior active agent run so work does not continue under stale ownership.
  */
 async function assignIssueFromChat(
   context: ChatIssueToolContext,
@@ -1007,7 +996,7 @@ async function assignIssueFromChat(
   });
   if (issueResult.isErr()) return issueToolErr(issueResult.error);
   const issue = issueResult.value;
-  const currentStatus = issue.status ?? "backlog";
+  const currentStatus = issue.status ?? "todo";
   if (currentStatus === "done" || currentStatus === "cancelled") {
     return issueToolErr(`assign_issue: cannot assign a ${currentStatus} issue.`);
   }
@@ -1167,7 +1156,7 @@ async function assignIssueFromChat(
         .set({
           assigneeType: "agent",
           assigneeId: assigneeAgentId,
-          status: currentStatus === "backlog" ? "todo" : currentStatus,
+          status: currentStatus,
           updatedAt: new Date(),
         })
         .where(
@@ -1185,7 +1174,7 @@ async function assignIssueFromChat(
     workspaceId: identity.workspaceId,
     issueId: issue.id,
     agentId: assigneeAgentId,
-    source: "manual",
+    source: "assignment",
     actor: { type: "agent", id: identity.agentId },
   });
   if (startResult.isErr()) return issueToolErr(startResult.error.message);
@@ -1228,7 +1217,7 @@ async function updateIssueStatusFromChat(
   });
   if (issueResult.isErr()) return issueToolErr(issueResult.error);
   const issue = issueResult.value;
-  const previousStatus = issue.status ?? "backlog";
+  const previousStatus = issue.status ?? "todo";
   const nextStatus = input.status;
   const shouldCancelRuns = isTerminalIssueStatus(nextStatus);
 
@@ -1273,6 +1262,22 @@ async function updateIssueStatusFromChat(
     catch: errorMessage,
   });
   if (updateResult.isErr()) return issueToolErr(updateResult.error);
+
+  if (
+    previousStatus === "todo" &&
+    nextStatus === "in_progress" &&
+    issue.assigneeType === "agent" &&
+    issue.assigneeId
+  ) {
+    const startResult = await startIssueRun(context.issueRunEnv, {
+      workspaceId: identity.workspaceId,
+      issueId: issue.id,
+      agentId: issue.assigneeId,
+      source: "manual",
+      actor: { type: "agent", id: identity.agentId },
+    });
+    if (startResult.isErr()) return issueToolErr(startResult.error.message);
+  }
 
   const cancelledRuns: string[] = [];
   if (shouldCancelRuns && liveRunsResult.value.length > 0) {

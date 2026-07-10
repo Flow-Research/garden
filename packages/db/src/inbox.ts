@@ -168,7 +168,7 @@ async function loadIssue(
 function issueDetails(issue: typeof schema.issue.$inferSelect) {
   return {
     issue_number: String(issue.number),
-    status: issue.status ?? 'backlog',
+    status: issue.status ?? 'todo',
   }
 }
 

@@ -220,7 +220,6 @@ vi.mock('@/lib/api', () => ({
 // Mock issue config
 vi.mock('@garden/core/issues/config', () => ({
   ALL_STATUSES: [
-    'backlog',
     'todo',
     'in_progress',
     'in_review',
@@ -228,16 +227,8 @@ vi.mock('@garden/core/issues/config', () => ({
     'blocked',
     'cancelled',
   ],
-  BOARD_STATUSES: [
-    'backlog',
-    'todo',
-    'in_progress',
-    'in_review',
-    'done',
-    'blocked',
-  ],
+  BOARD_STATUSES: ['todo', 'in_progress', 'in_review', 'done', 'blocked'],
   STATUS_ORDER: [
-    'backlog',
     'todo',
     'in_progress',
     'in_review',
@@ -246,11 +237,6 @@ vi.mock('@garden/core/issues/config', () => ({
     'cancelled',
   ],
   STATUS_CONFIG: {
-    backlog: {
-      label: 'Backlog',
-      iconColor: 'text-muted-foreground',
-      hoverBg: 'hover:bg-accent',
-    },
     todo: {
       label: 'Todo',
       iconColor: 'text-muted-foreground',

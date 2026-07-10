@@ -13,7 +13,7 @@ function issueRecord(
     number: 42,
     title: 'Test issue',
     description: null,
-    status: 'backlog',
+    status: 'todo',
     priority: 'medium',
     assigneeType: null,
     assigneeId: null,

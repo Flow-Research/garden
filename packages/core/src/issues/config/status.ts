@@ -1,7 +1,6 @@
 import type { IssueStatus } from '../../types'
 
 export const STATUS_ORDER: IssueStatus[] = [
-  'backlog',
   'todo',
   'in_progress',
   'in_review',
@@ -11,7 +10,6 @@ export const STATUS_ORDER: IssueStatus[] = [
 ]
 
 export const ALL_STATUSES: IssueStatus[] = [
-  'backlog',
   'todo',
   'in_progress',
   'in_review',
@@ -22,7 +20,6 @@ export const ALL_STATUSES: IssueStatus[] = [
 
 /** Statuses shown as board columns (excludes cancelled). */
 export const BOARD_STATUSES: IssueStatus[] = [
-  'backlog',
   'todo',
   'in_progress',
   'in_review',
@@ -42,15 +39,6 @@ export const STATUS_CONFIG: Record<
     columnBg: string
   }
 > = {
-  backlog: {
-    label: 'Backlog',
-    iconColor: 'text-muted-foreground',
-    hoverBg: 'hover:bg-accent',
-    dividerColor: 'bg-muted-foreground/40',
-    badgeBg: 'bg-muted',
-    badgeText: 'text-muted-foreground',
-    columnBg: 'bg-muted/40',
-  },
   todo: {
     label: 'Todo',
     iconColor: 'text-muted-foreground',

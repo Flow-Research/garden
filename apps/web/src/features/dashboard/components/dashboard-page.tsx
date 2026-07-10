@@ -414,7 +414,7 @@ function DashboardPageFixture() {
             <DistributionBars
               emptyLabel="No status data"
               entries={[
-                { name: 'backlog', value: 7, color: '#64748b' },
+                { name: 'todo', value: 7, color: '#3b82f6' },
                 { name: 'in progress', value: 5, color: '#0ea5e9' },
                 { name: 'done', value: 6, color: '#22c55e' },
               ]}

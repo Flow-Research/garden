@@ -111,7 +111,7 @@ export function createUpdateIssueStatusTool(context: IssueRunToolContext) {
             .where(eq(schema.issue.id, run.issueId))
 
           return Result.ok({
-            previousStatus: (issue.status ?? 'backlog') as IssueStatus,
+            previousStatus: (issue.status ?? 'todo') as IssueStatus,
           })
         },
         catch: (cause) => dbError('update issue status', cause),

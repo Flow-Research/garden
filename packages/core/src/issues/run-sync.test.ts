@@ -17,7 +17,6 @@ describe('nextIssueStatusForRunStatus', () => {
   }> = [
     { runStatus: 'queued', issueStatus: 'todo', expected: null },
     { runStatus: 'running', issueStatus: 'todo', expected: 'in_progress' },
-    { runStatus: 'running', issueStatus: 'backlog', expected: 'in_progress' },
     { runStatus: 'waiting_for_input', issueStatus: 'todo', expected: null },
     {
       runStatus: 'waiting_for_approval',
@@ -44,7 +43,6 @@ describe('canAgentSelfManageIssueStatus', () => {
     ['in_review', true],
     ['done', true],
     ['blocked', true],
-    ['backlog', false],
     ['cancelled', false],
   ] as const)('returns %s for %s', (status, expected) => {
     expect(canAgentSelfManageIssueStatus(status)).toBe(expected)
@@ -61,13 +59,13 @@ describe('shouldSkipIssueRunStart', () => {
     ).toBe('terminal_issue')
   })
 
-  it('skips assignment wakeups for backlog issues', () => {
+  it('does not start an agent merely because a todo issue was assigned', () => {
     expect(
       shouldSkipIssueRunStart({
-        issueStatus: 'backlog',
+        issueStatus: 'todo',
         source: 'assignment',
       }),
-    ).toBe('backlog_assignment')
+    ).toBe('todo_assignment')
   })
 })
 
@@ -109,7 +107,7 @@ describe('cancelLiveRunsOnIssueChange', () => {
     ).toBe(true)
   })
 
-  it('cancels old assignee runs and wakes the new agent when reassigned', () => {
+  it('cancels old assignee runs without waking the new agent while still todo', () => {
     expect(
       cancelLiveRunsOnIssueChange({
         currentStatus: 'todo',
@@ -122,15 +120,15 @@ describe('cancelLiveRunsOnIssueChange', () => {
     ).toEqual({
       cancelLiveRuns: true,
       cancelAgentId: 'agent-1',
-      shouldWakeAgent: true,
+      shouldWakeAgent: false,
     })
   })
 
-  it('wakes an assigned agent when moving out of backlog', () => {
+  it('wakes the assigned agent when work moves into progress', () => {
     expect(
       cancelLiveRunsOnIssueChange({
-        currentStatus: 'backlog',
-        nextStatus: 'todo',
+        currentStatus: 'todo',
+        nextStatus: 'in_progress',
         currentAssigneeType: 'agent',
         currentAssigneeId: 'agent-1',
         nextAssigneeType: 'agent',

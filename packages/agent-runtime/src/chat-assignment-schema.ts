@@ -17,7 +17,9 @@ export const assignIssueInputSchema = z.union([
       assignee_agent_id: z
         .string()
         .uuid()
-        .describe('Active workspace agent id to assign and start.'),
+        .describe(
+          'Active workspace agent id to assign. Todo remains queued until moved to In Progress.',
+        ),
     })
     .strict(),
   z

@@ -110,7 +110,7 @@ export const Route = createFileRoute('/api/issues')({
           title: body.title,
           description:
             typeof body.description === 'string' ? body.description : null,
-          status: body.status ?? 'backlog',
+          status: body.status ?? 'todo',
           priority: body.priority ?? 'medium',
           createdBy: session.user.id,
           assigneeType:
@@ -131,7 +131,7 @@ export const Route = createFileRoute('/api/issues')({
           body.auto_start !== false &&
           issue.assignee_type === 'agent' &&
           issue.assignee_id &&
-          issue.status !== 'backlog' &&
+          issue.status !== 'todo' &&
           issue.status !== 'blocked' &&
           issue.status !== 'done' &&
           issue.status !== 'cancelled'
@@ -160,7 +160,7 @@ export const Route = createFileRoute('/api/issues')({
               body.auto_start !== false &&
               issue.assignee_type === 'agent' &&
               issue.assignee_id &&
-              issue.status !== 'backlog' &&
+              issue.status !== 'todo' &&
               issue.status !== 'blocked' &&
               issue.status !== 'done' &&
               issue.status !== 'cancelled'

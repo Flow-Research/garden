@@ -324,7 +324,7 @@ const CHAT_TOOLS: Array<{ name: string; description: string; schema: z.ZodTypeAn
     schema: z
       .object({
         issue_id_or_identifier: z.string().min(1),
-        status: z.enum(['backlog', 'todo', 'in_progress', 'in_review', 'done', 'cancelled', 'blocked']),
+        status: z.enum(['todo', 'in_progress', 'in_review', 'done', 'cancelled', 'blocked']),
       })
       .strict(),
   },
@@ -336,7 +336,7 @@ const CHAT_TOOLS: Array<{ name: string; description: string; schema: z.ZodTypeAn
       .object({
         assignee_agent_id: z.string().uuid().optional(),
         status: z
-          .enum(['backlog', 'todo', 'in_progress', 'in_review', 'done', 'cancelled', 'blocked'])
+          .enum(['todo', 'in_progress', 'in_review', 'done', 'cancelled', 'blocked'])
           .optional(),
         mine: z.boolean().optional(),
         limit: z.number().int().positive().max(100).optional(),

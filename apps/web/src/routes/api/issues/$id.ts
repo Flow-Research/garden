@@ -231,8 +231,8 @@ export const Route = createFileRoute('/api/issues/$id')({
           })
         }
         const syncDecision = cancelLiveRunsOnIssueChange({
-          currentStatus: (existingIssue.status ?? 'backlog') as IssueStatus,
-          nextStatus: (issue.status ?? 'backlog') as IssueStatus,
+          currentStatus: (existingIssue.status ?? 'todo') as IssueStatus,
+          nextStatus: (issue.status ?? 'todo') as IssueStatus,
           currentAssigneeType: existingIssue.assigneeType as
             | 'user'
             | 'member'

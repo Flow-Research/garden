@@ -221,7 +221,7 @@ export function toIssue(
     identifier: formatIssueIdentifier(options.issuePrefix, record.number),
     title: record.title,
     description: record.description ?? null,
-    status: (record.status ?? 'backlog') as IssueStatus,
+    status: (record.status ?? 'todo') as IssueStatus,
     priority: record.priority as Issue['priority'],
     assignee_type: (record.assigneeType === 'user'
       ? 'member'
@@ -689,7 +689,7 @@ async function toIssueSummary(
     issue_id: issue.id,
     identifier: formatIssueIdentifier(options.issuePrefix, issue.number),
     title: issue.title,
-    status: (issue.status ?? 'backlog') as IssueStatus,
+    status: (issue.status ?? 'todo') as IssueStatus,
     assignee,
     active_run: activeRun,
     last_event: lastEvent,
@@ -727,7 +727,7 @@ export async function createIssue(
             number: nextNumber,
             title: parsed.data.title,
             description: parsed.data.description ?? null,
-            status: parsed.data.status ?? 'backlog',
+            status: parsed.data.status ?? 'todo',
             priority: parsed.data.priority ?? 'medium',
             createdBy: parsed.data.createdBy,
             assigneeType: parsed.data.assigneeType ?? null,
@@ -1132,7 +1132,7 @@ export async function wakeAgentsForIssueComment(
       const decisions = decideWakeups({
         issue: {
           id: issue.id,
-          status: (issue.status ?? 'backlog') as IssueStatus,
+          status: (issue.status ?? 'todo') as IssueStatus,
           assigneeType:
             issue.assigneeType === 'agent'
               ? 'agent'
