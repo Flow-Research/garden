@@ -63,6 +63,7 @@ import {
   resolveWorkspaceMember,
   type WorkspaceMemberCandidate,
 } from "./chat-member-resolution";
+import { assignIssueInputSchema } from "./chat-assignment-schema";
 
 type ChatSubAgentToolsInput = {
   ctx: DurableObjectState;
@@ -159,38 +160,6 @@ const readIssueInputSchema = z
   })
   .strict();
 
-const assignIssueInputSchema = z
-  .object({
-    issue_id_or_identifier: z
-      .string()
-      .min(1)
-      .describe("Issue identifier like ISS-43, or an issue UUID."),
-    assignee_agent_id: z
-      .string()
-      .uuid()
-      .optional()
-      .describe("Active workspace agent id to assign and start."),
-    assignee_member: z
-      .string()
-      .trim()
-      .min(1)
-      .optional()
-      .describe(
-        "Workspace member name, email, user id, or membership id. Human assignments do not start an agent run.",
-      ),
-  })
-  .strict()
-  .refine(
-    (input) =>
-      Number(Boolean(input.assignee_agent_id)) +
-        Number(Boolean(input.assignee_member)) ===
-      1,
-    {
-      message:
-        "Provide exactly one of assignee_agent_id or assignee_member.",
-    },
-  );
-
 const updateIssueStatusInputSchema = z
   .object({
     issue_id_or_identifier: z
@@ -283,6 +252,10 @@ type AssignIssueToolResult = {
     | { type: "agent"; id: string }
     | { type: "member"; id: string; name: string; email: string };
   assignee_agent_id?: string;
+  notifications?: {
+    subscriber: "ok" | "failed" | "not_needed";
+    inbox: "ok" | "failed" | "not_needed";
+  };
   run:
     | { kind: "started"; run_id: string }
     | { kind: "resumed"; run_id: string }
@@ -640,6 +613,8 @@ async function resolveChatIssue(args: {
       id: string;
       status: string | null;
       activeRunId: string | null;
+      assigneeType: string | null;
+      assigneeId: string | null;
     },
     string
   >
@@ -660,7 +635,13 @@ async function resolveChatIssue(args: {
   }
 
   const result = await Result.tryPromise<
-    { id: string; status: string | null; activeRunId: string | null } | null,
+    {
+      id: string;
+      status: string | null;
+      activeRunId: string | null;
+      assigneeType: string | null;
+      assigneeId: string | null;
+    } | null,
     string
   >({
     try: async () => {
@@ -669,6 +650,8 @@ async function resolveChatIssue(args: {
           id: schema.issue.id,
           status: schema.issue.status,
           activeRunId: schema.issue.activeRunId,
+          assigneeType: schema.issue.assigneeType,
+          assigneeId: schema.issue.assigneeId,
         })
         .from(schema.issue)
         .where(
@@ -1029,7 +1012,7 @@ async function assignIssueFromChat(
     return issueToolErr(`assign_issue: cannot assign a ${currentStatus} issue.`);
   }
 
-  if (input.assignee_member) {
+  if ("assignee_member" in input) {
     const membersResult = await loadWorkspaceMemberCandidates({
       db,
       workspaceId: identity.workspaceId,
@@ -1044,26 +1027,6 @@ async function assignIssueFromChat(
     }
     const member = memberResult.value;
 
-    const updateResult = await Result.tryPromise<void, string>({
-      try: async () => {
-        await db
-          .update(schema.issue)
-          .set({
-            assigneeType: "user",
-            assigneeId: member.userId,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(schema.issue.id, issue.id),
-              eq(schema.issue.workspaceId, identity.workspaceId),
-            ),
-          );
-      },
-      catch: errorMessage,
-    });
-    if (updateResult.isErr()) return issueToolErr(updateResult.error);
-
     if (issue.activeRunId) {
       const cancelResult = await cancelIssueRunService(context.issueRunEnv, {
         workspaceId: identity.workspaceId,
@@ -1072,43 +1035,84 @@ async function assignIssueFromChat(
         reason: "issue_reassigned_to_member",
       });
       if (cancelResult.isErr()) {
-        console.error("assign_issue_cancel_previous_run_failed", {
-          issueId: issue.id,
-          runId: issue.activeRunId,
-          error: cancelResult.error.message,
-        });
+        return issueToolErr(
+          `assign_issue: failed to stop the active agent run: ${cancelResult.error.message}`,
+        );
       }
     }
 
-    const notificationResult = await Result.tryPromise<void, string>({
-      try: async () => {
-        await addIssueSubscribers(db, {
-          workspaceId: identity.workspaceId,
-          issueId: issue.id,
-          entries: [
-            {
-              userType: "member",
-              userId: member.userId,
-              reason: "assignee",
-            },
-          ],
-        });
-        await upsertIssueAssignmentInbox({
-          db,
-          workspaceId: identity.workspaceId,
-          issueId: issue.id,
-          actorType: "agent",
-          actorId: identity.agentId,
-        });
-      },
-      catch: errorMessage,
-    });
-    if (notificationResult.isErr()) {
-      console.error("assign_issue_member_notification_failed", {
-        issueId: issue.id,
-        memberId: member.userId,
-        error: notificationResult.error,
+    const assignmentChanged =
+      issue.assigneeType !== "user" || issue.assigneeId !== member.userId;
+    if (assignmentChanged) {
+      const updateResult = await Result.tryPromise<void, string>({
+        try: async () => {
+          await db
+            .update(schema.issue)
+            .set({
+              assigneeType: "user",
+              assigneeId: member.userId,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(schema.issue.id, issue.id),
+                eq(schema.issue.workspaceId, identity.workspaceId),
+              ),
+            );
+        },
+        catch: errorMessage,
       });
+      if (updateResult.isErr()) return issueToolErr(updateResult.error);
+    }
+
+    let subscriberStatus: "ok" | "failed" | "not_needed" = "not_needed";
+    let inboxStatus: "ok" | "failed" | "not_needed" = "not_needed";
+    if (assignmentChanged) {
+      const subscriberResult = await Result.tryPromise<void, string>({
+        try: async () => {
+          await addIssueSubscribers(db, {
+            workspaceId: identity.workspaceId,
+            issueId: issue.id,
+            entries: [
+              {
+                userType: "member",
+                userId: member.userId,
+                reason: "assignee",
+              },
+            ],
+          });
+        },
+        catch: errorMessage,
+      });
+      subscriberStatus = subscriberResult.isErr() ? "failed" : "ok";
+      if (subscriberResult.isErr()) {
+        console.error("assign_issue_member_subscriber_failed", {
+          issueId: issue.id,
+          memberId: member.userId,
+          error: subscriberResult.error,
+        });
+      }
+
+      const inboxResult = await Result.tryPromise<void, string>({
+        try: async () => {
+          await upsertIssueAssignmentInbox({
+            db,
+            workspaceId: identity.workspaceId,
+            issueId: issue.id,
+            actorType: "agent",
+            actorId: identity.agentId,
+          });
+        },
+        catch: errorMessage,
+      });
+      inboxStatus = inboxResult.isErr() ? "failed" : "ok";
+      if (inboxResult.isErr()) {
+        console.error("assign_issue_member_inbox_failed", {
+          issueId: issue.id,
+          memberId: member.userId,
+          error: inboxResult.error,
+        });
+      }
     }
 
     const summaryResult = await readIssueService({
@@ -1127,11 +1131,21 @@ async function assignIssueFromChat(
         name: member.name,
         email: member.email,
       },
-      run: { kind: "skipped", reason: "Assigned to a human workspace member." },
+      notifications: {
+        subscriber: subscriberStatus,
+        inbox: inboxStatus,
+      },
+      run: {
+        kind: "skipped",
+        reason: assignmentChanged
+          ? "Assigned to a human workspace member."
+          : "Issue was already assigned to this workspace member.",
+      },
     });
   }
 
-  const assigneeAgentId = input.assignee_agent_id;
+  const assigneeAgentId =
+    "assignee_agent_id" in input ? input.assignee_agent_id : null;
   if (!assigneeAgentId) {
     return issueToolErr(
       "assign_issue: provide assignee_agent_id or assignee_member.",
