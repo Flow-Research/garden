@@ -79,17 +79,23 @@ function groupItems(items: MentionItem[]): MentionGroup[] {
 
 const MentionList = forwardRef<MentionListRef, MentionListProps>(
   function MentionList({ items, command }, ref) {
-    const [requestedIndex, setRequestedIndex] = useState(0)
+    const [selectedKey, setSelectedKey] = useState<string | null>(null)
     const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
-    const selectedIndex =
-      items.length > 0 ? Math.min(requestedIndex, items.length - 1) : 0
+    const requestedIndex = selectedKey
+      ? items.findIndex((item) => `${item.type}:${item.id}` === selectedKey)
+      : -1
+    const selectedIndex = requestedIndex >= 0 ? requestedIndex : 0
 
-    const moveSelection = useCallback((nextIndex: number) => {
-      setRequestedIndex(nextIndex)
-      requestAnimationFrame(() => {
-        itemRefs.current[nextIndex]?.scrollIntoView({ block: 'nearest' })
-      })
-    }, [])
+    const moveSelection = useCallback(
+      (nextIndex: number) => {
+        const item = items[nextIndex]
+        setSelectedKey(item ? `${item.type}:${item.id}` : null)
+        requestAnimationFrame(() => {
+          itemRefs.current[nextIndex]?.scrollIntoView({ block: 'nearest' })
+        })
+      },
+      [items],
+    )
 
     const selectItem = useCallback(
       (index: number) => {

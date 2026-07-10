@@ -1,9 +1,11 @@
-export {
-  Markdown,
-  type MarkdownProps,
-  type RenderMode,
-} from './Markdown'
+export { Markdown, type MarkdownProps, type RenderMode } from './Markdown'
 export { CodeBlock, InlineCode, type CodeBlockProps } from './CodeBlock'
 export { preprocessLinks, detectLinks, hasLinks } from './linkify'
-export { preprocessMentionShortcodes } from './mentions'
+export {
+  escapeMentionLabel,
+  preprocessMentionShortcodes,
+  serializeMentionMarkdown,
+  unescapeMentionLabel,
+  type MentionLinkType,
+} from './mentions'
 export { preprocessFileCards, isCdnUrl, isFileCardUrl } from './file-cards'
