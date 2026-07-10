@@ -6,8 +6,9 @@ import { api } from '@/lib/api'
 export const issueKeys = {
   all: (wsId: string) => ['issues', wsId] as const,
   list: (wsId: string) => [...issueKeys.all(wsId), 'list'] as const,
+  searches: (wsId: string) => [...issueKeys.all(wsId), 'search'] as const,
   search: (wsId: string, query: string) =>
-    [...issueKeys.all(wsId), 'search', query] as const,
+    [...issueKeys.searches(wsId), query] as const,
   allDone: (wsId: string) => [...issueKeys.all(wsId), 'all-done'] as const,
   detail: (wsId: string, id: string) =>
     [...issueKeys.all(wsId), 'detail', id] as const,

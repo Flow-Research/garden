@@ -194,10 +194,11 @@ function IssuesPageContent() {
 
   const completeIssues = useMemo(() => {
     if (!needsAllDoneIssues || !allDoneIssues) return allIssues
-    return [
-      ...allIssues.filter((issue) => issue.status !== 'done'),
-      ...allDoneIssues,
-    ]
+    const issuesById = new Map(
+      allDoneIssues.map((issue) => [issue.id, issue] as const),
+    )
+    for (const issue of allIssues) issuesById.set(issue.id, issue)
+    return [...issuesById.values()]
   }, [allIssues, allDoneIssues, needsAllDoneIssues])
 
   // Scope pre-filter: narrow by assignee type.

@@ -1,5 +1,9 @@
 import { useState, useCallback } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  useMutation,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query'
 import { Result } from 'better-result'
 import { api } from '@/lib/api'
 import { issueKeys, CLOSED_PAGE_SIZE } from './queries'
@@ -15,6 +19,44 @@ import type {
   IssueSubscriber,
   Reaction,
 } from '@garden/core/types'
+
+/** Keeps auxiliary filtered collections coherent with a confirmed issue write. */
+export function syncFilteredIssueCaches(
+  qc: QueryClient,
+  wsId: string,
+  updatedIssue: Issue,
+) {
+  qc.setQueryData<Issue[]>(issueKeys.allDone(wsId), (old) => {
+    if (!old) return old
+    const withoutIssue = old.filter((issue) => issue.id !== updatedIssue.id)
+    return updatedIssue.status === 'done'
+      ? [...withoutIssue, updatedIssue]
+      : withoutIssue
+  })
+  qc.setQueriesData<Issue[]>({ queryKey: issueKeys.searches(wsId) }, (old) =>
+    old?.map((issue) => (issue.id === updatedIssue.id ? updatedIssue : issue)),
+  )
+}
+
+/** Removes deleted issues from every currently materialized filtered cache. */
+export function removeFromFilteredIssueCaches(
+  qc: QueryClient,
+  wsId: string,
+  deletedIds: ReadonlySet<string>,
+) {
+  qc.setQueryData<Issue[]>(issueKeys.allDone(wsId), (old) =>
+    old?.filter((issue) => !deletedIds.has(issue.id)),
+  )
+  qc.setQueriesData<Issue[]>({ queryKey: issueKeys.searches(wsId) }, (old) =>
+    old?.filter((issue) => !deletedIds.has(issue.id)),
+  )
+}
+
+/** Refetches active authoritative filters after mutations can change membership. */
+export function invalidateFilteredIssueCaches(qc: QueryClient, wsId: string) {
+  qc.invalidateQueries({ queryKey: issueKeys.allDone(wsId), exact: true })
+  qc.invalidateQueries({ queryKey: issueKeys.searches(wsId) })
+}
 
 // ---------------------------------------------------------------------------
 // Shared mutation variable types — used by both mutation hooks and
@@ -196,6 +238,8 @@ export function useUpdateIssue() {
           : old,
       )
       qc.setQueryData<Issue>(issueKeys.detail(wsId, vars.id), updatedIssue)
+      syncFilteredIssueCaches(qc, wsId, updatedIssue)
+      invalidateFilteredIssueCaches(qc, wsId)
       if (ctx?.parentId) {
         qc.setQueryData<Issue[]>(
           issueKeys.children(wsId, ctx.parentId),
@@ -268,7 +312,9 @@ export function useDeleteIssue() {
     onError: (_err, _id, ctx) => {
       if (ctx?.prevList) qc.setQueryData(listKey, ctx.prevList)
     },
-    onSuccess: (_data, _id, ctx) => {
+    onSuccess: (_data, deletedId, ctx) => {
+      removeFromFilteredIssueCaches(qc, wsId, new Set([deletedId]))
+      invalidateFilteredIssueCaches(qc, wsId)
       qc.invalidateQueries({
         queryKey: listKey,
         exact: true,
@@ -318,7 +364,14 @@ export function useBatchUpdateIssues() {
     onError: (_err, _vars, ctx) => {
       if (ctx?.prevList) qc.setQueryData(listKey, ctx.prevList)
     },
-    onSuccess: () => {
+    onSuccess: (_data, { ids }) => {
+      const updatedIssues = qc
+        .getQueryData<ListIssuesResponse>(listKey)
+        ?.issues.filter((issue) => ids.includes(issue.id))
+      for (const issue of updatedIssues ?? []) {
+        syncFilteredIssueCaches(qc, wsId, issue)
+      }
+      invalidateFilteredIssueCaches(qc, wsId)
       qc.invalidateQueries({
         queryKey: listKey,
         exact: true,
@@ -360,7 +413,9 @@ export function useBatchDeleteIssues() {
     onError: (_err, _ids, ctx) => {
       if (ctx?.prevList) qc.setQueryData(listKey, ctx.prevList)
     },
-    onSuccess: (_data, _ids, ctx) => {
+    onSuccess: (_data, deletedIds, ctx) => {
+      removeFromFilteredIssueCaches(qc, wsId, new Set(deletedIds))
+      invalidateFilteredIssueCaches(qc, wsId)
       qc.invalidateQueries({
         queryKey: listKey,
         exact: true,
