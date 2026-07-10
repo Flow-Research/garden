@@ -20,6 +20,44 @@ export type MemberMentionTextEdit = {
   nextEnd: number
 }
 
+/** Resolves the exact changed range from textarea beforeinput metadata. */
+export function resolveMemberMentionTextEdit(args: {
+  previousInput: string
+  nextInput: string
+  selectionStart: number
+  selectionEnd: number
+  inputType: string
+}): MemberMentionTextEdit {
+  const replacedLength = args.selectionEnd - args.selectionStart
+  const insertedLength =
+    args.nextInput.length - (args.previousInput.length - replacedLength)
+
+  if (
+    replacedLength === 0 &&
+    insertedLength < 0 &&
+    args.inputType.startsWith('delete')
+  ) {
+    const deletedLength = -insertedLength
+    const deletesBackward = args.inputType.endsWith('Backward')
+    const previousStart = deletesBackward
+      ? Math.max(0, args.selectionStart - deletedLength)
+      : args.selectionStart
+    return {
+      previousStart,
+      previousEnd: deletesBackward
+        ? args.selectionStart
+        : args.selectionStart + deletedLength,
+      nextEnd: previousStart,
+    }
+  }
+
+  return {
+    previousStart: args.selectionStart,
+    previousEnd: args.selectionEnd,
+    nextEnd: args.selectionStart + Math.max(0, insertedLength),
+  }
+}
+
 /** Detects the active `@query` token immediately before the textarea caret. */
 export function detectMemberMentionTrigger(
   input: string,
