@@ -2,8 +2,15 @@ import { Result } from 'better-result'
 import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { revokeOAuthConnector } from '@/lib/server/connector-revocation'
+import {
+  decryptStoredOAuthTokens,
+  revokeOAuthConnector,
+} from '@/lib/server/connector-revocation'
 import { appEnv } from '@/lib/server/env'
+import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
 import { getConnectorById } from '@garden/connectors'
 import { deleteGitHubAppInstallation } from '@garden/connectors/github-app'
 import {
@@ -87,6 +94,14 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
         const connector = getConnectorById(params.connectorId)
         if (!connector) return notFound('Connector not found')
 
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request,
+          workspaceId,
+          permissions: workspacePermissions.connectionManage,
+        })
+        if (permission) return permission
+
         const actionResult = await parseAction(request)
         if (actionResult.isErr()) {
           return badRequest('Invalid connection action')
@@ -99,6 +114,7 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
             const [installation] = await db
               .select({
                 installationId: schema.githubAppInstallation.installationId,
+                updatedAt: schema.githubAppInstallation.updatedAt,
               })
               .from(schema.githubAppInstallation)
               .where(eq(schema.githubAppInstallation.workspaceId, workspaceId))
@@ -120,12 +136,29 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
               )
             }
 
-            await updateGitHubInstallationStatus({
-              db,
-              workspaceId,
-              status: 'disconnected',
-            })
-            return Response.json({ ok: true })
+            const [disconnectedInstallation] = await db
+              .update(schema.githubAppInstallation)
+              .set({ status: 'disconnected', updatedAt: new Date() })
+              .where(
+                and(
+                  eq(schema.githubAppInstallation.workspaceId, workspaceId),
+                  eq(
+                    schema.githubAppInstallation.installationId,
+                    installation.installationId,
+                  ),
+                  eq(
+                    schema.githubAppInstallation.updatedAt,
+                    installation.updatedAt,
+                  ),
+                ),
+              )
+              .returning({ id: schema.githubAppInstallation.id })
+            return disconnectedInstallation
+              ? Response.json({ ok: true })
+              : Response.json(
+                  { error: 'Connection changed while disconnecting' },
+                  { status: 409 },
+                )
           }
 
           if (!connector.oauth) {
@@ -137,6 +170,7 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
               id: schema.account.id,
               accessToken: schema.account.accessToken,
               refreshToken: schema.account.refreshToken,
+              updatedAt: schema.account.updatedAt,
             })
             .from(schema.account)
             .where(
@@ -149,10 +183,25 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
             .limit(1)
           if (!account) return notFound('Connection not found')
 
+          const tokenResult = await Result.tryPromise({
+            try: async () => {
+              const auth = await appContext.auth.getAuth()
+              return await decryptStoredOAuthTokens({
+                accessToken: account.accessToken,
+                refreshToken: account.refreshToken,
+                context: await auth.$context,
+              })
+            },
+            catch: () => 'Failed to decrypt connector credentials',
+          })
+          if (tokenResult.isErr()) {
+            return Response.json({ error: tokenResult.error }, { status: 500 })
+          }
+
           const revokeResult = await revokeOAuthConnector({
             connectorId: connector.id,
-            accessToken: account.accessToken,
-            refreshToken: account.refreshToken,
+            accessToken: tokenResult.value.accessToken,
+            refreshToken: tokenResult.value.refreshToken,
           })
           if (revokeResult.isErr()) {
             return Response.json(
@@ -161,7 +210,7 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
             )
           }
 
-          await db
+          const [disconnectedAccount] = await db
             .update(schema.account)
             .set({
               accessToken: null,
@@ -174,9 +223,20 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
               status: 'disconnected',
               updatedAt: new Date(),
             })
-            .where(eq(schema.account.id, account.id))
+            .where(
+              and(
+                eq(schema.account.id, account.id),
+                eq(schema.account.updatedAt, account.updatedAt),
+              ),
+            )
+            .returning({ id: schema.account.id })
 
-          return Response.json({ ok: true })
+          return disconnectedAccount
+            ? Response.json({ ok: true })
+            : Response.json(
+                { error: 'Connection changed while disconnecting' },
+                { status: 409 },
+              )
         }
 
         const syncResult = await syncCapabilities(
