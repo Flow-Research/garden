@@ -1,4 +1,12 @@
-import { createLogger, defineConfig, type Logger, type LogOptions } from 'vite'
+import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import {
+  createLogger,
+  defineConfig,
+  loadEnv,
+  type Logger,
+  type LogOptions,
+} from 'vite'
 import { devtools } from '@tanstack/devtools-vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
@@ -6,6 +14,22 @@ import tailwindcss from '@tailwindcss/vite'
 import { cloudflare } from '@cloudflare/vite-plugin'
 import posthogRollupPlugin from '@posthog/rollup-plugin'
 import agents from 'agents/vite'
+
+const legacyEnvFiles = [
+  fileURLToPath(new URL('./.env', import.meta.url)),
+  fileURLToPath(new URL('./.dev.vars', import.meta.url)),
+]
+for (const path of legacyEnvFiles) {
+  if (existsSync(path)) {
+    throw new Error(`Move ${path} to the repository-root .env file.`)
+  }
+}
+
+const rootDir = fileURLToPath(new URL('../..', import.meta.url))
+const rootEnv = loadEnv(process.env.NODE_ENV ?? 'development', rootDir, '')
+for (const [key, value] of Object.entries(rootEnv)) {
+  process.env[key] ??= value
+}
 
 const enableDevtools =
   process.env.ENABLE_DEVTOOLS === '1' ||
@@ -91,6 +115,7 @@ function postHogSourcemapPlugins() {
 
 const config = defineConfig({
   clearScreen: false,
+  envDir: rootDir,
   customLogger: logger,
   server: {
     port: Number(process.env.PORT ?? 3000),

@@ -22,9 +22,9 @@
     "lint": "oxlint -c ../../.oxlintrc.json .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix .",
     "test": "vitest run",
-    "db:check": "bash -c 'set -a && source ../../apps/web/.env && drizzle-kit check'",
-    "db:generate": "bash -c 'set -a && source ../../apps/web/.env && drizzle-kit generate'",
-    "db:migrate": "bash -c 'set -a && source ../../apps/web/.env && drizzle-kit migrate'",
+    "db:check": "node ../../scripts/run-with-root-env.mjs drizzle-kit check",
+    "db:generate": "node ../../scripts/run-with-root-env.mjs drizzle-kit generate",
+    "db:migrate": "node ../../scripts/run-with-root-env.mjs drizzle-kit migrate",
     "db:sync": "pnpm run db:migrate"
   },
   "exports": {

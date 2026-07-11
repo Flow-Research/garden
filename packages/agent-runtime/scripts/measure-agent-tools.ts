@@ -9,7 +9,6 @@
 // pulled live from the upstream MCP servers via tools/list.
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
 import { Result } from 'better-result'
 import { z } from 'zod'
 
@@ -23,25 +22,6 @@ type ToolEntry = {
 
 const CHAT_LOCAL_TOOLS: Array<Pick<ToolEntry, 'name' | 'description' | 'inputSchema'>> = []
 const ISSUE_LOCAL_TOOLS: Array<Pick<ToolEntry, 'name' | 'description' | 'inputSchema'>> = []
-
-// ──────────────────────────────────────────────────────────────────────────
-// dev.vars loader (same approach as scripts/check-github-mcp.ts)
-// ──────────────────────────────────────────────────────────────────────────
-
-function loadDevVars() {
-  const path = 'apps/web/.dev.vars'
-  if (!existsSync(path)) return
-  for (const line of readFileSync(path, 'utf8').split('\n')) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    const idx = line.indexOf('=')
-    if (idx === -1) continue
-    const key = line.slice(0, idx)
-    const raw = line.slice(idx + 1)
-    const value = raw.startsWith('"') ? JSON.parse(raw) : raw
-    process.env[key] ??= value
-  }
-}
 
 // ──────────────────────────────────────────────────────────────────────────
 // Utilities
@@ -724,8 +704,6 @@ function buildLocalSections(
 }
 
 async function main() {
-  loadDevVars()
-
   // Connector tools (live MCP)
   const exaResult = await Result.tryPromise<McpTool[], string>({
     try: async () => await fetchExaTools(),

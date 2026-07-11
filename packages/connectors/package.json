@@ -9,7 +9,7 @@
     "lint": "oxlint -c ../../.oxlintrc.json .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix .",
     "verify:coverage": "node --experimental-strip-types scripts/verify-connector-coverage.ts",
-    "check:github-mcp": "node --experimental-strip-types scripts/check-github-mcp.ts"
+    "check:github-mcp": "node ../../scripts/run-with-root-env.mjs node --experimental-strip-types scripts/check-github-mcp.ts"
   },
   "exports": {
     ".": "./src/registry.ts",

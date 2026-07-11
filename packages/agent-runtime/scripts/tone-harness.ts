@@ -1,29 +1,19 @@
+import { loadEnvFile } from 'node:process'
+import { fileURLToPath } from 'node:url'
 import { generateText, tool, stepCountIs } from 'ai'
-import { readFileSync } from 'node:fs'
 import { z } from 'zod'
 import { createWorkersAI } from 'workers-ai-provider'
 import { assembleFoundationPrompt } from '../src/prompt'
 import { DOC_BUILTIN_SKILLS } from '../src/bundled-skills'
 
-const devVars = readFileSync(
-  new URL('../../../apps/web/.dev.vars', import.meta.url),
-  'utf8',
-)
-function readDevVar(name: string) {
-  return devVars
-    .split('\n')
-    .find((line) => line.startsWith(`${name}=`))
-    ?.split('=')[1]
-    ?.trim()
-    ?.replace(/^["']|["']$/g, '')
-}
+loadEnvFile(fileURLToPath(new URL('../../../.env', import.meta.url)))
 
-const accountId = readDevVar('CLOUDFLARE_ACCOUNT_ID')
-const apiKey = readDevVar('CLOUDFLARE_API_TOKEN')
+const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
+const apiKey = process.env.CLOUDFLARE_API_TOKEN
 
 if (!accountId || !apiKey) {
   console.error(
-    'CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN must be set in apps/web/.dev.vars',
+    'CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN must be set in root .env',
   )
   process.exit(1)
 }

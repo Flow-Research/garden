@@ -1,7 +1,7 @@
 <wizard-report>
 # PostHog post-wizard report
 
-The wizard has completed a deep integration of PostHog analytics into the Garden TanStack Start app. Client-side tracking is wired through `PostHogProvider` in the root route, with `identify` called on signin and signup. A server-side singleton (`src/lib/posthog-server.ts`) captures 8 events across the key API routes using `posthog-node` with immediate flushing — required for Cloudflare Workers where the isolate may terminate before a periodic flush fires. Environment variables (`VITE_PUBLIC_POSTHOG_PROJECT_TOKEN`, `VITE_PUBLIC_POSTHOG_HOST`) are set in `.dev.vars` and referenced via `import.meta.env` throughout.
+The wizard has completed a deep integration of PostHog analytics into the Garden TanStack Start app. Client-side tracking is wired through `PostHogProvider` in the root route, with `identify` called on signin and signup. A server-side singleton (`src/lib/posthog-server.ts`) captures 8 events across the key API routes using `posthog-node` with immediate flushing — required for Cloudflare Workers where the isolate may terminate before a periodic flush fires. Environment variables (`VITE_PUBLIC_POSTHOG_PROJECT_TOKEN`, `VITE_PUBLIC_POSTHOG_HOST`) are set in root `.env` and referenced via `import.meta.env` throughout.
 
 | Event | Description | File |
 |-------|-------------|------|

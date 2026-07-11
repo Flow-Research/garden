@@ -1,16 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
+script_path="$(realpath "${BASH_SOURCE[0]}")"
 workspace_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 web_log="${GARDEN_FIXTURE_WEB_LOG:-/tmp/garden-agent-runtime-fixture-web.log}"
 port="${PORT:-3000}"
 cd "${workspace_root}"
-env_file="apps/web/.dev.vars"
-if [[ ! -f "${env_file}" ]]; then
-  env_file="apps/web/.env"
+if [[ "${GARDEN_ROOT_ENV_READY:-}" != "1" ]]; then
+  exec node scripts/run-with-root-env.mjs env GARDEN_ROOT_ENV_READY=1 bash "${script_path}" "$@"
 fi
-set -a
-source "${env_file}"
-set +a
 if bash -c "</dev/tcp/127.0.0.1/${port}" >/dev/null 2>&1; then
   echo "[fixture] using existing web server on 127.0.0.1:${port}"
   exec pnpm exec tsx packages/agent-runtime/fixtures/agent-runtime/index.ts "$@"

@@ -1,13 +1,16 @@
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { loadEnv } from 'vite'
 
 const HYPERDRIVE_BINDING = 'HYPERDRIVE'
 const LOCAL_HYPERDRIVE_ENV = `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_${HYPERDRIVE_BINDING}`
 const args = new Set(process.argv.slice(2))
+const rootDir = fileURLToPath(new URL('../../..', import.meta.url))
+const rootEnv = loadEnv('development', rootDir, '')
 
-loadDotEnv(resolve('.env'))
-loadDotEnv(resolve('apps/web/.env'))
+for (const [key, value] of Object.entries(rootEnv)) {
+  process.env[key] ??= value
+}
 
 process.env.NODE_OPTIONS ??= '--max-old-space-size=3072'
 if (args.has('--containers')) {
@@ -34,28 +37,3 @@ child.on('exit', (code, signal) => {
   }
   process.exit(code ?? 1)
 })
-
-function loadDotEnv(path) {
-  if (!existsSync(path)) return
-
-  for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(trimmed)
-    if (!match) continue
-
-    const [, key, rawValue] = match
-    if (process.env[key] !== undefined) continue
-    process.env[key] = unquote(rawValue.trim())
-  }
-}
-
-function unquote(value) {
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1)
-  }
-  return value
-}

@@ -10,8 +10,8 @@
     "dev:local": "node ./scripts/dev.mjs --local",
     "build": "pnpm run typecheck && vite build",
     "preview": "vite preview",
-    "worker:types": "wrangler types worker-configuration.d.ts --include-runtime false",
-    "worker:types:check": "wrangler types worker-configuration.d.ts --include-runtime false --check",
+    "worker:types": "wrangler types worker-configuration.d.ts --include-runtime false --env-file ../../.env.example",
+    "worker:types:check": "wrangler types worker-configuration.d.ts --include-runtime false --env-file ../../.env.example --check",
     "skills:seed-builtin": "python3 ./scripts/seed_builtin_skills.py",
     "typecheck": "pnpm run worker:types && tsc --noEmit",
     "test": "vitest run",
@@ -23,8 +23,8 @@
     "clean": "rm -rf .tanstack .output dist .turbo node_modules/.vite",
     "ui:add": "pnpm dlx shadcn@latest add --cwd ../../packages/ui --path components/ui",
     "ui:diff": "pnpm dlx shadcn@latest diff --cwd ../../packages/ui",
-    "auth:generate": "bash -c 'set -a && source .env && pnpm dlx @better-auth/cli@latest generate --config src/auth.ts'",
-    "auth:migrate": "bash -c 'set -a && source .env && pnpm dlx @better-auth/cli@latest migrate --config src/auth.ts'"
+    "auth:generate": "node ../../scripts/run-with-root-env.mjs pnpm dlx @better-auth/cli@latest generate --config src/auth.ts",
+    "auth:migrate": "node ../../scripts/run-with-root-env.mjs pnpm dlx @better-auth/cli@latest migrate --config src/auth.ts"
   },
   "dependencies": {
     "@ai-sdk/react": "3.0.210",

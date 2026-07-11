@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { existsSync } from 'node:fs'
+import { loadEnvFile } from 'node:process'
+import { fileURLToPath } from 'node:url'
 import alchemy from 'alchemy'
 import { CloudflareStateStore } from 'alchemy/state'
 import {
@@ -17,8 +18,8 @@ import {
   Workflow,
 } from 'alchemy/cloudflare'
 
-loadDotEnvFile(resolve('apps/web/.env'))
-loadDotEnvFile(resolve('workers/mcp-proxy/.env'))
+const rootEnvPath = fileURLToPath(new URL('./.env', import.meta.url))
+if (existsSync(rootEnvPath)) loadEnvFile(rootEnvPath)
 
 /**
  * Workers Builds exposes Wrangler-compatible CF_* auth in some build contexts.
@@ -263,7 +264,7 @@ function cloudflareAccountIdFromEnv() {
   if (accountId) return accountId
 
   throw new Error(
-    'Missing CLOUDFLARE_ACCOUNT_ID. Set it in the shell, CI environment, or apps/web/.env so Alchemy and Wrangler target the same Cloudflare account.',
+    'Missing CLOUDFLARE_ACCOUNT_ID. Set it in the shell, CI environment, or root .env so Alchemy and Wrangler target the same Cloudflare account.',
   )
 }
 
@@ -330,38 +331,4 @@ function postHogBuildEnv() {
       ? { POSTHOG_RELEASE_VERSION: plainEnv('POSTHOG_RELEASE_VERSION') }
       : {}),
   }
-}
-
-/**
- * Loads project-local .env files so Alchemy uses the same local configuration
- * as Wrangler and the Cloudflare Vite plugin. Shell-provided env wins, which
- * keeps CI/profile overrides intact.
- */
-function loadDotEnvFile(path: string) {
-  if (!existsSync(path)) return
-
-  for (const line of readFileSync(path, 'utf8').split('\n')) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-
-    const separator = trimmed.indexOf('=')
-    if (separator === -1) continue
-
-    const key = trimmed.slice(0, separator).trim()
-    const rawValue = trimmed.slice(separator + 1).trim()
-    if (!key || process.env[key]) continue
-
-    process.env[key] = unquoteEnvValue(rawValue)
-  }
-}
-
-function unquoteEnvValue(value: string) {
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1)
-  }
-
-  return value
 }

@@ -8,7 +8,7 @@ From the repository root:
 
 ```bash
 pnpm install
-cp .env.example apps/web/.env
+cp .env.example .env
 pnpm --filter @garden/db db:migrate
 pnpm dev
 ```
@@ -17,7 +17,7 @@ The root dev command starts the MCP proxy and web app through Turbo's TUI. The w
 
 ## Environment
 
-Local web environment lives in `apps/web/.env`. Wrangler and the Cloudflare Vite plugin load `.env` for both local Worker values and system values such as `CLOUDFLARE_ACCOUNT_ID`.
+Local development configuration lives in root `.env`. Web, MCP proxy, database tooling, and local scripts share it; deployed Workers use Cloudflare secrets and bindings.
 
 Required for normal local development:
 
