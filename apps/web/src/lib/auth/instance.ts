@@ -519,8 +519,8 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
       },
     },
     advanced: {
-      // TODO: Re-enable Better Auth origin checks before shipping.
-      disableOriginCheck: true,
+      disableCSRFCheck: false,
+      disableOriginCheck: false,
       database: {
         generateId: () => crypto.randomUUID(),
       },
