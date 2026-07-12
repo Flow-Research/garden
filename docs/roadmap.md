@@ -12,7 +12,6 @@ Garden should survive real use by a small beta group without data leaks, stuck r
 1. **Ship-safety gates**
    - ✅ Better Auth origin and CSRF checks restored and covered by focused tests.
    - FLO-30 — add workspace-isolation regression coverage across routes, agent RPC, inbox, approvals, documents, and attachments.
-   - FLO-33 — define and test one server-enforced CSRF/origin policy for Garden-owned cookie-authenticated mutation routes.
    - Keep risky-tool approval paths fail-closed when audit or write operations fail.
 
 2. **Run resilience**
@@ -56,7 +55,7 @@ Garden should survive real use by a small beta group without data leaks, stuck r
 ## Beta readiness checklist
 
 - [x] Better Auth origin and CSRF validation enabled.
-- [ ] Workspace-isolation and custom API CSRF coverage complete.
+- [ ] Workspace-isolation coverage complete.
 - [ ] Core smoke tests pass in CI and staging.
 - [ ] Runs have visible, recoverable terminal states.
 - [ ] Connector failures are explainable and recoverable.
