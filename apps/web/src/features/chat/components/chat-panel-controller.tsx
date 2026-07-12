@@ -53,7 +53,12 @@ import {
   normalizeStatus,
   shouldPersistAsDocument,
   uploadAgentDocuments,
+  type ComposerThreadDocument,
 } from './chat-composer'
+import {
+  buildSelectedDocumentsContext,
+  type SelectedThreadDocument,
+} from './document-selection'
 import {
   buildMessageHeaderAttachments,
   type ChatHeaderAttachment,
@@ -167,6 +172,7 @@ export function ConnectedChatPanelInteraction({
   activeSession,
   className,
   documentAttachments,
+  documentLoadState,
   onClose,
   panelDescription,
   panelTitle,
@@ -178,6 +184,7 @@ export function ConnectedChatPanelInteraction({
   activeSession: AgentChatSession
   className?: string
   documentAttachments: ChatHeaderAttachment[]
+  documentLoadState: 'error' | 'loading' | 'ready'
   onClose?: () => void
   panelDescription?: string | null
   panelTitle: string
@@ -289,9 +296,11 @@ export function ConnectedChatPanelInteraction({
   const handleSend = async ({
     text,
     files,
+    selectedDocuments,
   }: {
     text: string
     files: File[]
+    selectedDocuments: SelectedThreadDocument[]
   }) => {
     lastSentTextRef.current = text
     pendingMessageCountRef.current = messages.length
@@ -341,6 +350,7 @@ export function ConnectedChatPanelInteraction({
       })
     }
 
+    const selectedDocsContext = buildSelectedDocumentsContext(selectedDocuments)
     const uploadedDocsContext =
       uploadResult.value.length > 0
         ? `The user uploaded these workspace documents for this turn. Internal document handles for this turn follow. Use these handles only in document tool calls. Do not mention handles, ids, or UUIDs to the user; refer to documents by filename:\n${uploadResult.value
@@ -383,7 +393,11 @@ export function ConnectedChatPanelInteraction({
         }`
       : ''
 
-    const documentContext = [uploadedDocsContext, displayedDocContext]
+    const documentContext = [
+      selectedDocsContext,
+      uploadedDocsContext,
+      displayedDocContext,
+    ]
       .filter((part) => part.length > 0)
       .join('\n\n')
 
@@ -422,7 +436,7 @@ export function ConnectedChatPanelInteraction({
     const text = lastSentTextRef.current
     if (!text) return
     setIsRetrying(true)
-    await handleSend({ text, files: [] })
+    await handleSend({ text, files: [], selectedDocuments: [] })
     setIsRetrying(false)
   }, [])
 
@@ -433,6 +447,17 @@ export function ConnectedChatPanelInteraction({
   const showEmptyChatState = sessionIsFresh && normalizedStatus === 'idle'
 
   const currentTitle = sessionIsFresh ? panelTitle : activeSession.title
+  const composerDocuments = useMemo<ComposerThreadDocument[]>(
+    () =>
+      documentAttachments.map((attachment) => ({
+        documentId: attachment.id,
+        filename: attachment.label,
+        meta: attachment.meta,
+        versionId: attachment.versionId ?? null,
+        versionNumber: attachment.versionNumber ?? null,
+      })),
+    [documentAttachments],
+  )
   const headerAttachments = useMemo(() => {
     const seenDocuments = new Set(
       documentAttachments.map((attachment) => attachment.id),
@@ -654,7 +679,10 @@ export function ConnectedChatPanelInteraction({
               ) : null}
             </AnimatePresence>
             <Composer
+              key={sessionId}
               agentId={activeSession.agentId}
+              documentLoadState={documentLoadState}
+              documents={composerDocuments}
               isStreaming={isStreaming || isRecovering}
               status={status}
               input={input}

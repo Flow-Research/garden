@@ -173,6 +173,13 @@ function ChatPanelInteraction({
       documentAttachments={
         documentAttachmentsQuery.data ?? EMPTY_CHAT_HEADER_ATTACHMENTS
       }
+      documentLoadState={
+        documentAttachmentsQuery.isPending
+          ? 'loading'
+          : documentAttachmentsQuery.isError
+            ? 'error'
+            : 'ready'
+      }
       runtime={runtime}
     />
   )
