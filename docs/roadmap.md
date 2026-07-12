@@ -30,7 +30,7 @@ Garden should survive real use by a small beta group without data leaks, stuck r
 ## P1 — beta quality
 
 - FLO-34 — polish onboarding and failed-run recovery paths.
-- FLO-35 — add an existing-thread-document picker to chat.
+- ✅ FLO-35 — existing-thread-document picker shipped.
 - FLO-36 — add reverse issue-chat breadcrumbs and multi-issue links.
 - FLO-37 — add prompt snapshots, secret-safe tracing, failure taxonomy, and regression evals.
 - FLO-38 — harden automation trigger contracts and either implement or remove queue concurrency support.

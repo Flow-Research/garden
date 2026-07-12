@@ -12,7 +12,6 @@ Last updated: 2026-07-12
 | High | FLO-31 | Staging proof for issue and automation run lifecycle | [Issue flow](./issue-flow.md) |
 | High | FLO-32 | Health endpoint and beta smoke suite | [Infrastructure](./infrastructure.md) |
 | Medium | FLO-34 | Onboarding and failed-run recovery polish | [UI & product](./ui-and-product.md) |
-| Medium | FLO-35 | Existing-document picker in chat | [Document artifacts](./document-artifacts.md) |
 | Medium | FLO-36 | Reverse issue-chat breadcrumbs and multi-issue links | [Issue flow](./issue-flow.md) |
 | Medium | FLO-37 | Prompt snapshots, tracing, and evaluation coverage | [Prompt & system spec](./prompt-and-system-spec.md) |
 | Medium | FLO-38 | Automation trigger contracts and concurrency | [Automations](./automations.md) |
@@ -24,7 +23,7 @@ Last updated: 2026-07-12
 | [auth-and-access.md](./auth-and-access.md) | Better Auth and workspace isolation |
 | [agent-runtime.md](./agent-runtime.md) | Runtime topology and deferred shared-resource decisions |
 | [automations.md](./automations.md) | Trigger contracts, concurrency, durable run proof |
-| [document-artifacts.md](./document-artifacts.md) | Thread documents and existing-document selection |
+| [document-artifacts.md](./document-artifacts.md) | Thread documents and deferred artifact expansion |
 | [infrastructure.md](./infrastructure.md) | Health and beta smoke coverage |
 | [issue-flow.md](./issue-flow.md) | Run lifecycle and issue/chat relationships |
 | [prompt-and-system-spec.md](./prompt-and-system-spec.md) | Prompt snapshots, traces, and evals |
