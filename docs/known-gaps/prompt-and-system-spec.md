@@ -1,19 +1,14 @@
 # Prompt & System Spec
 
-## Gaps
+## Active gap
 
-From `docs/core/system-spec.md` sec. 4.2-4.3, 5.1-5.9 and `docs/core/prompt-import-plan.md`.
+From `docs/core/system-spec.md` sec. 5.9 and current runtime storage.
 
-| Gap | Source | Severity |
-|-----|--------|----------|
-| General citation and provenance system is not built across all tools and claims. Document citations exist through `findInDocument`, but there is no product-wide provenance layer. | System spec sec. 3.9; `packages/agent-runtime/src/documents/document-tools.ts`, `apps/web/src/features/chat/components/chat-message-parts.tsx` | Medium |
-| Structured clarification is partial: chat has `askUserInput`, issue runs have `ask_question`, but there is no unified product-wide clarification contract across chat, issues, automations, and external messengers | System spec sec. 4.3; `chat-sub-agent-tools.ts`, `agent-tools/ask-question.ts` | Low |
-| File-delete and destructive-operation gating not built | System spec sec. 4.3 | Medium |
-| Observability and eval suites not built | System spec sec. 5.9 | Medium |
-| Prompt/version tracking and per-run snapshot storage not built | System spec sec. 5.9 | Medium |
-| Tool call tracing is partial: issue and automation runs record tool events/traces, but chat has no consolidated tool trace UI/export | System spec sec. 5.9; `issue-run-sub-agent.ts`, `automation-run-sub-agent.ts` | Medium |
-| Failure taxonomy not defined | System spec sec. 5.9 | Low |
-| `schedule` skill tracked as planned, not confirmed as installable | Prompt import plan sec. 5.1 | Low |
+| Issue | Gap | Evidence | Priority |
+| --- | --- | --- | --- |
+| FLO-37 | Store prompt/config versions and bounded context snapshots, define a shared failure taxonomy, expose secret-safe cross-surface traces, and add regression evals for critical prompt/tool behavior. | Issue and automation runs store usage and tool events, but no coherent snapshot, trace, or evaluation contract spans chat, issues, and automations. | Medium |
+
+Product-wide provenance, unified clarification, destructive-file gating, browser tools, visual runtime, and schedule-skill work remain deferred until a concrete workflow requires them.
 
 ## Deferred
 

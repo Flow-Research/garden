@@ -1,28 +1,21 @@
 # Infrastructure
 
-## Gaps
+## Active gap
 
-| Gap | Source | Severity |
-|-----|--------|----------|
-| Pre-commit gates (oxlint, oxfmt, tsc, vitest) not wired via lefthook | Technical doc sec. 14 | Medium |
-| E2E tests (Playwright) not written | Technical doc sec. 14 | Medium |
-| Sentry error tracking not wired (Workers SDK or React SDK) | Technical doc sec. 13 | Medium |
-| Staging environment not set up (CF Workers preview + Neon staging branch) | Technical doc sec. 10.4 | Medium |
-| Doc validation pre-commit check not built | PRD sec. 10A | Low |
-| Health check route (`/api/health`) not built | Technical doc sec. 13 | Low |
-| Custom observability dashboard (recharts) not built | Technical doc sec. 13 | Low |
+| Issue | Gap | Evidence | Priority |
+| --- | --- | --- | --- |
+| FLO-32 | Garden lacks a stable `/api/health` contract and beta-critical smoke suite covering login/workspace, chat, issue run, automation run, and document artifacts against staging. | `apps/web/src/server.ts`, `.github/workflows/ci.yml`, `alchemy.run.ts` | High |
 
 ## Done
 
 | Item | Evidence |
-|------|----------|
-| CI/GitHub Actions pipeline | `.github/workflows/ci.yml` — lint, typecheck, test, build |
-| Connector CI workflow | `.github/workflows/connectors.yml` — connector-specific validation |
-| Cloudflare Analytics Engine connector counters | `workers/mcp-proxy/wrangler.jsonc` binds `CONNECTOR_CALLS`; `workers/mcp-proxy/src/audit.ts` writes datapoints per connector/tool/status |
+| --- | --- |
+| CI/GitHub Actions pipeline | `.github/workflows/ci.yml` runs lint, typecheck, tests, and build. |
+| Connector CI workflow | `.github/workflows/connectors.yml` provides connector-specific validation. |
+| Client and Worker error tracking | PostHog client capture and Worker exception reporting are wired in the web runtime. |
+| Staging resources | `alchemy.run.ts` defines deployed Cloudflare and Neon staging resources. |
+| Cloudflare Analytics Engine connector counters | `workers/mcp-proxy/wrangler.jsonc` binds `CONNECTOR_CALLS`; `workers/mcp-proxy/src/audit.ts` writes datapoints. |
 
-## Target Pre-Commit Gates (from technical doc, not wired yet)
+## Deferred maintenance
 
-1. `oxlint` — lint changed files
-2. `oxfmt --check` — format check
-3. `tsc --noEmit` — type check
-4. `vitest run --changed` — run tests affected by changed files
+Pre-commit hooks, documentation validation hooks, and a custom observability dashboard are useful maintenance work, but they are not current beta-blocking Flow Research issues. Add them only when measured workflow or operational pain justifies them.

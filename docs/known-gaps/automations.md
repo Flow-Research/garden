@@ -15,14 +15,14 @@ Automations are a first-class product surface backed by `automation`, `automatio
 | Durable execution | `packages/agent-runtime/src/run-workflow.ts` |
 | UI | `apps/web/src/features/automations` |
 
-## Gaps
+## Active gaps
 
-| Gap | Severity | Notes / evidence |
-| --- | --- | --- |
-| Queue concurrency policy is declared but not implemented. | Medium | Schema allows `queue`, but create/update routes and `AutomationTriggerDO` reject it with "Automation queue concurrency is not implemented". Keep product UI from offering queue until dispatch semantics exist end to end. |
-| Rich trigger editing needs polish. | Low | Current UI and API support scheduled triggers; webhook/API trigger behavior should stay code-backed before being promoted. |
-| Automation audit and usage surfaces are thin. | Low | `automation_run.usage_json`, counters, and detail traces exist, but analytics views are not built out. |
-| Webhook/API trigger hardening is incomplete. | Medium | Token handling, replay/idempotency, and observability need explicit route-level design before public exposure. |
+| Issue | Gap | Priority | Notes / evidence |
+| --- | --- | --- | --- |
+| FLO-31 | Prove the automation run lifecycle in staging alongside issue runs. | High | Verify start, wait, resume, cancel, failure, recovery, duplicate-start prevention, and terminal state visibility through `RunWorkflow`. |
+| FLO-38 | Harden trigger contracts and concurrency. | Medium | Define typed webhook/API authentication, replay protection, idempotency, attribution, and observability. Implement queue semantics end to end or remove `queue` from supported configuration. |
+
+Audit dashboards and richer trigger-editing polish remain deferred until usage demonstrates need.
 
 ## Done: do not rebuild
 

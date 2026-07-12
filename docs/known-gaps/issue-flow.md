@@ -37,14 +37,14 @@ Core issue-run runtime has shipped. This file tracks remaining gaps against the 
 | Permission request inbox workspace scoping | `apps/web/src/lib/server/inbox-compute.ts` joins `permission_request` through `agent.workspace_id` before surfacing approvals |
 | SQL mention matching | `commentMentionsUserSql()` uses JSON containment against `issue_comment.mentions`; `issue_comment_mentions_gin` supports the query |
 
-## Implementation gaps
+## Active gaps
 
-| Gap | Severity | Notes / evidence |
-| --- | --- | --- |
-| Reverse source-chat breadcrumb is missing. | Medium | `chat_thread.primary_issue_id` points chat → issue, but there is no `issue.source_chat_thread_id` or `chat_thread_issue` join for issue → originating chat breadcrumb. |
-| Issue Interaction skill is runtime-bundled but not necessarily visible as a normal workspace `skill` row. | Low | `packages/agent-runtime/src/skills/issue-interaction/SKILL.md` is loaded by runtime; seed if product wants it in picker/library UI. |
-| Multi-issue chat anchoring is not modeled. | Medium | Current `chat_thread.primary_issue_id` supports one primary issue. Reusable issue chat agents need a join table such as `chat_thread_issue`. |
-| Workspace-wide realtime is absent. | Medium | Issue run UI polls; see `docs/known-gaps/realtime-sync.md`. |
+| Issue | Gap | Priority | Notes / evidence |
+| --- | --- | --- | --- |
+| FLO-31 | Prove issue and automation run lifecycle in staging. | High | Exercise start, wait, resume, cancel, failure, recovery, duplicate-start prevention, and visible terminal states through `RunWorkflow`. |
+| FLO-36 | Add reverse issue-chat breadcrumbs and multi-issue links. | Medium | `chat_thread.primary_issue_id` supports chat → one issue, but not a canonical issue → source-chat breadcrumb or additional linked issues. |
+
+The runtime-bundled Issue Interaction skill, bulk operations, recurrence UI, saved filters, and workspace-wide realtime are deferred rather than active issue-flow gaps.
 
 ## Deferred product work
 
