@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as RoadmapRouteImport } from './routes/roadmap'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as HarnessyRouteImport } from './routes/harnessy'
 import { Route as FeaturesRouteImport } from './routes/features'
@@ -105,6 +106,11 @@ import { Route as ApiConnectionsConnectorIdToolsNameGrantRouteImport } from './r
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RoadmapRoute = RoadmapRouteImport.update({
+  id: '/roadmap',
+  path: '/roadmap',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -591,6 +597,7 @@ export interface FileRoutesByFullPath {
   '/features': typeof FeaturesRoute
   '/harnessy': typeof HarnessyRoute
   '/login': typeof LoginRoute
+  '/roadmap': typeof RoadmapRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof AuthenticatedWorkspaceRoute
   '/api/agents': typeof ApiAgentsRouteWithChildren
@@ -684,6 +691,7 @@ export interface FileRoutesByTo {
   '/features': typeof FeaturesRoute
   '/harnessy': typeof HarnessyRoute
   '/login': typeof LoginRoute
+  '/roadmap': typeof RoadmapRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof AuthenticatedWorkspaceRoute
   '/api/agents': typeof ApiAgentsRouteWithChildren
@@ -779,6 +787,7 @@ export interface FileRoutesById {
   '/features': typeof FeaturesRoute
   '/harnessy': typeof HarnessyRoute
   '/login': typeof LoginRoute
+  '/roadmap': typeof RoadmapRoute
   '/signup': typeof SignupRoute
   '/_authenticated/workspace': typeof AuthenticatedWorkspaceRoute
   '/api/agents': typeof ApiAgentsRouteWithChildren
@@ -874,6 +883,7 @@ export interface FileRouteTypes {
     | '/features'
     | '/harnessy'
     | '/login'
+    | '/roadmap'
     | '/signup'
     | '/workspace'
     | '/api/agents'
@@ -967,6 +977,7 @@ export interface FileRouteTypes {
     | '/features'
     | '/harnessy'
     | '/login'
+    | '/roadmap'
     | '/signup'
     | '/workspace'
     | '/api/agents'
@@ -1061,6 +1072,7 @@ export interface FileRouteTypes {
     | '/features'
     | '/harnessy'
     | '/login'
+    | '/roadmap'
     | '/signup'
     | '/_authenticated/workspace'
     | '/api/agents'
@@ -1156,6 +1168,7 @@ export interface RootRouteChildren {
   FeaturesRoute: typeof FeaturesRoute
   HarnessyRoute: typeof HarnessyRoute
   LoginRoute: typeof LoginRoute
+  RoadmapRoute: typeof RoadmapRoute
   SignupRoute: typeof SignupRoute
   ApiAgentsRoute: typeof ApiAgentsRouteWithChildren
   ApiAutomationsRoute: typeof ApiAutomationsRouteWithChildren
@@ -1195,6 +1208,13 @@ declare module '@tanstack/react-router' {
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/roadmap': {
+      id: '/roadmap'
+      path: '/roadmap'
+      fullPath: '/roadmap'
+      preLoaderRoute: typeof RoadmapRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -2170,6 +2190,7 @@ const rootRouteChildren: RootRouteChildren = {
   FeaturesRoute: FeaturesRoute,
   HarnessyRoute: HarnessyRoute,
   LoginRoute: LoginRoute,
+  RoadmapRoute: RoadmapRoute,
   SignupRoute: SignupRoute,
   ApiAgentsRoute: ApiAgentsRouteWithChildren,
   ApiAutomationsRoute: ApiAutomationsRouteWithChildren,
@@ -2205,13 +2226,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

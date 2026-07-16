@@ -1,0 +1,259 @@
+/* =============================================================================
+ * Roadmap page — Garden's parchment world, standalone-scoped.
+ *
+ * Why this file exists: /roadmap is a public page rendered outside the app
+ * shell, sibling to /architecture (which is deliberately dark). This page is
+ * deliberately light — it reads as a paper field ledger — so, like the
+ * architecture page, it pins Garden token values on its own root instead of
+ * trusting whatever theme class the document happens to carry. Values mirror
+ * the light palette in packages/ui/styles/tokens.css.
+ * ========================================================================== */
+.roadmap-root {
+  --parchment: #f9f7f2;
+  --parchment-deep: #efebe1;
+  --vellum: rgba(255, 255, 255, 0.74);
+  --bone: #ffffff;
+
+  --ink: #1a1f1c;
+  --gravel: #5b554d;
+  --slate: #8a8478;
+  --stone: #a8a195;
+
+  --hairline: rgba(26, 31, 28, 0.1);
+  --hairline-soft: rgba(26, 31, 28, 0.06);
+
+  --moss: #4d7250;
+  --sage: #7a9b6f;
+  --amber: #c89a4a;
+  --clay: #b56b4a;
+  /* Amber/clay darkened for text-on-parchment so labels stay ≥4.5:1. */
+  --amber-ink: #8a6420;
+  --clay-ink: #96522f;
+
+  --foreground: var(--ink);
+  --muted-foreground: var(--gravel);
+  --border: var(--hairline);
+  --ring: var(--moss);
+  --brand: var(--moss);
+
+  color: var(--ink);
+  background-color: var(--parchment);
+  /* Garden's atmosphere: faint dotted grid + film grain over warm parchment. */
+  background-image:
+    radial-gradient(rgba(26, 31, 28, 0.06) 1.5px, transparent 1.5px),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.78' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/></svg>");
+  background-size:
+    24px 24px,
+    220px 220px;
+  background-repeat: repeat;
+}
+
+/* =============================================================================
+ * Load choreography — one orchestrated entrance for the masthead and the
+ * readiness vine, then the page is still. Keyframes autorun (no class gating)
+ * so the static render is always complete, and reduced-motion turns them off.
+ * ========================================================================== */
+@keyframes roadmap-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.roadmap-rise {
+  animation: roadmap-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.roadmap-rise-2 {
+  animation: roadmap-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.12s both;
+}
+.roadmap-rise-3 {
+  animation: roadmap-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.24s both;
+}
+
+/* =============================================================================
+ * Readiness vine — the seven beta gates strung on one line. Horizontal on
+ * desktop, vertical spine on small screens. The one bold moment of the page.
+ * ========================================================================== */
+.roadmap-vine {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  position: relative;
+}
+/* The vine itself, drawn behind the nodes. */
+.roadmap-vine::before {
+  content: '';
+  position: absolute;
+  left: calc(100% / 14);
+  right: calc(100% / 14);
+  top: 8px;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.roadmap-gate {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  text-align: center;
+  padding: 0 0.4rem;
+  animation: roadmap-rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(0.25s + var(--gate-i, 0) * 70ms);
+}
+
+.roadmap-gate-node {
+  width: 17px;
+  height: 17px;
+  border-radius: 9999px;
+  border: 1.5px solid var(--stone);
+  background: var(--parchment);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.roadmap-gate[data-status='done'] .roadmap-gate-node {
+  border-color: var(--moss);
+  background: var(--moss);
+  color: #f7faf5;
+}
+.roadmap-gate-label {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--gravel);
+  text-wrap: balance;
+}
+.roadmap-gate[data-status='done'] .roadmap-gate-label {
+  color: var(--moss);
+  font-weight: 500;
+}
+
+@media (max-width: 720px) {
+  .roadmap-vine {
+    grid-template-columns: 1fr;
+    gap: 0.9rem;
+  }
+  .roadmap-vine::before {
+    left: 8px;
+    right: auto;
+    top: 10px;
+    bottom: 10px;
+    height: auto;
+    width: 1px;
+  }
+  .roadmap-gate {
+    flex-direction: row;
+    text-align: left;
+    padding: 0;
+  }
+}
+
+/* =============================================================================
+ * Work rows — the page's workhorse. Hairline-ruled rows, never cards.
+ * ========================================================================== */
+.roadmap-row {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: 0.4rem 1.5rem;
+  padding: 1.1rem 0.6rem;
+  margin: 0 -0.6rem;
+  border-bottom: 1px solid var(--hairline-soft);
+  border-radius: var(--radius-md, 0.5rem);
+  transition: background-color 0.15s ease;
+}
+.roadmap-row:hover {
+  background-color: color-mix(in srgb, var(--parchment-deep) 55%, transparent);
+}
+@media (max-width: 560px) {
+  .roadmap-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Priority dot — paired with a text label so state never rides on color alone. */
+.roadmap-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+/* =============================================================================
+ * Pilot timeline — a true sequence, so it earns a spine. Week markers sit on a
+ * vertical rail; each entry carries goal, four lanes, and a "done when" line.
+ * ========================================================================== */
+.roadmap-timeline {
+  position: relative;
+  padding-left: 3.6rem;
+}
+.roadmap-timeline::before {
+  content: '';
+  position: absolute;
+  left: 1.05rem;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    var(--hairline),
+    var(--hairline) 96%,
+    transparent
+  );
+}
+
+.roadmap-week {
+  position: relative;
+  padding-bottom: 2.6rem;
+}
+.roadmap-week:last-child {
+  padding-bottom: 0;
+}
+
+.roadmap-week-marker {
+  position: absolute;
+  left: -3.6rem;
+  top: 0;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 9999px;
+  border: 1px solid var(--hairline);
+  background: var(--bone);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--moss);
+  box-shadow: var(--shadow-float-1, 0 1px 1px rgba(26, 31, 28, 0.04));
+}
+
+.roadmap-lanes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem 2rem;
+}
+@media (max-width: 640px) {
+  .roadmap-lanes {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* "Done when" — the week's exit criterion, set as prose. */
+.roadmap-done-when {
+  font-family: var(--font-prose);
+  font-style: italic;
+  color: var(--gravel);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roadmap-rise,
+  .roadmap-rise-2,
+  .roadmap-rise-3,
+  .roadmap-gate {
+    animation: none;
+  }
+}
