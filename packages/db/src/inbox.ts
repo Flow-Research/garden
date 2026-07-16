@@ -329,6 +329,7 @@ export async function upsertWorkProductReviewInbox(args: {
   )
 }
 
+/** Writes connector approval inbox items from the legacy permission ledger. */
 export async function upsertPermissionRequestInbox(args: {
   db: GardenDb
   workspaceId: string
@@ -345,6 +346,7 @@ export async function upsertPermissionRequestInbox(args: {
     .where(
       and(
         eq(schema.permissionRequest.id, args.requestId),
+        eq(schema.permissionRequest.kind, 'connector_write'),
         eq(schema.agent.workspaceId, args.workspaceId),
       ),
     )
@@ -373,6 +375,83 @@ export async function upsertPermissionRequestInbox(args: {
         details: {
           kind: 'approval',
           request_id: row.request.id,
+          ...(row.issue ? issueDetails(row.issue) : {}),
+        },
+        activityAt: preferDate(row.request.requestedAt),
+      }),
+    ),
+  )
+}
+
+function agentProposalBody(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null
+  const payload = value as { name?: unknown; role?: unknown }
+  const name = typeof payload.name === 'string' ? payload.name.trim() : ''
+  const role = typeof payload.role === 'string' ? payload.role.trim() : ''
+  if (name && role) return `${name} — ${role}`
+  return name || role || null
+}
+
+/**
+ * Writes approval inbox items from Garden's dedicated proposal ledger. Unlike
+ * connector approvals, proposals identify the pending agent directly and show
+ * proposal details instead of encoded permission context.
+ */
+export async function upsertAgentProposalRequestInbox(args: {
+  db: GardenDb
+  workspaceId: string
+  requestId: string
+}): Promise<void> {
+  const [row] = await args.db
+    .select({
+      request: schema.agentProposalRequest,
+      issue: schema.issue,
+    })
+    .from(schema.agentProposalRequest)
+    .leftJoin(
+      schema.issue,
+      eq(schema.issue.id, schema.agentProposalRequest.issueId),
+    )
+    .innerJoin(
+      schema.agent,
+      eq(schema.agent.id, schema.agentProposalRequest.agentId),
+    )
+    .where(
+      and(
+        eq(schema.agentProposalRequest.id, args.requestId),
+        eq(schema.agent.workspaceId, args.workspaceId),
+      ),
+    )
+  if (!row || row.request.status !== 'pending') return
+  if (
+    row.issue &&
+    (row.issue.status === 'done' || row.issue.status === 'cancelled')
+  )
+    return
+
+  const recipients = await workspacePermissionApproverIds(
+    args.db,
+    args.workspaceId,
+  )
+  const titleSuffix = row.issue ? ` on ${row.issue.title}` : ''
+  await Promise.all(
+    recipients.map((recipientId) =>
+      upsertInboxItem(args.db, {
+        workspaceId: args.workspaceId,
+        recipientId,
+        itemKey: `approval:${row.request.id}`,
+        type: 'review_requested',
+        severity: 'action_required',
+        issueId: row.request.issueId,
+        issueStatus: row.issue?.status ?? null,
+        title: `Agent proposal needs approval${titleSuffix}`,
+        body: truncate(agentProposalBody(row.request.argsJson)),
+        actorType: 'agent',
+        actorId: row.request.agentId,
+        details: {
+          kind: 'agent_proposal',
+          request_id: row.request.id,
+          pending_agent_id: row.request.pendingAgentId,
           ...(row.issue ? issueDetails(row.issue) : {}),
         },
         activityAt: preferDate(row.request.requestedAt),

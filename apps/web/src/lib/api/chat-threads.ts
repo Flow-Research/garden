@@ -16,11 +16,11 @@ export const chatKeys = {
   pendingTasks: (wsId: string) =>
     [...chatKeys.all(wsId), 'pending-tasks'] as const,
   taskMessages: (taskId: string) => ['task-messages', taskId] as const,
-  permissionRequests: (threadId: string) =>
-    ['chat', 'permission-requests', threadId] as const,
+  agentProposalRequests: (threadId: string) =>
+    ['chat', 'agent-proposal-requests', threadId] as const,
 }
 
-export type ThreadPermissionRequest = {
+export type ThreadAgentProposalRequest = {
   id: string
   status: 'pending' | 'approved' | 'denied'
   tool_call_id: string
@@ -28,14 +28,13 @@ export type ThreadPermissionRequest = {
 }
 
 /**
- * Reads this thread's agent_proposal permission requests with their
- * server-authoritative status. The propose_agent approval card consults this to
- * reconcile after a reconnect instead of trusting stale tool-output snapshots or
- * local optimistic state (B2). Scoped to the thread server-side via thread_id.
+ * Reads this thread's Garden agent proposal requests with server-authoritative
+ * status. Endpoint path and wire fields remain stable for existing approval
+ * cards, while storage now comes from the dedicated proposal ledger.
  */
-export function listThreadPermissionRequests(
+export function listThreadAgentProposalRequests(
   threadId: string,
-): Promise<{ ok: boolean; requests: ThreadPermissionRequest[] }> {
+): Promise<{ ok: boolean; requests: ThreadAgentProposalRequest[] }> {
   return getApiTransport().request(
     `/api/chat/threads/${threadId}/permission-requests`,
   )

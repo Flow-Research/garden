@@ -86,15 +86,6 @@ function uniqueSkillSlugs(skills: string[] | undefined) {
   return [...new Set((skills ?? []).map((skill) => skill.trim()))];
 }
 
-function pendingAgentContext(pendingAgentId: string) {
-  return `agent_proposal:${pendingAgentId}`;
-}
-
-function pendingAgentIdFromContext(value: string | null) {
-  const prefix = "agent_proposal:";
-  return value?.startsWith(prefix) ? value.slice(prefix.length) : null;
-}
-
 async function loadRuntimeIdentity(
   context: Required<ProposeAgentContext>,
 ): Promise<ResultValue<RuntimeIdentity, ProposeAgentToolError>> {
@@ -148,6 +139,11 @@ function requireConfiguredContext(
       );
 }
 
+/**
+ * Creates the pending agent and its Garden-owned approval record atomically.
+ * Proposals previously wrote connector permission_request rows; the dedicated
+ * ledger now records the pending agent directly and avoids encoded context.
+ */
 async function proposeAgent(
   context: ProposeAgentContext,
   input: ProposeAgentInput,
@@ -266,34 +262,15 @@ async function proposeAgent(
           );
         }
 
-        await tx.execute(sql`
-          insert into permission_request (
-            id,
-            agent_id,
-            kind,
-            capability_id,
-            context,
-            issue_id,
-            thread_id,
-            args_json,
-            tool_call_id,
-            status,
-            requested_at
-          )
-          values (
-            ${permissionRequestId}::uuid,
-            ${identity.agentId}::uuid,
-            'agent_proposal',
-            null,
-            ${pendingAgentContext(pendingAgentId)},
-            ${input.source_issue_id ?? null}::uuid,
-            ${configuredContext.value.threadId}::uuid,
-            ${JSON.stringify(payload)}::jsonb,
-            ${permissionRequestId},
-            'pending',
-            now()
-          )
-        `);
+        await tx.insert(schema.agentProposalRequest).values({
+          id: permissionRequestId,
+          agentId: identity.agentId,
+          pendingAgentId,
+          issueId: input.source_issue_id ?? null,
+          threadId: configuredContext.value.threadId,
+          argsJson: payload,
+          status: "pending",
+        });
       });
     },
     catch: (cause) =>
@@ -324,7 +301,7 @@ export function createProposeAgentTool(context: ProposeAgentContext) {
   return tool({
     description:
       "Propose a new workspace agent for user approval. Only the default Garden agent can use this. " +
-      "Creates a pending agent and an agent_proposal permission request. Use only after checking workspace inventory and confirming no existing active agent, including the current agent, is the right assignee. " +
+      "Creates a pending agent and an agent proposal approval request. Use only after checking workspace inventory and confirming no existing active agent, including the current agent, is the right assignee. " +
       "Use this for reusable agent roles, not one-off research topics or issue-specific job titles. Only pass exact known skill slugs; put connector/tool needs in connector_requirements.",
     inputSchema: proposeAgentInputSchema,
     execute: async (input) => {
@@ -334,4 +311,4 @@ export function createProposeAgentTool(context: ProposeAgentContext) {
   });
 }
 
-export { pendingAgentIdFromContext, ProposeAgentToolError };
+export { proposeAgent, ProposeAgentToolError };

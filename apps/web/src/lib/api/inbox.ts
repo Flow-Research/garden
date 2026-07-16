@@ -42,6 +42,11 @@ export function archiveCompletedInbox(): Promise<{ count: number }> {
   })
 }
 
+/**
+ * Resolves an inbox approval by stable request ID. Server dispatches Garden
+ * agent proposals to the dedicated ledger and connector approvals to the
+ * legacy permission ledger, so the existing client contract stays unchanged.
+ */
 export function resolvePermissionRequest(args: {
   id: string
   approved: boolean

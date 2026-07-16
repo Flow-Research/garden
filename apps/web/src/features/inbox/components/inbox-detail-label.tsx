@@ -117,14 +117,31 @@ export function InboxDetailLabel({ item }: { item: InboxItem }) {
     case 'wp_review': {
       const wpType = details.work_product_type
       const noun = wpType ? wpType.replaceAll('_', ' ') : 'Draft'
-      return <span>{`${noun.charAt(0).toUpperCase()}${noun.slice(1)} ready for review`}</span>
+      return (
+        <span>{`${noun.charAt(0).toUpperCase()}${noun.slice(1)} ready for review`}</span>
+      )
     }
     case 'review_requested':
-      return <span>{item.body ?? 'A capability needs your approval to run.'}</span>
+      return (
+        <span>
+          {item.body ??
+            (details.kind === 'agent_proposal'
+              ? 'A proposed agent needs your approval.'
+              : 'A capability needs your approval to run.')}
+        </span>
+      )
     case 'task_failed':
-      return <span>{item.body ?? 'A run failed. Check the timeline for details.'}</span>
+      return (
+        <span>
+          {item.body ?? 'A run failed. Check the timeline for details.'}
+        </span>
+      )
     case 'agent_blocked':
-      return <span>{item.body ?? 'This issue needs a decision before work can resume.'}</span>
+      return (
+        <span>
+          {item.body ?? 'This issue needs a decision before work can resume.'}
+        </span>
+      )
     case 'task_completed':
       return <span>{item.body ?? typeLabels[item.type]}</span>
     case 'reaction_added': {

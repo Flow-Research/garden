@@ -24,8 +24,10 @@ type ApprovalRow = {
   id: string
   agent_id: string
   issue_id: string | null
-  kind: string
-  context: string | null
+}
+
+type AgentProposalApprovalRow = {
+  pendingAgentId: string
 }
 
 function reconcilerError(args: {
@@ -43,11 +45,6 @@ function dbError(operation: string, cause: unknown) {
     message: `${operation} failed: ${message}`,
     cause,
   })
-}
-
-function pendingAgentIdFromContext(value: string | null) {
-  const prefix = 'agent_proposal:'
-  return value?.startsWith(prefix) ? value.slice(prefix.length) : null
 }
 
 /**
@@ -72,6 +69,7 @@ async function sweepStaleApprovals(
         })
         .where(
           and(
+            eq(schema.permissionRequest.kind, 'connector_write'),
             eq(schema.permissionRequest.status, 'pending'),
             sql`${schema.permissionRequest.requestedAt} < ${staleBefore}`,
           ),
@@ -80,8 +78,6 @@ async function sweepStaleApprovals(
           id: schema.permissionRequest.id,
           agent_id: schema.permissionRequest.agentId,
           issue_id: schema.permissionRequest.issueId,
-          kind: schema.permissionRequest.kind,
-          context: schema.permissionRequest.context,
         })
       return rows
     },
@@ -89,28 +85,43 @@ async function sweepStaleApprovals(
   })
   if (rowsResult.isErr()) return Result.err(rowsResult.error)
 
-  for (const row of rowsResult.value as ApprovalRow[]) {
-    if (row.kind === 'agent_proposal') {
-      const pendingAgentId = pendingAgentIdFromContext(row.context)
-      if (pendingAgentId) {
-        const archiveResult = await Result.tryPromise({
-          try: async () => {
-            await db
-              .update(schema.agent)
-              .set({ status: 'archived' })
-              .where(
-                and(
-                  eq(schema.agent.id, pendingAgentId),
-                  eq(schema.agent.status, 'pending_approval'),
-                ),
-              )
-          },
-          catch: (cause) => dbError('archive stale proposed agent', cause),
-        })
-        if (archiveResult.isErr()) return Result.err(archiveResult.error)
-      }
-    }
+  const proposalRowsResult = await Result.tryPromise({
+    try: async () =>
+      db
+        .update(schema.agentProposalRequest)
+        .set({ status: 'denied', resolvedAt: now })
+        .where(
+          and(
+            eq(schema.agentProposalRequest.status, 'pending'),
+            sql`${schema.agentProposalRequest.requestedAt} < ${staleBefore}`,
+          ),
+        )
+        .returning({
+          pendingAgentId: schema.agentProposalRequest.pendingAgentId,
+        }),
+    catch: (cause) => dbError('sweep stale agent proposals', cause),
+  })
+  if (proposalRowsResult.isErr()) return Result.err(proposalRowsResult.error)
 
+  for (const proposal of proposalRowsResult.value as AgentProposalApprovalRow[]) {
+    const archiveResult = await Result.tryPromise({
+      try: async () => {
+        await db
+          .update(schema.agent)
+          .set({ status: 'archived' })
+          .where(
+            and(
+              eq(schema.agent.id, proposal.pendingAgentId),
+              eq(schema.agent.status, 'pending_approval'),
+            ),
+          )
+      },
+      catch: (cause) => dbError('archive stale proposed agent', cause),
+    })
+    if (archiveResult.isErr()) return Result.err(archiveResult.error)
+  }
+
+  for (const row of rowsResult.value as ApprovalRow[]) {
     const issueId = row.issue_id
     if (!issueId) continue
     const runsResult = await Result.tryPromise({
@@ -200,7 +211,7 @@ async function sweepStaleApprovals(
     }
   }
 
-  return Result.ok(rowsResult.value.length)
+  return Result.ok(rowsResult.value.length + proposalRowsResult.value.length)
 }
 
 /**
