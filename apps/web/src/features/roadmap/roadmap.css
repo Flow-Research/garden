@@ -7,6 +7,12 @@
  * architecture page, it pins Garden token values on its own root instead of
  * trusting whatever theme class the document happens to carry. Values mirror
  * the light palette in packages/ui/styles/tokens.css.
+ *
+ * Visual language (after a reference pass over public roadmaps — Atlassian,
+ * Shortcut, Linear, GitHub): phases + status color carry the reading, and one
+ * strong progress visual anchors the page. Here that visual is the hero
+ * garden path — the pilot plan drawn as a walkable trail — plus the readiness
+ * vine. Everything else stays quiet hairline rows.
  * ========================================================================== */
 .roadmap-root {
   --parchment: #f9f7f2;
@@ -48,10 +54,14 @@
   background-repeat: repeat;
 }
 
+.roadmap-root ::selection {
+  background: color-mix(in srgb, var(--moss) 22%, transparent);
+}
+
 /* =============================================================================
- * Load choreography — one orchestrated entrance for the masthead and the
- * readiness vine, then the page is still. Keyframes autorun (no class gating)
- * so the static render is always complete, and reduced-motion turns them off.
+ * Load choreography — one orchestrated entrance for the masthead, hero path,
+ * and readiness vine, then the page is still. Keyframes autorun (no class
+ * gating) so the static render is always complete; reduced-motion disables.
  * ========================================================================== */
 @keyframes roadmap-rise {
   from {
@@ -75,8 +85,103 @@
 }
 
 /* =============================================================================
+ * Hero garden path — the pilot plan drawn as a trail from Now to Later.
+ * Stations are real anchors into the week-by-week section below; the trail is
+ * the page's thesis rendered as a picture: a narrow, walkable path, no leaps.
+ * ========================================================================== */
+.roadmap-path-figure {
+  position: relative;
+  margin-top: 3.5rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel, 0.875rem);
+  background:
+    radial-gradient(
+      120% 90% at 85% 0%,
+      color-mix(in srgb, var(--moss) 7%, transparent),
+      transparent 60%
+    ),
+    var(--vellum);
+  overflow: hidden;
+  animation: roadmap-rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
+}
+
+.roadmap-path-figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* The trail itself: dotted stone, like stepping through beds. */
+.roadmap-trail {
+  stroke: var(--stone);
+  stroke-dasharray: 1 7;
+  stroke-linecap: round;
+}
+
+/* A station on the trail. The <a> wrapper keeps stations keyboard-reachable. */
+.roadmap-station circle {
+  fill: var(--bone);
+  stroke: var(--stone);
+  stroke-width: 1.5;
+  transition:
+    stroke 0.15s ease,
+    fill 0.15s ease;
+}
+.roadmap-station text {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  fill: var(--gravel);
+  transition: fill 0.15s ease;
+}
+.roadmap-station:hover circle,
+.roadmap-station:focus-visible circle {
+  stroke: var(--moss);
+}
+.roadmap-station:hover text,
+.roadmap-station:focus-visible text {
+  fill: var(--moss);
+}
+.roadmap-station:focus-visible {
+  outline: none;
+}
+.roadmap-station[data-current='true'] circle {
+  fill: var(--moss);
+  stroke: var(--moss);
+}
+.roadmap-station[data-current='true'] text {
+  fill: var(--moss);
+  font-weight: 500;
+}
+
+/* Soft pulse behind the "Now" station — where the reader is standing. */
+.roadmap-station-pulse {
+  fill: none;
+  stroke: color-mix(in srgb, var(--moss) 50%, transparent);
+  animation: roadmap-pulse 3.2s ease-out infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+@keyframes roadmap-pulse {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+}
+
+/* Stagger the stations in after the figure lands. */
+.roadmap-station {
+  animation: roadmap-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(0.55s + var(--station-i, 0) * 60ms);
+}
+
+/* =============================================================================
  * Readiness vine — the seven beta gates strung on one line. Horizontal on
- * desktop, vertical spine on small screens. The one bold moment of the page.
+ * desktop, vertical spine on small screens.
  * ========================================================================== */
 .roadmap-vine {
   display: grid;
@@ -89,7 +194,7 @@
   position: absolute;
   left: calc(100% / 14);
   right: calc(100% / 14);
-  top: 8px;
+  top: 10px;
   height: 1px;
   background: var(--hairline);
 }
@@ -99,7 +204,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.7rem;
   text-align: center;
   padding: 0 0.4rem;
   animation: roadmap-rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -107,8 +212,8 @@
 }
 
 .roadmap-gate-node {
-  width: 17px;
-  height: 17px;
+  width: 21px;
+  height: 21px;
   border-radius: 9999px;
   border: 1.5px solid var(--stone);
   background: var(--parchment);
@@ -120,6 +225,7 @@
   border-color: var(--moss);
   background: var(--moss);
   color: #f7faf5;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--moss) 16%, transparent);
 }
 .roadmap-gate-label {
   font-size: 12px;
@@ -135,10 +241,10 @@
 @media (max-width: 720px) {
   .roadmap-vine {
     grid-template-columns: 1fr;
-    gap: 0.9rem;
+    gap: 1rem;
   }
   .roadmap-vine::before {
-    left: 8px;
+    left: 10px;
     right: auto;
     top: 10px;
     bottom: 10px;
@@ -154,19 +260,26 @@
 
 /* =============================================================================
  * Work rows — the page's workhorse. Hairline-ruled rows, never cards.
+ * Shipped work gets a quiet moss wash: progress should be visible at a glance.
  * ========================================================================== */
 .roadmap-row {
   display: grid;
   grid-template-columns: 5.5rem 1fr;
   gap: 0.4rem 1.5rem;
-  padding: 1.1rem 0.6rem;
-  margin: 0 -0.6rem;
+  padding: 1.1rem 0.7rem;
+  margin: 0 -0.7rem;
   border-bottom: 1px solid var(--hairline-soft);
   border-radius: var(--radius-md, 0.5rem);
   transition: background-color 0.15s ease;
 }
 .roadmap-row:hover {
   background-color: color-mix(in srgb, var(--parchment-deep) 55%, transparent);
+}
+.roadmap-row[data-shipped='true'] {
+  background-color: color-mix(in srgb, var(--moss) 6%, transparent);
+}
+.roadmap-row[data-shipped='true']:hover {
+  background-color: color-mix(in srgb, var(--moss) 10%, transparent);
 }
 @media (max-width: 560px) {
   .roadmap-row {
@@ -183,31 +296,33 @@
 }
 
 /* =============================================================================
- * Pilot timeline — a true sequence, so it earns a spine. Week markers sit on a
- * vertical rail; each entry carries goal, four lanes, and a "done when" line.
+ * Pilot timeline — the same trail as the hero, walked slowly. Week seals sit
+ * on a vertical rail; the current week is a moss seal, the rest are stones
+ * still ahead.
  * ========================================================================== */
 .roadmap-timeline {
   position: relative;
-  padding-left: 3.6rem;
+  padding-left: 4rem;
 }
 .roadmap-timeline::before {
   content: '';
   position: absolute;
-  left: 1.05rem;
-  top: 10px;
+  left: 1.15rem;
+  top: 12px;
   bottom: 10px;
   width: 1px;
   background: linear-gradient(
     to bottom,
-    var(--hairline),
-    var(--hairline) 96%,
+    color-mix(in srgb, var(--moss) 55%, var(--hairline)),
+    var(--hairline) 22%,
+    var(--hairline) 92%,
     transparent
   );
 }
 
 .roadmap-week {
   position: relative;
-  padding-bottom: 2.6rem;
+  padding-bottom: 3rem;
 }
 .roadmap-week:last-child {
   padding-bottom: 0;
@@ -215,10 +330,10 @@
 
 .roadmap-week-marker {
   position: absolute;
-  left: -3.6rem;
+  left: -4rem;
   top: 0;
-  width: 2.1rem;
-  height: 2.1rem;
+  width: 2.35rem;
+  height: 2.35rem;
   border-radius: 9999px;
   border: 1px solid var(--hairline);
   background: var(--bone);
@@ -230,11 +345,17 @@
   color: var(--moss);
   box-shadow: var(--shadow-float-1, 0 1px 1px rgba(26, 31, 28, 0.04));
 }
+.roadmap-week[data-current='true'] .roadmap-week-marker {
+  background: var(--moss);
+  border-color: var(--moss);
+  color: #f7faf5;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--moss) 16%, transparent);
+}
 
 .roadmap-lanes {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.9rem 2rem;
+  gap: 1rem 2.2rem;
 }
 @media (max-width: 640px) {
   .roadmap-lanes {
@@ -253,7 +374,13 @@
   .roadmap-rise,
   .roadmap-rise-2,
   .roadmap-rise-3,
-  .roadmap-gate {
+  .roadmap-gate,
+  .roadmap-path-figure,
+  .roadmap-station {
     animation: none;
+  }
+  .roadmap-station-pulse {
+    animation: none;
+    opacity: 0;
   }
 }
