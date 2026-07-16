@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { createLogger } from '@garden/observability/console'
 import type { AppEnv } from '@/lib/server/env'
@@ -24,10 +24,6 @@ type ApprovalRow = {
   id: string
   agent_id: string
   issue_id: string | null
-}
-
-type AgentProposalApprovalRow = {
-  pendingAgentId: string
 }
 
 function reconcilerError(args: {
@@ -87,39 +83,40 @@ async function sweepStaleApprovals(
 
   const proposalRowsResult = await Result.tryPromise({
     try: async () =>
-      db
-        .update(schema.agentProposalRequest)
-        .set({ status: 'denied', resolvedAt: now })
-        .where(
-          and(
-            eq(schema.agentProposalRequest.status, 'pending'),
-            sql`${schema.agentProposalRequest.requestedAt} < ${staleBefore}`,
-          ),
+      db.transaction(async (tx) => {
+        const proposals = await tx
+          .update(schema.agentProposalRequest)
+          .set({ status: 'denied', resolvedAt: now })
+          .where(
+            and(
+              eq(schema.agentProposalRequest.status, 'pending'),
+              sql`${schema.agentProposalRequest.requestedAt} < ${staleBefore}`,
+            ),
+          )
+          .returning({
+            pendingAgentId: schema.agentProposalRequest.pendingAgentId,
+          })
+
+        const pendingAgentIds = proposals.map(
+          (proposal) => proposal.pendingAgentId,
         )
-        .returning({
-          pendingAgentId: schema.agentProposalRequest.pendingAgentId,
-        }),
+        if (pendingAgentIds.length > 0) {
+          await tx
+            .update(schema.agent)
+            .set({ status: 'archived' })
+            .where(
+              and(
+                inArray(schema.agent.id, pendingAgentIds),
+                eq(schema.agent.status, 'pending_approval'),
+              ),
+            )
+        }
+
+        return proposals
+      }),
     catch: (cause) => dbError('sweep stale agent proposals', cause),
   })
   if (proposalRowsResult.isErr()) return Result.err(proposalRowsResult.error)
-
-  for (const proposal of proposalRowsResult.value as AgentProposalApprovalRow[]) {
-    const archiveResult = await Result.tryPromise({
-      try: async () => {
-        await db
-          .update(schema.agent)
-          .set({ status: 'archived' })
-          .where(
-            and(
-              eq(schema.agent.id, proposal.pendingAgentId),
-              eq(schema.agent.status, 'pending_approval'),
-            ),
-          )
-      },
-      catch: (cause) => dbError('archive stale proposed agent', cause),
-    })
-    if (archiveResult.isErr()) return Result.err(archiveResult.error)
-  }
 
   for (const row of rowsResult.value as ApprovalRow[]) {
     const issueId = row.issue_id
