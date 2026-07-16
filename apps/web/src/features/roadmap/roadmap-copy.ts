@@ -1,7 +1,7 @@
 /**
  * /roadmap — all narrative content for the public roadmap page.
  *
- * This file is a hand-reconciled snapshot (2026-07-16) of four sources that
+ * This file is a hand-reconciled snapshot (2026-07-16) of the sources that
  * previously had to be read separately to understand where Garden stands:
  *
  *   1. docs/known-gaps/*.md            — code-verified gap inventory (2026-07-12)
@@ -10,9 +10,11 @@
  *   4. github.com/Flow-Research/garden — open GitHub issues
  *   5. artifacts/roadmap/garden-internal-product-roadmap.xlsx — pilot weekly plan
  *
- * Structure lives here so roadmap-page.tsx stays purely presentational. When
- * the plan changes, edit this file; the page never hard-codes copy. E2E/test
- * fixture issues on the boards are deliberately excluded.
+ * Issues are folded in contextually: each work item carries its tracker
+ * references as links, and GitHub numbers only appear where the mapping is
+ * real (FLO-nn and GH #nn numbering are unrelated). There is deliberately no
+ * "issue board dump" section — the trackers stay the system of record and the
+ * footer links to them. Test-fixture issues are excluded.
  */
 
 export type GateStatus = 'done' | 'open'
@@ -36,9 +38,21 @@ export const readinessGates: ReadinessGate[] = [
 
 export type WorkPriority = 'high' | 'medium' | 'low' | 'shipped'
 
-/** A single tracked piece of work — doc-verified gap or board issue. */
+/** A tracker reference attached to a work item. href only when public. */
+export interface IssueLink {
+  label: string
+  href?: string
+}
+
+const gh = (n: number): IssueLink => ({
+  label: `GH #${n}`,
+  href: `https://github.com/Flow-Research/garden/issues/${n}`,
+})
+const flo = (n: number): IssueLink => ({ label: `FLO-${n}` })
+
+/** A single tracked piece of work — doc-verified gap with tracker links. */
 export interface WorkItem {
-  /** FLO-nn workspace id or GH #nn — mono chip on the row. */
+  /** Primary ref shown on the card face. */
   ref: string
   title: string
   detail: string
@@ -47,18 +61,11 @@ export interface WorkItem {
   evidence?: string
   /** Extra status note, e.g. cross-tracker drift. */
   note?: string
+  /** Tracker references, rendered as chips; linked when public. */
+  links?: IssueLink[]
 }
 
 export const launchGates: WorkItem[] = [
-  {
-    ref: 'FLO-27',
-    title: 'Better Auth origin and CSRF checks restored',
-    detail:
-      'disableCSRFCheck and disableOriginCheck are explicitly false again, with focused tests covering trusted, foreign, missing, and null origins. Merged to main 16 Jul.',
-    priority: 'shipped',
-    evidence: 'apps/web/src/lib/auth/instance.ts',
-    note: 'GH #54 close pending',
-  },
   {
     ref: 'FLO-30',
     title: 'Workspace-isolation regression coverage',
@@ -66,6 +73,16 @@ export const launchGates: WorkItem[] = [
       'Isolation is application-enforced, not DB-RLS-backed, and no single regression suite exercises it across routes, agent RPC, inbox, approvals, documents, and attachments. One suite, run in CI, before beta.',
     priority: 'high',
     evidence: 'apps/web/src/lib/server/control-plane.ts',
+    links: [flo(30), gh(27)],
+  },
+  {
+    ref: 'GH #53',
+    title: 'Permission grant route missing authz',
+    detail:
+      'G-TM-03 from the threat model: the grant route does not require the permissionManage capability, so it trusts callers it should not. Straight security fix, gated on nothing.',
+    priority: 'high',
+    evidence: 'apps/web/src/routes/api/connections',
+    links: [gh(53)],
   },
   {
     ref: 'FLO-31',
@@ -74,6 +91,7 @@ export const launchGates: WorkItem[] = [
       'Issue and automation runs must start, wait, resume, cancel, fail, and recover cleanly through RunWorkflow — no stuck running rows, duplicate starts, orphaned active runs, or hidden failure reasons.',
     priority: 'high',
     evidence: 'packages/agent-runtime/src/run-workflow.ts',
+    links: [flo(31)],
   },
   {
     ref: 'FLO-32',
@@ -82,17 +100,18 @@ export const launchGates: WorkItem[] = [
       'A stable /api/health contract plus smoke coverage for login/workspace, chat, issue runs, automation runs, and document artifacts — running against staging, not just local.',
     priority: 'high',
     evidence: 'apps/web/src/server.ts',
+    links: [flo(32), gh(33)],
   },
 ]
 
 export const betaQuality: WorkItem[] = [
   {
-    ref: 'FLO-35',
-    title: 'Existing-thread-document picker',
+    ref: 'FLO-29',
+    title: 'Email notifications for mentions and inbox items',
     detail:
-      'Chat composer lists thread documents and sends selected current-version identity through turn-scoped document context. Merged to main 16 Jul.',
-    priority: 'shipped',
-    evidence: 'apps/web/src/features/chat/components/chat-composer.tsx',
+      'Resend-backed delivery so mentions, approvals, and inbox items reach people who are not currently in the app. High on the workspace board since 10 Jul.',
+    priority: 'high',
+    links: [flo(29)],
   },
   {
     ref: 'FLO-34',
@@ -100,6 +119,7 @@ export const betaQuality: WorkItem[] = [
     detail:
       'A shorter path from signup to a useful agent action, plus clear explanations and recovery for failed runs, missing workspace state, expired sessions, invitations, and reconnects.',
     priority: 'medium',
+    links: [flo(34)],
   },
   {
     ref: 'FLO-36',
@@ -107,6 +127,7 @@ export const betaQuality: WorkItem[] = [
     detail:
       'Chat already links to one primary issue; issues cannot point back to their source chat, and a thread cannot anchor more than one issue.',
     priority: 'medium',
+    links: [flo(36), gh(34)],
   },
   {
     ref: 'FLO-37',
@@ -114,6 +135,7 @@ export const betaQuality: WorkItem[] = [
     detail:
       'Store prompt/config versions and bounded context snapshots, define a shared failure taxonomy, expose secret-safe traces, and add regression evals across chat, issue, and automation runtimes.',
     priority: 'medium',
+    links: [flo(37), gh(32)],
   },
   {
     ref: 'FLO-38',
@@ -121,6 +143,56 @@ export const betaQuality: WorkItem[] = [
     detail:
       'Typed webhook/API authentication, replay protection, idempotency, and attribution — and either implement queue concurrency end to end or remove it from supported configuration.',
     priority: 'medium',
+    links: [flo(38), gh(31)],
+  },
+  {
+    ref: 'FLO-28',
+    title: 'Code-review automation built in Garden',
+    detail:
+      'Dogfood the automations surface on our own pull requests — the first automation template with real daily stakes.',
+    priority: 'high',
+    links: [flo(28)],
+  },
+]
+
+/** Shipped recently — kept visible so progress reads at a glance. */
+export const shippedRecently: WorkItem[] = [
+  {
+    ref: 'FLO-27',
+    title: 'Better Auth origin and CSRF checks restored',
+    detail:
+      'disableCSRFCheck and disableOriginCheck are explicitly false again, with focused tests covering trusted, foreign, missing, and null origins. Merged to main 16 Jul.',
+    priority: 'shipped',
+    evidence: 'apps/web/src/lib/auth/instance.ts',
+    note: 'GH #54 close pending',
+    links: [gh(54), gh(27)],
+  },
+  {
+    ref: 'FLO-35',
+    title: 'Existing-thread-document picker in chat',
+    detail:
+      'The composer lists thread documents and sends selected current-version identity through turn-scoped document context. Merged to main 16 Jul; the file-artifact handoff half of GH #7 remains open.',
+    priority: 'shipped',
+    evidence: 'apps/web/src/features/chat/components/chat-composer.tsx',
+    links: [flo(35), gh(7)],
+  },
+  {
+    ref: 'FLO-15',
+    title: 'Tag workspace members from chat',
+    detail:
+      'Mention members to reference, assign, or pull context. Done on the workspace board since late June — the GitHub twin is still open.',
+    priority: 'shipped',
+    note: 'GH #41 close pending',
+    links: [gh(41)],
+  },
+  {
+    ref: 'FLO-14',
+    title: 'Workspace no longer switches on return navigation',
+    detail:
+      'Returning from another web route used to land you in a different workspace. Fixed and verified; the GitHub twin is still open.',
+    priority: 'shipped',
+    note: 'GH #40 close pending',
+    links: [gh(40)],
   },
 ]
 
@@ -132,6 +204,7 @@ export const connectorTrust: WorkItem[] = [
       'MCP tools, permission grants, workspace inventory, and agent proposal each hold their own view. propose_agent captures connector requirements, but approval never turns them into first-class permission grants.',
     priority: 'high',
     evidence: 'packages/agent-runtime/src/runtime-mcp-controller.ts',
+    links: [gh(28)],
   },
   {
     ref: 'MED',
@@ -140,6 +213,31 @@ export const connectorTrust: WorkItem[] = [
       'HTTP auth validates agent and workspace but not explicit user membership; approval reuse is not scoped per issue/run; audit failures do not fail closed for risky tools.',
     priority: 'medium',
     evidence: 'workers/mcp-proxy/src',
+    links: [gh(28)],
+  },
+  {
+    ref: 'MED',
+    title: 'Permission defaults and approval targeting',
+    detail:
+      'Follow-through from the 20 Jun permission-defaults postmortem: sane grant defaults per risk class, and approval requests routed to the right recipients.',
+    priority: 'medium',
+    links: [gh(37)],
+  },
+  {
+    ref: 'FLO-39',
+    title: 'Google Workspace org-drive auth design',
+    detail:
+      'Route Google Workspace tool calls across member-owned accounts instead of one shared grant — filed 15 Jul, pairs with the GitHub twin.',
+    priority: 'medium',
+    links: [flo(39), gh(48)],
+  },
+  {
+    ref: 'FLO-40',
+    title: 'Agents hallucinate GitHub owner/org names',
+    detail:
+      'Connector calls need grounded owner/repo resolution instead of trusting the model to remember which org it is in. Filed 15 Jul.',
+    priority: 'medium',
+    links: [flo(40)],
   },
   {
     ref: 'MED',
@@ -158,10 +256,12 @@ export const connectorTrust: WorkItem[] = [
     evidence: 'packages/agent-runtime/src/runtime-mcp-controller.ts',
   },
   {
-    ref: 'MED',
-    title: 'Connector audit drawer',
-    detail: 'The "recent activity" surface — agent, connector, tool, target, approval, status — is not built.',
+    ref: 'FLO-20',
+    title: 'GitHub connector write grants for Flow Research',
+    detail:
+      'The write path is blocked on grant configuration for our own workspace — also what blocks mirroring issues to the official repo.',
     priority: 'medium',
+    links: [flo(20), gh(39)],
   },
   {
     ref: 'MED',
@@ -179,9 +279,24 @@ export interface PilotLane {
   work: string
 }
 
+/** Ordered pilot phase ids — also the valid values for the ?week= param. */
+export const pilotWeekIds = [
+  'now',
+  'w1',
+  'w2',
+  'w3',
+  'w4',
+  'w5',
+  'w6',
+  'w78',
+  'later',
+] as const
+
+export type PilotWeekId = (typeof pilotWeekIds)[number]
+
 /** A week entry in the Moniepoint pilot plan (from the roadmap xlsx). */
 export interface PilotWeek {
-  id: string
+  id: PilotWeekId
   label: string
   goal: string
   lanes: PilotLane[]
@@ -189,7 +304,7 @@ export interface PilotWeek {
 }
 
 export const pilotStance =
-  'Garden is a company operating surface, not a chatbot. Near-term priority is proving the Moniepoint QA/work loop on a real deployment path — client-owned Cloudflare first, Flow-managed fallback only if setup blocks the pilot. Scope stays narrow: safe deploy, governed connectors, visible work products, approval-first writeback, audit and cost.'
+  'Garden is a company operating surface, not a chatbot. Near-term priority is proving the Moniepoint QA/work loop on a real deployment path — client-owned Cloudflare first. Scope stays narrow: safe deploy, governed connectors, visible work products, approval-first writeback, audit and cost.'
 
 export const pilotWeeks: PilotWeek[] = [
   {
@@ -413,286 +528,52 @@ export const pilotWeeks: PilotWeek[] = [
   },
 ]
 
-/** A grouped cluster of board issues (GitHub or workspace). */
-export interface BoardGroup {
-  title: string
-  items: WorkItem[]
+/** A refused-for-now entry, with tracker links where a bet is already filed. */
+export interface NotNowItem {
+  text: string
+  links?: IssueLink[]
 }
 
-const gh = (n: number) => `https://github.com/Flow-Research/garden/issues/${n}`
-
-/** External link target for a GH ref chip, when the item lives on GitHub. */
-export const githubIssueUrl = gh
-
-export const githubGroups: BoardGroup[] = [
+/** Deferred-until-evidence list from docs/roadmap.md, cross-linked to bets. */
+export const deferredUntilEvidence: NotNowItem[] = [
   {
-    title: 'Security',
-    items: [
-      {
-        ref: '#53',
-        title: 'Permission grant route missing permissionManage authz',
-        detail: 'G-TM-03 from the threat model — the grant route trusts callers it should not.',
-        priority: 'high',
-      },
-      {
-        ref: '#54',
-        title: 'Better Auth origin checks disabled',
-        detail: 'G-TM-01. Fixed on main 16 Jul; the issue is still open upstream.',
-        priority: 'shipped',
-        note: 'close pending',
-      },
-      {
-        ref: '#27',
-        title: 'Harden auth origin and CSRF posture before ship',
-        detail: 'Parent tracking issue — origin checks landed; remaining posture work continues under FLO-30.',
-        priority: 'medium',
-      },
-    ],
+    text: 'Workspace-wide realtime bus — mounted chat streams and bounded polling hold until beta shows pain',
+    links: [gh(6)],
   },
   {
-    title: 'Product, next',
-    items: [
-      {
-        ref: '#48',
-        title: 'Route Google Workspace tools across member-owned accounts',
-        detail: 'Pairs with FLO-39, the org-drive auth design filed 15 Jul.',
-        priority: 'medium',
-      },
-      {
-        ref: '#37',
-        title: 'Connector permission defaults and approval recipient targeting',
-        detail: 'Follow-through from the 20 Jun permission-defaults postmortem.',
-        priority: 'medium',
-      },
-      {
-        ref: '#38',
-        title: 'Chat interface on the issue board',
-        detail: 'Workspace counterpart is already in review.',
-        priority: 'medium',
-      },
-      {
-        ref: '#39',
-        title: 'Mirror issues to the official Garden repository',
-        detail: 'GitHub connector writeback for the Flow Research workspace.',
-        priority: 'medium',
-      },
-      {
-        ref: '#9',
-        title: 'Settings audit, billing, and polish gaps',
-        detail: 'Long-running cleanup tracker.',
-        priority: 'low',
-      },
-      {
-        ref: '#7',
-        title: 'Thread document picking and file-artifact handoff',
-        detail: 'The picker half shipped as FLO-35; artifact handoff remains.',
-        priority: 'medium',
-      },
-    ],
+    text: 'Parent-backed shared memory, files, MCP state, and cross-chat search',
+    links: [gh(23), gh(29)],
   },
+  { text: 'Workspace ↔ container sandbox storage bridge', links: [gh(21)] },
+  { text: 'Workspace-level artifact tabs and Review Grid' },
+  { text: 'Visual runtime — HTML/SVG rendering, charts, widgets', links: [gh(15)] },
   {
-    title: 'Shipped on main, close pending',
-    items: [
-      {
-        ref: '#41',
-        title: 'Tag workspace members from chat',
-        detail: 'Done on the workspace board since late June.',
-        priority: 'shipped',
-      },
-      {
-        ref: '#40',
-        title: 'Returning from another route lands in a different workspace',
-        detail: 'Done on the workspace board since late June.',
-        priority: 'shipped',
-      },
-    ],
+    text: 'Platform bets: connector functions, workflow engine, departments, computer-use contract',
+    links: [gh(47), gh(43), gh(42), gh(22)],
   },
-  {
-    title: 'Platform bets',
-    items: [
-      {
-        ref: '#47',
-        title: 'Garden-native connector functions platform',
-        detail: 'Beyond MCP passthrough — first-class connector functions.',
-        priority: 'low',
-      },
-      {
-        ref: '#43',
-        title: 'Workflow engine for agent-driven processes',
-        detail: 'Also live on the workspace board as a todo.',
-        priority: 'low',
-      },
-      {
-        ref: '#42',
-        title: 'Departments across the organisation',
-        detail: 'Org-structure modeling; workspace duplicate consolidated.',
-        priority: 'low',
-      },
-      {
-        ref: '#23',
-        title: 'Persistent shared agent memory and prompt context',
-        detail: 'Spec-level bet; deferred pending a concrete workflow.',
-        priority: 'low',
-      },
-      {
-        ref: '#22',
-        title: 'Production computer-use contract',
-        detail: 'What browser/computer automation Garden actually promises.',
-        priority: 'low',
-      },
-      {
-        ref: '#21',
-        title: 'Container sandbox artifacts and previews',
-        detail: 'First-class artifacts out of the Cloudflare Sandbox path.',
-        priority: 'low',
-      },
-      {
-        ref: '#15',
-        title: 'Visual artifact runtime and data visualization bridge',
-        detail: 'Explicitly deferred until evidence in the current roadmap.',
-        priority: 'low',
-      },
-      {
-        ref: '#6',
-        title: 'Workspace-wide realtime coordinator',
-        detail: 'Explicitly deferred — polling and chat streams are acceptable until beta shows pain.',
-        priority: 'low',
-      },
-    ],
-  },
-  {
-    title: 'Hardening',
-    items: [
-      {
-        ref: '#28',
-        title: 'Connector capability grants, proxy policy, drift sync',
-        detail: 'Overlaps the connector trust inventory above.',
-        priority: 'medium',
-      },
-      {
-        ref: '#31',
-        title: 'Automations queue, webhook, and audit surfaces',
-        detail: 'Doc-tracked as FLO-38.',
-        priority: 'medium',
-      },
-      {
-        ref: '#32',
-        title: 'Prompt provenance, tracing, evals, failure taxonomy',
-        detail: 'Doc-tracked as FLO-37.',
-        priority: 'medium',
-      },
-      {
-        ref: '#33',
-        title: 'Developer infrastructure gates, E2E, Sentry, staging',
-        detail: 'Feeds the FLO-32 smoke-suite gate.',
-        priority: 'medium',
-      },
-      {
-        ref: '#29',
-        title: 'Hoist shared runtime resources out of per-thread facets',
-        detail: 'Deferred runtime decision — needs a measured failure first.',
-        priority: 'low',
-      },
-      {
-        ref: '#30',
-        title: 'Structured active issue context in agent prompts',
-        detail: 'Prompt-layer enhancement behind FLO-37.',
-        priority: 'low',
-      },
-    ],
-  },
-]
-
-export const workspaceBoard: WorkItem[] = [
-  {
-    ref: 'FLO-29',
-    title: 'Email notifications for mentions and inbox items',
-    detail: 'Resend-backed delivery so inbox items reach people who are not in the app.',
-    priority: 'high',
-  },
-  {
-    ref: 'FLO-28',
-    title: 'Build a code-review automation in Garden',
-    detail: 'Dogfood the automations surface on our own pull requests.',
-    priority: 'high',
-  },
-  {
-    ref: 'FLO-40',
-    title: 'Agent hallucinates GitHub owner/org names',
-    detail: 'Filed 15 Jul — connector calls need grounded owner/repo resolution.',
-    priority: 'medium',
-  },
-  {
-    ref: 'FLO-39',
-    title: 'Google Workspace org-drive auth design',
-    detail: 'Filed 15 Jul — pairs with GH #48 member-account routing.',
-    priority: 'medium',
-  },
-  {
-    ref: 'FLO-20',
-    title: 'GitHub connector write grants for the Flow Research workspace',
-    detail: 'Write path blocked on grant configuration.',
-    priority: 'medium',
-  },
-  {
-    ref: 'FLO-26',
-    title: 'Overhaul automation functionality',
-    detail: 'Older umbrella issue — most of it now lives in FLO-38 and GH #31.',
-    priority: 'low',
-  },
-  {
-    ref: 'FLO-24',
-    title: 'Switch team daily work to Harnessy for dogfooding',
-    detail: 'Operational move, with FLO-22 documenting connector patterns for the Harnessy SDK.',
-    priority: 'medium',
-  },
-  {
-    ref: 'FLO-2',
-    title: 'Design and document the engineering process',
-    detail: 'How work moves from board to branch to review, written down.',
-    priority: 'medium',
-  },
-]
-
-/** Deferred-until-evidence list from docs/roadmap.md. */
-export const deferredUntilEvidence: string[] = [
-  'Workspace-wide realtime bus — mounted chat streams and bounded polling hold until beta shows pain',
-  'Parent-backed shared memory, files, MCP state, and cross-chat search',
-  'Workspace ↔ container sandbox storage bridge',
-  'Workspace-level artifact tabs and Review Grid',
-  'Visual runtime — HTML/SVG rendering, charts, widgets',
-  'Broader connector marketplace',
-  'Pricing and billing polish',
+  { text: 'Broader connector marketplace' },
+  { text: 'Pricing and billing polish', links: [gh(9)] },
 ]
 
 /** Anti-priorities — explicit do-not-build list from docs/roadmap.md. */
-export const antiPriorities: string[] = [
-  'No issue-backed automation compatibility',
-  'No queue dispatch between AgentDO and RunWorkflow',
-  'No collapsing chats into one mutable Think session',
-  'No app-wide realtime before measured need',
-  'No pretending Sandbox /workspace and Think Workspace share storage',
+export const antiPriorities: NotNowItem[] = [
+  { text: 'No issue-backed automation compatibility' },
+  { text: 'No queue dispatch between AgentDO and RunWorkflow' },
+  { text: 'No collapsing chats into one mutable Think session' },
+  { text: 'No app-wide realtime before measured need' },
+  { text: 'No pretending Sandbox /workspace and Think Workspace share storage' },
 ]
 
 export const roadmapMeta = {
   horizon: 'Beta / soft launch',
   updated: '16 Jul 2026',
   goal: 'Garden should survive real use by a small beta group without data leaks, stuck runs, silent failures, or confusing recovery paths. Product can stay narrow; it cannot feel fragile.',
+  boardsUrl: 'https://github.com/Flow-Research/garden/issues',
   sources: [
     { label: 'docs/known-gaps', detail: 'gap inventory, 12 Jul' },
     { label: 'docs/roadmap.md', detail: 'beta priorities' },
     { label: 'workspace board', detail: 'FLO issues, 16 Jul' },
-    { label: 'github.com/Flow-Research/garden', detail: 'open issues' },
+    { label: 'GitHub issues', detail: 'open set' },
     { label: 'pilot plan xlsx', detail: 'weekly plan' },
   ],
 }
-
-export const roadmapToc = [
-  { id: 'readiness', label: 'Readiness' },
-  { id: 'gates', label: 'Launch gates' },
-  { id: 'quality', label: 'Beta quality' },
-  { id: 'connectors', label: 'Connector trust' },
-  { id: 'pilot', label: 'Pilot plan' },
-  { id: 'boards', label: 'On the boards' },
-  { id: 'not-now', label: 'Not now' },
-]
