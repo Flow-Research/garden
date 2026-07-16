@@ -94,6 +94,7 @@ async function sweepStaleApprovals(
             ),
           )
           .returning({
+            id: schema.agentProposalRequest.id,
             pendingAgentId: schema.agentProposalRequest.pendingAgentId,
           })
 
@@ -108,6 +109,16 @@ async function sweepStaleApprovals(
               and(
                 inArray(schema.agent.id, pendingAgentIds),
                 eq(schema.agent.status, 'pending_approval'),
+              ),
+            )
+
+          await tx
+            .update(schema.inboxItem)
+            .set({ read: true, archived: true, updatedAt: now })
+            .where(
+              inArray(
+                schema.inboxItem.itemKey,
+                proposals.map((proposal) => `approval:${proposal.id}`),
               ),
             )
         }

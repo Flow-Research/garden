@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { archiveInboxItemsByKey } from '@garden/db/inbox'
 import { requireAppRequestContext } from '@/lib/server/context'
 import {
   parseJsonBody,
@@ -57,6 +58,12 @@ export const Route = createFileRoute('/api/chat/threads/$id/tool-approval')({
               proposalResult.error.status,
             )
           }
+
+          await archiveInboxItemsByKey({
+            db: access.db,
+            workspaceId: access.thread.workspaceId,
+            itemKeys: [`approval:${proposalResult.value.permissionRequestId}`],
+          })
 
           return Response.json({
             ok: true,
