@@ -106,6 +106,14 @@ export const launchGates: WorkItem[] = [
     links: [gh(53)],
   },
   {
+    ref: 'BLOCKED',
+    title: 'Put Garden on garden.flowresearch.tech',
+    detail:
+      'The production domain is blocked on access to the Flow Research Cloudflare DNS zone. Once that is available, wire the domain, TLS, auth origins, OAuth callbacks, and deployment checks.',
+    priority: 'high',
+    note: 'blocked: Cloudflare DNS',
+  },
+  {
     ref: 'FLO-32',
     title: 'Health endpoint and staging smoke suite',
     detail:
@@ -116,11 +124,19 @@ export const launchGates: WorkItem[] = [
   },
   {
     ref: 'ALIGN',
-    title: 'Improve the current product incrementally',
+    title: 'Implement the new design in shippable slices',
     detail:
-      'Keep the current MVP and fix it in place. Design starts with lightweight feedback and ships as small changes to working flows. A shared decision log gives product, design, and engineering one place to check what changed and why.',
+      'Move the new design into Garden one working slice at a time. Tie each slice to a real workflow, review it with engineering, and keep the product usable as the new design lands. Record decisions in one shared place so the team knows what changed and why.',
     priority: 'high',
-    note: 'workflow before aesthetics',
+    note: 'design + engineering',
+  },
+  {
+    ref: 'ACTIVE',
+    title: 'Start rewriting Garden in Effect-TS',
+    detail:
+      'Move Garden to Effect in small, shippable slices. Start with core services and runtime paths as they are touched, keep behavior covered by tests, and leave the current product usable throughout the migration.',
+    priority: 'high',
+    note: 'incremental migration',
   },
 ]
 
@@ -157,6 +173,14 @@ export const betaQuality: WorkItem[] = [
       'Save the prompt and runtime configuration behind each run. Use the same failure names across chat, tasks, and automations. Add traces and regression checks where they help us reproduce a real failure.',
     priority: 'medium',
     links: [flo(37), gh(32)],
+  },
+  {
+    ref: 'SOON',
+    title: 'Build the knowledge graph and shared memory',
+    detail:
+      'Let Garden carry useful workspace context across chats, tasks, agents, and automations. Keep sources visible so synthesized memory can be checked and corrected.',
+    priority: 'medium',
+    links: [gh(23), gh(29)],
   },
   {
     ref: 'PILOT',
@@ -224,10 +248,6 @@ export interface NotNowItem {
 export const deferredUntilEvidence: NotNowItem[] = [
   { text: 'Garden Personal mode and Cave' },
   {
-    text: 'Knowledge graph and shared-memory synthesis',
-    links: [gh(23), gh(29)],
-  },
-  {
     text: 'Broad marketplace before internal and pilot workflows prove reusable value',
   },
   {
@@ -244,9 +264,6 @@ export const deferredUntilEvidence: NotNowItem[] = [
 
 export const antiPriorities: NotNowItem[] = [
   { text: 'No full platform rewrite for the current MVP' },
-  {
-    text: 'No aesthetic redesign detached from working workflows and technical feedback',
-  },
   { text: 'No customer presented as adopted before commitment' },
   { text: 'No second connector catalog or execution host inside Garden' },
   { text: 'No second retry or recovery layer around Cloudflare Workflows' },
