@@ -22,7 +22,7 @@ import {
  */
 export function RoadmapPage() {
   return (
-    <div className="roadmap-root min-h-dvh overflow-x-hidden">
+    <div className="roadmap-root h-dvh overflow-y-auto overscroll-y-contain">
       <div className="mx-auto max-w-5xl px-6 pb-24 sm:px-10">
         <Masthead />
         <main className="mt-16 sm:mt-20">
