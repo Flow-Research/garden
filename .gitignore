@@ -17,3 +17,14 @@ refs/t3code/
 refs/boneyard/
 refs/executor/
 .pi/
+
+# Local build/deployment artifacts
+.alchemy/
+**/.alchemy/
+.neon
+/flowresearch-*.tgz
+/tmp/flue/
+/tmp/roadmap-refresh-*/
+
+# Harnessy package staging: required archives are force-added explicitly.
+/vendor/*.tgz
