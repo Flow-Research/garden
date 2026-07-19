@@ -4,7 +4,12 @@ import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { z } from 'zod'
 import { archiveInboxItemsByKey } from '@garden/db/inbox'
+import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { appEnv } from '@/lib/server/env'
+import {
+  capturePostHogEvent,
+  capturePostHogHandledError,
+} from '@/lib/posthog-server'
 import { schema, type Db } from '@/lib/server/db'
 import { json, requireWorkspaceAccess } from '@/lib/server/control-plane'
 import { parseJsonBody } from '@/lib/server/validation/common'
@@ -198,7 +203,6 @@ export const Route = createFileRoute('/api/permission-requests/$id/resolve')({
   server: {
     handlers: {
       POST: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const bodyResult = await parseJsonBody(
           request,
@@ -242,11 +246,32 @@ export const Route = createFileRoute('/api/permission-requests/$id/resolve')({
             request: permissionRequest,
           })
           if (proposalResult.isErr()) {
+            capturePostHogHandledError(appContext, {
+              distinctId: access.session.user.id,
+              workspaceId: permissionRequest.workspaceId,
+              error: proposalResult.error,
+              properties: {
+                operation: 'approval_resolve',
+                approval_kind: 'agent_proposal',
+                approval_id: permissionRequest.id,
+              },
+            })
             return json(
               { error: proposalResult.error.message },
               proposalResult.error.status,
             )
           }
+          capturePostHogEvent(appContext, {
+            distinctId: access.session.user.id,
+            event: GARDEN_ANALYTICS_EVENTS.approvalResolved,
+            workspaceId: permissionRequest.workspaceId,
+            properties: {
+              approval_id: permissionRequest.id,
+              approval_kind: 'agent_proposal',
+              outcome: bodyResult.value.approved ? 'approved' : 'denied',
+              source_issue_id: proposalResult.value.sourceIssueId,
+            },
+          })
           await archiveInboxItemsByKey({
             db,
             workspaceId: permissionRequest.workspaceId,
@@ -270,10 +295,34 @@ export const Route = createFileRoute('/api/permission-requests/$id/resolve')({
           workspaceId: permissionRequest.workspaceId,
         })
         if (resolutionResult.isErr()) {
+          capturePostHogHandledError(appContext, {
+            distinctId: access.session.user.id,
+            workspaceId: permissionRequest.workspaceId,
+            error: resolutionResult.error,
+            properties: {
+              operation: 'approval_resolve',
+              approval_kind: 'connector_write',
+              approval_id: permissionRequest.id,
+            },
+          })
           return json(
             { error: resolutionResult.error.message },
             resolutionResult.error.status,
           )
+        }
+        for (const resolvedPermissionRequestId of resolutionResult.value
+          .permissionRequestIds) {
+          capturePostHogEvent(appContext, {
+            distinctId: access.session.user.id,
+            event: GARDEN_ANALYTICS_EVENTS.approvalResolved,
+            workspaceId: permissionRequest.workspaceId,
+            properties: {
+              approval_id: resolvedPermissionRequestId,
+              approval_kind: 'connector_write',
+              outcome: bodyResult.value.approved ? 'approved' : 'denied',
+              batch_size: resolutionResult.value.permissionRequestIds.length,
+            },
+          })
         }
         await archiveInboxItemsByKey({
           db,

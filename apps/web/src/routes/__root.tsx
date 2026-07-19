@@ -8,6 +8,10 @@ import { NuqsAdapter } from 'nuqs/adapters/tanstack-router'
 import { Suspense, lazy } from 'react'
 import { PostHogErrorBoundary, PostHogProvider } from '@posthog/react'
 import { WebProviders } from '@/components/web-providers'
+import {
+  isPostHogBrowserEnabled,
+  postHogBrowserClient,
+} from '@/lib/posthog-browser'
 import appCss from '../styles.css?url'
 import '../bones/registry'
 
@@ -42,10 +46,6 @@ const APP_DESCRIPTION =
   'Garden is a company operating surface where humans and AI agents work side by side.'
 const APP_THEME_COLOR = '#f4f1e8'
 const APP_COVER_IMAGE = '/garden-cover.png'
-const POSTHOG_PROJECT_TOKEN = import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN
-const POSTHOG_HOST =
-  import.meta.env.VITE_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com'
-
 const THEME_INIT_SCRIPT = `(function(){try{var stored=window.localStorage.getItem('theme');var mode=(stored==='light'||stored==='dark'||stored==='system')?stored:'system';var storedColorTheme=window.localStorage.getItem('color-theme');var colorTheme=storedColorTheme==='garden'?'garden':'garden';var prefersDark=window.matchMedia('(prefers-color-scheme: dark)').matches;var resolved=mode==='system'?(prefersDark?'dark':'light'):mode;var root=document.documentElement;root.classList.remove('light','dark');root.classList.add(resolved);root.style.colorScheme=resolved;root.dataset.theme=colorTheme;}catch(e){}})();`
 
 export const Route = createRootRoute({
@@ -140,15 +140,8 @@ function RootDocument() {
         <HeadContent />
       </head>
       <body className="h-full overflow-hidden antialiased">
-        {POSTHOG_PROJECT_TOKEN ? (
-          <PostHogProvider
-            apiKey={POSTHOG_PROJECT_TOKEN}
-            options={{
-              api_host: POSTHOG_HOST,
-              defaults: '2026-01-30',
-              capture_exceptions: true,
-            }}
-          >
+        {isPostHogBrowserEnabled ? (
+          <PostHogProvider client={postHogBrowserClient}>
             <PostHogErrorBoundary
               fallback={<RootErrorFallback />}
               additionalProperties={{ surface: 'react-root' }}

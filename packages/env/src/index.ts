@@ -24,7 +24,7 @@ const serverSchema = {
   SLACK_CLIENT_SECRET: z.string().min(1).optional(),
   RESEND_API_KEY: z.string().min(1),
   ENVIRONMENT: z
-    .enum(['development', 'test', 'production'])
+    .enum(['development', 'test', 'staging', 'production'])
     .default('development'),
 } as const
 

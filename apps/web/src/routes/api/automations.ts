@@ -14,7 +14,8 @@ import {
   toAutomationTrigger,
 } from '@/lib/server/automations'
 import { requireWorkspaceContext } from '@/lib/server/control-plane'
-import { getPostHogClient } from '@/lib/posthog-server'
+import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
+import { capturePostHogEvent } from '@/lib/posthog-server'
 import {
   automationsListSearchSchema,
   createAutomationBodySchema,
@@ -171,10 +172,10 @@ export const Route = createFileRoute('/api/automations')({
           if (installResult.isErr()) return automationErr(installResult.error)
         }
 
-        const posthog = getPostHogClient()
-        posthog.capture({
+        capturePostHogEvent(appContext, {
           distinctId: workspaceContext.session.user.id,
-          event: 'automation_created',
+          event: GARDEN_ANALYTICS_EVENTS.automationCreated,
+          workspaceId: workspaceContext.workspaceId,
           properties: {
             automation_id: automation.id,
             automation_title: body.title,
@@ -183,7 +184,6 @@ export const Route = createFileRoute('/api/automations')({
             trigger_kind: trigger ? 'schedule' : null,
           },
         })
-        await posthog.flush()
         return automationOk(
           {
             automation: toAutomation(automation),

@@ -26,6 +26,7 @@ export type AppRequestContext = {
   db: DbProvider
   close: () => Promise<void>
   auth: GardenAuthState
+  waitUntil: (promise: Promise<unknown>) => void
 }
 
 const authSessionLogger = createGardenLogger({
@@ -105,6 +106,7 @@ export function createAuthState(
   env: AppEnv,
   dbProvider: DbProvider,
   request: Request,
+  waitUntil?: AppRequestContext['waitUntil'],
 ): GardenAuthState {
   let auth: Promise<GardenAuth> | undefined
   let session: Promise<GardenAuthSession> | undefined
@@ -115,6 +117,7 @@ export function createAuthState(
         createBetterAuth(db, {
           ...env,
           request,
+          waitUntil,
         }),
       )
     }
@@ -147,6 +150,7 @@ export function createAuthState(
 export function createAppRequestContext(
   env: AppEnv,
   request: Request,
+  waitUntil: (promise: Promise<unknown>) => void = () => {},
 ): AppRequestContext {
   const requestDb = createRequestDbProvider(env)
 
@@ -155,7 +159,8 @@ export function createAppRequestContext(
     request,
     db: requestDb.db,
     close: requestDb.close,
-    auth: createAuthState(env, requestDb.db, request),
+    auth: createAuthState(env, requestDb.db, request, waitUntil),
+    waitUntil,
   }
 }
 

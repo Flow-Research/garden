@@ -11,8 +11,13 @@
   },
   "exports": {
     ".": "./src/observability/logger.ts",
+    "./analytics/client": "./src/analytics/client.ts",
+    "./analytics/events": "./src/analytics/events.ts",
     "./logger": "./src/observability/logger.ts",
     "./console": "./src/logger.ts"
+  },
+  "dependencies": {
+    "posthog-node": "5.38.2"
   },
   "devDependencies": {
     "@garden/tsconfig": "workspace:*",

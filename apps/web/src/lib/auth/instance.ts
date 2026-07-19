@@ -8,6 +8,7 @@ import { defaultStatements } from 'better-auth/plugins/organization/access'
 import { organization } from 'better-auth/plugins'
 import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import { connectorRegistry } from '@garden/connectors'
+import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { buildConnectorOAuthConfigs } from '@garden/connectors/oauth'
 import {
   createGardenLogger,
@@ -29,6 +30,10 @@ import {
   type ConnectorCallbackStatus,
 } from '@/lib/server/connector-callback-events'
 import type { AppEnv } from '@/lib/server/env'
+import {
+  capturePostHogEventWithScheduler,
+  capturePostHogHandledErrorWithScheduler,
+} from '@/lib/posthog-server'
 import type { Db } from '@/lib/server/db'
 
 export type GardenAuthEnv = Pick<
@@ -42,10 +47,14 @@ export type GardenAuthEnv = Pick<
   | 'SLACK_CLIENT_ID'
   | 'SLACK_CLIENT_SECRET'
   | 'RESEND_API_KEY'
+  | 'ENVIRONMENT'
+  | 'VITE_PUBLIC_POSTHOG_HOST'
+  | 'VITE_PUBLIC_POSTHOG_PROJECT_TOKEN'
 >
 
 type GardenAuthRuntime = GardenAuthEnv & {
   request?: Request
+  waitUntil?: (promise: Promise<unknown>) => void
 }
 
 type AuthDatabase = Db
@@ -205,7 +214,10 @@ function getRequestOrigin(request?: Request) {
   return new URL(request.url).origin
 }
 
-function readOAuthCallbackFlow(callbackURL: string | undefined, baseURL: string) {
+function readOAuthCallbackFlow(
+  callbackURL: string | undefined,
+  baseURL: string,
+) {
   if (!callbackURL || !URL.canParse(callbackURL, baseURL)) {
     return { flowId: undefined }
   }
@@ -339,7 +351,8 @@ async function finishOAuthConnectorCallback(args: {
 
 export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
   const runtimeOrigin = getRequestOrigin(env.request)
-  const baseURL = runtimeOrigin ?? env.BETTER_AUTH_URL ?? 'http://localhost:3000'
+  const baseURL =
+    runtimeOrigin ?? env.BETTER_AUTH_URL ?? 'http://localhost:3000'
   const trustedOrigins = Array.from(
     new Set([
       'http://localhost:3000',
@@ -481,7 +494,26 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
         })
 
         result.match({
-          ok: ({ outcome }) => {
+          ok: ({ event, outcome }) => {
+            if (env.waitUntil) {
+              capturePostHogEventWithScheduler(env, env.waitUntil, {
+                distinctId: userId,
+                event: GARDEN_ANALYTICS_EVENTS.connectorConnectionCompleted,
+                workspaceId,
+                uuid: event.id,
+                properties: {
+                  connector_id: connector.id,
+                  provider_id: providerId,
+                  callback_event_id: event.id,
+                  flow_id: flowId,
+                  source: 'oauth',
+                  outcome: outcome.status,
+                  stage: outcome.stage,
+                  error_code: outcome.errorCode,
+                },
+              })
+            }
+
             if (outcome.status === 'degraded') {
               context.context.logger.error(outcome.message, {
                 connectorId: connector.id,
@@ -495,6 +527,19 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
           err: (error) =>
             matchError(error, {
               ConnectorCallbackDatabaseError: (databaseError) => {
+                if (env.waitUntil) {
+                  capturePostHogHandledErrorWithScheduler(env, env.waitUntil, {
+                    distinctId: userId,
+                    workspaceId,
+                    error: databaseError,
+                    properties: {
+                      operation: 'connector_callback',
+                      connector_id: connector.id,
+                      provider_id: providerId,
+                      stage: 'callback_persistence',
+                    },
+                  })
+                }
                 context.context.logger.error(
                   databaseError.message,
                   databaseError,

@@ -15,6 +15,8 @@ import {
   guardedMcpToolDescription,
 } from '@garden/connectors/capabilities'
 import * as schema from '@garden/db/schema'
+import { captureGardenAnalyticsEvent } from '@garden/observability/analytics/client'
+import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { upsertPermissionRequestInbox } from '@garden/db/inbox'
 import {
   buildConnectorSyncPlan,
@@ -79,6 +81,9 @@ export type McpHostEnv = {
   BETTER_AUTH_URL: string
   HYPERDRIVE: Hyperdrive
   DISCORD_BOT_TOKEN?: string
+  ENVIRONMENT?: string
+  VITE_PUBLIC_POSTHOG_HOST?: string
+  VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
 }
 
 export type McpRegistration =
@@ -109,9 +114,11 @@ export type McpToolRecord = {
 type AiJsonSchemaInput = Parameters<typeof jsonSchema>[0]
 
 function asAiJsonSchema(schemaValue: unknown): AiJsonSchemaInput {
-  return (schemaValue && typeof schemaValue === 'object'
-    ? schemaValue
-    : { type: 'object', additionalProperties: true }) as AiJsonSchemaInput
+  return (
+    schemaValue && typeof schemaValue === 'object'
+      ? schemaValue
+      : { type: 'object', additionalProperties: true }
+  ) as AiJsonSchemaInput
 }
 
 export type McpClientFacade = {
@@ -132,7 +139,10 @@ export type McpClientFacade = {
 export type McpHost = {
   readonly name: string
   readonly env: McpHostEnv
-  readonly ctx: { storage: { sql: SqlStorage } }
+  readonly ctx: {
+    storage: { sql: SqlStorage }
+    waitUntil?: (promise: Promise<unknown>) => void
+  }
   readonly mcp: McpClientFacade
   readonly getServerStates?: () => RuntimeMcpServerStates
   addRpcMcpServer: (input: {
@@ -357,15 +367,13 @@ export class RuntimeMcpController {
               const result = await Result.tryPromise({
                 try: async () =>
                   await Effect.runPromise(
-                    nativeTool
-                      .execute(input)
-                      .pipe(
-                        Effect.provide(
-                          makeDiscordBaseLayer({
-                            botToken: this.host.env.DISCORD_BOT_TOKEN ?? '',
-                          }),
-                        ),
+                    nativeTool.execute(input).pipe(
+                      Effect.provide(
+                        makeDiscordBaseLayer({
+                          botToken: this.host.env.DISCORD_BOT_TOKEN ?? '',
+                        }),
                       ),
+                    ),
                   ),
                 catch: (cause) =>
                   cause instanceof Error ? cause : new Error(String(cause)),
@@ -373,11 +381,14 @@ export class RuntimeMcpController {
 
               if (result.isOk()) return result.value
 
-              console.warn('[agent-runtime] native connector tool call failed', {
-                connectorId: 'discord',
-                toolName: nativeTool.name,
-                error: result.error.message,
-              })
+              console.warn(
+                '[agent-runtime] native connector tool call failed',
+                {
+                  connectorId: 'discord',
+                  toolName: nativeTool.name,
+                  error: result.error.message,
+                },
+              )
 
               return {
                 error: true,
@@ -392,13 +403,14 @@ export class RuntimeMcpController {
                 experimental_context?: unknown
               },
             ) => {
-              const approvalResult = await this.ensureConnectorToolNeedsApproval({
-                connectorId: 'discord',
-                toolName: nativeTool.name,
-                toolCallId: options.toolCallId,
-                toolArgs: input,
-                shouldAutoApprove: wrapOptions?.shouldAutoApprove,
-              })
+              const approvalResult =
+                await this.ensureConnectorToolNeedsApproval({
+                  connectorId: 'discord',
+                  toolName: nativeTool.name,
+                  toolCallId: options.toolCallId,
+                  toolArgs: input,
+                  shouldAutoApprove: wrapOptions?.shouldAutoApprove,
+                })
               if (approvalResult.isErr()) {
                 throw approvalResult.error
               }
@@ -617,6 +629,7 @@ export class RuntimeMcpController {
           workspaceId: identityResult.value.workspaceId,
           requestId,
         })
+        return requestId
       },
       catch: (cause) =>
         new RuntimeMcpError({
@@ -628,6 +641,44 @@ export class RuntimeMcpController {
         }),
     })
     if (insertResult.isErr()) return insertResult
+
+    const analyticsTask = Result.tryPromise({
+      try: async () =>
+        await captureGardenAnalyticsEvent(this.host.env, {
+          distinctId: identityResult.value.userId,
+          event: GARDEN_ANALYTICS_EVENTS.approvalRequested,
+          workspaceId: identityResult.value.workspaceId,
+          properties: {
+            approval_id: insertResult.value,
+            approval_kind: 'connector_write',
+            connector_id: args.connectorId,
+            tool_name: args.toolName,
+            tool_call_id: args.toolCallId,
+            capability_id: capability.id,
+            risk_class: capability.riskClass,
+            issue_id: identityResult.value.issueId,
+            run_id: identityResult.value.runId,
+            agent_id: identityResult.value.agentId,
+            tool_args: args.toolArgs,
+          },
+        }),
+      catch: (cause) => cause,
+    }).then((result) => {
+      if (result.isErr()) {
+        console.warn('[agent-runtime] failed to capture approval request', {
+          error:
+            result.error instanceof Error
+              ? result.error.message
+              : String(result.error),
+          approvalId: insertResult.value,
+        })
+      }
+    })
+    if (this.host.ctx.waitUntil) {
+      this.host.ctx.waitUntil(analyticsTask)
+    } else {
+      void analyticsTask
+    }
 
     return Result.ok(true)
   }
@@ -894,16 +945,16 @@ export class RuntimeMcpController {
     )
     if (bindingsResult.isErr()) return bindingsResult
 
-    const mcpBindings = this.activateNativeConnectorBindings(bindingsResult.value)
-
-    const staleTransportResult = await this.removeNonRpcConnectorServers(
-      mcpBindings,
+    const mcpBindings = this.activateNativeConnectorBindings(
+      bindingsResult.value,
     )
+
+    const staleTransportResult =
+      await this.removeNonRpcConnectorServers(mcpBindings)
     if (staleTransportResult.isErr()) return staleTransportResult
 
-    const failedServerResult = await this.removeFailedConnectorServers(
-      mcpBindings,
-    )
+    const failedServerResult =
+      await this.removeFailedConnectorServers(mcpBindings)
     if (failedServerResult.isErr()) return failedServerResult
     const precleanedConnectorIds = new Set([
       ...staleTransportResult.value,

@@ -1,4 +1,7 @@
-import { setGardenLogLevel, type GardenLogLevel } from '@garden/observability/logger'
+import {
+  setGardenLogLevel,
+  type GardenLogLevel,
+} from '@garden/observability/logger'
 
 type RequiredEnvBinding<Key extends keyof Env> = NonNullable<Env[Key]>
 
@@ -20,7 +23,7 @@ export type AppEnv = {
   MCP_SESSION: RequiredEnvBinding<'MCP_SESSION'>
   Sandbox: RequiredEnvBinding<'Sandbox'>
   RUN_WORKFLOW: RequiredEnvBinding<'RUN_WORKFLOW'>
-  ENVIRONMENT?: 'development' | 'test' | 'production'
+  ENVIRONMENT?: 'development' | 'test' | 'staging' | 'production'
   GITHUB_CLIENT_ID?: string
   GITHUB_CLIENT_SECRET?: string
   GITHUB_APP_ID?: string

@@ -32,6 +32,10 @@ import {
   getLoggedAuthSession,
 } from '@/lib/server/context'
 import { capturePostHogException } from '@/lib/posthog-server'
+import {
+  isPostHogProxyRequest,
+  proxyPostHogRequest,
+} from '@/lib/server/posthog-proxy'
 
 export { AgentDO }
 export { AutomationRunSubAgent }
@@ -307,6 +311,10 @@ export default {
   async fetch(request: Request, env: ServerEnv, ctx?: ExecutionContext) {
     bindAppEnv(env)
 
+    if (isPostHogProxyRequest(request)) {
+      return proxyPostHogRequest(request, env)
+    }
+
     const startedAt = performance.now()
     const baseRequestFields = requestFields(request)
     const logger = webLogger.child(baseRequestFields)
@@ -393,7 +401,9 @@ export default {
       }
     }
 
-    const appContext = createAppRequestContext(env, request)
+    const appContext = createAppRequestContext(env, request, (promise) =>
+      ctx?.waitUntil(promise),
+    )
     const appResponse = await Result.tryPromise({
       try: async () =>
         handler.fetch(request, {
@@ -436,6 +446,30 @@ export default {
         appResponse.value,
         baseRequestFields.requestId,
       )
+      await logReturnedErrorResponse({
+        event: 'web.request.response_error',
+        response,
+        startedAt,
+        logger: appLogger,
+        fields: { route: 'tanstack-start' },
+      })
+      if (response.status >= 500) {
+        captureWorkerException({
+          ctx,
+          error: new Error(
+            `${request.method} ${new URL(request.url).pathname} returned ${response.status}`,
+          ),
+          logger: appLogger,
+          distinctId: session?.user?.id,
+          properties: {
+            event: 'web.request.response_error',
+            route: 'tanstack-start',
+            status: response.status,
+            workspace_id: session?.session.activeOrganizationId ?? null,
+            ...baseRequestFields,
+          },
+        })
+      }
       return response
     }
 

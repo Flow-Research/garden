@@ -12,6 +12,7 @@ import {
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
 import { getConnectorById } from '@garden/connectors'
+import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { deleteGitHubAppInstallation } from '@garden/connectors/github-app'
 import {
   connectionActionBodySchema,
@@ -26,6 +27,10 @@ import {
   unauthorized,
 } from '@/lib/server/control-plane'
 import { schema, type Db } from '@/lib/server/db'
+import {
+  capturePostHogEvent,
+  capturePostHogHandledError,
+} from '@/lib/posthog-server'
 
 function syncErrorStatus(code: string) {
   switch (code) {
@@ -130,6 +135,16 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
               installationId: installation.installationId,
             })
             if (revokeResult.isErr()) {
+              capturePostHogHandledError(appContext, {
+                distinctId: session.user.id,
+                workspaceId,
+                error: revokeResult.error,
+                properties: {
+                  operation: 'connector_disconnect',
+                  connector_id: connector.id,
+                  stage: 'provider_revoke',
+                },
+              })
               return Response.json(
                 { error: revokeResult.error.message },
                 { status: 502 },
@@ -153,12 +168,24 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
                 ),
               )
               .returning({ id: schema.githubAppInstallation.id })
-            return disconnectedInstallation
-              ? Response.json({ ok: true })
-              : Response.json(
-                  { error: 'Connection changed while disconnecting' },
-                  { status: 409 },
-                )
+            if (!disconnectedInstallation) {
+              return Response.json(
+                { error: 'Connection changed while disconnecting' },
+                { status: 409 },
+              )
+            }
+
+            capturePostHogEvent(appContext, {
+              distinctId: session.user.id,
+              event: GARDEN_ANALYTICS_EVENTS.connectorDisconnected,
+              workspaceId,
+              properties: {
+                connector_id: connector.id,
+                connection_id: disconnectedInstallation.id,
+                connection_kind: 'github_app',
+              },
+            })
+            return Response.json({ ok: true })
           }
 
           if (!connector.oauth) {
@@ -195,6 +222,16 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
             catch: () => 'Failed to decrypt connector credentials',
           })
           if (tokenResult.isErr()) {
+            capturePostHogHandledError(appContext, {
+              distinctId: session.user.id,
+              workspaceId,
+              error: new Error(tokenResult.error),
+              properties: {
+                operation: 'connector_disconnect',
+                connector_id: connector.id,
+                stage: 'credential_decrypt',
+              },
+            })
             return Response.json({ error: tokenResult.error }, { status: 500 })
           }
 
@@ -204,6 +241,16 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
             refreshToken: tokenResult.value.refreshToken,
           })
           if (revokeResult.isErr()) {
+            capturePostHogHandledError(appContext, {
+              distinctId: session.user.id,
+              workspaceId,
+              error: revokeResult.error,
+              properties: {
+                operation: 'connector_disconnect',
+                connector_id: connector.id,
+                stage: 'provider_revoke',
+              },
+            })
             return Response.json(
               { error: revokeResult.error.message },
               { status: 502 },
@@ -231,12 +278,24 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
             )
             .returning({ id: schema.account.id })
 
-          return disconnectedAccount
-            ? Response.json({ ok: true })
-            : Response.json(
-                { error: 'Connection changed while disconnecting' },
-                { status: 409 },
-              )
+          if (!disconnectedAccount) {
+            return Response.json(
+              { error: 'Connection changed while disconnecting' },
+              { status: 409 },
+            )
+          }
+
+          capturePostHogEvent(appContext, {
+            distinctId: session.user.id,
+            event: GARDEN_ANALYTICS_EVENTS.connectorDisconnected,
+            workspaceId,
+            properties: {
+              connector_id: connector.id,
+              connection_id: disconnectedAccount.id,
+              connection_kind: 'oauth',
+            },
+          })
+          return Response.json({ ok: true })
         }
 
         const syncResult = await syncCapabilities(
@@ -268,12 +327,41 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
         }
 
         if (syncResult.isErr()) {
+          capturePostHogHandledError(appContext, {
+            distinctId: session.user.id,
+            workspaceId,
+            error: syncResult.error,
+            properties: {
+              operation: 'connector_resync',
+              connector_id: connector.id,
+              stage: 'capability_sync',
+            },
+          })
+          capturePostHogEvent(appContext, {
+            distinctId: session.user.id,
+            event: GARDEN_ANALYTICS_EVENTS.connectorResyncCompleted,
+            workspaceId,
+            properties: {
+              connector_id: connector.id,
+              outcome: 'degraded',
+              error_code: syncResult.error.code,
+            },
+          })
           return Response.json(
             { error: syncResult.error.message },
             { status: syncErrorStatus(syncResult.error.code) },
           )
         }
 
+        capturePostHogEvent(appContext, {
+          distinctId: session.user.id,
+          event: GARDEN_ANALYTICS_EVENTS.connectorResyncCompleted,
+          workspaceId,
+          properties: {
+            connector_id: connector.id,
+            outcome: 'connected',
+          },
+        })
         return Response.json({ ok: true })
       },
     },

@@ -15,7 +15,8 @@ import {
   toChatThread,
   unauthorized,
 } from '@/lib/server/control-plane'
-import { getPostHogClient } from '@/lib/posthog-server'
+import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
+import { capturePostHogEvent } from '@/lib/posthog-server'
 
 const NEW_CHAT_TITLE = 'New Chat'
 
@@ -202,7 +203,7 @@ export const Route = createFileRoute('/api/chat/threads')({
             .where(eq(schema.agent.id, agentRow.id))
         }
 
-        const thread = await db.transaction(async (tx) => {
+        const threadResult = await db.transaction(async (tx) => {
           await tx.execute(sql`
             select pg_advisory_xact_lock(
               hashtext(${`${workspaceId}:${session.user.id}:${primaryIssueId ? `issue-chat:${primaryIssueId}` : `${agentRow.id}:warm-chat`}`})
@@ -237,8 +238,10 @@ export const Route = createFileRoute('/api/chat/threads')({
                 .where(eq(schema.chatThread.id, existingIssueThread.id))
                 .returning()
 
-              if (reopenedThread) return reopenedThread
-              return existingIssueThread
+              return {
+                thread: reopenedThread ?? existingIssueThread,
+                transition: 'reopened' as const,
+              }
             }
           }
 
@@ -259,22 +262,26 @@ export const Route = createFileRoute('/api/chat/threads')({
             })
             .returning()
 
-          return createdThread
+          return { thread: createdThread, transition: 'created' as const }
         })
 
-        const posthog = getPostHogClient()
-        posthog.capture({
+        capturePostHogEvent(appContext, {
           distinctId: session.user.id,
-          event: 'chat_thread_created',
+          event:
+            threadResult.transition === 'created'
+              ? GARDEN_ANALYTICS_EVENTS.chatThreadCreated
+              : GARDEN_ANALYTICS_EVENTS.chatThreadReopened,
+          workspaceId,
           properties: {
-            thread_id: thread.id,
+            thread_id: threadResult.thread.id,
+            agent_id: agentRow.id,
             runtime_kind: runtimeKind,
+            primary_issue_id: primaryIssueId,
             has_primary_issue: !!primaryIssueId,
           },
         })
-        await posthog.flush()
         return Response.json(
-          toChatThread(thread, agentRuntimeName, primaryIssue),
+          toChatThread(threadResult.thread, agentRuntimeName, primaryIssue),
           {
             status: 201,
           },

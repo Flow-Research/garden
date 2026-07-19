@@ -33,9 +33,7 @@ export const workProductReviewBodySchema = z
   })
   .strict()
 
-export type WorkProductReviewInput = z.infer<
-  typeof workProductReviewBodySchema
->
+export type WorkProductReviewInput = z.infer<typeof workProductReviewBodySchema>
 
 export class WorkProductReviewError extends TaggedError(
   'WorkProductReviewError',
@@ -157,10 +155,7 @@ function numberValue(value: unknown) {
   return Number.isSafeInteger(parsed) ? parsed : null
 }
 
-function firstString(
-  input: Record<string, unknown> | null,
-  keys: string[],
-) {
+function firstString(input: Record<string, unknown> | null, keys: string[]) {
   if (!input) return null
   for (const key of keys) {
     const value = stringValue(input[key])
@@ -169,10 +164,7 @@ function firstString(
   return null
 }
 
-function firstNumber(
-  input: Record<string, unknown> | null,
-  keys: string[],
-) {
+function firstNumber(input: Record<string, unknown> | null, keys: string[]) {
   if (!input) return null
   for (const key of keys) {
     const value = numberValue(input[key])
@@ -380,7 +372,8 @@ function findExternalId(value: unknown): string | null {
   if (!object) return null
 
   for (const key of ['id', 'node_id', 'comment_id']) {
-    const found = stringValue(object[key]) ?? numberValue(object[key])?.toString()
+    const found =
+      stringValue(object[key]) ?? numberValue(object[key])?.toString()
     if (found) return found
   }
 
@@ -413,10 +406,7 @@ async function callConnectorTool(args: {
   userId: string
   workspaceId: string
 }): Promise<
-  ResultValue<
-    ConnectorToolCallOutcome,
-    ConnectorError | WorkProductReviewError
-  >
+  ResultValue<ConnectorToolCallOutcome, ConnectorError | WorkProductReviewError>
 > {
   const connector = getConnectorById(args.connectorId)
   if (!connector || !isMcpConnector(connector)) {
@@ -528,7 +518,10 @@ async function loadWorkProductContext(args: {
           eq(schema.issue.id, schema.issueWorkProduct.issueId),
         )
         .where(
-          and(eq(schema.issueWorkProduct.id, args.workProductId), workspaceFilter),
+          and(
+            eq(schema.issueWorkProduct.id, args.workProductId),
+            workspaceFilter,
+          ),
         )
         .limit(1),
     catch: (cause) => dbError('Failed to load work product', cause),
@@ -566,10 +559,26 @@ async function loadWorkProductContext(args: {
 export async function loadWorkProductWorkspace(args: {
   env: AppEnv
   workProductId: string
-}): Promise<ResultValue<{ workspaceId: string }, WorkProductReviewError>> {
+}): Promise<
+  ResultValue<
+    {
+      agentId: string | null
+      issueId: string
+      runId: string | null
+      workspaceId: string
+    },
+    WorkProductReviewError
+  >
+> {
   const contextResult = await loadWorkProductContext(args)
   if (contextResult.isErr()) return Result.err(contextResult.error)
-  return Result.ok({ workspaceId: contextResult.value.workProduct.workspaceId })
+  const { workProduct } = contextResult.value
+  return Result.ok({
+    agentId: workProduct.agentId,
+    issueId: workProduct.issueId,
+    runId: workProduct.runId,
+    workspaceId: workProduct.workspaceId,
+  })
 }
 
 async function approveWorkProduct(args: {
@@ -672,7 +681,9 @@ async function requestWorkProductChanges(args: {
   const { issue, workProduct } = contextResult.value
   if (workProduct.status === 'applied' || workProduct.status === 'superseded') {
     return Result.err(
-      invalidState('Applied or superseded work products cannot request changes'),
+      invalidState(
+        'Applied or superseded work products cannot request changes',
+      ),
     )
   }
 
@@ -824,7 +835,9 @@ async function markWorkProductApplied(args: {
             nextSeq: sql<number>`cast(coalesce(max(${schema.issueRunEvent.seq}), 0) + 1 as int)`,
           })
           .from(schema.issueRunEvent)
-          .where(eq(schema.issueRunEvent.runId, args.workProduct.runId as string))
+          .where(
+            eq(schema.issueRunEvent.runId, args.workProduct.runId as string),
+          )
         await tx.insert(schema.issueRunEvent).values({
           id: crypto.randomUUID(),
           workspaceId: args.workProduct.workspaceId,
@@ -936,7 +949,9 @@ async function applyWorkProduct(args: {
   if (contextResult.isErr()) return Result.err(contextResult.error)
   const { issue, workProduct } = contextResult.value
   if (workProduct.status !== 'approved') {
-    return Result.err(invalidState('Only approved work products can be applied'))
+    return Result.err(
+      invalidState('Only approved work products can be applied'),
+    )
   }
 
   if (workProduct.appliedExternalUrl) {
@@ -976,7 +991,8 @@ async function applyWorkProduct(args: {
   })
   if (callResult.isErr()) return Result.err(callResult.error)
 
-  const externalUrl = callResult.value.externalUrl ?? bindingResult.value.externalUrl
+  const externalUrl =
+    callResult.value.externalUrl ?? bindingResult.value.externalUrl
   const appliedResult = await markWorkProductApplied({
     env: args.env,
     externalId: callResult.value.externalId,

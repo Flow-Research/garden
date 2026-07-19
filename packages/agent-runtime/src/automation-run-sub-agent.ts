@@ -35,6 +35,10 @@ import {
   createGardenLogger,
   type GardenLogFields,
 } from '@garden/observability/logger'
+import {
+  GARDEN_ANALYTICS_EVENTS,
+  type GardenAnalyticsEventName,
+} from '@garden/observability/analytics/events'
 import { connectorRegistry } from '@garden/connectors'
 import {
   derivePermissions,
@@ -42,6 +46,7 @@ import {
 } from '@garden/core/agents/permissions'
 import * as schema from '@garden/db/schema'
 import { createAgentModel } from './model'
+import { AiObservation } from './ai-observation'
 import {
   classifyGardenContextOverflow,
   configureThinkCompaction,
@@ -79,6 +84,9 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   DISCORD_BOT_TOKEN?: string
   AI: Ai
   AI_GATEWAY_ID?: string
+  ENVIRONMENT?: string
+  VITE_PUBLIC_POSTHOG_HOST?: string
+  VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
   FILES: R2Bucket
   LOADER: WorkerLoader
   BROWSER: Fetcher
@@ -260,7 +268,8 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     logAgentSocketError({
       logger: automationRunLogger,
       component: 'automation-run-sub-agent',
-      connection: error === undefined ? null : (connectionOrError as Connection),
+      connection:
+        error === undefined ? null : (connectionOrError as Connection),
       error: error ?? connectionOrError,
     })
   }
@@ -291,6 +300,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   private currentLogContext: GardenLogFields | null = null
   private aggUsage: RunUsageSnapshot | null = null
   private currentTrace: AutomationTraceEvent[] = []
+  private readonly aiObservation = new AiObservation(this.ctx, this.env)
   private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
     getController: () => this.getMcpController(),
     fullSyncIntervalMs: mcpRuntimeConfig.connectorFullSyncIntervalMs,
@@ -313,6 +323,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   getModel(): LanguageModel {
     return createAgentModel({
       ai: this.env.AI,
+      env: this.env,
       gatewayId: this.env.AI_GATEWAY_ID,
     })
   }
@@ -433,6 +444,19 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     }
     this.aggUsage = null
     this.currentTrace = []
+    this.aiObservation.startTurn(
+      {
+        runtimeKind: 'automation_run',
+        distinctId: loadedResult.value.agent.ownerUserId,
+        workspaceId: loadedResult.value.run.workspaceId,
+        agentId: loadedResult.value.run.agentId,
+        automationId: loadedResult.value.run.automationId,
+        runId,
+        traceId: runId,
+        sessionId: `automation-run:${runId}`,
+      },
+      ctx,
+    )
     automationRunLogger.info(
       'automation_run.turn.started',
       this.currentLogContext,
@@ -461,6 +485,12 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     )
 
     return {
+      model: createAgentModel({
+        ai: this.env.AI,
+        env: this.env,
+        gatewayId: this.env.AI_GATEWAY_ID,
+        tracing: this.aiObservation.modelTracing(),
+      }),
       experimental_telemetry: {
         functionId: THINK_TURN_TELEMETRY_FUNCTION_ID,
         isEnabled: true,
@@ -491,6 +521,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     const gateResult = this.assertToolAllowed(ctx.toolName)
     if (gateResult.isErr()) throw gateResult.error
 
+    this.aiObservation.beforeToolCall(ctx)
     automationRunLogger.info('automation_run.tool.started', {
       ...this.currentLogContext,
       toolName: ctx.toolName,
@@ -582,9 +613,11 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       outputPreview: ctx.success ? previewUnknown(ctx.output) : undefined,
       error: ctx.success ? undefined : errorMessage(ctx.error),
     })
+    this.aiObservation.afterToolCall(ctx)
   }
 
   override async onStepFinish(ctx: StepContext) {
+    this.aiObservation.stepFinished(ctx)
     const runId = this.currentRunId
     if (!runId) return
 
@@ -644,6 +677,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
           )
         }
       }
+      this.aiObservation.finishTurn(result)
       this.clearTurnState()
       return
     }
@@ -659,6 +693,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
           runId,
         })
       }
+      this.aiObservation.finishTurn(result)
       this.clearTurnState()
       return
     }
@@ -668,6 +703,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       statusResult.isOk() &&
       isTerminalAutomationRunStatus(statusResult.value)
     ) {
+      this.aiObservation.finishTurn(result)
       this.clearTurnState()
       return
     }
@@ -691,6 +727,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
           },
         )
       }
+      this.aiObservation.finishTurn(result)
       this.clearTurnState()
       return
     }
@@ -706,6 +743,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
         runId,
       })
     }
+    this.aiObservation.finishTurn(result)
     this.clearTurnState()
   }
 
@@ -1447,6 +1485,27 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
    * artifacts. Encoding that as typed payload state lets prompts and runtime
    * tool gates agree on the mutation boundary instead of trusting prose alone.
    */
+  private captureRunProduct(
+    loaded: LoadedAutomationRunContext,
+    event: GardenAnalyticsEventName,
+    properties: Record<string, unknown>,
+  ) {
+    this.aiObservation.captureProductFor(
+      {
+        runtimeKind: 'automation_run',
+        distinctId: loaded.agent.ownerUserId,
+        workspaceId: loaded.run.workspaceId,
+        agentId: loaded.run.agentId,
+        automationId: loaded.run.automationId,
+        runId: loaded.run.id,
+        traceId: loaded.run.id,
+        sessionId: `automation-run:${loaded.run.id}`,
+      },
+      event,
+      properties,
+    )
+  }
+
   private readClosureControls(run: typeof schema.automationRun.$inferSelect) {
     const context = run.contextSnapshot as AutomationRunContextSnapshot | null
     const parsed = parseQaSweepRunPayload(context?.payload ?? null)
@@ -1481,6 +1540,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       const cancelResult = await this.finishCancelled(
         loaded.run.id,
         'cancelled',
+        loaded,
       )
       if (cancelResult.isErr()) return Result.err(cancelResult.error)
       return Result.ok('cancelled')
@@ -1496,7 +1556,11 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
         'timeout',
       )
       if (cancelResult.isErr()) return Result.err(cancelResult.error)
-      const failedResult = await this.forceCloseFailed(loaded.run.id, 'timeout')
+      const failedResult = await this.forceCloseFailed(
+        loaded.run.id,
+        'timeout',
+        loaded,
+      )
       if (failedResult.isErr()) return Result.err(failedResult.error)
       return Result.ok('timeout')
     }
@@ -1531,18 +1595,35 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     const now = new Date()
     const result = await Result.tryPromise({
       try: async () => {
-        await this.getDb()
+        const [startedRun] = await this.getDb()
           .update(schema.automationRun)
           .set({
             status: 'running',
             startedAt: loaded.run.startedAt ?? now,
             updatedAt: now,
           })
-          .where(eq(schema.automationRun.id, loaded.run.id))
+          .where(
+            and(
+              eq(schema.automationRun.id, loaded.run.id),
+              eq(schema.automationRun.status, 'queued'),
+            ),
+          )
+          .returning({ id: schema.automationRun.id })
+        return Boolean(startedRun)
       },
       catch: (cause) => dbError('mark automation run started', cause),
     })
     if (result.isErr()) return Result.err(result.error)
+    if (result.value) {
+      this.captureRunProduct(
+        loaded,
+        GARDEN_ANALYTICS_EVENTS.automationRunStarted,
+        {
+          source: loaded.run.source,
+          started_at: (loaded.run.startedAt ?? now).toISOString(),
+        },
+      )
+    }
     return Result.ok()
   }
 
@@ -1692,7 +1773,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     const trace = this.currentTrace
 
     const result = await Result.tryPromise({
-      try: async () => {
+      try: async () =>
         await db.transaction(async (tx) => {
           const [automationRun] = await tx
             .select({
@@ -1706,7 +1787,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
             !automationRun ||
             isTerminalAutomationRunStatus(automationRun.status)
           ) {
-            return
+            return false
           }
 
           await tx
@@ -1738,22 +1819,33 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
               successCount: sql`${schema.automation.successCount} + 1`,
             })
             .where(eq(schema.automation.id, automationRun.automationId))
-        })
-      },
+          return true
+        }),
       catch: (cause) => dbError('finish automation run', cause),
     })
     if (result.isErr()) return Result.err(result.error)
+    if (result.value) {
+      this.aiObservation.captureProduct(
+        GARDEN_ANALYTICS_EVENTS.automationRunCompleted,
+        {
+          output,
+          completion_source: completion.source,
+          completed_at: now.toISOString(),
+        },
+      )
+    }
     return Result.ok()
   }
 
   private async finishCancelled(
     runId: string,
     reason: string,
+    loaded?: LoadedAutomationRunContext,
   ): Promise<ResultValue<void, AutomationRunSubAgentError>> {
     const db = this.getDb()
     const now = new Date()
     const result = await Result.tryPromise({
-      try: async () => {
+      try: async () =>
         await db.transaction(async (tx) => {
           const [automationRun] = await tx
             .select({
@@ -1767,7 +1859,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
             !automationRun ||
             isTerminalAutomationRunStatus(automationRun.status)
           ) {
-            return
+            return false
           }
 
           await tx
@@ -1789,17 +1881,33 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
               runCount: sql`${schema.automation.runCount} + 1`,
             })
             .where(eq(schema.automation.id, automationRun.automationId))
-        })
-      },
+          return true
+        }),
       catch: (cause) => dbError('cancel automation run', cause),
     })
     if (result.isErr()) return Result.err(result.error)
+    if (result.value) {
+      const properties = { reason, completed_at: now.toISOString() }
+      if (loaded) {
+        this.captureRunProduct(
+          loaded,
+          GARDEN_ANALYTICS_EVENTS.automationRunCancelled,
+          properties,
+        )
+      } else {
+        this.aiObservation.captureProduct(
+          GARDEN_ANALYTICS_EVENTS.automationRunCancelled,
+          properties,
+        )
+      }
+    }
     return Result.ok()
   }
 
   private async forceCloseFailed(
     runId: string,
     reason: string,
+    loaded?: LoadedAutomationRunContext,
   ): Promise<ResultValue<void, AutomationRunSubAgentError>> {
     const db = this.getDb()
     const now = new Date()
@@ -1811,7 +1919,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     const trace = this.currentTrace
 
     const writeResult = await Result.tryPromise({
-      try: async () => {
+      try: async () =>
         await db.transaction(async (tx) => {
           const [automationRun] = await tx
             .select({
@@ -1825,7 +1933,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
             !automationRun ||
             isTerminalAutomationRunStatus(automationRun.status)
           ) {
-            return
+            return false
           }
 
           await tx
@@ -1855,11 +1963,26 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
               failureCount: sql`${schema.automation.failureCount} + 1`,
             })
             .where(eq(schema.automation.id, automationRun.automationId))
-        })
-      },
+          return true
+        }),
       catch: (cause) => dbError('force close failed automation run', cause),
     })
     if (writeResult.isErr()) return Result.err(writeResult.error)
+    if (writeResult.value) {
+      const properties = { reason, completed_at: now.toISOString() }
+      if (loaded) {
+        this.captureRunProduct(
+          loaded,
+          GARDEN_ANALYTICS_EVENTS.automationRunFailed,
+          properties,
+        )
+      } else {
+        this.aiObservation.captureProduct(
+          GARDEN_ANALYTICS_EVENTS.automationRunFailed,
+          properties,
+        )
+      }
+    }
     return Result.ok()
   }
 
