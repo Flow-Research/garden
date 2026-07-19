@@ -10,7 +10,7 @@
     "dev:web": "turbo run dev --ui=tui --filter=@garden/web",
     "build": "turbo run build",
     "deploy": "pnpm typecheck && pnpm run deploy:alchemy && pnpm run deploy:mcp-proxy",
-    "deploy:alchemy": "ALCHEMY_PROFILE=garden-staging ALCHEMY_CI_STATE_STORE_CHECK=false ALCHEMY_TELEMETRY_DISABLED=1 alchemy deploy",
+    "deploy:alchemy": "GARDEN_DEPLOY_TARGET=production ALCHEMY_PROFILE=garden-staging ALCHEMY_CI_STATE_STORE_CHECK=false ALCHEMY_TELEMETRY_DISABLED=1 alchemy deploy",
     "deploy:mcp-proxy": "env -u WRANGLER_CI_OVERRIDE_NAME -u WRANGLER_CI_MATCH_TAG wrangler deploy --config workers/mcp-proxy/wrangler.jsonc --keep-vars",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
@@ -19,7 +19,11 @@
     "check:github-mcp": "pnpm --filter @garden/connectors check:github-mcp",
     "format": "oxfmt -c ./.oxfmtrc.json --check apps packages",
     "format:write": "oxfmt -c ./.oxfmtrc.json --write apps packages",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "deploy:preview": "pnpm typecheck && pnpm run deploy:preview:alchemy",
+    "deploy:preview:alchemy": "GARDEN_DEPLOY_TARGET=preview ALCHEMY_PROFILE=garden-staging ALCHEMY_CI_STATE_STORE_CHECK=false ALCHEMY_TELEMETRY_DISABLED=1 alchemy deploy",
+    "destroy:preview": "GARDEN_DEPLOY_TARGET=preview ALCHEMY_PROFILE=garden-staging ALCHEMY_CI_STATE_STORE_CHECK=false ALCHEMY_TELEMETRY_DISABLED=1 alchemy destroy",
+    "verify:deploy-config": "node scripts/verify-deploy-config.mjs"
   },
   "devDependencies": {
     "@garden/connectors": "workspace:*",
