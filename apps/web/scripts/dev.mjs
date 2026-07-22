@@ -18,6 +18,7 @@ if (args.has('--containers')) {
 }
 if (args.has('--local')) {
   process.env.CLOUDFLARE_VITE_REMOTE_BINDINGS ??= '0'
+  process.env.ENVIRONMENT = 'development'
 }
 if (process.env.DATABASE_URL) {
   process.env[LOCAL_HYPERDRIVE_ENV] ??= process.env.DATABASE_URL

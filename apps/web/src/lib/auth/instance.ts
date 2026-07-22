@@ -1,3 +1,4 @@
+import { Effect, Result as EffectResult } from 'effect'
 import { betterAuth } from 'better-auth'
 import { createAuthMiddleware, getOAuthState } from 'better-auth/api'
 import { Result, matchError } from 'better-result'
@@ -22,7 +23,10 @@ import {
   user,
   verification,
 } from '@garden/db/schema'
-import { syncCapabilities } from '@/lib/server/capability-sync'
+import {
+  syncCapabilities,
+  type CapabilitySyncError,
+} from '@/lib/server/capability-sync'
 import {
   ConnectorCallbackDatabaseError,
   recordConnectorCallbackEvent,
@@ -205,7 +209,10 @@ function getRequestOrigin(request?: Request) {
   return new URL(request.url).origin
 }
 
-function readOAuthCallbackFlow(callbackURL: string | undefined, baseURL: string) {
+function readOAuthCallbackFlow(
+  callbackURL: string | undefined,
+  baseURL: string,
+) {
   if (!callbackURL || !URL.canParse(callbackURL, baseURL)) {
     return { flowId: undefined }
   }
@@ -224,24 +231,22 @@ type OAuthCallbackOutcome = {
 
 function syncResultToOAuthOutcome(args: {
   connectorLabel: string
-  syncResult: Awaited<ReturnType<typeof syncCapabilities>>
+  syncError?: CapabilitySyncError
 }): OAuthCallbackOutcome {
-  return Result.match(args.syncResult, {
-    ok: (): OAuthCallbackOutcome => ({
+  if (args.syncError === undefined) {
+    return {
       status: 'success',
       stage: 'connected',
       message: `${args.connectorLabel} connected.`,
-    }),
-    err: (error): OAuthCallbackOutcome => {
-      const syncError = error as { code: string }
-      return {
-        status: 'degraded',
-        stage: syncError.code,
-        message: `${args.connectorLabel} connected. Tool sync needs attention.`,
-        errorCode: syncError.code,
-      }
-    },
-  })
+    }
+  }
+
+  return {
+    status: 'degraded',
+    stage: args.syncError.code,
+    message: `${args.connectorLabel} connected. Tool sync needs attention.`,
+    errorCode: args.syncError.code,
+  }
 }
 
 async function markOAuthAccountDegraded(args: {
@@ -296,14 +301,16 @@ async function finishOAuthConnectorCallback(args: {
   flowId?: string | null
 }) {
   return Result.gen(async function* () {
-    const syncResult = await syncCapabilities(
-      args.connectorId,
-      args.userId,
-      args.workspaceId,
+    const syncResult = await Effect.runPromise(
+      Effect.result(
+        syncCapabilities(args.connectorId, args.userId, args.workspaceId),
+      ),
     )
     const outcome = syncResultToOAuthOutcome({
       connectorLabel: args.connectorLabel,
-      syncResult,
+      syncError: EffectResult.isFailure(syncResult)
+        ? syncResult.failure
+        : undefined,
     })
 
     if (outcome.status === 'degraded') {
@@ -339,7 +346,8 @@ async function finishOAuthConnectorCallback(args: {
 
 export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
   const runtimeOrigin = getRequestOrigin(env.request)
-  const baseURL = runtimeOrigin ?? env.BETTER_AUTH_URL ?? 'http://localhost:3000'
+  const baseURL =
+    runtimeOrigin ?? env.BETTER_AUTH_URL ?? 'http://localhost:3000'
   const trustedOrigins = Array.from(
     new Set([
       'http://localhost:3000',

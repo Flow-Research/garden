@@ -64,7 +64,7 @@ export function skillListOptions(wsId: string) {
 export function connectionListOptions(wsId: string) {
   return queryOptions({
     queryKey: workspaceKeys.connections(wsId),
-    queryFn: () => listConnections({ workspace_id: wsId }),
+    queryFn: () => listConnections(),
   })
 }
 

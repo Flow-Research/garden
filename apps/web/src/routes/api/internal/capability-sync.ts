@@ -1,7 +1,13 @@
-import { Result } from 'better-result'
+import { Effect, Result, Schema } from 'effect'
 import { createFileRoute } from '@tanstack/react-router'
 import { syncCapabilities } from '@/lib/server/capability-sync'
 import { appEnv } from '@/lib/server/env'
+
+const CapabilitySyncBody = Schema.Struct({
+  connectorId: Schema.String,
+  userId: Schema.String,
+  workspaceId: Schema.String,
+})
 
 function isAuthorized(request: Request) {
   return (
@@ -10,19 +16,16 @@ function isAuthorized(request: Request) {
   )
 }
 
-function parseCapabilitySyncBody(raw: string) {
-  return Result.try(() => JSON.parse(raw) as Record<string, unknown>).andThen(
-    (body) =>
-      typeof body.connectorId === 'string' &&
-      typeof body.userId === 'string' &&
-      typeof body.workspaceId === 'string'
-        ? Result.ok({
-            connectorId: body.connectorId,
-            userId: body.userId,
-            workspaceId: body.workspaceId,
-          })
-        : Result.err('invalid-capability-sync-body'),
-  )
+const capabilitySyncErrorStatus = (code: string) => {
+  switch (code) {
+    case 'connector_not_found':
+      return 404
+    case 'sync_agent_not_found':
+    case 'unclassified_tool':
+      return 409
+    default:
+      return 500
+  }
 }
 
 export const Route = createFileRoute('/api/internal/capability-sync')({
@@ -33,32 +36,38 @@ export const Route = createFileRoute('/api/internal/capability-sync')({
           return Response.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
-        const bodyResult = parseCapabilitySyncBody(await request.text())
-        if (bodyResult.isErr()) {
+        const rawBody = await request.text()
+        const bodyResult = await Effect.runPromise(
+          Effect.result(
+            Effect.try({
+              try: () => JSON.parse(rawBody),
+              catch: () => new Error('invalid-capability-sync-json'),
+            }).pipe(
+              Effect.flatMap(Schema.decodeUnknownEffect(CapabilitySyncBody)),
+            ),
+          ),
+        )
+        if (Result.isFailure(bodyResult)) {
           return Response.json(
             { error: 'connectorId, userId, and workspaceId are required' },
             { status: 400 },
           )
         }
 
-        const syncResult = await syncCapabilities(
-          bodyResult.value.connectorId,
-          bodyResult.value.userId,
-          bodyResult.value.workspaceId,
+        const syncResult = await Effect.runPromise(
+          Effect.result(
+            syncCapabilities(
+              bodyResult.success.connectorId,
+              bodyResult.success.userId,
+              bodyResult.success.workspaceId,
+            ),
+          ),
         )
-
-        if (syncResult.isErr()) {
-          const error = syncResult.error
-          const status =
-            error.code === 'connector_not_found'
-              ? 404
-              : error.code === 'sync_agent_not_found' ||
-                  error.code === 'unclassified_tool'
-                ? 409
-                : 500
+        if (Result.isFailure(syncResult)) {
+          const error = syncResult.failure
           return Response.json(
             { error: error.message, code: error.code },
-            { status },
+            { status: capabilitySyncErrorStatus(error.code) },
           )
         }
 

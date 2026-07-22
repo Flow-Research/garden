@@ -93,7 +93,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   FILES: R2Bucket
   LOADER: WorkerLoader
   Sandbox: DurableObjectNamespace<SandboxDO>
-  MCP_SESSION: DurableObjectNamespace
+  EXECUTOR_MCP_SESSION: DurableObjectNamespace
   RUN_WORKFLOW: RunWorkflowBinding
 }
 
@@ -1028,6 +1028,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   override chatRecovery = true
   override contextOverflow = createGardenContextOverflow()
   override classifyChatError = classifyGardenContextOverflow
+  private mcpController: RuntimeMcpController | null = null
   private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
     getController: () => this.getMcpController(),
     fullSyncIntervalMs: mcpRuntimeConfig.connectorFullSyncIntervalMs,
@@ -1042,14 +1043,13 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     continuingWithoutReadyMessage:
       '[agent-runtime] continuing without warmed chat MCP connectors',
     onSuccessfulRefresh: (controller) => {
-      Result.match(controller.captureObservedMcpToolChanges(), {
-        ok: () => undefined,
-        err: (error) =>
-          console.warn(
-            '[agent-runtime] failed to capture warmed chat MCP tool changes',
-            error,
-          ),
-      })
+      const captured = controller.captureObservedMcpToolChanges()
+      if (captured.isErr()) {
+        console.warn(
+          '[agent-runtime] failed to capture warmed chat MCP tool changes',
+          captured.error,
+        )
+      }
     },
     onThreadNotFound: async (reason, controller) =>
       await this.pauseMcpRuntime(reason, controller),
@@ -1312,14 +1312,13 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
 
   override async beforeTurn(ctx: TurnContext) {
     const mcpController = this.getMcpController()
-    Result.match(mcpController.captureObservedMcpToolChanges(), {
-      ok: () => undefined,
-      err: (error) =>
-        console.warn(
-          '[agent-runtime] failed to capture MCP tool changes',
-          error,
-        ),
-    })
+    const captured = mcpController.captureObservedMcpToolChanges()
+    if (captured.isErr()) {
+      console.warn(
+        '[agent-runtime] failed to capture MCP tool changes',
+        captured.error,
+      )
+    }
 
     const documentContext =
       ctx.body &&
@@ -2013,6 +2012,8 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   private getMcpController() {
+    if (this.mcpController) return this.mcpController
+
     const host: McpHost = {
       name: this.name,
       env: this.env,
@@ -2020,15 +2021,17 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       mcp: this.mcp,
       getServerStates: () =>
         this.getMcpServers().servers as RuntimeMcpServerStates,
-      addRpcMcpServer: async ({ connectorId, id, props }) =>
+      addHarnessyMcpServer: async ({ id, props }) =>
         await this.addMcpServer(
-          connectorId,
-          this.env.MCP_SESSION as unknown as DurableObjectNamespace<McpAgent>,
+          id,
+          this.env
+            .EXECUTOR_MCP_SESSION as unknown as DurableObjectNamespace<McpAgent>,
           { id, props },
         ),
       removeMcpServer: this.removeMcpServer.bind(this),
     }
-    return new RuntimeMcpController(host)
+    this.mcpController = new RuntimeMcpController(host)
+    return this.mcpController
   }
 
   private async pauseMcpRuntime(

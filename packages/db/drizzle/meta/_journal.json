@@ -288,6 +288,13 @@
       "when": 1784207415438,
       "tag": "0040_supreme_may_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1784534347273,
+      "tag": "0041_colorful_lucky_pierre",
+      "breakpoints": true
     }
   ]
 }

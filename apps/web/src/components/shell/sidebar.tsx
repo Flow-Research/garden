@@ -8,11 +8,9 @@ import {
 import { Result } from 'better-result'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { IconMessage2Plus } from '@tabler/icons-react'
-import { Bot, Plug, Plus, Search, X, Zap } from 'lucide-react'
+import { Bot, Plus, Search, X, Zap } from 'lucide-react'
 import { Icon as IconifyIcon } from '@iconify/react'
 import { BrandIcon } from '@garden/ui/components/common/brand-icon'
-import type { ConnectorId } from '@garden/connectors/registry'
-import { listConnections } from '@/lib/api'
 import type { Agent, Skill } from '@garden/core/types'
 import {
   agentListOptions,
@@ -163,12 +161,7 @@ function contextFromPanel(kind: WorkspacePanelKind | null): RailContext {
 }
 
 function railUsesContextRail(rail: RailContext): boolean {
-  return (
-    rail === 'chats' ||
-    rail === 'skills' ||
-    rail === 'agents' ||
-    rail === 'connections'
-  )
+  return rail === 'chats' || rail === 'skills' || rail === 'agents'
 }
 
 function RailHomeIcon({ className }: { className?: string }) {
@@ -650,75 +643,10 @@ export function WorkspaceSidebar({ onCreateWorkspace }: WorkspaceSidebarProps) {
               }
             />
           ) : null}
-
-          {effectiveRailId === 'connections' ? (
-            <ConnectionsExplorer
-              activeEntityId={
-                activeType === 'capabilities'
-                  ? (activeEntityId as ConnectorId | null)
-                  : null
-              }
-              onOpenConnector={(connector) =>
-                openPanel({
-                  kind: 'capabilities',
-                  title: connector.label,
-                  entityId: connector.id,
-                })
-              }
-            />
-          ) : null}
         </SidebarContent>
       </Sidebar>
     </Sidebar>
   )
-}
-
-type ConnectionRowData = {
-  id: ConnectorId
-  label: string
-  status: 'available' | 'connected' | 'degraded' | 'disconnected'
-}
-
-type ConnectionsSnapshotLite = {
-  connectors: ConnectionRowData[]
-}
-
-async function loadConnectionsForSidebar(): Promise<ConnectionsSnapshotLite> {
-  const snapshot = await listConnections({ summary: true })
-  return { connectors: snapshot.connectors }
-}
-
-const CONNECTOR_ROW_ICON: Record<ConnectorId, string | null> = {
-  slack: 'logos:slack-icon',
-  gmail: 'logos:google-gmail',
-  'google-drive': 'logos:google-drive',
-  github: 'logos:github-icon',
-  'exa-search': 'simple-icons:exa',
-}
-
-function ConnectorRowIcon({
-  id,
-  className,
-}: {
-  id: ConnectorId
-  className?: string
-}) {
-  const icon = CONNECTOR_ROW_ICON[id]
-  if (!icon) return <Plug className={className} />
-  return <IconifyIcon icon={icon} className={className} />
-}
-
-function connectorDotColor(status: ConnectionRowData['status']) {
-  switch (status) {
-    case 'connected':
-      return 'bg-emerald-500'
-    case 'degraded':
-      return 'bg-amber-500'
-    case 'disconnected':
-      return 'bg-red-500'
-    default:
-      return 'bg-zinc-500'
-  }
 }
 
 const AGENT_STATUS_COLOR: Record<Agent['status'], string> = {
@@ -939,74 +867,5 @@ function SkillsRailExplorer({
         )}
       </div>
     </div>
-  )
-}
-
-function ConnectionsExplorer({
-  activeEntityId,
-  onOpenConnector,
-}: {
-  activeEntityId: ConnectorId | null
-  onOpenConnector: (connector: ConnectionRowData) => void
-}) {
-  const snapshotQuery = useQuery({
-    queryKey: ['workspace-connections-sidebar'],
-    queryFn: loadConnectionsForSidebar,
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
-  })
-
-  const { connected, available } = useMemo(() => {
-    const list = snapshotQuery.data?.connectors ?? []
-    return {
-      connected: list.filter(
-        (c) => c.status === 'connected' || c.status === 'degraded',
-      ),
-      available: list.filter(
-        (c) => c.status !== 'connected' && c.status !== 'degraded',
-      ),
-    }
-  }, [snapshotQuery.data])
-
-  const renderRow = (connector: ConnectionRowData) => {
-    const active = activeEntityId === connector.id
-    return (
-      <SidebarMenuItem key={connector.id}>
-        <SidebarMenuButton
-          isActive={active}
-          className="rounded-[7px] px-2.5 transition-all duration-150 data-[active=true]:bg-[color:var(--vellum-heavy)] data-[active=true]:text-[color:var(--ink)] data-[active=true]:font-medium data-[active=true]:shadow-[inset_0_0_0_0.5px_rgba(26,31,28,0.10)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-          onClick={() => onOpenConnector(connector)}
-        >
-          <ConnectorRowIcon id={connector.id} className="size-4" />
-          <span className="flex-1 truncate">{connector.label}</span>
-          <span
-            className={`size-2 shrink-0 rounded-full ring-2 ring-sidebar ${connectorDotColor(connector.status)}`}
-            aria-hidden="true"
-            title={connector.status}
-          />
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    )
-  }
-
-  return (
-    <>
-      {connected.length > 0 ? (
-        <ExplorerSection>
-          <SidebarMenu>{connected.map(renderRow)}</SidebarMenu>
-        </ExplorerSection>
-      ) : null}
-      {available.length > 0 ? (
-        <ExplorerSection>
-          <SidebarMenu>{available.map(renderRow)}</SidebarMenu>
-        </ExplorerSection>
-      ) : null}
-      {snapshotQuery.isLoading && !snapshotQuery.data ? (
-        <div className="px-4 py-3 text-xs text-muted-foreground">
-          Loading connections…
-        </div>
-      ) : null}
-    </>
   )
 }
