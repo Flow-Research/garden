@@ -9,7 +9,6 @@ import { SearchCommand } from '@/features/search'
 import { ChatRuntimeProvider } from '@/features/chat/chat-runtime-provider'
 import { CreateWorkspaceModal } from '@/features/modals/create-workspace'
 import { SettingsDialog } from '@/features/settings'
-import { ConnectorCallbackListener } from '@/features/connections'
 import { IssueDeepLinkListener } from '@/features/issues/components/issue-deep-link-listener'
 import {
   agentListOptions,
@@ -85,8 +84,6 @@ function WorkspaceSetupState({ onCreate }: { onCreate: () => void }) {
 }
 
 export function WorkspaceLayout({
-  connectorFlowId = null,
-  connectorId = null,
   issueId = null,
 }: {
   connectorFlowId?: string | null
@@ -113,11 +110,6 @@ export function WorkspaceLayout({
         {activeWorkspaceId ? (
           <>
             <WorkspaceWarmCaches wsId={activeWorkspaceId} />
-            <ConnectorCallbackListener
-              workspaceId={activeWorkspaceId}
-              connectorFlowId={connectorFlowId}
-              connectorId={connectorId}
-            />
             <IssueDeepLinkListener
               workspaceId={activeWorkspaceId}
               issueId={issueId}

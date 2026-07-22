@@ -18,6 +18,7 @@ import {
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { cn } from '@garden/ui/lib/utils'
 
+import { AgentAccessTab } from './agent-access-tab'
 import { AgentSkillsTab } from './agent-skills-tab'
 
 const STATUS_COLOR: Record<Agent['status'], string> = {
@@ -86,6 +87,7 @@ export function AgentDetail({
           <TabsList variant="line" className="h-9">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="skills">Skills</TabsTrigger>
+            <TabsTrigger value="access">Access</TabsTrigger>
             <TabsTrigger value="instructions">Instructions</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
           </TabsList>
@@ -97,6 +99,9 @@ export function AgentDetail({
           </TabsContent>
           <TabsContent value="skills" className="px-6 py-5">
             <AgentSkillsTab agentId={agent.id} onOpenSkill={onOpenSkill} />
+          </TabsContent>
+          <TabsContent value="access" className="px-6 py-5">
+            <AgentAccessTab agentId={agent.id} />
           </TabsContent>
           <TabsContent value="instructions" className="px-6 py-5">
             <InstructionsPane agent={agent} />

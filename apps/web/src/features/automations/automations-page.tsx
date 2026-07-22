@@ -87,8 +87,8 @@ const TEMPLATE_ICONS: Record<string, typeof Zap> = {
   'qa-sweep': Shield,
 }
 
-const registryTemplates: AutomationTemplate[] = BUILTIN_AUTOMATION_TEMPLATES.map(
-  (template) => ({
+const registryTemplates: AutomationTemplate[] =
+  BUILTIN_AUTOMATION_TEMPLATES.map((template) => ({
     title: template.title,
     summary: template.summary,
     prompt: template.prompt,
@@ -101,8 +101,7 @@ const registryTemplates: AutomationTemplate[] = BUILTIN_AUTOMATION_TEMPLATES.map
     templateSource: template.templateSource,
     executionConfig: template.executionConfig,
     outputConfig: template.outputConfig,
-  }),
-)
+  }))
 
 const TEMPLATES: AutomationTemplate[] = [
   ...registryTemplates,
@@ -307,9 +306,9 @@ function CreateAutomationDialog({
     ...connectionListOptions(wsId),
     enabled: open,
   })
-  const liveConnectors = (connections?.connectors ?? []).filter(
-    (connector) =>
-      connector.status === 'connected' || connector.status === 'degraded',
+  const liveConnectors = (connections?.integrations ?? []).filter(
+    (integration) =>
+      integration.status === 'connected' || integration.status === 'degraded',
   )
   const title = useCreateAutomationDialogStore((state) => state.title)
   const description = useCreateAutomationDialogStore(
@@ -376,14 +375,22 @@ function CreateAutomationDialog({
   const handleSubmit = async () => {
     if (!title.trim() || !assigneeId || submitting) return
     const requiredConnectors = selectedConnectorIds.filter(
-      (connectorId): connectorId is 'github' | 'exa-search' | 'slack' | 'gmail' | 'google-drive' =>
+      (
+        connectorId,
+      ): connectorId is
+        | 'github'
+        | 'exa-search'
+        | 'slack'
+        | 'gmail'
+        | 'google-drive' =>
         ['github', 'exa-search', 'slack', 'gmail', 'google-drive'].includes(
           connectorId,
         ),
     )
     const templateCapabilities = selectedTemplate?.executionConfig?.capabilities
     const executionConfig = createAutomationExecutionConfig({
-      templateId: selectedTemplate?.executionConfig?.templateId ?? 'custom-automation',
+      templateId:
+        selectedTemplate?.executionConfig?.templateId ?? 'custom-automation',
       templateVersion: selectedTemplate?.executionConfig?.templateVersion ?? 1,
       capabilities: {
         browser:
@@ -441,12 +448,12 @@ function CreateAutomationDialog({
   })()
 
   const detailTemplate = selectedTemplate
-    ? TEMPLATES.find(
+    ? (TEMPLATES.find(
         (candidate) =>
           (candidate.templateSource &&
             candidate.templateSource === selectedTemplate.templateSource) ||
           candidate.title === selectedTemplate.title,
-      ) ?? null
+      ) ?? null)
     : null
   const detailPromptSource = detailTemplate?.prompt ?? selectedTemplate?.prompt
   const detailConnectors =
@@ -640,151 +647,148 @@ function CreateAutomationDialog({
               </CollapsibleTrigger>
               <CollapsibleContent>
                 <div className="mt-3 space-y-5 px-1">
-                <section>
-                  <div className="flex items-baseline justify-between">
-                    <SectionLabel>Tools</SectionLabel>
-                    <span className="text-[10.5px] text-muted-foreground/80">
-                      {totalCapabilities} selected
-                    </span>
-                  </div>
-                  <div className="mt-2 divide-y divide-hairline-soft overflow-hidden rounded-[10px] border border-hairline bg-bone/70">
-                    {liveConnectors.map((connector) => {
-                      const expanded = expandedConnectorId === connector.id
-                      const selected = selectedConnectorIds.includes(
-                        connector.id,
-                      )
-                      return (
-                        <div key={connector.id}>
-                          <div
-                            className={cn(
-                              'flex items-center gap-2.5 px-3 py-2 transition-colors',
-                              selected && 'bg-moss/[0.05]',
-                            )}
-                          >
-                            <Checkbox
-                              checked={selected}
-                              onCheckedChange={() =>
-                                toggleConnectorId(connector.id)
-                              }
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 text-[13px] font-medium">
-                                <span className="truncate">
-                                  {connector.label}
-                                </span>
-                                <ConnectorStatusDot
-                                  status={connector.status}
-                                />
-                              </div>
-                              <div className="truncate text-[11px] text-muted-foreground">
-                                {connector.description}
-                              </div>
-                            </div>
-                            {connector.tools.length > 0 ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setExpandedConnectorId(
-                                    expanded ? null : connector.id,
-                                  )
+                  <section>
+                    <div className="flex items-baseline justify-between">
+                      <SectionLabel>Tools</SectionLabel>
+                      <span className="text-[10.5px] text-muted-foreground/80">
+                        {totalCapabilities} selected
+                      </span>
+                    </div>
+                    <div className="mt-2 divide-y divide-hairline-soft overflow-hidden rounded-[10px] border border-hairline bg-bone/70">
+                      {liveConnectors.map((connector) => {
+                        const expanded = expandedConnectorId === connector.slug
+                        const selected = selectedConnectorIds.includes(
+                          connector.slug,
+                        )
+                        return (
+                          <div key={connector.slug}>
+                            <div
+                              className={cn(
+                                'flex items-center gap-2.5 px-3 py-2 transition-colors',
+                                selected && 'bg-moss/[0.05]',
+                              )}
+                            >
+                              <Checkbox
+                                checked={selected}
+                                onCheckedChange={() =>
+                                  toggleConnectorId(connector.slug)
                                 }
-                                className="flex shrink-0 items-center gap-1 rounded-full bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-hairline-soft transition-colors hover:bg-muted hover:text-foreground"
-                              >
-                                {connector.tools.length} tools
-                                <ChevronDown
-                                  className={cn(
-                                    'size-3 transition-transform duration-200',
-                                    expanded && 'rotate-180',
-                                  )}
-                                />
-                              </button>
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 text-[13px] font-medium">
+                                  <span className="truncate">
+                                    {connector.label}
+                                  </span>
+                                  <ConnectorStatusDot
+                                    status={connector.status}
+                                  />
+                                </div>
+                                <div className="truncate text-[11px] text-muted-foreground">
+                                  {connector.description}
+                                </div>
+                              </div>
+                              {connector.tools.length > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedConnectorId(
+                                      expanded ? null : connector.slug,
+                                    )
+                                  }
+                                  className="flex shrink-0 items-center gap-1 rounded-full bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-hairline-soft transition-colors hover:bg-muted hover:text-foreground"
+                                >
+                                  {connector.tools.length} tools
+                                  <ChevronDown
+                                    className={cn(
+                                      'size-3 transition-transform duration-200',
+                                      expanded && 'rotate-180',
+                                    )}
+                                  />
+                                </button>
+                              ) : null}
+                            </div>
+                            {expanded && connector.tools.length > 0 ? (
+                              <div className="space-y-px bg-parchment-deep/40 px-3 py-2">
+                                {connector.tools.map((tool) => (
+                                  <label
+                                    key={`${connector.slug}:${tool.name}`}
+                                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 transition-colors hover:bg-bone/70"
+                                  >
+                                    <Checkbox
+                                      checked={selectedToolNames.includes(
+                                        tool.name,
+                                      )}
+                                      onCheckedChange={() =>
+                                        toggleToolName(tool.name)
+                                      }
+                                    />
+                                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                                      <span className="truncate font-mono text-[11px]">
+                                        {tool.name}
+                                      </span>
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
                             ) : null}
                           </div>
-                          {expanded && connector.tools.length > 0 ? (
-                            <div className="space-y-px bg-parchment-deep/40 px-3 py-2">
-                              {connector.tools.map((tool) => (
-                                <label
-                                  key={`${connector.id}:${tool.name}`}
-                                  className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 transition-colors hover:bg-bone/70"
-                                >
-                                  <Checkbox
-                                    checked={selectedToolNames.includes(
-                                      tool.name,
-                                    )}
-                                    onCheckedChange={() =>
-                                      toggleToolName(tool.name)
-                                    }
-                                  />
-                                  <span className="flex min-w-0 flex-1 items-center gap-2">
-                                    <span className="truncate font-mono text-[11px]">
-                                      {tool.name}
-                                    </span>
-                                    <span className="shrink-0 rounded-full bg-muted/60 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground ring-1 ring-hairline-soft">
-                                      {tool.riskClass}
-                                    </span>
-                                  </span>
-                                </label>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      )
-                    })}
-                    {liveConnectors.length === 0 ? (
-                      <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                        No connectors are connected yet. Connect one in
-                        Settings to expose its tools here.
-                      </div>
-                    ) : null}
-                  </div>
-                </section>
-
-                <section>
-                  <div className="flex items-baseline justify-between">
-                    <SectionLabel>Skills</SectionLabel>
-                    <span className="text-[10.5px] text-muted-foreground/80">
-                      {selectedSkillSlugs.length} selected
-                    </span>
-                  </div>
-                  <div className="mt-2 max-h-44 space-y-px overflow-y-auto rounded-[10px] border border-hairline bg-bone/70">
-                    {skills.length === 0 ? (
-                      <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                        No skills configured
-                      </div>
-                    ) : (
-                      skills.map((skill) => {
-                        const slug = skillSlug(skill)
-                        const checked = selectedSkillSlugs.includes(slug)
-                        return (
-                          <label
-                            key={skill.id}
-                            className={cn(
-                              'flex cursor-pointer items-center gap-2.5 px-3 py-2 transition-colors',
-                              checked
-                                ? 'bg-moss/[0.06]'
-                                : 'hover:bg-parchment-deep/40',
-                            )}
-                          >
-                            <Checkbox
-                              checked={checked}
-                              onCheckedChange={() => toggleSkillSlug(slug)}
-                            />
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-[13px] font-medium">
-                                {skill.name}
-                              </span>
-                              {skill.description ? (
-                                <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-                                  {skill.description}
-                                </span>
-                              ) : null}
-                            </span>
-                          </label>
                         )
-                      })
-                    )}
-                  </div>
-                </section>
+                      })}
+                      {liveConnectors.length === 0 ? (
+                        <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                          No connectors are connected yet. Connect one in
+                          Settings to expose its tools here.
+                        </div>
+                      ) : null}
+                    </div>
+                  </section>
+
+                  <section>
+                    <div className="flex items-baseline justify-between">
+                      <SectionLabel>Skills</SectionLabel>
+                      <span className="text-[10.5px] text-muted-foreground/80">
+                        {selectedSkillSlugs.length} selected
+                      </span>
+                    </div>
+                    <div className="mt-2 max-h-44 space-y-px overflow-y-auto rounded-[10px] border border-hairline bg-bone/70">
+                      {skills.length === 0 ? (
+                        <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                          No skills configured
+                        </div>
+                      ) : (
+                        skills.map((skill) => {
+                          const slug = skillSlug(skill)
+                          const checked = selectedSkillSlugs.includes(slug)
+                          return (
+                            <label
+                              key={skill.id}
+                              className={cn(
+                                'flex cursor-pointer items-center gap-2.5 px-3 py-2 transition-colors',
+                                checked
+                                  ? 'bg-moss/[0.06]'
+                                  : 'hover:bg-parchment-deep/40',
+                              )}
+                            >
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={() => toggleSkillSlug(slug)}
+                              />
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-[13px] font-medium">
+                                  {skill.name}
+                                </span>
+                                {skill.description ? (
+                                  <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                                    {skill.description}
+                                  </span>
+                                ) : null}
+                              </span>
+                            </label>
+                          )
+                        })
+                      )}
+                    </div>
+                  </section>
                 </div>
               </CollapsibleContent>
             </Collapsible>
@@ -1006,7 +1010,12 @@ function clampLines(value: string, maxLines: number): string {
 function ConnectorStatusDot({
   status,
 }: {
-  status: 'available' | 'connected' | 'degraded' | 'disconnected'
+  status:
+    | 'available'
+    | 'connected'
+    | 'degraded'
+    | 'disconnected'
+    | 'setup_required'
 }) {
   const tone =
     status === 'connected'

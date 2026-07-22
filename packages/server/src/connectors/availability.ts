@@ -8,7 +8,12 @@ import {
 } from '@garden/connectors/sdk'
 import * as schema from '@garden/db/schema'
 
-export type ConnectorAuthKind = 'oauth' | 'github_app' | 'api_key' | 'none'
+export type ConnectorAuthKind =
+  | 'oauth'
+  | 'github_app'
+  | 'discord_bot'
+  | 'api_key'
+  | 'none'
 
 export type AvailableConnectorBinding = {
   connectorId: string
@@ -36,37 +41,52 @@ export async function listAvailableConnectorBindings(args: {
   workspaceId: string
 }): Promise<AvailableConnectorBinding[]> {
   const db = args.db
-  const [accounts, githubInstallations] = await Promise.all([
-    db
-      .select({
-        accountId: schema.account.id,
-        accountLogin: schema.account.accountId,
-        connectorId: schema.account.connectorType,
-      })
-      .from(schema.account)
-      .where(
-        and(
-          eq(schema.account.workspaceId, args.workspaceId),
-          eq(schema.account.userId, args.userId),
-          eq(schema.account.status, 'connected'),
+  const [accounts, githubInstallations, discordInstallations] =
+    await Promise.all([
+      db
+        .select({
+          accountId: schema.account.id,
+          accountLogin: schema.account.accountId,
+          connectorId: schema.account.connectorType,
+        })
+        .from(schema.account)
+        .where(
+          and(
+            eq(schema.account.workspaceId, args.workspaceId),
+            eq(schema.account.userId, args.userId),
+            eq(schema.account.status, 'connected'),
+          ),
         ),
-      ),
-    db
-      .select({
-        accountLogin: schema.githubAppInstallation.accountLogin,
-        id: schema.githubAppInstallation.id,
-        repositorySelection: schema.githubAppInstallation.repositorySelection,
-        status: schema.githubAppInstallation.status,
-      })
-      .from(schema.githubAppInstallation)
-      .where(
-        and(
-          eq(schema.githubAppInstallation.workspaceId, args.workspaceId),
-          ne(schema.githubAppInstallation.status, 'disconnected'),
-        ),
-      )
-      .limit(1),
-  ])
+      db
+        .select({
+          accountLogin: schema.githubAppInstallation.accountLogin,
+          installationId: schema.githubAppInstallation.installationId,
+          repositorySelection: schema.githubAppInstallation.repositorySelection,
+          status: schema.githubAppInstallation.status,
+        })
+        .from(schema.githubAppInstallation)
+        .where(
+          and(
+            eq(schema.githubAppInstallation.workspaceId, args.workspaceId),
+            ne(schema.githubAppInstallation.status, 'disconnected'),
+          ),
+        )
+        .limit(1),
+      db
+        .select({
+          guildId: schema.discordBotInstallation.guildId,
+          guildName: schema.discordBotInstallation.guildName,
+          status: schema.discordBotInstallation.status,
+        })
+        .from(schema.discordBotInstallation)
+        .where(
+          and(
+            eq(schema.discordBotInstallation.workspaceId, args.workspaceId),
+            ne(schema.discordBotInstallation.status, 'disconnected'),
+          ),
+        )
+        .limit(1),
+    ])
 
   const oauthBindings = accounts.flatMap((row) => {
     const connectorId = row.connectorId?.trim()
@@ -101,10 +121,26 @@ export async function listAvailableConnectorBindings(args: {
                 ? ('degraded' as const)
                 : ('connected' as const),
             authKind: 'github_app' as const,
-            accountId: null,
+            accountId: githubInstallations[0]?.installationId ?? null,
             accountLogin: githubInstallations[0]?.accountLogin ?? null,
             repositorySelection:
               githubInstallations[0]?.repositorySelection ?? null,
+          },
+        ]
+      : []
+
+  const discordBindings =
+    discordInstallations.length > 0
+      ? [
+          {
+            connectorId: 'discord',
+            status:
+              discordInstallations[0]?.status === 'degraded'
+                ? ('degraded' as const)
+                : ('connected' as const),
+            authKind: 'discord_bot' as const,
+            accountId: discordInstallations[0]?.guildId ?? null,
+            accountLogin: discordInstallations[0]?.guildName ?? null,
           },
         ]
       : []
@@ -155,5 +191,10 @@ export async function listAvailableConnectorBindings(args: {
       : []
   })
 
-  return [...oauthBindings, ...githubBindings, ...nonOAuthBindings]
+  return [
+    ...oauthBindings,
+    ...githubBindings,
+    ...discordBindings,
+    ...nonOAuthBindings,
+  ]
 }

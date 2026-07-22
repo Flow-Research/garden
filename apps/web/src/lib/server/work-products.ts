@@ -1,7 +1,4 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
+import { Effect } from 'effect'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -11,9 +8,8 @@ import {
   classifyConnectorError,
   type ConnectorError,
 } from '@garden/core/connectors/errors'
-import { getConnectorById } from '@garden/connectors'
-import { isMcpConnector } from '@garden/connectors/sdk'
-import { mintMcpProxyJwt } from '@garden/connectors/proxy-jwt'
+import { makeGitHubBaseLayer } from '@garden/connectors/github/rest-client'
+import { githubNativeTools } from '@garden/connectors/github/tools'
 import {
   issueSourceBindingSelectSchema,
   issueWorkProductSelectSchema,
@@ -23,7 +19,6 @@ import { getDb, schema } from './db'
 import { resolveConnectorWritePermissionRequests } from './permission-request'
 
 const URL_PATTERN = /https?:\/\/[^\s"'<>]+/i
-const MCP_PROXY_INTERNAL_BASE_URL = 'https://garden-mcp-proxy.internal/'
 
 export const workProductReviewBodySchema = z
   .object({
@@ -291,51 +286,8 @@ function resolveWritebackInvocation(args: {
   )
 }
 
-function buildProxyTransport(args: {
-  bearerToken: string
-  connectorId: string
-  env: AppEnv
-  transport: 'streamable-http' | 'sse'
-}) {
-  const url =
-    args.transport === 'streamable-http'
-      ? new URL(`${args.connectorId}/mcp`, MCP_PROXY_INTERNAL_BASE_URL)
-      : new URL(`${args.connectorId}/sse`, MCP_PROXY_INTERNAL_BASE_URL)
-
-  const requestInit = {
-    headers: {
-      Authorization: `Bearer ${args.bearerToken}`,
-    },
-  }
-
-  const fetch: FetchLike = async (input, init) =>
-    args.env.MCP_PROXY.fetch(new Request(input, init))
-
-  return args.transport === 'streamable-http'
-    ? new StreamableHTTPClientTransport(url, { requestInit, fetch })
-    : new SSEClientTransport(url, { requestInit, fetch })
-}
-
 function connectorErrorFromCause(cause: unknown): ConnectorError {
   return classifyConnectorError(cause)
-}
-
-function textFromMcpResult(result: unknown) {
-  const value = result as {
-    content?: Array<{ text?: unknown; type?: unknown }>
-  }
-  return (
-    value.content
-      ?.filter((item) => item.type === 'text' && typeof item.text === 'string')
-      .map((item) => item.text as string)
-      .join('\n')
-      .trim() || null
-  )
-}
-
-function gardenMeta(result: unknown) {
-  const meta = objectOrNull((result as { _meta?: unknown })._meta)
-  return objectOrNull(meta?.garden)
 }
 
 function findUrl(value: unknown): string | null {
@@ -385,16 +337,6 @@ function findExternalId(value: unknown): string | null {
   return null
 }
 
-function connectorErrorFromMcpError(result: unknown): ConnectorError {
-  const meta = gardenMeta(result)
-  const message = textFromMcpResult(result) ?? 'Connector write failed'
-  return classifyConnectorError({
-    _meta: { garden: meta },
-    message,
-    raw: result,
-  })
-}
-
 async function callConnectorTool(args: {
   agentId: string
   connectorId: string
@@ -408,80 +350,58 @@ async function callConnectorTool(args: {
 }): Promise<
   ResultValue<ConnectorToolCallOutcome, ConnectorError | WorkProductReviewError>
 > {
-  const connector = getConnectorById(args.connectorId)
-  if (!connector || !isMcpConnector(connector)) {
+  const nativeTool =
+    args.connectorId === 'github'
+      ? githubNativeTools.find((tool) => tool.name === args.toolName)
+      : undefined
+  if (!nativeTool) {
     return Result.err(
-      new WorkProductReviewError({
-        code: 'unsupported_writeback',
-        status: 400,
-        message: !connector
-          ? `Unknown connector: ${args.connectorId}`
-          : `Connector ${args.connectorId} does not support MCP writeback`,
-      }),
+      unsupportedWriteback(
+        `Connector writeback is not available for ${args.connectorId}.${args.toolName}`,
+      ),
     )
   }
 
-  const tokenResult = await Result.tryPromise({
-    try: async () =>
-      mintMcpProxyJwt({
-        secret: args.env.BETTER_AUTH_SECRET,
-        sub: args.userId,
-        workspaceId: args.workspaceId,
-        agentId: args.agentId,
-        connectorId: args.connectorId,
-        issueId: args.issueId,
-        ...(args.runId ? { runId: args.runId } : {}),
-      }),
-    catch: connectorErrorFromCause,
-  })
-  if (tokenResult.isErr()) return Result.err(tokenResult.error)
-
-  const client = new Client(
-    {
-      name: 'garden-work-product-writeback',
-      version: '0.1.0',
+  const installationResult = await Result.tryPromise({
+    try: async () => {
+      const db = await getDb(args.env)
+      const [installation] = await db
+        .select({
+          installationId: schema.githubAppInstallation.installationId,
+          status: schema.githubAppInstallation.status,
+        })
+        .from(schema.githubAppInstallation)
+        .where(eq(schema.githubAppInstallation.workspaceId, args.workspaceId))
+        .limit(1)
+      return installation ?? null
     },
-    { capabilities: {} },
-  )
-  const transport = buildProxyTransport({
-    bearerToken: tokenResult.value,
-    connectorId: args.connectorId,
-    env: args.env,
-    transport: connector.upstream.transport,
+    catch: (cause) => dbError('Failed to load GitHub App installation', cause),
   })
+  if (installationResult.isErr()) return Result.err(installationResult.error)
+  if (
+    !installationResult.value ||
+    installationResult.value.status === 'disconnected'
+  ) {
+    return Result.err(invalidState('GitHub App installation is not connected'))
+  }
 
   const result = await Result.tryPromise({
-    try: async () => {
-      await client.connect(transport)
-      const toolResult = await client.callTool({
-        name: args.toolName,
-        arguments: args.toolArgs,
-      })
-      await client.close()
-      return toolResult
-    },
+    try: async () =>
+      await Effect.runPromise(
+        nativeTool.execute(args.toolArgs).pipe(
+          Effect.provide(
+            makeGitHubBaseLayer({
+              appId: args.env.GITHUB_APP_ID,
+              clientId: args.env.GITHUB_CLIENT_ID,
+              privateKey: args.env.GITHUB_APP_PRIVATE_KEY,
+              installationId: installationResult.value.installationId,
+            }),
+          ),
+        ),
+      ),
     catch: connectorErrorFromCause,
   })
   if (result.isErr()) return Result.err(result.error)
-
-  const toolResult = result.value as { isError?: boolean }
-  if (toolResult.isError) {
-    const meta = gardenMeta(result.value)
-    if (meta?.code === 'needs_approval') {
-      const requestId = stringValue(meta.requestId)
-      return requestId
-        ? Result.ok({ kind: 'needs_approval', requestId })
-        : Result.err(
-            new WorkProductReviewError({
-              code: 'invalid_state',
-              status: 500,
-              message: 'Connector approval response is missing request id',
-            }),
-          )
-    }
-
-    return Result.err(connectorErrorFromMcpError(result.value))
-  }
 
   return Result.ok({
     kind: 'success',

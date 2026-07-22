@@ -1,3 +1,4 @@
+import { Effect, Result as EffectResult } from 'effect'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { Result, matchError } from 'better-result'
@@ -12,7 +13,10 @@ import {
   githubSetupQuerySchema,
   parseSearchParams,
 } from '@/lib/server/validation/github'
-import { syncCapabilities } from '@/lib/server/capability-sync'
+import {
+  syncCapabilities,
+  type CapabilitySyncError,
+} from '@/lib/server/capability-sync'
 import { schema, type Db } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { capturePostHogEvent } from '@/lib/posthog-server'
@@ -71,26 +75,24 @@ function gitHubInstallErrorToOutcome(error: {
 
 function syncResultToGitHubOutcome(args: {
   accountLogin: string
-  syncResult: Awaited<ReturnType<typeof syncCapabilities>>
+  syncError?: CapabilitySyncError
 }): GitHubSetupOutcome {
-  return Result.match(args.syncResult, {
-    ok: (): GitHubSetupOutcome => ({
+  if (args.syncError === undefined) {
+    return {
       status: 'success',
       stage: 'connected',
       message: 'GitHub connected.',
       accountLogin: args.accountLogin,
-    }),
-    err: (error): GitHubSetupOutcome => {
-      const syncError = error as { code: string }
-      return {
-        status: 'degraded',
-        stage: syncError.code,
-        message: 'GitHub connected. Tool sync needs attention.',
-        errorCode: syncError.code,
-        accountLogin: args.accountLogin,
-      }
-    },
-  })
+    }
+  }
+
+  return {
+    status: 'degraded',
+    stage: args.syncError.code,
+    message: 'GitHub connected. Tool sync needs attention.',
+    errorCode: args.syncError.code,
+    accountLogin: args.accountLogin,
+  }
 }
 
 async function markGitHubInstallDegraded(args: {
@@ -164,14 +166,16 @@ async function finishGitHubSetupCallback(args: {
     const outcome = yield* Result.await(
       Result.match(installResult, {
         ok: async ({ accountLogin }) => {
-          const syncResult = await syncCapabilities(
-            'github',
-            args.userId,
-            args.workspaceId,
+          const syncResult = await Effect.runPromise(
+            Effect.result(
+              syncCapabilities('github', args.userId, args.workspaceId),
+            ),
           )
           const nextOutcome = syncResultToGitHubOutcome({
             accountLogin,
-            syncResult,
+            syncError: EffectResult.isFailure(syncResult)
+              ? syncResult.failure
+              : undefined,
           })
 
           return nextOutcome.status === 'degraded'

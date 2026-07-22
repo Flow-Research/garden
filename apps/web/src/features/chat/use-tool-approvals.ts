@@ -1,14 +1,17 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getToolName, isToolUIPart } from 'ai'
-import { chatKeys, listThreadPermissionRequests } from '@/lib/api/chat-threads'
+import {
+  chatKeys,
+  listThreadAgentProposalRequests,
+} from '@/lib/api/chat-threads'
 import { resolveToolApproval } from './components/chat-tool-activity'
 import type { ApprovalGroup } from './components/chat-message-parts'
 import type { ChatRuntime, ChatUiMessage } from './chat-runtime-provider'
 
 /**
  * Owns the whole tool-approval surface: optimistic + durable resolution state,
- * the propose_agent permission-request status query, and the approve/deny →
+ * the propose_agent ledger status query, and the approve/deny →
  * resume flow. Lifted out of ConnectedChatPanelInteraction so the controller
  * just threads props (review #4 — approval state shouldn't live inline in a
  * 950-line component). Per-session state resets at render time via the prev-id
@@ -49,19 +52,19 @@ export function useToolApprovals({
       ),
     [messages],
   )
-  const permissionRequestsQuery = useQuery({
-    queryKey: chatKeys.permissionRequests(sessionId),
-    queryFn: () => listThreadPermissionRequests(sessionId),
+  const agentProposalRequestsQuery = useQuery({
+    queryKey: chatKeys.agentProposalRequests(sessionId),
+    queryFn: () => listThreadAgentProposalRequests(sessionId),
     enabled: hasAgentProposal,
     staleTime: 30_000,
   })
-  const resolvedPermissionRequestIds = useMemo(() => {
+  const resolvedAgentProposalRequestIds = useMemo(() => {
     const ids = new Set<string>()
-    for (const request of permissionRequestsQuery.data?.requests ?? []) {
+    for (const request of agentProposalRequestsQuery.data?.requests ?? []) {
       if (request.status !== 'pending') ids.add(request.id)
     }
     return ids
-  }, [permissionRequestsQuery.data])
+  }, [agentProposalRequestsQuery.data])
 
   const handleResolveToolApproval = useCallback(
     async (group: ApprovalGroup, approved: boolean) => {
@@ -118,7 +121,7 @@ export function useToolApprovals({
         // Refresh durable status so the card reflects approved/denied even if
         // this client's optimistic state is later dropped (B2).
         void queryClient.invalidateQueries({
-          queryKey: chatKeys.permissionRequests(sessionId),
+          queryKey: chatKeys.agentProposalRequests(sessionId),
         })
       } else {
         // B4: respond per (toolCallId → approvalId), keyed by the toolCallIds the
@@ -156,7 +159,7 @@ export function useToolApprovals({
     approvalError,
     resolvingToolCallIds,
     resolvedApprovalIds,
-    resolvedPermissionRequestIds,
+    resolvedAgentProposalRequestIds,
     handleResolveToolApproval,
   }
 }

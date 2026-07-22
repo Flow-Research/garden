@@ -13,7 +13,15 @@ type IssueRow = typeof schema.issue.$inferSelect;
 type CommentRow = typeof schema.issueComment.$inferSelect;
 type RunRow = typeof schema.issueRun.$inferSelect;
 type WorkProductRow = typeof schema.issueWorkProduct.$inferSelect;
-type PermissionRequestRow = typeof schema.permissionRequest.$inferSelect;
+type ApprovalRow = {
+  id: string;
+  agentId: string;
+  issueId: string | null;
+  requestedAt: Date;
+  status: string;
+  body: string | null;
+  kind: "agent_proposal" | "connector_write";
+};
 type InboxItemRow = typeof schema.inboxItem.$inferSelect;
 
 type RunEventLite = {
@@ -50,6 +58,15 @@ function truncate(value: string | null | undefined): string | null {
   const trimmed = value.trim();
   if (trimmed.length <= TRUNCATE_BODY) return trimmed;
   return `${trimmed.slice(0, TRUNCATE_BODY - 1)}…`;
+}
+
+function agentProposalBody(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const payload = value as { name?: unknown; role?: unknown };
+  const name = typeof payload.name === "string" ? payload.name.trim() : "";
+  const role = typeof payload.role === "string" ? payload.role.trim() : "";
+  if (name && role) return `${name} — ${role}`;
+  return name || role || null;
 }
 
 function pickIssueStatus(value: string | null): IssueStatus | null {
@@ -195,7 +212,7 @@ function buildCommentSource(comment: CommentRow, issue: IssueRow): SourceItem {
 }
 
 function buildApprovalSource(
-  request: PermissionRequestRow,
+  request: ApprovalRow,
   issue: IssueRow | undefined,
 ): SourceItem | null {
   if (request.status !== "pending") return null;
@@ -207,12 +224,12 @@ function buildApprovalSource(
     severity: "action_required",
     issueId: issue?.id ?? null,
     title: `Approval needed${titleSuffix}`,
-    body: truncate(request.context ?? null),
+    body: truncate(request.body),
     issueStatus: issue ? pickIssueStatus(issue.status) : null,
     ...actorFromAgentId(request.agentId),
     activityAt,
     details: {
-      kind: "approval",
+      kind: request.kind,
       request_id: request.id,
       ...(issue ? { issue_number: String(issue.number) } : {}),
     },
@@ -401,7 +418,8 @@ async function computeInboxSourceItems(args: {
   const [
     workspaceIssues,
     workspaceComments,
-    approvalRows,
+    connectorApprovalRows,
+    agentProposalRows,
     pendingWorkProducts,
     pausedRuns,
     failedRuns,
@@ -449,19 +467,10 @@ async function computeInboxSourceItems(args: {
       .select({
         id: schema.permissionRequest.id,
         agentId: schema.permissionRequest.agentId,
-        kind: schema.permissionRequest.kind,
-        capabilityId: schema.permissionRequest.capabilityId,
-        context: schema.permissionRequest.context,
         issueId: schema.permissionRequest.issueId,
-        runId: schema.permissionRequest.runId,
-        threadId: schema.permissionRequest.threadId,
-        argsJson: schema.permissionRequest.argsJson,
-        toolCallId: schema.permissionRequest.toolCallId,
+        context: schema.permissionRequest.context,
         requestedAt: schema.permissionRequest.requestedAt,
         status: schema.permissionRequest.status,
-        resolvedBy: schema.permissionRequest.resolvedBy,
-        resolvedAt: schema.permissionRequest.resolvedAt,
-        expiresAt: schema.permissionRequest.expiresAt,
       })
       .from(schema.permissionRequest)
       .innerJoin(
@@ -470,11 +479,34 @@ async function computeInboxSourceItems(args: {
       )
       .where(
         and(
+          eq(schema.permissionRequest.kind, "connector_write"),
           eq(schema.permissionRequest.status, "pending"),
           eq(schema.agent.workspaceId, workspaceId),
         ),
       )
       .orderBy(desc(schema.permissionRequest.requestedAt))
+      .limit(50),
+    db
+      .select({
+        id: schema.agentProposalRequest.id,
+        agentId: schema.agentProposalRequest.agentId,
+        issueId: schema.agentProposalRequest.issueId,
+        argsJson: schema.agentProposalRequest.argsJson,
+        requestedAt: schema.agentProposalRequest.requestedAt,
+        status: schema.agentProposalRequest.status,
+      })
+      .from(schema.agentProposalRequest)
+      .innerJoin(
+        schema.agent,
+        eq(schema.agent.id, schema.agentProposalRequest.agentId),
+      )
+      .where(
+        and(
+          eq(schema.agentProposalRequest.status, "pending"),
+          eq(schema.agent.workspaceId, workspaceId),
+        ),
+      )
+      .orderBy(desc(schema.agentProposalRequest.requestedAt))
       .limit(50),
     db
       .select()
@@ -522,6 +554,27 @@ async function computeInboxSourceItems(args: {
       .orderBy(desc(schema.issueRun.finishedAt))
       .limit(100),
   ]);
+
+  const approvalRows: ApprovalRow[] = [
+    ...connectorApprovalRows.map((row) => ({
+      id: row.id,
+      agentId: row.agentId,
+      issueId: row.issueId,
+      requestedAt: row.requestedAt,
+      status: row.status,
+      body: row.context,
+      kind: "connector_write" as const,
+    })),
+    ...agentProposalRows.map((row) => ({
+      id: row.id,
+      agentId: row.agentId,
+      issueId: row.issueId,
+      requestedAt: row.requestedAt,
+      status: row.status,
+      body: agentProposalBody(row.argsJson),
+      kind: "agent_proposal" as const,
+    })),
+  ];
 
   const issuesById = indexById(workspaceIssues);
 

@@ -18,12 +18,13 @@ import {
 import {
   DiscordChannel,
   DiscordChannels,
+  DiscordGuild,
   DiscordGuilds,
   DiscordMessages,
   DiscordSearchMessages,
   DiscordSendMessageResponse,
   type DiscordChannel as DiscordChannelValue,
-  type DiscordGuild,
+  type DiscordGuild as DiscordGuildValue,
   type DiscordMessage as DiscordMessageValue,
 } from './schemas.ts'
 
@@ -31,6 +32,7 @@ const DISCORD_API_BASE_URL = 'https://discord.com/api/v10'
 
 export type DiscordBotConfigShape = {
   readonly botToken: string
+  readonly guildId?: string
 }
 
 export class DiscordBotConfig extends Context.Service<
@@ -39,7 +41,13 @@ export class DiscordBotConfig extends Context.Service<
 >()('@garden/connectors/DiscordBotConfig') {}
 
 export type DiscordRestClientShape = {
-  readonly listServers: () => Effect.Effect<readonly DiscordGuild[], ConnectorError>
+  readonly listServers: () => Effect.Effect<
+    readonly DiscordGuildValue[],
+    ConnectorError
+  >
+  readonly getServer: (
+    guildId: string,
+  ) => Effect.Effect<DiscordGuildValue, ConnectorError>
   readonly listChannels: (
     guildId: string,
   ) => Effect.Effect<readonly DiscordChannelValue[], ConnectorError>
@@ -104,11 +112,12 @@ function buildDiscordUrl(
   query: Record<string, string | number | undefined> = {},
 ) {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
-  const url = new URL(`${DISCORD_API_BASE_URL}${normalizedPath}`)
+  const searchParams = new URLSearchParams()
   for (const [key, value] of Object.entries(query)) {
-    if (value !== undefined) url.searchParams.set(key, String(value))
+    if (value !== undefined) searchParams.set(key, String(value))
   }
-  return url
+  const search = searchParams.toString()
+  return `${DISCORD_API_BASE_URL}${normalizedPath}${search ? `?${search}` : ''}`
 }
 
 /** Reads a bounded upstream error body through Effect's HttpClient response API. */
@@ -312,93 +321,173 @@ function flattenSearchMessages(response: typeof DiscordSearchMessages.Type) {
   return response.messages.flatMap((group) => group)
 }
 
+const requireGuildAccess = Effect.fn('DiscordRestClient.requireGuildAccess')(
+  function* (
+    config: DiscordBotConfigShape,
+    operation: string,
+    guildId: string,
+  ) {
+    if (config.guildId === undefined || config.guildId === guildId) return
+    return yield* new ConnectorPermissionError({
+      connectorId: 'discord',
+      operation,
+      message: 'This Discord installation is restricted to another server.',
+    })
+  },
+)
+
 /** Builds the service implementation from smaller request helpers. */
 function makeDiscordRestClient(
   config: DiscordBotConfigShape,
   client: HttpClient.HttpClient,
 ): DiscordRestClientShape {
+  const readChannel = Effect.fn('DiscordRestClient.readChannel')(function* (
+    channelId: string,
+    operation: string,
+  ) {
+    const channel = yield* requestJson(client, config, {
+      operation,
+      path: `/channels/${encodeURIComponent(channelId)}`,
+      schema: DiscordChannel,
+    })
+    if (config.guildId !== undefined && channel.guild_id !== config.guildId) {
+      return yield* new ConnectorPermissionError({
+        connectorId: 'discord',
+        operation,
+        message: 'This Discord channel is outside the connected server.',
+      })
+    }
+    return channel
+  })
+  const requireChannelAccess = Effect.fn(
+    'DiscordRestClient.requireChannelAccess',
+  )(function* (channelId: string, operation: string) {
+    if (config.guildId === undefined) return
+    yield* readChannel(channelId, operation)
+  })
+
   return {
     listServers: () =>
-      requestJson(client, config, {
-        operation: 'discord.listServers',
-        path: '/users/@me/guilds',
-        schema: DiscordGuilds,
+      config.guildId === undefined
+        ? requestJson(client, config, {
+            operation: 'discord.listServers',
+            path: '/users/@me/guilds',
+            schema: DiscordGuilds,
+          })
+        : requestJson(client, config, {
+            operation: 'discord.listServers',
+            path: `/guilds/${encodeURIComponent(config.guildId)}`,
+            schema: DiscordGuild,
+          }).pipe(Effect.map((guild) => [guild])),
+    getServer: (guildId) =>
+      Effect.gen(function* () {
+        yield* requireGuildAccess(config, 'discord.getServer', guildId)
+        return yield* requestJson(client, config, {
+          operation: 'discord.getServer',
+          path: `/guilds/${encodeURIComponent(guildId)}`,
+          schema: DiscordGuild,
+        })
       }),
     listChannels: (guildId) =>
-      requestJson(client, config, {
-        operation: 'discord.listChannels',
-        path: `/guilds/${encodeURIComponent(guildId)}/channels`,
-        schema: DiscordChannels,
+      Effect.gen(function* () {
+        yield* requireGuildAccess(config, 'discord.listChannels', guildId)
+        return yield* requestJson(client, config, {
+          operation: 'discord.listChannels',
+          path: `/guilds/${encodeURIComponent(guildId)}/channels`,
+          schema: DiscordChannels,
+        })
       }),
-    getChannel: (channelId) =>
-      requestJson(client, config, {
-        operation: 'discord.getChannel',
-        path: `/channels/${encodeURIComponent(channelId)}`,
-        schema: DiscordChannel,
-      }),
+    getChannel: (channelId) => readChannel(channelId, 'discord.getChannel'),
     readMessages: (input) =>
-      requestJson(client, config, {
-        operation: 'discord.readMessages',
-        path: `/channels/${encodeURIComponent(input.channelId)}/messages`,
-        query: {
-          limit: input.limit,
-          before: input.before,
-          after: input.after,
-          around: input.around,
-        },
-        schema: DiscordMessages,
+      Effect.gen(function* () {
+        yield* requireChannelAccess(input.channelId, 'discord.readMessages')
+        return yield* requestJson(client, config, {
+          operation: 'discord.readMessages',
+          path: `/channels/${encodeURIComponent(input.channelId)}/messages`,
+          query: {
+            limit: input.limit,
+            before: input.before,
+            after: input.after,
+            around: input.around,
+          },
+          schema: DiscordMessages,
+        })
       }),
     searchMessages: (input) =>
-      requestJson(client, config, {
-        operation: 'discord.searchMessages',
-        path: `/guilds/${encodeURIComponent(input.guildId)}/messages/search`,
-        query: {
-          content: input.query,
-          channel_id: input.channelId,
-          limit: input.limit,
-        },
-        schema: DiscordSearchMessages,
-      }).pipe(Effect.map(flattenSearchMessages)),
+      Effect.gen(function* () {
+        yield* requireGuildAccess(
+          config,
+          'discord.searchMessages',
+          input.guildId,
+        )
+        if (input.channelId !== undefined) {
+          yield* requireChannelAccess(input.channelId, 'discord.searchMessages')
+        }
+        const response = yield* requestJson(client, config, {
+          operation: 'discord.searchMessages',
+          path: `/guilds/${encodeURIComponent(input.guildId)}/messages/search`,
+          query: {
+            content: input.query,
+            channel_id: input.channelId,
+            limit: input.limit,
+          },
+          schema: DiscordSearchMessages,
+        })
+        return flattenSearchMessages(response)
+      }),
     sendMessage: (input) =>
-      requestJson(client, config, {
-        operation: 'discord.sendMessage',
-        method: 'POST',
-        path: `/channels/${encodeURIComponent(input.channelId)}/messages`,
-        body: {
-          content: input.content,
-          ...(input.replyToMessageId
-            ? {
-                message_reference: {
-                  message_id: input.replyToMessageId,
-                  channel_id: input.channelId,
-                },
-              }
-            : {}),
-        },
-        schema: DiscordSendMessageResponse,
+      Effect.gen(function* () {
+        yield* requireChannelAccess(input.channelId, 'discord.sendMessage')
+        return yield* requestJson(client, config, {
+          operation: 'discord.sendMessage',
+          method: 'POST',
+          path: `/channels/${encodeURIComponent(input.channelId)}/messages`,
+          body: {
+            content: input.content,
+            ...(input.replyToMessageId
+              ? {
+                  message_reference: {
+                    message_id: input.replyToMessageId,
+                    channel_id: input.channelId,
+                  },
+                }
+              : {}),
+          },
+          schema: DiscordSendMessageResponse,
+        })
       }),
     createThread: (input) =>
-      requestJson(client, config, {
-        operation: 'discord.createThread',
-        method: 'POST',
-        path: input.messageId
-          ? `/channels/${encodeURIComponent(input.channelId)}/messages/${encodeURIComponent(input.messageId)}/threads`
-          : `/channels/${encodeURIComponent(input.channelId)}/threads`,
-        body: { name: input.name },
-        schema: DiscordChannel,
+      Effect.gen(function* () {
+        yield* requireChannelAccess(input.channelId, 'discord.createThread')
+        return yield* requestJson(client, config, {
+          operation: 'discord.createThread',
+          method: 'POST',
+          path: input.messageId
+            ? `/channels/${encodeURIComponent(input.channelId)}/messages/${encodeURIComponent(input.messageId)}/threads`
+            : `/channels/${encodeURIComponent(input.channelId)}/threads`,
+          body: { name: input.name },
+          schema: DiscordChannel,
+        })
       }),
     addReaction: (input) =>
-      requestVoid(client, config, {
-        operation: 'discord.addReaction',
-        method: 'PUT',
-        path: `/channels/${encodeURIComponent(input.channelId)}/messages/${encodeURIComponent(input.messageId)}/reactions/${encodeURIComponent(input.emoji)}/@me`,
+      Effect.gen(function* () {
+        yield* requireChannelAccess(input.channelId, 'discord.addReaction')
+        yield* requestVoid(client, config, {
+          operation: 'discord.addReaction',
+          method: 'PUT',
+          path: `/channels/${encodeURIComponent(input.channelId)}/messages/${encodeURIComponent(input.messageId)}/reactions/${encodeURIComponent(input.emoji)}/@me`,
+        })
       }),
     listActiveThreads: (guildId) =>
-      requestJson(client, config, {
-        operation: 'discord.listActiveThreads',
-        path: `/guilds/${encodeURIComponent(guildId)}/threads/active`,
-        schema: Schema.Struct({ threads: DiscordChannels }),
-      }).pipe(Effect.map((response) => response.threads)),
+      Effect.gen(function* () {
+        yield* requireGuildAccess(config, 'discord.listActiveThreads', guildId)
+        const response = yield* requestJson(client, config, {
+          operation: 'discord.listActiveThreads',
+          path: `/guilds/${encodeURIComponent(guildId)}/threads/active`,
+          schema: Schema.Struct({ threads: DiscordChannels }),
+        })
+        return response.threads
+      }),
   }
 }
 

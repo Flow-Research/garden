@@ -15,7 +15,7 @@ catalog:
   "@cloudflare/vite-plugin": "1.37.3"
   "@cloudflare/workers-types": "4.20260521.1"
   agents: "0.16.2"
-  wrangler: "4.93.1"
+  wrangler: "4.112.0"
 
   # Database
   drizzle-orm: "^0.45.2"
@@ -46,8 +46,8 @@ catalog:
 
   # TypeScript & Node
   typescript: "^5.9.3"
-  effect: "4.0.0-beta.59"
-  "@effect/vitest": "4.0.0-beta.59"
+  effect: "4.0.0-beta.85"
+  "@effect/vitest": "4.0.0-beta.85"
 
   # Testing
   vitest: "^4.1.0"

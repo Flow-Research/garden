@@ -9,7 +9,7 @@ import { DiscordBotConfig } from './rest-client.ts'
  * in from the host boundary so Discord tools never read process env or Worker
  * bindings directly, matching Executor's service/layer style.
  */
-export function makeDiscordBotConfigLayer(botToken: string) {
+export function makeDiscordBotConfigLayer(botToken: string, guildId?: string) {
   const trimmed = botToken.trim()
   if (!trimmed) {
     return Layer.effect(
@@ -24,7 +24,10 @@ export function makeDiscordBotConfigLayer(botToken: string) {
     )
   }
 
-  return Layer.succeed(DiscordBotConfig)({ botToken: trimmed })
+  return Layer.succeed(DiscordBotConfig)({
+    botToken: trimmed,
+    ...(guildId === undefined ? {} : { guildId }),
+  })
 }
 
 /**
@@ -43,10 +46,11 @@ export function makeDiscordHttpClientLayer(fetch?: typeof globalThis.fetch) {
 /** Combines host-provided Discord token, Effect HttpClient, and REST service. */
 export function makeDiscordBaseLayer(args: {
   botToken: string
+  guildId?: string
   fetch?: typeof globalThis.fetch
 }) {
   const dependencies = Layer.mergeAll(
-    makeDiscordBotConfigLayer(args.botToken),
+    makeDiscordBotConfigLayer(args.botToken, args.guildId),
     makeDiscordHttpClientLayer(args.fetch),
   )
 
@@ -59,10 +63,17 @@ export function makeDiscordBaseLayer(args: {
  */
 export function discordBaseLayerFromOptionalToken(args: {
   botToken: string | undefined
+  guildId?: string
   fetch?: typeof globalThis.fetch
 }) {
   return args.botToken
-    ? Effect.succeed(makeDiscordBaseLayer({ botToken: args.botToken, fetch: args.fetch }))
+    ? Effect.succeed(
+        makeDiscordBaseLayer({
+          botToken: args.botToken,
+          guildId: args.guildId,
+          fetch: args.fetch,
+        }),
+      )
     : Effect.fail(
         new ConnectorConfigError({
           connectorId: 'discord',
