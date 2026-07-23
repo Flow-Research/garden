@@ -42,6 +42,7 @@ const postHogSourcemapProjectId = process.env.POSTHOG_CLI_PROJECT_ID
 const postHogSourcemapHost = process.env.POSTHOG_HOST
 const postHogReleaseVersion =
   process.env.POSTHOG_RELEASE_VERSION ??
+  process.env.WORKERS_CI_COMMIT_SHA ??
   process.env.CF_PAGES_COMMIT_SHA ??
   process.env.GITHUB_SHA
 const requirePostHogSourcemaps = process.env.GARDEN_REQUIRE_POSTHOG === '1'
@@ -105,6 +106,7 @@ function postHogSourcemapPlugins() {
       sourcemaps: {
         releaseName: 'garden-web',
         releaseVersion: postHogReleaseVersion,
+        batchSize: 100,
         deleteAfterUpload: true,
       },
     }),
