@@ -2,6 +2,7 @@ import { Effect, Result, Schema } from 'effect'
 import { createFileRoute } from '@tanstack/react-router'
 import { syncCapabilities } from '@/lib/server/capability-sync'
 import { appEnv } from '@/lib/server/env'
+import { captureApiFailure, logApiFailure } from '@/lib/server/api-logging'
 
 const CapabilitySyncBody = Schema.Struct({
   connectorId: Schema.String,
@@ -39,12 +40,9 @@ export const Route = createFileRoute('/api/internal/capability-sync')({
         const rawBody = await request.text()
         const bodyResult = await Effect.runPromise(
           Effect.result(
-            Effect.try({
-              try: () => JSON.parse(rawBody),
-              catch: () => new Error('invalid-capability-sync-json'),
-            }).pipe(
-              Effect.flatMap(Schema.decodeUnknownEffect(CapabilitySyncBody)),
-            ),
+            Schema.decodeUnknownEffect(
+              Schema.fromJsonString(CapabilitySyncBody),
+            )(rawBody),
           ),
         )
         if (Result.isFailure(bodyResult)) {
@@ -65,9 +63,24 @@ export const Route = createFileRoute('/api/internal/capability-sync')({
         )
         if (Result.isFailure(syncResult)) {
           const error = syncResult.failure
+          const status = capabilitySyncErrorStatus(error.code)
+          if (status >= 500) {
+            await captureApiFailure({
+              request,
+              event: 'connector.capability_sync.failed',
+              error,
+            })
+          } else {
+            logApiFailure({
+              request,
+              event: 'connector.capability_sync.rejected',
+              error,
+              level: 'warn',
+            })
+          }
           return Response.json(
             { error: error.message, code: error.code },
-            { status: capabilitySyncErrorStatus(error.code) },
+            { status },
           )
         }
 

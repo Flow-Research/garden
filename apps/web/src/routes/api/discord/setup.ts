@@ -6,6 +6,7 @@ import { badRequest, unauthorized } from '@/lib/server/control-plane'
 import { syncCapabilities } from '@/lib/server/capability-sync'
 import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
+import { captureApiFailure } from '@/lib/server/api-logging'
 import {
   completeDiscordBotInstallation,
   discordInstallConfig,
@@ -29,13 +30,13 @@ const DiscordCallbackQuery = Schema.Struct({
 const decodeCallbackQuery = Effect.fn('DiscordSetup.decodeQuery')(function* (
   request: Request,
 ) {
-  const params = new URL(request.url).searchParams
+  const params = URL.parse(request.url)?.searchParams
   return yield* Schema.decodeUnknownEffect(DiscordCallbackQuery)({
-    code: params.get('code'),
-    state: params.get('state'),
-    guildId: params.get('guild_id'),
-    permissions: params.get('permissions'),
-    error: params.get('error'),
+    code: params?.get('code') ?? null,
+    state: params?.get('state') ?? null,
+    guildId: params?.get('guild_id') ?? null,
+    permissions: params?.get('permissions') ?? null,
+    error: params?.get('error') ?? null,
   })
 })
 
@@ -107,6 +108,11 @@ export const Route = createFileRoute('/api/discord/setup')({
           Effect.result(discordInstallConfig({ env: appEnv, request })),
         )
         if (Result.isFailure(configResult)) {
+          await captureApiFailure({
+            request,
+            event: 'discord.install.config_failed',
+            error: configResult.failure,
+          })
           return Response.json(
             { error: configResult.failure.message },
             { status: 500 },
@@ -134,6 +140,11 @@ export const Route = createFileRoute('/api/discord/setup')({
           ),
         )
         if (Result.isFailure(installResult)) {
+          await captureApiFailure({
+            request,
+            event: 'discord.install.callback_failed',
+            error: installResult.failure,
+          })
           return workspaceRedirect(request, 'error')
         }
 
@@ -143,6 +154,12 @@ export const Route = createFileRoute('/api/discord/setup')({
           ),
         )
         if (Result.isFailure(syncResult)) {
+          await captureApiFailure({
+            request,
+            event: 'discord.install.capability_sync_failed',
+            error: syncResult.failure,
+            level: 'warn',
+          })
           await Effect.runPromise(
             setDiscordInstallStatus(db, state.workspaceId, 'degraded'),
           )

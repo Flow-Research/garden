@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { requireWorkspaceContext } from '@/lib/server/control-plane'
 import { appEnv } from '@/lib/server/env'
+import { captureApiFailure } from '@/lib/server/api-logging'
 import { buildDiscordInstallRedirect } from '@/lib/server/discord-install'
 import {
   requireWorkspacePermission,
@@ -37,6 +38,11 @@ export const Route = createFileRoute('/api/discord/install')({
           ),
         )
         if (Result.isFailure(result)) {
+          await captureApiFailure({
+            request,
+            event: 'discord.install.start_failed',
+            error: result.failure,
+          })
           return Response.json(
             { error: result.failure.message },
             { status: 500 },

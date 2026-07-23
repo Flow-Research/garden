@@ -18,6 +18,7 @@ import {
 } from '@/lib/server/capability-sync'
 import { schema, type Db } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
+import { captureApiFailure } from '@/lib/server/api-logging'
 import {
   ConnectorCallbackDatabaseError,
   connectorCallbackSearchParams,
@@ -34,10 +35,12 @@ function isDevelopmentEnv() {
 }
 
 function redirectToConnections(request: Request, flowId?: string | null) {
+  const requestOrigin =
+    URL.parse(request.url)?.origin ?? 'http://localhost:3000'
   const redirectOrigin =
     isDevelopmentEnv() && appEnv.BETTER_AUTH_URL
       ? appEnv.BETTER_AUTH_URL
-      : new URL(request.url).origin
+      : requestOrigin
   const url = new URL('/workspace', redirectOrigin)
   url.search = connectorCallbackSearchParams({
     connectorId: 'github',
@@ -169,6 +172,13 @@ async function finishGitHubSetupCallback(args: {
               syncCapabilities('github', args.userId, args.workspaceId),
             ),
           )
+          if (EffectResult.isFailure(syncResult)) {
+            await captureApiFailure({
+              event: 'github.installation.capability_sync_failed',
+              error: syncResult.failure,
+              level: 'warn',
+            })
+          }
           const nextOutcome = syncResultToGitHubOutcome({
             accountLogin,
             syncError: EffectResult.isFailure(syncResult)
@@ -185,7 +195,13 @@ async function finishGitHubSetupCallback(args: {
               ).map(() => nextOutcome)
             : Result.ok(nextOutcome)
         },
-        err: async (error) => Result.ok(gitHubInstallErrorToOutcome(error)),
+        err: async (error) => {
+          await captureApiFailure({
+            event: 'github.installation.callback_failed',
+            error,
+          })
+          return Result.ok(gitHubInstallErrorToOutcome(error))
+        },
       }),
     )
 
