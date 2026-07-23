@@ -92,7 +92,7 @@ async function runSandboxOperation<T>(
 }
 
 /**
- * Returns a preview URL for a sandbox service. Cloudflare Sandbox 0.10.2
+ * Returns a preview URL for a sandbox service. Cloudflare Sandbox 0.12.4
  * added zero-config quick tunnels behind the RPC transport, so Garden can stop
  * requiring callers to know or supply a custom hostname for previewable work.
  */

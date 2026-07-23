@@ -1480,7 +1480,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         'bun --version',
         'python3 --version',
         'git --version',
-        'rg --version | head -n 1',
+        'grep --version | head -n 1',
       ].join(' && '),
       {
         cwd: '/workspace',
