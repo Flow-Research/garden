@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.options.json",
+  "include": [
+    "alchemy.run.ts",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "vitest.setup.ts",
+    "worker-configuration.d.ts"
+  ],
+  "references": [
+    { "path": "./tsconfig.shared.json" },
+    { "path": "./tsconfig.server.json" },
+    { "path": "./tsconfig.entry.json" }
+  ],
+  "compilerOptions": {
+    "incremental": true,
+    "types": ["node", "vite/client", "@cloudflare/workers-types"],
+    "tsBuildInfoFile": ".turbo/tsconfig.tooling.tsbuildinfo"
+  }
+}

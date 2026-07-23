@@ -49,7 +49,7 @@
     "@cloudflare/workers-types": "catalog:",
     "@garden/tsconfig": "workspace:*",
     "@types/node": "catalog:",
-    "typescript": "catalog:",
+    "@typescript/native": "catalog:",
     "vitest": "catalog:"
   }
 }

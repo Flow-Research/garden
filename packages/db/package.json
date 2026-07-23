@@ -14,7 +14,7 @@
     "@types/pg": "^8.15.5",
     "drizzle-kit": "^0.31.7",
     "testcontainers": "^11.10.1",
-    "typescript": "^5.9.3",
+    "@typescript/native": "catalog:",
     "vitest": "catalog:"
   },
   "scripts": {

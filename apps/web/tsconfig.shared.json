@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.options.json",
+  "include": ["src/lib/harnessy-contract.ts"],
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "declarationMap": false,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": ".turbo/types/shared",
+    "tsBuildInfoFile": ".turbo/tsconfig.shared.tsbuildinfo"
+  }
+}

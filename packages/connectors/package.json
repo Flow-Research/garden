@@ -36,7 +36,8 @@
   "devDependencies": {
     "@effect/vitest": "catalog:",
     "@garden/tsconfig": "workspace:*",
-    "typescript": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native": "catalog:",
     "vitest": "catalog:"
   }
 }
