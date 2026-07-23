@@ -61,10 +61,14 @@ export function skillListOptions(wsId: string) {
   })
 }
 
+/** Reuses the workspace-warmed connection snapshot across panels. Connection
+ * mutations and OAuth completion invalidate this key explicitly, so consumers
+ * can render cached data immediately and refresh stale data in the background. */
 export function connectionListOptions(wsId: string) {
   return queryOptions({
     queryKey: workspaceKeys.connections(wsId),
     queryFn: () => listConnections(),
+    staleTime: 5 * 60_000,
   })
 }
 
