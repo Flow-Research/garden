@@ -4,17 +4,7 @@ Garden uses different Cloudflare durability primitives for different job shapes.
 
 ## Product runs: Workflows
 
-Issue runs and automation runs are product-ledger executions. They have explicit run ids, database status, audit events, user-visible cancellation, and durable waits for Think submissions. Keep them on Cloudflare Workflows via `AgentWorkflow` and `this.runWorkflow(...)`.
-
-Workflows are the boundary for:
-
-- issue run and automation run lifecycle
-- durable step retries
-- long-running waits and resumes
-- `Workflow.waitForEvent(...)` bridges from Think submission completion
-- mapping terminal agent output back to Garden run status
-
-This avoids DO-local polling, arbitrary turn timeouts, and duplicate recovery glue.
+Issue runs and automation runs are product-ledger executions with explicit run ids, database status, audit events, user-visible cancellation, and durable waits for Think submissions. Keep them on Cloudflare Workflows via `AgentWorkflow` and `this.runWorkflow(...)`. Full engine design, lifecycle, and code map: [`docs/core/workflows-engine.md`](../core/workflows-engine.md).
 
 ## Agent background work: managed fibers
 
