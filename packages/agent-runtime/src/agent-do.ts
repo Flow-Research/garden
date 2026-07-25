@@ -54,7 +54,7 @@ import {
   configureThinkCompaction,
   createGardenContextOverflow,
 } from './think-compaction'
-import { createGardenSkillSources } from './skills'
+import { loadRuntimeSkillAssignments, loadRuntimeSkillSources } from './skills'
 import {
   PostgresAgentPromptCatalog,
   createPromptContextProviders,
@@ -1077,23 +1077,14 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       .withCachedPrompt()
   }
 
-  override async getSkills() {
-    const db = getPooledDb(this.env.HYPERDRIVE.connectionString)
-    const [thread] = await db
-      .select({ agentId: schema.chatThread.agentId })
-      .from(schema.chatThread)
-      .where(
-        or(
-          eq(schema.chatThread.id, this.name),
-          eq(schema.chatThread.runtimeKey, this.name),
-        ),
-      )
-      .limit(1)
-
-    return createGardenSkillSources({
-      bucket: this.env.FILES,
-      agentId: thread?.agentId ?? null,
-    })
+  override getSkills() {
+    return loadRuntimeSkillSources(
+      {
+        bucket: this.env.FILES,
+        databaseUrl: this.env.HYPERDRIVE.connectionString,
+      },
+      { kind: 'chat', id: this.name },
+    )
   }
 
   override getTools() {
@@ -1254,32 +1245,13 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     const slugs = explicitSkillSlugsFromMessages(ctx.messages)
     if (slugs.length === 0) return ''
 
-    const db = getPooledDb(this.env.HYPERDRIVE.connectionString)
-    const [thread] = await db
-      .select({ agentId: schema.chatThread.agentId })
-      .from(schema.chatThread)
-      .where(
-        or(
-          eq(schema.chatThread.id, this.name),
-          eq(schema.chatThread.runtimeKey, this.name),
-        ),
-      )
-      .limit(1)
-    if (!thread) return ''
-
-    const assignedRows = await db
-      .select({
-        name: schema.skill.name,
-        slug: schema.skill.slug,
-      })
-      .from(schema.agentSkill)
-      .innerJoin(schema.skill, eq(schema.skill.id, schema.agentSkill.skillId))
-      .where(
-        and(
-          eq(schema.agentSkill.agentId, thread.agentId),
-          eq(schema.agentSkill.enabled, true),
-        ),
-      )
+    const assignedRows = await loadRuntimeSkillAssignments(
+      {
+        bucket: this.env.FILES,
+        databaseUrl: this.env.HYPERDRIVE.connectionString,
+      },
+      { kind: 'chat', id: this.name },
+    )
 
     const assignedByToken = new Map<string, string>()
     for (const row of assignedRows) {

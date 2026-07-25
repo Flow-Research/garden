@@ -115,13 +115,11 @@ export const UpdateSkillRequest = Schema.Struct({
 })
 export type UpdateSkillRequest = typeof UpdateSkillRequest.Type
 
-export const ImportSkillRequest = Schema.Union([
-  Schema.Struct({ url: NonEmptyTrimmedString }),
-  Schema.Struct({
-    source: NonEmptyTrimmedString,
-    skill: NonEmptyTrimmedString,
-  }),
-])
+export const ImportSkillRequest = Schema.Struct({
+  url: Schema.optional(NonEmptyTrimmedString),
+  source: Schema.optional(NonEmptyTrimmedString),
+  skill: Schema.optional(NonEmptyTrimmedString),
+})
 export type ImportSkillRequest = typeof ImportSkillRequest.Type
 
 export const SetAgentSkillsRequest = Schema.Struct({
@@ -132,10 +130,7 @@ export type SetAgentSkillsRequest = typeof SetAgentSkillsRequest.Type
 export const SearchSkillsRequest = Schema.Struct({
   q: Schema.optional(Schema.Trim),
   limit: Schema.optional(
-    Schema.Int.check(
-      Schema.isGreaterThan(0),
-      Schema.isLessThanOrEqualTo(50),
-    ),
+    Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(50)),
   ),
 })
 export type SearchSkillsRequest = typeof SearchSkillsRequest.Type

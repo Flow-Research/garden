@@ -254,9 +254,11 @@ async function proposeAgent(
         `)
 
         if (skillRows.length > 0) {
-          await tx.insert(schema.agentSkill).values(
+          await tx.insert(schema.skillAssignment).values(
             skillRows.map((skill) => ({
-              agentId: pendingAgentId,
+              workspaceId: identity.workspaceId,
+              targetKind: 'agent' as const,
+              targetId: pendingAgentId,
               skillId: skill.id,
               enabled: true,
             })),

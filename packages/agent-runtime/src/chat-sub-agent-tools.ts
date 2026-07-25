@@ -390,6 +390,7 @@ type ChatIssueIdentity = {
   workspaceId: string;
   ownerUserId: string;
   agentId: string;
+  isDefault: boolean;
   issuePrefix: string;
 };
 
@@ -486,6 +487,7 @@ async function loadChatThreadContext(context: {
           workspaceId: schema.chatThread.workspaceId,
           ownerUserId: schema.chatThread.ownerUserId,
           agentId: schema.chatThread.agentId,
+          isDefault: schema.agent.isDefault,
           issuePrefix: schema.organization.issuePrefix,
         })
         .from(schema.chatThread)
@@ -493,6 +495,7 @@ async function loadChatThreadContext(context: {
           schema.organization,
           eq(schema.organization.id, schema.chatThread.workspaceId),
         )
+        .innerJoin(schema.agent, eq(schema.agent.id, schema.chatThread.agentId))
         .where(
           or(
             eq(schema.chatThread.id, context.threadId),
@@ -545,6 +548,7 @@ async function loadChatIssueIdentity(
     workspaceId: result.value.workspaceId,
     ownerUserId: result.value.ownerUserId,
     agentId: result.value.agentId,
+    isDefault: result.value.isDefault,
     issuePrefix: result.value.issuePrefix,
   });
 }
@@ -1468,12 +1472,30 @@ async function listWorkspaceInventoryFromChat(
           includeSkills
             ? db
                 .select({ slug: schema.skill.slug })
-                .from(schema.agentSkill)
+                .from(schema.skillAssignment)
                 .innerJoin(
                   schema.skill,
-                  eq(schema.skill.id, schema.agentSkill.skillId),
+                  eq(schema.skill.id, schema.skillAssignment.skillId),
                 )
-                .where(eq(schema.agentSkill.agentId, identity.agentId))
+                .where(
+                  and(
+                    eq(
+                      schema.skillAssignment.workspaceId,
+                      identity.workspaceId,
+                    ),
+                    eq(
+                      schema.skillAssignment.targetKind,
+                      identity.isDefault ? "workspace_chat" : "agent",
+                    ),
+                    eq(
+                      schema.skillAssignment.targetId,
+                      identity.isDefault
+                        ? identity.workspaceId
+                        : identity.agentId,
+                    ),
+                    eq(schema.skillAssignment.enabled, true),
+                  ),
+                )
             : [],
           includeConnectors
             ? listAvailableConnectorBindings({

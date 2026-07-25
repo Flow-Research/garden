@@ -1,373 +1,98 @@
-import { Result, TaggedError } from 'better-result'
+import { Context, Effect, Layer } from 'effect'
+import {
+  SkillOperationError,
+  SkillValidationError,
+  type SkillFile,
+  type SkillFileInput,
+} from '@garden/core/skills'
 import type * as schema from '@garden/db/schema'
-import { hashTextHex } from '@/lib/server/skills-sh'
+import { AppRequest } from './effect-context'
+
+const WORKSPACE_SKILL_R2_PREFIX = 'agent-skills/workspaces'
 
 type SkillFileRow = typeof schema.skillFile.$inferSelect
 
-export class SkillRuntimeBundleStorageError extends TaggedError(
-  'SkillRuntimeBundleStorageError',
-)<{
-  message: string
-  path: string
-  phase: 'put' | 'delete'
-  slug: string
-  workspaceId: string
-}>() {}
-
-export type SkillBundleFileInput = {
-  path: string
-  content: string
-}
-
-export function parseSkillBundleFiles(value: unknown): SkillBundleFileInput[] {
-  if (!Array.isArray(value)) return []
-
-  return value.flatMap((file) => {
-    if (
-      typeof file !== 'object' ||
-      file === null ||
-      typeof file.path !== 'string' ||
-      typeof file.content !== 'string'
-    ) {
-      return []
-    }
-
-    const path = file.path.trim().replace(/\\/g, '/')
-    if (!path || path.startsWith('/')) return []
-    if (path.split('/').some((segment: string) => segment === '..')) return []
-    if (path.toLowerCase() === 'skill.md') return []
-
-    return [{ path, content: file.content }]
-  })
-}
-
 export type StoredSkillBundleFile = {
-  id: string
-  skillId: string
-  path: string
-  contentHash: string
-  r2Key: string
+  readonly id: string
+  readonly skillId: string
+  readonly path: string
+  readonly contentHash: string
+  readonly r2Key: string
 }
 
-export async function hashSkillBundle(input: {
-  content: string
-  files: SkillBundleFileInput[]
-}) {
-  const sortedFiles = [...input.files].sort((left, right) =>
-    left.path.localeCompare(right.path),
-  )
-  const serialized = [
-    input.content,
-    ...sortedFiles.map((file) => `${file.path}\n${file.content}`),
-  ].join('\n---\n')
-
-  return hashTextHex(serialized)
+export interface SkillBundlesService {
+  readonly normalizeFiles: (
+    files: ReadonlyArray<SkillFileInput> | undefined,
+  ) => Effect.Effect<SkillFileInput[], SkillValidationError>
+  readonly hash: (input: {
+    readonly content: string
+    readonly files: ReadonlyArray<SkillFileInput>
+  }) => Effect.Effect<string, SkillOperationError>
+  readonly storeFiles: (input: {
+    readonly workspaceId: string
+    readonly skillId: string
+    readonly bundleHash: string
+    readonly files: ReadonlyArray<SkillFileInput>
+  }) => Effect.Effect<StoredSkillBundleFile[], SkillOperationError>
+  readonly loadFiles: (
+    rows: ReadonlyArray<SkillFileRow>,
+  ) => Effect.Effect<SkillFile[], SkillOperationError>
+  readonly deleteFiles: (
+    rows: ReadonlyArray<SkillFileRow>,
+  ) => Effect.Effect<void, SkillOperationError>
+  readonly persistRuntime: (input: {
+    readonly workspaceId: string
+    readonly slug: string
+    readonly content: string
+    readonly files: ReadonlyArray<SkillFileInput>
+  }) => Effect.Effect<void, SkillOperationError>
+  readonly deleteRuntime: (input: {
+    readonly workspaceId: string
+    readonly slug: string
+  }) => Effect.Effect<void, SkillOperationError>
 }
 
-const WORKSPACE_SKILL_R2_PREFIX = 'agent-skills/workspaces'
-const AGENT_SKILL_R2_PREFIX = 'agent-skills/agents'
+export class SkillBundles extends Context.Service<
+  SkillBundles,
+  SkillBundlesService
+>()('@garden/web/SkillBundles') {}
 
-function workspaceSkillRuntimeKey(input: {
-  workspaceId: string
-  slug: string
-  path: string
-}) {
-  return [
-    WORKSPACE_SKILL_R2_PREFIX,
-    input.workspaceId,
-    input.slug,
-    input.path,
-  ].join('/')
-}
-
-function agentSkillRuntimePrefix(agentId: string) {
-  return `${AGENT_SKILL_R2_PREFIX}/${agentId}/`
-}
-
-function agentSkillRuntimeKey(input: {
-  agentId: string
-  slug: string
-  path: string
-}) {
-  return [AGENT_SKILL_R2_PREFIX, input.agentId, input.slug, input.path].join(
-    '/',
-  )
-}
-
-/**
- * Mirrors a workspace skill into the standard Agent Skills directory layout that
- * the SDK `agents/skills` R2 source reads directly. Before this mirror, Garden
- * had to adapt DB rows and fan out runtime refreshes after every write. After
- * this mirror, runtime agents can simply return `skills.r2(...)` and let Think
- * activate skills/resources lazily.
- */
-export async function persistRuntimeSkillBundle(input: {
-  bucket: R2Bucket
-  workspaceId: string
-  slug: string
-  content: string
-  files: SkillBundleFileInput[]
-}) {
-  const entryResult = await putRuntimeSkillObject({
-    ...input,
-    path: 'SKILL.md',
-    content: input.content,
-    contentType: 'text/markdown; charset=utf-8',
+const storageError = (operation: string, cause: unknown) =>
+  new SkillOperationError({
+    operation,
+    message: `Failed to ${operation}.`,
+    cause,
   })
-  if (entryResult.isErr()) return entryResult
 
-  for (const file of input.files) {
-    const fileResult = await putRuntimeSkillObject({
-      ...input,
-      path: file.path,
-      content: file.content,
-      contentType: inferContentType(file.path),
-    })
-    if (fileResult.isErr()) return fileResult
+function normalizePath(path: string) {
+  const normalized = path.trim().replace(/\\/g, '/')
+  if (!normalized || normalized.startsWith('/')) return null
+  if (normalized.split('/').some((segment) => segment === '..')) return null
+  if (normalized.toLowerCase() === 'skill.md') return null
+  return normalized
+}
+
+function contentType(path: string) {
+  const lower = path.toLowerCase()
+  if (lower.endsWith('.md')) return 'text/markdown; charset=utf-8'
+  if (lower.endsWith('.json')) return 'application/json; charset=utf-8'
+  if (lower.endsWith('.sh')) return 'text/x-shellscript; charset=utf-8'
+  if (lower.endsWith('.svg')) return 'image/svg+xml'
+  if (/\.(?:c|css|go|html|jsx?|py|rs|sql|tsx?|txt|yaml|yml)$/.test(lower)) {
+    return 'text/plain; charset=utf-8'
   }
-
-  return Result.ok(undefined)
+  return 'application/octet-stream'
 }
 
-export async function replaceAgentRuntimeSkillBundles(input: {
-  bucket: R2Bucket
-  agentId: string
-  workspaceId: string
-  skills: Array<{ slug: string; files: Array<{ path: string }> }>
-}) {
-  const deleteResult = await deleteR2Prefix({
-    bucket: input.bucket,
-    prefix: agentSkillRuntimePrefix(input.agentId),
-  })
-  if (deleteResult.isErr()) return deleteResult
-
-  for (const skill of input.skills) {
-    const copyEntryResult = await copyRuntimeSkillObject({
-      bucket: input.bucket,
-      workspaceId: input.workspaceId,
-      agentId: input.agentId,
-      slug: skill.slug,
-      path: 'SKILL.md',
-    })
-    if (copyEntryResult.isErr()) return copyEntryResult
-
-    for (const file of skill.files) {
-      const copyFileResult = await copyRuntimeSkillObject({
-        bucket: input.bucket,
-        workspaceId: input.workspaceId,
-        agentId: input.agentId,
-        slug: skill.slug,
-        path: file.path,
-      })
-      if (copyFileResult.isErr()) return copyFileResult
-    }
-  }
-
-  return Result.ok(undefined)
+function workspaceRuntimePrefix(workspaceId: string, slug: string) {
+  return `${WORKSPACE_SKILL_R2_PREFIX}/${workspaceId}/${slug}/`
 }
 
-export async function deleteRuntimeSkillBundle(input: {
-  bucket: R2Bucket
-  workspaceId: string
-  slug: string
-  files: Array<{ path: string }>
-}) {
-  for (const path of ['SKILL.md', ...input.files.map((file) => file.path)]) {
-    const deleteResult = await Result.tryPromise({
-      try: async () =>
-        await input.bucket.delete(
-          workspaceSkillRuntimeKey({
-            workspaceId: input.workspaceId,
-            slug: input.slug,
-            path,
-          }),
-        ),
-      catch: (cause) =>
-        new SkillRuntimeBundleStorageError({
-          message: cause instanceof Error ? cause.message : String(cause),
-          phase: 'delete',
-          path,
-          slug: input.slug,
-          workspaceId: input.workspaceId,
-        }),
-    })
-    if (deleteResult.isErr()) return deleteResult
-  }
-
-  return Result.ok(undefined)
+function workspaceRuntimeKey(workspaceId: string, slug: string, path: string) {
+  return `${workspaceRuntimePrefix(workspaceId, slug)}${path}`
 }
 
-function copyRuntimeSkillObject(input: {
-  bucket: R2Bucket
-  workspaceId: string
-  agentId: string
-  slug: string
-  path: string
-}) {
-  return Result.tryPromise({
-    try: async () => {
-      const sourceKey = workspaceSkillRuntimeKey({
-        workspaceId: input.workspaceId,
-        slug: input.slug,
-        path: input.path,
-      })
-      const object = await input.bucket.get(sourceKey)
-      if (!object) return
-
-      await input.bucket.put(
-        agentSkillRuntimeKey({
-          agentId: input.agentId,
-          slug: input.slug,
-          path: input.path,
-        }),
-        object.body,
-        {
-          httpMetadata: object.httpMetadata,
-          customMetadata: object.customMetadata,
-        },
-      )
-    },
-    catch: (cause) =>
-      new SkillRuntimeBundleStorageError({
-        message: cause instanceof Error ? cause.message : String(cause),
-        phase: 'put',
-        path: input.path,
-        slug: input.slug,
-        workspaceId: input.workspaceId,
-      }),
-  })
-}
-
-function deleteR2Prefix(input: { bucket: R2Bucket; prefix: string }) {
-  return Result.tryPromise({
-    try: async () => {
-      let cursor: string | undefined
-      do {
-        const listed = await input.bucket.list({
-          prefix: input.prefix,
-          cursor,
-        })
-        for (const object of listed.objects) {
-          await input.bucket.delete(object.key)
-        }
-        cursor = listed.truncated ? listed.cursor : undefined
-      } while (cursor)
-    },
-    catch: (cause) =>
-      new SkillRuntimeBundleStorageError({
-        message: cause instanceof Error ? cause.message : String(cause),
-        phase: 'delete',
-        path: input.prefix,
-        slug: '*',
-        workspaceId: '*',
-      }),
-  })
-}
-
-function putRuntimeSkillObject(input: {
-  bucket: R2Bucket
-  workspaceId: string
-  slug: string
-  path: string
-  content: string
-  contentType: string
-}) {
-  return Result.tryPromise({
-    try: async () =>
-      await input.bucket.put(
-        workspaceSkillRuntimeKey({
-          workspaceId: input.workspaceId,
-          slug: input.slug,
-          path: input.path,
-        }),
-        input.content,
-        { httpMetadata: { contentType: input.contentType } },
-      ),
-    catch: (cause) =>
-      new SkillRuntimeBundleStorageError({
-        message: cause instanceof Error ? cause.message : String(cause),
-        phase: 'put',
-        path: input.path,
-        slug: input.slug,
-        workspaceId: input.workspaceId,
-      }),
-  })
-}
-
-export async function persistSkillBundleFiles(input: {
-  bucket: R2Bucket
-  workspaceId: string
-  skillId: string
-  bundleHash: string
-  files: SkillBundleFileInput[]
-}): Promise<StoredSkillBundleFile[]> {
-  return Promise.all(
-    input.files.map(async (file) => {
-      const contentHash = await hashTextHex(file.content)
-      const r2Key = buildSkillBundleR2Key({
-        workspaceId: input.workspaceId,
-        skillId: input.skillId,
-        bundleHash: input.bundleHash,
-        path: file.path,
-      })
-
-      await input.bucket.put(r2Key, file.content, {
-        httpMetadata: {
-          contentType: inferContentType(file.path),
-        },
-      })
-
-      return {
-        id: crypto.randomUUID(),
-        skillId: input.skillId,
-        path: file.path,
-        contentHash,
-        r2Key,
-      }
-    }),
-  )
-}
-
-export async function loadSkillBundleFiles(
-  bucket: R2Bucket,
-  files: SkillFileRow[],
-) {
-  const loadedFiles = await Promise.all(
-    files.map(async (file) => {
-      if (!file.r2Key) return null
-
-      const object = await bucket.get(file.r2Key)
-      if (!object) return null
-
-      return {
-        id: file.id,
-        skill_id: file.skillId,
-        path: file.path,
-        content: await object.text(),
-        content_hash: file.contentHash ?? null,
-        r2_key: file.r2Key,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-    }),
-  )
-
-  return loadedFiles.filter(
-    (file): file is NonNullable<(typeof loadedFiles)[number]> => Boolean(file),
-  )
-}
-
-export async function deleteSkillBundleFiles(
-  bucket: R2Bucket,
-  files: SkillFileRow[],
-) {
-  const keys = files.flatMap((file) => (file.r2Key ? [file.r2Key] : []))
-  if (keys.length === 0) return
-
-  await bucket.delete(keys)
-}
-
-function buildSkillBundleR2Key(input: {
+function storedFileKey(input: {
   workspaceId: string
   skillId: string
   bundleHash: string
@@ -382,19 +107,226 @@ function buildSkillBundleR2Key(input: {
   ].join('/')
 }
 
-function inferContentType(path: string) {
-  const lowerPath = path.toLowerCase()
-
-  if (lowerPath.endsWith('.md')) return 'text/markdown; charset=utf-8'
-  if (lowerPath.endsWith('.json')) return 'application/json; charset=utf-8'
-  if (lowerPath.endsWith('.ts')) return 'text/plain; charset=utf-8'
-  if (lowerPath.endsWith('.tsx')) return 'text/plain; charset=utf-8'
-  if (lowerPath.endsWith('.js')) return 'text/plain; charset=utf-8'
-  if (lowerPath.endsWith('.jsx')) return 'text/plain; charset=utf-8'
-  if (lowerPath.endsWith('.py')) return 'text/plain; charset=utf-8'
-  if (lowerPath.endsWith('.sh')) return 'text/x-shellscript; charset=utf-8'
-  if (lowerPath.endsWith('.txt')) return 'text/plain; charset=utf-8'
-  if (lowerPath.endsWith('.svg')) return 'image/svg+xml'
-
-  return 'application/octet-stream'
+function digest(value: string) {
+  return Effect.tryPromise({
+    try: async () => {
+      const buffer = await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(value),
+      )
+      return Array.from(new Uint8Array(buffer), (byte) =>
+        byte.toString(16).padStart(2, '0'),
+      ).join('')
+    },
+    catch: (cause) => storageError('hash skill bundle', cause),
+  })
 }
+
+export const skillBundlesLayer = Layer.effect(
+  SkillBundles,
+  Effect.gen(function* () {
+    const request = yield* AppRequest
+    const bucket = request.env.FILES
+
+    const normalizeFiles = Effect.fn('SkillBundles.normalizeFiles')(function* (
+      files: ReadonlyArray<SkillFileInput> | undefined,
+    ) {
+      const normalized: SkillFileInput[] = []
+      const paths = new Set<string>()
+      for (const file of files ?? []) {
+        const path = normalizePath(file.path)
+        if (!path) {
+          return yield* new SkillValidationError({
+            operation: 'validate skill files',
+            message: `Invalid skill file path: ${file.path}`,
+          })
+        }
+        if (paths.has(path)) {
+          return yield* new SkillValidationError({
+            operation: 'validate skill files',
+            message: `Duplicate skill file path: ${path}`,
+          })
+        }
+        paths.add(path)
+        normalized.push({ path, content: file.content })
+      }
+      return normalized
+    })
+
+    const hash = Effect.fn('SkillBundles.hash')(function* (input: {
+      readonly content: string
+      readonly files: ReadonlyArray<SkillFileInput>
+    }) {
+      const serialized = [
+        input.content,
+        ...[...input.files]
+          .sort((left, right) => left.path.localeCompare(right.path))
+          .map((file) => `${file.path}\n${file.content}`),
+      ].join('\n---\n')
+      return yield* digest(serialized)
+    })
+
+    const storeFiles = Effect.fn('SkillBundles.storeFiles')(function* (input: {
+      readonly workspaceId: string
+      readonly skillId: string
+      readonly bundleHash: string
+      readonly files: ReadonlyArray<SkillFileInput>
+    }) {
+      return yield* Effect.forEach(
+        input.files,
+        (file) =>
+          Effect.gen(function* () {
+            const contentHash = yield* digest(file.content)
+            const r2Key = storedFileKey({ ...input, path: file.path })
+            yield* Effect.tryPromise({
+              try: () =>
+                bucket.put(r2Key, file.content, {
+                  httpMetadata: { contentType: contentType(file.path) },
+                }),
+              catch: (cause) => storageError('store skill file', cause),
+            })
+            return {
+              id: crypto.randomUUID(),
+              skillId: input.skillId,
+              path: file.path,
+              contentHash,
+              r2Key,
+            }
+          }),
+        { concurrency: 4 },
+      )
+    })
+
+    const loadFiles = Effect.fn('SkillBundles.loadFiles')(function* (
+      rows: ReadonlyArray<SkillFileRow>,
+    ) {
+      const now = new Date().toISOString()
+      const loaded = yield* Effect.forEach(
+        rows,
+        (row) =>
+          Effect.gen(function* () {
+            if (!row.r2Key) return null
+            const object = yield* Effect.tryPromise({
+              try: () => bucket.get(row.r2Key as string),
+              catch: (cause) => storageError('load skill file', cause),
+            })
+            if (!object) return null
+            const content = yield* Effect.tryPromise({
+              try: () => object.text(),
+              catch: (cause) => storageError('read skill file', cause),
+            })
+            return {
+              id: row.id,
+              skill_id: row.skillId,
+              path: row.path,
+              content,
+              content_hash: row.contentHash ?? null,
+              r2_key: row.r2Key,
+              created_at: now,
+              updated_at: now,
+            } satisfies SkillFile
+          }),
+        { concurrency: 4 },
+      )
+      const files: SkillFile[] = []
+      for (const file of loaded) {
+        if (file) files.push(file)
+      }
+      return files
+    })
+
+    const deleteFiles = Effect.fn('SkillBundles.deleteFiles')(function* (
+      rows: ReadonlyArray<SkillFileRow>,
+    ) {
+      const keys = rows.flatMap((row) => (row.r2Key ? [row.r2Key] : []))
+      if (keys.length === 0) return
+      yield* Effect.tryPromise({
+        try: () => bucket.delete(keys),
+        catch: (cause) => storageError('delete skill files', cause),
+      })
+    })
+
+    const deletePrefix = Effect.fn('SkillBundles.deletePrefix')(function* (
+      prefix: string,
+    ) {
+      let cursor: string | undefined
+      do {
+        const listed = yield* Effect.tryPromise({
+          try: () => bucket.list({ prefix, cursor }),
+          catch: (cause) => storageError('list runtime skill files', cause),
+        })
+        const keys = listed.objects.map((object) => object.key)
+        if (keys.length > 0) {
+          yield* Effect.tryPromise({
+            try: () => bucket.delete(keys),
+            catch: (cause) => storageError('delete runtime skill files', cause),
+          })
+        }
+        cursor = listed.truncated ? listed.cursor : undefined
+      } while (cursor)
+    })
+
+    const persistRuntime = Effect.fn('SkillBundles.persistRuntime')(
+      function* (input: {
+        readonly workspaceId: string
+        readonly slug: string
+        readonly content: string
+        readonly files: ReadonlyArray<SkillFileInput>
+      }) {
+        yield* deletePrefix(
+          workspaceRuntimePrefix(input.workspaceId, input.slug),
+        )
+        const entries = [
+          {
+            path: 'SKILL.md',
+            content: input.content,
+            contentType: 'text/markdown; charset=utf-8',
+          },
+          ...input.files.map((file) => ({
+            ...file,
+            contentType: contentType(file.path),
+          })),
+        ]
+        yield* Effect.forEach(
+          entries,
+          (entry) =>
+            Effect.tryPromise({
+              try: () =>
+                bucket.put(
+                  workspaceRuntimeKey(
+                    input.workspaceId,
+                    input.slug,
+                    entry.path,
+                  ),
+                  entry.content,
+                  { httpMetadata: { contentType: entry.contentType } },
+                ),
+              catch: (cause) => storageError('store runtime skill', cause),
+            }),
+          { concurrency: 4, discard: true },
+        )
+      },
+    )
+
+    const deleteRuntime = Effect.fn('SkillBundles.deleteRuntime')(
+      function* (input: {
+        readonly workspaceId: string
+        readonly slug: string
+      }) {
+        yield* deletePrefix(
+          workspaceRuntimePrefix(input.workspaceId, input.slug),
+        )
+      },
+    )
+
+    return SkillBundles.of({
+      normalizeFiles,
+      hash,
+      storeFiles,
+      loadFiles,
+      deleteFiles,
+      persistRuntime,
+      deleteRuntime,
+    })
+  }),
+)

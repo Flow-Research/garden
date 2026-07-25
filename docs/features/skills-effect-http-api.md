@@ -1,6 +1,6 @@
 # Skills HTTP architecture: Effect HttpApi inside TanStack Start
 
-Status: accepted architecture; implementation pending
+Status: implemented on `fix/skills-install-visibility`; focused verification complete
 
 ## Decision
 
@@ -125,13 +125,9 @@ AppRequestContext
   -> centralized cleanup
 ```
 
-Garden's installed `effect@4.0.0-beta.85` provides the necessary request-level facilities:
+Garden's installed `effect@4.0.0-beta.85` supports request requirements on `HttpRouter.toWebHandler`. Garden leaves `Skills` as that request requirement. The TanStack route builds `requestSkillsLayer` from the current `AppRequestContext`, then passes the resulting Effect `Context` into the static web handler.
 
-- `HttpRouter.provideRequest(layer)` builds a dependency Layer for each request rather than memoizing request I/O at router startup.
-- `HttpRouter.toWebHandler(...)` returns a handler that accepts a Web `Request` and a request `Context` when request services remain unresolved.
-- `HttpApiMiddleware` can provide request-scoped services when middleware semantics are appropriate.
-
-Garden should pass explicit request context and provide the application Layer per request. The final syntax must first be compiled against beta.85 before broader route rewiring.
+`HttpRouter.provideRequest(layer)` remains useful when a request Layer has no ordinary input. Garden's Layer needs the TanStack-owned `AppRequest`, so building that Layer in the route keeps ownership explicit and avoids caching request I/O. `HttpApiMiddleware` remains available for true middleware concerns.
 
 `Database` borrows the existing `AppRequestContext.db()` value. It does not create another client, pool, or lifecycle.
 
@@ -153,11 +149,20 @@ per request
 The route remains a real TanStack Start server route. Its route configuration stays literal and inline for TanStack static analysis.
 
 ```ts
+const handleSkillsApi = async ({ request, context }) => {
+  const appContext = requireAppRequestContext(context)
+  const effectContext = await makeSkillsRequestContext(appContext)
+  return skillsApiWebHandler(request, effectContext)
+}
+
 export const Route = createFileRoute('/api/$')({
   server: {
     handlers: {
-      ANY: ({ request, context }) =>
-        apiHandler(request, Context.make(AppRequest, context)),
+      GET: handleSkillsApi,
+      POST: handleSkillsApi,
+      PUT: handleSkillsApi,
+      PATCH: handleSkillsApi,
+      DELETE: handleSkillsApi,
     },
   },
 })
@@ -183,12 +188,9 @@ HttpApi generated client method
 
 This does not weaken the Effect architecture. TanStack Query owns Promise scheduling and cancellation; the shared adapter executes the Effect and forwards Query's `AbortSignal`. The mistake would be duplicating that adapter in every endpoint or query.
 
-Two viable integrations were found:
+Garden uses the minimal shared adapter in `apps/web/src/lib/api/skills.ts`. One browser `ManagedRuntime` owns `FetchHttpClient`; one `runClientEffect` function executes generated-client Effects and forwards TanStack Query's `AbortSignal`. No endpoint has its own runner.
 
-1. `effect-query` supplies `queryOptions`, `mutationOptions`, and `infiniteQueryOptions` from one `ManagedRuntime`. Its runner forwards the abort signal and preserves typed failures in wrapper errors.
-2. A minimal Garden-owned query adapter can execute generated-client Effects through one client runtime. This avoids a dependency but must remain shared infrastructure rather than endpoint glue.
-
-A focused spike must check Garden's current query factories, cancellation, mutation errors, and loader behavior before choosing. `effect-query` has one important caveat: wrapped Effect failures do not automatically preserve TanStack Router `redirect()` and `notFound()` sentinels thrown inside loaders.
+`effect-query` was not added. It provides a broader version of this bridge, but its wrapped failures complicate TanStack Router `redirect()` and `notFound()` sentinels in loaders. Garden does not need that abstraction for the current skills queries.
 
 TanStack Query retains all current responsibilities:
 
@@ -246,6 +248,8 @@ const response = await handler(
 ```
 
 Assert status, headers, and body. This covers malformed JSON, schema failures, authentication, declared 404/409 behavior, and successful encoding through the production HTTP surface.
+
+Effect beta.85 currently turns JSON parse failures into defects before `HttpApiSchemaError.wrap`, producing 500 instead of the documented 400 response. Garden adds one API-wide router middleware that converts only `SyntaxError` defects from malformed JSON into 400. This can be removed when the installed Effect decoder handles malformed JSON as a schema error.
 
 ### TanStack mount tests
 
@@ -328,12 +332,13 @@ Examples often use older `@effect/platform` APIs. Implementation must follow Gar
 
 ## Implementation checkpoints
 
-1. Compile the smallest Garden HttpApi group and raw web handler against beta.85.
-2. Prove `AppRequestContext` reaches request-provided `Database` with no global request I/O.
-3. Prove `HttpApiTest.groups` and raw `Request` tests can replace service/database Layers.
-4. Prove malformed input and declared domain failures produce expected statuses and bodies.
-5. Prove the generated client composes with existing Query keys, cancellation, invalidation, SSR prefetch, and hydration.
-6. Then migrate skills routes and remove duplicate transport types.
+1. [x] Compile the Garden HttpApi group and raw web handler against beta.85.
+2. [x] Build `Database` and `Skills` from the current `AppRequestContext`; no request Layer or DB client is cached globally.
+3. [x] Exercise `HttpApiTest.groups` and raw `Request` tests with replacement `Skills` services.
+4. [x] Verify malformed input, success statuses, no-content responses, and declared authorization errors.
+5. [x] Use the generated client with hierarchical Query keys, shared cancellation-aware execution, and JSON-safe success values.
+6. [x] Migrate skills routes and remove duplicate transport types and manual response plumbing.
+7. [ ] Run authenticated live browser flows once the branch's unrelated connector-proxy build baseline is repaired.
 
 ## Sources
 

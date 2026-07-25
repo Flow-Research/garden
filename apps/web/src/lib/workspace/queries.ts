@@ -8,8 +8,11 @@ export const workspaceKeys = {
   invitations: (wsId: string) => ['workspaces', wsId, 'invitations'] as const,
   agents: (wsId: string) => ['workspaces', wsId, 'agents'] as const,
   agent: (agentId: string) => ['agent', agentId] as const,
-  agentSkills: (agentId: string) => ['agent', agentId, 'skills'] as const,
   skills: (wsId: string) => ['workspaces', wsId, 'skills'] as const,
+  skill: (wsId: string, skillId: string) =>
+    ['workspaces', wsId, 'skills', 'detail', skillId] as const,
+  agentSkills: (wsId: string, agentId: string) =>
+    ['workspaces', wsId, 'skills', 'targets', 'agent', agentId] as const,
   connections: (wsId: string) => ['workspaces', wsId, 'connections'] as const,
   assigneeFrequency: (wsId: string) =>
     ['workspaces', wsId, 'assignee-frequency'] as const,
@@ -46,18 +49,19 @@ export function agentDetailOptions(agentId: string) {
   })
 }
 
-export function agentSkillListOptions(agentId: string) {
+export function agentSkillListOptions(wsId: string, agentId: string) {
   return queryOptions({
-    queryKey: workspaceKeys.agentSkills(agentId),
-    queryFn: () => api.listAgentSkills(agentId),
-    enabled: Boolean(agentId),
+    queryKey: workspaceKeys.agentSkills(wsId, agentId),
+    queryFn: ({ signal }) => api.listAgentSkills(agentId, signal),
+    enabled: Boolean(wsId && agentId),
   })
 }
 
 export function skillListOptions(wsId: string) {
   return queryOptions({
     queryKey: workspaceKeys.skills(wsId),
-    queryFn: () => api.listSkills({ workspace_id: wsId }),
+    queryFn: ({ signal }) => api.listSkills({ workspace_id: wsId }, signal),
+    enabled: Boolean(wsId),
   })
 }
 
