@@ -34,9 +34,6 @@ const readToolByConnectorAndKind: Record<string, Record<string, string>> = {
   'google-drive': {
     file: 'read_file_content',
   },
-  'exa-search': {
-    search_result: 'web_fetch_exa',
-  },
 }
 
 export const readSourceInputSchema = z
@@ -138,7 +135,7 @@ function schemaPropertyNames(inputSchema: unknown) {
   return properties ? Object.keys(properties) : []
 }
 
-function candidateArgs(binding: SourceBindingRow, toolName: string) {
+function candidateArgs(binding: SourceBindingRow) {
   const github = parseGithubRef(binding)
   const slack = parseSlackRef(binding)
   const targetUrl = binding.externalUrl || binding.externalId
@@ -177,21 +174,11 @@ function candidateArgs(binding: SourceBindingRow, toolName: string) {
     candidates.pull_request_number = github.number
   }
 
-  if (toolName === 'web_fetch_exa' && isUrl) {
-    candidates.url = targetUrl
-    candidates.urls = [targetUrl]
-  }
-
   return candidates
 }
 
 function defaultArgsForTool(binding: SourceBindingRow, toolName: string) {
-  const candidates = candidateArgs(binding, toolName)
-  if (toolName === 'web_fetch_exa') {
-    return Array.isArray(candidates.urls) && candidates.urls.length > 0
-      ? { urls: candidates.urls }
-      : { urls: [binding.externalId] }
-  }
+  const candidates = candidateArgs(binding)
   if (toolName === 'pull_request_read' || toolName === 'issue_read') {
     return {
       owner: candidates.owner,
@@ -221,7 +208,7 @@ export function buildReadSourceToolArgs(
   const properties = schemaPropertyNames(tool.inputSchema)
   if (properties.length === 0) return defaultArgsForTool(binding, tool.name)
 
-  const candidates = candidateArgs(binding, tool.name)
+  const candidates = candidateArgs(binding)
   return Object.fromEntries(
     properties.flatMap((property) => {
       const value = candidates[property]

@@ -376,8 +376,8 @@ function CreateAutomationDialog({
   const handleSubmit = async () => {
     if (!title.trim() || !assigneeId || submitting) return
     const requiredConnectors = selectedConnectorIds.filter(
-      (connectorId): connectorId is 'github' | 'exa-search' | 'slack' | 'gmail' | 'google-drive' =>
-        ['github', 'exa-search', 'slack', 'gmail', 'google-drive'].includes(
+      (connectorId): connectorId is 'github' | 'slack' | 'gmail' | 'google-drive' =>
+        ['github', 'slack', 'gmail', 'google-drive'].includes(
           connectorId,
         ),
     )

@@ -693,7 +693,6 @@ const CONNECTOR_ROW_ICON: Record<ConnectorId, string | null> = {
   gmail: 'logos:google-gmail',
   'google-drive': 'logos:google-drive',
   github: 'logos:github-icon',
-  'exa-search': 'simple-icons:exa',
 }
 
 function ConnectorRowIcon({

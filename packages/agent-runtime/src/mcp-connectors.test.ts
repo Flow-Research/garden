@@ -130,12 +130,12 @@ describe('buildConnectorSyncPlan', () => {
 
   it('refreshes stored bindings whose server is not registered in memory', () => {
     const plan = buildConnectorSyncPlan({
-      bindings: [{ connectorId: 'exa-search', accountId: null }],
+      bindings: [{ connectorId: 'slack', accountId: null }],
       registeredServerIds: [],
       storedRows: [
         {
-          connectorId: 'exa-search',
-          serverId: 'exa-search',
+          connectorId: 'slack',
+          serverId: 'slack',
           accountId: null,
           toolsSignature: null,
         },
@@ -144,7 +144,7 @@ describe('buildConnectorSyncPlan', () => {
 
     expect(plan.connectorIdsToRemove).toEqual([])
     expect(plan.bindingsToRefresh).toEqual([
-      { connectorId: 'exa-search', accountId: null },
+      { connectorId: 'slack', accountId: null },
     ])
   })
 
@@ -152,7 +152,7 @@ describe('buildConnectorSyncPlan', () => {
     const plan = buildConnectorSyncPlan({
       bindings: [
         { connectorId: 'google-drive', accountId: 'account-4' },
-        { connectorId: 'exa-search', accountId: null },
+        { connectorId: 'slack', accountId: null },
       ],
       storedRows: [
         {
@@ -162,8 +162,8 @@ describe('buildConnectorSyncPlan', () => {
           toolsSignature: null,
         },
         {
-          connectorId: 'exa-search',
-          serverId: 'exa-search',
+          connectorId: 'slack',
+          serverId: 'slack',
           accountId: null,
           toolsSignature: null,
         },
@@ -181,7 +181,7 @@ describe('hasWarmStoredConnectorServers', () => {
   it('returns true when every stored connector is registered', () => {
     expect(
       hasWarmStoredConnectorServers({
-        registeredServerIds: ['github', 'exa-search'],
+        registeredServerIds: ['github', 'slack'],
         storedRows: [
           {
             connectorId: 'github',
@@ -190,8 +190,8 @@ describe('hasWarmStoredConnectorServers', () => {
             toolsSignature: null,
           },
           {
-            connectorId: 'exa-search',
-            serverId: 'exa-search',
+            connectorId: 'slack',
+            serverId: 'slack',
             accountId: null,
             toolsSignature: null,
           },
@@ -395,7 +395,7 @@ describe('RuntimeMcpController GitHub tools', () => {
   })
 
   it('returns connector tool transport failures as tool output instead of throwing', async () => {
-    const toolKey = buildMcpAiToolKey('exa-search', 'web_search_exa')
+    const toolKey = buildMcpAiToolKey('slack', 'slack_read_channel')
     const controller = new RuntimeMcpController({
       name: 'chat:thread-1',
       env: {
@@ -423,8 +423,8 @@ describe('RuntimeMcpController GitHub tools', () => {
           }) as unknown as ToolSet,
         listTools: () => [
           {
-            serverId: 'exa-search',
-            name: 'web_search_exa',
+            serverId: 'slack',
+            name: 'slack_read_channel',
             description: 'Search with Exa.',
             inputSchema: { type: 'object' },
           },
@@ -465,7 +465,7 @@ describe('RuntimeMcpController GitHub tools', () => {
     ).resolves.toEqual({
       error: true,
       message:
-        'exa-search.web_search_exa failed: Request timeout: No response received within 120000ms',
+        'slack.slack_read_channel failed: Request timeout: No response received within 120000ms',
     })
   })
 
@@ -575,20 +575,20 @@ describe('RuntimeMcpController GitHub tools', () => {
 
   it('replaces registered connector servers stuck in failed state before discovery', async () => {
     const servers: Array<{ id: string; server_url?: string }> = [
-      { id: 'exa-search', server_url: 'rpc:exa-search' },
+      { id: 'slack', server_url: 'rpc:slack' },
     ]
     const toolsByServer = new Map<string, McpToolRecord[]>()
     const serverStates: Record<string, { state: string; error?: string }> = {
-      'exa-search': {
+      'slack': {
         state: 'failed',
         error: 'Network connection lost.',
       },
     }
     const removedServerIds: string[] = []
     const connectedServerIds: string[] = []
-    const exaTools: McpToolRecord[] = [
+    const slackTools: McpToolRecord[] = [
       {
-        serverId: 'exa-search',
+        serverId: 'slack',
         name: 'web_search',
         description: 'Search the web.',
         inputSchema: { type: 'object' },
@@ -614,8 +614,8 @@ describe('RuntimeMcpController GitHub tools', () => {
         storage: {
           sql: createSqlStorageStub([
             {
-              connectorId: 'exa-search',
-              serverId: 'exa-search',
+              connectorId: 'slack',
+              serverId: 'slack',
               accountId: null,
               toolsSignature: null,
             },
@@ -636,7 +636,7 @@ describe('RuntimeMcpController GitHub tools', () => {
       addRpcMcpServer: async ({ connectorId }) => {
         connectedServerIds.push(connectorId)
         servers.push({ id: connectorId, server_url: `rpc:${connectorId}` })
-        toolsByServer.set(connectorId, exaTools)
+        toolsByServer.set(connectorId, slackTools)
         serverStates[connectorId] = { state: 'ready' }
         return { state: 'connected' }
       },
@@ -666,17 +666,17 @@ describe('RuntimeMcpController GitHub tools', () => {
         >
       }
     ).listActiveConnectorBindings = async () =>
-      Result.ok([{ connectorId: 'exa-search', accountId: null }])
+      Result.ok([{ connectorId: 'slack', accountId: null }])
 
     const result = await controller.ensureProxyMcpConnections()
 
     expect(result.isOk()).toBe(true)
-    expect(removedServerIds).toEqual(['exa-search'])
-    expect(connectedServerIds).toEqual(['exa-search'])
+    expect(removedServerIds).toEqual(['slack'])
+    expect(connectedServerIds).toEqual(['slack'])
     expect(servers).toEqual([
-      { id: 'exa-search', server_url: 'rpc:exa-search' },
+      { id: 'slack', server_url: 'rpc:slack' },
     ])
-    expect(host.mcp.listTools({ serverId: 'exa-search' })).toEqual(exaTools)
+    expect(host.mcp.listTools({ serverId: 'slack' })).toEqual(slackTools)
   })
 
   it('clears failed hidden SDK connections even when storage no longer lists the server', async () => {
@@ -761,10 +761,10 @@ describe('RuntimeMcpController GitHub tools', () => {
     const removedServerIds: string[] = []
     const connectedServerIds: string[] = []
     const toolsByServer = new Map<string, McpToolRecord[]>()
-    const exaTools: McpToolRecord[] = [
+    const slackTools: McpToolRecord[] = [
       {
-        serverId: 'exa-search',
-        name: 'web_search_exa',
+        serverId: 'slack',
+        name: 'slack_read_channel',
         description: 'Search the web.',
         inputSchema: { type: 'object' },
       },
@@ -803,7 +803,7 @@ describe('RuntimeMcpController GitHub tools', () => {
           )
         }
 
-        toolsByServer.set(connectorId, exaTools)
+        toolsByServer.set(connectorId, slackTools)
         return { state: 'connected' }
       },
       removeMcpServer: async (connectorId) => {
@@ -829,14 +829,14 @@ describe('RuntimeMcpController GitHub tools', () => {
         >
       }
     ).listActiveConnectorBindings = async () =>
-      Result.ok([{ connectorId: 'exa-search', accountId: null }])
+      Result.ok([{ connectorId: 'slack', accountId: null }])
 
     const result = await controller.ensureProxyMcpConnections()
 
     expect(result.isOk()).toBe(true)
-    expect(removedServerIds).toEqual(['exa-search', 'exa-search'])
-    expect(connectedServerIds).toEqual(['exa-search', 'exa-search'])
-    expect(host.mcp.listTools({ serverId: 'exa-search' })).toEqual(exaTools)
+    expect(removedServerIds).toEqual(['slack', 'slack'])
+    expect(connectedServerIds).toEqual(['slack', 'slack'])
+    expect(host.mcp.listTools({ serverId: 'slack' })).toEqual(slackTools)
   })
 
   it('returns connector refresh errors instead of silently continuing', async () => {
@@ -881,13 +881,13 @@ describe('RuntimeMcpController GitHub tools', () => {
         >
       }
     ).listActiveConnectorBindings = async () =>
-      Result.ok([{ connectorId: 'exa-search', accountId: null }])
+      Result.ok([{ connectorId: 'slack', accountId: null }])
 
     const result = await controller.ensureProxyMcpConnections()
 
     expect(result.isErr()).toBe(true)
     if (result.isOk()) return
-    expect(result.error.message).toContain('exa-search: Proxy returned 503')
+    expect(result.error.message).toContain('slack: Proxy returned 503')
   })
 
   it('throws for required turn readiness when connector refresh fails', async () => {
@@ -932,7 +932,7 @@ describe('RuntimeMcpController GitHub tools', () => {
         >
       }
     ).listActiveConnectorBindings = async () =>
-      Result.ok([{ connectorId: 'exa-search', accountId: null }])
+      Result.ok([{ connectorId: 'slack', accountId: null }])
 
     const preparer = new RuntimeMcpConnectionPreparer({
       getController: () => controller,

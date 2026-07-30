@@ -15,7 +15,7 @@ export const automationExecutionConfigSchema = z
     capabilities: automationCapabilitySchema,
     requiredSkills: z.array(z.string()),
     requiredConnectors: z.array(
-      z.enum(['github', 'exa-search', 'slack', 'gmail', 'google-drive']),
+      z.enum(['github', 'slack', 'gmail', 'google-drive']),
     ),
     runContract: automationRunContractSchema,
   })

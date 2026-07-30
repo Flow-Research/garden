@@ -301,7 +301,6 @@ function CapabilitiesPanel({ node, panel }: PanelProps) {
       <ConnectionsPage
         focusedConnectorId={
           panel.entityId as
-            | 'exa-search'
             | 'gmail'
             | 'google-drive'
             | 'slack'

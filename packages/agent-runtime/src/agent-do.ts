@@ -93,6 +93,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_URL: string
   HYPERDRIVE: Hyperdrive
   DISCORD_BOT_TOKEN?: string
+  EXA_API_KEY?: string
   AI: Ai
   AI_GATEWAY_ID?: string
   ENVIRONMENT?: string
@@ -1109,6 +1110,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   override getTools() {
     return createChatSubAgentTools({
       ctx: this.ctx,
+      ...(this.env.EXA_API_KEY ? { exaApiKey: this.env.EXA_API_KEY } : {}),
       databaseUrl: this.env.HYPERDRIVE.connectionString,
       threadId: this.name,
       workspace: this.workspace,

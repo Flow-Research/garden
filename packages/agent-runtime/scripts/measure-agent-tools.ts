@@ -589,13 +589,6 @@ async function listMcpTools(args: {
   return parsed.result?.tools ?? []
 }
 
-async function fetchExaTools(): Promise<McpTool[]> {
-  return await listMcpTools({
-    url: 'https://mcp.exa.ai/mcp?tools=web_search_exa,web_fetch_exa',
-    headers: {},
-  })
-}
-
 async function fetchGithubTools(): Promise<McpTool[]> {
   // Reuse the same GitHub App / gh-cli token resolution as check-github-mcp.ts.
   let token = process.env.GITHUB_TOKEN?.trim()
@@ -705,10 +698,6 @@ function buildLocalSections(
 
 async function main() {
   // Connector tools (live MCP)
-  const exaResult = await Result.tryPromise<McpTool[], string>({
-    try: async () => await fetchExaTools(),
-    catch: (cause) => (cause instanceof Error ? cause.message : String(cause)),
-  })
   const githubResult = await Result.tryPromise<McpTool[], string>({
     try: async () => await fetchGithubTools(),
     catch: (cause) => (cause instanceof Error ? cause.message : String(cause)),
@@ -720,18 +709,13 @@ async function main() {
     GITHUB_AVG_TOOL_BYTES = sectionEntries.length > 0 ? total / sectionEntries.length : null
   }
 
-  const exaEntries: ToolEntry[] = exaResult.isOk()
-    ? entriesFromMcp('exa-search (mcp, live)', exaResult.value)
-    : []
   const githubEntries: ToolEntry[] = githubResult.isOk()
     ? entriesFromMcp('github (mcp, live)', githubResult.value)
     : []
 
   const estimateBytes =
     GITHUB_AVG_TOOL_BYTES ??
-    (exaEntries.length > 0
-      ? exaEntries.reduce((acc, t) => acc + t.bytes, 0) / exaEntries.length
-      : 800)
+    800
 
   const synthEntry = (group: string, name: string, bytes: number): ToolEntry => ({
     group,
@@ -753,7 +737,6 @@ async function main() {
   )
 
   const connectorSections: Section[] = [
-    { group: 'exa-search', tools: exaEntries },
     { group: 'github', tools: githubEntries },
     { group: 'gmail (est.)', tools: gmailEntries },
     { group: 'google-drive (est.)', tools: driveEntries },
@@ -761,7 +744,6 @@ async function main() {
   ]
 
   console.log('Connector / MCP tool sources:')
-  console.log(`  exa-search:    ${exaResult.isOk() ? `live (${exaEntries.length})` : `failed (${exaResult.error})`}`)
   console.log(`  github:        ${githubResult.isOk() ? `live (${githubEntries.length})` : `failed (${githubResult.error})`}`)
   console.log(`  gmail:         estimated (${gmailEntries.length} tools × ~${Math.round(estimateBytes)} chars)`)
   console.log(`  google-drive:  estimated (${driveEntries.length} tools × ~${Math.round(estimateBytes)} chars)`)

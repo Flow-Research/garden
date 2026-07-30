@@ -43,6 +43,7 @@ import {
   type DocumentToolContext,
 } from "./documents/document-tools";
 import { createProposeAgentTool } from "./agent-tools/propose-agent";
+import { createWebTools, type WebToolsSqlValue } from "./agent-tools/web";
 import { listAvailableConnectorBindings } from "@garden/server/connectors/availability";
 import { createSandboxTools } from "./sandbox-tools";
 import {
@@ -67,6 +68,7 @@ import { assignIssueInputSchema } from "./chat-assignment-schema";
 
 type ChatSubAgentToolsInput = {
   ctx: DurableObjectState;
+  exaApiKey?: string;
   databaseUrl?: string;
   threadId?: string;
   workspace: WorkspaceFsLike;
@@ -1633,6 +1635,7 @@ async function postIssueCommentFromChat(
 
 export function createChatSubAgentTools({
   ctx,
+  exaApiKey,
   databaseUrl,
   threadId,
   workspace,
@@ -1661,6 +1664,11 @@ export function createChatSubAgentTools({
       description: COMPACT_EXECUTE_DESCRIPTION,
     }),
     ...createSandboxTools(getSandbox),
+    ...createWebTools({
+      env: { ...(exaApiKey ? { EXA_API_KEY: exaApiKey } : {}) },
+      sql: (query, ...params) =>
+        ctx.storage.sql.exec(query, ...(params as WebToolsSqlValue[])),
+    }),
 
     // Client-side tool — no execute function. The UI renders an interactive
     // StructuredInputPanel and sends the user's selections back via
