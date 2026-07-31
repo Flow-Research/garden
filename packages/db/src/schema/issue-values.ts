@@ -23,7 +23,6 @@ export const connectorIdValues = [
   'slack',
   'gmail',
   'google_drive',
-  'exa_search',
   'manual',
   'agent',
 ] as const

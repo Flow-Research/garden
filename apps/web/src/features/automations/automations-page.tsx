@@ -377,13 +377,8 @@ function CreateAutomationDialog({
     const requiredConnectors = selectedConnectorIds.filter(
       (
         connectorId,
-      ): connectorId is
-        | 'github'
-        | 'exa-search'
-        | 'slack'
-        | 'gmail'
-        | 'google-drive' =>
-        ['github', 'exa-search', 'slack', 'gmail', 'google-drive'].includes(
+      ): connectorId is 'github' | 'slack' | 'gmail' | 'google-drive' =>
+        ['github', 'slack', 'gmail', 'google-drive'].includes(
           connectorId,
         ),
     )

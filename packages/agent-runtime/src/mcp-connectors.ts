@@ -22,7 +22,6 @@ export type WarmConnectorServerCheck = {
 }
 
 const CONNECTOR_ID_ALIASES: Record<string, string> = {
-  exa_search: 'exa-search',
   google_drive: 'google-drive',
 }
 
