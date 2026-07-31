@@ -128,12 +128,12 @@ describe('buildConnectorSyncPlan', () => {
 
   it('refreshes stored bindings whose server is not registered in memory', () => {
     const plan = buildConnectorSyncPlan({
-      bindings: [{ connectorId: 'exa-search', accountId: null }],
+      bindings: [{ connectorId: 'slack', accountId: null }],
       registeredServerIds: [],
       storedRows: [
         {
-          connectorId: 'exa-search',
-          serverId: 'exa-search',
+          connectorId: 'slack',
+          serverId: 'slack',
           accountId: null,
           toolsSignature: null,
         },
@@ -142,7 +142,7 @@ describe('buildConnectorSyncPlan', () => {
 
     expect(plan.connectorIdsToRemove).toEqual([])
     expect(plan.bindingsToRefresh).toEqual([
-      { connectorId: 'exa-search', accountId: null },
+      { connectorId: 'slack', accountId: null },
     ])
   })
 
@@ -150,7 +150,7 @@ describe('buildConnectorSyncPlan', () => {
     const plan = buildConnectorSyncPlan({
       bindings: [
         { connectorId: 'google-drive', accountId: 'account-4' },
-        { connectorId: 'exa-search', accountId: null },
+        { connectorId: 'slack', accountId: null },
       ],
       storedRows: [
         {
@@ -160,8 +160,8 @@ describe('buildConnectorSyncPlan', () => {
           toolsSignature: null,
         },
         {
-          connectorId: 'exa-search',
-          serverId: 'exa-search',
+          connectorId: 'slack',
+          serverId: 'slack',
           accountId: null,
           toolsSignature: null,
         },
@@ -179,7 +179,7 @@ describe('hasWarmStoredConnectorServers', () => {
   it('returns true when every stored connector is registered', () => {
     expect(
       hasWarmStoredConnectorServers({
-        registeredServerIds: ['github', 'exa-search'],
+        registeredServerIds: ['github', 'slack'],
         storedRows: [
           {
             connectorId: 'github',
@@ -188,8 +188,8 @@ describe('hasWarmStoredConnectorServers', () => {
             toolsSignature: null,
           },
           {
-            connectorId: 'exa-search',
-            serverId: 'exa-search',
+            connectorId: 'slack',
+            serverId: 'slack',
             accountId: null,
             toolsSignature: null,
           },
@@ -366,7 +366,7 @@ describe('RuntimeMcpController GitHub tools', () => {
   })
 
   it('returns connector tool transport failures as tool output instead of throwing', async () => {
-    const toolKey = buildMcpAiToolKey('exa-search', 'web_search_exa')
+    const toolKey = buildMcpAiToolKey('slack', 'slack_read_channel')
     const controller = new RuntimeMcpController({
       name: 'chat:thread-1',
       env: {
@@ -381,7 +381,7 @@ describe('RuntimeMcpController GitHub tools', () => {
         getAITools: () =>
           ({
             [toolKey]: {
-              description: 'Search with Exa.',
+              description: 'Read a Slack channel.',
               inputSchema: { type: 'object' },
               execute: async () => {
                 return await Promise.reject(
@@ -394,9 +394,9 @@ describe('RuntimeMcpController GitHub tools', () => {
           }) as unknown as ToolSet,
         listTools: () => [
           {
-            serverId: 'exa-search',
-            name: 'web_search_exa',
-            description: 'Search with Exa.',
+            serverId: 'slack',
+            name: 'slack_read_channel',
+            description: 'Read a Slack channel.',
             inputSchema: { type: 'object' },
           },
         ],
@@ -419,7 +419,7 @@ describe('RuntimeMcpController GitHub tools', () => {
       () =>
         ({
           [toolKey]: {
-            description: 'Search with Exa.',
+            description: 'Read a Slack channel.',
             inputSchema: { type: 'object' },
             execute: async () => {
               return await Promise.reject(
@@ -436,7 +436,7 @@ describe('RuntimeMcpController GitHub tools', () => {
     ).resolves.toEqual({
       error: true,
       message:
-        'exa-search.web_search_exa failed: Request timeout: No response received within 120000ms',
+        'slack.slack_read_channel failed: Request timeout: No response received within 120000ms',
     })
   })
 
@@ -482,7 +482,7 @@ describe('RuntimeMcpController GitHub tools', () => {
         >
       }
     ).listActiveConnectorBindings = async () =>
-      Result.ok([{ connectorId: 'exa-search', accountId: null }])
+      Result.ok([{ connectorId: 'slack', accountId: null }])
 
     const preparer = new RuntimeMcpConnectionPreparer({
       getController: () => controller,
