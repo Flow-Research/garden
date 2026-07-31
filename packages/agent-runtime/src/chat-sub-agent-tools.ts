@@ -1759,7 +1759,7 @@ export function createChatSubAgentTools({
     }),
     ...createSandboxTools(getSandbox),
     ...createWebTools({
-      env: { ...(exaApiKey ? { EXA_API_KEY: exaApiKey } : {}) },
+      env: exaApiKey ? { EXA_API_KEY: exaApiKey } : {},
       sql: (query, ...params) =>
         ctx.storage.sql.exec(query, ...(params as WebToolsSqlValue[])),
     }),
