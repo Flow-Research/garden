@@ -42,10 +42,13 @@ const execute = async (
   tool: { execute?: (input: never, options: never) => unknown },
   input: unknown,
 ) =>
-  (await tool.execute?.(input as never, {
-    toolCallId: 'call-1',
-    messages: [],
-  } as never)) as Record<string, unknown>
+  (await tool.execute?.(
+    input as never,
+    {
+      toolCallId: 'call-1',
+      messages: [],
+    } as never,
+  )) as Record<string, unknown>
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -121,8 +124,17 @@ describe('createWebTools', () => {
     expect(search.ok).toBe(true)
     expect(JSON.stringify(search)).not.toContain(body)
 
-    const queries = search.queries as Array<{ fullContentCount: number }>
-    expect(queries[0]?.fullContentCount).toBe(1)
+    const queries = search.queries as Array<{
+      availableBodies: Array<{ index: number; url: string }>
+    }>
+    expect(queries[0]?.availableBodies).toEqual([
+      {
+        index: 0,
+        url: 'https://example.com/garden',
+        title: 'Garden',
+        length: 5_000,
+      },
+    ])
 
     const pulled = await execute(tools.get_search_content, {
       responseId: search.responseId,
@@ -155,7 +167,9 @@ describe('createWebTools', () => {
     const body = 'y'.repeat(40_000)
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       searchResponse({
-        results: [{ url: 'https://example.com/long', title: 'Long', text: body }],
+        results: [
+          { url: 'https://example.com/long', title: 'Long', text: body },
+        ],
       }),
     )
     const tools = createWebTools({
@@ -170,6 +184,99 @@ describe('createWebTools', () => {
     expect(result.truncated).toBe(true)
     expect(result.fullLength).toBe(40_000)
     expect(String(result.content)).toHaveLength(30_000)
+
+    const remainder = await execute(tools.get_search_content, {
+      responseId: result.responseId,
+      urlIndex: 0,
+      offset: 30_000,
+    })
+    expect(remainder.ok).toBe(true)
+    expect(remainder.offset).toBe(30_000)
+    expect(String(remainder.content)).toHaveLength(10_000)
+    expect(remainder.truncated).toBe(false)
+  })
+
+  it('reports HTTP-200 crawl failures instead of treating them as empty success', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      searchResponse({
+        results: [],
+        statuses: [
+          {
+            id: 'https://example.com/private',
+            status: 'error',
+            error: { tag: 'SOURCE_NOT_AVAILABLE', httpStatusCode: 403 },
+          },
+        ],
+      }),
+    )
+    const tools = createWebTools({
+      env: { EXA_API_KEY: 'test-key' },
+      sql: createSqlStub(),
+    })
+
+    const result = await execute(tools.fetch_content, {
+      url: 'https://example.com/private',
+    })
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'content_fetch_failed',
+      failures: [
+        {
+          url: 'https://example.com/private',
+          tag: 'SOURCE_NOT_AVAILABLE',
+          httpStatusCode: 403,
+        },
+      ],
+    })
+  })
+
+  it('keeps a multi-URL result shape when only one crawl succeeds', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      searchResponse({
+        results: [
+          {
+            url: 'https://example.com/available',
+            title: 'Available',
+            text: 'content',
+          },
+        ],
+        statuses: [
+          { id: 'https://example.com/available', status: 'success' },
+          {
+            id: 'https://example.com/missing',
+            status: 'error',
+            error: { tag: 'CRAWL_NOT_FOUND', httpStatusCode: 404 },
+          },
+        ],
+      }),
+    )
+    const tools = createWebTools({
+      env: { EXA_API_KEY: 'test-key' },
+      sql: createSqlStub(),
+    })
+
+    const result = await execute(tools.fetch_content, {
+      urls: ['https://example.com/available', 'https://example.com/missing'],
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result).not.toHaveProperty('content')
+    expect(result.urls).toEqual([
+      {
+        index: 0,
+        url: 'https://example.com/available',
+        title: 'Available',
+        length: 7,
+      },
+    ])
+    expect(result.failures).toEqual([
+      {
+        url: 'https://example.com/missing',
+        tag: 'CRAWL_NOT_FOUND',
+        httpStatusCode: 404,
+      },
+    ])
   })
 
   it('reports an expired handle rather than failing the turn', async () => {

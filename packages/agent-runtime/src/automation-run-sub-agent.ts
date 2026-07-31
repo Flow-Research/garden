@@ -63,6 +63,7 @@ import {
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { assembleFoundationPrompt } from './prompt'
 import { createSandboxTools } from './sandbox-tools'
+import { createWebTools, type WebToolsSqlValue } from './agent-tools/web'
 import { loadRuntimeSkillSources } from './skills'
 import { logAgentSocketError } from './websocket-errors'
 import {
@@ -82,6 +83,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_URL: string
   HYPERDRIVE: Hyperdrive
   DISCORD_BOT_TOKEN?: string
+  EXA_API_KEY?: string
   AI: Ai
   AI_GATEWAY_ID?: string
   ENVIRONMENT?: string
@@ -364,6 +366,12 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     )
   }
 
+  /**
+   * Gives standalone automations the same first-party web research surface as
+   * chat and issue runs. Exa previously reached automations through the public
+   * MCP connector; removing that connector without adding these tools left the
+   * built-in Daily news digest unable to perform its primary task.
+   */
   override getTools(): ToolSet {
     return {
       execute: createExecuteTool({
@@ -398,6 +406,11 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
         },
       }),
       ...createSandboxTools(() => this.getAgentSandbox()),
+      ...createWebTools({
+        env: this.env.EXA_API_KEY ? { EXA_API_KEY: this.env.EXA_API_KEY } : {},
+        sql: (query, ...params) =>
+          this.ctx.storage.sql.exec(query, ...(params as WebToolsSqlValue[])),
+      }),
       ...createBrowserTools({
         browser: this.env.BROWSER,
         loader: this.env.LOADER,

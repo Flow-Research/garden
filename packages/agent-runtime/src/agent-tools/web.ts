@@ -106,6 +106,20 @@ const exaContentsResponseSchema = z.object({
       }),
     )
     .optional(),
+  statuses: z
+    .array(
+      z.object({
+        id: z.string(),
+        status: z.enum(['success', 'error']),
+        error: z
+          .object({
+            tag: z.string(),
+            httpStatusCode: z.number().int().optional(),
+          })
+          .optional(),
+      }),
+    )
+    .optional(),
 })
 
 const storedPageSchema = z.object({
@@ -142,6 +156,12 @@ type StoredFetchPayload = z.infer<typeof storedFetchPayloadSchema>
 type StoredRetrieval =
   | { type: 'search'; payload: StoredSearchPayload }
   | { type: 'fetch'; payload: StoredFetchPayload }
+
+type ExaContentFailure = {
+  url: string
+  tag: string
+  httpStatusCode?: number
+}
 
 /**
  * Surfaces the failure to the model as data it can act on rather than throwing.
@@ -266,6 +286,64 @@ function normalizeHighlights(value: string[] | undefined) {
 }
 
 /**
+ * Preserves Exa's per-URL crawl failures. The Contents API returns these inside
+ * a successful HTTP 200 response, so ignoring `statuses` previously converted
+ * inaccessible and timed-out pages into a misleading successful empty result.
+ * Source: https://exa.ai/docs/reference/contents-retrieval#crawl-errors
+ */
+function contentFailures(
+  statuses: z.infer<typeof exaContentsResponseSchema>['statuses'],
+): ExaContentFailure[] {
+  return (statuses ?? []).flatMap((status) => {
+    if (status.status !== 'error') return []
+    return [
+      {
+        url: status.id,
+        tag: status.error?.tag ?? 'CRAWL_UNKNOWN_ERROR',
+        ...(status.error?.httpStatusCode !== undefined
+          ? { httpStatusCode: status.error.httpStatusCode }
+          : {}),
+      },
+    ]
+  })
+}
+
+/**
+ * Returns one bounded page chunk so retrieving stashed content cannot inject an
+ * arbitrarily large page or PDF into the next model request. Before this helper,
+ * `fetch_content` capped inline output but its follow-up tool returned the whole
+ * stored body, bypassing the same context protection.
+ */
+function pageContentChunk(
+  page: z.infer<typeof storedPageSchema>,
+  options: { offset?: number; maxCharacters?: number },
+) {
+  const offset = options.offset ?? 0
+  const maxCharacters = options.maxCharacters ?? MAX_INLINE_CONTENT_CHARS
+  if (offset > page.content.length) {
+    return {
+      ok: false as const,
+      error: 'offset_out_of_range',
+      offset,
+      fullLength: page.content.length,
+    }
+  }
+
+  const end = Math.min(offset + maxCharacters, page.content.length)
+  const truncated = end < page.content.length
+  return {
+    ok: true as const,
+    url: page.url,
+    title: page.title,
+    content: page.content.slice(offset, end),
+    offset,
+    fullLength: page.content.length,
+    truncated,
+    ...(truncated ? { nextOffset: end } : {}),
+  }
+}
+
+/**
  * Flattens Exa's per-result highlights into a single cited block. The model gets
  * source-attributed prose it can quote directly instead of having to stitch
  * highlight arrays back together itself.
@@ -347,7 +425,10 @@ function loadRetrieval(
     const type = String(row.type ?? '')
     const payloadText = String(row.payload ?? 'null')
     if (type === 'search') {
-      const payload = parseJsonWithSchema(payloadText, storedSearchPayloadSchema)
+      const payload = parseJsonWithSchema(
+        payloadText,
+        storedSearchPayloadSchema,
+      )
       return payload.isOk() ? { type, payload: payload.value } : null
     }
     if (type === 'fetch') {
@@ -407,6 +488,21 @@ export const getSearchContentInputSchema = z
     query: z.string().optional(),
     urlIndex: z.number().int().min(0).optional(),
     url: z.string().optional(),
+    offset: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe('Character offset for reading the next chunk. Default 0.'),
+    maxCharacters: z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_INLINE_CONTENT_CHARS)
+      .optional()
+      .describe(
+        `Maximum characters to return. Default and maximum ${MAX_INLINE_CONTENT_CHARS}.`,
+      ),
   })
   .strict()
 
@@ -540,12 +636,17 @@ export function createWebTools(deps: {
             query: hit.query,
             answer: hit.answer,
             results: hit.results,
-            fullContentCount: hit.fullContent.length,
+            availableBodies: hit.fullContent.map((page, index) => ({
+              index,
+              url: page.url,
+              title: page.title,
+              length: page.content.length,
+            })),
             ...(hit.error ? { error: hit.error } : {}),
           })),
           ...(stashed.isOk()
             ? {
-                hint: `Pull a full page body with get_search_content({responseId:"${stashed.value}", queryIndex, urlIndex}).`,
+                hint: `Pull a page chunk with get_search_content({responseId:"${stashed.value}", queryIndex, urlIndex}).`,
               }
             : {}),
         }
@@ -557,7 +658,11 @@ export function createWebTools(deps: {
         'Fetch clean, readable content for one or more URLs. Multiple URLs are fetched in parallel within a single call. Use after web_search to read the pages worth reading, or when the user gives you a URL directly.',
       inputSchema: fetchContentInputSchema,
       execute: async (input, { abortSignal }) => {
-        const urls = input.urls?.length ? input.urls : input.url ? [input.url] : []
+        const urls = input.urls?.length
+          ? input.urls
+          : input.url
+            ? [input.url]
+            : []
         if (urls.length === 0) {
           return {
             ok: false,
@@ -593,11 +698,21 @@ export function createWebTools(deps: {
             page.summary ??
             normalizeHighlights(page.highlights).join('\n\n'),
         }))
+        const failures = contentFailures(response.value.statuses)
+
+        if (pages.length === 0) {
+          return {
+            ok: false,
+            error: failures.length > 0 ? 'content_fetch_failed' : 'no_content',
+            failures,
+          }
+        }
 
         const stashed = storeRetrieval(deps.sql, 'fetch', { urls: pages })
         const responseId = stashed.isOk() ? stashed.value : null
 
-        const singlePage = pages.length === 1 ? pages[0] : undefined
+        const singlePage =
+          urls.length === 1 && pages.length === 1 ? pages[0] : undefined
         if (singlePage) {
           const truncated = singlePage.content.length > MAX_INLINE_CONTENT_CHARS
           return {
@@ -610,9 +725,10 @@ export function createWebTools(deps: {
               : singlePage.content,
             truncated,
             fullLength: singlePage.content.length,
+            ...(failures.length > 0 ? { failures } : {}),
             ...(truncated && responseId
               ? {
-                  hint: `Showing ${MAX_INLINE_CONTENT_CHARS} of ${singlePage.content.length} chars. Use get_search_content({responseId:"${responseId}", urlIndex:0}) for the rest.`,
+                  hint: `Showing ${MAX_INLINE_CONTENT_CHARS} of ${singlePage.content.length} chars. Continue with get_search_content({responseId:"${responseId}", urlIndex:0, offset:${MAX_INLINE_CONTENT_CHARS}}).`,
                 }
               : {}),
           }
@@ -627,6 +743,7 @@ export function createWebTools(deps: {
             title: page.title,
             length: page.content.length,
           })),
+          failures,
           ...(responseId
             ? {
                 hint: `${pages.length} URLs fetched. Use get_search_content({responseId:"${responseId}", urlIndex:N}) to read any of them.`,
@@ -638,7 +755,7 @@ export function createWebTools(deps: {
 
     get_search_content: tool({
       description:
-        'Read a full page body stashed by an earlier web_search or fetch_content call, identified by its responseId. Use this instead of re-searching when you already have a handle.',
+        'Read a bounded page chunk stashed by an earlier web_search or fetch_content call, identified by its responseId. Follow nextOffset until truncated is false. Use this instead of re-searching when you already have a handle.',
       inputSchema: getSearchContentInputSchema,
       execute: async (input) => {
         const stored = loadRetrieval(deps.sql, input.responseId)
@@ -667,7 +784,7 @@ export function createWebTools(deps: {
               })),
             }
           }
-          return { ok: true, ...page }
+          return pageContentChunk(page, input)
         }
 
         const hit =
@@ -702,7 +819,7 @@ export function createWebTools(deps: {
               })),
             }
           }
-          return { ok: true, ...page }
+          return pageContentChunk(page, input)
         }
 
         return {
