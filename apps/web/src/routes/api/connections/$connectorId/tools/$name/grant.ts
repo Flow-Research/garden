@@ -15,7 +15,8 @@ import {
   unauthorized,
 } from '@/lib/server/control-plane'
 import { schema } from '@/lib/server/db'
-import { getPostHogClient } from '@/lib/posthog-server'
+import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
+import { capturePostHogEvent } from '@/lib/posthog-server'
 
 type PermissionTrustLevel = 'auto' | 'allow' | 'ask'
 
@@ -183,10 +184,10 @@ export const Route = createFileRoute(
           )
         }
 
-        const posthog = getPostHogClient()
-        posthog.capture({
+        capturePostHogEvent(appContext, {
           distinctId: session.user.id,
-          event: 'tool_permission_granted',
+          event: GARDEN_ANALYTICS_EVENTS.toolPermissionGranted,
+          workspaceId,
           properties: {
             connector_id: params.connectorId,
             tool_name: params.name,
@@ -194,7 +195,6 @@ export const Route = createFileRoute(
             trust_level: payloadResult.value.trustLevel,
           },
         })
-        await posthog.flush()
         return Response.json({ ok: true })
       },
     },

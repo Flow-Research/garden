@@ -8,7 +8,9 @@ import {
   toAutomationRun,
 } from '@/lib/server/automations'
 import { notFound, requireWorkspaceAccess } from '@/lib/server/control-plane'
-import { getPostHogClient } from '@/lib/posthog-server'
+import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
+import { capturePostHogEvent } from '@/lib/posthog-server'
+import { requireAppRequestContext } from '@/lib/server/context'
 import {
   parseJsonBody,
   triggerAutomationBodySchema,
@@ -17,7 +19,8 @@ import {
 export const Route = createFileRoute('/api/automations/$id/trigger')({
   server: {
     handlers: {
-      POST: async ({ request, params }) => {
+      POST: async ({ context, request, params }) => {
+        const appContext = requireAppRequestContext(context)
         const automationResult = await requireAutomation(appEnv, params.id)
         if (automationResult.isErr())
           return automationErr(automationResult.error)
@@ -46,16 +49,17 @@ export const Route = createFileRoute('/api/automations/$id/trigger')({
         })
         if (dispatchResult.isErr()) return automationErr(dispatchResult.error)
 
-        const posthog = getPostHogClient()
-        posthog.capture({
+        capturePostHogEvent(appContext, {
           distinctId: access.session.user.id,
-          event: 'automation_triggered',
+          event: GARDEN_ANALYTICS_EVENTS.automationTriggered,
+          workspaceId: automation.workspaceId,
           properties: {
             automation_id: automation.id,
+            run_id: dispatchResult.value.id,
             source: bodyResult.value.source ?? 'manual',
+            outcome: dispatchResult.value.status,
           },
         })
-        await posthog.flush()
         return automationOk(toAutomationRun(dispatchResult.value), 202)
       },
     },

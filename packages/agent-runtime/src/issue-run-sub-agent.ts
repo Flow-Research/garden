@@ -26,11 +26,16 @@ import { getPooledDb } from '@garden/db/runtime'
 import { classifyConnectorError } from '@garden/core/connectors/errors'
 import { createGardenLogger } from '@garden/observability/logger'
 import {
+  GARDEN_ANALYTICS_EVENTS,
+  type GardenAnalyticsEventName,
+} from '@garden/observability/analytics/events'
+import {
   derivePermissions,
   type AgentPermissions,
 } from '@garden/core/agents/permissions'
 import { formatIssueIdentifier } from '@garden/core/issues/identifier'
 import {
+  LIVE_RUN_STATUSES,
   isLiveIssueRunStatus,
   nextIssueStatusForRunStatus,
 } from '@garden/core/issues/run-sync'
@@ -66,6 +71,7 @@ import {
 } from './agent-tools/update-plan'
 import { assembleFoundationPrompt } from './prompt'
 import { createAgentModel } from './model'
+import { AiObservation } from './ai-observation'
 import {
   classifyGardenContextOverflow,
   configureThinkCompaction,
@@ -98,6 +104,9 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   DISCORD_BOT_TOKEN?: string
   AI: Ai
   AI_GATEWAY_ID?: string
+  ENVIRONMENT?: string
+  VITE_PUBLIC_POSTHOG_HOST?: string
+  VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
   FILES: R2Bucket
   LOADER: WorkerLoader
   Sandbox: DurableObjectNamespace<SandboxDO>
@@ -282,6 +291,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   private resolutionActions = new Set<IssueRunResolutionAction>()
   private currentPermissions: AgentPermissions | null = null
   private aggUsage: IssueRunUsage | null = null
+  private readonly aiObservation = new AiObservation(this.ctx, this.env)
   private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
     getController: () => this.getMcpController(),
     fullSyncIntervalMs: mcpRuntimeConfig.connectorFullSyncIntervalMs,
@@ -303,6 +313,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   getModel(): LanguageModel {
     return createAgentModel({
       ai: this.env.AI,
+      env: this.env,
       gatewayId: this.env.AI_GATEWAY_ID,
     })
   }
@@ -385,6 +396,19 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     this.currentPermissions = loadedResult.value.permissions
     this.resolutionActions.clear()
     this.aggUsage = null
+    this.aiObservation.startTurn(
+      {
+        runtimeKind: 'issue_run',
+        distinctId: loadedResult.value.runState.agentOwnerUserId,
+        workspaceId: loadedResult.value.runState.workspaceId,
+        agentId: loadedResult.value.runState.agentId,
+        issueId: loadedResult.value.runState.issueId,
+        runId,
+        traceId: runId,
+        sessionId: `issue-run:${runId}`,
+      },
+      ctx,
+    )
     issueRunLogger.info('issue_run.turn.started', {
       userId: loadedResult.value.runState.agentOwnerUserId,
       workspaceId: loadedResult.value.runState.workspaceId,
@@ -412,6 +436,12 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     )
 
     return {
+      model: createAgentModel({
+        ai: this.env.AI,
+        env: this.env,
+        gatewayId: this.env.AI_GATEWAY_ID,
+        tracing: this.aiObservation.modelTracing(),
+      }),
       experimental_telemetry: {
         functionId: THINK_TURN_TELEMETRY_FUNCTION_ID,
         isEnabled: true,
@@ -458,6 +488,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     const gateResult = this.assertToolAllowed(ctx.toolName)
     if (gateResult.isErr()) throw gateResult.error
 
+    this.aiObservation.beforeToolCall(ctx)
     issueRunLogger.info('issue_run.tool.started', {
       userId: run.agentOwnerUserId,
       workspaceId: run.workspaceId,
@@ -538,6 +569,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         tool: ctx.toolName,
       })
     }
+    this.aiObservation.afterToolCall(ctx)
   }
 
   /**
@@ -581,6 +613,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async onStepFinish(ctx: StepContext) {
+    this.aiObservation.stepFinished(ctx)
     const runId = this.currentRunId
     if (!runId) return
 
@@ -638,6 +671,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
           })
         }
       }
+      this.aiObservation.finishTurn(result)
       this.clearTurnState()
       return
     }
@@ -653,6 +687,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
           runId,
         })
       }
+      this.aiObservation.finishTurn(result)
       this.clearTurnState()
       return
     }
@@ -676,6 +711,25 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       )
     }
 
+    const finalStatusResult = await this.readRunStatus(runId)
+    if (finalStatusResult.isOk()) {
+      const finalStatus = finalStatusResult.value
+      if (finalStatus === 'succeeded') {
+        this.aiObservation.captureProduct(
+          GARDEN_ANALYTICS_EVENTS.issueRunCompleted,
+          { status: finalStatus },
+        )
+      } else if (
+        finalStatus === 'waiting_for_input' ||
+        finalStatus === 'waiting_for_approval'
+      ) {
+        this.aiObservation.captureProduct(
+          GARDEN_ANALYTICS_EVENTS.issueRunWaiting,
+          { status: finalStatus },
+        )
+      }
+    }
+    this.aiObservation.finishTurn(result)
     this.clearTurnState()
   }
 
@@ -999,11 +1053,34 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     })
   }
 
+  private captureRunProduct(
+    run: IssueRunToolState,
+    event: GardenAnalyticsEventName,
+    properties: Record<string, unknown>,
+  ) {
+    this.aiObservation.captureProductFor(
+      {
+        runtimeKind: 'issue_run',
+        distinctId: run.agentOwnerUserId,
+        workspaceId: run.workspaceId,
+        agentId: run.agentId,
+        issueId: run.issueId,
+        runId: run.runId,
+        traceId: run.runId,
+        sessionId: `issue-run:${run.runId}`,
+      },
+      event,
+      properties,
+    )
+  }
+
   private getIssueToolContext(): IssueRunToolContext {
     return {
       env: this.env,
       storageSql: this.ctx.storage.sql,
       getRunState: () => this.currentRunState,
+      captureAnalytics: (event, properties) =>
+        this.aiObservation.captureProduct(event, properties),
       recordResolution: (action) => {
         if (VALID_RESOLUTION_ACTIONS.has(action)) {
           this.resolutionActions.add(action)
@@ -1654,16 +1731,24 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   ): Promise<ResultValue<void, IssueRunSubAgentError>> {
     const now = new Date()
     const result = await Result.tryPromise({
-      try: async () => {
+      try: async () =>
         await this.getDb().transaction(async (tx) => {
-          await tx
+          const [startedRun] = await tx
             .update(schema.issueRun)
             .set({
               status: 'running',
               startedAt: loaded.run.startedAt ?? now,
               updatedAt: now,
             })
-            .where(eq(schema.issueRun.id, loaded.run.id))
+            .where(
+              and(
+                eq(schema.issueRun.id, loaded.run.id),
+                eq(schema.issueRun.status, 'queued'),
+              ),
+            )
+            .returning({ id: schema.issueRun.id })
+          if (!startedRun) return false
+
           await tx
             .update(schema.issue)
             .set({
@@ -1675,11 +1760,12 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
               updatedAt: now,
             })
             .where(eq(schema.issue.id, loaded.runState.issueId))
-        })
-      },
+          return true
+        }),
       catch: (cause) => dbError('mark issue run started', cause),
     })
     if (result.isErr()) return Result.err(result.error)
+    if (!result.value) return Result.ok()
 
     const db = getIssueRunDb(this.env.HYPERDRIVE.connectionString)
     const eventResult = await appendIssueRunEvent({
@@ -1700,6 +1786,14 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       )
     }
 
+    this.captureRunProduct(
+      loaded.runState,
+      GARDEN_ANALYTICS_EVENTS.issueRunStarted,
+      {
+        trigger_source: loaded.run.triggerSource,
+        started_at: (loaded.run.startedAt ?? now).toISOString(),
+      },
+    )
     return Result.ok()
   }
 
@@ -2059,27 +2153,41 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     run: IssueRunToolState,
     reason: string,
   ): Promise<ResultValue<void, IssueRunSubAgentError>> {
-    const db = getIssueRunDb(this.env.HYPERDRIVE.connectionString)
-    const statusResult = await updateRunStatus({
-      db,
-      run,
-      status: 'cancelled',
-      error: reason,
-      finished: true,
-      resultJson: { resolution: 'cancelled', reason },
-    })
-    if (statusResult.isErr()) {
-      return Result.err(
-        new IssueRunSubAgentError({
-          code: 'database_failed',
-          message: statusResult.error.message,
-          cause: statusResult.error,
+    const now = new Date()
+    const transitionResult = await Result.tryPromise({
+      try: async () =>
+        await this.getDb().transaction(async (tx) => {
+          const [cancelledRun] = await tx
+            .update(schema.issueRun)
+            .set({
+              status: 'cancelled',
+              error: reason,
+              resultJson: { resolution: 'cancelled', reason },
+              finishedAt: now,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(schema.issueRun.id, run.runId),
+                inArray(schema.issueRun.status, LIVE_RUN_STATUSES),
+              ),
+            )
+            .returning({ id: schema.issueRun.id })
+          if (!cancelledRun) return false
+
+          await tx
+            .update(schema.issue)
+            .set({ activeRunId: null, updatedAt: now })
+            .where(eq(schema.issue.id, run.issueId))
+          return true
         }),
-      )
-    }
+      catch: (cause) => dbError('cancel issue run', cause),
+    })
+    if (transitionResult.isErr()) return Result.err(transitionResult.error)
+    if (!transitionResult.value) return Result.ok()
 
     const eventResult = await appendIssueRunEvent({
-      db,
+      db: getIssueRunDb(this.env.HYPERDRIVE.connectionString),
       run,
       eventType: 'issue_run:cancelled',
       stream: 'system',
@@ -2096,6 +2204,9 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         }),
       )
     }
+    this.captureRunProduct(run, GARDEN_ANALYTICS_EVENTS.issueRunCancelled, {
+      reason,
+    })
     return Result.ok()
   }
 
@@ -2111,9 +2222,9 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     const now = new Date()
 
     const writeResult = await Result.tryPromise({
-      try: async () => {
+      try: async () =>
         await db.transaction(async (tx) => {
-          await tx
+          const [failedRun] = await tx
             .update(schema.issueRun)
             .set({
               status: 'failed',
@@ -2122,16 +2233,25 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
               finishedAt: now,
               updatedAt: now,
             })
-            .where(eq(schema.issueRun.id, runId))
+            .where(
+              and(
+                eq(schema.issueRun.id, runId),
+                inArray(schema.issueRun.status, LIVE_RUN_STATUSES),
+              ),
+            )
+            .returning({ id: schema.issueRun.id })
+          if (!failedRun) return false
+
           await tx
             .update(schema.issue)
             .set({ activeRunId: null, updatedAt: now })
             .where(eq(schema.issue.id, run.issueId))
-        })
-      },
+          return true
+        }),
       catch: (cause) => dbError('force close failed issue run', cause),
     })
     if (writeResult.isErr()) return Result.err(writeResult.error)
+    if (!writeResult.value) return Result.ok()
 
     const eventDb = getIssueRunDb(this.env.HYPERDRIVE.connectionString)
     const eventResult = await appendIssueRunEvent({
@@ -2155,6 +2275,9 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       )
     }
 
+    this.captureRunProduct(run, GARDEN_ANALYTICS_EVENTS.issueRunFailed, {
+      reason,
+    })
     return Result.ok()
   }
 

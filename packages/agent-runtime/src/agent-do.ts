@@ -20,7 +20,11 @@
 import {
   Session,
   Think,
+  type ChatResponseResult,
   type MessageConcurrency,
+  type StepContext,
+  type ToolCallContext,
+  type ToolCallResultContext,
   type TurnConfig,
   type TurnContext,
 } from '@cloudflare/think'
@@ -49,6 +53,7 @@ import {
   type SandboxExecResult,
 } from './sandbox-debug'
 import { createAgentModel } from './model'
+import { AiObservation } from './ai-observation'
 import {
   classifyGardenContextOverflow,
   configureThinkCompaction,
@@ -90,6 +95,9 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   DISCORD_BOT_TOKEN?: string
   AI: Ai
   AI_GATEWAY_ID?: string
+  ENVIRONMENT?: string
+  VITE_PUBLIC_POSTHOG_HOST?: string
+  VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
   FILES: R2Bucket
   LOADER: WorkerLoader
   Sandbox: DurableObjectNamespace<SandboxDO>
@@ -1028,6 +1036,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   override chatRecovery = true
   override contextOverflow = createGardenContextOverflow()
   override classifyChatError = classifyGardenContextOverflow
+  private readonly aiObservation = new AiObservation(this.ctx, this.env)
   private mcpController: RuntimeMcpController | null = null
   private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
     getController: () => this.getMcpController(),
@@ -1063,6 +1072,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   getModel(): LanguageModel {
     return createAgentModel({
       ai: this.env.AI,
+      env: this.env,
       gatewayId: this.env.AI_GATEWAY_ID,
     })
   }
@@ -1283,6 +1293,35 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async beforeTurn(ctx: TurnContext) {
+    const [identity] = await this.getDb()
+      .select({
+        id: schema.chatThread.id,
+        workspaceId: schema.chatThread.workspaceId,
+        ownerUserId: schema.chatThread.ownerUserId,
+        agentId: schema.chatThread.agentId,
+      })
+      .from(schema.chatThread)
+      .where(
+        or(
+          eq(schema.chatThread.id, this.name),
+          eq(schema.chatThread.runtimeKey, this.name),
+        ),
+      )
+      .limit(1)
+    if (identity) {
+      this.aiObservation.startTurn(
+        {
+          runtimeKind: 'chat',
+          distinctId: identity.ownerUserId,
+          workspaceId: identity.workspaceId,
+          agentId: identity.agentId,
+          threadId: identity.id,
+          sessionId: `chat:${identity.id}`,
+        },
+        ctx,
+      )
+    }
+
     const mcpController = this.getMcpController()
     const captured = mcpController.captureObservedMcpToolChanges()
     if (captured.isErr()) {
@@ -1330,6 +1369,12 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     })
 
     return {
+      model: createAgentModel({
+        ai: this.env.AI,
+        env: this.env,
+        gatewayId: this.env.AI_GATEWAY_ID,
+        tracing: this.aiObservation.modelTracing(),
+      }),
       experimental_telemetry: {
         functionId: THINK_TURN_TELEMETRY_FUNCTION_ID,
         isEnabled: true,
@@ -1348,6 +1393,23 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       tools: stableMcpTools,
       activeTools,
     } satisfies TurnConfig
+  }
+
+  override async beforeToolCall(ctx: ToolCallContext) {
+    this.aiObservation.beforeToolCall(ctx)
+    return undefined
+  }
+
+  override async afterToolCall(ctx: ToolCallResultContext) {
+    this.aiObservation.afterToolCall(ctx)
+  }
+
+  override async onStepFinish(ctx: StepContext) {
+    this.aiObservation.stepFinished(ctx)
+  }
+
+  override async onChatResponse(result: ChatResponseResult) {
+    this.aiObservation.finishTurn(result)
   }
 
   override async onRequest(request: Request) {
@@ -1390,7 +1452,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         'bun --version',
         'python3 --version',
         'git --version',
-        'rg --version | head -n 1',
+        'grep --version | head -n 1',
       ].join(' && '),
       {
         cwd: '/workspace',

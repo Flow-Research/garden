@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.options.json",
+  "include": [
+    "src/lib/server/**/*.ts",
+    "src/lib/server/**/*.tsx",
+    "src/lib/auth/index.ts",
+    "src/lib/auth/instance.ts",
+    "src/lib/auth/server.ts",
+    "src/lib/posthog-server.ts",
+    "src/features/dashboard/dashboard.queries.ts",
+    "src/features/dashboard/dashboard.server.ts",
+    "worker-configuration.d.ts"
+  ],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "node_modules", "dist"],
+  "references": [{ "path": "./tsconfig.shared.json" }],
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "declarationMap": false,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": ".turbo/types/server",
+    "tsBuildInfoFile": ".turbo/tsconfig.server.tsbuildinfo"
+  }
+}

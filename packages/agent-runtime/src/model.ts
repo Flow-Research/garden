@@ -1,7 +1,11 @@
 import type { LanguageModel } from 'ai'
+import { withTracing } from '@posthog/ai/vercel'
+import { PostHog } from 'posthog-node'
 import { createWorkersAI } from 'workers-ai-provider'
+import { resolveGardenAnalyticsEnvironment } from '@garden/observability/analytics/events'
 
 const DEFAULT_AI_GATEWAY_ID = 'garden-staging'
+const DEFAULT_POSTHOG_HOST = 'https://us.i.posthog.com'
 
 export type AgentModelProvider = 'workers-ai'
 
@@ -17,34 +21,49 @@ export type AgentModelProfile = {
   id: string
   provider: AgentModelProvider
   compaction: AgentModelCompactionPolicy
+  pricePerToken: {
+    cacheReadInput: number
+    input: number
+    output: number
+  }
+}
+
+export type AgentModelTracing = {
+  distinctId: string
+  traceId: string
+  workspaceId: string
+  properties: Record<string, unknown>
+  waitUntil: (promise: Promise<unknown>) => void
 }
 
 type AgentModelConfig = {
   ai: Ai
+  env?: {
+    ENVIRONMENT?: string
+    VITE_PUBLIC_POSTHOG_HOST?: string
+    VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
+  }
   gatewayId?: string
   profile?: AgentModelProfile
+  tracing?: AgentModelTracing
 }
 
 const PI_DEFAULT_RESPONSE_RESERVE_TOKENS = 16_384
 const PI_DEFAULT_COMPACTION_TAIL_TOKENS = 20_000
 
-/**
- * Builds the pi-style context management policy for a model profile: compact
- * when context exceeds model window minus response reserve, while preserving a
- * recent tail verbatim. Keeping this policy construction separate from the
- * concrete model id makes future model swaps a registry update instead of a
- * runtime rewrite. Source: pi `docs/compaction.md`.
- */
-function createPiStyleCompactionPolicy(
+const createPiStyleCompactionPolicy = (
   contextWindowTokens: number,
-): AgentModelCompactionPolicy {
-  return {
-    responseReserveTokens: PI_DEFAULT_RESPONSE_RESERVE_TOKENS,
-    tailTokenBudgetTokens: PI_DEFAULT_COMPACTION_TAIL_TOKENS,
-    thresholdTokens: contextWindowTokens - PI_DEFAULT_RESPONSE_RESERVE_TOKENS,
-  }
-}
+): AgentModelCompactionPolicy => ({
+  responseReserveTokens: PI_DEFAULT_RESPONSE_RESERVE_TOKENS,
+  tailTokenBudgetTokens: PI_DEFAULT_COMPACTION_TAIL_TOKENS,
+  thresholdTokens: contextWindowTokens - PI_DEFAULT_RESPONSE_RESERVE_TOKENS,
+})
 
+/**
+ * Single source of truth for model IDs, compaction, and point-in-time pricing.
+ * Prices are USD per token for Cloudflare Workers AI Kimi K2.7 Code as of
+ * 2026-07-19: $0.95/M input, $4/M output, $0.19/M cached input.
+ */
 export const agentModelProfiles = {
   kimiK27CodeWorkersAi: {
     contextWindowTokens: 262_144,
@@ -52,28 +71,64 @@ export const agentModelProfiles = {
     id: '@cf/moonshotai/kimi-k2.7-code',
     provider: 'workers-ai',
     compaction: createPiStyleCompactionPolicy(262_144),
+    pricePerToken: {
+      input: 0.00000095,
+      output: 0.000004,
+      cacheReadInput: 0.00000019,
+    },
   },
 } as const satisfies Record<string, AgentModelProfile>
 
-export type AgentModelProfileKey = keyof typeof agentModelProfiles
-
-const DEFAULT_AGENT_MODEL_PROFILE_KEY = 'kimiK27CodeWorkersAi'
+export const DEFAULT_AGENT_MODEL_PROFILE =
+  agentModelProfiles.kimiK27CodeWorkersAi
 
 export function getDefaultAgentModelProfile(): AgentModelProfile {
-  return agentModelProfiles[DEFAULT_AGENT_MODEL_PROFILE_KEY]
+  return DEFAULT_AGENT_MODEL_PROFILE
 }
 
 /**
- * Creates the Garden runtime model from a profile. Today all runtime agents use
- * Workers AI Kimi K2.7 Code; callers can pass a different profile later without
- * touching compaction or context-overflow plumbing.
+ * Creates Garden's Cloudflare Workers AI model. When a Think turn supplies
+ * tracing identity, PostHog's official AI SDK 6 wrapper captures generations,
+ * streaming output, tools, usage, latency, and provider failures. The wrapper
+ * uses queued capture with the edge client's Cloudflare scheduler, keeping
+ * PostHog network work off the model stream's completion path.
  */
 export function createAgentModel(config: AgentModelConfig): LanguageModel {
-  const profile = config.profile ?? getDefaultAgentModelProfile()
+  const profile = config.profile ?? DEFAULT_AGENT_MODEL_PROFILE
   const workersai = createWorkersAI({
     binding: config.ai,
     gateway: { id: config.gatewayId ?? DEFAULT_AI_GATEWAY_ID },
   })
+  const model = workersai(profile.id)
+  const token = config.env?.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?.trim()
+  if (!token || !config.tracing) return model
 
-  return workersai(profile.id)
+  const posthog = new PostHog(token, {
+    host: config.env?.VITE_PUBLIC_POSTHOG_HOST ?? DEFAULT_POSTHOG_HOST,
+    flushAt: 1,
+    flushInterval: 0,
+    waitUntil: config.tracing.waitUntil,
+    waitUntilDebounceMs: 0,
+  })
+
+  return withTracing(model, posthog, {
+    posthogDistinctId: config.tracing.distinctId,
+    posthogTraceId: config.tracing.traceId,
+    posthogGroups: { workspace: config.tracing.workspaceId },
+    posthogProperties: {
+      environment: resolveGardenAnalyticsEnvironment({
+        environment: config.env?.ENVIRONMENT,
+      }),
+      workspace_id: config.tracing.workspaceId,
+      ...config.tracing.properties,
+    },
+    posthogPrivacyMode: false,
+    posthogCaptureImmediate: false,
+    posthogModelOverride: profile.id,
+    posthogProviderOverride: 'workersai.chat',
+    posthogCostOverride: {
+      inputCost: profile.pricePerToken.input,
+      outputCost: profile.pricePerToken.output,
+    },
+  })
 }

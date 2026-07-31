@@ -25,7 +25,7 @@
   },
   "devDependencies": {
     "@garden/tsconfig": "workspace:*",
-    "typescript": "catalog:",
+    "@typescript/native": "catalog:",
     "vitest": "catalog:"
   }
 }

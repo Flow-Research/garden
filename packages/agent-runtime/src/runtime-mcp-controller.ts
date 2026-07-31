@@ -22,6 +22,8 @@ import {
   guardedMcpToolDescription,
 } from '@garden/connectors/capabilities'
 import * as schema from '@garden/db/schema'
+import { captureGardenAnalyticsEvent } from '@garden/observability/analytics/client'
+import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { upsertPermissionRequestInbox } from '@garden/db/inbox'
 import {
   extractThreadIdFromAgentName,
@@ -87,6 +89,9 @@ export type McpHostEnv = {
   GITHUB_APP_ID?: string
   GITHUB_CLIENT_ID?: string
   GITHUB_APP_PRIVATE_KEY?: string
+  ENVIRONMENT?: string
+  VITE_PUBLIC_POSTHOG_HOST?: string
+  VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
 }
 
 export type McpRegistration =
@@ -142,7 +147,10 @@ export type McpClientFacade = {
 export type McpHost = {
   readonly name: string
   readonly env: McpHostEnv
-  readonly ctx: { storage: { sql: SqlStorage } }
+  readonly ctx: {
+    storage: { sql: SqlStorage }
+    waitUntil?: (promise: Promise<unknown>) => void
+  }
   readonly mcp: McpClientFacade
   readonly getServerStates?: () => RuntimeMcpServerStates
   addRpcMcpServer?: (input: {
@@ -913,6 +921,7 @@ export class RuntimeMcpController {
           workspaceId: identityResult.value.workspaceId,
           requestId,
         })
+        return requestId
       },
       catch: (cause) =>
         new RuntimeMcpError({
@@ -924,6 +933,44 @@ export class RuntimeMcpController {
         }),
     })
     if (insertResult.isErr()) return insertResult
+
+    const analyticsTask = Result.tryPromise({
+      try: async () =>
+        await captureGardenAnalyticsEvent(this.host.env, {
+          distinctId: identityResult.value.userId,
+          event: GARDEN_ANALYTICS_EVENTS.approvalRequested,
+          workspaceId: identityResult.value.workspaceId,
+          properties: {
+            approval_id: insertResult.value,
+            approval_kind: 'connector_write',
+            connector_id: args.connectorId,
+            tool_name: args.toolName,
+            tool_call_id: args.toolCallId,
+            capability_id: capability.id,
+            risk_class: capability.riskClass,
+            issue_id: identityResult.value.issueId,
+            run_id: identityResult.value.runId,
+            agent_id: identityResult.value.agentId,
+            tool_args: args.toolArgs,
+          },
+        }),
+      catch: (cause) => cause,
+    }).then((result) => {
+      if (result.isErr()) {
+        console.warn('[agent-runtime] failed to capture approval request', {
+          error:
+            result.error instanceof Error
+              ? result.error.message
+              : String(result.error),
+          approvalId: insertResult.value,
+        })
+      }
+    })
+    if (this.host.ctx.waitUntil) {
+      this.host.ctx.waitUntil(analyticsTask)
+    } else {
+      void analyticsTask
+    }
 
     return Result.ok(true)
   }

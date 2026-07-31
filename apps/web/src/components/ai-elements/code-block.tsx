@@ -185,6 +185,10 @@ export const highlightCode = (
   // oxlint-disable-next-line eslint-plugin-promise(prefer-await-to-callbacks)
   callback?: (result: TokenizedCode) => void
 ): TokenizedCode | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
   const tokensCacheKey = getTokensCacheKey(code, language);
 
   // Return cached result if available

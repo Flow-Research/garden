@@ -16,7 +16,8 @@ import {
   requireWorkspaceContext,
   toIssue,
 } from '@/lib/server/control-plane'
-import { getPostHogClient } from '@/lib/posthog-server'
+import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
+import { capturePostHogEvent } from '@/lib/posthog-server'
 
 export const Route = createFileRoute('/api/issues')({
   server: {
@@ -146,10 +147,10 @@ export const Route = createFileRoute('/api/issues')({
             if (startResult.isErr()) console.error(startResult.error.message)
           })
         }
-        const posthog = getPostHogClient()
-        posthog.capture({
+        capturePostHogEvent(appContext, {
           distinctId: session.user.id,
-          event: 'issue_created',
+          event: GARDEN_ANALYTICS_EVENTS.issueCreated,
+          workspaceId,
           properties: {
             issue_id: issue.id,
             status: issue.status,
@@ -167,7 +168,6 @@ export const Route = createFileRoute('/api/issues')({
             ),
           },
         })
-        await posthog.flush()
         return Response.json(issue, { status: 201 })
       },
     },

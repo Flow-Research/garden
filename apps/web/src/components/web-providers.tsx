@@ -3,9 +3,11 @@ import { ThemeProvider } from '@garden/ui/components/common/theme-provider'
 import { Toaster } from '@garden/ui/components/ui/sonner'
 import { WebNavigationProvider } from '@/platform/navigation'
 import { api, configureApi } from '@/lib/api'
+import { resetPostHogIdentity } from '@/lib/posthog-browser'
 
 function redirectToLogin() {
   if (typeof window !== 'undefined') {
+    resetPostHogIdentity()
     window.location.replace('/login')
   }
 }
