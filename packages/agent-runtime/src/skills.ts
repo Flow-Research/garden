@@ -8,21 +8,9 @@ import {
 } from '@garden/core/skills'
 import { getPooledDb } from '@garden/db/runtime'
 import * as schema from '@garden/db/schema'
+import { workspaceSkillR2Prefix } from './skill-storage-paths'
 
-const WORKSPACE_SKILL_R2_PREFIX = 'agent-skills/workspaces'
 const BUILTIN_SKILL_R2_PREFIX = 'builtin-skills'
-
-export function workspaceSkillR2Prefix(workspaceId: string) {
-  return `${WORKSPACE_SKILL_R2_PREFIX}/${workspaceId}/`
-}
-
-export function workspaceSkillObjectKey(input: {
-  workspaceId: string
-  slug: string
-  path: string
-}) {
-  return `${workspaceSkillR2Prefix(input.workspaceId)}${input.slug}/${input.path}`
-}
 
 export type RuntimeSkillSubject =
   | { readonly kind: 'chat'; readonly id: string }
