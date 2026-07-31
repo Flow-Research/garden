@@ -1,4 +1,4 @@
-import { MessageSquare, Mail, FileText, Search, Sparkles, Bot } from 'lucide-react'
+import { MessageSquare, Mail, FileText, Sparkles, Bot } from 'lucide-react'
 import { cn } from '@garden/ui/lib/utils'
 
 type ConnectorId =
@@ -6,7 +6,6 @@ type ConnectorId =
   | 'slack'
   | 'gmail'
   | 'google_drive'
-  | 'exa_search'
   | 'manual'
   | 'agent'
 
@@ -24,17 +23,23 @@ function GithubIcon(props: React.SVGProps<SVGSVGElement>) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <path d="M9 18c-4.51 2-5-2-7-2" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M9 18c-4.51 2-5-2-7-2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }
 
-const ICONS: Record<ConnectorId, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
+const ICONS: Record<
+  ConnectorId,
+  React.ComponentType<React.SVGProps<SVGSVGElement>>
+> = {
   github: GithubIcon,
   slack: MessageSquare,
   gmail: Mail,
   google_drive: FileText,
-  exa_search: Search,
   manual: Sparkles,
   agent: Bot,
 }
