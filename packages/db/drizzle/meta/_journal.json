@@ -281,6 +281,27 @@
       "when": 1783706020767,
       "tag": "0039_sloppy_morgan_stark",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1784207415438,
+      "tag": "0040_supreme_may_parker",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1784534347273,
+      "tag": "0041_colorful_lucky_pierre",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1784983205204,
+      "tag": "0042_serious_starjammers",
+      "breakpoints": true
     }
   ]
 }

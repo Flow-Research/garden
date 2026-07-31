@@ -1,0 +1,28 @@
+{
+  "extends": "./tsconfig.options.json",
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": [
+    "src/lib/server/**",
+    "src/lib/auth/index.ts",
+    "src/lib/auth/instance.ts",
+    "src/lib/auth/server.ts",
+    "src/lib/posthog-server.ts",
+    "src/features/dashboard/dashboard.server.ts",
+    "src/server.ts",
+    "src/start.ts",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "node_modules",
+    "dist",
+    ".tanstack",
+    ".output"
+  ],
+  "references": [
+    { "path": "./tsconfig.shared.json" },
+    { "path": "./tsconfig.server.json" }
+  ],
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": ".turbo/tsconfig.client.tsbuildinfo"
+  }
+}

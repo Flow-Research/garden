@@ -72,7 +72,10 @@ import { cn } from '@garden/ui/lib/utils'
 import { api } from '@/lib/api'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
-import { useSkillsBrowseStore, useSkillEditorStore } from '@garden/app-state/skills'
+import {
+  useSkillsBrowseStore,
+  useSkillEditorStore,
+} from '@garden/app-state/skills'
 import { skillListOptions, workspaceKeys } from '@/lib/workspace/queries'
 
 import { FileTree } from './file-tree'
@@ -180,7 +183,7 @@ export default function SkillsPage({
   const createMutation = useMutation({
     mutationFn: (data: CreateSkillRequest) => api.createSkill(data),
     onSuccess: (skill) => {
-      qc.setQueryData(['skill', skill.id], skill)
+      qc.setQueryData(workspaceKeys.skill(wsId, skill.id), skill)
       qc.invalidateQueries({ queryKey: workspaceKeys.skills(wsId) })
       setSelectedSkillId(skill.id)
       toast.success('Skill created')
@@ -193,7 +196,7 @@ export default function SkillsPage({
   const importMutation = useMutation({
     mutationFn: (url: string) => api.importSkill({ url }),
     onSuccess: async (skill) => {
-      qc.setQueryData(['skill', skill.id], skill)
+      qc.setQueryData(workspaceKeys.skill(wsId, skill.id), skill)
       await qc.invalidateQueries({ queryKey: workspaceKeys.skills(wsId) })
       setSelectedSkillId(skill.id)
       resetBrowseStore()
@@ -208,7 +211,7 @@ export default function SkillsPage({
     mutationFn: ({ id, data }: { id: string; data: UpdateSkillRequest }) =>
       api.updateSkill(id, data),
     onSuccess: (updated) => {
-      qc.setQueryData(['skill', updated.id], updated)
+      qc.setQueryData(workspaceKeys.skill(wsId, updated.id), updated)
       qc.invalidateQueries({ queryKey: workspaceKeys.skills(wsId) })
       toast.success('Saved')
     },
@@ -224,7 +227,7 @@ export default function SkillsPage({
         const remaining = skills.filter((s) => s.id !== id)
         setSelectedSkillId(remaining[0]?.id ?? '')
       }
-      qc.removeQueries({ queryKey: ['skill', id] })
+      qc.removeQueries({ queryKey: workspaceKeys.skill(wsId, id) })
       qc.invalidateQueries({ queryKey: workspaceKeys.skills(wsId) })
       toast.success('Skill deleted')
     },
@@ -239,7 +242,7 @@ export default function SkillsPage({
       return api.importSkill({ url: skill.source_url })
     },
     onSuccess: async (skill) => {
-      qc.setQueryData(['skill', skill.id], skill)
+      qc.setQueryData(workspaceKeys.skill(wsId, skill.id), skill)
       await qc.invalidateQueries({ queryKey: workspaceKeys.skills(wsId) })
       setSelectedSkillId(skill.id)
       toast.success('Synced')
@@ -352,9 +355,10 @@ function SkillWorkspace({
   onReinstall: () => Promise<unknown>
   isReinstalling: boolean
 }) {
+  const wsId = useWorkspaceId()
   const fullSkillQuery = useQuery({
-    queryKey: ['skill', skill?.id ?? ''],
-    queryFn: () => api.getSkill(skill!.id),
+    queryKey: workspaceKeys.skill(wsId, skill?.id ?? ''),
+    queryFn: ({ signal }) => api.getSkill(skill!.id, signal),
     enabled: Boolean(skill?.id),
     staleTime: Infinity,
   })
@@ -829,7 +833,7 @@ function BrowseSearchScreen({
 
   const searchResults = useQuery({
     queryKey: ['skills.sh-search', searchQuery],
-    queryFn: () => api.searchSkills(searchQuery, 10),
+    queryFn: ({ signal }) => api.searchSkills(searchQuery, 10, signal),
     enabled: searchQuery.length >= 2,
     staleTime: 60_000,
     gcTime: 5 * 60_000,
@@ -969,7 +973,7 @@ function SkillPreviewPage({
 
   const preview = useQuery({
     queryKey: ['skills.sh-preview', url],
-    queryFn: () => api.previewSkill(url),
+    queryFn: ({ signal }) => api.previewSkill(url, signal),
     staleTime: 5 * 60_000,
     gcTime: 10 * 60_000,
   })
@@ -1157,7 +1161,7 @@ function AuthorSkillPanel({
   const [submitting, setSubmitting] = useState(false)
 
   const handleSubmit = async () => {
-    if (!name.trim() || submitting) return
+    if (!name.trim() || !description.trim() || submitting) return
     setSubmitting(true)
     await onCreate({
       name: name.trim(),
@@ -1229,7 +1233,7 @@ function AuthorSkillPanel({
           <Button
             size="sm"
             onClick={handleSubmit}
-            disabled={!name.trim() || submitting}
+            disabled={!name.trim() || !description.trim() || submitting}
           >
             {submitting ? 'Creating' : 'Create'}
           </Button>

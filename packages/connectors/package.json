@@ -8,22 +8,25 @@
     "test": "vitest run",
     "lint": "oxlint -c ../../.oxlintrc.json .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix .",
-    "verify:coverage": "node --experimental-strip-types scripts/verify-connector-coverage.ts",
-    "check:github-mcp": "node ../../scripts/run-with-root-env.mjs node --experimental-strip-types scripts/check-github-mcp.ts"
+    "verify:coverage": "node --experimental-strip-types scripts/verify-connector-coverage.ts"
   },
   "exports": {
     ".": "./src/registry.ts",
     "./capabilities": "./src/capabilities.ts",
     "./registry": "./src/registry.ts",
     "./oauth": "./src/oauth.ts",
-    "./proxy-jwt": "./src/proxy-jwt.ts",
     "./discord": "./src/discord/connector.ts",
+    "./discord/install": "./src/discord/install.ts",
     "./discord/rest-client": "./src/discord/rest-client.ts",
     "./discord/services": "./src/discord/services.ts",
     "./discord/tools": "./src/discord/tools.ts",
     "./effect/errors": "./src/effect/errors.ts",
     "./effect/native": "./src/effect/native.ts",
     "./github": "./src/github/connector.ts",
+    "./github/mcp-client": "./src/github/mcp-client.ts",
+    "./github/mcp-tools": "./src/github/mcp-tools.ts",
+    "./github/rest-client": "./src/github/rest-client.ts",
+    "./github/tools": "./src/github/tools.ts",
     "./github-app": "./src/github-app.ts",
     "./sdk": "./src/sdk.ts"
   },
@@ -33,7 +36,8 @@
   "devDependencies": {
     "@effect/vitest": "catalog:",
     "@garden/tsconfig": "workspace:*",
-    "typescript": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native": "catalog:",
     "vitest": "catalog:"
   }
 }

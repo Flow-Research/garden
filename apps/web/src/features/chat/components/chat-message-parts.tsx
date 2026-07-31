@@ -49,21 +49,14 @@ import {
   type DocumentCitationAnnotation,
   type DocumentEditAnnotation,
 } from './chat-document-panel'
-import {
-  PreResponseWrapper,
-  StreamingWorkEntryRow,
-} from './chat-tool-activity'
+import { PreResponseWrapper, StreamingWorkEntryRow } from './chat-tool-activity'
 import {
   DocumentEditCard,
   applyOptimisticResolutionToOpenDocx,
 } from './chat-tracked-edits'
-import {
-  GardenDocDownloadBlock,
-  renderArtifactPart,
-} from './chat-artifacts'
+import { GardenDocDownloadBlock, renderArtifactPart } from './chat-artifacts'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
 
 export function MessageSources({ message }: { message: ChatUiMessage }) {
   const sourcePart = message.parts.find(
@@ -183,7 +176,9 @@ function DocumentEditCardsSection({
   return (
     <div className="mt-2.5 overflow-hidden rounded-lg border border-border bg-card">
       <div className="flex items-center gap-2 px-3 pt-2.5">
-        <p className="text-xs font-medium text-foreground/80">Tracked Changes</p>
+        <p className="text-xs font-medium text-foreground/80">
+          Tracked Changes
+        </p>
         <p className="ml-auto text-xs text-muted-foreground">
           {pendingEdits.length} pending
         </p>
@@ -258,7 +253,10 @@ export function MessageOrderedParts({
   onResolved?: (editId: string, status: 'accepted' | 'rejected') => void
   resolvedStatuses?: DocumentEditStatusMap
 }) {
-  const nodes = buildMessageRenderModel(message, { debugMode, isLatestStreaming })
+  const nodes = buildMessageRenderModel(message, {
+    debugMode,
+    isLatestStreaming,
+  })
   if (nodes.length === 0) return null
 
   return (
@@ -277,19 +275,7 @@ export function MessageOrderedParts({
               </Reasoning>
             )
           case 'text':
-            return (
-              <MessageResponse
-                key={node.key}
-                isAnimating={node.isAnimating}
-                animated={
-                  node.isAnimating
-                    ? { animation: 'fadeIn', sep: 'word' }
-                    : false
-                }
-              >
-                {node.text}
-              </MessageResponse>
-            )
+            return <MessageResponse key={node.key}>{node.text}</MessageResponse>
           case 'work':
             return (
               <PreResponseWrapper
@@ -412,8 +398,7 @@ export function MessageCitations({
         const quotePreview = citation.quote
           .replaceAll('[[PAGE_BREAK]]', '...')
           .slice(0, 120)
-        const pageLabel =
-          citation.page != null ? ` · p.${citation.page}` : ''
+        const pageLabel = citation.page != null ? ` · p.${citation.page}` : ''
 
         return (
           <InlineCitation key={key}>

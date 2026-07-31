@@ -35,18 +35,7 @@ import * as documents from './documents'
 import * as automations from './automations'
 import { getBaseUrl, setWorkspaceHeader, setWorkspaceId } from './state'
 
-export type {
-  ConnectionAction,
-  ConnectionActivityItem,
-  ConnectionActivityResponse,
-  ConnectorCallbackEventItem,
-  ConnectorCallbackEventResponse,
-  ConnectionItem,
-  ConnectionsSnapshot,
-  ConnectionTool,
-  ConnectorStatus,
-  PermissionTrustLevel,
-} from './connections'
+export type { IntegrationAction } from './connections'
 export type { DocumentVersionItem, ThreadDocumentsResponse } from './documents'
 
 export const api = {

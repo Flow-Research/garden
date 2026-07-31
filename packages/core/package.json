@@ -21,6 +21,8 @@
     "./issues/triggers": "./src/issues/triggers.ts",
     "./issues/config": "./src/issues/config/index.ts",
     "./issues/config/status": "./src/issues/config/status.ts",
+    "./skills": "./src/skills/index.ts",
+    "./skills/*": "./src/skills/*.ts",
     "./utils": "./src/utils.ts",
     "./connectors/errors": "./src/connectors/errors.ts",
     "./constants/*": "./src/constants/*.ts"
@@ -30,11 +32,12 @@
     "@neondatabase/serverless": "^1.0.1",
     "better-result": "^2.9.2",
     "drizzle-orm": "catalog:",
+    "effect": "catalog:",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@garden/tsconfig": "workspace:*",
-    "typescript": "catalog:",
+    "@typescript/native": "catalog:",
     "vitest": "catalog:"
   }
 }

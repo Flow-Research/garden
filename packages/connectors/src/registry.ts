@@ -1,4 +1,5 @@
 import type { ConnectorSpec } from './sdk.ts'
+import discordConnector from './discord/connector'
 import githubConnector from './github/connector'
 import gmailConnector from './gmail/connector'
 import googleDriveConnector from './google-drive/connector'
@@ -15,6 +16,7 @@ import slackConnector from './slack/connector'
  * API key is not that.
  */
 export const connectorRegistry = [
+  discordConnector,
   githubConnector,
   gmailConnector,
   googleDriveConnector,

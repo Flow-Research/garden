@@ -1,5 +1,18 @@
 import type { agentSelectSchema } from '@garden/db/validation'
+import type { Skill } from '../skills/effect-schemas'
 import type { z } from 'zod'
+
+export type {
+  AgentSkill,
+  AgentSkillAssignment,
+  CreateSkillRequest,
+  SetAgentSkillsRequest,
+  Skill,
+  SkillFile,
+  SkillPreview,
+  SkillsShSearchResult,
+  UpdateSkillRequest,
+} from '../skills/effect-schemas'
 
 export type AgentRecord = z.infer<typeof agentSelectSchema>
 export type AgentRecordStatus = AgentRecord['status']
@@ -66,82 +79,7 @@ export interface UpdateAgentRequest {
   max_concurrent_tasks?: number
 }
 
-// Skills
-
-export interface Skill {
-  id: string
-  workspace_id: string
-  slug?: string
-  name: string
-  description: string
-  content: string
-  config: Record<string, unknown>
-  files: SkillFile[]
-  source_type: 'manual' | 'skills.sh' | 'builtin'
-  source_url: string | null
-  bundle_hash: string | null
-  created_by: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface SkillFile {
-  id: string
-  skill_id: string
-  path: string
-  content: string
-  content_hash?: string | null
-  r2_key?: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface AgentSkill extends Skill {
-  enabled: boolean
-}
-
-export interface AgentSkillAssignment {
-  skill_id: string
-  enabled: boolean
-}
-
-export interface CreateSkillRequest {
-  name: string
-  description?: string
-  content?: string
-  config?: Record<string, unknown>
-  files?: { path: string; content: string }[]
-}
-
-export interface UpdateSkillRequest {
-  name?: string
-  description?: string
-  content?: string
-  config?: Record<string, unknown>
-  files?: { path: string; content: string }[]
-}
-
-export interface SetAgentSkillsRequest {
-  skills: AgentSkillAssignment[]
-}
-
-export interface SkillsShSearchResult {
-  id: string
-  skill_id: string
-  name: string
-  installs: number
-  source: string
-}
-
-export interface SkillPreview {
-  name: string
-  description: string
-  slug: string
-  content: string
-  files: { path: string; content: string }[]
-  source_url: string
-  bundle_hash: string
-}
+// Skills are schema-derived from ../skills/effect-schemas.ts.
 
 export type RuntimePingStatus =
   | 'pending'

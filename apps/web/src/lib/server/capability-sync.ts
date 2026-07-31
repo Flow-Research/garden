@@ -1,8 +1,4 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
-import { Result, TaggedError } from 'better-result'
+import { Effect, Schema } from 'effect'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getConnectorById } from '@garden/connectors'
 import { isNativeConnector } from '@garden/connectors/sdk'
@@ -10,94 +6,45 @@ import {
   canonicalJsonString,
   defaultTrustLevelForRisk,
 } from '@garden/connectors/capabilities'
-import { mintMcpProxyJwt } from '@garden/connectors/proxy-jwt'
 import { getDb, schema } from './db'
 import { appEnv } from './env'
 
-const MCP_PROXY_INTERNAL_BASE_URL = 'https://garden-mcp-proxy.internal/'
+export class CapabilitySyncError extends Schema.ErrorClass<CapabilitySyncError>(
+  'CapabilitySyncError',
+)({
+  code: Schema.Literals([
+    'connector_not_found',
+    'sync_agent_not_found',
+    'tool_list_failed',
+    'unclassified_tool',
+    'database_failed',
+    'schema_hash_failed',
+  ]),
+  message: Schema.String,
+}) {}
 
-export class CapabilitySyncError extends TaggedError('CapabilitySyncError')<{
-  code:
-    | 'connector_not_found'
-    | 'sync_agent_not_found'
-    | 'tool_list_failed'
-    | 'unclassified_tool'
-    | 'database_failed'
-  message: string
-}>() {}
+const errorMessage = (cause: unknown, fallback: string) =>
+  cause instanceof Error ? cause.message : fallback
 
-async function sha256Hex(value: string) {
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(value),
-  )
+const sha256Hex = Effect.fn('CapabilitySync.sha256')(function* (value: string) {
+  const digest = yield* Effect.tryPromise({
+    try: async () =>
+      crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)),
+    catch: (cause) =>
+      new CapabilitySyncError({
+        code: 'schema_hash_failed',
+        message: errorMessage(cause, 'Failed to hash the capability schema'),
+      }),
+  })
 
   return Array.from(new Uint8Array(digest), (byte) =>
     byte.toString(16).padStart(2, '0'),
   ).join('')
-}
+})
 
-async function resolveSyncAgentId(userId: string, workspaceId: string) {
-  const db = await getDb(appEnv)
-  const ownedAgentsResult = await Result.tryPromise({
-    try: async () =>
-      db
-        .select({ id: schema.agent.id })
-        .from(schema.agent)
-        .where(
-          and(
-            eq(schema.agent.workspaceId, workspaceId),
-            eq(schema.agent.ownerUserId, userId),
-          ),
-        )
-        .limit(1),
-    catch: (cause) =>
-      new CapabilitySyncError({
-        code: 'database_failed',
-        message:
-          cause instanceof Error
-            ? cause.message
-            : 'Failed to load workspace agents for capability sync',
-      }),
-  })
-  if (ownedAgentsResult.isErr()) return ownedAgentsResult
-
-  const ownedAgent = ownedAgentsResult.value[0]
-  if (ownedAgent) {
-    return Result.ok(ownedAgent.id)
-  }
-
-  const fallbackAgentsResult = await Result.tryPromise({
-    try: async () =>
-      db
-        .select({ id: schema.agent.id })
-        .from(schema.agent)
-        .where(eq(schema.agent.workspaceId, workspaceId))
-        .limit(1),
-    catch: (cause) =>
-      new CapabilitySyncError({
-        code: 'database_failed',
-        message:
-          cause instanceof Error
-            ? cause.message
-            : 'Failed to load workspace agents for capability sync',
-      }),
-  })
-  if (fallbackAgentsResult.isErr()) return fallbackAgentsResult
-
-  const fallbackAgent = fallbackAgentsResult.value[0]
-  return fallbackAgent
-    ? Result.ok(fallbackAgent.id)
-    : Result.err(
-        new CapabilitySyncError({
-          code: 'sync_agent_not_found',
-          message:
-            'Capability sync requires at least one workspace agent to exist',
-        }),
-      )
-}
-
-async function seedDefaultPermissionGrants(args: {
+const seedDefaultPermissionGrants = Effect.fn(
+  'CapabilitySync.seedDefaultPermissionGrants',
+)(function* (args: {
   capabilities: Array<{
     id: string
     riskClass: string | null
@@ -105,12 +52,17 @@ async function seedDefaultPermissionGrants(args: {
   userId: string
   workspaceId: string
 }) {
-  if (args.capabilities.length === 0) {
-    return Result.ok(undefined)
-  }
+  if (args.capabilities.length === 0) return
 
-  const db = await getDb(appEnv)
-  const agentsResult = await Result.tryPromise({
+  const db = yield* Effect.tryPromise({
+    try: async () => getDb(appEnv),
+    catch: (cause) =>
+      new CapabilitySyncError({
+        code: 'database_failed',
+        message: errorMessage(cause, 'Failed to open the capability database'),
+      }),
+  })
+  const agents = yield* Effect.tryPromise({
     try: async () =>
       db
         .select({ id: schema.agent.id })
@@ -119,21 +71,18 @@ async function seedDefaultPermissionGrants(args: {
     catch: (cause) =>
       new CapabilitySyncError({
         code: 'database_failed',
-        message:
-          cause instanceof Error
-            ? cause.message
-            : 'Failed to load workspace agents for permission defaults',
+        message: errorMessage(
+          cause,
+          'Failed to load workspace agents for permission defaults',
+        ),
       }),
   })
-  if (agentsResult.isErr()) return agentsResult
 
-  const agentIds = agentsResult.value.map((agent) => agent.id)
-  if (agentIds.length === 0) {
-    return Result.ok(undefined)
-  }
+  const agentIds = agents.map((agent) => agent.id)
+  if (agentIds.length === 0) return
 
   const capabilityIds = args.capabilities.map((capability) => capability.id)
-  const existingGrantsResult = await Result.tryPromise({
+  const existingGrants = yield* Effect.tryPromise({
     try: async () =>
       db
         .select({
@@ -150,26 +99,20 @@ async function seedDefaultPermissionGrants(args: {
     catch: (cause) =>
       new CapabilitySyncError({
         code: 'database_failed',
-        message:
-          cause instanceof Error
-            ? cause.message
-            : 'Failed to load existing permission grants',
+        message: errorMessage(
+          cause,
+          'Failed to load existing permission grants',
+        ),
       }),
   })
-  if (existingGrantsResult.isErr()) return existingGrantsResult
 
   const existingGrantKeys = new Set(
-    existingGrantsResult.value.map(
-      (grant) => `${grant.agentId}:${grant.capabilityId}`,
-    ),
+    existingGrants.map((grant) => `${grant.agentId}:${grant.capabilityId}`),
   )
-
   const missingGrants = agentIds.flatMap((agentId) =>
     args.capabilities.flatMap((capability) => {
       const key = `${agentId}:${capability.id}`
-      if (existingGrantKeys.has(key)) {
-        return []
-      }
+      if (existingGrantKeys.has(key)) return []
 
       return [
         {
@@ -185,39 +128,49 @@ async function seedDefaultPermissionGrants(args: {
     }),
   )
 
-  if (missingGrants.length === 0) {
-    return Result.ok(undefined)
-  }
+  if (missingGrants.length === 0) return
 
-  return Result.tryPromise({
+  yield* Effect.tryPromise({
     try: async () => {
-      await db.insert(schema.permissionGrant).values(missingGrants).onConflictDoNothing()
+      await db
+        .insert(schema.permissionGrant)
+        .values(missingGrants)
+        .onConflictDoNothing()
     },
     catch: (cause) =>
       new CapabilitySyncError({
         code: 'database_failed',
-        message:
-          cause instanceof Error
-            ? cause.message
-            : 'Failed to seed default permission grants',
+        message: errorMessage(
+          cause,
+          'Failed to seed default permission grants',
+        ),
       }),
   })
-}
+})
 
-async function deleteStaleCapabilityDependencies(staleCapabilityIds: string[]) {
-  if (staleCapabilityIds.length === 0) {
-    return Result.ok(undefined)
-  }
+const deleteStaleCapabilityDependencies = Effect.fn(
+  'CapabilitySync.deleteStaleDependencies',
+)(function* (staleCapabilityIds: string[]) {
+  if (staleCapabilityIds.length === 0) return
 
-  const db = await getDb(appEnv)
-  return Result.tryPromise({
+  const db = yield* Effect.tryPromise({
+    try: async () => getDb(appEnv),
+    catch: (cause) =>
+      new CapabilitySyncError({
+        code: 'database_failed',
+        message: errorMessage(cause, 'Failed to open the capability database'),
+      }),
+  })
+  yield* Effect.tryPromise({
     try: async () => {
       await db
         .delete(schema.permissionGrant)
         .where(inArray(schema.permissionGrant.capabilityId, staleCapabilityIds))
       await db
         .delete(schema.permissionRequest)
-        .where(inArray(schema.permissionRequest.capabilityId, staleCapabilityIds))
+        .where(
+          inArray(schema.permissionRequest.capabilityId, staleCapabilityIds),
+        )
       await db
         .delete(schema.toolCallAudit)
         .where(inArray(schema.toolCallAudit.capabilityId, staleCapabilityIds))
@@ -228,13 +181,13 @@ async function deleteStaleCapabilityDependencies(staleCapabilityIds: string[]) {
     catch: (cause) =>
       new CapabilitySyncError({
         code: 'database_failed',
-        message:
-          cause instanceof Error
-            ? cause.message
-            : 'Failed to prune stale capability dependencies',
+        message: errorMessage(
+          cause,
+          'Failed to prune stale capability dependencies',
+        ),
       }),
   })
-}
+})
 
 function dedupeCapabilityRows(
   rows: Array<typeof schema.capability.$inferInsert>,
@@ -242,69 +195,13 @@ function dedupeCapabilityRows(
   return Array.from(
     rows
       .reduce(
-        (byName, row) => byName.set(row.name, row),
+        (capabilitiesByName, row) => capabilitiesByName.set(row.name, row),
         new Map<string, typeof schema.capability.$inferInsert>(),
       )
       .values(),
-  ).sort((left, right) => left.name.localeCompare(right.name))
-}
-
-function buildProxyTransport(args: {
-  connectorId: string
-  transport: 'streamable-http' | 'sse'
-  bearerToken: string
-}) {
-  const url =
-    args.transport === 'streamable-http'
-      ? new URL(`${args.connectorId}/mcp`, MCP_PROXY_INTERNAL_BASE_URL)
-      : new URL(`${args.connectorId}/sse`, MCP_PROXY_INTERNAL_BASE_URL)
-
-  const requestInit = {
-    headers: {
-      Authorization: `Bearer ${args.bearerToken}`,
-    },
-  }
-
-  const fetch: FetchLike = async (input, init) =>
-    appEnv.MCP_PROXY.fetch(new Request(input, init))
-
-  return args.transport === 'streamable-http'
-    ? new StreamableHTTPClientTransport(url, { requestInit, fetch })
-    : new SSEClientTransport(url, { requestInit, fetch })
-}
-
-async function listConnectorTools(args: {
-  connectorId: string
-  bearerToken: string
-  transport: 'streamable-http' | 'sse'
-}) {
-  const client = new Client(
-    {
-      name: 'garden-capability-sync',
-      version: '0.1.0',
-    },
-    {
-      capabilities: {},
-    },
+  ).sort((firstCapability, secondCapability) =>
+    firstCapability.name.localeCompare(secondCapability.name),
   )
-  const transport = buildProxyTransport(args)
-
-  return Result.tryPromise({
-    try: async () =>
-      client
-        .connect(transport)
-        .then(() => client.listTools())
-        .then((result) => result.tools)
-        .finally(() => client.close()),
-    catch: (cause) =>
-      new CapabilitySyncError({
-        code: 'tool_list_failed',
-        message:
-          cause instanceof Error
-            ? cause.message
-            : `Failed to list tools for ${args.connectorId}`,
-      }),
-  })
 }
 
 type CapabilityToolLike = {
@@ -314,132 +211,111 @@ type CapabilityToolLike = {
   outputSchema?: unknown
 }
 
-async function toCapabilityValue(args: {
-  connectorId: string
-  tool: CapabilityToolLike
-}) {
-  const connector = getConnectorById(args.connectorId)
-  const classification = connector?.tools[args.tool.name]
+const toCapabilityValue = Effect.fn('CapabilitySync.toCapabilityValue')(
+  function* (args: { connectorId: string; tool: CapabilityToolLike }) {
+    const connector = getConnectorById(args.connectorId)
+    const classification = connector?.tools[args.tool.name]
 
-  if (!connector || !classification) {
-    return Result.err(
-      new CapabilitySyncError({
+    if (!connector || !classification) {
+      return yield* new CapabilitySyncError({
         code: 'unclassified_tool',
         message: `Tool ${args.tool.name} is not classified in ${args.connectorId}`,
-      }),
-    )
-  }
+      })
+    }
 
-  const inputSchema = args.tool.inputSchema ?? null
+    const inputSchema = args.tool.inputSchema ?? null
+    return {
+      id: crypto.randomUUID(),
+      connectorType: args.connectorId,
+      name: args.tool.name,
+      description:
+        classification.descriptionOverride ?? args.tool.description ?? null,
+      inputSchema,
+      outputSchema: args.tool.outputSchema ?? null,
+      schemaHash: yield* sha256Hex(canonicalJsonString(inputSchema)),
+      requiredScopes: classification.requiredScopes,
+      riskClass: classification.riskClass,
+    } satisfies typeof schema.capability.$inferInsert
+  },
+)
 
-  return Result.ok({
-    id: crypto.randomUUID(),
-    connectorType: args.connectorId,
-    name: args.tool.name,
-    description:
-      classification.descriptionOverride ?? args.tool.description ?? null,
-    inputSchema,
-    outputSchema: args.tool.outputSchema ?? null,
-    schemaHash: await sha256Hex(canonicalJsonString(inputSchema)),
-    requiredScopes: classification.requiredScopes,
-    riskClass: classification.riskClass,
-  } satisfies typeof schema.capability.$inferInsert)
-}
-
-export async function syncCapabilities(
+export const syncCapabilities = Effect.fn('CapabilitySync.sync')(function* (
   connectorId: string,
   userId: string,
   workspaceId: string,
 ) {
   const connector = getConnectorById(connectorId)
   if (!connector || connector.id !== connectorId) {
-    return Result.err(
-      new CapabilitySyncError({
-        code: 'connector_not_found',
-        message: `Unknown connector: ${connectorId}`,
-      }),
-    )
+    return yield* new CapabilitySyncError({
+      code: 'connector_not_found',
+      message: `Unknown connector: ${connectorId}`,
+    })
   }
 
-  const syncAgentIdResult = await resolveSyncAgentId(userId, workspaceId)
-  if (syncAgentIdResult.isErr()) return syncAgentIdResult
-
-  const discoveredToolsResult = isNativeConnector(connector)
-    ? Result.ok([...connector.native.tools])
-    : await (async () => {
-        const tokenResult = await Result.tryPromise({
-          try: async () =>
-            mintMcpProxyJwt({
-              secret: appEnv.BETTER_AUTH_SECRET,
-              sub: userId,
-              workspaceId,
-              agentId: syncAgentIdResult.value,
-              connectorId,
-            }),
-          catch: (cause) =>
-            new CapabilitySyncError({
-              code: 'tool_list_failed',
-              message:
-                cause instanceof Error
-                  ? cause.message
-                  : `Failed to mint proxy token for ${connectorId}`,
-            }),
-        })
-        if (tokenResult.isErr()) return tokenResult
-
-        return await listConnectorTools({
-          connectorId,
-          bearerToken: tokenResult.value,
-          transport: connector.upstream.transport,
-        })
-      })()
-  if (discoveredToolsResult.isErr()) return discoveredToolsResult
+  if (!isNativeConnector(connector)) return
 
   const discoveredCapabilityRows: Array<typeof schema.capability.$inferInsert> =
     []
-  for (const tool of discoveredToolsResult.value) {
-    const capabilityResult = await toCapabilityValue({
-      connectorId,
-      tool,
-    })
-    if (capabilityResult.isErr()) return capabilityResult
-    discoveredCapabilityRows.push(capabilityResult.value)
+  const nativeToolsByName = new Map(
+    connector.native.tools.map((tool) => [tool.name, tool]),
+  )
+  for (const [toolName, classification] of Object.entries(connector.tools)) {
+    const nativeTool = nativeToolsByName.get(toolName)
+    discoveredCapabilityRows.push(
+      yield* toCapabilityValue({
+        connectorId,
+        tool: nativeTool ?? {
+          name: toolName,
+          description:
+            classification.descriptionOverride ??
+            `${connector.label} hosted MCP tool.`,
+        },
+      }),
+    )
   }
   const capabilityRows = dedupeCapabilityRows(discoveredCapabilityRows)
 
-  const db = await getDb(appEnv)
-  const upsertResult = await Result.tryPromise({
-    try: async () => {
-      for (const capability of capabilityRows) {
-        await db
-          .insert(schema.capability)
-          .values(capability)
-          .onConflictDoUpdate({
-            target: [schema.capability.connectorType, schema.capability.name],
-            set: {
-              description: capability.description,
-              inputSchema: capability.inputSchema,
-              outputSchema: capability.outputSchema,
-              schemaHash: capability.schemaHash,
-              requiredScopes: capability.requiredScopes,
-              riskClass: capability.riskClass,
-            },
-          })
-      }
-    },
+  const db = yield* Effect.tryPromise({
+    try: async () => getDb(appEnv),
     catch: (cause) =>
       new CapabilitySyncError({
         code: 'database_failed',
-        message:
-          cause instanceof Error
-            ? cause.message
-            : `Failed to upsert capabilities for ${connectorId}`,
+        message: errorMessage(cause, 'Failed to open the capability database'),
       }),
   })
-  if (upsertResult.isErr()) return upsertResult
+  yield* Effect.forEach(
+    capabilityRows,
+    (capability) =>
+      Effect.tryPromise({
+        try: async () =>
+          db
+            .insert(schema.capability)
+            .values(capability)
+            .onConflictDoUpdate({
+              target: [schema.capability.connectorType, schema.capability.name],
+              set: {
+                description: capability.description,
+                inputSchema: capability.inputSchema,
+                outputSchema: capability.outputSchema,
+                schemaHash: capability.schemaHash,
+                requiredScopes: capability.requiredScopes,
+                riskClass: capability.riskClass,
+              },
+            }),
+        catch: (cause) =>
+          new CapabilitySyncError({
+            code: 'database_failed',
+            message: errorMessage(
+              cause,
+              `Failed to upsert capabilities for ${connectorId}`,
+            ),
+          }),
+      }),
+    { concurrency: 8, discard: true },
+  )
 
   const toolNames = capabilityRows.map((capability) => capability.name)
-  const existingCapabilitiesResult = await Result.tryPromise({
+  const existingCapabilities = yield* Effect.tryPromise({
     try: async () =>
       db
         .select({
@@ -452,26 +328,20 @@ export async function syncCapabilities(
     catch: (cause) =>
       new CapabilitySyncError({
         code: 'database_failed',
-        message:
-          cause instanceof Error
-            ? cause.message
-            : `Failed to load existing capabilities for ${connectorId}`,
+        message: errorMessage(
+          cause,
+          `Failed to load existing capabilities for ${connectorId}`,
+        ),
       }),
   })
-  if (existingCapabilitiesResult.isErr()) return existingCapabilitiesResult
 
-  const staleCapabilityIds = existingCapabilitiesResult.value
+  const staleCapabilityIds = existingCapabilities
     .filter((capability) => !toolNames.includes(capability.name))
     .map((capability) => capability.id)
-
-  const staleDependencyCleanupResult =
-    await deleteStaleCapabilityDependencies(staleCapabilityIds)
-  if (staleDependencyCleanupResult.isErr()) {
-    return staleDependencyCleanupResult
-  }
+  yield* deleteStaleCapabilityDependencies(staleCapabilityIds)
 
   if (staleCapabilityIds.length > 0) {
-    const deleteResult = await Result.tryPromise({
+    yield* Effect.tryPromise({
       try: async () =>
         db
           .delete(schema.capability)
@@ -479,17 +349,16 @@ export async function syncCapabilities(
       catch: (cause) =>
         new CapabilitySyncError({
           code: 'database_failed',
-          message:
-            cause instanceof Error
-              ? cause.message
-              : `Failed to prune stale capabilities for ${connectorId}`,
+          message: errorMessage(
+            cause,
+            `Failed to prune stale capabilities for ${connectorId}`,
+          ),
         }),
     })
-    if (deleteResult.isErr()) return deleteResult
   }
 
-  const defaultGrantResult = await seedDefaultPermissionGrants({
-    capabilities: existingCapabilitiesResult.value
+  yield* seedDefaultPermissionGrants({
+    capabilities: existingCapabilities
       .filter((capability) => !staleCapabilityIds.includes(capability.id))
       .map((capability) => ({
         id: capability.id,
@@ -498,7 +367,4 @@ export async function syncCapabilities(
     userId,
     workspaceId,
   })
-  if (defaultGrantResult.isErr()) return defaultGrantResult
-
-  return Result.ok(undefined)
-}
+})

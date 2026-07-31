@@ -1,8 +1,13 @@
-import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'drizzle-zod'
+import {
+  createInsertSchema,
+  createSelectSchema,
+  createUpdateSchema,
+} from 'drizzle-zod'
 import { z } from 'zod'
 import {
   account,
   agent,
+  agentProposalRequest,
   chatThread,
   invitation,
   issue,
@@ -10,7 +15,6 @@ import {
   issueComment,
   member,
   organization,
-  permissionRequest,
   skill,
   skillFile,
   user,
@@ -170,7 +174,8 @@ export const chatThreadSelectSchema = createSelectSchema(chatThread, {
   workspaceId: () => uuidSchema,
   ownerUserId: () => uuidSchema,
   primaryIssueId: () => uuidSchema.nullable(),
-  runtimeKind: (schema) => schema.refine((value) => value === 'chat' || value === 'issue_run'),
+  runtimeKind: (schema) =>
+    schema.refine((value) => value === 'chat' || value === 'issue_run'),
   runtimeKey: () => uuidSchema,
   title: (schema) => schema.trim().min(1),
 })
@@ -180,7 +185,13 @@ export const chatThreadInsertSchema = createInsertSchema(chatThread, {
   workspaceId: () => uuidSchema,
   ownerUserId: () => uuidSchema,
   primaryIssueId: () => uuidSchema.optional().nullable(),
-  runtimeKind: (schema) => schema.optional().refine((value) => value === undefined || value === 'chat' || value === 'issue_run'),
+  runtimeKind: (schema) =>
+    schema
+      .optional()
+      .refine(
+        (value) =>
+          value === undefined || value === 'chat' || value === 'issue_run',
+      ),
   runtimeKey: () => uuidSchema.optional(),
   title: (schema) => schema.trim().min(1),
 })
@@ -190,7 +201,13 @@ export const chatThreadUpdateSchema = createUpdateSchema(chatThread, {
   workspaceId: () => uuidSchema,
   ownerUserId: () => uuidSchema,
   primaryIssueId: () => uuidSchema.optional().nullable(),
-  runtimeKind: (schema) => schema.optional().refine((value) => value === undefined || value === 'chat' || value === 'issue_run'),
+  runtimeKind: (schema) =>
+    schema
+      .optional()
+      .refine(
+        (value) =>
+          value === undefined || value === 'chat' || value === 'issue_run',
+      ),
   runtimeKey: () => uuidSchema.optional(),
   title: (schema) => schema.trim().min(1),
 })
@@ -269,7 +286,8 @@ export const issueAttachmentSelectSchema = createSelectSchema(issueAttachment, {
   workspaceId: () => uuidSchema,
   issueId: () => uuidSchema.nullable(),
   commentId: () => uuidSchema.nullable(),
-  uploaderType: (schema) => schema.refine((value) => value === 'member' || value === 'agent'),
+  uploaderType: (schema) =>
+    schema.refine((value) => value === 'member' || value === 'agent'),
   uploaderId: () => uuidSchema,
   filename: (schema) => schema.trim().min(1),
   r2Key: (schema) => schema.trim().min(1),
@@ -281,40 +299,34 @@ export const issueAttachmentInsertSchema = createInsertSchema(issueAttachment, {
   workspaceId: () => uuidSchema,
   issueId: () => uuidSchema.optional().nullable(),
   commentId: () => uuidSchema.optional().nullable(),
-  uploaderType: (schema) => schema.refine((value) => value === 'member' || value === 'agent'),
+  uploaderType: (schema) =>
+    schema.refine((value) => value === 'member' || value === 'agent'),
   uploaderId: () => uuidSchema,
   filename: (schema) => schema.trim().min(1),
   r2Key: (schema) => schema.trim().min(1),
   contentType: (schema) => schema.trim().min(1),
 })
 
-export const permissionRequestStatusValues = [
+export const agentProposalRequestStatusValues = [
   'pending',
   'approved',
   'denied',
 ] as const
-export const permissionRequestStatusSchema = z.enum(
-  permissionRequestStatusValues,
+export const agentProposalRequestStatusSchema = z.enum(
+  agentProposalRequestStatusValues,
 )
 
-export const permissionRequestKindValues = [
-  'connector_write',
-  'agent_proposal',
-] as const
-export const permissionRequestKindSchema = z.enum(permissionRequestKindValues)
-
-export const permissionRequestSelectSchema = createSelectSchema(
-  permissionRequest,
+export const agentProposalRequestSelectSchema = createSelectSchema(
+  agentProposalRequest,
   {
     id: () => uuidSchema,
     agentId: () => uuidSchema,
-    capabilityId: () => uuidSchema.nullable(),
-    issueId: () => uuidSchema,
-    runId: () => uuidSchema,
-    argsJson: () => jsonObjectSchema,
-    status: () => permissionRequestStatusSchema,
-    kind: () => permissionRequestKindSchema,
-    resolvedBy: () => uuidSchema,
+    pendingAgentId: () => uuidSchema,
+    issueId: () => uuidSchema.nullable(),
+    threadId: () => uuidSchema.nullable(),
+    argsJson: () => jsonObjectSchema.nullable(),
+    status: () => agentProposalRequestStatusSchema,
+    resolvedBy: () => uuidSchema.nullable(),
   },
 )
 

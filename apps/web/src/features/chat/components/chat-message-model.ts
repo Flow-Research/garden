@@ -59,7 +59,10 @@ export type DocumentEditItem = {
   key: string
 }
 
-export type DocumentEditStatusMap = Record<string, 'pending' | 'accepted' | 'rejected'>
+export type DocumentEditStatusMap = Record<
+  string,
+  'pending' | 'accepted' | 'rejected'
+>
 
 const EXT_TO_LANG: Record<string, string> = {
   ts: 'typescript',
@@ -214,7 +217,9 @@ export function getDocumentEditItemsFromPart(args: {
   })
 }
 
-export function inferLanguageFromFilename(filename: string | undefined | null): string | undefined {
+export function inferLanguageFromFilename(
+  filename: string | undefined | null,
+): string | undefined {
   if (!filename) return undefined
   const ext = filename.split('.').pop()?.toLowerCase()
   if (!ext) return undefined
@@ -296,7 +301,11 @@ export function toolStateLabel(state: string) {
   }
 }
 
-export function productToolLabel(toolName: string, input: unknown, output?: unknown) {
+export function productToolLabel(
+  toolName: string,
+  input: unknown,
+  output?: unknown,
+) {
   const record =
     input && typeof input === 'object' ? (input as Record<string, unknown>) : {}
   const outputRecord =
@@ -331,7 +340,6 @@ export function productToolLabel(toolName: string, input: unknown, output?: unkn
   }
 }
 
-
 /**
  * The render model for one message: an ordered, typed list of what to draw, with
  * NO React in it. Extracted from `MessageOrderedParts`, which had grown into a
@@ -343,7 +351,7 @@ export function productToolLabel(toolName: string, input: unknown, output?: unkn
  */
 type MessageRenderNode =
   | { kind: 'reasoning'; key: string; text: string; isStreaming: boolean }
-  | { kind: 'text'; key: string; text: string; isAnimating: boolean }
+  | { kind: 'text'; key: string; text: string }
   | {
       kind: 'work'
       key: string
@@ -383,10 +391,6 @@ function isRenderableArtifactPart(
  * ends. Streaming-correctness rules live here:
  *  - reasoning shimmer is driven by the part's own `state === 'streaming'`,
  *    gated by whole-message streaming so finished history never shimmers. [M1]
- *  - text type-on tracks the LAST TEXT part (not the last part overall) so a
- *    trailing source/data/tool part can't cut the animation off the final
- *    sentence; the index heuristic is only a fallback when the part carries no
- *    `state`. [M2]
  *  - a work batch is keyed by the index of its FIRST tool part — a stable key
  *    that doesn't shift as content streams in above it, so the batch no longer
  *    remounts/flickers. [M4]
@@ -397,11 +401,6 @@ export function buildMessageRenderModel(
 ): MessageRenderNode[] {
   const { debugMode, isLatestStreaming } = opts
   const nodes: MessageRenderNode[] = []
-
-  let lastTextIndex = -1
-  message.parts.forEach((part, i) => {
-    if (part.type === 'text' && (part.text ?? '').trim()) lastTextIndex = i
-  })
 
   let work: ToolActivityItem[] = []
   let workFirstIndex = -1
@@ -450,17 +449,10 @@ export function buildMessageRenderModel(
           : (part.text ?? '')
       if (!text.trim()) return
       flushWork()
-      const textState = (part as { state?: string }).state
-      const isAnimating =
-        Boolean(isLatestStreaming) &&
-        message.role === 'assistant' &&
-        (textState === 'streaming' ||
-          (textState === undefined && index === lastTextIndex))
       nodes.push({
         kind: 'text',
         key: `${message.id}:text:${index}`,
         text,
-        isAnimating,
       })
       return
     }
@@ -511,7 +503,12 @@ export function buildMessageRenderModel(
     // catch-all that flushed work for parts the renderer would drop to null.
     if (isRenderableArtifactPart(part)) {
       flushWork()
-      nodes.push({ kind: 'raw', key: `${message.id}:raw:${index}`, index, part })
+      nodes.push({
+        kind: 'raw',
+        key: `${message.id}:raw:${index}`,
+        index,
+        part,
+      })
     }
   })
 

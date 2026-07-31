@@ -162,6 +162,7 @@ const readIssueInputSchema = z
   })
   .strict();
 
+
 const updateIssueStatusInputSchema = z
   .object({
     issue_id_or_identifier: z
@@ -246,6 +247,7 @@ type CreateIssueToolResult = {
   issue_id: string;
   identifier: string;
 };
+
 
 type AssignIssueToolResult = {
   issue_id: string;
@@ -390,6 +392,7 @@ type ChatIssueIdentity = {
   workspaceId: string;
   ownerUserId: string;
   agentId: string;
+  isDefault: boolean;
   issuePrefix: string;
 };
 
@@ -486,6 +489,7 @@ async function loadChatThreadContext(context: {
           workspaceId: schema.chatThread.workspaceId,
           ownerUserId: schema.chatThread.ownerUserId,
           agentId: schema.chatThread.agentId,
+          isDefault: schema.agent.isDefault,
           issuePrefix: schema.organization.issuePrefix,
         })
         .from(schema.chatThread)
@@ -493,6 +497,7 @@ async function loadChatThreadContext(context: {
           schema.organization,
           eq(schema.organization.id, schema.chatThread.workspaceId),
         )
+        .innerJoin(schema.agent, eq(schema.agent.id, schema.chatThread.agentId))
         .where(
           or(
             eq(schema.chatThread.id, context.threadId),
@@ -545,6 +550,7 @@ async function loadChatIssueIdentity(
     workspaceId: result.value.workspaceId,
     ownerUserId: result.value.ownerUserId,
     agentId: result.value.agentId,
+    isDefault: result.value.isDefault,
     issuePrefix: result.value.issuePrefix,
   });
 }
@@ -814,6 +820,75 @@ function pendingApprovalFromEvent(event: IssueRunEventRow | null) {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function jsonModelOutput(value: unknown) {
+  return { type: "json" as const, value: value as never };
+}
+
+function textModelOutput(value: string) {
+  return { type: "text" as const, value };
+}
+
+function errorTextModelOutput(value: string) {
+  return { type: "error-text" as const, value };
+}
+
+async function documentReadModelOutput(args: {
+  context: DocumentToolContext;
+  input: unknown;
+  output: unknown;
+}) {
+  if (!isRecord(args.output)) return jsonModelOutput(args.output);
+  if (typeof args.output.error === "string") {
+    return errorTextModelOutput(args.output.error);
+  }
+  if (typeof args.output.text === "string") {
+    return textModelOutput(args.output.text);
+  }
+  if (args.output.kind !== "image") return jsonModelOutput(args.output);
+  if (!isRecord(args.input) || typeof args.input.documentId !== "string") {
+    return jsonModelOutput(args.output);
+  }
+
+  const bytesResult = await getDocumentBytes({
+    context: args.context,
+    documentId: args.input.documentId,
+  });
+  if (!bytesResult.ok || !bytesResult.bytes) {
+    return errorTextModelOutput(
+      bytesResult.ok
+        ? "Document bytes not found."
+        : (bytesResult.error ?? "Document bytes unavailable."),
+    );
+  }
+
+  const mediaType =
+    typeof args.output.media_type === "string"
+      ? args.output.media_type
+      : bytesResult.media_type;
+  const filename =
+    typeof args.output.filename === "string"
+      ? args.output.filename
+      : bytesResult.filename;
+  const data = Buffer.from(bytesResult.bytes).toString("base64");
+  return {
+    type: "content" as const,
+    value: [
+      {
+        type: "text" as const,
+        text:
+          typeof args.output.note === "string"
+            ? args.output.note
+            : `Read ${filename} (${mediaType}).`,
+      },
+      { type: "image-data" as const, data, mediaType },
+    ],
+  };
+}
+
 async function readRunPlan(args: {
   context: ReadRunToolContext;
   runId: string;
@@ -978,9 +1053,9 @@ async function createIssueFromChat(
 
 /**
  * Assigns an existing issue to either an agent or a human workspace member.
- * Agent assignment starts active work but leaves todo issues queued. Human
- * assignment stores the canonical user id, joins/notifies the assignee, and
- * cancels the prior active agent run so work does not continue under stale ownership.
+ * Agent assignment starts active work but leaves todo issues queued. Human assignment
+ * stores the canonical user id, joins/notifies the assignee, and cancels the
+ * prior active agent run so work does not continue under stale ownership.
  */
 async function assignIssueFromChat(
   context: ChatIssueToolContext,
@@ -1180,6 +1255,12 @@ async function assignIssueFromChat(
     actor: { type: "agent", id: identity.agentId },
   });
   if (startResult.isErr()) return issueToolErr(startResult.error.message);
+  const run: AssignIssueToolResult["run"] =
+    startResult.value.kind === "started"
+      ? { kind: "started", run_id: startResult.value.runId }
+      : startResult.value.kind === "resumed"
+        ? { kind: "resumed", run_id: startResult.value.runId }
+        : { kind: "skipped", reason: startResult.value.reason };
 
   const summaryResult = await readIssueService({
     databaseUrl: context.databaseUrl,
@@ -1193,12 +1274,7 @@ async function assignIssueFromChat(
     identifier: summaryResult.value.identifier,
     assignee: { type: "agent", id: assigneeAgentId },
     assignee_agent_id: assigneeAgentId,
-    run:
-      startResult.value.kind === "started"
-        ? { kind: "started", run_id: startResult.value.runId }
-        : startResult.value.kind === "resumed"
-          ? { kind: "resumed", run_id: startResult.value.runId }
-          : { kind: "skipped", reason: startResult.value.reason },
+    run,
   });
 }
 
@@ -1398,12 +1474,30 @@ async function listWorkspaceInventoryFromChat(
           includeSkills
             ? db
                 .select({ slug: schema.skill.slug })
-                .from(schema.agentSkill)
+                .from(schema.skillAssignment)
                 .innerJoin(
                   schema.skill,
-                  eq(schema.skill.id, schema.agentSkill.skillId),
+                  eq(schema.skill.id, schema.skillAssignment.skillId),
                 )
-                .where(eq(schema.agentSkill.agentId, identity.agentId))
+                .where(
+                  and(
+                    eq(
+                      schema.skillAssignment.workspaceId,
+                      identity.workspaceId,
+                    ),
+                    eq(
+                      schema.skillAssignment.targetKind,
+                      identity.isDefault ? "workspace_chat" : "agent",
+                    ),
+                    eq(
+                      schema.skillAssignment.targetId,
+                      identity.isDefault
+                        ? identity.workspaceId
+                        : identity.agentId,
+                    ),
+                    eq(schema.skillAssignment.enabled, true),
+                  ),
+                )
             : [],
           includeConnectors
             ? listAvailableConnectorBindings({
@@ -1884,13 +1978,13 @@ export function createChatSubAgentTools({
 
     readDocument: tool({
       description:
-        "Read the full text content of a document. Always call this before answering questions about, summarizing, citing, or editing a document.",
+        "Read the full content of a product attachment/document. Text documents return text. Images are lazily loaded into the model, using the same private image-data tool-result pattern as Think's workspace read tool. Always call this before answering questions about, summarizing, citing, editing, or visually inspecting an uploaded attachment.",
       inputSchema: z.object({
         documentId: z
           .string()
           .uuid()
           .describe(
-            "Internal document handle to read. Never show this value to the user.",
+            "Internal document/attachment handle to read. Never show this value to the user.",
           ),
       }),
       execute: async ({ documentId }) => {
@@ -1899,6 +1993,11 @@ export function createChatSubAgentTools({
           return { ok: false, error: "Document tools are not configured." };
         }
         return await readDocument({ context, documentId });
+      },
+      toModelOutput: async ({ input, output }) => {
+        const context = documentContext();
+        if (!context) return jsonModelOutput(output);
+        return await documentReadModelOutput({ context, input, output });
       },
     }),
 

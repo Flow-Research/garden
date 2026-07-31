@@ -63,7 +63,7 @@ import {
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { assembleFoundationPrompt } from './prompt'
 import { createSandboxTools } from './sandbox-tools'
-import { createGardenSkillSources } from './skills'
+import { loadRuntimeSkillSources } from './skills'
 import { logAgentSocketError } from './websocket-errors'
 import {
   addStepUsage,
@@ -354,18 +354,14 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       .withCachedPrompt()
   }
 
-  override async getSkills() {
-    const db = getPooledDb(this.env.HYPERDRIVE.connectionString)
-    const [run] = await db
-      .select({ agentId: schema.automationRun.agentId })
-      .from(schema.automationRun)
-      .where(eq(schema.automationRun.id, this.name))
-      .limit(1)
-
-    return createGardenSkillSources({
-      bucket: this.env.FILES,
-      agentId: run?.agentId ?? null,
-    })
+  override getSkills() {
+    return loadRuntimeSkillSources(
+      {
+        bucket: this.env.FILES,
+        databaseUrl: this.env.HYPERDRIVE.connectionString,
+      },
+      { kind: 'automation', id: this.name },
+    )
   }
 
   override getTools(): ToolSet {

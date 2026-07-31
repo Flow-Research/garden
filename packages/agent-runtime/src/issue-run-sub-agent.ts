@@ -87,7 +87,7 @@ import {
 } from './runtime-mcp-controller'
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
-import { createGardenSkillSources } from './skills'
+import { loadRuntimeSkillSources } from './skills'
 import { addStepUsage, normalizeRunUsage } from './run-usage'
 import {
   getRunWorkflowTurnCompleteEventType,
@@ -342,19 +342,14 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     await loadIssueInteractionSkillMarkdown()
   }
 
-  override async getSkills() {
-    const db = getPooledDb(this.env.HYPERDRIVE.connectionString)
-    const [run] = await db
-      .select({ agentId: schema.issueRun.agentId })
-      .from(schema.issueRun)
-      .innerJoin(schema.issue, eq(schema.issue.activeRunId, schema.issueRun.id))
-      .where(eq(schema.issue.id, this.name))
-      .limit(1)
-
-    return createGardenSkillSources({
-      bucket: this.env.FILES,
-      agentId: run?.agentId ?? null,
-    })
+  override getSkills() {
+    return loadRuntimeSkillSources(
+      {
+        bucket: this.env.FILES,
+        databaseUrl: this.env.HYPERDRIVE.connectionString,
+      },
+      { kind: 'issue', id: this.name },
+    )
   }
 
   override getTools(): ToolSet {

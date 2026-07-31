@@ -298,16 +298,7 @@ function ChatPanel({ node, panel }: PanelProps) {
 function CapabilitiesPanel({ node, panel }: PanelProps) {
   return (
     <PanelChrome node={node}>
-      <ConnectionsPage
-        focusedConnectorId={
-          panel.entityId as
-            | 'gmail'
-            | 'google-drive'
-            | 'slack'
-            | 'github'
-            | undefined
-        }
-      />
+      <ConnectionsPage focusedConnectorId={panel.entityId} />
     </PanelChrome>
   )
 }

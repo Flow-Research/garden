@@ -255,7 +255,7 @@ export function ConnectedChatPanelInteraction({
     approvalError,
     resolvingToolCallIds,
     resolvedApprovalIds,
-    resolvedPermissionRequestIds,
+    resolvedAgentProposalRequestIds,
     handleResolveToolApproval,
   } = useToolApprovals({
     sessionId,
@@ -622,7 +622,7 @@ export function ConnectedChatPanelInteraction({
                 onResolveToolApproval={handleResolveToolApproval}
                 resolvedDocumentEditStatuses={resolvedDocumentEditStatuses}
                 resolvedApprovalIds={resolvedApprovalIds}
-                resolvedPermissionRequestIds={resolvedPermissionRequestIds}
+                resolvedPermissionRequestIds={resolvedAgentProposalRequestIds}
                 resolvingToolCallIds={resolvingToolCallIds}
                 onRetry={handleRetry}
                 isRetrying={isRetrying}
