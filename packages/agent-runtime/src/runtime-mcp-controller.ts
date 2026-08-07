@@ -716,7 +716,7 @@ export class RuntimeMcpController {
   }
 
   /**
-   * Keeps the chat-side approval preflight aligned with MCP proxy defaults.
+   * Keeps the chat-side approval preflight aligned with Executor MCP defaults.
    * Before this, old workspaces with missing grant rows were forced into `ask`
    * here even though the proxy and Connections UI derive defaults from risk.
    * That created stale approval cards for read tools and blocked connector

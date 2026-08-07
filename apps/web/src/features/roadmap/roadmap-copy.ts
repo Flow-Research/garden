@@ -21,8 +21,8 @@ export const readinessGates: ReadinessGate[] = [
   { id: 'runs', label: 'Recoverable run terminal states', status: 'open' },
   {
     id: 'connectors',
-    label: 'Harnessy catalog boundary proven',
-    status: 'open',
+    label: 'Direct Executor boundary proven',
+    status: 'done',
   },
   {
     id: 'approvals',
@@ -79,11 +79,11 @@ export const launchGates: WorkItem[] = [
     links: [flo(31), gh(31)],
   },
   {
-    ref: 'ACTIVE',
-    title: 'Finish the Harnessy connector cutover',
+    ref: 'SHIPPED',
+    title: 'Run Executor directly in Garden',
     detail:
-      "Garden's connector infrastructure is going away. Harnessy owns the catalog, installation, authentication, and execution. Garden keeps the Connections UI, workspace policy, approvals, and audit history.",
-    priority: 'high',
+      'Executor now owns connector catalog, installation, authentication, execution, and MCP sessions inside the Garden Worker. Garden keeps the Connections UI, workspace policy, approvals, and audit history.',
+    priority: 'shipped',
     note: 'productivity suite first',
     links: [gh(28)],
   },
@@ -91,7 +91,7 @@ export const launchGates: WorkItem[] = [
     ref: 'FLO-30',
     title: 'Workspace-isolation regression coverage',
     detail:
-      'Add one CI suite that tries to cross workspace boundaries through routes, agent RPC, inbox, approvals, documents, attachments, automations, and Harnessy. It must fail every time.',
+      'Add one CI suite that tries to cross workspace boundaries through routes, agent RPC, inbox, approvals, documents, attachments, automations, and Executor. It must fail every time.',
     priority: 'high',
     evidence: 'apps/web/src/lib/server/control-plane.ts',
     links: [flo(30), gh(27)],
@@ -229,9 +229,9 @@ export const architectureBoundaries: ArchitectureBoundary[] = [
       'The product: workspaces, tasks, agents, automations, policy, approvals, audit, and customer records.',
   },
   {
-    owner: 'Harnessy',
+    owner: 'Executor',
     responsibility:
-      'The connector catalog, installation and execution, plus reusable agent runtime capabilities.',
+      'Connector catalog, installation, authentication, execution, and MCP session hosting inside the Garden Worker.',
   },
   {
     owner: 'Cloudflare Workflows',
@@ -275,7 +275,7 @@ export const antiPriorities: NotNowItem[] = [
 export const roadmapMeta = {
   horizon: 'Now → Next → Later',
   updated: '17 Jul 2026',
-  goal: 'First, make Garden work for us. That means automations we can trust, productivity tools wired through Harnessy, and the controls an enterprise team will ask for. Once it survives daily use, we can bring in a few focused pilots.',
+  goal: 'First, make Garden work for us. That means automations we can trust, productivity tools wired through Executor, and the controls an enterprise team will ask for. Once it survives daily use, we can bring in a few focused pilots.',
   boardsUrl: 'https://github.com/Flow-Research/garden/issues',
   sources: [
     { label: 'docs/roadmap.md', detail: 'beta priorities' },

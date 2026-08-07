@@ -65,20 +65,20 @@ Settings is currently a dialog (`apps/web/src/features/settings`) rather than a 
 
 ## 5. Primary entities
 
-| Primitive | Source of truth | Runtime/UI notes |
-| --- | --- | --- |
-| Workspace/company | Postgres `organization` / membership tables | Tenancy boundary. |
-| User/member | Better Auth + Postgres | Authenticated actor. |
-| Agent | Postgres `agent` + `AgentDO` | Data-driven persona/config/permissions; runtime identity via `hostName`/id. |
-| Chat thread | Postgres `chat_thread` + `ChatSubAgent` | Metadata in Postgres; Think messages in child facet. |
-| Issue/task | Postgres `issue` | Assignable to user or agent. |
-| Issue run | Postgres `issue_run` + `IssueRunSubAgent` + `RunWorkflow` | Durable issue work ledger. |
-| Automation | Postgres `automation` / `automation_trigger` | Top-level scheduled/manual/webhook/API work surface. |
-| Automation run | Postgres `automation_run` + `AutomationRunSubAgent` + `RunWorkflow` | Durable automation execution ledger. |
-| Skill | Postgres catalog/assignments + R2 SKILL.md bundles + Think skill sources | Workspace-scoped, assignable to agents. |
-| Connector/capability | Connector registry + Postgres capability/grant tables + MCP proxy | Tools exposed with `auto | allow | ask` trust levels. |
-| Document artifact | Postgres document tables + R2/Shell workspace | Thread-scoped artifacts with versions/edits. |
-| Inbox item | Computed server surface + dismissal records | Approvals, mentions, blockers, failures. |
+| Primitive            | Source of truth                                                          | Runtime/UI notes                                                            |
+| -------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------- | ----- | ------------------ |
+| Workspace/company    | Postgres `organization` / membership tables                              | Tenancy boundary.                                                           |
+| User/member          | Better Auth + Postgres                                                   | Authenticated actor.                                                        |
+| Agent                | Postgres `agent` + `AgentDO`                                             | Data-driven persona/config/permissions; runtime identity via `hostName`/id. |
+| Chat thread          | Postgres `chat_thread` + `ChatSubAgent`                                  | Metadata in Postgres; Think messages in child facet.                        |
+| Issue/task           | Postgres `issue`                                                         | Assignable to user or agent.                                                |
+| Issue run            | Postgres `issue_run` + `IssueRunSubAgent` + `RunWorkflow`                | Durable issue work ledger.                                                  |
+| Automation           | Postgres `automation` / `automation_trigger`                             | Top-level scheduled/manual/webhook/API work surface.                        |
+| Automation run       | Postgres `automation_run` + `AutomationRunSubAgent` + `RunWorkflow`      | Durable automation execution ledger.                                        |
+| Skill                | Postgres catalog/assignments + R2 SKILL.md bundles + Think skill sources | Workspace-scoped, assignable to agents.                                     |
+| Connector/capability | Executor + Postgres capability/grant tables + local MCP session DOs      | Tools exposed with `auto                                                    | allow | ask` trust levels. |
+| Document artifact    | Postgres document tables + R2/Shell workspace                            | Thread-scoped artifacts with versions/edits.                                |
+| Inbox item           | Computed server surface + dismissal records                              | Approvals, mentions, blockers, failures.                                    |
 
 ## 6. MVP/current scope
 
@@ -121,7 +121,7 @@ Code evidence:
 
 - `packages/db/src/schema/capabilities.ts`
 - `packages/core/agents/permissions.ts`
-- `workers/mcp-proxy/src/permission.ts`
+- `packages/agent-runtime/src/runtime-mcp-controller.ts`
 - `packages/agent-runtime/src/runtime-mcp-controller.ts`
 - `apps/web/src/features/connections/components/connections-page.tsx`
 

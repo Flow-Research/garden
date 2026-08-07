@@ -13,11 +13,11 @@ pnpm --filter @garden/db db:migrate
 pnpm dev
 ```
 
-The root dev command starts the MCP proxy and web app through Turbo's TUI. The web app runs at `http://localhost:3000` by default.
+The root dev command starts the Garden Worker through Turbo's TUI. The web app runs at `http://localhost:3000` by default.
 
 ## Environment
 
-Local development configuration lives in root `.env`. Web, MCP proxy, database tooling, and local scripts share it; deployed Workers use Cloudflare secrets and bindings.
+Local development configuration lives in root `.env`. Web, database tooling, and local scripts share it; deployed Workers use Cloudflare secrets and bindings.
 
 Required for normal local development:
 
