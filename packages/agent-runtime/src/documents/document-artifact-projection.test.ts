@@ -49,6 +49,26 @@ describe('htmlToDocumentBlocks', () => {
     expect(sanitized).toContain('width: 900px')
   })
 
+  it('accepts the double-quoted font families emitted by browser CSSOM', () => {
+    const sanitized = sanitizeDocumentBlockHtml(`
+      <p>
+        <span style="font-family: Georgia, &quot;Times New Roman&quot;, serif">Serif</span>
+        <span style="font-family: ui-monospace, &quot;SF Mono&quot;, Menlo, monospace">Mono</span>
+        <span style="font-family: &quot;Courier New&quot;, monospace">Courier</span>
+      </p>
+    `)
+
+    expect(sanitized).toContain(
+      'font-family: Georgia, &quot;Times New Roman&quot;, serif',
+    )
+    expect(sanitized).toContain(
+      'font-family: ui-monospace, &quot;SF Mono&quot;, Menlo, monospace',
+    )
+    expect(sanitized).toContain(
+      'font-family: &quot;Courier New&quot;, monospace',
+    )
+  })
+
   it('rejects unbounded CSS, script URLs, and SVG data images', () => {
     const sanitized = sanitizeDocumentBlockHtml(`
       <p style="position: fixed; margin-left: 9999px; font-size: 999px">

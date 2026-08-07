@@ -97,14 +97,18 @@ const safeImageSource = (value: string) =>
 
 const SAFE_FONT_FAMILIES = new Set([
   'arial, sans-serif',
-  "'courier new', monospace",
+  'courier new, monospace',
   'georgia, serif',
-  "georgia, 'times new roman', serif",
+  'georgia, times new roman, serif',
   'inter, sans-serif',
   'inter, system-ui, sans-serif',
-  "ui-monospace, 'sf mono', menlo, monospace",
+  'ui-monospace, sf mono, menlo, monospace',
   'ui-sans-serif, system-ui, inter, sans-serif',
 ])
+
+/** Makes browser-dependent CSSOM quote serialization irrelevant to allowlisting. */
+const normalizeFontFamily = (value: string) =>
+  value.replace(/["']/g, '').replace(/\s+/g, ' ').trim()
 
 /** Validates supported CSS against the toolbar's exact bounded vocabulary. */
 const safeStyleValue = (property: string, value: string) => {
@@ -114,7 +118,9 @@ const safeStyleValue = (property: string, value: string) => {
       normalized,
     )
   }
-  if (property === 'font-family') return SAFE_FONT_FAMILIES.has(normalized)
+  if (property === 'font-family') {
+    return SAFE_FONT_FAMILIES.has(normalizeFontFamily(normalized))
+  }
   if (property === 'font-size') {
     const pixels = normalized.match(/^(\d+(?:\.\d+)?)px$/)?.[1]
     return Boolean(pixels && Number(pixels) >= 8 && Number(pixels) <= 96)
