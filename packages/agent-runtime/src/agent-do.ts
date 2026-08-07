@@ -40,6 +40,7 @@ import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { getPooledDb } from '@garden/db/runtime'
 import { and, asc, eq, or, type SQL } from 'drizzle-orm'
 import { Result } from 'better-result'
+import { Effect, Layer, ManagedRuntime } from 'effect'
 import { connectorRegistry } from '@garden/connectors'
 import { createGardenLogger } from '@garden/observability/logger'
 import * as schema from '@garden/db/schema'
@@ -74,6 +75,15 @@ import {
   registerUploadedDocument,
   resolveDocumentEdit,
 } from './documents/document-tools'
+import {
+  DocumentArtifactEngine,
+  documentArtifactEngineLayer,
+} from './documents/document-artifact-engine'
+import {
+  DocumentArtifactProjection,
+  documentArtifactProjectionLayer,
+} from './documents/document-artifact-projection'
+import { makeDocumentArtifactDurableRepositoryLayer } from './documents/document-artifact-repository'
 import { IssueRunSubAgent } from './issue-run-sub-agent'
 import { AutomationRunSubAgent } from './automation-run-sub-agent'
 import {
@@ -318,6 +328,12 @@ type ThreadDocumentVersionsPayload = Awaited<
 type ThreadDocumentEditPayload = Awaited<
   ReturnType<ChatSubAgent['resolveDocumentEdit']>
 >
+type ThreadDocumentArtifactPayload = Awaited<
+  ReturnType<ChatSubAgent['readDocumentArtifact']>
+>
+type ThreadDocumentArtifactOperationPayload = Awaited<
+  ReturnType<ChatSubAgent['applyDocumentArtifactOperation']>
+>
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.workspace-agent.turn'
 const agentRuntimeLogger = createGardenLogger({
@@ -522,6 +538,29 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
     return thread.resolveDocumentEdit(input)
+  }
+
+  @callable()
+  async readThreadDocumentArtifact(
+    threadId: string,
+    documentId: string,
+  ): Promise<ThreadDocumentArtifactPayload> {
+    await this.requireThreadAccess(threadId)
+    const thread = await this.subAgent(ChatSubAgent, threadId)
+    return thread.readDocumentArtifact(documentId)
+  }
+
+  @callable()
+  async applyThreadDocumentArtifactOperation(
+    threadId: string,
+    input: { documentId: string; operation: unknown },
+  ): Promise<ThreadDocumentArtifactOperationPayload> {
+    await this.requireThreadAccess(threadId)
+    const thread = await this.subAgent(ChatSubAgent, threadId)
+    return thread.applyDocumentArtifactOperation(
+      input.documentId,
+      input.operation,
+    )
   }
 
   @callable()
@@ -1024,6 +1063,22 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     super(ctx, env)
   }
 
+  /**
+   * Builds document services once per facet lifetime. Durable Object storage is
+   * canonical; the Effect runtime retains only service resources and the
+   * synchronization primitive that serializes overlapping artifact mutations.
+   */
+  private readonly documentArtifactRuntime = ManagedRuntime.make(
+    Layer.merge(
+      documentArtifactEngineLayer.pipe(
+        Layer.provide(
+          makeDocumentArtifactDurableRepositoryLayer(this.ctx.storage),
+        ),
+      ),
+      documentArtifactProjectionLayer,
+    ),
+  )
+
   override messageConcurrency: MessageConcurrency = 'merge'
   override chatRecovery = true
   override contextOverflow = createGardenContextOverflow()
@@ -1120,12 +1175,72 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     filename: string
     mediaType?: string | null
   }) {
-    return registerUploadedDocument({
+    const upload = await registerUploadedDocument({
       context: this.getDocumentToolContext(),
       filename: input.filename,
       mediaType: input.mediaType ?? null,
       bytes: Buffer.from(input.base64, 'base64'),
     })
+    if (!upload.ok || !input.filename.toLowerCase().endsWith('.docx')) {
+      return upload
+    }
+
+    const canonical = await this.documentArtifactRuntime.runPromise(
+      Effect.gen(function* () {
+        const projection = yield* DocumentArtifactProjection
+        const engine = yield* DocumentArtifactEngine
+        const initial = yield* projection.importDocx(
+          input.filename,
+          Buffer.from(input.base64, 'base64'),
+        )
+        return yield* engine.initialize(upload.document_id, initial)
+      }).pipe(
+        Effect.match({
+          onFailure: (error) => ({
+            ok: false as const,
+            error: `${error._tag}: ${error.message}`,
+          }),
+          onSuccess: (snapshot) => ({ ok: true as const, snapshot }),
+        }),
+      ),
+    )
+    return { ...upload, canonical }
+  }
+
+  /** Reads canonical editable state from this thread facet's durable storage. */
+  async readDocumentArtifact(documentId: string) {
+    return this.documentArtifactRuntime.runPromise(
+      Effect.gen(function* () {
+        const engine = yield* DocumentArtifactEngine
+        return yield* engine.get(documentId)
+      }).pipe(
+        Effect.match({
+          onFailure: (error) => ({
+            ok: false as const,
+            error: `${error._tag}: ${error.message}`,
+          }),
+          onSuccess: (snapshot) => ({ ok: true as const, snapshot }),
+        }),
+      ),
+    )
+  }
+
+  /** Applies one decoded, idempotent block command at the RPC boundary. */
+  async applyDocumentArtifactOperation(documentId: string, operation: unknown) {
+    return this.documentArtifactRuntime.runPromise(
+      Effect.gen(function* () {
+        const engine = yield* DocumentArtifactEngine
+        return yield* engine.apply(documentId, operation)
+      }).pipe(
+        Effect.match({
+          onFailure: (error) => ({
+            ok: false as const,
+            error: `${error._tag}: ${error.message}`,
+          }),
+          onSuccess: (outcome) => ({ ok: true as const, outcome }),
+        }),
+      ),
+    )
   }
 
   async readDocumentBytes(documentId: string) {

@@ -246,3 +246,31 @@ export async function resolveChatThreadDocumentEdit(input: {
     }),
   )
 }
+
+/** Reads canonical editable document state through its owning chat facet. */
+export async function readChatThreadDocumentArtifact(input: {
+  documentId: string
+  hostName: string
+  threadId: string
+}) {
+  const stub = await getAgentRuntimeStub(input.hostName)
+  return disposeRpcResult(
+    await stub.readThreadDocumentArtifact(input.threadId, input.documentId),
+  )
+}
+
+/** Applies one unknown wire command; the Effect engine decodes it at ingress. */
+export async function applyChatThreadDocumentArtifactOperation(input: {
+  documentId: string
+  hostName: string
+  operation: unknown
+  threadId: string
+}) {
+  const stub = await getAgentRuntimeStub(input.hostName)
+  return disposeRpcResult(
+    await stub.applyThreadDocumentArtifactOperation(input.threadId, {
+      documentId: input.documentId,
+      operation: input.operation,
+    }),
+  )
+}
