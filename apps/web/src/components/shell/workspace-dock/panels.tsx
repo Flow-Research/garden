@@ -284,7 +284,7 @@ function ChatPanel({ node, panel }: PanelProps) {
   return (
     <PanelChrome node={node}>
       <AgentInteractionScreen
-        className="flex h-full min-h-0 flex-col bg-background"
+        className="h-full min-h-0 bg-background"
         panelTitle={panel.title}
         sessionId={panel.entityId ?? null}
         onSessionChange={(session) =>
