@@ -1,112 +1,100 @@
 # Connectors
 
-How Garden exposes external tools to agents via MCP, and how contributors add new ones.
+How Garden installs external integrations, exposes their tools to agents, and
+accepts connector contributions.
 
----
+## Runtime model
 
-## Model
+Garden has one application Worker. Connector catalog, installation, OAuth,
+connections, execution, and hibernatable MCP sessions run through Executor
+v1.5.40 inside that Worker. Garden API routes call the public Executor SDK
+directly; the Worker also exports Executor's MCP session and execution-owner
+Durable Objects. There is no Harnessy bundle, connector service binding, or
+separate MCP-proxy Worker.
 
-A connector is an **adapter over an official upstream MCP server** (e.g. GitHub's `github-mcp-server`, Notion's MCP server, etc.). Garden does not re-implement upstream APIs. Each connector manifest declares:
+Garden keeps the product-specific layer:
 
-- **Which official MCP server to front**
-- **OAuth scopes Garden will request** on the user's behalf
-- **Risk class + required scopes per tool name** (reconciled against the upstream's `tools/list` at sync time)
+- workspace identity, connection UI, permission grants, approvals, and audit;
+- provider policy and native tool definitions in `packages/connectors/src`;
+- Garden-owned GitHub App and Discord bot installation flows; and
+- catalog projection and Garden presets under
+  `apps/web/src/lib/server/executor-engine`.
 
-Our runtime does three things on top of the upstream MCP:
-1. **Auth** — Garden handles OAuth in the web UI via Better Auth and injects the upstream token into every MCP call.
-2. **Permissions** — Garden enforces per-tool `auto/allow/ask` grants and human-in-the-loop approval via the Cloudflare Agents SDK `needsApproval` primitive.
-3. **Audit** — every call logs to `tool_call_audit`.
+Executor owns the reusable integration engine and remote MCP/OpenAPI/GraphQL
+execution. Native GitHub and Discord tools execute through typed Effect
+services in Garden; the remaining installed integration tools arrive through
+the single Executor MCP session.
 
-### Hard rules
+## Storage and authorization
 
-- **Official MCP servers only.** If no official upstream exists, the connector is not supported — period. No inline tool implementations. No fallback paths.
-- **No token passthrough.** The agent DO never sees upstream tokens. The proxy injects them per-call.
-- **No fallbacks for missing/unclassified tools.** If the upstream's `tools/list` returns a tool not classified in the manifest, CI fails and sync is blocked until a human adds the classification.
+Executor stores integration and connection state in its D1 binding and blobs in
+R2. Garden's Neon Postgres database stores workspace product state such as
+accounts/installations, capabilities, permission grants, approval requests, and
+tool-call audit rows. Durable Objects keep agent and MCP session state.
 
-### Tiers (deferred)
+Each tool is classified as `read`, `write`, `send_external`, or `destructive`.
+The per-agent trust level is `auto`, `allow`, or `ask`. Unclassified native or
+hosted GitHub tools are not exposed. Executor receives tenant/member identity
+from Garden and never replaces Garden's workspace authorization checks.
 
-Tier 2 (full custom `McpAgent` Worker per connector) is not implemented. It's the escape hatch we build when a real connector forces the issue. Don't pre-build it.
+## Contributing an integration
 
-## Context bloat (v1 policy)
+No connector scaffolding command exists. Choose the path that matches the
+integration:
 
-We ship with the bloat. A workspace with many connectors loads all their tool schemas into context each turn. We accept this until it hurts.
+### Executor-hosted integration
 
-**Not using:** server-side paid tool search products. Vector tool routers (extra infra we don't need yet).
+1. Prefer an upstream Executor preset or integrations.sh catalog entry instead
+   of adding a Garden-specific transport.
+2. If Garden needs additional catalog metadata or a curated preset, update
+   `apps/web/src/lib/server/executor-engine/presets.ts` or `catalog.ts` and its
+   adjacent tests.
+3. Add or update the provider policy manifest under
+   `packages/connectors/src/<id>/connector.ts` only when Garden needs
+   workspace availability, scope, or risk metadata for that provider.
+4. Exercise registry, install preview, OAuth, and connection ownership tests.
 
-## Code Mode — future escape hatch
+### Garden-native integration
 
-If context bloat becomes a real problem, Code Mode is the fallback we document but do not build in v1: one `execute(code)` tool, upstream MCPs compiled into typed TypeScript wrappers, and model-authored code executed in a sandboxed V8 isolate via Cloudflare's Worker Loader API.
+Use this only when Garden owns the provider installation and typed API adapter,
+as it does for GitHub and Discord.
 
-## Storage
+1. Add `packages/connectors/src/<id>/connector.ts` and define tools beside it
+   with Effect Schema and `defineNativeConnectorTool`.
+2. Implement the provider client as an Effect service; keep credentials at the
+   host boundary and declare minimal scopes and API hosts.
+3. Register the connector in `packages/connectors/src/registry.ts` and add any
+   required package exports.
+4. Add the native provider to Executor's Garden catalog projection and wire its
+   installation/availability boundary in the web app.
+5. Add unit tests for schema decoding, provider failures, risk metadata,
+   installation ownership, and runtime exposure.
 
-Better Auth's `account` table stores upstream OAuth tokens (`encryptOAuthTokens: true`, `updateAccountOnSignIn: true`). One account row per `(user, providerId)`. The legacy `connector_connection` table is removed.
+Do not add a standalone Worker, duplicate Executor's integration engine, or
+route connector execution through Harnessy.
 
-- `capability` — synced from each connector's upstream `tools/list`, keyed by `(connector_type, tool_name)`, includes `schema_hash` + `required_scopes` + `risk_class`.
-- `permission_grant` — per `(agent_id, capability_id)` trust level: `auto | allow | ask`.
-- `permission_request` — pending approval queue; powers inbox + in-chat approval UI.
-- `tool_call_audit` — every tool call (including auto-allowed) for compliance and the "Recent activity" UI.
+## Required checks
 
-Distinct `providerId` per connector (e.g. `"github"`, `"slack"`, `"notion"`). If a user needs two Slack workspaces, distinct providerIds (`"slack-acme"`, `"slack-beta"`) — Better Auth issue #2327.
+Before opening a connector PR, run:
 
-## Approval flow
+```bash
+pnpm verify:connectors
+pnpm --filter @garden/connectors typecheck
+pnpm --filter @garden/connectors test
+pnpm --filter @garden/agent-runtime typecheck
+pnpm --filter @garden/web test
+```
 
-Each tool's `riskClass` (`read` | `write` | `send_external` | `destructive`) is declared in the manifest. `permission_grant.trust_level` per `(agent, capability)` decides what happens:
+The connector workflow watches `packages/connectors`, the Executor engine/API
+paths, the runtime MCP controller, and dependency metadata.
 
-- `auto` — only valid for `read`; proceed silently.
-- `allow` — proceed, log to audit.
-- `ask` — throw structured `NeedsApproval`; Cloudflare Agents SDK `needsApproval` primitive surfaces the request in chat and inbox; user approves or denies; agent resumes via `addToolApprovalResponse`.
+## Review checklist
 
-Defaults by risk class: `read → auto`, `write → allow`, `send_external → ask`, `destructive → ask` (always, cannot be set to `auto`).
-
-## Contributing a connector
-
-1. `pnpm create garden-connector <id>` — scaffolds `connectors/<id>/`.
-2. Fill in `connector.ts`:
-   ```ts
-   export default defineConnector({
-     id: 'notion',
-     label: 'Notion',
-     icon: './icon.svg',
-     upstream: {
-       // URL or package reference to the official MCP server
-       mcpServerUrl: 'https://mcp.notion.com/mcp',
-       // or: command/args for a Worker-deployable stdio-over-HTTP shim
-     },
-     oauth: {
-       providerId: 'notion',        // distinct per connector
-       authUrl: 'https://api.notion.com/v1/oauth/authorize',
-       tokenUrl: 'https://api.notion.com/v1/oauth/token',
-       scopes: ['read_content', 'update_content'],
-     },
-     // Risk classification per upstream tool. Must cover every tool
-     // returned by the upstream's tools/list — CI fails otherwise.
-     tools: {
-       'search_pages':    { riskClass: 'read',           requiredScopes: ['read_content']   },
-       'create_page':     { riskClass: 'write',          requiredScopes: ['update_content'] },
-       'delete_page':     { riskClass: 'destructive',    requiredScopes: ['update_content'] },
-     },
-   })
-   ```
-3. `pnpm dev` — connector registers locally; connect with your own OAuth dev app.
-4. PR. CI enforces the review checklist.
-
-### Review checklist
-
-- [ ] `upstream.mcpServerUrl` points at an **official** MCP server, not a fork.
-- [ ] Every tool returned by upstream `tools/list` is classified in `tools`. No extras, no missing.
-- [ ] `riskClass` is honest (`send_external` for anything hitting an external human, `destructive` for irreversible writes).
-- [ ] `oauth.scopes` are minimal and justify each tool's `requiredScopes`.
-- [ ] `oauth.providerId` is distinct from every existing connector.
-- [ ] No credentials or PII logged.
-
-## Non-goals (v1)
-
-- Inline tool implementations.
-- Tier 2 full custom Workers.
-- MCP Elicitation (mid-call server→client prompts).
-- paid hosted tool search products.
-- Code Mode (documented future escape hatch, not built).
-- Vector/semantic tool routers.
-- Public connector marketplace beyond the `connectors/` directory.
-- Token passthrough.
-- Better Auth Agent Auth plugin (beta).
+- [ ] The implementation uses Executor or a justified Garden-native adapter;
+      it does not introduce another connector Worker.
+- [ ] OAuth scopes and API hosts are minimal and explicit.
+- [ ] Every exposed tool has an honest risk class and required scopes.
+- [ ] Unknown tools fail closed instead of inheriting a permissive default.
+- [ ] Workspace/member ownership is checked at API and execution boundaries.
+- [ ] Credentials and PII never enter logs, tool descriptions, or fixtures.
+- [ ] Registry, install, execution, approval, and failure paths have tests.

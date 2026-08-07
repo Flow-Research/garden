@@ -41,17 +41,15 @@ export type HarnessySection = {
 }
 
 /**
- * Architecture + direction reference for Garden, grounded in the Flow C4
- * architecture handoff and the Harnessy north-star. Explains the layered
- * system, the ownership boundaries between Garden and Harnessy, how a run
- * actually executes, the packaging model, and the Jarvis collaboration protocol
- * coming next. Architecture and product direction only — commercial, legal,
- * identity-provider, and org-structure decisions are tracked elsewhere.
+ * Architecture + direction reference for Garden, Harnessy, and Jarvis. It
+ * distinguishes Garden's shipped direct-Executor runtime from Harnessy's
+ * independent future host contract so this page never implies that Garden
+ * bundles or deploys Harnessy today.
  */
 export const harnessyPageCopy = {
   eyebrow: 'Architecture & direction',
   title: 'Harnessy, Garden, and Jarvis',
-  lede: 'The product is a layered system for human-supervised agent work. Garden is the product workspace and control plane; Harnessy is the open capability and connector foundation it runs on; Jarvis is the human–agent collaboration protocol coming next. This page maps the systems, the ownership boundaries between them, and where each is headed. Status is honest: Shipped = native and in use; Building = in progress; Planned / Later = documented direction.',
+  lede: 'Garden is the product workspace and control plane. Today its connector engine is Executor, running directly inside the Garden Worker. Harnessy is a separate first-party open capability project, not a bundled Garden runtime; Jarvis is the human–agent collaboration protocol coming next. This page separates shipped architecture from product direction. Shipped = native and in use; Building = in progress; Planned / Later = documented direction.',
   columnRole: 'What it is',
   columnOpenness: 'Open / closed',
   columnStatus: 'Status',
@@ -64,9 +62,8 @@ export const harnessyPageCopy = {
 }
 
 /**
- * The layered system. Garden is the product surface and control plane; it runs
- * on the open Harnessy foundation and an agent runtime, and is governed by the
- * Jarvis collaboration protocol.
+ * The layered system, including the shipped Executor boundary and independent
+ * Harnessy direction.
  */
 export const stackSystems: StackSystem[] = [
   {
@@ -79,9 +76,16 @@ export const stackSystems: StackSystem[] = [
   {
     id: 'harnessy',
     name: 'Harnessy',
-    role: 'The open capability and connector foundation: packaging, readiness and verification, runtime-adapter contracts, evidence, and reusable connector infrastructure. Portable across hosts; local-first.',
+    role: 'A separate open capability project: packaging, readiness, verification, runtime-adapter contracts, and evidence. It is not bundled into Garden or used as Garden’s connector engine.',
     openness: 'Open source',
     status: 'building',
+  },
+  {
+    id: 'executor',
+    name: 'Executor',
+    role: 'Garden’s shipped integration engine: catalog, installation, OAuth, connections, execution, and MCP sessions. The public SDK and Durable Objects run inside the Garden Worker.',
+    openness: 'Open source',
+    status: 'shipped',
   },
   {
     id: 'jarvis',
@@ -114,9 +118,8 @@ export const stackSystems: StackSystem[] = [
 ]
 
 /**
- * The core correction: the Garden ↔ Harnessy line is infrastructure vs
- * authority. Harnessy makes capabilities and connectors portable and
- * verifiable; Garden holds tenancy, credentials, and the right to act.
+ * The proposed Garden ↔ Harnessy boundary. This is direction, not a claim that
+ * current Garden connector execution passes through Harnessy.
  */
 export const ownership: {
   id: string
@@ -129,7 +132,7 @@ export const ownership: {
   id: 'ownership',
   title: 'Garden and Harnessy: who owns what',
   summary:
-    'The dividing line is infrastructure vs authority. Harnessy owns reusable connector and capability infrastructure; Garden owns identity, credentials, approvals, and the right to act on a tenant’s behalf. Garden does not own the connector infrastructure — that moves into open Harnessy.',
+    'This is the proposed host boundary, not today’s runtime topology. Harnessy can own portable capability packaging and evidence contracts; Garden keeps identity, credentials, approvals, storage, and the right to act. Current connector execution remains direct Executor inside Garden.',
   harnessy: {
     owner: 'Harnessy owns the infrastructure',
     lead: 'Portable, host-agnostic, verifiable.',
@@ -153,12 +156,11 @@ export const ownership: {
     ],
   },
   principle:
-    'Harnessy owns connector infrastructure, not connector authority. Reusable connector logic is portable; the right to read a tenant’s data or write on its behalf stays with Garden.',
+    'Harnessy is an independent project, not a vendored Garden subsystem. Any future Garden adapter must preserve Garden’s authority boundary and must not duplicate Executor’s integration engine.',
 }
 
 /**
- * A worked run (e.g. syncing content to an org wiki) showing the host-contract
- * handoff between Garden and Harnessy.
+ * A current connector run showing the direct Garden ↔ Executor boundary.
  */
 export const runFlow: {
   id: string
@@ -170,23 +172,23 @@ export const runFlow: {
   id: 'how-a-run-works',
   title: 'How a run actually works',
   summary:
-    'Garden and Harnessy meet at a host contract. Garden supplies identity, credentials, and policy; Harnessy executes the pack and returns normalized results and evidence; Garden performs and audits any privileged write.',
+    'Garden supplies tenant/member identity and policy to the in-process Executor SDK. Executor resolves the installed integration and executes it through the same Garden Worker; Garden owns approval and audit.',
   steps: [
     {
       actor: 'Garden',
-      text: 'Initiates a run and passes a host contract: actor, workspace, connector id, credential handles, allowed scopes, checkpoint handle, destination, approval / write mode, and an audit correlation id.',
+      text: 'Authorizes the actor and workspace, resolves product permissions, and opens the tenant/member-scoped Executor boundary.',
     },
     {
-      actor: 'Harnessy',
-      text: 'Loads the connector / capability pack, checks dependencies and readiness, materializes prompts/templates/scripts, and runs it under that contract via the host’s runtime adapter.',
+      actor: 'Executor',
+      text: 'Loads the installed integration and connection, then exposes or executes its tools through the public SDK and hibernatable MCP session.',
     },
     {
-      actor: 'Harnessy',
-      text: 'Emits normalized records, proposed writes, checkpoint updates, content hashes, and an evidence bundle — but performs no privileged write itself.',
+      actor: 'Garden agent runtime',
+      text: 'Applies the tool’s risk policy, requests approval when required, and invokes the native tool or Executor MCP operation.',
     },
     {
       actor: 'Garden',
-      text: 'Persists records, applies ACLs, requests approval where required, performs the external write only where permitted, and audits the run.',
+      text: 'Persists product outcomes and audit evidence. Executor’s D1/R2 state and MCP Durable Objects remain inside the same Worker deployment.',
     },
   ],
   rule: 'Agents may prepare artifacts; the host performs and records the actual change. No write is claimed without explicit evidence.',
@@ -211,31 +213,38 @@ export const packaging: {
     { name: 'Core package', purpose: 'Stable CLI / library foundation.' },
     {
       name: 'Capability pack',
-      purpose: 'Portable skills, prompts, templates, checks, scripts, and context for a bounded workflow.',
+      purpose:
+        'Portable skills, prompts, templates, checks, scripts, and context for a bounded workflow.',
     },
     {
       name: 'Connector pack',
-      purpose: 'Reusable connector operations, schemas, fixtures, checkpoints, and evidence rules.',
+      purpose:
+        'Reusable connector operations, schemas, fixtures, checkpoints, and evidence rules.',
     },
     {
       name: 'Runtime-adapter pack',
-      purpose: 'Host/runtime integration for executing capabilities (Garden, Codex, Claude, OpenCode, Pi, CI).',
+      purpose:
+        'Host/runtime integration for executing capabilities (Garden, Codex, Claude, OpenCode, Pi, CI).',
     },
     {
       name: 'Profile pack',
-      purpose: 'A curated bundle of packs and settings for a persona, org, or product mode.',
+      purpose:
+        'A curated bundle of packs and settings for a persona, org, or product mode.',
     },
     {
       name: 'Policy pack',
-      purpose: 'Review, permission, egress, data, and evidence defaults for an org or channel.',
+      purpose:
+        'Review, permission, egress, data, and evidence defaults for an org or channel.',
     },
     {
       name: 'Compatibility pack',
-      purpose: 'Preserves legacy behavior without making it the default (the full v1 surface).',
+      purpose:
+        'Preserves legacy behavior without making it the default (the full v1 surface).',
     },
     {
       name: 'Private workflow pack',
-      purpose: 'Org/user-specific scripts, schedules, and habits — installed only by explicit profile selection.',
+      purpose:
+        'Org/user-specific scripts, schedules, and habits — installed only by explicit profile selection.',
     },
   ],
   points: [
@@ -296,14 +305,14 @@ export const jarvis: {
 export const whereWeAre: HarnessySection = {
   id: 'where-we-are',
   title: 'Where we are',
-  summary: 'The open foundation is native and in use, and Garden runs on top of it today.',
+  summary:
+    'Garden’s current integration runtime and Harnessy’s independent direction are separate.',
   status: 'shipped',
   points: [
-    'Harnessy core is native and tested: capability manifest, registry, source resolution, materializer, fingerprints, deterministic checks, dependency checks, profiles, lockfile, runtime assets, and structured JSON output.',
-    'The skill decision-trace cluster: validate, create, promote, feedback, trace stats, and quality metrics.',
-    'A read-only AnyType connector, dogfooded for meeting ingest — the first probe of the connector boundary.',
-    'The full v1 surface preserved as the capability-harnessy-v1-full compatibility pack.',
-    'Garden today: workspace shell, agent runtime, the Flow runtime libraries and issue bridge, connectors, and the MCP proxy that brokers connector sessions.',
+    'Garden uses Executor v1.5.40 directly for catalog, installation, OAuth, connections, execution, and MCP sessions.',
+    'Executor’s MCP session and execution-owner Durable Objects are exported by the Garden Worker; no connector or Harnessy Worker is deployed.',
+    'Garden-native GitHub and Discord tools use typed Effect services beside the Executor session.',
+    'Harnessy remains a first-party project with its own source, releases, and direction. Garden neither vendors nor bundles it.',
   ],
 }
 
@@ -315,8 +324,8 @@ export const whereWeAreGoing: HarnessySection = {
     'Toward portable connector infrastructure, a pack-centered core, and the native Jarvis protocol Garden hosts.',
   status: 'planned',
   points: [
-    'Move reusable connector infrastructure into Harnessy: neutral connector contracts (a connector resource kind, a host-contract type, a run-evidence type) with a Garden host adapter for credentials, policy, checkpoints, storage, approval, and audit.',
-    'Rename connector dependencies from Garden-specific labels to neutral Harnessy ones.',
+    'Define neutral Harnessy capability and evidence contracts without turning Harnessy into Garden’s connector transport.',
+    'Add a Garden host adapter only when it composes with Executor instead of replacing or duplicating it.',
     'Add pack-family metadata and profile-pack activation so hosts select packs instead of inheriting one monolithic workflow set.',
     'An agent-first capability runtime that resolves and runs skills, memory, and connectors without hand-run CLI commands.',
     'Knowledge-workflow capabilities — ingest → brief → issues/tasks — and the native Jarvis protocol that Garden then hosts with governance and approvals.',

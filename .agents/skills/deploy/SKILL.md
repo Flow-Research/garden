@@ -16,10 +16,9 @@ For any remote deploy or verification where the user does not explicitly request
 
 - Treat `garden-staging` as production despite its name. Never deploy it unless the user explicitly requests the live production target.
 - Use repository package scripts. Do not create an ad hoc Wrangler deployment config or run `wrangler deploy`.
-- Alchemy owns each target's Worker, Hyperdrive, D1, R2, Durable Objects, Workflow, Worker Loader, sandbox container, and tail consumer.
+- Alchemy owns each target's Garden app Worker, Hyperdrive, D1, R2, Durable Objects, Workflow, Worker Loader, sandbox container, and optional tail consumer.
 - Do not echo secrets, write secret values to tracked files, or expose `.env` contents.
-- Do not publish Harnessy packages for a Garden deploy. Garden bundles the versioned tarballs under `vendor/`.
-- Do not deploy or delete a separate Harnessy Worker. Harnessy is embedded in the selected Garden Worker.
+- Garden does not bundle or deploy Harnessy. Executor runs from its declared dependencies inside the Garden app Worker; do not create a separate connector or MCP-proxy Worker.
 - Preserve unrelated dirty-tree changes. Deployment does not require a commit.
 - Preview currently shares `DATABASE_URL` with the live target by explicit user decision. Use a dedicated preview workspace/account and avoid destructive product actions.
 
@@ -92,7 +91,7 @@ For an authorized existing user, a short-lived Better Auth-compatible session ma
 6. Open `/workspace`, verify the expected user/workspace through rendered product state, then perform only non-destructive QA.
 7. Delete or expire the temporary session after QA. Remove the temporary script. Never print the token, signed cookie, secret, email-derived credentials, or `.env` values to chat or logs.
 
-The OAuth popup may return to the same preview origin while another workspace is active. Harnessy OAuth state must carry the originating workspace ID; the callback must verify the signed-in user still belongs to that workspace before completing the connection.
+The OAuth popup may return to the same preview origin while another workspace is active. Executor OAuth state must carry the originating workspace ID; the callback must verify the signed-in user still belongs to that workspace before completing the connection.
 
 ## Reporting
 

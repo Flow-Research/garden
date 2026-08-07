@@ -1,18 +1,27 @@
 # CODEOWNERS for Flow-Research/garden
-# Security team must review changes to auth and MCP proxy paths
+# Security team must review auth, connector execution, and secret-bearing config
 
 # Auth paths - require security review
-apps/web/src/lib/auth/                    @Flow-Research/security
-apps/web/src/app/api/auth/               @Flow-Research/security
+/apps/web/src/lib/auth/                           @Flow-Research/security
+/apps/web/src/routes/api/auth/                    @Flow-Research/security
 
-# MCP proxy - require security review
-workers/mcp-proxy/                        @Flow-Research/security
+# Executor and native connector boundaries - require security review
+/apps/web/src/lib/server/executor-engine/         @Flow-Research/security
+/apps/web/src/lib/server/executor-runtime.ts      @Flow-Research/security
+/apps/web/src/routes/api/executor/                @Flow-Research/security
+/apps/web/src/routes/api/oauth/                   @Flow-Research/security
+/apps/web/src/routes/api/connections/             @Flow-Research/security
+/packages/agent-runtime/src/runtime-mcp-controller.ts @Flow-Research/security
+/packages/connectors/                             @Flow-Research/security
 
 # CSRF and transport layer
-apps/web/src/lib/api/transport/          @Flow-Research/security
+/apps/web/src/lib/api/transport.ts                @Flow-Research/security
 
 # Autonomy and policy docs
-docs/protocol/                            @Flow-Research/security
+/docs/features/codemode-and-permissions-plan.md   @Flow-Research/security
+/docs/known-gaps/auth-and-access.md                @Flow-Research/security
 
 # Environment / secrets config
-.env*                                     @Flow-Research/security
+/.env*                                            @Flow-Research/security
+/alchemy.run.ts                                   @Flow-Research/security
+/apps/web/wrangler*.jsonc                         @Flow-Research/security

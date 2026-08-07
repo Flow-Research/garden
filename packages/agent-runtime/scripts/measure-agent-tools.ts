@@ -594,7 +594,7 @@ for (const tool of ISSUE_TOOLS) {
 // Native connector schemas
 // ──────────────────────────────────────────────────────────────────────────
 
-type McpTool = {
+type ConnectorTool = {
   name: string
   description?: string
   inputSchema?: unknown
@@ -605,7 +605,7 @@ type McpTool = {
  * old script queried GitHub's hosted MCP with a developer token, which measured
  * a different tool surface and made an offline report depend on `gh auth`.
  */
-async function fetchGithubTools(): Promise<McpTool[]> {
+function githubTools(): ConnectorTool[] {
   return githubNativeTools.map((tool) => ({
     name: tool.name,
     description: tool.description,
@@ -669,7 +669,10 @@ function entriesFromLocal(
   }))
 }
 
-function entriesFromMcp(group: string, tools: McpTool[]): ToolEntry[] {
+function entriesFromConnector(
+  group: string,
+  tools: ConnectorTool[],
+): ToolEntry[] {
   return tools.map((tool) => ({
     group,
     name: tool.name,
@@ -712,22 +715,10 @@ function buildLocalSections(group: 'chat' | 'issue'): Section[] {
 }
 
 async function main() {
-  // Connector tools (live MCP)
-  const githubResult = await Result.tryPromise<McpTool[], string>({
-    try: async () => await fetchGithubTools(),
-    catch: (cause) => (cause instanceof Error ? cause.message : String(cause)),
-  })
-
-  if (githubResult.isOk()) {
-    const sectionEntries = entriesFromMcp('github (native)', githubResult.value)
-    const total = sectionEntries.reduce((acc, t) => acc + t.bytes, 0)
-    GITHUB_AVG_TOOL_BYTES =
-      sectionEntries.length > 0 ? total / sectionEntries.length : null
-  }
-
-  const githubEntries: ToolEntry[] = githubResult.isOk()
-    ? entriesFromMcp('github (native)', githubResult.value)
-    : []
+  const githubEntries = entriesFromConnector('github (native)', githubTools())
+  const githubBytes = githubEntries.reduce((acc, tool) => acc + tool.bytes, 0)
+  GITHUB_AVG_TOOL_BYTES =
+    githubEntries.length > 0 ? githubBytes / githubEntries.length : null
 
   const estimateBytes = GITHUB_AVG_TOOL_BYTES ?? 800
 
@@ -771,9 +762,7 @@ async function main() {
   ]
 
   console.log('Connector tool sources:')
-  console.log(
-    `  github:        ${githubResult.isOk() ? `native (${githubEntries.length})` : `failed (${githubResult.error})`}`,
-  )
+  console.log(`  github:        native (${githubEntries.length})`)
   console.log(
     `  gmail:         estimated (${gmailEntries.length} tools × ~${Math.round(estimateBytes)} chars)`,
   )

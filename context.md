@@ -1,14 +1,15 @@
 # Code Context
 
 ## Files Retrieved
+
 1. `package.json` (lines 6-22) - root scripts show Turbo entry points and dev filters.
 2. `turbo.json` (lines 25-56) - task graph; `transit` sits between validation tasks and dependency graph.
-3. `pnpm-workspace.yaml` (lines 1-8) - workspace package locality: `apps/*`, `connectors`, `workers/*`, `packages/*`.
+3. `pnpm-workspace.yaml` (lines 1-8) - workspace package locality: `apps/*`, `workers/*`, and `packages/*`.
 4. `apps/web/package.json` (lines 8-47) - web app owns build/dev and depends on every Garden package.
 5. `packages/core/package.json` (lines 12-63) - broad public export surface mixing domain, server, client, platform, hooks.
 6. `packages/db/package.json` (lines 20-37) - DB scripts/exports; Drizzle schema and validation package seam.
 7. `packages/agent-runtime/package.json` (lines 13-38) - runtime package dependency breadth: Cloudflare runtime, AI, DB, core, connectors, document libs.
-8. `connectors/package.json` (lines 12-24) - connector package public entries.
+8. `packages/connectors/package.json` - native connector and provider-policy package exports.
 9. `packages/ui/package.json` (lines 13-24) - UI export surface: atomic components, common components, markdown, hooks.
 10. `packages/core/auth/index.ts` (lines 1-39) - shallow singleton registration wrapper around auth store.
 11. `packages/core/workspace/index.ts` (lines 1-38) - same singleton wrapper pattern for workspace store.
@@ -16,11 +17,11 @@
 13. `packages/core/issues/run-service.ts` (lines 1-130) - issue run service owns DB, Workflow, AgentDO adapter shape, run outcomes.
 14. `packages/core/automations/run-service.ts` (lines 1-135) - automation run service mirrors issue run adapter shape.
 15. `apps/web/src/lib/server/automations.ts` (lines 1-120, 500-640) - web-side automation API/scheduling service imports core runtime service and adds DB/concurrency/schedule behavior.
-16. `connectors/sdk.ts` (lines 1-56) - connector spec is mostly data shape plus `defineConnector` identity helper.
-17. `connectors/registry.ts` (lines 1-27) - registry is static connector list and lookup map.
-18. `connectors/capabilities.ts` (lines 1-69) - shared permission/risk helpers used across web and MCP proxy.
-19. `apps/web/src/lib/server/capability-sync.ts` (lines 252-390) - web sync adapts connector registry to MCP transport and DB capabilities.
-20. `workers/mcp-proxy/src/permission.ts` (lines 1-145) - proxy authorization consumes persisted capability rows and connector risk types.
+16. `packages/connectors/src/sdk.ts` - connector policy and native-tool specification.
+17. `packages/connectors/src/registry.ts` - static Garden-native/provider-policy registry.
+18. `packages/connectors/src/capabilities.ts` - shared permission and risk helpers.
+19. `apps/web/src/lib/server/executor-runtime.ts` - request-scoped direct Executor SDK boundary.
+20. `packages/agent-runtime/src/runtime-mcp-controller.ts` - one Executor MCP session plus Garden-native tool assembly.
 21. `packages/db/src/validation/index.ts` (lines 1-100, 136-220) - DB-backed Zod schemas are centralized for several records.
 22. `apps/web/src/lib/server/validation/issues.ts` (lines 1-105) - API-facing issue validation wraps DB validation and maps API names.
 23. `apps/web/src/lib/server/validation/automations.ts` (lines 1-115) - automation API validation duplicates value enums and leaves config JSON as unknown.
@@ -53,7 +54,7 @@
 }
 ```
 
-Search evidence: `rg '"transit"' --glob package.json` found no package scripts named `transit`. Most packages have `typecheck`, `lint`, and `test`, but no `build` either (`packages/core/package.json` lines 6-10, `packages/agent-runtime/package.json` lines 7-12, `connectors/package.json` lines 6-10). Web owns an actual `build` task (`apps/web/package.json` lines 8-23). The task graph therefore looks like an Interface but has little Depth: validation depends on a named Module that currently has no package-local behavior.
+Search evidence: `rg '"transit"' --glob package.json` found no package scripts named `transit`. Most packages have `typecheck`, `lint`, and `test`, but no `build` either (`packages/core/package.json`, `packages/agent-runtime/package.json`, `packages/connectors/package.json`). Web owns an actual `build` task. The task graph therefore looks like an Interface but has little Depth: validation depends on a named Module that currently has no package-local behavior.
 
 Deletion test: deleting or renaming the `transit` task likely changes little unless hidden Turbo semantics rely on a missing script. It is a candidate for either deeper task leverage or removal as accidental seam. No implementation proposed.
 
@@ -117,7 +118,10 @@ Web adds API/schedule/concurrency behavior around the core automation service:
 
 ```ts
 // apps/web/src/lib/server/automations.ts lines 1-9
-import { cancelAutomationRun, startAutomationRun } from '@garden/core/automations/run-service'
+import {
+  cancelAutomationRun,
+  startAutomationRun,
+} from '@garden/core/automations/run-service'
 import { getDb, schema } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
 ```
@@ -134,7 +138,14 @@ Agent runtime is the concrete runtime Adapter that web imports and re-exports fr
 
 ```ts
 // apps/web/src/server.ts lines 3-45
-import { AgentDO, AutomationRunSubAgent, AutomationTriggerDO, ChatSubAgent, IssueRunSubAgent, RunWorkflow } from '@garden/agent-runtime'
+import {
+  AgentDO,
+  AutomationRunSubAgent,
+  AutomationTriggerDO,
+  ChatSubAgent,
+  IssueRunSubAgent,
+  RunWorkflow,
+} from '@garden/agent-runtime'
 export { AgentDO }
 export { AutomationRunSubAgent }
 export { AutomationTriggerDO }
@@ -145,47 +156,27 @@ export { RunWorkflow }
 
 This Seam has real Depth: durable execution, DB rows, API dispatch, scheduling, and agent runtime all meet here. Evidence of shallowness/risk is duplicated binding shape, duplicated runtime-name validation, and web/core split of automation run state transitions. Deletion test: delete `apps/web/src/lib/server/automations.ts` and core still has runtime starts but loses schedule/concurrency/API surface; delete `@garden/core/automations/run-service` and web loses runtime dispatch. Candidate area is run orchestration Locality and Adapter boundaries.
 
-### Candidate 4 - Connectors are data-local, behavior is spread through web and MCP proxy
+### Candidate 4 - Connector execution is centralized; product policy remains split
 
-The connector package provides a compact data spec:
+Garden now constructs Executor v1.5.40 directly in the web Worker. API routes
+use the request-scoped SDK boundary in
+`apps/web/src/lib/server/executor-runtime.ts`; the same Worker exports
+Executor's MCP session and execution-owner Durable Objects from
+`apps/web/src/lib/server/executor-engine/mcp.ts`. There is no connector service
+binding or MCP-proxy Worker.
 
-```ts
-// connectors/sdk.ts lines 1-56
-export type RiskClass = 'read' | 'write' | 'send_external' | 'destructive'
-export type ConnectorSpec = ...
-export function defineConnector(spec: ConnectorSpec): ConnectorSpec { return spec }
-```
+`packages/connectors` remains a Garden-owned policy/native-adapter module. It
+defines GitHub and Discord Effect tools and retains provider risk/scope metadata
+used by capability sync and approval UI. `RuntimeMcpController` exposes those
+native tools beside a single Executor MCP server. This is a deliberate seam:
+Executor owns reusable integration execution, while Garden owns tenant policy,
+native installations, approval, and audit.
 
-Registry is a static list and map:
-
-```ts
-// connectors/registry.ts lines 8-24
-export const connectorRegistry = [exaSearchConnector, githubConnector, gmailConnector, googleDriveConnector, slackConnector]
-export const connectorsById = new Map(connectorRegistry.map((connector) => [connector.id, connector]))
-export function getConnectorById(id: string) { return connectorsById.get(id) }
-```
-
-Some connector policy helpers live with the registry (`connectors/capabilities.ts` lines 16-69), but the high-depth behavior lives elsewhere. Web sync uses the connector spec to build MCP transport, list tools, classify tools, and persist capability rows:
-
-```ts
-// apps/web/src/lib/server/capability-sync.ts lines 310-339
-const connector = getConnectorById(args.connectorId)
-const classification = connector?.tools[args.tool.name]
-if (!connector || !classification) return Result.err(...unclassified_tool...)
-return Result.ok({ connectorType, name, schemaHash, requiredScopes, riskClass })
-```
-
-MCP proxy permission then uses persisted capability rows plus connector risk types:
-
-```ts
-// workers/mcp-proxy/src/permission.ts lines 28-47
-export type PermissionDecision =
-  | { kind: 'allow'; capabilityId: string; riskClass: RiskClass; trustLevel: ... }
-  | { kind: 'needs-approval'; capabilityId: string; riskClass: RiskClass; requestId: string; ... }
-  | { kind: 'reauth-required'; capabilityId: string; riskClass: RiskClass; missingScopes: string[] }
-```
-
-Deletion test: deleting a connector spec breaks sync classification; deleting synced DB capability rows breaks proxy authorization even though registry data still exists. This is a good deepening opportunity because Leverage is high (web UI, proxy auth, runtime MCP tools), but Locality is split across data spec, sync Adapter, and permission Adapter.
+Deletion test: deleting Executor breaks remote integration catalog,
+installation, OAuth, and MCP execution. Deleting `packages/connectors` breaks
+Garden-native tools and its risk/permission projection. The remaining design
+question is whether provider policy should move closer to the Executor catalog,
+not whether another proxy service should exist.
 
 ### Candidate 5 - DB schema validation is shared, API validation is app-local and uneven
 
@@ -203,9 +194,19 @@ Issue API validation reuses DB schemas and maps API field names:
 
 ```ts
 // apps/web/src/lib/server/validation/issues.ts lines 1-24
-import { issueInsertSchema, issueSourceBindingInsertSchema, issuePrioritySchema, issueStatusSchema, issueUpdateSchema, uuidSchema } from '@garden/db/validation'
+import {
+  issueInsertSchema,
+  issueSourceBindingInsertSchema,
+  issuePrioritySchema,
+  issueStatusSchema,
+  issueUpdateSchema,
+  uuidSchema,
+} from '@garden/db/validation'
 const issueApiAssigneeTypeSchema = z.enum(['member', 'agent'])
-const issueDueDateApiSchema = z.union([datetimeStringSchema, issueInsertSchema.shape.dueDate])
+const issueDueDateApiSchema = z.union([
+  datetimeStringSchema,
+  issueInsertSchema.shape.dueDate,
+])
 ```
 
 Automation API validation pulls enum values from schema files, but leaves many product config blobs as `z.unknown()`:
@@ -234,7 +235,14 @@ The ActorAvatar seam is a clean base-plus-app Adapter:
 
 ```tsx
 // packages/ui/components/common/actor-avatar.tsx lines 7-13
-interface ActorAvatarProps { name: string; initials: string; avatarUrl?: string | null; isAgent?: boolean; size?: number; className?: string }
+interface ActorAvatarProps {
+  name: string
+  initials: string
+  avatarUrl?: string | null
+  isAgent?: boolean
+  size?: number
+  className?: string
+}
 ```
 
 ```tsx
@@ -258,7 +266,13 @@ export interface MarkdownProps { children: string; mode?: RenderMode; onUrlClick
 // apps/web/src/features/common/markdown.tsx lines 33-45
 export function Markdown(props: MarkdownProps) {
   const cdnDomain = useConfigStore((s) => s.cdnDomain)
-  return <MarkdownBase renderMention={defaultRenderMention} cdnDomain={cdnDomain} {...props} />
+  return (
+    <MarkdownBase
+      renderMention={defaultRenderMention}
+      cdnDomain={cdnDomain}
+      {...props}
+    />
+  )
 }
 ```
 
@@ -266,16 +280,16 @@ Deletion test: many web features can use UI atoms directly, but app-local adapte
 
 ## Architecture
 
-Workspace shape is simple: root scripts invoke Turbo; pnpm workspaces split into `apps/web`, `workers/*`, `connectors`, and `packages/*`. Web is the composition root: it depends on every Garden package (`apps/web/package.json` lines 42-47), exports Durable Objects from `@garden/agent-runtime` in the Worker entry, and owns most request/API/server-function code under `apps/web/src/lib/server`.
+Workspace shape is simple: root scripts invoke Turbo; pnpm workspaces split into `apps/*`, `workers/*`, and `packages/*`. Web is the application composition root: it exports agent, workflow, and Executor Durable Objects from one Garden app Worker and owns request/API code under `apps/web/src/lib/server`. The tail observer remains a separate operational consumer, not a connector application service.
 
-`@garden/db` is the persistence Module. It exports Drizzle schema, validation, client, and testing helpers. `@garden/core` sits above DB and below web/runtime: it holds shared domain types, issue/automation services, client stores, hooks/providers, observability, and platform helpers. `@garden/agent-runtime` sits beside web as the concrete Cloudflare/AI runtime Module; web imports and re-exports it for Worker bindings. `connectors` is a data/spec Module used by web capability sync, MCP proxy permission, and agent runtime MCP setup. `@garden/ui` is a shared presentation Module with app-specific Adapters in `apps/web/src/features/common`.
+`@garden/db` is the persistence Module. It exports Drizzle schema, validation, client, and testing helpers. `@garden/core` sits above DB and below web/runtime: it holds shared domain types, client stores, hooks/providers, observability, and platform helpers. `@garden/agent-runtime` is the concrete Cloudflare/AI runtime Module; web imports and re-exports it for Worker bindings. `@garden/connectors` supplies native adapters plus provider policy used by capability sync and agent runtime, while Executor supplies the integration engine inside web. `@garden/ui` is a shared presentation Module with app-specific Adapters in `apps/web/src/features/common`.
 
 Main Seams found:
 
 - Package/task Seam: Turbo graph vs packages that mostly run TypeScript directly with no build/transit outputs.
 - Domain/service Seam: `@garden/core` as shared domain plus client state plus server runtime orchestration.
 - Runtime Adapter Seam: core run services speak minimal `Env` shapes; web and agent-runtime supply Cloudflare bindings and concrete DO/Workflow behavior.
-- Connector Adapter Seam: static connector registry is separate from sync-time MCP discovery and proxy-time authorization.
+- Connector Adapter Seam: direct Executor execution is separate from Garden-native adapters and product permission policy.
 - Validation Seam: DB-derived Zod schemas are shared, but API request schemas and product config validation live in web.
 - UI Adapter Seam: shared base components are wrapped by app-local product adapters.
 

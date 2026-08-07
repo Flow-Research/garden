@@ -9,5 +9,6 @@ Before opening a PR:
 - Run `pnpm verify:connectors`.
 - Run `pnpm --filter @garden/connectors typecheck`.
 - Run `pnpm --filter @garden/connectors test`.
-- Use `pnpm create garden-connector <id>` when starting a new connector manifest.
+- Follow the documented Executor-hosted or Garden-native contribution path;
+  there is no connector scaffolding command.
 - Check the review checklist in [docs/core/connectors.md](docs/core/connectors.md#review-checklist).

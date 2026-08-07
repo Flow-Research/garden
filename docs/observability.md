@@ -1,6 +1,6 @@
 # Observability
 
-Garden uses Cloudflare Workers Logs as the primary debugging surface. Use the producer Worker logs first (`garden-staging` and `garden-mcp-proxy`). The Tail Worker (`garden-staging-tail`) is only an optional summary stream.
+Garden uses Cloudflare Workers Logs as the primary debugging surface. Use the Garden app Worker logs first (`garden-staging`); connector APIs and Executor MCP Durable Objects run in that deployment. The Tail Worker (`garden-staging-tail`) is only an optional summary stream.
 
 ## Primary dashboard filters
 

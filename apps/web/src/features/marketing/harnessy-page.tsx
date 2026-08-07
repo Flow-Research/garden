@@ -103,9 +103,10 @@ export function HarnessyPage() {
           </div>
 
           <p className="mt-16 border-t border-[color:var(--hairline-soft)] pt-6 text-xs text-muted-foreground">
-            Source: the Flow C4 architecture handoff and the Harnessy direction.
-            Architecture and product direction only — commercial, legal,
-            identity-provider, and org-structure decisions are tracked elsewhere.
+            Source: Garden’s direct Executor implementation and the independent
+            Harnessy direction. Architecture and product direction only —
+            commercial, legal, identity-provider, and org-structure decisions
+            are tracked elsewhere.
           </p>
         </div>
       </main>
@@ -166,7 +167,7 @@ function StackSection() {
       <SectionHeading
         id="stack"
         title="The stack"
-        summary="Garden is the product surface and control plane. It runs on the open Harnessy foundation and an agent runtime, and is governed by the Jarvis collaboration protocol."
+        summary="Garden is the product surface and control plane. Executor is its shipped connector engine; Harnessy and Jarvis are separate projects in the broader direction."
       />
       <div className="overflow-x-auto">
         <table className="w-full min-w-[28rem] border-collapse text-sm">

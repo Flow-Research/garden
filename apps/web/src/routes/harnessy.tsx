@@ -3,7 +3,7 @@ import { HarnessyPage } from '@/features/marketing'
 
 const HARNESSY_TITLE = 'Harnessy — Garden'
 const HARNESSY_DESCRIPTION =
-  'Where Garden is going: the hosted enterprise surface over the open Harnessy context engine and Pi runtime, and the Jarvis orchestration layer coming next.'
+  'Garden’s shipped direct-Executor architecture, the separate open Harnessy capability project, and the Jarvis collaboration direction.'
 
 export const Route = createFileRoute('/harnessy')({
   head: () => ({
