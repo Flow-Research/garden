@@ -27,6 +27,52 @@ for (const path of legacyEnvFiles) {
 }
 
 const rootDir = fileURLToPath(new URL('../..', import.meta.url))
+const executorSource = (path: string) =>
+  fileURLToPath(new URL(`../../third_party/executor/${path}`, import.meta.url))
+const executorSourceAliases = [
+  {
+    find: /^@executor-js\/sdk$/,
+    replacement: executorSource('shims/sdk.ts'),
+  },
+  {
+    find: /^@executor-js\/execution$/,
+    replacement: executorSource('shims/execution.ts'),
+  },
+  {
+    find: /^@executor-js\/host-mcp$/,
+    replacement: executorSource('packages/hosts/mcp/src/index.ts'),
+  },
+  {
+    find: /^@executor-js\/host-mcp\/(.+)$/,
+    replacement: `${executorSource('packages/hosts/mcp/src')}/$1.ts`,
+  },
+  {
+    find: /^@executor-js\/cloudflare\/mcp\/agent-durable-object$/,
+    replacement: executorSource(
+      'packages/hosts/cloudflare/src/mcp/agent-session-durable-object.ts',
+    ),
+  },
+  {
+    find: /^@executor-js\/cloudflare\/(.+)$/,
+    replacement: `${executorSource('packages/hosts/cloudflare/src')}/$1.ts`,
+  },
+  {
+    find: /^@executor-js\/runtime-dynamic-worker$/,
+    replacement: executorSource(
+      'packages/kernel/runtime-dynamic-worker/src/index.ts',
+    ),
+  },
+  {
+    find: /^@executor-js\/plugin-encrypted-secrets$/,
+    replacement: executorSource(
+      'packages/plugins/encrypted-secrets/src/index.ts',
+    ),
+  },
+  {
+    find: /^@executor-js\/plugin-toolkits\/(.+)$/,
+    replacement: `${executorSource('packages/plugins/toolkits/src')}/$1.ts`,
+  },
+]
 const ssrDependencyStubs = new Map([
   [
     'shiki',
@@ -165,8 +211,12 @@ const config = defineConfig({
     allowedHosts: ['.ngrok-free.app'],
   },
   resolve: {
+    alias: executorSourceAliases,
     tsconfigPaths: true,
-    dedupe: ['react', 'react-dom'],
+    dedupe: ['effect', 'react', 'react-dom'],
+  },
+  ssr: {
+    noExternal: [/^@executor-js\//],
   },
   optimizeDeps: {
     exclude: ['shiki'],

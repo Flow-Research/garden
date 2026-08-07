@@ -5,7 +5,32 @@
     "module": "ESNext",
     "paths": {
       "#/*": ["./src/*"],
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@executor-js/sdk": ["../../third_party/executor/shims/sdk.ts"],
+      "@executor-js/execution": [
+        "../../third_party/executor/shims/execution.ts"
+      ],
+      "@executor-js/host-mcp": [
+        "../../third_party/executor/packages/hosts/mcp/src/index.ts"
+      ],
+      "@executor-js/host-mcp/*": [
+        "../../third_party/executor/packages/hosts/mcp/src/*"
+      ],
+      "@executor-js/cloudflare/*": [
+        "../../third_party/executor/packages/hosts/cloudflare/src/*"
+      ],
+      "@executor-js/cloudflare/mcp/agent-durable-object": [
+        "../../third_party/executor/packages/hosts/cloudflare/src/mcp/agent-session-durable-object.ts"
+      ],
+      "@executor-js/runtime-dynamic-worker": [
+        "../../third_party/executor/packages/kernel/runtime-dynamic-worker/src/index.ts"
+      ],
+      "@executor-js/plugin-encrypted-secrets": [
+        "../../third_party/executor/packages/plugins/encrypted-secrets/src/index.ts"
+      ],
+      "@executor-js/plugin-toolkits/*": [
+        "../../third_party/executor/packages/plugins/toolkits/src/*"
+      ]
     },
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vite/client", "@cloudflare/workers-types"],

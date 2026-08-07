@@ -14,7 +14,7 @@ catalog:
   "@cloudflare/think": "0.10.0"
   "@cloudflare/vite-plugin": "1.37.3"
   "@cloudflare/workers-types": "4.20260521.1"
-  agents: "0.16.2"
+  agents: "0.17.3"
   wrangler: "4.112.0"
 
   # Database
@@ -46,8 +46,8 @@ catalog:
 
   # TypeScript & Node
   "@typescript/native": "npm:typescript@7.0.2"
-  effect: "4.0.0-beta.85"
-  "@effect/vitest": "4.0.0-beta.85"
+  effect: "4.0.0-beta.102"
+  "@effect/vitest": "4.0.0-beta.102"
 
   # Testing
   vitest: "^4.1.0"

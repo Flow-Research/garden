@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.options.json",
+  "include": [
+    "../../third_party/executor/shims/**/*.ts",
+    "../../third_party/executor/packages/hosts/mcp/src/**/*.ts",
+    "../../third_party/executor/packages/hosts/cloudflare/src/**/*.ts",
+    "../../third_party/executor/packages/kernel/runtime-dynamic-worker/src/**/*.ts",
+    "../../third_party/executor/packages/plugins/encrypted-secrets/src/**/*.ts",
+    "../../third_party/executor/packages/plugins/toolkits/src/**/*.ts"
+  ],
+  "exclude": [
+    "../../third_party/executor/**/*.test.ts",
+    "../../third_party/executor/**/*.test.tsx"
+  ],
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node", "@cloudflare/workers-types"]
+  }
+}
