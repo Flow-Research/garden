@@ -14,6 +14,7 @@ db.txt
 refs/
 .pi/
 .dogfood/
+.agents/skills/better-auth-session-mint/
 
 # Local build/deployment artifacts
 .alchemy/
