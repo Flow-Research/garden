@@ -1,7 +1,6 @@
 {
   "extends": "./tsconfig.options.json",
   "include": [
-    "../../third_party/executor/shims/**/*.ts",
     "../../third_party/executor/packages/hosts/mcp/src/**/*.ts",
     "../../third_party/executor/packages/hosts/cloudflare/src/**/*.ts",
     "../../third_party/executor/packages/kernel/runtime-dynamic-worker/src/**/*.ts",

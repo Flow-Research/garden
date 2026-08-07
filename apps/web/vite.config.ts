@@ -31,14 +31,6 @@ const executorSource = (path: string) =>
   fileURLToPath(new URL(`../../third_party/executor/${path}`, import.meta.url))
 const executorSourceAliases = [
   {
-    find: /^@executor-js\/sdk$/,
-    replacement: executorSource('shims/sdk.ts'),
-  },
-  {
-    find: /^@executor-js\/execution$/,
-    replacement: executorSource('shims/execution.ts'),
-  },
-  {
     find: /^@executor-js\/host-mcp$/,
     replacement: executorSource('packages/hosts/mcp/src/index.ts'),
   },

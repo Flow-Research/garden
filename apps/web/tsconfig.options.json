@@ -6,10 +6,6 @@
     "paths": {
       "#/*": ["./src/*"],
       "@/*": ["./src/*"],
-      "@executor-js/sdk": ["../../third_party/executor/shims/sdk.ts"],
-      "@executor-js/execution": [
-        "../../third_party/executor/shims/execution.ts"
-      ],
       "@executor-js/host-mcp": [
         "../../third_party/executor/packages/hosts/mcp/src/index.ts"
       ],
