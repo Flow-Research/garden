@@ -6,6 +6,10 @@ import { startTestDb, type TestDb } from '@garden/db/testing'
 import type { AppEnv } from './env'
 import { resolveAgentProposalRequest } from './agent-proposal-request'
 
+// Match @garden/db's measured testcontainer lifecycle budget. Under the full
+// workspace run, concurrent container startup can exceed Vitest's 10s default.
+const TEST_DB_HOOK_TIMEOUT_MS = 120_000
+
 async function seedProposal(testDb: TestDb) {
   const userId = randomUUID()
   const workspaceId = randomUUID()
@@ -59,11 +63,11 @@ describe('agent proposal request service (integration)', () => {
 
   beforeAll(async () => {
     testDb = await startTestDb()
-  })
+  }, TEST_DB_HOOK_TIMEOUT_MS)
 
   afterAll(async () => {
     await testDb?.cleanup()
-  })
+  }, TEST_DB_HOOK_TIMEOUT_MS)
 
   it('approves a proposal and activates its pending agent', async () => {
     const fixture = await seedProposal(testDb)

@@ -89,6 +89,7 @@ function HighlightText({ text, query }: { text: string; query: string }) {
 }
 
 interface NavPage {
+  id: string
   kind: WorkspacePanelKind
   title: string
   label: string
@@ -99,6 +100,7 @@ interface NavPage {
 
 const navPages: NavPage[] = [
   {
+    id: 'dashboard',
     kind: 'dashboard',
     title: 'Dashboard',
     label: 'Dashboard',
@@ -106,6 +108,7 @@ const navPages: NavPage[] = [
     keywords: ['dashboard', 'home', 'overview', 'workspace'],
   },
   {
+    id: 'inbox',
     kind: 'inbox',
     title: 'Inbox',
     label: 'Inbox',
@@ -113,6 +116,7 @@ const navPages: NavPage[] = [
     keywords: ['inbox', 'notifications', 'home'],
   },
   {
+    id: 'issues',
     kind: 'issues',
     title: 'Tasks',
     label: 'Tasks',
@@ -120,6 +124,7 @@ const navPages: NavPage[] = [
     keywords: ['issues', 'tasks', 'board', 'work'],
   },
   {
+    id: 'new-chat',
     kind: 'chat',
     title: 'New Chat',
     label: 'Chat',
@@ -127,6 +132,7 @@ const navPages: NavPage[] = [
     keywords: ['chat', 'agent', 'conversation'],
   },
   {
+    id: 'agent-chat',
     kind: 'chat',
     title: 'Agent Chat',
     label: 'Agent Chat',
@@ -134,6 +140,7 @@ const navPages: NavPage[] = [
     keywords: ['agent', 'assistant', 'chat'],
   },
   {
+    id: 'skill-editor',
     kind: 'skill-editor',
     title: 'Skills',
     label: 'Skills',
@@ -141,6 +148,7 @@ const navPages: NavPage[] = [
     keywords: ['skills', 'knowledge', 'library'],
   },
   {
+    id: 'capabilities',
     kind: 'capabilities',
     title: 'Connections',
     label: 'Connections',
@@ -362,9 +370,9 @@ export function SearchCommand() {
                   return (
                     <CommandItem
                       className={ITEM_CLASS}
-                      key={page.kind}
+                      key={page.id}
                       onSelect={() => openPage(page)}
-                      value={`page:${page.kind}`}
+                      value={`page:${page.id}`}
                     >
                       <Icon aria-hidden />
                       <span className="truncate">
