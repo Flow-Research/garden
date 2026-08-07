@@ -1,7 +1,4 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
+import { Effect } from 'effect'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -11,9 +8,8 @@ import {
   classifyConnectorError,
   type ConnectorError,
 } from '@garden/core/connectors/errors'
-import { getConnectorById } from '@garden/connectors'
-import { isMcpConnector } from '@garden/connectors/sdk'
-import { mintMcpProxyJwt } from '@garden/connectors/proxy-jwt'
+import { makeGitHubBaseLayer } from '@garden/connectors/github/rest-client'
+import { githubNativeTools } from '@garden/connectors/github/tools'
 import {
   issueSourceBindingSelectSchema,
   issueWorkProductSelectSchema,
@@ -23,7 +19,6 @@ import { getDb, schema } from './db'
 import { resolveConnectorWritePermissionRequests } from './permission-request'
 
 const URL_PATTERN = /https?:\/\/[^\s"'<>]+/i
-const MCP_PROXY_INTERNAL_BASE_URL = 'https://garden-mcp-proxy.internal/'
 
 export const workProductReviewBodySchema = z
   .object({
@@ -33,9 +28,7 @@ export const workProductReviewBodySchema = z
   })
   .strict()
 
-export type WorkProductReviewInput = z.infer<
-  typeof workProductReviewBodySchema
->
+export type WorkProductReviewInput = z.infer<typeof workProductReviewBodySchema>
 
 export class WorkProductReviewError extends TaggedError(
   'WorkProductReviewError',
@@ -157,10 +150,7 @@ function numberValue(value: unknown) {
   return Number.isSafeInteger(parsed) ? parsed : null
 }
 
-function firstString(
-  input: Record<string, unknown> | null,
-  keys: string[],
-) {
+function firstString(input: Record<string, unknown> | null, keys: string[]) {
   if (!input) return null
   for (const key of keys) {
     const value = stringValue(input[key])
@@ -169,10 +159,7 @@ function firstString(
   return null
 }
 
-function firstNumber(
-  input: Record<string, unknown> | null,
-  keys: string[],
-) {
+function firstNumber(input: Record<string, unknown> | null, keys: string[]) {
   if (!input) return null
   for (const key of keys) {
     const value = numberValue(input[key])
@@ -299,51 +286,8 @@ function resolveWritebackInvocation(args: {
   )
 }
 
-function buildProxyTransport(args: {
-  bearerToken: string
-  connectorId: string
-  env: AppEnv
-  transport: 'streamable-http' | 'sse'
-}) {
-  const url =
-    args.transport === 'streamable-http'
-      ? new URL(`${args.connectorId}/mcp`, MCP_PROXY_INTERNAL_BASE_URL)
-      : new URL(`${args.connectorId}/sse`, MCP_PROXY_INTERNAL_BASE_URL)
-
-  const requestInit = {
-    headers: {
-      Authorization: `Bearer ${args.bearerToken}`,
-    },
-  }
-
-  const fetch: FetchLike = async (input, init) =>
-    args.env.MCP_PROXY.fetch(new Request(input, init))
-
-  return args.transport === 'streamable-http'
-    ? new StreamableHTTPClientTransport(url, { requestInit, fetch })
-    : new SSEClientTransport(url, { requestInit, fetch })
-}
-
 function connectorErrorFromCause(cause: unknown): ConnectorError {
   return classifyConnectorError(cause)
-}
-
-function textFromMcpResult(result: unknown) {
-  const value = result as {
-    content?: Array<{ text?: unknown; type?: unknown }>
-  }
-  return (
-    value.content
-      ?.filter((item) => item.type === 'text' && typeof item.text === 'string')
-      .map((item) => item.text as string)
-      .join('\n')
-      .trim() || null
-  )
-}
-
-function gardenMeta(result: unknown) {
-  const meta = objectOrNull((result as { _meta?: unknown })._meta)
-  return objectOrNull(meta?.garden)
 }
 
 function findUrl(value: unknown): string | null {
@@ -380,7 +324,8 @@ function findExternalId(value: unknown): string | null {
   if (!object) return null
 
   for (const key of ['id', 'node_id', 'comment_id']) {
-    const found = stringValue(object[key]) ?? numberValue(object[key])?.toString()
+    const found =
+      stringValue(object[key]) ?? numberValue(object[key])?.toString()
     if (found) return found
   }
 
@@ -390,16 +335,6 @@ function findExternalId(value: unknown): string | null {
   }
 
   return null
-}
-
-function connectorErrorFromMcpError(result: unknown): ConnectorError {
-  const meta = gardenMeta(result)
-  const message = textFromMcpResult(result) ?? 'Connector write failed'
-  return classifyConnectorError({
-    _meta: { garden: meta },
-    message,
-    raw: result,
-  })
 }
 
 async function callConnectorTool(args: {
@@ -413,85 +348,60 @@ async function callConnectorTool(args: {
   userId: string
   workspaceId: string
 }): Promise<
-  ResultValue<
-    ConnectorToolCallOutcome,
-    ConnectorError | WorkProductReviewError
-  >
+  ResultValue<ConnectorToolCallOutcome, ConnectorError | WorkProductReviewError>
 > {
-  const connector = getConnectorById(args.connectorId)
-  if (!connector || !isMcpConnector(connector)) {
+  const nativeTool =
+    args.connectorId === 'github'
+      ? githubNativeTools.find((tool) => tool.name === args.toolName)
+      : undefined
+  if (!nativeTool) {
     return Result.err(
-      new WorkProductReviewError({
-        code: 'unsupported_writeback',
-        status: 400,
-        message: !connector
-          ? `Unknown connector: ${args.connectorId}`
-          : `Connector ${args.connectorId} does not support MCP writeback`,
-      }),
+      unsupportedWriteback(
+        `Connector writeback is not available for ${args.connectorId}.${args.toolName}`,
+      ),
     )
   }
 
-  const tokenResult = await Result.tryPromise({
-    try: async () =>
-      mintMcpProxyJwt({
-        secret: args.env.BETTER_AUTH_SECRET,
-        sub: args.userId,
-        workspaceId: args.workspaceId,
-        agentId: args.agentId,
-        connectorId: args.connectorId,
-        issueId: args.issueId,
-        ...(args.runId ? { runId: args.runId } : {}),
-      }),
-    catch: connectorErrorFromCause,
-  })
-  if (tokenResult.isErr()) return Result.err(tokenResult.error)
-
-  const client = new Client(
-    {
-      name: 'garden-work-product-writeback',
-      version: '0.1.0',
+  const installationResult = await Result.tryPromise({
+    try: async () => {
+      const db = await getDb(args.env)
+      const [installation] = await db
+        .select({
+          installationId: schema.githubAppInstallation.installationId,
+          status: schema.githubAppInstallation.status,
+        })
+        .from(schema.githubAppInstallation)
+        .where(eq(schema.githubAppInstallation.workspaceId, args.workspaceId))
+        .limit(1)
+      return installation ?? null
     },
-    { capabilities: {} },
-  )
-  const transport = buildProxyTransport({
-    bearerToken: tokenResult.value,
-    connectorId: args.connectorId,
-    env: args.env,
-    transport: connector.upstream.transport,
+    catch: (cause) => dbError('Failed to load GitHub App installation', cause),
   })
+  if (installationResult.isErr()) return Result.err(installationResult.error)
+  if (
+    !installationResult.value ||
+    installationResult.value.status === 'disconnected'
+  ) {
+    return Result.err(invalidState('GitHub App installation is not connected'))
+  }
 
   const result = await Result.tryPromise({
-    try: async () => {
-      await client.connect(transport)
-      const toolResult = await client.callTool({
-        name: args.toolName,
-        arguments: args.toolArgs,
-      })
-      await client.close()
-      return toolResult
-    },
+    try: async () =>
+      await Effect.runPromise(
+        nativeTool.execute(args.toolArgs).pipe(
+          Effect.provide(
+            makeGitHubBaseLayer({
+              appId: args.env.GITHUB_APP_ID,
+              clientId: args.env.GITHUB_CLIENT_ID,
+              privateKey: args.env.GITHUB_APP_PRIVATE_KEY,
+              installationId: installationResult.value.installationId,
+            }),
+          ),
+        ),
+      ),
     catch: connectorErrorFromCause,
   })
   if (result.isErr()) return Result.err(result.error)
-
-  const toolResult = result.value as { isError?: boolean }
-  if (toolResult.isError) {
-    const meta = gardenMeta(result.value)
-    if (meta?.code === 'needs_approval') {
-      const requestId = stringValue(meta.requestId)
-      return requestId
-        ? Result.ok({ kind: 'needs_approval', requestId })
-        : Result.err(
-            new WorkProductReviewError({
-              code: 'invalid_state',
-              status: 500,
-              message: 'Connector approval response is missing request id',
-            }),
-          )
-    }
-
-    return Result.err(connectorErrorFromMcpError(result.value))
-  }
 
   return Result.ok({
     kind: 'success',
@@ -528,7 +438,10 @@ async function loadWorkProductContext(args: {
           eq(schema.issue.id, schema.issueWorkProduct.issueId),
         )
         .where(
-          and(eq(schema.issueWorkProduct.id, args.workProductId), workspaceFilter),
+          and(
+            eq(schema.issueWorkProduct.id, args.workProductId),
+            workspaceFilter,
+          ),
         )
         .limit(1),
     catch: (cause) => dbError('Failed to load work product', cause),
@@ -566,10 +479,26 @@ async function loadWorkProductContext(args: {
 export async function loadWorkProductWorkspace(args: {
   env: AppEnv
   workProductId: string
-}): Promise<ResultValue<{ workspaceId: string }, WorkProductReviewError>> {
+}): Promise<
+  ResultValue<
+    {
+      agentId: string | null
+      issueId: string
+      runId: string | null
+      workspaceId: string
+    },
+    WorkProductReviewError
+  >
+> {
   const contextResult = await loadWorkProductContext(args)
   if (contextResult.isErr()) return Result.err(contextResult.error)
-  return Result.ok({ workspaceId: contextResult.value.workProduct.workspaceId })
+  const { workProduct } = contextResult.value
+  return Result.ok({
+    agentId: workProduct.agentId,
+    issueId: workProduct.issueId,
+    runId: workProduct.runId,
+    workspaceId: workProduct.workspaceId,
+  })
 }
 
 async function approveWorkProduct(args: {
@@ -672,7 +601,9 @@ async function requestWorkProductChanges(args: {
   const { issue, workProduct } = contextResult.value
   if (workProduct.status === 'applied' || workProduct.status === 'superseded') {
     return Result.err(
-      invalidState('Applied or superseded work products cannot request changes'),
+      invalidState(
+        'Applied or superseded work products cannot request changes',
+      ),
     )
   }
 
@@ -824,7 +755,9 @@ async function markWorkProductApplied(args: {
             nextSeq: sql<number>`cast(coalesce(max(${schema.issueRunEvent.seq}), 0) + 1 as int)`,
           })
           .from(schema.issueRunEvent)
-          .where(eq(schema.issueRunEvent.runId, args.workProduct.runId as string))
+          .where(
+            eq(schema.issueRunEvent.runId, args.workProduct.runId as string),
+          )
         await tx.insert(schema.issueRunEvent).values({
           id: crypto.randomUUID(),
           workspaceId: args.workProduct.workspaceId,
@@ -936,7 +869,9 @@ async function applyWorkProduct(args: {
   if (contextResult.isErr()) return Result.err(contextResult.error)
   const { issue, workProduct } = contextResult.value
   if (workProduct.status !== 'approved') {
-    return Result.err(invalidState('Only approved work products can be applied'))
+    return Result.err(
+      invalidState('Only approved work products can be applied'),
+    )
   }
 
   if (workProduct.appliedExternalUrl) {
@@ -976,7 +911,8 @@ async function applyWorkProduct(args: {
   })
   if (callResult.isErr()) return Result.err(callResult.error)
 
-  const externalUrl = callResult.value.externalUrl ?? bindingResult.value.externalUrl
+  const externalUrl =
+    callResult.value.externalUrl ?? bindingResult.value.externalUrl
   const appliedResult = await markWorkProductApplied({
     env: args.env,
     externalId: callResult.value.externalId,

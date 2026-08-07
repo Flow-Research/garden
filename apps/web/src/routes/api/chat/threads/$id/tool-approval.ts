@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { archiveInboxItemsByKey } from '@garden/db/inbox'
+import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { requireAppRequestContext } from '@/lib/server/context'
 import {
   parseJsonBody,
@@ -10,6 +11,10 @@ import { getThreadAccess } from '@/lib/server/chat-threads'
 import { resolveConnectorWritePermissionRequests } from '@/lib/server/permission-request'
 import { resolveAgentProposalRequest } from '@/lib/server/agent-proposal-request'
 import { appEnv } from '@/lib/server/env'
+import {
+  capturePostHogEvent,
+  capturePostHogHandledError,
+} from '@/lib/posthog-server'
 import {
   requireWorkspacePermission,
   workspacePermissions,
@@ -53,12 +58,36 @@ export const Route = createFileRoute('/api/chat/threads/$id/tool-approval')({
             workspaceId: access.thread.workspaceId,
           })
           if (proposalResult.isErr()) {
+            capturePostHogHandledError(appContext, {
+              distinctId: access.session.user.id,
+              workspaceId: access.thread.workspaceId,
+              error: proposalResult.error,
+              properties: {
+                operation: 'approval_resolve',
+                approval_kind: 'agent_proposal',
+                approval_id: permissionRequestId,
+                thread_id: access.thread.id,
+              },
+            })
             return json(
               { error: proposalResult.error.message },
               proposalResult.error.status,
             )
           }
 
+          capturePostHogEvent(appContext, {
+            distinctId: access.session.user.id,
+            event: GARDEN_ANALYTICS_EVENTS.approvalResolved,
+            workspaceId: access.thread.workspaceId,
+            properties: {
+              approval_id: proposalResult.value.permissionRequestId,
+              approval_kind: 'agent_proposal',
+              outcome: approved ? 'approved' : 'denied',
+              pending_agent_id: proposalResult.value.pendingAgentId,
+              source_issue_id: proposalResult.value.sourceIssueId,
+              thread_id: access.thread.id,
+            },
+          })
           await archiveInboxItemsByKey({
             db: access.db,
             workspaceId: access.thread.workspaceId,
@@ -91,10 +120,38 @@ export const Route = createFileRoute('/api/chat/threads/$id/tool-approval')({
           workspaceId: access.thread.workspaceId,
         })
         if (resolutionResult.isErr()) {
+          capturePostHogHandledError(appContext, {
+            distinctId: access.session.user.id,
+            workspaceId: access.thread.workspaceId,
+            error: resolutionResult.error,
+            properties: {
+              operation: 'approval_resolve',
+              approval_kind: 'connector_write',
+              thread_id: access.thread.id,
+              tool_call_id: toolCallId,
+            },
+          })
           return json(
             { error: resolutionResult.error.message },
             resolutionResult.error.status,
           )
+        }
+
+        for (const resolvedPermissionRequestId of resolutionResult.value
+          .permissionRequestIds) {
+          capturePostHogEvent(appContext, {
+            distinctId: access.session.user.id,
+            event: GARDEN_ANALYTICS_EVENTS.approvalResolved,
+            workspaceId: access.thread.workspaceId,
+            properties: {
+              approval_id: resolvedPermissionRequestId,
+              approval_kind: 'connector_write',
+              outcome: approved ? 'approved' : 'denied',
+              batch_size: resolutionResult.value.permissionRequestIds.length,
+              thread_id: access.thread.id,
+              tool_call_id: toolCallId,
+            },
+          })
         }
 
         return Response.json({

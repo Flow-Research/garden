@@ -14,6 +14,31 @@ import { disposeRpcResult } from '@garden/app-state/platform/rpc'
 
 const AGENT_ROUTING_RETRY = { maxAttempts: 3 }
 
+type IssueRunPlan = Array<{
+  content: string
+  status: 'pending' | 'in_progress' | 'completed'
+  activeForm: string
+}>
+
+type IssueRunPlanAgentStub = {
+  getRunPlan(input: {
+    runId: string
+    issueId: string
+  }): Promise<IssueRunPlan | null>
+}
+
+/**
+ * Narrows the generated Agent namespace to the internal RPC used by this
+ * development-only route. Project-reference declarations intentionally keep
+ * the Worker binding generic so server modules do not depend on the concrete
+ * Agent runtime implementation.
+ */
+async function getIssueRunPlanAgent(hostName: string) {
+  return (await getAgentByName(appEnv.AgentDO, hostName, {
+    routingRetry: AGENT_ROUTING_RETRY,
+  })) as unknown as IssueRunPlanAgentStub
+}
+
 export const Route = createFileRoute('/api/dev/issue-run-plan')({
   server: {
     handlers: {
@@ -59,9 +84,7 @@ export const Route = createFileRoute('/api/dev/issue-run-plan')({
 
         const planResult = await Result.tryPromise({
           try: async () => {
-            const stub = await getAgentByName(appEnv.AgentDO, run.hostName, {
-              routingRetry: AGENT_ROUTING_RETRY,
-            })
+            const stub = await getIssueRunPlanAgent(run.hostName)
             return disposeRpcResult(
               await stub.getRunPlan({
                 runId: run.id,

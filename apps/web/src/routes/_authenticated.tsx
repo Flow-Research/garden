@@ -7,12 +7,14 @@ import {
 } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
+import type { User } from '@garden/core/types'
 import { useAuthStore } from '@garden/app-state/auth'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { Button } from '@garden/ui/components/ui/button'
 import { workspaceKeys } from '@/lib/workspace/queries'
 import { sanitizeRedirectTarget } from '@/lib/redirect'
 import { getAuthBootstrap } from '@/lib/server/auth-bootstrap'
+import { synchronizePostHogContext } from '@/lib/posthog-browser'
 
 function scheduleClientStoreHydration(callback: () => void) {
   if (typeof queueMicrotask === 'function') {
@@ -96,6 +98,23 @@ function AuthenticatedWorkspaceContext({ children }: { children: ReactNode }) {
   )
 }
 
+function PostHogIdentitySync({ user }: { user: User }) {
+  const workspace = useWorkspaceStore((state) => state.workspace)
+  const synchronizedKey = useRef('')
+
+  if (typeof window !== 'undefined') {
+    const nextKey = `${user.id}:${user.updated_at}:${workspace?.id ?? ''}:${workspace?.updated_at ?? ''}`
+    if (synchronizedKey.current !== nextKey) {
+      synchronizedKey.current = nextKey
+      scheduleClientStoreHydration(() => {
+        synchronizePostHogContext(user, workspace)
+      })
+    }
+  }
+
+  return null
+}
+
 function AuthenticatedLayout() {
   const { preferredWorkspaceId, user, workspaces } = Route.useLoaderData()
   const qc = useQueryClient()
@@ -124,8 +143,11 @@ function AuthenticatedLayout() {
   }
 
   return (
-    <AuthenticatedWorkspaceContext>
-      <Outlet />
-    </AuthenticatedWorkspaceContext>
+    <>
+      <PostHogIdentitySync user={user} />
+      <AuthenticatedWorkspaceContext>
+        <Outlet />
+      </AuthenticatedWorkspaceContext>
+    </>
   )
 }

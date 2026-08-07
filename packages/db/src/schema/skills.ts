@@ -1,6 +1,8 @@
 import { sql } from 'drizzle-orm'
 import {
   boolean,
+  check,
+  index,
   pgTable,
   primaryKey,
   text,
@@ -8,7 +10,6 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
-import { agent } from './agents.js'
 import { user } from './users.js'
 import { organization } from './workspaces.js'
 
@@ -18,7 +19,7 @@ export const skill = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     slug: text('slug').notNull(),
     description: text('description'),
@@ -43,7 +44,7 @@ export const skillVersion = pgTable('skill_version', {
   id: uuid('id').primaryKey(),
   skillId: uuid('skill_id')
     .notNull()
-    .references(() => skill.id),
+    .references(() => skill.id, { onDelete: 'cascade' }),
   frontmatter: text('frontmatter'),
   body: text('body'),
   authorId: uuid('author_id').references(() => user.id),
@@ -54,22 +55,47 @@ export const skillFile = pgTable('skill_file', {
   id: uuid('id').primaryKey(),
   skillId: uuid('skill_id')
     .notNull()
-    .references(() => skill.id),
+    .references(() => skill.id, { onDelete: 'cascade' }),
   path: text('path').notNull(),
   contentHash: text('content_hash'),
   r2Key: text('r2_key'),
 })
 
-export const agentSkill = pgTable(
-  'agent_skill',
+export const skillAssignment = pgTable(
+  'skill_assignment',
   {
-    agentId: uuid('agent_id')
+    workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => agent.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    targetKind: text('target_kind')
+      .$type<'workspace_chat' | 'agent'>()
+      .notNull(),
+    targetId: uuid('target_id').notNull(),
     skillId: uuid('skill_id')
       .notNull()
-      .references(() => skill.id),
+      .references(() => skill.id, { onDelete: 'cascade' }),
     enabled: boolean('enabled').notNull().default(true),
+    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
+    updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
   },
-  (table) => [primaryKey({ columns: [table.agentId, table.skillId] })],
+  (table) => [
+    primaryKey({
+      columns: [
+        table.workspaceId,
+        table.targetKind,
+        table.targetId,
+        table.skillId,
+      ],
+    }),
+    index('skill_assignment_target_idx').on(
+      table.workspaceId,
+      table.targetKind,
+      table.targetId,
+    ),
+    index('skill_assignment_skill_idx').on(table.skillId),
+    check(
+      'skill_assignment_target_kind_check',
+      sql`${table.targetKind} in ('workspace_chat', 'agent')`,
+    ),
+  ],
 )

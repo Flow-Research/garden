@@ -1,40 +1,11 @@
 {
-  "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    "worker-configuration.d.ts",
-    "eslint.config.js",
-    "prettier.config.js",
-    "vite.config.js"
-  ],
-  "exclude": [
-    "**/*.test.ts",
-    "**/*.test.tsx",
-    "node_modules",
-    "dist",
-    ".tanstack",
-    ".output"
-  ],
-  "compilerOptions": {
-    "target": "ES2022",
-    "jsx": "react-jsx",
-    "module": "ESNext",
-    "baseUrl": ".",
-    "paths": {
-      "#/*": ["./src/*"],
-      "@/*": ["./src/*"]
-    },
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vite/client", "@cloudflare/workers-types"],
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "noEmit": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
-  }
+  "extends": "./tsconfig.options.json",
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.shared.json" },
+    { "path": "./tsconfig.server.json" },
+    { "path": "./tsconfig.entry.json" },
+    { "path": "./tsconfig.client.json" },
+    { "path": "./tsconfig.tooling.json" }
+  ]
 }

@@ -51,21 +51,24 @@ export function AgentSkillsTab({
   const qc = useQueryClient()
   const [pickerOpen, setPickerOpen] = useState(false)
 
-  const attachedQuery = useQuery(agentSkillListOptions(agentId))
+  const attachedQuery = useQuery(agentSkillListOptions(wsId, agentId))
   const libraryQuery = useQuery(skillListOptions(wsId))
 
   const attached = attachedQuery.data ?? []
   const library = libraryQuery.data ?? []
+  const assignmentKey = workspaceKeys.agentSkills(wsId, agentId)
 
   const setSkillsMutation = useMutation({
     mutationFn: (skills: AgentSkillAssignment[]) =>
       api.setAgentSkills(agentId, { skills }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: workspaceKeys.agentSkills(agentId) })
+      qc.invalidateQueries({ queryKey: assignmentKey })
       qc.invalidateQueries({ queryKey: workspaceKeys.agent(agentId) })
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : 'Failed to update skills')
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to update skills',
+      )
     },
   })
 
@@ -75,20 +78,18 @@ export function AgentSkillsTab({
     )
 
   const handleToggle = async (skillId: string, enabled: boolean) => {
-    const next = attached.map((s) =>
-      s.id === skillId ? { ...s, enabled } : s,
-    )
-    qc.setQueryData<AgentSkill[]>(workspaceKeys.agentSkills(agentId), next)
+    const next = attached.map((s) => (s.id === skillId ? { ...s, enabled } : s))
+    qc.setQueryData<AgentSkill[]>(assignmentKey, next)
     await commit(next).catch(() => {
-      qc.setQueryData<AgentSkill[]>(workspaceKeys.agentSkills(agentId), attached)
+      qc.setQueryData<AgentSkill[]>(assignmentKey, attached)
     })
   }
 
   const handleDetach = async (skillId: string) => {
     const next = attached.filter((s) => s.id !== skillId)
-    qc.setQueryData<AgentSkill[]>(workspaceKeys.agentSkills(agentId), next)
+    qc.setQueryData<AgentSkill[]>(assignmentKey, next)
     await commit(next).catch(() => {
-      qc.setQueryData<AgentSkill[]>(workspaceKeys.agentSkills(agentId), attached)
+      qc.setQueryData<AgentSkill[]>(assignmentKey, attached)
     })
     toast.success('Skill detached')
   }
@@ -105,9 +106,9 @@ export function AgentSkillsTab({
       .filter((s): s is AgentSkill => s !== null)
     if (additions.length === 0) return
     const next = [...attached, ...additions]
-    qc.setQueryData<AgentSkill[]>(workspaceKeys.agentSkills(agentId), next)
+    qc.setQueryData<AgentSkill[]>(assignmentKey, next)
     await commit(next).catch(() => {
-      qc.setQueryData<AgentSkill[]>(workspaceKeys.agentSkills(agentId), attached)
+      qc.setQueryData<AgentSkill[]>(assignmentKey, attached)
     })
     toast.success(
       additions.length === 1
@@ -160,10 +161,7 @@ export function AgentSkillsTab({
       ) : (
         <ul className="flex flex-col divide-y divide-border/60 rounded-md border">
           {attached.map((skill) => (
-            <li
-              key={skill.id}
-              className="flex items-center gap-3 px-3 py-2.5"
-            >
+            <li key={skill.id} className="flex items-center gap-3 px-3 py-2.5">
               <button
                 type="button"
                 onClick={() => onOpenSkill(skill.id, skill.name)}
@@ -315,9 +313,7 @@ function AttachSkillsDialog({
                         onClick={() => toggle(skill.id)}
                         className={cn(
                           'flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors',
-                          selected
-                            ? 'bg-accent/40'
-                            : 'hover:bg-accent/30',
+                          selected ? 'bg-accent/40' : 'hover:bg-accent/30',
                         )}
                       >
                         <span

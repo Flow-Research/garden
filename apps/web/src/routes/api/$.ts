@@ -1,12 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import {
-  documentArtifactsApiWebHandler,
-  makeDocumentArtifactsRequestContext,
-} from '@/lib/server/document-artifacts-api.server'
+  gardenApiWebHandler,
+  makeGardenApiRequestContext,
+} from '@/lib/server/garden-api.server'
 
-/** Thin TanStack Start host for the Effect HttpApi document application. */
-const handleDocumentsApi = async ({
+/** Thin TanStack Start host for Garden's combined Effect HttpApi application. */
+const handleGardenApi = async ({
   context,
   request,
 }: {
@@ -14,16 +14,19 @@ const handleDocumentsApi = async ({
   request: Request
 }) => {
   const appContext = requireAppRequestContext(context)
-  const effectContext = await makeDocumentArtifactsRequestContext(appContext)
-  return documentArtifactsApiWebHandler(request, effectContext)
+  const effectContext = await makeGardenApiRequestContext(appContext)
+  return gardenApiWebHandler(request, effectContext)
 }
 
 export const Route = createFileRoute('/api/$')({
   server: {
     handlers: {
-      GET: handleDocumentsApi,
-      POST: handleDocumentsApi,
-      OPTIONS: handleDocumentsApi,
+      GET: handleGardenApi,
+      POST: handleGardenApi,
+      PUT: handleGardenApi,
+      PATCH: handleGardenApi,
+      DELETE: handleGardenApi,
+      OPTIONS: handleGardenApi,
     },
   },
 })

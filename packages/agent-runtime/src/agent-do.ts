@@ -20,7 +20,11 @@
 import {
   Session,
   Think,
+  type ChatResponseResult,
   type MessageConcurrency,
+  type StepContext,
+  type ToolCallContext,
+  type ToolCallResultContext,
   type TurnConfig,
   type TurnContext,
 } from '@cloudflare/think'
@@ -50,12 +54,13 @@ import {
   type SandboxExecResult,
 } from './sandbox-debug'
 import { createAgentModel } from './model'
+import { AiObservation } from './ai-observation'
 import {
   classifyGardenContextOverflow,
   configureThinkCompaction,
   createGardenContextOverflow,
 } from './think-compaction'
-import { createGardenSkillSources } from './skills'
+import { loadRuntimeSkillAssignments, loadRuntimeSkillSources } from './skills'
 import {
   PostgresAgentPromptCatalog,
   createPromptContextProviders,
@@ -99,8 +104,12 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_URL: string
   HYPERDRIVE: Hyperdrive
   DISCORD_BOT_TOKEN?: string
+  EXA_API_KEY?: string
   AI: Ai
   AI_GATEWAY_ID?: string
+  ENVIRONMENT?: string
+  VITE_PUBLIC_POSTHOG_HOST?: string
+  VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
   FILES: R2Bucket
   LOADER: WorkerLoader
   Sandbox: DurableObjectNamespace<SandboxDO>
@@ -1084,6 +1093,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   override chatRecovery = true
   override contextOverflow = createGardenContextOverflow()
   override classifyChatError = classifyGardenContextOverflow
+  private readonly aiObservation = new AiObservation(this.ctx, this.env)
   private mcpController: RuntimeMcpController | null = null
   private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
     getController: () => this.getMcpController(),
@@ -1119,6 +1129,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   getModel(): LanguageModel {
     return createAgentModel({
       ai: this.env.AI,
+      env: this.env,
       gatewayId: this.env.AI_GATEWAY_ID,
     })
   }
@@ -1133,28 +1144,20 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       .withCachedPrompt()
   }
 
-  override async getSkills() {
-    const db = getPooledDb(this.env.HYPERDRIVE.connectionString)
-    const [thread] = await db
-      .select({ agentId: schema.chatThread.agentId })
-      .from(schema.chatThread)
-      .where(
-        or(
-          eq(schema.chatThread.id, this.name),
-          eq(schema.chatThread.runtimeKey, this.name),
-        ),
-      )
-      .limit(1)
-
-    return createGardenSkillSources({
-      bucket: this.env.FILES,
-      agentId: thread?.agentId ?? null,
-    })
+  override getSkills() {
+    return loadRuntimeSkillSources(
+      {
+        bucket: this.env.FILES,
+        databaseUrl: this.env.HYPERDRIVE.connectionString,
+      },
+      { kind: 'chat', id: this.name },
+    )
   }
 
   override getTools() {
     return createChatSubAgentTools({
       ctx: this.ctx,
+      ...(this.env.EXA_API_KEY ? { exaApiKey: this.env.EXA_API_KEY } : {}),
       databaseUrl: this.env.HYPERDRIVE.connectionString,
       threadId: this.name,
       workspace: this.workspace,
@@ -1374,32 +1377,13 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     const slugs = explicitSkillSlugsFromMessages(ctx.messages)
     if (slugs.length === 0) return ''
 
-    const db = getPooledDb(this.env.HYPERDRIVE.connectionString)
-    const [thread] = await db
-      .select({ agentId: schema.chatThread.agentId })
-      .from(schema.chatThread)
-      .where(
-        or(
-          eq(schema.chatThread.id, this.name),
-          eq(schema.chatThread.runtimeKey, this.name),
-        ),
-      )
-      .limit(1)
-    if (!thread) return ''
-
-    const assignedRows = await db
-      .select({
-        name: schema.skill.name,
-        slug: schema.skill.slug,
-      })
-      .from(schema.agentSkill)
-      .innerJoin(schema.skill, eq(schema.skill.id, schema.agentSkill.skillId))
-      .where(
-        and(
-          eq(schema.agentSkill.agentId, thread.agentId),
-          eq(schema.agentSkill.enabled, true),
-        ),
-      )
+    const assignedRows = await loadRuntimeSkillAssignments(
+      {
+        bucket: this.env.FILES,
+        databaseUrl: this.env.HYPERDRIVE.connectionString,
+      },
+      { kind: 'chat', id: this.name },
+    )
 
     const assignedByToken = new Map<string, string>()
     for (const row of assignedRows) {
@@ -1431,6 +1415,35 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async beforeTurn(ctx: TurnContext) {
+    const [identity] = await this.getDb()
+      .select({
+        id: schema.chatThread.id,
+        workspaceId: schema.chatThread.workspaceId,
+        ownerUserId: schema.chatThread.ownerUserId,
+        agentId: schema.chatThread.agentId,
+      })
+      .from(schema.chatThread)
+      .where(
+        or(
+          eq(schema.chatThread.id, this.name),
+          eq(schema.chatThread.runtimeKey, this.name),
+        ),
+      )
+      .limit(1)
+    if (identity) {
+      this.aiObservation.startTurn(
+        {
+          runtimeKind: 'chat',
+          distinctId: identity.ownerUserId,
+          workspaceId: identity.workspaceId,
+          agentId: identity.agentId,
+          threadId: identity.id,
+          sessionId: `chat:${identity.id}`,
+        },
+        ctx,
+      )
+    }
+
     const mcpController = this.getMcpController()
     const captured = mcpController.captureObservedMcpToolChanges()
     if (captured.isErr()) {
@@ -1478,6 +1491,12 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     })
 
     return {
+      model: createAgentModel({
+        ai: this.env.AI,
+        env: this.env,
+        gatewayId: this.env.AI_GATEWAY_ID,
+        tracing: this.aiObservation.modelTracing(),
+      }),
       experimental_telemetry: {
         functionId: THINK_TURN_TELEMETRY_FUNCTION_ID,
         isEnabled: true,
@@ -1496,6 +1515,23 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       tools: stableMcpTools,
       activeTools,
     } satisfies TurnConfig
+  }
+
+  override async beforeToolCall(ctx: ToolCallContext) {
+    this.aiObservation.beforeToolCall(ctx)
+    return undefined
+  }
+
+  override async afterToolCall(ctx: ToolCallResultContext) {
+    this.aiObservation.afterToolCall(ctx)
+  }
+
+  override async onStepFinish(ctx: StepContext) {
+    this.aiObservation.stepFinished(ctx)
+  }
+
+  override async onChatResponse(result: ChatResponseResult) {
+    this.aiObservation.finishTurn(result)
   }
 
   override async onRequest(request: Request) {
@@ -1538,7 +1574,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         'bun --version',
         'python3 --version',
         'git --version',
-        'rg --version | head -n 1',
+        'grep --version | head -n 1',
       ].join(' && '),
       {
         cwd: '/workspace',

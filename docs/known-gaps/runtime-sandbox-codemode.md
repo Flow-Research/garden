@@ -1,7 +1,7 @@
 # Runtime sandbox + codemode gaps
 
 **Status:** deferred architectural note; no active Flow Research issue
-**Last reviewed:** 2026-07-12
+**Last reviewed:** 2026-07-23
 
 This note captures the current Garden runtime boundary after comparing our code with the Project Think assistant starter in `cloudflare/agents/examples/assistant`, installed `@cloudflare/think@0.8.6`, installed `@cloudflare/shell@0.3.9`, installed `@cloudflare/codemode@0.3.8`, and the public Cloudflare Agents changelog.
 
@@ -97,7 +97,7 @@ These are deliberate boundaries, not current beta work:
 2. **Different sandbox concepts require precise naming.** Codemode Dynamic Workers, Think's placeholder sandbox export, and Cloudflare Sandbox containers are distinct runtimes.
 3. **Think SDK sandbox tools remain no-op.** Garden's custom container tools fill that SDK gap.
 4. **Codemode exposes `state.*`, not broad Garden domain tools.** Adding inner tools also requires an explicit dispatch-layer approval design.
-5. **Container and package versions need intentional alignment.** `@cloudflare/sandbox` and the image pinned in `apps/web/Dockerfile` can drift.
+5. **Container and package versions are intentionally aligned.** The workspace catalog and production Alchemy/ Wrangler image references use `@cloudflare/sandbox@0.12.4` with `docker.io/cloudflare/sandbox:0.12.4-python`. Production uses the official prebuilt image so Workers Builds does not require Docker.
 
 Do not create active work for synchronization, shared storage, or expanded codemode tools until a concrete workflow requires them.
 
@@ -117,6 +117,13 @@ No issue specifically tracked `@cloudflare/think/tools/sandbox` being a no-op in
 - cloudflare/agents#959 — codemode docs vs TypeScript syntax support; reinforces that generated code should be JavaScript.
 - cloudflare/agents#806 — codemode hyphenated MCP tool names; relevant if we expose connector tools inside codemode.
 - cloudflare/agents#1148 — approval flows with codemode; same problem space as Garden’s dispatch-layer gate plan.
+
+## Production deployment correction (2026-07-23)
+
+- Removed the fabricated Workers-CI `Container` cast. Alchemy now receives a complete, supported prebuilt-image `Container` in every environment.
+- Production creates or adopts `garden-web-sandbox-staging`; it no longer assumes that a staging container already exists.
+- The official prebuilt Python image avoids Docker in Workers Builds while retaining the Sandbox SDK's native process, filesystem, interpreter, and tunnel runtime.
+- All Sandbox clients and runtime configuration use RPC transport.
 
 ## Near-term stance
 

@@ -2,11 +2,10 @@ import { Result } from 'better-result'
 import { tool } from 'ai'
 import { and, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import {
-  issueWorkProductTypeSchema,
-} from '@garden/db/validation'
+import { issueWorkProductTypeSchema } from '@garden/db/validation'
 import * as schema from '@garden/db/schema'
 import { upsertWorkProductReviewInbox } from '@garden/db/inbox'
+import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import {
   appendIssueRunEvent,
   dbError,
@@ -125,6 +124,14 @@ export function createCreateWorkProductTool(context: IssueRunToolContext) {
       if (succeededEventResult.isErr())
         return toolErrorResult(succeededEventResult.error)
 
+      context.captureAnalytics(GARDEN_ANALYTICS_EVENTS.workProductSubmitted, {
+        work_product_id: workProductId,
+        work_product_type: input.type,
+        title: input.title,
+        body: input.body,
+        payload: input.payload,
+        review_state: 'pending',
+      })
       context.recordResolution('create_work_product')
       return toolOkResult({
         work_product_id: workProductId,

@@ -6,6 +6,7 @@ import {
   loadEnv,
   type Logger,
   type LogOptions,
+  type Plugin,
 } from 'vite'
 import { devtools } from '@tanstack/devtools-vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
@@ -26,6 +27,24 @@ for (const path of legacyEnvFiles) {
 }
 
 const rootDir = fileURLToPath(new URL('../..', import.meta.url))
+const ssrDependencyStubs = new Map([
+  [
+    'shiki',
+    fileURLToPath(new URL('./src/lib/build/ssr-shiki.ts', import.meta.url)),
+  ],
+  [
+    '@streamdown/code',
+    fileURLToPath(
+      new URL('./src/lib/build/ssr-streamdown-code.ts', import.meta.url),
+    ),
+  ],
+  [
+    '@streamdown/mermaid',
+    fileURLToPath(
+      new URL('./src/lib/build/ssr-streamdown-mermaid.ts', import.meta.url),
+    ),
+  ],
+])
 const rootEnv = loadEnv(process.env.NODE_ENV ?? 'development', rootDir, '')
 for (const [key, value] of Object.entries(rootEnv)) {
   process.env[key] ??= value
@@ -42,6 +61,7 @@ const postHogSourcemapProjectId = process.env.POSTHOG_CLI_PROJECT_ID
 const postHogSourcemapHost = process.env.POSTHOG_HOST
 const postHogReleaseVersion =
   process.env.POSTHOG_RELEASE_VERSION ??
+  process.env.WORKERS_CI_COMMIT_SHA ??
   process.env.CF_PAGES_COMMIT_SHA ??
   process.env.GITHUB_SHA
 const requirePostHogSourcemaps = process.env.GARDEN_REQUIRE_POSTHOG === '1'
@@ -78,6 +98,30 @@ const logger: Logger = {
 }
 
 /**
+ * Browser-only document renderers carry hundreds of lazy language, theme, and
+ * diagram modules. During SSR they render plaintext placeholders, so resolve
+ * those dependencies to equivalent lightweight seams in the Worker build.
+ */
+function ssrDependencyStubsPlugin(): Plugin {
+  return {
+    enforce: 'pre',
+    name: 'garden-ssr-dependency-stubs',
+    resolveId: {
+      filter: {
+        id: /^(?:shiki|@streamdown\/code|@streamdown\/mermaid)$/,
+      },
+      handler(source) {
+        if (this.environment.name !== 'ssr') {
+          return null
+        }
+
+        return ssrDependencyStubs.get(source) ?? null
+      },
+    },
+  }
+}
+
+/**
  * Adds PostHog's Rollup source-map uploader for production builds. Alchemy sets
  * `GARDEN_REQUIRE_POSTHOG=1` for deploy builds because PostHog is required in
  * Garden production. Local ad hoc builds must not upload just because `.env`
@@ -105,6 +149,7 @@ function postHogSourcemapPlugins() {
       sourcemaps: {
         releaseName: 'garden-web',
         releaseVersion: postHogReleaseVersion,
+        batchSize: 100,
         deleteAfterUpload: true,
       },
     }),
@@ -142,6 +187,7 @@ const config = defineConfig({
   },
   plugins: [
     ...(enableDevtools ? [devtools()] : []),
+    ssrDependencyStubsPlugin(),
     cloudflare({
       viteEnvironment: { name: 'ssr' },
       configPath: cloudflareConfigPath,

@@ -13,7 +13,8 @@ import {
   requireWorkspaceContext,
   toAgent,
 } from '@/lib/server/control-plane'
-import { getPostHogClient } from '@/lib/posthog-server'
+import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
+import { capturePostHogEvent } from '@/lib/posthog-server'
 
 export const Route = createFileRoute('/api/agents')({
   server: {
@@ -75,16 +76,15 @@ export const Route = createFileRoute('/api/agents')({
           agentId: agent.id,
           grantedBy: session.user.id,
         })
-        const posthog = getPostHogClient()
-        posthog.capture({
+        capturePostHogEvent(appContext, {
           distinctId: session.user.id,
-          event: 'agent_created',
+          event: GARDEN_ANALYTICS_EVENTS.agentCreated,
+          workspaceId,
           properties: {
             agent_id: agent.id,
             agent_name: body.name,
           },
         })
-        await posthog.flush()
         return Response.json(toAgent(agent), { status: 201 })
       },
     },

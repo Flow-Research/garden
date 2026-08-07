@@ -2,13 +2,10 @@ import { authClient } from '@/lib/auth/client'
 import { ApiError } from './errors'
 import type {
   Agent,
-  AgentSkill,
   CreateAgentRequest,
   CreateMemberRequest,
   Invitation,
   MemberWithUser,
-  SetAgentSkillsRequest,
-  Skill,
   UpdateMemberRequest,
   Workspace,
 } from '@garden/core/types'
@@ -133,27 +130,4 @@ export function createAgent(data: CreateAgentRequest): Promise<Agent> {
     method: 'POST',
     body: JSON.stringify(data),
   })
-}
-
-export function listAgentSkills(agentId: string): Promise<AgentSkill[]> {
-  return getApiTransport().request(`/api/agents/${agentId}/skills`)
-}
-
-export function setAgentSkills(
-  agentId: string,
-  data: SetAgentSkillsRequest,
-): Promise<void> {
-  return getApiTransport().request(`/api/agents/${agentId}/skills`, {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  })
-}
-
-export function listSkills(params?: {
-  workspace_id?: string
-}): Promise<Skill[]> {
-  const search = new URLSearchParams()
-  if (params?.workspace_id) search.set('workspace_id', params.workspace_id)
-  const suffix = search.size ? `?${search}` : ''
-  return getApiTransport().request(`/api/skills${suffix}`)
 }

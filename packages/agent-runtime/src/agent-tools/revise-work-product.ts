@@ -4,6 +4,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import * as schema from '@garden/db/schema'
 import { upsertWorkProductReviewInbox } from '@garden/db/inbox'
+import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import {
   appendIssueRunEvent,
   dbError,
@@ -124,7 +125,9 @@ export function createReviseWorkProductTool(context: IssueRunToolContext) {
           revised: true,
           work_product_id: input.id,
           title: writeResult.value.title ?? input.title ?? 'Work product',
-          previous_versions_count: previousVersionsCount(writeResult.value.payload),
+          previous_versions_count: previousVersionsCount(
+            writeResult.value.payload,
+          ),
           change_summary: input.change_summary ?? null,
         },
       })
@@ -153,10 +156,23 @@ export function createReviseWorkProductTool(context: IssueRunToolContext) {
       if (succeededEventResult.isErr())
         return toolErrorResult(succeededEventResult.error)
 
+      context.captureAnalytics(GARDEN_ANALYTICS_EVENTS.workProductSubmitted, {
+        work_product_id: input.id,
+        title: input.title ?? writeResult.value.title,
+        body: input.body,
+        change_summary: input.change_summary,
+        previous_versions_count: previousVersionsCount(
+          writeResult.value.payload,
+        ),
+        revised: true,
+        review_state: 'pending',
+      })
       context.recordResolution('revise_work_product')
       return toolOkResult({
         work_product_id: input.id,
-        previous_versions_count: previousVersionsCount(writeResult.value.payload),
+        previous_versions_count: previousVersionsCount(
+          writeResult.value.payload,
+        ),
         run_status: 'succeeded',
       })
     },

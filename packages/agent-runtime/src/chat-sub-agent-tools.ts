@@ -43,6 +43,7 @@ import {
   type DocumentToolContext,
 } from "./documents/document-tools";
 import { createProposeAgentTool } from "./agent-tools/propose-agent";
+import { createWebTools, type WebToolsSqlValue } from "./agent-tools/web";
 import { listAvailableConnectorBindings } from "@garden/server/connectors/availability";
 import { createSandboxTools } from "./sandbox-tools";
 import {
@@ -67,6 +68,7 @@ import { assignIssueInputSchema } from "./chat-assignment-schema";
 
 type ChatSubAgentToolsInput = {
   ctx: DurableObjectState;
+  exaApiKey?: string;
   databaseUrl?: string;
   threadId?: string;
   workspace: WorkspaceFsLike;
@@ -390,6 +392,7 @@ type ChatIssueIdentity = {
   workspaceId: string;
   ownerUserId: string;
   agentId: string;
+  isDefault: boolean;
   issuePrefix: string;
 };
 
@@ -486,6 +489,7 @@ async function loadChatThreadContext(context: {
           workspaceId: schema.chatThread.workspaceId,
           ownerUserId: schema.chatThread.ownerUserId,
           agentId: schema.chatThread.agentId,
+          isDefault: schema.agent.isDefault,
           issuePrefix: schema.organization.issuePrefix,
         })
         .from(schema.chatThread)
@@ -493,6 +497,7 @@ async function loadChatThreadContext(context: {
           schema.organization,
           eq(schema.organization.id, schema.chatThread.workspaceId),
         )
+        .innerJoin(schema.agent, eq(schema.agent.id, schema.chatThread.agentId))
         .where(
           or(
             eq(schema.chatThread.id, context.threadId),
@@ -545,6 +550,7 @@ async function loadChatIssueIdentity(
     workspaceId: result.value.workspaceId,
     ownerUserId: result.value.ownerUserId,
     agentId: result.value.agentId,
+    isDefault: result.value.isDefault,
     issuePrefix: result.value.issuePrefix,
   });
 }
@@ -1468,12 +1474,30 @@ async function listWorkspaceInventoryFromChat(
           includeSkills
             ? db
                 .select({ slug: schema.skill.slug })
-                .from(schema.agentSkill)
+                .from(schema.skillAssignment)
                 .innerJoin(
                   schema.skill,
-                  eq(schema.skill.id, schema.agentSkill.skillId),
+                  eq(schema.skill.id, schema.skillAssignment.skillId),
                 )
-                .where(eq(schema.agentSkill.agentId, identity.agentId))
+                .where(
+                  and(
+                    eq(
+                      schema.skillAssignment.workspaceId,
+                      identity.workspaceId,
+                    ),
+                    eq(
+                      schema.skillAssignment.targetKind,
+                      identity.isDefault ? "workspace_chat" : "agent",
+                    ),
+                    eq(
+                      schema.skillAssignment.targetId,
+                      identity.isDefault
+                        ? identity.workspaceId
+                        : identity.agentId,
+                    ),
+                    eq(schema.skillAssignment.enabled, true),
+                  ),
+                )
             : [],
           includeConnectors
             ? listAvailableConnectorBindings({
@@ -1705,6 +1729,7 @@ async function postIssueCommentFromChat(
 
 export function createChatSubAgentTools({
   ctx,
+  exaApiKey,
   databaseUrl,
   threadId,
   workspace,
@@ -1733,6 +1758,11 @@ export function createChatSubAgentTools({
       description: COMPACT_EXECUTE_DESCRIPTION,
     }),
     ...createSandboxTools(getSandbox),
+    ...createWebTools({
+      env: exaApiKey ? { EXA_API_KEY: exaApiKey } : {},
+      sql: (query, ...params) =>
+        ctx.storage.sql.exec(query, ...(params as WebToolsSqlValue[])),
+    }),
 
     // Client-side tool — no execute function. The UI renders an interactive
     // StructuredInputPanel and sends the user's selections back via

@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { Result, matchError } from 'better-result'
 import { and, eq } from 'drizzle-orm'
+import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import {
   badRequest,
   requireSession,
@@ -19,6 +20,7 @@ import {
 import { schema, type Db } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { captureApiFailure } from '@/lib/server/api-logging'
+import { capturePostHogEvent } from '@/lib/posthog-server'
 import {
   ConnectorCallbackDatabaseError,
   connectorCallbackSearchParams,
@@ -272,7 +274,25 @@ export const Route = createFileRoute('/api/github/setup')({
         })
 
         return result.match({
-          ok: () => redirectToConnections(request, flowId),
+          ok: ({ event, outcome }) => {
+            capturePostHogEvent(appContext, {
+              distinctId: userId,
+              event: GARDEN_ANALYTICS_EVENTS.connectorConnectionCompleted,
+              workspaceId,
+              uuid: event.id,
+              properties: {
+                connector_id: 'github',
+                callback_event_id: event.id,
+                flow_id: flowId,
+                source: 'github_app',
+                outcome: outcome.status,
+                stage: outcome.stage,
+                error_code: outcome.errorCode,
+                account_login: outcome.accountLogin,
+              },
+            })
+            return redirectToConnections(request, flowId)
+          },
           err: (error) =>
             matchError(error, {
               ConnectorCallbackDatabaseError: (databaseError) =>

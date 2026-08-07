@@ -9,6 +9,7 @@ import type {
   IssueRunStatus,
 } from '@garden/core/types/issue-run'
 import * as schema from '@garden/db/schema'
+import type { GardenAnalyticsEventName } from '@garden/observability/analytics/events'
 
 export type AgentDoRpcStub = {
   setName?: (name: string) => Promise<void>
@@ -72,6 +73,10 @@ export type IssueRunToolContext = {
   storageSql: SqlStorage
   getRunState: () => IssueRunToolState | null
   recordResolution: (action: IssueRunResolutionAction) => void
+  captureAnalytics: (
+    event: GardenAnalyticsEventName,
+    properties: Record<string, unknown>,
+  ) => void
   mcp?: IssueRunMcpBridge
 }
 
@@ -219,7 +224,6 @@ export async function updateRunStatus(args: {
             .set({ activeRunId: null, updatedAt: now })
             .where(eq(schema.issue.id, args.run.issueId))
         }
-
       })
     },
     catch: (cause) => dbError('update issue run status', cause),

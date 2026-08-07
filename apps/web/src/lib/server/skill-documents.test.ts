@@ -1,54 +1,58 @@
-import { describe, expect, it } from 'vitest'
-import {
-  buildGardenSkillDocument,
-  parseGardenSkillDocument,
-  updateGardenSkillDocument,
-} from './skill-documents'
+// @vitest-environment node
 
-describe('skill document helpers', () => {
-  it('parses Agent Skills YAML frontmatter', () => {
-    const result = parseGardenSkillDocument(
-      '---\nname: review\ndescription: Review code\nmetadata:\n  tier: core\n---\n\n# Review',
+import { Effect } from 'effect'
+import { describe, expect, it } from 'vitest'
+import { SkillDocuments, skillDocumentsLayer } from './skill-documents'
+
+const run = <A, E>(effect: Effect.Effect<A, E, SkillDocuments>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(skillDocumentsLayer)))
+
+describe('SkillDocuments', () => {
+  it('decodes supported frontmatter and removes unsupported keys', async () => {
+    const parsed = await run(
+      Effect.gen(function* () {
+        const documents = yield* SkillDocuments
+        return yield* documents.parse(
+          [
+            '---',
+            'name: Review',
+            'description: Review code',
+            'compatibility: garden',
+            'unsupported: removed',
+            '---',
+            '# Review',
+          ].join('\n'),
+        )
+      }),
     )
 
-    expect(result.isOk()).toBe(true)
-    if (result.isErr()) return
-    expect(result.value.name).toBe('review')
-    expect(result.value.description).toBe('Review code')
-    expect(result.value.body).toContain('# Review')
-    expect(result.value.frontmatter).toEqual({
-      name: 'review',
+    expect(parsed.frontmatter).toEqual({
+      name: 'Review',
       description: 'Review code',
-      metadata: { tier: 'core' },
+      compatibility: 'garden',
     })
+    expect(parsed.body).toBe('# Review')
   })
 
-  it('rejects documents without required catalog fields', () => {
-    const result = parseGardenSkillDocument('---\nname: review\n---\n# Review')
+  it('builds and updates valid Agent Skills documents', async () => {
+    const updated = await run(
+      Effect.gen(function* () {
+        const documents = yield* SkillDocuments
+        const built = yield* documents.build({
+          name: 'Review',
+          description: 'Review code',
+          body: '# Instructions',
+        })
+        return yield* documents.update({
+          raw: built,
+          description: 'Review TypeScript code',
+          frontmatter: { compatibility: 'garden' },
+        })
+      }),
+    )
 
-    expect(result.isErr()).toBe(true)
-    if (result.isOk()) return
-    expect(result.error.message).toContain('name and description')
-  })
-
-  it('builds and updates SKILL.md without dropping the body', () => {
-    const raw = buildGardenSkillDocument({
-      name: 'review',
-      description: 'Review code',
-      body: '# Review',
-      frontmatter: { metadata: { tier: 'core' } },
-    })
-    const updated = updateGardenSkillDocument({
-      raw,
-      description: 'Review pull requests',
-      frontmatter: { compatibility: 'garden' },
-    })
-
-    expect(updated.isOk()).toBe(true)
-    if (updated.isErr()) return
-    expect(updated.value).toContain('name: review')
-    expect(updated.value).toContain('description: Review pull requests')
-    expect(updated.value).toContain('compatibility: garden')
-    expect(updated.value).toContain('# Review')
+    expect(updated).toContain('description: Review TypeScript code')
+    expect(updated).toContain('compatibility: garden')
+    expect(updated).toContain('# Instructions')
   })
 })

@@ -25,6 +25,10 @@ export class ApiTransport {
     return this.baseUrl
   }
 
+  getWorkspaceId(): string | null {
+    return this.workspaceId
+  }
+
   setWorkspaceId(id: string | null) {
     this.workspaceId = id
   }
@@ -35,7 +39,7 @@ export class ApiTransport {
     return headers
   }
 
-  private handleUnauthorized() {
+  notifyUnauthorized() {
     this.workspaceId = null
     this.options.onUnauthorized?.()
   }
@@ -94,7 +98,7 @@ export class ApiTransport {
     const response = responseResult.value
 
     if (!response.ok) {
-      if (response.status === 401) this.handleUnauthorized()
+      if (response.status === 401) this.notifyUnauthorized()
       const error = await this.errorFromResponse(
         response,
         `API error: ${response.status} ${response.statusText}`,
