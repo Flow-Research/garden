@@ -11,12 +11,12 @@ Build stateful, coordinated applications on Cloudflare's edge using Durable Obje
 
 Your knowledge of Durable Objects APIs and configuration may be outdated. **Prefer retrieval over pre-training** for any Durable Objects task.
 
-| Resource | URL |
-|----------|-----|
-| Docs | https://developers.cloudflare.com/durable-objects/ |
-| API Reference | https://developers.cloudflare.com/durable-objects/api/ |
+| Resource       | URL                                                               |
+| -------------- | ----------------------------------------------------------------- |
+| Docs           | https://developers.cloudflare.com/durable-objects/                |
+| API Reference  | https://developers.cloudflare.com/durable-objects/api/            |
 | Best Practices | https://developers.cloudflare.com/durable-objects/best-practices/ |
-| Examples | https://developers.cloudflare.com/durable-objects/examples/ |
+| Examples       | https://developers.cloudflare.com/durable-objects/examples/       |
 
 Fetch the relevant doc page when implementing features.
 
@@ -35,19 +35,24 @@ Fetch the relevant doc page when implementing features.
 - `./references/testing.md` - Vitest setup, unit/integration tests, alarm testing
 - `./references/workers.md` - Workers handlers, types, wrangler config, observability
 
+Before changing class names, bindings, or storage lifecycle, read
+`references/rules.md` and `references/workers.md`. Cloudflare introduced
+declarative class `exports` in 2026; do not assume an older `migrations` array
+is still the preferred configuration.
+
 Search: `blockConcurrencyWhile`, `idFromName`, `getByName`, `setAlarm`, `sql.exec`
 
 ## Core Principles
 
 ### Use Durable Objects For
 
-| Need | Example |
-|------|---------|
-| Coordination | Chat rooms, multiplayer games, collaborative docs |
-| Strong consistency | Inventory, booking systems, turn-based games |
-| Per-entity storage | Multi-tenant SaaS, per-user data |
-| Persistent connections | WebSockets, real-time notifications |
-| Scheduled work per entity | Subscription renewals, game timeouts |
+| Need                      | Example                                           |
+| ------------------------- | ------------------------------------------------- |
+| Coordination              | Chat rooms, multiplayer games, collaborative docs |
+| Strong consistency        | Inventory, booking systems, turn-based games      |
+| Per-entity storage        | Multi-tenant SaaS, per-user data                  |
+| Persistent connections    | WebSockets, real-time notifications               |
+| Scheduled work per entity | Subscription renewals, game timeouts              |
 
 ### Do NOT Use For
 
@@ -63,61 +68,68 @@ Search: `blockConcurrencyWhile`, `idFromName`, `getByName`, `setAlarm`, `sql.exe
 // wrangler.jsonc
 {
   "durable_objects": {
-    "bindings": [{ "name": "MY_DO", "class_name": "MyDurableObject" }]
+    "bindings": [{ "name": "MY_DO", "class_name": "MyDurableObject" }],
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MyDurableObject"] }]
+  "exports": {
+    "MyDurableObject": { "type": "durable-object", "storage": "sqlite" },
+  },
 }
 ```
+
+For an existing Worker already using the legacy `migrations` array, keep that
+system unless the task explicitly migrates the whole lifecycle configuration.
+Never configure `exports` and `migrations` together.
 
 ### Basic Durable Object Pattern
 
 ```typescript
-import { DurableObject } from "cloudflare:workers";
+import { DurableObject } from 'cloudflare:workers'
 
 export interface Env {
-  MY_DO: DurableObjectNamespace<MyDurableObject>;
+  MY_DO: DurableObjectNamespace<MyDurableObject>
 }
 
 export class MyDurableObject extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
-    super(ctx, env);
+    super(ctx, env)
     ctx.blockConcurrencyWhile(async () => {
       this.ctx.storage.sql.exec(`
         CREATE TABLE IF NOT EXISTS items (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           data TEXT NOT NULL
         )
-      `);
-    });
+      `)
+    })
   }
 
   async addItem(data: string): Promise<number> {
     const result = this.ctx.storage.sql.exec<{ id: number }>(
-      "INSERT INTO items (data) VALUES (?) RETURNING id",
-      data
-    );
-    return result.one().id;
+      'INSERT INTO items (data) VALUES (?) RETURNING id',
+      data,
+    )
+    return result.one().id
   }
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const stub = env.MY_DO.getByName("my-instance");
-    const id = await stub.addItem("hello");
-    return Response.json({ id });
+    const stub = env.MY_DO.getByName('my-instance')
+    const id = await stub.addItem('hello')
+    return Response.json({ id })
   },
-};
+}
 ```
 
 ## Critical Rules
 
 1. **Model around coordination atoms** - One DO per chat room/game/user, not one global DO
 2. **Use `getByName()` for deterministic routing** - Same input = same DO instance
-3. **Use SQLite storage** - Configure `new_sqlite_classes` in migrations
+3. **Use SQLite storage** - New Workers declare live classes with declarative `exports`; legacy Workers append `new_sqlite_classes` migrations
 4. **Initialize in constructor** - Use `blockConcurrencyWhile()` for schema setup only
 5. **Use RPC methods** - Not fetch() handler (compatibility date >= 2024-04-03)
 6. **Persist first, cache second** - Always write to storage before updating in-memory state
 7. **One alarm per DO** - `setAlarm()` replaces any existing alarm
+8. **Treat class deletion as destructive** - Remove code + binding, then declare a tombstone (`exports`) or append `deleted_classes` (legacy); both delete namespace data
 
 ## Anti-Patterns (NEVER)
 
@@ -131,27 +143,27 @@ export default {
 
 ```typescript
 // Deterministic - preferred for most cases
-const stub = env.MY_DO.getByName("room-123");
+const stub = env.MY_DO.getByName('room-123')
 
 // From existing ID string
-const id = env.MY_DO.idFromString(storedIdString);
-const stub = env.MY_DO.get(id);
+const id = env.MY_DO.idFromString(storedIdString)
+const stub = env.MY_DO.get(id)
 
 // New unique ID - store mapping externally
-const id = env.MY_DO.newUniqueId();
-const stub = env.MY_DO.get(id);
+const id = env.MY_DO.newUniqueId()
+const stub = env.MY_DO.get(id)
 ```
 
 ## Storage Operations
 
 ```typescript
 // SQL (synchronous, recommended)
-this.ctx.storage.sql.exec("INSERT INTO t (c) VALUES (?)", value);
-const rows = this.ctx.storage.sql.exec<Row>("SELECT * FROM t").toArray();
+this.ctx.storage.sql.exec('INSERT INTO t (c) VALUES (?)', value)
+const rows = this.ctx.storage.sql.exec<Row>('SELECT * FROM t').toArray()
 
 // KV (async)
-await this.ctx.storage.put("key", value);
-const val = await this.ctx.storage.get<Type>("key");
+await this.ctx.storage.put('key', value)
+const val = await this.ctx.storage.get<Type>('key')
 ```
 
 ## Alarms
@@ -173,14 +185,14 @@ await this.ctx.storage.deleteAlarm();
 ## Testing Quick Start
 
 ```typescript
-import { env } from "cloudflare:test";
-import { describe, it, expect } from "vitest";
+import { env } from 'cloudflare:test'
+import { describe, it, expect } from 'vitest'
 
-describe("MyDO", () => {
-  it("should work", async () => {
-    const stub = env.MY_DO.getByName("test");
-    const result = await stub.addItem("test");
-    expect(result).toBe(1);
-  });
-});
+describe('MyDO', () => {
+  it('should work', async () => {
+    const stub = env.MY_DO.getByName('test')
+    const result = await stub.addItem('test')
+    expect(result).toBe(1)
+  })
+})
 ```

@@ -5,6 +5,7 @@ Persistent storage API for Durable Objects with SQLite and KV backends, PITR, an
 ## Overview
 
 DO Storage provides:
+
 - SQLite-backed (recommended) or KV-backed
 - SQL API + synchronous/async KV APIs
 - Automatic input/output gates (race-free)
@@ -19,30 +20,35 @@ DO Storage provides:
 
 ```typescript
 export class Counter extends DurableObject {
-  sql: SqlStorage;
-  
+  sql: SqlStorage
+
   constructor(ctx: DurableObjectState, env: Env) {
-    super(ctx, env);
-    this.sql = ctx.storage.sql;
-    this.sql.exec('CREATE TABLE IF NOT EXISTS data(key TEXT PRIMARY KEY, value INTEGER)');
+    super(ctx, env)
+    this.sql = ctx.storage.sql
+    this.sql.exec(
+      'CREATE TABLE IF NOT EXISTS data(key TEXT PRIMARY KEY, value INTEGER)',
+    )
   }
-  
+
   async increment(): Promise<number> {
-    const result = this.sql.exec(
-      'INSERT INTO data VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = value + 1 RETURNING value',
-      'counter', 1
-    ).one();
-    return result?.value || 1;
+    const result = this.sql
+      .exec(
+        'INSERT INTO data VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = value + 1 RETURNING value',
+        'counter',
+        1,
+      )
+      .one()
+    return result?.value || 1
   }
 }
 ```
 
 ## Storage Backends
 
-| Backend | Create Method | APIs | PITR |
-|---------|---------------|------|------|
-| SQLite (recommended) | `new_sqlite_classes` | SQL + sync KV + async KV | ✅ |
-| KV (legacy) | `new_classes` | async KV only | ❌ |
+| Backend              | Create Method                               | APIs                     | PITR |
+| -------------------- | ------------------------------------------- | ------------------------ | ---- |
+| SQLite (recommended) | declarative `exports` (`storage: "sqlite"`) | SQL + sync KV + async KV | ✅   |
+| KV (legacy)          | `new_classes`                               | async KV only            | ❌   |
 
 ## Core APIs
 
@@ -62,7 +68,7 @@ export class Counter extends DurableObject {
 
 ## In This Reference
 
-- [configuration.md](./configuration.md) - wrangler.jsonc migrations, SQLite vs KV setup, RPC binding
+- [configuration.md](./configuration.md) - Wrangler class lifecycle, SQLite vs KV setup, RPC binding
 - [api.md](./api.md) - SQL exec/cursors, KV methods, storage options, transactions, alarms, PITR
 - [patterns.md](./patterns.md) - Schema migrations, caching, rate limiting, batch processing, parent-child coordination
 - [gotchas.md](./gotchas.md) - Concurrency gates, INTEGER precision, transaction rules, SQL limits

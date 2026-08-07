@@ -17,33 +17,28 @@ High-level guidance for Workers that invoke Durable Objects.
   "durable_objects": {
     "bindings": [
       { "name": "CHAT_ROOM", "class_name": "ChatRoom" },
-      { "name": "USER_SESSION", "class_name": "UserSession" }
-    ]
+      { "name": "USER_SESSION", "class_name": "UserSession" },
+    ],
   },
 
-  "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["ChatRoom", "UserSession"] }
-  ],
+  "exports": {
+    "ChatRoom": { "type": "durable-object", "storage": "sqlite" },
+    "UserSession": { "type": "durable-object", "storage": "sqlite" },
+  },
 
   // Environment variables
   "vars": {
-    "ENVIRONMENT": "production"
+    "ENVIRONMENT": "production",
   },
 
   // KV namespaces
-  "kv_namespaces": [
-    { "binding": "CONFIG", "id": "abc123" }
-  ],
+  "kv_namespaces": [{ "binding": "CONFIG", "id": "abc123" }],
 
   // R2 buckets
-  "r2_buckets": [
-    { "binding": "UPLOADS", "bucket_name": "my-uploads" }
-  ],
+  "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "my-uploads" }],
 
   // D1 databases
-  "d1_databases": [
-    { "binding": "DB", "database_id": "xyz789" }
-  ]
+  "d1_databases": [{ "binding": "DB", "database_id": "xyz789" }],
 }
 ```
 
@@ -59,13 +54,38 @@ compatibility_flags = ["nodejs_compat"]
 name = "CHAT_ROOM"
 class_name = "ChatRoom"
 
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["ChatRoom"]
+[exports.ChatRoom]
+type = "durable-object"
+storage = "sqlite"
 
 [vars]
 ENVIRONMENT = "production"
 ```
+
+## Class Lifecycle Configuration
+
+Prefer declarative `exports` for a new Worker. Each live class appears in code
+and in `exports`; add a binding only when the Worker needs an `env` namespace.
+Cloudflare reconciles declared lifecycle state during `wrangler deploy`.
+
+Do not mix `exports` with the legacy `migrations` array. When a deployed Worker
+already uses migrations, either:
+
+1. keep them and append unique operations (`new_sqlite_classes`,
+   `renamed_classes`, or `deleted_classes`), or
+2. explicitly migrate the entire configuration to `exports` after matching
+   every live class to its existing storage backend.
+
+Deleting a class is permanent. Remove its code export and binding, then use a
+declarative `state: "deleted"` tombstone. In a legacy config, append a new
+`deleted_classes` migration instead.
+
+Wrangler environment bindings are not inherited. Repeat required Durable
+Object bindings under each `env.<name>`. Environment-level legacy migrations
+override top-level migrations.
+
+Sources: Cloudflare Durable Object class exports, Wrangler configuration, and
+Durable Object environments docs, last checked 2026-08-07.
 
 ## TypeScript Types
 
@@ -73,26 +93,26 @@ ENVIRONMENT = "production"
 
 ```typescript
 // src/types.ts
-import { ChatRoom } from "./durable-objects/chat-room";
-import { UserSession } from "./durable-objects/user-session";
+import { ChatRoom } from './durable-objects/chat-room'
+import { UserSession } from './durable-objects/user-session'
 
 export interface Env {
   // Durable Objects
-  CHAT_ROOM: DurableObjectNamespace<ChatRoom>;
-  USER_SESSION: DurableObjectNamespace<UserSession>;
+  CHAT_ROOM: DurableObjectNamespace<ChatRoom>
+  USER_SESSION: DurableObjectNamespace<UserSession>
 
   // KV
-  CONFIG: KVNamespace;
+  CONFIG: KVNamespace
 
   // R2
-  UPLOADS: R2Bucket;
+  UPLOADS: R2Bucket
 
   // D1
-  DB: D1Database;
+  DB: D1Database
 
   // Environment variables
-  ENVIRONMENT: string;
-  API_KEY: string; // From secrets
+  ENVIRONMENT: string
+  API_KEY: string // From secrets
 }
 ```
 
@@ -100,85 +120,99 @@ export interface Env {
 
 ```typescript
 // src/index.ts
-export { ChatRoom } from "./durable-objects/chat-room";
-export { UserSession } from "./durable-objects/user-session";
+export { ChatRoom } from './durable-objects/chat-room'
+export { UserSession } from './durable-objects/user-session'
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
     // Worker handler
   },
-};
+}
 ```
 
 ## Worker Handler Pattern
 
 ```typescript
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const url = new URL(request.url);
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
+    const url = new URL(request.url)
 
     try {
       // Route to appropriate handler
-      if (url.pathname.startsWith("/api/rooms")) {
-        return handleRooms(request, env);
+      if (url.pathname.startsWith('/api/rooms')) {
+        return handleRooms(request, env)
       }
-      if (url.pathname.startsWith("/api/users")) {
-        return handleUsers(request, env);
+      if (url.pathname.startsWith('/api/users')) {
+        return handleUsers(request, env)
       }
 
-      return new Response("Not Found", { status: 404 });
+      return new Response('Not Found', { status: 404 })
     } catch (error) {
-      console.error("Request failed:", error);
-      return new Response("Internal Server Error", { status: 500 });
+      console.error('Request failed:', error)
+      return new Response('Internal Server Error', { status: 500 })
     }
   },
-};
+}
 
 async function handleRooms(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url);
-  const roomId = url.searchParams.get("room");
+  const url = new URL(request.url)
+  const roomId = url.searchParams.get('room')
 
   if (!roomId) {
-    return Response.json({ error: "Missing room parameter" }, { status: 400 });
+    return Response.json({ error: 'Missing room parameter' }, { status: 400 })
   }
 
-  const stub = env.CHAT_ROOM.getByName(roomId);
+  const stub = env.CHAT_ROOM.getByName(roomId)
 
-  if (request.method === "POST") {
-    const body = await request.json<{ userId: string; message: string }>();
-    const result = await stub.sendMessage(body.userId, body.message);
-    return Response.json(result);
+  if (request.method === 'POST') {
+    const body = await request.json<{ userId: string; message: string }>()
+    const result = await stub.sendMessage(body.userId, body.message)
+    return Response.json(result)
   }
 
-  const messages = await stub.getMessages();
-  return Response.json(messages);
+  const messages = await stub.getMessages()
+  return Response.json(messages)
 }
 ```
 
 ## Request Validation
 
 ```typescript
-import { z } from "zod";
+import { z } from 'zod'
 
 const SendMessageSchema = z.object({
   userId: z.string().min(1),
   message: z.string().min(1).max(1000),
-});
+})
 
-async function handleSendMessage(request: Request, env: Env): Promise<Response> {
-  const body = await request.json();
-  const result = SendMessageSchema.safeParse(body);
+async function handleSendMessage(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const body = await request.json()
+  const result = SendMessageSchema.safeParse(body)
 
   if (!result.success) {
     return Response.json(
-      { error: "Validation failed", details: result.error.issues },
-      { status: 400 }
-    );
+      { error: 'Validation failed', details: result.error.issues },
+      { status: 400 },
+    )
   }
 
-  const stub = env.CHAT_ROOM.getByName(result.data.userId);
-  const message = await stub.sendMessage(result.data.userId, result.data.message);
-  return Response.json(message);
+  const stub = env.CHAT_ROOM.getByName(result.data.userId)
+  const message = await stub.sendMessage(
+    result.data.userId,
+    result.data.message,
+  )
+  return Response.json(message)
 }
 ```
 
@@ -187,44 +221,50 @@ async function handleSendMessage(request: Request, env: Env): Promise<Response> 
 ### Structured Logging
 
 ```typescript
-function log(level: "info" | "warn" | "error", message: string, data?: Record<string, unknown>) {
-  console.log(JSON.stringify({
-    level,
-    message,
-    timestamp: new Date().toISOString(),
-    ...data,
-  }));
+function log(
+  level: 'info' | 'warn' | 'error',
+  message: string,
+  data?: Record<string, unknown>,
+) {
+  console.log(
+    JSON.stringify({
+      level,
+      message,
+      timestamp: new Date().toISOString(),
+      ...data,
+    }),
+  )
 }
 
 // Usage
-log("info", "Request received", { path: url.pathname, method: request.method });
-log("error", "DO call failed", { roomId, error: String(error) });
+log('info', 'Request received', { path: url.pathname, method: request.method })
+log('error', 'DO call failed', { roomId, error: String(error) })
 ```
 
 ### Request Tracing
 
 ```typescript
 async function handleRequest(request: Request, env: Env): Promise<Response> {
-  const requestId = crypto.randomUUID();
-  const startTime = Date.now();
+  const requestId = crypto.randomUUID()
+  const startTime = Date.now()
 
   try {
-    const response = await processRequest(request, env);
+    const response = await processRequest(request, env)
 
-    log("info", "Request completed", {
+    log('info', 'Request completed', {
       requestId,
       duration: Date.now() - startTime,
       status: response.status,
-    });
+    })
 
-    return response;
+    return response
   } catch (error) {
-    log("error", "Request failed", {
+    log('error', 'Request failed', {
       requestId,
       duration: Date.now() - startTime,
       error: String(error),
-    });
-    throw error;
+    })
+    throw error
   }
 }
 ```
@@ -236,9 +276,7 @@ For production logging, use Tail Workers to forward logs:
 ```jsonc
 // wrangler.jsonc
 {
-  "tail_consumers": [
-    { "service": "log-collector" }
-  ]
+  "tail_consumers": [{ "service": "log-collector" }],
 }
 ```
 
@@ -247,20 +285,23 @@ For production logging, use Tail Workers to forward logs:
 ### Graceful DO Errors
 
 ```typescript
-async function callDO(stub: DurableObjectStub<ChatRoom>, method: string): Promise<Response> {
+async function callDO(
+  stub: DurableObjectStub<ChatRoom>,
+  method: string,
+): Promise<Response> {
   try {
-    const result = await stub.getMessages();
-    return Response.json(result);
+    const result = await stub.getMessages()
+    return Response.json(result)
   } catch (error) {
     if (error instanceof Error) {
       // DO threw an error
-      log("error", "DO operation failed", { error: error.message });
+      log('error', 'DO operation failed', { error: error.message })
       return Response.json(
-        { error: "Service temporarily unavailable" },
-        { status: 503 }
-      );
+        { error: 'Service temporarily unavailable' },
+        { status: 503 },
+      )
     }
-    throw error;
+    throw error
   }
 }
 ```
@@ -270,13 +311,13 @@ async function callDO(stub: DurableObjectStub<ChatRoom>, method: string): Promis
 ```typescript
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error("Timeout")), ms)
-  );
-  return Promise.race([promise, timeout]);
+    setTimeout(() => reject(new Error('Timeout')), ms),
+  )
+  return Promise.race([promise, timeout])
 }
 
 // Usage
-const result = await withTimeout(stub.processData(data), 5000);
+const result = await withTimeout(stub.processData(data), 5000)
 ```
 
 ## CORS Handling
@@ -284,30 +325,30 @@ const result = await withTimeout(stub.processData(data), 5000);
 ```typescript
 function corsHeaders(): HeadersInit {
   return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  };
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  }
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (request.method === "OPTIONS") {
-      return new Response(null, { headers: corsHeaders() });
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { headers: corsHeaders() })
     }
 
-    const response = await handleRequest(request, env);
-    
+    const response = await handleRequest(request, env)
+
     // Add CORS headers to response
-    const newHeaders = new Headers(response.headers);
-    Object.entries(corsHeaders()).forEach(([k, v]) => newHeaders.set(k, v));
-    
+    const newHeaders = new Headers(response.headers)
+    Object.entries(corsHeaders()).forEach(([k, v]) => newHeaders.set(k, v))
+
     return new Response(response.body, {
       status: response.status,
       headers: newHeaders,
-    });
+    })
   },
-};
+}
 ```
 
 ## Secrets Management
@@ -320,13 +361,14 @@ wrangler secret put DATABASE_URL
 ```
 
 Access in code:
+
 ```typescript
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const apiKey = env.API_KEY; // From secret
+    const apiKey = env.API_KEY // From secret
     // ...
   },
-};
+}
 ```
 
 ## Development Commands
