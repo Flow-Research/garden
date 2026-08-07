@@ -44,7 +44,7 @@ import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { getPooledDb } from '@garden/db/runtime'
 import { and, asc, eq, or, type SQL } from 'drizzle-orm'
 import { Result } from 'better-result'
-import { Effect, Layer, ManagedRuntime } from 'effect'
+import { Effect, Layer, ManagedRuntime, Option, Schema, Stream } from 'effect'
 import { connectorRegistry } from '@garden/connectors'
 import { createGardenLogger } from '@garden/observability/logger'
 import * as schema from '@garden/db/schema'
@@ -81,10 +81,20 @@ import {
   resolveDocumentEdit,
 } from './documents/document-tools'
 import {
+  DocumentArtifactEvent,
+  DocumentArtifactValidationError,
+  DocumentOperation,
+  toDocumentArtifactRpcError,
+} from './documents/document-artifact-model'
+import {
+  DocumentArtifactEvents,
+  documentArtifactOperationEvent,
+  documentArtifactEventsLayer,
+} from './documents/document-artifact-events'
+import {
   DocumentArtifactEngine,
   documentArtifactEngineLayer,
 } from './documents/document-artifact-engine'
-import { toDocumentArtifactRpcError } from './documents/document-artifact-model'
 import {
   DocumentArtifactProjection,
   documentArtifactProjectionLayer,
@@ -344,6 +354,9 @@ type ThreadDocumentArtifactPayload = Awaited<
 type ThreadDocumentArtifactOperationPayload = Awaited<
   ReturnType<ChatSubAgent['applyDocumentArtifactOperation']>
 >
+type ThreadDocumentArtifactSubscription = Awaited<
+  ReturnType<ChatSubAgent['subscribeDocumentArtifact']>
+>
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.workspace-agent.turn'
 const agentRuntimeLogger = createGardenLogger({
@@ -352,6 +365,25 @@ const agentRuntimeLogger = createGardenLogger({
 })
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const documentArtifactEventJson = Schema.fromJsonString(DocumentArtifactEvent)
+const documentArtifactEventEncoder = new TextEncoder()
+
+/** Encodes one validated collaboration event using the SSE wire grammar. */
+const encodeDocumentArtifactEvent = (
+  event: typeof DocumentArtifactEvent.Type,
+): Effect.Effect<Uint8Array, unknown> =>
+  Effect.gen(function* () {
+    const revision = DocumentArtifactEvent.match<number>(event, {
+      Snapshot: ({ snapshot }) => snapshot.revision,
+      Operation: ({ revision }) => revision,
+    })
+    const json = yield* Schema.encodeUnknownEffect(documentArtifactEventJson)(
+      event,
+    )
+    return documentArtifactEventEncoder.encode(
+      `id: ${revision}\nevent: artifact\ndata: ${json}\n\n`,
+    )
+  }).pipe(Effect.withSpan('DocumentArtifactEvents.encodeSse'))
 
 type LiveAgentStatePayload = DebugMetaPayload & {
   workspace: DebugWorkspacePayload
@@ -571,6 +603,21 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       input.documentId,
       input.operation,
     )
+  }
+
+  /**
+   * Opens the facet-owned document stream after the same thread authorization
+   * used by reads and writes. Native Workers RPC transfers the backpressured
+   * stream; the browser-facing Effect HttpApi adapter supplies SSE semantics.
+   */
+  @callable()
+  async subscribeThreadDocumentArtifact(
+    threadId: string,
+    documentId: string,
+  ): Promise<ThreadDocumentArtifactSubscription> {
+    await this.requireThreadAccess(threadId)
+    const thread = await this.subAgent(ChatSubAgent, threadId)
+    return thread.subscribeDocumentArtifact(documentId)
   }
 
   @callable()
@@ -1080,12 +1127,15 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
    */
   private readonly documentArtifactRuntime = ManagedRuntime.make(
     Layer.merge(
-      documentArtifactEngineLayer.pipe(
-        Layer.provide(
-          makeDocumentArtifactDurableRepositoryLayer(this.ctx.storage),
+      Layer.merge(
+        documentArtifactEngineLayer.pipe(
+          Layer.provide(
+            makeDocumentArtifactDurableRepositoryLayer(this.ctx.storage),
+          ),
         ),
+        documentArtifactProjectionLayer,
       ),
-      documentArtifactProjectionLayer,
+      documentArtifactEventsLayer,
     ),
   )
 
@@ -1238,7 +1288,28 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     return this.documentArtifactRuntime.runPromise(
       Effect.gen(function* () {
         const engine = yield* DocumentArtifactEngine
-        return yield* engine.apply(documentId, operation)
+        const events = yield* DocumentArtifactEvents
+        const command = yield* Schema.decodeUnknownEffect(DocumentOperation)(
+          operation,
+        ).pipe(
+          Effect.mapError(
+            (cause) =>
+              new DocumentArtifactValidationError({
+                operation: 'apply operation',
+                message: String(cause),
+              }),
+          ),
+        )
+        const outcome = yield* engine.apply(documentId, command)
+        const event = documentArtifactOperationEvent({
+          documentId,
+          operation: command,
+          outcome,
+        })
+        if (Option.isSome(event)) {
+          yield* events.publish(event.value)
+        }
+        return outcome
       }).pipe(
         Effect.match({
           onFailure: (error) => ({
@@ -1248,6 +1319,24 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
           onSuccess: (outcome) => ({ ok: true as const, outcome }),
         }),
       ),
+    )
+  }
+
+  /**
+   * Streams an initial snapshot followed by compact accepted operations. The
+   * Effect PubSub subscription is scoped to the returned Web stream, so native
+   * RPC cancellation releases it without a manual subscriber map.
+   */
+  async subscribeDocumentArtifact(documentId: string) {
+    return this.documentArtifactRuntime.runPromise(
+      Effect.gen(function* () {
+        const engine = yield* DocumentArtifactEngine
+        const events = yield* DocumentArtifactEvents
+        const stream: Stream.Stream<Uint8Array, unknown> = events
+          .subscribe(documentId, engine.get(documentId))
+          .pipe(Stream.mapEffect(encodeDocumentArtifactEvent))
+        return Stream.toReadableStream(stream)
+      }),
     )
   }
 

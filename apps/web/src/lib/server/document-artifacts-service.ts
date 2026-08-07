@@ -17,6 +17,7 @@ import {
 import {
   applyChatThreadDocumentArtifactOperation,
   readChatThreadDocumentArtifact,
+  subscribeChatThreadDocumentArtifact,
 } from './chat-agents'
 import { schema } from './db'
 import { AppRequest } from './effect-context'
@@ -36,6 +37,9 @@ export interface DocumentArtifactsService {
     documentId: string,
     operation: DocumentOperation,
   ) => Effect.Effect<DocumentOperationOutcome, DocumentArtifactApiError>
+  readonly subscribe: (
+    documentId: string,
+  ) => Effect.Effect<ReadableStream<Uint8Array>, DocumentArtifactApiError>
 }
 
 export class DocumentArtifacts extends Context.Service<
@@ -237,6 +241,26 @@ export const documentArtifactsLayer = Layer.effect(
       return result.outcome
     })
 
-    return DocumentArtifacts.of({ get, apply })
+    /** Bridges the authorized facet stream without moving authority into HTTP. */
+    const subscribe = Effect.fn('DocumentArtifacts.subscribe')(function* (
+      documentId: string,
+    ) {
+      const row = yield* authorize(documentId)
+      return yield* Effect.tryPromise({
+        try: () =>
+          subscribeChatThreadDocumentArtifact({
+            documentId,
+            hostName: row.hostName,
+            threadId: row.threadId,
+          }),
+        catch: (cause) =>
+          documentArtifactOperationFailure(
+            'subscribe to document artifact',
+            cause,
+          ),
+      })
+    })
+
+    return DocumentArtifacts.of({ get, apply, subscribe })
   }),
 )

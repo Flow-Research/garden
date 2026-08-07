@@ -215,6 +215,7 @@ export const reduceDocumentOperation = Effect.fn(
     return hasConflict
       ? DocumentOperationOutcome.cases.Conflict.make({
           snapshot,
+          committed: false,
           accepted,
           deletedIds,
           conflicts,
@@ -234,6 +235,7 @@ export const reduceDocumentOperation = Effect.fn(
   return hasConflict
     ? DocumentOperationOutcome.cases.Conflict.make({
         snapshot: nextSnapshot,
+        committed: true,
         accepted,
         deletedIds,
         conflicts,

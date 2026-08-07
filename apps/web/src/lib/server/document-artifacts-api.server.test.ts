@@ -15,6 +15,7 @@ import {
 vi.mock('./chat-agents', () => ({
   applyChatThreadDocumentArtifactOperation: vi.fn(),
   readChatThreadDocumentArtifact: vi.fn(),
+  subscribeChatThreadDocumentArtifact: vi.fn(),
 }))
 
 const snapshot = DocumentSnapshot.make({
@@ -32,6 +33,15 @@ const testContext = Context.make(
     apply: () =>
       Effect.succeed(
         DocumentOperationOutcome.cases.Unchanged.make({ snapshot }),
+      ),
+    subscribe: () =>
+      Effect.succeed(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('event: artifact\n\n'))
+            controller.close()
+          },
+        }),
       ),
   }),
 )
@@ -91,6 +101,21 @@ describe('document artifacts Effect HttpApi', () => {
     expect(response.status).toBe(400)
   })
 
+  it('streams canonical collaboration events through the Effect HttpApi', async () => {
+    const response = await documentArtifactsApiWebHandler(
+      new Request(
+        `https://garden.example/api/documents/${DOCUMENT_ID}/artifact/events`,
+      ),
+      testContext,
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe(
+      'text/event-stream; charset=utf-8',
+    )
+    await expect(response.text()).resolves.toBe('event: artifact\n\n')
+  })
+
   it('rejects a non-UUID document id before calling the service', async () => {
     const get = vi.fn(() => Effect.succeed(snapshot))
     const context = Context.make(
@@ -101,6 +126,7 @@ describe('document artifacts Effect HttpApi', () => {
           Effect.succeed(
             DocumentOperationOutcome.cases.Unchanged.make({ snapshot }),
           ),
+        subscribe: () => Effect.succeed(new ReadableStream<Uint8Array>()),
       }),
     )
 

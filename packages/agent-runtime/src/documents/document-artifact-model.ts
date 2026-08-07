@@ -39,8 +39,8 @@ export const DocumentTitle = Schema.String.check(
 const DocumentTitleUpdate = Schema.String.check(
   Schema.isMaxLength(MAX_DOCUMENT_TITLE_LENGTH),
 )
-const DocumentOperationId = Schema.String.check(Schema.isPattern(/\S/))
-const DocumentSenderId = Schema.String.check(Schema.isPattern(/\S/))
+export const DocumentOperationId = Schema.String.check(Schema.isPattern(/\S/))
+export const DocumentSenderId = Schema.String.check(Schema.isPattern(/\S/))
 
 export const DocumentBlock = Schema.Struct({
   id: DocumentBlockId,
@@ -100,6 +100,7 @@ export const DocumentOperationOutcome = Schema.TaggedUnion({
   },
   Conflict: {
     snapshot: DocumentSnapshot,
+    committed: Schema.Boolean,
     accepted: Schema.Array(DocumentBlock),
     deletedIds: Schema.Array(DocumentBlockId),
     conflicts: Schema.Array(DocumentBlock),
@@ -112,6 +113,30 @@ export const DocumentOperationOutcome = Schema.TaggedUnion({
   },
 })
 export type DocumentOperationOutcome = typeof DocumentOperationOutcome.Type
+
+/**
+ * Browser-facing collaboration stream. Snapshot events establish a complete
+ * baseline after connect/reconnect; operation events carry only accepted
+ * changes, matching Cloudflare Workspace Docs' compact broadcast protocol.
+ */
+export const DocumentArtifactEvent = Schema.TaggedUnion({
+  Snapshot: {
+    documentId: DocumentArtifactId,
+    snapshot: DocumentSnapshot,
+  },
+  Operation: {
+    documentId: DocumentArtifactId,
+    operationId: DocumentOperationId,
+    senderId: DocumentSenderId,
+    revision: DocumentRevision,
+    title: DocumentTitle,
+    upserts: Schema.Array(DocumentBlock),
+    deletedIds: Schema.Array(DocumentBlockId),
+    order: Schema.Array(DocumentBlockId),
+    lastModified: DocumentTimestamp,
+  },
+})
+export type DocumentArtifactEvent = typeof DocumentArtifactEvent.Type
 
 export const StoredDocumentArtifact = Schema.Struct({
   snapshot: DocumentSnapshot,

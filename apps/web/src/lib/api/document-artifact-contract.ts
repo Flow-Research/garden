@@ -59,21 +59,29 @@ const CommonErrors = [
  * Canonical editable-document HTTP contract. The route carries only the
  * document id because authorization resolves the owning chat facet before RPC.
  */
-export const DocumentArtifactsApiGroup = HttpApiGroup.make(
-  'documentArtifacts',
-).add(
-  HttpApiEndpoint.get('get', '/api/documents/:id/artifact', {
-    params: DocumentArtifactParams,
-    success: DocumentSnapshot,
-    error: CommonErrors,
-  }),
-  HttpApiEndpoint.post('apply', '/api/documents/:id/artifact', {
-    params: DocumentArtifactParams,
-    payload: DocumentOperation,
-    success: DocumentOperationOutcome,
-    error: CommonErrors,
-  }),
-)
+export const DocumentArtifactsApiGroup = HttpApiGroup.make('documentArtifacts')
+  .add(
+    HttpApiEndpoint.get('get', '/api/documents/:id/artifact', {
+      params: DocumentArtifactParams,
+      success: DocumentSnapshot,
+      error: CommonErrors,
+    }),
+  )
+  .add(
+    HttpApiEndpoint.post('apply', '/api/documents/:id/artifact', {
+      params: DocumentArtifactParams,
+      payload: DocumentOperation,
+      success: DocumentOperationOutcome,
+      error: CommonErrors,
+    }),
+  )
+  .add(
+    HttpApiEndpoint.get('events', '/api/documents/:id/artifact/events', {
+      params: DocumentArtifactParams,
+      success: HttpApiSchema.Empty(200),
+      error: CommonErrors,
+    }),
+  )
 
 export const GardenDocumentsApi = HttpApi.make('garden').add(
   DocumentArtifactsApiGroup,

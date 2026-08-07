@@ -125,10 +125,33 @@ describe('DocumentArtifactEngine', () => {
 
     expect(outcome._tag).toBe('Conflict')
     if (outcome._tag !== 'Conflict') return
+    expect(outcome.committed).toBe(true)
     expect(outcome.conflicts).toEqual([
       { id: 'intro', html: '<p>Introduction</p>', version: 1 },
     ])
     expect(outcome.snapshot.blocks[1]?.html).toBe('<p>Accepted</p>')
+  })
+
+  it('marks a pure version conflict as not committed for live broadcasts', async () => {
+    const { documentId } = await initialize()
+    const outcome = await run(
+      Effect.gen(function* () {
+        const engine = yield* DocumentArtifactEngine
+        return yield* engine.apply(documentId, {
+          operationId: 'operation-pure-conflict',
+          senderId: 'client-b',
+          baseRevision: 0,
+          upserts: [{ id: 'intro', html: '<p>Stale</p>', baseVersion: 0 }],
+          deletes: [],
+          order: ['intro', 'body'],
+        })
+      }),
+    )
+
+    expect(outcome._tag).toBe('Conflict')
+    if (outcome._tag !== 'Conflict') return
+    expect(outcome.committed).toBe(false)
+    expect(outcome.snapshot.revision).toBe(1)
   })
 
   it('deduplicates operation ids inside the repository transaction', async () => {

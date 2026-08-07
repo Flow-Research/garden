@@ -1,9 +1,12 @@
 import { getApiTransport } from './state'
-import type {
-  DocumentOperation,
-  DocumentOperationOutcome,
-  DocumentSnapshot,
+import {
+  DocumentArtifactEvent,
+  type DocumentArtifactEvent as DocumentArtifactEventValue,
+  type DocumentOperation,
+  type DocumentOperationOutcome,
+  type DocumentSnapshot,
 } from '@garden/agent-runtime/src/documents/document-artifact-model'
+import { Option, Schema } from 'effect'
 
 export type DocumentStructureNode = {
   id: string
@@ -116,6 +119,35 @@ export function applyDocumentArtifactOperation(args: {
       body: JSON.stringify(args.operation),
     },
   )
+}
+
+const DocumentArtifactEventFromJson = Schema.fromJsonString(
+  DocumentArtifactEvent,
+)
+
+/**
+ * Opens the typed SSE collaboration channel. Malformed events are ignored at
+ * the browser boundary; EventSource owns reconnect and every reconnect starts
+ * with an authoritative snapshot from the document facet.
+ */
+export function subscribeDocumentArtifactEvents(args: {
+  documentId: string
+  onEvent: (event: DocumentArtifactEventValue) => void
+}): () => void {
+  const source = new EventSource(
+    `/api/documents/${encodeURIComponent(args.documentId)}/artifact/events`,
+  )
+  const onArtifact = (message: MessageEvent<string>) => {
+    const event = Schema.decodeUnknownOption(DocumentArtifactEventFromJson)(
+      message.data,
+    )
+    if (Option.isSome(event)) args.onEvent(event.value)
+  }
+  source.addEventListener('artifact', onArtifact)
+  return () => {
+    source.removeEventListener('artifact', onArtifact)
+    source.close()
+  }
 }
 
 export function resolveDocumentEdit(args: {

@@ -17,7 +17,9 @@ const AGENT_ROUTING_RETRY = { maxAttempts: 3 }
  * routing failures, so all chat-thread server RPC helpers share it instead of
  * each route choosing its own retry shape.
  */
-async function getAgentRuntimeStub(hostName: string): Promise<AgentRuntimeStub> {
+async function getAgentRuntimeStub(
+  hostName: string,
+): Promise<AgentRuntimeStub> {
   return getAgentByName(appEnv.AgentDO, hostName, {
     routingRetry: AGENT_ROUTING_RETRY,
   })
@@ -272,5 +274,22 @@ export async function applyChatThreadDocumentArtifactOperation(input: {
       documentId: input.documentId,
       operation: input.operation,
     }),
+  )
+}
+
+/**
+ * Opens the owning facet's backpressured collaboration stream. Unlike normal
+ * RPC payload helpers, this deliberately leaves the returned Web stream live;
+ * cancellation propagates through Workers RPC when the HTTP client disconnects.
+ */
+export async function subscribeChatThreadDocumentArtifact(input: {
+  documentId: string
+  hostName: string
+  threadId: string
+}) {
+  const stub = await getAgentRuntimeStub(input.hostName)
+  return await stub.subscribeThreadDocumentArtifact(
+    input.threadId,
+    input.documentId,
   )
 }

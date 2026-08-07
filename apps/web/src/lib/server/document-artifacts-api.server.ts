@@ -29,6 +29,20 @@ export const documentArtifactsApiHandlers = HttpApiBuilder.group(
           const documents = yield* DocumentArtifacts
           return yield* documents.apply(params.id, payload)
         }),
+      )
+      .handle('events', ({ params }) =>
+        Effect.gen(function* () {
+          const documents = yield* DocumentArtifacts
+          const stream = yield* documents.subscribe(params.id)
+          return HttpServerResponse.fromWeb(
+            new Response(stream, {
+              headers: {
+                'Cache-Control': 'no-cache',
+                'Content-Type': 'text/event-stream; charset=utf-8',
+              },
+            }),
+          )
+        }),
       ),
 )
 
