@@ -1,4 +1,4 @@
-import { setGardenLogLevel, type GardenLogLevel } from '@garden/observability/logger'
+import { setGardenLogLevel } from '@garden/observability/logger'
 
 type RequiredEnvBinding<Key extends keyof Env> = NonNullable<Env[Key]>
 
@@ -12,15 +12,18 @@ export type AppEnv = {
   FILES: RequiredEnvBinding<'FILES'>
   LOADER: RequiredEnvBinding<'LOADER'>
   BROWSER: RequiredEnvBinding<'BROWSER'>
-  MCP_PROXY: RequiredEnvBinding<'MCP_PROXY'>
+  EXECUTOR_DB: RequiredEnvBinding<'EXECUTOR_DB'>
+  EXECUTOR_BLOBS: RequiredEnvBinding<'EXECUTOR_BLOBS'>
+  EXECUTOR_MCP_SESSION: RequiredEnvBinding<'EXECUTOR_MCP_SESSION'>
+  EXECUTOR_MCP_EXECUTION_OWNER: RequiredEnvBinding<'EXECUTOR_MCP_EXECUTION_OWNER'>
+  EXECUTOR_SECRET_KEY: string
   SANDBOX_TRANSPORT: RequiredEnvBinding<'SANDBOX_TRANSPORT'>
-  GARDEN_LOG_LEVEL?: GardenLogLevel
+  GARDEN_LOG_LEVEL?: RequiredEnvBinding<'GARDEN_LOG_LEVEL'>
   AgentDO: RequiredEnvBinding<'AgentDO'>
   AUTOMATION_TRIGGER: RequiredEnvBinding<'AUTOMATION_TRIGGER'>
-  MCP_SESSION: RequiredEnvBinding<'MCP_SESSION'>
   Sandbox: RequiredEnvBinding<'Sandbox'>
   RUN_WORKFLOW: RequiredEnvBinding<'RUN_WORKFLOW'>
-  ENVIRONMENT?: 'development' | 'test' | 'production'
+  ENVIRONMENT?: 'development' | 'test' | 'staging' | 'production'
   GITHUB_CLIENT_ID?: string
   GITHUB_CLIENT_SECRET?: string
   GITHUB_APP_ID?: string
@@ -31,6 +34,11 @@ export type AppEnv = {
   GOOGLE_CLIENT_SECRET?: string
   SLACK_CLIENT_ID?: string
   SLACK_CLIENT_SECRET?: string
+  DISCORD_CLIENT_ID?: string
+  DISCORD_CLIENT_SECRET?: string
+  DISCORD_BOT_TOKEN?: string
+  DISCORD_PUBLIC_KEY?: string
+  DISCORD_BOT_PERMISSIONS?: string
   RESEND_API_KEY: RequiredEnvBinding<'RESEND_API_KEY'>
   VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
   VITE_PUBLIC_POSTHOG_HOST?: string

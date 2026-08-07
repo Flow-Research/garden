@@ -4,35 +4,33 @@
   "type": "module",
   "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "dev": "turbo run dev --ui=tui --filter=@garden/mcp-proxy --filter=@garden/web",
-    "dev:local": "turbo run dev:local --ui=tui --filter=@garden/mcp-proxy --filter=@garden/web",
-    "dev:reset": "pkill -f '[t]urbo run dev|[t]urbo run dev:local|[w]rangler dev --port 8788|[v]ite dev|[w]orkerd serve|[e]sbuild --service' || true",
+    "dev": "turbo run dev --ui=tui --filter=@garden/web",
+    "dev:local": "turbo run dev:local --ui=tui --filter=@garden/web",
+    "dev:reset": "pkill -f '[t]urbo run dev|[t]urbo run dev:local|[v]ite dev|[w]orkerd serve|[e]sbuild --service' || true",
     "dev:web": "turbo run dev --ui=tui --filter=@garden/web",
     "build": "turbo run build",
-    "deploy": "pnpm typecheck && pnpm run deploy:alchemy && pnpm run deploy:mcp-proxy",
+    "deploy": "pnpm typecheck && pnpm run deploy:alchemy",
     "deploy:alchemy": "GARDEN_DEPLOY_TARGET=production ALCHEMY_PROFILE=garden-staging ALCHEMY_CI_STATE_STORE_CHECK=false ALCHEMY_TELEMETRY_DISABLED=1 alchemy deploy",
-    "deploy:mcp-proxy": "env -u WRANGLER_CI_OVERRIDE_NAME -u WRANGLER_CI_MATCH_TAG wrangler deploy --config workers/mcp-proxy/wrangler.jsonc --keep-vars",
-    "typecheck": "turbo run typecheck",
-    "test": "turbo run test",
-    "lint": "turbo run lint",
-    "verify:connectors": "pnpm --filter @garden/connectors verify:coverage",
-    "check:github-mcp": "pnpm --filter @garden/connectors check:github-mcp",
-    "format": "oxfmt -c ./.oxfmtrc.json --check apps packages",
-    "format:write": "oxfmt -c ./.oxfmtrc.json --write apps packages",
-    "clean": "turbo run clean",
     "deploy:preview": "pnpm typecheck && pnpm run deploy:preview:alchemy",
     "deploy:preview:alchemy": "GARDEN_DEPLOY_TARGET=preview ALCHEMY_PROFILE=garden-staging ALCHEMY_CI_STATE_STORE_CHECK=false ALCHEMY_TELEMETRY_DISABLED=1 alchemy deploy",
     "destroy:preview": "GARDEN_DEPLOY_TARGET=preview ALCHEMY_PROFILE=garden-staging ALCHEMY_CI_STATE_STORE_CHECK=false ALCHEMY_TELEMETRY_DISABLED=1 alchemy destroy",
-    "verify:deploy-config": "node scripts/verify-deploy-config.mjs"
+    "verify:deploy-config": "node scripts/verify-deploy-config.mjs",
+    "typecheck": "turbo run typecheck --concurrency=1",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "verify:connectors": "pnpm --filter @garden/connectors verify:coverage",
+    "format": "oxfmt -c ./.oxfmtrc.json --check apps packages",
+    "format:write": "oxfmt -c ./.oxfmtrc.json --write apps packages",
+    "clean": "turbo run clean"
   },
   "devDependencies": {
     "@garden/connectors": "workspace:*",
     "@modelcontextprotocol/sdk": "1.29.0",
-    "alchemy": "^0.93.10",
+    "alchemy": "^0.93.12",
     "oxfmt": "^0.45.0",
     "oxlint": "^1.60.0",
     "turbo": "^2.5.8",
-    "typescript": "catalog:"
+    "@typescript/native": "catalog:"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -40,7 +38,18 @@
       "lightningcss",
       "workerd"
     ],
-    "patchedDependencies": {}
+    "overrides": {
+      "alchemy@0.93.12>miniflare": "4.20260714.0",
+      "@posthog/cli": "0.8.4",
+      "effect": "4.0.0-beta.102",
+      "@effect/atom-react": "4.0.0-beta.102",
+      "@effect/platform-node": "4.0.0-beta.102",
+      "@effect/platform-node-shared": "4.0.0-beta.102",
+      "@effect/vitest": "4.0.0-beta.102"
+    },
+    "patchedDependencies": {
+      "agents@0.17.3": "patches/agents@0.17.3.patch"
+    }
   },
   "dependencies": {
     "better-result": "^2.9.2"
