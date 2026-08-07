@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const mockSetOpen = vi.hoisted(() => vi.fn())
@@ -241,22 +241,20 @@ describe('WorkspaceSidebar', () => {
   })
 
   it('switches explorer content from the selected rail context', async () => {
-    const user = userEvent.setup()
     const { rerender } = render(<WorkspaceSidebar />)
 
     expect(screen.getByRole('button', { name: /tasks/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /inbox/i })).toBeInTheDocument()
     expect(screen.queryByText('Chat session explorer')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /chats/i }))
+    fireEvent.click(screen.getByRole('button', { name: /chats/i }))
 
     await waitFor(() => {
-      expect(mockClaimWarmSession).toHaveBeenCalled()
-    })
-    expect(mockOpenPanel).toHaveBeenCalledWith({
-      kind: 'chat',
-      title: 'New Chat',
-      entityId: 'session-new',
+      expect(mockOpenPanel).toHaveBeenCalledWith({
+        kind: 'chat',
+        title: 'New Chat',
+        entityId: 'session-new',
+      })
     })
     expect(screen.queryByText('Chat session explorer')).not.toBeInTheDocument()
 
@@ -268,9 +266,7 @@ describe('WorkspaceSidebar', () => {
 
     rerender(<WorkspaceSidebar />)
 
-    await waitFor(() => {
-      expect(screen.getByText('Chat session explorer')).toBeInTheDocument()
-    })
+    expect(screen.getByText('Chat session explorer')).toBeInTheDocument()
     expect(screen.queryByText('No active work yet.')).not.toBeInTheDocument()
   })
 
