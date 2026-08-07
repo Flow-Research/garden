@@ -24,6 +24,15 @@
       "@executor-js/plugin-encrypted-secrets": [
         "../../third_party/executor/packages/plugins/encrypted-secrets/src/index.ts"
       ],
+      "@executor-js/plugin-openapi/presets": [
+        "../../third_party/executor/packages/plugins/openapi/src/sdk/presets.ts"
+      ],
+      "@executor-js/plugin-mcp/presets": [
+        "../../third_party/executor/packages/plugins/mcp/src/sdk/presets.ts"
+      ],
+      "@executor-js/plugin-graphql/presets": [
+        "../../third_party/executor/packages/plugins/graphql/src/sdk/presets.ts"
+      ],
       "@executor-js/plugin-toolkits/*": [
         "../../third_party/executor/packages/plugins/toolkits/src/*"
       ]

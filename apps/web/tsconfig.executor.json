@@ -5,6 +5,9 @@
     "../../third_party/executor/packages/hosts/cloudflare/src/**/*.ts",
     "../../third_party/executor/packages/kernel/runtime-dynamic-worker/src/**/*.ts",
     "../../third_party/executor/packages/plugins/encrypted-secrets/src/**/*.ts",
+    "../../third_party/executor/packages/plugins/graphql/src/sdk/presets.ts",
+    "../../third_party/executor/packages/plugins/mcp/src/sdk/presets.ts",
+    "../../third_party/executor/packages/plugins/openapi/src/sdk/presets.ts",
     "../../third_party/executor/packages/plugins/toolkits/src/**/*.ts"
   ],
   "exclude": [

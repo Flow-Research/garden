@@ -15,7 +15,7 @@ const callbackHtml = (result: {
   `<!doctype html><html><body><script>
 const result = ${JSON.stringify(result).replace(/</g, '\\u003c')};
 if (window.opener) {
-  window.opener.postMessage({ type: 'harnessy-oauth', ...result }, window.location.origin);
+  window.opener.postMessage({ type: 'executor-oauth', ...result }, window.location.origin);
   window.close();
 } else {
   window.location.replace('/workspace');

@@ -4,7 +4,7 @@
     "src/lib/api/document-artifact-contract.ts",
     "src/lib/api/garden-api-contract.ts",
     "src/lib/api/skills-contract.ts",
-    "src/lib/harnessy-contract.ts"
+    "src/lib/executor-contract.ts"
   ],
   "compilerOptions": {
     "composite": true,

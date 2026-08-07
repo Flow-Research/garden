@@ -1,127 +1,246 @@
-import { Result } from 'better-result'
-import { and, eq } from 'drizzle-orm'
+import { Effect, Result } from 'effect'
 import { createFileRoute } from '@tanstack/react-router'
-import { requireAppRequestContext } from '@/lib/server/context'
 import {
-  decryptStoredOAuthTokens,
-  revokeOAuthConnector,
-} from '@/lib/server/connector-revocation'
+  deleteGitHubAppInstallation,
+  getGitHubAppInstallation,
+} from '@garden/connectors/github-app'
+import { eq } from 'drizzle-orm'
+import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
+import {
+  AuthTemplateSlug,
+  ConnectionName,
+  IntegrationSlug,
+} from '@executor-js/sdk/core'
+import { requireAppRequestContext } from '@/lib/server/context'
+import { capturePostHogEvent } from '@/lib/posthog-server'
+import { syncCapabilities } from '@/lib/server/capability-sync'
+import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
+import { captureApiFailure, logApiFailure } from '@/lib/server/api-logging'
+import {
+  deleteDiscordInstallation,
+  getDiscordInstallation,
+  setDiscordInstallStatus,
+} from '@/lib/server/discord-install'
+import {
+  requireWorkspaceContext,
+  badRequest,
+  notFound,
+} from '@/lib/server/control-plane'
 import {
   requireWorkspacePermission,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
-import { getConnectorById } from '@garden/connectors'
-import { deleteGitHubAppInstallation } from '@garden/connectors/github-app'
 import {
   connectionActionBodySchema,
+  connectionCredentialBodySchema,
   parseJsonBody,
 } from '@/lib/server/validation/connections'
-import { syncCapabilities } from '@/lib/server/capability-sync'
 import {
-  badRequest,
-  notFound,
-  requireSession,
-  resolveWorkspaceId,
-  unauthorized,
-} from '@/lib/server/control-plane'
-import { schema, type Db } from '@/lib/server/db'
+  ConnectionOwnership,
+  connectionOwnershipLayer,
+} from '@/lib/server/executor-engine/connection-ownership'
+import { runExecutor, type GardenExecutor } from '@/lib/server/executor-runtime'
 
-function syncErrorStatus(code: string) {
-  switch (code) {
-    case 'connector_not_found':
-      return 404
-    case 'sync_agent_not_found':
-    case 'unclassified_tool':
-      return 409
-    default:
-      return 500
-  }
-}
-
-async function parseAction(request: Request) {
-  const bodyResult = await parseJsonBody(
-    request,
-    connectionActionBodySchema,
-    'Invalid connection action',
-  )
-
-  return bodyResult.isOk()
-    ? Result.ok(bodyResult.value.action)
-    : Result.err('invalid-action')
+interface CredentialConnectionInput {
+  readonly connectorId: string
+  readonly name: string
+  readonly template: string
+  readonly values: Record<string, string>
 }
 
 /**
- * Updates the GitHub App install row rather than the OAuth account table.
- * GitHub uses the connector.oauth metadata only for upstream host/scopes, while
- * the actual install state lives in github_app_installation. Previously resync
- * and disconnect wrote account rows that do not exist for GitHub App installs,
- * so degraded installs could not recover or disappear cleanly. After this, the
- * API boundary keeps GitHub App status in its canonical table. References
- * consulted: local GitHub App schema/callback flow and better-result boundary
- * handling guidance.
+ * Creates and validates a credential-backed Executor connection using the
+ * request-provided ownership service. HTTP decoding and Workspace authorization
+ * happen before this program is provided its owner layer.
  */
-async function updateGitHubInstallationStatus(args: {
-  db: Db
-  workspaceId: string
-  status: 'connected' | 'degraded' | 'disconnected'
-}) {
-  const [installation] = await args.db
-    .update(schema.githubAppInstallation)
-    .set({ status: args.status, updatedAt: new Date() })
-    .where(eq(schema.githubAppInstallation.workspaceId, args.workspaceId))
-    .returning({ id: schema.githubAppInstallation.id })
+const createCredentialConnection = Effect.fn(
+  'ExecutorConnection.createCredential',
+)(function* (executor: GardenExecutor, input: CredentialConnectionInput) {
+  const ownership = yield* ConnectionOwnership
+  const integration = yield* executor.integrations.get(
+    IntegrationSlug.make(input.connectorId),
+  )
+  if (!integration) return { kind: 'not-found' as const }
 
-  return installation
-}
+  const method = integration.authMethods.find(
+    (candidate) => candidate.template === input.template,
+  )
+  if (!method || (method.kind !== 'apikey' && method.kind !== 'header')) {
+    return { kind: 'invalid-template' as const }
+  }
+
+  const expectedVariables = new Set(
+    (method.placements ?? []).flatMap((placement) =>
+      placement.literal === undefined ? [placement.variable ?? 'token'] : [],
+    ),
+  )
+  const suppliedVariables = Object.keys(input.values)
+  if (
+    suppliedVariables.length !== expectedVariables.size ||
+    suppliedVariables.some((variable) => !expectedVariables.has(variable))
+  ) {
+    return { kind: 'invalid-values' as const }
+  }
+
+  const connection = yield* executor.connections.create({
+    owner: ownership.owner,
+    name: ConnectionName.make(input.name),
+    integration: integration.slug,
+    template: AuthTemplateSlug.make(method.template),
+    values: input.values,
+  })
+  const refreshResult = yield* executor.connections
+    .refresh(connection)
+    .pipe(Effect.result)
+  if (Result.isFailure(refreshResult)) {
+    yield* executor.connections.remove(connection)
+    return {
+      kind: 'credential-failed' as const,
+      error: refreshResult.failure,
+    }
+  }
+  return {
+    kind: 'created' as const,
+    connection: String(connection.address),
+    toolCount: refreshResult.success.length,
+  }
+})
 
 export const Route = createFileRoute('/api/connections/$connectorId')({
   server: {
     handlers: {
-      POST: async ({ context, request, params }) => {
+      PUT: async ({ context, request, params }) => {
         const appContext = requireAppRequestContext(context)
-        const session = await requireSession(appContext)
-        if (!session) return unauthorized()
+        const workspaceContext = await requireWorkspaceContext(appContext)
+        if (workspaceContext instanceof Response) return workspaceContext
 
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
-        if (!workspaceId) {
-          return Response.json(
-            { error: 'Workspace not found' },
-            { status: 404 },
-          )
+        const bodyResult = await parseJsonBody(
+          request,
+          connectionCredentialBodySchema,
+          'Invalid connection credentials',
+        )
+        if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
+
+        if (bodyResult.value.owner === 'org') {
+          const permission = await requireWorkspacePermission({
+            appContext,
+            request,
+            workspaceId: workspaceContext.workspaceId,
+            permissions: workspacePermissions.connectionManage,
+          })
+          if (permission) return permission
         }
 
-        const connector = getConnectorById(params.connectorId)
-        if (!connector) return notFound('Connector not found')
+        const ownershipLayer = connectionOwnershipLayer(bodyResult.value.owner)
+        const outcome = await runExecutor(
+          {
+            tenant: workspaceContext.workspaceId,
+            subject: workspaceContext.session.user.id,
+          },
+          (executor) =>
+            createCredentialConnection(executor, {
+              connectorId: params.connectorId,
+              name: bodyResult.value.name,
+              template: bodyResult.value.template,
+              values: bodyResult.value.values,
+            }).pipe(Effect.provide(ownershipLayer)),
+        )
+
+        if (outcome.kind === 'not-found') {
+          return notFound('Integration not found')
+        }
+        if (outcome.kind === 'invalid-template') {
+          return badRequest(
+            'This integration does not expose that credential method',
+          )
+        }
+        if (outcome.kind === 'invalid-values') {
+          return badRequest(
+            'Credential fields do not match the selected method',
+          )
+        }
+        if (outcome.kind === 'credential-failed') {
+          logApiFailure({
+            request,
+            event: 'executor.connection.credential_validation_failed',
+            error: outcome.error,
+            level: 'warn',
+          })
+          capturePostHogEvent(appContext, {
+            distinctId: workspaceContext.session.user.id,
+            event: GARDEN_ANALYTICS_EVENTS.connectorConnectionFailed,
+            workspaceId: workspaceContext.workspaceId,
+            properties: {
+              connector_id: params.connectorId,
+              connection_kind: 'credential',
+              stage: 'credential_refresh',
+            },
+          })
+          return badRequest(
+            'The provider rejected these credentials or tool sync failed',
+          )
+        }
+        capturePostHogEvent(appContext, {
+          distinctId: workspaceContext.session.user.id,
+          event: GARDEN_ANALYTICS_EVENTS.connectorConnectionCompleted,
+          workspaceId: workspaceContext.workspaceId,
+          properties: {
+            connector_id: params.connectorId,
+            connection_kind: 'credential',
+            tool_count: outcome.toolCount,
+          },
+        })
+        return Response.json({
+          ok: true,
+          connection: outcome.connection,
+          toolCount: outcome.toolCount,
+        })
+      },
+      POST: async ({ context, request, params }) => {
+        const appContext = requireAppRequestContext(context)
+        const workspaceContext = await requireWorkspaceContext(appContext)
+        if (workspaceContext instanceof Response) return workspaceContext
 
         const permission = await requireWorkspacePermission({
           appContext,
           request,
-          workspaceId,
+          workspaceId: workspaceContext.workspaceId,
           permissions: workspacePermissions.connectionManage,
         })
         if (permission) return permission
 
-        const actionResult = await parseAction(request)
-        if (actionResult.isErr()) {
-          return badRequest('Invalid connection action')
-        }
+        const bodyResult = await parseJsonBody(
+          request,
+          connectionActionBodySchema,
+          'Invalid connection action',
+        )
+        if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
 
-        const db = await appContext.db()
+        if (params.connectorId === 'github') {
+          if (bodyResult.value.action === 'connect') {
+            return badRequest('Use Add to GitHub to connect this integration')
+          }
+          const db = await appContext.db()
+          const [installation] = await db
+            .select()
+            .from(schema.githubAppInstallation)
+            .where(
+              eq(
+                schema.githubAppInstallation.workspaceId,
+                workspaceContext.workspaceId,
+              ),
+            )
+            .limit(1)
+          if (installation === undefined) {
+            return notFound('GitHub App installation not found')
+          }
 
-        if (actionResult.value === 'disconnect') {
-          if (connector.id === 'github') {
-            const [installation] = await db
-              .select({
-                installationId: schema.githubAppInstallation.installationId,
-                updatedAt: schema.githubAppInstallation.updatedAt,
-              })
-              .from(schema.githubAppInstallation)
-              .where(eq(schema.githubAppInstallation.workspaceId, workspaceId))
-              .limit(1)
-            if (!installation) return notFound('Connection not found')
-
-            const revokeResult = await deleteGitHubAppInstallation({
+          if (
+            bodyResult.value.action === 'delete' ||
+            bodyResult.value.action === 'disconnect'
+          ) {
+            const uninstalled = await deleteGitHubAppInstallation({
               env: {
                 GITHUB_APP_ID: appEnv.GITHUB_APP_ID,
                 GITHUB_CLIENT_ID: appEnv.GITHUB_CLIENT_ID,
@@ -129,151 +248,330 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
               },
               installationId: installation.installationId,
             })
-            if (revokeResult.isErr()) {
+            if (uninstalled.isErr()) {
+              await captureApiFailure({
+                request,
+                event: 'github.installation.delete_failed',
+                error: uninstalled.error,
+              })
               return Response.json(
-                { error: revokeResult.error.message },
+                { error: uninstalled.error.message },
                 { status: 502 },
               )
             }
-
-            const [disconnectedInstallation] = await db
-              .update(schema.githubAppInstallation)
-              .set({ status: 'disconnected', updatedAt: new Date() })
+            await db
+              .delete(schema.githubAppInstallation)
               .where(
-                and(
-                  eq(schema.githubAppInstallation.workspaceId, workspaceId),
-                  eq(
-                    schema.githubAppInstallation.installationId,
-                    installation.installationId,
-                  ),
-                  eq(
-                    schema.githubAppInstallation.updatedAt,
-                    installation.updatedAt,
-                  ),
+                eq(
+                  schema.githubAppInstallation.workspaceId,
+                  workspaceContext.workspaceId,
                 ),
               )
-              .returning({ id: schema.githubAppInstallation.id })
-            return disconnectedInstallation
-              ? Response.json({ ok: true })
-              : Response.json(
-                  { error: 'Connection changed while disconnecting' },
-                  { status: 409 },
-                )
-          }
-
-          if (!connector.oauth) {
-            return badRequest('Connector does not support disconnect')
-          }
-
-          const [account] = await db
-            .select({
-              id: schema.account.id,
-              accessToken: schema.account.accessToken,
-              refreshToken: schema.account.refreshToken,
-              updatedAt: schema.account.updatedAt,
+            capturePostHogEvent(appContext, {
+              distinctId: workspaceContext.session.user.id,
+              event: GARDEN_ANALYTICS_EVENTS.connectorDisconnected,
+              workspaceId: workspaceContext.workspaceId,
+              properties: {
+                connector_id: 'github',
+                connection_kind: 'github_app',
+              },
             })
-            .from(schema.account)
-            .where(
-              and(
-                eq(schema.account.userId, session.user.id),
-                eq(schema.account.workspaceId, workspaceId),
-                eq(schema.account.providerId, connector.oauth.providerId),
+            return Response.json({ ok: true })
+          }
+
+          const verified = await getGitHubAppInstallation({
+            env: {
+              GITHUB_APP_ID: appEnv.GITHUB_APP_ID,
+              GITHUB_CLIENT_ID: appEnv.GITHUB_CLIENT_ID,
+              GITHUB_APP_PRIVATE_KEY: appEnv.GITHUB_APP_PRIVATE_KEY,
+            },
+            installationId: installation.installationId,
+          })
+          let status = 'connected'
+          let error: string | undefined
+          if (verified.isErr()) {
+            status = 'degraded'
+            error = verified.error.message
+            await captureApiFailure({
+              request,
+              event: 'github.installation.verify_failed',
+              error: verified.error,
+              level: 'warn',
+            })
+          } else {
+            const synced = await Effect.runPromise(
+              Effect.result(
+                syncCapabilities(
+                  'github',
+                  workspaceContext.session.user.id,
+                  workspaceContext.workspaceId,
+                ),
               ),
             )
-            .limit(1)
-          if (!account) return notFound('Connection not found')
-
-          const tokenResult = await Result.tryPromise({
-            try: async () => {
-              const auth = await appContext.auth.getAuth()
-              return await decryptStoredOAuthTokens({
-                accessToken: account.accessToken,
-                refreshToken: account.refreshToken,
-                context: await auth.$context,
+            if (Result.isFailure(synced)) {
+              status = 'degraded'
+              error = synced.failure.message
+              await captureApiFailure({
+                request,
+                event: 'github.installation.capability_sync_failed',
+                error: synced.failure,
+                level: 'warn',
               })
+            }
+          }
+          await db
+            .update(schema.githubAppInstallation)
+            .set({ status, updatedAt: new Date() })
+            .where(
+              eq(
+                schema.githubAppInstallation.workspaceId,
+                workspaceContext.workspaceId,
+              ),
+            )
+          capturePostHogEvent(appContext, {
+            distinctId: workspaceContext.session.user.id,
+            event: GARDEN_ANALYTICS_EVENTS.connectorResyncCompleted,
+            workspaceId: workspaceContext.workspaceId,
+            properties: {
+              connector_id: 'github',
+              outcome: error === undefined ? 'connected' : 'degraded',
             },
-            catch: () => 'Failed to decrypt connector credentials',
           })
-          if (tokenResult.isErr()) {
-            return Response.json({ error: tokenResult.error }, { status: 500 })
+          if (error !== undefined) {
+            return Response.json({ error }, { status: 502 })
+          }
+          return Response.json({ ok: true })
+        }
+
+        if (params.connectorId === 'discord') {
+          const db = await appContext.db()
+          if (bodyResult.value.action === 'connect') {
+            return badRequest('Use Add to Discord to connect this integration')
+          }
+          if (bodyResult.value.action === 'delete') {
+            const deleted = await Effect.runPromise(
+              Effect.result(
+                deleteDiscordInstallation(db, workspaceContext.workspaceId),
+              ),
+            )
+            if (Result.isFailure(deleted)) {
+              await captureApiFailure({
+                request,
+                event: 'discord.installation.delete_failed',
+                error: deleted.failure,
+              })
+              return Response.json(
+                { error: deleted.failure.message },
+                { status: 500 },
+              )
+            }
+            capturePostHogEvent(appContext, {
+              distinctId: workspaceContext.session.user.id,
+              event: GARDEN_ANALYTICS_EVENTS.connectorDisconnected,
+              workspaceId: workspaceContext.workspaceId,
+              properties: {
+                connector_id: 'discord',
+                connection_kind: 'discord_bot',
+                action: 'delete',
+              },
+            })
+            return Response.json({ ok: true })
+          }
+          if (bodyResult.value.action === 'disconnect') {
+            const disconnected = await Effect.runPromise(
+              Effect.result(
+                setDiscordInstallStatus(
+                  db,
+                  workspaceContext.workspaceId,
+                  'disconnected',
+                ),
+              ),
+            )
+            if (Result.isFailure(disconnected)) {
+              await captureApiFailure({
+                request,
+                event: 'discord.installation.disconnect_failed',
+                error: disconnected.failure,
+              })
+              return Response.json(
+                { error: disconnected.failure.message },
+                { status: 500 },
+              )
+            }
+            capturePostHogEvent(appContext, {
+              distinctId: workspaceContext.session.user.id,
+              event: GARDEN_ANALYTICS_EVENTS.connectorDisconnected,
+              workspaceId: workspaceContext.workspaceId,
+              properties: {
+                connector_id: 'discord',
+                connection_kind: 'discord_bot',
+                action: 'disconnect',
+              },
+            })
+            return Response.json({ ok: true })
           }
 
-          const revokeResult = await revokeOAuthConnector({
-            connectorId: connector.id,
-            accessToken: tokenResult.value.accessToken,
-            refreshToken: tokenResult.value.refreshToken,
-          })
-          if (revokeResult.isErr()) {
+          const installation = await Effect.runPromise(
+            Effect.result(
+              getDiscordInstallation(db, workspaceContext.workspaceId),
+            ),
+          )
+          if (Result.isFailure(installation)) {
+            await captureApiFailure({
+              request,
+              event: 'discord.installation.load_failed',
+              error: installation.failure,
+            })
             return Response.json(
-              { error: revokeResult.error.message },
+              { error: installation.failure.message },
+              { status: 500 },
+            )
+          }
+          if (installation.success === null) {
+            return notFound('Discord installation not found')
+          }
+          const synced = await Effect.runPromise(
+            Effect.result(
+              syncCapabilities(
+                'discord',
+                workspaceContext.session.user.id,
+                workspaceContext.workspaceId,
+              ),
+            ),
+          )
+          const status = Result.isFailure(synced) ? 'degraded' : 'connected'
+          const updated = await Effect.runPromise(
+            Effect.result(
+              setDiscordInstallStatus(db, workspaceContext.workspaceId, status),
+            ),
+          )
+          if (Result.isFailure(updated)) {
+            await captureApiFailure({
+              request,
+              event: 'discord.installation.status_update_failed',
+              error: updated.failure,
+            })
+            return Response.json(
+              { error: updated.failure.message },
+              { status: 500 },
+            )
+          }
+          capturePostHogEvent(appContext, {
+            distinctId: workspaceContext.session.user.id,
+            event: GARDEN_ANALYTICS_EVENTS.connectorResyncCompleted,
+            workspaceId: workspaceContext.workspaceId,
+            properties: {
+              connector_id: 'discord',
+              outcome: Result.isFailure(synced) ? 'degraded' : 'connected',
+            },
+          })
+          if (Result.isFailure(synced)) {
+            await captureApiFailure({
+              request,
+              event: 'discord.installation.capability_sync_failed',
+              error: synced.failure,
+              level: 'warn',
+            })
+            return Response.json(
+              { error: 'Discord tool sync failed' },
               { status: 502 },
             )
           }
+          return Response.json({ ok: true })
+        }
 
-          const [disconnectedAccount] = await db
-            .update(schema.account)
-            .set({
-              accessToken: null,
-              refreshToken: null,
-              idToken: null,
-              accessTokenExpiresAt: null,
-              refreshTokenExpiresAt: null,
-              scope: null,
-              scopes: [],
-              status: 'disconnected',
-              updatedAt: new Date(),
-            })
-            .where(
-              and(
-                eq(schema.account.id, account.id),
-                eq(schema.account.updatedAt, account.updatedAt),
-              ),
-            )
-            .returning({ id: schema.account.id })
-
-          return disconnectedAccount
-            ? Response.json({ ok: true })
-            : Response.json(
-                { error: 'Connection changed while disconnecting' },
-                { status: 409 },
+        const outcome = await runExecutor(
+          {
+            tenant: workspaceContext.workspaceId,
+            subject: workspaceContext.session.user.id,
+          },
+          (executor) =>
+            Effect.gen(function* () {
+              const integration = yield* executor.integrations.get(
+                IntegrationSlug.make(params.connectorId),
               )
-        }
-
-        const syncResult = await syncCapabilities(
-          connector.id,
-          session.user.id,
-          workspaceId,
+              if (!integration) return { kind: 'not-found' as const }
+              const connections = (yield* executor.connections.list()).filter(
+                (connection) =>
+                  String(connection.integration) === params.connectorId,
+              )
+              if (bodyResult.value.action === 'delete') {
+                yield* Effect.all(
+                  connections.map((connection) =>
+                    executor.connections.remove(connection),
+                  ),
+                )
+                yield* executor.integrations.remove(integration.slug)
+                return { kind: 'updated' as const }
+              }
+              if (bodyResult.value.action === 'connect') {
+                if (connections.length > 0) {
+                  return { kind: 'connected' as const }
+                }
+                const noAuthMethod = integration.authMethods.find(
+                  (method) => method.kind === 'none',
+                )
+                if (!noAuthMethod && integration.authMethods.length > 0) {
+                  return { kind: 'credentials-required' as const }
+                }
+                const connection = yield* executor.connections.create({
+                  owner: 'org',
+                  name: ConnectionName.make('default'),
+                  integration: integration.slug,
+                  template: AuthTemplateSlug.make(
+                    noAuthMethod?.template ?? 'none',
+                  ),
+                  values: {},
+                })
+                if (integration.canRefresh) {
+                  yield* executor.connections.refresh(connection)
+                }
+                return { kind: 'connected' as const }
+              }
+              if (connections.length === 0) {
+                return { kind: 'connection-not-found' as const }
+              }
+              if (bodyResult.value.action === 'disconnect') {
+                yield* Effect.all(
+                  connections.map((connection) =>
+                    executor.connections.remove(connection),
+                  ),
+                )
+              } else {
+                yield* Effect.all(
+                  connections.map((connection) =>
+                    executor.connections.refresh(connection),
+                  ),
+                )
+              }
+              return { kind: 'updated' as const }
+            }),
         )
-
-        if (connector.id === 'github') {
-          await updateGitHubInstallationStatus({
-            db,
-            workspaceId,
-            status: syncResult.isOk() ? 'connected' : 'degraded',
-          })
-        } else if (connector.oauth) {
-          await db
-            .update(schema.account)
-            .set({
-              status: syncResult.isOk() ? 'connected' : 'degraded',
-              updatedAt: new Date(),
-            })
-            .where(
-              and(
-                eq(schema.account.userId, session.user.id),
-                eq(schema.account.workspaceId, workspaceId),
-                eq(schema.account.providerId, connector.oauth.providerId),
-              ),
-            )
+        if (outcome.kind === 'not-found') {
+          return notFound('Integration not found')
         }
-
-        if (syncResult.isErr()) {
-          return Response.json(
-            { error: syncResult.error.message },
-            { status: syncErrorStatus(syncResult.error.code) },
-          )
+        if (outcome.kind === 'connection-not-found') {
+          return notFound('Connection not found')
         }
-
+        if (outcome.kind === 'credentials-required') {
+          return badRequest('This integration requires credentials')
+        }
+        capturePostHogEvent(appContext, {
+          distinctId: workspaceContext.session.user.id,
+          event:
+            bodyResult.value.action === 'resync'
+              ? GARDEN_ANALYTICS_EVENTS.connectorResyncCompleted
+              : bodyResult.value.action === 'connect'
+                ? GARDEN_ANALYTICS_EVENTS.connectorConnected
+                : GARDEN_ANALYTICS_EVENTS.connectorDisconnected,
+          workspaceId: workspaceContext.workspaceId,
+          properties: {
+            connector_id: params.connectorId,
+            connection_kind: 'executor',
+            action: bodyResult.value.action,
+            outcome: 'connected',
+          },
+        })
         return Response.json({ ok: true })
       },
     },

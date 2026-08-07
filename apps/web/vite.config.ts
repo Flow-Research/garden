@@ -61,6 +61,18 @@ const executorSourceAliases = [
     ),
   },
   {
+    find: /^@executor-js\/plugin-openapi\/presets$/,
+    replacement: executorSource('packages/plugins/openapi/src/sdk/presets.ts'),
+  },
+  {
+    find: /^@executor-js\/plugin-mcp\/presets$/,
+    replacement: executorSource('packages/plugins/mcp/src/sdk/presets.ts'),
+  },
+  {
+    find: /^@executor-js\/plugin-graphql\/presets$/,
+    replacement: executorSource('packages/plugins/graphql/src/sdk/presets.ts'),
+  },
+  {
     find: /^@executor-js\/plugin-toolkits\/(.+)$/,
     replacement: `${executorSource('packages/plugins/toolkits/src')}/$1.ts`,
   },
