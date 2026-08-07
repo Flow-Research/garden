@@ -21,17 +21,15 @@ export type RequestDbProvider = {
 }
 
 /**
- * Creates a request-scoped DB provider that tracks every raw pg client and
- * closes them after TanStack Start finishes the request. Garden previously
- * memoized one client and never closed it; in Cloudflare local dev that left the
- * Hyperdrive proxy socket alive long enough for DNS/socket failures to surface as
- * unhandled Node events and kill localhost. This mirrors VCOS's explicit pg
- * lifecycle while keeping production Hyperdrive as the connection source.
+ * Creates one lazy request-scoped DB client and closes it after TanStack Start
+ * finishes the request. Auth and route logic often request the same database;
+ * sharing within that request avoids a Neon/Hyperdrive connection storm while
+ * still preventing cross-request client reuse.
  */
 export function createRequestDbProvider(
   env: Pick<AppEnv, 'HYPERDRIVE'>,
 ): RequestDbProvider {
-  const clients = new Set<RuntimeDbClient>()
+  let clientPromise: Promise<RuntimeDbClient> | undefined
   let closed = false
 
   return {
@@ -42,24 +40,26 @@ export function createRequestDbProvider(
         )
       }
 
-      const client = await createRuntimeDbClient(env.HYPERDRIVE)
-      clients.add(client)
-      return client.db
+      clientPromise ??= createRuntimeDbClient(env.HYPERDRIVE)
+      return (await clientPromise).db
     },
     close: async () => {
       if (closed) return
       closed = true
 
-      const pending = Array.from(clients)
-      clients.clear()
-      await Promise.all(
-        pending.map(async (client) => {
-          await Result.tryPromise({
-            try: async () => await client.close(),
-            catch: (cause) => cause,
-          })
-        }),
-      )
+      const pendingClient = clientPromise
+      if (!pendingClient) return
+
+      const clientResult = await Result.tryPromise({
+        try: async () => await pendingClient,
+        catch: (cause) => cause,
+      })
+      if (clientResult.isErr()) return
+
+      await Result.tryPromise({
+        try: async () => await clientResult.value.close(),
+        catch: (cause) => cause,
+      })
     },
   }
 }
