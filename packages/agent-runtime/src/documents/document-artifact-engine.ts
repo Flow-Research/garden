@@ -9,10 +9,8 @@ import {
   type DocumentOperationOutcome as DocumentOperationOutcomeValue,
   DocumentSnapshot,
   type DocumentSnapshot as DocumentSnapshotValue,
+  DocumentTimestamp,
   InitialDocument,
-  MAX_DOCUMENT_BLOCK_HTML_LENGTH,
-  MAX_DOCUMENT_BLOCK_ID_LENGTH,
-  MAX_DOCUMENT_TITLE_LENGTH,
   type DocumentArtifactError,
 } from './document-artifact-model'
 import { DocumentArtifactRepository } from './document-artifact-repository'
@@ -20,45 +18,6 @@ import { sanitizeDocumentBlockHtml } from './document-artifact-projection'
 
 const validationFailure = (operation: string, message: string) =>
   new DocumentArtifactValidationError({ operation, message })
-
-const validateSafeInteger = (
-  operation: string,
-  label: string,
-  value: number,
-  minimum: number,
-) =>
-  Number.isSafeInteger(value) && value >= minimum
-    ? Effect.void
-    : Effect.fail(
-        validationFailure(
-          operation,
-          `${label} must be a safe integer greater than or equal to ${minimum}.`,
-        ),
-      )
-
-/** Validates transport/render limits after Schema has decoded the wire shape. */
-const validateBlock = (
-  operation: string,
-  block: Pick<DocumentBlockValue, 'id' | 'html'>,
-) => {
-  if (!block.id || block.id.length > MAX_DOCUMENT_BLOCK_ID_LENGTH) {
-    return Effect.fail(
-      validationFailure(
-        operation,
-        `Block id must contain 1-${MAX_DOCUMENT_BLOCK_ID_LENGTH} characters.`,
-      ),
-    )
-  }
-  if (block.html.length > MAX_DOCUMENT_BLOCK_HTML_LENGTH) {
-    return Effect.fail(
-      validationFailure(
-        operation,
-        `Block ${block.id} exceeds the ${MAX_DOCUMENT_BLOCK_HTML_LENGTH} character limit.`,
-      ),
-    )
-  }
-  return Effect.void
-}
 
 /** Decodes durable state once and rejects corrupt revision/block invariants. */
 export const decodeDocumentSnapshot = Effect.fn(
@@ -71,33 +30,8 @@ export const decodeDocumentSnapshot = Effect.fn(
       validationFailure('decode snapshot', String(cause)),
     ),
   )
-  yield* validateSafeInteger(
-    'decode snapshot',
-    'Document revision',
-    snapshot.revision,
-    1,
-  )
-  if (!Number.isFinite(snapshot.lastModified) || snapshot.lastModified < 0) {
-    return yield* validationFailure(
-      'decode snapshot',
-      'Document modification time must be a non-negative number.',
-    )
-  }
-  if (!snapshot.title || snapshot.title.length > MAX_DOCUMENT_TITLE_LENGTH) {
-    return yield* validationFailure(
-      'decode snapshot',
-      `Document title must contain 1-${MAX_DOCUMENT_TITLE_LENGTH} characters.`,
-    )
-  }
   const ids = new Set<string>()
   for (const block of snapshot.blocks) {
-    yield* validateBlock('decode snapshot', block)
-    yield* validateSafeInteger(
-      'decode snapshot',
-      `Block ${block.id} version`,
-      block.version,
-      1,
-    )
     if (ids.has(block.id)) {
       return yield* validationFailure(
         'decode snapshot',
@@ -141,27 +75,8 @@ const decodeOperation = Effect.fn('DocumentArtifact.decodeOperation')(
         validationFailure('apply operation', String(cause)),
       ),
     )
-    if (!operation.operationId.trim() || !operation.senderId.trim()) {
-      return yield* validationFailure(
-        'apply operation',
-        'Operation and sender ids must be non-empty.',
-      )
-    }
-    yield* validateSafeInteger(
-      'apply operation',
-      'Base revision',
-      operation.baseRevision,
-      0,
-    )
     const upsertIds = new Set<string>()
     for (const upsert of operation.upserts) {
-      yield* validateBlock('apply operation', upsert)
-      yield* validateSafeInteger(
-        'apply operation',
-        `Block ${upsert.id} base version`,
-        upsert.baseVersion,
-        0,
-      )
       if (upsertIds.has(upsert.id)) {
         return yield* validationFailure(
           'apply operation',
@@ -172,18 +87,6 @@ const decodeOperation = Effect.fn('DocumentArtifact.decodeOperation')(
     }
     const deleteIds = new Set<string>()
     for (const deletion of operation.deletes) {
-      if (!deletion.id || deletion.id.length > MAX_DOCUMENT_BLOCK_ID_LENGTH) {
-        return yield* validationFailure(
-          'apply operation',
-          'Deletion contains an invalid block id.',
-        )
-      }
-      yield* validateSafeInteger(
-        'apply operation',
-        `Block ${deletion.id} base version`,
-        deletion.baseVersion,
-        0,
-      )
       if (deleteIds.has(deletion.id)) {
         return yield* validationFailure(
           'apply operation',
@@ -198,13 +101,17 @@ const decodeOperation = Effect.fn('DocumentArtifact.decodeOperation')(
       }
       deleteIds.add(deletion.id)
     }
-    return DocumentOperation.make({
+    return yield* Schema.decodeUnknownEffect(DocumentOperation)({
       ...operation,
       upserts: operation.upserts.map((upsert) => ({
         ...upsert,
         html: sanitizeDocumentBlockHtml(upsert.html),
       })),
-    })
+    }).pipe(
+      Effect.mapError((cause) =>
+        validationFailure('sanitize operation', String(cause)),
+      ),
+    )
   },
 )
 
@@ -223,19 +130,20 @@ export const reduceDocumentOperation = Effect.fn(
   now: number,
 ) {
   const snapshot = yield* decodeDocumentSnapshot(snapshotInput)
-  if (!Number.isFinite(now) || now < snapshot.lastModified) {
+  const operationTime = yield* Schema.decodeUnknownEffect(DocumentTimestamp)(
+    now,
+  ).pipe(
+    Effect.mapError((cause) =>
+      validationFailure('apply operation', String(cause)),
+    ),
+  )
+  if (operationTime < snapshot.lastModified) {
     return yield* validationFailure(
       'apply operation',
       'Operation time cannot predate the current document.',
     )
   }
   const nextTitle = operation.title?.trim() || snapshot.title
-  if (nextTitle.length > MAX_DOCUMENT_TITLE_LENGTH) {
-    return yield* validationFailure(
-      'apply operation',
-      `Document title exceeds the ${MAX_DOCUMENT_TITLE_LENGTH} character limit.`,
-    )
-  }
 
   const byId = new Map(snapshot.blocks.map((block) => [block.id, block]))
   const accepted: DocumentBlockValue[] = []
@@ -251,11 +159,15 @@ export const reduceDocumentOperation = Effect.fn(
       missingIds.push(incoming.id)
       continue
     }
-    const next = DocumentBlock.make({
+    const next = yield* Schema.decodeUnknownEffect(DocumentBlock)({
       id: incoming.id,
       html: incoming.html,
       version: (current?.version ?? 0) + 1,
-    })
+    }).pipe(
+      Effect.mapError((cause) =>
+        validationFailure('advance block version', String(cause)),
+      ),
+    )
     byId.set(next.id, next)
     accepted.push(next)
   }
@@ -311,13 +223,13 @@ export const reduceDocumentOperation = Effect.fn(
       : DocumentOperationOutcome.cases.Unchanged.make({ snapshot })
   }
 
-  const nextSnapshot = DocumentSnapshot.make({
+  const nextSnapshot = yield* decodeDocumentSnapshot({
     revision: snapshot.revision + 1,
     title: nextTitle,
     blocks: order
       .map((id) => byId.get(id))
       .filter((block) => block !== undefined),
-    lastModified: now,
+    lastModified: operationTime,
   })
   return hasConflict
     ? DocumentOperationOutcome.cases.Conflict.make({

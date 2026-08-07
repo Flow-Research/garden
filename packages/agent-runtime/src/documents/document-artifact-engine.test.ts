@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import {
   DocumentArtifactEngine,
   documentArtifactEngineLayer,
+  reduceDocumentOperation,
 } from './document-artifact-engine'
 import {
   DocumentArtifactAlreadyExistsError,
@@ -204,6 +205,88 @@ describe('DocumentArtifactEngine', () => {
 
     expect(exit._tag).toBe('Failure')
     expect(String(exit)).toContain('DocumentArtifactValidationError')
+  })
+
+  it('rejects unsafe integer fences at the Schema boundary', async () => {
+    const { documentId } = await initialize()
+    const exit = await runtime.runPromiseExit(
+      Effect.gen(function* () {
+        const engine = yield* DocumentArtifactEngine
+        return yield* engine.apply(documentId, {
+          operationId: 'operation-unsafe-fence',
+          senderId: 'client-a',
+          baseRevision: Number.MAX_SAFE_INTEGER + 1,
+          upserts: [],
+          deletes: [],
+          order: ['intro', 'body'],
+        })
+      }),
+    )
+
+    expect(exit._tag).toBe('Failure')
+    expect(String(exit)).toContain('DocumentArtifactValidationError')
+  })
+
+  it('fails before a block or document revision can overflow', async () => {
+    const lastModified = Date.now()
+    const blockOverflow = await Effect.runPromiseExit(
+      reduceDocumentOperation(
+        {
+          revision: 1,
+          title: 'Plan',
+          blocks: [
+            {
+              id: 'body',
+              html: '<p>Draft</p>',
+              version: Number.MAX_SAFE_INTEGER,
+            },
+          ],
+          lastModified,
+        },
+        {
+          operationId: 'operation-block-overflow',
+          senderId: 'client-a',
+          baseRevision: 1,
+          upserts: [
+            {
+              id: 'body',
+              html: '<p>Ready</p>',
+              baseVersion: Number.MAX_SAFE_INTEGER,
+            },
+          ],
+          deletes: [],
+          order: ['body'],
+        },
+        lastModified,
+      ),
+    )
+    const revisionOverflow = await Effect.runPromiseExit(
+      reduceDocumentOperation(
+        {
+          revision: Number.MAX_SAFE_INTEGER,
+          title: 'Plan',
+          blocks: [{ id: 'body', html: '<p>Draft</p>', version: 1 }],
+          lastModified,
+        },
+        {
+          operationId: 'operation-revision-overflow',
+          senderId: 'client-a',
+          baseRevision: Number.MAX_SAFE_INTEGER,
+          upserts: [],
+          deletes: [],
+          order: ['body'],
+          title: 'Ready',
+        },
+        lastModified,
+      ),
+    )
+
+    expect(blockOverflow._tag).toBe('Failure')
+    expect(revisionOverflow._tag).toBe('Failure')
+    expect(String(blockOverflow)).toContain('DocumentArtifactValidationError')
+    expect(String(revisionOverflow)).toContain(
+      'DocumentArtifactValidationError',
+    )
   })
 
   it('sanitizes operation HTML before it reaches canonical storage', async () => {
