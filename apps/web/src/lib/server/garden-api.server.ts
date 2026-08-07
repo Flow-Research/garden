@@ -10,8 +10,6 @@ import type { AppRequestContext } from './context'
 import { documentArtifactsApiHandlers } from './document-artifacts-api.server'
 import { documentArtifactsLayer } from './document-artifacts-service'
 import { appRequestContext } from './effect-context'
-import { executorConnectorsApiHandlers } from './executor-connectors-api.server'
-import { executorConnectorsLayer } from './executor-connectors-service'
 import { lazyRequestSkillsLayer, skillsApiHandlers } from './skills-api.server'
 
 const malformedJsonMiddleware = HttpRouter.middleware((effect) =>
@@ -27,7 +25,6 @@ const malformedJsonMiddleware = HttpRouter.middleware((effect) =>
 export const requestGardenApiLayer = Layer.mergeAll(
   lazyRequestSkillsLayer,
   documentArtifactsLayer,
-  executorConnectorsLayer,
 )
 
 /**
@@ -37,11 +34,7 @@ export const requestGardenApiLayer = Layer.mergeAll(
  */
 export const gardenApiRouterLayer = HttpApiBuilder.layer(GardenApi).pipe(
   Layer.provide(
-    Layer.mergeAll(
-      skillsApiHandlers,
-      documentArtifactsApiHandlers,
-      executorConnectorsApiHandlers,
-    ),
+    Layer.mergeAll(skillsApiHandlers, documentArtifactsApiHandlers),
   ),
   Layer.provide(malformedJsonMiddleware.layer),
   Layer.provide(HttpServer.layerServices),

@@ -6,7 +6,6 @@ import { SkillOperationError } from '@garden/core/skills'
 import { Context, Effect, Layer } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
 import { DocumentArtifacts } from './document-artifacts-service'
-import { ExecutorConnectors } from './executor-connectors-service'
 import { gardenApiWebHandler } from './garden-api.server'
 import { makeDeferredSkillsService } from './skills-api.server'
 import { Skills, type SkillsService } from './skills-service'
@@ -28,19 +27,11 @@ const documentArtifacts = DocumentArtifacts.of({
   apply: () =>
     Effect.succeed(DocumentOperationOutcome.cases.Unchanged.make({ snapshot })),
 })
-const executorConnectors = ExecutorConnectors.of({
-  listTools: () => Effect.succeed([]),
-})
-
-/** Supplies all shared API services without acquiring external resources. */
-const apiContext = (skills: SkillsService, connectors = executorConnectors) =>
-  Context.add(
-    Context.merge(
-      Context.make(Skills, skills),
-      Context.make(DocumentArtifacts, documentArtifacts),
-    ),
-    ExecutorConnectors,
-    connectors,
+/** Supplies shared API services without acquiring external resources. */
+const apiContext = (skills: SkillsService) =>
+  Context.merge(
+    Context.make(Skills, skills),
+    Context.make(DocumentArtifacts, documentArtifacts),
   )
 
 /** Provides a complete facade while keeping this routing test focused on list. */
@@ -116,37 +107,5 @@ describe('combined Garden Effect HttpApi', () => {
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toEqual([])
     expect(acquireSkills).toHaveBeenCalledOnce()
-  })
-
-  it('routes the Executor catalog through the shared Effect API', async () => {
-    const listTools = vi.fn(() =>
-      Effect.succeed([
-        {
-          address: 'calendar.events.list',
-          name: 'list',
-          description: 'List calendar events',
-          integration: 'calendar',
-          connection: 'default',
-          owner: 'user' as const,
-          requiresApproval: false,
-          mayElicit: false,
-        },
-      ]),
-    )
-    const context = apiContext(
-      listSkillsService(),
-      ExecutorConnectors.of({ listTools }),
-    )
-
-    const response = await gardenApiWebHandler(
-      new Request('https://garden.example/api/executor/tools?limit=10'),
-      context,
-    )
-
-    expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toMatchObject([
-      { address: 'calendar.events.list' },
-    ])
-    expect(listTools).toHaveBeenCalledWith({ limit: 10 })
   })
 })

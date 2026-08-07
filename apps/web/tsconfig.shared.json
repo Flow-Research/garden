@@ -2,7 +2,6 @@
   "extends": "./tsconfig.options.json",
   "include": [
     "src/lib/api/document-artifact-contract.ts",
-    "src/lib/api/executor-connectors-contract.ts",
     "src/lib/api/garden-api-contract.ts",
     "src/lib/api/skills-contract.ts",
     "src/lib/harnessy-contract.ts"
