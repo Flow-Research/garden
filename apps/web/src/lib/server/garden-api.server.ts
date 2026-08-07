@@ -10,7 +10,7 @@ import type { AppRequestContext } from './context'
 import { documentArtifactsApiHandlers } from './document-artifacts-api.server'
 import { documentArtifactsLayer } from './document-artifacts-service'
 import { appRequestContext } from './effect-context'
-import { requestSkillsLayer, skillsApiHandlers } from './skills-api.server'
+import { lazyRequestSkillsLayer, skillsApiHandlers } from './skills-api.server'
 
 const malformedJsonMiddleware = HttpRouter.middleware((effect) =>
   Effect.catchCause(effect, (cause) => {
@@ -21,9 +21,9 @@ const malformedJsonMiddleware = HttpRouter.middleware((effect) =>
   }),
 )
 
-/** All request-scoped services required by Garden's combined API groups. */
+/** Request services required by the combined API without eager Skills I/O. */
 export const requestGardenApiLayer = Layer.mergeAll(
-  requestSkillsLayer,
+  lazyRequestSkillsLayer,
   documentArtifactsLayer,
 )
 
