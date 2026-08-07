@@ -68,4 +68,5 @@ snapshot. No `capnweb` or `yjs` dependency is justified for this surface.
   an incomplete operation chain.
 
 Full Effect Machine reference is present at `refs/effect-machine`, non-shallow,
-HEAD `fc0803817ffe5d004588cebb106c0044a809e473`.
+HEAD `5597a6a691f017a0120d3463cdc5100a38aa3508`. This main checkout is ahead
+of the published `0.3.0` tag; production code remains pinned to the release.
