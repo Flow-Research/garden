@@ -592,6 +592,13 @@ export function ConnectedChatPanelInteraction({
       sidebarState={sidebarState}
       onToggleSidebar={toggleSidebar}
       onOpenAttachment={openDocumentAttachment}
+      sidePanel={
+        <DocumentSidePanel
+          onClose={closeDocumentPanel}
+          onEditResolved={handleDocumentEditResolved}
+          view={documentPanelView}
+        />
+      }
     >
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
@@ -727,11 +734,6 @@ export function ConnectedChatPanelInteraction({
             </AnimatePresence>
           </motion.div>
         </div>
-        <DocumentSidePanel
-          onClose={closeDocumentPanel}
-          onEditResolved={handleDocumentEditResolved}
-          view={documentPanelView}
-        />
       </div>
     </ShellFrame>
   )
@@ -759,6 +761,7 @@ function ShellFrame({
   primaryIssueId = null,
   primaryIssue = null,
   sessionId = null,
+  sidePanel,
   sidebarState,
 }: {
   attachments?: ChatHeaderAttachment[]
@@ -772,13 +775,14 @@ function ShellFrame({
   primaryIssueId?: string | null
   primaryIssue?: AgentChatSession['primaryIssue']
   sessionId?: string | null
+  sidePanel?: React.ReactNode
   sidebarState: 'collapsed' | 'expanded'
 }) {
   const debugMode = useDevSettingsStore((s) => s.debugMode)
 
   return (
     <section
-      className={cn('flex h-full min-h-0 flex-col bg-background', className)}
+      className={cn('flex h-full min-h-0 bg-background', className)}
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-2">
@@ -840,6 +844,7 @@ function ShellFrame({
         </div>
         {children}
       </div>
+      {sidePanel}
     </section>
   )
 }
