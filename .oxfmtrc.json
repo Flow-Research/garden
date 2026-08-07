@@ -5,6 +5,7 @@
   "printWidth": 80,
   "sortPackageJson": false,
   "ignorePatterns": [
+    "**/.alchemy/**",
     "**/.turbo/**",
     "**/.output/**",
     "**/dist/**",
