@@ -261,7 +261,7 @@ function plainEnv(name: string, fallback?: string) {
 /** Requires the production origin at deploy time and rejects localhost.
  * Workers Builds variables are build-only, so Alchemy must explicitly carry
  * this value into the uploaded Worker version rather than silently falling back
- * to Harnessy's localhost host configuration. */
+ * to a localhost host configuration. */
 function requiredProductionWebOrigin(
   target: ReturnType<typeof deploymentTargetFromEnv>,
 ) {
