@@ -1020,6 +1020,12 @@ export async function getDocumentBytes(args: {
   })
 }
 
+/**
+ * Reads one authorized document projection without allowing a caller-supplied
+ * version id to escape the requested document. Previously the join matched the
+ * version id alone, so a known UUID from another document in the same thread
+ * could select unrelated bytes; the join now enforces version ownership first.
+ */
 export async function getDocumentVersionBytes(args: {
   context: DocumentToolContext
   documentId: string
@@ -1047,9 +1053,12 @@ export async function getDocumentVersionBytes(args: {
         .from(schema.document)
         .innerJoin(
           schema.documentVersion,
-          args.versionId
-            ? eq(schema.documentVersion.id, args.versionId)
-            : eq(schema.document.currentVersionId, schema.documentVersion.id),
+          and(
+            eq(schema.documentVersion.documentId, schema.document.id),
+            args.versionId
+              ? eq(schema.documentVersion.id, args.versionId)
+              : eq(schema.document.currentVersionId, schema.documentVersion.id),
+          ),
         )
         .where(
           and(
