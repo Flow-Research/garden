@@ -76,9 +76,7 @@ function parseInlineRuns(
   for (const match of text.matchAll(pattern)) {
     const start = match.index ?? 0
     if (start > cursor) {
-      runs.push(
-        new TextRun({ text: text.slice(cursor, start), ...baseRun }),
-      )
+      runs.push(new TextRun({ text: text.slice(cursor, start), ...baseRun }))
     }
     const token = match[0]
     if (token.startsWith('**')) {
@@ -127,7 +125,30 @@ function getDb(databaseUrl: string) {
   return getPooledDb(databaseUrl)
 }
 
-function contentTypeForFileType(fileType: string) {
+/**
+ * Recovers image media types that the document table's coarse `fileType`
+ * cannot represent. Uploaded images were previously returned as generic
+ * octet-stream artifacts, so Think could not emit an image model part.
+ */
+function mediaTypeFromFilename(filename: string) {
+  const lower = filename.toLowerCase()
+  if (lower.endsWith('.png')) return 'image/png'
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg'
+  if (lower.endsWith('.gif')) return 'image/gif'
+  if (lower.endsWith('.webp')) return 'image/webp'
+  if (lower.endsWith('.svg')) return 'image/svg+xml'
+  return null
+}
+
+/**
+ * Produces the media type exposed by artifacts, downloads, and model reads.
+ * Filename inspection is intentionally limited to image formats; established
+ * document file-type mappings remain the canonical source for all other files.
+ */
+function contentTypeForFileType(fileType: string, filename?: string) {
+  const filenameMediaType =
+    fileType === 'unknown' && filename ? mediaTypeFromFilename(filename) : null
+  if (filenameMediaType) return filenameMediaType
   switch (fileType) {
     case 'docx':
       return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -157,18 +178,21 @@ function normalizeWorkspaceFilename(filename: string) {
   }).join('')
 }
 
+/** Keeps artifact cards aligned with the media type used for stored bytes. */
 function buildArtifact(args: {
   documentId: string
   filename: string
   fileType: string
   versionId: string
   versionNumber: number
+  mediaType?: string | null
 }) {
   return {
     kind: 'document' as const,
     id: args.documentId,
     filename: args.filename,
-    mediaType: contentTypeForFileType(args.fileType),
+    mediaType:
+      args.mediaType ?? contentTypeForFileType(args.fileType, args.filename),
     url: documentDownloadUrl(args.documentId, args.filename),
     content: null,
     versionId: args.versionId,
@@ -406,9 +430,7 @@ export async function generateDocx(args: {
       size: {
         width: dimensions.width,
         height: dimensions.height,
-        ...(args.landscape
-          ? { orientation: PageOrientation.LANDSCAPE }
-          : {}),
+        ...(args.landscape ? { orientation: PageOrientation.LANDSCAPE } : {}),
       },
       margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
     },
@@ -623,6 +645,11 @@ async function loadActiveDocument(
   return rowResult
 }
 
+/**
+ * Reads the active document projection for Think. Images return typed metadata
+ * instead of attempting text extraction; `documentReadModelOutput` then loads
+ * the same authorized bytes into a private AI SDK image-data part.
+ */
 export async function readDocument(args: {
   context: DocumentToolContext
   documentId: string
@@ -636,6 +663,24 @@ export async function readDocument(args: {
   )
   if (bytesResult.isErr())
     return { ok: false, error: bytesResult.error.message }
+  const mediaType = contentTypeForFileType(
+    rowResult.value.fileType,
+    rowResult.value.filename,
+  )
+  if (mediaType.startsWith('image/')) {
+    return {
+      ok: true,
+      document_id: rowResult.value.id,
+      filename: rowResult.value.filename,
+      version_id: rowResult.value.versionId,
+      version_number: rowResult.value.versionNumber,
+      kind: 'image' as const,
+      media_type: mediaType,
+      size_bytes: bytesResult.value.byteLength,
+      text: null,
+      note: `Read ${rowResult.value.filename} (${mediaType}, ${bytesResult.value.byteLength} bytes).`,
+    }
+  }
   const textResult = await extractDocumentText(
     bytesResult.value,
     rowResult.value.fileType,
@@ -647,6 +692,9 @@ export async function readDocument(args: {
     filename: rowResult.value.filename,
     version_id: rowResult.value.versionId,
     version_number: rowResult.value.versionNumber,
+    kind: 'text' as const,
+    media_type: mediaType,
+    size_bytes: bytesResult.value.byteLength,
     text: textResult.value,
   }
 }
@@ -914,6 +962,11 @@ export async function editDocument(args: {
   }
 }
 
+/**
+ * Registers uploaded bytes as a first-class document and initial version.
+ * Image uploads now preserve a caller media type or derive it from the cleaned
+ * filename so storage metadata, artifact cards, and later model reads agree.
+ */
 export async function registerUploadedDocument(args: {
   context: DocumentToolContext
   filename: string
@@ -935,7 +988,7 @@ export async function registerUploadedDocument(args: {
       await args.context.workspace.writeFileBytes(
         versionPath,
         byteArray,
-        args.mediaType ?? contentTypeForFileType(fileType),
+        args.mediaType ?? contentTypeForFileType(fileType, filename),
       ),
     catch: (error) =>
       new DocumentToolError({
@@ -945,7 +998,10 @@ export async function registerUploadedDocument(args: {
   if (writeResult.isErr())
     return { ok: false, error: writeResult.error.message }
 
-  const metadata = await extractDocumentMetadata(Buffer.from(byteArray), fileType)
+  const metadata = await extractDocumentMetadata(
+    Buffer.from(byteArray),
+    fileType,
+  )
 
   const insertResult = await Result.tryPromise({
     try: async () => {
@@ -1004,6 +1060,7 @@ export async function registerUploadedDocument(args: {
       documentId: insertResult.value.documentId,
       filename,
       fileType,
+      mediaType: args.mediaType ?? contentTypeForFileType(fileType, filename),
       versionId: insertResult.value.versionId,
       versionNumber: 1,
     }),
@@ -1096,7 +1153,7 @@ export async function getDocumentVersionBytes(args: {
     display_name: version.displayName,
     filename: version.filename,
     file_type: fileType,
-    media_type: contentTypeForFileType(fileType),
+    media_type: contentTypeForFileType(fileType, version.filename),
     source: version.source,
     version_id: version.versionId,
     version_number: version.versionNumber,
