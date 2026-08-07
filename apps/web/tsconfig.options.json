@@ -6,17 +6,23 @@
     "paths": {
       "#/*": ["./src/*"],
       "@/*": ["./src/*"],
-      "@executor-js/host-mcp": [
-        "../../third_party/executor/packages/hosts/mcp/src/index.ts"
+      "@executor-js/host-mcp/browser-approval": [
+        "../../third_party/executor/packages/hosts/mcp/src/browser-approval.ts"
       ],
-      "@executor-js/host-mcp/*": [
-        "../../third_party/executor/packages/hosts/mcp/src/*"
+      "@executor-js/host-mcp/seams": [
+        "../../third_party/executor/packages/hosts/mcp/src/seams.ts"
       ],
-      "@executor-js/cloudflare/*": [
-        "../../third_party/executor/packages/hosts/cloudflare/src/*"
+      "@executor-js/host-mcp/tool-server": [
+        "../../third_party/executor/packages/hosts/mcp/src/tool-server.ts"
       ],
       "@executor-js/cloudflare/mcp/agent-durable-object": [
         "../../third_party/executor/packages/hosts/cloudflare/src/mcp/agent-session-durable-object.ts"
+      ],
+      "@executor-js/cloudflare/mcp/execution-owner-directory": [
+        "../../third_party/executor/packages/hosts/cloudflare/src/mcp/execution-owner-directory.ts"
+      ],
+      "@executor-js/cloudflare/mcp/session-stub": [
+        "../../third_party/executor/packages/hosts/cloudflare/src/mcp/session-stub.ts"
       ],
       "@executor-js/runtime-dynamic-worker": [
         "../../third_party/executor/packages/kernel/runtime-dynamic-worker/src/index.ts"
@@ -33,8 +39,8 @@
       "@executor-js/plugin-graphql/presets": [
         "../../third_party/executor/packages/plugins/graphql/src/sdk/presets.ts"
       ],
-      "@executor-js/plugin-toolkits/*": [
-        "../../third_party/executor/packages/plugins/toolkits/src/*"
+      "@executor-js/plugin-toolkits/server": [
+        "../../third_party/executor/packages/plugins/toolkits/src/server.ts"
       ]
     },
     "lib": ["ES2022", "DOM", "DOM.Iterable"],

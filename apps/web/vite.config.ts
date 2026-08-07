@@ -31,11 +31,7 @@ const executorSource = (path: string) =>
   fileURLToPath(new URL(`../../third_party/executor/${path}`, import.meta.url))
 const executorSourceAliases = [
   {
-    find: /^@executor-js\/host-mcp$/,
-    replacement: executorSource('packages/hosts/mcp/src/index.ts'),
-  },
-  {
-    find: /^@executor-js\/host-mcp\/(.+)$/,
+    find: /^@executor-js\/host-mcp\/(browser-approval|seams|tool-server)$/,
     replacement: `${executorSource('packages/hosts/mcp/src')}/$1.ts`,
   },
   {
@@ -45,8 +41,8 @@ const executorSourceAliases = [
     ),
   },
   {
-    find: /^@executor-js\/cloudflare\/(.+)$/,
-    replacement: `${executorSource('packages/hosts/cloudflare/src')}/$1.ts`,
+    find: /^@executor-js\/cloudflare\/mcp\/(execution-owner-directory|session-stub)$/,
+    replacement: `${executorSource('packages/hosts/cloudflare/src/mcp')}/$1.ts`,
   },
   {
     find: /^@executor-js\/runtime-dynamic-worker$/,
@@ -73,8 +69,8 @@ const executorSourceAliases = [
     replacement: executorSource('packages/plugins/graphql/src/sdk/presets.ts'),
   },
   {
-    find: /^@executor-js\/plugin-toolkits\/(.+)$/,
-    replacement: `${executorSource('packages/plugins/toolkits/src')}/$1.ts`,
+    find: /^@executor-js\/plugin-toolkits\/server$/,
+    replacement: executorSource('packages/plugins/toolkits/src/server.ts'),
   },
 ]
 const ssrDependencyStubs = new Map([

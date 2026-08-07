@@ -17,16 +17,7 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@executor-js\/host-mcp$/,
-        replacement: fileURLToPath(
-          new URL(
-            '../../third_party/executor/packages/hosts/mcp/src/index.ts',
-            import.meta.url,
-          ),
-        ),
-      },
-      {
-        find: /^@executor-js\/host-mcp\/(.+)$/,
+        find: /^@executor-js\/host-mcp\/(browser-approval|seams|tool-server)$/,
         replacement: fileURLToPath(
           new URL(
             '../../third_party/executor/packages/hosts/mcp/src',
