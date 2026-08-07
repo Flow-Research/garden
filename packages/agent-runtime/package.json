@@ -1,6 +1,7 @@
 {
   "name": "@garden/agent-runtime",
   "version": "0.0.0",
+  "private": true,
   "type": "module",
   "main": "./src/index.ts",
   "packageManager": "pnpm@10.33.0",
