@@ -192,7 +192,7 @@ export const web = await TanStackStart(deployTarget.workerId, {
     EXECUTOR_BLOBS: executorBlobs,
     EXECUTOR_MCP_SESSION: executorMcpSession,
     EXECUTOR_MCP_EXECUTION_OWNER: executorExecutionOwnerDirectory,
-    EXECUTOR_SECRET_KEY: alchemy.secret.env.GARDEN_EXECUTOR_SECRET_KEY,
+    EXECUTOR_SECRET_KEY: alchemy.secret.env.EXECUTOR_SECRET_KEY,
     RUN_WORKFLOW: Workflow(deployTarget.workflowId, {
       workflowName: deployTarget.workflowName,
       className: 'RunWorkflow',
