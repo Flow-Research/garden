@@ -16,6 +16,7 @@ type HtmlParent = DefaultTreeAdapterMap['parentNode']
 
 const ALLOWED_ELEMENTS = new Set([
   'a',
+  'b',
   'blockquote',
   'br',
   'code',
@@ -84,29 +85,114 @@ const safeUrl = (value: string) => {
     normalized.startsWith('http://') ||
     normalized.startsWith('https://') ||
     normalized.startsWith('mailto:') ||
+    normalized.startsWith('tel:') ||
     normalized.startsWith('/') ||
     normalized.startsWith('#')
   )
 }
 
+/** Matches only reload-safe raster formats accepted by Workspace Docs. */
 const safeImageSource = (value: string) =>
-  value.trim().toLowerCase().startsWith('data:image/') || safeUrl(value)
+  /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(value.trim())
+
+const SAFE_FONT_FAMILIES = new Set([
+  'arial, sans-serif',
+  "'courier new', monospace",
+  'georgia, serif',
+  "georgia, 'times new roman', serif",
+  'inter, sans-serif',
+  'inter, system-ui, sans-serif',
+  "ui-monospace, 'sf mono', menlo, monospace",
+  'ui-sans-serif, system-ui, inter, sans-serif',
+])
+
+/** Validates supported CSS against the toolbar's exact bounded vocabulary. */
+const safeStyleValue = (property: string, value: string) => {
+  const normalized = value.trim().toLowerCase()
+  if (['color', 'background-color'].includes(property)) {
+    return /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%]+\)|transparent)$/i.test(
+      normalized,
+    )
+  }
+  if (property === 'font-family') return SAFE_FONT_FAMILIES.has(normalized)
+  if (property === 'font-size') {
+    const pixels = normalized.match(/^(\d+(?:\.\d+)?)px$/)?.[1]
+    return Boolean(pixels && Number(pixels) >= 8 && Number(pixels) <= 96)
+  }
+  if (property === 'font-style')
+    return ['italic', 'normal'].includes(normalized)
+  if (property === 'font-weight')
+    return /^(normal|bold|[1-9]00)$/.test(normalized)
+  if (property === 'text-align') {
+    return ['left', 'center', 'right', 'justify', 'start', 'end'].includes(
+      normalized,
+    )
+  }
+  if (property === 'text-decoration') {
+    return /^(none|underline|line-through|underline line-through|line-through underline)$/.test(
+      normalized,
+    )
+  }
+  if (property === 'height') return normalized === 'auto'
+  if (['width', 'max-width', 'margin-left'].includes(property)) {
+    if (normalized === '100%' && property !== 'margin-left') return true
+    const pixels = normalized.match(/^(\d+(?:\.\d+)?)px$/)?.[1]
+    const maximum = property === 'margin-left' ? 320 : 1600
+    return Boolean(pixels && Number(pixels) >= 0 && Number(pixels) <= maximum)
+  }
+  return false
+}
+
+/**
+ * Keeps the inert inline declarations emitted by Cloudflare's native editing
+ * commands while rejecting URL-bearing and executable CSS values.
+ */
+const sanitizeStyle = (value: string) =>
+  value
+    .split(';')
+    .flatMap((declaration) => {
+      const separator = declaration.indexOf(':')
+      if (separator < 1) return []
+      const property = declaration.slice(0, separator).trim().toLowerCase()
+      const propertyValue = declaration.slice(separator + 1).trim()
+      if (!propertyValue || !safeStyleValue(property, propertyValue)) {
+        return []
+      }
+      return [`${property}: ${propertyValue}`]
+    })
+    .join('; ')
 
 /** Keeps only editor-supported markup and strips active-content attributes. */
 const sanitizeElement = (element: HtmlElement) => {
   const tagName = element.tagName.toLowerCase()
-  element.attrs = element.attrs.filter(({ name, value }) => {
+  element.attrs = element.attrs.flatMap(({ name, value }) => {
     const attribute = name.toLowerCase()
-    if (attribute.startsWith('on') || attribute === 'style') return false
-    if (tagName === 'a' && attribute === 'href') return safeUrl(value)
-    if (tagName === 'img' && attribute === 'src') return safeImageSource(value)
+    if (attribute.startsWith('on')) return []
+    if (attribute === 'style') {
+      const sanitized = sanitizeStyle(value)
+      return sanitized ? [{ name, value: sanitized }] : []
+    }
+    if (tagName === 'h1' && attribute === 'class' && value === 'doc-title') {
+      return [{ name, value }]
+    }
+    if (tagName === 'img' && attribute === 'class' && value === 'doc-image') {
+      return [{ name, value }]
+    }
+    if (tagName === 'a' && attribute === 'href') {
+      return safeUrl(value) ? [{ name, value }] : []
+    }
+    if (tagName === 'img' && attribute === 'src') {
+      return safeImageSource(value) ? [{ name, value }] : []
+    }
     if (tagName === 'img') {
       return ['alt', 'height', 'title', 'width'].includes(attribute)
+        ? [{ name, value }]
+        : []
     }
     if (['td', 'th'].includes(tagName)) {
-      return ['colspan', 'rowspan'].includes(attribute)
+      return ['colspan', 'rowspan'].includes(attribute) ? [{ name, value }] : []
     }
-    return false
+    return []
   })
 }
 
