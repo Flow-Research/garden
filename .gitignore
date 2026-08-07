@@ -4,6 +4,8 @@ node_modules/
 .deepsec/
 .claude/worktrees/
 **/.wrangler/
+apps/web/wrangler.local.jsonc
+apps/web/wrangler.containers.local.jsonc
 .env
 .env.*
 !.env.example

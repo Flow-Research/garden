@@ -15,6 +15,15 @@ const viteSource = readFileSync(
   resolve(root, 'apps/web/vite.config.ts'),
   'utf8',
 )
+const devSource = readFileSync(
+  resolve(root, 'apps/web/scripts/dev.mjs'),
+  'utf8',
+)
+const publicWranglerSources = [
+  'apps/web/wrangler.jsonc',
+  'apps/web/wrangler.containers.jsonc',
+].map((path) => readFileSync(resolve(root, path), 'utf8'))
+const gitignoreSource = readFileSync(resolve(root, '.gitignore'), 'utf8')
 const workspaceSource = readFileSync(
   resolve(root, 'pnpm-workspace.yaml'),
   'utf8',
@@ -31,6 +40,32 @@ assert.equal(deploymentTargets.production.emptyBucketsOnDestroy, false)
 assert.equal(deploymentTargets.preview.emptyBucketsOnDestroy, true)
 assert.equal(deploymentTargets.preview.databaseUrlEnv, 'DATABASE_URL')
 assert.equal(deploymentTargets.preview.bindConfiguredBetterAuthUrl, false)
+
+for (const source of publicWranglerSources) {
+  assert.match(source, /"name": "garden-local"/)
+  assert.match(source, /"id": "0{32}"/)
+  assert.match(source, /"database_id": "00000000-0000-0000-0000-000000000000"/)
+  assert.equal(
+    [...source.matchAll(/"id": "([a-f0-9]{32})"/g)].every((match) =>
+      /^0+$/.test(match[1]),
+    ),
+    true,
+  )
+  assert.equal(
+    [...source.matchAll(/"database_id": "([a-f0-9-]{36})"/g)].every((match) =>
+      /^0+$/.test(match[1].replaceAll('-', '')),
+    ),
+    true,
+  )
+  assert.doesNotMatch(source, /"tail_consumers"/)
+  assert.doesNotMatch(source, /"remote": true/)
+}
+
+assert.match(gitignoreSource, /apps\/web\/wrangler\.local\.jsonc/)
+assert.match(gitignoreSource, /apps\/web\/wrangler\.containers\.local\.jsonc/)
+assert.match(devSource, /wrangler\.containers\.local\.jsonc/)
+assert.match(devSource, /wrangler\.local\.jsonc/)
+assert.match(devSource, /CLOUDFLARE_VITE_REMOTE_BINDINGS/)
 
 const uniqueFields = [
   'appName',
