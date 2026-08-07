@@ -908,7 +908,6 @@ export class RuntimeMcpController {
           id: requestId,
           agentId: identityResult.value.agentId,
           capabilityId: capability.id,
-          // Source: docs/research/issue-flow-plan.md, "Approval pause".
           runId: identityResult.value.runId ?? null,
           context: `${args.connectorId}.${args.toolName}`,
           issueId: identityResult.value.issueId ?? null,

@@ -267,7 +267,6 @@ function resolveWritebackInvocation(args: {
     const ref = refResult.value
     return Result.ok({
       connectorId: 'github',
-      // Source: docs/research/issue-flow-plan.md, "Slice 4".
       toolName: 'add_issue_comment',
       toolArgs: {
         owner: ref.owner,

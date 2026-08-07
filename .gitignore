@@ -11,12 +11,9 @@ node_modules/
 .dev.vars.*
 !.dev.vars.example
 db.txt
-refs/cloudflare-agents/
-refs/openai-codex/
-refs/t3code/
-refs/boneyard/
-refs/executor/
+refs/
 .pi/
+.dogfood/
 
 # Local build/deployment artifacts
 .alchemy/
@@ -25,6 +22,7 @@ refs/executor/
 /flowresearch-*.tgz
 /tmp/flue/
 /tmp/roadmap-refresh-*/
-
-# Harnessy package staging: required archives are force-added explicitly.
-/vendor/*.tgz
+/tmp/hyperdrive-*.md
+/artifacts/fixtures/agent-runtime/*.jsonl
+/artifacts/roadmap/*internal*
+/.claude/settings.local.json

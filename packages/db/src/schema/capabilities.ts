@@ -89,7 +89,6 @@ export const permissionRequest = pgTable(
     issueId: uuid('issue_id').references(() => issue.id, {
       onDelete: 'set null',
     }),
-    // Source: docs/research/issue-flow-plan.md, "Approval pause".
     runId: uuid('run_id').references(() => issueRun.id, {
       onDelete: 'set null',
     }),
