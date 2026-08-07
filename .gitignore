@@ -27,3 +27,6 @@ refs/
 /artifacts/fixtures/agent-runtime/*.jsonl
 /artifacts/roadmap/*internal*
 /.claude/settings.local.json
+/task_plan.md
+/progress.md
+/findings.md
