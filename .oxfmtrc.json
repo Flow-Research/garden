@@ -5,6 +5,11 @@
   "printWidth": 80,
   "sortPackageJson": false,
   "ignorePatterns": [
+    "**/.turbo/**",
+    "**/.output/**",
+    "**/dist/**",
+    "**/node_modules/**",
+    "**/worker-configuration.d.ts",
     "package-lock.json",
     "pnpm-lock.yaml",
     "yarn.lock"

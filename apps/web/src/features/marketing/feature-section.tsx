@@ -19,10 +19,7 @@ export function FeatureSection({ feature }: { feature: GardenFeature }) {
       <p className="mt-1 text-sm text-muted-foreground">{feature.tagline}</p>
 
       <dl className="mt-5 max-w-3xl space-y-5">
-        <FeatureField
-          label={featuresPageCopy.columnWhy}
-          body={feature.why}
-        />
+        <FeatureField label={featuresPageCopy.columnWhy} body={feature.why} />
         <FeatureField
           label={featuresPageCopy.columnHelps}
           body={feature.helps}

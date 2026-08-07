@@ -62,7 +62,9 @@ export const toolCallAudit = pgTable(
     argsHash: text('args_hash').notNull(),
     resultStatus: text('result_status').notNull(),
     durationMs: integer('duration_ms').notNull(),
-    ts: timestamp('ts', { mode: 'date' }).notNull().default(sql`now()`),
+    ts: timestamp('ts', { mode: 'date' })
+      .notNull()
+      .default(sql`now()`),
     error: text('error'),
   },
   (table) => [

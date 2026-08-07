@@ -1456,10 +1456,7 @@ export function IssueDetail({
               open={todoHintOpen}
               onOpenChange={setTodoHintOpen}
               onDismissPermanently={() => {
-                localStorage.setItem(
-                  'garden:todo-agent-hint-dismissed',
-                  'true',
-                )
+                localStorage.setItem('garden:todo-agent-hint-dismissed', 'true')
               }}
               onMoveToInProgress={() => {
                 updateIssueMutation.mutate(

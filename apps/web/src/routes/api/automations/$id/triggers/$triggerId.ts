@@ -24,7 +24,6 @@ export const Route = createFileRoute(
   server: {
     handlers: {
       PATCH: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const automationResult = await requireAutomation(appEnv, params.id)
         if (automationResult.isErr())
@@ -109,7 +108,6 @@ export const Route = createFileRoute(
         return automationOk(toAutomationTrigger(updated))
       },
       DELETE: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const automationResult = await requireAutomation(appEnv, params.id)
         if (automationResult.isErr())

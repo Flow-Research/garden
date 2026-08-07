@@ -151,7 +151,11 @@ const RUN_STATUS_CONFIG: Record<
     icon: CheckCircle2,
   },
   failed: { label: 'Failed', color: 'text-destructive', icon: XCircle },
-  cancelled: { label: 'Cancelled', color: 'text-muted-foreground', icon: Pause },
+  cancelled: {
+    label: 'Cancelled',
+    color: 'text-muted-foreground',
+    icon: Pause,
+  },
   skipped: { label: 'Skipped', color: 'text-amber-500', icon: Pause },
 }
 
@@ -212,7 +216,9 @@ function AutomationTraceTimeline({
               )}
             >
               <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
-                <span className={failed ? 'text-destructive' : 'text-foreground'}>
+                <span
+                  className={failed ? 'text-destructive' : 'text-foreground'}
+                >
                   {traceLabel(kind)}
                 </span>
                 {toolName ? <span>· {toolName}</span> : null}
@@ -239,8 +245,7 @@ function RunRow({
   run: AutomationRun
   debugMode?: boolean
 }) {
-  const config =
-    RUN_STATUS_CONFIG[run.status] ?? RUN_STATUS_CONFIG.queued
+  const config = RUN_STATUS_CONFIG[run.status] ?? RUN_STATUS_CONFIG.queued
   const StatusIcon = config.icon
   const usage = run.usage_json
   const result = run.result_json
@@ -253,9 +258,7 @@ function RunRow({
     <div className="px-4 py-2.5 text-sm transition-colors hover:bg-accent/30">
       <div className="flex items-center gap-3">
         <StatusIcon className={cn('size-4 shrink-0', config.color)} />
-        <span
-          className={cn('w-24 shrink-0 text-xs font-medium', config.color)}
-        >
+        <span className={cn('w-24 shrink-0 text-xs font-medium', config.color)}>
           {config.label}
         </span>
         <span className="w-16 shrink-0 text-xs text-muted-foreground capitalize">

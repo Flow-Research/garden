@@ -14,9 +14,17 @@ const toneClass: Record<NonNullable<FlowNode['tone']>, string> = {
   amber: 'text-[color:var(--amber)]',
 }
 
-export function FlowDiagram({ nodes, className }: { nodes: FlowNode[]; className?: string }) {
+export function FlowDiagram({
+  nodes,
+  className,
+}: {
+  nodes: FlowNode[]
+  className?: string
+}) {
   return (
-    <div className={cn('flex flex-wrap items-center gap-x-1 gap-y-3', className)}>
+    <div
+      className={cn('flex flex-wrap items-center gap-x-1 gap-y-3', className)}
+    >
       {nodes.map((node, i) => (
         <div key={`${node.label}-${i}`} className="flex items-center gap-1">
           <span
@@ -54,7 +62,12 @@ function FlowArrow() {
         strokeWidth="1.5"
         className="arch-edge-flow"
       />
-      <path d="M22 1.5 L27 5 L22 8.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
+      <path
+        d="M22 1.5 L27 5 L22 8.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        fill="none"
+      />
     </svg>
   )
 }

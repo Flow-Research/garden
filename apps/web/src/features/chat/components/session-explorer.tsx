@@ -156,7 +156,12 @@ function SessionRow({
             >
               <MoreHorizontal className="size-3" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" side="right" sideOffset={4} className="min-w-28">
+            <DropdownMenuContent
+              align="start"
+              side="right"
+              sideOffset={4}
+              className="min-w-28"
+            >
               <DropdownMenuItem onClick={stop(onRename)}>
                 <Pencil className="size-3.5" />
                 Rename
@@ -169,7 +174,9 @@ function SessionRow({
           </DropdownMenu>
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent side="right" sideOffset={4} className="min-w-28">{menuItems}</ContextMenuContent>
+      <ContextMenuContent side="right" sideOffset={4} className="min-w-28">
+        {menuItems}
+      </ContextMenuContent>
     </ContextMenu>
   )
 }

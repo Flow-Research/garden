@@ -201,7 +201,9 @@ export function QuestionCard({
 
       {/* Chips */}
       {hasOptions && (
-        <div className={cn('space-y-1', compact ? 'px-3 pb-1.5' : 'px-3.5 pb-2')}>
+        <div
+          className={cn('space-y-1', compact ? 'px-3 pb-1.5' : 'px-3.5 pb-2')}
+        >
           {question.options.map((option, index) => {
             const isSelected = selected.includes(option.label)
             const shortcutKey = index < 9 ? index + 1 : null
@@ -232,12 +234,15 @@ export function QuestionCard({
                   </Kbd>
                 )}
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium leading-snug">{option.label}</div>
-                  {option.description && option.description !== option.label && (
-                    <div className="mt-0.5 text-[11px] text-muted-foreground/85 leading-snug">
-                      {option.description}
-                    </div>
-                  )}
+                  <div className="text-sm font-medium leading-snug">
+                    {option.label}
+                  </div>
+                  {option.description &&
+                    option.description !== option.label && (
+                      <div className="mt-0.5 text-[11px] text-muted-foreground/85 leading-snug">
+                        {option.description}
+                      </div>
+                    )}
                 </div>
                 {isSelected && (
                   <Check className="mt-0.5 size-3.5 shrink-0 text-warning" />
@@ -288,7 +293,8 @@ export function QuestionCard({
         <div className="mt-1.5 flex items-center justify-between text-[10px] text-muted-foreground/70">
           {hasOptions ? (
             <span>
-              Tip: number keys pick options. <Kbd className="h-3.5 text-[9px]">⌘</Kbd>
+              Tip: number keys pick options.{' '}
+              <Kbd className="h-3.5 text-[9px]">⌘</Kbd>
               <Kbd className="h-3.5 text-[9px]">↵</Kbd> sends typed answer.
             </span>
           ) : (
@@ -313,7 +319,9 @@ export function QuestionCardEmpty() {
           <MessageCircleQuestion />
         </EmptyMedia>
         <EmptyTitle>No pending question</EmptyTitle>
-        <EmptyDescription>Bot will surface its next question here.</EmptyDescription>
+        <EmptyDescription>
+          Bot will surface its next question here.
+        </EmptyDescription>
       </EmptyHeader>
     </Empty>
   )

@@ -37,7 +37,10 @@ const SECRET_VALUE_PATTERNS = [
   /(params:\s*)[A-Za-z0-9._~+/=-]{16,}/gi,
 ]
 
-const CONSOLE_METHOD: Record<GardenLogLevel, 'debug' | 'info' | 'warn' | 'error'> = {
+const CONSOLE_METHOD: Record<
+  GardenLogLevel,
+  'debug' | 'info' | 'warn' | 'error'
+> = {
   debug: 'debug',
   info: 'info',
   warn: 'warn',
@@ -96,12 +99,14 @@ function shouldEmitLogLevel(level: GardenLogLevel) {
  * like Pino into Workers. References consulted: Cloudflare Workers structured
  * JSON logging docs and Tail Worker docs.
  */
-export function createGardenLogger(
-  options: GardenLoggerOptions,
-): GardenLogger {
+export function createGardenLogger(options: GardenLoggerOptions): GardenLogger {
   const base = normalizeFields(options.base ?? {})
 
-  const emit = (level: GardenLogLevel, event: string, fields?: GardenLogFields) => {
+  const emit = (
+    level: GardenLogLevel,
+    event: string,
+    fields?: GardenLogFields,
+  ) => {
     if (!shouldEmitLogLevel(level)) return
 
     const record = normalizeFields({
@@ -200,7 +205,9 @@ function errorCustomFields(error: Error, depth: number): GardenLogFields {
     ) {
       continue
     }
-    if (custom[`error${key.charAt(0).toUpperCase()}${key.slice(1)}`] !== undefined) {
+    if (
+      custom[`error${key.charAt(0).toUpperCase()}${key.slice(1)}`] !== undefined
+    ) {
       continue
     }
     const redacted = SECRET_KEY_PATTERN.test(key)

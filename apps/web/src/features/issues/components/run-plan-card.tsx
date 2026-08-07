@@ -28,7 +28,8 @@ export function RunPlanCard({ todos, streaming = false }: RunPlanCardProps) {
   const total = todos.length
   const inProgress = todos.find((t) => t.status === 'in_progress')
   const allDone = completed === total
-  const headline = inProgress?.activeForm ?? (allDone ? 'Plan complete' : 'Plan')
+  const headline =
+    inProgress?.activeForm ?? (allDone ? 'Plan complete' : 'Plan')
   const progressLabel = `${completed} of ${total} done`
 
   return (

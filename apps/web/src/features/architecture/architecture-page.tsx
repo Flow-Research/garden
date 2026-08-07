@@ -67,18 +67,24 @@ export function ArchitecturePage() {
                   summary={
                     <div>
                       <div className="flex items-baseline gap-2.5">
-                        <span className="font-mono text-[14px] text-foreground">{b.name}</span>
+                        <span className="font-mono text-[14px] text-foreground">
+                          {b.name}
+                        </span>
                         <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
                           {b.kind}
                         </span>
                       </div>
-                      <p className="mt-1.5 text-[14px] leading-7 text-muted-foreground">{b.what}</p>
+                      <p className="mt-1.5 text-[14px] leading-7 text-muted-foreground">
+                        {b.what}
+                      </p>
                     </div>
                   }
                 >
                   <div className="space-y-2 text-[13px] leading-6">
                     <p className="text-muted-foreground">
-                      <span className="text-foreground/80">Where its state lives — </span>
+                      <span className="text-foreground/80">
+                        Where its state lives —{' '}
+                      </span>
                       {b.state}
                     </p>
                     <p className="text-muted-foreground">
@@ -122,7 +128,11 @@ export function ArchitecturePage() {
             lede={durable.intro}
           >
             <DefList
-              items={durable.rules.map((r) => ({ id: r.title, term: r.title, body: r.body }))}
+              items={durable.rules.map((r) => ({
+                id: r.title,
+                term: r.title,
+                body: r.body,
+              }))}
             />
           </Section>
 
@@ -167,9 +177,15 @@ export function ArchitecturePage() {
               {workflowsVision.principles.map((p) => (
                 <Disclosure
                   key={p.id}
-                  summary={<span className="text-[14px] text-foreground">{p.title}</span>}
+                  summary={
+                    <span className="text-[14px] text-foreground">
+                      {p.title}
+                    </span>
+                  }
                 >
-                  <p className="max-w-2xl text-[14px] leading-7 text-muted-foreground">{p.body}</p>
+                  <p className="max-w-2xl text-[14px] leading-7 text-muted-foreground">
+                    {p.body}
+                  </p>
                 </Disclosure>
               ))}
             </div>
@@ -207,11 +223,19 @@ export function ArchitecturePage() {
             title="Connectors & permissions"
             lede={connectors.intro}
           >
-            <p className="mb-1 text-[14px] text-muted-foreground">{connectors.trustIntro}</p>
+            <p className="mb-1 text-[14px] text-muted-foreground">
+              {connectors.trustIntro}
+            </p>
             <DefList
-              items={connectors.trust.map((t) => ({ id: t.id, term: t.name, body: t.body }))}
+              items={connectors.trust.map((t) => ({
+                id: t.id,
+                term: t.name,
+                body: t.body,
+              }))}
             />
-            <p className="mt-4 text-[13px] leading-6 text-muted-foreground">{connectors.note}</p>
+            <p className="mt-4 text-[13px] leading-6 text-muted-foreground">
+              {connectors.note}
+            </p>
           </Section>
 
           <Section
@@ -226,13 +250,20 @@ export function ArchitecturePage() {
               nodes={[
                 ...prompt.layers.map((l, i) => ({
                   label: l.name,
-                  tone: i === prompt.layers.length - 1 ? ('amber' as const) : ('default' as const),
+                  tone:
+                    i === prompt.layers.length - 1
+                      ? ('amber' as const)
+                      : ('default' as const),
                 })),
                 { label: 'cached & sent' },
               ]}
             />
             <DefList
-              items={prompt.layers.map((l) => ({ id: l.id, term: l.name, body: l.body }))}
+              items={prompt.layers.map((l) => ({
+                id: l.id,
+                term: l.name,
+                body: l.body,
+              }))}
             />
           </Section>
 
@@ -243,7 +274,13 @@ export function ArchitecturePage() {
             title="Standing on the AI SDK"
             lede={ecosystem.intro}
           >
-            <DefList items={ecosystem.gets.map((g) => ({ id: g.id, term: g.name, body: g.body }))} />
+            <DefList
+              items={ecosystem.gets.map((g) => ({
+                id: g.id,
+                term: g.name,
+                body: g.body,
+              }))}
+            />
             <p className="mt-4 font-mono text-[11px] leading-5 text-muted-foreground">
               {ecosystem.evidence}
             </p>
@@ -269,7 +306,10 @@ export function ArchitecturePage() {
             <Label>Sources</Label>
             <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
               {sources.map((s) => (
-                <li key={s} className="font-mono text-[11px] text-muted-foreground">
+                <li
+                  key={s}
+                  className="font-mono text-[11px] text-muted-foreground"
+                >
                   {s}
                 </li>
               ))}
@@ -285,7 +325,10 @@ export function ArchitecturePage() {
 function Hero() {
   return (
     <header className="relative py-20">
-      <div className="arch-hero-glow pointer-events-none absolute inset-x-0 top-0 h-64" aria-hidden />
+      <div
+        className="arch-hero-glow pointer-events-none absolute inset-x-0 top-0 h-64"
+        aria-hidden
+      />
       <div className="relative">
         <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
           {architectureCopy.eyebrow}

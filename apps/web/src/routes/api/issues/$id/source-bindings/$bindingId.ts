@@ -25,7 +25,6 @@ export const Route = createFileRoute(
   server: {
     handlers: {
       DELETE: async ({ context, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const db = await appContext.db()
         const [binding] = await db
@@ -40,7 +39,10 @@ export const Route = createFileRoute(
           .limit(1)
         if (!binding) return notFound('Source binding not found')
 
-        const access = await requireWorkspaceAccess(appContext, binding.workspaceId)
+        const access = await requireWorkspaceAccess(
+          appContext,
+          binding.workspaceId,
+        )
         if (access instanceof Response) return access
 
         const removeResult = await removeSourceBinding({

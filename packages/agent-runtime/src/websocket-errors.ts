@@ -1,8 +1,5 @@
 import type { Connection } from 'agents'
-import {
-  errorFields,
-  type GardenLogger,
-} from '@garden/observability/logger'
+import { errorFields, type GardenLogger } from '@garden/observability/logger'
 
 function connectionId(connection: Connection | null) {
   const candidate = connection as { id?: unknown } | null

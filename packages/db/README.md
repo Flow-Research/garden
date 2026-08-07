@@ -40,7 +40,7 @@ First run pulls the `postgres:16-alpine` image (~90 MB). Subsequent runs reuse t
 
 Runtime (`apps/web/src/lib/server/db.ts`) uses `drizzle-orm/neon-serverless` against Neon cloud. Tests use `drizzle-orm/node-postgres` against a local Postgres container. Both drivers consume the same Drizzle schema + query builder, so every schema, query, and piece of business logic under test exercises the same surface — only the network transport differs.
 
-This is an intentional choice: the integration tests here exist to catch bugs in *our* schema, queries, and data logic, not to revalidate the Neon driver on every run. Driver-level regressions are better caught by a smoke test hitting a real staging Neon endpoint in CI (future work).
+This is an intentional choice: the integration tests here exist to catch bugs in _our_ schema, queries, and data logic, not to revalidate the Neon driver on every run. Driver-level regressions are better caught by a smoke test hitting a real staging Neon endpoint in CI (future work).
 
 ### Pattern
 

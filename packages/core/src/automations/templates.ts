@@ -21,58 +21,67 @@ export const automationExecutionConfigSchema = z
   })
   .strict()
 
-export const qaSweepExecutionConfigSchema = automationExecutionConfigSchema.extend({
-  templateId: z.literal('qa-sweep'),
-  qaLoop: z
-    .object({
-      discovery: z.literal('agent-driven'),
-      execution: z
-        .object({
-          staticReview: z.literal('always'),
-          repoCommands: z.literal('safe-discovered'),
-          browser: z.literal('when-url-available'),
-          generatedTests: z.literal('draft-only-unless-approved'),
-        })
-        .strict(),
-      verification: z
-        .object({
-          rerunChecks: z.boolean(),
-          validateEvidence: z.boolean(),
-          falseGreenReview: z.boolean(),
-        })
-        .strict(),
-      rca: z
-        .object({
-          required: z.boolean(),
-          includeConfidence: z.boolean(),
-          citeEvidence: z.boolean(),
-        })
-        .strict(),
-      triage: z
-        .object({
-          severity: z.boolean(),
-          reproducibility: z.boolean(),
-          ownerHints: z.boolean(),
-        })
-        .strict(),
-      closure: z
-        .object({
-          defaultMode: z.literal('report-only'),
-          allowedActions: z.array(
-            z.enum(['garden-issue', 'github-issue', 'draft-pr', 'qa-artifact-update']),
-          ),
-          requireExplicitIntent: z.boolean(),
-        })
-        .strict(),
-    })
-    .strict(),
-  browserProvider: z.literal('cloudflare-browser-run'),
-  repoAccess: z.literal('github-connector'),
-  destructivePolicy: z.literal('explicit-opt-in'),
-})
+export const qaSweepExecutionConfigSchema =
+  automationExecutionConfigSchema.extend({
+    templateId: z.literal('qa-sweep'),
+    qaLoop: z
+      .object({
+        discovery: z.literal('agent-driven'),
+        execution: z
+          .object({
+            staticReview: z.literal('always'),
+            repoCommands: z.literal('safe-discovered'),
+            browser: z.literal('when-url-available'),
+            generatedTests: z.literal('draft-only-unless-approved'),
+          })
+          .strict(),
+        verification: z
+          .object({
+            rerunChecks: z.boolean(),
+            validateEvidence: z.boolean(),
+            falseGreenReview: z.boolean(),
+          })
+          .strict(),
+        rca: z
+          .object({
+            required: z.boolean(),
+            includeConfidence: z.boolean(),
+            citeEvidence: z.boolean(),
+          })
+          .strict(),
+        triage: z
+          .object({
+            severity: z.boolean(),
+            reproducibility: z.boolean(),
+            ownerHints: z.boolean(),
+          })
+          .strict(),
+        closure: z
+          .object({
+            defaultMode: z.literal('report-only'),
+            allowedActions: z.array(
+              z.enum([
+                'garden-issue',
+                'github-issue',
+                'draft-pr',
+                'qa-artifact-update',
+              ]),
+            ),
+            requireExplicitIntent: z.boolean(),
+          })
+          .strict(),
+      })
+      .strict(),
+    browserProvider: z.literal('cloudflare-browser-run'),
+    repoAccess: z.literal('github-connector'),
+    destructivePolicy: z.literal('explicit-opt-in'),
+  })
 
 export const automationOutputConfigSchema = z
-  .object({ contractId: z.string(), contractVersion: z.number().int().positive() })
+  .object({
+    contractId: z.string(),
+    contractVersion: z.number().int().positive(),
+  })
   .strict()
 
 export const qaSweepOutputConfigSchema = automationOutputConfigSchema.extend({
@@ -98,9 +107,15 @@ export const qaSweepRunPayloadSchema = z
   })
   .strict()
 
-export type AutomationExecutionConfig = z.infer<typeof automationExecutionConfigSchema>
-export type AutomationOutputConfig = z.infer<typeof automationOutputConfigSchema>
-export type QaSweepExecutionConfig = z.infer<typeof qaSweepExecutionConfigSchema>
+export type AutomationExecutionConfig = z.infer<
+  typeof automationExecutionConfigSchema
+>
+export type AutomationOutputConfig = z.infer<
+  typeof automationOutputConfigSchema
+>
+export type QaSweepExecutionConfig = z.infer<
+  typeof qaSweepExecutionConfigSchema
+>
 export type QaSweepOutputConfig = z.infer<typeof qaSweepOutputConfigSchema>
 export type QaSweepClosureAction = z.infer<typeof qaSweepClosureActionSchema>
 export type QaSweepRunPayload = z.infer<typeof qaSweepRunPayloadSchema>
@@ -126,7 +141,10 @@ export const QA_SWEEP_EXECUTION_CONFIG = qaSweepExecutionConfigSchema.parse({
   capabilities: { browser: true, sandbox: true, github: true },
   requiredSkills: [...QA_GUIDANCE_SKILL_SLUGS],
   requiredConnectors: ['github'],
-  runContract: { input: QA_SWEEP_INPUT_CONTRACT_ID, output: QA_SWEEP_OUTPUT_CONTRACT_ID },
+  runContract: {
+    input: QA_SWEEP_INPUT_CONTRACT_ID,
+    output: QA_SWEEP_OUTPUT_CONTRACT_ID,
+  },
   qaLoop: {
     discovery: 'agent-driven',
     execution: {
@@ -135,12 +153,21 @@ export const QA_SWEEP_EXECUTION_CONFIG = qaSweepExecutionConfigSchema.parse({
       browser: 'when-url-available',
       generatedTests: 'draft-only-unless-approved',
     },
-    verification: { rerunChecks: true, validateEvidence: true, falseGreenReview: true },
+    verification: {
+      rerunChecks: true,
+      validateEvidence: true,
+      falseGreenReview: true,
+    },
     rca: { required: true, includeConfidence: true, citeEvidence: true },
     triage: { severity: true, reproducibility: true, ownerHints: true },
     closure: {
       defaultMode: 'report-only',
-      allowedActions: ['garden-issue', 'github-issue', 'draft-pr', 'qa-artifact-update'],
+      allowedActions: [
+        'garden-issue',
+        'github-issue',
+        'draft-pr',
+        'qa-artifact-update',
+      ],
       requireExplicitIntent: true,
     },
   },
@@ -159,7 +186,9 @@ export function createAutomationExecutionConfig(input: {
   templateVersion?: number
   capabilities: z.infer<typeof automationCapabilitySchema>
   requiredSkills?: string[]
-  requiredConnectors?: z.infer<typeof automationExecutionConfigSchema>['requiredConnectors']
+  requiredConnectors?: z.infer<
+    typeof automationExecutionConfigSchema
+  >['requiredConnectors']
   inputContract?: string
   outputContract?: string
 }) {
@@ -194,7 +223,9 @@ export const automationTemplateDefinitionSchema = z
   })
   .strict()
 
-export type AutomationTemplateDefinition = z.infer<typeof automationTemplateDefinitionSchema>
+export type AutomationTemplateDefinition = z.infer<
+  typeof automationTemplateDefinitionSchema
+>
 
 /**
  * Canonical built-in automation templates.
@@ -242,11 +273,13 @@ export function parseAutomationExecutionConfig(value: unknown) {
 }
 
 export function parseQaSweepRunPayload(value: unknown) {
-  const objectValue = value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
-  const nested = objectValue.qa && typeof objectValue.qa === 'object'
-    ? objectValue.qa
-    : objectValue
+  const objectValue =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {}
+  const nested =
+    objectValue.qa && typeof objectValue.qa === 'object'
+      ? objectValue.qa
+      : objectValue
   return qaSweepRunPayloadSchema.safeParse(nested)
 }

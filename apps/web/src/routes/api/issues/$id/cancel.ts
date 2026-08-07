@@ -22,7 +22,6 @@ export const Route = createFileRoute('/api/issues/$id/cancel')({
   server: {
     handlers: {
       POST: async ({ context, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const db = await appContext.db()
         const [issue] = await db
@@ -32,7 +31,10 @@ export const Route = createFileRoute('/api/issues/$id/cancel')({
           .limit(1)
         if (!issue) return notFound('Issue not found')
 
-        const access = await requireWorkspaceAccess(appContext, issue.workspaceId)
+        const access = await requireWorkspaceAccess(
+          appContext,
+          issue.workspaceId,
+        )
         if (access instanceof Response) return access
 
         const runResult = await getActiveIssueRun({

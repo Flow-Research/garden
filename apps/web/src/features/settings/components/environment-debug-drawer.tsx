@@ -161,9 +161,7 @@ function KV({
       <span className="text-muted-foreground">{k}</span>
       <span className="flex min-w-0 items-center justify-end gap-1 text-right font-mono text-foreground">
         <span className="truncate">{v}</span>
-        {copyValue ? (
-          <CopyValue value={copyValue} label={`Copy ${k}`} />
-        ) : null}
+        {copyValue ? <CopyValue value={copyValue} label={`Copy ${k}`} /> : null}
       </span>
     </div>
   )
@@ -199,12 +197,7 @@ function formatBytes(n: number): string {
 
 // ---------- tools ----------
 
-const GROUP_ORDER: ToolGroup[] = [
-  'workspace',
-  'custom',
-  'session',
-  'extension',
-]
+const GROUP_ORDER: ToolGroup[] = ['workspace', 'custom', 'session', 'extension']
 
 const GROUP_LABEL: Record<ToolGroup, string> = {
   workspace: 'Workspace',
@@ -260,8 +253,8 @@ function ToolsPanel({
       right={
         counts ? (
           <Badge variant="secondary" className="text-[10px]">
-            {visibleLlmToolCount} local · {exposedConnectorToolCount}{' '}
-            connector · {counts.rpc} RPC
+            {visibleLlmToolCount} local · {exposedConnectorToolCount} connector
+            · {counts.rpc} RPC
           </Badge>
         ) : null
       }
@@ -375,9 +368,7 @@ function ToolsPanel({
                         />
                       </div>
                       <Badge
-                        variant={
-                          connector.connected ? 'secondary' : 'outline'
-                        }
+                        variant={connector.connected ? 'secondary' : 'outline'}
                         className="shrink-0 text-[10px]"
                       >
                         {connector.exposed
@@ -464,10 +455,7 @@ function ToolsPanel({
             </div>
             <ul className="grid grid-cols-1 sm:grid-cols-2">
               {tools.rpcMethods.map((m) => (
-                <li
-                  key={m.name}
-                  className="border-t py-1 text-xs sm:px-2"
-                >
+                <li key={m.name} className="border-t py-1 text-xs sm:px-2">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono">{m.name}</span>
                     {m.streaming ? (

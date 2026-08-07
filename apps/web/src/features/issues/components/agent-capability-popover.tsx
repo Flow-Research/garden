@@ -71,7 +71,7 @@ const CORE_CAPABILITIES = [
   {
     icon: Octagon,
     title: 'Block',
-    body: 'Hard stop with a concrete reason when an external dependency can\'t be satisfied.',
+    body: "Hard stop with a concrete reason when an external dependency can't be satisfied.",
     tool: 'mark_blocked',
   },
 ] as const
@@ -107,7 +107,9 @@ export function AgentCapabilityPopover({
               {agentName}
             </div>
             {agentRole && (
-              <div className="text-[11px] text-muted-foreground">{agentRole}</div>
+              <div className="text-[11px] text-muted-foreground">
+                {agentRole}
+              </div>
             )}
             <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70">
               What this agent can do
@@ -153,7 +155,8 @@ export function AgentCapabilityPopover({
         {assignedSkills.length > 0 && (
           <div className="border-t border-border/40 bg-muted/20 px-4 py-3">
             <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70">
-              + {assignedSkills.length} skill{assignedSkills.length === 1 ? '' : 's'}
+              + {assignedSkills.length} skill
+              {assignedSkills.length === 1 ? '' : 's'}
             </div>
             <ul className="mt-1.5 space-y-1">
               {assignedSkills.map((s) => (

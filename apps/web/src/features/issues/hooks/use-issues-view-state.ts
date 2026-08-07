@@ -19,7 +19,9 @@ const scopeSelector = (state: ScopeStoreState) => ({
   setScope: state.setScope,
 })
 
-const pageViewSelector = (state: ReturnType<typeof useIssueViewStore.getState>) => ({
+const pageViewSelector = (
+  state: ReturnType<typeof useIssueViewStore.getState>,
+) => ({
   viewMode: state.viewMode,
   statusFilters: state.statusFilters,
   priorityFilters: state.priorityFilters,

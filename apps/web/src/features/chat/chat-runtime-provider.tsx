@@ -110,10 +110,9 @@ function ChatRuntimeWarmConnection({ session }: { session: AgentChatSession }) {
       session.runtime_key,
     ],
     queryFn: async () => {
-      const result = await agent.call<WarmRuntimeResult>(
-        'warmThreadRuntime',
-        [session.runtime_key],
-      )
+      const result = await agent.call<WarmRuntimeResult>('warmThreadRuntime', [
+        session.runtime_key,
+      ])
       if (!result.ok) throw new Error(result.error)
       return true
     },

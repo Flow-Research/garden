@@ -30,7 +30,10 @@ export async function getThreadAccess(
   if (row.thread.ownerUserId !== session.user.id) {
     return notFound('Chat thread not found')
   }
-  const access = await requireWorkspaceAccess(appContext, row.thread.workspaceId)
+  const access = await requireWorkspaceAccess(
+    appContext,
+    row.thread.workspaceId,
+  )
   if (access instanceof Response) return access
 
   return {

@@ -65,11 +65,7 @@ function getFileIcon(name: string) {
   return <File className="size-4 text-muted-foreground" />
 }
 
-function TreeNode({
-  node,
-}: {
-  node: FileTreeNode
-}) {
+function TreeNode({ node }: { node: FileTreeNode }) {
   if (node.isDirectory) {
     return (
       <FileTreeFolder name={node.name} path={node.path}>

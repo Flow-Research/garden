@@ -63,7 +63,8 @@ const rawGetAuthBootstrap = createServerFn({ method: 'GET' }).handler(
         const requestedWorkspaceId = new URL(
           appContext.request.url,
         ).searchParams.get('workspace_id')
-        const activeOrganizationId = session.session.activeOrganizationId ?? null
+        const activeOrganizationId =
+          session.session.activeOrganizationId ?? null
         const preferredWorkspaceId = resolvePreferredWorkspaceId(
           organizations,
           requestedWorkspaceId,
@@ -110,14 +111,18 @@ function resolvePreferredWorkspaceId(
 ) {
   if (
     requestedWorkspaceId &&
-    organizations.some((organization) => organization.id === requestedWorkspaceId)
+    organizations.some(
+      (organization) => organization.id === requestedWorkspaceId,
+    )
   ) {
     return requestedWorkspaceId
   }
 
   if (
     activeOrganizationId &&
-    organizations.some((organization) => organization.id === activeOrganizationId)
+    organizations.some(
+      (organization) => organization.id === activeOrganizationId,
+    )
   ) {
     return activeOrganizationId
   }

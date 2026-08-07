@@ -147,7 +147,9 @@ export async function setIssueSubscription(
     await addIssueSubscribers(db, {
       workspaceId: args.workspaceId,
       issueId: args.issueId,
-      entries: [{ userType: args.userType, userId: args.userId, reason: 'manual' }],
+      entries: [
+        { userType: args.userType, userId: args.userId, reason: 'manual' },
+      ],
     })
     return
   }

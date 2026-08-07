@@ -7,12 +7,19 @@ import {
 } from '@garden/db/subscribers'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { formatIssueIdentifier } from '@garden/core/issues/identifier'
-import { LIVE_RUN_STATUSES, WAKEUP_DEDUPING_RUN_STATUSES } from '@garden/core/issues/run-sync'
+import {
+  LIVE_RUN_STATUSES,
+  WAKEUP_DEDUPING_RUN_STATUSES,
+} from '@garden/core/issues/run-sync'
 import { decideWakeups } from '@garden/core/issues/triggers'
 import { createLogger } from '@garden/observability/console'
 import type { Attachment } from '@garden/core/types/attachment'
 import type { Comment } from '@garden/core/types/comment'
-import type { Issue, IssueAssigneeType, IssueStatus } from '@garden/core/types/issue'
+import type {
+  Issue,
+  IssueAssigneeType,
+  IssueStatus,
+} from '@garden/core/types/issue'
 
 const logger = createLogger('issues')
 import * as schema from '@garden/db/schema'
@@ -104,7 +111,9 @@ const postIssueCommentInputSchema = z
 export type CreateIssueInput = z.infer<typeof createIssueInputSchema>
 export type ReadIssueInput = z.infer<typeof readIssueInputSchema>
 export type ListIssuesInput = z.infer<typeof listIssuesInputSchema>
-export type PostIssueCommentInput = z.infer<typeof postIssueCommentInputSchema> & {
+export type PostIssueCommentInput = z.infer<
+  typeof postIssueCommentInputSchema
+> & {
   issueRunEnv: IssueRunEnv
 }
 
@@ -292,7 +301,10 @@ function normalizeMention(value: string) {
   return value.trim().toLowerCase()
 }
 
-function mentionAliases(value: { name?: string | null; email?: string | null }) {
+function mentionAliases(value: {
+  name?: string | null
+  email?: string | null
+}) {
   const aliases = new Set<string>()
   if (value.name) {
     aliases.add(normalizeMention(value.name))
@@ -327,7 +339,8 @@ async function resolveMentions(args: {
   content: string
 }) {
   const tokens = extractMentionTokens(args.content)
-  if (tokens.size === 0) return { agents: [] as string[], users: [] as string[] }
+  if (tokens.size === 0)
+    return { agents: [] as string[], users: [] as string[] }
 
   const [agentRows, memberRows] = await Promise.all([
     args.db
@@ -354,7 +367,9 @@ async function resolveMentions(args: {
   ])
 
   const agents = agentRows
-    .filter((agent) => hasMentionToken(mentionAliases({ name: agent.name }), tokens))
+    .filter((agent) =>
+      hasMentionToken(mentionAliases({ name: agent.name }), tokens),
+    )
     .map((agent) => agent.id)
   const users = memberRows
     .filter((member) =>
@@ -420,7 +435,9 @@ async function loadIssueCommentPage(input: {
   const [{ count }] = (await input.db
     .select({ count: sql<number>`cast(count(*) as int)` })
     .from(schema.issueComment)
-    .where(eq(schema.issueComment.issueId, input.issueId))) as [{ count: number }]
+    .where(eq(schema.issueComment.issueId, input.issueId))) as [
+    { count: number },
+  ]
 
   const rows = await input.db
     .select()
@@ -524,7 +541,11 @@ async function resolveIssue(
         : undefined
 
   if (!conditions) return null
-  const [issue] = await db.select().from(schema.issue).where(conditions).limit(1)
+  const [issue] = await db
+    .select()
+    .from(schema.issue)
+    .where(conditions)
+    .limit(1)
   return issue ?? null
 }
 
@@ -625,7 +646,10 @@ async function latestIssueEvent(
     })
     .from(schema.issueRunEvent)
     .where(eventConditions)
-    .orderBy(desc(schema.issueRunEvent.createdAt), desc(schema.issueRunEvent.seq))
+    .orderBy(
+      desc(schema.issueRunEvent.createdAt),
+      desc(schema.issueRunEvent.seq),
+    )
     .limit(1)
 
   return event
@@ -703,7 +727,9 @@ export async function createIssue(
 ): Promise<ResultValue<Issue, IssueServiceError>> {
   const parsed = createIssueInputSchema.safeParse(input)
   if (!parsed.success) {
-    return Result.err(validationError(parsed.error.issues[0]?.message ?? 'Invalid issue.'))
+    return Result.err(
+      validationError(parsed.error.issues[0]?.message ?? 'Invalid issue.'),
+    )
   }
 
   const db = getIssueDb(parsed.data.databaseUrl)
@@ -779,7 +805,9 @@ export async function createIssue(
   const initialSubscribers: SubscriberEntry[] = [
     { userType: 'member', userId: parsed.data.createdBy, reason: 'creator' },
   ]
-  const createdAssigneeType = assigneeToSubscriberType(createdIssue.assigneeType)
+  const createdAssigneeType = assigneeToSubscriberType(
+    createdIssue.assigneeType,
+  )
   if (createdAssigneeType && createdIssue.assigneeId) {
     initialSubscribers.push({
       userType: createdAssigneeType,
@@ -812,7 +840,11 @@ export async function readIssue(
 ): Promise<ResultValue<IssueSummary, IssueServiceError>> {
   const parsed = readIssueInputSchema.safeParse(input)
   if (!parsed.success) {
-    return Result.err(validationError(parsed.error.issues[0]?.message ?? 'Invalid issue lookup.'))
+    return Result.err(
+      validationError(
+        parsed.error.issues[0]?.message ?? 'Invalid issue lookup.',
+      ),
+    )
   }
 
   const db = getIssueDb(parsed.data.databaseUrl)
@@ -832,7 +864,10 @@ export async function readIssue(
       if (!issueCondition) return null
 
       const [issue] = await db
-        .select({ issue: schema.issue, issuePrefix: schema.organization.issuePrefix })
+        .select({
+          issue: schema.issue,
+          issuePrefix: schema.organization.issuePrefix,
+        })
         .from(schema.issue)
         .innerJoin(
           schema.organization,
@@ -890,7 +925,11 @@ export async function listIssues(
 ): Promise<ResultValue<IssueSummary[], IssueServiceError>> {
   const parsed = listIssuesInputSchema.safeParse(input)
   if (!parsed.success) {
-    return Result.err(validationError(parsed.error.issues[0]?.message ?? 'Invalid issue list query.'))
+    return Result.err(
+      validationError(
+        parsed.error.issues[0]?.message ?? 'Invalid issue list query.',
+      ),
+    )
   }
 
   const db = getIssueDb(parsed.data.databaseUrl)
@@ -902,14 +941,19 @@ export async function listIssues(
       }
       if (parsed.data.assigneeAgentId) {
         conditions.push(eq(schema.issue.assigneeType, 'agent'))
-        conditions.push(eq(schema.issue.assigneeId, parsed.data.assigneeAgentId))
+        conditions.push(
+          eq(schema.issue.assigneeId, parsed.data.assigneeAgentId),
+        )
       } else if (parsed.data.mine) {
         conditions.push(eq(schema.issue.assigneeType, 'user'))
         conditions.push(eq(schema.issue.assigneeId, parsed.data.ownerUserId))
       }
 
       const issues = await db
-        .select({ issue: schema.issue, issuePrefix: schema.organization.issuePrefix })
+        .select({
+          issue: schema.issue,
+          issuePrefix: schema.organization.issuePrefix,
+        })
         .from(schema.issue)
         .innerJoin(
           schema.organization,
@@ -933,11 +977,17 @@ export async function listIssues(
 
 export async function postIssueComment(
   input: PostIssueCommentInput,
-): Promise<ResultValue<{ comment_id: string; comment: Comment }, IssueServiceError>> {
+): Promise<
+  ResultValue<{ comment_id: string; comment: Comment }, IssueServiceError>
+> {
   const { issueRunEnv, ...rawInput } = input
   const parsed = postIssueCommentInputSchema.safeParse(rawInput)
   if (!parsed.success) {
-    return Result.err(validationError(parsed.error.issues[0]?.message ?? 'Invalid issue comment.'))
+    return Result.err(
+      validationError(
+        parsed.error.issues[0]?.message ?? 'Invalid issue comment.',
+      ),
+    )
   }
 
   const db = getIssueDb(parsed.data.databaseUrl)

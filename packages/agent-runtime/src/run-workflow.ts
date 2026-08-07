@@ -112,7 +112,9 @@ export class RunWorkflow extends AgentWorkflow<
     workflowLogger.info('run_workflow.started', {
       kind: event.payload.kind,
       runId,
-      ...(event.payload.kind === 'issue' ? { issueId: event.payload.issueId } : {}),
+      ...(event.payload.kind === 'issue'
+        ? { issueId: event.payload.issueId }
+        : {}),
     })
 
     let mode: 'start' | 'resume' = 'start'
@@ -227,7 +229,9 @@ export class RunWorkflow extends AgentWorkflow<
     workflowLogger.warn('run_workflow.max_turns_exceeded', {
       kind: event.payload.kind,
       runId,
-      ...(event.payload.kind === 'issue' ? { issueId: event.payload.issueId } : {}),
+      ...(event.payload.kind === 'issue'
+        ? { issueId: event.payload.issueId }
+        : {}),
     })
     await step.reportComplete({ runId, status: 'max_turns_exceeded' })
     return { runId, status: 'max_turns_exceeded' }

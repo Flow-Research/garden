@@ -3,10 +3,7 @@ import { redirect } from '@tanstack/react-router'
 import { Result, TaggedError } from 'better-result'
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
-import {
-  requireAppRequestContext,
-  type GardenAuth,
-} from '@/lib/server/context'
+import { requireAppRequestContext, type GardenAuth } from '@/lib/server/context'
 import { schema, type Db } from '@/lib/server/db'
 import { toInvitation } from '@/lib/server/control-plane'
 

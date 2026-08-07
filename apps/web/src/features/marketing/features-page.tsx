@@ -1,10 +1,6 @@
 import { BrandIcon } from '@garden/ui/components/common/brand-icon'
 import { FeatureGroupSection } from './feature-group'
-import {
-  featureGroups,
-  featuresPageCopy,
-  gardenFeatures,
-} from './feature-copy'
+import { featureGroups, featuresPageCopy, gardenFeatures } from './feature-copy'
 import { StatusBadge } from './status-badge'
 
 /**

@@ -88,7 +88,10 @@ export async function downloadFile(bucket: R2Bucket, key: string) {
 }
 
 export function documentDownloadUrl(documentId: string, filename: string) {
-  const url = new URL(`/api/documents/${documentId}/docx`, 'https://garden.local')
+  const url = new URL(
+    `/api/documents/${documentId}/docx`,
+    'https://garden.local',
+  )
   url.searchParams.set('filename', filename)
   return `${url.pathname}${url.search}`
 }

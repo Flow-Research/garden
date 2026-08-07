@@ -10,7 +10,6 @@ export function useIssueSubscribers(issueId: string, userId?: string) {
 
   const toggleMutation = useToggleIssueSubscriber(issueId)
 
-
   // --- Mutations ---
 
   const isSubscribed = subscribers.some(

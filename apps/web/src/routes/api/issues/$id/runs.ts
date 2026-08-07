@@ -22,7 +22,6 @@ export const Route = createFileRoute('/api/issues/$id/runs')({
   server: {
     handlers: {
       GET: async ({ context, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const db = await appContext.db()
         const [issue] = await db
@@ -32,7 +31,10 @@ export const Route = createFileRoute('/api/issues/$id/runs')({
           .limit(1)
         if (!issue) return notFound('Issue not found')
 
-        const access = await requireWorkspaceAccess(appContext, issue.workspaceId)
+        const access = await requireWorkspaceAccess(
+          appContext,
+          issue.workspaceId,
+        )
         if (access instanceof Response) return access
 
         const runsResult = await listIssueRuns({
@@ -44,7 +46,6 @@ export const Route = createFileRoute('/api/issues/$id/runs')({
         return Response.json(runsResult.value)
       },
       POST: async ({ context, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const db = await appContext.db()
         const [issue] = await db
@@ -59,7 +60,10 @@ export const Route = createFileRoute('/api/issues/$id/runs')({
           .limit(1)
         if (!issue) return notFound('Issue not found')
 
-        const access = await requireWorkspaceAccess(appContext, issue.workspaceId)
+        const access = await requireWorkspaceAccess(
+          appContext,
+          issue.workspaceId,
+        )
         if (access instanceof Response) return access
 
         if (issue.assigneeType !== 'agent' || !issue.assigneeId) {

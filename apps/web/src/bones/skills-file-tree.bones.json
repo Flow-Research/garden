@@ -5,90 +5,42 @@
       "viewportWidth": 207,
       "width": 207,
       "height": 32,
-      "bones": [
-        [
-          1.9324,
-          4,
-          96.1353,
-          24,
-          6
-        ]
-      ]
+      "bones": [[1.9324, 4, 96.1353, 24, 6]]
     },
     "640": {
       "name": "skills-file-tree",
       "viewportWidth": 207,
       "width": 207,
       "height": 32,
-      "bones": [
-        [
-          1.9324,
-          4,
-          96.1353,
-          24,
-          6
-        ]
-      ]
+      "bones": [[1.9324, 4, 96.1353, 24, 6]]
     },
     "768": {
       "name": "skills-file-tree",
       "viewportWidth": 207,
       "width": 207,
       "height": 32,
-      "bones": [
-        [
-          1.9324,
-          4,
-          96.1353,
-          24,
-          6
-        ]
-      ]
+      "bones": [[1.9324, 4, 96.1353, 24, 6]]
     },
     "1024": {
       "name": "skills-file-tree",
       "viewportWidth": 207,
       "width": 207,
       "height": 32,
-      "bones": [
-        [
-          1.9324,
-          4,
-          96.1353,
-          24,
-          6
-        ]
-      ]
+      "bones": [[1.9324, 4, 96.1353, 24, 6]]
     },
     "1280": {
       "name": "skills-file-tree",
       "viewportWidth": 207,
       "width": 207,
       "height": 32,
-      "bones": [
-        [
-          1.9324,
-          4,
-          96.1353,
-          24,
-          6
-        ]
-      ]
+      "bones": [[1.9324, 4, 96.1353, 24, 6]]
     },
     "1536": {
       "name": "skills-file-tree",
       "viewportWidth": 207,
       "width": 207,
       "height": 32,
-      "bones": [
-        [
-          1.9324,
-          4,
-          96.1353,
-          24,
-          6
-        ]
-      ]
+      "bones": [[1.9324, 4, 96.1353, 24, 6]]
     }
   },
   "_hash": "ce1dafd96951faf964fe7a4e4e789dd0"

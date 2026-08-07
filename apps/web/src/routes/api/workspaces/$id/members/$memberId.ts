@@ -169,7 +169,6 @@ export const Route = createFileRoute('/api/workspaces/$id/members/$memberId')({
         })
       },
       DELETE: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()

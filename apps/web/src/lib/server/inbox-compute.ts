@@ -1,135 +1,145 @@
-import { randomUUID } from "node:crypto";
-import { and, count, desc, eq, inArray, ne, notInArray, or, sql } from "drizzle-orm";
-import { getDb, schema, type Db } from "@/lib/server/db";
-import { appEnv } from "@/lib/server/env";
+import { randomUUID } from 'node:crypto'
+import {
+  and,
+  count,
+  desc,
+  eq,
+  inArray,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from 'drizzle-orm'
+import { getDb, schema, type Db } from '@/lib/server/db'
+import { appEnv } from '@/lib/server/env'
 import type {
   InboxItem,
   InboxItemType,
   InboxSeverity,
   IssueStatus,
-} from "@garden/core/types";
+} from '@garden/core/types'
 
-type IssueRow = typeof schema.issue.$inferSelect;
-type CommentRow = typeof schema.issueComment.$inferSelect;
-type RunRow = typeof schema.issueRun.$inferSelect;
-type WorkProductRow = typeof schema.issueWorkProduct.$inferSelect;
+type IssueRow = typeof schema.issue.$inferSelect
+type CommentRow = typeof schema.issueComment.$inferSelect
+type RunRow = typeof schema.issueRun.$inferSelect
+type WorkProductRow = typeof schema.issueWorkProduct.$inferSelect
 type ApprovalRow = {
-  id: string;
-  agentId: string;
-  issueId: string | null;
-  requestedAt: Date;
-  status: string;
-  body: string | null;
-  kind: "agent_proposal" | "connector_write";
-};
-type InboxItemRow = typeof schema.inboxItem.$inferSelect;
+  id: string
+  agentId: string
+  issueId: string | null
+  requestedAt: Date
+  status: string
+  body: string | null
+  kind: 'agent_proposal' | 'connector_write'
+}
+type InboxItemRow = typeof schema.inboxItem.$inferSelect
 
 type RunEventLite = {
-  runId: string;
-  eventType: string;
-  message: string | null;
-  payload: unknown;
-};
+  runId: string
+  eventType: string
+  message: string | null
+  payload: unknown
+}
 
 type FailedRunEventInfo = {
-  latestEvent?: RunEventLite;
-  failedEvent?: RunEventLite;
-  latestToolStarted?: RunEventLite;
-};
+  latestEvent?: RunEventLite
+  failedEvent?: RunEventLite
+  latestToolStarted?: RunEventLite
+}
 
 type SourceItem = {
-  key: string;
-  type: InboxItemType;
-  severity: InboxSeverity;
-  issueId: string | null;
-  title: string;
-  body: string | null;
-  issueStatus: IssueStatus | null;
-  actorType: "member" | "agent" | null;
-  actorId: string | null;
-  activityAt: Date;
-  details: Record<string, string>;
-};
+  key: string
+  type: InboxItemType
+  severity: InboxSeverity
+  issueId: string | null
+  title: string
+  body: string | null
+  issueStatus: IssueStatus | null
+  actorType: 'member' | 'agent' | null
+  actorId: string | null
+  activityAt: Date
+  details: Record<string, string>
+}
 
-const TRUNCATE_BODY = 200;
+const TRUNCATE_BODY = 200
 
 function truncate(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (trimmed.length <= TRUNCATE_BODY) return trimmed;
-  return `${trimmed.slice(0, TRUNCATE_BODY - 1)}…`;
+  if (!value) return null
+  const trimmed = value.trim()
+  if (trimmed.length <= TRUNCATE_BODY) return trimmed
+  return `${trimmed.slice(0, TRUNCATE_BODY - 1)}…`
 }
 
 function agentProposalBody(value: unknown): string | null {
-  if (!value || typeof value !== "object") return null;
-  const payload = value as { name?: unknown; role?: unknown };
-  const name = typeof payload.name === "string" ? payload.name.trim() : "";
-  const role = typeof payload.role === "string" ? payload.role.trim() : "";
-  if (name && role) return `${name} — ${role}`;
-  return name || role || null;
+  if (!value || typeof value !== 'object') return null
+  const payload = value as { name?: unknown; role?: unknown }
+  const name = typeof payload.name === 'string' ? payload.name.trim() : ''
+  const role = typeof payload.role === 'string' ? payload.role.trim() : ''
+  if (name && role) return `${name} — ${role}`
+  return name || role || null
 }
 
 function pickIssueStatus(value: string | null): IssueStatus | null {
-  if (!value) return null;
-  return value as IssueStatus;
+  if (!value) return null
+  return value as IssueStatus
 }
 
 function isTerminalIssue(issue: IssueRow): boolean {
-  return issue.status === "done" || issue.status === "cancelled";
+  return issue.status === 'done' || issue.status === 'cancelled'
 }
 
 function preferDate(...values: Array<Date | null | undefined>): Date {
   for (const value of values) {
-    if (value) return value;
+    if (value) return value
   }
-  return new Date();
+  return new Date()
 }
 
 function indexById<T extends { id: string }>(rows: T[]): Map<string, T> {
-  return new Map(rows.map((row) => [row.id, row]));
+  return new Map(rows.map((row) => [row.id, row]))
 }
 
 function commentMentionsUser(mentions: unknown, userId: string): boolean {
-  if (!mentions || typeof mentions !== "object") return false;
-  const users = (mentions as { users?: unknown }).users;
-  return Array.isArray(users) && users.includes(userId);
+  if (!mentions || typeof mentions !== 'object') return false
+  const users = (mentions as { users?: unknown }).users
+  return Array.isArray(users) && users.includes(userId)
 }
 
 function commentMentionsUserSql(userId: string) {
-  return sql`${schema.issueComment.mentions} @> ${JSON.stringify({ users: [userId] })}::jsonb`;
+  return sql`${schema.issueComment.mentions} @> ${JSON.stringify({ users: [userId] })}::jsonb`
 }
 
 function actorFromComment(row: CommentRow): {
-  actorType: "member" | "agent" | null;
-  actorId: string | null;
+  actorType: 'member' | 'agent' | null
+  actorId: string | null
 } {
   const type =
-    row.authorType === "user"
-      ? "member"
-      : row.authorType === "agent"
-        ? "agent"
-        : null;
-  return { actorType: type, actorId: type ? row.authorId : null };
+    row.authorType === 'user'
+      ? 'member'
+      : row.authorType === 'agent'
+        ? 'agent'
+        : null
+  return { actorType: type, actorId: type ? row.authorId : null }
 }
 
 function actorFromAgentId(agentId: string | null): {
-  actorType: "member" | "agent" | null;
-  actorId: string | null;
+  actorType: 'member' | 'agent' | null
+  actorId: string | null
 } {
-  if (!agentId) return { actorType: null, actorId: null };
-  return { actorType: "agent", actorId: agentId };
+  if (!agentId) return { actorType: null, actorId: null }
+  return { actorType: 'agent', actorId: agentId }
 }
 
 function buildAssignedSource(
   issue: IssueRow,
   userId: string,
 ): SourceItem | null {
-  if (issue.assigneeType !== "user" || issue.assigneeId !== userId) return null;
-  const activityAt = preferDate(issue.updatedAt, issue.createdAt);
+  if (issue.assigneeType !== 'user' || issue.assigneeId !== userId) return null
+  const activityAt = preferDate(issue.updatedAt, issue.createdAt)
   return {
     key: `assigned:${issue.id}`,
-    type: "issue_assigned",
-    severity: "action_required",
+    type: 'issue_assigned',
+    severity: 'action_required',
     issueId: issue.id,
     title: `You were assigned to ${issue.title}`,
     body: truncate(issue.description),
@@ -139,23 +149,23 @@ function buildAssignedSource(
     activityAt,
     details: {
       issue_number: String(issue.number),
-      priority: issue.priority ?? "medium",
-      status: issue.status ?? "todo",
+      priority: issue.priority ?? 'medium',
+      status: issue.status ?? 'todo',
     },
-  };
+  }
 }
 
 function buildBlockedSource(issue: IssueRow): SourceItem | null {
-  if (issue.status !== "blocked") return null;
-  const activityAt = preferDate(issue.updatedAt, issue.createdAt);
+  if (issue.status !== 'blocked') return null
+  const activityAt = preferDate(issue.updatedAt, issue.createdAt)
   const actor =
-    issue.assigneeType === "agent"
+    issue.assigneeType === 'agent'
       ? actorFromAgentId(issue.assigneeId)
-      : { actorType: null, actorId: null };
+      : { actorType: null, actorId: null }
   return {
     key: `blocked:${issue.id}`,
-    type: "agent_blocked",
-    severity: "action_required",
+    type: 'agent_blocked',
+    severity: 'action_required',
     issueId: issue.id,
     title: `${issue.title} is blocked`,
     body: truncate(issue.description),
@@ -164,18 +174,18 @@ function buildBlockedSource(issue: IssueRow): SourceItem | null {
     activityAt,
     details: {
       issue_number: String(issue.number),
-      status: issue.status ?? "blocked",
+      status: issue.status ?? 'blocked',
     },
-  };
+  }
 }
 
 function buildMentionSource(comment: CommentRow, issue: IssueRow): SourceItem {
-  const activityAt = preferDate(comment.createdAt);
-  const { actorType, actorId } = actorFromComment(comment);
+  const activityAt = preferDate(comment.createdAt)
+  const { actorType, actorId } = actorFromComment(comment)
   return {
     key: `mention:${comment.id}`,
-    type: "mentioned",
-    severity: "action_required",
+    type: 'mentioned',
+    severity: 'action_required',
     issueId: issue.id,
     title: `Mentioned on ${issue.title}`,
     body: truncate(comment.body),
@@ -187,16 +197,16 @@ function buildMentionSource(comment: CommentRow, issue: IssueRow): SourceItem {
       issue_number: String(issue.number),
       comment_id: comment.id,
     },
-  };
+  }
 }
 
 function buildCommentSource(comment: CommentRow, issue: IssueRow): SourceItem {
-  const activityAt = preferDate(comment.createdAt);
-  const { actorType, actorId } = actorFromComment(comment);
+  const activityAt = preferDate(comment.createdAt)
+  const { actorType, actorId } = actorFromComment(comment)
   return {
     key: `comment:${comment.id}`,
-    type: "new_comment",
-    severity: "attention",
+    type: 'new_comment',
+    severity: 'attention',
     issueId: issue.id,
     title: `New comment on ${issue.title}`,
     body: truncate(comment.body),
@@ -208,20 +218,20 @@ function buildCommentSource(comment: CommentRow, issue: IssueRow): SourceItem {
       issue_number: String(issue.number),
       comment_id: comment.id,
     },
-  };
+  }
 }
 
 function buildApprovalSource(
   request: ApprovalRow,
   issue: IssueRow | undefined,
 ): SourceItem | null {
-  if (request.status !== "pending") return null;
-  const activityAt = preferDate(request.requestedAt);
-  const titleSuffix = issue ? ` on ${issue.title}` : "";
+  if (request.status !== 'pending') return null
+  const activityAt = preferDate(request.requestedAt)
+  const titleSuffix = issue ? ` on ${issue.title}` : ''
   return {
     key: `approval:${request.id}`,
-    type: "review_requested",
-    severity: "action_required",
+    type: 'review_requested',
+    severity: 'action_required',
     issueId: issue?.id ?? null,
     title: `Approval needed${titleSuffix}`,
     body: truncate(request.body),
@@ -233,15 +243,15 @@ function buildApprovalSource(
       request_id: request.id,
       ...(issue ? { issue_number: String(issue.number) } : {}),
     },
-  };
+  }
 }
 
 function buildWaitingForInputSource(run: RunRow, issue: IssueRow): SourceItem {
-  const activityAt = preferDate(run.updatedAt, run.startedAt, run.createdAt);
+  const activityAt = preferDate(run.updatedAt, run.startedAt, run.createdAt)
   return {
     key: `waiting_for_input:${run.id}`,
-    type: "waiting_for_input",
-    severity: "action_required",
+    type: 'waiting_for_input',
+    severity: 'action_required',
     issueId: issue.id,
     title: `Garden is waiting on you on ${issue.title}`,
     body: truncate(run.error ?? null),
@@ -249,23 +259,23 @@ function buildWaitingForInputSource(run: RunRow, issue: IssueRow): SourceItem {
     ...actorFromAgentId(run.agentId),
     activityAt,
     details: {
-      kind: "waiting_for_input",
+      kind: 'waiting_for_input',
       run_id: run.id,
       issue_number: String(issue.number),
     },
-  };
+  }
 }
 
 function buildWorkProductReviewSource(
   wp: WorkProductRow,
   issue: IssueRow,
 ): SourceItem {
-  const activityAt = preferDate(wp.updatedAt, wp.createdAt);
-  const title = wp.title?.trim() || `${wp.type} ready`;
+  const activityAt = preferDate(wp.updatedAt, wp.createdAt)
+  const title = wp.title?.trim() || `${wp.type} ready`
   return {
     key: `wp_review:${wp.id}`,
-    type: "wp_review",
-    severity: "action_required",
+    type: 'wp_review',
+    severity: 'action_required',
     issueId: issue.id,
     title: `${title} on ${issue.title}`,
     body: truncate(wp.body),
@@ -273,54 +283,54 @@ function buildWorkProductReviewSource(
     ...actorFromAgentId(wp.agentId),
     activityAt,
     details: {
-      kind: "wp_review",
+      kind: 'wp_review',
       work_product_id: wp.id,
       work_product_type: wp.type,
       issue_number: String(issue.number),
     },
-  };
+  }
 }
 
 function payloadValue(payload: unknown, key: string): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const value = (payload as Record<string, unknown>)[key];
-  if (typeof value === "string" && value.trim()) return value.trim();
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
+  if (!payload || typeof payload !== 'object') return null
+  const value = (payload as Record<string, unknown>)[key]
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
   }
-  return null;
+  return null
 }
 
 function payloadError(payload: unknown): string | null {
   return (
-    payloadValue(payload, "error") ??
-    payloadValue(payload, "reason") ??
-    payloadValue(payload, "message")
-  );
+    payloadValue(payload, 'error') ??
+    payloadValue(payload, 'reason') ??
+    payloadValue(payload, 'message')
+  )
 }
 
 function failedRunBody(run: RunRow, info: FailedRunEventInfo | undefined) {
   const latestTool = info?.latestToolStarted
-    ? payloadValue(info.latestToolStarted.payload, "tool")
-    : null;
+    ? payloadValue(info.latestToolStarted.payload, 'tool')
+    : null
   const eventError =
     payloadError(info?.failedEvent?.payload) ??
     payloadError(info?.latestEvent?.payload) ??
     info?.failedEvent?.message ??
     info?.latestEvent?.message ??
-    null;
-  const error = run.error?.trim() || eventError;
+    null
+  const error = run.error?.trim() || eventError
 
-  if (run.error === "tool_timeout") {
+  if (run.error === 'tool_timeout') {
     return truncate(
       latestTool
         ? `Tool timed out: ${latestTool}. The run failed because that tool did not return before the recovery deadline.`
-        : "A tool timed out before returning a result.",
-    );
+        : 'A tool timed out before returning a result.',
+    )
   }
 
-  if (error) return truncate(error);
-  return "The run failed without a recorded error message.";
+  if (error) return truncate(error)
+  return 'The run failed without a recorded error message.'
 }
 
 function buildFailedRunSource(
@@ -328,21 +338,21 @@ function buildFailedRunSource(
   issue: IssueRow,
   info?: FailedRunEventInfo,
 ): SourceItem {
-  const activityAt = preferDate(run.finishedAt, run.updatedAt, run.createdAt);
-  const latestEvent = info?.latestEvent;
+  const activityAt = preferDate(run.finishedAt, run.updatedAt, run.createdAt)
+  const latestEvent = info?.latestEvent
   const latestTool = info?.latestToolStarted
-    ? payloadValue(info.latestToolStarted.payload, "tool")
-    : null;
+    ? payloadValue(info.latestToolStarted.payload, 'tool')
+    : null
   const eventError =
     payloadError(info?.failedEvent?.payload) ??
     payloadError(latestEvent?.payload) ??
     info?.failedEvent?.message ??
     latestEvent?.message ??
-    null;
+    null
   return {
     key: `failed_run:${run.id}`,
-    type: "task_failed",
-    severity: "attention",
+    type: 'task_failed',
+    severity: 'attention',
     issueId: issue.id,
     title: `A run failed on ${issue.title}`,
     body: failedRunBody(run, info),
@@ -357,40 +367,40 @@ function buildFailedRunSource(
       ...(latestEvent ? { latest_event: latestEvent.eventType } : {}),
       ...(latestTool ? { latest_tool: latestTool } : {}),
     },
-  };
+  }
 }
 
 function userIsResponsible(issue: IssueRow, userId: string): boolean {
   return (
     issue.createdBy === userId ||
-    (issue.assigneeType === "user" && issue.assigneeId === userId)
-  );
+    (issue.assigneeType === 'user' && issue.assigneeId === userId)
+  )
 }
 
 type InboxCandidate = {
-  key: string;
-  read: boolean;
-  issueStatus: IssueStatus | null;
-};
+  key: string
+  read: boolean
+  issueStatus: IssueStatus | null
+}
 
-type InboxPredicate = (item: InboxCandidate) => boolean;
+type InboxPredicate = (item: InboxCandidate) => boolean
 
 function detailsRecord(value: unknown): Record<string, string> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const out: Record<string, string> = {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const out: Record<string, string> = {}
   for (const [key, entry] of Object.entries(value)) {
-    if (typeof entry === "string") out[key] = entry;
+    if (typeof entry === 'string') out[key] = entry
   }
-  return out;
+  return out
 }
 
 function rowToInboxItem(row: InboxItemRow): InboxItem {
   return {
     id: row.itemKey,
     workspace_id: row.workspaceId,
-    recipient_type: row.recipientType as "member" | "agent",
+    recipient_type: row.recipientType as 'member' | 'agent',
     recipient_id: row.recipientId,
-    actor_type: row.actorType as "member" | "agent" | null,
+    actor_type: row.actorType as 'member' | 'agent' | null,
     actor_id: row.actorId,
     type: row.type as InboxItemType,
     severity: row.severity as InboxSeverity,
@@ -402,18 +412,18 @@ function rowToInboxItem(row: InboxItemRow): InboxItem {
     archived: row.archived,
     created_at: row.activityAt.toISOString(),
     details: detailsRecord(row.details),
-  };
+  }
 }
 
 async function computeInboxSourceItems(args: {
-  workspaceId: string;
-  userId: string;
-  limit?: number;
+  workspaceId: string
+  userId: string
+  limit?: number
 }): Promise<{
-  sources: SourceItem[];
+  sources: SourceItem[]
 }> {
-  const db = await getDb(appEnv);
-  const { workspaceId, userId } = args;
+  const db = await getDb(appEnv)
+  const { workspaceId, userId } = args
 
   const [
     workspaceIssues,
@@ -445,9 +455,9 @@ async function computeInboxSourceItems(args: {
         and(
           eq(schema.issue.workspaceId, workspaceId),
           or(
-            eq(schema.issueComment.authorType, "agent"),
+            eq(schema.issueComment.authorType, 'agent'),
             and(
-              eq(schema.issueComment.authorType, "user"),
+              eq(schema.issueComment.authorType, 'user'),
               ne(schema.issueComment.authorId, userId),
             ),
           ),
@@ -455,7 +465,7 @@ async function computeInboxSourceItems(args: {
             commentMentionsUserSql(userId),
             eq(schema.issue.createdBy, userId),
             and(
-              eq(schema.issue.assigneeType, "user"),
+              eq(schema.issue.assigneeType, 'user'),
               eq(schema.issue.assigneeId, userId),
             ),
           ),
@@ -479,8 +489,8 @@ async function computeInboxSourceItems(args: {
       )
       .where(
         and(
-          eq(schema.permissionRequest.kind, "connector_write"),
-          eq(schema.permissionRequest.status, "pending"),
+          eq(schema.permissionRequest.kind, 'connector_write'),
+          eq(schema.permissionRequest.status, 'pending'),
           eq(schema.agent.workspaceId, workspaceId),
         ),
       )
@@ -502,7 +512,7 @@ async function computeInboxSourceItems(args: {
       )
       .where(
         and(
-          eq(schema.agentProposalRequest.status, "pending"),
+          eq(schema.agentProposalRequest.status, 'pending'),
           eq(schema.agent.workspaceId, workspaceId),
         ),
       )
@@ -514,8 +524,8 @@ async function computeInboxSourceItems(args: {
       .where(
         and(
           eq(schema.issueWorkProduct.workspaceId, workspaceId),
-          eq(schema.issueWorkProduct.status, "review"),
-          eq(schema.issueWorkProduct.reviewState, "pending"),
+          eq(schema.issueWorkProduct.status, 'review'),
+          eq(schema.issueWorkProduct.reviewState, 'pending'),
         ),
       )
       .orderBy(desc(schema.issueWorkProduct.updatedAt))
@@ -526,7 +536,7 @@ async function computeInboxSourceItems(args: {
       .where(
         and(
           eq(schema.issueRun.workspaceId, workspaceId),
-          eq(schema.issueRun.status, "waiting_for_input"),
+          eq(schema.issueRun.status, 'waiting_for_input'),
         ),
       )
       .orderBy(desc(schema.issueRun.updatedAt))
@@ -537,7 +547,7 @@ async function computeInboxSourceItems(args: {
       .where(
         and(
           eq(schema.issueRun.workspaceId, workspaceId),
-          eq(schema.issueRun.status, "failed"),
+          eq(schema.issueRun.status, 'failed'),
         ),
       )
       .orderBy(desc(schema.issueRun.finishedAt))
@@ -548,12 +558,12 @@ async function computeInboxSourceItems(args: {
       .where(
         and(
           eq(schema.issueRun.workspaceId, workspaceId),
-          eq(schema.issueRun.status, "succeeded"),
+          eq(schema.issueRun.status, 'succeeded'),
         ),
       )
       .orderBy(desc(schema.issueRun.finishedAt))
       .limit(100),
-  ]);
+  ])
 
   const approvalRows: ApprovalRow[] = [
     ...connectorApprovalRows.map((row) => ({
@@ -563,7 +573,7 @@ async function computeInboxSourceItems(args: {
       requestedAt: row.requestedAt,
       status: row.status,
       body: row.context,
-      kind: "connector_write" as const,
+      kind: 'connector_write' as const,
     })),
     ...agentProposalRows.map((row) => ({
       id: row.id,
@@ -572,41 +582,41 @@ async function computeInboxSourceItems(args: {
       requestedAt: row.requestedAt,
       status: row.status,
       body: agentProposalBody(row.argsJson),
-      kind: "agent_proposal" as const,
+      kind: 'agent_proposal' as const,
     })),
-  ];
+  ]
 
-  const issuesById = indexById(workspaceIssues);
+  const issuesById = indexById(workspaceIssues)
 
-  const sources: SourceItem[] = [];
-  const latestSuccessfulRunByIssueId = new Map<string, RunRow>();
+  const sources: SourceItem[] = []
+  const latestSuccessfulRunByIssueId = new Map<string, RunRow>()
   for (const run of succeededRuns) {
-    if (!run.issueId) continue;
-    const existing = latestSuccessfulRunByIssueId.get(run.issueId);
-    const runAt = preferDate(run.finishedAt, run.updatedAt, run.createdAt);
+    if (!run.issueId) continue
+    const existing = latestSuccessfulRunByIssueId.get(run.issueId)
+    const runAt = preferDate(run.finishedAt, run.updatedAt, run.createdAt)
     const existingAt = existing
       ? preferDate(existing.finishedAt, existing.updatedAt, existing.createdAt)
-      : null;
+      : null
     if (!existing || (existingAt && runAt.getTime() > existingAt.getTime())) {
-      latestSuccessfulRunByIssueId.set(run.issueId, run);
+      latestSuccessfulRunByIssueId.set(run.issueId, run)
     }
   }
-  const latestPendingWorkProductByIssueId = new Map<string, WorkProductRow>();
+  const latestPendingWorkProductByIssueId = new Map<string, WorkProductRow>()
   for (const wp of pendingWorkProducts) {
-    const existing = latestPendingWorkProductByIssueId.get(wp.issueId);
-    const wpAt = preferDate(wp.updatedAt, wp.createdAt);
+    const existing = latestPendingWorkProductByIssueId.get(wp.issueId)
+    const wpAt = preferDate(wp.updatedAt, wp.createdAt)
     const existingAt = existing
       ? preferDate(existing.updatedAt, existing.createdAt)
-      : null;
+      : null
     if (!existing || (existingAt && wpAt.getTime() > existingAt.getTime())) {
-      latestPendingWorkProductByIssueId.set(wp.issueId, wp);
+      latestPendingWorkProductByIssueId.set(wp.issueId, wp)
     }
   }
   const hasNewerResolutionForIssue = (
     issueId: string,
     activityAt: Date,
   ): boolean => {
-    const latestSuccessfulRun = latestSuccessfulRunByIssueId.get(issueId);
+    const latestSuccessfulRun = latestSuccessfulRunByIssueId.get(issueId)
     if (
       latestSuccessfulRun &&
       preferDate(
@@ -615,19 +625,20 @@ async function computeInboxSourceItems(args: {
         latestSuccessfulRun.createdAt,
       ).getTime() >= activityAt.getTime()
     ) {
-      return true;
+      return true
     }
 
-    const latestPendingWorkProduct = latestPendingWorkProductByIssueId.get(issueId);
+    const latestPendingWorkProduct =
+      latestPendingWorkProductByIssueId.get(issueId)
     return Boolean(
       latestPendingWorkProduct &&
-        preferDate(
-          latestPendingWorkProduct.updatedAt,
-          latestPendingWorkProduct.createdAt,
-        ).getTime() >= activityAt.getTime(),
-    );
-  };
-  const failedRunIds = failedRuns.map((run) => run.id);
+      preferDate(
+        latestPendingWorkProduct.updatedAt,
+        latestPendingWorkProduct.createdAt,
+      ).getTime() >= activityAt.getTime(),
+    )
+  }
+  const failedRunIds = failedRuns.map((run) => run.id)
   const failedRunEvents =
     failedRunIds.length === 0
       ? []
@@ -640,55 +651,61 @@ async function computeInboxSourceItems(args: {
           })
           .from(schema.issueRunEvent)
           .where(inArray(schema.issueRunEvent.runId, failedRunIds))
-          .orderBy(desc(schema.issueRunEvent.createdAt), desc(schema.issueRunEvent.seq))
-          .limit(failedRunIds.length * 20);
-  const failedRunEventInfoByRunId = new Map<string, FailedRunEventInfo>();
+          .orderBy(
+            desc(schema.issueRunEvent.createdAt),
+            desc(schema.issueRunEvent.seq),
+          )
+          .limit(failedRunIds.length * 20)
+  const failedRunEventInfoByRunId = new Map<string, FailedRunEventInfo>()
   for (const event of failedRunEvents) {
-    const info = failedRunEventInfoByRunId.get(event.runId) ?? {};
-    if (!info.latestEvent) info.latestEvent = event;
-    if (!info.failedEvent && event.eventType === "issue_run:failed") {
-      info.failedEvent = event;
+    const info = failedRunEventInfoByRunId.get(event.runId) ?? {}
+    if (!info.latestEvent) info.latestEvent = event
+    if (!info.failedEvent && event.eventType === 'issue_run:failed') {
+      info.failedEvent = event
     }
-    if (!info.latestToolStarted && event.eventType === "issue_run:tool_started") {
-      info.latestToolStarted = event;
+    if (
+      !info.latestToolStarted &&
+      event.eventType === 'issue_run:tool_started'
+    ) {
+      info.latestToolStarted = event
     }
-    failedRunEventInfoByRunId.set(event.runId, info);
+    failedRunEventInfoByRunId.set(event.runId, info)
   }
 
   for (const issue of workspaceIssues) {
-    if (isTerminalIssue(issue)) continue;
-    const assigned = buildAssignedSource(issue, userId);
-    if (assigned) sources.push(assigned);
-    if (issue.status === "blocked" && userIsResponsible(issue, userId)) {
-      const blocked = buildBlockedSource(issue);
-      if (blocked) sources.push(blocked);
+    if (isTerminalIssue(issue)) continue
+    const assigned = buildAssignedSource(issue, userId)
+    if (assigned) sources.push(assigned)
+    if (issue.status === 'blocked' && userIsResponsible(issue, userId)) {
+      const blocked = buildBlockedSource(issue)
+      if (blocked) sources.push(blocked)
     }
   }
 
   for (const comment of workspaceComments) {
-    const issue = issuesById.get(comment.issueId);
-    if (!issue) continue;
-    if (isTerminalIssue(issue)) continue;
-    const row = comment as CommentRow;
-    const commentAt = preferDate(row.createdAt);
+    const issue = issuesById.get(comment.issueId)
+    if (!issue) continue
+    if (isTerminalIssue(issue)) continue
+    const row = comment as CommentRow
+    const commentAt = preferDate(row.createdAt)
     if (
-      row.authorType === "agent" &&
+      row.authorType === 'agent' &&
       hasNewerResolutionForIssue(issue.id, commentAt)
     ) {
-      continue;
+      continue
     }
     if (commentMentionsUser(row.mentions, userId)) {
-      sources.push(buildMentionSource(row, issue));
-      continue;
+      sources.push(buildMentionSource(row, issue))
+      continue
     }
     if (userIsResponsible(issue, userId)) {
-      sources.push(buildCommentSource(row, issue));
+      sources.push(buildCommentSource(row, issue))
     }
   }
 
   const approvalIssueIds = approvalRows
     .map((row) => row.issueId)
-    .filter((id): id is string => Boolean(id));
+    .filter((id): id is string => Boolean(id))
   const approvalIssues =
     approvalIssueIds.length === 0
       ? new Map<string, IssueRow>()
@@ -702,41 +719,41 @@ async function computeInboxSourceItems(args: {
                 inArray(schema.issue.id, approvalIssueIds),
               ),
             ),
-        );
+        )
   for (const request of approvalRows) {
     const issue = request.issueId
       ? approvalIssues.get(request.issueId)
-      : undefined;
-    if (request.issueId && !issue) continue;
-    if (issue && isTerminalIssue(issue)) continue;
-    const item = buildApprovalSource(request, issue);
-    if (item) sources.push(item);
+      : undefined
+    if (request.issueId && !issue) continue
+    if (issue && isTerminalIssue(issue)) continue
+    const item = buildApprovalSource(request, issue)
+    if (item) sources.push(item)
   }
 
   for (const wp of pendingWorkProducts) {
-    const issue = issuesById.get(wp.issueId);
-    if (!issue) continue;
-    if (isTerminalIssue(issue)) continue;
-    sources.push(buildWorkProductReviewSource(wp, issue));
+    const issue = issuesById.get(wp.issueId)
+    if (!issue) continue
+    if (isTerminalIssue(issue)) continue
+    sources.push(buildWorkProductReviewSource(wp, issue))
   }
 
   for (const run of pausedRuns) {
-    if (!run.issueId) continue;
-    const issue = issuesById.get(run.issueId);
-    if (!issue || !userIsResponsible(issue, userId)) continue;
-    if (isTerminalIssue(issue)) continue;
-    sources.push(buildWaitingForInputSource(run, issue));
+    if (!run.issueId) continue
+    const issue = issuesById.get(run.issueId)
+    if (!issue || !userIsResponsible(issue, userId)) continue
+    if (isTerminalIssue(issue)) continue
+    sources.push(buildWaitingForInputSource(run, issue))
   }
 
   for (const run of failedRuns) {
-    if (!run.issueId) continue;
-    const issueId = run.issueId;
-    const issue = issuesById.get(issueId);
-    if (!issue || !userIsResponsible(issue, userId)) continue;
-    if (isTerminalIssue(issue)) continue;
-    const failedAt = preferDate(run.finishedAt, run.updatedAt, run.createdAt);
-    const newerSuccess = latestSuccessfulRunByIssueId.get(issueId);
-    const newerWorkProduct = latestPendingWorkProductByIssueId.get(issueId);
+    if (!run.issueId) continue
+    const issueId = run.issueId
+    const issue = issuesById.get(issueId)
+    if (!issue || !userIsResponsible(issue, userId)) continue
+    if (isTerminalIssue(issue)) continue
+    const failedAt = preferDate(run.finishedAt, run.updatedAt, run.createdAt)
+    const newerSuccess = latestSuccessfulRunByIssueId.get(issueId)
+    const newerWorkProduct = latestPendingWorkProductByIssueId.get(issueId)
     if (
       newerSuccess &&
       preferDate(
@@ -745,36 +762,38 @@ async function computeInboxSourceItems(args: {
         newerSuccess.createdAt,
       ).getTime() >= failedAt.getTime()
     ) {
-      continue;
+      continue
     }
     if (
       newerWorkProduct &&
-      preferDate(newerWorkProduct.updatedAt, newerWorkProduct.createdAt).getTime() >=
-        failedAt.getTime()
+      preferDate(
+        newerWorkProduct.updatedAt,
+        newerWorkProduct.createdAt,
+      ).getTime() >= failedAt.getTime()
     ) {
-      continue;
+      continue
     }
     sources.push(
       buildFailedRunSource(run, issue, failedRunEventInfoByRunId.get(run.id)),
-    );
+    )
   }
 
   return {
     sources: sources.sort(
       (left, right) => right.activityAt.getTime() - left.activityAt.getTime(),
     ),
-  };
+  }
 }
 
 async function persistInboxSourceItems(args: {
-  workspaceId: string;
-  userId: string;
-  sources: SourceItem[];
-  limit?: number;
+  workspaceId: string
+  userId: string
+  sources: SourceItem[]
+  limit?: number
 }): Promise<InboxItem[]> {
-  const db = await getDb(appEnv);
-  const now = new Date();
-  const sourceKeys = args.sources.map((source) => source.key);
+  const db = await getDb(appEnv)
+  const now = new Date()
+  const sourceKeys = args.sources.map((source) => source.key)
 
   if (args.sources.length > 0) {
     await db
@@ -783,7 +802,7 @@ async function persistInboxSourceItems(args: {
         args.sources.map((source) => ({
           id: randomUUID(),
           workspaceId: args.workspaceId,
-          recipientType: "member",
+          recipientType: 'member',
           recipientId: args.userId,
           itemKey: source.key,
           actorType: source.actorType,
@@ -821,24 +840,24 @@ async function persistInboxSourceItems(args: {
           activityAt: sql`greatest(${schema.inboxItem.activityAt}, excluded.activity_at)`,
           updatedAt: now,
         },
-      });
+      })
   }
 
   const visibleFilter = and(
     eq(schema.inboxItem.workspaceId, args.workspaceId),
-    eq(schema.inboxItem.recipientType, "member"),
+    eq(schema.inboxItem.recipientType, 'member'),
     eq(schema.inboxItem.recipientId, args.userId),
     eq(schema.inboxItem.archived, false),
-  );
+  )
   const staleFilter =
     sourceKeys.length > 0
       ? and(visibleFilter, notInArray(schema.inboxItem.itemKey, sourceKeys))
-      : visibleFilter;
+      : visibleFilter
 
   await db
     .update(schema.inboxItem)
     .set({ archived: true, read: true, updatedAt: now })
-    .where(staleFilter);
+    .where(staleFilter)
 
   const rows = await db
     .select()
@@ -846,61 +865,61 @@ async function persistInboxSourceItems(args: {
     .where(
       and(
         eq(schema.inboxItem.workspaceId, args.workspaceId),
-        eq(schema.inboxItem.recipientType, "member"),
+        eq(schema.inboxItem.recipientType, 'member'),
         eq(schema.inboxItem.recipientId, args.userId),
         eq(schema.inboxItem.archived, false),
       ),
     )
     .orderBy(desc(schema.inboxItem.activityAt))
-    .limit(args.limit ?? 100);
+    .limit(args.limit ?? 100)
 
-  return rows.map(rowToInboxItem);
+  return rows.map(rowToInboxItem)
 }
 
 export async function computeInboxItems(args: {
-  db?: Db;
-  workspaceId: string;
-  userId: string;
-  limit?: number;
+  db?: Db
+  workspaceId: string
+  userId: string
+  limit?: number
 }): Promise<InboxItem[]> {
-  const db = args.db ?? (await getDb(appEnv));
+  const db = args.db ?? (await getDb(appEnv))
   const rows = await db
     .select()
     .from(schema.inboxItem)
     .where(
       and(
         eq(schema.inboxItem.workspaceId, args.workspaceId),
-        eq(schema.inboxItem.recipientType, "member"),
+        eq(schema.inboxItem.recipientType, 'member'),
         eq(schema.inboxItem.recipientId, args.userId),
         eq(schema.inboxItem.archived, false),
       ),
     )
     .orderBy(desc(schema.inboxItem.activityAt))
-    .limit(args.limit ?? 100);
+    .limit(args.limit ?? 100)
 
-  return rows.map(rowToInboxItem);
+  return rows.map(rowToInboxItem)
 }
 
 export async function reconcileInboxItems(args: {
-  workspaceId: string;
-  userId: string;
-  limit?: number;
+  workspaceId: string
+  userId: string
+  limit?: number
 }): Promise<InboxItem[]> {
-  const { sources } = await computeInboxSourceItems(args);
+  const { sources } = await computeInboxSourceItems(args)
   return persistInboxSourceItems({
     workspaceId: args.workspaceId,
     userId: args.userId,
     sources,
     limit: args.limit,
-  });
+  })
 }
 
 export async function computeVisibleInboxItemKeys(args: {
-  workspaceId: string;
-  userId: string;
-  predicate?: InboxPredicate;
+  workspaceId: string
+  userId: string
+  predicate?: InboxPredicate
 }): Promise<string[]> {
-  const items = await computeInboxItems(args);
+  const items = await computeInboxItems(args)
   return items
     .map((item) => ({
       key: item.id,
@@ -908,25 +927,25 @@ export async function computeVisibleInboxItemKeys(args: {
       issueStatus: item.issue_status,
     }))
     .filter((item) => (args.predicate ? args.predicate(item) : true))
-    .map((item) => item.key);
+    .map((item) => item.key)
 }
 
 export async function computeInboxUnreadCount(args: {
-  workspaceId: string;
-  userId: string;
+  workspaceId: string
+  userId: string
 }): Promise<number> {
-  const db = await getDb(appEnv);
+  const db = await getDb(appEnv)
   const [row] = await db
     .select({ count: count() })
     .from(schema.inboxItem)
     .where(
       and(
         eq(schema.inboxItem.workspaceId, args.workspaceId),
-        eq(schema.inboxItem.recipientType, "member"),
+        eq(schema.inboxItem.recipientType, 'member'),
         eq(schema.inboxItem.recipientId, args.userId),
         eq(schema.inboxItem.archived, false),
         eq(schema.inboxItem.read, false),
       ),
-    );
-  return row?.count ?? 0;
+    )
+  return row?.count ?? 0
 }

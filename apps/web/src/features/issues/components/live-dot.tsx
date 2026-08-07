@@ -1,6 +1,12 @@
 import { cn } from '@garden/ui/lib/utils'
 
-type LiveDotVariant = 'queued' | 'running' | 'waiting' | 'blocked' | 'failed' | 'succeeded'
+type LiveDotVariant =
+  | 'queued'
+  | 'running'
+  | 'waiting'
+  | 'blocked'
+  | 'failed'
+  | 'succeeded'
 
 interface LiveDotProps {
   variant?: LiveDotVariant

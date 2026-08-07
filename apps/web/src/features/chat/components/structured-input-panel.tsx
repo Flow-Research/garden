@@ -25,9 +25,9 @@ export const StructuredInputPanel = memo(function StructuredInputPanel({
   onSubmit,
   disabled = false,
 }: StructuredInputPanelProps) {
-  const [drafts, setDrafts] = useState<
-    Record<string, StructuredQuestionDraft>
-  >({})
+  const [drafts, setDrafts] = useState<Record<string, StructuredQuestionDraft>>(
+    {},
+  )
   const [questionIndex, setQuestionIndex] = useState(() =>
     findFirstUnanswered(questions, {}),
   )

@@ -171,7 +171,9 @@ export function buildConnectionSurface(args: {
               ? [`account:${availableConnector.accountLogin}`]
               : []),
             ...(availableConnector.repositorySelection
-              ? [`repository_selection:${availableConnector.repositorySelection}`]
+              ? [
+                  `repository_selection:${availableConnector.repositorySelection}`,
+                ]
               : []),
           ]
         : (connection?.scopes ?? []),

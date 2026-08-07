@@ -39,7 +39,6 @@ describe('createGardenLogger', () => {
       userId: 'user-123',
       authorization: '[redacted]',
     })
-
   })
 
   it('filters records below the configured log level', () => {

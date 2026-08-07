@@ -416,8 +416,7 @@ export function AccountTab() {
           <div>
             <h2 className="text-base font-semibold">Sessions</h2>
             <p className="text-sm text-muted-foreground">
-              Review where you are signed in and close anything you don't
-              trust.
+              Review where you are signed in and close anything you don't trust.
             </p>
           </div>
           <div className="flex items-center gap-2">

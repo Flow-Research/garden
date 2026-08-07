@@ -3,10 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { listIssueSubscribers } from '@garden/db/subscribers'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
-import {
-  notFound,
-  requireWorkspaceAccess,
-} from '@/lib/server/control-plane'
+import { notFound, requireWorkspaceAccess } from '@/lib/server/control-plane'
 
 export const Route = createFileRoute('/api/issues/$id/subscribers')({
   server: {
@@ -27,10 +24,15 @@ export const Route = createFileRoute('/api/issues/$id/subscribers')({
           .where(eq(schema.issue.id, params.id))
         if (!issue) return notFound('Issue not found')
 
-        const access = await requireWorkspaceAccess(appContext, issue.workspaceId)
+        const access = await requireWorkspaceAccess(
+          appContext,
+          issue.workspaceId,
+        )
         if (access instanceof Response) return access
 
-        const subscribers = await listIssueSubscribers(db, { issueId: params.id })
+        const subscribers = await listIssueSubscribers(db, {
+          issueId: params.id,
+        })
 
         return Response.json(
           subscribers.map((subscriber) => ({

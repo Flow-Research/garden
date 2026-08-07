@@ -6,7 +6,9 @@ const researcher = '00000000-0000-0000-0000-000000000002'
 const member = '00000000-0000-0000-0000-000000000003'
 const otherMember = '00000000-0000-0000-0000-000000000004'
 
-function input(overrides: Partial<WakeupTriggerInput> = {}): WakeupTriggerInput {
+function input(
+  overrides: Partial<WakeupTriggerInput> = {},
+): WakeupTriggerInput {
   return {
     issue: {
       id: 'issue-1',
@@ -30,11 +32,13 @@ function input(overrides: Partial<WakeupTriggerInput> = {}): WakeupTriggerInput 
 
 describe('decideWakeups', () => {
   it('skips terminal issue statuses', () => {
-    expect(decideWakeups(input({ issue: { ...input().issue, status: 'done' } }))).toEqual([
-      { kind: 'skip', reason: 'terminal_status' },
-    ])
     expect(
-      decideWakeups(input({ issue: { ...input().issue, status: 'cancelled' } })),
+      decideWakeups(input({ issue: { ...input().issue, status: 'done' } })),
+    ).toEqual([{ kind: 'skip', reason: 'terminal_status' }])
+    expect(
+      decideWakeups(
+        input({ issue: { ...input().issue, status: 'cancelled' } }),
+      ),
     ).toEqual([{ kind: 'skip', reason: 'terminal_status' }])
   })
 

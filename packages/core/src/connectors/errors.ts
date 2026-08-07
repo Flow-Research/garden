@@ -23,7 +23,9 @@ function numberValue(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function knownConnectorError(value: Record<string, unknown>): ConnectorError | null {
+function knownConnectorError(
+  value: Record<string, unknown>,
+): ConnectorError | null {
   switch (value.kind) {
     case 'transient':
       return {
@@ -96,7 +98,11 @@ export function classifyConnectorError(cause: unknown): ConnectorError {
     numberValue(object?.statusCode) ??
     numberValue(object?.status_code)
 
-  if (code === 'reauth_required' || status === 401 || lower.includes('expired')) {
+  if (
+    code === 'reauth_required' ||
+    status === 401 ||
+    lower.includes('expired')
+  ) {
     return { kind: 'auth_expired', reconnect_url: '/settings/connections' }
   }
 
@@ -109,7 +115,8 @@ export function classifyConnectorError(cause: unknown): ConnectorError {
   ) {
     return {
       kind: 'permission_denied',
-      ...(stringValue(meta?.requiredScope) ?? stringValue(meta?.required_scope)
+      ...((stringValue(meta?.requiredScope) ??
+      stringValue(meta?.required_scope))
         ? {
             required_scope:
               stringValue(meta?.requiredScope) ??
@@ -128,7 +135,7 @@ export function classifyConnectorError(cause: unknown): ConnectorError {
   ) {
     return {
       kind: 'rate_limited',
-      ...(numberValue(meta?.retryAfterMs) ?? numberValue(meta?.retry_after_ms)
+      ...((numberValue(meta?.retryAfterMs) ?? numberValue(meta?.retry_after_ms))
         ? {
             retry_after_ms:
               numberValue(meta?.retryAfterMs) ??

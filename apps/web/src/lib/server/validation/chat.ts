@@ -41,7 +41,8 @@ export const toolApprovalBodySchema = z
   })
   .strict()
   .refine(
-    (value) => Boolean(value.toolCallId) !== Boolean(value.permission_request_id),
+    (value) =>
+      Boolean(value.toolCallId) !== Boolean(value.permission_request_id),
     'Exactly one approval identifier is required',
   )
 

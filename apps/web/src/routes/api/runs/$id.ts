@@ -23,7 +23,6 @@ export const Route = createFileRoute('/api/runs/$id')({
   server: {
     handlers: {
       GET: async ({ context, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const db = await appContext.db()
         const [run] = await db

@@ -14,7 +14,12 @@ export async function resolveFixtureWorkspace() {
   const [workspace] = await db
     .select({ id: schema.organization.id })
     .from(schema.organization)
-    .where(eq(schema.organization.name, process.env.GARDEN_FIXTURE_WORKSPACE ?? 'Dev'))
+    .where(
+      eq(
+        schema.organization.name,
+        process.env.GARDEN_FIXTURE_WORKSPACE ?? 'Dev',
+      ),
+    )
     .limit(1)
   if (!workspace) throw new Error('Fixture workspace not found')
 

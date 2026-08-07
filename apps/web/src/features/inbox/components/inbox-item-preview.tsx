@@ -102,13 +102,11 @@ function previewFor(item: InboxItem): Preview {
         Icon: MessageCircleQuestion,
         label: 'Question waiting',
         cta: 'Open issue to answer',
-        body:
-          bodyParagraph(item.body) ??
-          (
-            <p className="text-sm text-muted-foreground">
-              Garden paused on a question. Open the issue to read and reply.
-            </p>
-          ),
+        body: bodyParagraph(item.body) ?? (
+          <p className="text-sm text-muted-foreground">
+            Garden paused on a question. Open the issue to read and reply.
+          </p>
+        ),
       }
     case 'wp_review': {
       const wpType = details.work_product_type ?? 'brief'
@@ -119,13 +117,11 @@ function previewFor(item: InboxItem): Preview {
         Icon,
         label: `${label} ready for review`,
         cta: 'Open to review',
-        body:
-          bodyParagraph(item.body) ??
-          (
-            <p className="text-sm text-muted-foreground">
-              The draft is ready in the issue.
-            </p>
-          ),
+        body: bodyParagraph(item.body) ?? (
+          <p className="text-sm text-muted-foreground">
+            The draft is ready in the issue.
+          </p>
+        ),
       }
     }
     case 'review_requested':
@@ -134,13 +130,11 @@ function previewFor(item: InboxItem): Preview {
         Icon: ShieldAlert,
         label: 'Approval needed',
         cta: 'Open to approve',
-        body:
-          bodyParagraph(item.body) ??
-          (
-            <p className="text-sm text-muted-foreground">
-              An action needs your approval before it can run.
-            </p>
-          ),
+        body: bodyParagraph(item.body) ?? (
+          <p className="text-sm text-muted-foreground">
+            An action needs your approval before it can run.
+          </p>
+        ),
       }
     case 'agent_blocked':
       return {
@@ -148,13 +142,11 @@ function previewFor(item: InboxItem): Preview {
         Icon: AlertOctagon,
         label: 'Blocked',
         cta: 'Open to unblock',
-        body:
-          bodyParagraph(item.body) ??
-          (
-            <p className="text-sm text-muted-foreground">
-              Work paused. Garden needs a decision or a dependency cleared.
-            </p>
-          ),
+        body: bodyParagraph(item.body) ?? (
+          <p className="text-sm text-muted-foreground">
+            Work paused. Garden needs a decision or a dependency cleared.
+          </p>
+        ),
       }
     case 'task_failed':
       return {
@@ -162,14 +154,11 @@ function previewFor(item: InboxItem): Preview {
         Icon: XCircle,
         label: 'Run failed',
         cta: 'Open run',
-        body:
-          bodyParagraph(item.body) ??
-          (
-            <p className="text-sm text-muted-foreground">
-              The run stopped without finishing. Check the timeline for the
-              error.
-            </p>
-          ),
+        body: bodyParagraph(item.body) ?? (
+          <p className="text-sm text-muted-foreground">
+            The run stopped without finishing. Check the timeline for the error.
+          </p>
+        ),
       }
     case 'issue_assigned':
     case 'assignee_changed':
@@ -178,14 +167,12 @@ function previewFor(item: InboxItem): Preview {
         Icon: UserPlus,
         label: 'Assigned to you',
         cta: 'Open issue',
-        body:
-          bodyParagraph(item.body) ??
-          (
-            <p className="text-sm text-muted-foreground">
-              You picked up this issue. The agent is queued (or you've taken it
-              on yourself).
-            </p>
-          ),
+        body: bodyParagraph(item.body) ?? (
+          <p className="text-sm text-muted-foreground">
+            You picked up this issue. The agent is queued (or you've taken it on
+            yourself).
+          </p>
+        ),
       }
     case 'mentioned':
       return {
@@ -193,13 +180,11 @@ function previewFor(item: InboxItem): Preview {
         Icon: AtSign,
         label: 'You were mentioned',
         cta: 'Open thread',
-        body:
-          bodyParagraph(item.body) ??
-          (
-            <p className="text-sm text-muted-foreground">
-              Someone mentioned you in a comment.
-            </p>
-          ),
+        body: bodyParagraph(item.body) ?? (
+          <p className="text-sm text-muted-foreground">
+            Someone mentioned you in a comment.
+          </p>
+        ),
       }
     case 'new_comment':
       return {
@@ -207,13 +192,11 @@ function previewFor(item: InboxItem): Preview {
         Icon: MessageCircle,
         label: 'New comment',
         cta: 'Open thread',
-        body:
-          bodyParagraph(item.body) ??
-          (
-            <p className="text-sm text-muted-foreground">
-              A new comment was added on an issue you're watching.
-            </p>
-          ),
+        body: bodyParagraph(item.body) ?? (
+          <p className="text-sm text-muted-foreground">
+            A new comment was added on an issue you're watching.
+          </p>
+        ),
       }
     case 'task_completed':
     case 'agent_completed':
@@ -222,14 +205,12 @@ function previewFor(item: InboxItem): Preview {
         Icon: CheckCircle2,
         label: 'Finished',
         cta: 'See result',
-        body:
-          bodyParagraph(item.body) ??
-          (
-            <p className="text-sm text-muted-foreground">
-              Garden finished this run. Open the issue to review what was
-              produced.
-            </p>
-          ),
+        body: bodyParagraph(item.body) ?? (
+          <p className="text-sm text-muted-foreground">
+            Garden finished this run. Open the issue to review what was
+            produced.
+          </p>
+        ),
       }
     default:
       return {
@@ -237,11 +218,9 @@ function previewFor(item: InboxItem): Preview {
         Icon: MessageSquare,
         label: 'Notification',
         cta: 'Open',
-        body:
-          bodyParagraph(item.body) ??
-          (
-            <p className="text-sm text-muted-foreground">{item.title}</p>
-          ),
+        body: bodyParagraph(item.body) ?? (
+          <p className="text-sm text-muted-foreground">{item.title}</p>
+        ),
       }
   }
 }

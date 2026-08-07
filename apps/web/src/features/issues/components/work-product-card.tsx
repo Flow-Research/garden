@@ -42,7 +42,10 @@ export type WorkProductStatus =
   | 'applied'
   | 'superseded'
 
-export type WorkProductReviewState = 'pending' | 'approved' | 'changes_requested'
+export type WorkProductReviewState =
+  | 'pending'
+  | 'approved'
+  | 'changes_requested'
 
 export interface WorkProductCardProps {
   workProduct: {
@@ -67,7 +70,10 @@ export interface WorkProductCardProps {
   onShowDiff?: () => void
 }
 
-const TYPE_ICON: Record<WorkProductType, React.ComponentType<{ className?: string }>> = {
+const TYPE_ICON: Record<
+  WorkProductType,
+  React.ComponentType<{ className?: string }>
+> = {
   brief: FileText,
   plan: ListChecks,
   connector_reply: MessageSquare,
@@ -114,12 +120,7 @@ function StatusPill({ status }: { status: WorkProductStatus }) {
 
 function MarkdownBody({ body, expanded }: { body: string; expanded: boolean }) {
   return (
-    <div
-      className={cn(
-        'text-sm leading-relaxed',
-        !expanded && 'line-clamp-6',
-      )}
-    >
+    <div className={cn('text-sm leading-relaxed', !expanded && 'line-clamp-6')}>
       <Markdown mode="minimal">{body}</Markdown>
     </div>
   )
@@ -142,7 +143,8 @@ export function WorkProductCard({
   const TypeIcon = TYPE_ICON[workProduct.type]
   const isSuperseded = workProduct.status === 'superseded'
 
-  const showReviewActions = workProduct.status === 'review' && workProduct.review_state === 'pending'
+  const showReviewActions =
+    workProduct.status === 'review' && workProduct.review_state === 'pending'
   const showApply =
     workProduct.status === 'approved' &&
     !workProduct.applied_external_url &&
@@ -164,10 +166,14 @@ export function WorkProductCard({
       className={cn(
         'rounded-lg border transition-shadow',
         isSuperseded && 'opacity-60 border-dashed',
-        workProduct.status === 'review' && 'border-warning/30 bg-warning/[0.03]',
+        workProduct.status === 'review' &&
+          'border-warning/30 bg-warning/[0.03]',
         workProduct.status === 'approved' && 'border-info/20 bg-info/[0.03]',
-        workProduct.status === 'applied' && 'border-success/20 bg-success/[0.03]',
-        (workProduct.status === 'draft' || workProduct.status === 'superseded') && 'border-border bg-card',
+        workProduct.status === 'applied' &&
+          'border-success/20 bg-success/[0.03]',
+        (workProduct.status === 'draft' ||
+          workProduct.status === 'superseded') &&
+          'border-border bg-card',
         pulse && 'ring-2 ring-brand/60 ring-offset-2 ring-offset-background',
       )}
     >
@@ -193,12 +199,15 @@ export function WorkProductCard({
                   onClick={onShowDiff}
                   className="h-4 px-1 text-[10px] text-muted-foreground"
                 >
-                  <History />
-                  v{workProduct.previous_versions_count + 1} ({workProduct.previous_versions_count} prev)
+                  <History />v{workProduct.previous_versions_count + 1} (
+                  {workProduct.previous_versions_count} prev)
                 </Button>
               )}
               {connectorId && (
-                <ConnectorIcon connectorId={connectorId} className="text-muted-foreground" />
+                <ConnectorIcon
+                  connectorId={connectorId}
+                  className="text-muted-foreground"
+                />
               )}
             </div>
           )}
@@ -227,7 +236,12 @@ export function WorkProductCard({
             <Check className="h-3.5 w-3.5 mr-1" />
             Approve
           </Button>
-          <Button size="sm" variant="outline" className="h-7" onClick={onRequestChanges}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7"
+            onClick={onRequestChanges}
+          >
             Request changes
           </Button>
         </div>
@@ -260,12 +274,13 @@ export function WorkProductCard({
         </div>
       )}
 
-      {workProduct.review_state === 'changes_requested' && workProduct.status !== 'superseded' && (
-        <div className="flex items-center gap-2 border-t border-warning/15 px-4 py-2 text-xs text-warning">
-          <X className="h-3.5 w-3.5" />
-          Changes requested. Bot will revise on next run.
-        </div>
-      )}
+      {workProduct.review_state === 'changes_requested' &&
+        workProduct.status !== 'superseded' && (
+          <div className="flex items-center gap-2 border-t border-warning/15 px-4 py-2 text-xs text-warning">
+            <X className="h-3.5 w-3.5" />
+            Changes requested. Bot will revise on next run.
+          </div>
+        )}
     </div>
   )
 }

@@ -103,8 +103,7 @@ export function AgentPresence({
     >
       <TypingDots />
       <span>
-        {agentName} is{' '}
-        <span className="text-foreground/75">{text}</span>
+        {agentName} is <span className="text-foreground/75">{text}</span>
         {/* `detail` is engineering metadata (tool name + args); debug-only. */}
         {detail && debugMode && (
           <span className="ml-0.5 font-mono text-[10.5px] text-muted-foreground/70">

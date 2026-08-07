@@ -11,11 +11,7 @@ import {
   pauseChatThreadAgent,
 } from '@/lib/server/chat-agents'
 import { schema } from '@/lib/server/db'
-import {
-  badRequest,
-  notFound,
-  toChatThread,
-} from '@/lib/server/control-plane'
+import { badRequest, notFound, toChatThread } from '@/lib/server/control-plane'
 import { getThreadAccess } from '@/lib/server/chat-threads'
 
 export const Route = createFileRoute('/api/chat/threads/$id')({
@@ -104,13 +100,15 @@ export const Route = createFileRoute('/api/chat/threads/$id')({
           hostName: access.hostName,
         })
 
-        await access.db.delete(schema.chatThread).where(
-          and(
-            eq(schema.chatThread.id, params.id),
-            eq(schema.chatThread.workspaceId, access.thread.workspaceId),
-            eq(schema.chatThread.ownerUserId, access.session.user.id),
-          ),
-        )
+        await access.db
+          .delete(schema.chatThread)
+          .where(
+            and(
+              eq(schema.chatThread.id, params.id),
+              eq(schema.chatThread.workspaceId, access.thread.workspaceId),
+              eq(schema.chatThread.ownerUserId, access.session.user.id),
+            ),
+          )
 
         return new Response(null, { status: 204 })
       },

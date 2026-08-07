@@ -61,9 +61,13 @@ export const useCreateAutomationDialogStore = create<AutomationDraftState>(
     setAssigneeId: (assigneeId) => set({ assigneeId }),
     setTriggerConfig: (triggerConfig) => set({ triggerConfig }),
     toggleSkillSlug: (slug) =>
-      set((state) => ({ selectedSkillSlugs: toggle(state.selectedSkillSlugs, slug) })),
+      set((state) => ({
+        selectedSkillSlugs: toggle(state.selectedSkillSlugs, slug),
+      })),
     toggleToolName: (toolName) =>
-      set((state) => ({ selectedToolNames: toggle(state.selectedToolNames, toolName) })),
+      set((state) => ({
+        selectedToolNames: toggle(state.selectedToolNames, toolName),
+      })),
     toggleConnectorId: (connectorId) =>
       set((state) => ({
         selectedConnectorIds: toggle(state.selectedConnectorIds, connectorId),

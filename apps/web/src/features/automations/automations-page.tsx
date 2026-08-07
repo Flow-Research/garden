@@ -378,9 +378,7 @@ function CreateAutomationDialog({
       (
         connectorId,
       ): connectorId is 'github' | 'slack' | 'gmail' | 'google-drive' =>
-        ['github', 'slack', 'gmail', 'google-drive'].includes(
-          connectorId,
-        ),
+        ['github', 'slack', 'gmail', 'google-drive'].includes(connectorId),
     )
     const templateCapabilities = selectedTemplate?.executionConfig?.capabilities
     const executionConfig = createAutomationExecutionConfig({

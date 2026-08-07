@@ -94,9 +94,7 @@ export function ApprovalCard({
     >
       <div className="text-xs font-medium text-foreground">{title}</div>
       {targetLabel && (
-        <div className="text-[11px] text-muted-foreground">
-          → {targetLabel}
-        </div>
+        <div className="text-[11px] text-muted-foreground">→ {targetLabel}</div>
       )}
       <div className="text-xs text-muted-foreground">{body}</div>
       <div className="flex items-center gap-2 pt-1">

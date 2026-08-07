@@ -118,9 +118,7 @@ export function CreateIssueModal({
   )
   const [autoStart, setAutoStart] = useState(true)
   const [isExpanded, setIsExpanded] = useState(false)
-  const [todoHintIssueId, setTodoHintIssueId] = useState<string | null>(
-    null,
-  )
+  const [todoHintIssueId, setTodoHintIssueId] = useState<string | null>(null)
 
   // File upload — collect attachment IDs so we can link them after issue creation.
   const [attachmentIds, setAttachmentIds] = useState<string[]>([])
@@ -266,10 +264,7 @@ export function CreateIssueModal({
               onClose()
             }}
             onDismissPermanently={() => {
-              localStorage.setItem(
-                'garden:todo-agent-hint-dismissed',
-                'true',
-              )
+              localStorage.setItem('garden:todo-agent-hint-dismissed', 'true')
             }}
             onMoveToInProgress={() => {
               updateIssueMutation.mutate(
@@ -426,9 +421,7 @@ export function CreateIssueModal({
               <div className="flex items-center gap-3">
                 {assigneeType === 'agent' &&
                 assigneeId &&
-                !['todo', 'blocked', 'done', 'cancelled'].includes(
-                  status,
-                ) ? (
+                !['todo', 'blocked', 'done', 'cancelled'].includes(status) ? (
                   <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
                     <input
                       type="checkbox"

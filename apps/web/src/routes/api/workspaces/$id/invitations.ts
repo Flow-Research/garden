@@ -10,7 +10,6 @@ export const Route = createFileRoute('/api/workspaces/$id/invitations')({
   server: {
     handlers: {
       GET: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()

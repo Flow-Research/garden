@@ -1,7 +1,4 @@
-import {
-  jsonObjectSchema,
-  memberRoleSchema,
-} from '@garden/db/validation'
+import { jsonObjectSchema, memberRoleSchema } from '@garden/db/validation'
 import { z } from 'zod'
 import {
   nonEmptyStringSchema,

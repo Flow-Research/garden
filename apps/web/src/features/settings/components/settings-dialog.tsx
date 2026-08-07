@@ -1,7 +1,4 @@
-import {
-  Dialog,
-  DialogContent,
-} from '@garden/ui/components/ui/dialog'
+import { Dialog, DialogContent } from '@garden/ui/components/ui/dialog'
 import { useSettingsDialogStore } from '../settings-dialog-store'
 import { SettingsPage } from './settings-page'
 import type { ExtraSettingsTab } from './settings-page'

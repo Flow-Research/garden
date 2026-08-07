@@ -3,6 +3,7 @@
 Official upstream MCP server: `https://mcp.slack.com/mcp`
 
 Garden classifies the official Slack MCP tool ids surfaced by Slack’s own plugin repo and docs:
+
 - `slack_search_public`
 - `slack_search_public_and_private`
 - `slack_search_channels`

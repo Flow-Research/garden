@@ -265,13 +265,15 @@ export async function resolveConnectorWritePermissionRequests(
   >
 > {
   const referenceRequestResult = await loadReferenceRequest(input)
-  if (referenceRequestResult.isErr()) return Result.err(referenceRequestResult.error)
+  if (referenceRequestResult.isErr())
+    return Result.err(referenceRequestResult.error)
 
   const matchingRequestsResult = await loadMatchingPendingRequests({
     db: input.db,
     referenceRequest: referenceRequestResult.value,
   })
-  if (matchingRequestsResult.isErr()) return Result.err(matchingRequestsResult.error)
+  if (matchingRequestsResult.isErr())
+    return Result.err(matchingRequestsResult.error)
 
   const matchingRequests = matchingRequestsResult.value
   const matchingRequestIds = matchingRequests.map((request) => request.id)

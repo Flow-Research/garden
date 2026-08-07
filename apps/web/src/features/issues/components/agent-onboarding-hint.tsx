@@ -1,11 +1,5 @@
 import { useState } from 'react'
-import {
-  GitBranch,
-  HelpCircle,
-  Octagon,
-  Sparkles,
-  X,
-} from 'lucide-react'
+import { GitBranch, HelpCircle, Octagon, Sparkles, X } from 'lucide-react'
 import { cn } from '@garden/ui/lib/utils'
 import { Button } from '@garden/ui/components/ui/button'
 
@@ -103,7 +97,9 @@ export function AgentOnboardingHint({
                 · {agentRole}
               </span>
             )}{' '}
-            <span className="text-muted-foreground/70 font-normal">is on this issue.</span>
+            <span className="text-muted-foreground/70 font-normal">
+              is on this issue.
+            </span>
           </h3>
           {!compact && (
             <p className="mt-1 max-w-prose text-[12.5px] leading-relaxed text-muted-foreground">

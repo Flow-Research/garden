@@ -14,7 +14,6 @@ export const Route = createFileRoute('/api/connections/$connectorId/activity')({
   server: {
     handlers: {
       GET: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
@@ -45,7 +44,10 @@ export const Route = createFileRoute('/api/connections/$connectorId/activity')({
             schema.capability,
             eq(schema.toolCallAudit.capabilityId, schema.capability.id),
           )
-          .innerJoin(schema.agent, eq(schema.toolCallAudit.agentId, schema.agent.id))
+          .innerJoin(
+            schema.agent,
+            eq(schema.toolCallAudit.agentId, schema.agent.id),
+          )
           .where(
             and(
               eq(schema.toolCallAudit.workspaceId, workspaceId),

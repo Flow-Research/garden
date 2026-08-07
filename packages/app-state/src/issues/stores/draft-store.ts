@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import type { IssueStatus, IssuePriority, IssueAssigneeType } from '@garden/core/types'
+import type {
+  IssueStatus,
+  IssuePriority,
+  IssueAssigneeType,
+} from '@garden/core/types'
 import {
   createWorkspaceAwareStorage,
   registerForWorkspaceRehydration,

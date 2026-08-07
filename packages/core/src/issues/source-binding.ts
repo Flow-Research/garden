@@ -143,12 +143,12 @@ async function refreshIssueSourceSummary(
     .orderBy(desc(schema.issueSourceBinding.updatedAt))
     .limit(1)
   const sourceSummary = binding
-    ? binding.displayRef ??
+    ? (binding.displayRef ??
       sourceDisplayRef({
         sourceKind: binding.sourceKind,
         externalId: binding.externalId,
         externalUrl: binding.externalUrl,
-      })
+      }))
     : null
 
   await executor
@@ -186,24 +186,31 @@ export async function attachSourceBindingInTransaction(
 
 export async function attachSourceBinding(
   input: AttachSourceBindingInput,
-): Promise<ResultValue<{ binding_id: string }, IssueSourceBindingServiceError>> {
+): Promise<
+  ResultValue<{ binding_id: string }, IssueSourceBindingServiceError>
+> {
   const parsed = attachSourceBindingInputSchema.safeParse(input)
   if (!parsed.success) {
-    return Result.err(validationError(parsed.error.issues[0]?.message ?? 'Invalid source binding.'))
+    return Result.err(
+      validationError(
+        parsed.error.issues[0]?.message ?? 'Invalid source binding.',
+      ),
+    )
   }
 
   const db = getIssueSourceBindingDb(parsed.data.databaseUrl)
   const result = await Result.tryPromise({
     try: async () =>
-      await db.transaction(async (tx) =>
-        await attachSourceBindingInTransaction(tx, {
-          workspaceId: parsed.data.workspaceId,
-          issueId: parsed.data.issueId,
-          connectorId: parsed.data.connectorId,
-          sourceKind: parsed.data.sourceKind,
-          externalId: parsed.data.externalId,
-          externalUrl: parsed.data.externalUrl,
-        }),
+      await db.transaction(
+        async (tx) =>
+          await attachSourceBindingInTransaction(tx, {
+            workspaceId: parsed.data.workspaceId,
+            issueId: parsed.data.issueId,
+            connectorId: parsed.data.connectorId,
+            sourceKind: parsed.data.sourceKind,
+            externalId: parsed.data.externalId,
+            externalUrl: parsed.data.externalUrl,
+          }),
       ),
     catch: (cause) => serviceDbError('attach source binding', cause),
   })
@@ -216,7 +223,11 @@ export async function removeSourceBinding(
 ): Promise<ResultValue<void, IssueSourceBindingServiceError>> {
   const parsed = removeSourceBindingInputSchema.safeParse(input)
   if (!parsed.success) {
-    return Result.err(validationError(parsed.error.issues[0]?.message ?? 'Invalid source binding.'))
+    return Result.err(
+      validationError(
+        parsed.error.issues[0]?.message ?? 'Invalid source binding.',
+      ),
+    )
   }
 
   const db = getIssueSourceBindingDb(parsed.data.databaseUrl)
@@ -255,7 +266,9 @@ export async function listIssueSourceBindings(
 ): Promise<ResultValue<IssueSourceBinding[], IssueSourceBindingServiceError>> {
   const parsed = listIssueSourceBindingsInputSchema.safeParse(input)
   if (!parsed.success) {
-    return Result.err(validationError(parsed.error.issues[0]?.message ?? 'Invalid issue id.'))
+    return Result.err(
+      validationError(parsed.error.issues[0]?.message ?? 'Invalid issue id.'),
+    )
   }
 
   const db = getIssueSourceBindingDb(parsed.data.databaseUrl)

@@ -67,9 +67,7 @@ export function PreResponseWrapper({
   return (
     <ChainOfThought defaultOpen={!shouldMinimize}>
       <ChainOfThoughtHeader>{label}</ChainOfThoughtHeader>
-      <ChainOfThoughtContent>
-        {children}
-      </ChainOfThoughtContent>
+      <ChainOfThoughtContent>{children}</ChainOfThoughtContent>
     </ChainOfThought>
   )
 }
@@ -95,9 +93,7 @@ export function StreamingWorkEntryRow({
         </span>
       }
       description={
-        entry.detail && !showDetailBlock && !isDone
-          ? entry.detail
-          : undefined
+        entry.detail && !showDetailBlock && !isDone ? entry.detail : undefined
       }
       status={entry.active ? 'active' : 'complete'}
     >

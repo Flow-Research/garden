@@ -61,7 +61,6 @@ export const Route = createFileRoute('/api/github/install')({
   server: {
     handlers: {
       GET: async ({ context, request }) => {
-
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()

@@ -58,7 +58,8 @@ const EmptyOutput = Schema.Struct({})
 export const discordNativeTools = [
   defineNativeConnectorTool({
     name: 'discord_list_servers',
-    description: 'List Discord servers where the shared Garden bot is installed.',
+    description:
+      'List Discord servers where the shared Garden bot is installed.',
     riskClass: 'read',
     requiredScopes: ['bot:guilds:read'],
     input: EmptyInput,
@@ -113,7 +114,8 @@ export const discordNativeTools = [
   }),
   defineNativeConnectorTool({
     name: 'discord_search_messages',
-    description: 'Search messages in a Discord server visible to the Garden bot.',
+    description:
+      'Search messages in a Discord server visible to the Garden bot.',
     riskClass: 'read',
     requiredScopes: ['bot:messages:search'],
     input: SearchMessagesInput,
@@ -185,7 +187,8 @@ export const discordNativeTools = [
   }),
   defineNativeConnectorTool({
     name: 'discord_create_thread',
-    description: 'Create a Discord thread, optionally from an existing message.',
+    description:
+      'Create a Discord thread, optionally from an existing message.',
     riskClass: 'send_external',
     requiredScopes: ['bot:threads:create'],
     input: CreateThreadInput,
@@ -198,7 +201,8 @@ export const discordNativeTools = [
   }),
   defineNativeConnectorTool({
     name: 'discord_add_reaction',
-    description: 'Add a reaction to a Discord message as the shared Garden bot.',
+    description:
+      'Add a reaction to a Discord message as the shared Garden bot.',
     riskClass: 'write',
     requiredScopes: ['bot:reactions:add'],
     input: AddReactionInput,

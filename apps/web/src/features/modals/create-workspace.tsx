@@ -60,7 +60,9 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
           toast.error('Choose a different workspace URL')
           return
         }
-        toast.error(error instanceof Error ? error.message : 'Failed to create workspace')
+        toast.error(
+          error instanceof Error ? error.message : 'Failed to create workspace',
+        )
       }
     },
   })
@@ -145,7 +147,10 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
                           const nextName = event.target.value
                           field.handleChange(nextName)
                           if (!slugTouched) {
-                            form.setFieldValue('slug', nameToWorkspaceSlug(nextName))
+                            form.setFieldValue(
+                              'slug',
+                              nameToWorkspaceSlug(nextName),
+                            )
                             setSlugServerError(null)
                           }
                         }}

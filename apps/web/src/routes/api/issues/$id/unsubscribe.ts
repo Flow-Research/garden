@@ -26,7 +26,10 @@ export const Route = createFileRoute('/api/issues/$id/unsubscribe')({
           .where(eq(schema.issue.id, params.id))
         if (!issue) return notFound('Issue not found')
 
-        const access = await requireWorkspaceAccess(appContext, issue.workspaceId)
+        const access = await requireWorkspaceAccess(
+          appContext,
+          issue.workspaceId,
+        )
         if (access instanceof Response) return access
 
         const body = (await request.json().catch(() => ({}))) as {

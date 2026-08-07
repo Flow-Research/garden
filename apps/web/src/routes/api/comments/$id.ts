@@ -2,7 +2,10 @@ import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
-import { commentBodySchema, parseJsonBody } from '@/lib/server/validation/issues'
+import {
+  commentBodySchema,
+  parseJsonBody,
+} from '@/lib/server/validation/issues'
 import {
   badRequest,
   notFound,
@@ -32,7 +35,6 @@ export const Route = createFileRoute('/api/comments/$id')({
   server: {
     handlers: {
       PUT: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
@@ -56,7 +58,10 @@ export const Route = createFileRoute('/api/comments/$id')({
           existingComment.authorType === 'user' &&
           existingComment.authorId !== session.user.id
         ) {
-          return Response.json({ error: 'Comment access denied' }, { status: 403 })
+          return Response.json(
+            { error: 'Comment access denied' },
+            { status: 403 },
+          )
         }
 
         const [updatedComment] = await db
@@ -69,7 +74,6 @@ export const Route = createFileRoute('/api/comments/$id')({
         return Response.json(toComment(updatedComment))
       },
       DELETE: async ({ context, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
@@ -85,10 +89,15 @@ export const Route = createFileRoute('/api/comments/$id')({
           existingComment.authorType === 'user' &&
           existingComment.authorId !== session.user.id
         ) {
-          return Response.json({ error: 'Comment access denied' }, { status: 403 })
+          return Response.json(
+            { error: 'Comment access denied' },
+            { status: 403 },
+          )
         }
 
-        await db.delete(schema.issueComment).where(eq(schema.issueComment.id, params.id))
+        await db
+          .delete(schema.issueComment)
+          .where(eq(schema.issueComment.id, params.id))
         return new Response(null, { status: 204 })
       },
     },

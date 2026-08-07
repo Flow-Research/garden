@@ -121,7 +121,10 @@
   color: var(--ink);
   font-weight: 500;
   background-color: var(--vellum-heavy);
-  box-shadow: var(--shadow-hairline, rgba(26, 31, 28, 0.1) 0px 0px 0px 0.5px inset);
+  box-shadow: var(
+    --shadow-hairline,
+    rgba(26, 31, 28, 0.1) 0px 0px 0px 0.5px inset
+  );
 }
 .roadmap-nav-count {
   font-size: 11px;

@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  DEBUG_SDK_STACK,
-  VIRTUAL_FS_BACKING_STORES,
-} from './environment-debug'
+import { DEBUG_SDK_STACK, VIRTUAL_FS_BACKING_STORES } from './environment-debug'
 
 describe('environment-debug metadata', () => {
   it('ships a non-empty SDK stack with required fields', () => {

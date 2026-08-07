@@ -24,7 +24,10 @@ export class SandboxProbeError extends TaggedError('SandboxProbeError')<{
 }
 
 export async function probeSandboxCommand(
-  runCommand: (command: string, sessionId: string) => Promise<SandboxExecResult>,
+  runCommand: (
+    command: string,
+    sessionId: string,
+  ) => Promise<SandboxExecResult>,
   command: string,
   sessionId?: string,
 ) {

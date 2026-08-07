@@ -12,7 +12,6 @@ export const Route = createFileRoute('/api/issues/child-progress')({
   server: {
     handlers: {
       GET: async ({ context, request }) => {
-
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()

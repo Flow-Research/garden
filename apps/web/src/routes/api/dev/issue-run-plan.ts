@@ -43,7 +43,6 @@ export const Route = createFileRoute('/api/dev/issue-run-plan')({
   server: {
     handlers: {
       GET: async ({ context, request }) => {
-
         const appContext = requireAppRequestContext(context)
         if (appEnv.ENVIRONMENT === 'production') {
           return notFound('Not found')

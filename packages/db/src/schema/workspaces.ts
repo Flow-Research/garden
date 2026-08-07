@@ -10,30 +10,34 @@ import {
 } from 'drizzle-orm/pg-core'
 import { user } from './users.js'
 
-export const organization = pgTable('organization', {
-  id: uuid('id')
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  name: text('name').notNull(),
-  slug: text('slug').notNull().unique(),
-  logo: text('logo'),
-  metadata: text('metadata'),
-  description: text('description'),
-  context: text('context'),
-  issuePrefix: text('issue_prefix').notNull().default('ISS'),
-  settings: jsonb('settings')
-    .$type<Record<string, unknown>>()
-    .notNull()
-    .default(sql`'{}'::jsonb`),
-  plan: text('plan').default('free'),
-  createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
-  updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
-}, (table) => [
-  check(
-    'organization_issue_prefix_format',
-    sql`${table.issuePrefix} ~ '^[A-Z0-9]{2,8}$'`,
-  ),
-])
+export const organization = pgTable(
+  'organization',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    name: text('name').notNull(),
+    slug: text('slug').notNull().unique(),
+    logo: text('logo'),
+    metadata: text('metadata'),
+    description: text('description'),
+    context: text('context'),
+    issuePrefix: text('issue_prefix').notNull().default('ISS'),
+    settings: jsonb('settings')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    plan: text('plan').default('free'),
+    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
+    updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
+  },
+  (table) => [
+    check(
+      'organization_issue_prefix_format',
+      sql`${table.issuePrefix} ~ '^[A-Z0-9]{2,8}$'`,
+    ),
+  ],
+)
 
 export const member = pgTable(
   'member',

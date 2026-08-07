@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  DEFAULT_AGENT_PERMISSIONS,
-  derivePermissions,
-} from './permissions'
+import { DEFAULT_AGENT_PERMISSIONS, derivePermissions } from './permissions'
 
 describe('derivePermissions', () => {
   it('returns the default permission scope when no values are set', () => {

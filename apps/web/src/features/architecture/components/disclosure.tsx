@@ -36,7 +36,12 @@ function Caret() {
       aria-hidden
       className="arch-caret mt-1 shrink-0"
     >
-      <path d="M3 1.5 L7 5 L3 8.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
+      <path
+        d="M3 1.5 L7 5 L3 8.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        fill="none"
+      />
     </svg>
   )
 }

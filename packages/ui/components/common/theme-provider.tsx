@@ -49,7 +49,11 @@ function ColorThemeProvider({ children }: { children: ReactNode }) {
     [colorTheme],
   )
 
-  return <ColorThemeContext.Provider value={value}>{children}</ColorThemeContext.Provider>
+  return (
+    <ColorThemeContext.Provider value={value}>
+      {children}
+    </ColorThemeContext.Provider>
+  )
 }
 
 export function useTheme() {

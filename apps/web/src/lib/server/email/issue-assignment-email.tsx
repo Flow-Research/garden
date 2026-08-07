@@ -28,7 +28,9 @@ const colors = {
  * (written alongside this send) surfaces the task — there is no per-issue route
  * to deep-link yet, only `/workspace?workspace_id=`.
  */
-export function renderIssueAssignmentEmailHtml(props: IssueAssignmentEmailProps) {
+export function renderIssueAssignmentEmailHtml(
+  props: IssueAssignmentEmailProps,
+) {
   const safe = {
     issueTitle: escapeHtml(props.issueTitle),
     taskUrl: escapeHtml(props.taskUrl),

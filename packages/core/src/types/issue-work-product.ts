@@ -15,7 +15,9 @@ export type IssueWorkProductReviewState = z.infer<
   typeof issueWorkProductReviewStateSchema
 >
 
-export type IssueWorkProductRecord = z.infer<typeof issueWorkProductSelectSchema>
+export type IssueWorkProductRecord = z.infer<
+  typeof issueWorkProductSelectSchema
+>
 export type IssueSourceBindingRecord = z.infer<
   typeof issueSourceBindingSelectSchema
 >

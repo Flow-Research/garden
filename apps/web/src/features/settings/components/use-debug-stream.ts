@@ -20,12 +20,7 @@ import { getApiTransport } from '@/lib/api/state'
  *   screen while the drawer is closed, so the first open is zero-latency.
  */
 
-export type DebugSection =
-  | 'meta'
-  | 'tools'
-  | 'workspace'
-  | 'sandbox'
-  | 'prompt'
+export type DebugSection = 'meta' | 'tools' | 'workspace' | 'sandbox' | 'prompt'
 
 export type DebugState = {
   openAt: string | null

@@ -29,7 +29,10 @@ export const Route = createFileRoute('/api/documents/$id/metadata')({
           .limit(1)
 
         if (!row) {
-          return Response.json({ ok: false, error: 'Not found' }, { status: 404 })
+          return Response.json(
+            { ok: false, error: 'Not found' },
+            { status: 404 },
+          )
         }
 
         return Response.json({

@@ -21,7 +21,6 @@ export const Route = createFileRoute('/api/issues/$id/work-products')({
   server: {
     handlers: {
       GET: async ({ context, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const db = await appContext.db()
         const [issue] = await db
@@ -31,7 +30,10 @@ export const Route = createFileRoute('/api/issues/$id/work-products')({
           .limit(1)
         if (!issue) return notFound('Issue not found')
 
-        const access = await requireWorkspaceAccess(appContext, issue.workspaceId)
+        const access = await requireWorkspaceAccess(
+          appContext,
+          issue.workspaceId,
+        )
         if (access instanceof Response) return access
 
         const workProductsResult = await listIssueWorkProducts({
@@ -39,7 +41,8 @@ export const Route = createFileRoute('/api/issues/$id/work-products')({
           workspaceId: issue.workspaceId,
           issueId: params.id,
         })
-        if (workProductsResult.isErr()) return runError(workProductsResult.error)
+        if (workProductsResult.isErr())
+          return runError(workProductsResult.error)
 
         return Response.json(workProductsResult.value)
       },

@@ -29,7 +29,6 @@ export const Route = createFileRoute('/api/issues/$id/events')({
   server: {
     handlers: {
       GET: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const db = await appContext.db()
         const [issue] = await db
@@ -39,7 +38,10 @@ export const Route = createFileRoute('/api/issues/$id/events')({
           .limit(1)
         if (!issue) return notFound('Issue not found')
 
-        const access = await requireWorkspaceAccess(appContext, issue.workspaceId)
+        const access = await requireWorkspaceAccess(
+          appContext,
+          issue.workspaceId,
+        )
         if (access instanceof Response) return access
 
         const searchResult = parseSearchParams(

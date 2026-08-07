@@ -139,7 +139,8 @@ function candidateArgs(binding: SourceBindingRow) {
   const github = parseGithubRef(binding)
   const slack = parseSlackRef(binding)
   const targetUrl = binding.externalUrl || binding.externalId
-  const isUrl = targetUrl.startsWith('http://') || targetUrl.startsWith('https://')
+  const isUrl =
+    targetUrl.startsWith('http://') || targetUrl.startsWith('https://')
   const candidates: Record<string, unknown> = {
     id: binding.externalId,
     external_id: binding.externalId,

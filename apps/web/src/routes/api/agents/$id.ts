@@ -22,7 +22,6 @@ export const Route = createFileRoute('/api/agents/$id')({
   server: {
     handlers: {
       GET: async ({ context, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const db = await appContext.db()
         const [agent] = await db
@@ -31,13 +30,15 @@ export const Route = createFileRoute('/api/agents/$id')({
           .where(eq(schema.agent.id, params.id))
         if (!agent) return notFound('Agent not found')
 
-        const access = await requireWorkspaceAccess(appContext, agent.workspaceId)
+        const access = await requireWorkspaceAccess(
+          appContext,
+          agent.workspaceId,
+        )
         if (access instanceof Response) return access
 
         return Response.json(toAgent(agent))
       },
       PUT: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const bodyResult = await parseJsonBody(
           request,

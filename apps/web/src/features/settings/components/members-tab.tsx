@@ -11,11 +11,7 @@ import {
   Mail,
 } from 'lucide-react'
 import { ActorAvatar } from '../../common/actor-avatar'
-import type {
-  MemberWithUser,
-  MemberRole,
-  Invitation,
-} from '@garden/core/types'
+import type { MemberWithUser, MemberRole, Invitation } from '@garden/core/types'
 import { Input } from '@garden/ui/components/ui/input'
 import { Button } from '@garden/ui/components/ui/button'
 import { Badge } from '@garden/ui/components/ui/badge'

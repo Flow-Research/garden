@@ -1,4 +1,8 @@
-import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'drizzle-zod'
+import {
+  createInsertSchema,
+  createSelectSchema,
+  createUpdateSchema,
+} from 'drizzle-zod'
 import { z } from 'zod'
 import {
   inboxDismissal,
@@ -44,9 +48,7 @@ export const issueRunEventLevelSchema = z.enum(issueRunEventLevelValues)
 
 export const issueWorkProductTypeSchema = z.enum(issueWorkProductTypeValues)
 
-export const issueWorkProductStatusSchema = z.enum(
-  issueWorkProductStatusValues,
-)
+export const issueWorkProductStatusSchema = z.enum(issueWorkProductStatusValues)
 
 export const issueWorkProductReviewStateSchema = z.enum(
   issueWorkProductReviewStateValues,
@@ -111,29 +113,35 @@ export const issueRunEventInsertSchema = createInsertSchema(issueRunEvent, {
   payload: () => jsonObjectSchema,
 })
 
-export const issueWorkProductSelectSchema = createSelectSchema(issueWorkProduct, {
-  id: () => uuidSchema,
-  workspaceId: () => uuidSchema,
-  issueId: () => uuidSchema,
-  runId: () => uuidSchema,
-  agentId: () => uuidSchema,
-  type: () => issueWorkProductTypeSchema,
-  status: () => issueWorkProductStatusSchema,
-  reviewState: () => issueWorkProductReviewStateSchema,
-  payload: () => jsonObjectSchema,
-})
+export const issueWorkProductSelectSchema = createSelectSchema(
+  issueWorkProduct,
+  {
+    id: () => uuidSchema,
+    workspaceId: () => uuidSchema,
+    issueId: () => uuidSchema,
+    runId: () => uuidSchema,
+    agentId: () => uuidSchema,
+    type: () => issueWorkProductTypeSchema,
+    status: () => issueWorkProductStatusSchema,
+    reviewState: () => issueWorkProductReviewStateSchema,
+    payload: () => jsonObjectSchema,
+  },
+)
 
-export const issueWorkProductInsertSchema = createInsertSchema(issueWorkProduct, {
-  id: () => uuidSchema,
-  workspaceId: () => uuidSchema,
-  issueId: () => uuidSchema,
-  runId: () => uuidSchema,
-  agentId: () => uuidSchema,
-  type: () => issueWorkProductTypeSchema,
-  status: () => issueWorkProductStatusSchema,
-  reviewState: () => issueWorkProductReviewStateSchema,
-  payload: () => jsonObjectSchema,
-})
+export const issueWorkProductInsertSchema = createInsertSchema(
+  issueWorkProduct,
+  {
+    id: () => uuidSchema,
+    workspaceId: () => uuidSchema,
+    issueId: () => uuidSchema,
+    runId: () => uuidSchema,
+    agentId: () => uuidSchema,
+    type: () => issueWorkProductTypeSchema,
+    status: () => issueWorkProductStatusSchema,
+    reviewState: () => issueWorkProductReviewStateSchema,
+    payload: () => jsonObjectSchema,
+  },
+)
 
 export const issueSourceBindingSelectSchema = createSelectSchema(
   issueSourceBinding,

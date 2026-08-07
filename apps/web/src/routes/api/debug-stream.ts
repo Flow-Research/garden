@@ -34,7 +34,6 @@ export const Route = createFileRoute('/api/debug-stream')({
   server: {
     handlers: {
       POST: async ({ context, request }) => {
-
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
@@ -104,7 +103,6 @@ export const Route = createFileRoute('/api/debug-stream')({
         return Response.json({ ok: true })
       },
       GET: async ({ context, request }) => {
-
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()

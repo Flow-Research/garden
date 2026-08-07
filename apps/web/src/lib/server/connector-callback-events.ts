@@ -161,7 +161,9 @@ export async function getConnectorCallbackEventByFlow(args: {
         eq(schema.connectorCallbackEvent.flowId, args.flowId),
       ]
       if (args.connectorId) {
-        filters.push(eq(schema.connectorCallbackEvent.connectorId, args.connectorId))
+        filters.push(
+          eq(schema.connectorCallbackEvent.connectorId, args.connectorId),
+        )
       }
 
       const [event] = await args.db

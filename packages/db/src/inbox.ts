@@ -161,7 +161,12 @@ async function loadIssue(
   const [issue] = await db
     .select()
     .from(schema.issue)
-    .where(and(eq(schema.issue.workspaceId, workspaceId), eq(schema.issue.id, issueId)))
+    .where(
+      and(
+        eq(schema.issue.workspaceId, workspaceId),
+        eq(schema.issue.id, issueId),
+      ),
+    )
   return issue ?? null
 }
 
@@ -290,7 +295,10 @@ export async function upsertWorkProductReviewInbox(args: {
       issue: schema.issue,
     })
     .from(schema.issueWorkProduct)
-    .innerJoin(schema.issue, eq(schema.issue.id, schema.issueWorkProduct.issueId))
+    .innerJoin(
+      schema.issue,
+      eq(schema.issue.id, schema.issueWorkProduct.issueId),
+    )
     .where(
       and(
         eq(schema.issueWorkProduct.workspaceId, args.workspaceId),
@@ -323,7 +331,10 @@ export async function upsertWorkProductReviewInbox(args: {
           work_product_id: row.workProduct.id,
           work_product_type: row.workProduct.type,
         },
-        activityAt: preferDate(row.workProduct.updatedAt, row.workProduct.createdAt),
+        activityAt: preferDate(
+          row.workProduct.updatedAt,
+          row.workProduct.createdAt,
+        ),
       }),
     ),
   )
@@ -341,8 +352,14 @@ export async function upsertPermissionRequestInbox(args: {
       issue: schema.issue,
     })
     .from(schema.permissionRequest)
-    .leftJoin(schema.issue, eq(schema.issue.id, schema.permissionRequest.issueId))
-    .innerJoin(schema.agent, eq(schema.agent.id, schema.permissionRequest.agentId))
+    .leftJoin(
+      schema.issue,
+      eq(schema.issue.id, schema.permissionRequest.issueId),
+    )
+    .innerJoin(
+      schema.agent,
+      eq(schema.agent.id, schema.permissionRequest.agentId),
+    )
     .where(
       and(
         eq(schema.permissionRequest.id, args.requestId),
@@ -351,7 +368,11 @@ export async function upsertPermissionRequestInbox(args: {
       ),
     )
   if (!row || row.request.status !== 'pending') return
-  if (row.issue && (row.issue.status === 'done' || row.issue.status === 'cancelled')) return
+  if (
+    row.issue &&
+    (row.issue.status === 'done' || row.issue.status === 'cancelled')
+  )
+    return
 
   const recipients = await workspacePermissionApproverIds(
     args.db,

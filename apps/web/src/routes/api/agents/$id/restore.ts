@@ -12,7 +12,6 @@ export const Route = createFileRoute('/api/agents/$id/restore')({
   server: {
     handlers: {
       POST: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const db = await appContext.db()
         const [existingAgent] = await db

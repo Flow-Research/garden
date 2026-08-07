@@ -45,7 +45,9 @@ export function isToolStateActive(state: string): boolean {
  * True when a message part is a tool part that is still in flight. Returns false
  * for non-tool parts so callers can use it directly inside `parts.some(...)`.
  */
-export function isToolPartActive(part: ChatUiMessage['parts'][number]): boolean {
+export function isToolPartActive(
+  part: ChatUiMessage['parts'][number],
+): boolean {
   if (!isToolUIPart(part)) return false
   return isToolStateActive(String(getToolPartState(part)))
 }

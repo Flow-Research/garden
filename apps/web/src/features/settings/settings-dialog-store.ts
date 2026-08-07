@@ -11,7 +11,8 @@ interface SettingsDialogState {
 export const useSettingsDialogStore = create<SettingsDialogState>((set) => ({
   open: false,
   initialTab: null,
-  openSettings: (initialTab) => set({ open: true, initialTab: initialTab ?? null }),
+  openSettings: (initialTab) =>
+    set({ open: true, initialTab: initialTab ?? null }),
   closeSettings: () => set({ open: false }),
   setOpen: (open) => set({ open }),
 }))

@@ -8,7 +8,6 @@ export const Route = createFileRoute(
   server: {
     handlers: {
       DELETE: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()

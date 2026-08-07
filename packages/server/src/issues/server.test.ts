@@ -34,6 +34,8 @@ function issueRecord(
 
 describe('toIssue', () => {
   it('formats identifiers with the workspace issue prefix', () => {
-    expect(toIssue(issueRecord(), { issuePrefix: 'RDO' }).identifier).toBe('RDO-42')
+    expect(toIssue(issueRecord(), { issuePrefix: 'RDO' }).identifier).toBe(
+      'RDO-42',
+    )
   })
 })

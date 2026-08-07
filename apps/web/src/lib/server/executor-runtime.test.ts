@@ -12,7 +12,9 @@ describe('direct Executor runtime compatibility', () => {
         createExecutor({
           tenant: Tenant.make('garden-runtime-test'),
           subject: Subject.make('garden-runtime-actor'),
-          plugins: makeExecutorPlugins('test-secret-key-at-least-32-characters'),
+          plugins: makeExecutorPlugins(
+            'test-secret-key-at-least-32-characters',
+          ),
           onElicitation: () => Effect.succeed({ action: 'decline' as const }),
         }),
         (executor) => executor.integrations.list(),

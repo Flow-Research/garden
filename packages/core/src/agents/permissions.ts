@@ -40,7 +40,10 @@ function parsePermissions(value: unknown) {
 
 export function derivePermissions(input: {
   agent: { permissions?: unknown }
-  issue?: { permissionsOverride?: unknown; permissions_override?: unknown } | null
+  issue?: {
+    permissionsOverride?: unknown
+    permissions_override?: unknown
+  } | null
 }): AgentPermissions {
   const agentPermissions = parsePermissions(input.agent.permissions)
   const overrideSource =

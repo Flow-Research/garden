@@ -15,23 +15,26 @@ import {
 } from '@garden/db/subscribers'
 import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import { parseJsonBody, updateIssueBodySchema } from '@/lib/server/validation/issues'
+import {
+  parseJsonBody,
+  updateIssueBodySchema,
+} from '@/lib/server/validation/issues'
 import {
   badRequest,
   notFound,
   requireWorkspaceAccess,
   toIssue,
 } from '@/lib/server/control-plane'
-import { cancelIssueRun, startIssueRun } from '@garden/server/issues/run-service'
 import {
-  cancelLiveRunsOnIssueChange,
-} from '@garden/core/issues/run-sync'
+  cancelIssueRun,
+  startIssueRun,
+} from '@garden/server/issues/run-service'
+import { cancelLiveRunsOnIssueChange } from '@garden/core/issues/run-sync'
 
 export const Route = createFileRoute('/api/issues/$id')({
   server: {
     handlers: {
       GET: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const db = await appContext.db()
         const [existingIssue] = await db
@@ -60,7 +63,6 @@ export const Route = createFileRoute('/api/issues/$id')({
         return Response.json(toIssue(issue))
       },
       PUT: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const bodyResult = await parseJsonBody(
           request,
@@ -77,7 +79,8 @@ export const Route = createFileRoute('/api/issues/$id')({
         }
         if (body.status) updateValues.status = body.status
         if (body.priority) updateValues.priority = body.priority
-        if (typeof body.position === 'number') updateValues.position = body.position
+        if (typeof body.position === 'number')
+          updateValues.position = body.position
         if (Object.prototype.hasOwnProperty.call(body, 'due_date')) {
           updateValues.dueDate = body.due_date ? new Date(body.due_date) : null
         }
@@ -271,10 +274,7 @@ export const Route = createFileRoute('/api/issues/$id')({
           }
         }
 
-        if (
-          syncDecision.shouldWakeAgent &&
-          issue.assigneeId
-        ) {
+        if (syncDecision.shouldWakeAgent && issue.assigneeId) {
           const startResult = await startIssueRun(appEnv, {
             workspaceId: existingIssue.workspaceId,
             issueId: issue.id,
@@ -287,7 +287,6 @@ export const Route = createFileRoute('/api/issues/$id')({
         return Response.json(toIssue(issue))
       },
       DELETE: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const db = await appContext.db()
         const [existingIssue] = await db
@@ -302,12 +301,14 @@ export const Route = createFileRoute('/api/issues/$id')({
         )
         if (access instanceof Response) return access
 
-        await db.delete(schema.issue).where(
-          and(
-            eq(schema.issue.id, params.id),
-            eq(schema.issue.workspaceId, existingIssue.workspaceId),
-          ),
-        )
+        await db
+          .delete(schema.issue)
+          .where(
+            and(
+              eq(schema.issue.id, params.id),
+              eq(schema.issue.workspaceId, existingIssue.workspaceId),
+            ),
+          )
 
         return new Response(null, { status: 204 })
       },

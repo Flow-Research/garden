@@ -15,7 +15,9 @@ export type NativeConnectorTool = ConnectorToolClassification & {
   readonly description: string
   readonly inputSchema?: JsonSchemaObject
   readonly outputSchema?: JsonSchemaObject
-  readonly execute: (input: unknown) => Effect.Effect<unknown, ConnectorError, unknown>
+  readonly execute: (
+    input: unknown,
+  ) => Effect.Effect<unknown, ConnectorError, unknown>
 }
 
 export type NativeConnectorToolDefinition<

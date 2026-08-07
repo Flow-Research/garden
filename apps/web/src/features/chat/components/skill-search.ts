@@ -85,14 +85,18 @@ function scoreQueryMatch(input: {
   if (input.boundaryBase !== undefined) {
     const boundaryIndex = findBoundaryMatchIndex(value, query)
     if (boundaryIndex !== null) {
-      return input.boundaryBase + boundaryIndex * 2 + lengthPenalty(value, query)
+      return (
+        input.boundaryBase + boundaryIndex * 2 + lengthPenalty(value, query)
+      )
     }
   }
 
   if (input.includesBase !== undefined) {
     const includesIndex = value.indexOf(query)
     if (includesIndex !== -1) {
-      return input.includesBase + includesIndex * 2 + lengthPenalty(value, query)
+      return (
+        input.includesBase + includesIndex * 2 + lengthPenalty(value, query)
+      )
     }
   }
 

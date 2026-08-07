@@ -40,14 +40,14 @@ describe('searchComposerSkills', () => {
   })
 
   it('filters slash queries by skills that contain the typed text', () => {
-    expect(searchComposerSkills(skills, '/win').map((skill) => skill.id)).toEqual(
-      ['windows', 'darwin', 'docs'],
-    )
+    expect(
+      searchComposerSkills(skills, '/win').map((skill) => skill.id),
+    ).toEqual(['windows', 'darwin', 'docs'])
   })
 
   it('ranks command fields ahead of description matches', () => {
-    expect(searchComposerSkills(skills, 'windows').map((skill) => skill.id)).toEqual(
-      ['windows', 'docs'],
-    )
+    expect(
+      searchComposerSkills(skills, 'windows').map((skill) => skill.id),
+    ).toEqual(['windows', 'docs'])
   })
 })

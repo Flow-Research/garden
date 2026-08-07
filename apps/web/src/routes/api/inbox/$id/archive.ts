@@ -11,7 +11,6 @@ export const Route = createFileRoute('/api/inbox/$id/archive')({
   server: {
     handlers: {
       POST: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()

@@ -148,7 +148,6 @@ export function GardenDocDownloadBlock({
   )
 }
 
-
 export function renderArtifactPart(args: {
   index: number
   messageId: string
@@ -308,4 +307,3 @@ export function renderArtifactPart(args: {
     </Artifact>
   )
 }
-

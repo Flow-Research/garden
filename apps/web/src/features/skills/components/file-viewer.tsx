@@ -73,9 +73,7 @@ function FrontmatterCard({ data }: { data: Frontmatter }) {
     <dl className="mb-6 space-y-1 border-l-2 border-border/60 pl-3">
       {visible.map(([key, value]) => (
         <div key={key} className="text-[13px] leading-snug">
-          <dt className="inline text-muted-foreground">
-            {key}:{' '}
-          </dt>
+          <dt className="inline text-muted-foreground">{key}: </dt>
           <dd className="inline text-foreground">{value}</dd>
         </div>
       ))}
@@ -149,9 +147,7 @@ export function FileViewer({
             value={content}
             readOnly={readOnly}
             onChange={
-              readOnly
-                ? undefined
-                : (event) => onChange?.(event.target.value)
+              readOnly ? undefined : (event) => onChange?.(event.target.value)
             }
             placeholder={isMd ? 'Write markdown content…' : 'File content…'}
             className="h-full min-h-full resize-none rounded-none border-0 bg-transparent px-6 py-5 font-mono text-sm leading-relaxed focus-visible:ring-0"

@@ -72,13 +72,13 @@
   --color-dusk-rose: var(--dusk-rose);
 
   /* Radii — restrained Linear/Cursor scale. Containers stay soft, not pillow */
-  --radius-sm: 0.375rem;      /* 6px — inputs, small chips */
-  --radius-md: 0.5rem;        /* 8px — buttons, tabs */
-  --radius-lg: 0.625rem;      /* 10px — small cards */
-  --radius-xl: 0.75rem;       /* 12px — cards (default) */
-  --radius-2xl: 0.875rem;     /* 14px — panels / rails */
-  --radius-3xl: 1.125rem;     /* 18px — modals / sheets */
-  --radius-4xl: 1.5rem;       /* 24px — sheets */
+  --radius-sm: 0.375rem; /* 6px — inputs, small chips */
+  --radius-md: 0.5rem; /* 8px — buttons, tabs */
+  --radius-lg: 0.625rem; /* 10px — small cards */
+  --radius-xl: 0.75rem; /* 12px — cards (default) */
+  --radius-2xl: 0.875rem; /* 14px — panels / rails */
+  --radius-3xl: 1.125rem; /* 18px — modals / sheets */
+  --radius-4xl: 1.5rem; /* 24px — sheets */
 
   /* Named radii */
   --radius-input: 0.375rem;
@@ -90,10 +90,14 @@
   /* Pill (9999px) is reserved for status chips, badges, avatars — small things only */
 
   /* Shadows — hairline only */
-  --shadow-hairline: rgba(26, 31, 28, 0.10) 0px 0px 0px 0.5px inset;
+  --shadow-hairline: rgba(26, 31, 28, 0.1) 0px 0px 0px 0.5px inset;
   --shadow-hairline-soft: rgba(26, 31, 28, 0.06) 0px 0px 0px 0.5px inset;
-  --shadow-float-1: rgba(26, 31, 28, 0.06) 0px 0px 0px 0.5px, rgba(26, 31, 28, 0.04) 0px 1px 1px 0px;
-  --shadow-float-2: rgba(26, 31, 28, 0.06) 0px 0px 0px 0.5px, rgba(26, 31, 28, 0.06) 0px 4px 12px 0px;
+  --shadow-float-1:
+    rgba(26, 31, 28, 0.06) 0px 0px 0px 0.5px,
+    rgba(26, 31, 28, 0.04) 0px 1px 1px 0px;
+  --shadow-float-2:
+    rgba(26, 31, 28, 0.06) 0px 0px 0px 0.5px,
+    rgba(26, 31, 28, 0.06) 0px 4px 12px 0px;
 
   /* Shell layout */
   --shell-rail: 56px;
@@ -117,7 +121,7 @@
   --slate: #8a8478;
   --stone: #a8a195;
 
-  --hairline: rgba(26, 31, 28, 0.10);
+  --hairline: rgba(26, 31, 28, 0.1);
   --hairline-soft: rgba(26, 31, 28, 0.06);
 
   --moss: #4d7250;
@@ -192,7 +196,7 @@
   --gravel: #b8b2a8;
   --slate: #8a8478;
   --stone: #5b554d;
-  --hairline: rgba(245, 241, 232, 0.10);
+  --hairline: rgba(245, 241, 232, 0.1);
   --hairline-soft: rgba(245, 241, 232, 0.06);
   --moss: #7a9b6f;
   --sage: #9bb491;
@@ -232,7 +236,7 @@
   --sidebar-foreground: var(--ink);
   --sidebar-primary: var(--moss);
   --sidebar-primary-foreground: var(--parchment);
-  --sidebar-accent: rgba(255, 252, 247, 0.10);
+  --sidebar-accent: rgba(255, 252, 247, 0.1);
   --sidebar-accent-foreground: var(--ink);
   --sidebar-border: var(--hairline-soft);
   --sidebar-ring: var(--moss);
@@ -248,5 +252,3 @@
   --scrollbar-thumb-hover: rgba(245, 241, 232, 0.22);
   --scrollbar-track: transparent;
 }
-
-

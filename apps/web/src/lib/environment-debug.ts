@@ -23,12 +23,7 @@ export interface AgentSessionStateItem {
   messageCount: number
 }
 
-export type ToolGroup =
-  | 'workspace'
-  | 'custom'
-  | 'session'
-  | 'extension'
-  | 'mcp'
+export type ToolGroup = 'workspace' | 'custom' | 'session' | 'extension' | 'mcp'
 
 export interface ToolInventoryEntry {
   key: string

@@ -147,7 +147,9 @@
   line-height: 1.6;
   color: var(--ink);
 }
-.prose-agent p { margin: 0.5em 0; }
+.prose-agent p {
+  margin: 0.5em 0;
+}
 .prose-agent code,
 .prose-agent pre {
   font-family: var(--font-mono);

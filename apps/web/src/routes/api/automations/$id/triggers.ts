@@ -41,7 +41,6 @@ export const Route = createFileRoute('/api/automations/$id/triggers')({
         return automationOk(triggersResult.value.map(toAutomationTrigger))
       },
       POST: async ({ context, request, params }) => {
-
         const appContext = requireAppRequestContext(context)
         const automationResult = await requireAutomation(appEnv, params.id)
         if (automationResult.isErr())

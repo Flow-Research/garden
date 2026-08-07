@@ -169,4 +169,3 @@ function formatExpiration(value: Date | string | null | undefined) {
     timeZone: 'UTC',
   }).format(date)
 }
-

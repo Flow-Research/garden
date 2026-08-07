@@ -19,13 +19,13 @@ client routes and components
 
 ## Projects
 
-| Config | Ownership |
-| --- | --- |
-| `tsconfig.shared.json` | Transport-neutral contracts used by server and client code |
-| `tsconfig.server.json` | Server adapters, authentication, persistence, email, and server-owned dashboard queries |
-| `tsconfig.entry.json` | Worker and TanStack Start entrypoints that assemble runtime implementations |
-| `tsconfig.client.json` | Final no-emit project for routes, React components, and client modules |
-| `tsconfig.tooling.json` | Final no-emit project for Alchemy, Vite, and Vitest configuration |
+| Config                  | Ownership                                                                               |
+| ----------------------- | --------------------------------------------------------------------------------------- |
+| `tsconfig.shared.json`  | Transport-neutral contracts used by server and client code                              |
+| `tsconfig.server.json`  | Server adapters, authentication, persistence, email, and server-owned dashboard queries |
+| `tsconfig.entry.json`   | Worker and TanStack Start entrypoints that assemble runtime implementations             |
+| `tsconfig.client.json`  | Final no-emit project for routes, React components, and client modules                  |
+| `tsconfig.tooling.json` | Final no-emit project for Alchemy, Vite, and Vitest configuration                       |
 
 Shared, server, and entry projects emit declarations into ignored
 `.turbo/types` directories. The client project consumes server declarations
