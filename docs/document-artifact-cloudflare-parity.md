@@ -69,4 +69,8 @@ snapshot. No `capnweb` or `yjs` dependency is justified for this surface.
 
 Full Effect Machine reference is present at `refs/effect-machine`, non-shallow,
 HEAD `5597a6a691f017a0120d3463cdc5100a38aa3508`. This main checkout is ahead
-of the published `0.3.0` tag; production code remains pinned to the release.
+of the published `0.3.0` tag. Garden does not depend on it: the current document
+paths have no asynchronous export-job authority or persisted lifecycle for a
+machine to enforce. Canonical edits remain in the Effect engine/repository, and
+DOCX generation, tracked-edit versions, conversion, and download are direct
+operations over the existing document/version stores.

@@ -23,7 +23,6 @@
     "@garden/core": "workspace:*",
     "@garden/db": "workspace:*",
     "@neondatabase/serverless": "^1.0.1",
-    "@typeonce/effect-machine": "0.3.0",
     "@posthog/ai": "8.4.0",
     "agents": "catalog:",
     "ai": "6.0.208",
