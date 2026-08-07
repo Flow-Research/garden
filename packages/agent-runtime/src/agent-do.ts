@@ -1325,7 +1325,9 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   /**
    * Streams an initial snapshot followed by compact accepted operations. The
    * Effect PubSub subscription is scoped to the returned Web stream, so native
-   * RPC cancellation releases it without a manual subscriber map.
+   * RPC cancellation releases it without a manual subscriber map. Effect's
+   * installed `Stream.toReadableStreamEffect` captures this runtime context and
+   * interrupts its producer fiber from the Web Stream `cancel()` callback.
    */
   async subscribeDocumentArtifact(documentId: string) {
     return this.documentArtifactRuntime.runPromise(
@@ -1335,7 +1337,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         const stream: Stream.Stream<Uint8Array, unknown> = events
           .subscribe(documentId, engine.get(documentId))
           .pipe(Stream.mapEffect(encodeDocumentArtifactEvent))
-        return Stream.toReadableStream(stream)
+        return yield* Stream.toReadableStreamEffect(stream)
       }),
     )
   }

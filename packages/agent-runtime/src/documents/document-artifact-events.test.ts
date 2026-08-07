@@ -140,7 +140,7 @@ describe('DocumentArtifactEvents', () => {
           service
             .subscribe('document-a', Effect.succeed(snapshot))
             .pipe(Stream.ensuring(Deferred.succeed(finalized, undefined)))
-        const readable = Stream.toReadableStream(stream)
+        const readable = yield* Stream.toReadableStreamEffect(stream)
         const reader = readable.getReader()
         const initial = yield* Effect.promise(() => reader.read())
         yield* Effect.promise(() => reader.cancel())
