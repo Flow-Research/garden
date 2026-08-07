@@ -62,6 +62,7 @@ import {
 } from './agent-tools/issue-run-tool-context'
 import { createMarkBlockedTool } from './agent-tools/mark-blocked'
 import { createPostCommentTool } from './agent-tools/post-comment'
+import { createReadAttachmentTool } from './agent-tools/read-attachment'
 import { createReadSourceTool } from './agent-tools/read-source'
 import { createReviseWorkProductTool } from './agent-tools/revise-work-product'
 import { createUpdateIssueStatusTool } from './agent-tools/update-issue-status'
@@ -374,6 +375,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       mark_blocked: createMarkBlockedTool(context),
       create_child_issue: createCreateChildIssueTool(context),
       attach_source_binding: createAttachSourceBindingTool(context),
+      read_attachment: createReadAttachmentTool(context),
       read_source: createReadSourceTool(context),
     }
   }

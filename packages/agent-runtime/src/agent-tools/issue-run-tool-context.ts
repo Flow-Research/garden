@@ -29,6 +29,7 @@ export type IssueRunToolEnv = {
   BETTER_AUTH_SECRET: string
   BETTER_AUTH_URL: string
   HYPERDRIVE: Hyperdrive
+  FILES: R2Bucket
   AgentDO?: AgentDoNamespace
 }
 
@@ -88,6 +89,7 @@ export class IssueRunToolError extends TaggedError('IssueRunToolError')<{
     | 'invalid_state'
     | 'not_configured'
     | 'not_found'
+    | 'storage_failed'
   message: string
   cause?: unknown
   connectorError?: ConnectorError

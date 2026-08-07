@@ -78,6 +78,7 @@ function CommentInput({
           onUpdate={(md) => setIsEmpty(!md.trim())}
           onSubmit={handleSubmit}
           onUploadFile={handleUpload}
+          submitOnEnter
           debounceMs={100}
         />
       </div>
