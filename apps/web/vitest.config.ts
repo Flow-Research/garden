@@ -9,11 +9,32 @@ import viteReact from '@vitejs/plugin-react'
 export default defineConfig({
   resolve: {
     tsconfigPaths: true,
-    alias: {
-      'cloudflare:workers': fileURLToPath(
-        new URL('./src/test/cloudflare-workers-mock.ts', import.meta.url),
-      ),
-    },
+    alias: [
+      {
+        find: 'cloudflare:workers',
+        replacement: fileURLToPath(
+          new URL('./src/test/cloudflare-workers-mock.ts', import.meta.url),
+        ),
+      },
+      {
+        find: /^@executor-js\/host-mcp$/,
+        replacement: fileURLToPath(
+          new URL(
+            '../../third_party/executor/packages/hosts/mcp/src/index.ts',
+            import.meta.url,
+          ),
+        ),
+      },
+      {
+        find: /^@executor-js\/host-mcp\/(.+)$/,
+        replacement: fileURLToPath(
+          new URL(
+            '../../third_party/executor/packages/hosts/mcp/src',
+            import.meta.url,
+          ),
+        ).concat('/$1.ts'),
+      },
+    ],
   },
   plugins: [viteReact()],
   test: {

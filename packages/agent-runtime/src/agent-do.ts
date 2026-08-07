@@ -123,7 +123,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   FILES: R2Bucket
   LOADER: WorkerLoader
   Sandbox: DurableObjectNamespace<SandboxDO>
-  EXECUTOR_MCP_SESSION: DurableObjectNamespace
+  EXECUTOR_MCP_SESSION: DurableObjectNamespace<McpAgent>
   RUN_WORKFLOW: RunWorkflowBinding
 }
 
@@ -2269,12 +2269,10 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       getServerStates: () =>
         this.getMcpServers().servers as RuntimeMcpServerStates,
       addExecutorMcpServer: async ({ id, props }) =>
-        await this.addMcpServer(
+        await this.addMcpServer(id, this.env.EXECUTOR_MCP_SESSION, {
           id,
-          this.env
-            .EXECUTOR_MCP_SESSION as unknown as DurableObjectNamespace<McpAgent>,
-          { id, props },
-        ),
+          props,
+        }),
       removeMcpServer: this.removeMcpServer.bind(this),
     }
     this.mcpController = new RuntimeMcpController(host)
