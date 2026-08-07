@@ -5,12 +5,12 @@
 // and sum the resulting JSON byte counts. We then estimate tokens as chars/3.5
 // (a fair English heuristic; actual counts vary by tokenizer).
 //
-// Local tools come from the agent-runtime sources. MCP/connector tools are
-// pulled live from the upstream MCP servers via tools/list.
+// Local and native connector tools come from Garden source. Executor-backed
+// workspace integrations are represented by clearly labelled estimates.
 
-import { execFileSync } from 'node:child_process'
 import { Result } from 'better-result'
 import { z } from 'zod'
+import { githubNativeTools } from '@garden/connectors/github/tools'
 
 type ToolEntry = {
   group: string
@@ -20,8 +20,12 @@ type ToolEntry = {
   bytes: number
 }
 
-const CHAT_LOCAL_TOOLS: Array<Pick<ToolEntry, 'name' | 'description' | 'inputSchema'>> = []
-const ISSUE_LOCAL_TOOLS: Array<Pick<ToolEntry, 'name' | 'description' | 'inputSchema'>> = []
+const CHAT_LOCAL_TOOLS: Array<
+  Pick<ToolEntry, 'name' | 'description' | 'inputSchema'>
+> = []
+const ISSUE_LOCAL_TOOLS: Array<
+  Pick<ToolEntry, 'name' | 'description' | 'inputSchema'>
+> = []
 
 // ──────────────────────────────────────────────────────────────────────────
 // Utilities
@@ -64,7 +68,11 @@ function reg(
 }
 
 // ── Workspace tools (createWorkspaceTools) — both agents get these ──────
-const WORKSPACE_TOOL_SCHEMAS: Array<{ name: string; description: string; schema: z.ZodTypeAny }> = [
+const WORKSPACE_TOOL_SCHEMAS: Array<{
+  name: string
+  description: string
+  schema: z.ZodTypeAny
+}> = [
   {
     name: 'read',
     description:
@@ -102,7 +110,8 @@ const WORKSPACE_TOOL_SCHEMAS: Array<{ name: string; description: string; schema:
   },
   {
     name: 'find',
-    description: 'Glob for paths in the workspace using a pattern like "**/*.ts".',
+    description:
+      'Glob for paths in the workspace using a pattern like "**/*.ts".',
     schema: z.object({ pattern: z.string() }),
   },
   {
@@ -130,7 +139,11 @@ for (const tool of WORKSPACE_TOOL_SCHEMAS) {
 }
 
 // ── Sandbox tools (createSandboxTools) — both agents get these ──────────
-const SANDBOX_TOOL_SCHEMAS: Array<{ name: string; description: string; schema: z.ZodTypeAny }> = [
+const SANDBOX_TOOL_SCHEMAS: Array<{
+  name: string
+  description: string
+  schema: z.ZodTypeAny
+}> = [
   {
     name: 'sandboxExec',
     description:
@@ -147,13 +160,16 @@ const SANDBOX_TOOL_SCHEMAS: Array<{ name: string; description: string; schema: z
       'Run Python, JavaScript, or TypeScript code inside the sandbox interpreter. Use this for data/document processing, quick calculations, and short snippets that benefit from structured interpreter results. Prefer sandboxExec for scripts that should be saved as artifacts.',
     schema: z.object({
       code: z.string().min(1),
-      language: z.enum(['python', 'javascript', 'typescript']).default('python'),
+      language: z
+        .enum(['python', 'javascript', 'typescript'])
+        .default('python'),
       timeoutMs: z.number().int().positive().max(120_000).optional(),
     }),
   },
   {
     name: 'sandboxReadFile',
-    description: 'Read a UTF-8 file from the sandbox workspace. Paths are scoped to /workspace.',
+    description:
+      'Read a UTF-8 file from the sandbox workspace. Paths are scoped to /workspace.',
     schema: z.object({ path: z.string().min(1) }),
   },
   {
@@ -164,7 +180,8 @@ const SANDBOX_TOOL_SCHEMAS: Array<{ name: string; description: string; schema: z
   },
   {
     name: 'sandboxListFiles',
-    description: 'List files in the sandbox workspace. Paths are scoped to /workspace.',
+    description:
+      'List files in the sandbox workspace. Paths are scoped to /workspace.',
     schema: z.object({
       path: z.string().optional(),
       recursive: z.boolean().optional(),
@@ -175,11 +192,15 @@ const SANDBOX_TOOL_SCHEMAS: Array<{ name: string; description: string; schema: z
     name: 'sandboxStartProcess',
     description:
       'Start a long-running process inside the sandbox, such as a dev server. Use sandboxListProcesses and sandboxKillProcess to manage it, and expose the port when the user should inspect the result.',
-    schema: z.object({ command: z.string().min(1), cwd: z.string().optional() }),
+    schema: z.object({
+      command: z.string().min(1),
+      cwd: z.string().optional(),
+    }),
   },
   {
     name: 'sandboxListProcesses',
-    description: 'List running and recently completed processes inside the sandbox.',
+    description:
+      'List running and recently completed processes inside the sandbox.',
     schema: z.object({}),
   },
   {
@@ -217,23 +238,34 @@ for (const tool of SANDBOX_TOOL_SCHEMAS) {
 }
 
 // ── Chat-specific business tools ────────────────────────────────────────
-const CHAT_TOOLS: Array<{ name: string; description: string; schema: z.ZodTypeAny }> = [
+const CHAT_TOOLS: Array<{
+  name: string
+  description: string
+  schema: z.ZodTypeAny
+}> = [
   {
     name: 'askUserInput',
     description:
       'Present the user with one or more structured questions to choose from before proceeding. Each question shows labelled options the user can pick. Returns a record mapping question id to selected label(s). Use this when you need the user to clarify direction, pick preferences, or confirm a choice — not for open-ended questions.',
     schema: z.object({
-      questions: z.array(
-        z.object({
-          id: z.string(),
-          header: z.string().optional(),
-          question: z.string(),
-          options: z
-            .array(z.object({ label: z.string(), description: z.string().optional() }))
-            .min(2),
-          multiSelect: z.boolean().optional(),
-        }),
-      ).min(1),
+      questions: z
+        .array(
+          z.object({
+            id: z.string(),
+            header: z.string().optional(),
+            question: z.string(),
+            options: z
+              .array(
+                z.object({
+                  label: z.string(),
+                  description: z.string().optional(),
+                }),
+              )
+              .min(2),
+            multiSelect: z.boolean().optional(),
+          }),
+        )
+        .min(1),
     }),
   },
   {
@@ -253,20 +285,22 @@ const CHAT_TOOLS: Array<{ name: string; description: string; schema: z.ZodTypeAn
     name: 'create_issue',
     description:
       'Create a Garden issue from chat. Optionally assign it to an agent and bind it to an external source. Use assignee_agent_id when the user asks for an agent to do the work; assigned issues start immediately in todo. Before assigning, list workspace agents and choose an existing active agent; the current agent is a valid assignee when it is the right owner.',
-    schema: z.object({
-      title: z.string(),
-      description: z.string().trim().min(1).optional(),
-      assignee_agent_id: z.string().uuid().optional(),
-      source: z
-        .object({
-          connector_id: z.string(),
-          source_kind: z.string(),
-          external_id: z.string(),
-          external_url: z.string().trim().min(1).optional(),
-        })
-        .strict()
-        .optional(),
-    }).strict(),
+    schema: z
+      .object({
+        title: z.string(),
+        description: z.string().trim().min(1).optional(),
+        assignee_agent_id: z.string().uuid().optional(),
+        source: z
+          .object({
+            connector_id: z.string(),
+            source_kind: z.string(),
+            external_id: z.string(),
+            external_url: z.string().trim().min(1).optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict(),
   },
   {
     name: 'assign_issue',
@@ -285,7 +319,10 @@ const CHAT_TOOLS: Array<{ name: string; description: string; schema: z.ZodTypeAn
       'List bounded current workspace inventory. Defaults to agents only; request skills/connectors only when needed. Use before assigning work, proposing an agent, or mentioning skills/connectors when the current workspace inventory matters. Use current_agent_id for self-assignment when appropriate.',
     schema: z
       .object({
-        include: z.array(z.enum(['agents', 'skills', 'connectors'])).max(3).optional(),
+        include: z
+          .array(z.enum(['agents', 'skills', 'connectors']))
+          .max(3)
+          .optional(),
         query: z.string().trim().min(1).optional(),
         limit: z.number().int().positive().max(50).optional(),
       })
@@ -304,7 +341,14 @@ const CHAT_TOOLS: Array<{ name: string; description: string; schema: z.ZodTypeAn
     schema: z
       .object({
         issue_id_or_identifier: z.string().min(1),
-        status: z.enum(['todo', 'in_progress', 'in_review', 'done', 'cancelled', 'blocked']),
+        status: z.enum([
+          'todo',
+          'in_progress',
+          'in_review',
+          'done',
+          'cancelled',
+          'blocked',
+        ]),
       })
       .strict(),
   },
@@ -316,7 +360,14 @@ const CHAT_TOOLS: Array<{ name: string; description: string; schema: z.ZodTypeAn
       .object({
         assignee_agent_id: z.string().uuid().optional(),
         status: z
-          .enum(['todo', 'in_progress', 'in_review', 'done', 'cancelled', 'blocked'])
+          .enum([
+            'todo',
+            'in_progress',
+            'in_review',
+            'done',
+            'cancelled',
+            'blocked',
+          ])
           .optional(),
         mine: z.boolean().optional(),
         limit: z.number().int().positive().max(100).optional(),
@@ -328,7 +379,10 @@ const CHAT_TOOLS: Array<{ name: string; description: string; schema: z.ZodTypeAn
     description:
       'Post a comment to a Garden issue as the chat user. This can wake the assigned or mentioned issue agent.',
     schema: z
-      .object({ issue_id_or_identifier: z.string().min(1), body: z.string().min(1) })
+      .object({
+        issue_id_or_identifier: z.string().min(1),
+        body: z.string().min(1),
+      })
       .strict(),
   },
   {
@@ -429,7 +483,11 @@ for (const tool of CHAT_TOOLS) {
 }
 
 // ── Issue-only resolution tools (added on top of chat tools) ────────────
-const ISSUE_TOOLS: Array<{ name: string; description: string; schema: z.ZodTypeAny }> = [
+const ISSUE_TOOLS: Array<{
+  name: string
+  description: string
+  schema: z.ZodTypeAny
+}> = [
   {
     name: 'update_plan',
     description:
@@ -453,11 +511,13 @@ const ISSUE_TOOLS: Array<{ name: string; description: string; schema: z.ZodTypeA
   {
     name: 'ask_question',
     description:
-      'Pause the run and ask the user a focused clarifying question with labelled options. Returns the user\'s answer when the run resumes. Use only when you cannot make a reasonable decision from existing context.',
+      "Pause the run and ask the user a focused clarifying question with labelled options. Returns the user's answer when the run resumes. Use only when you cannot make a reasonable decision from existing context.",
     schema: z.object({
       question: z.string().min(1),
       options: z
-        .array(z.object({ label: z.string(), description: z.string().optional() }))
+        .array(
+          z.object({ label: z.string(), description: z.string().optional() }),
+        )
         .min(2),
       multiSelect: z.boolean().optional(),
     }),
@@ -518,6 +578,12 @@ const ISSUE_TOOLS: Array<{ name: string; description: string; schema: z.ZodTypeA
       'Read the latest content of an attached external source (e.g. a github PR, slack thread, gmail email, drive file) by its source binding id.',
     schema: z.object({ source_binding_id: z.string().uuid() }),
   },
+  {
+    name: 'read_attachment',
+    description:
+      'Read an attachment on the current issue. Use this after the issue body or comments mention an attachment id, especially for screenshots/images. Images and PDFs are lazily loaded into the model with private image-data/file-data parts.',
+    schema: z.object({ attachment_id: z.string().uuid() }).strict(),
+  },
 ]
 
 for (const tool of ISSUE_TOOLS) {
@@ -525,7 +591,7 @@ for (const tool of ISSUE_TOOLS) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Live MCP fetchers (per connector)
+// Native connector schemas
 // ──────────────────────────────────────────────────────────────────────────
 
 type McpTool = {
@@ -534,79 +600,23 @@ type McpTool = {
   inputSchema?: unknown
 }
 
-async function listMcpTools(args: {
-  url: string
-  headers: Record<string, string>
-  toolsetsHeader?: string | null
-}): Promise<McpTool[]> {
-  const baseHeaders: Record<string, string> = {
-    accept: 'application/json, text/event-stream',
-    'content-type': 'application/json',
-    ...args.headers,
-  }
-  if (args.toolsetsHeader) {
-    baseHeaders['x-mcp-toolsets'] = args.toolsetsHeader
-  }
-
-  async function post(body: unknown, sessionId?: string) {
-    const headers = { ...baseHeaders } as Record<string, string>
-    if (sessionId) headers['mcp-session-id'] = sessionId
-    return await fetch(args.url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    })
-  }
-
-  const initResp = await post({
-    jsonrpc: '2.0',
-    id: 1,
-    method: 'initialize',
-    params: {
-      protocolVersion: '2025-06-18',
-      capabilities: {},
-      clientInfo: { name: 'garden-measure', version: '0.0.0' },
-    },
-  })
-  const sessionId = initResp.headers.get('mcp-session-id') ?? undefined
-  if (!initResp.ok) {
-    throw new Error(`initialize failed (${initResp.status}): ${await initResp.text()}`)
-  }
-  await initResp.text() // drain
-
-  await post({ jsonrpc: '2.0', method: 'notifications/initialized' }, sessionId)
-  const listResp = await post(
-    { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
-    sessionId,
-  )
-  const text = await listResp.text()
-  const dataLine =
-    text.split('\n').find((line) => line.startsWith('data: '))?.slice('data: '.length) ?? text
-  if (!listResp.ok) {
-    throw new Error(`tools/list failed (${listResp.status}): ${text}`)
-  }
-  const parsed = JSON.parse(dataLine) as { result?: { tools?: McpTool[] } }
-  return parsed.result?.tools ?? []
-}
-
+/**
+ * Measures the exact native GitHub schemas used by RuntimeMcpController. The
+ * old script queried GitHub's hosted MCP with a developer token, which measured
+ * a different tool surface and made an offline report depend on `gh auth`.
+ */
 async function fetchGithubTools(): Promise<McpTool[]> {
-  // Reuse the same GitHub App / gh-cli token resolution as check-github-mcp.ts.
-  let token = process.env.GITHUB_TOKEN?.trim()
-  if (!token) {
-    token = execFileSync('gh', ['auth', 'token'], { encoding: 'utf8' }).trim()
-  }
-  return await listMcpTools({
-    url: 'https://api.githubcopilot.com/mcp/',
-    headers: { authorization: `Bearer ${token}` },
-    toolsetsHeader: 'repos,issues,pull_requests',
-  })
+  return githubNativeTools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+  }))
 }
 
-// Gmail / Slack / Google-Drive go through workspace OAuth + Garden's MCP proxy
-// at runtime. Without a workspace OAuth context we can't authenticate; we fall
-// back to the registry tool count and use a per-tool size estimate calibrated
-// from GitHub MCP (typical Anthropic-style schema ~600–900 chars). The
-// estimate is reported separately so it's clear what's measured vs estimated.
+// Executor-backed integrations require an authenticated Garden workspace, which
+// this offline script intentionally does not mint. Keep their registry counts
+// visible and estimate schema size from Garden's exact native GitHub schemas;
+// the report labels estimates separately from measured entries.
 const REGISTRY_TOOL_COUNTS: Record<string, number> = {
   gmail: 10,
   'google-drive': 7,
@@ -628,7 +638,10 @@ function summarize(name: string, sections: Section[]) {
   let totalTools = 0
   console.log(`\n=== ${name} ===`)
   for (const section of sections) {
-    const sectionBytes = section.tools.reduce((acc, tool) => acc + tool.bytes, 0)
+    const sectionBytes = section.tools.reduce(
+      (acc, tool) => acc + tool.bytes,
+      0,
+    )
     totalBytes += sectionBytes
     totalTools += section.tools.length
     console.log(
@@ -662,13 +675,15 @@ function entriesFromMcp(group: string, tools: McpTool[]): ToolEntry[] {
     name: tool.name,
     description: tool.description ?? '',
     inputSchema: tool.inputSchema ?? { type: 'object', properties: {} },
-    bytes: entryBytes(tool.name, tool.description ?? '', tool.inputSchema ?? {}),
+    bytes: entryBytes(
+      tool.name,
+      tool.description ?? '',
+      tool.inputSchema ?? {},
+    ),
   }))
 }
 
-function buildLocalSections(
-  group: 'chat' | 'issue',
-): Section[] {
+function buildLocalSections(group: 'chat' | 'issue'): Section[] {
   const tools = group === 'chat' ? CHAT_LOCAL_TOOLS : ISSUE_LOCAL_TOOLS
   const wsCount = WORKSPACE_TOOL_SCHEMAS.length
   const sandboxCount = SANDBOX_TOOL_SCHEMAS.length
@@ -704,36 +719,48 @@ async function main() {
   })
 
   if (githubResult.isOk()) {
-    const sectionEntries = entriesFromMcp('github (mcp, live)', githubResult.value)
+    const sectionEntries = entriesFromMcp('github (native)', githubResult.value)
     const total = sectionEntries.reduce((acc, t) => acc + t.bytes, 0)
-    GITHUB_AVG_TOOL_BYTES = sectionEntries.length > 0 ? total / sectionEntries.length : null
+    GITHUB_AVG_TOOL_BYTES =
+      sectionEntries.length > 0 ? total / sectionEntries.length : null
   }
 
   const githubEntries: ToolEntry[] = githubResult.isOk()
-    ? entriesFromMcp('github (mcp, live)', githubResult.value)
+    ? entriesFromMcp('github (native)', githubResult.value)
     : []
 
-  const estimateBytes =
-    GITHUB_AVG_TOOL_BYTES ??
-    800
+  const estimateBytes = GITHUB_AVG_TOOL_BYTES ?? 800
 
-  const synthEntry = (group: string, name: string, bytes: number): ToolEntry => ({
+  const synthEntry = (
+    group: string,
+    name: string,
+    bytes: number,
+  ): ToolEntry => ({
     group,
     name,
-    description: '<estimated from GitHub MCP avg>',
+    description: '<estimated from native GitHub average>',
     inputSchema: null,
     bytes: Math.round(bytes),
   })
 
-  const gmailEntries: ToolEntry[] = Array.from({ length: REGISTRY_TOOL_COUNTS.gmail }, (_, i) =>
-    synthEntry('gmail (estimated)', `gmail_tool_${i + 1}`, estimateBytes),
+  const gmailEntries: ToolEntry[] = Array.from(
+    { length: REGISTRY_TOOL_COUNTS.gmail },
+    (_, i) =>
+      synthEntry('gmail (estimated)', `gmail_tool_${i + 1}`, estimateBytes),
   )
   const driveEntries: ToolEntry[] = Array.from(
     { length: REGISTRY_TOOL_COUNTS['google-drive'] },
-    (_, i) => synthEntry('google-drive (estimated)', `drive_tool_${i + 1}`, estimateBytes),
+    (_, i) =>
+      synthEntry(
+        'google-drive (estimated)',
+        `drive_tool_${i + 1}`,
+        estimateBytes,
+      ),
   )
-  const slackEntries: ToolEntry[] = Array.from({ length: REGISTRY_TOOL_COUNTS.slack }, (_, i) =>
-    synthEntry('slack (estimated)', `slack_tool_${i + 1}`, estimateBytes),
+  const slackEntries: ToolEntry[] = Array.from(
+    { length: REGISTRY_TOOL_COUNTS.slack },
+    (_, i) =>
+      synthEntry('slack (estimated)', `slack_tool_${i + 1}`, estimateBytes),
   )
 
   const connectorSections: Section[] = [
@@ -743,19 +770,33 @@ async function main() {
     { group: 'slack (est.)', tools: slackEntries },
   ]
 
-  console.log('Connector / MCP tool sources:')
-  console.log(`  github:        ${githubResult.isOk() ? `live (${githubEntries.length})` : `failed (${githubResult.error})`}`)
-  console.log(`  gmail:         estimated (${gmailEntries.length} tools × ~${Math.round(estimateBytes)} chars)`)
-  console.log(`  google-drive:  estimated (${driveEntries.length} tools × ~${Math.round(estimateBytes)} chars)`)
-  console.log(`  slack:         estimated (${slackEntries.length} tools × ~${Math.round(estimateBytes)} chars)`)
+  console.log('Connector tool sources:')
+  console.log(
+    `  github:        ${githubResult.isOk() ? `native (${githubEntries.length})` : `failed (${githubResult.error})`}`,
+  )
+  console.log(
+    `  gmail:         estimated (${gmailEntries.length} tools × ~${Math.round(estimateBytes)} chars)`,
+  )
+  console.log(
+    `  google-drive:  estimated (${driveEntries.length} tools × ~${Math.round(estimateBytes)} chars)`,
+  )
+  console.log(
+    `  slack:         estimated (${slackEntries.length} tools × ~${Math.round(estimateBytes)} chars)`,
+  )
 
   // Chat agent
   const chatLocalSections = buildLocalSections('chat')
-  const chatTotal = summarize('CHAT AGENT', [...chatLocalSections, ...connectorSections])
+  const chatTotal = summarize('CHAT AGENT', [
+    ...chatLocalSections,
+    ...connectorSections,
+  ])
 
   // Issue agent
   const issueLocalSections = buildLocalSections('issue')
-  const issueTotal = summarize('ISSUE AGENT', [...issueLocalSections, ...connectorSections])
+  const issueTotal = summarize('ISSUE AGENT', [
+    ...issueLocalSections,
+    ...connectorSections,
+  ])
 
   // Code-mode comparison: in code mode the model sees ONE tool whose
   // description embeds TypeScript type definitions of every codemode.* fn.
@@ -764,7 +805,9 @@ async function main() {
   // We use a 0.35 multiplier as an empirically-grounded conservative estimate.
   const codemodeFactor = 0.35
   console.log('\n=== CODE MODE PROJECTION (rough) ===')
-  console.log(`  factor used: ${codemodeFactor} (fraction of full tool-schema bytes)`)
+  console.log(
+    `  factor used: ${codemodeFactor} (fraction of full tool-schema bytes)`,
+  )
   console.log(
     `  chat agent:  ${describeBytes(Math.round(chatTotal.totalBytes * codemodeFactor))}`,
   )
@@ -779,10 +822,10 @@ async function main() {
   const contextWindow = 200_000
   console.log('\n=== AGAINST 200K CONTEXT WINDOW ===')
   console.log(
-    `  chat agent  tools: ~${(((chatTotal.totalBytes / 3.5) / contextWindow) * 100).toFixed(2)}% of 200k`,
+    `  chat agent  tools: ~${((chatTotal.totalBytes / 3.5 / contextWindow) * 100).toFixed(2)}% of 200k`,
   )
   console.log(
-    `  issue agent tools: ~${(((issueTotal.totalBytes / 3.5) / contextWindow) * 100).toFixed(2)}% of 200k`,
+    `  issue agent tools: ~${((issueTotal.totalBytes / 3.5 / contextWindow) * 100).toFixed(2)}% of 200k`,
   )
 }
 
