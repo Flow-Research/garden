@@ -3,7 +3,7 @@
 **Status:** current, canonical
 **Last reviewed:** 2026-07-24
 
-This is the canonical design doc for Garden's durable run engine — the thing that turns an `issue_run` or `automation_run` row into an executing, resumable, cancellable Think agent loop. It supersedes the run-orchestration sections of `agent-runtime-rearchitecture.md`, `runtime-execution-boundaries.md` (Workflows section), `project-think-cloudflare.md` (long-running work section), and `automation-plan.md` (runtime lifecycle section) — those docs now point here for engine detail and keep only their surface-specific product content.
+This is the canonical design doc for Garden's durable run engine — the thing that turns an `issue_run` or `automation_run` row into an executing, resumable, cancellable Think agent loop. Surface-specific product docs point here for engine detail.
 
 ## What the engine is
 
@@ -17,17 +17,17 @@ The Workflow owns durability (retries, durable waits, resume/cancel, terminal bo
 
 ## Code map
 
-| Concern | Owner | Evidence |
-| --- | --- | --- |
-| Durable executor | `RunWorkflow extends AgentWorkflow` | `packages/agent-runtime/src/run-workflow.ts` |
-| Agent identity / RPC parent | `AgentDO extends Agent` | `packages/agent-runtime/src/agent-do.ts` |
-| Issue run facet | `IssueRunSubAgent extends Think`, keyed by issue id | `packages/agent-runtime/src/issue-run-sub-agent.ts` |
-| Automation run facet | `AutomationRunSubAgent extends Think`, keyed by run id | `packages/agent-runtime/src/automation-run-sub-agent.ts` |
-| Issue ledger | `issue_run`, `issue_run_event` | `packages/db/src/schema/issues.ts`, `packages/db/src/schema/issue-values.ts` |
-| Automation ledger | `automation`, `automation_trigger`, `automation_run` | `packages/db/src/schema/automations.ts`, `packages/db/src/schema/automation-values.ts` |
-| Run start services | `startIssueRun`, `startAutomationRun` | `packages/server/src/issues/run-service.ts`, `packages/server/src/automations/run-service.ts` |
-| Schedule trigger state | `AutomationTriggerDO` | `packages/agent-runtime/src/automation-trigger-do.ts` |
-| Wrangler bindings | `AgentDO`, `RUN_WORKFLOW`, `AUTOMATION_TRIGGER` | `apps/web/wrangler.jsonc` |
+| Concern                     | Owner                                                  | Evidence                                                                                      |
+| --------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| Durable executor            | `RunWorkflow extends AgentWorkflow`                    | `packages/agent-runtime/src/run-workflow.ts`                                                  |
+| Agent identity / RPC parent | `AgentDO extends Agent`                                | `packages/agent-runtime/src/agent-do.ts`                                                      |
+| Issue run facet             | `IssueRunSubAgent extends Think`, keyed by issue id    | `packages/agent-runtime/src/issue-run-sub-agent.ts`                                           |
+| Automation run facet        | `AutomationRunSubAgent extends Think`, keyed by run id | `packages/agent-runtime/src/automation-run-sub-agent.ts`                                      |
+| Issue ledger                | `issue_run`, `issue_run_event`                         | `packages/db/src/schema/issues.ts`, `packages/db/src/schema/issue-values.ts`                  |
+| Automation ledger           | `automation`, `automation_trigger`, `automation_run`   | `packages/db/src/schema/automations.ts`, `packages/db/src/schema/automation-values.ts`        |
+| Run start services          | `startIssueRun`, `startAutomationRun`                  | `packages/server/src/issues/run-service.ts`, `packages/server/src/automations/run-service.ts` |
+| Schedule trigger state      | `AutomationTriggerDO`                                  | `packages/agent-runtime/src/automation-trigger-do.ts`                                         |
+| Wrangler bindings           | `AgentDO`, `RUN_WORKFLOW`, `AUTOMATION_TRIGGER`        | `apps/web/wrangler.jsonc`                                                                     |
 
 ## Architecture
 
@@ -61,10 +61,10 @@ flowchart LR
 
 ## Two ledgers, one engine
 
-| Surface | Ledger | Status vocabulary | Awaiting/HITL states |
-| --- | --- | --- | --- |
-| Issues | `issue_run` (`issue-run-status` check) | `queued, running, waiting_for_input, waiting_for_approval, succeeded, failed, cancelled, blocked` | Yes — issue runs can pause on `mark_blocked`, questions, or approval gates and resume via `run-control` events. |
-| Automations | `automation_run` | `pending, queued, running, completed, failed, cancelled, skipped` | None today — automation runs currently resolve to a terminal status in one pass; the Workflow's generic `AWAITING_RUN_STATUSES` set is issue-shaped, not exercised by automations yet. |
+| Surface     | Ledger                                 | Status vocabulary                                                                                 | Awaiting/HITL states                                                                                                                                                                   |
+| ----------- | -------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Issues      | `issue_run` (`issue-run-status` check) | `queued, running, waiting_for_input, waiting_for_approval, succeeded, failed, cancelled, blocked` | Yes — issue runs can pause on `mark_blocked`, questions, or approval gates and resume via `run-control` events.                                                                        |
+| Automations | `automation_run`                       | `pending, queued, running, completed, failed, cancelled, skipped`                                 | None today — automation runs currently resolve to a terminal status in one pass; the Workflow's generic `AWAITING_RUN_STATUSES` set is issue-shaped, not exercised by automations yet. |
 
 `RunWorkflow`'s `TERMINAL_RUN_STATUSES` and `AWAITING_RUN_STATUSES` (in `run-workflow.ts`) are the union across both ledgers, not per-surface enums — that's intentional (one generic loop), but it means the Workflow doesn't itself enforce which statuses are valid for which `kind`. Ledger-shape correctness is enforced by each facet's DB check constraints and by `completeWorkflowTurn`.
 
@@ -76,14 +76,17 @@ Both are Workflow control events, sent to the instance keyed by `runId`:
 
 ```ts
 const instance = await env.RUN_WORKFLOW.get(runId)
-await instance.sendEvent({ type: 'run-control', payload: { kind: 'resume' | 'cancel' } })
+await instance.sendEvent({
+  type: 'run-control',
+  payload: { kind: 'resume' | 'cancel' },
+})
 ```
 
 `AgentDO.cancelIssueRun` / `cancelAutomationRun` additionally call `requestCancel` on the live facet and `abortSubAgent(...)` to stop in-flight tool/model work immediately, rather than waiting for the next Workflow step.
 
 ## Automation scheduling
 
-`AutomationTriggerDO` is a separate Durable Object that owns schedule-trigger state — it is not part of the run engine's turn loop, it's what *starts* a scheduled run. It computes the next fire time from `cronExpression` + `timezone`, creates a one-time Agents SDK schedule (`scheduleAutomationTrigger`), and on fire applies the automation's `concurrencyPolicy` (`skip` is the implemented/safe default; `replace` marks the in-flight run replaced; `queue` is schema-only, not implemented — do not expose it in product UI) before inserting the `automation_run` row and calling `AgentDO.startAutomationRunWorkflow`. Manual/webhook/API-triggered runs skip this DO and converge on the same `automation_run` + `AgentDO` + `RunWorkflow` path.
+`AutomationTriggerDO` is a separate Durable Object that owns schedule-trigger state — it is not part of the run engine's turn loop, it's what _starts_ a scheduled run. It computes the next fire time from `cronExpression` + `timezone`, creates a one-time Agents SDK schedule (`scheduleAutomationTrigger`), and on fire applies the automation's `concurrencyPolicy` (`skip` is the implemented/safe default; `replace` marks the in-flight run replaced; `queue` is schema-only, not implemented — do not expose it in product UI) before inserting the `automation_run` row and calling `AgentDO.startAutomationRunWorkflow`. Manual/webhook/API-triggered runs skip this DO and converge on the same `automation_run` + `AgentDO` + `RunWorkflow` path.
 
 ## `Think` durable submissions vs the old model
 
@@ -95,7 +98,7 @@ Before durable submissions, the DO waited in-process for a turn to finish (arbit
 - Do not monkey-patch SDK lifecycle methods (`restoreConnectionsFromStorage`, `submitMessages`, etc.) or destructure/reassign methods off `this` — that silently breaks `this` binding.
 - Do not rebuild a DO-local waiter/timeout layer. Use `submitMessages()` + `onSubmissionStatus()` + `Workflow.waitForEvent()`.
 - Do not route automation execution through `issue_run`, or model automations as issues.
-- If Workflow creation fails, fail that ledger row's start explicitly. Don't hide it behind a second queue/reconciler unless a *current, linked* Cloudflare platform gap requires it.
+- If Workflow creation fails, fail that ledger row's start explicitly. Don't hide it behind a second queue/reconciler unless a _current, linked_ Cloudflare platform gap requires it.
 - Keep issue-run code issue-specific and automation code automation-specific; share only the product-neutral primitives (`RunWorkflow`, model/tool setup, MCP controller patterns).
 
 ## Where Workflows stops being the right tool
@@ -104,9 +107,9 @@ Not all durable-ish work belongs on `RunWorkflow`. Product runs (issue/automatio
 
 ## Open gaps
 
-| Gap | Notes |
-| --- | --- |
-| Prove the full lifecycle in staging | Start, wait, resume, cancel, failure, recovery, duplicate-start prevention, terminal visibility — for both run kinds, end to end through `RunWorkflow`. |
-| `queue` concurrency policy | Schema value exists (`automationConcurrencyPolicyValues`); `AutomationTriggerDO.applyConcurrencyPolicy` does not implement it. Implement end to end or drop it from the type until it is. |
-| Webhook/API trigger hardening | Typed auth, replay/idempotency protection, and attribution for `automation_trigger.kind = webhook | api`. |
-| Automation awaiting states | If automations ever need HITL pause/resume (approval, clarifying question), the Workflow loop already supports it generically — the gap is in `AutomationRunSubAgent` producing `waiting_for_*`-shaped statuses, not in the engine. |
+| Gap                                 | Notes                                                                                                                                                                                                                               |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| Prove the full lifecycle in staging | Start, wait, resume, cancel, failure, recovery, duplicate-start prevention, terminal visibility — for both run kinds, end to end through `RunWorkflow`.                                                                             |
+| `queue` concurrency policy          | Schema value exists (`automationConcurrencyPolicyValues`); `AutomationTriggerDO.applyConcurrencyPolicy` does not implement it. Implement end to end or drop it from the type until it is.                                           |
+| Webhook/API trigger hardening       | Typed auth, replay/idempotency protection, and attribution for `automation_trigger.kind = webhook                                                                                                                                   | api`. |
+| Automation awaiting states          | If automations ever need HITL pause/resume (approval, clarifying question), the Workflow loop already supports it generically — the gap is in `AutomationRunSubAgent` producing `waiting_for_*`-shaped statuses, not in the engine. |

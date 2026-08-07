@@ -19,7 +19,7 @@ import type { AgentDO } from './agent-do'
  * injection, workflow tracking callbacks, and typed `this.agent` RPC. Garden
  * keeps only the product ledger state machine (`issue_run`/`automation_run`)
  * and the turn/wait loop. References: Cloudflare Agents Run Workflows docs,
- * installed `agents/dist/workflows.js`, and docs/features/agent-runtime-rearchitecture.md.
+ * installed `agents/dist/workflows.js`, and docs/core/workflows-engine.md.
  */
 export type RunWorkflowParams =
   | {

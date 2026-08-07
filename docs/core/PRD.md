@@ -137,7 +137,7 @@ Do not use old planning terms (`ask_always`, `ask_on_risky`, `never_ask`) for cu
 - Do not add queue dispatch between `AgentDO` and `RunWorkflow`.
 - Do not switch live chats by mutating Think `this.session`.
 
-Code evidence: `docs/core/technical.md`, `docs/core/chat-runtime-model.md`, `docs/features/agent-runtime-rearchitecture.md`.
+Code evidence: `docs/core/technical.md`, `docs/core/chat-runtime-model.md`, `docs/core/workflows-engine.md`.
 
 ## 9. Success criteria
 
@@ -167,6 +167,6 @@ Engineering success means docs and code agree. Any future architecture doc shoul
 
 - Current technical architecture: `docs/core/technical.md`
 - Chat runtime model: `docs/core/chat-runtime-model.md`
-- Agent runtime rearchitecture: `docs/features/agent-runtime-rearchitecture.md`
+- Durable run engine: `docs/core/workflows-engine.md`
 - Known gaps: `docs/known-gaps/`
 - Current code: `packages/agent-runtime/src`, `packages/db/src/schema`, `apps/web/src/features`
