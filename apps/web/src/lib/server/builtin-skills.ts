@@ -1,7 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import { Effect, Schema } from 'effect'
 import { parseSkillMarkdown } from 'agents/skills'
-import { HARNESSY_QA_SKILLS } from '@garden/agent-runtime'
 import issueInteractionSkillMarkdown from '@garden/agent-runtime/src/skills/issue-interaction/SKILL.md?raw'
 import { SkillMetadata, workspaceChatSkillTarget } from '@garden/core/skills'
 import { schema, type Db } from './db'
@@ -27,10 +26,6 @@ const BUILTIN_SEED_SKILLS: readonly BuiltinSeedSkill[] = [
     content: issueInteractionSkillMarkdown,
     files: [],
   },
-  ...HARNESSY_QA_SKILLS.map((skill) => ({
-    ...skill,
-    sourceUrl: 'https://github.com/Flow-Research/harnessy',
-  })),
 ]
 
 const runtimePrefix = (workspaceId: string, slug: string) =>

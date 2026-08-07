@@ -6,7 +6,6 @@ export {
   RunWorkflow,
   RUN_WORKFLOW_CONTROL_EVENT_TYPE,
   RunWorkflowCreateError,
-  createRunWorkflow,
   type RunWorkflowControlEvent,
   type RunWorkflowEnv,
   type RunWorkflowBinding,
@@ -20,7 +19,12 @@ export {
 export {
   buildContentDisposition,
   documentDownloadUrl,
+  normalizeDownloadFilename,
 } from './documents/document-storage'
+export {
+  DocumentArtifactEvent,
+  type DocumentArtifactEvent as DocumentArtifactEventValue,
+} from './documents/document-artifact-model'
 export {
   PostgresAgentPromptCatalog,
   assembleAgentPrompt,
@@ -29,26 +33,17 @@ export {
   createPromptContextProviders,
 } from './prompt'
 export {
-  AssignedSkillProvider,
-  BuiltinSkillCatalog,
-  MergedSkillCatalog,
-  PostgresSkillCatalog,
-  R2SkillBundleStore,
-  buildBuiltinSkillManifestObjectKey,
-  buildBuiltinSkillObjectKey,
-  createAssignedSkillProvider,
+  loadRuntimeSkillAssignments,
+  loadRuntimeSkillSources,
+  RuntimeSkillEnvironment,
+  RuntimeSkillSources,
+  runtimeSkillSourcesLayer,
 } from './skills'
-export type {
-  LoadedRuntimeSkill,
-  RuntimeAgentId,
-  RuntimeSkillId,
-  RuntimeSkillRecord,
-  RuntimeSkillSlug,
-  RuntimeSkillSummary,
-  SkillBundleStore,
-  SkillCatalog,
-  SkillWorkspace,
-} from './skills'
+export {
+  workspaceSkillObjectKey,
+  workspaceSkillR2Prefix,
+} from './skill-storage-paths'
+export { buildBuiltinSkillObjectKey } from './bundled-skills'
 export type {
   AgentPromptCatalog,
   AgentPromptCatalog as PromptCatalog,
