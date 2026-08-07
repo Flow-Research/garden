@@ -2268,7 +2268,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       mcp: this.mcp,
       getServerStates: () =>
         this.getMcpServers().servers as RuntimeMcpServerStates,
-      addHarnessyMcpServer: async ({ id, props }) =>
+      addExecutorMcpServer: async ({ id, props }) =>
         await this.addMcpServer(
           id,
           this.env

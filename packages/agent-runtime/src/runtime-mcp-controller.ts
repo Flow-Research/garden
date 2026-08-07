@@ -158,7 +158,7 @@ export type McpHost = {
     id: string
     props: RpcMcpConnectorProps
   }) => Promise<McpRegistration & { id?: string }>
-  addHarnessyMcpServer?: (input: {
+  addExecutorMcpServer?: (input: {
     id: string
     props: {
       session: {
@@ -1172,31 +1172,31 @@ export class RuntimeMcpController {
       identityResult.value,
     )
     if (bindingsResult.isErr()) return bindingsResult
-    const addHarnessyMcpServer = this.host.addHarnessyMcpServer
-    if (!addHarnessyMcpServer) {
+    const addExecutorMcpServer = this.host.addExecutorMcpServer
+    if (!addExecutorMcpServer) {
       return Result.err(
         new RuntimeMcpError({
           code: 'mcp_register_failed',
-          message: 'Harnessy MCP session binding is unavailable',
+          message: 'Executor MCP session binding is unavailable',
         }),
       )
     }
 
     this.activateNativeConnectorBindings(bindingsResult.value)
     await this.refreshGitHubHostedMcpTools()
-    const harnessyServerId = 'harnessy'
+    const executorServerId = 'executor'
     for (const server of this.host.mcp.listServers()) {
-      if (server.id !== harnessyServerId && getConnectorById(server.id)) {
+      if (server.id !== executorServerId && getConnectorById(server.id)) {
         await this.host.removeMcpServer(server.id)
       }
     }
     if (
       !this.host.mcp
         .listServers()
-        .some((server) => server.id === harnessyServerId)
+        .some((server) => server.id === executorServerId)
     ) {
-      const registration = await addHarnessyMcpServer({
-        id: harnessyServerId,
+      const registration = await addExecutorMcpServer({
+        id: executorServerId,
         props: {
           session: {
             organizationId: identityResult.value.workspaceId,
@@ -1247,25 +1247,25 @@ export class RuntimeMcpController {
     _now = Date.now(),
   ): ResultValue<boolean, RuntimeMcpError> {
     return Result.ok(
-      this.host.mcp.listServers().some((server) => server.id === 'harnessy'),
+      this.host.mcp.listServers().some((server) => server.id === 'executor'),
     )
   }
 
   async resetProxyMcpServers(_serverIds?: string[]) {
-    const harnessyServer = this.host.mcp
+    const executorServer = this.host.mcp
       .listServers()
-      .find((server) => server.id === 'harnessy')
-    if (!harnessyServer) return Result.ok(undefined)
+      .find((server) => server.id === 'executor')
+    if (!executorServer) return Result.ok(undefined)
 
     return Result.tryPromise({
-      try: async () => this.host.removeMcpServer(harnessyServer.id),
+      try: async () => this.host.removeMcpServer(executorServer.id),
       catch: (cause) =>
         new RuntimeMcpError({
           code: 'mcp_register_failed',
           message:
             cause instanceof Error
               ? cause.message
-              : 'Failed to reset Harnessy MCP session',
+              : 'Failed to reset Executor MCP session',
         }),
     })
   }

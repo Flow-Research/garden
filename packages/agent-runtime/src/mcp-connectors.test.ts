@@ -244,6 +244,7 @@ describe('isMcpFailedConnectionStateMessage', () => {
 
 describe('RuntimeMcpController native installations', () => {
   it('activates Discord tools with the persisted workspace guild binding', async () => {
+    let registeredServerId: string | undefined
     const host: McpHost = {
       name: 'chat:thread-1',
       env: {
@@ -261,7 +262,10 @@ describe('RuntimeMcpController native installations', () => {
         listServers: () => [],
         discoverIfConnected: async () => ({ success: true }),
       },
-      addHarnessyMcpServer: async () => ({ state: 'connected' }),
+      addExecutorMcpServer: async ({ id }) => {
+        registeredServerId = id
+        return { state: 'connected' }
+      },
       removeMcpServer: async () => undefined,
       resolveRuntimeIdentity: async () =>
         Result.ok({
@@ -286,6 +290,7 @@ describe('RuntimeMcpController native installations', () => {
 
     const ready = await controller.ensureProxyMcpConnections()
     expect(ready.isOk()).toBe(true)
+    expect(registeredServerId).toBe('executor')
 
     const aiTools = controller.wrapGetAITools(() => ({}))
     expect(
@@ -326,7 +331,7 @@ describe('RuntimeMcpController GitHub tools', () => {
           return { content: [{ type: 'text', text: 'hosted-mcp-result' }] }
         },
       },
-      addHarnessyMcpServer: async () => ({ state: 'connected' }),
+      addExecutorMcpServer: async () => ({ state: 'connected' }),
       removeMcpServer: async () => undefined,
       resolveRuntimeIdentity: async () =>
         Result.ok({
