@@ -12,7 +12,10 @@
     "worker-configuration.d.ts"
   ],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "node_modules", "dist"],
-  "references": [{ "path": "./tsconfig.shared.json" }],
+  "references": [
+    { "path": "./tsconfig.shared.json" },
+    { "path": "./tsconfig.executor.json" }
+  ],
   "compilerOptions": {
     "composite": true,
     "declaration": true,

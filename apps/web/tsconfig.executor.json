@@ -13,7 +13,14 @@
     "../../third_party/executor/**/*.test.tsx"
   ],
   "compilerOptions": {
-    "noEmit": true,
+    "composite": true,
+    "declaration": true,
+    "declarationMap": false,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "rootDir": "../../third_party/executor",
+    "outDir": ".turbo/types/executor",
+    "tsBuildInfoFile": ".turbo/tsconfig.executor.tsbuildinfo",
     "types": ["node", "@cloudflare/workers-types"]
   }
 }

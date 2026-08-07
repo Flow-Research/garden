@@ -46,10 +46,11 @@ export const settleOAuthCallback = Effect.fn('ExecutorOAuth.settleCallback')(
       }
     }
 
+    const code = input.code
     yield* executorProgram(input.identity, (executor) =>
       executor.oauth.complete({
         state,
-        code: input.code,
+        code,
         ...(input.callbackDomain === undefined
           ? {}
           : { callbackDomain: input.callbackDomain }),
