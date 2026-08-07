@@ -79,6 +79,7 @@ import {
   DocumentArtifactEngine,
   documentArtifactEngineLayer,
 } from './documents/document-artifact-engine'
+import { toDocumentArtifactRpcError } from './documents/document-artifact-model'
 import {
   DocumentArtifactProjection,
   documentArtifactProjectionLayer,
@@ -1181,7 +1182,11 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       mediaType: input.mediaType ?? null,
       bytes: Buffer.from(input.base64, 'base64'),
     })
-    if (!upload.ok || !input.filename.toLowerCase().endsWith('.docx')) {
+    if (
+      !upload.ok ||
+      !upload.document_id ||
+      !input.filename.toLowerCase().endsWith('.docx')
+    ) {
       return upload
     }
 
@@ -1198,7 +1203,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         Effect.match({
           onFailure: (error) => ({
             ok: false as const,
-            error: `${error._tag}: ${error.message}`,
+            error: toDocumentArtifactRpcError(error),
           }),
           onSuccess: (snapshot) => ({ ok: true as const, snapshot }),
         }),
@@ -1217,7 +1222,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         Effect.match({
           onFailure: (error) => ({
             ok: false as const,
-            error: `${error._tag}: ${error.message}`,
+            error: toDocumentArtifactRpcError(error),
           }),
           onSuccess: (snapshot) => ({ ok: true as const, snapshot }),
         }),
@@ -1235,7 +1240,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         Effect.match({
           onFailure: (error) => ({
             ok: false as const,
-            error: `${error._tag}: ${error.message}`,
+            error: toDocumentArtifactRpcError(error),
           }),
           onSuccess: (outcome) => ({ ok: true as const, outcome }),
         }),

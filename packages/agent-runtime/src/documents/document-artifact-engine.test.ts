@@ -4,6 +4,14 @@ import {
   DocumentArtifactEngine,
   documentArtifactEngineLayer,
 } from './document-artifact-engine'
+import {
+  DocumentArtifactAlreadyExistsError,
+  DocumentArtifactNotFoundError,
+  DocumentArtifactPersistenceError,
+  DocumentArtifactValidationError,
+  toDocumentArtifactRpcError,
+} from './document-artifact-model'
+import { DocumentArtifactImportError } from './document-artifact-projection'
 import { documentArtifactMemoryRepositoryLayer } from './document-artifact-repository'
 
 const testLayer = documentArtifactEngineLayer.pipe(
@@ -34,6 +42,42 @@ const initialize = () => {
 afterAll(() => runtime.dispose())
 
 describe('DocumentArtifactEngine', () => {
+  it('serializes domain failures as typed RPC envelopes', () => {
+    const failures = [
+      new DocumentArtifactValidationError({
+        operation: 'apply',
+        message: 'Invalid block.',
+      }),
+      new DocumentArtifactPersistenceError({
+        operation: 'read',
+        message: 'Storage unavailable.',
+        cause: new Error('private storage details'),
+      }),
+      new DocumentArtifactNotFoundError({ documentId: 'document-1' }),
+      new DocumentArtifactAlreadyExistsError({ documentId: 'document-1' }),
+      new DocumentArtifactImportError({
+        filename: 'draft.docx',
+        message: 'Could not import draft.docx.',
+        cause: new Error('private converter details'),
+      }),
+    ]
+
+    const encoded = failures.map(toDocumentArtifactRpcError)
+
+    expect(encoded).toEqual([
+      {
+        _tag: 'DocumentArtifactValidationError',
+        message: 'Invalid block.',
+      },
+      { _tag: 'DocumentArtifactPersistenceError' },
+      { _tag: 'DocumentArtifactNotFoundError' },
+      { _tag: 'DocumentArtifactAlreadyExistsError' },
+      { _tag: 'DocumentArtifactImportError' },
+    ])
+    expect(JSON.stringify(encoded)).not.toContain('private storage details')
+    expect(JSON.stringify(encoded)).not.toContain('private converter details')
+  })
+
   it('applies compact block changes through the public Effect service', async () => {
     const { documentId } = await initialize()
     const outcome = await run(

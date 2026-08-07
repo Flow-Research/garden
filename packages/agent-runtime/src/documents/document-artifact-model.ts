@@ -117,3 +117,38 @@ export type DocumentArtifactError =
   | DocumentArtifactPersistenceError
   | DocumentArtifactNotFoundError
   | DocumentArtifactAlreadyExistsError
+
+/** Serializable failure envelope used across the AgentDO RPC boundary. */
+export const DocumentArtifactRpcError = Schema.TaggedUnion({
+  DocumentArtifactValidationError: { message: Schema.String },
+  DocumentArtifactPersistenceError: {},
+  DocumentArtifactNotFoundError: {},
+  DocumentArtifactAlreadyExistsError: {},
+  DocumentArtifactImportError: {},
+})
+export type DocumentArtifactRpcError = typeof DocumentArtifactRpcError.Type
+
+type DocumentArtifactRpcSourceError =
+  | DocumentArtifactError
+  | { readonly _tag: 'DocumentArtifactImportError' }
+
+/** Converts domain failures into the explicit wire union used by AgentDO RPC. */
+export const toDocumentArtifactRpcError = (
+  error: DocumentArtifactRpcSourceError,
+): DocumentArtifactRpcError =>
+  DocumentArtifactRpcError.match<DocumentArtifactRpcError>(error, {
+    DocumentArtifactValidationError: ({ message }) =>
+      DocumentArtifactRpcError.cases.DocumentArtifactValidationError.make({
+        message,
+      }),
+    DocumentArtifactPersistenceError: () =>
+      DocumentArtifactRpcError.cases.DocumentArtifactPersistenceError.make({}),
+    DocumentArtifactNotFoundError: () =>
+      DocumentArtifactRpcError.cases.DocumentArtifactNotFoundError.make({}),
+    DocumentArtifactAlreadyExistsError: () =>
+      DocumentArtifactRpcError.cases.DocumentArtifactAlreadyExistsError.make(
+        {},
+      ),
+    DocumentArtifactImportError: () =>
+      DocumentArtifactRpcError.cases.DocumentArtifactImportError.make({}),
+  })

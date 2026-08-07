@@ -13,7 +13,9 @@ import {
   HttpApiSchema,
 } from 'effect/unstable/httpapi'
 
-export const DocumentArtifactParams = Schema.Struct({ id: Schema.String })
+const DocumentArtifactId = Schema.String.pipe(Schema.check(Schema.isUUID()))
+
+export const DocumentArtifactParams = Schema.Struct({ id: DocumentArtifactId })
 
 export class DocumentArtifactUnauthorizedError extends Schema.TaggedErrorClass<DocumentArtifactUnauthorizedError>()(
   'DocumentArtifactUnauthorizedError',
