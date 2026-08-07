@@ -1,4 +1,9 @@
 import { getApiTransport } from './state'
+import type {
+  DocumentOperation,
+  DocumentOperationOutcome,
+  DocumentSnapshot,
+} from '@garden/agent-runtime/src/documents/document-artifact-model'
 
 export type DocumentStructureNode = {
   id: string
@@ -78,12 +83,39 @@ export type DocumentMetadata = {
   updated_at: string | null
 }
 
+/** Stable hierarchical cache key for one canonical document artifact. */
+export const documentArtifactQueryKey = (documentId: string) =>
+  ['documents', documentId, 'artifact'] as const
+
 export function getDocumentMetadata(documentId: string): Promise<{
   error?: string
   ok?: boolean
   metadata?: DocumentMetadata
 }> {
   return getApiTransport().request(`/api/documents/${documentId}/metadata`)
+}
+
+/** Reads canonical editable state through the shared Effect HttpApi route. */
+export function getDocumentArtifact(
+  documentId: string,
+): Promise<DocumentSnapshot> {
+  return getApiTransport().request(
+    `/api/documents/${encodeURIComponent(documentId)}/artifact`,
+  )
+}
+
+/** Applies one idempotent canonical block operation through Effect HttpApi. */
+export function applyDocumentArtifactOperation(args: {
+  documentId: string
+  operation: DocumentOperation
+}): Promise<DocumentOperationOutcome> {
+  return getApiTransport().request(
+    `/api/documents/${encodeURIComponent(args.documentId)}/artifact`,
+    {
+      method: 'POST',
+      body: JSON.stringify(args.operation),
+    },
+  )
 }
 
 export function resolveDocumentEdit(args: {
