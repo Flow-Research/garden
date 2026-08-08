@@ -371,9 +371,6 @@ importers:
       date-fns:
         specifier: ^4.1.0
         version: 4.1.0
-      docx-preview:
-        specifier: ^0.3.7
-        version: 0.3.7
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(@cloudflare/workers-types@4.20260702.1)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.28.16)(pg@8.20.0)(sql.js@1.14.1)
@@ -6242,9 +6239,6 @@ packages:
   dockerode@4.0.10:
     resolution: {integrity: sha512-8L/P9JynLBiG7/coiA4FlQXegHltRqS0a+KqI44P1zgQh8QLHTg7FKOwhkBgSJwZTeHsq30WRoVFLuwkfK0YFg==}
     engines: {node: '>= 8.0'}
-
-  docx-preview@0.3.7:
-    resolution: {integrity: sha512-Lav69CTA/IYZPJTsKH7oYeoZjyg96N0wEJMNslGJnZJ+dMUZK85Lt5ASC79yUlD48ecWjuv+rkcmFt6EVPV0Xg==}
 
   docx@9.6.1:
     resolution: {integrity: sha512-ZJja9/KBUuFC109sCMzovoq2GR2wCG/AuxivjA+OHj/q0TEgJIm3S7yrlUxIy3B+bV8YDj/BiHfWyrRFmyWpDQ==}
@@ -14498,10 +14492,6 @@ snapshots:
       uuid: 10.0.0
     transitivePeerDependencies:
       - supports-color
-
-  docx-preview@0.3.7:
-    dependencies:
-      jszip: 3.10.1
 
   docx@9.6.1:
     dependencies:

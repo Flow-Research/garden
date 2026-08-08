@@ -232,23 +232,6 @@ export async function listChatThreadDocumentVersions(input: {
   )
 }
 
-export async function resolveChatThreadDocumentEdit(input: {
-  action: 'accept' | 'reject'
-  documentId: string
-  editId: string
-  hostName: string
-  threadId: string
-}) {
-  const stub = await getAgentRuntimeStub(input.hostName)
-  return disposeRpcResult(
-    await stub.resolveThreadDocumentEdit(input.threadId, {
-      action: input.action,
-      documentId: input.documentId,
-      editId: input.editId,
-    }),
-  )
-}
-
 /** Reads canonical editable document state through its owning chat facet. */
 export async function readChatThreadDocumentArtifact(input: {
   documentId: string

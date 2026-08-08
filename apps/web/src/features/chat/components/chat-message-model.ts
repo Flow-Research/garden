@@ -1,5 +1,5 @@
 /**
- * Pure chat message model — types, tool/edit interpretation, and the
+ * Pure chat message model — types, tool interpretation, and the
  * parts→render-model interpreter. NO React/JSX lives here, so the
  * grouping/flush algorithm and streaming-correctness rules are unit-testable in
  * isolation. The JSX renderers (MessageOrderedParts, artifacts, citations) live
@@ -14,7 +14,6 @@ import {
   type GardenArtifactData,
 } from '@/features/artifacts/artifact-renderer'
 import type { ChatUiMessage } from '../chat-runtime-provider'
-import type { DocumentEditAnnotation } from './chat-document-panel'
 
 export { canonicalJsonString } from '@garden/connectors/capabilities'
 
@@ -52,17 +51,6 @@ export type ToolActivityItem = ChatWorkEntry & {
   state: string
   toolName: string
 }
-
-export type DocumentEditItem = {
-  annotation: DocumentEditAnnotation
-  artifact: GardenArtifactData | null
-  key: string
-}
-
-export type DocumentEditStatusMap = Record<
-  string,
-  'pending' | 'accepted' | 'rejected'
->
 
 const EXT_TO_LANG: Record<string, string> = {
   ts: 'typescript',
@@ -160,61 +148,6 @@ export function getToolOutputPayload(part: ChatUiMessage['parts'][number]) {
   return typeof record.type === 'string' && record.type.startsWith('tool-')
     ? ((record.output ?? record.result) as Record<string, unknown> | null)
     : null
-}
-
-export function getDocumentEditItemsFromPart(args: {
-  index: number
-  messageId: string
-  part: ChatUiMessage['parts'][number]
-}): DocumentEditItem[] {
-  const payload = getToolOutputPayload(args.part)
-  const artifact = normalizeGardenArtifact(payload)
-  const annotations = Array.isArray(payload?.annotations)
-    ? payload.annotations
-    : []
-  return annotations.flatMap((annotation, annotationIndex) => {
-    if (!annotation || typeof annotation !== 'object') return []
-    const item = annotation as Record<string, unknown>
-    if (
-      typeof item.edit_id !== 'string' ||
-      typeof item.document_id !== 'string'
-    ) {
-      return []
-    }
-    return [
-      {
-        annotation: {
-          edit_id: item.edit_id,
-          document_id: item.document_id,
-          version_id:
-            typeof item.version_id === 'string' ? item.version_id : null,
-          version_number:
-            typeof item.version_number === 'number'
-              ? item.version_number
-              : null,
-          del_w_id: typeof item.del_w_id === 'string' ? item.del_w_id : null,
-          ins_w_id: typeof item.ins_w_id === 'string' ? item.ins_w_id : null,
-          inserted_text:
-            typeof item.inserted_text === 'string'
-              ? item.inserted_text
-              : undefined,
-          deleted_text:
-            typeof item.deleted_text === 'string'
-              ? item.deleted_text
-              : undefined,
-          reason: typeof item.reason === 'string' ? item.reason : undefined,
-          status:
-            item.status === 'accepted' ||
-            item.status === 'rejected' ||
-            item.status === 'pending'
-              ? item.status
-              : 'pending',
-        } satisfies DocumentEditAnnotation,
-        artifact,
-        key: `${args.messageId}:edit:${args.index}:${annotationIndex}`,
-      },
-    ]
-  })
 }
 
 export function inferLanguageFromFilename(
@@ -330,7 +263,7 @@ export function productToolLabel(
     case 'generateDocx':
       return filename ? `Writing ${filename}` : 'Writing document'
     case 'editDocument':
-      return filename ? `Editing ${filename}` : 'Preparing tracked edits'
+      return filename ? `Editing ${filename}` : 'Editing document'
     case 'convertDocumentToPdf':
       return filename ? `Converting ${filename}` : 'Converting document to PDF'
     case 'askUserInput':
@@ -360,7 +293,6 @@ type MessageRenderNode =
       stepCount: number
     }
   | { kind: 'artifact'; key: string; artifact: GardenArtifactData }
-  | { kind: 'edits'; key: string; edits: DocumentEditItem[] }
   | {
       kind: 'raw'
       key: string
@@ -387,7 +319,7 @@ function isRenderableArtifactPart(
 /**
  * Interpret a message's parts into an ordered render model. Consecutive tool
  * parts accumulate into one "work" batch that flushes when a non-tool
- * renderable (reasoning/text/artifact/edits) interrupts them or the message
+ * renderable (reasoning/text/artifact) interrupts them or the message
  * ends. Streaming-correctness rules live here:
  *  - reasoning shimmer is driven by the part's own `state === 'streaming'`,
  *    gated by whole-message streaming so finished history never shimmers. [M1]
@@ -481,19 +413,6 @@ export function buildMessageRenderModel(
         })
       }
 
-      const edits = getDocumentEditItemsFromPart({
-        index,
-        messageId: message.id,
-        part,
-      })
-      if (edits.length > 0) {
-        flushWork()
-        nodes.push({
-          kind: 'edits',
-          key: `${message.id}:tool-edits:${index}`,
-          edits,
-        })
-      }
       return
     }
 

@@ -88,6 +88,10 @@ export function GardenDocDownloadBlock({
     typeof versionNumber === 'number' &&
     Number.isFinite(versionNumber) &&
     versionNumber > 0
+  const sourceDownloadLabel =
+    artifact.id && filename.toLowerCase().endsWith('.docx')
+      ? 'Download original DOCX'
+      : `Download ${filename}`
 
   const body = (
     <div className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3">
@@ -111,6 +115,8 @@ export function GardenDocDownloadBlock({
     <a
       href={artifact.url}
       download={filename}
+      aria-label={sourceDownloadLabel}
+      title={sourceDownloadLabel}
       onClick={(event) => event.stopPropagation()}
       className="flex shrink-0 cursor-pointer items-center border-l border-border bg-background px-6 text-muted-foreground/60 transition-colors hover:bg-accent hover:text-muted-foreground"
     >

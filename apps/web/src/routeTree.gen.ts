@@ -82,7 +82,6 @@ import { Route as ApiInboxIdReadRouteImport } from './routes/api/inbox/$id/read'
 import { Route as ApiInboxIdArchiveRouteImport } from './routes/api/inbox/$id/archive'
 import { Route as ApiExecutorOauthStartRouteImport } from './routes/api/executor/oauth/start'
 import { Route as ApiDocumentsIdVersionsRouteImport } from './routes/api/documents/$id/versions'
-import { Route as ApiDocumentsIdTrackedChangeIdsRouteImport } from './routes/api/documents/$id/tracked-change-ids'
 import { Route as ApiDocumentsIdMetadataRouteImport } from './routes/api/documents/$id/metadata'
 import { Route as ApiDocumentsIdDocxRouteImport } from './routes/api/documents/$id/docx'
 import { Route as ApiDocumentsIdDisplayRouteImport } from './routes/api/documents/$id/display'
@@ -102,7 +101,6 @@ import { Route as ApiChatThreadsIdPrimaryIssueRouteImport } from './routes/api/c
 import { Route as ApiChatThreadsIdPermissionRequestsRouteImport } from './routes/api/chat/threads/$id/permission-requests'
 import { Route as ApiChatThreadsIdDocumentsRouteImport } from './routes/api/chat/threads/$id/documents'
 import { Route as ApiAutomationsIdTriggersTriggerIdRouteImport } from './routes/api/automations/$id/triggers/$triggerId'
-import { Route as ApiDocumentsDocumentIdEditsEditIdActionRouteImport } from './routes/api/documents/$documentId/edits/$editId/$action'
 import { Route as ApiConnectionsConnectorIdToolsNameGrantRouteImport } from './routes/api/connections/$connectorId/tools/$name/grant'
 
 const SignupRoute = SignupRouteImport.update({
@@ -479,12 +477,6 @@ const ApiDocumentsIdVersionsRoute = ApiDocumentsIdVersionsRouteImport.update({
   path: '/api/documents/$id/versions',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiDocumentsIdTrackedChangeIdsRoute =
-  ApiDocumentsIdTrackedChangeIdsRouteImport.update({
-    id: '/api/documents/$id/tracked-change-ids',
-    path: '/api/documents/$id/tracked-change-ids',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ApiDocumentsIdMetadataRoute = ApiDocumentsIdMetadataRouteImport.update({
   id: '/api/documents/$id/metadata',
   path: '/api/documents/$id/metadata',
@@ -590,12 +582,6 @@ const ApiAutomationsIdTriggersTriggerIdRoute =
     path: '/$triggerId',
     getParentRoute: () => ApiAutomationsIdTriggersRoute,
   } as any)
-const ApiDocumentsDocumentIdEditsEditIdActionRoute =
-  ApiDocumentsDocumentIdEditsEditIdActionRouteImport.update({
-    id: '/api/documents/$documentId/edits/$editId/$action',
-    path: '/api/documents/$documentId/edits/$editId/$action',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ApiConnectionsConnectorIdToolsNameGrantRoute =
   ApiConnectionsConnectorIdToolsNameGrantRouteImport.update({
     id: '/tools/$name/grant',
@@ -666,7 +652,6 @@ export interface FileRoutesByFullPath {
   '/api/documents/$id/display': typeof ApiDocumentsIdDisplayRoute
   '/api/documents/$id/docx': typeof ApiDocumentsIdDocxRoute
   '/api/documents/$id/metadata': typeof ApiDocumentsIdMetadataRoute
-  '/api/documents/$id/tracked-change-ids': typeof ApiDocumentsIdTrackedChangeIdsRoute
   '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
   '/api/executor/oauth/start': typeof ApiExecutorOauthStartRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
@@ -697,7 +682,6 @@ export interface FileRoutesByFullPath {
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
   '/api/connections/$connectorId/tools/$name/grant': typeof ApiConnectionsConnectorIdToolsNameGrantRoute
-  '/api/documents/$documentId/edits/$editId/$action': typeof ApiDocumentsDocumentIdEditsEditIdActionRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -762,7 +746,6 @@ export interface FileRoutesByTo {
   '/api/documents/$id/display': typeof ApiDocumentsIdDisplayRoute
   '/api/documents/$id/docx': typeof ApiDocumentsIdDocxRoute
   '/api/documents/$id/metadata': typeof ApiDocumentsIdMetadataRoute
-  '/api/documents/$id/tracked-change-ids': typeof ApiDocumentsIdTrackedChangeIdsRoute
   '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
   '/api/executor/oauth/start': typeof ApiExecutorOauthStartRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
@@ -793,7 +776,6 @@ export interface FileRoutesByTo {
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
   '/api/connections/$connectorId/tools/$name/grant': typeof ApiConnectionsConnectorIdToolsNameGrantRoute
-  '/api/documents/$documentId/edits/$editId/$action': typeof ApiDocumentsDocumentIdEditsEditIdActionRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -860,7 +842,6 @@ export interface FileRoutesById {
   '/api/documents/$id/display': typeof ApiDocumentsIdDisplayRoute
   '/api/documents/$id/docx': typeof ApiDocumentsIdDocxRoute
   '/api/documents/$id/metadata': typeof ApiDocumentsIdMetadataRoute
-  '/api/documents/$id/tracked-change-ids': typeof ApiDocumentsIdTrackedChangeIdsRoute
   '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
   '/api/executor/oauth/start': typeof ApiExecutorOauthStartRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
@@ -891,7 +872,6 @@ export interface FileRoutesById {
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
   '/api/connections/$connectorId/tools/$name/grant': typeof ApiConnectionsConnectorIdToolsNameGrantRoute
-  '/api/documents/$documentId/edits/$editId/$action': typeof ApiDocumentsDocumentIdEditsEditIdActionRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -958,7 +938,6 @@ export interface FileRouteTypes {
     | '/api/documents/$id/display'
     | '/api/documents/$id/docx'
     | '/api/documents/$id/metadata'
-    | '/api/documents/$id/tracked-change-ids'
     | '/api/documents/$id/versions'
     | '/api/executor/oauth/start'
     | '/api/inbox/$id/archive'
@@ -989,7 +968,6 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
     | '/api/connections/$connectorId/tools/$name/grant'
-    | '/api/documents/$documentId/edits/$editId/$action'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1054,7 +1032,6 @@ export interface FileRouteTypes {
     | '/api/documents/$id/display'
     | '/api/documents/$id/docx'
     | '/api/documents/$id/metadata'
-    | '/api/documents/$id/tracked-change-ids'
     | '/api/documents/$id/versions'
     | '/api/executor/oauth/start'
     | '/api/inbox/$id/archive'
@@ -1085,7 +1062,6 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
     | '/api/connections/$connectorId/tools/$name/grant'
-    | '/api/documents/$documentId/edits/$editId/$action'
   id:
     | '__root__'
     | '/'
@@ -1151,7 +1127,6 @@ export interface FileRouteTypes {
     | '/api/documents/$id/display'
     | '/api/documents/$id/docx'
     | '/api/documents/$id/metadata'
-    | '/api/documents/$id/tracked-change-ids'
     | '/api/documents/$id/versions'
     | '/api/executor/oauth/start'
     | '/api/inbox/$id/archive'
@@ -1182,7 +1157,6 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
     | '/api/connections/$connectorId/tools/$name/grant'
-    | '/api/documents/$documentId/edits/$editId/$action'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1224,12 +1198,10 @@ export interface RootRouteChildren {
   ApiDocumentsIdDisplayRoute: typeof ApiDocumentsIdDisplayRoute
   ApiDocumentsIdDocxRoute: typeof ApiDocumentsIdDocxRoute
   ApiDocumentsIdMetadataRoute: typeof ApiDocumentsIdMetadataRoute
-  ApiDocumentsIdTrackedChangeIdsRoute: typeof ApiDocumentsIdTrackedChangeIdsRoute
   ApiDocumentsIdVersionsRoute: typeof ApiDocumentsIdVersionsRoute
   ApiExecutorOauthStartRoute: typeof ApiExecutorOauthStartRoute
   ApiPermissionRequestsIdResolveRoute: typeof ApiPermissionRequestsIdResolveRoute
   ApiWorkProductsIdReviewRoute: typeof ApiWorkProductsIdReviewRoute
-  ApiDocumentsDocumentIdEditsEditIdActionRoute: typeof ApiDocumentsDocumentIdEditsEditIdActionRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1745,13 +1717,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiDocumentsIdVersionsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/documents/$id/tracked-change-ids': {
-      id: '/api/documents/$id/tracked-change-ids'
-      path: '/api/documents/$id/tracked-change-ids'
-      fullPath: '/api/documents/$id/tracked-change-ids'
-      preLoaderRoute: typeof ApiDocumentsIdTrackedChangeIdsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/documents/$id/metadata': {
       id: '/api/documents/$id/metadata'
       path: '/api/documents/$id/metadata'
@@ -1884,13 +1849,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/automations/$id/triggers/$triggerId'
       preLoaderRoute: typeof ApiAutomationsIdTriggersTriggerIdRouteImport
       parentRoute: typeof ApiAutomationsIdTriggersRoute
-    }
-    '/api/documents/$documentId/edits/$editId/$action': {
-      id: '/api/documents/$documentId/edits/$editId/$action'
-      path: '/api/documents/$documentId/edits/$editId/$action'
-      fullPath: '/api/documents/$documentId/edits/$editId/$action'
-      preLoaderRoute: typeof ApiDocumentsDocumentIdEditsEditIdActionRouteImport
-      parentRoute: typeof rootRouteImport
     }
     '/api/connections/$connectorId/tools/$name/grant': {
       id: '/api/connections/$connectorId/tools/$name/grant'
@@ -2247,13 +2205,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDocumentsIdDisplayRoute: ApiDocumentsIdDisplayRoute,
   ApiDocumentsIdDocxRoute: ApiDocumentsIdDocxRoute,
   ApiDocumentsIdMetadataRoute: ApiDocumentsIdMetadataRoute,
-  ApiDocumentsIdTrackedChangeIdsRoute: ApiDocumentsIdTrackedChangeIdsRoute,
   ApiDocumentsIdVersionsRoute: ApiDocumentsIdVersionsRoute,
   ApiExecutorOauthStartRoute: ApiExecutorOauthStartRoute,
   ApiPermissionRequestsIdResolveRoute: ApiPermissionRequestsIdResolveRoute,
   ApiWorkProductsIdReviewRoute: ApiWorkProductsIdReviewRoute,
-  ApiDocumentsDocumentIdEditsEditIdActionRoute:
-    ApiDocumentsDocumentIdEditsEditIdActionRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

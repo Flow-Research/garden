@@ -43,10 +43,8 @@ import {
   DocumentSidePanel,
   withDocumentVersionUrl,
   type DocumentCitationAnnotation,
-  type DocumentEditAnnotation,
   type DocumentPanelView,
 } from './chat-document-panel'
-import { type DocumentEditStatusMap } from './chat-message-parts'
 import {
   Composer,
   createFileList,
@@ -230,8 +228,6 @@ export function ConnectedChatPanelInteraction({
   const [isRetrying, setIsRetrying] = useState(false)
   const [documentPanelView, setDocumentPanelView] =
     useState<DocumentPanelView | null>(null)
-  const [resolvedDocumentEditStatuses, setResolvedDocumentEditStatuses] =
-    useState<DocumentEditStatusMap>({})
   const [optimisticPendingTurn, setOptimisticPendingTurn] = useState(false)
   const lastSentTextRef = useRef<string | null>(null)
   const pendingMessageCountRef = useRef<number | null>(null)
@@ -273,7 +269,6 @@ export function ConnectedChatPanelInteraction({
     setDocumentPanelView(null)
     setIsRetrying(false)
     setOptimisticPendingTurn(false)
-    setResolvedDocumentEditStatuses({})
     lastSentTextRef.current = null
     pendingMessageCountRef.current = null
   }, [sessionId])
@@ -365,12 +360,10 @@ export function ConnectedChatPanelInteraction({
             .join('\n')}`
         : ''
 
-    // What the user has open in the side panel — could be a document,
-    // a tracked edit, or a citation. All three carry the underlying
-    // artifact, and the model wants to know about it in every case so
+    // What the user has open in the side panel — a document or citation.
+    // Both carry the underlying artifact, and the model wants it so
     // unqualified references like "this" or "the doc" land on the right
-    // file. Mode is included so the prompt can mention edit/citation
-    // context when relevant.
+    // file. Mode is included so the prompt can mention citation context.
     const displayedDoc = documentPanelView?.artifact
       ? {
           handle: documentPanelView.artifact.id,
@@ -383,11 +376,9 @@ export function ConnectedChatPanelInteraction({
 
     const displayedDocContext = displayedDoc
       ? `The user is currently viewing this document in the side panel${
-          displayedDoc.mode === 'edit'
-            ? ' (reviewing a tracked edit)'
-            : displayedDoc.mode === 'citation'
-              ? ' (looking at a cited passage)'
-              : ''
+          displayedDoc.mode === 'citation'
+            ? ' (looking at a cited passage)'
+            : ''
         }. Prefer it as the implicit subject when the user says "this", "the doc", or otherwise refers to a document without naming one. Refer to it by filename only — never mention the handle, id, or version UUID:\n- handle: ${displayedDoc.handle}; filename: ${displayedDoc.filename}${
           displayedDoc.versionNumber ? ` (V${displayedDoc.versionNumber})` : ''
         }`
@@ -496,22 +487,6 @@ export function ConnectedChatPanelInteraction({
     [openDocumentArtifact],
   )
 
-  const openDocumentEdit = useCallback(
-    (annotation: DocumentEditAnnotation, artifact: GardenArtifactData) => {
-      setDocumentPanelView({
-        annotation: {
-          ...annotation,
-          status:
-            resolvedDocumentEditStatuses[annotation.edit_id] ??
-            annotation.status,
-        },
-        artifact,
-        kind: 'edit',
-      })
-    },
-    [resolvedDocumentEditStatuses],
-  )
-
   const openDocumentCitation = useCallback(
     (citation: DocumentCitationAnnotation) => {
       setDocumentPanelView({
@@ -534,47 +509,6 @@ export function ConnectedChatPanelInteraction({
     [],
   )
 
-  const handleDocumentEditResolved = useCallback(
-    (editId: string, status: 'accepted' | 'rejected') => {
-      setResolvedDocumentEditStatuses((current) => ({
-        ...current,
-        [editId]: status,
-      }))
-      setDocumentPanelView((current) => {
-        if (current?.kind !== 'edit' || current.annotation.edit_id !== editId) {
-          return current
-        }
-        return {
-          ...current,
-          annotation: {
-            ...current.annotation,
-            status,
-          },
-        }
-      })
-      void queryClient.invalidateQueries({
-        queryKey: ['chat-thread-documents', sessionId],
-      })
-    },
-    [queryClient, sessionId],
-  )
-  const handleDocumentEditResolveStart = useCallback(
-    (editId: string, status: 'accepted' | 'rejected') => {
-      setResolvedDocumentEditStatuses((current) => ({
-        ...current,
-        [editId]: status,
-      }))
-    },
-    [],
-  )
-  const handleDocumentEditResolveError = useCallback((editId: string) => {
-    setResolvedDocumentEditStatuses((current) => {
-      const { [editId]: removed, ...rest } = current
-      void removed
-      return rest
-    })
-  }, [])
-
   const closeDocumentPanel = useCallback(() => {
     setDocumentPanelView(null)
   }, [])
@@ -595,7 +529,6 @@ export function ConnectedChatPanelInteraction({
       sidePanel={
         <DocumentSidePanel
           onClose={closeDocumentPanel}
-          onEditResolved={handleDocumentEditResolved}
           view={documentPanelView}
         />
       }
@@ -621,13 +554,8 @@ export function ConnectedChatPanelInteraction({
                 isRecovering={isRecovering}
                 isStreaming={isStreaming}
                 onOpenDocument={openDocumentArtifact}
-                onOpenEdit={openDocumentEdit}
                 onOpenCitation={openDocumentCitation}
-                onDocumentEditResolveError={handleDocumentEditResolveError}
-                onDocumentEditResolveStart={handleDocumentEditResolveStart}
-                onDocumentEditResolved={handleDocumentEditResolved}
                 onResolveToolApproval={handleResolveToolApproval}
-                resolvedDocumentEditStatuses={resolvedDocumentEditStatuses}
                 resolvedApprovalIds={resolvedApprovalIds}
                 resolvedPermissionRequestIds={resolvedAgentProposalRequestIds}
                 resolvingToolCallIds={resolvingToolCallIds}

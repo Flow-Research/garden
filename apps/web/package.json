@@ -110,7 +110,6 @@
     "cmdk": "^1.1.1",
     "cron-parser": "^5.5.0",
     "date-fns": "^4.1.0",
-    "docx-preview": "^0.3.7",
     "drizzle-orm": "catalog:",
     "embla-carousel-react": "^8.6.0",
     "emoji-mart": "^5.6.0",

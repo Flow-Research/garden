@@ -4,27 +4,10 @@ import {
 } from './document-artifact'
 
 export type GardenArtifactData = DocumentArtifactData
-export type GardenArtifactHighlight = {
-  deletedText?: string
-  delWId?: string | null
-  insertedText?: string
-  insWId?: string | null
-  key: string
-}
 
 export type GardenCitationQuote = {
   page?: number | string | null
   quote: string
-}
-
-export type GardenArtifactOptimisticResolution = {
-  action: 'accept' | 'reject'
-  deletedText?: string
-  delWId?: string | null
-  insertedText?: string
-  insWId?: string | null
-  key: string
-  nonce: number
 }
 
 export function normalizeGardenArtifact(
@@ -76,32 +59,20 @@ export function normalizeGardenArtifact(
 export function GardenArtifact({
   chrome,
   data,
-  highlight,
-  onWarningDismiss,
-  optimisticResolution,
   quotes,
   refreshKey,
-  warning,
 }: {
   chrome?: boolean
   data: GardenArtifactData
-  highlight?: GardenArtifactHighlight | null
-  onWarningDismiss?: () => void
-  optimisticResolution?: GardenArtifactOptimisticResolution | null
   quotes?: GardenCitationQuote[]
   refreshKey?: number
-  warning?: string | null
 }) {
   return (
     <DocumentArtifact
       chrome={chrome}
       data={data}
-      highlight={highlight}
-      onWarningDismiss={onWarningDismiss}
-      optimisticResolution={optimisticResolution}
       quotes={quotes}
       refreshKey={refreshKey}
-      warning={warning}
     />
   )
 }

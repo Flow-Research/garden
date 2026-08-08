@@ -149,14 +149,3 @@ export function subscribeDocumentArtifactEvents(args: {
     source.close()
   }
 }
-
-export function resolveDocumentEdit(args: {
-  action: 'accept' | 'reject'
-  documentId: string
-  editId: string
-}): Promise<unknown> {
-  return getApiTransport().request(
-    `/api/documents/${args.documentId}/edits/${args.editId}/${args.action}`,
-    { method: 'POST' },
-  )
-}

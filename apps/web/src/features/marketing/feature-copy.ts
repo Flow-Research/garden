@@ -266,7 +266,7 @@ export const gardenFeatures: GardenFeature[] = [
     group: 'runtime',
     why: 'Drafts and reports should not vanish in chat scrollback. They need identity, versions, edits, and preview.',
     helps:
-      'Generate, upload, edit with tracked changes, accept/reject, convert to PDF, and cite sources from chat or task context.',
+      'Generate, upload, edit collaboratively, convert to PDF, and cite sources from chat or task context.',
     triggered:
       'User uploads in chat or an agent calls document tools during a thread or run. Artifacts open from that context today (not a global docs tab yet).',
   },
