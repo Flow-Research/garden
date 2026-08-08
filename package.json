@@ -4,6 +4,9 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "turbo run dev --ui=tui --filter=@garden/web",
     "dev:local": "turbo run dev:local --ui=tui --filter=@garden/web",
@@ -25,13 +28,14 @@
     "clean": "turbo run clean"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "catalog:",
     "@garden/connectors": "workspace:*",
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@typescript/native": "catalog:",
     "alchemy": "^0.93.12",
     "oxfmt": "^0.45.0",
     "oxlint": "^1.60.0",
-    "turbo": "^2.5.8",
-    "@typescript/native": "catalog:"
+    "turbo": "2.9.14"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -39,6 +43,11 @@
       "lightningcss",
       "workerd"
     ],
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "@cloudflare/workers-types": "^4.20260424.1 || ^5.20260714.1"
+      }
+    },
     "overrides": {
       "alchemy@0.93.12>miniflare": "4.20260714.0",
       "@posthog/cli": "0.8.4",
@@ -46,7 +55,36 @@
       "@effect/atom-react": "4.0.0-beta.102",
       "@effect/platform-node": "4.0.0-beta.102",
       "@effect/platform-node-shared": "4.0.0-beta.102",
-      "@effect/vitest": "4.0.0-beta.102"
+      "@effect/vitest": "4.0.0-beta.102",
+      "@babel/core": "7.29.6",
+      "@modelcontextprotocol/sdk": "1.30.0",
+      "@modelcontextprotocol/sdk>@hono/node-server": "2.0.10",
+      "@tanstack/start-server-core": "1.167.30",
+      "body-parser": "2.3.0",
+      "brace-expansion@2": "2.1.4",
+      "brace-expansion@>=4 <6": "5.0.9",
+      "dompurify": "3.4.13",
+      "esbuild@<=0.24.2": "0.25.0",
+      "esbuild@>=0.27.3 <0.28.1": "0.28.1",
+      "fast-uri": "3.1.5",
+      "hono": "4.12.34",
+      "ip-address": "10.3.1",
+      "js-yaml": "4.3.1",
+      "kysely": "0.28.17",
+      "linkify-it": "5.0.2",
+      "mermaid": "11.16.1",
+      "miniflare@4>sharp": "0.35.3",
+      "nanoid@3": "3.3.17",
+      "nanoid@>=4 <6": "5.1.16",
+      "launch-editor": "2.14.1",
+      "postcss": "8.5.23",
+      "qs": "6.15.2",
+      "seroval": "1.5.5",
+      "seroval-plugins": "1.5.5",
+      "shell-quote": "1.9.0",
+      "undici@7": "7.29.0",
+      "undici@8": "8.9.0",
+      "ws": "8.21.0"
     },
     "patchedDependencies": {
       "agents@0.17.3": "patches/agents@0.17.3.patch"

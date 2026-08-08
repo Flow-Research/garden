@@ -14,7 +14,7 @@
   "devDependencies": {
     "@types/pg": "^8.15.5",
     "drizzle-kit": "^0.31.7",
-    "testcontainers": "^11.10.1",
+    "testcontainers": "^12.1.0",
     "@typescript/native": "catalog:",
     "vitest": "catalog:"
   },
