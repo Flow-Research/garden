@@ -52,6 +52,16 @@ describe('htmlToDocumentBlocks', () => {
     )
   })
 
+  it('round-trips Workspace Docs block identity and Chromium underline CSS', () => {
+    const sanitized = sanitizeDocumentBlockHtml(
+      '<p data-block-id="b_editor"><span style="text-decoration-line: underline">Underlined</span></p>',
+    )
+
+    expect(sanitized).toBe(
+      '<p data-block-id="b_editor"><span style="text-decoration-line: underline">Underlined</span></p>',
+    )
+  })
+
   it('round-trips the bounded command, title, link, and image vocabulary', () => {
     const sanitized = sanitizeDocumentBlockHtml(`
       <h1 class="doc-title"><b>Title</b></h1>

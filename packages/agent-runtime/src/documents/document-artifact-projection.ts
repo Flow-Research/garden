@@ -134,7 +134,7 @@ const safeStyleValue = (property: string, value: string) => {
       normalized,
     )
   }
-  if (property === 'text-decoration') {
+  if (['text-decoration', 'text-decoration-line'].includes(property)) {
     return /^(none|underline|line-through|underline line-through|line-through underline)$/.test(
       normalized,
     )
@@ -174,6 +174,14 @@ const sanitizeElement = (element: HtmlElement) => {
   element.attrs = element.attrs.flatMap(({ name, value }) => {
     const attribute = name.toLowerCase()
     if (attribute.startsWith('on')) return []
+    if (
+      attribute === 'data-block-id' &&
+      BLOCK_ELEMENTS.has(tagName) &&
+      value.trim().length > 0 &&
+      value.length <= 100
+    ) {
+      return [{ name, value }]
+    }
     if (attribute === 'style') {
       const sanitized = sanitizeStyle(value)
       return sanitized ? [{ name, value: sanitized }] : []
