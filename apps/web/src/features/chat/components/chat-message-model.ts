@@ -264,8 +264,6 @@ export function productToolLabel(
       return filename ? `Writing ${filename}` : 'Writing document'
     case 'editDocument':
       return filename ? `Editing ${filename}` : 'Editing document'
-    case 'convertDocumentToPdf':
-      return filename ? `Converting ${filename}` : 'Converting document to PDF'
     case 'askUserInput':
       return 'Waiting for your input'
     default:

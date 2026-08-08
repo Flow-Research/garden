@@ -473,12 +473,6 @@ const CHAT_TOOLS: Array<{
       title: z.string().max(500).optional(),
     }),
   },
-  {
-    name: 'convertDocumentToPdf',
-    description:
-      'Convert an existing DOC/DOCX document to a PDF artifact by running LibreOffice in the sandbox/code-execution environment, then storing the PDF back into this agent workspace.',
-    schema: z.object({ documentId: z.string().uuid() }),
-  },
 ]
 
 for (const tool of CHAT_TOOLS) {

@@ -40,7 +40,6 @@ const SYSTEM_PROMPT =
     '- findInDocument(documentId, query): targeted search',
     '- generateDocx(title, sections): create a .docx artifact from a structured outline',
     '- editDocument(documentId, upserts, deletes, order, title?): immediate canonical block edits on a .docx artifact',
-    '- convertDocumentToPdf(documentId): convert a .docx artifact to a PDF artifact',
     '- load_skill(slug): load a skill body when the artifact tools cannot express the task',
   ].join('\n')
 
@@ -121,14 +120,6 @@ const tools = {
       title: z.string().optional(),
     }),
     execute: async () => ({ ok: true, canonicalRevision: 2 }),
-  }),
-  convertDocumentToPdf: tool({
-    description: 'Convert a .docx artifact to PDF.',
-    inputSchema: z.object({ documentId: z.string() }),
-    execute: async () => ({
-      ok: true,
-      pdfDocumentId: '00000000-0000-4000-8000-0000000000aa',
-    }),
   }),
   load_skill: tool({
     description:

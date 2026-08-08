@@ -31,7 +31,6 @@ import {
   getDocumentBytes,
   listDocuments,
   readDocument,
-  registerUploadedDocument,
   type DocumentArtifactToolAuthority,
   type DocumentToolContext,
 } from './documents/document-tools'
@@ -2146,69 +2145,5 @@ export function createChatSubAgentTools({
         })
       },
     }),
-
-    convertDocumentToPdf: tool({
-      description:
-        'Convert an existing DOC/DOCX document to a PDF artifact by running LibreOffice in the sandbox/code-execution environment, then storing the PDF back into this agent workspace.',
-      inputSchema: z.object({
-        documentId: z
-          .string()
-          .uuid()
-          .describe(
-            'Internal source document handle. Never show this value to the user.',
-          ),
-      }),
-      execute: async ({ documentId }) => {
-        const context = documentContext()
-        if (!context) {
-          return { ok: false, error: 'Document tools are not configured.' }
-        }
-        const source = await getDocumentBytes({ context, documentId })
-        if (!source.ok) return source
-        if (!source.bytes) {
-          return { ok: false, error: 'Source document bytes not found.' }
-        }
-        const sourceFilename = source.filename ?? 'document.docx'
-        const stem = sourceFilename.replace(/\.[^.]+$/, '') || 'document'
-        const dir = `/workspace/.scratch/document-convert/${documentId}`
-        const inputBase64Path = `${dir}/input.b64`
-        const inputPath = `${dir}/${sourceFilename}`
-        const outputPath = `${dir}/${stem}.pdf`
-        const sandbox = getSandbox()
-        await sandbox.mkdir(dir, { recursive: true })
-        await sandbox.writeFile(
-          inputBase64Path,
-          Buffer.from(source.bytes).toString('base64'),
-        )
-        const command = [
-          `base64 -d ${shellQuote(inputBase64Path)} > ${shellQuote(inputPath)}`,
-          `(libreoffice --headless --convert-to pdf --outdir ${shellQuote(dir)} ${shellQuote(inputPath)} || soffice --headless --convert-to pdf --outdir ${shellQuote(dir)} ${shellQuote(inputPath)})`,
-        ].join(' && ')
-        const result = await sandbox.exec(command)
-        if (!result.success) {
-          return {
-            ok: false,
-            error:
-              result.stderr ||
-              result.stdout ||
-              'LibreOffice conversion failed in sandbox.',
-          }
-        }
-        const pdf = await sandbox.readFile(outputPath, { encoding: 'base64' })
-        if (!pdf.success || !pdf.content) {
-          return { ok: false, error: 'Converted PDF could not be read.' }
-        }
-        return await registerUploadedDocument({
-          context,
-          filename: `${stem}.pdf`,
-          mediaType: 'application/pdf',
-          bytes: Buffer.from(pdf.content, 'base64'),
-        })
-      },
-    }),
   }
-}
-
-function shellQuote(value: string) {
-  return `'${value.replace(/'/g, `'\\''`)}'`
 }
