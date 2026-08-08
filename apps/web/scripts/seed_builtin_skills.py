@@ -12,6 +12,7 @@ SKILLS = ("pdf", "docx", "xlsx", "pptx")
 BUCKET = os.environ.get("BUILTIN_SKILLS_BUCKET", "garden-files-dev")
 DOWNLOAD_BASE_URL = os.environ.get("BUILTIN_SKILLS_DOWNLOAD_BASE_URL")
 PREFIX = "builtin-skills"
+WEB_ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> None:
@@ -67,7 +68,7 @@ def run(command: list[str]) -> None:
         attempts += 1
         result = subprocess.run(
             command,
-            cwd="${REPO_ROOT}/apps/web",
+            cwd=WEB_ROOT,
         )
         if result.returncode == 0:
             return

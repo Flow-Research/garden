@@ -1,7 +1,7 @@
 # Document artifact parity: Cloudflare Workspace Docs
 
-Evidence baseline: local Cloudflare OS checkout
-`Cloudflare OS upstream` at `e1ab8fbd4f609aff7ede9d490bafe1bcf9b2a682`.
+Evidence baseline: Cloudflare OS commit
+`e1ab8fbd4f609aff7ede9d490bafe1bcf9b2a682`.
 The bundled `workspace-docs.gadget` was decoded using the archive format
 documented in `packages/workshop-backend/src/blueprint-archive.ts`: 24-byte
 header, JSON metadata, then a gzip-compressed Yjs V2 snapshot. Its unnamed
