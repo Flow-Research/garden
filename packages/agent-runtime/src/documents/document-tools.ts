@@ -69,7 +69,7 @@ export type DocumentArtifactToolAuthority = {
 }
 
 export type DocumentToolContext = {
-  documentArtifacts: DocumentArtifactToolAuthority
+  documentArtifacts?: DocumentArtifactToolAuthority
   databaseUrl: string
   workspace: WorkspaceFsLike
   threadId: string
@@ -306,6 +306,12 @@ export async function generateDocx(args: {
   landscape?: boolean
   options?: GenerateDocxOptions
 }) {
+  if (!args.context.documentArtifacts) {
+    return {
+      ok: false,
+      error: 'Editable document authority is not configured.',
+    }
+  }
   const threadContext = await loadThreadContext(args.context)
   if (threadContext.isErr())
     return { ok: false, error: threadContext.error.message }
@@ -706,6 +712,12 @@ export async function readDocument(args: {
   if (rowResult.isErr()) return { ok: false, error: rowResult.error.message }
   if (!rowResult.value) return { ok: false, error: 'Document not found.' }
   if (rowResult.value.fileType === 'docx') {
+    if (!args.context.documentArtifacts) {
+      return {
+        ok: false,
+        error: 'Editable document authority is not configured.',
+      }
+    }
     const canonicalResult = await args.context.documentArtifacts.read(
       args.documentId,
     )
@@ -892,6 +904,12 @@ export async function editDocument(args: {
     return {
       ok: false,
       error: 'Canonical document edits are only supported for .docx documents.',
+    }
+  }
+  if (!args.context.documentArtifacts) {
+    return {
+      ok: false,
+      error: 'Editable document authority is not configured.',
     }
   }
   const activeDocument = activeResult.value

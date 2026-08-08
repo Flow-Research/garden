@@ -1734,8 +1734,13 @@ export function createChatSubAgentTools({
   cancelIssueRun,
 }: ChatSubAgentToolsInput): ToolSet {
   const documentContext = (): DocumentToolContext | null =>
-    databaseUrl && documentArtifacts && threadId
-      ? { databaseUrl, documentArtifacts, workspace, threadId }
+    databaseUrl && threadId
+      ? {
+          databaseUrl,
+          ...(documentArtifacts ? { documentArtifacts } : {}),
+          workspace,
+          threadId,
+        }
       : null
   const readRunContext = (): ReadRunToolContext | null =>
     databaseUrl && threadId ? { databaseUrl, threadId, issueRunEnv } : null
