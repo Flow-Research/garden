@@ -69,7 +69,10 @@ assert.match(gitignoreSource, /apps\/web\/wrangler\.local\.jsonc/)
 assert.match(gitignoreSource, /apps\/web\/wrangler\.containers\.local\.jsonc/)
 assert.match(devSource, /wrangler\.containers\.local\.jsonc/)
 assert.match(devSource, /wrangler\.local\.jsonc/)
-assert.match(devSource, /CLOUDFLARE_VITE_REMOTE_BINDINGS/)
+assert.match(
+  devSource,
+  /CLOUDFLARE_VITE_REMOTE_BINDINGS \?\?= localOnly \? '0' : '1'/,
+)
 
 const uniqueFields = [
   'appName',

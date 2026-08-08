@@ -15,20 +15,12 @@ for (const [key, value] of Object.entries(rootEnv)) {
 
 process.env.NODE_OPTIONS ??= '--max-old-space-size=3072'
 const localOnly = args.has('--local')
-const hasExplicitWorkerConfig = Boolean(
-  process.env.CLOUDFLARE_WORKER_CONFIG_PATH,
-)
 const configSelection = selectWorkerConfig({
   containers: args.has('--containers'),
   localOnly,
 })
 process.env.CLOUDFLARE_WORKER_CONFIG_PATH ??= configSelection.path
-if (
-  localOnly ||
-  (!hasExplicitWorkerConfig && configSelection.isPublicTemplate)
-) {
-  process.env.CLOUDFLARE_VITE_REMOTE_BINDINGS ??= '0'
-}
+process.env.CLOUDFLARE_VITE_REMOTE_BINDINGS ??= localOnly ? '0' : '1'
 if (localOnly) {
   process.env.ENVIRONMENT = 'development'
 }
@@ -52,12 +44,10 @@ child.on('exit', (code, signal) => {
 })
 
 /**
- * Keeps tracked Wrangler config safe for public clones while preserving the
- * existing opt-in remote-binding workflow. Before this split, live Hyperdrive
- * and D1 ids were committed; now clean clones use local placeholders and an
- * existing developer can keep remote ids in an ignored `*.local.jsonc`
- * overlay. Cloudflare Vite's documented `configPath` and `remoteBindings`
- * options make the selection explicit without changing Alchemy deployment.
+ * Keeps tracked Wrangler config safe for public clones while preserving local
+ * overlays. Public D1, R2, and Hyperdrive bindings remain local placeholders;
+ * only the AI binding opts into Cloudflare because Workers AI has no local
+ * simulator. `--local` explicitly disables every remote binding.
  */
 function selectWorkerConfig({ containers, localOnly }) {
   const publicPath = containers ? 'wrangler.containers.jsonc' : 'wrangler.jsonc'
@@ -69,6 +59,5 @@ function selectWorkerConfig({ containers, localOnly }) {
 
   return {
     path: useLocalOverlay ? localPath : publicPath,
-    isPublicTemplate: !useLocalOverlay,
   }
 }
