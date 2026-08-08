@@ -16,8 +16,9 @@ Included production-source closures:
 The generic MCP HTTP envelope and in-memory host, duplicate Cloudflare blob
 adapter, unused encrypted-secrets repair, toolkit HTTP API schemas, tests,
 changelogs, build configuration, and browser-only toolkit UI files are
-intentionally omitted. They remain available in the full `refs/executor`
-checkout and are not part of the Garden Worker module graph.
+intentionally omitted. They remain available in the
+[`UsefulSoftwareCo/executor`](https://github.com/UsefulSoftwareCo/executor/tree/b029643641832ef5f9b0d4ff263d96e1a5b2739c)
+upstream tree and are not part of the Garden Worker module graph.
 
 Published Executor SDK, execution, codemode, FumaDB, OpenAPI, MCP, and GraphQL
 packages remain npm dependencies; only the three unpublished preset entrypoints
