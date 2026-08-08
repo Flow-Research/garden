@@ -242,6 +242,58 @@ export const sanitizeDocumentBlockHtml = (html: string) => {
   return fragment.childNodes.map((node) => serializeOuter(node)).join('')
 }
 
+const TEXT_LINE_BREAK_ELEMENTS = new Set([
+  'blockquote',
+  'br',
+  'div',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'li',
+  'p',
+  'pre',
+  'tr',
+])
+
+/** Projects canonical editor HTML into model-searchable text without a DOM. */
+export const documentBlocksToText = (
+  blocks: ReadonlyArray<{ readonly html: string }>,
+) =>
+  blocks
+    .map(({ html }) => {
+      const fragment = parseFragment(html)
+      const parts: string[] = []
+
+      const visit = (node: HtmlNode): void => {
+        if (node.nodeName === '#text' && 'value' in node) {
+          parts.push(node.value)
+          return
+        }
+        if (!isElement(node)) return
+        const tagName = node.tagName.toLowerCase()
+        if (tagName === 'img') {
+          const alt = node.attrs.find(({ name }) => name === 'alt')?.value
+          if (alt) parts.push(alt)
+        }
+        for (const child of node.childNodes) visit(child)
+        if (tagName === 'td' || tagName === 'th') parts.push('\t')
+        if (TEXT_LINE_BREAK_ELEMENTS.has(tagName)) parts.push('\n')
+      }
+
+      for (const child of fragment.childNodes) visit(child)
+      return parts
+        .join('')
+        .replace(/\u00a0/g, ' ')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+    })
+    .filter(Boolean)
+    .join('\n\n')
+
 /** Splits sanitized parser HTML into stable top-level collaboration blocks. */
 export const htmlToDocumentBlocks = (html: string) => {
   const fragment = parseFragment(html)

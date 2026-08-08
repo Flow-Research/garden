@@ -78,7 +78,7 @@ import {
   getDocumentVersionBytes,
   listDocumentVersions,
   registerUploadedDocument,
-  resolveDocumentEdit,
+  type DocumentArtifactToolAuthority,
 } from './documents/document-tools'
 import {
   DocumentArtifactEvent,
@@ -346,9 +346,6 @@ type ThreadDocumentVersionBytesPayload = Awaited<
 type ThreadDocumentVersionsPayload = Awaited<
   ReturnType<ChatSubAgent['listDocumentVersions']>
 >
-type ThreadDocumentEditPayload = Awaited<
-  ReturnType<ChatSubAgent['resolveDocumentEdit']>
->
 type ThreadDocumentArtifactPayload = Awaited<
   ReturnType<ChatSubAgent['readDocumentArtifact']>
 >
@@ -567,20 +564,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
     return thread.listDocumentVersions(documentId)
-  }
-
-  @callable()
-  async resolveThreadDocumentEdit(
-    threadId: string,
-    input: {
-      action: 'accept' | 'reject'
-      documentId: string
-      editId: string
-    },
-  ): Promise<ThreadDocumentEditPayload> {
-    await this.requireThreadAccess(threadId)
-    const thread = await this.subAgent(ChatSubAgent, threadId)
-    return thread.resolveDocumentEdit(input)
   }
 
   @callable()
@@ -1210,6 +1193,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   override getTools() {
     return createChatSubAgentTools({
       ctx: this.ctx,
+      documentArtifacts: this.getDocumentArtifactToolAuthority(),
       ...(this.env.EXA_API_KEY ? { exaApiKey: this.env.EXA_API_KEY } : {}),
       databaseUrl: this.env.HYPERDRIVE.connectionString,
       threadId: this.name,
@@ -1246,22 +1230,40 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       return upload
     }
 
-    const canonical = await this.documentArtifactRuntime.runPromise(
+    const canonical = await this.initializeDocxDocumentArtifact({
+      bytes: Buffer.from(input.base64, 'base64'),
+      documentId: upload.document_id,
+      filename: input.filename,
+    })
+    return { ...upload, canonical }
+  }
+
+  /**
+   * Imports DOCX bytes through the shared Workers AI projection and initializes
+   * the facet-owned engine. Upload and generation previously diverged here,
+   * leaving generated artifacts without canonical editable state.
+   */
+  private async initializeDocxDocumentArtifact(input: {
+    bytes: Uint8Array
+    documentId: string
+    filename: string
+  }) {
+    return this.documentArtifactRuntime.runPromise(
       Effect.gen(function* () {
         const projection = yield* DocumentArtifactProjection
         const engine = yield* DocumentArtifactEngine
         const initial = yield* projection.importDocx(
           input.filename,
-          Buffer.from(input.base64, 'base64'),
+          input.bytes,
         )
-        return yield* engine.initialize(upload.document_id, initial)
+        return yield* engine.initialize(input.documentId, initial)
       }).pipe(
         Effect.match({
           onFailure: (error) => {
             agentRuntimeLogger.error(
               'agent_do.document_artifact.initialization_failed',
               {
-                documentId: upload.document_id,
+                documentId: input.documentId,
                 filename: input.filename,
                 errorTag: error._tag,
                 message: messageFromUnknown(error),
@@ -1280,7 +1282,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         }),
       ),
     )
-    return { ...upload, canonical }
   }
 
   /** Reads canonical editable state from this thread facet's durable storage. */
@@ -1414,22 +1415,20 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     })
   }
 
-  async resolveDocumentEdit(input: {
-    action: 'accept' | 'reject'
-    documentId: string
-    editId: string
-  }) {
-    return resolveDocumentEdit({
-      context: this.getDocumentToolContext(),
-      documentId: input.documentId,
-      editId: input.editId,
-      action: input.action,
-    })
+  /** Exposes only canonical document commands to in-facet model tools. */
+  private getDocumentArtifactToolAuthority(): DocumentArtifactToolAuthority {
+    return {
+      read: (documentId) => this.readDocumentArtifact(documentId),
+      apply: (documentId, operation) =>
+        this.applyDocumentArtifactOperation(documentId, operation),
+      initializeDocx: (input) => this.initializeDocxDocumentArtifact(input),
+    }
   }
 
   private getDocumentToolContext() {
     return {
       databaseUrl: this.env.HYPERDRIVE.connectionString,
+      documentArtifacts: this.getDocumentArtifactToolAuthority(),
       workspace: this.workspace,
       threadId: this.name,
     }

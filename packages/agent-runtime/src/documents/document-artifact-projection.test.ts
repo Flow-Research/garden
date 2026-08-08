@@ -4,6 +4,7 @@ import {
   DocumentArtifactProjection,
   type DocumentMarkdownAi,
   documentArtifactProjectionLayer,
+  documentBlocksToText,
   htmlToDocumentBlocks,
   makeWorkersAiDocumentMarkdownLayer,
   sanitizeDocumentBlockHtml,
@@ -27,6 +28,20 @@ const importDocx = (ai: DocumentMarkdownAi, filename = 'Launch plan.docx') =>
   )
 
 describe('htmlToDocumentBlocks', () => {
+  it('projects formatted canonical blocks into searchable text', () => {
+    expect(
+      documentBlocksToText([
+        { html: '<h1>Launch <strong>plan</strong></h1>' },
+        {
+          html: '<table><tbody><tr><th>Owner</th><th>Status</th></tr><tr><td>Ada</td><td>Ready</td></tr></tbody></table>',
+        },
+        {
+          html: '<p>Diagram <img alt="System map" src="data:image/png;base64,AA=="></p>',
+        },
+      ]),
+    ).toBe('Launch plan\n\nOwner\tStatus\nAda\tReady\n\nDiagram System map')
+  })
+
   it('keeps semantic top-level blocks and removes active content', () => {
     const blocks = htmlToDocumentBlocks(
       '<h1 onclick="steal()">Plan</h1><script>steal()</script><p><a href="javascript:steal()">unsafe</a> body</p>',

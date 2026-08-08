@@ -453,20 +453,24 @@ const CHAT_TOOLS: Array<{
   {
     name: 'editDocument',
     description:
-      'Propose tracked changes to a .docx document. Use readDocument first. Each edit must be a precise substitution with context_before and context_after so it can be located unambiguously. Returns edit annotations and a new document artifact version.',
+      'Update a .docx through its live canonical blocks. Use readDocument first, preserve unchanged block ids and versions, and send the complete desired order. Changes save immediately; conflicts return authoritative blocks for a targeted retry.',
     schema: z.object({
       documentId: z.string().uuid(),
-      edits: z
-        .array(
-          z.object({
-            find: z.string(),
-            replace: z.string(),
-            context_before: z.string(),
-            context_after: z.string(),
-            reason: z.string().optional(),
-          }),
-        )
-        .min(1),
+      upserts: z.array(
+        z.object({
+          id: z.string().min(1).max(100),
+          html: z.string().max(10_000_000),
+          baseVersion: z.number().int().nonnegative(),
+        }),
+      ),
+      deletes: z.array(
+        z.object({
+          id: z.string().min(1).max(100),
+          baseVersion: z.number().int().nonnegative(),
+        }),
+      ),
+      order: z.array(z.string().min(1).max(100)),
+      title: z.string().max(500).optional(),
     }),
   },
   {

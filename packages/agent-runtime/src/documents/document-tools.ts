@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer'
 import type { WorkspaceFsLike } from '@cloudflare/shell'
-import { and, desc, eq, max, or } from 'drizzle-orm'
+import { and, desc, eq, or } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
 import {
   AlignmentType,
@@ -23,21 +23,71 @@ import {
 import { Result, TaggedError } from 'better-result'
 import * as schema from '@garden/db/schema'
 import {
-  applyTrackedEdits,
-  extractDocxBodyText,
-  resolveTrackedChange,
-  type EditInput,
-} from './docx-tracked-changes'
-import { documentDownloadUrl, versionStorageKey } from './document-storage'
+  DocumentArtifactRpcError,
+  DocumentOperation,
+  type DocumentBlockDeletion,
+  type DocumentBlockUpsert,
+  type DocumentOperationOutcome,
+  type DocumentSnapshot,
+} from './document-artifact-model'
+import { documentBlocksToText } from './document-artifact-projection'
+import { documentDownloadUrl } from './document-storage'
 
 export class DocumentToolError extends TaggedError('DocumentToolError')<{
   message: string
 }>() {}
 
+type DocumentArtifactAuthorityFailure = {
+  ok: false
+  error: DocumentArtifactRpcError
+}
+
+type DocumentArtifactReadResult =
+  | { ok: true; snapshot: DocumentSnapshot }
+  | DocumentArtifactAuthorityFailure
+
+type DocumentArtifactApplyResult =
+  | { ok: true; outcome: DocumentOperationOutcome }
+  | DocumentArtifactAuthorityFailure
+
+/**
+ * Narrow capability passed by the owning ChatSubAgent facet. Document tools
+ * can read, initialize, and mutate canonical blocks, but cannot reach Durable
+ * Object storage or construct a second authority.
+ */
+export type DocumentArtifactToolAuthority = {
+  read: (documentId: string) => Promise<DocumentArtifactReadResult>
+  apply: (
+    documentId: string,
+    operation: typeof DocumentOperation.Type,
+  ) => Promise<DocumentArtifactApplyResult>
+  initializeDocx: (input: {
+    bytes: Uint8Array
+    documentId: string
+    filename: string
+  }) => Promise<DocumentArtifactReadResult>
+}
+
 export type DocumentToolContext = {
+  documentArtifacts: DocumentArtifactToolAuthority
   databaseUrl: string
   workspace: WorkspaceFsLike
   threadId: string
+}
+
+/** Converts the private RPC error union into bounded model-facing guidance. */
+function documentArtifactErrorMessage(error: DocumentArtifactRpcError): string {
+  return DocumentArtifactRpcError.match<string>(error, {
+    DocumentArtifactValidationError: ({ message }) => message,
+    DocumentArtifactPersistenceError: () =>
+      'The editable document could not be saved.',
+    DocumentArtifactNotFoundError: () =>
+      'The editable document has not been initialized.',
+    DocumentArtifactAlreadyExistsError: () =>
+      'The editable document is already initialized.',
+    DocumentArtifactImportError: () =>
+      'The DOCX could not be imported into the editable document.',
+  })
 }
 
 type DocumentSection = {
@@ -94,23 +144,6 @@ function parseInlineRuns(
     runs.push(new TextRun({ text: text.slice(cursor), ...baseRun }))
   }
   return runs
-}
-
-export type EditAnnotation = {
-  kind: 'edit'
-  edit_id: string
-  document_id: string
-  version_id: string
-  version_number: number
-  change_id: string
-  del_w_id?: string
-  ins_w_id?: string
-  deleted_text: string
-  inserted_text: string
-  context_before: string
-  context_after: string
-  reason?: string
-  status: 'pending'
 }
 
 /**
@@ -587,8 +620,23 @@ export async function generateDocx(args: {
   if (insertResult.isErr())
     return { ok: false, error: insertResult.error.message }
 
+  const canonicalResult = await args.context.documentArtifacts.initializeDocx({
+    bytes: packResult.value,
+    documentId: insertResult.value.documentId,
+    filename,
+  })
+  if (!canonicalResult.ok) {
+    return {
+      ok: false,
+      error: documentArtifactErrorMessage(canonicalResult.error),
+      document_id: insertResult.value.documentId,
+      version_id: insertResult.value.versionId,
+    }
+  }
+
   return {
     ok: true,
+    canonical_revision: canonicalResult.snapshot.revision,
     filename,
     document_id: insertResult.value.documentId,
     version_id: insertResult.value.versionId,
@@ -657,6 +705,33 @@ export async function readDocument(args: {
   const rowResult = await loadActiveDocument(args.context, args.documentId)
   if (rowResult.isErr()) return { ok: false, error: rowResult.error.message }
   if (!rowResult.value) return { ok: false, error: 'Document not found.' }
+  if (rowResult.value.fileType === 'docx') {
+    const canonicalResult = await args.context.documentArtifacts.read(
+      args.documentId,
+    )
+    if (!canonicalResult.ok) {
+      return {
+        ok: false,
+        error: documentArtifactErrorMessage(canonicalResult.error),
+      }
+    }
+    const snapshot = canonicalResult.snapshot
+    return {
+      ok: true,
+      document_id: rowResult.value.id,
+      filename: rowResult.value.filename,
+      version_id: null,
+      version_number: null,
+      source_version_id: rowResult.value.versionId,
+      source_version_number: rowResult.value.versionNumber,
+      kind: 'canonical_document' as const,
+      media_type: contentTypeForFileType('docx'),
+      canonical_revision: snapshot.revision,
+      title: snapshot.title,
+      blocks: snapshot.blocks,
+      text: documentBlocksToText(snapshot.blocks),
+    }
+  }
   const bytesResult = await readWorkspaceBytes(
     args.context.workspace,
     rowResult.value.storagePath,
@@ -704,6 +779,7 @@ export type CitationAnnotation = {
   document_id: string
   filename: string
   quote: string
+  canonical_revision?: number | null
   page?: number | null
   version_id?: string | null
   version_number?: number | null
@@ -762,6 +838,8 @@ export async function findInDocument(args: {
     document_id: readResult.document_id ?? args.documentId,
     filename: readResult.filename ?? 'document',
     quote: hit.context,
+    canonical_revision:
+      'canonical_revision' in readResult ? readResult.canonical_revision : null,
     page: hit.page,
     version_id: readResult.version_id ?? null,
     version_number: readResult.version_number ?? null,
@@ -793,10 +871,18 @@ function inferPageNumberAt(text: string, position: number): number | null {
   return Number.isFinite(page) ? page : null
 }
 
+/**
+ * Applies an agent command through the facet-owned Cloudflare Workspace Docs
+ * authority. The former path rewrote OOXML and created review rows; canonical
+ * block versions now produce explicit applied/conflict outcomes immediately.
+ */
 export async function editDocument(args: {
   context: DocumentToolContext
   documentId: string
-  edits: EditInput[]
+  upserts: ReadonlyArray<DocumentBlockUpsert>
+  deletes: ReadonlyArray<DocumentBlockDeletion>
+  order: ReadonlyArray<string>
+  title?: string
 }) {
   const activeResult = await loadActiveDocument(args.context, args.documentId)
   if (activeResult.isErr())
@@ -805,159 +891,55 @@ export async function editDocument(args: {
   if (activeResult.value.fileType !== 'docx') {
     return {
       ok: false,
-      error: 'Tracked edits are only supported for .docx documents.',
+      error: 'Canonical document edits are only supported for .docx documents.',
     }
   }
   const activeDocument = activeResult.value
-
-  const bytesResult = await readWorkspaceBytes(
-    args.context.workspace,
-    activeDocument.storagePath,
+  const currentResult = await args.context.documentArtifacts.read(
+    args.documentId,
   )
-  if (bytesResult.isErr())
-    return { ok: false, error: bytesResult.error.message }
-  const editResult = await Result.tryPromise({
-    try: async () =>
-      await applyTrackedEdits(bytesResult.value, args.edits, {
-        author: 'Garden',
-      }),
-    catch: (error) =>
-      new DocumentToolError({
-        message: error instanceof Error ? error.message : String(error),
-      }),
-  })
-  if (editResult.isErr()) return { ok: false, error: editResult.error.message }
-  if (editResult.value.changes.length === 0) {
+  if (!currentResult.ok) {
     return {
       ok: false,
-      error:
-        editResult.value.errors[0]?.reason ??
-        'No edits could be applied. Refine context_before/context_after and retry.',
-      errors: editResult.value.errors,
+      error: documentArtifactErrorMessage(currentResult.error),
     }
   }
 
-  const db = getDb(args.context.databaseUrl)
-  const versionSlug = crypto.randomUUID()
-  const newPath = versionStorageKey(
+  const operation = DocumentOperation.make({
+    operationId: crypto.randomUUID(),
+    senderId: `agent:${args.context.threadId}`,
+    baseRevision: currentResult.snapshot.revision,
+    upserts: args.upserts,
+    deletes: args.deletes,
+    order: args.order,
+    ...(args.title === undefined ? {} : { title: args.title }),
+  })
+  const applyResult = await args.context.documentArtifacts.apply(
     args.documentId,
-    versionSlug,
-    activeResult.value.filename,
+    operation,
   )
-  const writeBytesResult = await Result.tryPromise({
-    try: async () =>
-      await args.context.workspace.writeFileBytes(
-        newPath,
-        editResult.value.bytes,
-        contentTypeForFileType('docx'),
-      ),
-    catch: (error) =>
-      new DocumentToolError({
-        message: error instanceof Error ? error.message : String(error),
-      }),
-  })
-  if (writeBytesResult.isErr()) {
-    return { ok: false, error: writeBytesResult.error.message }
+  if (!applyResult.ok) {
+    return {
+      ok: false,
+      error: documentArtifactErrorMessage(applyResult.error),
+    }
   }
-
-  const writeResult = await Result.tryPromise({
-    try: async () => {
-      const [maxRow] = await db
-        .select({ value: max(schema.documentVersion.versionNumber) })
-        .from(schema.documentVersion)
-        .where(eq(schema.documentVersion.documentId, args.documentId))
-      const versionNumber = (maxRow?.value ?? 1) + 1
-      const [versionRow] = await db
-        .insert(schema.documentVersion)
-        .values({
-          documentId: args.documentId,
-          storagePath: newPath,
-          source: 'assistant_edit',
-          versionNumber,
-          displayName: activeDocument.filename,
-        })
-        .returning({ id: schema.documentVersion.id })
-      if (!versionRow) {
-        throw new Error('Failed to record document edit version.')
-      }
-      const insertedEdits = await db
-        .insert(schema.documentEdit)
-        .values(
-          editResult.value.changes.map((change) => ({
-            documentId: args.documentId,
-            versionId: versionRow.id,
-            chatThreadId: activeDocument.threadId,
-            changeId: change.id,
-            delWId: change.delId ?? null,
-            insWId: change.insId ?? null,
-            deletedText: change.deletedText,
-            insertedText: change.insertedText,
-            contextBefore: change.contextBefore ?? '',
-            contextAfter: change.contextAfter ?? '',
-            status: 'pending',
-          })),
-        )
-        .returning({
-          id: schema.documentEdit.id,
-          changeId: schema.documentEdit.changeId,
-          deletedText: schema.documentEdit.deletedText,
-          insertedText: schema.documentEdit.insertedText,
-          contextBefore: schema.documentEdit.contextBefore,
-          contextAfter: schema.documentEdit.contextAfter,
-        })
-      await db
-        .update(schema.document)
-        .set({ currentVersionId: versionRow.id, updatedAt: new Date() })
-        .where(eq(schema.document.id, args.documentId))
-      return { versionId: versionRow.id, versionNumber, insertedEdits }
-    },
-    catch: (error) =>
-      new DocumentToolError({
-        message: error instanceof Error ? error.message : String(error),
-      }),
-  })
-  if (writeResult.isErr())
-    return { ok: false, error: writeResult.error.message }
-
-  const annotations: EditAnnotation[] = writeResult.value.insertedEdits.map(
-    (row) => {
-      const sourceChange = editResult.value.changes.find(
-        (change) => change.id === row.changeId,
-      )
-      return {
-        kind: 'edit',
-        edit_id: row.id,
-        document_id: args.documentId,
-        version_id: writeResult.value.versionId,
-        version_number: writeResult.value.versionNumber,
-        change_id: row.changeId,
-        del_w_id: sourceChange?.delId,
-        ins_w_id: sourceChange?.insId,
-        deleted_text: row.deletedText,
-        inserted_text: row.insertedText,
-        context_before: row.contextBefore,
-        context_after: row.contextAfter,
-        reason: sourceChange?.reason,
-        status: 'pending',
-      }
-    },
-  )
 
   return {
     ok: true,
+    canonical_revision: applyResult.outcome.snapshot.revision,
     filename: activeDocument.filename,
     document_id: args.documentId,
-    version_id: writeResult.value.versionId,
-    version_number: writeResult.value.versionNumber,
+    version_id: activeDocument.versionId,
+    version_number: activeDocument.versionNumber,
     download_url: documentDownloadUrl(args.documentId, activeDocument.filename),
-    annotations,
-    errors: editResult.value.errors,
+    outcome: applyResult.outcome,
     artifact: buildArtifact({
       documentId: args.documentId,
       filename: activeDocument.filename,
       fileType: 'docx',
-      versionId: writeResult.value.versionId,
-      versionNumber: writeResult.value.versionNumber,
+      versionId: activeDocument.versionId,
+      versionNumber: activeDocument.versionNumber,
     }),
   }
 }
@@ -1218,135 +1200,8 @@ export async function listDocumentVersions(args: {
   }
 }
 
-export async function resolveDocumentEdit(args: {
-  context: DocumentToolContext
-  documentId: string
-  editId: string
-  action: 'accept' | 'reject'
-}) {
-  const threadContext = await loadThreadContext(args.context)
-  if (threadContext.isErr())
-    return { ok: false, error: threadContext.error.message }
-  const { db, threadId } = threadContext.value
-  const rowResult = await Result.tryPromise({
-    try: async () => {
-      const [row] = await db
-        .select({
-          currentVersionId: schema.document.currentVersionId,
-          storagePath: schema.documentVersion.storagePath,
-          changeId: schema.documentEdit.changeId,
-          status: schema.documentEdit.status,
-        })
-        .from(schema.documentEdit)
-        .innerJoin(
-          schema.document,
-          eq(schema.documentEdit.documentId, schema.document.id),
-        )
-        .innerJoin(
-          schema.documentVersion,
-          eq(schema.document.currentVersionId, schema.documentVersion.id),
-        )
-        .where(
-          and(
-            eq(schema.document.id, args.documentId),
-            eq(schema.documentEdit.id, args.editId),
-            eq(schema.document.threadId, threadId),
-          ),
-        )
-        .limit(1)
-      return row ?? null
-    },
-    catch: (error) =>
-      new DocumentToolError({
-        message: error instanceof Error ? error.message : String(error),
-      }),
-  })
-  if (rowResult.isErr()) return { ok: false, error: rowResult.error.message }
-  if (!rowResult.value) return { ok: false, error: 'Document edit not found.' }
-  if (rowResult.value.status !== 'pending') {
-    return {
-      ok: true,
-      status: rowResult.value.status,
-      remaining_pending: null,
-    }
-  }
-  const editRow = rowResult.value
-
-  const bytesResult = await readWorkspaceBytes(
-    args.context.workspace,
-    editRow.storagePath,
-  )
-  if (bytesResult.isErr())
-    return { ok: false, error: bytesResult.error.message }
-  const resolvedResult = await Result.tryPromise({
-    try: async () =>
-      await resolveTrackedChange(
-        bytesResult.value,
-        [editRow.changeId],
-        args.action,
-      ),
-    catch: (error) =>
-      new DocumentToolError({
-        message: error instanceof Error ? error.message : String(error),
-      }),
-  })
-  if (resolvedResult.isErr())
-    return { ok: false, error: resolvedResult.error.message }
-
-  const writeResult = await Result.tryPromise({
-    try: async () => {
-      const resolvedAt = new Date()
-      await args.context.workspace.writeFileBytes(
-        editRow.storagePath,
-        resolvedResult.value.bytes,
-        contentTypeForFileType('docx'),
-      )
-      await db
-        .update(schema.documentEdit)
-        .set({
-          status: args.action === 'accept' ? 'accepted' : 'rejected',
-          resolvedAt,
-          updatedAt: resolvedAt,
-        })
-        .where(eq(schema.documentEdit.id, args.editId))
-      if (!editRow.currentVersionId) return { remaining: 0, resolvedAt }
-      const remaining = await db
-        .select({ id: schema.documentEdit.id })
-        .from(schema.documentEdit)
-        .where(
-          and(
-            eq(schema.documentEdit.documentId, args.documentId),
-            eq(schema.documentEdit.versionId, editRow.currentVersionId),
-            eq(schema.documentEdit.status, 'pending'),
-          ),
-        )
-      return { remaining: remaining.length, resolvedAt }
-    },
-    catch: (error) =>
-      new DocumentToolError({
-        message: error instanceof Error ? error.message : String(error),
-      }),
-  })
-  if (writeResult.isErr())
-    return { ok: false, error: writeResult.error.message }
-  return {
-    ok: true,
-    resolved_at: writeResult.value.resolvedAt.toISOString(),
-    status: args.action === 'accept' ? 'accepted' : 'rejected',
-    remaining_pending: writeResult.value.remaining,
-  }
-}
-
 async function extractDocumentText(bytes: Buffer, fileType: string) {
   if (fileType === 'docx') {
-    const primary = await Result.tryPromise({
-      try: async () => await extractDocxBodyText(bytes),
-      catch: (error) =>
-        new DocumentToolError({
-          message: error instanceof Error ? error.message : String(error),
-        }),
-    })
-    if (primary.isOk() && primary.value) return primary
     return Result.tryPromise({
       try: async () => {
         const mammoth = await import('mammoth')

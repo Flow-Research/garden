@@ -32,8 +32,14 @@ import {
   listDocuments,
   readDocument,
   registerUploadedDocument,
+  type DocumentArtifactToolAuthority,
   type DocumentToolContext,
 } from './documents/document-tools'
+import {
+  MAX_DOCUMENT_BLOCK_HTML_LENGTH,
+  MAX_DOCUMENT_BLOCK_ID_LENGTH,
+  MAX_DOCUMENT_TITLE_LENGTH,
+} from './documents/document-artifact-model'
 import { createProposeAgentTool } from './agent-tools/propose-agent'
 import { createWebTools, type WebToolsSqlValue } from './agent-tools/web'
 import { listAvailableConnectorBindings } from '@garden/server/connectors/availability'
@@ -60,6 +66,7 @@ import { assignIssueInputSchema } from './chat-assignment-schema'
 
 type ChatSubAgentToolsInput = {
   ctx: DurableObjectState
+  documentArtifacts?: DocumentArtifactToolAuthority
   exaApiKey?: string
   databaseUrl?: string
   threadId?: string
@@ -835,6 +842,9 @@ async function documentReadModelOutput(args: {
   if (!isRecord(args.output)) return jsonModelOutput(args.output)
   if (typeof args.output.error === 'string') {
     return errorTextModelOutput(args.output.error)
+  }
+  if (args.output.kind === 'canonical_document') {
+    return jsonModelOutput(args.output)
   }
   if (typeof args.output.text === 'string') {
     return textModelOutput(args.output.text)
@@ -1713,6 +1723,7 @@ async function postIssueCommentFromChat(
 
 export function createChatSubAgentTools({
   ctx,
+  documentArtifacts,
   exaApiKey,
   databaseUrl,
   threadId,
@@ -1723,7 +1734,9 @@ export function createChatSubAgentTools({
   cancelIssueRun,
 }: ChatSubAgentToolsInput): ToolSet {
   const documentContext = (): DocumentToolContext | null =>
-    databaseUrl && threadId ? { databaseUrl, workspace, threadId } : null
+    databaseUrl && documentArtifacts && threadId
+      ? { databaseUrl, documentArtifacts, workspace, threadId }
+      : null
   const readRunContext = (): ReadRunToolContext | null =>
     databaseUrl && threadId ? { databaseUrl, threadId, issueRunEnv } : null
   const chatIssueContext = (): ChatIssueToolContext | null =>
@@ -2014,7 +2027,7 @@ export function createChatSubAgentTools({
 
     generateDocx: tool({
       description:
-        'Generate a new Word (.docx) document from structured content. Use when the user asks to draft, create, write, or produce a new document. Do not use to update an existing document unless the user explicitly asks for a fresh replacement; use editDocument tracked changes for existing .docx updates. Section content supports **bold** and *italic* inline markdown plus simple "- " or "* " bullet lines. Returns a first-class document artifact.',
+        'Generate a new Word (.docx) document from structured content and initialize its live canonical editor. Use when the user asks to draft, create, write, or produce a new document. Do not use to update an existing document unless the user explicitly asks for a fresh replacement; use editDocument for existing .docx updates. Section content supports **bold** and *italic* inline markdown plus simple "- " or "* " bullet lines. Returns a first-class document artifact.',
       inputSchema: z.object({
         title: z
           .string()
@@ -2085,7 +2098,7 @@ export function createChatSubAgentTools({
 
     editDocument: tool({
       description:
-        'Update an existing .docx document by proposing tracked find/replace changes. Use this for requests like update this document, remove a duplicate title, add research to a section, rewrite a paragraph, or replace text in the current doc. Use readDocument first. Each edit must be a precise substitution with context_before and context_after so it can be located unambiguously. Returns edit annotations and a new document artifact version.',
+        'Update an existing .docx through its live Cloudflare Workspace Docs blocks. Call readDocument first and preserve every unchanged block id/version. Send changed or new blocks as upserts, version-checked removals as deletes, and the complete desired block order. Changes save immediately; there is no accept/reject review step. A Conflict outcome can include a partial commit plus authoritative conflicting blocks, so reread and retry only those blocks without overwriting concurrent user edits.',
       inputSchema: z.object({
         documentId: z
           .string()
@@ -2093,24 +2106,39 @@ export function createChatSubAgentTools({
           .describe(
             'Internal document handle to edit. Never show this value to the user.',
           ),
-        edits: z
-          .array(
-            z.object({
-              find: z.string(),
-              replace: z.string(),
-              context_before: z.string(),
-              context_after: z.string(),
-              reason: z.string().optional(),
-            }),
-          )
-          .min(1),
+        upserts: z.array(
+          z.object({
+            id: z.string().min(1).max(MAX_DOCUMENT_BLOCK_ID_LENGTH),
+            html: z.string().max(MAX_DOCUMENT_BLOCK_HTML_LENGTH),
+            baseVersion: z.number().int().nonnegative(),
+          }),
+        ),
+        deletes: z.array(
+          z.object({
+            id: z.string().min(1).max(MAX_DOCUMENT_BLOCK_ID_LENGTH),
+            baseVersion: z.number().int().nonnegative(),
+          }),
+        ),
+        order: z
+          .array(z.string().min(1).max(MAX_DOCUMENT_BLOCK_ID_LENGTH))
+          .describe(
+            'Complete desired block-id order, including unchanged blocks.',
+          ),
+        title: z.string().max(MAX_DOCUMENT_TITLE_LENGTH).optional(),
       }),
-      execute: async ({ documentId, edits }) => {
+      execute: async ({ documentId, upserts, deletes, order, title }) => {
         const context = documentContext()
         if (!context) {
           return { ok: false, error: 'Document tools are not configured.' }
         }
-        return await editDocument({ context, documentId, edits })
+        return await editDocument({
+          context,
+          documentId,
+          upserts,
+          deletes,
+          order,
+          ...(title === undefined ? {} : { title }),
+        })
       },
     }),
 

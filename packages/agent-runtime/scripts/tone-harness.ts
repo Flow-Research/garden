@@ -39,7 +39,7 @@ const SYSTEM_PROMPT =
     '- readDocument(documentId): read full text of a doc',
     '- findInDocument(documentId, query): targeted search',
     '- generateDocx(title, sections): create a .docx artifact from a structured outline',
-    '- editDocument(documentId, edits): tracked-change substitutions on a .docx artifact',
+    '- editDocument(documentId, upserts, deletes, order, title?): immediate canonical block edits on a .docx artifact',
     '- convertDocumentToPdf(documentId): convert a .docx artifact to a PDF artifact',
     '- load_skill(slug): load a skill body when the artifact tools cannot express the task',
   ].join('\n')
@@ -101,20 +101,26 @@ const tools = {
     }),
   }),
   editDocument: tool({
-    description: 'Tracked-change edits on a .docx artifact.',
+    description: 'Immediate canonical block edits on a .docx artifact.',
     inputSchema: z.object({
       documentId: z.string(),
-      edits: z.array(
+      upserts: z.array(
         z.object({
-          find: z.string(),
-          replace: z.string(),
-          context_before: z.string(),
-          context_after: z.string(),
-          reason: z.string().optional(),
+          id: z.string(),
+          html: z.string(),
+          baseVersion: z.number().int().nonnegative(),
         }),
       ),
+      deletes: z.array(
+        z.object({
+          id: z.string(),
+          baseVersion: z.number().int().nonnegative(),
+        }),
+      ),
+      order: z.array(z.string()),
+      title: z.string().optional(),
     }),
-    execute: async () => ({ ok: true, version: 2, editsApplied: 1 }),
+    execute: async () => ({ ok: true, canonicalRevision: 2 }),
   }),
   convertDocumentToPdf: tool({
     description: 'Convert a .docx artifact to PDF.',

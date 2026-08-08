@@ -13,10 +13,6 @@ export {
 } from './run-workflow'
 export { createAgentModel } from './model'
 export {
-  extractTrackedChangeIds,
-  resolveTrackedChange,
-} from './documents/docx-tracked-changes'
-export {
   buildContentDisposition,
   documentDownloadUrl,
   normalizeDownloadFilename,
