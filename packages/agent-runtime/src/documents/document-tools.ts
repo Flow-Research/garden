@@ -1239,7 +1239,7 @@ async function extractDocumentText(bytes: Buffer, fileType: string) {
     fileType === 'json' ||
     fileType === 'csv'
   ) {
-    return Result.ok(bytes.toString('utf8'))
+    return Result.ok(Buffer.from(bytes).toString('utf8'))
   }
   return Result.err(
     new DocumentToolError({

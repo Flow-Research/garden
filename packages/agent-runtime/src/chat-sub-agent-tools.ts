@@ -868,7 +868,7 @@ async function documentReadModelOutput(args: {
   const mediaType =
     typeof args.output.media_type === 'string'
       ? args.output.media_type
-      : bytesResult.media_type
+      : (bytesResult.media_type ?? 'application/octet-stream')
   const filename =
     typeof args.output.filename === 'string'
       ? args.output.filename
@@ -1975,7 +1975,10 @@ export function createChatSubAgentTools({
       },
     }),
 
-    readDocument: tool({
+    readDocument: tool<
+      { documentId: string },
+      Awaited<ReturnType<typeof readDocument>>
+    >({
       description:
         "Read the full content of a product attachment/document. Text documents return text. Images are lazily loaded into the model, using the same private image-data tool-result pattern as Think's workspace read tool. Always call this before answering questions about, summarizing, citing, editing, or visually inspecting an uploaded attachment.",
       inputSchema: z.object({

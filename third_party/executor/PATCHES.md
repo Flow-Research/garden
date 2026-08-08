@@ -31,6 +31,10 @@ documented compatibility changes:
    `/presets` subpaths. The OpenAPI catalog's relative `SpecOverrides` type
    import points at the published plugin `/core` surface, so no additional
    implementation source is copied.
+7. The encrypted-secrets provider normalizes `randomBytes` and GCM auth-tag
+   results through `Buffer.from` before base64 encoding. Cloudflare Workers
+   Types v5 models these Node-compatible values as `Uint8Array`, whose native
+   `toString` has no encoding parameter; the byte output is unchanged.
 
 Garden aliases only the exact retained entrypoints. The generic MCP serving
 envelope and in-memory session host, its browser-approval store, and Executor's

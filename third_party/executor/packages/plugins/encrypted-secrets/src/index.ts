@@ -51,8 +51,8 @@ const encryptSecret = (key: Buffer, plaintext: string): Effect.Effect<string, St
       const tag = cipher.getAuthTag();
       return [
         PAYLOAD_VERSION,
-        iv.toString("base64"),
-        tag.toString("base64"),
+        Buffer.from(iv).toString("base64"),
+        Buffer.from(tag).toString("base64"),
         ciphertext.toString("base64"),
       ].join(".");
     },

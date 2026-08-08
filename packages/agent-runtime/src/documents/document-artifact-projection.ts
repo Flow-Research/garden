@@ -341,7 +341,7 @@ const DOCX_MEDIA_TYPE =
 
 type DocumentMarkdownConversionResponse =
   | {
-      readonly format: 'markdown'
+      readonly format: 'markdown' | 'text'
       readonly data: string
     }
   | {
@@ -355,6 +355,7 @@ export interface DocumentMarkdownAi {
     document: { readonly name: string; readonly blob: Blob },
     options?: {
       readonly conversionOptions?: {
+        readonly output?: { readonly format?: 'markdown' | 'text' }
         readonly docx?: {
           readonly images?: { readonly convert?: boolean }
         }
@@ -399,6 +400,7 @@ export const makeWorkersAiDocumentMarkdownLayer = (ai: DocumentMarkdownAi) =>
                 },
                 {
                   conversionOptions: {
+                    output: { format: 'markdown' },
                     docx: { images: { convert: false } },
                   },
                 },
