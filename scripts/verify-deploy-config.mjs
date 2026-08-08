@@ -58,7 +58,11 @@ for (const source of publicWranglerSources) {
     true,
   )
   assert.doesNotMatch(source, /"tail_consumers"/)
-  assert.doesNotMatch(source, /"remote": true/)
+  assert.match(
+    source,
+    /"ai":\s*\{[^}]*"binding": "AI",[^}]*"remote": true[^}]*\}/,
+  )
+  assert.equal([...source.matchAll(/"remote": true/g)].length, 1)
 }
 
 assert.match(gitignoreSource, /apps\/web\/wrangler\.local\.jsonc/)
