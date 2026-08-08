@@ -1,8 +1,30 @@
+import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import {
+  DocumentArtifactProjection,
+  type DocumentMarkdownAi,
+  documentArtifactProjectionLayer,
   htmlToDocumentBlocks,
+  makeWorkersAiDocumentMarkdownLayer,
   sanitizeDocumentBlockHtml,
 } from './document-artifact-projection'
+
+const projectionLayer = (ai: DocumentMarkdownAi) =>
+  documentArtifactProjectionLayer.pipe(
+    Layer.provide(makeWorkersAiDocumentMarkdownLayer(ai)),
+  )
+
+/** Runs DOCX projection with a per-test Workers AI binding. */
+const importDocx = (ai: DocumentMarkdownAi, filename = 'Launch plan.docx') =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const projection = yield* DocumentArtifactProjection
+      return yield* projection.importDocx(
+        filename,
+        Uint8Array.from([80, 75, 3, 4]),
+      )
+    }).pipe(Effect.provide(projectionLayer(ai))),
+  )
 
 describe('htmlToDocumentBlocks', () => {
   it('keeps semantic top-level blocks and removes active content', () => {
@@ -80,5 +102,71 @@ describe('htmlToDocumentBlocks', () => {
     expect(sanitized).toBe(
       '\n      <p>\n        <a>Unsafe</a>\n        <img>\n      </p>\n    ',
     )
+  })
+})
+
+describe('DocumentArtifactProjection', () => {
+  it('uses the Workers AI DOCX converter and parses its Markdown safely', async () => {
+    const requests: Array<{
+      readonly name: string
+      readonly mediaType: string
+      readonly bytes: number[]
+      readonly convertImages: boolean | undefined
+    }> = []
+    const ai: DocumentMarkdownAi = {
+      toMarkdown: async (document, options) => {
+        requests.push({
+          name: document.name,
+          mediaType: document.blob.type,
+          bytes: [...new Uint8Array(await document.blob.arrayBuffer())],
+          convertImages: options?.conversionOptions?.docx?.images?.convert,
+        })
+        return {
+          format: 'markdown',
+          data: '# Imported plan\n\nA **bold** paragraph with [unsafe](javascript:alert(1)).\n\n<script>steal()</script>',
+        }
+      },
+    }
+
+    const projected = await importDocx(ai)
+
+    expect(requests).toEqual([
+      {
+        name: 'Launch plan.docx',
+        mediaType:
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        bytes: [80, 75, 3, 4],
+        convertImages: false,
+      },
+    ])
+    expect(projected.title).toBe('Launch plan')
+    expect(projected.blocks.map(({ html }) => html)).toEqual([
+      '<h1>Imported plan</h1>',
+      '<p>A <strong>bold</strong> paragraph with <a>unsafe</a>.</p>',
+    ])
+  })
+
+  it('returns Cloudflare conversion errors as typed import failures', async () => {
+    const ai: DocumentMarkdownAi = {
+      toMarkdown: async () => ({
+        format: 'error',
+        error: 'Unsupported document archive',
+      }),
+    }
+
+    const failure = await Effect.runPromise(
+      Effect.gen(function* () {
+        const projection = yield* DocumentArtifactProjection
+        return yield* projection
+          .importDocx('broken.docx', Uint8Array.from([1]))
+          .pipe(Effect.flip)
+      }).pipe(Effect.provide(projectionLayer(ai))),
+    )
+
+    expect(failure).toMatchObject({
+      _tag: 'DocumentArtifactImportError',
+      filename: 'broken.docx',
+      message: 'Could not import broken.docx into editable blocks.',
+    })
   })
 })

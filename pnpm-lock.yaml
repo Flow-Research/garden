@@ -639,6 +639,9 @@ importers:
       mammoth:
         specifier: ^1.12.0
         version: 1.12.0
+      marked:
+        specifier: 17.0.6
+        version: 17.0.6
       parse5:
         specifier: ^8.0.0
         version: 8.0.0

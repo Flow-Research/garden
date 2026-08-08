@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Schema } from 'effect'
-import { Buffer } from 'node:buffer'
+import { marked } from 'marked'
 import {
   parseFragment,
   serializeOuter,
@@ -204,9 +204,9 @@ const sanitizeElement = (element: HtmlElement) => {
 
 /**
  * Sanitizes a parsed fragment structurally rather than rewriting HTML with
- * regular expressions. Mammoth emits a small semantic vocabulary; unknown
- * containers are unwrapped so their text survives, while active-content nodes
- * are removed with their contents.
+ * regular expressions. Converter/parser output uses a small semantic
+ * vocabulary; unknown containers are unwrapped so their text survives, while
+ * active-content nodes are removed with their contents.
  */
 const sanitizeChildren = (parent: HtmlParent): void => {
   const next: HtmlNode[] = []
@@ -235,7 +235,7 @@ export const sanitizeDocumentBlockHtml = (html: string) => {
   return fragment.childNodes.map((node) => serializeOuter(node)).join('')
 }
 
-/** Splits sanitized Mammoth HTML into stable top-level collaboration blocks. */
+/** Splits sanitized parser HTML into stable top-level collaboration blocks. */
 export const htmlToDocumentBlocks = (html: string) => {
   const fragment = parseFragment(html)
   sanitizeChildren(fragment)
@@ -277,6 +277,93 @@ export class DocumentArtifactImportError extends Schema.TaggedErrorClass<Documen
   },
 ) {}
 
+const DOCX_MEDIA_TYPE =
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+type DocumentMarkdownConversionResponse =
+  | {
+      readonly format: 'markdown'
+      readonly data: string
+    }
+  | {
+      readonly format: 'error'
+      readonly error: string
+    }
+
+/** Narrow Workers AI boundary needed by DOCX import and replaceable in tests. */
+export interface DocumentMarkdownAi {
+  readonly toMarkdown: (
+    document: { readonly name: string; readonly blob: Blob },
+    options?: {
+      readonly conversionOptions?: {
+        readonly docx?: {
+          readonly images?: { readonly convert?: boolean }
+        }
+      }
+    },
+  ) => Promise<DocumentMarkdownConversionResponse>
+}
+
+export interface DocumentMarkdownConverterService {
+  readonly convertDocx: (
+    filename: string,
+    bytes: Uint8Array,
+  ) => Effect.Effect<string, DocumentArtifactImportError>
+}
+
+/** Owns the external Workers AI conversion boundary used by projections. */
+export class DocumentMarkdownConverter extends Context.Service<
+  DocumentMarkdownConverter,
+  DocumentMarkdownConverterService
+>()('@garden/documents/DocumentMarkdownConverter') {}
+
+/**
+ * Adapts Cloudflare's native document conversion exactly at the Workers AI
+ * binding. The source DOCX remains untouched in R2; only returned Markdown is
+ * projected into mutable editor state. Reference: Cloudflare OS
+ * `packages/workshop-backend/src/web-fetch.ts` `convertToMarkdown` at HEAD.
+ */
+export const makeWorkersAiDocumentMarkdownLayer = (ai: DocumentMarkdownAi) =>
+  Layer.succeed(
+    DocumentMarkdownConverter,
+    DocumentMarkdownConverter.of({
+      convertDocx: Effect.fn('DocumentMarkdownConverter.convertDocx')(
+        function* (filename: string, bytes: Uint8Array) {
+          const result = yield* Effect.tryPromise({
+            try: () =>
+              ai.toMarkdown(
+                {
+                  name: filename,
+                  blob: new Blob([Uint8Array.from(bytes)], {
+                    type: DOCX_MEDIA_TYPE,
+                  }),
+                },
+                {
+                  conversionOptions: {
+                    docx: { images: { convert: false } },
+                  },
+                },
+              ),
+            catch: (cause) =>
+              new DocumentArtifactImportError({
+                filename,
+                message: `Could not import ${filename} into editable blocks.`,
+                cause,
+              }),
+          })
+          if (result.format === 'error') {
+            return yield* new DocumentArtifactImportError({
+              filename,
+              message: `Could not import ${filename} into editable blocks.`,
+              cause: new Error(result.error),
+            })
+          }
+          return result.data
+        },
+      ),
+    }),
+  )
+
 export interface DocumentArtifactProjectionService {
   readonly importDocx: (
     filename: string,
@@ -291,31 +378,21 @@ export class DocumentArtifactProjection extends Context.Service<
 >()('@garden/documents/DocumentArtifactProjection') {}
 
 /**
- * Converts DOCX through Mammoth, matching Cloudflare OS's ingest-then-edit
- * direction while preserving the uploaded binary as an immutable source.
+ * Converts Cloudflare Markdown to safe canonical HTML blocks. `marked` owns
+ * CommonMark/GFM parsing; the existing structural sanitizer remains the only
+ * authority over markup stored in the editable projection.
  */
-export const documentArtifactProjectionLayer: Layer.Layer<DocumentArtifactProjection> =
-  Layer.succeed(
-    DocumentArtifactProjection,
-    DocumentArtifactProjection.of({
+export const documentArtifactProjectionLayer = Layer.effect(
+  DocumentArtifactProjection,
+  Effect.gen(function* () {
+    const converter = yield* DocumentMarkdownConverter
+    return DocumentArtifactProjection.of({
       importDocx: Effect.fn('DocumentArtifactProjection.importDocx')(function* (
         filename: string,
         bytes: Uint8Array,
       ) {
-        const result = yield* Effect.tryPromise({
-          try: async () => {
-            const mammoth = await import('mammoth')
-            return await mammoth.convertToHtml({
-              buffer: Buffer.from(bytes),
-            })
-          },
-          catch: (cause) =>
-            new DocumentArtifactImportError({
-              filename,
-              message: `Could not import ${filename} into editable blocks.`,
-              cause,
-            }),
-        })
+        const markdown = yield* converter.convertDocx(filename, bytes)
+        const html = marked.parse(markdown, { async: false })
         const title =
           filename
             .replace(/\.docx$/i, '')
@@ -323,8 +400,9 @@ export const documentArtifactProjectionLayer: Layer.Layer<DocumentArtifactProjec
             .slice(0, 500) || 'Document'
         return InitialDocument.make({
           title,
-          blocks: htmlToDocumentBlocks(result.value),
+          blocks: htmlToDocumentBlocks(html),
         })
       }),
-    }),
-  )
+    })
+  }),
+)

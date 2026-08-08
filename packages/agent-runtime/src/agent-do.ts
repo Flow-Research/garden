@@ -98,6 +98,7 @@ import {
 import {
   DocumentArtifactProjection,
   documentArtifactProjectionLayer,
+  makeWorkersAiDocumentMarkdownLayer,
 } from './documents/document-artifact-projection'
 import { makeDocumentArtifactDurableRepositoryLayer } from './documents/document-artifact-repository'
 import { IssueRunSubAgent } from './issue-run-sub-agent'
@@ -1133,7 +1134,9 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
             makeDocumentArtifactDurableRepositoryLayer(this.ctx.storage),
           ),
         ),
-        documentArtifactProjectionLayer,
+        documentArtifactProjectionLayer.pipe(
+          Layer.provide(makeWorkersAiDocumentMarkdownLayer(this.env.AI)),
+        ),
       ),
       documentArtifactEventsLayer,
     ),
