@@ -1,0 +1,58 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "globalEnv": [
+    "DATABASE_URL",
+    "FRONTEND_PORT",
+    "FRONTEND_ORIGIN",
+    "NEXT_PUBLIC_API_URL",
+    "NEXT_PUBLIC_WS_URL"
+  ],
+  "globalPassThroughEnv": [
+    "CF_*",
+    "CLOUDFLARE_*",
+    "DOCKER_HOST",
+    "EXECUTOR_SECRET_KEY",
+    "GARDEN_*",
+    "HOST",
+    "PORT",
+    "PORTLESS_*",
+    "POSTGRES_DB",
+    "POSTGRES_PORT",
+    "REQUIRE_CONTAINERS",
+    "WRANGLER_*"
+  ],
+  "tasks": {
+    "transit": {
+      "dependsOn": ["^transit"]
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".output/**", "build/**", "!.output/cache/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "interactive": true,
+      "interruptible": true
+    },
+    "dev:local": {
+      "cache": false,
+      "persistent": true,
+      "interactive": true,
+      "interruptible": true
+    },
+    "typecheck": {
+      "dependsOn": ["transit"]
+    },
+    "test": {
+      "dependsOn": ["transit"]
+    },
+    "lint": {
+      "dependsOn": ["transit"]
+    },
+    "clean": {
+      "cache": false
+    }
+  }
+}

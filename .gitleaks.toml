@@ -1,0 +1,51 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Cloudflare documentation uses an explicit API-token placeholder in curl examples"
+targetRules = ["curl-auth-header"]
+condition = "AND"
+paths = [
+  '''(?:^|/)\.agents/skills/cloudflare/references/argo-smart-routing/(?:README|api)\.md$''',
+  '''(?:^|/)\.agents/skills/cloudflare/references/pipelines/api\.md$''',
+]
+stopwords = ["api_token"]
+
+[[allowlists]]
+description = "Cloudflare documentation labels deliberately invalid API-key examples with abc123"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = [
+  '''(?:^|/)\.agents/skills/cloudflare/references/bindings/patterns\.md$''',
+  '''(?:^|/)\.agents/skills/workers-best-practices/references/rules\.md$''',
+]
+stopwords = ["abc123"]
+
+[[allowlists]]
+description = "Better Auth unit test uses a test-only secret"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''(?:^|/)apps/web/src/lib/auth/instance\.test\.ts$''']
+stopwords = ["test"]
+
+[[allowlists]]
+description = "Secret-redaction unit test uses a patterned GitLab token fixture"
+targetRules = ["gitlab-pat"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''(?:^|/)apps/web/src/features/issues/utils/redact\.test\.ts$''']
+regexes = ['''redactSecrets\('glpat-[A-Za-z]{24}'\)''']
+
+[[allowlists]]
+description = "Secret-redaction unit test uses a patterned Slack token fixture"
+targetRules = ["slack-bot-token"]
+condition = "AND"
+paths = ['''(?:^|/)apps/web/src/features/issues/utils/redact\.test\.ts$''']
+stopwords = ["AbCdEfGhIjKl"]
+
+[[allowlists]]
+description = "Secret-redaction unit test uses the public jwt.io example token"
+targetRules = ["jwt"]
+condition = "AND"
+paths = ['''(?:^|/)apps/web/src/features/issues/utils/redact\.test\.ts$''']
+stopwords = ["SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"]

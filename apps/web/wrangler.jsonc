@@ -1,0 +1,201 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "garden-local",
+  "compatibility_date": "2026-04-18",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "src/server.ts",
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true,
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+    },
+  },
+  "secrets": {
+    "required": [
+      "BETTER_AUTH_SECRET",
+      "BETTER_AUTH_URL",
+      "DATABASE_URL",
+      "DISCORD_BOT_PERMISSIONS",
+      "DISCORD_BOT_TOKEN",
+      "DISCORD_CLIENT_ID",
+      "DISCORD_CLIENT_SECRET",
+      "DISCORD_PUBLIC_KEY",
+      "ENVIRONMENT",
+      "EXA_API_KEY",
+      "GITHUB_APP_ID",
+      "GITHUB_APP_PRIVATE_KEY",
+      "GITHUB_APP_SLUG",
+      "GITHUB_CLIENT_ID",
+      "GITHUB_CLIENT_SECRET",
+      "GITHUB_WEBHOOK_SECRET",
+      "EXECUTOR_SECRET_KEY",
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
+      "RESEND_API_KEY",
+      "SLACK_CLIENT_ID",
+      "SLACK_CLIENT_SECRET",
+      "VITE_PUBLIC_POSTHOG_HOST",
+      "VITE_PUBLIC_POSTHOG_PROJECT_TOKEN",
+    ],
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      // Local placeholder. Alchemy provisions remote Hyperdrive directly;
+      // copy this file to wrangler.local.jsonc and set a real id only when
+      // local development intentionally uses remote bindings.
+      "id": "00000000000000000000000000000000",
+    },
+  ],
+  "d1_databases": [
+    {
+      "binding": "EXECUTOR_DB",
+      "database_name": "garden-executor-local",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+    },
+  ],
+  "triggers": {
+    // Issue-run reconciler only does product-ledger cleanup with no durable
+    // deadline, so it does not need frequent wakeups. It was firing every
+    // minute on the deployed worker (2026-06-22 incident) and hammering Neon
+    // compute, which exhausted the DB quota and 500'd session lookups / login.
+    // Widened to every 12 hours to stop the compute bleed.
+    "crons": ["0 */12 * * *"],
+  },
+  "dev": {
+    "enable_containers": false,
+  },
+  "containers": [
+    {
+      "class_name": "Sandbox",
+      "image": "docker.io/cloudflare/sandbox:0.12.4-python",
+      "instance_type": "lite",
+      "max_instances": 4,
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "AgentDO",
+        "class_name": "AgentDO",
+      },
+      {
+        "name": "Sandbox",
+        "class_name": "Sandbox",
+      },
+      {
+        "name": "AUTOMATION_TRIGGER",
+        "class_name": "AutomationTriggerDO",
+      },
+      {
+        "name": "EXECUTOR_MCP_SESSION",
+        "class_name": "ExecutorMcpSession",
+      },
+      {
+        "name": "EXECUTOR_MCP_EXECUTION_OWNER",
+        "class_name": "ExecutorMcpExecutionOwnerDirectory",
+      },
+    ],
+  },
+  "workflows": [
+    {
+      "name": "garden-run-workflow-local",
+      "binding": "RUN_WORKFLOW",
+      "class_name": "RunWorkflow",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "garden-files-local",
+    },
+    {
+      "binding": "EXECUTOR_BLOBS",
+      "bucket_name": "garden-executor-blobs-local",
+    },
+  ],
+  "worker_loaders": [
+    {
+      "binding": "LOADER",
+    },
+  ],
+  "browser": {
+    "binding": "BROWSER",
+  },
+  "ai": {
+    "binding": "AI",
+    "remote": true,
+  },
+  "vars": {
+    "SANDBOX_TRANSPORT": "rpc",
+    "SANDBOX_LOG_LEVEL": "warn",
+    "GARDEN_LOG_LEVEL": "warn",
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["PrimaryAgent"],
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["Sandbox"],
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["ChatAgent"],
+    },
+    {
+      "tag": "v4",
+      "renamed_classes": [
+        { "from": "PrimaryAgent", "to": "AgentHost" },
+        { "from": "ChatAgent", "to": "WorkspaceAgent" },
+      ],
+    },
+    {
+      "tag": "v5",
+      "new_sqlite_classes": ["IssueRunAgent"],
+    },
+    {
+      "tag": "v6",
+      "renamed_classes": [
+        { "from": "AgentHost", "to": "AgentDO" },
+        { "from": "WorkspaceAgent", "to": "ChatSubAgent" },
+        { "from": "IssueRunAgent", "to": "IssueRunSubAgent" },
+      ],
+    },
+    {
+      "tag": "v7",
+      "new_sqlite_classes": ["AutomationTriggerDO"],
+    },
+    {
+      "tag": "v8",
+      "new_sqlite_classes": [
+        "HarnessyMcpSession",
+        "HarnessyExecutionOwnerDirectory",
+      ],
+    },
+    {
+      "tag": "v9",
+      "new_sqlite_classes": [
+        "ExecutorMcpSession",
+        "ExecutorMcpExecutionOwnerDirectory",
+      ],
+    },
+    {
+      "tag": "v10",
+      "deleted_classes": [
+        "HarnessyMcpSession",
+        "HarnessyExecutionOwnerDirectory",
+      ],
+    },
+  ],
+}
