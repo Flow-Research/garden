@@ -2,6 +2,7 @@
   "name": "@garden/tsconfig",
   "version": "0.0.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "exports": {
     "./base.json": "./base.json",
     "./react-library.json": "./react-library.json"
