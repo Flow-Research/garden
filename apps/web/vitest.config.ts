@@ -33,5 +33,8 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
     css: false,
+    // Large development hosts otherwise start enough jsdom forks to starve
+    // Vitest's worker handshake and report unrelated suite timeouts.
+    maxWorkers: 4,
   },
 })
