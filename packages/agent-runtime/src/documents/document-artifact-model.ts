@@ -32,7 +32,6 @@ export const DocumentBlockHtml = Schema.String.check(
 )
 
 export const DocumentTitle = Schema.String.check(
-  Schema.isMinLength(1),
   Schema.isMaxLength(MAX_DOCUMENT_TITLE_LENGTH),
 )
 
@@ -104,7 +103,6 @@ export const DocumentOperationOutcome = Schema.TaggedUnion({
     accepted: Schema.Array(DocumentBlock),
     deletedIds: Schema.Array(DocumentBlockId),
     conflicts: Schema.Array(DocumentBlock),
-    missingIds: Schema.Array(DocumentBlockId),
   },
   Unchanged: { snapshot: DocumentSnapshot },
   Duplicate: {
@@ -137,12 +135,6 @@ export const DocumentArtifactEvent = Schema.TaggedUnion({
   },
 })
 export type DocumentArtifactEvent = typeof DocumentArtifactEvent.Type
-
-export const StoredDocumentArtifact = Schema.Struct({
-  snapshot: DocumentSnapshot,
-  appliedOperationIds: Schema.Array(DocumentOperationId),
-})
-export type StoredDocumentArtifact = typeof StoredDocumentArtifact.Type
 
 /** Invalid persisted state or a malformed document command. */
 export class DocumentArtifactValidationError extends Schema.TaggedErrorClass<DocumentArtifactValidationError>()(

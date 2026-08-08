@@ -3,7 +3,6 @@ import { afterAll, describe, expect, it } from 'vitest'
 import {
   DocumentArtifactEngine,
   documentArtifactEngineLayer,
-  reduceDocumentOperation,
 } from './document-artifact-engine'
 import {
   DocumentArtifactAlreadyExistsError,
@@ -210,13 +209,13 @@ describe('DocumentArtifactEngine', () => {
     ])
   })
 
-  it('rejects an upsert/delete overlap through the typed failure channel', async () => {
+  it('retains upstream upsert-then-delete conflict semantics', async () => {
     const { documentId } = await initialize()
-    const exit = await runtime.runPromiseExit(
+    const outcome = await run(
       Effect.gen(function* () {
         const engine = yield* DocumentArtifactEngine
         return yield* engine.apply(documentId, {
-          operationId: 'operation-invalid',
+          operationId: 'operation-overlap',
           senderId: 'client-a',
           baseRevision: 1,
           upserts: [{ id: 'body', html: '<p>x</p>', baseVersion: 1 }],
@@ -226,8 +225,17 @@ describe('DocumentArtifactEngine', () => {
       }),
     )
 
-    expect(exit._tag).toBe('Failure')
-    expect(String(exit)).toContain('DocumentArtifactValidationError')
+    expect(outcome._tag).toBe('Conflict')
+    if (outcome._tag !== 'Conflict') return
+    expect(outcome.committed).toBe(true)
+    expect(outcome.accepted).toEqual([
+      { id: 'body', html: '<p>x</p>', version: 2 },
+    ])
+    expect(outcome.conflicts).toEqual(outcome.accepted)
+    expect(outcome.snapshot.blocks.map((block) => block.id)).toEqual([
+      'intro',
+      'body',
+    ])
   })
 
   it('rejects unsafe integer fences at the Schema boundary', async () => {
@@ -248,68 +256,6 @@ describe('DocumentArtifactEngine', () => {
 
     expect(exit._tag).toBe('Failure')
     expect(String(exit)).toContain('DocumentArtifactValidationError')
-  })
-
-  it('fails before a block or document revision can overflow', async () => {
-    const lastModified = Date.now()
-    const blockOverflow = await Effect.runPromiseExit(
-      reduceDocumentOperation(
-        {
-          revision: 1,
-          title: 'Plan',
-          blocks: [
-            {
-              id: 'body',
-              html: '<p>Draft</p>',
-              version: Number.MAX_SAFE_INTEGER,
-            },
-          ],
-          lastModified,
-        },
-        {
-          operationId: 'operation-block-overflow',
-          senderId: 'client-a',
-          baseRevision: 1,
-          upserts: [
-            {
-              id: 'body',
-              html: '<p>Ready</p>',
-              baseVersion: Number.MAX_SAFE_INTEGER,
-            },
-          ],
-          deletes: [],
-          order: ['body'],
-        },
-        lastModified,
-      ),
-    )
-    const revisionOverflow = await Effect.runPromiseExit(
-      reduceDocumentOperation(
-        {
-          revision: Number.MAX_SAFE_INTEGER,
-          title: 'Plan',
-          blocks: [{ id: 'body', html: '<p>Draft</p>', version: 1 }],
-          lastModified,
-        },
-        {
-          operationId: 'operation-revision-overflow',
-          senderId: 'client-a',
-          baseRevision: Number.MAX_SAFE_INTEGER,
-          upserts: [],
-          deletes: [],
-          order: ['body'],
-          title: 'Ready',
-        },
-        lastModified,
-      ),
-    )
-
-    expect(blockOverflow._tag).toBe('Failure')
-    expect(revisionOverflow._tag).toBe('Failure')
-    expect(String(blockOverflow)).toContain('DocumentArtifactValidationError')
-    expect(String(revisionOverflow)).toContain(
-      'DocumentArtifactValidationError',
-    )
   })
 
   it('sanitizes operation HTML before it reaches canonical storage', async () => {

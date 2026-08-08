@@ -41,7 +41,6 @@ describe('DocumentArtifactEvents', () => {
         accepted: [],
         deletedIds: [],
         conflicts: snapshot.blocks,
-        missingIds: [],
       },
     })
 

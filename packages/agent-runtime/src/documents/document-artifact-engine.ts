@@ -1,8 +1,10 @@
 import { Clock, Context, Effect, Layer, Schema } from 'effect'
 import {
+  applyOperation as applyWorkspaceDocsOperation,
+  setDocument as setWorkspaceDocsDocument,
+} from '../../../../third_party/cloudflare-os/workspace-docs/server-authority'
+import {
   DocumentArtifactValidationError,
-  DocumentBlock,
-  type DocumentBlock as DocumentBlockValue,
   DocumentOperation,
   type DocumentOperation as DocumentOperationValue,
   DocumentOperationOutcome,
@@ -54,16 +56,19 @@ export const createDocumentSnapshot = Effect.fn(
       validationFailure('create snapshot', String(cause)),
     ),
   )
-  return yield* decodeDocumentSnapshot({
-    revision: 1,
-    title: initial.title,
-    blocks: initial.blocks.map((block) => ({
-      ...block,
-      html: sanitizeDocumentBlockHtml(block.html),
-      version: 1,
-    })),
-    lastModified: now,
-  })
+  return yield* decodeDocumentSnapshot(
+    setWorkspaceDocsDocument(
+      undefined,
+      {
+        title: initial.title,
+        blocks: initial.blocks.map((block) => ({
+          ...block,
+          html: sanitizeDocumentBlockHtml(block.html),
+        })),
+      },
+      now,
+    ),
+  )
 })
 
 const decodeOperation = Effect.fn('DocumentArtifact.decodeOperation')(
@@ -75,32 +80,6 @@ const decodeOperation = Effect.fn('DocumentArtifact.decodeOperation')(
         validationFailure('apply operation', String(cause)),
       ),
     )
-    const upsertIds = new Set<string>()
-    for (const upsert of operation.upserts) {
-      if (upsertIds.has(upsert.id)) {
-        return yield* validationFailure(
-          'apply operation',
-          `Operation contains duplicate upsert ${upsert.id}.`,
-        )
-      }
-      upsertIds.add(upsert.id)
-    }
-    const deleteIds = new Set<string>()
-    for (const deletion of operation.deletes) {
-      if (deleteIds.has(deletion.id)) {
-        return yield* validationFailure(
-          'apply operation',
-          `Operation contains duplicate deletion ${deletion.id}.`,
-        )
-      }
-      if (upsertIds.has(deletion.id)) {
-        return yield* validationFailure(
-          'apply operation',
-          `Block ${deletion.id} cannot be upserted and deleted together.`,
-        )
-      }
-      deleteIds.add(deletion.id)
-    }
     return yield* Schema.decodeUnknownEffect(DocumentOperation)({
       ...operation,
       upserts: operation.upserts.map((upsert) => ({
@@ -116,137 +95,59 @@ const decodeOperation = Effect.fn('DocumentArtifact.decodeOperation')(
 )
 
 /**
- * Applies the Cloudflare Workspace Docs block protocol as a pure Effect
- * transition: version conflicts are successful outcomes, non-conflicting edits
- * in the same command still commit, and ordering is last-writer-wins. Adapted
- * behavior reference: cloudflare/cloudflare-os workspace-docs.gadget at
- * f0517773aa6a2f6fbb1281ddbadcca3cb6fd2992.
+ * Validates the result of the vendored Cloudflare OS authority and translates
+ * its RPC-shaped status into Garden's typed Effect outcome. The mutation itself
+ * remains in the attributed `server-authority.ts` adaptation beside upstream.
  */
-export const reduceDocumentOperation = Effect.fn(
-  'DocumentArtifact.reduceOperation',
-)(function* (
-  snapshotInput: unknown,
-  operation: DocumentOperationValue,
-  now: number,
-) {
-  const snapshot = yield* decodeDocumentSnapshot(snapshotInput)
-  const operationTime = yield* Schema.decodeUnknownEffect(DocumentTimestamp)(
-    now,
-  ).pipe(
-    Effect.mapError((cause) =>
-      validationFailure('apply operation', String(cause)),
-    ),
-  )
-  if (operationTime < snapshot.lastModified) {
-    return yield* validationFailure(
-      'apply operation',
-      'Operation time cannot predate the current document.',
-    )
-  }
-  const nextTitle = operation.title?.trim() || snapshot.title
-
-  const byId = new Map(snapshot.blocks.map((block) => [block.id, block]))
-  const accepted: DocumentBlockValue[] = []
-  const conflicts: DocumentBlockValue[] = []
-  const missingIds: string[] = []
-  for (const incoming of operation.upserts) {
-    const current = byId.get(incoming.id)
-    if (current && incoming.baseVersion !== current.version) {
-      conflicts.push(current)
-      continue
-    }
-    if (!current && incoming.baseVersion !== 0) {
-      missingIds.push(incoming.id)
-      continue
-    }
-    const next = yield* Schema.decodeUnknownEffect(DocumentBlock)({
-      id: incoming.id,
-      html: incoming.html,
-      version: (current?.version ?? 0) + 1,
-    }).pipe(
+const applyDocumentOperation = Effect.fn('DocumentArtifact.applyOperation')(
+  function* (
+    snapshotInput: unknown,
+    operation: DocumentOperationValue,
+    now: number,
+  ) {
+    const snapshot = yield* decodeDocumentSnapshot(snapshotInput)
+    const operationTime = yield* Schema.decodeUnknownEffect(DocumentTimestamp)(
+      now,
+    ).pipe(
       Effect.mapError((cause) =>
-        validationFailure('advance block version', String(cause)),
+        validationFailure('apply operation', String(cause)),
       ),
     )
-    byId.set(next.id, next)
-    accepted.push(next)
-  }
-
-  const deletedIds: string[] = []
-  for (const deletion of operation.deletes) {
-    const current = byId.get(deletion.id)
-    if (!current) continue
-    if (deletion.baseVersion !== current.version) {
-      conflicts.push(current)
-      continue
+    const transition = applyWorkspaceDocsOperation(
+      snapshot,
+      operation,
+      operationTime,
+    )
+    const nextSnapshot = yield* decodeDocumentSnapshot(transition.document)
+    const result = transition.result
+    if (!('type' in result)) {
+      return result.status === 'conflict'
+        ? DocumentOperationOutcome.cases.Conflict.make({
+            snapshot: nextSnapshot,
+            committed: false,
+            accepted: [],
+            deletedIds: [],
+            conflicts: result.conflicts,
+          })
+        : DocumentOperationOutcome.cases.Unchanged.make({
+            snapshot: nextSnapshot,
+          })
     }
-    byId.delete(deletion.id)
-    deletedIds.push(deletion.id)
-  }
-
-  const order: string[] = []
-  const ordered = new Set<string>()
-  for (const id of operation.order) {
-    if (byId.has(id) && !ordered.has(id)) {
-      order.push(id)
-      ordered.add(id)
-    }
-  }
-  for (const block of snapshot.blocks) {
-    if (byId.has(block.id) && !ordered.has(block.id)) {
-      order.push(block.id)
-      ordered.add(block.id)
-    }
-  }
-  for (const id of byId.keys()) {
-    if (!ordered.has(id)) order.push(id)
-  }
-
-  const orderChanged =
-    order.length !== snapshot.blocks.length ||
-    order.some((id, index) => snapshot.blocks[index]?.id !== id)
-  const changed =
-    accepted.length > 0 ||
-    deletedIds.length > 0 ||
-    nextTitle !== snapshot.title ||
-    orderChanged
-  const hasConflict = conflicts.length > 0 || missingIds.length > 0
-  if (!changed) {
-    return hasConflict
+    return result.status === 'conflict'
       ? DocumentOperationOutcome.cases.Conflict.make({
-          snapshot,
-          committed: false,
-          accepted,
-          deletedIds,
-          conflicts,
-          missingIds,
+          snapshot: nextSnapshot,
+          committed: true,
+          accepted: result.upserts,
+          deletedIds: result.deletedIds,
+          conflicts: result.conflicts,
         })
-      : DocumentOperationOutcome.cases.Unchanged.make({ snapshot })
-  }
-
-  const nextSnapshot = yield* decodeDocumentSnapshot({
-    revision: snapshot.revision + 1,
-    title: nextTitle,
-    blocks: order
-      .map((id) => byId.get(id))
-      .filter((block) => block !== undefined),
-    lastModified: operationTime,
-  })
-  return hasConflict
-    ? DocumentOperationOutcome.cases.Conflict.make({
-        snapshot: nextSnapshot,
-        committed: true,
-        accepted,
-        deletedIds,
-        conflicts,
-        missingIds,
-      })
-    : DocumentOperationOutcome.cases.Applied.make({
-        snapshot: nextSnapshot,
-        accepted,
-        deletedIds,
-      })
-})
+      : DocumentOperationOutcome.cases.Applied.make({
+          snapshot: nextSnapshot,
+          accepted: result.upserts,
+          deletedIds: result.deletedIds,
+        })
+  },
+)
 
 export interface DocumentArtifactEngineService {
   readonly get: (
@@ -296,7 +197,7 @@ export const documentArtifactEngineLayer: Layer.Layer<
         return yield* repository.transact(
           documentId,
           operation.operationId,
-          (snapshot) => reduceDocumentOperation(snapshot, operation, now),
+          (snapshot) => applyDocumentOperation(snapshot, operation, now),
         )
       }),
     })

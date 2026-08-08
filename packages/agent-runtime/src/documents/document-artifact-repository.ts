@@ -4,11 +4,10 @@ import {
   type DocumentArtifactError,
   DocumentArtifactNotFoundError,
   DocumentArtifactPersistenceError,
+  DocumentOperationId,
   DocumentOperationOutcome,
   type DocumentOperationOutcome as DocumentOperationOutcomeValue,
-  type DocumentSnapshot,
-  StoredDocumentArtifact,
-  type StoredDocumentArtifact as StoredDocumentArtifactValue,
+  DocumentSnapshot,
 } from './document-artifact-model'
 
 const MAX_RECORDED_OPERATION_IDS = 1_000
@@ -38,12 +37,17 @@ export class DocumentArtifactRepository extends Context.Service<
   DocumentArtifactRepositoryService
 >()('@garden/documents/DocumentArtifactRepository') {}
 
+interface StoredDocumentArtifact {
+  readonly document: DocumentSnapshot
+  readonly appliedOperationIds: ReadonlyArray<string>
+}
+
 const rememberOperation = (
-  current: StoredDocumentArtifactValue,
+  current: StoredDocumentArtifact,
   operationId: string,
-  snapshot: DocumentSnapshot,
-): StoredDocumentArtifactValue => ({
-  snapshot,
+  document: DocumentSnapshot,
+): StoredDocumentArtifact => ({
+  document,
   appliedOperationIds: [
     ...current.appliedOperationIds.filter((id) => id !== operationId),
     operationId,
@@ -66,7 +70,7 @@ export const documentArtifactMemoryRepositoryLayer: Layer.Layer<DocumentArtifact
     DocumentArtifactRepository,
     Effect.gen(function* () {
       const documents = yield* SynchronizedRef.make(
-        new Map<string, StoredDocumentArtifactValue>(),
+        new Map<string, StoredDocumentArtifact>(),
       )
 
       return DocumentArtifactRepository.of({
@@ -75,7 +79,7 @@ export const documentArtifactMemoryRepositoryLayer: Layer.Layer<DocumentArtifact
             Effect.flatMap((state) => {
               const current = state.get(documentId)
               return current
-                ? Effect.succeed(current.snapshot)
+                ? Effect.succeed(current.document)
                 : Effect.fail(new DocumentArtifactNotFoundError({ documentId }))
             }),
           ),
@@ -89,7 +93,10 @@ export const documentArtifactMemoryRepositoryLayer: Layer.Layer<DocumentArtifact
                 )
               }
               const next = new Map(state)
-              next.set(documentId, { snapshot, appliedOperationIds: [] })
+              next.set(documentId, {
+                document: snapshot,
+                appliedOperationIds: [],
+              })
               return Effect.succeed([snapshot, next] as const)
             }),
         ),
@@ -108,11 +115,11 @@ export const documentArtifactMemoryRepositoryLayer: Layer.Layer<DocumentArtifact
               }
               if (current.appliedOperationIds.includes(operationId)) {
                 return Effect.succeed([
-                  duplicateOutcome(current.snapshot, operationId),
+                  duplicateOutcome(current.document, operationId),
                   state,
                 ] as const)
               }
-              return transition(current.snapshot).pipe(
+              return transition(current.document).pipe(
                 Effect.map((outcome) => {
                   const next = new Map(state)
                   next.set(
@@ -129,11 +136,13 @@ export const documentArtifactMemoryRepositoryLayer: Layer.Layer<DocumentArtifact
   )
 
 export interface DocumentArtifactDurableStorage {
-  readonly get: <T = unknown>(key: string) => Promise<T | undefined>
-  readonly put: (key: string, value: unknown) => Promise<void>
+  readonly get: (key: string) => Promise<unknown | undefined>
+  readonly put: (entries: Record<string, unknown>) => Promise<void>
 }
 
-const storageKey = (documentId: string) => `document-artifact:v1:${documentId}`
+const documentStorageKey = (documentId: string) => `document:v2:${documentId}`
+const operationIdsStorageKey = (documentId: string) =>
+  `document:operation-ids:v1:${documentId}`
 
 const persistenceFailure = (operation: string, cause: unknown) =>
   new DocumentArtifactPersistenceError({
@@ -158,41 +167,60 @@ export const makeDocumentArtifactDurableRepositoryLayer = (
 
       const readStored = Effect.fn('DocumentArtifactRepository.readStored')(
         function* (documentId: string) {
-          const input = yield* Effect.tryPromise({
-            try: () => storage.get(storageKey(documentId)),
+          const [documentInput, operationIdsInput] = yield* Effect.tryPromise({
+            try: () =>
+              Promise.all([
+                storage.get(documentStorageKey(documentId)),
+                storage.get(operationIdsStorageKey(documentId)),
+              ]),
             catch: (cause) => persistenceFailure('read', cause),
           })
-          if (input === undefined) {
+          if (documentInput === undefined) {
             return yield* new DocumentArtifactNotFoundError({ documentId })
           }
-          return yield* Schema.decodeUnknownEffect(StoredDocumentArtifact)(
-            input,
+          const document = yield* Schema.decodeUnknownEffect(DocumentSnapshot)(
+            documentInput,
           ).pipe(
             Effect.mapError((cause) =>
-              persistenceFailure('decode persisted snapshot', cause),
+              persistenceFailure('decode persisted document', cause),
             ),
           )
+          const appliedOperationIds =
+            operationIdsInput === undefined
+              ? []
+              : yield* Schema.decodeUnknownEffect(
+                  Schema.Array(DocumentOperationId),
+                )(operationIdsInput).pipe(
+                  Effect.mapError((cause) =>
+                    persistenceFailure('decode persisted operation ids', cause),
+                  ),
+                )
+          return { document, appliedOperationIds }
         },
       )
 
       const writeStored = Effect.fn('DocumentArtifactRepository.writeStored')(
-        (documentId: string, value: StoredDocumentArtifactValue) =>
+        (documentId: string, value: StoredDocumentArtifact) =>
           Effect.tryPromise({
-            try: () => storage.put(storageKey(documentId), value),
+            try: () =>
+              storage.put({
+                [documentStorageKey(documentId)]: value.document,
+                [operationIdsStorageKey(documentId)]: value.appliedOperationIds,
+              }),
             catch: (cause) => persistenceFailure('write', cause),
           }),
       )
 
       return DocumentArtifactRepository.of({
         get: Effect.fn('DocumentArtifactRepository.get')((documentId: string) =>
-          readStored(documentId).pipe(Effect.map((value) => value.snapshot)),
+          readStored(documentId).pipe(Effect.map((value) => value.document)),
         ),
         initialize: Effect.fn('DocumentArtifactRepository.initialize')(
           (documentId: string, snapshot: DocumentSnapshot) =>
             SynchronizedRef.modifyEffect(mutationToken, () =>
               Effect.gen(function* () {
                 const existing = yield* Effect.tryPromise({
-                  try: () => storage.get(storageKey(documentId)),
+                  try: () => storage.get(documentStorageKey(documentId)),
                   catch: (cause) => persistenceFailure('read', cause),
                 })
                 if (existing !== undefined) {
@@ -201,7 +229,7 @@ export const makeDocumentArtifactDurableRepositoryLayer = (
                   })
                 }
                 yield* writeStored(documentId, {
-                  snapshot,
+                  document: snapshot,
                   appliedOperationIds: [],
                 })
                 return [snapshot, undefined] as const
@@ -219,11 +247,11 @@ export const makeDocumentArtifactDurableRepositoryLayer = (
                 const current = yield* readStored(documentId)
                 if (current.appliedOperationIds.includes(operationId)) {
                   return [
-                    duplicateOutcome(current.snapshot, operationId),
+                    duplicateOutcome(current.document, operationId),
                     undefined,
                   ] as const
                 }
-                const outcome = yield* transition(current.snapshot)
+                const outcome = yield* transition(current.document)
                 yield* writeStored(
                   documentId,
                   rememberOperation(current, operationId, outcome.snapshot),
