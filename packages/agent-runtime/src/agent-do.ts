@@ -1257,10 +1257,25 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         return yield* engine.initialize(upload.document_id, initial)
       }).pipe(
         Effect.match({
-          onFailure: (error) => ({
-            ok: false as const,
-            error: toDocumentArtifactRpcError(error),
-          }),
+          onFailure: (error) => {
+            agentRuntimeLogger.error(
+              'agent_do.document_artifact.initialization_failed',
+              {
+                documentId: upload.document_id,
+                filename: input.filename,
+                errorTag: error._tag,
+                message: messageFromUnknown(error),
+                providerCause:
+                  error._tag === 'DocumentArtifactImportError'
+                    ? messageFromUnknown(error.cause)
+                    : undefined,
+              },
+            )
+            return {
+              ok: false as const,
+              error: toDocumentArtifactRpcError(error),
+            }
+          },
           onSuccess: (snapshot) => ({ ok: true as const, snapshot }),
         }),
       ),
