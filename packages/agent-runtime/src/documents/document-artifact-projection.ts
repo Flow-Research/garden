@@ -153,20 +153,19 @@ const safeStyleValue = (property: string, value: string) => {
  * Keeps the inert inline declarations emitted by Cloudflare's native editing
  * commands while rejecting URL-bearing and executable CSS values.
  */
-const sanitizeStyle = (value: string) =>
-  value
-    .split(';')
-    .flatMap((declaration) => {
-      const separator = declaration.indexOf(':')
-      if (separator < 1) return []
-      const property = declaration.slice(0, separator).trim().toLowerCase()
-      const propertyValue = declaration.slice(separator + 1).trim()
-      if (!propertyValue || !safeStyleValue(property, propertyValue)) {
-        return []
-      }
-      return [`${property}: ${propertyValue}`]
-    })
-    .join('; ')
+const sanitizeStyle = (value: string) => {
+  const declarations = value.split(';').flatMap((declaration) => {
+    const separator = declaration.indexOf(':')
+    if (separator < 1) return []
+    const property = declaration.slice(0, separator).trim().toLowerCase()
+    const propertyValue = declaration.slice(separator + 1).trim()
+    if (!propertyValue || !safeStyleValue(property, propertyValue)) {
+      return []
+    }
+    return [`${property}: ${propertyValue}`]
+  })
+  return declarations.length > 0 ? `${declarations.join('; ')};` : ''
+}
 
 /** Keeps only editor-supported markup and strips active-content attributes. */
 const sanitizeElement = (element: HtmlElement) => {

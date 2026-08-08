@@ -48,7 +48,7 @@ describe('htmlToDocumentBlocks', () => {
       '<p style="text-align: center; background-image: url(javascript:steal())"><span style="font-family: Georgia, serif; font-size: 18px; color: #123456; behavior: url(x)">Styled</span></p>',
     )
     expect(sanitized).toBe(
-      '<p style="text-align: center"><span style="font-family: Georgia, serif; font-size: 18px; color: #123456">Styled</span></p>',
+      '<p style="text-align: center;"><span style="font-family: Georgia, serif; font-size: 18px; color: #123456;">Styled</span></p>',
     )
   })
 
@@ -58,7 +58,7 @@ describe('htmlToDocumentBlocks', () => {
     )
 
     expect(sanitized).toBe(
-      '<p data-block-id="b_editor"><span style="text-decoration-line: underline">Underlined</span></p>',
+      '<p data-block-id="b_editor"><span style="text-decoration-line: underline;">Underlined</span></p>',
     )
   })
 
