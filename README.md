@@ -1,281 +1,316 @@
 # Garden
 
-An operating system where humans and AI agents work side by side.
+Garden is an open-source workspace for people and AI agents. It brings chat,
+tasks, automations, skills, connected tools, documents, and approvals into one
+tabbed app, so a team can see what its agents are doing and decide what they are
+allowed to do.
 
-You sign up, get a persistent personal agent, connect your tools (Gmail, Google Drive, Slack, GitHub, search), and your agent starts picking up work — drafting emails, triaging issues, writing summaries, running reports. You stay in the loop through a single tabbed workspace: inbox, issues, chat, agent config, and skills all open as tabs in one surface.
+> Garden is under active development and is preparing for a small-user beta.
+> Read the [roadmap](docs/roadmap.md) and
+> [known gaps](docs/known-gaps/README.md) before using it in production.
 
-> **Raise the floor, don't lower the ceiling.** Non-technical users get a product that just works. Power users get the full capability surface. Nothing is dumbed down.
+## What Garden does
 
----
+- Gives each workspace a persistent agent that can chat, work through tasks,
+  and run scheduled automations.
+- Keeps human and agent work together instead of hiding agent activity in a
+  separate console.
+- Connects external tools while keeping permissions and approvals visible.
+- Supports reusable [Agent Skills](https://agentskills.io) that belong to the
+  workspace rather than one person's laptop.
+- Opens chats, tasks, agents, skills, connections, inbox items, and automations
+  in a persistent tabbed workspace.
 
-## Why Garden
+Garden is built for cross-functional teams at small and mid-sized companies.
+Developers use the same workspace to inspect agent work, build integrations and
+skills, and keep technical work tied to shared tasks.
 
-AI models are extraordinary. The harness around them is broken.
+## Run Garden locally
 
-Power users build elaborate personal setups — MCP servers, custom prompts, CLI tools, scheduled scripts — and get 10x. Everyone else watches and asks how. Training doesn't fix it. Workshops don't fix it. Workflows discovered by one person stay with that person.
-
-Garden fixes this. Inspired by [Ramp's Glass](https://x.com/sebgoddijn/status/2042285915435937816) (99% internal adoption, built for every function — finance, ops, marketing, not just eng), we're building the product version of that system. Every employee gets an AI-powered operating surface. One person's breakthrough becomes everyone's baseline.
-
-### Who it's for
-
-**Primary:** Non-technical roles at small-to-mid companies (10–500 employees) — CEOs, ops, finance, marketing, sales, customer support.
-
-**Secondary:** Developers on the same teams. Garden doesn't replace Claude Code or Cursor — it's where agent-authored PRs come back to, where GitHub issues live alongside human work, and where non-dev teammates operate.
-
----
-
-## Core concepts
-
-### Your agent — a digital twin
-
-Every user gets a persistent personal agent created at signup. It knows your tools, your context, your active work, and your preferences. It acts as a paired coworker — not a chatbot, not a fleet you manage.
-
-Your agent can delegate to specialists for bounded work, but the primary experience is you and your agent working together.
-
-### Skills — reusable capability modules
-
-Garden adopts the [Agent Skills open standard](https://agentskills.io) from Anthropic (used by Claude Code, Cursor, Codex, Copilot, and ~30 others). A skill is a `SKILL.md` (YAML frontmatter + markdown) plus optional bundled files. Skills are workspace-scoped, Postgres-versioned, and edited in-app.
-
-When one user writes a great skill, every agent in the workspace can use it.
-
-### Connections & permissions
-
-Connections today include **Gmail**, **Google Drive**, **Slack**, **GitHub**, and **Discord**. Exa powers Garden's first-party web-search tool rather than masquerading as a user connection. Connector tools have per-agent permissions at three trust levels:
-
-- **Ask always** — agent asks before every action
-- **Ask on risky** — agent proceeds on reads, asks on writes/sends
-- **Never ask** — full autonomy for trusted, high-volume operations
-
-When an agent needs approval, it posts to your inbox. Approve, and optionally upgrade trust for next time.
-
-### The tabbed workspace
-
-Everything is a tab — inbox, issue detail, chat session, agent config, skill editor, settings. No page switching, no mode confusion. Tabs persist across reloads, hidden tabs keep React state alive.
-
-FlexLayout tab styling notes live in [docs/core/flexlayout-tabs.md](docs/core/flexlayout-tabs.md).
-
-A Glass-style two-level sidebar on the left: icon rail for context switching (`HOME`, `CHATS`, `AGENT`, `SKILLS`, `CONNECTIONS`, `SETTINGS`) and a collapsible explorer panel beside it.
-
----
-
-## Architecture
-
-```
-Browser ──── TanStack Start (CF Workers/Pages) ────── Postgres (control plane)
-   │                    │
-   │                    ├── Better Auth session
-   │                    └── API / server routes
-   │
-   └── WebSocket ─── Agent Durable Object (per user)
-                         │
-                         ├── DO SQLite (per-agent state)
-                         ├── CF Agents SDK (LLM calls, tool routing)
-                         ├── Executor MCP session DO ─── integrations
-                         ├── native GitHub / Discord tools
-                         └── CF Sandbox (spun up for code tasks)
-```
-
-### Why Cloudflare
-
-- **Hibernation economics.** Durable Objects cost zero when idle. A persistent agent per user is economically viable — 100M agents at modest concurrency is ~100 active instances, not millions of containers.
-- **One stack.** Agents (DOs + SDK), code execution (Sandboxes), frontend (Pages/Workers), storage (R2). No stitching Modal + E2B + Vercel + Supabase + a queue.
-- **Actor model fits agents.** Per-agent SQLite means each agent's memory and state lives with it. No shared DB for agent state, no distributed locks, no job queue.
-- **All GA.** Sandboxes, DOs, Agents SDK — shipped and production-ready.
-
----
-
-## Tech stack
-
-| Layer            | Technology                                                                                                                    |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Frontend         | [TanStack Start](https://tanstack.com/start) (React 19) + [TanStack Router](https://tanstack.com/router) (file-based routing) |
-| UI               | [shadcn](https://ui.shadcn.com) `base-nova` + Base UI                                                                         |
-| Styling          | Tailwind CSS v4 (CSS-first, no config file)                                                                                   |
-| State            | Zustand (client) + TanStack Query (server)                                                                                    |
-| Editor           | TipTap (issues, skills, comments)                                                                                             |
-| Auth             | [Better Auth](https://www.better-auth.com) (email/password + Google OAuth)                                                    |
-| Agent runtime    | [Cloudflare Agents SDK](https://developers.cloudflare.com/agents/) on Durable Objects                                         |
-| Code execution   | [Cloudflare Sandboxes](https://developers.cloudflare.com/sandbox/)                                                            |
-| Control plane DB | Postgres ([Neon](https://neon.tech)) via [Drizzle ORM](https://orm.drizzle.team)                                              |
-| Per-agent state  | Durable Object SQLite                                                                                                         |
-| Realtime         | CF Agents SDK WebSocket + DO broadcast                                                                                        |
-| File storage     | Cloudflare R2                                                                                                                 |
-| Email            | Resend (transactional)                                                                                                        |
-| Error handling   | [better-result](https://github.com/nicobrinkkemper/better-result) (no try/catch)                                              |
-| Linting          | oxlint + oxfmt                                                                                                                |
-| Testing          | Vitest                                                                                                                        |
-| Monorepo         | Turborepo + pnpm workspaces                                                                                                   |
-
----
-
-## Project structure
-
-```
-garden/
-├── apps/
-│   └── web/                    # TanStack Start web app
-│       ├── src/
-│       │   ├── routes/         # File-based routing
-│       │   ├── features/       # Feature modules (auth, chat, inbox, issues, skills, ...)
-│       │   ├── components/     # Shared app components
-│       │   ├── lib/            # Utilities
-│       │   └── hooks/          # App-level hooks
-│       ├── vite.config.ts
-│       └── wrangler.jsonc      # CF Worker config
-├── packages/
-│   ├── core/                   # Shared logic & hooks (api, auth, chat, issues, realtime, ...)
-│   ├── ui/                     # Design system (shadcn components, tokens, styles)
-│   ├── agent-runtime/          # CF Agents SDK runtime
-│   ├── connectors/             # Native connectors + provider policy metadata
-│   ├── db/                     # Postgres schema (Drizzle) + migrations
-│   ├── env/                    # Environment config
-│   └── tsconfig/               # Shared TypeScript config
-├── docs/
-│   └── core/                   # PRD, technical docs, design system docs
-├── turbo.json
-├── pnpm-workspace.yaml
-└── package.json
-```
-
----
-
-## Getting started
+The normal development setup keeps the web app and Cloudflare's local D1, R2,
+Durable Object, and Workflow simulators on your machine. It connects to your
+Postgres database and uses Cloudflare's remote Workers AI binding. Docker is
+not required to start this mode.
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org) (v22.12+)
-- [pnpm](https://pnpm.io) (v10.33.0)
-- A Postgres database ([Neon](https://neon.tech) recommended)
-- A Cloudflare account and Wrangler auth for Workers AI during local development
-- Docker Desktop or Docker Engine only for remote infrastructure with Sandbox containers
+- [Node.js](https://nodejs.org) 22.12 or newer
+- pnpm 10.33.0; Corepack is the simplest way to install the pinned version
+- A Postgres database; [Neon](https://neon.tech) is the setup used by the
+  runtime
+- A Cloudflare account for Workers AI
+- Docker only when running the full test suite or Sandbox-container mode
 
-### Setup
+### 1. Clone and install
 
 ```bash
-# Clone
-git clone https://github.com/Flow-Research/garden.git && cd garden
+git clone https://github.com/Flow-Research/garden.git
+cd garden
 
-# Install dependencies
-pnpm install
+corepack enable
+corepack install
+pnpm install --frozen-lockfile
+```
 
-# Authenticate the Workers AI binding used in local development
+The repository pins pnpm 10.33.0 through the `packageManager` field in
+`package.json`.
+
+### 2. Sign in to Cloudflare
+
+```bash
 pnpm --filter @garden/web exec wrangler login
+pnpm --filter @garden/web exec wrangler whoami
+```
 
-# Configure local environment
+Copy the Account ID reported by `wrangler whoami`; it becomes
+`CLOUDFLARE_ACCOUNT_ID` in the next step.
+
+### 3. Configure the environment
+
+```bash
 cp .env.example .env
-# Edit root .env with this repo's shared local development values:
-#   CLOUDFLARE_ACCOUNT_ID=<your Cloudflare account>
-#   DATABASE_URL=postgresql://...
-#   BETTER_AUTH_SECRET=<generate a random secret>
-#   EXECUTOR_SECRET_KEY=<generate a persistent random secret>
-#   BETTER_AUTH_URL=http://localhost:3000
-#   ENVIRONMENT=development
-#
-#   Optional:
-#   AI_GATEWAY_ID for routing Workers AI through your own AI Gateway
-#   RESEND_API_KEY for transactional email
-#   GitHub / Google / Slack / Discord keys for those connectors
-#   EXA_API_KEY for web search
-#
-# The app should not boot cleanly without the required values.
-# Web, database tooling, and local scripts all read root .env.
-# Deployed Workers continue to use Cloudflare secrets and bindings.
+```
 
-# Run database migrations
+Fill in these required values in the root `.env` file:
+
+| Variable                | What to use                                                   |
+| ----------------------- | ------------------------------------------------------------- |
+| `CLOUDFLARE_ACCOUNT_ID` | Account ID from `wrangler whoami`                              |
+| `DATABASE_URL`          | Connection string for a dedicated Postgres database           |
+| `BETTER_AUTH_SECRET`    | A high-entropy secret of at least 32 characters                |
+| `EXECUTOR_SECRET_KEY`   | A second, separate high-entropy secret for connector execution |
+
+Generate the two secrets separately; do not reuse one value:
+
+```bash
+openssl rand -base64 32
+```
+
+`BETTER_AUTH_URL=http://localhost:3000` and `ENVIRONMENT=development` already
+have local defaults in `.env.example`. PostHog values are optional locally but
+required for deployment. Connector credentials are needed only for the
+providers you choose to configure.
+
+### 4. Migrate and start
+
+```bash
 pnpm --filter @garden/db db:migrate
-
-# Start Garden locally through Turbo's TUI
 pnpm dev
 ```
 
-Open `http://localhost:3000`.
+Open [http://localhost:3000](http://localhost:3000), create an account, then
+create a workspace. Use that signup-to-workspace flow as a manual first-run
+check; Garden does not yet expose a dedicated health endpoint.
 
-`pnpm dev` is the reproducible local workflow:
+`pnpm dev` starts:
 
-- Turbo starts `@garden/web` in TUI mode.
-- The web app runs on `localhost:3000`.
-- D1, R2, Durable Objects, and Workflows run in the local Workers simulator.
-- Hyperdrive connects to `DATABASE_URL` from root `.env`.
-- Workers AI uses Cloudflare's remote binding and may incur account usage.
+- the TanStack Start app on port 3000;
+- local D1, R2, Durable Object, and Workflow state through the Workers
+  simulator;
+- Hyperdrive pointed at `DATABASE_URL`; and
+- the remote Workers AI binding, which may incur usage on your Cloudflare
+  account.
 
-`pnpm dev:remote` enables Cloudflare remote bindings and Sandbox containers. It
-requires Docker, Wrangler authentication, and ignored
-`apps/web/wrangler.containers.local.jsonc` with real Hyperdrive and D1 resource
-IDs. Copy `apps/web/wrangler.containers.jsonc` to that path before editing it;
-never commit account-specific IDs.
+### Troubleshooting
 
-OAuth callbacks are configured for `localhost:3000` in local env and Wrangler config.
+**Workers AI fails to start:** run `wrangler whoami` again and check that
+`CLOUDFLARE_ACCOUNT_ID` in `.env` belongs to the authenticated account.
 
-### Commands
+**Database migrations fail:** confirm the database exists, the connection
+string includes any connection options required by your provider, and the user
+can create and alter tables. Then rerun
+`pnpm --filter @garden/db db:migrate`.
 
-| Command                               | Description                                                    |
-| ------------------------------------- | -------------------------------------------------------------- |
-| `pnpm dev`                            | Start with local state and remote Workers AI                   |
-| `pnpm dev:local`                      | Start with local state and remote Workers AI                   |
-| `pnpm dev:remote`                     | Start with remote bindings and Sandbox containers              |
-| `pnpm dev:reset`                      | Stop Garden dev processes started by Turbo/Vite/Wrangler       |
-| `pnpm dev:web`                        | Start only the web app with local state and remote Workers AI  |
-| `pnpm --filter @garden/web dev:local` | Start only the web app directly with local state and remote AI |
-| `pnpm build`                          | Build all packages                                             |
-| `pnpm typecheck`                      | Type-check everything                                          |
-| `pnpm lint`                           | Lint with oxlint                                               |
-| `pnpm format:write`                   | Format with oxfmt                                              |
-| `pnpm test`                           | Run all tests                                                  |
-| `pnpm clean`                          | Clean build artifacts                                          |
+**A connector is unavailable:** provider credentials are optional. Add only the
+matching variables from `.env.example`, then restart the development process.
 
-**Database:**
+**The full test suite cannot start Postgres:** start Docker first. Database
+tests use Testcontainers and pull `postgres:16-alpine` on the first run.
 
-| Command                                | Description                            |
+**Port 3000 is already in use:** stop the process that owns the port. The
+`pnpm dev:reset` helper uses broad process-name matching on macOS and Linux and
+may stop unrelated Vite, Workerd, or esbuild processes, so use it deliberately.
+
+### Sandbox-container mode
+
+`pnpm dev:containers` enables Cloudflare Sandbox containers. Core application
+state still runs locally and Workers AI remains remote. This mode requires
+Docker:
+
+```bash
+pnpm dev:containers
+```
+
+The tracked `apps/web/wrangler.containers.jsonc` works without account-specific
+resource IDs. An ignored `apps/web/wrangler.containers.local.jsonc` can override
+it when you deliberately need different bindings; never commit real account
+IDs or credentials.
+
+## Product tour
+
+### Personal agents and shared work
+
+Creating a workspace creates its default Garden agent. Chats, task runs, and
+automation runs keep their own runtime context, while work and results remain
+visible to the team. Garden can hand specific tasks to specialist agents while
+keeping the main workspace simple.
+
+### Connections and permissions
+
+Garden has native GitHub and Discord integrations and an Executor-backed
+catalog for other providers. Catalog entries still need the relevant provider
+credentials and setup before an agent can use them.
+
+![Garden connections catalog with personal and workspace tabs](docs/assets/readme/connections.webp)
+
+_The development catalog. Provider availability depends on local credentials
+and runtime configuration._
+
+Each connector tool has a risk class: `read`, `write`, `send_external`, or
+`destructive`. Per-agent grants use three trust levels:
+
+- `auto` is available for read-only tools that may run without pausing;
+- `allow` lets the tool proceed and records the action in the audit trail; and
+- `ask` pauses and sends an approval request to Garden's inbox.
+
+Unknown tools fail closed instead of inheriting a permissive default.
+
+### Skills
+
+Garden supports the [Agent Skills](https://agentskills.io) format: a
+`SKILL.md` file plus optional bundled resources. Skills belong to a workspace,
+keep version history, and can be assigned to agents.
+
+### Documents and artifacts
+
+Agents and people work against the same document state. Uploaded DOCX files are
+converted into versioned document blocks, edited inside Garden, and exported
+back to DOCX or PDF.
+
+![Garden document editor showing a saved DOCX after an underline edit](docs/assets/open-source-ui/document-editor-after.png)
+
+_An imported DOCX edited and saved through Garden's document workspace._
+
+## Architecture
+
+```text
+Browser ─── TanStack Start Worker ─── Neon Postgres (shared product data)
+   │                  │
+   │                  ├── Better Auth and server routes
+   │                  ├── D1 and R2
+   │                  └── Cloudflare Workflows
+   │
+   └── WebSocket ─── Agent Durable Object
+                         │
+                         ├── per-agent SQLite state
+                         ├── Cloudflare Agents + Think runtime
+                         ├── Executor integration session ─── providers
+                         └── Cloudflare Sandbox for container tasks
+```
+
+Garden is Cloudflare-first. TanStack Start runs in a Worker, Durable Objects
+host agent and Model Context Protocol (MCP) sessions, Workflows manage
+long-running task and automation runs, and R2 stores files. Neon Postgres is the
+source of truth for shared product data.
+
+### Tech stack
+
+| Layer                  | Technology                                                        |
+| ---------------------- | ----------------------------------------------------------------- |
+| Web app                | TanStack Start, React 19, TanStack Router                          |
+| UI                     | Base UI, shadcn, Tailwind CSS v4                                   |
+| Authentication         | Better Auth                                                        |
+| Agent runtime          | Cloudflare Agents, Think, Durable Objects, Workflows               |
+| Integration runtime    | Executor MCP plus Garden-native GitHub and Discord tools           |
+| Code execution         | Cloudflare Sandbox and isolated JavaScript execution                |
+| Shared database        | Neon Postgres with Drizzle ORM                                     |
+| Agent and runtime data | Durable Object SQLite, D1, and R2                                  |
+| Testing                | Vitest and Testcontainers                                          |
+| Monorepo               | pnpm workspaces and Turborepo                                      |
+
+For the deeper runtime model, read
+[`docs/core/technical.md`](docs/core/technical.md).
+
+## Repository map
+
+```text
+garden/
+├── apps/web/                 # TanStack Start application and Worker entry
+├── packages/agent-runtime/   # agents, workflows, tools, and execution
+├── packages/app-state/       # client-side application state
+├── packages/connectors/      # native integrations and provider policy
+├── packages/core/            # shared product types and services
+├── packages/db/              # Drizzle schema, migrations, and test helpers
+├── packages/env/             # environment validation
+├── packages/observability/   # logs, analytics, and error reporting
+├── packages/server/          # shared server-side services
+├── packages/ui/              # design system and reusable UI
+├── workers/tail-observer/    # optional Worker log summaries
+└── docs/                     # architecture, product, and operating notes
+```
+
+## Common commands
+
+| Command                  | Purpose                                                        |
+| ------------------------ | -------------------------------------------------------------- |
+| `pnpm dev`               | Start the normal local app with remote Workers AI              |
+| `pnpm dev:containers`    | Add Docker-backed Sandbox containers to the local app          |
+| `pnpm lint`              | Run oxlint across the workspace                                |
+| `pnpm typecheck`         | Generate Worker types and type-check the workspace             |
+| `pnpm test`              | Run tests; Docker is required for database suites              |
+| `pnpm build`             | Build the production application                               |
+| `pnpm format`            | Check formatting                                               |
+| `pnpm format:write`      | Apply the repository formatter                                 |
+| `pnpm verify:connectors` | Check connector catalog and provider-policy coverage           |
+
+Database commands:
+
+| Command                                | Purpose                                |
 | -------------------------------------- | -------------------------------------- |
-| `pnpm --filter @garden/db db:generate` | Generate migration from schema changes |
-| `pnpm --filter @garden/db db:migrate`  | Apply migrations                       |
+| `pnpm --filter @garden/db db:generate` | Generate a migration from schema edits |
+| `pnpm --filter @garden/db db:migrate`  | Apply pending migrations               |
 | `pnpm --filter @garden/db db:check`    | Check migration consistency            |
-| `pnpm --filter @garden/db db:sync`     | Run Drizzle sync helpers               |
 
----
+## Project status
 
-## Operating principles
+The current focus is a dependable small-user beta: workspace isolation, run
+recovery, connector reliability, smoke coverage, and trustworthy approval and
+audit paths. The [roadmap](docs/roadmap.md) tracks beta work, and the
+[known-gaps index](docs/known-gaps/README.md) records unfinished or deferred
+areas.
 
-1. **Don't limit anyone's upside.** Non-tech users get rails, but the rails carry them to the same ceiling. No "basic" vs "advanced" mode. One product.
-2. **One person's breakthrough becomes everyone's baseline.** Skills, memory, and agent configs compound across the workspace.
-3. **The product is the enablement.** No training workshops. The product teaches by doing — suggesting skills at the right moment, surfacing successful patterns, self-healing connector errors.
+On-premises and fully self-hosted operation are not current capabilities. See
+[`docs/core/DEFERRED.md`](docs/core/DEFERRED.md) for deliberate non-goals and
+later work.
 
----
+## Contributing
 
-## MVP scope
+Start with [CONTRIBUTING.md](CONTRIBUTING.md). Connector contributions have two
+paths—Executor-hosted integrations and Garden-native adapters—described in
+[`docs/core/connectors.md`](docs/core/connectors.md).
 
-**In scope:** Multi-user workspaces, personal agent per user, agent delegation, generic issue primitive, Agent Skills spec, Gmail + Google Drive + Slack + GitHub + search connectors, tabbed workspace surface, per-agent permissions, live agent activity streaming, basic audit log.
-
-**Out of scope:** Knowledge graph, skill marketplace, native desktop/mobile apps, enterprise SSO, wide connector catalog. See [`docs/core/DEFERRED.md`](docs/core/DEFERRED.md).
-
----
+Keep pull requests focused, include tests for behavior changes, and run the
+checks that CI will run before asking for review. Report vulnerabilities
+privately through [SECURITY.md](SECURITY.md).
 
 ## Documentation
 
-| Document                                                               | Description                                               |
-| ---------------------------------------------------------------------- | --------------------------------------------------------- |
-| [`docs/core/PRD.md`](docs/core/PRD.md)                                 | Full product requirements                                 |
-| [`docs/core/technical.md`](docs/core/technical.md)                     | Architecture deep-dive                                    |
-| [`docs/core/design.md`](docs/core/design.md)                           | Design system & UX patterns                               |
-| [`docs/core/connectors.md`](docs/core/connectors.md)                   | Connector model, contribution rules, and review checklist |
-| [`docs/core/realtime-foundation.md`](docs/core/realtime-foundation.md) | Real-time sync patterns                                   |
-| [`docs/core/chat-runtime-model.md`](docs/core/chat-runtime-model.md)   | Chat & runtime model                                      |
-| [`docs/core/DEFERRED.md`](docs/core/DEFERRED.md)                       | Deferred features & non-goals                             |
-
-## Contributing connectors
-
-Connector contributions follow [`docs/core/connectors.md`](docs/core/connectors.md). It is the source of truth for official-upstream-only policy, manifest review rules, and capability classification requirements.
-
-General contribution guidance is in [CONTRIBUTING.md](CONTRIBUTING.md).
-Report vulnerabilities privately through [SECURITY.md](SECURITY.md).
-
----
+| Document                                                               | Covers                                      |
+| ---------------------------------------------------------------------- | ------------------------------------------- |
+| [`docs/roadmap.md`](docs/roadmap.md)                                   | Beta priorities and readiness checklist     |
+| [`docs/known-gaps/README.md`](docs/known-gaps/README.md)               | Current gaps by product and runtime area     |
+| [`docs/core/PRD.md`](docs/core/PRD.md)                                 | Product requirements                        |
+| [`docs/core/technical.md`](docs/core/technical.md)                     | Architecture and current implementation     |
+| [`docs/design.md`](docs/design.md)                                     | Design system and interaction principles    |
+| [`docs/core/connectors.md`](docs/core/connectors.md)                   | Connector runtime and contribution paths    |
+| [`docs/core/realtime-foundation.md`](docs/core/realtime-foundation.md) | Realtime and polling boundaries             |
+| [`docs/core/chat-runtime-model.md`](docs/core/chat-runtime-model.md)   | Chat and agent runtime model                |
+| [`docs/core/DEFERRED.md`](docs/core/DEFERRED.md)                       | Deferred features and explicit non-goals    |
 
 ## License
 
-Garden is licensed under the [GNU Affero General Public License v3.0 only](LICENSE).
-
-If you modify Garden and let users interact with the modified version over a
-network, AGPLv3 requires offering those users the corresponding source. Bundled
-third-party components remain under their respective licenses; see
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Garden is licensed under the
+[GNU Affero General Public License v3.0 only](LICENSE). The AGPL includes
+network-use source-sharing requirements; read the license before distributing
+or operating a modified version. Bundled third-party components keep their own
+licenses and notices in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

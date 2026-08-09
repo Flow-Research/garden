@@ -60,8 +60,11 @@ package.
   introduction.
 - Full rewritten history passes scoped Gitleaks rules with zero findings.
 - The final tree passes install, lint, typecheck, tests, and production build.
-- Only the reviewed document-editor before/after images remain; both are
-  cropped to the product surface and contain no workspace identity metadata.
+- The reviewed document-editor before/after images remain cropped to the
+  product surface with no workspace identity metadata. The README also carries
+  one maintainer-supplied Connections catalog screenshot. It contains no
+  credentials, email addresses, URLs, or message bodies; it retains product
+  navigation labels and the maintainer's avatar initials.
 - The public branch contains the curated full commit graph, not a squashed or
   parentless export.
 

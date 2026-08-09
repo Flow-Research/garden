@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "turbo run dev:local --ui=tui --filter=@garden/web",
     "dev:local": "turbo run dev:local --ui=tui --filter=@garden/web",
-    "dev:remote": "turbo run dev --ui=tui --filter=@garden/web",
+    "dev:containers": "turbo run dev --ui=tui --filter=@garden/web",
     "dev:reset": "pkill -f '[t]urbo run dev|[t]urbo run dev:local|[v]ite dev|[w]orkerd serve|[e]sbuild --service' || true",
     "dev:web": "turbo run dev:local --ui=tui --filter=@garden/web",
     "build": "turbo run build",

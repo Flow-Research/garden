@@ -4,13 +4,16 @@ Thanks for helping improve Garden.
 
 ## Development
 
-Follow the setup instructions in [README.md](README.md#getting-started), then
-run the checks relevant to your change. Before opening a pull request, run:
+Follow the setup instructions in [README.md](README.md#run-garden-locally), then
+run the checks relevant to your change. The full test suite starts Postgres 16
+through Testcontainers, so Docker must be running. Before opening a pull
+request, run the same main checks as CI:
 
 ```bash
-pnpm typecheck
 pnpm lint
+pnpm typecheck
 pnpm test
+pnpm build
 ```
 
 Keep pull requests focused. Include tests for behavior changes, update shared
