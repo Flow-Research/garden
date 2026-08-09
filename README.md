@@ -9,6 +9,11 @@ allowed to do.
 > Read the [roadmap](docs/roadmap.md) and
 > [known gaps](docs/known-gaps/README.md) before using it in production.
 
+![Garden issue board with work grouped by status](docs/assets/readme/issues-board.webp)
+
+_Garden's shared issue board, with work moving from blocked and todo through
+review and done._
+
 ## What Garden does
 
 - Gives each workspace a persistent agent that can chat, work through tasks,
