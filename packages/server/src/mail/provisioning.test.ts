@@ -4,6 +4,7 @@ import {
   LocalPart,
   MailActor,
   MailDomainId,
+  MailboxAccessId,
   MailboxId,
   MemberId,
   WorkspaceId,
@@ -330,6 +331,37 @@ describe('MailProvisioning (Postgres integration)', () => {
         expect(updated.id).toBe(granted.id)
         expect(updated.accessLevel).toBe('viewer')
 
+        const finalOwnerRemoval = yield* provisioning
+          .removeMailboxAccess({
+            workspaceId: workspaceA,
+            accessId: MailboxAccessId.make(mailbox.ownerAccess.id),
+          })
+          .pipe(Effect.flip)
+        expect(finalOwnerRemoval).toBeInstanceOf(MailProvisioningConflictError)
+
+        yield* provisioning.setMailboxAccess({
+          workspaceId: workspaceA,
+          mailboxId: MailboxId.make(mailbox.mailbox.id),
+          actor: agentA,
+          accessLevel: 'owner',
+        })
+        yield* provisioning.removeMailboxAccess({
+          workspaceId: workspaceA,
+          accessId: MailboxAccessId.make(mailbox.ownerAccess.id),
+        })
+
+        const finalOwnerDowngrade = yield* provisioning
+          .setMailboxAccess({
+            workspaceId: workspaceA,
+            mailboxId: MailboxId.make(mailbox.mailbox.id),
+            actor: agentA,
+            accessLevel: 'viewer',
+          })
+          .pipe(Effect.flip)
+        expect(finalOwnerDowngrade).toBeInstanceOf(
+          MailProvisioningConflictError,
+        )
+
         const rows = yield* Effect.tryPromise(() =>
           Promise.all([
             testDb.db
@@ -350,7 +382,8 @@ describe('MailProvisioning (Postgres integration)', () => {
         )
         expect(rows[0]).toHaveLength(1)
         expect(rows[1]).toHaveLength(3)
-        expect(rows[2]).toHaveLength(2)
+        expect(rows[2]).toHaveLength(1)
+        expect(rows[2]?.[0]?.accessLevel).toBe('owner')
       }).pipe(Effect.provide(provisioningLayer(testDb))),
   )
 

@@ -8,6 +8,7 @@ import {
   MailDomainId,
   Mailbox,
   MailboxAccess,
+  MailboxAccessId,
   MailboxId,
   ProviderEvidence,
   SetMailboxAccessInput,
@@ -71,6 +72,14 @@ export const CreateAdditionalMailAddressInput = Schema.TaggedUnion({
 })
 export type CreateAdditionalMailAddressInput =
   typeof CreateAdditionalMailAddressInput.Type
+
+export const RemoveMailboxAccessInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  accessId: MailboxAccessId,
+})
+export interface RemoveMailboxAccessInput extends Schema.Schema.Type<
+  typeof RemoveMailboxAccessInput
+> {}
 
 export const ProvisionedMailbox = Schema.Struct({
   mailbox: Mailbox,
@@ -197,6 +206,9 @@ export interface MailProvisioningService {
   readonly setMailboxAccess: (
     input: SetMailboxAccessInput,
   ) => Effect.Effect<MailboxAccess, MailProvisioningError>
+  readonly removeMailboxAccess: (
+    input: RemoveMailboxAccessInput,
+  ) => Effect.Effect<void, MailProvisioningError>
 }
 
 /** Application authority for durable Garden Mail onboarding and administration. */

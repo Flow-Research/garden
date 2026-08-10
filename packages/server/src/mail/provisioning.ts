@@ -27,6 +27,7 @@ import {
   persistAddress,
   persistMailbox,
   persistMailboxAccess,
+  removePersistedMailboxAccess,
   reserveProvisionedDomain,
   updateProvisionedDomain,
 } from './provisioning-persistence.ts'
@@ -342,6 +343,11 @@ export const makeMailProvisioningLayer = (
         setMailboxAccess: Effect.fn('MailProvisioning.setMailboxAccess')(
           function* (input) {
             return yield* persistMailboxAccess(db, input)
+          },
+        ),
+        removeMailboxAccess: Effect.fn('MailProvisioning.removeMailboxAccess')(
+          function* (input) {
+            yield* removePersistedMailboxAccess(db, input)
           },
         ),
       })

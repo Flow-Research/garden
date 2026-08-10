@@ -19,6 +19,7 @@ import {
   Mailbox,
   MailboxAccess,
   type MailboxAccessLevel,
+  type MailboxAccessId,
   type MailboxId,
   type ProviderEvidence,
   type ProviderKey,
@@ -35,6 +36,7 @@ import {
   MailProvisioningPersistenceError,
   type ProvisionedMailbox,
   type ProvisionMailboxInput,
+  type RemoveMailboxAccessInput,
 } from './provisioning-contracts.ts'
 
 type ProvisioningTransaction = Parameters<
@@ -79,6 +81,42 @@ export interface PersistAccessInput {
   readonly actor: MailActor
   readonly accessLevel: MailboxAccessLevel
 }
+
+/** Refuses mutations that would leave a collaborative mailbox ownerless. */
+const requireAnotherMailboxOwner = Effect.fn(
+  'MailProvisioningPersistence.requireAnotherMailboxOwner',
+)(function* (
+  tx: ProvisioningTransaction,
+  input: {
+    readonly workspaceId: WorkspaceId
+    readonly mailboxId: MailboxId
+    readonly excludedAccessId: MailboxAccessId
+    readonly operation: string
+  },
+) {
+  const owners = yield* databaseEffect(`${input.operation}.lockOwners`, () =>
+    tx
+      .select({ id: mailMailboxAccess.id })
+      .from(mailMailboxAccess)
+      .where(
+        and(
+          eq(mailMailboxAccess.workspaceId, input.workspaceId),
+          eq(mailMailboxAccess.mailboxId, input.mailboxId),
+          eq(mailMailboxAccess.accessLevel, 'owner'),
+        ),
+      )
+      .for('update'),
+  )
+  if (owners.every((owner) => owner.id === input.excludedAccessId)) {
+    return yield* new MailProvisioningConflictError({
+      workspaceId: input.workspaceId,
+      resourceType: 'mailbox_owner',
+      value: input.mailboxId,
+      operation: input.operation,
+      message: 'A mailbox must retain at least one owner.',
+    })
+  }
+})
 
 /** Maps database Promise failures into the provisioning subsystem. */
 const databaseEffect = <A>(
@@ -756,6 +794,14 @@ export const persistMailboxAccess = Effect.fn(
             .limit(1),
       )
       const existing = existingRows[0]
+      if (existing?.accessLevel === 'owner' && input.accessLevel !== 'owner') {
+        yield* requireAnotherMailboxOwner(tx, {
+          workspaceId: input.workspaceId,
+          mailboxId: input.mailboxId,
+          excludedAccessId: existing.id as MailboxAccessId,
+          operation: 'setMailboxAccess',
+        })
+      }
       const rows =
         existing === undefined
           ? yield* databaseEffect('setMailboxAccess.insert', () =>
@@ -786,6 +832,57 @@ export const persistMailboxAccess = Effect.fn(
         })
       }
       return yield* decodeAccess(row, 'setMailboxAccess.decode')
+    }),
+  )
+})
+
+/** Deletes one access grant while preserving a mailbox's final owner. */
+export const removePersistedMailboxAccess = Effect.fn(
+  'MailProvisioningPersistence.removeMailboxAccess',
+)(function* (db: GardenDatabase, input: RemoveMailboxAccessInput) {
+  return yield* inTransaction(db, 'removeMailboxAccess', (tx) =>
+    Effect.gen(function* () {
+      const rows = yield* databaseEffect('removeMailboxAccess.find', () =>
+        tx
+          .select()
+          .from(mailMailboxAccess)
+          .where(
+            and(
+              eq(mailMailboxAccess.workspaceId, input.workspaceId),
+              eq(mailMailboxAccess.id, input.accessId),
+            ),
+          )
+          .limit(1)
+          .for('update'),
+      )
+      const access = rows[0]
+      if (access === undefined) {
+        return yield* new MailProvisioningNotFoundError({
+          workspaceId: input.workspaceId,
+          resourceType: 'mailbox_access',
+          resourceId: input.accessId,
+          operation: 'removeMailboxAccess',
+          message: 'Mailbox access does not exist in this workspace.',
+        })
+      }
+      if (access.accessLevel === 'owner') {
+        yield* requireAnotherMailboxOwner(tx, {
+          workspaceId: input.workspaceId,
+          mailboxId: access.mailboxId as MailboxId,
+          excludedAccessId: input.accessId,
+          operation: 'removeMailboxAccess',
+        })
+      }
+      yield* databaseEffect('removeMailboxAccess.delete', () =>
+        tx
+          .delete(mailMailboxAccess)
+          .where(
+            and(
+              eq(mailMailboxAccess.workspaceId, input.workspaceId),
+              eq(mailMailboxAccess.id, input.accessId),
+            ),
+          ),
+      )
     }),
   )
 })
