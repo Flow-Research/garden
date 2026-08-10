@@ -48,6 +48,7 @@ export const mailDraftStatusValues = [
   'awaiting_approval',
   'approved',
   'sending',
+  'send_failed',
   'sent',
   'discarded',
 ] as const
@@ -58,6 +59,8 @@ export const mailDraftActivityActionValues = [
   'approved',
   'changes_requested',
   'send_requested',
+  'retry_requested',
+  'send_failed',
   'sent',
   'discarded',
 ] as const
@@ -221,6 +224,7 @@ export const mailAddress = pgTable(
   },
   (table) => [
     unique('mail_address_workspace_id_unique').on(table.workspaceId, table.id),
+    unique('mail_address_mailbox_id_unique').on(table.mailboxId, table.id),
     uniqueIndex('mail_address_domain_local_part_unique').on(
       table.domainId,
       table.localPart,
@@ -363,6 +367,7 @@ export const mailConversation = pgTable(
       table.workspaceId,
       table.id,
     ),
+    unique('mail_conversation_mailbox_id_unique').on(table.mailboxId, table.id),
     uniqueIndex('mail_conversation_mailbox_thread_key_unique').on(
       table.mailboxId,
       table.threadKey,
@@ -405,6 +410,7 @@ export const mailMessage = pgTable(
     authorMemberId: uuid('author_member_id').references(() => member.id),
     authorAgentId: uuid('author_agent_id').references(() => agent.id),
     senderName: text('sender_name'),
+    senderAddressId: uuid('sender_address_id').references(() => mailAddress.id),
     senderAddress: text('sender_address').notNull(),
     subject: text('subject').notNull().default(''),
     textBody: text('text_body'),
@@ -453,6 +459,11 @@ export const mailMessage = pgTable(
       table.workspaceId,
       table.authoredAt,
     ),
+    foreignKey({
+      name: 'mail_message_workspace_sender_address_fk',
+      columns: [table.workspaceId, table.senderAddressId],
+      foreignColumns: [mailAddress.workspaceId, mailAddress.id],
+    }),
     check(
       'mail_message_source_check',
       sql`${table.source} in (${sqlValueList(mailMessageSourceValues)})`,
@@ -476,6 +487,10 @@ export const mailMessage = pgTable(
     check(
       'mail_message_ingress_source_check',
       sql`${table.source} = 'outbound' or (${table.ingressProvider} is not null and ${table.ingressProviderMessageId} is not null)`,
+    ),
+    check(
+      'mail_message_outbound_sender_check',
+      sql`${table.source} <> 'outbound' or ${table.senderAddressId} is not null`,
     ),
   ],
 )
@@ -670,9 +685,15 @@ export const mailDraft = pgTable(
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => organization.id),
-    conversationId: uuid('conversation_id')
+    mailboxId: uuid('mailbox_id')
       .notNull()
-      .references(() => mailConversation.id),
+      .references(() => mailMailbox.id),
+    fromAddressId: uuid('from_address_id')
+      .notNull()
+      .references(() => mailAddress.id),
+    conversationId: uuid('conversation_id').references(
+      () => mailConversation.id,
+    ),
     authorType: text('author_type').notNull(),
     authorMemberId: uuid('author_member_id').references(() => member.id),
     authorAgentId: uuid('author_agent_id').references(() => agent.id),
@@ -712,9 +733,29 @@ export const mailDraft = pgTable(
       table.updatedAt,
     ),
     foreignKey({
+      name: 'mail_draft_workspace_mailbox_fk',
+      columns: [table.workspaceId, table.mailboxId],
+      foreignColumns: [mailMailbox.workspaceId, mailMailbox.id],
+    }),
+    foreignKey({
+      name: 'mail_draft_workspace_from_address_fk',
+      columns: [table.workspaceId, table.fromAddressId],
+      foreignColumns: [mailAddress.workspaceId, mailAddress.id],
+    }),
+    foreignKey({
+      name: 'mail_draft_mailbox_from_address_fk',
+      columns: [table.mailboxId, table.fromAddressId],
+      foreignColumns: [mailAddress.mailboxId, mailAddress.id],
+    }),
+    foreignKey({
       name: 'mail_draft_workspace_conversation_fk',
       columns: [table.workspaceId, table.conversationId],
       foreignColumns: [mailConversation.workspaceId, mailConversation.id],
+    }),
+    foreignKey({
+      name: 'mail_draft_mailbox_conversation_fk',
+      columns: [table.mailboxId, table.conversationId],
+      foreignColumns: [mailConversation.mailboxId, mailConversation.id],
     }),
     foreignKey({
       name: 'mail_draft_workspace_reply_to_fk',
@@ -755,6 +796,14 @@ export const mailDraft = pgTable(
       sql`${table.status} in (${sqlValueList(mailDraftStatusValues)})`,
     ),
     check('mail_draft_revision_check', sql`${table.revision} >= 0`),
+    check(
+      'mail_draft_reply_conversation_check',
+      sql`${table.replyToMessageId} is null or ${table.conversationId} is not null`,
+    ),
+    check(
+      'mail_draft_sent_conversation_check',
+      sql`${table.sentMessageId} is null or ${table.conversationId} is not null`,
+    ),
     check(
       'mail_draft_sent_message_check',
       sql`(${table.status} = 'sent') = (${table.sentMessageId} is not null)`,

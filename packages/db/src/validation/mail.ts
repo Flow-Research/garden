@@ -208,6 +208,7 @@ const mailMessageFields = {
   authorType: () => mailMessageAuthorTypeSchema,
   authorMemberId: () => uuidSchema.nullable(),
   authorAgentId: () => uuidSchema.nullable(),
+  senderAddressId: () => uuidSchema.nullable(),
   senderAddress: () => emailAddressSchema,
   referenceMessageIds: () => z.array(nonEmptyStringSchema),
   replyToMessageId: () => uuidSchema.nullable(),
@@ -225,6 +226,7 @@ function hasValidMessageIdentity(value: {
   authorAgentId?: string | null
   ingressProvider?: string | null
   ingressProviderMessageId?: string | null
+  senderAddressId?: string | null
 }) {
   const authorValid =
     value.authorType === 'member'
@@ -236,7 +238,9 @@ function hasValidMessageIdentity(value: {
     (value.ingressProvider == null) === (value.ingressProviderMessageId == null)
   const ingressValid =
     value.source === 'outbound' || value.ingressProvider != null
-  return authorValid && providerPairValid && ingressValid
+  const outboundSenderValid =
+    value.source !== 'outbound' || value.senderAddressId != null
+  return authorValid && providerPairValid && ingressValid && outboundSenderValid
 }
 
 export const mailMessageSelectSchema = createSelectSchema(
@@ -320,7 +324,9 @@ export const mailMessageLocalDeliveryInsertSchema = createInsertSchema(
 const mailDraftFields = {
   id: () => uuidSchema,
   workspaceId: () => uuidSchema,
-  conversationId: () => uuidSchema,
+  mailboxId: () => uuidSchema,
+  fromAddressId: () => uuidSchema,
+  conversationId: () => uuidSchema.nullable(),
   authorType: () => mailAccessActorTypeSchema,
   authorMemberId: () => uuidSchema.nullable(),
   authorAgentId: () => uuidSchema.nullable(),

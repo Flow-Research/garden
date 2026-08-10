@@ -132,6 +132,7 @@ export const DraftStatus = Schema.Literals([
   'awaiting_approval',
   'approved',
   'sending',
+  'send_failed',
   'sent',
   'discarded',
 ])
@@ -143,6 +144,8 @@ export const DraftActivityAction = Schema.Literals([
   'approved',
   'changes_requested',
   'send_requested',
+  'retry_requested',
+  'send_failed',
   'sent',
   'discarded',
 ])

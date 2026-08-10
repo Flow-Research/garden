@@ -2,6 +2,7 @@ import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 import {
   AssignConversationInput,
+  CreateDraftInput,
   InboundMailEnvelope,
   SaveDraftInput,
 } from './operations.js'
@@ -86,6 +87,24 @@ describe('Garden Mail Effect contracts', () => {
 
     expect(edit.actor).toEqual({ _tag: 'Member', memberId })
     expect(edit.expectedRevision).toBe(4)
+  })
+
+  it('allows compose to begin before a conversation exists', () => {
+    const draft = Schema.decodeUnknownSync(CreateDraftInput)({
+      workspaceId,
+      mailboxId: 'c9c06be9-ed37-4a93-b2dd-3747b8a9cd08',
+      fromAddressId: '76721d5f-dfc2-4802-8b2e-a09649305b82',
+      conversationId: null,
+      author: { _tag: 'Member', memberId },
+      replyToMessageId: null,
+      subject: '',
+      textBody: null,
+      htmlBody: null,
+      recipients: [],
+      attachments: [],
+    })
+
+    expect(draft.conversationId).toBeNull()
   })
 
   it('models assignment targets separately from assigning actors', () => {

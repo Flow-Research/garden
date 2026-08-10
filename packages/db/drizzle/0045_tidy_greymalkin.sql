@@ -9,6 +9,7 @@ CREATE TABLE "mail_address" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "mail_address_workspace_id_unique" UNIQUE("workspace_id","id"),
+	CONSTRAINT "mail_address_mailbox_id_unique" UNIQUE("mailbox_id","id"),
 	CONSTRAINT "mail_address_local_part_normalized_check" CHECK ("mail_address"."local_part" = lower("mail_address"."local_part") and ("mail_address"."local_part" = '*' or "mail_address"."local_part" ~ '^[a-z0-9][a-z0-9._%+-]*$')),
 	CONSTRAINT "mail_address_kind_check" CHECK ("mail_address"."kind" in ('primary', 'alias', 'catch_all')),
 	CONSTRAINT "mail_address_catch_all_check" CHECK (("mail_address"."kind" = 'catch_all') = ("mail_address"."local_part" = '*')),
@@ -42,6 +43,7 @@ CREATE TABLE "mail_conversation" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "mail_conversation_workspace_id_unique" UNIQUE("workspace_id","id"),
+	CONSTRAINT "mail_conversation_mailbox_id_unique" UNIQUE("mailbox_id","id"),
 	CONSTRAINT "mail_conversation_thread_key_check" CHECK (length(btrim("mail_conversation"."thread_key")) > 0)
 );
 --> statement-breakpoint
@@ -134,7 +136,9 @@ CREATE TABLE "mail_domain" (
 CREATE TABLE "mail_draft" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"workspace_id" uuid NOT NULL,
-	"conversation_id" uuid NOT NULL,
+	"mailbox_id" uuid NOT NULL,
+	"from_address_id" uuid NOT NULL,
+	"conversation_id" uuid,
 	"author_type" text NOT NULL,
 	"author_member_id" uuid,
 	"author_agent_id" uuid,
@@ -150,8 +154,10 @@ CREATE TABLE "mail_draft" (
 	CONSTRAINT "mail_draft_workspace_id_unique" UNIQUE("workspace_id","id"),
 	CONSTRAINT "mail_draft_author_type_check" CHECK ("mail_draft"."author_type" in ('member', 'agent')),
 	CONSTRAINT "mail_draft_author_check" CHECK (("mail_draft"."author_type" = 'member' and "mail_draft"."author_member_id" is not null and "mail_draft"."author_agent_id" is null) or ("mail_draft"."author_type" = 'agent' and "mail_draft"."author_agent_id" is not null and "mail_draft"."author_member_id" is null)),
-	CONSTRAINT "mail_draft_status_check" CHECK ("mail_draft"."status" in ('editing', 'awaiting_approval', 'approved', 'sending', 'sent', 'discarded')),
+	CONSTRAINT "mail_draft_status_check" CHECK ("mail_draft"."status" in ('editing', 'awaiting_approval', 'approved', 'sending', 'send_failed', 'sent', 'discarded')),
 	CONSTRAINT "mail_draft_revision_check" CHECK ("mail_draft"."revision" >= 0),
+	CONSTRAINT "mail_draft_reply_conversation_check" CHECK ("mail_draft"."reply_to_message_id" is null or "mail_draft"."conversation_id" is not null),
+	CONSTRAINT "mail_draft_sent_conversation_check" CHECK ("mail_draft"."sent_message_id" is null or "mail_draft"."conversation_id" is not null),
 	CONSTRAINT "mail_draft_sent_message_check" CHECK (("mail_draft"."status" = 'sent') = ("mail_draft"."sent_message_id" is not null))
 );
 --> statement-breakpoint
@@ -173,9 +179,9 @@ CREATE TABLE "mail_draft_activity" (
 	CONSTRAINT "mail_draft_activity_revision_check" CHECK ("mail_draft_activity"."revision" >= 0),
 	CONSTRAINT "mail_draft_activity_actor_type_check" CHECK ("mail_draft_activity"."actor_type" in ('member', 'agent', 'system')),
 	CONSTRAINT "mail_draft_activity_actor_check" CHECK (("mail_draft_activity"."actor_type" = 'member' and "mail_draft_activity"."member_id" is not null and "mail_draft_activity"."agent_id" is null) or ("mail_draft_activity"."actor_type" = 'agent' and "mail_draft_activity"."agent_id" is not null and "mail_draft_activity"."member_id" is null) or ("mail_draft_activity"."actor_type" = 'system' and "mail_draft_activity"."member_id" is null and "mail_draft_activity"."agent_id" is null)),
-	CONSTRAINT "mail_draft_activity_action_check" CHECK ("mail_draft_activity"."action" in ('created', 'edited', 'submitted_for_approval', 'approved', 'changes_requested', 'send_requested', 'sent', 'discarded')),
-	CONSTRAINT "mail_draft_activity_from_status_check" CHECK ("mail_draft_activity"."from_status" is null or "mail_draft_activity"."from_status" in ('editing', 'awaiting_approval', 'approved', 'sending', 'sent', 'discarded')),
-	CONSTRAINT "mail_draft_activity_to_status_check" CHECK ("mail_draft_activity"."to_status" in ('editing', 'awaiting_approval', 'approved', 'sending', 'sent', 'discarded')),
+	CONSTRAINT "mail_draft_activity_action_check" CHECK ("mail_draft_activity"."action" in ('created', 'edited', 'submitted_for_approval', 'approved', 'changes_requested', 'send_requested', 'retry_requested', 'send_failed', 'sent', 'discarded')),
+	CONSTRAINT "mail_draft_activity_from_status_check" CHECK ("mail_draft_activity"."from_status" is null or "mail_draft_activity"."from_status" in ('editing', 'awaiting_approval', 'approved', 'sending', 'send_failed', 'sent', 'discarded')),
+	CONSTRAINT "mail_draft_activity_to_status_check" CHECK ("mail_draft_activity"."to_status" in ('editing', 'awaiting_approval', 'approved', 'sending', 'send_failed', 'sent', 'discarded')),
 	CONSTRAINT "mail_draft_activity_created_check" CHECK (("mail_draft_activity"."action" = 'created') = ("mail_draft_activity"."from_status" is null)),
 	CONSTRAINT "mail_draft_activity_sent_message_check" CHECK (("mail_draft_activity"."action" = 'sent') = ("mail_draft_activity"."sent_message_id" is not null))
 );
@@ -243,6 +249,7 @@ CREATE TABLE "mail_message" (
 	"author_member_id" uuid,
 	"author_agent_id" uuid,
 	"sender_name" text,
+	"sender_address_id" uuid,
 	"sender_address" text NOT NULL,
 	"subject" text DEFAULT '' NOT NULL,
 	"text_body" text,
@@ -263,7 +270,8 @@ CREATE TABLE "mail_message" (
 	CONSTRAINT "mail_message_author_check" CHECK (("mail_message"."author_type" = 'member' and "mail_message"."author_member_id" is not null and "mail_message"."author_agent_id" is null) or ("mail_message"."author_type" = 'agent' and "mail_message"."author_agent_id" is not null and "mail_message"."author_member_id" is null) or ("mail_message"."author_type" in ('external', 'system') and "mail_message"."author_member_id" is null and "mail_message"."author_agent_id" is null)),
 	CONSTRAINT "mail_message_sender_address_normalized_check" CHECK ("mail_message"."sender_address" = lower("mail_message"."sender_address") and "mail_message"."sender_address" ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'),
 	CONSTRAINT "mail_message_ingress_identity_pair_check" CHECK (("mail_message"."ingress_provider" is null) = ("mail_message"."ingress_provider_message_id" is null)),
-	CONSTRAINT "mail_message_ingress_source_check" CHECK ("mail_message"."source" = 'outbound' or ("mail_message"."ingress_provider" is not null and "mail_message"."ingress_provider_message_id" is not null))
+	CONSTRAINT "mail_message_ingress_source_check" CHECK ("mail_message"."source" = 'outbound' or ("mail_message"."ingress_provider" is not null and "mail_message"."ingress_provider_message_id" is not null)),
+	CONSTRAINT "mail_message_outbound_sender_check" CHECK ("mail_message"."source" <> 'outbound' or "mail_message"."sender_address_id" is not null)
 );
 --> statement-breakpoint
 CREATE TABLE "mail_message_attachment" (
@@ -352,12 +360,18 @@ ALTER TABLE "mail_delivery_attempt" ADD CONSTRAINT "mail_delivery_attempt_messag
 ALTER TABLE "mail_delivery_attempt" ADD CONSTRAINT "mail_delivery_attempt_workspace_message_fk" FOREIGN KEY ("workspace_id","message_id") REFERENCES "public"."mail_message"("workspace_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_domain" ADD CONSTRAINT "mail_domain_workspace_id_organization_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."organization"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_workspace_id_organization_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."organization"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_mailbox_id_mail_mailbox_id_fk" FOREIGN KEY ("mailbox_id") REFERENCES "public"."mail_mailbox"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_from_address_id_mail_address_id_fk" FOREIGN KEY ("from_address_id") REFERENCES "public"."mail_address"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_conversation_id_mail_conversation_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."mail_conversation"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_author_member_id_member_id_fk" FOREIGN KEY ("author_member_id") REFERENCES "public"."member"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_author_agent_id_agent_id_fk" FOREIGN KEY ("author_agent_id") REFERENCES "public"."agent"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_reply_to_message_id_mail_message_id_fk" FOREIGN KEY ("reply_to_message_id") REFERENCES "public"."mail_message"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_sent_message_id_mail_message_id_fk" FOREIGN KEY ("sent_message_id") REFERENCES "public"."mail_message"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_workspace_mailbox_fk" FOREIGN KEY ("workspace_id","mailbox_id") REFERENCES "public"."mail_mailbox"("workspace_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_workspace_from_address_fk" FOREIGN KEY ("workspace_id","from_address_id") REFERENCES "public"."mail_address"("workspace_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_mailbox_from_address_fk" FOREIGN KEY ("mailbox_id","from_address_id") REFERENCES "public"."mail_address"("mailbox_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_workspace_conversation_fk" FOREIGN KEY ("workspace_id","conversation_id") REFERENCES "public"."mail_conversation"("workspace_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_mailbox_conversation_fk" FOREIGN KEY ("mailbox_id","conversation_id") REFERENCES "public"."mail_conversation"("mailbox_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_workspace_reply_to_fk" FOREIGN KEY ("workspace_id","reply_to_message_id") REFERENCES "public"."mail_message"("workspace_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_workspace_sent_message_fk" FOREIGN KEY ("workspace_id","sent_message_id") REFERENCES "public"."mail_message"("workspace_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_conversation_reply_to_fk" FOREIGN KEY ("conversation_id","reply_to_message_id") REFERENCES "public"."mail_conversation_message"("conversation_id","message_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -386,7 +400,9 @@ ALTER TABLE "mail_mailbox_access" ADD CONSTRAINT "mail_mailbox_access_workspace_
 ALTER TABLE "mail_message" ADD CONSTRAINT "mail_message_workspace_id_organization_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."organization"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_message" ADD CONSTRAINT "mail_message_author_member_id_member_id_fk" FOREIGN KEY ("author_member_id") REFERENCES "public"."member"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_message" ADD CONSTRAINT "mail_message_author_agent_id_agent_id_fk" FOREIGN KEY ("author_agent_id") REFERENCES "public"."agent"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mail_message" ADD CONSTRAINT "mail_message_sender_address_id_mail_address_id_fk" FOREIGN KEY ("sender_address_id") REFERENCES "public"."mail_address"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_message" ADD CONSTRAINT "mail_message_reply_to_message_id_mail_message_id_fk" FOREIGN KEY ("reply_to_message_id") REFERENCES "public"."mail_message"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mail_message" ADD CONSTRAINT "mail_message_workspace_sender_address_fk" FOREIGN KEY ("workspace_id","sender_address_id") REFERENCES "public"."mail_address"("workspace_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_message_attachment" ADD CONSTRAINT "mail_message_attachment_workspace_id_organization_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."organization"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_message_attachment" ADD CONSTRAINT "mail_message_attachment_message_id_mail_message_id_fk" FOREIGN KEY ("message_id") REFERENCES "public"."mail_message"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_message_attachment" ADD CONSTRAINT "mail_message_attachment_attachment_id_mail_attachment_id_fk" FOREIGN KEY ("attachment_id") REFERENCES "public"."mail_attachment"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

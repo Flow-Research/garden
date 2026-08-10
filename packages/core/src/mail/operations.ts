@@ -208,7 +208,9 @@ export interface SaveDraftInput extends Schema.Schema.Type<
 
 export const CreateDraftInput = Schema.Struct({
   workspaceId: WorkspaceId,
-  conversationId: ConversationId,
+  mailboxId: MailboxId,
+  fromAddressId: MailAddressId,
+  conversationId: Schema.NullOr(ConversationId),
   author: MailActor,
   replyToMessageId: Schema.NullOr(MessageId),
   subject: Schema.String,

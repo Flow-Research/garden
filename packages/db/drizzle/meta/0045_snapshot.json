@@ -1,5 +1,5 @@
 {
-  "id": "399c11cd-e5d0-421f-9fc3-183cfcfedb33",
+  "id": "511ede0f-589b-4d3d-bb16-34d930880c54",
   "prevId": "3989b671-1344-48c6-a717-1508216603be",
   "version": "7",
   "dialect": "postgresql",
@@ -6289,6 +6289,14 @@
             "workspace_id",
             "id"
           ]
+        },
+        "mail_address_mailbox_id_unique": {
+          "name": "mail_address_mailbox_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "mailbox_id",
+            "id"
+          ]
         }
       },
       "policies": {},
@@ -6637,6 +6645,14 @@
           "nullsNotDistinct": false,
           "columns": [
             "workspace_id",
+            "id"
+          ]
+        },
+        "mail_conversation_mailbox_id_unique": {
+          "name": "mail_conversation_mailbox_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "mailbox_id",
             "id"
           ]
         }
@@ -7828,11 +7844,23 @@
           "primaryKey": false,
           "notNull": true
         },
+        "mailbox_id": {
+          "name": "mailbox_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "from_address_id": {
+          "name": "from_address_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "conversation_id": {
           "name": "conversation_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "author_type": {
           "name": "author_type",
@@ -7986,6 +8014,32 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
+        "mail_draft_mailbox_id_mail_mailbox_id_fk": {
+          "name": "mail_draft_mailbox_id_mail_mailbox_id_fk",
+          "tableFrom": "mail_draft",
+          "tableTo": "mail_mailbox",
+          "columnsFrom": [
+            "mailbox_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "mail_draft_from_address_id_mail_address_id_fk": {
+          "name": "mail_draft_from_address_id_mail_address_id_fk",
+          "tableFrom": "mail_draft",
+          "tableTo": "mail_address",
+          "columnsFrom": [
+            "from_address_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "mail_draft_conversation_id_mail_conversation_id_fk": {
           "name": "mail_draft_conversation_id_mail_conversation_id_fk",
           "tableFrom": "mail_draft",
@@ -8051,6 +8105,51 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
+        "mail_draft_workspace_mailbox_fk": {
+          "name": "mail_draft_workspace_mailbox_fk",
+          "tableFrom": "mail_draft",
+          "tableTo": "mail_mailbox",
+          "columnsFrom": [
+            "workspace_id",
+            "mailbox_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "mail_draft_workspace_from_address_fk": {
+          "name": "mail_draft_workspace_from_address_fk",
+          "tableFrom": "mail_draft",
+          "tableTo": "mail_address",
+          "columnsFrom": [
+            "workspace_id",
+            "from_address_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "mail_draft_mailbox_from_address_fk": {
+          "name": "mail_draft_mailbox_from_address_fk",
+          "tableFrom": "mail_draft",
+          "tableTo": "mail_address",
+          "columnsFrom": [
+            "mailbox_id",
+            "from_address_id"
+          ],
+          "columnsTo": [
+            "mailbox_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "mail_draft_workspace_conversation_fk": {
           "name": "mail_draft_workspace_conversation_fk",
           "tableFrom": "mail_draft",
@@ -8061,6 +8160,21 @@
           ],
           "columnsTo": [
             "workspace_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "mail_draft_mailbox_conversation_fk": {
+          "name": "mail_draft_mailbox_conversation_fk",
+          "tableFrom": "mail_draft",
+          "tableTo": "mail_conversation",
+          "columnsFrom": [
+            "mailbox_id",
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "mailbox_id",
             "id"
           ],
           "onDelete": "no action",
@@ -8150,11 +8264,19 @@
         },
         "mail_draft_status_check": {
           "name": "mail_draft_status_check",
-          "value": "\"mail_draft\".\"status\" in ('editing', 'awaiting_approval', 'approved', 'sending', 'sent', 'discarded')"
+          "value": "\"mail_draft\".\"status\" in ('editing', 'awaiting_approval', 'approved', 'sending', 'send_failed', 'sent', 'discarded')"
         },
         "mail_draft_revision_check": {
           "name": "mail_draft_revision_check",
           "value": "\"mail_draft\".\"revision\" >= 0"
+        },
+        "mail_draft_reply_conversation_check": {
+          "name": "mail_draft_reply_conversation_check",
+          "value": "\"mail_draft\".\"reply_to_message_id\" is null or \"mail_draft\".\"conversation_id\" is not null"
+        },
+        "mail_draft_sent_conversation_check": {
+          "name": "mail_draft_sent_conversation_check",
+          "value": "\"mail_draft\".\"sent_message_id\" is null or \"mail_draft\".\"conversation_id\" is not null"
         },
         "mail_draft_sent_message_check": {
           "name": "mail_draft_sent_message_check",
@@ -8417,15 +8539,15 @@
         },
         "mail_draft_activity_action_check": {
           "name": "mail_draft_activity_action_check",
-          "value": "\"mail_draft_activity\".\"action\" in ('created', 'edited', 'submitted_for_approval', 'approved', 'changes_requested', 'send_requested', 'sent', 'discarded')"
+          "value": "\"mail_draft_activity\".\"action\" in ('created', 'edited', 'submitted_for_approval', 'approved', 'changes_requested', 'send_requested', 'retry_requested', 'send_failed', 'sent', 'discarded')"
         },
         "mail_draft_activity_from_status_check": {
           "name": "mail_draft_activity_from_status_check",
-          "value": "\"mail_draft_activity\".\"from_status\" is null or \"mail_draft_activity\".\"from_status\" in ('editing', 'awaiting_approval', 'approved', 'sending', 'sent', 'discarded')"
+          "value": "\"mail_draft_activity\".\"from_status\" is null or \"mail_draft_activity\".\"from_status\" in ('editing', 'awaiting_approval', 'approved', 'sending', 'send_failed', 'sent', 'discarded')"
         },
         "mail_draft_activity_to_status_check": {
           "name": "mail_draft_activity_to_status_check",
-          "value": "\"mail_draft_activity\".\"to_status\" in ('editing', 'awaiting_approval', 'approved', 'sending', 'sent', 'discarded')"
+          "value": "\"mail_draft_activity\".\"to_status\" in ('editing', 'awaiting_approval', 'approved', 'sending', 'send_failed', 'sent', 'discarded')"
         },
         "mail_draft_activity_created_check": {
           "name": "mail_draft_activity_created_check",
@@ -9120,6 +9242,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "sender_address_id": {
+          "name": "sender_address_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "sender_address": {
           "name": "sender_address",
           "type": "text",
@@ -9335,6 +9463,19 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
+        "mail_message_sender_address_id_mail_address_id_fk": {
+          "name": "mail_message_sender_address_id_mail_address_id_fk",
+          "tableFrom": "mail_message",
+          "tableTo": "mail_address",
+          "columnsFrom": [
+            "sender_address_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "mail_message_reply_to_message_id_mail_message_id_fk": {
           "name": "mail_message_reply_to_message_id_mail_message_id_fk",
           "tableFrom": "mail_message",
@@ -9343,6 +9484,21 @@
             "reply_to_message_id"
           ],
           "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "mail_message_workspace_sender_address_fk": {
+          "name": "mail_message_workspace_sender_address_fk",
+          "tableFrom": "mail_message",
+          "tableTo": "mail_address",
+          "columnsFrom": [
+            "workspace_id",
+            "sender_address_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
             "id"
           ],
           "onDelete": "no action",
@@ -9385,6 +9541,10 @@
         "mail_message_ingress_source_check": {
           "name": "mail_message_ingress_source_check",
           "value": "\"mail_message\".\"source\" = 'outbound' or (\"mail_message\".\"ingress_provider\" is not null and \"mail_message\".\"ingress_provider_message_id\" is not null)"
+        },
+        "mail_message_outbound_sender_check": {
+          "name": "mail_message_outbound_sender_check",
+          "value": "\"mail_message\".\"source\" <> 'outbound' or \"mail_message\".\"sender_address_id\" is not null"
         }
       },
       "isRLSEnabled": false

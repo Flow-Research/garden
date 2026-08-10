@@ -139,6 +139,7 @@ export const Message = Schema.Struct({
   source: MessageSource,
   author: MessageAuthor,
   senderName: Schema.NullOr(Schema.String),
+  senderAddressId: Schema.NullOr(MailAddressId),
   senderAddress: EmailAddress,
   subject: Schema.String,
   textBody: Schema.NullOr(Schema.String),
@@ -200,7 +201,9 @@ export interface LocalDelivery extends Schema.Schema.Type<
 export const Draft = Schema.Struct({
   id: DraftId,
   workspaceId: WorkspaceId,
-  conversationId: ConversationId,
+  mailboxId: MailboxId,
+  fromAddressId: MailAddressId,
+  conversationId: Schema.NullOr(ConversationId),
   author: MailActor,
   replyToMessageId: Schema.NullOr(MessageId),
   sentMessageId: Schema.NullOr(MessageId),
