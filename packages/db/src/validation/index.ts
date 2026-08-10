@@ -377,3 +377,4 @@ export const accountUpdateSchema = createUpdateSchema(account, {
 })
 
 export * from './issue-runs.js'
+export * from './mail.js'

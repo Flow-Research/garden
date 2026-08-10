@@ -22,6 +22,8 @@
     "./issues/triggers": "./src/issues/triggers.ts",
     "./issues/config": "./src/issues/config/index.ts",
     "./issues/config/status": "./src/issues/config/status.ts",
+    "./mail": "./src/mail/index.ts",
+    "./mail/*": "./src/mail/*.ts",
     "./skills": "./src/skills/index.ts",
     "./skills/*": "./src/skills/*.ts",
     "./utils": "./src/utils.ts",
