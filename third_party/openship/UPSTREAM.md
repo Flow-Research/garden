@@ -16,10 +16,19 @@ module and mail-administration dashboard surface at the pinned commit:
 - `apps/dashboard/src/app/(dashboard)/emails/`
 - `apps/dashboard/src/lib/api/mail-admin.ts`
 - `apps/dashboard/src/lib/mail-providers.ts`
+- `apps/api/test/modules/mail/`
+- `packages/adapters/src/infra/mail-container.ts`
+- `packages/adapters/src/system/mail/`
 
 The snapshot includes the setup/progress flow, DNS and PTR gates, overview,
 domains, mailboxes, aliases, DNS readiness, health, sending, backup, test, and
 advanced settings flows together with their server-side operational module.
+It also retains OpenShip's container topology/provisioning adapter and mail
+regression tests. The separately licensed iRedMail engine payload and its
+byte-faithful transport schema are intentionally not bundled here: the pinned
+engine Dockerfile describes the installer seam as unvalidated, and that subtree
+contains GPL and mixed per-file licensing that must remain a separately shipped
+component with its own source/notice process.
 
 ## Garden integration rule
 

@@ -11,11 +11,13 @@ Implementation-grade source archaeology for replacing Garden's current Inbox sur
   commit `48039bb6785af34e592c2966f87cde2b255c4c80`. It was inspected from the
   session clone `/tmp/agentic-inbox.mHy5hP`.
 - Garden comparison: `/home/kixey/agency/garden` at the working-tree state inspected on 2026-08-10.
-- OpenShip's bundled Zero fork at
-  https://github.com/openshiporg/openship (commit
-  `73894618`) was checked only for drift. It mostly removes Zero's AI/upsell UI
-  and changes the data layer; the pinned upstream Zero paths below are the
-  canonical visual references.
+- OpenShip Mail: https://github.com/oblien/openship, commit
+  `738946188e7c329477a4bbcf9c58dc1451393798`. Its mail application and complete
+  mail-admin dashboard are retained under `third_party/openship/mail` and are
+  the canonical source for domain setup, progress, DNS readiness, settings,
+  mailbox/address administration, transport health, and future self-hosted
+  operations. Zero and Agentic Inbox remain the visual sources for Inbox,
+  thread, and composer surfaces.
 
 ## Non-negotiable adaptation rule
 
