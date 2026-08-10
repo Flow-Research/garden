@@ -69,6 +69,24 @@ Copyright (c) 2026 Cloudflare, Inc.
 Licensed under the Apache License, Version 2.0. The upstream license is
 available at https://github.com/cloudflare/agentic-inbox/blob/48039bb6785af34e592c2966f87cde2b255c4c80/LICENSE.
 
+## OpenShip Mail
+
+Garden retains a byte-identical snapshot of OpenShip's mail application module
+and mail-administration dashboard at upstream commit
+`738946188e7c329477a4bbcf9c58dc1451393798`. The snapshot is stored under
+`third_party/openship/mail`; provenance and Garden's adaptation rule are recorded
+in `third_party/openship/UPSTREAM.md`.
+
+Garden adapts OpenShip's mail settings information architecture, setup progress,
+DNS readiness, domain dependency, mailbox/alias lifecycle, and health patterns.
+Garden does not adopt OpenShip's SSH/iRedMail/Maildir data model as canonical
+mail storage.
+
+Upstream: https://github.com/oblien/openship
+
+Licensed under the Apache License, Version 2.0. The complete upstream license is
+included at `third_party/openship/LICENSE`.
+
 ## Executor
 
 Garden uses Executor v1.5.40 from upstream commit

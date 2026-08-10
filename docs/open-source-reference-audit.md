@@ -21,6 +21,7 @@ not shipped connector source.
 | Executor v1.5.40 | MIT | Public SDK runs in Garden's Worker. A small exact-source closure is retained only where upstream packages or preset exports are unpublished. Garden changes are listed in `third_party/executor/PATCHES.md`. |
 | Cloudflare OS Workspace Docs | Apache-2.0 | Exact client and server sources provide the canonical document editor and mutation semantics. Garden supplies authenticated Effect HttpApi, Durable Object storage, and SSE adapters. |
 | Cloudflare Agents | MIT plus upstream notices | Garden carries an attributed package patch and the matching license, NOTICE, and third-party inventory. |
+| OpenShip Mail | Apache-2.0 | Exact mail application and mail-admin dashboard sources are retained for self-host transport operations and settings-flow parity; Garden adapts them at its existing Effect/provider and workspace-mail seams. |
 | Bundled agent skills | Upstream-specific permissive licenses | Every retained skill bundle is mapped to source and license in `third_party/agent-skills/UPSTREAM.md`. |
 | shadcn/ui | MIT | Standard UI primitives retain the upstream notice. |
 
