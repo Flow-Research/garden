@@ -21,6 +21,44 @@ type MailContentIdentity = {
 }
 
 /**
+ * Maps typed Effect failures at the HTTP boundary without leaking persistence
+ * or object-store details. Unknown defects stay with the global route handler
+ * so Garden keeps its request-id-backed 500 response and logging.
+ */
+export function mailContentErrorResponse(error: unknown): Response | null {
+  const tag =
+    typeof error === 'object' &&
+    error !== null &&
+    '_tag' in error &&
+    typeof error._tag === 'string'
+      ? error._tag
+      : null
+  switch (tag) {
+    case 'MailRequestUnauthorizedError':
+      return Response.json(
+        { error: 'Authentication required.' },
+        { status: 401 },
+      )
+    case 'MailRequestForbiddenError':
+    case 'MailRepositoryAccessDeniedError':
+      return Response.json({ error: 'Mail access denied.' }, { status: 403 })
+    case 'MailRepositoryNotFoundError':
+    case 'MailObjectNotFoundError':
+      return Response.json(
+        { error: 'Mail content not found.' },
+        { status: 404 },
+      )
+    case 'ParseError':
+      return Response.json(
+        { error: 'Mail content identifiers are invalid.' },
+        { status: 400 },
+      )
+    default:
+      return null
+  }
+}
+
+/**
  * Reads raw MIME only after the repository proves the member can see the exact
  * conversation/message projection. Storage keys remain inside this server
  * boundary and are never serialized to the browser.
