@@ -1,10 +1,10 @@
-import { Schema } from "effect";
+import { Schema } from 'effect'
 
 /** Provider-neutral wire participant retained by Garden rather than a transport SDK. */
 export const MailTransportAddress = Schema.Struct({
   address: Schema.NonEmptyString,
   name: Schema.optionalKey(Schema.NonEmptyString),
-});
+})
 export interface MailTransportAddress extends Schema.Schema.Type<
   typeof MailTransportAddress
 > {}
@@ -22,8 +22,8 @@ export const MailAttachment = Schema.TaggedUnion({
     content: Schema.Uint8Array,
     contentId: Schema.NonEmptyString,
   },
-});
-export type MailAttachment = typeof MailAttachment.Type;
+})
+export type MailAttachment = typeof MailAttachment.Type
 
 /** Complete transport request produced only after Garden policy authorizes a send. */
 export const OutboundMail = Schema.Struct({
@@ -37,14 +37,14 @@ export const OutboundMail = Schema.Struct({
   html: Schema.optionalKey(Schema.String),
   headers: Schema.Record(Schema.String, Schema.String),
   attachments: Schema.Array(MailAttachment),
-});
+})
 export interface OutboundMail extends Schema.Schema.Type<typeof OutboundMail> {}
 
 /** Provider acknowledgement; delivery and bounce state remain later events. */
 export const MailSendReceipt = Schema.Struct({
   provider: Schema.NonEmptyString,
   providerMessageId: Schema.NonEmptyString,
-});
+})
 export interface MailSendReceipt extends Schema.Schema.Type<
   typeof MailSendReceipt
 > {}
@@ -53,7 +53,7 @@ export interface MailSendReceipt extends Schema.Schema.Type<
 export const InboundMailHeader = Schema.Struct({
   name: Schema.String,
   value: Schema.String,
-});
+})
 export interface InboundMailHeader extends Schema.Schema.Type<
   typeof InboundMailHeader
 > {}
@@ -65,7 +65,7 @@ export const NormalizedInboundMail = Schema.Struct({
   headers: Schema.Array(InboundMailHeader),
   raw: Schema.Uint8Array,
   rawSize: Schema.Natural,
-});
+})
 export interface NormalizedInboundMail extends Schema.Schema.Type<
   typeof NormalizedInboundMail
 > {}
