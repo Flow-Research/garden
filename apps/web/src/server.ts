@@ -31,6 +31,8 @@ import {
   createAppRequestContext,
   getLoggedAuthSession,
 } from '@/lib/server/context'
+import { processCloudflareInboundMail } from '@/lib/server/mail-inbound'
+import { Effect } from 'effect'
 import { capturePostHogException } from '@/lib/posthog-server'
 import {
   ExecutorMcpExecutionOwnerDirectory,
@@ -295,6 +297,32 @@ async function logReturnedErrorResponse(input: {
 }
 
 export default {
+  /**
+   * Receives Email Routing events through Garden's provider-neutral ingress.
+   * The handler awaits canonical persistence before returning so Cloudflare
+   * cannot treat an unfinished background write as accepted mail. References:
+   * Cloudflare Email Service Workers API and Workers lifecycle best practices.
+   */
+  async email(
+    message: ForwardableEmailMessage,
+    env: ServerEnv,
+    _ctx: ExecutionContext,
+  ) {
+    bindAppEnv(env)
+    await Effect.runPromise(
+      processCloudflareInboundMail(message, env).pipe(
+        Effect.tapError((error) =>
+          Effect.sync(() => {
+            webLogger.error('mail.inbound.failed', {
+              rawSize: message.rawSize,
+              ...errorFields(error),
+            })
+          }),
+        ),
+      ),
+    )
+  },
+
   async scheduled(
     _controller: ScheduledController,
     env: ServerEnv,

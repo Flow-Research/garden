@@ -22,7 +22,7 @@ import {
 } from './mime.ts'
 import type { NormalizedInboundMail } from './model.ts'
 import { MailObjectStore, MailObjectWriteError } from './object-store.ts'
-import { MailRepository, MailRepositoryError } from './repository.ts'
+import { MailRepository, type MailRepositoryError } from './repository.ts'
 
 export type MailIngressError =
   | MailContentHashError
