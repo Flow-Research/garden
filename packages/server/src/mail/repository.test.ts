@@ -251,6 +251,16 @@ describe('MailRepository (integration)', () => {
         if (conversationA === undefined || conversationB === undefined) {
           return yield* Effect.die('Expected one conversation per mailbox.')
         }
+        expect(conversationA).toMatchObject({
+          lastSenderName: 'Investor',
+          lastSenderAddress: 'investor@example.com',
+          lastAuthor: { _tag: 'External' },
+          snippet: 'Private delivery test.',
+          messageCount: 1,
+          unread: true,
+          hasDraft: false,
+          needsReply: true,
+        })
 
         const detailA = yield* repository.getConversation({
           workspaceId,
@@ -275,6 +285,14 @@ describe('MailRepository (integration)', () => {
           },
         ])
         expect(JSON.stringify(detailA)).not.toContain('beta@garden.test')
+        expect(JSON.stringify(detailA)).not.toContain('mail/raw/')
+        const rawRef = yield* repository.getRawMessageContentRef({
+          workspaceId,
+          actor: memberA,
+          conversationId: conversationA.id,
+          messageId: detailA.messages[0]!.id,
+        })
+        expect(rawRef.storageKey).toBe('mail/raw/provider-duplicate.eml')
 
         const denied = yield* repository
           .getConversation({
@@ -284,6 +302,15 @@ describe('MailRepository (integration)', () => {
           })
           .pipe(Effect.flip)
         expect(denied).toBeInstanceOf(MailRepositoryAccessDeniedError)
+        const deniedContent = yield* repository
+          .getRawMessageContentRef({
+            workspaceId,
+            actor: memberA,
+            conversationId: conversationB.id,
+            messageId: detailA.messages[0]!.id,
+          })
+          .pipe(Effect.flip)
+        expect(deniedContent).toBeInstanceOf(MailRepositoryAccessDeniedError)
 
         const counts = yield* Effect.tryPromise(() =>
           Promise.all([

@@ -5,9 +5,19 @@ import {
   unassignConversation,
   updateConversationState,
 } from './repository/collaboration.ts'
+import {
+  getAttachmentContentRef,
+  getRawMessageContentRef,
+} from './repository/content.ts'
 import { MailRepository } from './repository/contracts.ts'
 import { createDraft, saveDraft } from './repository/drafts.ts'
 import { ingestInbound } from './repository/ingest.ts'
+import {
+  completeDraftDelivery,
+  failDraftDelivery,
+  recordDeliveryOutcome,
+} from './repository/outbound-finalize.ts'
+import { prepareDraftDelivery } from './repository/outbound.ts'
 import {
   getConversation,
   listConversations,
@@ -27,10 +37,16 @@ export const makeMailRepositoryLayer = (
       listMailboxes: (input) => listMailboxes(db, input),
       listConversations: (input) => listConversations(db, input),
       getConversation: (input) => getConversation(db, input),
+      getRawMessageContentRef: (input) => getRawMessageContentRef(db, input),
+      getAttachmentContentRef: (input) => getAttachmentContentRef(db, input),
       resolveLocalAddress: (input) => resolveLocalAddress(db, input),
       ingestInbound: (input) => ingestInbound(db, input),
       createDraft: (input) => createDraft(db, input),
       saveDraft: (input) => saveDraft(db, input),
+      prepareDraftDelivery: (input) => prepareDraftDelivery(db, input),
+      completeDraftDelivery: (input) => completeDraftDelivery(db, input),
+      failDraftDelivery: (input) => failDraftDelivery(db, input),
+      recordDeliveryOutcome: (input) => recordDeliveryOutcome(db, input),
       updateConversationState: (input) => updateConversationState(db, input),
       assignConversation: (input) => assignConversation(db, input),
       unassignConversation: (input) => unassignConversation(db, input),

@@ -1,57 +1,57 @@
 /// <reference types="@cloudflare/workers-types" />
 
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer } from 'effect'
 import type {
   MailAttachment,
   MailTransportAddress,
   NormalizedInboundMail,
   OutboundMail,
-} from "./model.ts";
+} from './model.ts'
 import {
   MailInboundReadError,
   MailTransport,
   MailTransportSendError,
-} from "./transport.ts";
+} from './transport.ts'
 
-export const CLOUDFLARE_MAIL_PROVIDER = "cloudflare-email-service";
+export const CLOUDFLARE_MAIL_PROVIDER = 'cloudflare-email-service'
 
 export interface CloudflareMailBindingService {
-  readonly binding: SendEmail;
+  readonly binding: SendEmail
 }
 
 /** Host-supplied Cloudflare authority kept explicit in the Effect layer graph. */
 export class CloudflareMailBinding extends Context.Service<
   CloudflareMailBinding,
   CloudflareMailBindingService
->()("@garden/server/CloudflareMailBinding") {}
+>()('@garden/server/CloudflareMailBinding') {}
 
 const toCloudflareAddress = (
   address: MailTransportAddress,
 ): string | EmailAddress =>
   address.name === undefined
     ? address.address
-    : { email: address.address, name: address.name };
+    : { email: address.address, name: address.name }
 
 const toCloudflareAttachment = (
   attachment: MailAttachment,
 ): EmailAttachment => {
-  if (attachment._tag === "Attachment") {
+  if (attachment._tag === 'Attachment') {
     return {
       content: attachment.content,
-      disposition: "attachment",
+      disposition: 'attachment',
       filename: attachment.filename,
       type: attachment.mediaType,
-    };
+    }
   }
 
   return {
     content: attachment.content,
     contentId: attachment.contentId,
-    disposition: "inline",
+    disposition: 'inline',
     filename: attachment.filename,
     type: attachment.mediaType,
-  };
-};
+  }
+}
 
 /** Maps Garden's canonical request into Cloudflare's native SendEmail builder. */
 const toCloudflareMessage = (mail: OutboundMail): EmailMessageBuilder => ({
@@ -67,35 +67,35 @@ const toCloudflareMessage = (mail: OutboundMail): EmailMessageBuilder => ({
   ...(mail.html === undefined ? {} : { html: mail.html }),
   headers: { ...mail.headers },
   attachments: mail.attachments.map(toCloudflareAttachment),
-});
+})
 
 /** Safely extracts Cloudflare's documented E_* code from an unknown rejection. */
 const cloudflareErrorCode = (cause: unknown): string | undefined => {
   if (
-    typeof cause !== "object" ||
+    typeof cause !== 'object' ||
     cause === null ||
-    !("code" in cause) ||
-    typeof cause.code !== "string"
+    !('code' in cause) ||
+    typeof cause.code !== 'string'
   ) {
-    return undefined;
+    return undefined
   }
-  return cause.code;
-};
+  return cause.code
+}
 
 /** Converts the binding's unknown Promise rejection into Garden's typed channel. */
 const toCloudflareSendError = (cause: unknown): MailTransportSendError => {
-  const code = cloudflareErrorCode(cause);
+  const code = cloudflareErrorCode(cause)
   return new MailTransportSendError({
     provider: CLOUDFLARE_MAIL_PROVIDER,
-    operation: "send",
+    operation: 'send',
     message:
       cause instanceof Error
         ? cause.message
-        : "Cloudflare Email Service rejected the message.",
+        : 'Cloudflare Email Service rejected the message.',
     ...(code === undefined ? {} : { code }),
     cause,
-  });
-};
+  })
+}
 
 /**
  * Adapts the native binding at the sole Promise boundary. No retries occur here:
@@ -108,9 +108,10 @@ export const cloudflareMailTransportLayer: Layer.Layer<
 > = Layer.effect(
   MailTransport,
   Effect.gen(function* () {
-    const config = yield* CloudflareMailBinding;
+    const config = yield* CloudflareMailBinding
     return MailTransport.of({
-      send: Effect.fn("CloudflareMailTransport.send")((mail: OutboundMail) =>
+      provider: CLOUDFLARE_MAIL_PROVIDER,
+      send: Effect.fn('CloudflareMailTransport.send')((mail: OutboundMail) =>
         Effect.tryPromise({
           try: () => config.binding.send(toCloudflareMessage(mail)),
           catch: toCloudflareSendError,
@@ -121,9 +122,9 @@ export const cloudflareMailTransportLayer: Layer.Layer<
           })),
         ),
       ),
-    });
+    })
   }),
-);
+)
 
 /** Builds the host boundary layer from the generated native Worker binding. */
 export const makeCloudflareMailTransportLayer = (
@@ -135,14 +136,14 @@ export const makeCloudflareMailTransportLayer = (
         binding,
       }),
     ),
-  );
+  )
 
 /**
  * Consumes Cloudflare's single-use raw stream exactly once and snapshots every
  * exposed header. Raw MIME bytes remain authoritative for later parsing/storage.
  */
 export const normalizeCloudflareInbound = Effect.fn(
-  "CloudflareMailTransport.normalizeInbound",
+  'CloudflareMailTransport.normalizeInbound',
 )(function* (
   message: ForwardableEmailMessage,
 ): Effect.fn.Return<NormalizedInboundMail, MailInboundReadError> {
@@ -151,11 +152,11 @@ export const normalizeCloudflareInbound = Effect.fn(
     catch: (cause) =>
       new MailInboundReadError({
         provider: CLOUDFLARE_MAIL_PROVIDER,
-        operation: "normalizeInbound",
-        message: "Cloudflare inbound MIME stream could not be buffered.",
+        operation: 'normalizeInbound',
+        message: 'Cloudflare inbound MIME stream could not be buffered.',
         cause,
       }),
-  });
+  })
 
   return {
     envelopeFrom: message.from,
@@ -166,5 +167,5 @@ export const normalizeCloudflareInbound = Effect.fn(
     })),
     raw: new Uint8Array(buffer),
     rawSize: message.rawSize,
-  };
-});
+  }
+})

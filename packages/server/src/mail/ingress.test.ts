@@ -76,6 +76,8 @@ const repositoryLayer = (
     listMailboxes: unavailable,
     listConversations: unavailable,
     getConversation: unavailable,
+    getRawMessageContentRef: unavailable,
+    getAttachmentContentRef: unavailable,
     resolveLocalAddress: () =>
       Effect.succeed({
         workspaceId,
@@ -90,6 +92,10 @@ const repositoryLayer = (
       Ref.set(captured, envelope).pipe(Effect.as(ingested)),
     createDraft: unavailable,
     saveDraft: unavailable,
+    prepareDraftDelivery: unavailable,
+    completeDraftDelivery: unavailable,
+    failDraftDelivery: unavailable,
+    recordDeliveryOutcome: unavailable,
     updateConversationState: unavailable,
     assignConversation: unavailable,
     unassignConversation: unavailable,

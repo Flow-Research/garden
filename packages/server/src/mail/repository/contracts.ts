@@ -6,6 +6,7 @@ import {
   CreateDraftInput,
   DraftId,
   DraftStatus,
+  DeliveryAttemptId,
   EditableAttachment,
   EditableRecipient,
   EnvelopeReplyTo,
@@ -25,8 +26,13 @@ import {
   MessageSource,
   NonEmptyString,
   NonNegativeInt,
+  PositiveInt,
+  ProviderKey,
+  ProviderObjectId,
   RecipientKind,
+  RecordDeliveryOutcomeInput,
   SaveDraftInput,
+  Sha256,
   StorageKey,
   UnassignConversationInput,
   UpdateConversationStateInput,
@@ -59,6 +65,27 @@ export const GetConversationInput = Schema.Struct({
 })
 export interface GetConversationInput extends Schema.Schema.Type<
   typeof GetConversationInput
+> {}
+
+export const GetRawMessageContentRefInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  actor: MailActor,
+  conversationId: ConversationId,
+  messageId: MessageId,
+})
+export interface GetRawMessageContentRefInput extends Schema.Schema.Type<
+  typeof GetRawMessageContentRefInput
+> {}
+
+export const GetAttachmentContentRefInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  actor: MailActor,
+  conversationId: ConversationId,
+  messageId: MessageId,
+  attachmentId: AttachmentId,
+})
+export interface GetAttachmentContentRefInput extends Schema.Schema.Type<
+  typeof GetAttachmentContentRefInput
 > {}
 
 export const ResolveLocalAddressInput = Schema.Struct({
@@ -96,6 +123,14 @@ export const ConversationSummary = Schema.Struct({
   mailboxId: MailboxId,
   subject: Schema.String,
   lastMessageAt: Schema.NullOr(UtcTimestamp),
+  lastSenderName: Schema.NullOr(Schema.String),
+  lastSenderAddress: Schema.NullOr(EmailAddress),
+  lastAuthor: Schema.NullOr(MessageAuthor),
+  snippet: Schema.String,
+  messageCount: NonNegativeInt,
+  unread: Schema.Boolean,
+  hasDraft: Schema.Boolean,
+  needsReply: Schema.Boolean,
   state: Schema.NullOr(ConversationActorState),
 })
 export interface ConversationSummary extends Schema.Schema.Type<
@@ -114,7 +149,6 @@ export interface RepositoryRecipient extends Schema.Schema.Type<
 
 export const RepositoryAttachment = Schema.Struct({
   id: AttachmentId,
-  storageKey: StorageKey,
   fileName: NonEmptyString,
   contentType: NonEmptyString,
   sizeBytes: NonNegativeInt,
@@ -124,6 +158,30 @@ export const RepositoryAttachment = Schema.Struct({
 })
 export interface RepositoryAttachment extends Schema.Schema.Type<
   typeof RepositoryAttachment
+> {}
+
+/** Internal object-store reference returned only after conversation authorization. */
+export const RawMessageContentRef = Schema.Struct({
+  messageId: MessageId,
+  storageKey: StorageKey,
+  contentType: Schema.Literal('message/rfc822'),
+})
+export interface RawMessageContentRef extends Schema.Schema.Type<
+  typeof RawMessageContentRef
+> {}
+
+/** Authorized attachment object-store reference plus immutable response metadata. */
+export const AttachmentContentRef = Schema.Struct({
+  messageId: MessageId,
+  attachmentId: AttachmentId,
+  storageKey: StorageKey,
+  fileName: NonEmptyString,
+  contentType: NonEmptyString,
+  sizeBytes: NonNegativeInt,
+  contentHash: Sha256,
+})
+export interface AttachmentContentRef extends Schema.Schema.Type<
+  typeof AttachmentContentRef
 > {}
 
 export const RepositoryMessage = Schema.Struct({
@@ -202,6 +260,109 @@ export interface ResolvedLocalAddress extends Schema.Schema.Type<
   typeof ResolvedLocalAddress
 > {}
 
+/** Actor-authorized command that reserves one durable provider attempt. */
+export const PrepareDraftDeliveryInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  draftId: DraftId,
+  actor: MailActor,
+  expectedRevision: NonNegativeInt,
+  provider: ProviderKey,
+})
+export interface PrepareDraftDeliveryInput extends Schema.Schema.Type<
+  typeof PrepareDraftDeliveryInput
+> {}
+
+export const PreparedDeliveryAddress = Schema.Struct({
+  displayName: Schema.NullOr(Schema.String),
+  address: EmailAddress,
+})
+export interface PreparedDeliveryAddress extends Schema.Schema.Type<
+  typeof PreparedDeliveryAddress
+> {}
+
+export const PreparedDeliveryAttachment = Schema.Struct({
+  storageKey: StorageKey,
+  fileName: NonEmptyString,
+  contentType: NonEmptyString,
+  sizeBytes: NonNegativeInt,
+  contentHash: Sha256,
+  disposition: AttachmentDisposition,
+  contentId: Schema.NullOr(NonEmptyString),
+  position: NonNegativeInt,
+})
+export interface PreparedDeliveryAttachment extends Schema.Schema.Type<
+  typeof PreparedDeliveryAttachment
+> {}
+
+/** Serializable payload passed from durable preparation to the network step. */
+export const PreparedDelivery = Schema.Struct({
+  workspaceId: WorkspaceId,
+  draftId: DraftId,
+  messageId: MessageId,
+  conversationId: ConversationId,
+  attemptId: DeliveryAttemptId,
+  attemptNumber: PositiveInt,
+  provider: ProviderKey,
+  from: PreparedDeliveryAddress,
+  to: Schema.NonEmptyArray(PreparedDeliveryAddress),
+  cc: Schema.Array(PreparedDeliveryAddress),
+  bcc: Schema.Array(PreparedDeliveryAddress),
+  subject: Schema.String,
+  textBody: Schema.NullOr(Schema.String),
+  htmlBody: Schema.NullOr(Schema.String),
+  internetMessageId: NonEmptyString,
+  inReplyToMessageId: Schema.NullOr(NonEmptyString),
+  referenceMessageIds: Schema.Array(NonEmptyString),
+  attachments: Schema.Array(PreparedDeliveryAttachment),
+})
+export interface PreparedDelivery extends Schema.Schema.Type<
+  typeof PreparedDelivery
+> {}
+
+export const DeliveryPreparation = Schema.TaggedUnion({
+  Ready: { delivery: PreparedDelivery },
+  InFlight: {
+    draftId: DraftId,
+    messageId: MessageId,
+    conversationId: ConversationId,
+    attemptId: DeliveryAttemptId,
+  },
+  AlreadySent: {
+    draftId: DraftId,
+    messageId: MessageId,
+    conversationId: ConversationId,
+    providerMessageId: Schema.NullOr(ProviderObjectId),
+  },
+})
+export type DeliveryPreparation = typeof DeliveryPreparation.Type
+
+export const CompleteDraftDeliveryInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  draftId: DraftId,
+  messageId: MessageId,
+  attemptId: DeliveryAttemptId,
+  provider: ProviderKey,
+  providerMessageId: ProviderObjectId,
+  occurredAt: UtcTimestamp,
+})
+export interface CompleteDraftDeliveryInput extends Schema.Schema.Type<
+  typeof CompleteDraftDeliveryInput
+> {}
+
+export const FailDraftDeliveryInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  draftId: DraftId,
+  messageId: MessageId,
+  attemptId: DeliveryAttemptId,
+  provider: ProviderKey,
+  failureCode: Schema.NullOr(Schema.String),
+  failureMessage: Schema.String,
+  occurredAt: UtcTimestamp,
+})
+export interface FailDraftDeliveryInput extends Schema.Schema.Type<
+  typeof FailDraftDeliveryInput
+> {}
+
 export class MailRepositoryAccessDeniedError extends Schema.TaggedErrorClass<MailRepositoryAccessDeniedError>()(
   'MailRepositoryAccessDeniedError',
   {
@@ -268,6 +429,12 @@ export interface MailRepositoryService {
   readonly getConversation: (
     input: GetConversationInput,
   ) => Effect.Effect<ConversationDetail, MailRepositoryError>
+  readonly getRawMessageContentRef: (
+    input: GetRawMessageContentRefInput,
+  ) => Effect.Effect<RawMessageContentRef, MailRepositoryError>
+  readonly getAttachmentContentRef: (
+    input: GetAttachmentContentRefInput,
+  ) => Effect.Effect<AttachmentContentRef, MailRepositoryError>
   readonly resolveLocalAddress: (
     input: ResolveLocalAddressInput,
   ) => Effect.Effect<ResolvedLocalAddress, MailRepositoryError>
@@ -280,6 +447,18 @@ export interface MailRepositoryService {
   readonly saveDraft: (
     input: SaveDraftInput,
   ) => Effect.Effect<DraftSnapshot, MailRepositoryError>
+  readonly prepareDraftDelivery: (
+    input: PrepareDraftDeliveryInput,
+  ) => Effect.Effect<DeliveryPreparation, MailRepositoryError>
+  readonly completeDraftDelivery: (
+    input: CompleteDraftDeliveryInput,
+  ) => Effect.Effect<void, MailRepositoryError>
+  readonly failDraftDelivery: (
+    input: FailDraftDeliveryInput,
+  ) => Effect.Effect<void, MailRepositoryError>
+  readonly recordDeliveryOutcome: (
+    input: RecordDeliveryOutcomeInput,
+  ) => Effect.Effect<void, MailRepositoryError>
   readonly updateConversationState: (
     input: UpdateConversationStateInput,
   ) => Effect.Effect<ConversationActorState, MailRepositoryError>

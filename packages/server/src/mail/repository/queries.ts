@@ -46,6 +46,21 @@ import {
   type MailDatabase,
 } from './shared.ts'
 
+const activeDraftStatuses = [
+  'editing',
+  'awaiting_approval',
+  'approved',
+  'sending',
+  'send_failed',
+] as const
+
+/** Produces a compact plain-text preview without exposing raw HTML in list rows. */
+const messageSnippet = (textBody: string | null, htmlBody: string | null) =>
+  (textBody ?? htmlBody?.replace(/<[^>]*>/g, ' ') ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180)
+
 /** Lists only active mailboxes granted to the requesting member or agent. */
 export const listMailboxes = Effect.fn('MailRepository.listMailboxes')(
   function* (db: GardenDatabase, input: ListMailboxesInput) {
@@ -111,11 +126,72 @@ export const listConversations = Effect.fn('MailRepository.listConversations')(
       eq(mailConversationState.conversationId, mailConversation.id),
       stateActorPredicate(input.actor),
     )
+    const latestMessage = db
+      .selectDistinctOn([mailConversationMessage.conversationId], {
+        conversationId: mailConversationMessage.conversationId,
+        id: mailMessage.id,
+        source: mailMessage.source,
+        authorType: mailMessage.authorType,
+        authorMemberId: mailMessage.authorMemberId,
+        authorAgentId: mailMessage.authorAgentId,
+        senderName: mailMessage.senderName,
+        senderAddress: mailMessage.senderAddress,
+        textBody: mailMessage.textBody,
+        htmlBody: mailMessage.htmlBody,
+        authoredAt: mailMessage.authoredAt,
+      })
+      .from(mailConversationMessage)
+      .innerJoin(
+        mailMessage,
+        and(
+          eq(mailMessage.id, mailConversationMessage.messageId),
+          eq(mailMessage.workspaceId, mailConversationMessage.workspaceId),
+        ),
+      )
+      .orderBy(
+        mailConversationMessage.conversationId,
+        desc(mailMessage.authoredAt),
+        desc(mailMessage.id),
+      )
+      .as('latest_conversation_message')
+    const messageTotals = db
+      .select({
+        conversationId: mailConversationMessage.conversationId,
+        count: sql<number>`count(*)::int`.as('message_count'),
+      })
+      .from(mailConversationMessage)
+      .groupBy(mailConversationMessage.conversationId)
+      .as('conversation_message_totals')
+    const activeDrafts = db
+      .select({
+        conversationId: mailDraft.conversationId,
+        count: sql<number>`count(*)::int`.as('active_draft_count'),
+        latestUpdatedAt: sql<Date>`max(${mailDraft.updatedAt})`.as(
+          'latest_draft_updated_at',
+        ),
+      })
+      .from(mailDraft)
+      .where(inArray(mailDraft.status, activeDraftStatuses))
+      .groupBy(mailDraft.conversationId)
+      .as('active_conversation_drafts')
     const rows = yield* databaseEffect('listConversations', () =>
       db
         .select({
           conversation: mailConversation,
           state: mailConversationState,
+          latestMessageId: latestMessage.id,
+          latestMessageSource: latestMessage.source,
+          latestAuthorType: latestMessage.authorType,
+          latestAuthorMemberId: latestMessage.authorMemberId,
+          latestAuthorAgentId: latestMessage.authorAgentId,
+          latestSenderName: latestMessage.senderName,
+          latestSenderAddress: latestMessage.senderAddress,
+          latestTextBody: latestMessage.textBody,
+          latestHtmlBody: latestMessage.htmlBody,
+          latestAuthoredAt: latestMessage.authoredAt,
+          messageCount: messageTotals.count,
+          activeDraftCount: activeDrafts.count,
+          latestDraftUpdatedAt: activeDrafts.latestUpdatedAt,
         })
         .from(mailConversation)
         .innerJoin(
@@ -134,6 +210,18 @@ export const listConversations = Effect.fn('MailRepository.listConversations')(
           ),
         )
         .leftJoin(mailConversationState, actorStateJoin)
+        .leftJoin(
+          latestMessage,
+          eq(latestMessage.conversationId, mailConversation.id),
+        )
+        .leftJoin(
+          messageTotals,
+          eq(messageTotals.conversationId, mailConversation.id),
+        )
+        .leftJoin(
+          activeDrafts,
+          eq(activeDrafts.conversationId, mailConversation.id),
+        )
         .where(
           and(
             eq(mailConversation.workspaceId, input.workspaceId),
@@ -153,6 +241,28 @@ export const listConversations = Effect.fn('MailRepository.listConversations')(
           mailboxId: row.conversation.mailboxId,
           subject: row.conversation.subject,
           lastMessageAt: timestamp(row.conversation.lastMessageAt),
+          lastSenderName: row.latestSenderName,
+          lastSenderAddress: row.latestSenderAddress,
+          lastAuthor:
+            row.latestMessageId === null
+              ? null
+              : messageAuthorValue({
+                  authorType: row.latestAuthorType!,
+                  authorMemberId: row.latestAuthorMemberId,
+                  authorAgentId: row.latestAuthorAgentId,
+                }),
+          snippet: messageSnippet(row.latestTextBody, row.latestHtmlBody),
+          messageCount: row.messageCount ?? 0,
+          unread:
+            row.latestMessageId !== null &&
+            row.state?.lastReadMessageId !== row.latestMessageId,
+          hasDraft: (row.activeDraftCount ?? 0) > 0,
+          needsReply:
+            row.latestMessageSource === 'inbound' &&
+            (row.latestDraftUpdatedAt === null ||
+              row.latestDraftUpdatedAt === undefined ||
+              (row.latestAuthoredAt !== null &&
+                row.latestDraftUpdatedAt <= row.latestAuthoredAt)),
           state: conversationStateValue(row.state),
         },
         'listConversations.decode',
@@ -459,7 +569,6 @@ export const getConversation = Effect.fn('MailRepository.getConversation')(
           attachments: (attachmentsByMessage.get(message.id) ?? []).map(
             ({ reference, attachment }) => ({
               id: attachment.id,
-              storageKey: attachment.storageKey,
               fileName: attachment.fileName,
               contentType: attachment.contentType,
               sizeBytes: attachment.sizeBytes,
@@ -504,6 +613,30 @@ export const getConversation = Effect.fn('MailRepository.getConversation')(
         mailboxId: conversation.mailboxId,
         subject: conversation.subject,
         lastMessageAt: timestamp(conversation.lastMessageAt),
+        lastSenderName: messages.at(-1)?.senderName ?? null,
+        lastSenderAddress: messages.at(-1)?.senderAddress ?? null,
+        lastAuthor: messages.at(-1)?.author ?? null,
+        snippet: messageSnippet(
+          messages.at(-1)?.textBody ?? null,
+          messages.at(-1)?.htmlBody ?? null,
+        ),
+        messageCount: messages.length,
+        unread:
+          messages.length > 0 &&
+          stateRows[0]?.lastReadMessageId !== messages.at(-1)?.id,
+        hasDraft: draftRows.some((draft) =>
+          activeDraftStatuses.includes(
+            draft.status as (typeof activeDraftStatuses)[number],
+          ),
+        ),
+        needsReply:
+          messageRows.at(-1)?.message.source === 'inbound' &&
+          !draftRows.some(
+            (draft) =>
+              activeDraftStatuses.includes(
+                draft.status as (typeof activeDraftStatuses)[number],
+              ) && draft.updatedAt > messageRows.at(-1)!.message.authoredAt,
+          ),
         state: conversationStateValue(stateRows[0] ?? null),
       },
       'getConversation.summary.decode',
