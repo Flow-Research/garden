@@ -32,6 +32,7 @@ import {
   RecipientKind,
   RecordDeliveryOutcomeInput,
   SaveDraftInput,
+  TransitionDraftInput,
   Sha256,
   StorageKey,
   UnassignConversationInput,
@@ -65,6 +66,15 @@ export const GetConversationInput = Schema.Struct({
 })
 export interface GetConversationInput extends Schema.Schema.Type<
   typeof GetConversationInput
+> {}
+
+export const GetDraftInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  actor: MailActor,
+  draftId: DraftId,
+})
+export interface GetDraftInput extends Schema.Schema.Type<
+  typeof GetDraftInput
 > {}
 
 export const GetRawMessageContentRefInput = Schema.Struct({
@@ -429,6 +439,9 @@ export interface MailRepositoryService {
   readonly getConversation: (
     input: GetConversationInput,
   ) => Effect.Effect<ConversationDetail, MailRepositoryError>
+  readonly getDraft: (
+    input: GetDraftInput,
+  ) => Effect.Effect<DraftSnapshot, MailRepositoryError>
   readonly getRawMessageContentRef: (
     input: GetRawMessageContentRefInput,
   ) => Effect.Effect<RawMessageContentRef, MailRepositoryError>
@@ -446,6 +459,9 @@ export interface MailRepositoryService {
   ) => Effect.Effect<DraftSnapshot, MailRepositoryError>
   readonly saveDraft: (
     input: SaveDraftInput,
+  ) => Effect.Effect<DraftSnapshot, MailRepositoryError>
+  readonly transitionDraft: (
+    input: TransitionDraftInput,
   ) => Effect.Effect<DraftSnapshot, MailRepositoryError>
   readonly prepareDraftDelivery: (
     input: PrepareDraftDeliveryInput,

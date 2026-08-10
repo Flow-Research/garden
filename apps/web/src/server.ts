@@ -32,6 +32,7 @@ import {
   getLoggedAuthSession,
 } from '@/lib/server/context'
 import { processCloudflareInboundMail } from '@/lib/server/mail-inbound'
+import { MailDeliveryWorkflow } from '@/lib/server/mail-delivery-workflow'
 import { Effect } from 'effect'
 import { capturePostHogException } from '@/lib/posthog-server'
 import {
@@ -49,6 +50,7 @@ export { AutomationTriggerDO }
 export { ChatSubAgent }
 export { IssueRunSubAgent }
 export { RunWorkflow }
+export { MailDeliveryWorkflow }
 export { Sandbox }
 export { ExecutorMcpExecutionOwnerDirectory, ExecutorMcpSession }
 

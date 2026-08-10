@@ -108,7 +108,7 @@ export const decideDraftTransition = Effect.fn('DraftState.decideTransition')(
               actionActor(command.actor),
               'send_requested',
               status,
-              'sending',
+              'approved',
               { startsDelivery: true },
             )
       }

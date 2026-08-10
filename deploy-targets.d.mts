@@ -19,6 +19,8 @@ export interface DeploymentTarget {
   readonly automationTriggerId: string
   readonly workflowId: string
   readonly workflowName: string
+  readonly mailWorkflowId: string
+  readonly mailWorkflowName: string
   readonly sandboxId: string
   readonly sandboxName: string
   readonly aiGatewayId: string

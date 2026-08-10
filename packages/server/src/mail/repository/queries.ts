@@ -19,6 +19,7 @@ import {
 } from '@garden/db/schema'
 import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { Effect } from 'effect'
+import { MailboxId } from '@garden/core/mail'
 import {
   AccessibleMailbox,
   AssignmentSnapshot,
@@ -28,6 +29,7 @@ import {
   RepositoryMessage,
   ResolvedLocalAddress,
   type GetConversationInput,
+  type GetDraftInput,
   type ListConversationsInput,
   type ListMailboxesInput,
   type ResolveLocalAddressInput,
@@ -41,6 +43,7 @@ import {
   mailboxActorPredicate,
   messageAuthorValue,
   requireConversationAccess,
+  requireMailboxAccess,
   stateActorPredicate,
   timestamp,
   type MailDatabase,
@@ -395,6 +398,42 @@ export const loadDraftSnapshot = Effect.fn('MailRepository.loadDraftSnapshot')(
     )
   },
 )
+
+/** Loads one draft only after actor access to its mailbox is verified. */
+export const getDraft = Effect.fn('MailRepository.getDraft')(function* (
+  db: GardenDatabase,
+  input: GetDraftInput,
+) {
+  const rows = yield* databaseEffect('getDraft.find', () =>
+    db
+      .select()
+      .from(mailDraft)
+      .where(
+        and(
+          eq(mailDraft.workspaceId, input.workspaceId),
+          eq(mailDraft.id, input.draftId),
+        ),
+      )
+      .limit(1),
+  )
+  const draft = rows[0]
+  if (!draft) {
+    return yield* new MailRepositoryNotFoundError({
+      entity: 'draft',
+      id: input.draftId,
+      operation: 'getDraft',
+      message: 'Draft does not exist.',
+    })
+  }
+  yield* requireMailboxAccess(db, {
+    workspaceId: input.workspaceId,
+    mailboxId: MailboxId.make(draft.mailboxId),
+    actor: input.actor,
+    write: false,
+    operation: 'getDraft.authorize',
+  })
+  return yield* loadDraftSnapshot(db, draft)
+})
 
 /** Loads one actor-scoped conversation without exposing private local deliveries. */
 export const getConversation = Effect.fn('MailRepository.getConversation')(

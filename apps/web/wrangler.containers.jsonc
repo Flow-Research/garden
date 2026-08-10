@@ -90,6 +90,11 @@
       "binding": "RUN_WORKFLOW",
       "class_name": "RunWorkflow",
     },
+    {
+      "name": "garden-mail-delivery-local",
+      "binding": "MAIL_DELIVERY_WORKFLOW",
+      "class_name": "MailDeliveryWorkflow",
+    },
   ],
   "r2_buckets": [
     {

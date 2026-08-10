@@ -66,6 +66,15 @@ export {
   InvalidDraftTransitionError,
   decideDraftTransition,
 } from './draft-state.ts'
+export {
+  DraftDeliveryAuthorization,
+  MailDraftApplication,
+  mailDraftApplicationLayer,
+} from './draft-application.ts'
+export type {
+  MailDraftApplicationError,
+  MailDraftApplicationService,
+} from './draft-application.ts'
 export * from './domain-provider.ts'
 export {
   CloudflareDomainProviderConfig,
@@ -89,6 +98,41 @@ export {
   makeMailRepositoryLayer,
 } from './repository.ts'
 export type {
+  AccessibleMailbox,
+  AttachmentContentRef,
+  ConversationActorState,
+  ConversationDetail,
+  ConversationSummary,
+  DraftSnapshot,
   MailRepositoryError,
   MailRepositoryService,
+  RepositoryAttachment,
+  RepositoryMessage,
+  RepositoryRecipient,
 } from './repository.ts'
+export {
+  MailDelivery,
+  MailDeliveryContentError,
+  MailDeliveryResult,
+  MailDeliverySubmission,
+  mailDeliveryLayer,
+} from './delivery.ts'
+export type { MailDeliveryError, MailDeliveryService } from './delivery.ts'
+export { DeliveryPreparation, PreparedDelivery } from './repository.ts'
+export {
+  AgentCreateDraftInput,
+  AgentDraftDeliveryRequestOutcome,
+  AgentListConversationsInput,
+  AgentReadConversationInput,
+  AgentRequestDraftDeliveryInput,
+  AgentSaveDraftInput,
+  MailAgentApplication,
+  MailAgentDraftUnavailableError,
+  MailAgentMailboxReadOnlyError,
+  MailAgentPrincipal,
+  makeMailAgentApplicationLayer,
+} from './agent-application.ts'
+export type {
+  MailAgentApplicationError,
+  MailAgentApplicationService,
+} from './agent-application.ts'

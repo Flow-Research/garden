@@ -76,6 +76,7 @@ const repositoryLayer = (
     listMailboxes: unavailable,
     listConversations: unavailable,
     getConversation: unavailable,
+    getDraft: unavailable,
     getRawMessageContentRef: unavailable,
     getAttachmentContentRef: unavailable,
     resolveLocalAddress: () =>
@@ -92,6 +93,7 @@ const repositoryLayer = (
       Ref.set(captured, envelope).pipe(Effect.as(ingested)),
     createDraft: unavailable,
     saveDraft: unavailable,
+    transitionDraft: unavailable,
     prepareDraftDelivery: unavailable,
     completeDraftDelivery: unavailable,
     failDraftDelivery: unavailable,

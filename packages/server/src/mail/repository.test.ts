@@ -399,6 +399,22 @@ describe('MailRepository (integration)', () => {
           expectedRevision: 0,
           actualRevision: 1,
         })
+
+        const approved = yield* repository.transitionDraft({
+          workspaceId,
+          draftId: saved.id,
+          actor: memberA,
+          expectedRevision: 1,
+          action: 'send_requested',
+          toStatus: 'approved',
+        })
+        expect(approved).toMatchObject({ status: 'approved', revision: 2 })
+        const loaded = yield* repository.getDraft({
+          workspaceId,
+          draftId: saved.id,
+          actor: memberA,
+        })
+        expect(loaded).toMatchObject({ status: 'approved', revision: 2 })
       }).pipe(Effect.provide(makeMailRepositoryLayer(testDb.db))),
   )
 

@@ -32,7 +32,7 @@ describe('Garden Mail draft state', () => {
         })
 
         expect(memberSend).toMatchObject({
-          toStatus: 'sending',
+          toStatus: 'approved',
           startsDelivery: true,
           waitsForApproval: false,
         })

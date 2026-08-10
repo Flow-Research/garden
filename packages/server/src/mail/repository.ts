@@ -11,6 +11,7 @@ import {
 } from './repository/content.ts'
 import { MailRepository } from './repository/contracts.ts'
 import { createDraft, saveDraft } from './repository/drafts.ts'
+import { transitionDraft } from './repository/transitions.ts'
 import { ingestInbound } from './repository/ingest.ts'
 import {
   completeDraftDelivery,
@@ -20,6 +21,7 @@ import {
 import { prepareDraftDelivery } from './repository/outbound.ts'
 import {
   getConversation,
+  getDraft,
   listConversations,
   listMailboxes,
   resolveLocalAddress,
@@ -37,12 +39,14 @@ export const makeMailRepositoryLayer = (
       listMailboxes: (input) => listMailboxes(db, input),
       listConversations: (input) => listConversations(db, input),
       getConversation: (input) => getConversation(db, input),
+      getDraft: (input) => getDraft(db, input),
       getRawMessageContentRef: (input) => getRawMessageContentRef(db, input),
       getAttachmentContentRef: (input) => getAttachmentContentRef(db, input),
       resolveLocalAddress: (input) => resolveLocalAddress(db, input),
       ingestInbound: (input) => ingestInbound(db, input),
       createDraft: (input) => createDraft(db, input),
       saveDraft: (input) => saveDraft(db, input),
+      transitionDraft: (input) => transitionDraft(db, input),
       prepareDraftDelivery: (input) => prepareDraftDelivery(db, input),
       completeDraftDelivery: (input) => completeDraftDelivery(db, input),
       failDraftDelivery: (input) => failDraftDelivery(db, input),
