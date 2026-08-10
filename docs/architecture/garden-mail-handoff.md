@@ -1,6 +1,7 @@
 # Garden Mail architecture handoff
 
-Generated 2026-08-10. No product code was changed during this investigation.
+Generated 2026-08-10 and promoted into the implementation branch
+`feat/garden-mail`.
 
 ## Objective
 
@@ -17,6 +18,13 @@ The key rule is:
 Garden should own domains, addresses, mailboxes, access, conversations, messages, drafts, attachments, delivery history, read/archive state, assignment, authorship, approvals, and audit.
 
 Cloudflare Email Service can carry incoming and outgoing mail initially. A future self-hosted mail transport can replace Cloudflare without migrating Garden's mailbox data, changing the UI, or changing human/agent permissions.
+
+Effect is the application framework for the entire Garden Mail vertical, not a
+transport helper. Canonical schemas, services, repositories, authorization,
+ingestion, MIME/object storage, threading, delivery, workflows, configuration,
+observability, and tests compose as Effect programs and Layers. Cloudflare is
+one infrastructure Layer. React and TanStack remain the UI/runtime boundary and
+run the Effect application at loaders, routes, and Worker entrypoints.
 
 Do not use Gmail, Agentic Inbox, Cloudflare Agents email instances, OpenShip Maildir, or an external provider as Garden's canonical mailbox.
 
@@ -66,9 +74,10 @@ Existing foundations to reuse:
 - Main Worker entry, where an inbound `email()` handler could live: `/home/kixey/agency/garden/apps/web/src/server.ts:297`
 - Existing R2 file handling patterns: `/home/kixey/agency/garden/apps/web/src/routes/api/upload-file.ts`, `/home/kixey/agency/garden/packages/agent-runtime/src/documents/document-storage.ts`
 
-Important constraints from `/home/kixey/agency/garden/AGENTS.md`:
+Important constraints from `/home/kixey/agency/garden/AGENTS.md` and the user:
 
-- No `try/catch`; use `better-result` and typed outcomes.
+- No `try/catch`; use typed Effect errors inside Garden Mail. Adapt to
+  `better-result` only where the new module meets an existing Garden boundary.
 - No React `useEffect`.
 - Drizzle schema first; generate migrations with `pnpm --filter @garden/db db:generate`.
 - Cloudflare Workflows own durable long-running run orchestration.
@@ -103,7 +112,7 @@ Provider variability should be isolated behind two real seams because two implem
 
 Storage must not be part of either provider adapter. Use Postgres for structured mail state and object storage for raw MIME/attachments. R2 is acceptable now; keep the mail object-store interface narrow enough for S3/MinIO later.
 
-Possible code placement, not yet committed:
+Code placement:
 
 - `packages/core/src/mail/` — shared schemas and domain outcomes
 - `packages/db/src/schema/mail.ts` — canonical records
@@ -153,7 +162,12 @@ Useful reference code:
 
 Reuse ideas: raw MIME parsing, attachment extraction, threading headers, Cloudflare email handler shape, prompt-injection scanning, draft-first behavior.
 
-Do not reuse as architecture: per-mailbox DO canonical storage, app-wide Cloudflare Access authorization, logical R2 mailbox markers, direct address-to-agent ownership, or its UI wholesale. It has no organization/team collaboration model, no standard mailbox protocol, no real domain provisioning, and no tests.
+Do not reuse as architecture: per-mailbox DO canonical storage, app-wide Cloudflare Access authorization, logical R2 mailbox markers, or direct address-to-agent ownership. It has no organization/team collaboration model, no standard mailbox protocol, no real domain provisioning, and no tests.
+
+The Inbox implementation should directly adapt its proven UI patterns rather
+than inventing a new visual system. Preserve exact upstream source paths and
+Apache-2.0 attribution when copying code. Change only the data/access model and
+Garden shell integration required by the product.
 
 ### OpenShip
 
@@ -172,7 +186,11 @@ Useful reference code:
 
 Use as reference for future self-hosted domain/DNS administration, Postfix delivery, DKIM, spam controls, server provisioning, and operational checks.
 
-Do not adopt Zero webmail because Garden is the client. Do not make OpenShip Maildir/vmail storage canonical. Its newer container path explicitly remains unvalidated, current admin is SSH/psql-based, and the `db-email` target architecture is not wired to runtime.
+Do not adopt Zero's backend because Garden owns the mailbox data plane. Its
+webmail UI patterns are an explicit source for the Garden Inbox alongside
+Agentic Inbox. Do not make OpenShip Maildir/vmail storage canonical. Its newer
+container path explicitly remains unvalidated, current admin is SSH/psql-based,
+and the `db-email` target architecture is not wired to runtime.
 
 A Garden-oriented self-hosted adapter can be simpler initially: Postfix receives raw messages and hands them to Garden ingest; outgoing Garden messages go through Postfix. Dovecot/IMAP is only needed if the product later promises Apple Mail/Outlook compatibility.
 
@@ -205,7 +223,8 @@ Use it as a transition bridge and possible import source. A production migration
 
 ## Suggested delivery sequence
 
-1. Write an architecture/spec artifact after validating product language with the user; no implementation has started.
+1. Commit the architecture and product language, then keep both synchronized
+   with implementation decisions.
 2. Define canonical mail schemas and authorization invariants.
 3. Implement Garden-owned storage and query/write module with a fake transport.
 4. Replace the Inbox surface while preserving current attention items.
@@ -233,21 +252,17 @@ Before implementation, test the model with concrete scenarios:
 - `codebase-design` — design the Mail module and real provider seams as deep modules.
 - `cloudflare-email-service` — retrieve current Email Service behavior and limits before adapter work.
 - `agents-sdk` — only when wiring mail-triggered work into existing Garden agent identities/runtime.
-- `better-result` — required once TypeScript mail workflows, domain outcomes, provider failures, or approvals are implemented; inspect bundled source first per repo rules.
+- `effect` — governs the complete Garden Mail application architecture and
+  implementation, including contracts, Layers, workflows, and tests.
+- `better-result` — use only when adapting the Effect module to an existing
+  Garden Result boundary; inspect bundled source first per repo rules.
 - `workers-best-practices` — review the Worker `email()` ingress and bindings before shipping.
 - Installed TanStack router/start skills — required before changing routes, loaders, or server functions.
-- `lazyweb-design` — required by repo routing rules once the user asks to design or build the replacement Inbox screen.
 - `technical-writing` or `client-documentation` — if the next session turns this into an architecture/spec handoff.
 
-## Next-session recommendation
+## Implementation directive
 
-Do not begin UI or transport code immediately. First turn this into a concise architecture spec with:
-
-- settled product language;
-- ownership and authorization invariants;
-- canonical data model;
-- Mail module interface;
-- Cloudflare transport interface and event normalization;
-- migration phases and explicit non-goals.
-
-Then review that artifact with the user before implementation.
+This is a production implementation, not a proof of concept. Implement the
+whole vertical with Effect, preserve a real self-hosting seam, adapt Inbox UI
+from the cloned Zero and Cloudflare repositories, run the complete verification
+suite, then start Garden and live-test the product in the browser.
