@@ -10,6 +10,8 @@
     "src/features/dashboard/dashboard.queries.ts",
     "src/features/dashboard/dashboard.server.ts",
     "src/features/inbox/mail.queries.ts",
+    "src/features/settings/mail-settings-contracts.ts",
+    "src/features/settings/mail-settings.queries.ts",
     "worker-configuration.d.ts"
   ],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "node_modules", "dist"],

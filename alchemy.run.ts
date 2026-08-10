@@ -233,11 +233,13 @@ export const web = await TanStackStart(deployTarget.workerId, {
     ]),
     GOOGLE_CLIENT_SECRET: alchemy.secret.env.GOOGLE_CLIENT_SECRET,
     ...optionalSecretBindings([
+      'CLOUDFLARE_MAIL_API_TOKEN',
       'GITHUB_CLIENT_SECRET',
       'GITHUB_APP_PRIVATE_KEY',
       'GITHUB_WEBHOOK_SECRET',
       'SLACK_CLIENT_SECRET',
     ]),
+    ...optionalPlainBindings(['CLOUDFLARE_MAIL_API_BASE_URL']),
   },
   dev: {
     command: 'pnpm exec vite dev',
