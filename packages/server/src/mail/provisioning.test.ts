@@ -17,8 +17,6 @@ import { and, eq } from 'drizzle-orm'
 import { Effect, Layer } from 'effect'
 import {
   MailDomainProvider,
-  MailDomainZoneId,
-  MailWorkerName,
   testMailDomainProviderLayer,
 } from './domain-provider.ts'
 import {
@@ -149,8 +147,6 @@ const registerDomain = (
     RegisterProvisionedDomainInput.make({
       workspaceId,
       name: DomainName.make(name),
-      zoneId: MailDomainZoneId.make(`zone-${name}`),
-      workerName: MailWorkerName.make('garden-mail-worker'),
     }),
   )
 

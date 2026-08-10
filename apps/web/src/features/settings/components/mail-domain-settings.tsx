@@ -38,7 +38,7 @@ const domainStatusLabels: Record<MailDomainSettingsView['status'], string> = {
 }
 
 /**
- * Keeps Cloudflare's compact onboarding fields controlled at the form boundary.
+ * Keeps managed-domain onboarding controlled at the form boundary.
  * Command failures remain visible in-place; successful commands close/reset only
  * after the controller confirms the domain was registered.
  */
@@ -52,8 +52,6 @@ function DomainForm({
   onCreated?: () => void
 }) {
   const [name, setName] = useState('')
-  const [zoneId, setZoneId] = useState('')
-  const [workerName, setWorkerName] = useState('')
   const [error, setError] = useState<string>()
   const registering = controller.pendingAction?.kind === 'register_domain'
 
@@ -62,15 +60,11 @@ function DomainForm({
     setError(undefined)
     const input: RegisterMailDomainSettingsInput = {
       name: name.trim(),
-      zoneId: zoneId.trim(),
-      workerName: workerName.trim(),
     }
     const result = await controller.actions.registerDomain(input)
     result.match({
       ok: () => {
         setName('')
-        setZoneId('')
-        setWorkerName('')
         onCreated?.()
       },
       err: (failure) => setError(failure.message),
@@ -99,37 +93,10 @@ function DomainForm({
           disabled={registering}
         />
       </div>
-      <div className="space-y-1.5">
-        <label htmlFor={`${formId}-zone`} className="text-sm font-medium">
-          Cloudflare zone ID
-        </label>
-        <Input
-          id={`${formId}-zone`}
-          value={zoneId}
-          onChange={(event) => setZoneId(event.target.value)}
-          placeholder="Zone ID"
-          autoComplete="off"
-          required
-          disabled={registering}
-        />
-      </div>
-      <div className="space-y-1.5">
-        <label htmlFor={`${formId}-worker`} className="text-sm font-medium">
-          Email Worker name
-        </label>
-        <Input
-          id={`${formId}-worker`}
-          value={workerName}
-          onChange={(event) => setWorkerName(event.target.value)}
-          placeholder="garden-mail"
-          autoComplete="off"
-          required
-          disabled={registering}
-        />
-        <p className="text-xs text-muted-foreground">
-          Garden verifies sending and Email Routing before activating mailboxes.
-        </p>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        Garden finds the managed DNS zone, then configures sending and routing
+        automatically.
+      </p>
     </form>
   )
 }
@@ -266,8 +233,8 @@ export function MailDomainSettings({
             </EmptyMedia>
             <EmptyTitle>Connect a company domain</EmptyTitle>
             <EmptyDescription>
-              Add the domain and Cloudflare routing details before creating
-              mailboxes.
+              Enter the company domain. Garden discovers and configures its
+              managed mail routing before creating mailboxes.
             </EmptyDescription>
           </EmptyHeader>
           {controller.canManage ? (

@@ -13,8 +13,9 @@ import type {
   EmailRoutingState,
   EnableEmailRoutingInput,
   InspectEmailRoutingInput,
-  MailDomainZoneId,
   ProvisionedSendingSubdomain,
+  ResolveMailDomainZoneInput,
+  ResolvedMailDomainZone,
   SendingSubdomainReference,
   SendingSubdomainRegistration,
   SetCatchAllWorkerDeliveryInput,
@@ -25,6 +26,7 @@ import {
   MailDomainProviderRejectedError,
   MailDomainProviderRequestError,
   MailDomainProviderResponseError,
+  MailDomainZoneId,
   MailWorkerName,
 } from './domain-provider.ts'
 
@@ -34,6 +36,8 @@ const DEFAULT_API_BASE_URL = 'https://api.cloudflare.com/client/v4'
 export interface CloudflareDomainProviderConfigService {
   readonly apiBaseUrl: string
   readonly apiToken: Redacted.Redacted<string>
+  readonly accountId: string
+  readonly workerName: MailWorkerName
 }
 
 /** Runtime configuration kept separate from the provider and HTTP services. */
@@ -46,11 +50,20 @@ export class CloudflareDomainProviderConfig extends Context.Service<
 export const cloudflareDomainProviderConfigLayer = Layer.effect(
   CloudflareDomainProviderConfig,
   Effect.gen(function* () {
-    const apiBaseUrl = yield* Config.string('CLOUDFLARE_API_BASE_URL').pipe(
-      Config.withDefault(DEFAULT_API_BASE_URL),
+    const apiBaseUrl = yield* Config.string(
+      'CLOUDFLARE_MAIL_API_BASE_URL',
+    ).pipe(Config.withDefault(DEFAULT_API_BASE_URL))
+    const apiToken = yield* Config.redacted('CLOUDFLARE_MAIL_API_TOKEN')
+    const accountId = yield* Config.nonEmptyString('CLOUDFLARE_ACCOUNT_ID')
+    const workerName = MailWorkerName.make(
+      yield* Config.nonEmptyString('CLOUDFLARE_MAIL_WORKER_NAME'),
     )
-    const apiToken = yield* Config.redacted('CLOUDFLARE_API_TOKEN')
-    return CloudflareDomainProviderConfig.of({ apiBaseUrl, apiToken })
+    return CloudflareDomainProviderConfig.of({
+      apiBaseUrl,
+      apiToken,
+      accountId,
+      workerName,
+    })
   }),
 )
 
@@ -71,6 +84,18 @@ const cloudflareEnvelopeFields = {
   errors: Schema.Array(CloudflareApiIssue),
   messages: Schema.Array(CloudflareApiIssue),
 }
+
+/** Minimal exact zone shape returned by Cloudflare's account-scoped list API. */
+const CloudflareZone = Schema.Struct({
+  id: MailDomainZoneId,
+  name: DomainName,
+  status: Schema.Literals(['active']),
+})
+
+const CloudflareZoneListEnvelope = Schema.Struct({
+  ...cloudflareEnvelopeFields,
+  result: Schema.optionalKey(Schema.Array(CloudflareZone)),
+})
 
 /**
  * Mirrors the documented Email Sending subdomain response. Required and
@@ -184,6 +209,7 @@ interface CloudflareEnvelope {
 }
 
 type Operation =
+  | 'resolveDomainZone'
   | 'registerSendingSubdomain'
   | 'inspectSendingSubdomain'
   | 'deleteSendingSubdomain'
@@ -341,12 +367,12 @@ const emailRoutingState = (
 /** Checks that a successful update actually describes enabled Worker delivery. */
 const confirmCatchAllWorker = (
   input: SetCatchAllWorkerDeliveryInput,
+  workerName: MailWorkerName,
   statusCode: number,
   result: CloudflareCatchAllRule,
 ): Effect.Effect<CatchAllWorkerDelivery, MailDomainProviderResponseError> => {
   const hasWorker = result.actions?.some(
-    (action) =>
-      action.type === 'worker' && action.value?.includes(input.workerName),
+    (action) => action.type === 'worker' && action.value?.includes(workerName),
   )
   const matchesAll = result.matchers?.some((matcher) => matcher.type === 'all')
 
@@ -366,7 +392,7 @@ const confirmCatchAllWorker = (
     provider: CLOUDFLARE_PROVIDER,
     zoneId: input.zoneId,
     providerRuleId: result.id ?? null,
-    workerName: input.workerName,
+    workerName,
     enabled: true,
   })
 }
@@ -395,6 +421,65 @@ export const cloudflareDomainProviderLayer = Layer.effect(
     )
 
     return MailDomainProvider.of({
+      resolveDomainZone: Effect.fn(
+        'CloudflareDomainProvider.resolveDomainZone',
+      )(function* (input: ResolveMailDomainZoneInput) {
+        const request = HttpClientRequest.get('/zones').pipe(
+          HttpClientRequest.appendUrlParams({
+            'account.id': config.accountId,
+            name: input.name,
+            status: 'active',
+            match: 'all',
+            per_page: '5',
+          }),
+        )
+        const response = yield* executeRequest(
+          client,
+          'resolveDomainZone',
+          Effect.succeed(request),
+        )
+        const decoded = yield* decodeResponse(
+          CloudflareZoneListEnvelope,
+          'resolveDomainZone',
+          response,
+        )
+        const accepted = yield* ensureAccepted(
+          'resolveDomainZone',
+          response.status,
+          decoded,
+        )
+        const zones = yield* requireResult(
+          'resolveDomainZone',
+          response.status,
+          accepted.result,
+        )
+        const matches = zones.filter((zone) => zone.name === input.name)
+        if (matches.length === 0) {
+          return yield* new MailDomainProviderNotFoundError({
+            provider: CLOUDFLARE_PROVIDER,
+            operation: 'resolveDomainZone',
+            resource: 'domain_zone',
+            resourceId: input.name,
+            message:
+              'No active Cloudflare zone in the configured account matches this domain.',
+          })
+        }
+        if (matches.length !== 1) {
+          return yield* new MailDomainProviderResponseError({
+            provider: CLOUDFLARE_PROVIDER,
+            operation: 'resolveDomainZone',
+            statusCode: response.status,
+            message:
+              'Cloudflare returned more than one active zone for this domain.',
+          })
+        }
+        const zone = matches[0]!
+        return {
+          provider: CLOUDFLARE_PROVIDER,
+          zoneId: zone.id,
+          name: zone.name,
+        } satisfies ResolvedMailDomainZone
+      }),
       registerSendingSubdomain: Effect.fn(
         'CloudflareDomainProvider.registerSendingSubdomain',
       )(function* (input: SendingSubdomainRegistration) {
@@ -576,7 +661,7 @@ export const cloudflareDomainProviderLayer = Layer.effect(
             `${zonePath(input.zoneId)}/email/routing/rules/catch_all`,
           ),
           {
-            actions: [{ type: 'worker', value: [input.workerName] }],
+            actions: [{ type: 'worker', value: [config.workerName] }],
             matchers: [{ type: 'all' }],
             enabled: true,
             name: 'Garden Mail catch-all',
@@ -603,7 +688,12 @@ export const cloudflareDomainProviderLayer = Layer.effect(
           response.status,
           accepted.result,
         )
-        return yield* confirmCatchAllWorker(input, response.status, result)
+        return yield* confirmCatchAllWorker(
+          input,
+          config.workerName,
+          response.status,
+          result,
+        )
       }),
     })
   }),

@@ -16,8 +16,6 @@ import {
 const workspaceInput = z.object({ workspaceId: z.uuid() })
 const domainRegistrationInput = workspaceInput.extend({
   name: z.string().trim().min(1),
-  zoneId: z.string().trim().min(1),
-  workerName: z.string().trim().min(1),
 })
 const refreshDomainInput = workspaceInput.extend({ domainId: z.uuid() })
 const actorInput = z.discriminatedUnion('type', [

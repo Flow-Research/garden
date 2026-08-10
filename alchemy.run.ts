@@ -224,6 +224,8 @@ export const web = await TanStackStart(deployTarget.workerId, {
       ? { BETTER_AUTH_URL: requiredProductionWebOrigin(deployTarget) }
       : {}),
     ENVIRONMENT: deployTarget.environment,
+    CLOUDFLARE_ACCOUNT_ID: cloudflareAccountIdFromEnv(),
+    CLOUDFLARE_MAIL_WORKER_NAME: deployTarget.workerName,
     GOOGLE_CLIENT_ID: plainEnv('GOOGLE_CLIENT_ID'),
     ...optionalPlainBindings([
       'GITHUB_CLIENT_ID',

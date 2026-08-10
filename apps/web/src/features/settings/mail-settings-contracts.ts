@@ -42,8 +42,6 @@ export type MailboxSettingsView = {
 
 export type RegisterMailDomainSettingsInput = {
   name: string
-  zoneId: string
-  workerName: string
 }
 
 export type CreateMailboxSettingsInput = {

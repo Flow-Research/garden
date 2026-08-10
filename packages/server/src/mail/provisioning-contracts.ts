@@ -32,12 +32,10 @@ export interface ListProvisionedDomainsInput extends Schema.Schema.Type<
   typeof ListProvisionedDomainsInput
 > {}
 
-/** Cloudflare zone and deployed Worker are explicit onboarding authority. */
+/** User-facing domain registration; provider authority is resolved internally. */
 export const RegisterProvisionedDomainInput = Schema.Struct({
   workspaceId: WorkspaceId,
   name: DomainName,
-  zoneId: MailDomainZoneId,
-  workerName: MailWorkerName,
 })
 export interface RegisterProvisionedDomainInput extends Schema.Schema.Type<
   typeof RegisterProvisionedDomainInput
@@ -113,7 +111,7 @@ const CatchAllProvisioningEvidence = Schema.Struct({
 /** Strict shape stored inside the canonical provider-evidence JSON column. */
 export const MailDomainProvisioningEvidence = Schema.Struct({
   zoneId: MailDomainZoneId,
-  workerName: MailWorkerName,
+  workerName: Schema.NullOr(MailWorkerName),
   sending: Schema.NullOr(SendingProvisioningEvidence),
   routing: Schema.NullOr(RoutingProvisioningEvidence),
   catchAll: Schema.NullOr(CatchAllProvisioningEvidence),

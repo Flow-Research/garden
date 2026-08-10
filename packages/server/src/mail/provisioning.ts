@@ -3,12 +3,12 @@ import {
   LocalPart,
   type MailDomain,
   type MailDomainStatus,
-  ProviderKey,
   UtcTimestamp,
 } from '@garden/core/mail'
 import { Clock, Effect, Layer, Schema } from 'effect'
 import {
   type EmailRoutingState,
+  type MailDomainZoneId,
   MailDomainProvider,
   type ProvisionedSendingSubdomain,
 } from './domain-provider.ts'
@@ -34,8 +34,6 @@ import {
 
 export * from './provisioning-contracts.ts'
 
-const CLOUDFLARE_PROVIDER = ProviderKey.make('cloudflare-email-service')
-
 /** Uses Effect's active clock so verification observations are testable. */
 const checkedAt = Effect.fn('MailProvisioning.checkedAt')(function* () {
   return UtcTimestamp.make(
@@ -45,10 +43,10 @@ const checkedAt = Effect.fn('MailProvisioning.checkedAt')(function* () {
 
 /** Initial durable checkpoint exists before any external provider mutation. */
 const initialEvidence = (
-  input: RegisterProvisionedDomainInput,
+  zoneId: MailDomainZoneId,
 ): MailDomainProvisioningEvidence => ({
-  zoneId: input.zoneId,
-  workerName: input.workerName,
+  zoneId,
+  workerName: null,
   sending: null,
   routing: null,
   catchAll: null,
@@ -87,13 +85,13 @@ const decodeEvidence = (
 const evidenceForRegistration = (
   domain: MailDomain,
   input: RegisterProvisionedDomainInput,
+  zoneId: MailDomainZoneId,
 ): Effect.Effect<MailDomainProvisioningEvidence, MailProvisioningStateError> =>
   domain.providerEvidence === null
-    ? Effect.succeed(initialEvidence(input))
+    ? Effect.succeed(initialEvidence(zoneId))
     : decodeEvidence(domain, 'registerDomain.decodeEvidence').pipe(
         Effect.flatMap((evidence) =>
-          evidence.zoneId === input.zoneId &&
-          evidence.workerName === input.workerName
+          evidence.zoneId === zoneId
             ? Effect.succeed(evidence)
             : Effect.fail(
                 new MailProvisioningStateError({
@@ -172,22 +170,31 @@ export const makeMailProvisioningLayer = (
         ),
         registerDomain: Effect.fn('MailProvisioning.registerDomain')(
           function* (input) {
+            const resolvedZone = yield* domainProvider.resolveDomainZone({
+              name: input.name,
+            })
             const reserved = yield* reserveProvisionedDomain(db, {
               workspaceId: input.workspaceId,
               name: input.name,
-              transportProvider: CLOUDFLARE_PROVIDER,
-              providerEvidence: providerEvidence(initialEvidence(input)),
+              transportProvider: resolvedZone.provider,
+              providerEvidence: providerEvidence(
+                initialEvidence(resolvedZone.zoneId),
+              ),
             })
-            const baseEvidence = yield* evidenceForRegistration(reserved, input)
+            const baseEvidence = yield* evidenceForRegistration(
+              reserved,
+              input,
+              resolvedZone.zoneId,
+            )
 
             const sending =
               reserved.providerDomainId === null
                 ? yield* domainProvider.registerSendingSubdomain({
-                    zoneId: input.zoneId,
+                    zoneId: resolvedZone.zoneId,
                     name: input.name,
                   })
                 : yield* domainProvider.inspectSendingSubdomain({
-                    zoneId: input.zoneId,
+                    zoneId: resolvedZone.zoneId,
                     providerDomainId: reserved.providerDomainId,
                   })
             if (sending.name !== reserved.name) {
@@ -216,11 +223,11 @@ export const makeMailProvisioningLayer = (
             const routing =
               baseEvidence.routing === null
                 ? yield* domainProvider.enableEmailRouting({
-                    zoneId: input.zoneId,
+                    zoneId: resolvedZone.zoneId,
                     domain: input.name,
                   })
                 : yield* domainProvider.inspectEmailRouting({
-                    zoneId: input.zoneId,
+                    zoneId: resolvedZone.zoneId,
                   })
             yield* requireMatchingProviderDomain(
               reserved,
@@ -244,12 +251,12 @@ export const makeMailProvisioningLayer = (
             })
 
             const catchAll = yield* domainProvider.setCatchAllWorkerDelivery({
-              zoneId: input.zoneId,
-              workerName: input.workerName,
+              zoneId: resolvedZone.zoneId,
             })
             const catchAllCheckedAt = yield* checkedAt()
             const evidence: MailDomainProvisioningEvidence = {
               ...withRouting,
+              workerName: catchAll.workerName,
               catchAll: {
                 enabled: catchAll.enabled,
                 providerRuleId: catchAll.providerRuleId,

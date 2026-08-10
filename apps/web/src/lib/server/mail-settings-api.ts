@@ -11,6 +11,7 @@ import {
   MailDomainProvisioningEvidence,
   MailDomainProvider,
   MailDomainProviderRequestError,
+  MailWorkerName,
   MailProvisioning,
   RefreshProvisionedDomainInput,
   RegisterProvisionedDomainInput,
@@ -373,6 +374,15 @@ const cloudflareProvider = ProviderKey.make('cloudflare-email-service')
 const unavailableProviderLayer = Layer.succeed(
   MailDomainProvider,
   MailDomainProvider.of({
+    resolveDomainZone: () =>
+      Effect.fail(
+        new MailDomainProviderRequestError({
+          provider: cloudflareProvider,
+          operation: 'resolveDomainZone',
+          message:
+            'Cloudflare Mail provider authority is not configured for this deployment.',
+        }),
+      ),
     registerSendingSubdomain: () =>
       Effect.fail(
         new MailDomainProviderRequestError({
@@ -430,24 +440,29 @@ const provisioningLayer = (
   db: Parameters<typeof makeMailProvisioningLayer>[0],
 ) => {
   const token = context.env.CLOUDFLARE_MAIL_API_TOKEN
-  const providerLayer = token
-    ? cloudflareDomainProviderLayer.pipe(
-        Layer.provide(
-          Layer.merge(
-            Layer.succeed(
-              CloudflareDomainProviderConfig,
-              CloudflareDomainProviderConfig.of({
-                apiBaseUrl:
-                  context.env.CLOUDFLARE_MAIL_API_BASE_URL ??
-                  'https://api.cloudflare.com/client/v4',
-                apiToken: Redacted.make(token),
-              }),
+  const accountId = context.env.CLOUDFLARE_ACCOUNT_ID
+  const workerName = context.env.CLOUDFLARE_MAIL_WORKER_NAME
+  const providerLayer =
+    token && accountId && workerName
+      ? cloudflareDomainProviderLayer.pipe(
+          Layer.provide(
+            Layer.merge(
+              Layer.succeed(
+                CloudflareDomainProviderConfig,
+                CloudflareDomainProviderConfig.of({
+                  apiBaseUrl:
+                    context.env.CLOUDFLARE_MAIL_API_BASE_URL ??
+                    'https://api.cloudflare.com/client/v4',
+                  apiToken: Redacted.make(token),
+                  accountId,
+                  workerName: MailWorkerName.make(workerName),
+                }),
+              ),
+              FetchHttpClient.layer,
             ),
-            FetchHttpClient.layer,
           ),
-        ),
-      )
-    : unavailableProviderLayer
+        )
+      : unavailableProviderLayer
 
   return makeMailProvisioningLayer(db).pipe(Layer.provide(providerLayer))
 }
@@ -499,8 +514,6 @@ export async function registerMailSettingsDomain(
         Schema.decodeUnknownEffect(RegisterProvisionedDomainInput)({
           workspaceId,
           name: input.name,
-          zoneId: input.zoneId,
-          workerName: input.workerName,
         }).pipe(
           Effect.flatMap((canonical) =>
             provisioning

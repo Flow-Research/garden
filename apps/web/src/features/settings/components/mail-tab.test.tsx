@@ -147,26 +147,18 @@ describe('MailTab', () => {
     expect(screen.queryByText('example.com')).not.toBeInTheDocument()
   })
 
-  it('submits the source-shaped domain onboarding fields through the controller', async () => {
+  it('keeps provider authority out of managed-domain onboarding', async () => {
     const controller = readyController()
     render(<MailTab controller={controller} />)
 
     fireEvent.change(screen.getByLabelText('Domain'), {
       target: { value: 'example.com' },
     })
-    fireEvent.change(screen.getByLabelText('Cloudflare zone ID'), {
-      target: { value: 'zone-1' },
-    })
-    fireEvent.change(screen.getByLabelText('Email Worker name'), {
-      target: { value: 'garden-mail' },
-    })
     fireEvent.click(screen.getByRole('button', { name: 'Connect domain' }))
 
     await waitFor(() =>
       expect(controller.actions.registerDomain).toHaveBeenCalledWith({
         name: 'example.com',
-        zoneId: 'zone-1',
-        workerName: 'garden-mail',
       }),
     )
   })

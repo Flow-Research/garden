@@ -20,6 +20,23 @@ export const MailWorkerName = NonEmptyString.pipe(
 )
 export type MailWorkerName = typeof MailWorkerName.Type
 
+export const ResolveMailDomainZoneInput = Schema.Struct({
+  name: DomainName,
+})
+export interface ResolveMailDomainZoneInput extends Schema.Schema.Type<
+  typeof ResolveMailDomainZoneInput
+> {}
+
+/** Provider-owned zone selected from a user-facing Internet domain name. */
+export const ResolvedMailDomainZone = Schema.Struct({
+  provider: ProviderKey,
+  zoneId: MailDomainZoneId,
+  name: DomainName,
+})
+export interface ResolvedMailDomainZone extends Schema.Schema.Type<
+  typeof ResolvedMailDomainZone
+> {}
+
 export const SendingSubdomainRegistration = Schema.Struct({
   zoneId: MailDomainZoneId,
   name: DomainName,
@@ -96,7 +113,6 @@ export interface EmailRoutingState extends Schema.Schema.Type<
 
 export const SetCatchAllWorkerDeliveryInput = Schema.Struct({
   zoneId: MailDomainZoneId,
-  workerName: MailWorkerName,
 })
 export interface SetCatchAllWorkerDeliveryInput extends Schema.Schema.Type<
   typeof SetCatchAllWorkerDeliveryInput
@@ -151,7 +167,11 @@ export class MailDomainProviderNotFoundError extends Schema.TaggedErrorClass<Mai
   {
     provider: ProviderKey,
     operation: NonEmptyString,
-    resource: Schema.Literals(['sending_subdomain', 'email_routing']),
+    resource: Schema.Literals([
+      'domain_zone',
+      'sending_subdomain',
+      'email_routing',
+    ]),
     resourceId: NonEmptyString,
     message: Schema.String,
   },
@@ -176,6 +196,9 @@ export type MailDomainProviderError =
   | MailDomainProviderResponseError
 
 export interface MailDomainProviderService {
+  readonly resolveDomainZone: (
+    input: ResolveMailDomainZoneInput,
+  ) => Effect.Effect<ResolvedMailDomainZone, MailDomainProviderError>
   readonly registerSendingSubdomain: (
     input: SendingSubdomainRegistration,
   ) => Effect.Effect<ProvisionedSendingSubdomain, MailDomainProviderError>
@@ -245,6 +268,14 @@ export const testMailDomainProviderLayer = Layer.effect(
     const state = yield* Ref.make<TestDomainProviderState>(initialTestState)
 
     return MailDomainProvider.of({
+      resolveDomainZone: Effect.fn('MailDomainProvider.Test.resolveDomainZone')(
+        (input: ResolveMailDomainZoneInput) =>
+          Effect.succeed({
+            provider: testProvider,
+            zoneId: MailDomainZoneId.make(`zone-${input.name}`),
+            name: input.name,
+          }),
+      ),
       registerSendingSubdomain: Effect.fn(
         'MailDomainProvider.Test.registerSendingSubdomain',
       )(function* (input: SendingSubdomainRegistration) {
@@ -382,7 +413,7 @@ export const testMailDomainProviderLayer = Layer.effect(
           provider: testProvider,
           zoneId: input.zoneId,
           providerRuleId: ProviderObjectId.make('test-catch-all'),
-          workerName: input.workerName,
+          workerName: MailWorkerName.make('garden-mail-worker'),
           enabled: true,
         }
         yield* Ref.update(state, (value) => ({

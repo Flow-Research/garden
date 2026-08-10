@@ -86,6 +86,8 @@ const cloudflareTestLayer = (client: HttpClient.HttpClient) =>
         CloudflareDomainProviderConfig.of({
           apiBaseUrl: 'https://api.cloudflare.test/client/v4',
           apiToken: Redacted.make('secret-token'),
+          accountId: 'account-1',
+          workerName: MailWorkerName.make('garden-mail-worker'),
         }),
       ),
     ),
@@ -124,7 +126,7 @@ describe('MailDomainProvider test layer', () => {
       expect(yield* provider.inspectEmailRouting({ zoneId })).toEqual(routing)
 
       expect(
-        yield* provider.setCatchAllWorkerDelivery({ zoneId, workerName }),
+        yield* provider.setCatchAllWorkerDelivery({ zoneId }),
       ).toMatchObject({ zoneId, workerName, enabled: true })
 
       yield* provider.deleteSendingSubdomain({
@@ -167,6 +169,11 @@ describe('CloudflareDomainProvider', () => {
         support_subaddress: true,
       }
       const fixture = recordingHttpClient([
+        {
+          body: success([
+            { id: 'zone-123', name: 'example.com', status: 'active' },
+          ]),
+        },
         { body: success(sendingResult) },
         { body: success(sendingResult) },
         { body: { success: true, errors: [], messages: [] } },
@@ -188,6 +195,12 @@ describe('CloudflareDomainProvider', () => {
         const provider = yield* MailDomainProvider
         const zoneId = MailDomainZoneId.make('zone-123')
         const providerDomainId = ProviderObjectId.make('sending-1')
+
+        expect(
+          yield* provider.resolveDomainZone({
+            name: DomainName.make('example.com'),
+          }),
+        ).toMatchObject({ zoneId, name: 'example.com' })
 
         const registered = yield* provider.registerSendingSubdomain({
           zoneId,
@@ -211,15 +224,13 @@ describe('CloudflareDomainProvider', () => {
         expect(enabled.supportsSubaddressing).toBe(true)
         yield* provider.inspectEmailRouting({ zoneId })
 
-        const catchAll = yield* provider.setCatchAllWorkerDelivery({
-          zoneId,
-          workerName: MailWorkerName.make('garden-mail-worker'),
-        })
+        const catchAll = yield* provider.setCatchAllWorkerDelivery({ zoneId })
         expect(catchAll.providerRuleId).toBe('catch-all-1')
 
         expect(
           fixture.requests.map((request) => [request.method, request.url]),
         ).toEqual([
+          ['GET', 'https://api.cloudflare.test/client/v4/zones'],
           [
             'POST',
             'https://api.cloudflare.test/client/v4/zones/zone-123/email/sending/subdomains',
@@ -245,16 +256,25 @@ describe('CloudflareDomainProvider', () => {
             'https://api.cloudflare.test/client/v4/zones/zone-123/email/routing/rules/catch_all',
           ],
         ])
+        expect(fixture.requests[0]?.urlParams).toMatchObject({
+          params: [
+            ['account.id', 'account-1'],
+            ['name', 'example.com'],
+            ['status', 'active'],
+            ['match', 'all'],
+            ['per_page', '5'],
+          ],
+        })
         expect(fixture.requests[0]?.headers.authorization).toBe(
           'Bearer secret-token',
         )
-        expect(requestBodyAt(fixture.requests, 0)).toBe(
+        expect(requestBodyAt(fixture.requests, 1)).toBe(
           '{"name":"mail.example.com"}',
         )
-        expect(requestBodyAt(fixture.requests, 3)).toBe(
+        expect(requestBodyAt(fixture.requests, 4)).toBe(
           '{"name":"example.com"}',
         )
-        expect(requestBodyAt(fixture.requests, 5)).toBe(
+        expect(requestBodyAt(fixture.requests, 6)).toBe(
           '{"actions":[{"type":"worker","value":["garden-mail-worker"]}],"matchers":[{"type":"all"}],"enabled":true,"name":"Garden Mail catch-all","source":"api"}',
         )
       }).pipe(Effect.provide(cloudflareTestLayer(fixture.client)))
