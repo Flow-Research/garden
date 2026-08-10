@@ -114,6 +114,12 @@
     "binding": "AI",
     "remote": true,
   },
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "remote": true,
+    },
+  ],
   "vars": {
     "SANDBOX_TRANSPORT": "rpc",
     "SANDBOX_LOG_LEVEL": "warn",
