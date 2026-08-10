@@ -64,6 +64,30 @@ export const mailDraftApplicationLayer: Layer.Layer<
               waitsForApproval: false,
             }
           }
+          if (
+            current.status === 'awaiting_approval' &&
+            input.actor._tag === 'Member'
+          ) {
+            const approval = yield* decideDraftTransition(current.status, {
+              _tag: 'Approve',
+              actor: input.actor,
+            })
+            const draft = yield* repository.transitionDraft(
+              TransitionDraftInput.make({
+                workspaceId: input.workspaceId,
+                draftId: input.draftId,
+                actor: approval.actor,
+                expectedRevision: input.expectedRevision,
+                action: approval.action,
+                toStatus: approval.toStatus,
+              }),
+            )
+            return {
+              draft,
+              startsDelivery: true,
+              waitsForApproval: false,
+            }
+          }
           const transition = yield* decideDraftTransition(current.status, {
             _tag: 'RequestDelivery',
             actor: input.actor,
