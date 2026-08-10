@@ -13,10 +13,10 @@ import {
 } from 'lucide-react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import { MailAvatar } from './mail-avatar'
-import type { MailConversationView } from './types'
+import type { MailConversationSummaryView } from './types'
 
 export type MailConversationRowProps = {
-  conversation: MailConversationView
+  conversation: MailConversationSummaryView
   selected: boolean
   bulkSelected?: boolean
   onOpen: () => void

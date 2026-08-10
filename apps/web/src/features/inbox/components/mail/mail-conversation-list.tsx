@@ -4,12 +4,12 @@
 import { Spinner } from '@garden/ui/components/ui/spinner'
 import type { ReactNode } from 'react'
 import { MailEmptyState, MailErrorState, MailListSkeleton } from './mail-states'
-import type { MailConversationView } from './types'
+import type { MailConversationSummaryView } from './types'
 
 export type MailConversationListProps = {
   state: 'loading' | 'ready' | 'error'
-  conversations: MailConversationView[]
-  renderConversation: (conversation: MailConversationView) => ReactNode
+  conversations: MailConversationSummaryView[]
+  renderConversation: (conversation: MailConversationSummaryView) => ReactNode
   error?: string
   filtered?: boolean
   refreshing?: boolean

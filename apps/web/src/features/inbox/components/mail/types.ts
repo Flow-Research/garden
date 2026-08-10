@@ -42,7 +42,7 @@ export type MailMessageView = {
   authorLabel?: string
 }
 
-export type MailConversationView = {
+export type MailConversationSummaryView = {
   id: string
   subject: string
   participants: MailAddressView[]
@@ -55,6 +55,9 @@ export type MailConversationView = {
   draft?: boolean
   needsReply?: boolean
   labels?: MailLabelView[]
+}
+
+export type MailConversationView = MailConversationSummaryView & {
   messages: MailMessageView[]
 }
 
