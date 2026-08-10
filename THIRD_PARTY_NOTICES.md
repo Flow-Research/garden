@@ -51,6 +51,24 @@ Upstream: https://github.com/cloudflare/agents
 The upstream MIT license, NOTICE, and third-party license inventory are
 included unchanged under `third_party/cloudflare-agents/`.
 
+## Cloudflare Agentic Inbox
+
+Garden's mail UI uses interaction and component patterns adapted from
+Cloudflare Agentic Inbox at upstream commit
+`48039bb6785af34e592c2966f87cde2b255c4c80`. Adapted surfaces include the
+mailbox split view, folder navigation, accessible conversation rows, message
+toolbar, thread and draft presentation, compose states, loading and empty
+states, and sandboxed email-body rendering. Garden replaces the upstream
+router, state, data, authentication, and agent implementations with its own
+workspace, Effect, and mail-domain boundaries.
+
+Upstream: https://github.com/cloudflare/agentic-inbox
+
+Copyright (c) 2026 Cloudflare, Inc.
+
+Licensed under the Apache License, Version 2.0. The upstream license is
+available at https://github.com/cloudflare/agentic-inbox/blob/48039bb6785af34e592c2966f87cde2b255c4c80/LICENSE.
+
 ## Executor
 
 Garden uses Executor v1.5.40 from upstream commit
@@ -94,6 +112,40 @@ registry and then adapted to Garden's package boundaries.
 Copyright (c) 2023 shadcn
 
 MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+## Zero Email
+
+Garden's mail UI uses interaction and component patterns adapted from Zero
+Email at upstream commit `64c5480c341750578da0746f2db9ad84da686334`.
+Adapted surfaces include compact Inbox scope tabs, search and filter controls,
+dense conversation rows, bulk-selection mode, thread presentation, inline
+reply, composer fields and attachments, and mail-specific loading states.
+Garden excludes Zero branding, marketing, billing, authentication, routing,
+analytics, and AI product surfaces.
+
+Upstream: https://github.com/mail-0/zero
+
+MIT License
+
+Copyright (c) 2025 Zero Email
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
