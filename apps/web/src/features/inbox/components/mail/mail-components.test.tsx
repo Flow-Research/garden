@@ -79,6 +79,7 @@ describe('MailMessage', () => {
       html: '<p>Draft response</p>',
       textPreview: 'Draft response',
       status: 'draft',
+      draftStatus: 'awaiting_approval',
       agentAuthored: true,
     }
 
@@ -104,7 +105,7 @@ describe('MailMessage', () => {
       />,
     )
     expect(screen.getByTitle('Message from Garden Agent')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Approve & send' }))
     expect(onSendDraft).toHaveBeenCalledOnce()
   })
 })

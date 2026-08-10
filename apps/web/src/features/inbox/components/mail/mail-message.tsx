@@ -103,7 +103,13 @@ export function MailMessage({
   onDiscardDraft,
   onOpenAttachment,
 }: MailMessageProps) {
-  const isDraft = message.status === 'draft'
+  const isDraft = message.status === 'draft' || message.status === 'failed'
+  const sendLabel =
+    message.draftStatus === 'awaiting_approval'
+      ? 'Approve & send'
+      : message.draftStatus === 'send_failed'
+        ? 'Retry'
+        : 'Send'
 
   return (
     <article
@@ -171,7 +177,7 @@ export function MailMessage({
                 {onSendDraft ? (
                   <Button size="sm" onClick={onSendDraft}>
                     <Send />
-                    Send
+                    {sendLabel}
                   </Button>
                 ) : null}
                 {onEditDraft ? (

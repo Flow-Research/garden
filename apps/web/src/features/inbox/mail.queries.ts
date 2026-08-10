@@ -5,8 +5,10 @@ import { requireAppRequestContext } from '@/lib/server/context'
 import {
   getMailConversation,
   getMailInboxSnapshot,
+  discardPersistedMailDraft,
   mutateMailConversationState,
   persistMailDraft,
+  requestPersistedMailDraftChanges,
   requestMailDraftDelivery,
   type MailConversationStateAction,
   type MailDraftValuesInput,
@@ -47,6 +49,7 @@ const sendDraftInput = workspaceInput.extend({
   draftId: z.uuid(),
   expectedRevision: z.number().int().nonnegative(),
 })
+const changeDraftInput = sendDraftInput
 
 export const mailKeys = {
   all: (workspaceId: string) => ['garden-mail', workspaceId] as const,
@@ -86,6 +89,18 @@ const dispatchDraft = createServerFn({ method: 'POST' })
     requestMailDraftDelivery(requireAppRequestContext(context), data),
   )
 
+const reopenDraft = createServerFn({ method: 'POST' })
+  .inputValidator(changeDraftInput)
+  .handler(({ context, data }) =>
+    requestPersistedMailDraftChanges(requireAppRequestContext(context), data),
+  )
+
+const discardDraft = createServerFn({ method: 'POST' })
+  .inputValidator(changeDraftInput)
+  .handler(({ context, data }) =>
+    discardPersistedMailDraft(requireAppRequestContext(context), data),
+  )
+
 /** Named wrapper keeps the generated server-function declaration portable. */
 export async function changeMailConversationState(input: {
   data: {
@@ -109,6 +124,20 @@ export async function sendMailDraft(input: {
   data: { workspaceId: string; draftId: string; expectedRevision: number }
 }) {
   return await dispatchDraft(input)
+}
+
+/** Records member-requested changes before editing an agent-authored draft. */
+export async function requestMailDraftChanges(input: {
+  data: { workspaceId: string; draftId: string; expectedRevision: number }
+}): Promise<DraftSnapshot> {
+  return await reopenDraft(input)
+}
+
+/** Discards an active draft through the canonical Effect state machine. */
+export async function discardMailDraft(input: {
+  data: { workspaceId: string; draftId: string; expectedRevision: number }
+}): Promise<DraftSnapshot> {
+  return await discardDraft(input)
 }
 
 /** Actor-scoped mailbox and summary cache shared by Inbox and composer. */

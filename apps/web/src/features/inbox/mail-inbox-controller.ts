@@ -12,11 +12,13 @@ import type {
 } from '@garden/server/mail'
 import {
   changeMailConversationState,
+  discardMailDraft,
   mailConversationOptions,
   mailInboxOptions,
   mailKeys,
   saveMailDraft,
   sendMailDraft,
+  requestMailDraftChanges,
 } from './mail.queries'
 import type {
   MailDraftValuesInput,
@@ -103,6 +105,7 @@ type ComposerState = {
   draftId: string | null
   revision: number | null
   ccBccVisible: boolean
+  agentAttribution?: string
   error?: string
 }
 
@@ -238,6 +241,7 @@ function draftView(
     html: draft.htmlBody ?? textMailHtml(draft.textBody),
     textPreview: draft.textBody ?? undefined,
     status: draft.status === 'send_failed' ? 'failed' : 'draft',
+    draftStatus: draft.status,
     agentAuthored: draft.author._tag === 'Agent',
     authorLabel: draft.author._tag === 'Agent' ? 'Garden agent' : 'Team member',
   }
@@ -429,6 +433,20 @@ export function useMailInboxController(input: {
       )
     },
   })
+  const requestChangesMutation = useMutation({
+    mutationFn: requestMailDraftChanges,
+    onError: () => toast.error('Draft could not be reopened for editing'),
+  })
+  const discardMutation = useMutation({
+    mutationFn: discardMailDraft,
+    onSuccess: () => {
+      toast.success('Draft discarded')
+      void queryClient.invalidateQueries({
+        queryKey: mailKeys.all(input.workspaceId),
+      })
+    },
+    onError: () => toast.error('Draft could not be discarded'),
+  })
 
   const mailboxes = inboxQuery.data?.mailboxes ?? []
   const summaries = inboxQuery.data?.conversations ?? []
@@ -501,6 +519,44 @@ export function useMailInboxController(input: {
     })
   }
 
+  /** Opens the exact persisted revision so collaborative edits stay optimistic. */
+  const beginEditDraft = (draft: DraftSnapshot) => {
+    const mailbox = mailboxes.find(
+      (candidate) => candidate.id === draft.mailboxId,
+    )
+    if (!mailbox) {
+      toast.error('Mailbox access is no longer available.')
+      return
+    }
+    const addresses = (kind: 'to' | 'cc' | 'bcc') =>
+      draft.recipients
+        .filter((recipient) => recipient.kind === kind)
+        .map((recipient) => recipient.address)
+        .join(', ')
+    const cc = addresses('cc')
+    const bcc = addresses('bcc')
+    setComposer({
+      values: {
+        to: addresses('to'),
+        cc,
+        bcc,
+        from: mailbox.id,
+        subject: draft.subject,
+        body: draft.textBody ?? '',
+      },
+      conversationId: draft.conversationId,
+      ...(draft.replyToMessageId
+        ? { replyToMessageId: draft.replyToMessageId }
+        : {}),
+      draftId: draft.id,
+      revision: draft.revision,
+      ccBccVisible: cc.length > 0 || bcc.length > 0,
+      ...(draft.author._tag === 'Agent'
+        ? { agentAttribution: 'Agent-authored draft' }
+        : {}),
+    })
+  }
+
   const list: MailListResult = inboxQuery.isPending
     ? { status: 'loading' }
     : inboxQuery.isError
@@ -569,6 +625,7 @@ export function useMailInboxController(input: {
             savingDraft: draftMutation.isPending,
             sending: sendMutation.isPending,
             error: composer.error,
+            agentAttribution: composer.agentAttribution,
             onChange: (values) =>
               setComposer((current) =>
                 current ? { ...current, values, error: undefined } : current,
@@ -639,11 +696,76 @@ export function useMailInboxController(input: {
         beginCompose(conversationId, messageId, 'reply-all'),
       forward: (conversationId, messageId) =>
         beginCompose(conversationId, messageId, 'forward'),
-      messageProps: (conversationId, message) => ({
-        onReply: () => beginCompose(conversationId, message.id, 'reply'),
-        onReplyAll: () => beginCompose(conversationId, message.id, 'reply-all'),
-        onForward: () => beginCompose(conversationId, message.id, 'forward'),
-      }),
+      messageProps: (conversationId, message) =>
+        message.draftStatus
+          ? {
+              ...(message.draftStatus !== 'sending'
+                ? {
+                    onSendDraft: () => {
+                      const draft = conversationQuery.data?.drafts.find(
+                        (candidate) => candidate.id === message.id,
+                      )
+                      if (!draft) return
+                      sendMutation.mutate({
+                        data: {
+                          workspaceId: input.workspaceId,
+                          draftId: draft.id,
+                          expectedRevision: draft.revision,
+                        },
+                      })
+                    },
+                  }
+                : {}),
+              ...(message.draftStatus === 'editing' ||
+              message.draftStatus === 'awaiting_approval'
+                ? {
+                    onEditDraft: () => {
+                      const draft = conversationQuery.data?.drafts.find(
+                        (candidate) => candidate.id === message.id,
+                      )
+                      if (!draft) return
+                      if (draft.status === 'awaiting_approval') {
+                        requestChangesMutation.mutate(
+                          {
+                            data: {
+                              workspaceId: input.workspaceId,
+                              draftId: draft.id,
+                              expectedRevision: draft.revision,
+                            },
+                          },
+                          { onSuccess: beginEditDraft },
+                        )
+                        return
+                      }
+                      beginEditDraft(draft)
+                    },
+                  }
+                : {}),
+              ...(message.draftStatus !== 'sending'
+                ? {
+                    onDiscardDraft: () => {
+                      const draft = conversationQuery.data?.drafts.find(
+                        (candidate) => candidate.id === message.id,
+                      )
+                      if (!draft) return
+                      discardMutation.mutate({
+                        data: {
+                          workspaceId: input.workspaceId,
+                          draftId: draft.id,
+                          expectedRevision: draft.revision,
+                        },
+                      })
+                    },
+                  }
+                : {}),
+            }
+          : {
+              onReply: () => beginCompose(conversationId, message.id, 'reply'),
+              onReplyAll: () =>
+                beginCompose(conversationId, message.id, 'reply-all'),
+              onForward: () =>
+                beginCompose(conversationId, message.id, 'forward'),
+            },
     },
   }
 }

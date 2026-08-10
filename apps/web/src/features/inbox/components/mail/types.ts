@@ -37,6 +37,14 @@ export type MailMessageView = {
   html: string
   textPreview?: string
   status: MailMessageStatus
+  draftStatus?:
+    | 'editing'
+    | 'awaiting_approval'
+    | 'approved'
+    | 'sending'
+    | 'sent'
+    | 'send_failed'
+    | 'discarded'
   attachments?: MailAttachmentView[]
   agentAuthored?: boolean
   authorLabel?: string

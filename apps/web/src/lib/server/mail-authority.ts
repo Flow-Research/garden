@@ -32,7 +32,7 @@ export class MailRequestBoundaryError extends Schema.TaggedErrorClass<MailReques
 
 export type MailMemberAuthority = {
   db: GardenDatabase
-  actor: typeof MailActor.Type
+  actor: typeof MailActor.cases.Member.Type
   role: string
 }
 
@@ -97,7 +97,7 @@ export const requireMailMemberAuthority = Effect.fn(
     })
   }
 
-  const actor = yield* Schema.decodeUnknownEffect(MailActor)({
+  const actor = yield* Schema.decodeUnknownEffect(MailActor.cases.Member)({
     _tag: 'Member',
     memberId: MemberId.make(membership.id),
   }).pipe(

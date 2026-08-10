@@ -5,6 +5,7 @@ import {
 import { Context, Effect, Layer, Schema } from 'effect'
 import {
   decideDraftTransition,
+  type DraftCommand,
   type InvalidDraftTransitionError,
 } from './draft-state.ts'
 import {
@@ -26,12 +27,28 @@ export type MailDraftApplicationError =
   | MailRepositoryError
   | InvalidDraftTransitionError
 
+export type MemberDraftCommandInput = Omit<
+  RequestDraftDeliveryInput,
+  'actor'
+> & {
+  readonly actor: Extract<
+    RequestDraftDeliveryInput['actor'],
+    { readonly _tag: 'Member' }
+  >
+}
+
 export interface MailDraftApplicationService {
   readonly requestDelivery: (
     input: RequestDraftDeliveryInput & {
       agentApproval: 'auto' | 'manual'
     },
   ) => Effect.Effect<DraftDeliveryAuthorization, MailDraftApplicationError>
+  readonly requestChanges: (
+    input: MemberDraftCommandInput,
+  ) => Effect.Effect<DraftSnapshot, MailDraftApplicationError>
+  readonly discard: (
+    input: MemberDraftCommandInput,
+  ) => Effect.Effect<DraftSnapshot, MailDraftApplicationError>
 }
 
 /** Effect application authority for draft policy before durable delivery. */
@@ -53,11 +70,43 @@ export const mailDraftApplicationLayer: Layer.Layer<
   MailDraftApplication,
   Effect.gen(function* () {
     const repository = yield* MailRepository
+
+    /** Decides and persists one member collaboration command with its attribution. */
+    const transitionMemberDraft = Effect.fn(
+      'MailDraftApplication.transitionMemberDraft',
+    )(function* (
+      input: MemberDraftCommandInput,
+      command: Extract<
+        DraftCommand,
+        { readonly _tag: 'RequestChanges' | 'Discard' }
+      >,
+    ) {
+      const current = yield* repository.getDraft(input)
+      const transition = yield* decideDraftTransition(current.status, command)
+      return yield* repository.transitionDraft(
+        TransitionDraftInput.make({
+          workspaceId: input.workspaceId,
+          draftId: input.draftId,
+          actor: transition.actor,
+          expectedRevision: input.expectedRevision,
+          action: transition.action,
+          toStatus: transition.toStatus,
+        }),
+      )
+    })
+
     return MailDraftApplication.of({
       requestDelivery: Effect.fn('MailDraftApplication.requestDelivery')(
         function* (input) {
           const current = yield* repository.getDraft(input)
           if (current.status === 'approved') {
+            return {
+              draft: current,
+              startsDelivery: true,
+              waitsForApproval: false,
+            }
+          }
+          if (current.status === 'send_failed') {
             return {
               draft: current,
               startsDelivery: true,
@@ -108,6 +157,19 @@ export const mailDraftApplicationLayer: Layer.Layer<
             waitsForApproval: transition.waitsForApproval,
           }
         },
+      ),
+      requestChanges: Effect.fn('MailDraftApplication.requestChanges')(
+        (input) =>
+          transitionMemberDraft(input, {
+            _tag: 'RequestChanges',
+            actor: input.actor,
+          }),
+      ),
+      discard: Effect.fn('MailDraftApplication.discard')((input) =>
+        transitionMemberDraft(input, {
+          _tag: 'Discard',
+          actor: input.actor,
+        }),
       ),
     })
   }),

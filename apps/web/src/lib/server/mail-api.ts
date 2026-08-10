@@ -24,6 +24,7 @@ import {
   type ConversationDetail,
   type ConversationSummary,
   type DraftSnapshot,
+  type MemberDraftCommandInput,
 } from '@garden/server/mail'
 import { and, eq } from 'drizzle-orm'
 import { Effect, Layer, Schema } from 'effect'
@@ -325,6 +326,57 @@ export async function persistMailDraft(
       )
     }),
   )
+}
+
+type MailDraftCommandInput = {
+  workspaceId: string
+  draftId: string
+  expectedRevision: number
+}
+
+/** Runs an authenticated member command through the Effect draft application. */
+const runMemberDraftCommand = async (
+  context: AppRequestContext,
+  input: MailDraftCommandInput,
+  command: 'requestChanges' | 'discard',
+): Promise<DraftSnapshot> =>
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const workspaceId = yield* decodeWorkspaceId(input.workspaceId)
+      const authority = yield* requireMailMemberAuthority(context, workspaceId)
+      const repositoryLayer = makeMailRepositoryLayer(authority.db)
+      const applicationLayer = mailDraftApplicationLayer.pipe(
+        Layer.provide(repositoryLayer),
+      )
+      const canonical: MemberDraftCommandInput = {
+        workspaceId,
+        draftId: yield* Schema.decodeUnknownEffect(DraftId)(input.draftId),
+        actor: authority.actor,
+        expectedRevision: yield* Schema.decodeUnknownEffect(NonNegativeInt)(
+          input.expectedRevision,
+        ),
+      }
+      return yield* Effect.gen(function* () {
+        const application = yield* MailDraftApplication
+        return yield* application[command](canonical)
+      }).pipe(Effect.provide(Layer.merge(repositoryLayer, applicationLayer)))
+    }),
+  )
+
+/** Member requests changes before editing a draft awaiting approval. */
+export async function requestPersistedMailDraftChanges(
+  context: AppRequestContext,
+  input: MailDraftCommandInput,
+): Promise<DraftSnapshot> {
+  return await runMemberDraftCommand(context, input, 'requestChanges')
+}
+
+/** Member discards an active collaborative draft with actor attribution. */
+export async function discardPersistedMailDraft(
+  context: AppRequestContext,
+  input: MailDraftCommandInput,
+): Promise<DraftSnapshot> {
+  return await runMemberDraftCommand(context, input, 'discard')
 }
 
 /**

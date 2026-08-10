@@ -74,6 +74,7 @@ export {
 export type {
   MailDraftApplicationError,
   MailDraftApplicationService,
+  MemberDraftCommandInput,
 } from './draft-application.ts'
 export * from './domain-provider.ts'
 export {
