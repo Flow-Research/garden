@@ -4,8 +4,8 @@ export {
   cloudflareMailTransportLayer,
   makeCloudflareMailTransportLayer,
   normalizeCloudflareInbound,
-} from "./cloudflare.ts";
-export type { CloudflareMailBindingService } from "./cloudflare.ts";
+} from './cloudflare.ts'
+export type { CloudflareMailBindingService } from './cloudflare.ts'
 export {
   InboundMailHeader,
   MailAttachment,
@@ -13,18 +13,18 @@ export {
   MailTransportAddress,
   NormalizedInboundMail,
   OutboundMail,
-} from "./model.ts";
+} from './model.ts'
 export {
   MailInboundReadError,
   MailTransport,
   MailTransportSendError,
   TestMailTransport,
   testMailTransportLayer,
-} from "./transport.ts";
+} from './transport.ts'
 export type {
   MailTransportService,
   TestMailTransportService,
-} from "./transport.ts";
+} from './transport.ts'
 export {
   MailMimeParseError,
   MailMimeValidationError,
@@ -34,7 +34,7 @@ export {
   ParsedMimeMessage,
   ParsedMimeRecipient,
   parseNormalizedMime,
-} from "./mime.ts";
+} from './mime.ts'
 export {
   MailObject,
   MailObjectDeleteError,
@@ -46,8 +46,49 @@ export {
   TestMailObjectStore,
   makeR2MailObjectStoreLayer,
   testMailObjectStoreLayer,
-} from "./object-store.ts";
+} from './object-store.ts'
 export type {
   MailObjectStoreService,
   TestMailObjectStoreService,
-} from "./object-store.ts";
+} from './object-store.ts'
+export {
+  MailContentHashError,
+  attachmentStorageKey,
+  inboundProviderMessageId,
+  mailThreadKey,
+  normalizedMailSubject,
+  rawMailStorageKey,
+  sha256,
+} from './content-addressing.ts'
+export {
+  DraftCommand,
+  DraftTransition,
+  InvalidDraftTransitionError,
+  decideDraftTransition,
+} from './draft-state.ts'
+export * from './domain-provider.ts'
+export {
+  CloudflareDomainProviderConfig,
+  cloudflareDomainProviderConfigLayer,
+  cloudflareDomainProviderLayer,
+} from './cloudflare-domain-provider.ts'
+export type { CloudflareDomainProviderConfigService } from './cloudflare-domain-provider.ts'
+export {
+  MailIngress,
+  ingestNormalizedMail,
+  mailIngressLayer,
+} from './ingress.ts'
+export type { MailIngressError, MailIngressService } from './ingress.ts'
+export {
+  MailRepository,
+  MailRepositoryAccessDeniedError,
+  MailRepositoryInvariantError,
+  MailRepositoryNotFoundError,
+  MailRepositoryPersistenceError,
+  MailDraftRevisionConflictError,
+  makeMailRepositoryLayer,
+} from './repository.ts'
+export type {
+  MailRepositoryError,
+  MailRepositoryService,
+} from './repository.ts'

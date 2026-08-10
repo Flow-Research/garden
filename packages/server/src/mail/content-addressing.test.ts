@@ -30,8 +30,10 @@ describe('Mail content addressing', () => {
         expect(rawMailStorageKey(workspaceId, contentHash)).toBe(
           `mail/${workspaceId}/raw/${contentHash}.eml`,
         )
-        expect(attachmentStorageKey(workspaceId, contentHash)).toBe(
-          `mail/${workspaceId}/attachments/${contentHash}`,
+        expect(
+          attachmentStorageKey(workspaceId, contentHash, contentHash, 0),
+        ).toBe(
+          `mail/${workspaceId}/attachments/${contentHash}/0-${contentHash}`,
         )
       }),
   )

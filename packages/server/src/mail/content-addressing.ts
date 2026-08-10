@@ -55,12 +55,20 @@ export const rawMailStorageKey = (
   contentHash: Sha256,
 ): StorageKey => StorageKey.make(`mail/${workspaceId}/raw/${contentHash}.eml`)
 
-/** Attachment objects are content-addressed for safe workspace-local reuse. */
+/**
+ * Attachment objects are content-addressed inside their raw message. Keeping
+ * the message and MIME position in the key preserves reference-specific names
+ * and media types while duplicate deliveries still converge on the same key.
+ */
 export const attachmentStorageKey = (
   workspaceId: WorkspaceId,
+  messageHash: Sha256,
   contentHash: Sha256,
+  position: number,
 ): StorageKey =>
-  StorageKey.make(`mail/${workspaceId}/attachments/${contentHash}`)
+  StorageKey.make(
+    `mail/${workspaceId}/attachments/${messageHash}/${position}-${contentHash}`,
+  )
 
 export interface ThreadIdentityInput {
   readonly internetMessageId: InternetMessageId | null
