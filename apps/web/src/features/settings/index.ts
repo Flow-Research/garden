@@ -17,4 +17,6 @@ export type {
   RegisterMailDomainSettingsInput,
   SetMailboxAccessSettingsInput,
 } from './mail-settings-controller'
+export { resolveMailSettingsView } from './mail-settings-view'
+export type { MailSettingsView } from './mail-settings-view'
 export { useSettingsDialogStore } from './settings-dialog-store'

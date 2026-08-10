@@ -1,5 +1,10 @@
-// Directly adapts Cloudflare Agentic Inbox domain/list/form composition (Apache-2.0)
-// inside Zero's settings section hierarchy (MIT). See THIRD_PARTY_NOTICES.md.
+/**
+ * MODIFIED OPENSHIP SOURCE: the day-2 domain section and split-card treatment
+ * mechanically adapt OpenShip's DomainsTab at commit
+ * 738946188e7c329477a4bbcf9c58dc1451393798 (Apache-2.0). Domain rows/forms
+ * retain the Cloudflare Agentic Inbox + Zero adaptations already documented in
+ * docs/architecture/garden-mail-ui-sources.md and THIRD_PARTY_NOTICES.md.
+ */
 
 import { useState, type FormEvent } from 'react'
 import { AlertCircle, Check, Globe2, Plus, RefreshCw } from 'lucide-react'
@@ -143,7 +148,7 @@ function DomainRow({
   }
 
   return (
-    <li className="px-5 py-4 [&+&]:border-t">
+    <li className="px-5 py-4">
       <div className="flex items-start gap-4">
         <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted">
           <Globe2 className="size-4 text-muted-foreground" />
@@ -214,9 +219,10 @@ export function MailDomainSettings({
       title="Company domains"
       description="Connect domains used by people and agents in this workspace."
       action={action}
+      density={controller.domains.length > 0 ? 'split' : 'soft'}
     >
       {controller.domains.length > 0 ? (
-        <ul className="overflow-hidden rounded-xl border">
+        <ul className="divide-y">
           {controller.domains.map((domain) => (
             <DomainRow
               key={domain.id}
@@ -226,7 +232,7 @@ export function MailDomainSettings({
           ))}
         </ul>
       ) : (
-        <Empty className="border py-12">
+        <Empty className="py-8">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <Globe2 />

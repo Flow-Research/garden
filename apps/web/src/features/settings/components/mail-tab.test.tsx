@@ -161,6 +161,47 @@ describe('MailTab', () => {
         name: 'example.com',
       }),
     )
+    expect(
+      screen.queryByRole('navigation', { name: 'Mail administration' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('enters the OpenShip-derived admin shell after a domain exists', () => {
+    render(
+      <MailTab
+        controller={readyController({
+          domains: [
+            {
+              id: 'domain-1',
+              name: 'example.com',
+              status: 'active',
+              sendingEnabled: true,
+              routingEnabled: true,
+              catchAllEnabled: true,
+            },
+          ],
+        })}
+      />,
+    )
+
+    expect(
+      screen.getByRole('navigation', { name: 'Mail administration' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Overview' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(screen.getByText('Mail at a glance')).toBeInTheDocument()
+    expect(screen.getByText('example.com')).toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Manage company domains' }),
+    )
+    expect(screen.getByRole('button', { name: 'Domains' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(screen.getByText('Company domains')).toBeInTheDocument()
   })
 
   it('renders real mailbox access and creates a mailbox through the adapter', async () => {
@@ -234,10 +275,16 @@ describe('MailTab', () => {
 
     render(<MailTab controller={controller} />)
 
+    fireEvent.click(screen.getByRole('button', { name: 'Addresses' }))
+    expect(screen.getAllByText('investors@example.com')).toHaveLength(2)
+    expect(screen.queryByText('Ada Founder')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Access' }))
     expect(screen.getByText('Investor Relations')).toBeInTheDocument()
     expect(screen.getByText('Ada Founder')).toBeInTheDocument()
     expect(screen.getByText('Investor Agent')).toBeInTheDocument()
 
+    fireEvent.click(screen.getByRole('button', { name: 'Mailboxes' }))
     fireEvent.click(screen.getByRole('button', { name: 'New mailbox' }))
     fireEvent.change(screen.getByLabelText('Email address'), {
       target: { value: 'deals' },

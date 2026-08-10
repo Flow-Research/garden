@@ -1,5 +1,11 @@
-// Directly adapts Cloudflare Agentic Inbox mailbox rows/create dialog (Apache-2.0)
-// and Zero settings/access rows (MIT). Pinned sources: docs/architecture/garden-mail-ui-sources.md.
+/**
+ * MODIFIED OPENSHIP SOURCE: the domain-scoped mailboxes/aliases/access tab
+ * separation and dense split rows mechanically adapt OpenShip's MailboxesTab
+ * and AliasesTab at commit 738946188e7c329477a4bbcf9c58dc1451393798
+ * (Apache-2.0). Garden preserves its Cloudflare Agentic Inbox create dialogs,
+ * Zero settings composition, and first-class human/agent access model. See
+ * docs/architecture/garden-mail-ui-sources.md and THIRD_PARTY_NOTICES.md.
+ */
 
 import { useState, type FormEvent } from 'react'
 import { AtSign, Bot, Inbox, Plus, Trash2, UserRound } from 'lucide-react'
@@ -50,6 +56,29 @@ const accessLevelLabels: Record<MailboxAccessSettingsView['level'], string> = {
   owner: 'Owner',
   editor: 'Editor',
   viewer: 'Viewer',
+}
+
+export type MailMailboxSettingsView = 'mailboxes' | 'addresses' | 'access'
+
+const viewCopy: Record<
+  MailMailboxSettingsView,
+  { title: string; description: string; emptyTitle: string }
+> = {
+  mailboxes: {
+    title: 'Mailboxes',
+    description: 'Inboxes where workspace members and agents collaborate.',
+    emptyTitle: 'No mailboxes yet',
+  },
+  addresses: {
+    title: 'Addresses & aliases',
+    description: 'Primary addresses, aliases, and catch-all routes by mailbox.',
+    emptyTitle: 'No addresses yet',
+  },
+  access: {
+    title: 'Human and agent access',
+    description: 'Choose who can own, edit, or view each mailbox.',
+    emptyTitle: 'No mailbox access yet',
+  },
 }
 
 function actorValue(actor: Pick<MailSettingsActorView, 'type' | 'id'>) {
@@ -575,83 +604,115 @@ function MailboxAccessEditor({
   )
 }
 
-function MailboxRow({
+/** Shared identity header keeps all three OpenShip-derived admin lists aligned. */
+function MailboxIdentity({ mailbox }: { mailbox: MailboxSettingsView }) {
+  return (
+    <div className="flex items-start gap-4 px-5 py-4">
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium">
+        {mailbox.name.slice(0, 1).toUpperCase()}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="truncate text-sm font-medium">{mailbox.name}</span>
+          <Badge variant="secondary">{mailboxKindLabels[mailbox.kind]}</Badge>
+          {mailbox.status === 'disabled' ? (
+            <Badge variant="outline">Disabled</Badge>
+          ) : null}
+        </div>
+        <p className="truncate text-sm text-muted-foreground">
+          {mailbox.primaryAddress}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/** Alias/address editor reused only by the Addresses admin view. */
+function MailboxAddresses({
   mailbox,
   controller,
+  onAdd,
 }: {
   mailbox: MailboxSettingsView
   controller: ActiveMailSettingsController
+  onAdd: () => void
+}) {
+  return (
+    <div className="border-t px-5 py-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+          Addresses
+        </h4>
+        {controller.canManage ? (
+          <Button type="button" variant="ghost" size="xs" onClick={onAdd}>
+            <Plus />
+            Add address
+          </Button>
+        ) : null}
+      </div>
+      <ul className="space-y-2">
+        {mailbox.addresses.map((address) => (
+          <li key={address.id} className="flex items-center gap-2 text-sm">
+            <AtSign className="size-3.5 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate">{address.address}</span>
+            <Badge variant="outline">
+              {address.kind === 'catch_all'
+                ? 'Catch-all'
+                : address.kind === 'primary'
+                  ? 'Primary'
+                  : 'Alias'}
+            </Badge>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/** One row owns identity plus exactly one view-specific administration body. */
+function MailboxRow({
+  mailbox,
+  controller,
+  view,
+}: {
+  mailbox: MailboxSettingsView
+  controller: ActiveMailSettingsController
+  view: MailMailboxSettingsView
 }) {
   const [addressOpen, setAddressOpen] = useState(false)
 
   return (
-    <li className="[content-visibility:auto] [contain-intrinsic-size:0_260px] [&+&]:border-t">
-      <div className="flex items-start gap-4 px-5 py-4">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium">
-          {mailbox.name.slice(0, 1).toUpperCase()}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-sm font-medium">{mailbox.name}</span>
-            <Badge variant="secondary">{mailboxKindLabels[mailbox.kind]}</Badge>
-            {mailbox.status === 'disabled' ? (
-              <Badge variant="outline">Disabled</Badge>
-            ) : null}
-          </div>
-          <p className="truncate text-sm text-muted-foreground">
-            {mailbox.primaryAddress}
-          </p>
-        </div>
-      </div>
-      <div className="border-t px-5 py-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-            Addresses
-          </h4>
-          {controller.canManage ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              onClick={() => setAddressOpen(true)}
-            >
-              <Plus />
-              Add address
-            </Button>
-          ) : null}
-        </div>
-        <ul className="space-y-2">
-          {mailbox.addresses.map((address) => (
-            <li key={address.id} className="flex items-center gap-2 text-sm">
-              <AtSign className="size-3.5 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate">{address.address}</span>
-              <Badge variant="outline">
-                {address.kind === 'catch_all'
-                  ? 'Catch-all'
-                  : address.kind === 'primary'
-                    ? 'Primary'
-                    : 'Alias'}
-              </Badge>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <MailboxAccessEditor mailbox={mailbox} controller={controller} />
-      <CreateAddressDialog
-        mailbox={mailbox}
-        controller={controller}
-        open={addressOpen}
-        onOpenChange={setAddressOpen}
-      />
+    <li className="[content-visibility:auto] [contain-intrinsic-size:0_180px]">
+      <MailboxIdentity mailbox={mailbox} />
+      {view === 'addresses' ? (
+        <>
+          <MailboxAddresses
+            mailbox={mailbox}
+            controller={controller}
+            onAdd={() => setAddressOpen(true)}
+          />
+          <CreateAddressDialog
+            mailbox={mailbox}
+            controller={controller}
+            open={addressOpen}
+            onOpenChange={setAddressOpen}
+          />
+        </>
+      ) : null}
+      {view === 'access' ? (
+        <MailboxAccessEditor mailbox={mailbox} controller={controller} />
+      ) : null}
     </li>
   )
 }
 
-/** Mailbox/address/access settings using the source products' exact hierarchy. */
+/** Shared list shell for the separate Mailboxes, Addresses, and Access tabs. */
 export function MailMailboxSettings({
   controller,
+  view = 'mailboxes',
 }: {
   controller: ActiveMailSettingsController
+  view?: MailMailboxSettingsView
 }) {
   const [createOpen, setCreateOpen] = useState(false)
   const hasActiveDomain = controller.domains.some(
@@ -659,13 +720,16 @@ export function MailMailboxSettings({
   )
   const canCreate =
     controller.canManage && hasActiveDomain && controller.actors.length > 0
+  const copy = viewCopy[view]
+  const showCreate = view === 'mailboxes'
 
   return (
     <MailSettingsCard
-      title="Mailboxes"
-      description="Addresses where workspace members and agents collaborate."
+      title={copy.title}
+      description={copy.description}
+      density="split"
       action={
-        canCreate && controller.mailboxes.length > 0 ? (
+        showCreate && canCreate && controller.mailboxes.length > 0 ? (
           <Button size="sm" onClick={() => setCreateOpen(true)}>
             <Plus />
             New mailbox
@@ -674,29 +738,32 @@ export function MailMailboxSettings({
       }
     >
       {controller.mailboxes.length > 0 ? (
-        <ul className="overflow-hidden rounded-xl border">
+        <ul className="divide-y">
           {controller.mailboxes.map((mailbox) => (
             <MailboxRow
               key={mailbox.id}
               mailbox={mailbox}
               controller={controller}
+              view={view}
             />
           ))}
         </ul>
       ) : (
-        <Empty className="border py-12">
+        <Empty className="py-12">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <Inbox />
             </EmptyMedia>
-            <EmptyTitle>No mailboxes yet</EmptyTitle>
+            <EmptyTitle>{copy.emptyTitle}</EmptyTitle>
             <EmptyDescription>
               {hasActiveDomain
-                ? 'Create a mailbox for a person, shared team, or agent.'
+                ? view === 'mailboxes'
+                  ? 'Create a mailbox for a person, shared team, or agent.'
+                  : 'Create a mailbox before configuring this section.'
                 : 'Activate a company domain before creating a mailbox.'}
             </EmptyDescription>
           </EmptyHeader>
-          {canCreate ? (
+          {showCreate && canCreate ? (
             <EmptyContent>
               <Button onClick={() => setCreateOpen(true)}>
                 <Plus />
@@ -706,11 +773,13 @@ export function MailMailboxSettings({
           ) : null}
         </Empty>
       )}
-      <CreateMailboxDialog
-        controller={controller}
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-      />
+      {showCreate ? (
+        <CreateMailboxDialog
+          controller={controller}
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+        />
+      ) : null}
     </MailSettingsCard>
   )
 }
