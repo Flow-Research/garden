@@ -41,7 +41,7 @@ export type MailDetailToolbarProps = {
   onArchive?: () => void
   onMove?: (folderId: string) => void
   onViewSource?: () => void
-  onDelete: () => void
+  onDelete?: () => void
 }
 
 function ToolbarButton({
@@ -183,14 +183,16 @@ export function MailDetailToolbar({
               <Code2 />
               View source
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={onDelete}>
-              <Trash2 />
-              Delete
-            </DropdownMenuItem>
+            {onDelete ? <DropdownMenuSeparator /> : null}
+            {onDelete ? (
+              <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                <Trash2 />
+                Delete
+              </DropdownMenuItem>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
-      ) : (
+      ) : onDelete ? (
         <ToolbarButton
           label="Delete"
           onClick={onDelete}
@@ -198,7 +200,7 @@ export function MailDetailToolbar({
         >
           <Trash2 />
         </ToolbarButton>
-      )}
+      ) : null}
     </div>
   )
 }

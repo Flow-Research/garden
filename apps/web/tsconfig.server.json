@@ -9,6 +9,7 @@
     "src/lib/posthog-server.ts",
     "src/features/dashboard/dashboard.queries.ts",
     "src/features/dashboard/dashboard.server.ts",
+    "src/features/inbox/mail.queries.ts",
     "worker-configuration.d.ts"
   ],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "node_modules", "dist"],

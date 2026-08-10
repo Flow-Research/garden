@@ -25,7 +25,7 @@ export type MailConversationRowProps = {
   onToggleImportant?: () => void
   onToggleRead: () => void
   onArchive: () => void
-  onDelete: () => void
+  onDelete?: () => void
 }
 
 /**
@@ -215,16 +215,18 @@ export function MailConversationRow({
         >
           <Archive className="size-3.5" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Delete"
-          title="Delete"
-          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-          onClick={action(onDelete)}
-        >
-          <Trash2 className="size-3.5" />
-        </Button>
+        {onDelete ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Delete"
+            title="Delete"
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={action(onDelete)}
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
+        ) : null}
       </div>
     </div>
   )

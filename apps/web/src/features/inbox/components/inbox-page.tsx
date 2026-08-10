@@ -410,9 +410,7 @@ function MailDetailSurface({
       onToggleStar={() => controller.actions.toggleStar(conversation.id)}
       onToggleRead={() => controller.actions.toggleRead(conversation.id)}
       onArchive={() => controller.actions.archive(conversation.id)}
-      onMove={(folderId) => controller.actions.move(conversation.id, folderId)}
       onViewSource={() => controller.actions.viewSource(conversation.id)}
-      onDelete={() => controller.actions.delete(conversation.id)}
     />
   )
 
@@ -644,17 +642,10 @@ export function InboxPage({
         selected={conversation.id === mailConversationId}
         onOpen={() => selectMail(conversation)}
         onToggleStar={() => mailController.actions.toggleStar(conversation.id)}
-        onToggleImportant={() =>
-          mailController.actions.toggleImportant(conversation.id)
-        }
         onToggleRead={() => mailController.actions.toggleRead(conversation.id)}
         onArchive={() => {
           if (conversation.id === mailConversationId) setSelectedKey('')
           mailController.actions.archive(conversation.id)
-        }}
-        onDelete={() => {
-          if (conversation.id === mailConversationId) setSelectedKey('')
-          mailController.actions.delete(conversation.id)
         }}
       />
     )

@@ -47,6 +47,15 @@ vi.mock('@tanstack/react-query', () => ({
   useQuery: () => ({ data: [notification] }),
 }))
 
+vi.mock('../mail-inbox-controller', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../mail-inbox-controller')>()
+  return {
+    ...actual,
+    useMailInboxController: () => actual.unavailableMailInboxController,
+  }
+})
+
 vi.mock('@/lib/inbox/queries', () => ({
   inboxListOptions: () => ({}),
   deduplicateInboxItems: (items: InboxItem[]) => items,
@@ -95,11 +104,8 @@ function activeMailController(): ActiveMailInboxController {
       openComposer,
       closeComposer: vi.fn(),
       toggleStar: vi.fn(),
-      toggleImportant: vi.fn(),
       toggleRead,
       archive: vi.fn(),
-      delete: vi.fn(),
-      move: vi.fn(),
       viewSource: vi.fn(),
       reply: vi.fn(),
       replyAll: vi.fn(),
