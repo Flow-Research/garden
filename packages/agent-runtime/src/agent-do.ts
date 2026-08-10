@@ -74,6 +74,11 @@ import {
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
 import {
+  createGardenMailTools,
+  makeMailDeliveryWorkflowDispatcher,
+  type MailDeliveryWorkflowBinding,
+} from './mail-tools'
+import {
   getDocumentBytes,
   getDocumentVersionBytes,
   listDocumentVersions,
@@ -126,6 +131,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   Sandbox: DurableObjectNamespace<SandboxDO>
   EXECUTOR_MCP_SESSION: DurableObjectNamespace<McpAgent>
   RUN_WORKFLOW: RunWorkflowBinding
+  MAIL_DELIVERY_WORKFLOW: MailDeliveryWorkflowBinding
 }
 
 type AgentSessionStateItem = {
@@ -1191,24 +1197,33 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override getTools() {
-    return createChatSubAgentTools({
-      ctx: this.ctx,
-      documentArtifacts: this.getDocumentArtifactToolAuthority(),
-      ...(this.env.EXA_API_KEY ? { exaApiKey: this.env.EXA_API_KEY } : {}),
-      databaseUrl: this.env.HYPERDRIVE.connectionString,
-      threadId: this.name,
-      workspace: this.workspace,
-      loader: this.env.LOADER,
-      getSandbox: () => this.getAgentSandbox(),
-      issueRunEnv: this.env,
-      cancelIssueRun: async (input) => {
-        const instance = await this.env.RUN_WORKFLOW.get(input.runId)
-        await instance.sendEvent({
-          type: 'run-control',
-          payload: { kind: 'cancel' },
-        })
-      },
-    })
+    return {
+      ...createChatSubAgentTools({
+        ctx: this.ctx,
+        documentArtifacts: this.getDocumentArtifactToolAuthority(),
+        ...(this.env.EXA_API_KEY ? { exaApiKey: this.env.EXA_API_KEY } : {}),
+        databaseUrl: this.env.HYPERDRIVE.connectionString,
+        threadId: this.name,
+        workspace: this.workspace,
+        loader: this.env.LOADER,
+        getSandbox: () => this.getAgentSandbox(),
+        issueRunEnv: this.env,
+        cancelIssueRun: async (input) => {
+          const instance = await this.env.RUN_WORKFLOW.get(input.runId)
+          await instance.sendEvent({
+            type: 'run-control',
+            payload: { kind: 'cancel' },
+          })
+        },
+      }),
+      ...createGardenMailTools({
+        databaseUrl: this.env.HYPERDRIVE.connectionString,
+        threadId: this.name,
+        dispatchDelivery: makeMailDeliveryWorkflowDispatcher(
+          this.env.MAIL_DELIVERY_WORKFLOW,
+        ),
+      }),
+    }
   }
 
   async uploadDocument(input: {

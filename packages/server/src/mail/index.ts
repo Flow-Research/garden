@@ -82,6 +82,7 @@ export {
   cloudflareDomainProviderLayer,
 } from './cloudflare-domain-provider.ts'
 export type { CloudflareDomainProviderConfigService } from './cloudflare-domain-provider.ts'
+export * from './provisioning.ts'
 export {
   MailIngress,
   ingestNormalizedMail,
@@ -127,6 +128,8 @@ export {
   AgentRequestDraftDeliveryInput,
   AgentSaveDraftInput,
   MailAgentApplication,
+  MailAgentDeliveryDispatchError,
+  MailAgentDeliveryDispatcher,
   MailAgentDraftUnavailableError,
   MailAgentMailboxReadOnlyError,
   MailAgentPrincipal,
@@ -135,4 +138,5 @@ export {
 export type {
   MailAgentApplicationError,
   MailAgentApplicationService,
+  MailAgentDeliveryDispatcherService,
 } from './agent-application.ts'

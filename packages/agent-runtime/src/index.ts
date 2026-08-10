@@ -40,6 +40,16 @@ export {
   workspaceSkillR2Prefix,
 } from './skill-storage-paths'
 export { buildBuiltinSkillObjectKey } from './bundled-skills'
+export {
+  createGardenMailTools,
+  MailAgentIdentityError,
+  makeMailDeliveryWorkflowDispatcher,
+  resolveMailAgentPrincipal,
+} from './mail-tools'
+export type {
+  MailAgentToolContext,
+  MailDeliveryWorkflowBinding,
+} from './mail-tools'
 export type {
   AgentPromptCatalog,
   AgentPromptCatalog as PromptCatalog,
