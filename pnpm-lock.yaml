@@ -872,7 +872,19 @@ importers:
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(@cloudflare/workers-types@5.20260808.1)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.28.17)(pg@8.20.0)(sql.js@1.14.1)
+      effect:
+        specifier: 4.0.0-beta.102
+        version: 4.0.0-beta.102
+      postal-mime:
+        specifier: 2.7.4
+        version: 2.7.4
     devDependencies:
+      '@cloudflare/workers-types':
+        specifier: 'catalog:'
+        version: 5.20260808.1
+      '@effect/vitest':
+        specifier: 4.0.0-beta.102
+        version: 4.0.0-beta.102(effect@4.0.0-beta.102)(vitest@4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(jsdom@29.0.2(@noble/hashes@2.2.0))(vite@8.2.1(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)))
       '@garden/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig

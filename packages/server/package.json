@@ -14,7 +14,8 @@
     "./connectors/availability": "./src/connectors/availability.ts",
     "./automations/run-service": "./src/automations/run-service.ts",
     "./issues/server": "./src/issues/server.ts",
-    "./issues/run-service": "./src/issues/run-service.ts"
+    "./issues/run-service": "./src/issues/run-service.ts",
+    "./mail": "./src/mail/index.ts"
   },
   "dependencies": {
     "@garden/connectors": "workspace:*",
@@ -22,9 +23,13 @@
     "@garden/db": "workspace:*",
     "@garden/observability": "workspace:*",
     "better-result": "^2.9.2",
-    "drizzle-orm": "catalog:"
+    "drizzle-orm": "catalog:",
+    "effect": "catalog:",
+    "postal-mime": "2.7.4"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "catalog:",
+    "@effect/vitest": "catalog:",
     "@garden/tsconfig": "workspace:*",
     "@typescript/native": "catalog:",
     "vitest": "catalog:"
