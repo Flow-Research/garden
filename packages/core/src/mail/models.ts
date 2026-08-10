@@ -166,6 +166,18 @@ export const Recipient = Schema.Struct({
 })
 export interface Recipient extends Schema.Schema.Type<typeof Recipient> {}
 
+/** RFC Reply-To mailboxes are ordered visible message metadata. */
+export const MessageReplyTo = Schema.Struct({
+  id: RecipientId,
+  messageId: MessageId,
+  position: NonNegativeInt,
+  displayName: Schema.NullOr(Schema.String),
+  address: EmailAddress,
+})
+export interface MessageReplyTo extends Schema.Schema.Type<
+  typeof MessageReplyTo
+> {}
+
 /**
  * Private local routing metadata. Repositories must authorize it by mailbox;
  * it is deliberately absent from the message-visible recipient collection.

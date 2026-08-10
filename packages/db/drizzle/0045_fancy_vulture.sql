@@ -292,6 +292,17 @@ CREATE TABLE "mail_message_local_delivery" (
 	CONSTRAINT "mail_message_local_delivery_envelope_address_check" CHECK ("mail_message_local_delivery"."envelope_address" = lower("mail_message_local_delivery"."envelope_address") and "mail_message_local_delivery"."envelope_address" ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$')
 );
 --> statement-breakpoint
+CREATE TABLE "mail_message_reply_to" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"workspace_id" uuid NOT NULL,
+	"message_id" uuid NOT NULL,
+	"position" integer NOT NULL,
+	"display_name" text,
+	"address" text NOT NULL,
+	CONSTRAINT "mail_message_reply_to_position_check" CHECK ("mail_message_reply_to"."position" >= 0),
+	CONSTRAINT "mail_message_reply_to_address_normalized_check" CHECK ("mail_message_reply_to"."address" = lower("mail_message_reply_to"."address") and "mail_message_reply_to"."address" ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$')
+);
+--> statement-breakpoint
 CREATE TABLE "mail_recipient" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"workspace_id" uuid NOT NULL,
@@ -386,6 +397,9 @@ ALTER TABLE "mail_message_local_delivery" ADD CONSTRAINT "mail_message_local_del
 ALTER TABLE "mail_message_local_delivery" ADD CONSTRAINT "mail_message_local_delivery_local_address_id_mail_address_id_fk" FOREIGN KEY ("local_address_id") REFERENCES "public"."mail_address"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_message_local_delivery" ADD CONSTRAINT "mail_message_local_delivery_workspace_message_fk" FOREIGN KEY ("workspace_id","message_id") REFERENCES "public"."mail_message"("workspace_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_message_local_delivery" ADD CONSTRAINT "mail_message_local_delivery_workspace_address_fk" FOREIGN KEY ("workspace_id","local_address_id") REFERENCES "public"."mail_address"("workspace_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mail_message_reply_to" ADD CONSTRAINT "mail_message_reply_to_workspace_id_organization_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."organization"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mail_message_reply_to" ADD CONSTRAINT "mail_message_reply_to_message_id_mail_message_id_fk" FOREIGN KEY ("message_id") REFERENCES "public"."mail_message"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mail_message_reply_to" ADD CONSTRAINT "mail_message_reply_to_workspace_message_fk" FOREIGN KEY ("workspace_id","message_id") REFERENCES "public"."mail_message"("workspace_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_recipient" ADD CONSTRAINT "mail_recipient_workspace_id_organization_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."organization"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_recipient" ADD CONSTRAINT "mail_recipient_message_id_mail_message_id_fk" FOREIGN KEY ("message_id") REFERENCES "public"."mail_message"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_recipient" ADD CONSTRAINT "mail_recipient_workspace_message_fk" FOREIGN KEY ("workspace_id","message_id") REFERENCES "public"."mail_message"("workspace_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -429,4 +443,5 @@ CREATE INDEX "mail_message_workspace_authored_at_idx" ON "mail_message" USING bt
 CREATE UNIQUE INDEX "mail_message_attachment_position_unique" ON "mail_message_attachment" USING btree ("message_id","position");--> statement-breakpoint
 CREATE UNIQUE INDEX "mail_message_local_delivery_message_address_unique" ON "mail_message_local_delivery" USING btree ("message_id","local_address_id");--> statement-breakpoint
 CREATE INDEX "mail_message_local_delivery_address_received_idx" ON "mail_message_local_delivery" USING btree ("local_address_id","received_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "mail_message_reply_to_message_position_unique" ON "mail_message_reply_to" USING btree ("message_id","position");--> statement-breakpoint
 CREATE UNIQUE INDEX "mail_recipient_message_kind_position_unique" ON "mail_recipient" USING btree ("message_id","kind","position");

@@ -563,6 +563,41 @@ export const mailRecipient = pgTable(
   ],
 )
 
+/** Ordered RFC Reply-To mailboxes retained separately from recipients. */
+export const mailMessageReplyTo = pgTable(
+  'mail_message_reply_to',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => organization.id),
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => mailMessage.id),
+    position: integer('position').notNull(),
+    displayName: text('display_name'),
+    address: text('address').notNull(),
+  },
+  (table) => [
+    uniqueIndex('mail_message_reply_to_message_position_unique').on(
+      table.messageId,
+      table.position,
+    ),
+    foreignKey({
+      name: 'mail_message_reply_to_workspace_message_fk',
+      columns: [table.workspaceId, table.messageId],
+      foreignColumns: [mailMessage.workspaceId, mailMessage.id],
+    }),
+    check('mail_message_reply_to_position_check', sql`${table.position} >= 0`),
+    check(
+      'mail_message_reply_to_address_normalized_check',
+      sql`${table.address} = lower(${table.address}) and ${table.address} ~ '^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$'`,
+    ),
+  ],
+)
+
 /**
  * Private SMTP-envelope routing. Unlike MIME To/Cc/Bcc recipients, these rows
  * are never message-visible data: they only decide which local mailboxes get a

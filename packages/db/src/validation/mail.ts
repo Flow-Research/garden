@@ -32,6 +32,7 @@ import {
   mailMessageAttachment,
   mailMessageAuthorTypeValues,
   mailMessageLocalDelivery,
+  mailMessageReplyTo,
   mailMessageSourceValues,
   mailRecipient,
   mailRecipientKindValues,
@@ -280,6 +281,22 @@ export const mailRecipientSelectSchema = createSelectSchema(
 export const mailRecipientInsertSchema = createInsertSchema(
   mailRecipient,
   mailRecipientFields,
+)
+
+const mailMessageReplyToFields = {
+  id: () => uuidSchema,
+  workspaceId: () => uuidSchema,
+  messageId: () => uuidSchema,
+  position: () => nonNegativeIntSchema,
+  address: () => emailAddressSchema,
+}
+export const mailMessageReplyToSelectSchema = createSelectSchema(
+  mailMessageReplyTo,
+  mailMessageReplyToFields,
+)
+export const mailMessageReplyToInsertSchema = createInsertSchema(
+  mailMessageReplyTo,
+  mailMessageReplyToFields,
 )
 
 const mailMessageLocalDeliveryFields = {

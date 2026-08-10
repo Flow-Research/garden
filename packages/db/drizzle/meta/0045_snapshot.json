@@ -1,5 +1,5 @@
 {
-  "id": "844fba1d-eada-4427-bd25-d8a0a892972f",
+  "id": "399c11cd-e5d0-421f-9fc3-183cfcfedb33",
   "prevId": "3989b671-1344-48c6-a717-1508216603be",
   "version": "7",
   "dialect": "postgresql",
@@ -9734,6 +9734,129 @@
         "mail_message_local_delivery_envelope_address_check": {
           "name": "mail_message_local_delivery_envelope_address_check",
           "value": "\"mail_message_local_delivery\".\"envelope_address\" = lower(\"mail_message_local_delivery\".\"envelope_address\") and \"mail_message_local_delivery\".\"envelope_address\" ~ '^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.mail_message_reply_to": {
+      "name": "mail_message_reply_to",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "message_id": {
+          "name": "message_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "mail_message_reply_to_message_position_unique": {
+          "name": "mail_message_reply_to_message_position_unique",
+          "columns": [
+            {
+              "expression": "message_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "position",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "mail_message_reply_to_workspace_id_organization_id_fk": {
+          "name": "mail_message_reply_to_workspace_id_organization_id_fk",
+          "tableFrom": "mail_message_reply_to",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "mail_message_reply_to_message_id_mail_message_id_fk": {
+          "name": "mail_message_reply_to_message_id_mail_message_id_fk",
+          "tableFrom": "mail_message_reply_to",
+          "tableTo": "mail_message",
+          "columnsFrom": [
+            "message_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "mail_message_reply_to_workspace_message_fk": {
+          "name": "mail_message_reply_to_workspace_message_fk",
+          "tableFrom": "mail_message_reply_to",
+          "tableTo": "mail_message",
+          "columnsFrom": [
+            "workspace_id",
+            "message_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "mail_message_reply_to_position_check": {
+          "name": "mail_message_reply_to_position_check",
+          "value": "\"mail_message_reply_to\".\"position\" >= 0"
+        },
+        "mail_message_reply_to_address_normalized_check": {
+          "name": "mail_message_reply_to_address_normalized_check",
+          "value": "\"mail_message_reply_to\".\"address\" = lower(\"mail_message_reply_to\".\"address\") and \"mail_message_reply_to\".\"address\" ~ '^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$'"
         }
       },
       "isRLSEnabled": false

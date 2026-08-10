@@ -26,6 +26,7 @@ describe('Garden Mail Effect contracts', () => {
       author: { _tag: 'External' },
       senderName: 'Customer',
       senderAddress: 'customer@example.com',
+      replyTo: [],
       recipients: [
         {
           kind: 'to',

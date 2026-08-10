@@ -93,6 +93,15 @@ export interface EnvelopeRecipient extends Schema.Schema.Type<
   typeof EnvelopeRecipient
 > {}
 
+export const EnvelopeReplyTo = Schema.Struct({
+  position: NonNegativeInt,
+  displayName: Schema.NullOr(Schema.String),
+  address: EmailAddress,
+})
+export interface EnvelopeReplyTo extends Schema.Schema.Type<
+  typeof EnvelopeReplyTo
+> {}
+
 /**
  * Resolved SMTP-envelope destination. It stays private routing input and must
  * never be synthesized into a visible To/Cc/Bcc header recipient.
@@ -137,6 +146,7 @@ export const InboundMailEnvelope = Schema.Struct({
   author: MessageAuthor,
   senderName: Schema.NullOr(Schema.String),
   senderAddress: EmailAddress,
+  replyTo: Schema.Array(EnvelopeReplyTo),
   /** Recipients parsed from actual MIME To/Cc/Bcc headers only. */
   recipients: Schema.Array(EnvelopeRecipient),
   localRecipients: Schema.Array(LocalEnvelopeRecipient).check(

@@ -14,6 +14,7 @@ import {
   mailMailboxAccessInsertSchema,
   mailMessageInsertSchema,
   mailMessageLocalDeliveryInsertSchema,
+  mailMessageReplyToInsertSchema,
 } from '../validation/mail.js'
 
 const workspaceId = 'e0d06708-dc2d-4d8b-83d1-209ce463ea8c'
@@ -75,6 +76,18 @@ describe('Garden Mail database boundaries', () => {
       providerRecipientId: 'recipient-private',
       providerEvidence: { route: 'catch-all' },
       receivedAt: new Date('2026-08-10T10:00:00Z'),
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  it('preserves ordered RFC Reply-To mailboxes as visible metadata', () => {
+    const result = mailMessageReplyToInsertSchema.safeParse({
+      workspaceId,
+      messageId: '31a93b7e-d5e6-40e2-9537-e23e37a8d6f5',
+      position: 0,
+      displayName: 'Customer replies',
+      address: 'replies@example.com',
     })
 
     expect(result.success).toBe(true)
