@@ -160,6 +160,10 @@ automation runs keep their own runtime context, while work and results remain
 visible to the team. Garden can hand specific tasks to specialist agents while
 keeping the main workspace simple.
 
+![Garden Agents screen showing the default workspace agent](docs/assets/readme/agents.webp)
+
+_Every new workspace starts with its default Garden agent._
+
 ### Connections and permissions
 
 Garden has native GitHub and Discord integrations and an Executor-backed

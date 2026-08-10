@@ -1,7 +1,7 @@
 # README product images
 
 The images in this directory are lossless WebP conversions of product
-screenshots supplied by a Garden maintainer on 9 August 2026.
+screenshots supplied by a Garden maintainer on 9 and 10 August 2026.
 
 ## `issues-board.webp`
 
@@ -11,6 +11,14 @@ screenshots supplied by a Garden maintainer on 9 August 2026.
   IDs, titles, priorities, project navigation, and contributor names. The
   maintainer approved publishing this version in a follow-up on 10 August
   2026.
+
+## `agents.webp`
+
+- SHA-256: `3d6005dd4fc395ec17c6b632cdf75062afffae7ae1947958508ba451f91300cf`
+- Original dimensions: 3004 × 1646
+- Public-content check: no credentials, email addresses, URLs, or message
+  bodies. The image retains the Flow Research workspace name, product
+  navigation labels, and the maintainer's avatar initials.
 
 ## `connections.webp`
 

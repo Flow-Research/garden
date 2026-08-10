@@ -62,10 +62,11 @@ package.
 - The final tree passes install, lint, typecheck, tests, and production build.
 - The reviewed document-editor before/after images remain cropped to the
   product surface with no workspace identity metadata. The README also carries
-  maintainer-supplied issue-board and Connections catalog screenshots. The
-  Connections image contains no credentials, email addresses, URLs, or message
-  bodies. The issue-board image intentionally retains visible issue details and
-  contributor names after the maintainer approved publication.
+  maintainer-supplied issue-board, Agents, and Connections catalog screenshots.
+  The Agents and Connections images contain no credentials, email addresses,
+  URLs, or message bodies. The issue-board image intentionally retains visible
+  issue details and contributor names after the maintainer approved
+  publication.
 - The public branch contains the curated full commit graph, not a squashed or
   parentless export.
 
