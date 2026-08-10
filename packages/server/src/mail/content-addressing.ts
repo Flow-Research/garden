@@ -30,8 +30,9 @@ const hexadecimal = (bytes: Uint8Array): string =>
 export const sha256 = Effect.fn('MailContentAddressing.sha256')(function* (
   content: Uint8Array,
 ) {
+  const ownedContent = Uint8Array.from(content)
   const digest = yield* Effect.tryPromise({
-    try: () => crypto.subtle.digest('SHA-256', content),
+    try: () => crypto.subtle.digest('SHA-256', ownedContent),
     catch: (cause) =>
       new MailContentHashError({
         operation: 'sha256',
