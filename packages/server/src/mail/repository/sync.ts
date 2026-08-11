@@ -89,7 +89,8 @@ const requireSyncRun = Effect.fn('MailRepository.requireSyncRun')(function* (
           eq(mailSyncRun.workspaceId, workspaceId),
         ),
       )
-      .limit(1),
+      .limit(1)
+      .for('update'),
   ))[0]
   if (row === undefined) {
     return yield* new MailRepositoryInvariantError({
@@ -109,6 +110,7 @@ export const resolveMailSyncAccount = Effect.fn(
 )(function* (db: GardenDatabase, input: ResolveMailSyncAccountInput) {
   return yield* inTransaction(db, 'resolveMailSyncAccount', (tx) =>
     Effect.gen(function* () {
+      const providerEmail = input.providerEmail.toLowerCase()
       const workspaceMember = (yield* databaseEffect(
         'resolveMailSyncAccount.requireMember',
         () =>
@@ -141,7 +143,7 @@ export const resolveMailSyncAccount = Effect.fn(
               and(
                 eq(mailSyncAccount.workspaceId, input.workspaceId),
                 eq(mailSyncAccount.provider, input.provider),
-                eq(mailSyncAccount.providerEmail, input.providerEmail),
+                eq(mailSyncAccount.providerEmail, providerEmail),
               ),
             )
             .limit(1),
@@ -240,7 +242,7 @@ export const resolveMailSyncAccount = Effect.fn(
               mailboxId: mailbox.id,
               userId: input.userId,
               provider: input.provider,
-              providerEmail: input.providerEmail,
+              providerEmail,
               executorIntegration: input.executorIntegration,
               executorConnectionName: input.executorConnectionName,
               status: 'connected',
