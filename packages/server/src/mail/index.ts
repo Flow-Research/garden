@@ -141,3 +141,20 @@ export type {
   MailAgentApplicationService,
   MailAgentDeliveryDispatcherService,
 } from './agent-application.ts'
+export {
+  GmailApiError,
+  GmailApiOperation,
+  GmailClient,
+  GmailHistoryRecord,
+  GmailHistoryType,
+  GmailListHistoryInput,
+  GmailListHistoryResponse,
+  GmailListMessagesInput,
+  GmailListMessagesResponse,
+  GmailMessageReference,
+  GmailProfile,
+  GmailRawMessage,
+  makeGmailClient,
+  makeGmailClientLayer,
+} from './gmail-client.ts'
+export type { GmailClientService } from './gmail-client.ts'

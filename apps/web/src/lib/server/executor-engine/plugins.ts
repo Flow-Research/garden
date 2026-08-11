@@ -11,6 +11,7 @@ import {
 } from '@executor-js/plugin-openapi/providers/microsoft'
 import { encryptedSecretsPlugin } from '@executor-js/plugin-encrypted-secrets'
 import { toolkitsPlugin } from '@executor-js/plugin-toolkits/server'
+import { gmailMailImportPlugin } from './gmail-mail-import-plugin'
 
 export const makeExecutorPlugins = (
   secretKey: string,
@@ -24,6 +25,7 @@ export const makeExecutorPlugins = (
     mcpPlugin({ dangerouslyAllowStdioMCP: false }),
     graphqlPlugin(),
     toolkitsPlugin({ activeToolkitSlug: options.activeToolkitSlug }),
+    gmailMailImportPlugin(),
     encryptedSecretsPlugin({ key: secretKey }),
   ] as const
 
