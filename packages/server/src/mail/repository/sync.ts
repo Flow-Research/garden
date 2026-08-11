@@ -409,37 +409,57 @@ export const persistMailSyncPage = Effect.fn(
             .from(mailSyncItem)
             .where(eq(mailSyncItem.runId, input.runId)),
         ))[0]?.count ?? 0
-      let nextOrdinal = current
-      yield* Effect.forEach(
-        input.items,
-        (item) =>
-          Effect.gen(function* () {
-            const inserted = yield* databaseEffect(
-              'persistMailSyncPage.insertItem',
+      const uniqueItems = [
+        ...new Map(
+          input.items.map((item) => [item.providerMessageId, item]),
+        ).values(),
+      ]
+      const existingIds =
+        uniqueItems.length === 0
+          ? []
+          : yield* databaseEffect(
+              'persistMailSyncPage.existingProviderIds',
               () =>
                 tx
-                  .insert(mailSyncItem)
-                  .values({
-                    workspaceId: input.workspaceId,
-                    runId: input.runId,
-                    providerMessageId: item.providerMessageId,
-                    providerThreadId: item.providerThreadId,
-                    ordinal: nextOrdinal,
-                  })
-                  .onConflictDoNothing({
-                    target: [
-                      mailSyncItem.runId,
-                      mailSyncItem.providerMessageId,
-                    ],
-                  })
-                  .returning({
+                  .select({
                     providerMessageId: mailSyncItem.providerMessageId,
-                  }),
+                  })
+                  .from(mailSyncItem)
+                  .where(
+                    and(
+                      eq(mailSyncItem.runId, input.runId),
+                      inArray(
+                        mailSyncItem.providerMessageId,
+                        uniqueItems.map((item) => item.providerMessageId),
+                      ),
+                    ),
+                  ),
             )
-            if (inserted.length > 0) nextOrdinal += 1
-          }),
-        { concurrency: 1 },
+      const existing = new Set(
+        existingIds.map((item) => item.providerMessageId),
       )
+      const newItems = uniqueItems.filter(
+        (item) => !existing.has(item.providerMessageId),
+      )
+      if (newItems.length > 0) {
+        yield* databaseEffect('persistMailSyncPage.insertItems', () =>
+          tx
+            .insert(mailSyncItem)
+            .values(
+              newItems.map((item, index) => ({
+                workspaceId: input.workspaceId,
+                runId: input.runId,
+                providerMessageId: item.providerMessageId,
+                providerThreadId: item.providerThreadId,
+                ordinal: current + index,
+              })),
+            )
+            .onConflictDoNothing({
+              target: [mailSyncItem.runId, mailSyncItem.providerMessageId],
+            }),
+        )
+      }
+      const nextOrdinal = current + newItems.length
       yield* databaseEffect('persistMailSyncPage.markEnumerating', () =>
         tx
           .update(mailSyncRun)

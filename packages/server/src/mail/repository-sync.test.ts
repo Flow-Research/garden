@@ -178,6 +178,10 @@ describe('MailRepository Gmail sync ledger (integration)', () => {
                 providerThreadId: ProviderObjectId.make('gmail-thread-1'),
               },
               {
+                providerMessageId: ProviderObjectId.make('gmail-message-1'),
+                providerThreadId: ProviderObjectId.make('gmail-thread-1'),
+              },
+              {
                 providerMessageId: ProviderObjectId.make('gmail-message-2'),
                 providerThreadId: ProviderObjectId.make('gmail-thread-1'),
               },
