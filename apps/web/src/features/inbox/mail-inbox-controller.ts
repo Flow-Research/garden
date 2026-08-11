@@ -11,6 +11,7 @@ import type {
   RepositoryMessage,
 } from '@garden/server/mail'
 import {
+  assignAgentToMailConversation,
   changeMailConversationState,
   discardMailDraft,
   mailConversationOptions,
@@ -18,6 +19,7 @@ import {
   mailKeys,
   saveMailDraft,
   sendMailDraft,
+  unassignAgentFromMailConversation,
   requestMailDraftChanges,
 } from './mail.queries'
 import type {
@@ -69,6 +71,8 @@ export type MailInboxActions = {
   reply: (conversationId: string, messageId?: string) => void
   replyAll: (conversationId: string, messageId?: string) => void
   forward: (conversationId: string, messageId?: string) => void
+  assignAgent: (conversationId: string, agentId: string) => void
+  unassignAgent: (conversationId: string, agentId: string) => void
   messageProps: (
     conversationId: string,
     message: MailMessageView,
@@ -447,6 +451,34 @@ export function useMailInboxController(input: {
     },
     onError: () => toast.error('Draft could not be discarded'),
   })
+  const assignmentMutation = useMutation({
+    mutationFn: (
+      command:
+        | { action: 'assign'; conversationId: string; agentId: string }
+        | { action: 'unassign'; conversationId: string; agentId: string },
+    ) =>
+      command.action === 'assign'
+        ? assignAgentToMailConversation({
+            data: {
+              workspaceId: input.workspaceId,
+              conversationId: command.conversationId,
+              agentId: command.agentId,
+            },
+          })
+        : unassignAgentFromMailConversation({
+            data: {
+              workspaceId: input.workspaceId,
+              conversationId: command.conversationId,
+              agentId: command.agentId,
+            },
+          }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: mailKeys.all(input.workspaceId),
+      })
+    },
+    onError: () => toast.error('Agent assignment could not be changed'),
+  })
 
   const mailboxes = inboxQuery.data?.mailboxes ?? []
   const summaries = inboxQuery.data?.conversations ?? []
@@ -696,6 +728,18 @@ export function useMailInboxController(input: {
         beginCompose(conversationId, messageId, 'reply-all'),
       forward: (conversationId, messageId) =>
         beginCompose(conversationId, messageId, 'forward'),
+      assignAgent: (conversationId, agentId) =>
+        assignmentMutation.mutate({
+          action: 'assign',
+          conversationId,
+          agentId,
+        }),
+      unassignAgent: (conversationId, agentId) =>
+        assignmentMutation.mutate({
+          action: 'unassign',
+          conversationId,
+          agentId,
+        }),
       messageProps: (conversationId, message) =>
         message.draftStatus
           ? {
