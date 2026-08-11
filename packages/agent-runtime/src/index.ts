@@ -1,4 +1,13 @@
-export { AgentDO, ChatSubAgent } from './agent-do'
+export {
+  AgentDO,
+  ChatSubAgent,
+  MailAgentConversationContext,
+  MailAgentConversationTrigger,
+} from './agent-do'
+export type {
+  MailAgentConversationContext as MailAgentConversationContextValue,
+  MailAgentConversationTrigger as MailAgentConversationTriggerValue,
+} from './agent-do'
 export { IssueRunSubAgent } from './issue-run-sub-agent'
 export { AutomationRunSubAgent } from './automation-run-sub-agent'
 export { AutomationTriggerDO } from './automation-trigger-do'
@@ -43,11 +52,13 @@ export { buildBuiltinSkillObjectKey } from './bundled-skills'
 export {
   createGardenMailTools,
   MailAgentIdentityError,
+  MailAgentScopeError,
   makeMailDeliveryWorkflowDispatcher,
   resolveMailAgentPrincipal,
 } from './mail-tools'
 export type {
   MailAgentToolContext,
+  MailAgentToolScope,
   MailDeliveryWorkflowBinding,
 } from './mail-tools'
 export type {

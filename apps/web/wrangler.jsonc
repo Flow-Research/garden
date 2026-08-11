@@ -103,6 +103,11 @@
       "binding": "GMAIL_IMPORT_WORKFLOW",
       "class_name": "GmailImportWorkflow",
     },
+    {
+      "name": "garden-mail-agent-local",
+      "binding": "MAIL_AGENT_WORKFLOW",
+      "class_name": "MailAgentWorkflow",
+    },
   ],
   "r2_buckets": [
     {

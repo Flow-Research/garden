@@ -1,6 +1,7 @@
 import { setGardenLogLevel } from '@garden/observability/logger'
 import type { MailDeliveryWorkflowParams } from './mail-delivery-workflow'
 import type { GmailImportWorkflowParams } from './mail-import-workflow'
+import type { MailAgentWorkflowParams } from './mail-agent-workflow'
 
 type RequiredEnvBinding<Key extends keyof Env> = NonNullable<Env[Key]>
 
@@ -28,6 +29,7 @@ export type AppEnv = {
   RUN_WORKFLOW: RequiredEnvBinding<'RUN_WORKFLOW'>
   MAIL_DELIVERY_WORKFLOW: Workflow<MailDeliveryWorkflowParams>
   GMAIL_IMPORT_WORKFLOW: Workflow<GmailImportWorkflowParams>
+  MAIL_AGENT_WORKFLOW: Workflow<MailAgentWorkflowParams>
   ENVIRONMENT?: 'development' | 'test' | 'staging' | 'production'
   GITHUB_CLIENT_ID?: string
   GITHUB_CLIENT_SECRET?: string

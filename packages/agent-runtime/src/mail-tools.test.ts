@@ -1,6 +1,12 @@
 import * as tables from '@garden/db/schema'
 import { startTestDb, type TestDb } from '@garden/db/testing'
-import { AgentId, DraftId, WorkspaceId } from '@garden/core/mail'
+import {
+  AgentId,
+  ConversationId,
+  DraftId,
+  MailboxId,
+  WorkspaceId,
+} from '@garden/core/mail'
 import { eq } from 'drizzle-orm'
 import { Effect } from 'effect'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -125,6 +131,86 @@ describe('Garden Mail agent tools', () => {
       'mail_save_draft',
       'mail_request_draft_delivery',
     ])
+  })
+
+  it('rejects conversation escape before opening a database connection', async () => {
+    const selectedConversationId = ConversationId.make(
+      'fa100000-0000-4000-8000-000000000006',
+    )
+    const tools = createGardenMailTools({
+      databaseUrl: 'postgres://must-not-connect',
+      threadId: ids.thread,
+      getScope: () => ({
+        mailboxId: MailboxId.make('fa100000-0000-4000-8000-000000000007'),
+        conversationId: selectedConversationId,
+        draftOnly: false,
+      }),
+      dispatchDelivery: () => Effect.die('Tool was not executed.'),
+    })
+    const read = tools.mail_read_conversation
+    if (!read?.execute)
+      throw new Error('Read conversation tool is unavailable.')
+
+    const result = await read.execute(
+      {
+        conversationId: ConversationId.make(
+          'fa100000-0000-4000-8000-000000000008',
+        ),
+      },
+      {
+        abortSignal: undefined,
+        messages: [],
+        toolCallId: 'scope-test',
+      },
+    )
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'MailAgentScopeError',
+        message: 'This mail turn is restricted to the selected conversation.',
+      },
+    })
+  })
+
+  it('blocks delivery requests during automatic draft turns', async () => {
+    const conversationId = ConversationId.make(
+      'fa100000-0000-4000-8000-000000000009',
+    )
+    const tools = createGardenMailTools({
+      databaseUrl: 'postgres://must-not-connect',
+      threadId: ids.thread,
+      getScope: () => ({
+        mailboxId: MailboxId.make('fa100000-0000-4000-8000-00000000000a'),
+        conversationId,
+        draftOnly: true,
+      }),
+      dispatchDelivery: () => Effect.die('Tool was not executed.'),
+    })
+    const delivery = tools.mail_request_draft_delivery
+    if (!delivery?.execute) throw new Error('Delivery tool is unavailable.')
+
+    const result = await delivery.execute(
+      {
+        conversationId,
+        draftId: DraftId.make('fa100000-0000-4000-8000-00000000000b'),
+        expectedRevision: 0,
+      },
+      {
+        abortSignal: undefined,
+        messages: [],
+        toolCallId: 'draft-only-test',
+      },
+    )
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'MailAgentScopeError',
+        message:
+          'Automatic mailbox turns may save drafts but never request delivery.',
+      },
+    })
   })
 
   it('creates or recovers only the deterministic delivery workflow', async () => {

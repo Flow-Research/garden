@@ -1,6 +1,8 @@
 import { derivePermissions } from '@garden/core/agents/permissions'
 import {
   AgentId,
+  ConversationId,
+  MailboxId,
   WorkspaceId,
   type RequestDraftDeliveryInput,
 } from '@garden/core/mail'
@@ -31,6 +33,13 @@ export interface MailAgentToolContext {
   readonly databaseUrl: string
   readonly threadId: string
   readonly dispatchDelivery: MailAgentDeliveryDispatcherService['dispatch']
+  readonly getScope?: () => MailAgentToolScope | null
+}
+
+export interface MailAgentToolScope {
+  readonly mailboxId: MailboxId
+  readonly conversationId: ConversationId
+  readonly draftOnly: boolean
 }
 
 export interface MailDeliveryWorkflowBinding {
@@ -49,6 +58,15 @@ export class MailAgentIdentityError extends Schema.TaggedErrorClass<MailAgentIde
     operation: Schema.String,
     message: Schema.String,
     cause: Schema.optional(Schema.Defect()),
+  },
+) {}
+
+/** A mailbox-bound turn attempted to escape its server-selected conversation. */
+export class MailAgentScopeError extends Schema.TaggedErrorClass<MailAgentScopeError>()(
+  'MailAgentScopeError',
+  {
+    operation: Schema.String,
+    message: Schema.String,
   },
 ) {}
 
@@ -212,6 +230,74 @@ const executeForModel = async <A, E extends ModelFacingError>(
   })
 }
 
+/** Reads the current turn scope at execution time so recovered turns are scoped too. */
+const currentScope = (context: MailAgentToolContext) =>
+  context.getScope?.() ?? null
+
+/** Rejects model-supplied identifiers outside the server-selected conversation. */
+const requireScopedConversation = (
+  context: MailAgentToolContext,
+  operation: string,
+  input: { readonly conversationId: ConversationId },
+): Effect.Effect<void, MailAgentScopeError> => {
+  const scope = currentScope(context)
+  return scope === null || scope.conversationId === input.conversationId
+    ? Effect.void
+    : Effect.fail(
+        new MailAgentScopeError({
+          operation,
+          message: 'This mail turn is restricted to the selected conversation.',
+        }),
+      )
+}
+
+/** Rejects drafts created outside the server-selected mailbox/conversation. */
+const requireScopedDraftTarget = (
+  context: MailAgentToolContext,
+  input: {
+    readonly mailboxId: MailboxId
+    readonly conversationId: ConversationId | null
+  },
+): Effect.Effect<void, MailAgentScopeError> => {
+  const scope = currentScope(context)
+  return scope === null ||
+    (scope.mailboxId === input.mailboxId &&
+      scope.conversationId === input.conversationId)
+    ? Effect.void
+    : Effect.fail(
+        new MailAgentScopeError({
+          operation: 'mail_create_draft.scope',
+          message:
+            'This mail turn can create drafts only in the selected conversation.',
+        }),
+      )
+}
+
+/** Proves an edited draft belongs to the server-selected conversation. */
+const requireScopedExistingDraft = (
+  context: MailAgentToolContext,
+  application: MailAgentApplicationService,
+  draftId: string,
+) => {
+  const scope = currentScope(context)
+  if (scope === null) return Effect.void
+  return application
+    .readConversation({ conversationId: scope.conversationId })
+    .pipe(
+      Effect.flatMap((detail) =>
+        detail.drafts.some((draft) => draft.id === draftId)
+          ? Effect.void
+          : Effect.fail(
+              new MailAgentScopeError({
+                operation: 'mail_save_draft.scope',
+                message:
+                  'This mail turn can edit drafts only in the selected conversation.',
+              }),
+            ),
+      ),
+    )
+}
+
 /**
  * AI SDK adapter for canonical Garden Mail. Read/write tools execute through
  * Effect; delivery request returns an explicit non-send outcome because the
@@ -247,8 +333,16 @@ export const createGardenMailTools = (
     inputSchema: ReadConversationToolInput,
     execute: (input) =>
       executeForModel(
-        runMailOperation(context, (application) =>
-          application.readConversation(input),
+        requireScopedConversation(
+          context,
+          'mail_read_conversation.scope',
+          input,
+        ).pipe(
+          Effect.flatMap(() =>
+            runMailOperation(context, (application) =>
+              application.readConversation(input),
+            ),
+          ),
         ),
       ),
   }),
@@ -258,8 +352,12 @@ export const createGardenMailTools = (
     inputSchema: CreateDraftToolInput,
     execute: (input) =>
       executeForModel(
-        runMailOperation(context, (application) =>
-          application.createDraft(input),
+        requireScopedDraftTarget(context, input).pipe(
+          Effect.flatMap(() =>
+            runMailOperation(context, (application) =>
+              application.createDraft(input),
+            ),
+          ),
         ),
       ),
   }),
@@ -270,7 +368,9 @@ export const createGardenMailTools = (
     execute: (input) =>
       executeForModel(
         runMailOperation(context, (application) =>
-          application.saveDraft(input),
+          requireScopedExistingDraft(context, application, input.draftId).pipe(
+            Effect.flatMap(() => application.saveDraft(input)),
+          ),
         ),
       ),
   }),
@@ -278,11 +378,32 @@ export const createGardenMailTools = (
     description:
       'Request delivery under mailbox access and send-external policy. Manual policy records an approval request; auto policy starts the durable delivery Workflow. Workflow dispatch never claims provider delivery completed.',
     inputSchema: RequestDraftDeliveryToolInput,
-    execute: (input) =>
-      executeForModel(
-        runMailOperation(context, (application) =>
-          application.requestDraftDelivery(input),
+    execute: (input) => {
+      const scope = currentScope(context)
+      if (scope?.draftOnly) {
+        return executeForModel(
+          Effect.fail(
+            new MailAgentScopeError({
+              operation: 'mail_request_draft_delivery.scope',
+              message:
+                'Automatic mailbox turns may save drafts but never request delivery.',
+            }),
+          ),
+        )
+      }
+      return executeForModel(
+        requireScopedConversation(
+          context,
+          'mail_request_draft_delivery.scope',
+          input,
+        ).pipe(
+          Effect.flatMap(() =>
+            runMailOperation(context, (application) =>
+              application.requestDraftDelivery(input),
+            ),
+          ),
         ),
-      ),
+      )
+    },
   }),
 })
