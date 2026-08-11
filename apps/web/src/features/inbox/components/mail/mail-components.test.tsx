@@ -1,6 +1,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { MailComposer } from './mail-composer'
+import {
+  MailAgentSidebar,
+  type MailAgentSidebarProps,
+} from './mail-agent-sidebar'
 import { MailConversationRow } from './mail-conversation-row'
 import { MailHtmlFrame } from './mail-html-frame'
 import { MailMessage } from './mail-message'
@@ -105,8 +109,107 @@ describe('MailMessage', () => {
       />,
     )
     expect(screen.getByTitle('Message from Garden Agent')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Approve & send' }))
+    expect(screen.getByRole('article')).toHaveClass(
+      'border-l-2',
+      'border-l-warning',
+      'bg-warning/[0.02]',
+    )
+    expect(screen.getByRole('article')).not.toHaveClass('rounded-lg', 'border')
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     expect(onSendDraft).toHaveBeenCalledOnce()
+  })
+})
+
+describe('MailAgentSidebar', () => {
+  const baseProps: MailAgentSidebarProps = {
+    activeTab: 'agent',
+    onTabChange: vi.fn(),
+    messages: [],
+    status: 'idle',
+    input: '',
+    onInputChange: vi.fn(),
+    onSend: vi.fn(),
+    onStop: vi.fn(),
+  }
+
+  it('sends controlled input and source prompts without effect state', () => {
+    const onSend = vi.fn()
+    const onInputChange = vi.fn()
+
+    render(
+      <MailAgentSidebar
+        {...baseProps}
+        input="  summarize this thread  "
+        onInputChange={onInputChange}
+        onSend={onSend}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('Chat message input'), {
+      target: { value: 'draft a reply' },
+    })
+    expect(onInputChange).toHaveBeenCalledWith('draft a reply')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+    expect(onSend).toHaveBeenCalledWith('summarize this thread')
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Show me the latest inbox emails',
+      }),
+    )
+    expect(onSend).toHaveBeenCalledWith('Show me the latest inbox emails')
+  })
+
+  it('shows live tool activity, draft handoff, and stop control', () => {
+    const onEditDraft = vi.fn()
+    const onStop = vi.fn()
+
+    const { rerender } = render(
+      <MailAgentSidebar
+        {...baseProps}
+        status="idle"
+        onStop={onStop}
+        onEditDraft={onEditDraft}
+        messages={[
+          {
+            id: 'agent-message',
+            role: 'assistant',
+            parts: [
+              { type: 'text', text: 'I prepared a reply.' },
+              {
+                type: 'tool',
+                toolName: 'draft_reply',
+                state: 'output-available',
+              },
+            ],
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('Drafting reply')).toBeInTheDocument()
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Edit & send in composer' }),
+    )
+    expect(onEditDraft).toHaveBeenCalledWith('agent-message')
+
+    rerender(
+      <MailAgentSidebar
+        {...baseProps}
+        status="streaming"
+        onStop={onStop}
+        messages={[
+          {
+            id: 'agent-message',
+            role: 'assistant',
+            parts: [{ type: 'text', text: 'I prepared a reply.' }],
+          },
+        ]}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Stop generating' }))
+    expect(onStop).toHaveBeenCalledOnce()
   })
 })
 

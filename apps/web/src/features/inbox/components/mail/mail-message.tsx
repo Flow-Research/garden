@@ -1,12 +1,12 @@
-// Thread message composition directly adapts Zero (MIT) and Cloudflare Agentic Inbox (Apache-2.0).
-// See THIRD_PARTY_NOTICES.md.
+// Direct adaptation of Cloudflare Agentic Inbox's ThreadMessage (Apache-2.0).
+// Pinned source and notice: docs/architecture/garden-mail-ui-sources.md and THIRD_PARTY_NOTICES.md.
 
+import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'
 import { cn } from '@garden/ui/lib/utils'
 import {
   ChevronDown,
   ChevronUp,
-  Download,
   FileText,
   Forward,
   Pencil,
@@ -15,17 +15,18 @@ import {
   Send,
   Trash2,
 } from 'lucide-react'
-import { MailAvatar } from './mail-avatar'
 import { MailHtmlFrame } from './mail-html-frame'
 import type { MailAttachmentView, MailMessageView } from './types'
 
 function addressLabel(message: MailMessageView): string {
-  const recipients = message.to
-    .map((address) => address.name || address.address)
-    .join(', ')
-  return `to ${recipients}`
+  return message.to.map((address) => address.name || address.address).join(', ')
 }
 
+/**
+ * Renders Cloudflare's compact attachment treatment after message content.
+ * Garden previously placed attachments in a separate bordered footer, which
+ * made each thread entry read as a card instead of one continuous thread.
+ */
 function MailAttachments({
   attachments,
   onOpen,
@@ -36,16 +37,19 @@ function MailAttachments({
   if (attachments.length === 0) return null
 
   return (
-    <div className="flex flex-wrap gap-2 border-t px-4 py-3">
+    <div className="mt-3 flex flex-wrap gap-2 md:ml-[42px]">
       {attachments.map((attachment) => {
+        const className =
+          'flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-muted'
         const content = (
           <>
-            <FileText className="size-4 shrink-0" />
-            <span className="max-w-48 truncate">{attachment.filename}</span>
-            <span className="text-xs text-muted-foreground">
+            <FileText className="size-4 shrink-0 text-muted-foreground" />
+            <span className="max-w-[140px] truncate font-medium">
+              {attachment.filename}
+            </span>
+            <span className="text-muted-foreground">
               {attachment.sizeLabel}
             </span>
-            <Download className="ml-1 size-3.5 shrink-0" />
           </>
         )
 
@@ -53,8 +57,9 @@ function MailAttachments({
           <a
             key={attachment.id}
             href={attachment.downloadUrl}
-            download={attachment.filename}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border bg-background px-2.5 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={className}
           >
             {content}
           </a>
@@ -64,7 +69,7 @@ function MailAttachments({
             type="button"
             disabled={!onOpen}
             onClick={() => onOpen?.(attachment)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border bg-background px-2.5 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+            className={className}
           >
             {content}
           </button>
@@ -77,6 +82,7 @@ function MailAttachments({
 export type MailMessageProps = {
   message: MailMessageView
   expanded: boolean
+  isLast?: boolean
   onToggleExpanded: () => void
   onReply?: () => void
   onReplyAll?: () => void
@@ -88,12 +94,15 @@ export type MailMessageProps = {
 }
 
 /**
- * Controlled collapsible message. Drafts keep Cloudflare's explicit colored
- * rail and actions; expanded messages end with Zero's reply action group.
+ * Controlled port of Cloudflare Agentic Inbox's flat ThreadMessage. Normal
+ * messages are separated only by a line; drafts add the source's exact 2px
+ * warning rail and 2% warning tint. Zero's reply actions remain available
+ * without restoring Garden's former per-message card chrome.
  */
 export function MailMessage({
   message,
   expanded,
+  isLast = true,
   onToggleExpanded,
   onReply,
   onReplyAll,
@@ -104,125 +113,165 @@ export function MailMessage({
   onOpenAttachment,
 }: MailMessageProps) {
   const isDraft = message.status === 'draft' || message.status === 'failed'
-  const sendLabel =
-    message.draftStatus === 'awaiting_approval'
-      ? 'Approve & send'
-      : message.draftStatus === 'send_failed'
-        ? 'Retry'
-        : 'Send'
+  const isSending = message.draftStatus === 'sending'
+  const senderLabel = isDraft
+    ? 'Draft reply'
+    : message.from.name || message.from.address
+  const containerClassName = cn(
+    !isLast && 'border-b',
+    isDraft && 'border-l-2 border-l-warning bg-warning/[0.02]',
+  )
+  const avatarLabel = isDraft
+    ? 'D'
+    : (message.from.name || message.from.address).charAt(0).toUpperCase()
 
-  return (
-    <article
+  const avatar = (
+    <div
       className={cn(
-        'overflow-hidden rounded-lg border bg-background',
-        isDraft && 'border-l-4 border-l-warning',
+        'flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold',
+        isDraft ? 'bg-muted text-muted-foreground' : 'bg-muted text-foreground',
       )}
     >
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={onToggleExpanded}
-        className="flex w-full items-start gap-3 px-4 py-3 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-      >
-        <MailAvatar people={[message.from]} />
-        <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate font-medium">
-              {message.from.name || message.from.address}
+      {avatarLabel}
+    </div>
+  )
+
+  if (!expanded) {
+    return (
+      <article className={containerClassName}>
+        <button
+          type="button"
+          aria-expanded={false}
+          onClick={onToggleExpanded}
+          className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
+          {avatar}
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center justify-between">
+              <span className="truncate text-sm font-medium">
+                {senderLabel}
+              </span>
+              <time className="shrink-0 text-xs text-muted-foreground">
+                {message.sentAtLabel}
+              </time>
             </span>
-            {isDraft ? (
-              <span className="rounded bg-warning/10 px-1.5 py-0.5 text-xs font-medium text-warning">
-                Draft
-              </span>
-            ) : null}
-            {message.agentAuthored ? (
-              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
-                {message.authorLabel || 'Agent-authored'}
-              </span>
-            ) : null}
-            <time className="ml-auto shrink-0 text-xs text-muted-foreground">
-              {message.sentAtLabel}
-            </time>
-          </span>
-          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-            {addressLabel(message)}
-          </span>
-          {!expanded && message.textPreview ? (
-            <span className="mt-1 block truncate text-xs text-muted-foreground">
+            <span className="block truncate text-xs text-muted-foreground">
               {message.textPreview}
             </span>
-          ) : null}
-        </span>
-        {expanded ? (
-          <ChevronUp className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-        ) : (
-          <ChevronDown className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-        )}
-      </button>
+          </span>
+          <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+        </button>
+      </article>
+    )
+  }
 
-      {expanded ? (
-        <div className="border-t">
+  return (
+    <article className={cn('group/thread-message', containerClassName)}>
+      <div className="px-4 py-4 md:px-6">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <button
+              type="button"
+              onClick={onToggleExpanded}
+              aria-label="Collapse message"
+              className="shrink-0 rounded-full outline-none hover:ring-2 hover:ring-primary/30 focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {avatar}
+            </button>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="truncate text-sm font-medium">
+                  {senderLabel}
+                </span>
+                {isDraft ? <Badge variant="outline">Draft</Badge> : null}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                To: {addressLabel(message)}
+              </div>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <time className="text-xs text-muted-foreground">
+              {message.sentAtLabel}
+            </time>
+            <button
+              type="button"
+              onClick={onToggleExpanded}
+              aria-label="Collapse message"
+              className="ml-1 rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ChevronUp className="size-3.5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="md:ml-[42px]">
           <MailHtmlFrame
             body={message.html}
             title={`Message from ${message.from.name || message.from.address}`}
             className="block h-72 min-h-48 w-full border-0"
           />
-          <MailAttachments
-            attachments={message.attachments ?? []}
-            onOpen={onOpenAttachment}
-          />
-          <div className="flex flex-wrap items-center gap-1.5 border-t px-4 py-3">
-            {isDraft ? (
-              <>
-                {onSendDraft ? (
-                  <Button size="sm" onClick={onSendDraft}>
-                    <Send />
-                    {sendLabel}
-                  </Button>
-                ) : null}
-                {onEditDraft ? (
-                  <Button variant="outline" size="sm" onClick={onEditDraft}>
-                    <Pencil />
-                    Edit
-                  </Button>
-                ) : null}
-                {onDiscardDraft ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    onClick={onDiscardDraft}
-                  >
-                    <Trash2 />
-                    Discard
-                  </Button>
-                ) : null}
-              </>
-            ) : (
-              <>
-                {onReply ? (
-                  <Button variant="outline" size="sm" onClick={onReply}>
-                    <Reply />
-                    Reply
-                  </Button>
-                ) : null}
-                {onReplyAll ? (
-                  <Button variant="outline" size="sm" onClick={onReplyAll}>
-                    <ReplyAll />
-                    Reply all
-                  </Button>
-                ) : null}
-                {onForward ? (
-                  <Button variant="outline" size="sm" onClick={onForward}>
-                    <Forward />
-                    Forward
-                  </Button>
-                ) : null}
-              </>
-            )}
-          </div>
         </div>
-      ) : null}
+
+        {isDraft && (onSendDraft || onEditDraft || onDiscardDraft) ? (
+          <div className="mt-3 flex gap-2 md:ml-[42px]">
+            {onSendDraft ? (
+              <Button size="sm" onClick={onSendDraft} disabled={isSending}>
+                <Send />
+                {isSending ? 'Sending...' : 'Send'}
+              </Button>
+            ) : null}
+            {onEditDraft ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onEditDraft}
+                disabled={isSending}
+              >
+                <Pencil />
+                Edit
+              </Button>
+            ) : null}
+            {onDiscardDraft ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onDiscardDraft}
+                disabled={isSending}
+              >
+                <Trash2 />
+                Discard
+              </Button>
+            ) : null}
+          </div>
+        ) : !isDraft && (onReply || onReplyAll || onForward) ? (
+          <div className="mt-3 flex gap-2 md:ml-[42px]">
+            {onReply ? (
+              <Button variant="outline" size="sm" onClick={onReply}>
+                <Reply />
+                Reply
+              </Button>
+            ) : null}
+            {onReplyAll ? (
+              <Button variant="outline" size="sm" onClick={onReplyAll}>
+                <ReplyAll />
+                Reply all
+              </Button>
+            ) : null}
+            {onForward ? (
+              <Button variant="outline" size="sm" onClick={onForward}>
+                <Forward />
+                Forward
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+
+        <MailAttachments
+          attachments={message.attachments ?? []}
+          onOpen={onOpenAttachment}
+        />
+      </div>
     </article>
   )
 }

@@ -28,7 +28,7 @@ export function MailConversationDetail({
   messageActions,
 }: MailConversationDetailProps) {
   return (
-    <div className="flex h-full min-h-0 flex-col bg-muted/20">
+    <div className="flex h-full min-h-0 flex-col bg-background">
       {toolbar}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <header className="border-b bg-background px-5 py-4">
@@ -61,12 +61,13 @@ export function MailConversationDetail({
           ) : null}
         </header>
 
-        <div className="space-y-2 p-3">
-          {conversation.messages.map((message) => (
-            <div key={message.id} className="space-y-2">
+        <div>
+          {conversation.messages.map((message, index) => (
+            <div key={message.id}>
               <MailMessage
                 message={message}
                 expanded={expandedMessageIds.has(message.id)}
+                isLast={index === conversation.messages.length - 1}
                 onToggleExpanded={() => onToggleMessage(message.id)}
                 {...messageActions?.(message)}
               />
