@@ -25,6 +25,7 @@ import {
   X,
 } from 'lucide-react'
 import type { MailFolderAction } from './types'
+import type { ReactNode } from 'react'
 
 export type MailDetailToolbarProps = {
   compact: boolean
@@ -42,6 +43,7 @@ export type MailDetailToolbarProps = {
   onMove?: (folderId: string) => void
   onViewSource?: () => void
   onDelete?: () => void
+  agentControl?: ReactNode
 }
 
 function ToolbarButton({
@@ -86,6 +88,7 @@ export function MailDetailToolbar({
   onMove,
   onViewSource,
   onDelete,
+  agentControl,
 }: MailDetailToolbarProps) {
   return (
     <div className="flex h-11 shrink-0 items-center gap-0.5 border-b bg-background px-2">
@@ -165,6 +168,7 @@ export function MailDetailToolbar({
       ) : null}
 
       <div className="flex-1" />
+      {agentControl}
       {onViewSource ? (
         <DropdownMenu>
           <DropdownMenuTrigger

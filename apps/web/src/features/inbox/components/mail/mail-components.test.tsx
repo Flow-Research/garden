@@ -23,6 +23,7 @@ const conversation: MailConversationView = {
   needsReply: true,
   mailboxId: 'mailbox-1',
   canSend: true,
+  agentAssignments: [],
   messages: [],
 }
 

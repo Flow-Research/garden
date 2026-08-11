@@ -68,6 +68,10 @@ export type MailConversationSummaryView = {
 export type MailConversationView = MailConversationSummaryView & {
   mailboxId: string
   canSend: boolean
+  agentAssignments: ReadonlyArray<{
+    assignmentId: string
+    agentId: string
+  }>
   messages: MailMessageView[]
 }
 

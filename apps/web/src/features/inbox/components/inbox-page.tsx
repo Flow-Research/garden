@@ -28,6 +28,8 @@ import {
   ListChecks,
   ArrowLeft,
   ExternalLink,
+  Bot,
+  ChevronDown,
   SquarePen,
 } from 'lucide-react'
 import type { InboxItem } from '@garden/core/types'
@@ -45,6 +47,7 @@ import { InboxItemPreviewCard, ctaForInboxItem } from './inbox-item-preview'
 import { InboxControlPlane } from './inbox-control-plane'
 import {
   MailComposer,
+  MailAgentConversationPanel,
   MailConversationDetail,
   MailConversationList,
   MailConversationRow,
@@ -59,6 +62,7 @@ import {
   type MailConversationView,
   type MailScope,
 } from './mail'
+import { eligibleMailAgentsOptions } from '../mail.queries'
 import {
   type ActiveMailInboxController,
   type MailInboxController,
@@ -348,11 +352,13 @@ function useCompactInboxPane(): {
 /** Maps the active adapter's detail state into the pinned thread UI. */
 function MailDetailSurface({
   controller,
+  workspaceId,
   conversationId,
   compact,
   onClose,
 }: {
   controller: ActiveMailInboxController
+  workspaceId: string
   conversationId: string
   compact: boolean
   onClose: () => void
@@ -361,6 +367,14 @@ function MailDetailSurface({
     conversationId: string
     expandedIds: ReadonlySet<string>
   } | null>(null)
+  const [agentPanel, setAgentPanel] = useState<{
+    conversationId: string
+    agentId: string
+    open: boolean
+  } | null>(null)
+  const eligibleAgentsQuery = useQuery(
+    eligibleMailAgentsOptions({ workspaceId, conversationId }),
+  )
   const detail = controller.detail
 
   if (detail.status === 'loading' || detail.status === 'idle') {
@@ -378,6 +392,21 @@ function MailDetailSurface({
   if (detail.conversation.id !== conversationId) return <MailDetailSkeleton />
 
   const conversation: MailConversationView = detail.conversation
+  const assignedAgentIds = new Set(
+    conversation.agentAssignments.map((assignment) => assignment.agentId),
+  )
+  const selectedAgentId =
+    agentPanel?.conversationId === conversation.id &&
+    assignedAgentIds.has(agentPanel.agentId)
+      ? agentPanel.agentId
+      : (conversation.agentAssignments[0]?.agentId ?? null)
+  const selectedAgent = eligibleAgentsQuery.data?.find(
+    (agent) => agent.id === selectedAgentId,
+  )
+  const agentPanelOpen =
+    agentPanel?.conversationId === conversation.id &&
+    agentPanel.open &&
+    selectedAgent !== undefined
   const newestMessageId = conversation.messages.at(-1)?.id
   const expandedMessageIds =
     expansion?.conversationId === conversation.id
@@ -431,21 +460,117 @@ function MailDetailSurface({
       onToggleRead={() => controller.actions.toggleRead(conversation.id)}
       onArchive={() => controller.actions.archive(conversation.id)}
       onViewSource={() => controller.actions.viewSource(conversation.id)}
+      agentControl={
+        <div className="flex items-center gap-0.5">
+          {selectedAgent ? (
+            <Button
+              variant={agentPanelOpen ? 'secondary' : 'ghost'}
+              size="icon-sm"
+              aria-label="Toggle agent panel"
+              title={agentPanelOpen ? 'Hide agent panel' : 'Show agent panel'}
+              onClick={() =>
+                setAgentPanel({
+                  conversationId: conversation.id,
+                  agentId: selectedAgent.id,
+                  open: !agentPanelOpen,
+                })
+              }
+            >
+              <Bot />
+            </Button>
+          ) : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size={selectedAgent ? 'icon-sm' : 'sm'}
+                  aria-label={selectedAgent ? 'Manage agent' : 'Assign agent'}
+                />
+              }
+            >
+              {selectedAgent ? null : <Bot />}
+              {selectedAgent ? null : 'Assign agent'}
+              <ChevronDown />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              {eligibleAgentsQuery.data?.length ? (
+                eligibleAgentsQuery.data.map((agent) => (
+                  <DropdownMenuItem
+                    key={agent.id}
+                    onClick={() => {
+                      if (!assignedAgentIds.has(agent.id)) {
+                        controller.actions.assignAgent(
+                          conversation.id,
+                          agent.id,
+                        )
+                      }
+                      setAgentPanel({
+                        conversationId: conversation.id,
+                        agentId: agent.id,
+                        open: true,
+                      })
+                    }}
+                  >
+                    <Bot />
+                    {assignedAgentIds.has(agent.id)
+                      ? agent.name
+                      : `Assign ${agent.name}`}
+                  </DropdownMenuItem>
+                ))
+              ) : (
+                <DropdownMenuItem disabled>
+                  Grant an agent mailbox access in Mail settings
+                </DropdownMenuItem>
+              )}
+              {selectedAgent ? <DropdownMenuSeparator /> : null}
+              {selectedAgent ? (
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => {
+                    controller.actions.unassignAgent(
+                      conversation.id,
+                      selectedAgent.id,
+                    )
+                    setAgentPanel(null)
+                  }}
+                >
+                  Unassign {selectedAgent.name}
+                </DropdownMenuItem>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      }
     />
   )
 
   return (
-    <MailConversationDetail
-      conversation={conversation}
-      toolbar={toolbar}
-      expandedMessageIds={expandedMessageIds}
-      replyingToMessageId={controller.composer?.replyToMessageId}
-      inlineComposer={inlineComposer}
-      onToggleMessage={toggleMessage}
-      messageActions={(message) =>
-        controller.actions.messageProps(conversation.id, message)
-      }
-    />
+    <div className="flex h-full min-h-0 min-w-0">
+      <div className="min-w-0 flex-1">
+        <MailConversationDetail
+          conversation={conversation}
+          toolbar={toolbar}
+          expandedMessageIds={expandedMessageIds}
+          replyingToMessageId={controller.composer?.replyToMessageId}
+          inlineComposer={inlineComposer}
+          onToggleMessage={toggleMessage}
+          messageActions={(message) =>
+            controller.actions.messageProps(conversation.id, message)
+          }
+        />
+      </div>
+      {agentPanelOpen && selectedAgent ? (
+        <div className="flex w-[380px] shrink-0 flex-col overflow-hidden border-l bg-background">
+          <MailAgentConversationPanel
+            workspaceId={workspaceId}
+            conversationId={conversation.id}
+            agentId={selectedAgent.id}
+            agentName={selectedAgent.name}
+          />
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -814,6 +939,7 @@ export function InboxPage({
     detailContent = (
       <MailDetailSurface
         controller={mailController}
+        workspaceId={wsId}
         conversationId={mailConversationId}
         compact={compact}
         onClose={() => setSelectedKey('')}

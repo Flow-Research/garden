@@ -4,6 +4,8 @@ import { z } from 'zod'
 import { requireAppRequestContext } from '@/lib/server/context'
 import {
   assignMailConversationAgent,
+  getEligibleMailAgents,
+  getMailAgentSession,
   getMailConversation,
   getMailInboxSnapshot,
   discardPersistedMailDraft,
@@ -15,7 +17,9 @@ import {
   type MailConversationStateAction,
   type MailDraftValuesInput,
   type MailInboxSnapshot,
+  type EligibleMailAgent,
 } from '@/lib/server/mail-api'
+import type { MailAgentChatSession } from '@/lib/server/mail-agent-orchestration'
 import type {
   ConversationActorState,
   ConversationDetail,
@@ -60,6 +64,16 @@ export const mailKeys = {
     [...mailKeys.all(workspaceId), 'inbox'] as const,
   conversation: (workspaceId: string, conversationId: string) =>
     [...mailKeys.all(workspaceId), 'conversation', conversationId] as const,
+  agentSession: (
+    workspaceId: string,
+    conversationId: string,
+    agentId: string,
+  ) =>
+    [
+      ...mailKeys.conversation(workspaceId, conversationId),
+      'agent',
+      agentId,
+    ] as const,
 }
 
 const getInbox = createServerFn({ method: 'GET' })
@@ -72,6 +86,18 @@ const getConversation = createServerFn({ method: 'GET' })
   .inputValidator(conversationInput)
   .handler(({ context, data }) =>
     getMailConversation(requireAppRequestContext(context), data),
+  )
+
+const getAgentSession = createServerFn({ method: 'GET' })
+  .inputValidator(conversationAgentInput)
+  .handler(({ context, data }) =>
+    getMailAgentSession(requireAppRequestContext(context), data),
+  )
+
+const getConversationAgents = createServerFn({ method: 'GET' })
+  .inputValidator(conversationInput)
+  .handler(({ context, data }) =>
+    getEligibleMailAgents(requireAppRequestContext(context), data),
   )
 
 const changeConversationState = createServerFn({ method: 'POST' })
@@ -189,5 +215,39 @@ export function mailConversationOptions(
     queryFn: (): Promise<ConversationDetail> =>
       getConversation({ data: { workspaceId, conversationId } }),
     staleTime: 10_000,
+  })
+}
+
+/** Assignment-scoped chat stays disabled until a concrete agent is selected. */
+export function mailAgentSessionOptions(input: {
+  workspaceId: string
+  conversationId: string
+  agentId: string
+}) {
+  return queryOptions({
+    queryKey: mailKeys.agentSession(
+      input.workspaceId,
+      input.conversationId,
+      input.agentId,
+    ),
+    queryFn: (): Promise<MailAgentChatSession> =>
+      getAgentSession({ data: input }),
+    staleTime: Infinity,
+  })
+}
+
+/** Active agents are filtered server-side to this mailbox's access ledger. */
+export function eligibleMailAgentsOptions(input: {
+  workspaceId: string
+  conversationId: string
+}) {
+  return queryOptions({
+    queryKey: [
+      ...mailKeys.conversation(input.workspaceId, input.conversationId),
+      'eligible-agents',
+    ] as const,
+    queryFn: (): Promise<ReadonlyArray<EligibleMailAgent>> =>
+      getConversationAgents({ data: input }),
+    staleTime: 30_000,
   })
 }

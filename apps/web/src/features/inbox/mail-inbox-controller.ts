@@ -266,6 +266,16 @@ function detailView(
     ...summary,
     mailboxId: detail.conversation.mailboxId,
     canSend: mailbox !== undefined && mailbox.sendCapability !== 'read_only',
+    agentAssignments: detail.assignments.flatMap((assignment) =>
+      assignment.unassignedAt === null && assignment.assignee._tag === 'Agent'
+        ? [
+            {
+              assignmentId: assignment.id,
+              agentId: assignment.assignee.agentId,
+            },
+          ]
+        : [],
+    ),
     messages: [
       ...detail.messages.map((message) =>
         messageView(workspaceId, detail.conversation.id, message),

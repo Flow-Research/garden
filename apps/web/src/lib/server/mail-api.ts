@@ -15,7 +15,13 @@ import {
   UtcTimestamp,
   WorkspaceId,
 } from '@garden/core/mail'
-import { mailAddress, mailSyncAccount } from '@garden/db/schema'
+import type { GardenDatabase } from '@garden/db'
+import {
+  agent,
+  mailAddress,
+  mailMailboxAccess,
+  mailSyncAccount,
+} from '@garden/db/schema'
 import {
   MailRepository,
   MailDraftApplication,
@@ -32,8 +38,16 @@ import {
 import { and, eq } from 'drizzle-orm'
 import { Effect, Layer, Schema } from 'effect'
 import type { AppRequestContext } from './context'
-import { requireMailMemberAuthority } from './mail-authority'
+import {
+  MailRequestUnauthorizedError,
+  requireMailMemberAuthority,
+} from './mail-authority'
 import type { MailDeliveryWorkflowParams } from './mail-delivery-workflow'
+import type { MailAgentChatSession } from './mail-agent-orchestration'
+import {
+  dispatchAssignedMailAgent,
+  MailAgentDispatchParams,
+} from './mail-agent-workflow-dispatch'
 
 /** Workflow dispatch failed after draft authorization was durably recorded. */
 export class MailDeliveryDispatchError extends Schema.TaggedErrorClass<MailDeliveryDispatchError>()(
@@ -81,6 +95,11 @@ export type MailInboxSnapshot = {
   conversations: ReadonlyArray<ConversationSummary>
 }
 
+export type EligibleMailAgent = {
+  id: string
+  name: string
+}
+
 /** Decodes raw server-function ids into the canonical Effect mail contracts. */
 const decodeWorkspaceId = (workspaceId: string) =>
   Schema.decodeUnknownEffect(WorkspaceId)(workspaceId)
@@ -92,6 +111,7 @@ const withMemberRepository = <A, E>(
   program: (input: {
     workspaceId: typeof WorkspaceId.Type
     actor: typeof MailActor.Type
+    db: GardenDatabase
   }) => Effect.Effect<A, E, MailRepository>,
 ) =>
   Effect.gen(function* () {
@@ -103,6 +123,7 @@ const withMemberRepository = <A, E>(
     return yield* program({
       workspaceId: canonicalWorkspaceId,
       actor: authority.actor,
+      db: authority.db,
     }).pipe(Effect.provide(makeMailRepositoryLayer(authority.db)))
   })
 
@@ -149,6 +170,94 @@ export async function getMailConversation(
         })
       }),
     ),
+  )
+}
+
+/** Lists active agents already granted access to the selected mailbox. */
+export async function getEligibleMailAgents(
+  context: AppRequestContext,
+  input: { workspaceId: string; conversationId: string },
+): Promise<ReadonlyArray<EligibleMailAgent>> {
+  return await Effect.runPromise(
+    withMemberRepository(
+      context,
+      input.workspaceId,
+      ({ workspaceId, actor, db }) =>
+        Effect.gen(function* () {
+          const repository = yield* MailRepository
+          const conversationId = yield* Schema.decodeUnknownEffect(
+            ConversationId,
+          )(input.conversationId)
+          const detail = yield* repository.getConversation({
+            workspaceId,
+            actor,
+            conversationId,
+          })
+          return yield* Effect.tryPromise(() =>
+            db
+              .select({ id: agent.id, name: agent.name })
+              .from(mailMailboxAccess)
+              .innerJoin(agent, eq(agent.id, mailMailboxAccess.agentId))
+              .where(
+                and(
+                  eq(mailMailboxAccess.workspaceId, workspaceId),
+                  eq(
+                    mailMailboxAccess.mailboxId,
+                    detail.conversation.mailboxId,
+                  ),
+                  eq(mailMailboxAccess.actorType, 'agent'),
+                  eq(agent.workspaceId, workspaceId),
+                  eq(agent.status, 'active'),
+                ),
+              ),
+          )
+        }),
+    ),
+  )
+}
+
+/**
+ * Resolves the one assignment-owned chat session for a selected conversation.
+ * Request auth supplies the owner; callers can never open another member's
+ * hidden mail thread or bind an unassigned agent to the conversation.
+ */
+export async function getMailAgentSession(
+  context: AppRequestContext,
+  input: { workspaceId: string; conversationId: string; agentId: string },
+): Promise<MailAgentChatSession> {
+  return await Effect.runPromise(
+    Effect.gen(function* () {
+      const workspaceId = yield* decodeWorkspaceId(input.workspaceId)
+      const authority = yield* requireMailMemberAuthority(context, workspaceId)
+      const session = yield* Effect.tryPromise({
+        try: () => context.auth.getSession(),
+        catch: (cause) => cause,
+      })
+      if (!session?.user) {
+        return yield* new MailRequestUnauthorizedError({
+          message: 'Authentication required.',
+        })
+      }
+      // Keep AgentDO runtime imports outside client-side Vitest module loading;
+      // TanStack executes this branch only inside the authenticated Worker.
+      const orchestration = yield* Effect.promise(
+        () => import('./mail-agent-orchestration'),
+      )
+      return yield* orchestration.getOrCreateMailAgentChatSession(
+        authority.db,
+        context.env,
+        {
+          workspaceId,
+          ownerUserId: yield* Schema.decodeUnknownEffect(
+            Schema.String.check(Schema.isUUID()),
+          )(session.user.id),
+          conversationId: yield* Schema.decodeUnknownEffect(ConversationId)(
+            input.conversationId,
+          ),
+          agentId: yield* Schema.decodeUnknownEffect(AgentId)(input.agentId),
+        },
+      )
+    }),
   )
 }
 
@@ -235,17 +344,62 @@ export async function assignMailConversationAgent(
     withMemberRepository(context, input.workspaceId, ({ workspaceId, actor }) =>
       Effect.gen(function* () {
         const repository = yield* MailRepository
-        return yield* repository.assignConversation({
+        const conversationId = yield* Schema.decodeUnknownEffect(
+          ConversationId,
+        )(input.conversationId)
+        const agentId = yield* Schema.decodeUnknownEffect(AgentId)(
+          input.agentId,
+        )
+        const assignment = yield* repository.assignConversation({
           workspaceId,
-          conversationId: yield* Schema.decodeUnknownEffect(ConversationId)(
-            input.conversationId,
-          ),
+          conversationId,
           assignee: {
             _tag: 'Agent',
-            agentId: yield* Schema.decodeUnknownEffect(AgentId)(input.agentId),
+            agentId,
           },
           assignedBy: actor,
         })
+        const detail = yield* repository.getConversation({
+          workspaceId,
+          actor,
+          conversationId,
+        })
+        const session = yield* Effect.tryPromise({
+          try: () => context.auth.getSession(),
+          catch: (cause) => cause,
+        })
+        if (!session?.user) {
+          return yield* new MailRequestUnauthorizedError({
+            message: 'Authentication required.',
+          })
+        }
+        const params = MailAgentDispatchParams.make({
+          workspaceId,
+          ownerUserId: yield* Schema.decodeUnknownEffect(
+            Schema.String.check(Schema.isUUID()),
+          )(session.user.id),
+          conversationId,
+          agentId,
+          mailboxId: detail.conversation.mailboxId,
+          eventId: assignment.id,
+          reason: 'assignment',
+        })
+        yield* dispatchAssignedMailAgent(
+          context.env.MAIL_AGENT_WORKFLOW,
+          params,
+        ).pipe(
+          Effect.catch((cause) =>
+            Effect.logWarning('mail.agent.assignment_dispatch_failed').pipe(
+              Effect.annotateLogs({
+                workspaceId,
+                conversationId,
+                agentId,
+                cause,
+              }),
+            ),
+          ),
+        )
+        return assignment
       }),
     ),
   )

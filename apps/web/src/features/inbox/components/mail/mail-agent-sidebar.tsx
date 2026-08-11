@@ -68,6 +68,15 @@ export type MailAgentSidebarProps = {
 const toolLabels: Readonly<Record<string, { label: string; icon: ReactNode }>> =
   {
     list_emails: { label: 'Fetching emails', icon: <Mail /> },
+    mail_list_mailboxes: { label: 'Loading mailboxes', icon: <Mail /> },
+    mail_list_conversations: { label: 'Fetching emails', icon: <Mail /> },
+    mail_read_conversation: { label: 'Reading email', icon: <Eye /> },
+    mail_create_draft: { label: 'Drafting email', icon: <Mail /> },
+    mail_save_draft: { label: 'Saving draft', icon: <Mail /> },
+    mail_request_draft_delivery: {
+      label: 'Requesting approval',
+      icon: <CheckCircle2 />,
+    },
     get_email: { label: 'Reading email', icon: <Eye /> },
     get_thread: { label: 'Loading thread', icon: <Reply /> },
     search_emails: { label: 'Searching', icon: <Search /> },
