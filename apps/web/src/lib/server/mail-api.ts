@@ -7,6 +7,7 @@ import {
   MailActor,
   MailAddressId,
   MailboxId,
+  MailSyncAccountId,
   MessageId,
   NonNegativeInt,
   SaveDraftInput,
@@ -14,7 +15,7 @@ import {
   UtcTimestamp,
   WorkspaceId,
 } from '@garden/core/mail'
-import { mailAddress } from '@garden/db/schema'
+import { mailAddress, mailSyncAccount } from '@garden/db/schema'
 import {
   MailRepository,
   MailDraftApplication,
@@ -344,32 +345,64 @@ export async function persistMailDraft(
             message: 'Mailbox access denied.',
           })
         }
-        const addressRows = yield* Effect.tryPromise(() =>
-          authority.db
-            .select({ id: mailAddress.id })
-            .from(mailAddress)
-            .where(
-              and(
-                eq(mailAddress.workspaceId, workspaceId),
-                eq(mailAddress.mailboxId, mailboxId),
-                eq(mailAddress.kind, 'primary'),
-                eq(mailAddress.status, 'active'),
-              ),
-            )
-            .limit(1),
+        const selectedMailbox = accessible.find(
+          (mailbox) => mailbox.id === mailboxId,
         )
-        const address = addressRows[0]
-        if (!address) {
+        const sender = yield* Effect.gen(function* () {
+          if (selectedMailbox?.sendCapability === 'garden_transport') {
+            const addressRows = yield* Effect.tryPromise(() =>
+              authority.db
+                .select({ id: mailAddress.id })
+                .from(mailAddress)
+                .where(
+                  and(
+                    eq(mailAddress.workspaceId, workspaceId),
+                    eq(mailAddress.mailboxId, mailboxId),
+                    eq(mailAddress.kind, 'primary'),
+                    eq(mailAddress.status, 'active'),
+                  ),
+                )
+                .limit(1),
+            )
+            const address = addressRows[0]
+            if (address) {
+              return {
+                _tag: 'GardenAddress' as const,
+                addressId: MailAddressId.make(address.id),
+              }
+            }
+          }
+          if (selectedMailbox?.sendCapability === 'gmail_transport') {
+            const accountRows = yield* Effect.tryPromise(() =>
+              authority.db
+                .select({ id: mailSyncAccount.id })
+                .from(mailSyncAccount)
+                .where(
+                  and(
+                    eq(mailSyncAccount.workspaceId, workspaceId),
+                    eq(mailSyncAccount.mailboxId, mailboxId),
+                  ),
+                )
+                .limit(1),
+            )
+            const account = accountRows[0]
+            if (account) {
+              return {
+                _tag: 'ExternalAccount' as const,
+                syncAccountId: MailSyncAccountId.make(account.id),
+              }
+            }
+          }
           return yield* new MailDraftSetupError({
             mailboxId,
             message: 'Mailbox has no active sender.',
           })
-        }
+        })
 
         const input = yield* Schema.decodeUnknownEffect(CreateDraftInput)({
           workspaceId,
           mailboxId,
-          fromAddressId: MailAddressId.make(address.id),
+          sender,
           conversationId:
             values.conversationId === null
               ? null

@@ -2,10 +2,12 @@ import { WorkflowEntrypoint } from 'cloudflare:workers'
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import type { RequestDraftDeliveryInput } from '@garden/core/mail'
 import {
+  GmailOutboundGateway,
+  GmailOutboundGatewayError,
   MailDelivery,
   MailDeliveryResult,
   mailDeliveryLayer,
-  makeCloudflareMailTransportLayer,
+  makeRoutedMailTransportLayer,
   makeMailRepositoryLayer,
   makeR2MailObjectStoreLayer,
   type MailDeliverySubmission,
@@ -13,7 +15,13 @@ import {
 } from '@garden/server/mail'
 import { Effect, Layer } from 'effect'
 import type { AppEnv } from './env'
+import { bindAppEnv } from './env'
 import { createRequestDbProvider } from './db'
+import {
+  gmailPersonalConnectionRef,
+  withExecutorGmailClient,
+} from './executor-engine/gmail-mail-import-plugin'
+import { executorProgram } from './executor-runtime'
 
 export type MailDeliveryWorkflowParams = RequestDraftDeliveryInput
 export type MailDeliveryWorkflowResult = typeof MailDeliveryResult.Type
@@ -26,8 +34,10 @@ export type MailDeliveryWorkflowResult = typeof MailDeliveryResult.Type
  */
 const runMailDeliveryStep = <A>(
   env: AppEnv,
+  workspaceId: string,
   program: Effect.Effect<A, unknown, MailDelivery>,
 ): Promise<A> => {
+  bindAppEnv(env)
   const provider = createRequestDbProvider(env)
   return Effect.runPromise(
     Effect.acquireUseRelease(
@@ -36,10 +46,44 @@ const runMailDeliveryStep = <A>(
         catch: (cause) => cause,
       }),
       (db) => {
+        const gmailGateway = Layer.succeed(
+          GmailOutboundGateway,
+          GmailOutboundGateway.of({
+            send: (account, input) =>
+              executorProgram(
+                { tenant: workspaceId, subject: account.userId },
+                (executor) =>
+                  withExecutorGmailClient(
+                    executor.gmailMailImport,
+                    gmailPersonalConnectionRef(account.executorConnectionName),
+                    (gmail) => gmail.sendMessage(input),
+                  ),
+              ).pipe(
+                Effect.mapError((cause) =>
+                  cause._tag === 'GmailApiError'
+                    ? cause
+                    : new GmailOutboundGatewayError({
+                        operation: 'send',
+                        reason:
+                          cause._tag === 'GmailCredentialBridgeError'
+                            ? cause.reason === 'credential_unavailable'
+                              ? 'credential_unavailable'
+                              : 'credential_resolution_failed'
+                            : 'credential_resolution_failed',
+                        message:
+                          'Garden could not use the connected Gmail account.',
+                        cause,
+                      }),
+                ),
+              ),
+          }),
+        )
         const dependencies = Layer.mergeAll(
           makeMailRepositoryLayer(db),
           makeR2MailObjectStoreLayer(env.FILES),
-          makeCloudflareMailTransportLayer(env.EMAIL),
+          makeRoutedMailTransportLayer(env.EMAIL).pipe(
+            Layer.provide(gmailGateway),
+          ),
         )
         const application = mailDeliveryLayer.pipe(Layer.provide(dependencies))
         return program.pipe(
@@ -67,6 +111,7 @@ export class MailDeliveryWorkflow extends WorkflowEntrypoint<
     const preparation = await step.do('prepare', () =>
       runMailDeliveryStep(
         this.env,
+        event.payload.workspaceId,
         Effect.flatMap(MailDelivery, (delivery) =>
           delivery.prepare(event.payload),
         ),
@@ -90,6 +135,7 @@ export class MailDeliveryWorkflow extends WorkflowEntrypoint<
     const submission: MailDeliverySubmission = await step.do('submit', () =>
       runMailDeliveryStep(
         this.env,
+        event.payload.workspaceId,
         Effect.flatMap(MailDelivery, (delivery) =>
           delivery.submitPrepared(prepared),
         ),
@@ -98,6 +144,7 @@ export class MailDeliveryWorkflow extends WorkflowEntrypoint<
     return await step.do('complete', () =>
       runMailDeliveryStep(
         this.env,
+        event.payload.workspaceId,
         Effect.flatMap(MailDelivery, (delivery) =>
           delivery.completePrepared(prepared, submission),
         ),
