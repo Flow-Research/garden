@@ -303,9 +303,10 @@ const settleImportedItem = (
   )
 
 /**
- * Durable initial Gmail import. Enumeration intentionally ignores Gmail's
- * estimate: every id is persisted first, SQL freezes the exact denominator,
- * then bounded sequential batches import one RAW message at a time.
+ * Durable Gmail import and recovery. Initial enumeration intentionally ignores
+ * Gmail's estimate: every id is persisted first, SQL freezes the exact
+ * denominator, then bounded sequential batches import one RAW message at a
+ * time. A recovered frozen run skips enumeration and resumes pending items.
  */
 export class GmailImportWorkflow extends WorkflowEntrypoint<
   AppEnv,

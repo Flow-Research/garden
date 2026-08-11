@@ -206,8 +206,8 @@ export class RuntimeMcpController {
    * connection string. Previously called `drizzle(this.host.env.DATABASE_URL)`
    * from the neon-serverless driver, opening a fresh direct-to-Neon WebSocket
    * pool per call that bypassed Hyperdrive, never closed, and defeated Neon
-   * autosuspend. `getPooledDb` memoizes one node-postgres pool per connection
-   * string per isolate so Hyperdrive owns origin pooling.
+   * autosuspend. `getPooledDb` now uses one short-idle socket per
+   * invocation-local adapter so no pool survives into another request.
    */
   private getDb() {
     return getPooledDb(this.host.env.HYPERDRIVE.connectionString)

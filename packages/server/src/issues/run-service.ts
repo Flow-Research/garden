@@ -119,8 +119,8 @@ function getIssueRunAgentDoStub(
  * connection string. This previously called `drizzle(env.DATABASE_URL)` from
  * the neon-serverless driver, opening a fresh direct-to-Neon WebSocket pool per
  * call that bypassed Hyperdrive, never closed, and defeated Neon autosuspend.
- * `getPooledDb` memoizes one node-postgres pool per connection string per
- * isolate so Hyperdrive owns origin pooling and reaps idle connections.
+ * `getPooledDb` uses one short-idle socket per invocation-local adapter so no
+ * pool survives into another request; Hyperdrive owns origin pooling.
  */
 function getDb(env: IssueRunEnv) {
   return getPooledDb(env.HYPERDRIVE.connectionString)
