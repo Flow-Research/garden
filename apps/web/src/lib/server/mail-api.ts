@@ -1,4 +1,5 @@
 import {
+  AgentId,
   ConversationId,
   CreateDraftInput,
   DraftId,
@@ -20,6 +21,7 @@ import {
   mailDraftApplicationLayer,
   makeMailRepositoryLayer,
   type AccessibleMailbox,
+  type AssignmentSnapshot,
   type ConversationActorState,
   type ConversationDetail,
   type ConversationSummary,
@@ -210,6 +212,71 @@ export async function mutateMailConversationState(
                 : (current?.pinned ?? false),
         })
         return yield* repository.updateConversationState(next)
+      }),
+    ),
+  )
+}
+
+/**
+ * Assigns an accessible workspace agent to a mail conversation. The member
+ * identity comes from the authenticated request and the repository verifies
+ * both write access to the conversation and mailbox access for the agent.
+ */
+export async function assignMailConversationAgent(
+  context: AppRequestContext,
+  input: {
+    workspaceId: string
+    conversationId: string
+    agentId: string
+  },
+): Promise<AssignmentSnapshot> {
+  return await Effect.runPromise(
+    withMemberRepository(context, input.workspaceId, ({ workspaceId, actor }) =>
+      Effect.gen(function* () {
+        const repository = yield* MailRepository
+        return yield* repository.assignConversation({
+          workspaceId,
+          conversationId: yield* Schema.decodeUnknownEffect(ConversationId)(
+            input.conversationId,
+          ),
+          assignee: {
+            _tag: 'Agent',
+            agentId: yield* Schema.decodeUnknownEffect(AgentId)(input.agentId),
+          },
+          assignedBy: actor,
+        })
+      }),
+    ),
+  )
+}
+
+/**
+ * Ends one agent assignment without deleting its audit history. Repository
+ * authorization keeps callers from unassigning conversations they cannot edit.
+ */
+export async function unassignMailConversationAgent(
+  context: AppRequestContext,
+  input: {
+    workspaceId: string
+    conversationId: string
+    agentId: string
+  },
+): Promise<AssignmentSnapshot> {
+  return await Effect.runPromise(
+    withMemberRepository(context, input.workspaceId, ({ workspaceId, actor }) =>
+      Effect.gen(function* () {
+        const repository = yield* MailRepository
+        return yield* repository.unassignConversation({
+          workspaceId,
+          conversationId: yield* Schema.decodeUnknownEffect(ConversationId)(
+            input.conversationId,
+          ),
+          assignee: {
+            _tag: 'Agent',
+            agentId: yield* Schema.decodeUnknownEffect(AgentId)(input.agentId),
+          },
+          unassignedBy: actor,
+        })
       }),
     ),
   )

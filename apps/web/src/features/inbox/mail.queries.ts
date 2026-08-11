@@ -3,6 +3,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 import { requireAppRequestContext } from '@/lib/server/context'
 import {
+  assignMailConversationAgent,
   getMailConversation,
   getMailInboxSnapshot,
   discardPersistedMailDraft,
@@ -10,6 +11,7 @@ import {
   persistMailDraft,
   requestPersistedMailDraftChanges,
   requestMailDraftDelivery,
+  unassignMailConversationAgent,
   type MailConversationStateAction,
   type MailDraftValuesInput,
   type MailInboxSnapshot,
@@ -50,6 +52,7 @@ const sendDraftInput = workspaceInput.extend({
   expectedRevision: z.number().int().nonnegative(),
 })
 const changeDraftInput = sendDraftInput
+const conversationAgentInput = conversationInput.extend({ agentId: z.uuid() })
 
 export const mailKeys = {
   all: (workspaceId: string) => ['garden-mail', workspaceId] as const,
@@ -101,6 +104,18 @@ const discardDraft = createServerFn({ method: 'POST' })
     discardPersistedMailDraft(requireAppRequestContext(context), data),
   )
 
+const assignAgent = createServerFn({ method: 'POST' })
+  .inputValidator(conversationAgentInput)
+  .handler(({ context, data }) =>
+    assignMailConversationAgent(requireAppRequestContext(context), data),
+  )
+
+const unassignAgent = createServerFn({ method: 'POST' })
+  .inputValidator(conversationAgentInput)
+  .handler(({ context, data }) =>
+    unassignMailConversationAgent(requireAppRequestContext(context), data),
+  )
+
 /** Named wrapper keeps the generated server-function declaration portable. */
 export async function changeMailConversationState(input: {
   data: {
@@ -138,6 +153,20 @@ export async function discardMailDraft(input: {
   data: { workspaceId: string; draftId: string; expectedRevision: number }
 }): Promise<DraftSnapshot> {
   return await discardDraft(input)
+}
+
+/** Assigns an agent and retains the canonical assignment audit row. */
+export async function assignAgentToMailConversation(input: {
+  data: { workspaceId: string; conversationId: string; agentId: string }
+}) {
+  return await assignAgent(input)
+}
+
+/** Unassigns an agent without deleting the assignment history. */
+export async function unassignAgentFromMailConversation(input: {
+  data: { workspaceId: string; conversationId: string; agentId: string }
+}) {
+  return await unassignAgent(input)
 }
 
 /** Actor-scoped mailbox and summary cache shared by Inbox and composer. */
