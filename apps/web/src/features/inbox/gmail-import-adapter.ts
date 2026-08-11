@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import {
   connectIntegration,
+  executorOAuthStartUrl,
   searchRegistry,
 } from '@/lib/api/executor'
 import { connectionListOptions, workspaceKeys } from '@/lib/workspace/queries'
@@ -37,17 +38,15 @@ const importState = (input: {
   authorizing: boolean
   starting: boolean
   hasAccounts: boolean
-  run:
-    | {
-        status: string
-        processedMessages: number
-        totalMessages: number | null
-        importedMessages: number
-        duplicateMessages: number
-        error: string | null
-        completedAt: string | null
-      }
-    | null
+  run: {
+    status: string
+    processedMessages: number
+    totalMessages: number | null
+    importedMessages: number
+    duplicateMessages: number
+    error: string | null
+    completedAt: string | null
+  } | null
 }): GmailImportState => {
   if (input.checking) return { status: 'checking' }
   if (input.authorizing) return { status: 'authorizing' }
@@ -100,9 +99,7 @@ export function useGmailImportController(input: {
   const integration = connectionsQuery.data?.integrations.find(
     (candidate) => String(candidate.slug) === GOOGLE_GMAIL_INTEGRATION,
   )
-  const iconUrl = integration
-    ? Option.getOrNull(integration.icon)
-    : null
+  const iconUrl = integration ? Option.getOrNull(integration.icon) : null
   const connectionModels = (integration?.connections ?? []).filter(
     (connection) => connection.owner === 'user',
   )
@@ -148,7 +145,9 @@ export function useGmailImportController(input: {
         (candidate) => String(candidate.providerId) === GOOGLE_GMAIL_PROVIDER,
       )
       if (entry === undefined) {
-        throw new Error('Google Gmail is not available in the connector catalog.')
+        throw new Error(
+          'Google Gmail is not available in the connector catalog.',
+        )
       }
       return await connectIntegration({ entry, source: 'openapi' })
     },
@@ -157,7 +156,7 @@ export function useGmailImportController(input: {
         result.kind === 'oauth_ready' ||
         result.kind === 'authorization_redirect'
       ) {
-        window.location.assign(result.connectUrl)
+        window.location.assign(executorOAuthStartUrl(result.slug, 'user'))
         return
       }
       void queryClient.invalidateQueries({

@@ -26,6 +26,8 @@
       "DATABASE_URL",
       "ENVIRONMENT",
       "EXECUTOR_SECRET_KEY",
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
     ],
   },
   "hyperdrive": [
