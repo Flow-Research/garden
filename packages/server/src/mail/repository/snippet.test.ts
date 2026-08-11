@@ -24,9 +24,20 @@ describe('mail message list snippets', () => {
     ).toBe('Statement ready & available')
   })
 
-  it('normalizes safe plain-text previews without interpreting markup', () => {
+  it('normalizes safe plain-text previews', () => {
     expect(mailMessageSnippet('  Hello\n\nfrom Garden  ', null)).toBe(
       'Hello from Garden',
     )
+  })
+
+  it('removes literal markup and leading CSS from malformed text alternatives', () => {
+    expect(
+      mailMessageSnippet(
+        `table { border-collapse: collapse !important; margin: 0 auto; }
+         h1, h2, h3, p, a, span, td { color: #111; font-family: sans-serif; }
+         <div>Welcome to Payoneer: Everything You Need to Get Started!</div>`,
+        null,
+      ),
+    ).toBe('Welcome to Payoneer: Everything You Need to Get Started!')
   })
 })

@@ -15,6 +15,21 @@ function decodeHtmlEntities(text: string) {
     .replace(/&amp;/gi, '&')
 }
 
+/** Removes stylesheet rules incorrectly emitted in Gmail text alternatives. */
+function stripLeadingCssRules(text: string) {
+  const leadingRule =
+    /^\s*(?:(?:@(?:font-face|page|keyframes|media|supports)\b)|(?:(?:html|body|table|thead|tbody|tr|td|th|p|a|span|img|h[1-6]|ul|ol|li)\b|[.#][a-z_-])[^{}]{0,240})\{[^{}]*\}\s*/i
+  let result = text
+
+  for (let rule = 0; rule < 64; rule += 1) {
+    const next = result.replace(leadingRule, '')
+    if (next === result) break
+    result = next
+  }
+
+  return result
+}
+
 /**
  * Produces visible plain text for list rows without carrying stylesheet,
  * tracking-preheader, or active-document content into the inbox. This adapts
@@ -26,21 +41,18 @@ export function mailMessageSnippet(
   textBody: string | null,
   htmlBody: string | null,
 ) {
-  const source =
-    textBody ??
-    htmlBody
-      ?.replace(/<!--[^]*?-->/g, ' ')
-      .replace(/<head\b[^>]*>[^]*?<\/head>/gi, ' ')
-      .replace(
-        /<(style|script|noscript|template|svg)\b[^>]*>[^]*?<\/\1>/gi,
-        ' ',
-      )
-      .replace(
-        /<([a-z][\w-]*)\b[^>]*(?:\bhidden\b|aria-hidden\s*=\s*["']?true|style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden|max-height\s*:\s*0))[^>]*>[^]*?<\/\1>/gi,
-        ' ',
-      )
-      .replace(/<[^>]*>/g, ' ') ??
-    ''
+  const source = (textBody ?? htmlBody ?? '')
+    .replace(/<!--[^]*?-->/g, ' ')
+    .replace(/<head\b[^>]*>[^]*?<\/head>/gi, ' ')
+    .replace(/<(style|script|noscript|template|svg)\b[^>]*>[^]*?<\/\1>/gi, ' ')
+    .replace(
+      /<([a-z][\w-]*)\b[^>]*(?:\bhidden\b|aria-hidden\s*=\s*["']?true|style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden|max-height\s*:\s*0))[^>]*>[^]*?<\/\1>/gi,
+      ' ',
+    )
+    .replace(/<[^>]*>/g, ' ')
 
-  return decodeHtmlEntities(source).replace(/\s+/g, ' ').trim().slice(0, 180)
+  return decodeHtmlEntities(stripLeadingCssRules(source))
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180)
 }
