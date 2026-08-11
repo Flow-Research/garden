@@ -176,9 +176,7 @@ const runGmailImportStep = <A, E>(
           makeMailRepositoryLayer(db),
           makeR2MailObjectStoreLayer(env.FILES),
         )
-        const application = gmailImportLayer.pipe(
-          Layer.provide(dependencies),
-        )
+        const application = gmailImportLayer.pipe(Layer.provide(dependencies))
         const layer = Layer.merge(dependencies, application)
         return executorProgram(
           { tenant: params.workspaceId, subject: params.userId },
@@ -233,12 +231,18 @@ const resolveWorkflowAccount = (
     })
     .pipe(
       Effect.flatMap((states) => {
-        const account = states.find(
+        const state = states.find(
           (state) => state.account?.id === params.syncAccountId,
-        )?.account
-        return account === null || account === undefined
-          ? Effect.fail(new Error('Connected Gmail import account not found.'))
-          : Effect.succeed(account)
+        )
+        if (state?.account === null || state?.account === undefined) {
+          return Effect.fail(
+            new Error('Connected Gmail import account not found.'),
+          )
+        }
+        if (state.latestRun?.id !== params.runId) {
+          return Effect.fail(new Error('Gmail import run is no longer active.'))
+        }
+        return Effect.succeed({ account: state.account, run: state.latestRun })
       }),
     )
 
@@ -326,7 +330,7 @@ export class GmailImportWorkflow extends WorkflowEntrypoint<
         accountOutcome.message,
       )
     }
-    const account = accountOutcome.value
+    const { account, run } = accountOutcome.value
 
     const profileOutcome = await step.do('gmail-profile', () =>
       runGmailImportStep(
@@ -346,64 +350,66 @@ export class GmailImportWorkflow extends WorkflowEntrypoint<
       )
     }
 
-    let pageToken: string | undefined
-    let pageIndex = 0
-    do {
-      const currentToken = pageToken
-      const pageOutcome = await step.do(`enumerate-${pageIndex}`, () =>
-        runGmailImportStep(
-          this.env,
-          params,
-          account.executorConnectionName,
-          ({ gmail, repository }) =>
-            Effect.gen(function* () {
-              const page = yield* gmail.listMessages({
-                maxResults: GMAIL_ENUMERATION_PAGE_SIZE,
-                pageToken: currentToken,
-                query: '-in:drafts',
-                includeSpamTrash: false,
-              })
-              yield* repository.persistMailSyncPage({
-                workspaceId: params.workspaceId,
-                runId: params.runId,
-                items: (page.messages ?? []).map((message) => ({
-                  providerMessageId: ProviderObjectId.make(message.id),
-                  providerThreadId: ProviderObjectId.make(message.threadId),
-                })),
-              })
-              return { nextPageToken: page.nextPageToken ?? null }
-            }),
+    if (run.status !== 'importing') {
+      let pageToken: string | undefined
+      let pageIndex = 0
+      do {
+        const currentToken = pageToken
+        const pageOutcome = await step.do(`enumerate-${pageIndex}`, () =>
+          runGmailImportStep(
+            this.env,
+            params,
+            account.executorConnectionName,
+            ({ gmail, repository }) =>
+              Effect.gen(function* () {
+                const page = yield* gmail.listMessages({
+                  maxResults: GMAIL_ENUMERATION_PAGE_SIZE,
+                  pageToken: currentToken,
+                  query: '-in:drafts',
+                  includeSpamTrash: false,
+                })
+                yield* repository.persistMailSyncPage({
+                  workspaceId: params.workspaceId,
+                  runId: params.runId,
+                  items: (page.messages ?? []).map((message) => ({
+                    providerMessageId: ProviderObjectId.make(message.id),
+                    providerThreadId: ProviderObjectId.make(message.threadId),
+                  })),
+                })
+                return { nextPageToken: page.nextPageToken ?? null }
+              }),
+          ),
+        )
+        if (pageOutcome._tag === 'Failure') {
+          return await failImportRun(
+            step,
+            this.env,
+            params,
+            `enumerate-${pageIndex}`,
+            pageOutcome.message,
+          )
+        }
+        pageToken = pageOutcome.value.nextPageToken ?? undefined
+        pageIndex += 1
+      } while (pageToken !== undefined)
+
+      const finalizeOutcome = await step.do('freeze-exact-total', () =>
+        runMailImportDatabaseStep(this.env, (repository) =>
+          repository.finalizeMailSyncEnumeration({
+            workspaceId: params.workspaceId,
+            runId: params.runId,
+          }),
         ),
       )
-      if (pageOutcome._tag === 'Failure') {
+      if (finalizeOutcome._tag === 'Failure') {
         return await failImportRun(
           step,
           this.env,
           params,
-          `enumerate-${pageIndex}`,
-          pageOutcome.message,
+          'freeze-exact-total',
+          finalizeOutcome.message,
         )
       }
-      pageToken = pageOutcome.value.nextPageToken ?? undefined
-      pageIndex += 1
-    } while (pageToken !== undefined)
-
-    const finalizeOutcome = await step.do('freeze-exact-total', () =>
-      runMailImportDatabaseStep(this.env, (repository) =>
-        repository.finalizeMailSyncEnumeration({
-          workspaceId: params.workspaceId,
-          runId: params.runId,
-        }),
-      ),
-    )
-    if (finalizeOutcome._tag === 'Failure') {
-      return await failImportRun(
-        step,
-        this.env,
-        params,
-        'freeze-exact-total',
-        finalizeOutcome.message,
-      )
     }
 
     let batchIndex = 0

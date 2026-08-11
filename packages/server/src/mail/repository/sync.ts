@@ -22,7 +22,7 @@ import {
   type SettleMailSyncItemInput,
   type StartMailSyncRunInput,
 } from '@garden/core/mail'
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import { Effect } from 'effect'
 import { MailRepositoryInvariantError } from './contracts.ts'
 import {
@@ -288,7 +288,7 @@ export const listPersonalMailSyncStates = Effect.fn(
             .select()
             .from(mailSyncRun)
             .where(eq(mailSyncRun.syncAccountId, account.id))
-            .orderBy(desc(mailSyncRun.createdAt))
+            .orderBy(desc(mailSyncRun.updatedAt), desc(mailSyncRun.createdAt))
             .limit(1),
       ))[0]
       return yield* decodeRow(
@@ -304,7 +304,14 @@ export const listPersonalMailSyncStates = Effect.fn(
   )
 })
 
-/** Starts once per Workflow id and reuses an already-active account run. */
+/**
+ * Starts once per Workflow id, reuses an active run, or resumes the newest
+ * failed run whose exact provider workset was already frozen. Before recovery
+ * existed, every retry discarded as many as tens of thousands of durable Gmail
+ * IDs and paginated the whole mailbox again. Recovery keeps terminal imported
+ * and duplicate items, releases interrupted claims, retries item-level failures,
+ * and gives the retained ledger a new Workflow instance id.
+ */
 export const startMailSyncRun = Effect.fn('MailRepository.startMailSyncRun')(
   function* (db: GardenDatabase, input: StartMailSyncRunInput) {
     return yield* inTransaction(db, 'startMailSyncRun', (tx) =>
@@ -319,7 +326,8 @@ export const startMailSyncRun = Effect.fn('MailRepository.startMailSyncRun')(
                 eq(mailSyncAccount.workspaceId, input.workspaceId),
               ),
             )
-            .limit(1),
+            .limit(1)
+            .for('update'),
         ))[0]
         if (account === undefined || account.status === 'disconnected') {
           return yield* new MailRepositoryInvariantError({
@@ -340,6 +348,79 @@ export const startMailSyncRun = Effect.fn('MailRepository.startMailSyncRun')(
               .limit(1),
         ))[0]
         if (existing !== undefined) return yield* decodeSyncRun(existing)
+
+        const recoverable = (yield* databaseEffect(
+          'startMailSyncRun.recoverable',
+          () =>
+            tx
+              .select()
+              .from(mailSyncRun)
+              .where(
+                and(
+                  eq(mailSyncRun.syncAccountId, input.syncAccountId),
+                  eq(mailSyncRun.status, 'failed'),
+                  isNotNull(mailSyncRun.totalMessages),
+                ),
+              )
+              .orderBy(desc(mailSyncRun.createdAt))
+              .limit(1)
+              .for('update'),
+        ))[0]
+        if (recoverable !== undefined) {
+          yield* databaseEffect('startMailSyncRun.releaseItems', () =>
+            tx
+              .update(mailSyncItem)
+              .set({
+                status: 'pending',
+                claimKey: null,
+                messageId: null,
+                error: null,
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(mailSyncItem.runId, recoverable.id),
+                  inArray(mailSyncItem.status, ['processing', 'failed']),
+                ),
+              ),
+          )
+          const now = new Date()
+          const resumed = (yield* databaseEffect(
+            'startMailSyncRun.resume',
+            () =>
+              tx
+                .update(mailSyncRun)
+                .set({
+                  workflowInstanceId: input.workflowInstanceId,
+                  trigger: 'recovery',
+                  status: 'importing',
+                  processedMessages:
+                    recoverable.importedMessages +
+                    recoverable.duplicateMessages,
+                  failedMessages: 0,
+                  error: null,
+                  startedAt: now,
+                  completedAt: null,
+                  updatedAt: now,
+                })
+                .where(eq(mailSyncRun.id, recoverable.id))
+                .returning(),
+          ))[0]
+          if (resumed === undefined) {
+            return yield* new MailRepositoryInvariantError({
+              operation: 'startMailSyncRun.resume',
+              message: 'Recoverable mail sync run disappeared while resuming.',
+            })
+          }
+          yield* databaseEffect('startMailSyncRun.markAccountRecovering', () =>
+            tx
+              .update(mailSyncAccount)
+              .set({ status: 'syncing', lastError: null, updatedAt: now })
+              .where(eq(mailSyncAccount.id, input.syncAccountId)),
+          )
+          return yield* decodeSyncRun(resumed)
+        }
+
         const created = (yield* databaseEffect('startMailSyncRun.insert', () =>
           tx
             .insert(mailSyncRun)

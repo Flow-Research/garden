@@ -4,6 +4,7 @@ import {
   CreateDraftInput,
   DraftId,
   EmailAddress,
+  FailMailSyncRunInput,
   FinalizeMailSyncEnumerationInput,
   ImportedMailEnvelope,
   InternetMessageId,
@@ -323,6 +324,138 @@ describe('MailRepository Gmail sync ledger (integration)', () => {
         expect(
           importedMessages.every((message) => message.rawStorageKey === null),
         ).toBe(true)
+      }).pipe(Effect.provide(makeMailRepositoryLayer(testDb.db))),
+  )
+
+  it.effect(
+    'resumes a frozen failed workset without enumerating Gmail again',
+    () =>
+      Effect.gen(function* () {
+        const repository = yield* MailRepository
+        const account = yield* repository.resolveMailSyncAccount(
+          ResolveMailSyncAccountInput.make({
+            workspaceId,
+            userId,
+            memberId,
+            provider: 'gmail',
+            providerEmail: EmailAddress.make('resume@gmail.com'),
+            mailboxName: 'Recovery Gmail',
+            executorIntegration: 'google_gmail',
+            executorConnectionName: 'recovery',
+          }),
+        )
+        const original = yield* repository.startMailSyncRun(
+          StartMailSyncRunInput.make({
+            workspaceId,
+            syncAccountId: account.id,
+            workflowInstanceId: 'gmail-recovery-original',
+            trigger: 'initial',
+          }),
+        )
+        yield* repository.persistMailSyncPage(
+          PersistMailSyncPageInput.make({
+            workspaceId,
+            runId: original.id,
+            items: [
+              {
+                providerMessageId: ProviderObjectId.make('recovery-message-1'),
+                providerThreadId: ProviderObjectId.make('recovery-thread'),
+              },
+              {
+                providerMessageId: ProviderObjectId.make('recovery-message-2'),
+                providerThreadId: ProviderObjectId.make('recovery-thread'),
+              },
+              {
+                providerMessageId: ProviderObjectId.make('recovery-message-3'),
+                providerThreadId: ProviderObjectId.make('recovery-thread'),
+              },
+            ],
+          }),
+        )
+        yield* repository.finalizeMailSyncEnumeration(
+          FinalizeMailSyncEnumerationInput.make({
+            workspaceId,
+            runId: original.id,
+          }),
+        )
+        const claimed = yield* repository.claimPendingMailSyncBatch(
+          ClaimPendingMailSyncBatchInput.make({
+            workspaceId,
+            runId: original.id,
+            claimKey: 'interrupted-batch',
+            limit: 2,
+          }),
+        )
+        const firstItem = claimed[0]
+        if (firstItem === undefined) {
+          return yield* Effect.die('Expected recovery fixture work item.')
+        }
+        const firstMessage = yield* repository.ingestImported(
+          importedEnvelope(account.id, firstItem.providerMessageId),
+        )
+        yield* repository.settleMailSyncItem(
+          SettleMailSyncItemInput.make({
+            workspaceId,
+            runId: original.id,
+            providerMessageId: firstItem.providerMessageId,
+            claimKey: 'interrupted-batch',
+            settlement: {
+              _tag: 'Imported',
+              messageId: firstMessage.messageId,
+            },
+          }),
+        )
+        yield* repository.failMailSyncRun(
+          FailMailSyncRunInput.make({
+            workspaceId,
+            runId: original.id,
+            error: 'Hyperdrive tunnel disconnected.',
+          }),
+        )
+
+        const resumed = yield* repository.startMailSyncRun(
+          StartMailSyncRunInput.make({
+            workspaceId,
+            syncAccountId: account.id,
+            workflowInstanceId: 'gmail-recovery-resumed',
+            trigger: 'manual',
+          }),
+        )
+
+        expect(resumed).toMatchObject({
+          id: original.id,
+          workflowInstanceId: 'gmail-recovery-resumed',
+          trigger: 'recovery',
+          status: 'importing',
+          totalMessages: 3,
+          processedMessages: 1,
+          importedMessages: 1,
+          failedMessages: 0,
+          error: null,
+        })
+        const recoveredStates = yield* repository.listPersonalMailSyncStates(
+          ListPersonalMailSyncStatesInput.make({
+            workspaceId,
+            userId,
+            provider: 'gmail',
+          }),
+        )
+        expect(
+          recoveredStates.find((state) => state.account?.id === account.id)
+            ?.latestRun?.id,
+        ).toBe(original.id)
+        const remaining = yield* repository.claimPendingMailSyncBatch(
+          ClaimPendingMailSyncBatchInput.make({
+            workspaceId,
+            runId: resumed.id,
+            claimKey: 'recovered-batch',
+            limit: 10,
+          }),
+        )
+        expect(remaining.map((item) => item.providerMessageId)).toEqual([
+          'recovery-message-2',
+          'recovery-message-3',
+        ])
       }).pipe(Effect.provide(makeMailRepositoryLayer(testDb.db))),
   )
 
