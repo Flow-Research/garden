@@ -3,6 +3,8 @@ import { Minimize2 } from 'lucide-react'
 import { TabNode } from 'flexlayout-react'
 import { Button } from '@garden/ui/components/ui/button'
 import { InboxPage } from '@/features/inbox'
+import { useGmailImportController } from '@/features/inbox/gmail-import-adapter'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import { SkillsPage } from '@/features/skills/components'
 import { AgentsPage, AgentDetail } from '@/features/agents/components'
 import { IssueDetail, IssuesPage } from '@/features/issues/components'
@@ -308,6 +310,17 @@ type PanelProps = {
   panel: WorkspacePanelConfig
 }
 
+/** Supplies authenticated Gmail import state only to the production Inbox. */
+function InboxPanel({ node }: { node: TabNode }) {
+  const workspaceId = useWorkspaceId()
+  const gmailImportController = useGmailImportController({ workspaceId })
+  return (
+    <PanelChrome node={node}>
+      <InboxPage gmailImportController={gmailImportController} />
+    </PanelChrome>
+  )
+}
+
 /** Resolves FlexLayout tab nodes into the Garden product surface they host. */
 export function WorkspacePanelFactory({ node }: { node: TabNode }) {
   const panel =
@@ -323,11 +336,7 @@ export function WorkspacePanelFactory({ node }: { node: TabNode }) {
         </PanelChrome>
       )
     case 'inbox':
-      return (
-        <PanelChrome node={node}>
-          <InboxPage />
-        </PanelChrome>
-      )
+      return <InboxPanel node={node} />
     case 'issues':
       return (
         <PanelChrome node={node}>
