@@ -1,5 +1,12 @@
 import { Schema } from 'effect'
-import { MailActionActor, MailActor, MessageAuthor } from './models.js'
+import {
+  MailActionActor,
+  MailActor,
+  MailSyncAccount,
+  MailSyncItem,
+  MailSyncRun,
+  MessageAuthor,
+} from './models.js'
 import {
   AttachmentDisposition,
   AttachmentId,
@@ -13,6 +20,10 @@ import {
   LocalPart,
   MailAddressId,
   MailAddressKind,
+  MailSyncProvider,
+  MailSyncRunId,
+  MailSyncRunTrigger,
+  MailSyncAccountId,
   MailDomainId,
   MailboxAccessLevel,
   MailboxId,
@@ -28,6 +39,8 @@ import {
   Sha256,
   StorageKey,
   UtcTimestamp,
+  UserId,
+  MemberId,
   WorkspaceId,
 } from './values.js'
 
@@ -163,12 +176,158 @@ export interface InboundMailEnvelope extends Schema.Schema.Type<
   typeof InboundMailEnvelope
 > {}
 
+/**
+ * Provider-neutral external mailbox import. The repository binds the provider
+ * object to its sync account and projects it into exactly that account's mailbox.
+ */
+export const ImportedMailEnvelope = Schema.Struct({
+  workspaceId: WorkspaceId,
+  syncAccountId: MailSyncAccountId,
+  provider: ProviderKey,
+  providerMessageId: ProviderObjectId,
+  providerThreadId: ProviderObjectId,
+  providerEvidence: Schema.NullOr(ProviderEvidence),
+  rawStorageKey: Schema.NullOr(StorageKey),
+  internetMessageId: Schema.NullOr(InternetMessageId),
+  inReplyToMessageId: Schema.NullOr(InternetMessageId),
+  referenceMessageIds: Schema.Array(InternetMessageId),
+  author: MessageAuthor,
+  senderName: Schema.NullOr(Schema.String),
+  senderAddress: EmailAddress,
+  replyTo: Schema.Array(EnvelopeReplyTo),
+  recipients: Schema.Array(EnvelopeRecipient),
+  subject: Schema.String,
+  textBody: Schema.NullOr(Schema.String),
+  htmlBody: Schema.NullOr(Schema.String),
+  attachments: Schema.Array(InboundAttachment),
+  authoredAt: UtcTimestamp,
+})
+export interface ImportedMailEnvelope extends Schema.Schema.Type<
+  typeof ImportedMailEnvelope
+> {}
+
 export const IngestedMail = Schema.Struct({
   messageId: MessageId,
   conversationIds: Schema.Array(ConversationId),
   duplicate: Schema.Boolean,
 })
 export interface IngestedMail extends Schema.Schema.Type<typeof IngestedMail> {}
+
+/** Creates or refreshes a connected personal account and its mailbox projection. */
+export const ResolveMailSyncAccountInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  userId: UserId,
+  memberId: MemberId,
+  provider: MailSyncProvider,
+  providerEmail: EmailAddress,
+  mailboxName: NonEmptyString,
+  executorIntegration: NonEmptyString,
+  executorConnectionName: NonEmptyString,
+})
+export interface ResolveMailSyncAccountInput extends Schema.Schema.Type<
+  typeof ResolveMailSyncAccountInput
+> {}
+
+export const ListPersonalMailSyncStatesInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  userId: UserId,
+  provider: MailSyncProvider,
+})
+export interface ListPersonalMailSyncStatesInput extends Schema.Schema.Type<
+  typeof ListPersonalMailSyncStatesInput
+> {}
+
+export const PersonalMailSyncState = Schema.Struct({
+  account: Schema.NullOr(MailSyncAccount),
+  latestRun: Schema.NullOr(MailSyncRun),
+})
+export interface PersonalMailSyncState extends Schema.Schema.Type<
+  typeof PersonalMailSyncState
+> {}
+
+export const StartMailSyncRunInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  syncAccountId: MailSyncAccountId,
+  workflowInstanceId: NonEmptyString,
+  trigger: MailSyncRunTrigger,
+})
+export interface StartMailSyncRunInput extends Schema.Schema.Type<
+  typeof StartMailSyncRunInput
+> {}
+
+export const EnumeratedMailSyncItem = Schema.Struct({
+  providerMessageId: ProviderObjectId,
+  providerThreadId: ProviderObjectId,
+})
+export interface EnumeratedMailSyncItem extends Schema.Schema.Type<
+  typeof EnumeratedMailSyncItem
+> {}
+
+export const PersistMailSyncPageInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  runId: MailSyncRunId,
+  items: Schema.Array(EnumeratedMailSyncItem),
+})
+export interface PersistMailSyncPageInput extends Schema.Schema.Type<
+  typeof PersistMailSyncPageInput
+> {}
+
+export const FinalizeMailSyncEnumerationInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  runId: MailSyncRunId,
+})
+export interface FinalizeMailSyncEnumerationInput extends Schema.Schema.Type<
+  typeof FinalizeMailSyncEnumerationInput
+> {}
+
+export const ClaimPendingMailSyncBatchInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  runId: MailSyncRunId,
+  claimKey: NonEmptyString,
+  limit: PositiveInt,
+})
+export interface ClaimPendingMailSyncBatchInput extends Schema.Schema.Type<
+  typeof ClaimPendingMailSyncBatchInput
+> {}
+
+export const MailSyncItemSettlement = Schema.TaggedUnion({
+  Imported: { messageId: MessageId },
+  Duplicate: { messageId: MessageId },
+  Failed: { error: NonEmptyString },
+})
+export type MailSyncItemSettlement = typeof MailSyncItemSettlement.Type
+
+export const SettleMailSyncItemInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  runId: MailSyncRunId,
+  providerMessageId: ProviderObjectId,
+  claimKey: NonEmptyString,
+  settlement: MailSyncItemSettlement,
+})
+export interface SettleMailSyncItemInput extends Schema.Schema.Type<
+  typeof SettleMailSyncItemInput
+> {}
+
+export const CompleteMailSyncRunInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  runId: MailSyncRunId,
+  historyId: Schema.NullOr(ProviderObjectId),
+})
+export interface CompleteMailSyncRunInput extends Schema.Schema.Type<
+  typeof CompleteMailSyncRunInput
+> {}
+
+export const FailMailSyncRunInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  runId: MailSyncRunId,
+  error: NonEmptyString,
+})
+export interface FailMailSyncRunInput extends Schema.Schema.Type<
+  typeof FailMailSyncRunInput
+> {}
+
+export const ClaimedMailSyncBatch = Schema.Array(MailSyncItem)
+export type ClaimedMailSyncBatch = typeof ClaimedMailSyncBatch.Type
 
 export const EditableRecipient = Schema.Struct({
   kind: RecipientKind,

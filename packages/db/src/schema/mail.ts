@@ -17,6 +17,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core'
 import { agent } from './agents.js'
+import { user } from './users.js'
 import { member, organization } from './workspaces.js'
 
 export const mailDomainStatusValues = [
@@ -27,6 +28,39 @@ export const mailDomainStatusValues = [
 ] as const
 export const mailMailboxKindValues = ['personal', 'shared', 'agent'] as const
 export const mailMailboxStatusValues = ['active', 'disabled'] as const
+export const mailMailboxOriginValues = [
+  'garden_hosted',
+  'external_import',
+] as const
+export const mailSyncProviderValues = ['gmail'] as const
+export const mailSyncAccountStatusValues = [
+  'connected',
+  'syncing',
+  'ready',
+  'degraded',
+  'disconnected',
+] as const
+export const mailSyncRunTriggerValues = [
+  'initial',
+  'manual',
+  'incremental',
+  'recovery',
+] as const
+export const mailSyncRunStatusValues = [
+  'queued',
+  'enumerating',
+  'importing',
+  'completed',
+  'failed',
+  'cancelled',
+] as const
+export const mailSyncItemStatusValues = [
+  'pending',
+  'processing',
+  'imported',
+  'duplicate',
+  'failed',
+] as const
 export const mailAddressKindValues = ['primary', 'alias', 'catch_all'] as const
 export const mailAddressStatusValues = ['active', 'disabled'] as const
 export const mailAccessActorTypeValues = ['member', 'agent'] as const
@@ -155,6 +189,7 @@ export const mailMailbox = pgTable(
       .references(() => organization.id),
     name: text('name').notNull(),
     kind: text('kind').notNull(),
+    origin: text('origin').notNull().default('garden_hosted'),
     status: text('status').notNull().default('active'),
     createdAt: timestamp('created_at', {
       mode: 'date',
@@ -183,6 +218,172 @@ export const mailMailbox = pgTable(
     check(
       'mail_mailbox_status_check',
       sql`${table.status} in (${sqlValueList(mailMailboxStatusValues)})`,
+    ),
+    check(
+      'mail_mailbox_origin_check',
+      sql`${table.origin} in (${sqlValueList(mailMailboxOriginValues)})`,
+    ),
+  ],
+)
+
+/**
+ * One connected provider account owns one external mailbox. Provider secrets
+ * remain in Executor; this table stores only stable routing and sync cursors.
+ */
+export const mailSyncAccount = pgTable(
+  'mail_sync_account',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => organization.id),
+    mailboxId: uuid('mailbox_id')
+      .notNull()
+      .references(() => mailMailbox.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => user.id),
+    provider: text('provider').notNull(),
+    providerEmail: text('provider_email').notNull(),
+    executorIntegration: text('executor_integration').notNull(),
+    executorConnectionName: text('executor_connection_name').notNull(),
+    status: text('status').notNull().default('connected'),
+    historyId: text('history_id'),
+    watchExpiration: timestamp('watch_expiration', {
+      mode: 'date',
+      withTimezone: true,
+    }),
+    lastSyncedAt: timestamp('last_synced_at', {
+      mode: 'date',
+      withTimezone: true,
+    }),
+    lastError: text('last_error'),
+    createdAt: timestamp('created_at', {
+      mode: 'date',
+      withTimezone: true,
+    })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', {
+      mode: 'date',
+      withTimezone: true,
+    })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => [
+    unique('mail_sync_account_workspace_id_unique').on(
+      table.workspaceId,
+      table.id,
+    ),
+    uniqueIndex('mail_sync_account_mailbox_unique').on(table.mailboxId),
+    uniqueIndex('mail_sync_account_workspace_provider_email_unique').on(
+      table.workspaceId,
+      table.provider,
+      table.providerEmail,
+    ),
+    index('mail_sync_account_workspace_user_idx').on(
+      table.workspaceId,
+      table.userId,
+    ),
+    foreignKey({
+      name: 'mail_sync_account_workspace_mailbox_fk',
+      columns: [table.workspaceId, table.mailboxId],
+      foreignColumns: [mailMailbox.workspaceId, mailMailbox.id],
+    }),
+    check(
+      'mail_sync_account_provider_check',
+      sql`${table.provider} in (${sqlValueList(mailSyncProviderValues)})`,
+    ),
+    check(
+      'mail_sync_account_status_check',
+      sql`${table.status} in (${sqlValueList(mailSyncAccountStatusValues)})`,
+    ),
+    check(
+      'mail_sync_account_email_normalized_check',
+      sql`${table.providerEmail} = lower(${table.providerEmail}) and ${table.providerEmail} ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'`,
+    ),
+    check(
+      'mail_sync_account_executor_identity_check',
+      sql`length(btrim(${table.executorIntegration})) > 0 and length(btrim(${table.executorConnectionName})) > 0`,
+    ),
+  ],
+)
+
+/** Cloudflare Workflow execution ledger with exact, transactionally settled counts. */
+export const mailSyncRun = pgTable(
+  'mail_sync_run',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => organization.id),
+    syncAccountId: uuid('sync_account_id')
+      .notNull()
+      .references(() => mailSyncAccount.id),
+    workflowInstanceId: text('workflow_instance_id').notNull(),
+    trigger: text('trigger').notNull(),
+    status: text('status').notNull().default('queued'),
+    totalMessages: integer('total_messages'),
+    processedMessages: integer('processed_messages').notNull().default(0),
+    importedMessages: integer('imported_messages').notNull().default(0),
+    duplicateMessages: integer('duplicate_messages').notNull().default(0),
+    failedMessages: integer('failed_messages').notNull().default(0),
+    error: text('error'),
+    startedAt: timestamp('started_at', { mode: 'date', withTimezone: true }),
+    completedAt: timestamp('completed_at', {
+      mode: 'date',
+      withTimezone: true,
+    }),
+    createdAt: timestamp('created_at', {
+      mode: 'date',
+      withTimezone: true,
+    })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', {
+      mode: 'date',
+      withTimezone: true,
+    })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => [
+    unique('mail_sync_run_workspace_id_unique').on(table.workspaceId, table.id),
+    uniqueIndex('mail_sync_run_workflow_instance_unique').on(
+      table.workflowInstanceId,
+    ),
+    uniqueIndex('mail_sync_run_account_active_unique')
+      .on(table.syncAccountId)
+      .where(sql`${table.status} in ('queued', 'enumerating', 'importing')`),
+    index('mail_sync_run_account_created_idx').on(
+      table.syncAccountId,
+      table.createdAt,
+    ),
+    foreignKey({
+      name: 'mail_sync_run_workspace_account_fk',
+      columns: [table.workspaceId, table.syncAccountId],
+      foreignColumns: [mailSyncAccount.workspaceId, mailSyncAccount.id],
+    }),
+    check(
+      'mail_sync_run_trigger_check',
+      sql`${table.trigger} in (${sqlValueList(mailSyncRunTriggerValues)})`,
+    ),
+    check(
+      'mail_sync_run_status_check',
+      sql`${table.status} in (${sqlValueList(mailSyncRunStatusValues)})`,
+    ),
+    check(
+      'mail_sync_run_counts_check',
+      sql`${table.totalMessages} is null or ${table.totalMessages} >= 0`,
+    ),
+    check(
+      'mail_sync_run_settled_counts_check',
+      sql`${table.processedMessages} >= 0 and ${table.importedMessages} >= 0 and ${table.duplicateMessages} >= 0 and ${table.failedMessages} >= 0 and ${table.processedMessages} = ${table.importedMessages} + ${table.duplicateMessages} + ${table.failedMessages}`,
     ),
   ],
 )
@@ -491,6 +692,81 @@ export const mailMessage = pgTable(
     check(
       'mail_message_outbound_sender_check',
       sql`${table.source} <> 'outbound' or ${table.senderAddressId} is not null`,
+    ),
+  ],
+)
+
+/**
+ * Enumerated provider messages are durable Workflow work items. A stable claim
+ * key makes a retried Workflow step recover the same batch instead of skipping it.
+ */
+export const mailSyncItem = pgTable(
+  'mail_sync_item',
+  {
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => organization.id),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => mailSyncRun.id),
+    providerMessageId: text('provider_message_id').notNull(),
+    providerThreadId: text('provider_thread_id').notNull(),
+    ordinal: integer('ordinal').notNull(),
+    status: text('status').notNull().default('pending'),
+    claimKey: text('claim_key'),
+    messageId: uuid('message_id').references(() => mailMessage.id),
+    error: text('error'),
+    createdAt: timestamp('created_at', {
+      mode: 'date',
+      withTimezone: true,
+    })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', {
+      mode: 'date',
+      withTimezone: true,
+    })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => [
+    primaryKey({ columns: [table.runId, table.providerMessageId] }),
+    uniqueIndex('mail_sync_item_run_ordinal_unique').on(
+      table.runId,
+      table.ordinal,
+    ),
+    index('mail_sync_item_run_status_ordinal_idx').on(
+      table.runId,
+      table.status,
+      table.ordinal,
+    ),
+    index('mail_sync_item_run_claim_idx').on(table.runId, table.claimKey),
+    foreignKey({
+      name: 'mail_sync_item_workspace_run_fk',
+      columns: [table.workspaceId, table.runId],
+      foreignColumns: [mailSyncRun.workspaceId, mailSyncRun.id],
+    }),
+    foreignKey({
+      name: 'mail_sync_item_workspace_message_fk',
+      columns: [table.workspaceId, table.messageId],
+      foreignColumns: [mailMessage.workspaceId, mailMessage.id],
+    }),
+    check(
+      'mail_sync_item_status_check',
+      sql`${table.status} in (${sqlValueList(mailSyncItemStatusValues)})`,
+    ),
+    check('mail_sync_item_ordinal_check', sql`${table.ordinal} >= 0`),
+    check(
+      'mail_sync_item_identity_check',
+      sql`length(btrim(${table.providerMessageId})) > 0 and length(btrim(${table.providerThreadId})) > 0`,
+    ),
+    check(
+      'mail_sync_item_claim_check',
+      sql`(${table.status} = 'pending' and ${table.claimKey} is null) or (${table.status} <> 'pending' and ${table.claimKey} is not null)`,
+    ),
+    check(
+      'mail_sync_item_result_check',
+      sql`(${table.status} in ('imported', 'duplicate') and ${table.messageId} is not null and ${table.error} is null) or (${table.status} = 'failed' and ${table.error} is not null) or (${table.status} in ('pending', 'processing') and ${table.messageId} is null and ${table.error} is null)`,
     ),
   ],
 )

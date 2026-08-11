@@ -7,6 +7,8 @@ export const WorkspaceId = Uuid.pipe(Schema.brand('WorkspaceId'))
 export type WorkspaceId = typeof WorkspaceId.Type
 export const MemberId = Uuid.pipe(Schema.brand('MemberId'))
 export type MemberId = typeof MemberId.Type
+export const UserId = Uuid.pipe(Schema.brand('UserId'))
+export type UserId = typeof UserId.Type
 export const AgentId = Uuid.pipe(Schema.brand('AgentId'))
 export type AgentId = typeof AgentId.Type
 export const MailDomainId = Uuid.pipe(Schema.brand('MailDomainId'))
@@ -17,6 +19,10 @@ export const MailAddressId = Uuid.pipe(Schema.brand('MailAddressId'))
 export type MailAddressId = typeof MailAddressId.Type
 export const MailboxAccessId = Uuid.pipe(Schema.brand('MailboxAccessId'))
 export type MailboxAccessId = typeof MailboxAccessId.Type
+export const MailSyncAccountId = Uuid.pipe(Schema.brand('MailSyncAccountId'))
+export type MailSyncAccountId = typeof MailSyncAccountId.Type
+export const MailSyncRunId = Uuid.pipe(Schema.brand('MailSyncRunId'))
+export type MailSyncRunId = typeof MailSyncRunId.Type
 export const ConversationId = Uuid.pipe(Schema.brand('ConversationId'))
 export type ConversationId = typeof ConversationId.Type
 export const MessageId = Uuid.pipe(Schema.brand('MessageId'))
@@ -109,6 +115,50 @@ export const MailboxKind = Schema.Literals(['personal', 'shared', 'agent'])
 export type MailboxKind = typeof MailboxKind.Type
 export const MailboxStatus = Schema.Literals(['active', 'disabled'])
 export type MailboxStatus = typeof MailboxStatus.Type
+export const MailboxOrigin = Schema.Literals([
+  'garden_hosted',
+  'external_import',
+])
+export type MailboxOrigin = typeof MailboxOrigin.Type
+export const MailboxSendCapability = Schema.Literals([
+  'garden_transport',
+  'read_only',
+])
+export type MailboxSendCapability = typeof MailboxSendCapability.Type
+export const MailSyncProvider = Schema.Literal('gmail')
+export type MailSyncProvider = typeof MailSyncProvider.Type
+export const MailSyncAccountStatus = Schema.Literals([
+  'connected',
+  'syncing',
+  'ready',
+  'degraded',
+  'disconnected',
+])
+export type MailSyncAccountStatus = typeof MailSyncAccountStatus.Type
+export const MailSyncRunTrigger = Schema.Literals([
+  'initial',
+  'manual',
+  'incremental',
+  'recovery',
+])
+export type MailSyncRunTrigger = typeof MailSyncRunTrigger.Type
+export const MailSyncRunStatus = Schema.Literals([
+  'queued',
+  'enumerating',
+  'importing',
+  'completed',
+  'failed',
+  'cancelled',
+])
+export type MailSyncRunStatus = typeof MailSyncRunStatus.Type
+export const MailSyncItemStatus = Schema.Literals([
+  'pending',
+  'processing',
+  'imported',
+  'duplicate',
+  'failed',
+])
+export type MailSyncItemStatus = typeof MailSyncItemStatus.Type
 export const MailAddressKind = Schema.Literals([
   'primary',
   'alias',

@@ -13,6 +13,7 @@ import { MailRepository } from './repository/contracts.ts'
 import { createDraft, saveDraft } from './repository/drafts.ts'
 import { transitionDraft } from './repository/transitions.ts'
 import { ingestInbound } from './repository/ingest.ts'
+import { ingestImported } from './repository/import.ts'
 import {
   completeDraftDelivery,
   failDraftDelivery,
@@ -26,6 +27,17 @@ import {
   listMailboxes,
   resolveLocalAddress,
 } from './repository/queries.ts'
+import {
+  claimPendingMailSyncBatch,
+  completeMailSyncRun,
+  failMailSyncRun,
+  finalizeMailSyncEnumeration,
+  listPersonalMailSyncStates,
+  persistMailSyncPage,
+  resolveMailSyncAccount,
+  settleMailSyncItem,
+  startMailSyncRun,
+} from './repository/sync.ts'
 
 export * from './repository/contracts.ts'
 
@@ -44,6 +56,19 @@ export const makeMailRepositoryLayer = (
       getAttachmentContentRef: (input) => getAttachmentContentRef(db, input),
       resolveLocalAddress: (input) => resolveLocalAddress(db, input),
       ingestInbound: (input) => ingestInbound(db, input),
+      ingestImported: (input) => ingestImported(db, input),
+      resolveMailSyncAccount: (input) => resolveMailSyncAccount(db, input),
+      listPersonalMailSyncStates: (input) =>
+        listPersonalMailSyncStates(db, input),
+      startMailSyncRun: (input) => startMailSyncRun(db, input),
+      persistMailSyncPage: (input) => persistMailSyncPage(db, input),
+      finalizeMailSyncEnumeration: (input) =>
+        finalizeMailSyncEnumeration(db, input),
+      claimPendingMailSyncBatch: (input) =>
+        claimPendingMailSyncBatch(db, input),
+      settleMailSyncItem: (input) => settleMailSyncItem(db, input),
+      completeMailSyncRun: (input) => completeMailSyncRun(db, input),
+      failMailSyncRun: (input) => failMailSyncRun(db, input),
       createDraft: (input) => createDraft(db, input),
       saveDraft: (input) => saveDraft(db, input),
       transitionDraft: (input) => transitionDraft(db, input),

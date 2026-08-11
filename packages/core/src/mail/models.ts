@@ -26,7 +26,15 @@ import {
   MailboxAccessLevel,
   MailboxId,
   MailboxKind,
+  MailboxOrigin,
   MailboxStatus,
+  MailSyncAccountId,
+  MailSyncAccountStatus,
+  MailSyncItemStatus,
+  MailSyncProvider,
+  MailSyncRunId,
+  MailSyncRunStatus,
+  MailSyncRunTrigger,
   MemberId,
   MessageId,
   MessageSource,
@@ -42,6 +50,7 @@ import {
   StorageKey,
   ThreadKey,
   UtcTimestamp,
+  UserId,
   WorkspaceId,
 } from './values.js'
 
@@ -88,11 +97,71 @@ export const Mailbox = Schema.Struct({
   workspaceId: WorkspaceId,
   name: NonEmptyString,
   kind: MailboxKind,
+  origin: MailboxOrigin,
   status: MailboxStatus,
   createdAt: UtcTimestamp,
   updatedAt: UtcTimestamp,
 })
 export interface Mailbox extends Schema.Schema.Type<typeof Mailbox> {}
+
+/** A provider connection owns one external, read-only mailbox projection. */
+export const MailSyncAccount = Schema.Struct({
+  id: MailSyncAccountId,
+  workspaceId: WorkspaceId,
+  mailboxId: MailboxId,
+  userId: UserId,
+  provider: MailSyncProvider,
+  providerEmail: EmailAddress,
+  executorIntegration: NonEmptyString,
+  executorConnectionName: NonEmptyString,
+  status: MailSyncAccountStatus,
+  historyId: Schema.NullOr(ProviderObjectId),
+  watchExpiration: Schema.NullOr(UtcTimestamp),
+  lastSyncedAt: Schema.NullOr(UtcTimestamp),
+  lastError: Schema.NullOr(Schema.String),
+  createdAt: UtcTimestamp,
+  updatedAt: UtcTimestamp,
+})
+export interface MailSyncAccount extends Schema.Schema.Type<
+  typeof MailSyncAccount
+> {}
+
+/** Durable progress snapshot shared by API polling and Workflow execution. */
+export const MailSyncRun = Schema.Struct({
+  id: MailSyncRunId,
+  workspaceId: WorkspaceId,
+  syncAccountId: MailSyncAccountId,
+  workflowInstanceId: NonEmptyString,
+  trigger: MailSyncRunTrigger,
+  status: MailSyncRunStatus,
+  totalMessages: Schema.NullOr(NonNegativeInt),
+  processedMessages: NonNegativeInt,
+  importedMessages: NonNegativeInt,
+  duplicateMessages: NonNegativeInt,
+  failedMessages: NonNegativeInt,
+  error: Schema.NullOr(Schema.String),
+  startedAt: Schema.NullOr(UtcTimestamp),
+  completedAt: Schema.NullOr(UtcTimestamp),
+  createdAt: UtcTimestamp,
+  updatedAt: UtcTimestamp,
+})
+export interface MailSyncRun extends Schema.Schema.Type<typeof MailSyncRun> {}
+
+/** One enumerated provider object; run + provider id is its durable identity. */
+export const MailSyncItem = Schema.Struct({
+  workspaceId: WorkspaceId,
+  runId: MailSyncRunId,
+  providerMessageId: ProviderObjectId,
+  providerThreadId: ProviderObjectId,
+  ordinal: NonNegativeInt,
+  status: MailSyncItemStatus,
+  claimKey: Schema.NullOr(NonEmptyString),
+  messageId: Schema.NullOr(MessageId),
+  error: Schema.NullOr(Schema.String),
+  createdAt: UtcTimestamp,
+  updatedAt: UtcTimestamp,
+})
+export interface MailSyncItem extends Schema.Schema.Type<typeof MailSyncItem> {}
 
 export const MailAddress = Schema.Struct({
   id: MailAddressId,

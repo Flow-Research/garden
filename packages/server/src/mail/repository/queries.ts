@@ -16,6 +16,7 @@ import {
   mailMessageAttachment,
   mailMessageReplyTo,
   mailRecipient,
+  mailSyncAccount,
 } from '@garden/db/schema'
 import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { Effect } from 'effect'
@@ -72,6 +73,7 @@ export const listMailboxes = Effect.fn('MailRepository.listMailboxes')(
         .select({
           mailbox: mailMailbox,
           accessLevel: mailMailboxAccess.accessLevel,
+          externalAddress: mailSyncAccount.providerEmail,
           localPart: mailAddress.localPart,
           domainName: mailDomain.name,
         })
@@ -92,6 +94,10 @@ export const listMailboxes = Effect.fn('MailRepository.listMailboxes')(
           ),
         )
         .leftJoin(mailDomain, eq(mailDomain.id, mailAddress.domainId))
+        .leftJoin(
+          mailSyncAccount,
+          eq(mailSyncAccount.mailboxId, mailMailbox.id),
+        )
         .where(
           and(
             eq(mailMailboxAccess.workspaceId, input.workspaceId),
@@ -111,10 +117,18 @@ export const listMailboxes = Effect.fn('MailRepository.listMailboxes')(
           name: row.mailbox.name,
           kind: row.mailbox.kind,
           accessLevel: row.accessLevel,
+          origin: row.mailbox.origin,
           primaryAddress:
             row.localPart === null || row.domainName === null
               ? null
               : `${row.localPart}@${row.domainName}`,
+          externalAddress: row.externalAddress,
+          sendCapability:
+            row.mailbox.origin === 'garden_hosted' &&
+            row.localPart !== null &&
+            row.domainName !== null
+              ? 'garden_transport'
+              : 'read_only',
         },
         'listMailboxes.decode',
       ),
@@ -261,7 +275,7 @@ export const listConversations = Effect.fn('MailRepository.listConversations')(
             row.state?.lastReadMessageId !== row.latestMessageId,
           hasDraft: (row.activeDraftCount ?? 0) > 0,
           needsReply:
-            row.latestMessageSource === 'inbound' &&
+            row.latestAuthorType === 'external' &&
             (row.latestDraftUpdatedAt === null ||
               row.latestDraftUpdatedAt === undefined ||
               (row.latestAuthoredAt !== null &&
@@ -669,7 +683,7 @@ export const getConversation = Effect.fn('MailRepository.getConversation')(
           ),
         ),
         needsReply:
-          messageRows.at(-1)?.message.source === 'inbound' &&
+          messageRows.at(-1)?.message.authorType === 'external' &&
           !draftRows.some(
             (draft) =>
               activeDraftStatuses.includes(

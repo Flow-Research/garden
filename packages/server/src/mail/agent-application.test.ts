@@ -90,7 +90,10 @@ const mailbox = (accessLevel: AccessibleMailbox['accessLevel']) =>
     name: NonEmptyString.make('Investor Relations'),
     kind: 'shared',
     accessLevel,
+    origin: 'garden_hosted',
     primaryAddress: EmailAddress.make('investors@garden.test'),
+    externalAddress: null,
+    sendCapability: 'garden_transport',
   }) satisfies AccessibleMailbox
 
 /** Runs one application program against only the repository calls under test. */

@@ -13,12 +13,22 @@ import {
   issue,
   issueAttachment,
   issueComment,
+  mailSyncAccount,
+  mailSyncItem,
+  mailSyncRun,
   member,
   organization,
   skill,
   skillFile,
   user,
 } from '../schema/index.js'
+import {
+  mailSyncAccountStatusValues,
+  mailSyncItemStatusValues,
+  mailSyncProviderValues,
+  mailSyncRunStatusValues,
+  mailSyncRunTriggerValues,
+} from '../schema/mail.js'
 import {
   issueCommentAuthorTypeValues,
   issueDbAssigneeTypeValues,
@@ -35,6 +45,37 @@ export {
 
 export const uuidSchema = z.string().uuid()
 export const jsonObjectSchema = z.record(z.string(), z.unknown())
+
+export const mailSyncProviderSchema = z.enum(mailSyncProviderValues)
+export const mailSyncAccountStatusSchema = z.enum(mailSyncAccountStatusValues)
+export const mailSyncRunTriggerSchema = z.enum(mailSyncRunTriggerValues)
+export const mailSyncRunStatusSchema = z.enum(mailSyncRunStatusValues)
+export const mailSyncItemStatusSchema = z.enum(mailSyncItemStatusValues)
+
+export const mailSyncAccountSelectSchema = createSelectSchema(mailSyncAccount, {
+  id: () => uuidSchema,
+  workspaceId: () => uuidSchema,
+  mailboxId: () => uuidSchema,
+  userId: () => uuidSchema,
+  provider: () => mailSyncProviderSchema,
+  providerEmail: () => z.string().email(),
+  status: () => mailSyncAccountStatusSchema,
+})
+
+export const mailSyncRunSelectSchema = createSelectSchema(mailSyncRun, {
+  id: () => uuidSchema,
+  workspaceId: () => uuidSchema,
+  syncAccountId: () => uuidSchema,
+  trigger: () => mailSyncRunTriggerSchema,
+  status: () => mailSyncRunStatusSchema,
+})
+
+export const mailSyncItemSelectSchema = createSelectSchema(mailSyncItem, {
+  workspaceId: () => uuidSchema,
+  runId: () => uuidSchema,
+  status: () => mailSyncItemStatusSchema,
+  messageId: () => uuidSchema.nullable(),
+})
 
 export const memberRoleValues = ['owner', 'admin', 'member'] as const
 export const memberRoleSchema = z.enum(memberRoleValues)

@@ -12,6 +12,7 @@ import {
   EnvelopeReplyTo,
   EmailAddress,
   InboundMailEnvelope,
+  ImportedMailEnvelope,
   IngestedMail,
   MailActionActor,
   MailActor,
@@ -21,6 +22,21 @@ import {
   MailboxAccessLevel,
   MailboxId,
   MailboxKind,
+  MailboxOrigin,
+  MailboxSendCapability,
+  MailSyncAccount,
+  MailSyncItem,
+  MailSyncRun,
+  ResolveMailSyncAccountInput,
+  ListPersonalMailSyncStatesInput,
+  PersonalMailSyncState,
+  StartMailSyncRunInput,
+  PersistMailSyncPageInput,
+  FinalizeMailSyncEnumerationInput,
+  ClaimPendingMailSyncBatchInput,
+  SettleMailSyncItemInput,
+  CompleteMailSyncRunInput,
+  FailMailSyncRunInput,
   MessageAuthor,
   MessageId,
   MessageSource,
@@ -111,7 +127,10 @@ export const AccessibleMailbox = Schema.Struct({
   name: NonEmptyString,
   kind: MailboxKind,
   accessLevel: MailboxAccessLevel,
+  origin: MailboxOrigin,
   primaryAddress: Schema.NullOr(EmailAddress),
+  externalAddress: Schema.NullOr(EmailAddress),
+  sendCapability: MailboxSendCapability,
 })
 export interface AccessibleMailbox extends Schema.Schema.Type<
   typeof AccessibleMailbox
@@ -454,6 +473,36 @@ export interface MailRepositoryService {
   readonly ingestInbound: (
     input: InboundMailEnvelope,
   ) => Effect.Effect<IngestedMail, MailRepositoryError>
+  readonly ingestImported: (
+    input: ImportedMailEnvelope,
+  ) => Effect.Effect<IngestedMail, MailRepositoryError>
+  readonly resolveMailSyncAccount: (
+    input: ResolveMailSyncAccountInput,
+  ) => Effect.Effect<MailSyncAccount, MailRepositoryError>
+  readonly listPersonalMailSyncStates: (
+    input: ListPersonalMailSyncStatesInput,
+  ) => Effect.Effect<ReadonlyArray<PersonalMailSyncState>, MailRepositoryError>
+  readonly startMailSyncRun: (
+    input: StartMailSyncRunInput,
+  ) => Effect.Effect<MailSyncRun, MailRepositoryError>
+  readonly persistMailSyncPage: (
+    input: PersistMailSyncPageInput,
+  ) => Effect.Effect<number, MailRepositoryError>
+  readonly finalizeMailSyncEnumeration: (
+    input: FinalizeMailSyncEnumerationInput,
+  ) => Effect.Effect<MailSyncRun, MailRepositoryError>
+  readonly claimPendingMailSyncBatch: (
+    input: ClaimPendingMailSyncBatchInput,
+  ) => Effect.Effect<ReadonlyArray<MailSyncItem>, MailRepositoryError>
+  readonly settleMailSyncItem: (
+    input: SettleMailSyncItemInput,
+  ) => Effect.Effect<MailSyncRun, MailRepositoryError>
+  readonly completeMailSyncRun: (
+    input: CompleteMailSyncRunInput,
+  ) => Effect.Effect<MailSyncRun, MailRepositoryError>
+  readonly failMailSyncRun: (
+    input: FailMailSyncRunInput,
+  ) => Effect.Effect<MailSyncRun, MailRepositoryError>
   readonly createDraft: (
     input: CreateDraftInput,
   ) => Effect.Effect<DraftSnapshot, MailRepositoryError>
