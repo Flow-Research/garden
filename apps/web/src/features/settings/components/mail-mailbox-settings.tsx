@@ -291,7 +291,7 @@ function CreateAddressDialog({
   open,
   onOpenChange,
 }: {
-  mailbox: MailboxSettingsView
+  mailbox: MailboxSettingsView & { domainId: string }
   controller: ActiveMailSettingsController
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -635,7 +635,7 @@ function MailboxAddresses({
 }: {
   mailbox: MailboxSettingsView
   controller: ActiveMailSettingsController
-  onAdd: () => void
+  onAdd?: () => void
 }) {
   return (
     <div className="border-t px-5 py-4">
@@ -643,7 +643,7 @@ function MailboxAddresses({
         <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           Addresses
         </h4>
-        {controller.canManage ? (
+        {controller.canManage && onAdd ? (
           <Button type="button" variant="ghost" size="xs" onClick={onAdd}>
             <Plus />
             Add address
@@ -680,6 +680,10 @@ function MailboxRow({
   view: MailMailboxSettingsView
 }) {
   const [addressOpen, setAddressOpen] = useState(false)
+  const hostedMailbox =
+    mailbox.domainId === null
+      ? null
+      : { ...mailbox, domainId: mailbox.domainId }
 
   return (
     <li className="[content-visibility:auto] [contain-intrinsic-size:0_180px]">
@@ -689,14 +693,16 @@ function MailboxRow({
           <MailboxAddresses
             mailbox={mailbox}
             controller={controller}
-            onAdd={() => setAddressOpen(true)}
+            {...(hostedMailbox ? { onAdd: () => setAddressOpen(true) } : {})}
           />
-          <CreateAddressDialog
-            mailbox={mailbox}
-            controller={controller}
-            open={addressOpen}
-            onOpenChange={setAddressOpen}
-          />
+          {hostedMailbox ? (
+            <CreateAddressDialog
+              mailbox={hostedMailbox}
+              controller={controller}
+              open={addressOpen}
+              onOpenChange={setAddressOpen}
+            />
+          ) : null}
         </>
       ) : null}
       {view === 'access' ? (

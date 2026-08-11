@@ -31,9 +31,10 @@ export type MailboxAccessSettingsView = {
 
 export type MailboxSettingsView = {
   id: string
-  domainId: string
+  domainId: string | null
   name: string
   kind: 'personal' | 'shared' | 'agent'
+  origin: 'garden_hosted' | 'external_import'
   status: 'active' | 'disabled'
   primaryAddress: string
   addresses: MailAddressSettingsView[]

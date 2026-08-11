@@ -237,6 +237,7 @@ describe('MailTab', () => {
           domainId: 'domain-1',
           name: 'Investor Relations',
           kind: 'shared',
+          origin: 'garden_hosted',
           status: 'active',
           primaryAddress: 'investors@example.com',
           addresses: [

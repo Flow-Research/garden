@@ -13,14 +13,15 @@ import type { ActiveMailSettingsController } from './mail-settings-controller'
 export type MailSettingsView = 'setup' | 'admin'
 
 /**
- * Selects the ready mail-settings surface from canonical domain state. Before
- * this gate, consumers could independently infer setup state and drift; now a
- * ready controller with no domain always enters setup and any domain enters
- * administration. Source: OpenShip's pure mail view gate, adapted to Garden's
- * domain-backed controller.
+ * Selects the ready mail-settings surface from canonical transport state.
+ * Imported provider mailboxes are valid without a Garden-owned domain, so an
+ * existing mailbox enters administration while a completely empty workspace
+ * keeps OpenShip's setup flow.
  */
 export function resolveMailSettingsView(
-  controller: Pick<ActiveMailSettingsController, 'domains'>,
+  controller: Pick<ActiveMailSettingsController, 'domains' | 'mailboxes'>,
 ): MailSettingsView {
-  return controller.domains.length === 0 ? 'setup' : 'admin'
+  return controller.domains.length === 0 && controller.mailboxes.length === 0
+    ? 'setup'
+    : 'admin'
 }

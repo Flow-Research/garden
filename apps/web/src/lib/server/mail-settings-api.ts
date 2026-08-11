@@ -47,6 +47,7 @@ const MailDomainStatus = Schema.Literals([
   'failed',
 ])
 const MailboxKind = Schema.Literals(['personal', 'shared', 'agent'])
+const MailboxOrigin = Schema.Literals(['garden_hosted', 'external_import'])
 const MailboxStatus = Schema.Literals(['active', 'disabled'])
 const MailAddressKind = Schema.Literals(['primary', 'alias', 'catch_all'])
 const MailAddressStatus = Schema.Literals(['active', 'disabled'])
@@ -220,6 +221,12 @@ const loadSnapshot = Effect.fn('GardenMailSettings.loadSnapshot')(function* (
           .where(eq(schema.mailMailboxAccess.workspaceId, workspaceId))
           .orderBy(asc(schema.mailMailboxAccess.createdAt)),
       ),
+      syncAccounts: databaseQuery('sync_accounts.list', async () =>
+        db
+          .select()
+          .from(schema.mailSyncAccount)
+          .where(eq(schema.mailSyncAccount.workspaceId, workspaceId)),
+      ),
       members: databaseQuery('members.list', async () =>
         db
           .select({
@@ -249,7 +256,7 @@ const loadSnapshot = Effect.fn('GardenMailSettings.loadSnapshot')(function* (
           .orderBy(asc(schema.agent.name)),
       ),
     },
-    { concurrency: 6 },
+    { concurrency: 7 },
   )
 
   const actors: MailSettingsActorView[] = [
@@ -283,6 +290,9 @@ const loadSnapshot = Effect.fn('GardenMailSettings.loadSnapshot')(function* (
   const mailboxes = yield* Effect.forEach(rows.mailboxes, (mailbox) =>
     Effect.gen(function* () {
       const kind = yield* Schema.decodeUnknownEffect(MailboxKind)(mailbox.kind)
+      const origin = yield* Schema.decodeUnknownEffect(MailboxOrigin)(
+        mailbox.origin,
+      )
       const status = yield* Schema.decodeUnknownEffect(MailboxStatus)(
         mailbox.status,
       )
@@ -292,6 +302,39 @@ const loadSnapshot = Effect.fn('GardenMailSettings.loadSnapshot')(function* (
       const primary = mailboxAddresses.find(
         (address) => address.kind === 'primary',
       )
+      if (origin === 'external_import') {
+        const syncAccount = rows.syncAccounts.find(
+          (account) => account.mailboxId === mailbox.id,
+        )
+        if (!syncAccount) {
+          return yield* new MailSettingsProjectionError({
+            resourceType: 'mailbox',
+            resourceId: mailbox.id,
+            message: 'External mailbox has no connected provider account.',
+          })
+        }
+        return {
+          id: mailbox.id,
+          domainId: null,
+          name: mailbox.name,
+          kind,
+          origin,
+          status,
+          primaryAddress: syncAccount.providerEmail,
+          addresses: [
+            {
+              id: `sync:${syncAccount.id}`,
+              address: syncAccount.providerEmail,
+              kind: 'primary',
+              status:
+                syncAccount.status === 'disconnected' ? 'disabled' : 'active',
+            },
+          ],
+          access: accessViews.filter(
+            (access) => accessMailboxIds.get(access.id) === mailbox.id,
+          ),
+        } satisfies MailboxSettingsView
+      }
       if (!primary) {
         return yield* new MailSettingsProjectionError({
           resourceType: 'mailbox',
@@ -336,6 +379,7 @@ const loadSnapshot = Effect.fn('GardenMailSettings.loadSnapshot')(function* (
         domainId: primary.domainId,
         name: mailbox.name,
         kind,
+        origin,
         status,
         primaryAddress: `${primary.localPart}@${domainName}`,
         addresses,
