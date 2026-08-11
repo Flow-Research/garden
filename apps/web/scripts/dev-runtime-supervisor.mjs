@@ -3,7 +3,6 @@
  * exits. Cloudflare's local Hyperdrive bridge can terminate its Vite host when
  * an origin socket times out; durable local state remains on disk, so a bounded
  * relaunch restores the request surface without hiding a persistent failure.
- * Pattern ported from VCOS `apps/web/scripts/dev.mjs`.
  */
 export function superviseDevRuntime({
   launch,

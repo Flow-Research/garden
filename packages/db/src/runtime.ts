@@ -26,9 +26,8 @@ export class DatabaseConnectionError extends Schema.TaggedErrorClass<DatabaseCon
 
 /**
  * A failed connection has not run application SQL, so acquisition can safely
- * retry. This matches VCOS's proven Hyperdrive boundary: two jittered retries
- * keep transient DNS/tunnel loss recoverable while the driver's measured
- * five-second connection timeout keeps failure bounded.
+ * retry. Two jittered retries keep transient DNS/tunnel loss recoverable while
+ * the driver's measured five-second connection timeout keeps failure bounded.
  */
 export const runtimeDbConnectRetrySchedule = Schedule.exponential(
   '100 millis',
@@ -36,11 +35,10 @@ export const runtimeDbConnectRetrySchedule = Schedule.exponential(
 
 /**
  * Creates the only pool shape allowed for Promise-only callers that cannot own
- * an Effect Scope. The 250 ms idle window is copied from VCOS's local
- * Hyperdrive adapter: it lets a small query burst reuse one socket, then closes
- * it instead of leaking pools across Worker requests. An idle error listener is
- * mandatory because node-postgres otherwise promotes a transient tunnel error
- * to an uncaught process exception.
+ * an Effect Scope. The 250 ms idle window lets a small query burst reuse one
+ * socket, then closes it instead of leaking pools across Worker requests. An
+ * idle error listener is mandatory because node-postgres otherwise promotes a
+ * transient tunnel error to an uncaught process exception.
  */
 function createShortLivedPool(connectionString: string) {
   const pool = new Pool({
