@@ -64,6 +64,11 @@ import {
   type MailInboxController,
   useMailInboxController,
 } from '../mail-inbox-controller'
+import {
+  type GmailImportController,
+  unavailableGmailImportController,
+} from '../gmail-import-controller'
+import { GmailImportControl } from './gmail-import-control'
 
 // ---------------------------------------------------------------------------
 // Unified list pane header — Zero/Cloudflare composition
@@ -81,6 +86,7 @@ function InboxListHeader({
   onUnreadsOnlyChange,
   onScopeChange,
   onSearchExpandedChange,
+  gmailImportController,
   onCompose,
   onMarkAllRead,
   onArchiveAll,
@@ -97,6 +103,7 @@ function InboxListHeader({
   onUnreadsOnlyChange: (value: boolean) => void
   onScopeChange: (scope: MailScope) => void
   onSearchExpandedChange: (expanded: boolean) => void
+  gmailImportController: GmailImportController
   onCompose?: () => void
   onMarkAllRead: () => void
   onArchiveAll: () => void
@@ -115,6 +122,7 @@ function InboxListHeader({
           )}
         </div>
         <div className="flex items-center gap-1.5">
+          <GmailImportControl controller={gmailImportController} />
           {onCompose ? (
             <Button size="sm" onClick={onCompose}>
               <SquarePen />
@@ -439,8 +447,10 @@ function MailDetailSurface({
  */
 export function InboxPage({
   mailController: suppliedMailController,
+  gmailImportController = unavailableGmailImportController,
 }: {
   mailController?: MailInboxController
+  gmailImportController?: GmailImportController
 } = {}) {
   const { searchParams, replace } = useNavigation()
   const dock = useWorkspaceDock()
@@ -665,6 +675,7 @@ export function InboxPage({
       onUnreadsOnlyChange={setUnreadsOnly}
       onScopeChange={handleScopeChange}
       onSearchExpandedChange={setSearchExpanded}
+      gmailImportController={gmailImportController}
       onCompose={
         mailController.status === 'active'
           ? mailController.actions.openComposer

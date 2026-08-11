@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import type { InboxItem } from '@garden/core/types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ActiveMailInboxController } from '../mail-inbox-controller'
+import type { GmailImportController } from '../gmail-import-controller'
 import { InboxPage } from './inbox-page'
 import type { MailConversationSummaryView } from './mail'
 
@@ -115,6 +116,28 @@ function activeMailController(): ActiveMailInboxController {
   }
 }
 
+function connectedGmailController(): GmailImportController {
+  return {
+    state: { status: 'connected' },
+    accounts: [
+      {
+        connectionAddress: 'u:user-1/google_gmail/personalGmail',
+        identityLabel: 'kixeyems0@gmail.com',
+        iconUrl: null,
+        importMode: 'read_only',
+      },
+    ],
+    selectedConnectionAddress: 'u:user-1/google_gmail/personalGmail',
+    gmailIconUrl: null,
+    actions: {
+      connect: vi.fn(),
+      selectAccount: vi.fn(),
+      startImport: vi.fn(),
+      retryImport: vi.fn(),
+    },
+  }
+}
+
 describe('InboxPage mail composition', () => {
   beforeEach(() => {
     replace.mockReset()
@@ -135,10 +158,18 @@ describe('InboxPage mail composition', () => {
   })
 
   it('interleaves controller mail and delegates selection and compose', () => {
-    render(<InboxPage mailController={activeMailController()} />)
+    render(
+      <InboxPage
+        mailController={activeMailController()}
+        gmailImportController={connectedGmailController()}
+      />,
+    )
 
     expect(screen.getByText('Term sheet follow-up')).toBeInTheDocument()
     expect(screen.getByText('Research finished')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Import emails' }),
+    ).toBeInTheDocument()
 
     fireEvent.click(
       screen.getByRole('button', {
