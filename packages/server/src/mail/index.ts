@@ -11,8 +11,10 @@ export {
   MailAttachment,
   MailSendReceipt,
   MailTransportAddress,
+  MailTransportRoute,
   NormalizedInboundMail,
   OutboundMail,
+  RoutedOutboundMail,
 } from './model.ts'
 export {
   MailInboundReadError,
@@ -101,6 +103,7 @@ export {
 } from './repository.ts'
 export type {
   AccessibleMailbox,
+  AssignmentSnapshot,
   AttachmentContentRef,
   ConversationActorState,
   ConversationDetail,
@@ -154,10 +157,21 @@ export {
   GmailMessageReference,
   GmailProfile,
   GmailRawMessage,
+  GmailSendMessageInput,
+  GmailSendMessageResponse,
   makeGmailClient,
   makeGmailClientLayer,
 } from './gmail-client.ts'
 export type { GmailClientService } from './gmail-client.ts'
+export {
+  GmailOutboundAccount,
+  GmailOutboundGateway,
+  GmailOutboundGatewayError,
+  gmailRawBase64Url,
+  gmailRawMessage,
+  makeRoutedMailTransportLayer,
+} from './gmail-transport.ts'
+export type { GmailOutboundGatewayService } from './gmail-transport.ts'
 export {
   GmailImport,
   GmailImportContentError,
