@@ -81,6 +81,7 @@ export type MailInboxActions = {
 
 export type ActiveMailInboxController = {
   status: 'active'
+  canCompose: boolean
   list: MailListResult
   detail: MailDetailResult
   composer: MailComposerController | null
@@ -263,6 +264,8 @@ function detailView(
   )
   return {
     ...summary,
+    mailboxId: detail.conversation.mailboxId,
+    canSend: mailbox !== undefined && mailbox.sendCapability !== 'read_only',
     messages: [
       ...detail.messages.map((message) =>
         messageView(workspaceId, detail.conversation.id, message),
@@ -481,6 +484,9 @@ export function useMailInboxController(input: {
   })
 
   const mailboxes = inboxQuery.data?.mailboxes ?? []
+  const sendableMailboxes = mailboxes.filter(
+    (mailbox) => mailbox.sendCapability !== 'read_only',
+  )
   const summaries = inboxQuery.data?.conversations ?? []
   const summaryById = useMemo(
     () =>
@@ -498,10 +504,11 @@ export function useMailInboxController(input: {
     const summary =
       conversationId === null ? null : summaryById.get(conversationId)
     const mailbox =
-      mailboxes.find((candidate) => candidate.id === summary?.mailboxId) ??
-      mailboxes[0]
+      sendableMailboxes.find(
+        (candidate) => candidate.id === summary?.mailboxId,
+      ) ?? sendableMailboxes[0]
     if (!mailbox) {
-      toast.error('Create a mailbox in Settings before composing mail.')
+      toast.error('This mailbox is connected for reading only.')
       return
     }
     const source =
@@ -639,6 +646,7 @@ export function useMailInboxController(input: {
 
   return {
     status: 'active',
+    canCompose: sendableMailboxes.length > 0,
     list,
     detail,
     folders: [],
@@ -649,7 +657,7 @@ export function useMailInboxController(input: {
             : {}),
           props: {
             values: composer.values,
-            fromOptions: mailboxes.map((mailbox) => ({
+            fromOptions: sendableMailboxes.map((mailbox) => ({
               value: mailbox.id,
               label: mailbox.primaryAddress ?? mailbox.name,
             })),
@@ -803,13 +811,20 @@ export function useMailInboxController(input: {
                   }
                 : {}),
             }
-          : {
-              onReply: () => beginCompose(conversationId, message.id, 'reply'),
-              onReplyAll: () =>
-                beginCompose(conversationId, message.id, 'reply-all'),
-              onForward: () =>
-                beginCompose(conversationId, message.id, 'forward'),
-            },
+          : summaryById.get(conversationId) &&
+              sendableMailboxes.some(
+                (mailbox) =>
+                  mailbox.id === summaryById.get(conversationId)?.mailboxId,
+              )
+            ? {
+                onReply: () =>
+                  beginCompose(conversationId, message.id, 'reply'),
+                onReplyAll: () =>
+                  beginCompose(conversationId, message.id, 'reply-all'),
+                onForward: () =>
+                  beginCompose(conversationId, message.id, 'forward'),
+              }
+            : {},
     },
   }
 }

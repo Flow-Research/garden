@@ -89,6 +89,7 @@ vi.mock('@/components/shell/workspace-dock', () => ({
 function activeMailController(): ActiveMailInboxController {
   return {
     status: 'active',
+    canCompose: true,
     list: {
       status: 'ready',
       entries: [

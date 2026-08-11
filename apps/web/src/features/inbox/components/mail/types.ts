@@ -66,6 +66,8 @@ export type MailConversationSummaryView = {
 }
 
 export type MailConversationView = MailConversationSummaryView & {
+  mailboxId: string
+  canSend: boolean
   messages: MailMessageView[]
 }
 

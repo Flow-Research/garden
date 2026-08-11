@@ -412,9 +412,21 @@ function MailDetailSurface({
       folders={controller.folders}
       onBack={onClose}
       onClose={onClose}
-      onReply={() => controller.actions.reply(conversation.id)}
-      onReplyAll={() => controller.actions.replyAll(conversation.id)}
-      onForward={() => controller.actions.forward(conversation.id)}
+      onReply={
+        conversation.canSend
+          ? () => controller.actions.reply(conversation.id)
+          : undefined
+      }
+      onReplyAll={
+        conversation.canSend
+          ? () => controller.actions.replyAll(conversation.id)
+          : undefined
+      }
+      onForward={
+        conversation.canSend
+          ? () => controller.actions.forward(conversation.id)
+          : undefined
+      }
       onToggleStar={() => controller.actions.toggleStar(conversation.id)}
       onToggleRead={() => controller.actions.toggleRead(conversation.id)}
       onArchive={() => controller.actions.archive(conversation.id)}
@@ -677,7 +689,7 @@ export function InboxPage({
       onSearchExpandedChange={setSearchExpanded}
       gmailImportController={gmailImportController}
       onCompose={
-        mailController.status === 'active'
+        mailController.status === 'active' && mailController.canCompose
           ? mailController.actions.openComposer
           : undefined
       }
