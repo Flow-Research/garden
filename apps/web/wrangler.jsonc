@@ -96,6 +96,11 @@
       "binding": "MAIL_DELIVERY_WORKFLOW",
       "class_name": "MailDeliveryWorkflow",
     },
+    {
+      "name": "garden-gmail-import-local",
+      "binding": "GMAIL_IMPORT_WORKFLOW",
+      "class_name": "GmailImportWorkflow",
+    },
   ],
   "r2_buckets": [
     {

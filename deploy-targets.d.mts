@@ -21,6 +21,8 @@ export interface DeploymentTarget {
   readonly workflowName: string
   readonly mailWorkflowId: string
   readonly mailWorkflowName: string
+  readonly gmailImportWorkflowId: string
+  readonly gmailImportWorkflowName: string
   readonly sandboxId: string
   readonly sandboxName: string
   readonly aiGatewayId: string

@@ -33,6 +33,7 @@ import {
 } from '@/lib/server/context'
 import { processCloudflareInboundMail } from '@/lib/server/mail-inbound'
 import { MailDeliveryWorkflow } from '@/lib/server/mail-delivery-workflow'
+import { GmailImportWorkflow } from '@/lib/server/mail-import-workflow'
 import { Effect } from 'effect'
 import { capturePostHogException } from '@/lib/posthog-server'
 import {
@@ -51,6 +52,7 @@ export { ChatSubAgent }
 export { IssueRunSubAgent }
 export { RunWorkflow }
 export { MailDeliveryWorkflow }
+export { GmailImportWorkflow }
 export { Sandbox }
 export { ExecutorMcpExecutionOwnerDirectory, ExecutorMcpSession }
 

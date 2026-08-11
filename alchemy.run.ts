@@ -199,6 +199,10 @@ export const web = await TanStackStart(deployTarget.workerId, {
       workflowName: deployTarget.mailWorkflowName,
       className: 'MailDeliveryWorkflow',
     }),
+    GMAIL_IMPORT_WORKFLOW: Workflow(deployTarget.gmailImportWorkflowId, {
+      workflowName: deployTarget.gmailImportWorkflowName,
+      className: 'GmailImportWorkflow',
+    }),
     FILES: files,
     HYPERDRIVE: database,
     DATABASE_URL: alchemy.secret.env.DATABASE_URL,
