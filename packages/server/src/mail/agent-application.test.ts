@@ -48,7 +48,10 @@ const actor = { _tag: 'Agent', agentId } as const
 const draft: DraftSnapshot = {
   id: draftId,
   mailboxId,
-  fromAddressId: MailAddressId.make(ids.address),
+  sender: {
+    _tag: 'GardenAddress',
+    addressId: MailAddressId.make(ids.address),
+  },
   conversationId,
   author: actor,
   replyToMessageId: null,
@@ -150,7 +153,7 @@ describe('MailAgentApplication', () => {
             const application = yield* MailAgentApplication
             yield* application.createDraft({
               mailboxId,
-              fromAddressId: draft.fromAddressId,
+              sender: draft.sender,
               conversationId,
               replyToMessageId: null,
               subject: draft.subject,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@effect/vitest'
 import { Effect, Layer, Redacted } from 'effect'
 import * as HttpClient from 'effect/unstable/http/HttpClient'
-import type * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
+import * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
 import * as HttpClientResponse from 'effect/unstable/http/HttpClientResponse'
 import * as UrlParams from 'effect/unstable/http/UrlParams'
 import { GmailApiError, makeGmailClient } from './gmail-client.ts'
@@ -83,6 +83,13 @@ describe('GmailClient', () => {
             historyId: '103',
           },
         },
+        {
+          body: {
+            id: 'sent-message-1',
+            threadId: 'thread-1',
+            labelIds: ['SENT'],
+          },
+        },
       ])
 
       return Effect.gen(function* () {
@@ -114,6 +121,12 @@ describe('GmailClient', () => {
             historyTypes: ['messageAdded', 'labelAdded'],
           }),
         ).toMatchObject({ historyId: '103' })
+        expect(
+          yield* client.sendMessage({
+            raw: 'RnJvbTogcGVyc29uQGV4YW1wbGUuY29t',
+            threadId: 'thread-1',
+          }),
+        ).toMatchObject({ id: 'sent-message-1', threadId: 'thread-1' })
 
         expect(
           fixture.requests.map((request) => [
@@ -134,7 +147,20 @@ describe('GmailClient', () => {
             'GET',
             'https://gmail.googleapis.com/gmail/v1/users/me/history?startHistoryId=101&maxResults=500&pageToken=history-page&labelId=INBOX&historyTypes=messageAdded&historyTypes=labelAdded',
           ],
+          [
+            'POST',
+            'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+          ],
         ])
+        const recordedSendRequest = fixture.requests[4]
+        if (recordedSendRequest === undefined) {
+          return yield* Effect.die('Expected Gmail send request.')
+        }
+        const sendRequest = yield* HttpClientRequest.toWeb(recordedSendRequest)
+        expect(yield* Effect.promise(() => sendRequest.json())).toEqual({
+          raw: 'RnJvbTogcGVyc29uQGV4YW1wbGUuY29t',
+          threadId: 'thread-1',
+        })
         expect(
           fixture.requests.every((request) =>
             request.headers.authorization?.startsWith('Bearer '),

@@ -1,0 +1,10 @@
+ALTER TABLE "mail_message" DROP CONSTRAINT "mail_message_outbound_sender_check";--> statement-breakpoint
+ALTER TABLE "mail_draft" ALTER COLUMN "from_address_id" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "mail_draft" ADD COLUMN "from_sync_account_id" uuid;--> statement-breakpoint
+ALTER TABLE "mail_message" ADD COLUMN "sender_sync_account_id" uuid;--> statement-breakpoint
+ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_from_sync_account_id_mail_sync_account_id_fk" FOREIGN KEY ("from_sync_account_id") REFERENCES "public"."mail_sync_account"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_workspace_from_sync_account_fk" FOREIGN KEY ("workspace_id","from_sync_account_id") REFERENCES "public"."mail_sync_account"("workspace_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mail_message" ADD CONSTRAINT "mail_message_sender_sync_account_id_mail_sync_account_id_fk" FOREIGN KEY ("sender_sync_account_id") REFERENCES "public"."mail_sync_account"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mail_message" ADD CONSTRAINT "mail_message_workspace_sender_sync_account_fk" FOREIGN KEY ("workspace_id","sender_sync_account_id") REFERENCES "public"."mail_sync_account"("workspace_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mail_draft" ADD CONSTRAINT "mail_draft_sender_check" CHECK (("mail_draft"."from_address_id" is not null)::int + ("mail_draft"."from_sync_account_id" is not null)::int = 1);--> statement-breakpoint
+ALTER TABLE "mail_message" ADD CONSTRAINT "mail_message_outbound_sender_check" CHECK ("mail_message"."source" <> 'outbound' or (("mail_message"."sender_address_id" is not null)::int + ("mail_message"."sender_sync_account_id" is not null)::int = 1));

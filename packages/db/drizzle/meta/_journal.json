@@ -330,6 +330,13 @@
       "when": 1786432757160,
       "tag": "0046_cultured_gravity",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1786441555447,
+      "tag": "0047_steep_the_spike",
+      "breakpoints": true
     }
   ]
 }

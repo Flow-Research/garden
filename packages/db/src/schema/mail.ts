@@ -612,6 +612,9 @@ export const mailMessage = pgTable(
     authorAgentId: uuid('author_agent_id').references(() => agent.id),
     senderName: text('sender_name'),
     senderAddressId: uuid('sender_address_id').references(() => mailAddress.id),
+    senderSyncAccountId: uuid('sender_sync_account_id').references(
+      () => mailSyncAccount.id,
+    ),
     senderAddress: text('sender_address').notNull(),
     subject: text('subject').notNull().default(''),
     textBody: text('text_body'),
@@ -665,6 +668,11 @@ export const mailMessage = pgTable(
       columns: [table.workspaceId, table.senderAddressId],
       foreignColumns: [mailAddress.workspaceId, mailAddress.id],
     }),
+    foreignKey({
+      name: 'mail_message_workspace_sender_sync_account_fk',
+      columns: [table.workspaceId, table.senderSyncAccountId],
+      foreignColumns: [mailSyncAccount.workspaceId, mailSyncAccount.id],
+    }),
     check(
       'mail_message_source_check',
       sql`${table.source} in (${sqlValueList(mailMessageSourceValues)})`,
@@ -691,7 +699,7 @@ export const mailMessage = pgTable(
     ),
     check(
       'mail_message_outbound_sender_check',
-      sql`${table.source} <> 'outbound' or ${table.senderAddressId} is not null`,
+      sql`${table.source} <> 'outbound' or ((${table.senderAddressId} is not null)::int + (${table.senderSyncAccountId} is not null)::int = 1)`,
     ),
   ],
 )
@@ -964,9 +972,10 @@ export const mailDraft = pgTable(
     mailboxId: uuid('mailbox_id')
       .notNull()
       .references(() => mailMailbox.id),
-    fromAddressId: uuid('from_address_id')
-      .notNull()
-      .references(() => mailAddress.id),
+    fromAddressId: uuid('from_address_id').references(() => mailAddress.id),
+    fromSyncAccountId: uuid('from_sync_account_id').references(
+      () => mailSyncAccount.id,
+    ),
     conversationId: uuid('conversation_id').references(
       () => mailConversation.id,
     ),
@@ -1024,6 +1033,11 @@ export const mailDraft = pgTable(
       foreignColumns: [mailAddress.mailboxId, mailAddress.id],
     }),
     foreignKey({
+      name: 'mail_draft_workspace_from_sync_account_fk',
+      columns: [table.workspaceId, table.fromSyncAccountId],
+      foreignColumns: [mailSyncAccount.workspaceId, mailSyncAccount.id],
+    }),
+    foreignKey({
       name: 'mail_draft_workspace_conversation_fk',
       columns: [table.workspaceId, table.conversationId],
       foreignColumns: [mailConversation.workspaceId, mailConversation.id],
@@ -1062,6 +1076,10 @@ export const mailDraft = pgTable(
     check(
       'mail_draft_author_type_check',
       sql`${table.authorType} in (${sqlValueList(mailAccessActorTypeValues)})`,
+    ),
+    check(
+      'mail_draft_sender_check',
+      sql`(${table.fromAddressId} is not null)::int + (${table.fromSyncAccountId} is not null)::int = 1`,
     ),
     check(
       'mail_draft_author_check',

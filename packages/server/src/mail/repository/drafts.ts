@@ -6,6 +6,8 @@ import {
   mailDraftActivity,
   mailDraftAttachment,
   mailDraftRecipient,
+  mailMailbox,
+  mailSyncAccount,
 } from '@garden/db/schema'
 import {
   DraftId,
@@ -192,25 +194,72 @@ export const createDraft = Effect.fn('MailRepository.createDraft')(function* (
         write: true,
         operation: 'createDraft.authorize',
       })
-      const fromRows = yield* databaseEffect('createDraft.validateFrom', () =>
-        tx
-          .select({ id: mailAddress.id, kind: mailAddress.kind })
-          .from(mailAddress)
-          .where(
-            and(
-              eq(mailAddress.workspaceId, input.workspaceId),
-              eq(mailAddress.mailboxId, input.mailboxId),
-              eq(mailAddress.id, input.fromAddressId),
-              eq(mailAddress.status, 'active'),
-            ),
-          )
-          .limit(1),
-      )
-      if (fromRows[0] === undefined || fromRows[0].kind === 'catch_all') {
-        return yield* new MailRepositoryInvariantError({
-          operation: 'createDraft.validateFrom',
-          message: 'Draft From address is not an active mailbox sender.',
-        })
+      if (input.sender._tag === 'GardenAddress') {
+        const addressId = input.sender.addressId
+        const fromRows = yield* databaseEffect(
+          'createDraft.validateGardenSender',
+          () =>
+            tx
+              .select({ id: mailAddress.id, kind: mailAddress.kind })
+              .from(mailAddress)
+              .innerJoin(
+                mailMailbox,
+                eq(mailMailbox.id, mailAddress.mailboxId),
+              )
+              .where(
+                and(
+                  eq(mailAddress.workspaceId, input.workspaceId),
+                  eq(mailAddress.mailboxId, input.mailboxId),
+                  eq(mailAddress.id, addressId),
+                  eq(mailAddress.status, 'active'),
+                  eq(mailMailbox.origin, 'garden_hosted'),
+                  eq(mailMailbox.status, 'active'),
+                ),
+              )
+              .limit(1),
+        )
+        if (fromRows[0] === undefined || fromRows[0].kind === 'catch_all') {
+          return yield* new MailRepositoryInvariantError({
+            operation: 'createDraft.validateGardenSender',
+            message: 'Draft From address is not an active Garden sender.',
+          })
+        }
+      } else {
+        const syncAccountId = input.sender.syncAccountId
+        const accountRows = yield* databaseEffect(
+          'createDraft.validateExternalSender',
+          () =>
+            tx
+              .select({ id: mailSyncAccount.id })
+              .from(mailSyncAccount)
+              .innerJoin(
+                mailMailbox,
+                eq(mailMailbox.id, mailSyncAccount.mailboxId),
+              )
+              .where(
+                and(
+                  eq(mailSyncAccount.workspaceId, input.workspaceId),
+                  eq(mailSyncAccount.mailboxId, input.mailboxId),
+                  eq(mailSyncAccount.id, syncAccountId),
+                  eq(mailSyncAccount.provider, 'gmail'),
+                  inArray(mailSyncAccount.status, [
+                    'connected',
+                    'syncing',
+                    'ready',
+                    'degraded',
+                  ]),
+                  eq(mailMailbox.origin, 'external_import'),
+                  eq(mailMailbox.status, 'active'),
+                ),
+              )
+              .limit(1),
+        )
+        if (accountRows[0] === undefined) {
+          return yield* new MailRepositoryInvariantError({
+            operation: 'createDraft.validateExternalSender',
+            message: 'Draft sender is not an active Gmail account.',
+          })
+        }
       }
       if (input.conversationId !== null) {
         const conversation = yield* requireConversationAccess(tx, {
@@ -240,7 +289,14 @@ export const createDraft = Effect.fn('MailRepository.createDraft')(function* (
           .values({
             workspaceId: input.workspaceId,
             mailboxId: input.mailboxId,
-            fromAddressId: input.fromAddressId,
+            fromAddressId:
+              input.sender._tag === 'GardenAddress'
+                ? input.sender.addressId
+                : null,
+            fromSyncAccountId:
+              input.sender._tag === 'ExternalAccount'
+                ? input.sender.syncAccountId
+                : null,
             conversationId: input.conversationId,
             authorType: author.actorType,
             authorMemberId: author.memberId,

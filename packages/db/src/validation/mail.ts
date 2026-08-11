@@ -209,6 +209,7 @@ const mailMessageFields = {
   authorMemberId: () => uuidSchema.nullable(),
   authorAgentId: () => uuidSchema.nullable(),
   senderAddressId: () => uuidSchema.nullable(),
+  senderSyncAccountId: () => uuidSchema.nullable(),
   senderAddress: () => emailAddressSchema,
   referenceMessageIds: () => z.array(nonEmptyStringSchema),
   replyToMessageId: () => uuidSchema.nullable(),
@@ -227,6 +228,7 @@ function hasValidMessageIdentity(value: {
   ingressProvider?: string | null
   ingressProviderMessageId?: string | null
   senderAddressId?: string | null
+  senderSyncAccountId?: string | null
 }) {
   const authorValid =
     value.authorType === 'member'
@@ -239,7 +241,10 @@ function hasValidMessageIdentity(value: {
   const ingressValid =
     value.source === 'outbound' || value.ingressProvider != null
   const outboundSenderValid =
-    value.source !== 'outbound' || value.senderAddressId != null
+    value.source !== 'outbound' ||
+    Number(value.senderAddressId != null) +
+      Number(value.senderSyncAccountId != null) ===
+      1
   return authorValid && providerPairValid && ingressValid && outboundSenderValid
 }
 
@@ -325,7 +330,8 @@ const mailDraftFields = {
   id: () => uuidSchema,
   workspaceId: () => uuidSchema,
   mailboxId: () => uuidSchema,
-  fromAddressId: () => uuidSchema,
+  fromAddressId: () => uuidSchema.nullable(),
+  fromSyncAccountId: () => uuidSchema.nullable(),
   conversationId: () => uuidSchema.nullable(),
   authorType: () => mailAccessActorTypeSchema,
   authorMemberId: () => uuidSchema.nullable(),
@@ -343,6 +349,8 @@ function hasValidDraftIdentity(value: {
   authorAgentId?: string | null
   status?: (typeof mailDraftStatusValues)[number]
   sentMessageId?: string | null
+  fromAddressId?: string | null
+  fromSyncAccountId?: string | null
 }) {
   const actorValid = hasMatchingActor({
     actorType: value.authorType,
@@ -352,7 +360,11 @@ function hasValidDraftIdentity(value: {
   const sentStateValid =
     value.status === undefined ||
     (value.status === 'sent') === (value.sentMessageId != null)
-  return actorValid && sentStateValid
+  const senderValid =
+    Number(value.fromAddressId != null) +
+      Number(value.fromSyncAccountId != null) ===
+    1
+  return actorValid && sentStateValid && senderValid
 }
 
 export const mailDraftSelectSchema = createSelectSchema(

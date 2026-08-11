@@ -128,6 +128,9 @@ export const listMailboxes = Effect.fn('MailRepository.listMailboxes')(
             row.localPart !== null &&
             row.domainName !== null
               ? 'garden_transport'
+              : row.mailbox.origin === 'external_import' &&
+                  row.externalAddress !== null
+                ? 'gmail_transport'
               : 'read_only',
         },
         'listMailboxes.decode',
@@ -381,7 +384,13 @@ export const loadDraftSnapshot = Effect.fn('MailRepository.loadDraftSnapshot')(
       {
         id: draft.id,
         mailboxId: draft.mailboxId,
-        fromAddressId: draft.fromAddressId,
+        sender:
+          draft.fromAddressId === null
+            ? {
+                _tag: 'ExternalAccount',
+                syncAccountId: draft.fromSyncAccountId,
+              }
+            : { _tag: 'GardenAddress', addressId: draft.fromAddressId },
         conversationId: draft.conversationId,
         author: mailActorValue({
           actorType: draft.authorType,

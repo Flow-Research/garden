@@ -14,6 +14,7 @@ import {
   mailMessage,
   mailMessageAttachment,
   mailRecipient,
+  mailSyncAccount,
 } from '@garden/db/schema'
 import {
   ConversationId,
@@ -42,6 +43,17 @@ import {
   storedActor,
   type MailTransaction,
 } from './shared.ts'
+
+/** Recovers Gmail's opaque thread id only from the account-namespaced key we own. */
+const gmailThreadId = (
+  threadKey: string,
+  syncAccountId: string,
+): string | null => {
+  const prefix = `gmail:${syncAccountId}:`
+  return threadKey.startsWith(prefix) && threadKey.length > prefix.length
+    ? threadKey.slice(prefix.length)
+    : null
+}
 
 /** Appends a delivery lifecycle event inside the same transaction as its state. */
 export const appendDeliveryActivity = Effect.fn(
@@ -122,14 +134,27 @@ const loadPreparedDelivery = Effect.fn('MailRepository.loadPreparedDelivery')(
             localPart: mailAddress.localPart,
             domainName: mailDomain.name,
             mailboxName: mailMailbox.name,
+            account: mailSyncAccount,
+            threadKey: mailConversation.threadKey,
           })
           .from(mailMessage)
-          .innerJoin(
+          .leftJoin(
             mailAddress,
             eq(mailAddress.id, mailMessage.senderAddressId),
           )
-          .innerJoin(mailDomain, eq(mailDomain.id, mailAddress.domainId))
-          .innerJoin(mailMailbox, eq(mailMailbox.id, mailAddress.mailboxId))
+          .leftJoin(mailDomain, eq(mailDomain.id, mailAddress.domainId))
+          .leftJoin(
+            mailSyncAccount,
+            eq(mailSyncAccount.id, mailMessage.senderSyncAccountId),
+          )
+          .innerJoin(
+            mailConversation,
+            eq(mailConversation.id, input.conversationId),
+          )
+          .innerJoin(
+            mailMailbox,
+            eq(mailMailbox.id, mailConversation.mailboxId),
+          )
           .where(
             and(
               eq(mailMessage.workspaceId, input.workspaceId),
@@ -145,6 +170,36 @@ const loadPreparedDelivery = Effect.fn('MailRepository.loadPreparedDelivery')(
         message: 'Materialized outbound message is incomplete.',
       })
     }
+    const hasGardenSender =
+      row.message.senderAddressId !== null &&
+      row.localPart !== null &&
+      row.domainName !== null
+    const hasGmailSender =
+      row.message.senderSyncAccountId !== null && row.account !== null
+    if (hasGardenSender === hasGmailSender) {
+      return yield* new MailRepositoryInvariantError({
+        operation: 'prepareDelivery.loadSender',
+        message: 'Materialized outbound sender identity is invalid.',
+      })
+    }
+    const route =
+      row.account !== null && row.message.senderSyncAccountId !== null
+        ? {
+            _tag: 'Gmail' as const,
+            provider: 'gmail' as const,
+            syncAccountId: row.account.id,
+            userId: row.account.userId,
+            executorIntegration: row.account.executorIntegration,
+            executorConnectionName: row.account.executorConnectionName,
+            threadId: (() => {
+              const value = gmailThreadId(row.threadKey, row.account.id)
+              return value === null ? null : ProviderObjectId.make(value)
+            })(),
+          }
+        : {
+            _tag: 'GardenHosted' as const,
+            provider: input.attempt.provider,
+          }
     const [recipients, attachments] = yield* Effect.all([
       databaseEffect('prepareDelivery.loadRecipients', () =>
         tx
@@ -203,9 +258,10 @@ const loadPreparedDelivery = Effect.fn('MailRepository.loadPreparedDelivery')(
         attemptId: input.attempt.id,
         attemptNumber: input.attempt.attemptNumber,
         provider: input.attempt.provider,
+        route,
         from: {
           displayName: row.mailboxName,
-          address: `${row.localPart}@${row.domainName}`,
+          address: row.message.senderAddress,
         },
         to,
         cc: addresses('cc'),
@@ -240,35 +296,106 @@ const materializeFirstDelivery = Effect.fn(
   draft: typeof mailDraft.$inferSelect,
   input: PrepareDraftDeliveryInput,
 ) {
-  const sourceRows = yield* databaseEffect('prepareDelivery.loadSource', () =>
-    tx
-      .select({
-        address: mailAddress,
-        domain: mailDomain,
-        mailbox: mailMailbox,
-      })
-      .from(mailAddress)
-      .innerJoin(mailDomain, eq(mailDomain.id, mailAddress.domainId))
-      .innerJoin(mailMailbox, eq(mailMailbox.id, mailAddress.mailboxId))
-      .where(
-        and(
-          eq(mailAddress.workspaceId, input.workspaceId),
-          eq(mailAddress.id, draft.fromAddressId),
-          eq(mailAddress.mailboxId, draft.mailboxId),
-          eq(mailAddress.status, 'active'),
-          eq(mailDomain.status, 'active'),
-          eq(mailMailbox.status, 'active'),
-        ),
-      )
-      .limit(1),
-  )
-  const source = sourceRows[0]
-  if (source === undefined || source.address.kind === 'catch_all') {
+  const fromAddressId = draft.fromAddressId
+  const fromSyncAccountId = draft.fromSyncAccountId
+  const gardenSourceRows =
+    fromAddressId === null
+      ? []
+      : yield* databaseEffect('prepareDelivery.loadGardenSource', () =>
+          tx
+            .select({
+              localPart: mailAddress.localPart,
+              domainName: mailDomain.name,
+              provider: mailDomain.transportProvider,
+              mailboxName: mailMailbox.name,
+              addressKind: mailAddress.kind,
+            })
+            .from(mailAddress)
+            .innerJoin(mailDomain, eq(mailDomain.id, mailAddress.domainId))
+            .innerJoin(mailMailbox, eq(mailMailbox.id, mailAddress.mailboxId))
+            .where(
+              and(
+                eq(mailAddress.workspaceId, input.workspaceId),
+                eq(mailAddress.id, fromAddressId),
+                eq(mailAddress.mailboxId, draft.mailboxId),
+                eq(mailAddress.status, 'active'),
+                eq(mailDomain.status, 'active'),
+                eq(mailMailbox.origin, 'garden_hosted'),
+                eq(mailMailbox.status, 'active'),
+              ),
+            )
+            .limit(1),
+        )
+  const externalSourceRows =
+    fromSyncAccountId === null
+      ? []
+      : yield* databaseEffect('prepareDelivery.loadExternalSource', () =>
+          tx
+            .select({
+              account: mailSyncAccount,
+              mailboxName: mailMailbox.name,
+            })
+            .from(mailSyncAccount)
+            .innerJoin(
+              mailMailbox,
+              eq(mailMailbox.id, mailSyncAccount.mailboxId),
+            )
+            .where(
+              and(
+                eq(mailSyncAccount.workspaceId, input.workspaceId),
+                eq(mailSyncAccount.id, fromSyncAccountId),
+                eq(mailSyncAccount.mailboxId, draft.mailboxId),
+                eq(mailSyncAccount.provider, 'gmail'),
+                eq(mailMailbox.origin, 'external_import'),
+                eq(mailMailbox.status, 'active'),
+              ),
+            )
+            .limit(1),
+        )
+  const gardenSource = gardenSourceRows[0]
+  const externalSource = externalSourceRows[0]
+  if (
+    (gardenSource === undefined) === (externalSource === undefined) ||
+    gardenSource?.addressKind === 'catch_all'
+  ) {
     return yield* new MailRepositoryInvariantError({
       operation: 'prepareDelivery.loadSource',
-      message: 'Draft sender is not an active outbound address.',
+      message: 'Draft sender is not one active outbound identity.',
     })
   }
+  const source =
+    gardenSource === undefined
+      ? {
+          provider: externalSource?.account.provider,
+          senderName: externalSource?.mailboxName,
+          senderAddress: externalSource?.account.providerEmail,
+          internetMessageDomain:
+            externalSource?.account.providerEmail.split('@')[1],
+        }
+      : {
+          provider: gardenSource.provider,
+          senderName: gardenSource.mailboxName,
+          senderAddress: `${gardenSource.localPart}@${gardenSource.domainName}`,
+          internetMessageDomain: gardenSource.domainName,
+        }
+  if (
+    source.provider === undefined ||
+    source.senderName === undefined ||
+    source.senderAddress === undefined ||
+    source.internetMessageDomain === undefined ||
+    source.internetMessageDomain.length === 0
+  ) {
+    return yield* new MailRepositoryInvariantError({
+      operation: 'prepareDelivery.resolveSource',
+      message: 'Draft sender metadata is incomplete.',
+    })
+  }
+  const {
+    provider,
+    senderName,
+    senderAddress,
+    internetMessageDomain,
+  } = source
   const recipients = yield* databaseEffect(
     'prepareDelivery.loadDraftRecipients',
     () =>
@@ -297,7 +424,7 @@ const materializeFirstDelivery = Effect.fn(
         .orderBy(asc(mailDraftAttachment.position)),
   )
   const messageId = MessageId.make(draft.id)
-  const internetMessageId = `${draft.id}@${source.domain.name}`
+  const internetMessageId = `${draft.id}@${internetMessageDomain}`
   const replyToMessageId = draft.replyToMessageId
   const replyRows =
     replyToMessageId === null
@@ -338,8 +465,9 @@ const materializeFirstDelivery = Effect.fn(
       authorMemberId: draft.authorMemberId,
       authorAgentId: draft.authorAgentId,
       senderAddressId: draft.fromAddressId,
-      senderName: source.mailbox.name,
-      senderAddress: `${source.address.localPart}@${source.domain.name}`,
+      senderSyncAccountId: draft.fromSyncAccountId,
+      senderName,
+      senderAddress,
       subject: draft.subject,
       textBody: draft.textBody,
       htmlBody: draft.htmlBody,
@@ -413,7 +541,7 @@ const materializeFirstDelivery = Effect.fn(
       .set({ lastMessageAt: now, updatedAt: now })
       .where(eq(mailConversation.id, conversationId)),
   )
-  return { messageId, conversationId }
+  return { messageId, conversationId, provider }
 })
 
 /** Reserves one durable queued attempt and moves the draft into sending. */
@@ -423,6 +551,7 @@ const reserveAttempt = Effect.fn('MailRepository.reserveAttempt')(function* (
   draft: typeof mailDraft.$inferSelect,
   messageId: MessageId,
   conversationId: ConversationId,
+  provider: string,
 ) {
   const attempts = yield* databaseEffect('prepareDelivery.nextAttempt', () =>
     tx
@@ -446,7 +575,7 @@ const reserveAttempt = Effect.fn('MailRepository.reserveAttempt')(function* (
         workspaceId: input.workspaceId,
         messageId,
         attemptNumber,
-        provider: input.provider,
+        provider,
         status: 'queued',
       })
       .returning(),
@@ -625,19 +754,40 @@ export const prepareDraftDelivery = Effect.fn(
       const materialized =
         draft.status === 'approved'
           ? yield* materializeFirstDelivery(tx, draft, input)
-          : {
-              messageId,
-              conversationId:
-                draft.conversationId === null
-                  ? ConversationId.make(draft.id)
-                  : ConversationId.make(draft.conversationId),
-            }
+          : yield* databaseEffect('prepareDelivery.loadRetryProvider', () =>
+              tx
+                .select({ provider: mailDeliveryAttempt.provider })
+                .from(mailDeliveryAttempt)
+                .where(eq(mailDeliveryAttempt.messageId, messageId))
+                .orderBy(desc(mailDeliveryAttempt.attemptNumber))
+                .limit(1),
+            ).pipe(
+              Effect.flatMap((attempts) => {
+                const previous = attempts[0]
+                return previous === undefined || draft.conversationId === null
+                  ? Effect.fail(
+                      new MailRepositoryInvariantError({
+                        operation: 'prepareDelivery.loadRetryProvider',
+                        message:
+                          'Failed draft is missing its prior provider route.',
+                      }),
+                    )
+                  : Effect.succeed({
+                      messageId,
+                      conversationId: ConversationId.make(
+                        draft.conversationId,
+                      ),
+                      provider: previous.provider,
+                    })
+              }),
+            )
       const delivery = yield* reserveAttempt(
         tx,
         input,
         draft,
         materialized.messageId,
         materialized.conversationId,
+        materialized.provider,
       )
       return DeliveryPreparation.cases.Ready.make({ delivery })
     }),

@@ -1,15 +1,20 @@
 import {
   ClaimPendingMailSyncBatchInput,
   CompleteMailSyncRunInput,
+  CreateDraftInput,
+  DraftId,
   EmailAddress,
   FinalizeMailSyncEnumerationInput,
   ImportedMailEnvelope,
+  InternetMessageId,
   ListPersonalMailSyncStatesInput,
   MemberId,
+  MessageId,
   PersistMailSyncPageInput,
   ProviderKey,
   ProviderObjectId,
   ResolveMailSyncAccountInput,
+  RequestDraftDeliveryInput,
   SettleMailSyncItemInput,
   StartMailSyncRunInput,
   UserId,
@@ -62,6 +67,7 @@ const importedEnvelope = (
   >[0]['syncAccountId'],
   providerMessageId: string,
   providerThreadId = 'gmail-thread-1',
+  internetMessageId: string | null = null,
 ) =>
   ImportedMailEnvelope.make({
     workspaceId,
@@ -71,7 +77,10 @@ const importedEnvelope = (
     providerThreadId: ProviderObjectId.make(providerThreadId),
     providerEvidence: { labelIds: ['INBOX'] },
     rawStorageKey: null,
-    internetMessageId: null,
+    internetMessageId:
+      internetMessageId === null
+        ? null
+        : InternetMessageId.make(internetMessageId),
     inReplyToMessageId: null,
     referenceMessageIds: [],
     author: { _tag: 'External' },
@@ -146,7 +155,7 @@ describe('MailRepository Gmail sync ledger (integration)', () => {
             origin: 'external_import',
             primaryAddress: null,
             externalAddress: 'kixeyems0@gmail.com',
-            sendCapability: 'read_only',
+            sendCapability: 'gmail_transport',
           }),
         ])
 
@@ -314,6 +323,104 @@ describe('MailRepository Gmail sync ledger (integration)', () => {
         expect(
           importedMessages.every((message) => message.rawStorageKey === null),
         ).toBe(true)
+      }).pipe(Effect.provide(makeMailRepositoryLayer(testDb.db))),
+  )
+
+  it.effect(
+    'reserves a Gmail reply with the real account and provider thread route',
+    () =>
+      Effect.gen(function* () {
+        const repository = yield* MailRepository
+        const account = yield* repository.resolveMailSyncAccount(
+          ResolveMailSyncAccountInput.make({
+            workspaceId,
+            userId,
+            memberId,
+            provider: 'gmail',
+            providerEmail: EmailAddress.make('kixeyems0@gmail.com'),
+            mailboxName: 'Personal Gmail',
+            executorIntegration: 'google_gmail',
+            executorConnectionName: 'kixeyems0@gmail.com',
+          }),
+        )
+        const ingested = yield* repository.ingestImported(
+          importedEnvelope(
+            account.id,
+            'gmail-outbound-source',
+            'gmail-outbound-thread',
+            'original@example.com',
+          ),
+        )
+        const conversationId = ingested.conversationIds[0]
+        if (conversationId === undefined) {
+          return yield* Effect.die('Expected imported Gmail conversation.')
+        }
+        const draft = yield* repository.createDraft(
+          CreateDraftInput.make({
+            workspaceId,
+            mailboxId: account.mailboxId,
+            sender: {
+              _tag: 'ExternalAccount',
+              syncAccountId: account.id,
+            },
+            conversationId,
+            author: actor,
+            replyToMessageId: MessageId.make(ingested.messageId),
+            subject: 'Re: Imported investor note',
+            textBody: 'Thanks for the update.',
+            htmlBody: null,
+            recipients: [
+              {
+                kind: 'to',
+                position: 0,
+                displayName: 'Investor',
+                address: EmailAddress.make('investor@example.com'),
+              },
+            ],
+            attachments: [],
+          }),
+        )
+        yield* Effect.tryPromise(() =>
+          testDb.db
+            .update(tables.mailDraft)
+            .set({ status: 'approved' })
+            .where(eq(tables.mailDraft.id, draft.id)),
+        )
+        const preparation = yield* repository.prepareDraftDelivery(
+          RequestDraftDeliveryInput.make({
+            workspaceId,
+            draftId: DraftId.make(draft.id),
+            actor,
+            expectedRevision: 0,
+          }),
+        )
+        expect(preparation._tag).toBe('Ready')
+        if (preparation._tag !== 'Ready') return
+        expect(preparation.delivery).toMatchObject({
+          provider: 'gmail',
+          from: { address: 'kixeyems0@gmail.com' },
+          route: {
+            _tag: 'Gmail',
+            syncAccountId: account.id,
+            userId,
+            executorIntegration: 'google_gmail',
+            executorConnectionName: 'kixeyems0@gmail.com',
+            threadId: 'gmail-outbound-thread',
+          },
+          inReplyToMessageId: 'original@example.com',
+          referenceMessageIds: ['original@example.com'],
+        })
+        const storedMessage = yield* Effect.tryPromise(() =>
+          testDb.db
+            .select()
+            .from(tables.mailMessage)
+            .where(eq(tables.mailMessage.id, draft.id)),
+        )
+        expect(storedMessage[0]).toMatchObject({
+          senderAddressId: null,
+          senderSyncAccountId: account.id,
+          senderAddress: 'kixeyems0@gmail.com',
+        })
       }).pipe(Effect.provide(makeMailRepositoryLayer(testDb.db))),
   )
 })

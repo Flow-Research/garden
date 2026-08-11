@@ -127,7 +127,10 @@ const createApprovedDraft = Effect.fn('DeliveryTest.createApprovedDraft')(
       CreateDraftInput.make({
         workspaceId,
         mailboxId: MailboxId.make(ids.mailbox),
-        fromAddressId: MailAddressId.make(ids.address),
+        sender: {
+          _tag: 'GardenAddress',
+          addressId: MailAddressId.make(ids.address),
+        },
         conversationId,
         author: actor,
         replyToMessageId,
@@ -452,10 +455,7 @@ describe('MailDelivery (Postgres integration)', () => {
           actor,
           expectedRevision: 0,
         })
-        const prepared = yield* repository.prepareDraftDelivery({
-          ...command,
-          provider: ProviderKey.make('test'),
-        })
+        const prepared = yield* repository.prepareDraftDelivery(command)
         if (prepared._tag !== 'Ready') {
           return yield* Effect.die(
             'Expected the first reservation to be ready.',

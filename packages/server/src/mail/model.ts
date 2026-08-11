@@ -1,4 +1,25 @@
 import { Schema } from 'effect'
+import {
+  MailSyncAccountId,
+  NonEmptyString,
+  ProviderKey,
+  ProviderObjectId,
+  UserId,
+} from '@garden/core/mail'
+
+/** Serializable routing authority contains stable identities, never credentials. */
+export const MailTransportRoute = Schema.TaggedUnion({
+  GardenHosted: { provider: ProviderKey },
+  Gmail: {
+    provider: Schema.Literal('gmail'),
+    syncAccountId: MailSyncAccountId,
+    userId: UserId,
+    executorIntegration: NonEmptyString,
+    executorConnectionName: NonEmptyString,
+    threadId: Schema.NullOr(ProviderObjectId),
+  },
+})
+export type MailTransportRoute = typeof MailTransportRoute.Type
 
 /** Provider-neutral wire participant retained by Garden rather than a transport SDK. */
 export const MailTransportAddress = Schema.Struct({
@@ -39,6 +60,15 @@ export const OutboundMail = Schema.Struct({
   attachments: Schema.Array(MailAttachment),
 })
 export interface OutboundMail extends Schema.Schema.Type<typeof OutboundMail> {}
+
+/** Routed transport request selected from the immutable draft sender. */
+export const RoutedOutboundMail = Schema.Struct({
+  route: MailTransportRoute,
+  mail: OutboundMail,
+})
+export interface RoutedOutboundMail extends Schema.Schema.Type<
+  typeof RoutedOutboundMail
+> {}
 
 /** Provider acknowledgement; delivery and bounce state remain later events. */
 export const MailSendReceipt = Schema.Struct({

@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from '@effect/vitest'
 import { Effect } from 'effect'
+import { ProviderKey } from '@garden/core/mail'
 import {
   makeCloudflareMailTransportLayer,
   normalizeCloudflareInbound,
@@ -34,6 +35,14 @@ const outboundMail = (): OutboundMail => ({
       contentId: 'chart',
     },
   ],
+})
+
+const routedMail = (mail: OutboundMail, provider: string) => ({
+  route: {
+    _tag: 'GardenHosted' as const,
+    provider: ProviderKey.make(provider),
+  },
+  mail,
 })
 
 class TestCloudflareError extends Error {
@@ -88,7 +97,7 @@ describe('MailTransport', () => {
       const testTransport = yield* TestMailTransport
       const mail = outboundMail()
 
-      const receipt = yield* transport.send(mail)
+      const receipt = yield* transport.send(routedMail(mail, 'test'))
       const sent = yield* testTransport.sentMessages()
 
       expect(receipt).toEqual({
@@ -111,10 +120,12 @@ describe('MailTransport', () => {
       })
 
       yield* testTransport.failNextSend(expected)
-      const error = yield* transport.send(outboundMail()).pipe(Effect.flip)
+      const error = yield* transport
+        .send(routedMail(outboundMail(), 'test'))
+        .pipe(Effect.flip)
       expect(error).toBe(expected)
 
-      const receipt = yield* transport.send(outboundMail())
+      const receipt = yield* transport.send(routedMail(outboundMail(), 'test'))
       expect(receipt.providerMessageId).toBe('test-1')
     }).pipe(Effect.provide(testMailTransportLayer)),
   )
@@ -126,7 +137,9 @@ describe('CloudflareMailTransport', () => {
 
     return Effect.gen(function* () {
       const transport = yield* MailTransport
-      const receipt = yield* transport.send(outboundMail())
+      const receipt = yield* transport.send(
+        routedMail(outboundMail(), 'cloudflare-email-service'),
+      )
 
       expect(receipt).toEqual({
         provider: 'cloudflare-email-service',
@@ -166,7 +179,9 @@ describe('CloudflareMailTransport', () => {
 
     return Effect.gen(function* () {
       const transport = yield* MailTransport
-      const error = yield* transport.send(outboundMail()).pipe(Effect.flip)
+      const error = yield* transport
+        .send(routedMail(outboundMail(), 'cloudflare-email-service'))
+        .pipe(Effect.flip)
 
       expect(error).toBeInstanceOf(MailTransportSendError)
       expect(error).toMatchObject({

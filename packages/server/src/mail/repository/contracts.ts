@@ -5,6 +5,7 @@ import {
   ConversationId,
   CreateDraftInput,
   DraftId,
+  DraftSender,
   DraftStatus,
   DeliveryAttemptId,
   EditableAttachment,
@@ -57,6 +58,7 @@ import {
   WorkspaceId,
 } from '@garden/core/mail'
 import { Context, Effect, Schema } from 'effect'
+import { MailTransportRoute } from '../model.ts'
 
 export const ListMailboxesInput = Schema.Struct({
   workspaceId: WorkspaceId,
@@ -237,7 +239,7 @@ export interface RepositoryMessage extends Schema.Schema.Type<
 export const DraftSnapshot = Schema.Struct({
   id: DraftId,
   mailboxId: MailboxId,
-  fromAddressId: MailAddressId,
+  sender: DraftSender,
   conversationId: Schema.NullOr(ConversationId),
   author: MailActor,
   replyToMessageId: Schema.NullOr(MessageId),
@@ -295,7 +297,6 @@ export const PrepareDraftDeliveryInput = Schema.Struct({
   draftId: DraftId,
   actor: MailActor,
   expectedRevision: NonNegativeInt,
-  provider: ProviderKey,
 })
 export interface PrepareDraftDeliveryInput extends Schema.Schema.Type<
   typeof PrepareDraftDeliveryInput
@@ -332,6 +333,7 @@ export const PreparedDelivery = Schema.Struct({
   attemptId: DeliveryAttemptId,
   attemptNumber: PositiveInt,
   provider: ProviderKey,
+  route: MailTransportRoute,
   from: PreparedDeliveryAddress,
   to: Schema.NonEmptyArray(PreparedDeliveryAddress),
   cc: Schema.Array(PreparedDeliveryAddress),

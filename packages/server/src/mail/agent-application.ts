@@ -2,10 +2,10 @@ import {
   AgentId,
   ConversationId,
   DraftId,
+  DraftSender,
   EditableAttachment,
   EditableRecipient,
   MailActor,
-  MailAddressId,
   MailboxId,
   MessageId,
   NonNegativeInt,
@@ -52,7 +52,7 @@ export interface AgentReadConversationInput extends Schema.Schema.Type<
 
 export const AgentCreateDraftInput = Schema.Struct({
   mailboxId: MailboxId,
-  fromAddressId: MailAddressId,
+  sender: DraftSender,
   conversationId: Schema.NullOr(ConversationId),
   replyToMessageId: Schema.NullOr(MessageId),
   subject: Schema.String,

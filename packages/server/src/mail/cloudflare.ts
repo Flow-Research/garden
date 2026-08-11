@@ -69,6 +69,20 @@ const toCloudflareMessage = (mail: OutboundMail): EmailMessageBuilder => ({
   attachments: mail.attachments.map(toCloudflareAttachment),
 })
 
+/** Sends one canonical request through the native binding without owning routing. */
+export const sendCloudflareMail = Effect.fn('CloudflareMailTransport.sendMail')(
+  (binding: SendEmail, mail: OutboundMail) =>
+    Effect.tryPromise({
+      try: () => binding.send(toCloudflareMessage(mail)),
+      catch: toCloudflareSendError,
+    }).pipe(
+      Effect.map((result) => ({
+        provider: CLOUDFLARE_MAIL_PROVIDER,
+        providerMessageId: result.messageId,
+      })),
+    ),
+)
+
 /** Safely extracts Cloudflare's documented E_* code from an unknown rejection. */
 const cloudflareErrorCode = (cause: unknown): string | undefined => {
   if (
@@ -111,17 +125,17 @@ export const cloudflareMailTransportLayer: Layer.Layer<
     const config = yield* CloudflareMailBinding
     return MailTransport.of({
       provider: CLOUDFLARE_MAIL_PROVIDER,
-      send: Effect.fn('CloudflareMailTransport.send')((mail: OutboundMail) =>
-        Effect.tryPromise({
-          try: () => config.binding.send(toCloudflareMessage(mail)),
-          catch: toCloudflareSendError,
-        }).pipe(
-          Effect.map((result) => ({
+      send: Effect.fn('CloudflareMailTransport.send')(function* (request) {
+        if (request.route.provider !== CLOUDFLARE_MAIL_PROVIDER) {
+          return yield* new MailTransportSendError({
             provider: CLOUDFLARE_MAIL_PROVIDER,
-            providerMessageId: result.messageId,
-          })),
-        ),
-      ),
+            operation: 'route',
+            code: 'PROVIDER_MISMATCH',
+            message: 'Cloudflare transport cannot send this provider route.',
+          })
+        }
+        return yield* sendCloudflareMail(config.binding, request.mail)
+      }),
     })
   }),
 )

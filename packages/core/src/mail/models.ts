@@ -267,11 +267,18 @@ export interface LocalDelivery extends Schema.Schema.Type<
   typeof LocalDelivery
 > {}
 
+/** A collaborative draft sends either from a Garden address or connected account. */
+export const DraftSender = Schema.TaggedUnion({
+  GardenAddress: { addressId: MailAddressId },
+  ExternalAccount: { syncAccountId: MailSyncAccountId },
+})
+export type DraftSender = typeof DraftSender.Type
+
 export const Draft = Schema.Struct({
   id: DraftId,
   workspaceId: WorkspaceId,
   mailboxId: MailboxId,
-  fromAddressId: MailAddressId,
+  sender: DraftSender,
   conversationId: Schema.NullOr(ConversationId),
   author: MailActor,
   replyToMessageId: Schema.NullOr(MessageId),

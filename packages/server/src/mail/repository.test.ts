@@ -355,7 +355,10 @@ describe('MailRepository (integration)', () => {
           CreateDraftInput.make({
             workspaceId,
             mailboxId: MailboxId.make(ids.mailboxA),
-            fromAddressId: MailAddressId.make(ids.addressA),
+            sender: {
+              _tag: 'GardenAddress',
+              addressId: MailAddressId.make(ids.addressA),
+            },
             conversationId: null,
             author: memberA,
             replyToMessageId: null,

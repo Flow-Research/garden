@@ -28,7 +28,10 @@ const member = {
 const pendingDraft: DraftSnapshot = {
   id: draftId,
   mailboxId: MailboxId.make('ab100000-0000-4000-8000-000000000004'),
-  fromAddressId: MailAddressId.make('ab100000-0000-4000-8000-000000000005'),
+  sender: {
+    _tag: 'GardenAddress',
+    addressId: MailAddressId.make('ab100000-0000-4000-8000-000000000005'),
+  },
   conversationId: null,
   author: member,
   replyToMessageId: null,

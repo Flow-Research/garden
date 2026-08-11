@@ -235,23 +235,18 @@ export const mailDeliveryLayer: Layer.Layer<
     const repository = yield* MailRepository
     const store = yield* MailObjectStore
     const transport = yield* MailTransport
-    const provider = ProviderKey.make(transport.provider)
-
     const prepare = Effect.fn('MailDelivery.prepare')(
       (input: RequestDraftDeliveryInput) =>
-        repository.prepareDraftDelivery({
-          ...input,
-          provider,
-        }),
+        repository.prepareDraftDelivery(input),
     )
 
     const submitPrepared = Effect.fn('MailDelivery.submitPrepared')(function* (
       delivery: PreparedDelivery,
     ) {
-      if (delivery.provider !== provider) {
+      if (delivery.provider !== delivery.route.provider) {
         return MailDeliverySubmission.cases.Failed.make({
-          provider,
-          message: 'Prepared delivery belongs to a different transport.',
+          provider: delivery.provider,
+          message: 'Prepared delivery route belongs to a different provider.',
           code: 'PROVIDER_MISMATCH',
           occurredAt: yield* nowTimestamp(),
         })
@@ -264,7 +259,7 @@ export const mailDeliveryLayer: Layer.Layer<
             Effect.map((occurredAt) => ({
               _tag: 'Failed' as const,
               submission: MailDeliverySubmission.cases.Failed.make({
-                provider,
+                provider: delivery.provider,
                 code: 'CONTENT_UNAVAILABLE',
                 message: cause.message,
                 occurredAt,
@@ -274,33 +269,35 @@ export const mailDeliveryLayer: Layer.Layer<
         ),
       )
       if (outbound._tag === 'Failed') return outbound.submission
-      const submitted = yield* transport.send(outbound.outbound).pipe(
-        Effect.map((receipt) => ({ _tag: 'Accepted' as const, receipt })),
-        Effect.catch((cause: MailTransportSendError) =>
-          nowTimestamp().pipe(
-            Effect.map((occurredAt) => ({
-              _tag: 'Failed' as const,
-              submission: MailDeliverySubmission.cases.Failed.make({
-                provider,
-                code: cause.code ?? null,
-                message: cause.message,
-                occurredAt,
-              }),
-            })),
+      const submitted = yield* transport
+        .send({ route: delivery.route, mail: outbound.outbound })
+        .pipe(
+          Effect.map((receipt) => ({ _tag: 'Accepted' as const, receipt })),
+          Effect.catch((cause: MailTransportSendError) =>
+            nowTimestamp().pipe(
+              Effect.map((occurredAt) => ({
+                _tag: 'Failed' as const,
+                submission: MailDeliverySubmission.cases.Failed.make({
+                  provider: delivery.provider,
+                  code: cause.code ?? null,
+                  message: cause.message,
+                  occurredAt,
+                }),
+              })),
+            ),
           ),
-        ),
-      )
+        )
       if (submitted._tag === 'Failed') return submitted.submission
-      if (submitted.receipt.provider !== provider) {
+      if (submitted.receipt.provider !== delivery.provider) {
         return MailDeliverySubmission.cases.Failed.make({
-          provider,
+          provider: delivery.provider,
           message: 'Transport returned a receipt for a different provider.',
           code: 'PROVIDER_MISMATCH',
           occurredAt: yield* nowTimestamp(),
         })
       }
       return MailDeliverySubmission.cases.Accepted.make({
-        provider,
+        provider: delivery.provider,
         providerMessageId: ProviderObjectId.make(
           submitted.receipt.providerMessageId,
         ),

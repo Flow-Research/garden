@@ -60,6 +60,24 @@ export interface GmailRawMessage extends Schema.Schema.Type<
   typeof GmailRawMessage
 > {}
 
+/** Gmail accepts complete RFC 5322 bytes encoded as base64url. */
+export const GmailSendMessageInput = Schema.Struct({
+  raw: NonEmptyString,
+  threadId: Schema.optionalKey(NonEmptyString),
+})
+export interface GmailSendMessageInput extends Schema.Schema.Type<
+  typeof GmailSendMessageInput
+> {}
+
+export const GmailSendMessageResponse = Schema.Struct({
+  id: NonEmptyString,
+  threadId: NonEmptyString,
+  labelIds: Schema.optionalKey(Schema.Array(NonEmptyString)),
+})
+export interface GmailSendMessageResponse extends Schema.Schema.Type<
+  typeof GmailSendMessageResponse
+> {}
+
 export const GmailHistoryType = Schema.Literals([
   'messageAdded',
   'messageDeleted',
@@ -120,6 +138,7 @@ export const GmailApiOperation = Schema.Literals([
   'getProfile',
   'getRawMessage',
   'listHistory',
+  'sendMessage',
 ])
 export type GmailApiOperation = typeof GmailApiOperation.Type
 
@@ -151,6 +170,9 @@ export interface GmailClientService {
   readonly listHistory: (
     input: GmailListHistoryInput,
   ) => Effect.Effect<GmailListHistoryResponse, GmailApiError>
+  readonly sendMessage: (
+    input: GmailSendMessageInput,
+  ) => Effect.Effect<GmailSendMessageResponse, GmailApiError>
 }
 
 export class GmailClient extends Context.Service<
@@ -302,6 +324,26 @@ export const makeGmailClient = Effect.fn('GmailClient.make')(function* (
         'listHistory',
         request,
         GmailListHistoryResponse,
+      )
+    }),
+    sendMessage: Effect.fn('GmailClient.sendMessage')(function* (input) {
+      const request = yield* HttpClientRequest.schemaBodyJson(
+        GmailSendMessageInput,
+      )(HttpClientRequest.post('/users/me/messages/send'), input).pipe(
+        Effect.mapError(
+          () =>
+            new GmailApiError({
+              operation: 'sendMessage',
+              reason: 'invalid_response',
+              message: 'Gmail send request could not be encoded.',
+            }),
+        ),
+      )
+      return yield* executeJson(
+        client,
+        'sendMessage',
+        request,
+        GmailSendMessageResponse,
       )
     }),
   })

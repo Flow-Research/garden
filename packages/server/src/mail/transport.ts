@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Option, Ref, Schema } from 'effect'
-import type { MailSendReceipt, OutboundMail } from './model.ts'
+import type { MailSendReceipt, OutboundMail, RoutedOutboundMail } from './model.ts'
 
 /** Expected provider failure, including the native code needed for policy decisions. */
 export class MailTransportSendError extends Schema.TaggedErrorClass<MailTransportSendError>()(
@@ -27,7 +27,7 @@ export class MailInboundReadError extends Schema.TaggedErrorClass<MailInboundRea
 export interface MailTransportService {
   readonly provider: string
   readonly send: (
-    mail: OutboundMail,
+    request: RoutedOutboundMail,
   ) => Effect.Effect<MailSendReceipt, MailTransportSendError>
 }
 
@@ -62,13 +62,13 @@ export const testMailTransportLayer = Layer.effectContext(
     const service = TestMailTransport.of({
       provider: 'test',
       send: Effect.fn('MailTransport.Test.send')(function* (
-        mail: OutboundMail,
+        request: RoutedOutboundMail,
       ) {
         const failure = yield* Ref.getAndSet(nextFailure, Option.none())
         if (Option.isSome(failure)) return yield* failure.value
 
-        yield* Ref.update(sent, (messages) => [...messages, mail])
-        const stableMessageId = mail.headers['Message-ID']
+        yield* Ref.update(sent, (messages) => [...messages, request.mail])
+        const stableMessageId = request.mail.headers['Message-ID']
           ?.trim()
           .replace(/^<+|>+$/g, '')
         return {

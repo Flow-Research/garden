@@ -122,6 +122,7 @@ export const MailboxOrigin = Schema.Literals([
 export type MailboxOrigin = typeof MailboxOrigin.Type
 export const MailboxSendCapability = Schema.Literals([
   'garden_transport',
+  'gmail_transport',
   'read_only',
 ])
 export type MailboxSendCapability = typeof MailboxSendCapability.Type

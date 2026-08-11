@@ -2,6 +2,7 @@ import { Schema } from 'effect'
 import {
   MailActionActor,
   MailActor,
+  DraftSender,
   MailSyncAccount,
   MailSyncItem,
   MailSyncRun,
@@ -368,7 +369,7 @@ export interface SaveDraftInput extends Schema.Schema.Type<
 export const CreateDraftInput = Schema.Struct({
   workspaceId: WorkspaceId,
   mailboxId: MailboxId,
-  fromAddressId: MailAddressId,
+  sender: DraftSender,
   conversationId: Schema.NullOr(ConversationId),
   author: MailActor,
   replyToMessageId: Schema.NullOr(MessageId),
