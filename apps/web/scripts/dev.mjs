@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { loadEnv } from 'vite'
+import { superviseDevRuntime } from './dev-runtime-supervisor.mjs'
 
 const HYPERDRIVE_BINDING = 'HYPERDRIVE'
 const LOCAL_HYPERDRIVE_ENV = `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_${HYPERDRIVE_BINDING}`
@@ -27,18 +28,21 @@ if (process.env.DATABASE_URL) {
 }
 process.env.CLOUDFLARE_INCLUDE_PROCESS_ENV ??= 'true'
 
-const child = spawn('pnpm', ['exec', 'vite', 'dev'], {
-  env: process.env,
-  shell: true,
-  stdio: 'inherit',
-})
-
-child.on('exit', (code, signal) => {
-  if (signal) {
-    process.kill(process.pid, signal)
-    return
-  }
-  process.exit(code ?? 1)
+superviseDevRuntime({
+  launch: () =>
+    spawn('pnpm', ['exec', 'vite', 'dev'], {
+      env: process.env,
+      shell: true,
+      stdio: 'inherit',
+    }),
+  schedule: setTimeout,
+  onRestart: ({ attempt, code }) => {
+    console.error(
+      `[dev] runtime exited with code ${code}; restarting durable local runtime (${attempt}/5).`,
+    )
+  },
+  onExit: (code) => process.exit(code),
+  onSignal: (signal) => process.kill(process.pid, signal),
 })
 
 /**
