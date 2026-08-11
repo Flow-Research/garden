@@ -21,6 +21,8 @@ const conversation: MailConversationView = {
   starred: false,
   draft: true,
   needsReply: true,
+  mailboxId: 'mailbox-1',
+  canSend: true,
   messages: [],
 }
 
