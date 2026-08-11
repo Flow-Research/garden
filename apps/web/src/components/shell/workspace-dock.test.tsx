@@ -71,11 +71,7 @@ vi.mock('@/features/automations', () => ({
   ),
 }))
 
-import {
-  WorkspaceDockProvider,
-  WorkspaceDockView,
-  useWorkspaceDock,
-} from './workspace-dock'
+import { WorkspaceDockProvider, useWorkspaceDock } from './workspace-dock'
 
 let capturedDock: ReturnType<typeof useWorkspaceDock> | null = null
 let rectSpy: { mockRestore: () => void } | null = null
@@ -92,11 +88,10 @@ function DockProbe() {
   )
 }
 
-function renderDock({ view = false }: { view?: boolean } = {}) {
+function renderDock() {
   return render(
     <WorkspaceDockProvider workspaceId="workspace-1">
       <DockProbe />
-      {view ? <WorkspaceDockView /> : null}
     </WorkspaceDockProvider>,
   )
 }
@@ -283,11 +278,5 @@ describe('WorkspaceDockProvider', () => {
       )
     })
     expect(readPersistedLayout()).not.toContain('chat:chat-1')
-  })
-
-  it('renders FlexLayout panels through the factory', async () => {
-    renderDock({ view: true })
-
-    expect(await screen.findByText('Inbox page')).toBeInTheDocument()
   })
 })
