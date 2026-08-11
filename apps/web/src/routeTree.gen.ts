@@ -11,7 +11,6 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as RoadmapRouteImport } from './routes/roadmap'
-import { Route as MailDesignRouteImport } from './routes/mail-design'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as HarnessyRouteImport } from './routes/harnessy'
 import { Route as FeaturesRouteImport } from './routes/features'
@@ -114,11 +113,6 @@ const SignupRoute = SignupRouteImport.update({
 const RoadmapRoute = RoadmapRouteImport.update({
   id: '/roadmap',
   path: '/roadmap',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MailDesignRoute = MailDesignRouteImport.update({
-  id: '/mail-design',
-  path: '/mail-design',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -617,7 +611,6 @@ export interface FileRoutesByFullPath {
   '/features': typeof FeaturesRoute
   '/harnessy': typeof HarnessyRoute
   '/login': typeof LoginRoute
-  '/mail-design': typeof MailDesignRoute
   '/roadmap': typeof RoadmapRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof AuthenticatedWorkspaceRoute
@@ -714,7 +707,6 @@ export interface FileRoutesByTo {
   '/features': typeof FeaturesRoute
   '/harnessy': typeof HarnessyRoute
   '/login': typeof LoginRoute
-  '/mail-design': typeof MailDesignRoute
   '/roadmap': typeof RoadmapRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof AuthenticatedWorkspaceRoute
@@ -813,7 +805,6 @@ export interface FileRoutesById {
   '/features': typeof FeaturesRoute
   '/harnessy': typeof HarnessyRoute
   '/login': typeof LoginRoute
-  '/mail-design': typeof MailDesignRoute
   '/roadmap': typeof RoadmapRoute
   '/signup': typeof SignupRoute
   '/_authenticated/workspace': typeof AuthenticatedWorkspaceRoute
@@ -912,7 +903,6 @@ export interface FileRouteTypes {
     | '/features'
     | '/harnessy'
     | '/login'
-    | '/mail-design'
     | '/roadmap'
     | '/signup'
     | '/workspace'
@@ -1009,7 +999,6 @@ export interface FileRouteTypes {
     | '/features'
     | '/harnessy'
     | '/login'
-    | '/mail-design'
     | '/roadmap'
     | '/signup'
     | '/workspace'
@@ -1107,7 +1096,6 @@ export interface FileRouteTypes {
     | '/features'
     | '/harnessy'
     | '/login'
-    | '/mail-design'
     | '/roadmap'
     | '/signup'
     | '/_authenticated/workspace'
@@ -1206,7 +1194,6 @@ export interface RootRouteChildren {
   FeaturesRoute: typeof FeaturesRoute
   HarnessyRoute: typeof HarnessyRoute
   LoginRoute: typeof LoginRoute
-  MailDesignRoute: typeof MailDesignRoute
   RoadmapRoute: typeof RoadmapRoute
   SignupRoute: typeof SignupRoute
   ApiSplatRoute: typeof ApiSplatRoute
@@ -1261,13 +1248,6 @@ declare module '@tanstack/react-router' {
       path: '/roadmap'
       fullPath: '/roadmap'
       preLoaderRoute: typeof RoadmapRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/mail-design': {
-      id: '/mail-design'
-      path: '/mail-design'
-      fullPath: '/mail-design'
-      preLoaderRoute: typeof MailDesignRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -2237,7 +2217,6 @@ const rootRouteChildren: RootRouteChildren = {
   FeaturesRoute: FeaturesRoute,
   HarnessyRoute: HarnessyRoute,
   LoginRoute: LoginRoute,
-  MailDesignRoute: MailDesignRoute,
   RoadmapRoute: RoadmapRoute,
   SignupRoute: SignupRoute,
   ApiSplatRoute: ApiSplatRoute,
