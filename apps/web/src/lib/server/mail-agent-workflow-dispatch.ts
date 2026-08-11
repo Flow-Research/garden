@@ -37,14 +37,19 @@ export interface MailAgentWorkflowBinding {
   readonly get: (id: string) => Promise<unknown>
 }
 
-/** Starts one deterministic Workflow or returns its already-created instance. */
+/**
+ * Starts one deterministic Workflow or returns its already-created instance.
+ * The event UUID already uniquely identifies an assignment or inbound message;
+ * using it alone keeps the instance ID under Cloudflare's 100-character limit.
+ * Source: https://developers.cloudflare.com/workflows/reference/limits/
+ */
 export const dispatchAssignedMailAgent = Effect.fn(
   'MailAgent.dispatchWorkflow',
 )(function* (
   binding: MailAgentWorkflowBinding,
   params: MailAgentDispatchParams,
 ) {
-  const workflowId = `mail-agent-${params.agentId}-${params.conversationId}-${params.eventId}`
+  const workflowId = `mail-agent-${params.eventId}`
   yield* Effect.tryPromise({
     try: () => binding.create({ id: workflowId, params }),
     catch: (cause) =>

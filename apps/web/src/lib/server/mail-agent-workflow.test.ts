@@ -22,7 +22,7 @@ const params = MailAgentDispatchParams.make({
   reason: 'assignment',
 })
 
-const workflowId = `mail-agent-${params.agentId}-${params.conversationId}-${params.eventId}`
+const workflowId = `mail-agent-${params.eventId}`
 
 describe('mail agent Workflow dispatch', () => {
   it('creates one deterministic Workflow instance', async () => {
@@ -36,6 +36,8 @@ describe('mail agent Workflow dispatch', () => {
 
     expect(result).toEqual({ workflowId })
     expect(create).toHaveBeenCalledWith({ id: workflowId, params })
+    expect(workflowId).toMatch(/^[a-zA-Z0-9_][a-zA-Z0-9-_]*$/)
+    expect(workflowId.length).toBeLessThanOrEqual(100)
     expect(get).not.toHaveBeenCalled()
   })
 
