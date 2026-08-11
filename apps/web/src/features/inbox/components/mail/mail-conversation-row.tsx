@@ -8,6 +8,7 @@ import {
   CircleAlert,
   Mail,
   MailOpen,
+  Reply,
   Star,
   Trash2,
 } from 'lucide-react'
@@ -117,8 +118,12 @@ export function MailConversationRow({
               </span>
             ) : null}
             {conversation.needsReply ? (
-              <span className="shrink-0 text-xs font-medium text-warning">
-                Needs reply
+              <span
+                aria-label="Needs reply"
+                title="Needs reply"
+                className="shrink-0 text-warning"
+              >
+                <Reply className="size-3.5" />
               </span>
             ) : null}
             <time className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">

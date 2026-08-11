@@ -458,7 +458,10 @@ function MailDetailSurface({
       }
       onToggleStar={() => controller.actions.toggleStar(conversation.id)}
       onToggleRead={() => controller.actions.toggleRead(conversation.id)}
-      onArchive={() => controller.actions.archive(conversation.id)}
+      onArchive={() => {
+        controller.actions.archive(conversation.id)
+        onClose()
+      }}
       onViewSource={() => controller.actions.viewSource(conversation.id)}
       agentControl={
         <div className="flex items-center gap-0.5">

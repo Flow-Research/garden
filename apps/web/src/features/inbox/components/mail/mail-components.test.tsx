@@ -7,6 +7,7 @@ import {
 } from './mail-agent-sidebar'
 import { MailConversationRow } from './mail-conversation-row'
 import { MailHtmlFrame } from './mail-html-frame'
+import { MailListToolbar } from './mail-list-toolbar'
 import { MailMessage } from './mail-message'
 import type { MailConversationView, MailMessageView } from './types'
 
@@ -53,6 +54,38 @@ describe('MailConversationRow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Star' }))
     expect(onToggleStar).toHaveBeenCalledOnce()
     expect(onOpen).toHaveBeenCalledOnce()
+
+    expect(screen.queryByText('Needs reply')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Needs reply')).toBeInTheDocument()
+  })
+})
+
+describe('MailListToolbar', () => {
+  it('keeps Cloudflare desktop search compact and collapses it to an action in narrow panes', () => {
+    const onSearchExpandedChange = vi.fn()
+    const props = {
+      scope: 'mail' as const,
+      search: '',
+      unreadOnly: false,
+      selectedCount: 0,
+      searchExpanded: false,
+      onScopeChange: vi.fn(),
+      onSearchChange: vi.fn(),
+      onUnreadOnlyChange: vi.fn(),
+      onSearchExpandedChange,
+      onClearSelection: vi.fn(),
+    }
+    const { rerender } = render(<MailListToolbar {...props} compact={false} />)
+
+    const desktopSearch = screen.getByRole('textbox', { name: 'Search mail' })
+    expect(desktopSearch.parentElement).toHaveClass('max-w-lg')
+
+    rerender(<MailListToolbar {...props} compact />)
+    expect(
+      screen.queryByRole('textbox', { name: 'Search mail' }),
+    ).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Search mail' }))
+    expect(onSearchExpandedChange).toHaveBeenCalledWith(true)
   })
 })
 

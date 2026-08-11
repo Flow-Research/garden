@@ -9,6 +9,7 @@ import type { MailConversationSummaryView } from './mail'
 const replace = vi.hoisted(() => vi.fn())
 const toggleRead = vi.hoisted(() => vi.fn())
 const openComposer = vi.hoisted(() => vi.fn())
+const archiveMail = vi.hoisted(() => vi.fn())
 
 const notification: InboxItem = {
   id: 'notification-1',
@@ -45,6 +46,7 @@ vi.mock('@garden/app-state/hooks', () => ({
 }))
 
 vi.mock('@tanstack/react-query', () => ({
+  queryOptions: (options: unknown) => options,
   useQuery: () => ({ data: [notification] }),
 }))
 
@@ -77,7 +79,7 @@ vi.mock('@/lib/workspace/hooks', () => ({
 
 vi.mock('../../navigation', () => ({
   useNavigation: () => ({
-    searchParams: new URLSearchParams(),
+    searchParams: new URLSearchParams(window.location.search),
     replace,
   }),
 }))
@@ -86,7 +88,9 @@ vi.mock('@/components/shell/workspace-dock', () => ({
   useWorkspaceDock: () => ({ openPanel: vi.fn() }),
 }))
 
-function activeMailController(): ActiveMailInboxController {
+function activeMailController(
+  detail: ActiveMailInboxController['detail'] = { status: 'idle' },
+): ActiveMailInboxController {
   return {
     status: 'active',
     canCompose: true,
@@ -99,7 +103,7 @@ function activeMailController(): ActiveMailInboxController {
         },
       ],
     },
-    detail: { status: 'idle' },
+    detail,
     composer: null,
     folders: [],
     actions: {
@@ -107,11 +111,13 @@ function activeMailController(): ActiveMailInboxController {
       closeComposer: vi.fn(),
       toggleStar: vi.fn(),
       toggleRead,
-      archive: vi.fn(),
+      archive: archiveMail,
       viewSource: vi.fn(),
       reply: vi.fn(),
       replyAll: vi.fn(),
       forward: vi.fn(),
+      assignAgent: vi.fn(),
+      unassignAgent: vi.fn(),
       messageProps: () => ({}),
     },
   }
@@ -144,6 +150,7 @@ describe('InboxPage mail composition', () => {
     replace.mockReset()
     toggleRead.mockReset()
     openComposer.mockReset()
+    archiveMail.mockReset()
     window.history.replaceState({}, '', '/')
   })
 
@@ -184,5 +191,36 @@ describe('InboxPage mail composition', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Compose' }))
     expect(openComposer).toHaveBeenCalledOnce()
+  })
+
+  it('archives an open mail conversation and closes its detail surface', () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/?item=mail%3Aconversation-1&scope=mail',
+    )
+    render(
+      <InboxPage
+        mailController={activeMailController({
+          status: 'ready',
+          conversation: {
+            ...conversation,
+            mailboxId: 'mailbox-1',
+            canSend: false,
+            agentAssignments: [],
+            messages: [],
+          },
+        })}
+      />,
+    )
+
+    const archiveButtons = screen.getAllByRole('button', { name: 'Archive' })
+    const detailArchive = archiveButtons.at(-1)
+    expect(detailArchive).toBeDefined()
+    if (!detailArchive) throw new Error('Expected detail Archive action')
+    fireEvent.click(detailArchive)
+
+    expect(archiveMail).toHaveBeenCalledWith('conversation-1')
+    expect(replace).toHaveBeenCalledWith(expect.not.stringContaining('item='))
   })
 })
