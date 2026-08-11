@@ -158,3 +158,14 @@ export {
   makeGmailClientLayer,
 } from './gmail-client.ts'
 export type { GmailClientService } from './gmail-client.ts'
+export {
+  GmailImport,
+  GmailImportContentError,
+  ImportGmailMessageInput,
+  gmailImportLayer,
+  importGmailRawMessage,
+} from './gmail-import.ts'
+export type {
+  GmailImportMessageError,
+  GmailImportService,
+} from './gmail-import.ts'

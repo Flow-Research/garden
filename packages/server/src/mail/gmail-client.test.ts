@@ -173,7 +173,7 @@ describe('GmailClient', () => {
     },
   )
 
-  it.effect('retries a transient response before decoding Gmail data', () => {
+  it.effect('returns transient rejection to the durable caller', () => {
     const fixture = recordingClient([
       { status: 503, body: { error: { message: 'temporarily unavailable' } } },
       {
@@ -188,10 +188,14 @@ describe('GmailClient', () => {
 
     return Effect.gen(function* () {
       const client = yield* makeGmailClient(Redacted.make('access-token'))
-      const profile = yield* client.getProfile()
+      const error = yield* client.getProfile().pipe(Effect.flip)
 
-      expect(profile.emailAddress).toBe('person@example.com')
-      expect(fixture.requests).toHaveLength(2)
+      expect(error).toMatchObject({
+        operation: 'getProfile',
+        reason: 'rejected',
+        statusCode: 503,
+      })
+      expect(fixture.requests).toHaveLength(1)
     }).pipe(
       Effect.provide(Layer.succeed(HttpClient.HttpClient, fixture.client)),
     )

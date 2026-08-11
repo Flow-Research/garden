@@ -231,9 +231,8 @@ const executeJson = <S extends Schema.Constraint>(
 
 /**
  * Builds a request-local Gmail REST client around a redacted access token.
- * Effect's transient policy retries only transport failures and documented
- * transient HTTP responses (408, 429, 500, 502, 503, 504); auth failures pass
- * through immediately. See `HttpClient.retryTransient` in installed Effect.
+ * Retry belongs to the caller's durable boundary: Cloudflare Workflow retries
+ * background reads while interactive profile checks return promptly.
  */
 export const makeGmailClient = Effect.fn('GmailClient.make')(function* (
   accessToken: Redacted.Redacted<string>,
@@ -247,7 +246,6 @@ export const makeGmailClient = Effect.fn('GmailClient.make')(function* (
         HttpClientRequest.acceptJson,
       ),
     ),
-    HttpClient.retryTransient({}),
   )
 
   return GmailClient.of({
