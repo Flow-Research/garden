@@ -74,6 +74,7 @@ export const listMailboxes = Effect.fn('MailRepository.listMailboxes')(
           mailbox: mailMailbox,
           accessLevel: mailMailboxAccess.accessLevel,
           externalAddress: mailSyncAccount.providerEmail,
+          externalAccountStatus: mailSyncAccount.status,
           localPart: mailAddress.localPart,
           domainName: mailDomain.name,
         })
@@ -129,7 +130,8 @@ export const listMailboxes = Effect.fn('MailRepository.listMailboxes')(
             row.domainName !== null
               ? 'garden_transport'
               : row.mailbox.origin === 'external_import' &&
-                  row.externalAddress !== null
+                  row.externalAddress !== null &&
+                  row.externalAccountStatus !== 'disconnected'
                 ? 'gmail_transport'
               : 'read_only',
         },

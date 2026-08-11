@@ -25,7 +25,7 @@ import {
   ProviderObjectId,
   type MailActor,
 } from '@garden/core/mail'
-import { and, asc, desc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { Effect } from 'effect'
 import {
   DeliveryPreparation,
@@ -346,6 +346,12 @@ const materializeFirstDelivery = Effect.fn(
                 eq(mailSyncAccount.id, fromSyncAccountId),
                 eq(mailSyncAccount.mailboxId, draft.mailboxId),
                 eq(mailSyncAccount.provider, 'gmail'),
+                inArray(mailSyncAccount.status, [
+                  'connected',
+                  'syncing',
+                  'ready',
+                  'degraded',
+                ]),
                 eq(mailMailbox.origin, 'external_import'),
                 eq(mailMailbox.status, 'active'),
               ),
