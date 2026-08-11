@@ -15,12 +15,17 @@ for (const [key, value] of Object.entries(rootEnv)) {
 }
 
 process.env.NODE_OPTIONS ??= '--max-old-space-size=3072'
+const containers = args.has('--containers')
 const configSelection = selectWorkerConfig({
-  containers: args.has('--containers'),
+  containers,
 })
 process.env.CLOUDFLARE_WORKER_CONFIG_PATH ??= configSelection.path
-process.env.CLOUDFLARE_VITE_REMOTE_BINDINGS = '1'
-if (!args.has('--containers')) {
+// Root `pnpm dev` runs the package's `dev:local` target. Keep that path
+// independent of Cloudflare's remote-binding control tunnel: D1/R2/DO/
+// Workflows and the copied Executor credentials are local state. Container
+// mode remains the explicit path that enables remote AI/blob/email bindings.
+process.env.CLOUDFLARE_VITE_REMOTE_BINDINGS = containers ? '1' : '0'
+if (!containers) {
   process.env.ENVIRONMENT = 'development'
 }
 if (process.env.DATABASE_URL) {
@@ -32,7 +37,6 @@ superviseDevRuntime({
   launch: () =>
     spawn('pnpm', ['exec', 'vite', 'dev'], {
       env: process.env,
-      shell: true,
       stdio: 'inherit',
     }),
   schedule: setTimeout,
