@@ -32,6 +32,7 @@ import {
   createAppRequestContext,
   getLoggedAuthSession,
 } from '@/lib/server/context'
+import { createRequestDbProvider } from '@/lib/server/db'
 import { processCloudflareInboundMail } from '@/lib/server/mail-inbound'
 import { MailDeliveryWorkflow } from '@/lib/server/mail-delivery-workflow'
 import { GmailImportWorkflow } from '@/lib/server/mail-import-workflow'
@@ -201,6 +202,30 @@ async function authorizeAgentRequest(
   env: ServerEnv,
   logger: GardenLogger,
 ) {
+  const requestDb = createRequestDbProvider(env)
+  const result = await Result.tryPromise({
+    try: async () =>
+      await authorizeAgentRequestWithDb(request, env, logger, requestDb.db),
+    catch: (cause) => cause,
+  })
+  await requestDb.close()
+
+  if (result.isErr()) throw result.error
+  return result.value
+}
+
+/**
+ * Authenticates and authorizes one agent route using a single request-owned DB
+ * provider. Before this split Better Auth and the access query each created an
+ * uncloseable client; frequent WebSocket reconnects accumulated local
+ * Hyperdrive sockets until an idle timeout crashed the whole dev Worker.
+ */
+async function authorizeAgentRequestWithDb(
+  request: Request,
+  env: ServerEnv,
+  logger: GardenLogger,
+  dbProvider: ReturnType<typeof createRequestDbProvider>['db'],
+) {
   const agentRuntimeName = getAgentRuntimeNameFromRequest(request)
   if (!agentRuntimeName) {
     return {
@@ -210,7 +235,7 @@ async function authorizeAgentRequest(
     }
   }
 
-  const auth = await createAuth(env, request)
+  const auth = await createAuth(env, request, dbProvider)
   const session = await getLoggedAuthSession({
     auth,
     request,
@@ -233,7 +258,7 @@ async function authorizeAgentRequest(
   let access = agentDoAuthCache.get(cacheKey) ?? null
   if (!access || access.expiresAt <= now) {
     const accessResult = await requireAgentAccess(
-      env,
+      dbProvider,
       agentRuntimeName,
       session,
       'connect',

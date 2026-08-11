@@ -1,5 +1,6 @@
 import { drizzle } from 'drizzle-orm/node-postgres'
-import { Client } from 'pg'
+import { Effect, Schedule, Schema } from 'effect'
+import { Client, Pool } from 'pg'
 import type { GardenDatabase } from './client.js'
 import * as schema from './schema/index.js'
 
@@ -8,6 +9,54 @@ export type DatabaseConnection = { readonly connectionString: string }
 export type RuntimeDbClient = {
   readonly db: Db
   readonly close: () => Promise<void>
+}
+
+const CONNECTION_TIMEOUT_MS = 5_000
+const SHORT_LIVED_POOL_IDLE_TIMEOUT_MS = 250
+
+/** Explicit Hyperdrive acquisition failure for Effect callers and adapters. */
+export class DatabaseConnectionError extends Schema.TaggedErrorClass<DatabaseConnectionError>()(
+  'DatabaseConnectionError',
+  {
+    operation: Schema.Literal('connect'),
+    message: Schema.String,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
+
+/**
+ * A failed connection has not run application SQL, so acquisition can safely
+ * retry. This matches VCOS's proven Hyperdrive boundary: two jittered retries
+ * keep transient DNS/tunnel loss recoverable while the driver's measured
+ * five-second connection timeout keeps failure bounded.
+ */
+export const runtimeDbConnectRetrySchedule = Schedule.exponential(
+  '100 millis',
+).pipe(Schedule.jittered, Schedule.upTo({ times: 2 }))
+
+/**
+ * Creates the only pool shape allowed for Promise-only callers that cannot own
+ * an Effect Scope. The 250 ms idle window is copied from VCOS's local
+ * Hyperdrive adapter: it lets a small query burst reuse one socket, then closes
+ * it instead of leaking pools across Worker requests. An idle error listener is
+ * mandatory because node-postgres otherwise promotes a transient tunnel error
+ * to an uncaught process exception.
+ */
+function createShortLivedPool(connectionString: string) {
+  const pool = new Pool({
+    connectionString,
+    max: 1,
+    idleTimeoutMillis: SHORT_LIVED_POOL_IDLE_TIMEOUT_MS,
+    connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
+    allowExitOnIdle: true,
+    application_name: 'garden-worker-promise-adapter',
+  })
+
+  pool.on('error', (cause) => {
+    console.error('[garden-db] idle PostgreSQL client failed', cause)
+  })
+
+  return pool
 }
 
 /**
@@ -20,24 +69,14 @@ export type RuntimeDbClient = {
  * never closed. Those orphaned direct connections defeat database autosuspend
  * and keep origin compute active without useful work.
  *
- * We deliberately do NOT cache/pool connections here. Pooling and closing idle
- * origin connections is Hyperdrive's job (10-minute idle timeout —
- * https://developers.cloudflare.com/hyperdrive/platform/limits/), so once traffic
- * goes through the Hyperdrive binding, Neon can scale to zero again. App-side
- * connection caching across invocations is also a Cloudflare anti-pattern: I/O
- * created in one request cannot be reused by another ("Cannot perform I/O on behalf
- * of a different request" — https://developers.cloudflare.com/workers/observability/errors/).
- * node-postgres' connection-string form creates an invocation-local pool that
- * Hyperdrive fronts; we let the driver and Hyperdrive own the lifecycle.
- *
- * TODO(effect): rewrite the runtime DB layer with Effect. Connection lifecycle
- * here is implicit (we lean on Hyperdrive + the driver to reap). Effect `Scope` /
- * `acquireRelease` would make acquire/close explicit and leak-proof across the
- * agent-runtime call sites, and compose with the rest of the better-result →
- * Effect migration.
+ * This compatibility API intentionally does not cache across invocations.
+ * Cloudflare forbids reusing request-created I/O in another request, while the
+ * short-lived pool bounds each legacy call site to one socket and retires it
+ * immediately after its query burst. New application code should use
+ * {@link createRuntimeDbClient} inside Effect `acquireUseRelease`.
  */
 export function getPooledDb(connectionString: string): Db {
-  return drizzle(connectionString, { schema })
+  return drizzle(createShortLivedPool(connectionString), { schema })
 }
 
 /**
@@ -49,7 +88,7 @@ export function getPooledDbWith<TSchema extends Record<string, unknown>>(
   connectionString: string,
   schema: TSchema,
 ) {
-  return drizzle(connectionString, { schema })
+  return drizzle(createShortLivedPool(connectionString), { schema })
 }
 
 /**
@@ -59,31 +98,75 @@ export function getPooledDbWith<TSchema extends Record<string, unknown>>(
  * `error` events. The listener prevents an orphaned client error from crashing
  * Node, and callers must close the client after the request finishes.
  */
+export function acquireRuntimeDbClient(
+  connection: DatabaseConnection | null | undefined,
+): Effect.Effect<RuntimeDbClient, DatabaseConnectionError> {
+  const connectionString = connection?.connectionString
+  if (!connectionString) {
+    return Effect.fail(
+      new DatabaseConnectionError({
+        operation: 'connect',
+        message: 'Missing database connection string',
+      }),
+    )
+  }
+
+  return Effect.gen(function* () {
+    const client = new Client({
+      connectionString,
+      connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
+      application_name: 'garden-worker-request',
+    })
+    client.on('error', () => {
+      // Active queries receive the driver rejection. This listener prevents an
+      // idle socket failure from terminating the local Worker process.
+    })
+
+    yield* Effect.tryPromise({
+      try: () => client.connect(),
+      catch: (cause) =>
+        new DatabaseConnectionError({
+          operation: 'connect',
+          message: 'Could not connect to PostgreSQL through Hyperdrive.',
+          cause,
+        }),
+    }).pipe(
+      Effect.onError(() =>
+        Effect.tryPromise(() => client.end()).pipe(Effect.ignore),
+      ),
+    )
+
+    return {
+      db: drizzle(client, { schema }),
+      close: async () => {
+        await client.end()
+      },
+    }
+  }).pipe(Effect.retry(runtimeDbConnectRetrySchedule))
+}
+
+/** Promise adapter for request boundaries that cannot consume Effect directly. */
 export async function createRuntimeDbClient(
   connection: DatabaseConnection | null | undefined,
 ): Promise<RuntimeDbClient> {
-  const connectionString = connection?.connectionString
-  if (!connectionString) {
-    throw new Error('Missing database connection string')
-  }
-
-  const client = new Client({ connectionString })
-  client.on('error', () => {})
-  await client.connect()
-
-  return {
-    db: drizzle(client, { schema }),
-    close: async () => {
-      await client.end()
-    },
-  }
+  return await Effect.runPromise(acquireRuntimeDbClient(connection))
 }
 
-/** Creates a Garden database client for one-off callers that own the invocation. */
+/**
+ * Compatibility adapter for Promise-only one-off callers. Unlike the previous
+ * implementation, it does not discard an explicit client's close handle.
+ */
 export async function createDb(
   connection: DatabaseConnection | null | undefined,
 ): Promise<Db> {
-  return (await createRuntimeDbClient(connection)).db
+  const connectionString = connection?.connectionString
+  if (!connectionString) {
+    throw new DatabaseConnectionError({
+      operation: 'connect',
+      message: 'Missing database connection string',
+    })
+  }
+  return getPooledDb(connectionString)
 }
 
 export { schema }

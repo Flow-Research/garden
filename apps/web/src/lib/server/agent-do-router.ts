@@ -1,8 +1,7 @@
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, eq, or } from 'drizzle-orm'
 import { agentSelectSchema, uuidSchema } from '@garden/db/validation'
-import { getDb, schema } from '@/lib/server/db'
-import type { AppEnv } from '@/lib/server/env'
+import { schema, type DbProvider } from '@/lib/server/db'
 
 export class AgentDoRouterError extends TaggedError('AgentDoRouterError')<{
   code: 'access_denied' | 'db_error' | 'invalid_agent_id'
@@ -17,7 +16,6 @@ export type AgentAccessAction =
   | 'debug'
   | 'tool_approval'
 
-type AgentDoEnv = Pick<AppEnv, 'AgentDO' | 'HYPERDRIVE'>
 type AgentSession = { user?: { id?: string | null } | null } | null | undefined
 
 const agentAccessRecordSchema = agentSelectSchema.pick({
@@ -41,7 +39,7 @@ function dbError(operation: string, cause: unknown) {
 }
 
 export async function requireAgentAccess(
-  env: AgentDoEnv,
+  dbProvider: DbProvider,
   agentRuntimeName: string,
   session: AgentSession,
   action: AgentAccessAction,
@@ -70,7 +68,7 @@ export async function requireAgentAccess(
 
   const result = await Result.tryPromise({
     try: async () => {
-      const db = await getDb(env)
+      const db = await dbProvider()
       const [row] = await db
         .select({ agent: schema.agent })
         .from(schema.agent)

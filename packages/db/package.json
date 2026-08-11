@@ -8,6 +8,7 @@
     "@neondatabase/serverless": "^1.0.1",
     "drizzle-orm": "catalog:",
     "drizzle-zod": "^0.8.3",
+    "effect": "catalog:",
     "pg": "^8.20.0",
     "zod": "^4.4.3"
   },
