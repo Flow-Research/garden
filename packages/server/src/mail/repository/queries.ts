@@ -49,6 +49,7 @@ import {
   timestamp,
   type MailDatabase,
 } from './shared.ts'
+import { mailMessageSnippet } from './snippet.ts'
 
 const activeDraftStatuses = [
   'editing',
@@ -57,13 +58,6 @@ const activeDraftStatuses = [
   'sending',
   'send_failed',
 ] as const
-
-/** Produces a compact plain-text preview without exposing raw HTML in list rows. */
-const messageSnippet = (textBody: string | null, htmlBody: string | null) =>
-  (textBody ?? htmlBody?.replace(/<[^>]*>/g, ' ') ?? '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 180)
 
 /** Lists only active mailboxes granted to the requesting member or agent. */
 export const listMailboxes = Effect.fn('MailRepository.listMailboxes')(
@@ -133,7 +127,7 @@ export const listMailboxes = Effect.fn('MailRepository.listMailboxes')(
                   row.externalAddress !== null &&
                   row.externalAccountStatus !== 'disconnected'
                 ? 'gmail_transport'
-              : 'read_only',
+                : 'read_only',
         },
         'listMailboxes.decode',
       ),
@@ -273,7 +267,7 @@ export const listConversations = Effect.fn('MailRepository.listConversations')(
                   authorMemberId: row.latestAuthorMemberId,
                   authorAgentId: row.latestAuthorAgentId,
                 }),
-          snippet: messageSnippet(row.latestTextBody, row.latestHtmlBody),
+          snippet: mailMessageSnippet(row.latestTextBody, row.latestHtmlBody),
           messageCount: row.messageCount ?? 0,
           unread:
             row.latestMessageId !== null &&
@@ -281,6 +275,8 @@ export const listConversations = Effect.fn('MailRepository.listConversations')(
           hasDraft: (row.activeDraftCount ?? 0) > 0,
           needsReply:
             row.latestAuthorType === 'external' &&
+            row.latestMessageId !== null &&
+            row.state?.lastReadMessageId === row.latestMessageId &&
             (row.latestDraftUpdatedAt === null ||
               row.latestDraftUpdatedAt === undefined ||
               (row.latestAuthoredAt !== null &&
@@ -680,7 +676,7 @@ export const getConversation = Effect.fn('MailRepository.getConversation')(
         lastSenderName: messages.at(-1)?.senderName ?? null,
         lastSenderAddress: messages.at(-1)?.senderAddress ?? null,
         lastAuthor: messages.at(-1)?.author ?? null,
-        snippet: messageSnippet(
+        snippet: mailMessageSnippet(
           messages.at(-1)?.textBody ?? null,
           messages.at(-1)?.htmlBody ?? null,
         ),
@@ -695,6 +691,7 @@ export const getConversation = Effect.fn('MailRepository.getConversation')(
         ),
         needsReply:
           messageRows.at(-1)?.message.authorType === 'external' &&
+          stateRows[0]?.lastReadMessageId === messages.at(-1)?.id &&
           !draftRows.some(
             (draft) =>
               activeDraftStatuses.includes(

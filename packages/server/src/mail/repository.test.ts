@@ -194,14 +194,20 @@ const inbound = (
 describe('MailRepository (integration)', () => {
   let testDb: TestDb
 
-  beforeAll(async () => {
-    testDb = await startTestDb()
-    await seedMailFixture(testDb)
-  })
+  beforeAll(
+    async () => {
+      testDb = await startTestDb()
+      await seedMailFixture(testDb)
+    },
+    // Match Testcontainers' own startup window. The previous Vitest 10 s
+    // default terminated the suite while Postgres was healthy and still
+    // applying migrations on a loaded development host.
+    60_000,
+  )
 
   afterAll(async () => {
     await testDb?.cleanup()
-  })
+  }, 60_000)
 
   it.effect(
     'merges a new local delivery on duplicate ingest without crossing mailbox privacy',
@@ -259,7 +265,7 @@ describe('MailRepository (integration)', () => {
           messageCount: 1,
           unread: true,
           hasDraft: false,
-          needsReply: true,
+          needsReply: false,
         })
 
         const detailA = yield* repository.getConversation({
@@ -442,14 +448,25 @@ describe('MailRepository (integration)', () => {
         actor: memberA,
         lastReadMessageId: MessageId.make(ingested.messageId),
         readAt: UtcTimestamp.make('2026-08-10T10:02:00.000Z'),
-        archivedAt: null,
+        archivedAt: UtcTimestamp.make('2026-08-10T10:03:00.000Z'),
         mutedAt: null,
         pinned: true,
       })
       expect(state).toMatchObject({
         lastReadMessageId: ingested.messageId,
+        archivedAt: '2026-08-10T10:03:00.000Z',
         pinned: true,
       })
+      const readConversations = yield* repository.listConversations({
+        workspaceId,
+        actor: memberA,
+        mailboxId: null,
+      })
+      expect(
+        readConversations.find(
+          (conversation) => conversation.id === conversationId,
+        ),
+      ).toMatchObject({ unread: false, needsReply: true })
 
       const assigned = yield* repository.assignConversation({
         workspaceId,
