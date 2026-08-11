@@ -9,6 +9,7 @@ import {
   RunWorkflow,
 } from '@garden/agent-runtime'
 import { proxyToSandbox, Sandbox } from '@cloudflare/sandbox'
+import { CodemodeRuntime } from '@cloudflare/codemode'
 import { Result } from 'better-result'
 import { createAuth } from '@/lib/auth'
 import type { AppEnv } from '@/lib/server/env'
@@ -56,6 +57,14 @@ export { MailDeliveryWorkflow }
 export { GmailImportWorkflow }
 export { MailAgentWorkflow }
 export { Sandbox }
+/**
+ * Exposes Code Mode's durable facet through `ctx.exports`. Think creates this
+ * facet at runtime; without the Worker-entry export every tool-enabled chat
+ * turn fails before the model can read mail. Cloudflare requires either its
+ * Vite plugin or this explicit export:
+ * https://developers.cloudflare.com/agents/tools/codemode/durable-runtime/
+ */
+export { CodemodeRuntime }
 export { ExecutorMcpExecutionOwnerDirectory, ExecutorMcpSession }
 
 type ServerEnv = AppEnv
