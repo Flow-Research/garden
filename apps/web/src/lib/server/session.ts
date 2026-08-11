@@ -36,7 +36,12 @@ export async function getAuthSession(
   request: Request,
   env: Pick<
     AppEnv,
-    'HYPERDRIVE' | 'BETTER_AUTH_SECRET' | 'BETTER_AUTH_URL' | 'RESEND_API_KEY'
+    | 'HYPERDRIVE'
+    | 'DATABASE_URL'
+    | 'ENVIRONMENT'
+    | 'BETTER_AUTH_SECRET'
+    | 'BETTER_AUTH_URL'
+    | 'RESEND_API_KEY'
   >,
 ) {
   const auth = await createAuth(env, request)

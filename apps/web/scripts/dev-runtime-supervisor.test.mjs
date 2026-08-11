@@ -58,4 +58,21 @@ describe('dev runtime supervisor', () => {
     exhausted.emit('exit', 1, null)
     expect(onExit).toHaveBeenCalledWith(1)
   })
+
+  it('stops its active child when the parent receives a shutdown signal', () => {
+    const active = Object.assign(child(), { kill: vi.fn() })
+    const onSignal = vi.fn()
+    const supervisor = superviseDevRuntime({
+      launch: () => active,
+      schedule: vi.fn(),
+      onRestart: vi.fn(),
+      onExit: vi.fn(),
+      onSignal,
+    })
+
+    supervisor.stop('SIGINT')
+    expect(active.kill).toHaveBeenCalledWith('SIGINT')
+    active.emit('exit', null, 'SIGINT')
+    expect(onSignal).toHaveBeenCalledWith('SIGINT')
+  })
 })

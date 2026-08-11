@@ -1,7 +1,9 @@
 import type { GardenDatabase } from '@garden/db'
 import {
   createDb as createRuntimeDb,
+  createDirectRuntimeDbClient,
   createRuntimeDbClient,
+  getDirectPooledDb,
   schema,
   type RuntimeDbClient,
 } from '@garden/db/runtime'
@@ -9,7 +11,13 @@ import type { AppEnv } from '@/lib/server/env'
 import { Result } from 'better-result'
 
 /** Creates a Garden database client from the Worker runtime binding. */
-export async function getDb(env: Pick<AppEnv, 'HYPERDRIVE'>) {
+export async function getDb(
+  env: Pick<AppEnv, 'HYPERDRIVE' | 'DATABASE_URL' | 'ENVIRONMENT'>,
+) {
+  if (env.ENVIRONMENT === 'development') {
+    return getDirectPooledDb(env.DATABASE_URL)
+  }
+
   return await createRuntimeDb(env.HYPERDRIVE)
 }
 
@@ -27,7 +35,7 @@ export type RequestDbProvider = {
  * still preventing cross-request client reuse.
  */
 export function createRequestDbProvider(
-  env: Pick<AppEnv, 'HYPERDRIVE'>,
+  env: Pick<AppEnv, 'HYPERDRIVE' | 'DATABASE_URL' | 'ENVIRONMENT'>,
 ): RequestDbProvider {
   let clientPromise: Promise<RuntimeDbClient> | undefined
   let closed = false
@@ -40,7 +48,10 @@ export function createRequestDbProvider(
         )
       }
 
-      clientPromise ??= createRuntimeDbClient(env.HYPERDRIVE)
+      clientPromise ??=
+        env.ENVIRONMENT === 'development'
+          ? createDirectRuntimeDbClient(env.DATABASE_URL)
+          : createRuntimeDbClient(env.HYPERDRIVE)
       return (await clientPromise).db
     },
     close: async () => {

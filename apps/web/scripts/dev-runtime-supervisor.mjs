@@ -14,10 +14,19 @@ export function superviseDevRuntime({
   restartDelayMs = 2_000,
 }) {
   let unexpectedRestarts = 0
+  let activeChild
+  let stopSignal
 
   const start = () => {
     const child = launch()
+    activeChild = child
     child.once('exit', (code, signal) => {
+      activeChild = undefined
+      if (stopSignal) {
+        onSignal(signal ?? stopSignal)
+        return
+      }
+
       if (signal) {
         onSignal(signal)
         return
@@ -35,4 +44,19 @@ export function superviseDevRuntime({
   }
 
   start()
+
+  return {
+    /** Stops the owned Vite child before allowing the supervisor to exit. */
+    stop(signal) {
+      if (stopSignal) return
+      stopSignal = signal
+
+      if (!activeChild) {
+        onSignal(signal)
+        return
+      }
+
+      activeChild.kill(signal)
+    },
+  }
 }

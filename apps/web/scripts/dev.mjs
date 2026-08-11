@@ -8,6 +8,9 @@ const HYPERDRIVE_BINDING = 'HYPERDRIVE'
 const LOCAL_HYPERDRIVE_ENV = `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_${HYPERDRIVE_BINDING}`
 const args = new Set(process.argv.slice(2))
 const rootDir = fileURLToPath(new URL('../../..', import.meta.url))
+const viteEntrypoint = fileURLToPath(
+  new URL('../../../node_modules/vite/bin/vite.js', import.meta.url),
+)
 const rootEnv = loadEnv('development', rootDir, '')
 
 for (const [key, value] of Object.entries(rootEnv)) {
@@ -33,9 +36,9 @@ if (process.env.DATABASE_URL) {
 }
 process.env.CLOUDFLARE_INCLUDE_PROCESS_ENV ??= 'true'
 
-superviseDevRuntime({
+const supervisor = superviseDevRuntime({
   launch: () =>
-    spawn('pnpm', ['exec', 'vite', 'dev'], {
+    spawn(process.execPath, [viteEntrypoint, 'dev'], {
       env: process.env,
       stdio: 'inherit',
     }),
@@ -46,8 +49,12 @@ superviseDevRuntime({
     )
   },
   onExit: (code) => process.exit(code),
-  onSignal: (signal) => process.kill(process.pid, signal),
+  onSignal: (signal) =>
+    process.exit(signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : 1),
 })
+
+process.once('SIGINT', () => supervisor.stop('SIGINT'))
+process.once('SIGTERM', () => supervisor.stop('SIGTERM'))
 
 /**
  * Keeps tracked Wrangler config safe for public clones while preserving local

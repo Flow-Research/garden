@@ -1,5 +1,12 @@
 import { drizzle } from 'drizzle-orm/node-postgres'
+// oxlint-disable-next-line no-restricted-imports -- local Worker development cannot use Miniflare's crashing raw-TCP bridge; production still resolves Hyperdrive below.
+import { drizzle as drizzleNeon } from 'drizzle-orm/neon-serverless'
 import { Effect, Schedule, Schema } from 'effect'
+// oxlint-disable-next-line no-restricted-imports -- paired with development-only adapters; scoped clients close explicitly and compatibility pools retire idle sockets.
+import {
+  Client as NeonClient,
+  Pool as NeonPool,
+} from '@neondatabase/serverless'
 import { Client, Pool } from 'pg'
 import type { GardenDatabase } from './client.js'
 import * as schema from './schema/index.js'
@@ -32,6 +39,85 @@ export class DatabaseConnectionError extends Schema.TaggedErrorClass<DatabaseCon
 export const runtimeDbConnectRetrySchedule = Schedule.exponential(
   '100 millis',
 ).pipe(Schedule.jittered, Schedule.upTo({ times: 2 }))
+
+/**
+ * Opens a request-scoped Neon WebSocket client for local Worker development.
+ * Workerd's node:net compatibility can terminate the entire Vite process when
+ * a raw TCP connect times out. Neon's Worker-native WebSocket transport keeps
+ * failures inside the request, while the explicit close preserves the same
+ * lifecycle Garden uses for production Hyperdrive clients.
+ */
+export function acquireDirectRuntimeDbClient(
+  connectionString: string | null | undefined,
+): Effect.Effect<RuntimeDbClient, DatabaseConnectionError> {
+  if (!connectionString) {
+    return Effect.fail(
+      new DatabaseConnectionError({
+        operation: 'connect',
+        message: 'Missing direct development database connection string',
+      }),
+    )
+  }
+
+  return Effect.gen(function* () {
+    const client = new NeonClient(connectionString)
+    client.on('error', () => {
+      // Query failures remain attached to the request instead of becoming an
+      // unhandled WebSocket error after the caller has started closing it.
+    })
+
+    yield* Effect.tryPromise({
+      try: () => client.connect(),
+      catch: (cause) =>
+        new DatabaseConnectionError({
+          operation: 'connect',
+          message: 'Could not connect to the development PostgreSQL origin.',
+          cause,
+        }),
+    }).pipe(
+      Effect.onError(() =>
+        Effect.tryPromise(() => client.end()).pipe(Effect.ignore),
+      ),
+    )
+
+    return {
+      db: drizzleNeon(client, { schema }) as unknown as Db,
+      close: async () => {
+        await client.end()
+      },
+    }
+  }).pipe(Effect.retry(runtimeDbConnectRetrySchedule))
+}
+
+/** Promise adapter for the scoped development WebSocket client. */
+export async function createDirectRuntimeDbClient(
+  connectionString: string | null | undefined,
+): Promise<RuntimeDbClient> {
+  return await Effect.runPromise(acquireDirectRuntimeDbClient(connectionString))
+}
+
+/**
+ * Creates a development-only compatibility database for callers that cannot
+ * expose a close handle yet. The one-client pool retires its idle WebSocket
+ * quickly; request-aware paths must use {@link createDirectRuntimeDbClient}.
+ */
+export function getDirectPooledDb(connectionString: string): Db {
+  const pool = new NeonPool({
+    connectionString,
+    max: 1,
+    idleTimeoutMillis: SHORT_LIVED_POOL_IDLE_TIMEOUT_MS,
+    connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
+    allowExitOnIdle: true,
+  })
+  pool.on('error', (cause: unknown) => {
+    console.error(
+      '[garden-db] idle development PostgreSQL client failed',
+      cause,
+    )
+  })
+
+  return drizzleNeon(pool, { schema }) as unknown as Db
+}
 
 /**
  * Creates the only pool shape allowed for Promise-only callers that cannot own
