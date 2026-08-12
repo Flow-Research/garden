@@ -151,7 +151,7 @@ describe('MailMessage', () => {
       'bg-warning/[0.02]',
     )
     expect(screen.getByRole('article')).not.toHaveClass('rounded-lg', 'border')
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Approve & send' }))
     expect(onSendDraft).toHaveBeenCalledOnce()
   })
 })

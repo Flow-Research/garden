@@ -114,6 +114,7 @@ export function MailMessage({
 }: MailMessageProps) {
   const isDraft = message.status === 'draft' || message.status === 'failed'
   const isSending = message.draftStatus === 'sending'
+  const isAwaitingApproval = message.draftStatus === 'awaiting_approval'
   const senderLabel = isDraft
     ? 'Draft reply'
     : message.from.name || message.from.address
@@ -183,7 +184,11 @@ export function MailMessage({
                 <span className="truncate text-sm font-medium">
                   {senderLabel}
                 </span>
-                {isDraft ? <Badge variant="outline">Draft</Badge> : null}
+                {isDraft ? (
+                  <Badge variant="outline">
+                    {isAwaitingApproval ? 'Approval requested' : 'Draft'}
+                  </Badge>
+                ) : null}
               </div>
               <div className="text-xs text-muted-foreground">
                 To: {addressLabel(message)}
@@ -218,7 +223,11 @@ export function MailMessage({
             {onSendDraft ? (
               <Button size="sm" onClick={onSendDraft} disabled={isSending}>
                 <Send />
-                {isSending ? 'Sending...' : 'Send'}
+                {isSending
+                  ? 'Sending...'
+                  : isAwaitingApproval
+                    ? 'Approve & send'
+                    : 'Send'}
               </Button>
             ) : null}
             {onEditDraft ? (
@@ -229,7 +238,7 @@ export function MailMessage({
                 disabled={isSending}
               >
                 <Pencil />
-                Edit
+                {isAwaitingApproval ? 'Request changes' : 'Edit'}
               </Button>
             ) : null}
             {onDiscardDraft ? (
