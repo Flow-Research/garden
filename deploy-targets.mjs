@@ -20,6 +20,7 @@ export const deploymentTargets = {
     // Cloudflare storage resource names are immutable deployment identifiers;
     // keep the adopted names while the application-facing bindings use Executor.
     executorDatabaseName: 'harnessy-connectors',
+    executorDatabaseDelete: true,
     executorBlobsId: 'executor-blobs',
     executorBlobsBucket: 'harnessy-connectors-blobs',
     agentDoId: 'agent-do',
@@ -50,11 +51,15 @@ export const deploymentTargets = {
     filesBucket: 'garden-files-preview',
     databaseId: 'database-preview',
     databaseName: 'garden-database-preview',
-    // Explicit temporary compromise: preview shares the live Postgres origin.
-    // Cloudflare resources and Executor storage remain isolated.
+    // Explicit temporary compromise: preview shares the live Postgres origin
+    // and Executor connection D1. All other Cloudflare resources stay isolated.
     databaseUrlEnv: 'DATABASE_URL',
     executorDatabaseId: 'executor-connectors-db-preview',
-    executorDatabaseName: 'harnessy-connectors-preview',
+    // Preview intentionally adopts the existing Executor control-plane D1 so
+    // personal OAuth connections are available without reconnecting. Its
+    // Alchemy resource must never delete the shared physical database.
+    executorDatabaseName: 'harnessy-connectors',
+    executorDatabaseDelete: false,
     executorBlobsId: 'executor-blobs-preview',
     executorBlobsBucket: 'harnessy-connectors-blobs-preview',
     agentDoId: 'agent-do-preview',

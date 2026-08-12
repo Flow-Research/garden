@@ -72,6 +72,10 @@ const executorDatabase = await D1Database(deployTarget.executorDatabaseId, {
   ...cloudflareApiOptions,
   name: deployTarget.executorDatabaseName,
   adopt: true,
+  // Preview shares Executor connection metadata with the live target. Alchemy
+  // otherwise deletes adopted D1 databases when that preview stack is torn
+  // down, so deletion ownership remains exclusively with production.
+  delete: deployTarget.executorDatabaseDelete,
 })
 
 const executorBlobs = await R2Bucket(deployTarget.executorBlobsId, {

@@ -40,6 +40,12 @@ assert.equal(deploymentTargets.production.emptyBucketsOnDestroy, false)
 assert.equal(deploymentTargets.preview.emptyBucketsOnDestroy, true)
 assert.equal(deploymentTargets.preview.databaseUrlEnv, 'DATABASE_URL')
 assert.equal(deploymentTargets.preview.bindConfiguredBetterAuthUrl, false)
+assert.equal(
+  deploymentTargets.preview.executorDatabaseName,
+  deploymentTargets.production.executorDatabaseName,
+)
+assert.equal(deploymentTargets.production.executorDatabaseDelete, true)
+assert.equal(deploymentTargets.preview.executorDatabaseDelete, false)
 
 for (const source of publicWranglerSources) {
   assert.match(source, /"name": "garden-local"/)
@@ -62,7 +68,10 @@ for (const source of publicWranglerSources) {
     source,
     /"ai":\s*\{[^}]*"binding": "AI",[^}]*"remote": true[^}]*\}/,
   )
-  assert.equal([...source.matchAll(/"remote": true/g)].length, 1)
+  assert.equal(
+    [...source.matchAll(/"remote": true/g)].length,
+    source.includes('"send_email"') ? 2 : 1,
+  )
 }
 
 assert.match(gitignoreSource, /apps\/web\/wrangler\.local\.jsonc/)
@@ -92,7 +101,6 @@ const uniqueFields = [
   'databaseId',
   'databaseName',
   'executorDatabaseId',
-  'executorDatabaseName',
   'executorBlobsId',
   'executorBlobsBucket',
   'agentDoId',
@@ -145,6 +153,7 @@ for (const field of [
   'filesBucket',
   'databaseName',
   'executorDatabaseName',
+  'executorDatabaseDelete',
   'executorBlobsBucket',
   'workflowName',
   'sandboxName',
@@ -187,5 +196,5 @@ assert.match(
 )
 
 console.log(
-  'deploy config passed: garden-staging and garden-preview are isolated Alchemy targets',
+  'deploy config passed: preview shares only approved data resources',
 )
