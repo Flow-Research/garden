@@ -250,7 +250,11 @@ const config = defineConfig({
           // while bundled CommonJS dependencies such as pg still call require.
           // Rolldown's built-in bridge rewrites those external require calls and
           // the path map emits the Worker-compatible specifiers.
-          plugins: [esmExternalRequirePlugin()],
+          plugins: [
+            esmExternalRequirePlugin({
+              external: [...workerNodeBuiltins],
+            }),
+          ],
           output: {
             paths: workerNodeBuiltinPaths,
           },
