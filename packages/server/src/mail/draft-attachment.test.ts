@@ -6,6 +6,7 @@ import { MailboxId, WorkspaceId } from '@garden/core/mail'
 import {
   DraftAttachmentValidationError,
   MAX_OUTBOUND_ATTACHMENT_BYTES,
+  authorizeDraftAttachmentUpload,
   storeDraftAttachment,
 } from './draft-attachment.ts'
 import { testMailObjectStoreLayer } from './object-store.ts'
@@ -60,3 +61,21 @@ it.effect('persists immutable bytes and returns only public metadata', () => {
     })
   }).pipe(Effect.provide(Layer.fresh(testMailObjectStoreLayer)))
 })
+
+it.effect('denies viewer and read-only mailbox uploads', () =>
+  Effect.gen(function* () {
+    const failure = yield* Effect.flip(
+      authorizeDraftAttachmentUpload(
+        [
+          {
+            id: input.mailboxId,
+            accessLevel: 'viewer',
+            sendCapability: 'gmail_transport',
+          },
+        ],
+        input.mailboxId,
+      ),
+    )
+    expect(failure).toBeInstanceOf(DraftAttachmentValidationError)
+  }),
+)

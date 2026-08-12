@@ -136,7 +136,9 @@ const createApprovedDraft = Effect.fn('DeliveryTest.createApprovedDraft')(
         replyToMessageId,
         subject,
         textBody: 'The attached investor update is ready.',
-        htmlBody: '<p>The attached investor update is ready.</p>',
+        htmlBody:
+          '<p onclick="steal()"><strong>The attached investor update is ready.</strong>' +
+          '<script>steal()</script></p>',
         recipients: [
           {
             kind: 'to',
@@ -226,6 +228,7 @@ describe('MailDelivery (Postgres integration)', () => {
           },
           to: [{ name: 'Limited Partner', address: 'lp@example.com' }],
           subject: 'Quarterly update',
+          html: '<p><strong>The attached investor update is ready.</strong></p>',
           headers: {
             'Message-ID': `<${draft.id}@garden.test>`,
           },

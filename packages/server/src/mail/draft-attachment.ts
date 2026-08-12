@@ -56,6 +56,30 @@ export class DraftAttachmentPersistenceError extends Schema.TaggedErrorClass<Dra
   },
 ) {}
 
+/** Enforces the same writable/sendable mailbox policy as draft creation. */
+export const authorizeDraftAttachmentUpload = Effect.fn(
+  'DraftAttachment.authorize',
+)(function* (
+  mailboxes: ReadonlyArray<{
+    readonly id: typeof MailboxId.Type
+    readonly accessLevel: string
+    readonly sendCapability: string
+  }>,
+  mailboxId: typeof MailboxId.Type,
+) {
+  const mailbox = mailboxes.find((candidate) => candidate.id === mailboxId)
+  if (
+    mailbox === undefined ||
+    mailbox.accessLevel === 'viewer' ||
+    mailbox.sendCapability === 'read_only'
+  ) {
+    return yield* new DraftAttachmentValidationError({
+      message: 'Mailbox attachment access denied.',
+    })
+  }
+  return mailbox
+})
+
 /** Removes path/control characters using Agentic Inbox's attachment convention. */
 const safeFileName = (value: string): string =>
   Array.from(value.trim(), (character) =>
@@ -226,9 +250,7 @@ export const deleteUnreferencedDraftAttachment = Effect.fn(
   const candidate = candidates[0]
   if (candidate === undefined) return false
 
-  const store = yield* MailObjectStore
-  yield* store.delete(StorageKey.make(candidate.storageKey))
-  yield* Effect.tryPromise({
+  const deleted = yield* Effect.tryPromise({
     try: () =>
       db
         .delete(mailAttachment)
@@ -237,7 +259,8 @@ export const deleteUnreferencedDraftAttachment = Effect.fn(
             eq(mailAttachment.workspaceId, input.workspaceId),
             eq(mailAttachment.id, input.attachmentId),
           ),
-        ),
+        )
+        .returning({ storageKey: mailAttachment.storageKey }),
     catch: (cause) =>
       new DraftAttachmentPersistenceError({
         operation: 'deleteMetadata',
@@ -245,5 +268,8 @@ export const deleteUnreferencedDraftAttachment = Effect.fn(
         cause,
       }),
   })
+  if (deleted[0] === undefined) return false
+  const store = yield* MailObjectStore
+  yield* store.delete(StorageKey.make(candidate.storageKey))
   return true
 })
