@@ -688,12 +688,6 @@ export function InboxPage({
     })
   }, [allItems, search, unreadsOnly, getActorName])
 
-  const selectedNotification =
-    mailConversationId === null
-      ? (notificationItems.find((item) => item.id === selectedKey) ??
-        allItems.find((item) => item.id === selectedKey) ??
-        null)
-      : null
   const readyMailEntries =
     mailController.status === 'active' && mailController.list.status === 'ready'
       ? mailController.list.entries
@@ -731,6 +725,18 @@ export function InboxPage({
       new Date(right.sortTimestamp).getTime() -
       new Date(left.sortTimestamp).getTime(),
   )
+  const firstSelectionKey =
+    unifiedRows[0]?.kind === 'mail'
+      ? mailSelectionKey(unifiedRows[0].conversation.id)
+      : (unifiedRows[0]?.item.id ?? '')
+  const effectiveSelectedKey = selectedKey || firstSelectionKey
+  const effectiveMailConversationId = selectedMailId(effectiveSelectedKey)
+  const selectedNotification =
+    effectiveMailConversationId === null
+      ? (notificationItems.find((item) => item.id === effectiveSelectedKey) ??
+        allItems.find((item) => item.id === effectiveSelectedKey) ??
+        null)
+      : null
 
   const markReadMutation = useMarkInboxRead()
   const archiveMutation = useArchiveInbox()
@@ -751,7 +757,7 @@ export function InboxPage({
 
   const handleArchive = (id: string) => {
     const archived = allItems.find((i) => i.id === id)
-    if (archived && archived.id === selectedKey) setSelectedKey('')
+    if (archived && archived.id === effectiveSelectedKey) setSelectedKey('')
     archiveMutation.mutate(id, {
       onError: () => toast.error('Failed to archive'),
     })
@@ -773,7 +779,7 @@ export function InboxPage({
 
   const handleArchiveAllRead = () => {
     const readKeys = allItems.filter((i) => i.read).map((i) => i.id)
-    if (readKeys.includes(selectedKey)) setSelectedKey('')
+    if (readKeys.includes(effectiveSelectedKey)) setSelectedKey('')
     archiveAllReadMutation.mutate(undefined, {
       onError: () => toast.error('Failed to archive read items'),
     })
@@ -802,7 +808,8 @@ export function InboxPage({
   const handleScopeChange = (nextScope: MailScope) => {
     setScope(nextScope)
     if (nextScope === 'mail' && selectedNotification) setSelectedKey('')
-    if (nextScope === 'notifications' && mailConversationId) setSelectedKey('')
+    if (nextScope === 'notifications' && effectiveMailConversationId)
+      setSelectedKey('')
   }
 
   const selectMail = (conversation: MailConversationSummaryView) => {
@@ -818,12 +825,13 @@ export function InboxPage({
       <MailConversationRow
         key={conversation.id}
         conversation={conversation}
-        selected={conversation.id === mailConversationId}
+        selected={conversation.id === effectiveMailConversationId}
         onOpen={() => selectMail(conversation)}
         onToggleStar={() => mailController.actions.toggleStar(conversation.id)}
         onToggleRead={() => mailController.actions.toggleRead(conversation.id)}
         onArchive={() => {
-          if (conversation.id === mailConversationId) setSelectedKey('')
+          if (conversation.id === effectiveMailConversationId)
+            setSelectedKey('')
           mailController.actions.archive(conversation.id)
         }}
       />
@@ -837,7 +845,7 @@ export function InboxPage({
       ? mailController.composer
       : null
   const detailOpen = Boolean(
-    panelComposer || selectedNotification || mailConversationId,
+    panelComposer || selectedNotification || effectiveMailConversationId,
   )
 
   // -- Shared sub-components --------------------------------------------------
@@ -933,7 +941,7 @@ export function InboxPage({
             <InboxListItem
               key={`notification:${row.item.id}`}
               item={row.item}
-              isSelected={row.item.id === selectedKey}
+              isSelected={row.item.id === effectiveSelectedKey}
               onClick={() => handleSelect(row.item)}
               onArchive={() => handleArchive(row.item.id)}
             />
@@ -974,17 +982,20 @@ export function InboxPage({
     ) : (
       notificationDetail
     )
-  } else if (mailConversationId && mailController.status === 'active') {
+  } else if (
+    effectiveMailConversationId &&
+    mailController.status === 'active'
+  ) {
     detailContent = (
       <MailDetailSurface
         controller={mailController}
         workspaceId={wsId}
-        conversationId={mailConversationId}
+        conversationId={effectiveMailConversationId}
         compact={compact}
         onClose={() => setSelectedKey('')}
       />
     )
-  } else if (mailConversationId) {
+  } else if (effectiveMailConversationId) {
     detailContent = (
       <MailErrorState
         title="Mail isn't available"

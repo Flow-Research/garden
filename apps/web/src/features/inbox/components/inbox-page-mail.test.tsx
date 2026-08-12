@@ -48,6 +48,7 @@ vi.mock('@garden/app-state/hooks', () => ({
 vi.mock('@tanstack/react-query', () => ({
   queryOptions: (options: unknown) => options,
   useQuery: () => ({ data: [notification] }),
+  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }))
 
 vi.mock('../mail-inbox-controller', async (importOriginal) => {
@@ -86,6 +87,10 @@ vi.mock('../../navigation', () => ({
 
 vi.mock('@/components/shell/workspace-dock', () => ({
   useWorkspaceDock: () => ({ openPanel: vi.fn() }),
+}))
+
+vi.mock('./inbox-control-plane', () => ({
+  InboxControlPlane: () => null,
 }))
 
 function activeMailController(
@@ -159,12 +164,12 @@ describe('InboxPage mail composition', () => {
   it('keeps notifications working and exposes honest unavailable mail state', () => {
     render(<InboxPage />)
 
-    expect(screen.getByText('Research finished')).toBeInTheDocument()
+    expect(screen.getAllByText('Research finished')).not.toHaveLength(0)
     fireEvent.click(screen.getByRole('tab', { name: 'Mail' }))
     expect(screen.getByText("Mail isn't available yet")).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('tab', { name: 'Notifications' }))
-    expect(screen.getByText('Research finished')).toBeInTheDocument()
+    expect(screen.getAllByText('Research finished')).not.toHaveLength(0)
   })
 
   it('interleaves controller mail and delegates selection and compose', () => {
@@ -193,6 +198,32 @@ describe('InboxPage mail composition', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Compose' }))
     expect(openComposer).toHaveBeenCalledOnce()
+  })
+
+  it('opens the first unified item when the URL has no explicit selection', () => {
+    render(
+      <InboxPage
+        mailController={activeMailController({
+          status: 'ready',
+          conversation: {
+            ...conversation,
+            mailboxId: 'mailbox-1',
+            canSend: false,
+            agentAssignments: [],
+            messages: [],
+          },
+        })}
+      />,
+    )
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Unread conversation: Term sheet follow-up',
+      }),
+    ).toHaveAttribute('aria-current', 'true')
+    expect(
+      screen.getByRole('heading', { name: 'Term sheet follow-up' }),
+    ).toBeInTheDocument()
   })
 
   it('archives an open mail conversation and closes its detail surface', () => {

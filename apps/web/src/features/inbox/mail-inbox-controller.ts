@@ -358,12 +358,16 @@ export function useMailInboxController(input: {
   const inboxQuery = useInfiniteQuery(
     mailInboxOptions(input.workspaceId, input.search, input.unreadOnly),
   )
+  const selectedConversationId =
+    input.selectedConversationId ??
+    inboxQuery.data?.pages[0]?.page.items[0]?.id ??
+    null
   const conversationQuery = useQuery({
     ...mailConversationOptions(
       input.workspaceId,
-      input.selectedConversationId ?? EMPTY_CONVERSATION_ID,
+      selectedConversationId ?? EMPTY_CONVERSATION_ID,
     ),
-    enabled: input.selectedConversationId !== null,
+    enabled: selectedConversationId !== null,
   })
   const deleteAttachmentMutation = useMutation({
     mutationFn: deleteMailAttachment,
@@ -734,7 +738,7 @@ export function useMailInboxController(input: {
           hasMore: inboxQuery.hasNextPage,
           loadMore: () => void inboxQuery.fetchNextPage(),
         }
-  const detail: MailDetailResult = !input.selectedConversationId
+  const detail: MailDetailResult = !selectedConversationId
     ? { status: 'idle' }
     : conversationQuery.isPending
       ? { status: 'loading' }
