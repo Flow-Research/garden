@@ -474,6 +474,7 @@ export class MailRepositoryInvariantError extends Schema.TaggedErrorClass<MailRe
 export class MailRepositoryPersistenceError extends Schema.TaggedErrorClass<MailRepositoryPersistenceError>()(
   'MailRepositoryPersistenceError',
   {
+    reason: Schema.Literals(['connection', 'query', 'decode', 'transaction']),
     operation: Schema.String,
     message: Schema.String,
     cause: Schema.optional(Schema.Defect()),

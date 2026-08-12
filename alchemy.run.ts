@@ -202,6 +202,7 @@ export const web = await TanStackStart(deployTarget.workerId, {
     GMAIL_IMPORT_WORKFLOW: Workflow(deployTarget.gmailImportWorkflowId, {
       workflowName: deployTarget.gmailImportWorkflowName,
       className: 'GmailImportWorkflow',
+      limits: { steps: 25_000 },
     }),
     FILES: files,
     HYPERDRIVE: database,

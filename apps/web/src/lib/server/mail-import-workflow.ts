@@ -19,6 +19,7 @@ import {
   makeR2MailObjectStoreLayer,
   type GmailClientService,
   type GmailImportService,
+  MailRepositoryPersistenceError,
   type MailRepositoryService,
 } from '@garden/server/mail'
 import { Effect, Layer } from 'effect'
@@ -30,9 +31,16 @@ import { executorProgram } from './executor-runtime'
 import type { AppEnv } from './env'
 import { bindAppEnv } from './env'
 import { createRequestDbProvider } from './db'
+import {
+  mailImportCheckpointOutcome,
+  mailImportWorkflowErrorMessage,
+  retryMailImportPersistenceAtWorkflowBoundary,
+  type MailImportStepOutcome,
+} from './mail-import-workflow-boundary'
 
 const GMAIL_ENUMERATION_PAGE_SIZE = 500
 const GMAIL_IMPORT_BATCH_SIZE = 10
+const GMAIL_IMPORT_ITEMS_PER_WORKFLOW = 20_000
 
 export type GmailImportWorkflowParams = {
   workspaceId: WorkspaceId
@@ -40,6 +48,7 @@ export type GmailImportWorkflowParams = {
   syncAccountId: MailSyncAccount['id']
   userId: typeof UserId.Type
   memberId: typeof MemberId.Type
+  segmentIndex?: number
 }
 
 export type GmailImportWorkflowResult =
@@ -52,10 +61,11 @@ export type GmailImportWorkflowResult =
       runId: MailSyncRunId
       message: string
     }
-
-type StepOutcome<A> =
-  | { readonly _tag: 'Success'; readonly value: A }
-  | { readonly _tag: 'Failure'; readonly message: string }
+  | {
+      status: 'continued'
+      runId: MailSyncRunId
+      nextInstanceId: string
+    }
 
 type GmailWorkflowServices = {
   readonly gmail: GmailClientService
@@ -113,34 +123,6 @@ const historyWorkItems = (
   return [...items.values()]
 }
 
-/** Keeps Workflow checkpoints useful without serializing defects or private data. */
-const workflowErrorMessage = (error: unknown): string => {
-  if (
-    typeof error === 'object' &&
-    error !== null &&
-    'message' in error &&
-    typeof error.message === 'string' &&
-    error.message.length > 0
-  ) {
-    return error.message.slice(0, 500)
-  }
-  return 'Gmail import could not complete this step.'
-}
-
-/** Converts expected Effect failures into a small serializable step outcome. */
-const checkpointOutcome = <A, E>(
-  effect: Effect.Effect<A, E>,
-): Effect.Effect<StepOutcome<A>> =>
-  effect.pipe(
-    Effect.match({
-      onFailure: (error): StepOutcome<A> => ({
-        _tag: 'Failure',
-        message: workflowErrorMessage(error),
-      }),
-      onSuccess: (value): StepOutcome<A> => ({ _tag: 'Success', value }),
-    }),
-  )
-
 /** Lets Cloudflare Workflow own finite retry for transient Gmail reads. */
 const retryTransientGmailAtWorkflowBoundary = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
@@ -182,20 +164,30 @@ const retryTransientGmailAtWorkflowBoundary = <A, E, R>(
 const runMailImportDatabaseStep = <A, E>(
   env: AppEnv,
   use: (repository: MailRepositoryService) => Effect.Effect<A, E>,
-): Promise<StepOutcome<A>> => {
+): Promise<MailImportStepOutcome<A>> => {
   const provider = createRequestDbProvider(env)
   return Effect.runPromise(
     Effect.acquireUseRelease(
       Effect.tryPromise({
         try: () => provider.db(),
-        catch: (cause) => cause,
+        catch: (cause) =>
+          new MailRepositoryPersistenceError({
+            reason: 'connection',
+            operation: 'GmailImportWorkflow.connectDatabase',
+            message: 'Garden Mail could not connect to persistence.',
+            cause,
+          }),
       }),
       (db) => {
         const layer = makeMailRepositoryLayer(db)
         return Effect.gen(function* () {
           const repository = yield* MailRepository
           return yield* use(repository)
-        }).pipe(Effect.provide(layer), checkpointOutcome)
+        }).pipe(
+          Effect.provide(layer),
+          retryMailImportPersistenceAtWorkflowBoundary,
+          mailImportCheckpointOutcome,
+        )
       },
       () => Effect.promise(() => provider.close()),
     ),
@@ -212,14 +204,20 @@ const runGmailImportStep = <A, E>(
   params: GmailImportWorkflowParams,
   connectionName: string,
   use: (services: GmailWorkflowServices) => Effect.Effect<A, E>,
-): Promise<StepOutcome<A>> => {
+): Promise<MailImportStepOutcome<A>> => {
   bindAppEnv(env)
   const provider = createRequestDbProvider(env)
   return Effect.runPromise(
     Effect.acquireUseRelease(
       Effect.tryPromise({
         try: () => provider.db(),
-        catch: (cause) => cause,
+        catch: (cause) =>
+          new MailRepositoryPersistenceError({
+            reason: 'connection',
+            operation: 'GmailImportWorkflow.connectDatabase',
+            message: 'Garden Mail could not connect to persistence.',
+            cause,
+          }),
       }),
       (db) => {
         const dependencies = Layer.mergeAll(
@@ -241,9 +239,65 @@ const runGmailImportStep = <A, E>(
                   return yield* use({ gmail, repository, importer })
                 }).pipe(Effect.provide(layer)),
             ),
-        ).pipe(retryTransientGmailAtWorkflowBoundary, checkpointOutcome)
+        ).pipe(
+          retryTransientGmailAtWorkflowBoundary,
+          retryMailImportPersistenceAtWorkflowBoundary,
+          mailImportCheckpointOutcome,
+        )
       },
       () => Effect.promise(() => provider.close()),
+    ),
+  )
+}
+
+/**
+ * Resolves Gmail for a provider-only step. Enumeration deliberately returns a
+ * compact id page, then a separate database step persists it, matching
+ * Cloudflare's granular-step rule without putting credentials in step state.
+ */
+const runGmailReadStep = <A, E>(
+  env: AppEnv,
+  params: GmailImportWorkflowParams,
+  connectionName: string,
+  use: (gmail: GmailClientService) => Effect.Effect<A, E>,
+): Promise<MailImportStepOutcome<A>> => {
+  bindAppEnv(env)
+  return Effect.runPromise(
+    executorProgram(
+      { tenant: params.workspaceId, subject: params.userId },
+      (executor) =>
+        withExecutorGmailClient(
+          executor.gmailMailImport,
+          gmailPersonalConnectionRef(connectionName),
+          use,
+        ),
+    ).pipe(retryTransientGmailAtWorkflowBoundary, mailImportCheckpointOutcome),
+  )
+}
+
+/** Starts a deterministic continuation after this instance's safe step budget. */
+const continueImportRun = (
+  env: AppEnv,
+  params: GmailImportWorkflowParams,
+  nextSegmentIndex: number,
+): Promise<string> => {
+  const nextInstanceId = `gmail-import-${params.runId}-s${nextSegmentIndex}`
+  return Effect.runPromise(
+    Effect.tryPromise({
+      try: () =>
+        env.GMAIL_IMPORT_WORKFLOW.create({
+          id: nextInstanceId,
+          params: { ...params, segmentIndex: nextSegmentIndex },
+        }),
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.catch(() =>
+        Effect.tryPromise({
+          try: () => env.GMAIL_IMPORT_WORKFLOW.get(nextInstanceId),
+          catch: (cause) => cause,
+        }),
+      ),
+      Effect.as(nextInstanceId),
     ),
   )
 }
@@ -337,7 +391,7 @@ const settleImportedItem = (
       (error) =>
         Effect.succeed(
           MailSyncItemSettlement.cases.Failed.make({
-            error: workflowErrorMessage(error),
+            error: mailImportWorkflowErrorMessage(error),
           }),
         ),
     ),
@@ -409,12 +463,12 @@ export class GmailImportWorkflow extends WorkflowEntrypoint<
       let historyExpired = false
       do {
         const currentToken = pageToken
-        const pageOutcome = await step.do(`history-${pageIndex}`, () =>
-          runGmailImportStep(
+        const pageOutcome = await step.do(`history-read-${pageIndex}`, () =>
+          runGmailReadStep(
             this.env,
             params,
             account.executorConnectionName,
-            ({ gmail, repository }) =>
+            (gmail) =>
               gmail
                 .listHistory({
                   startHistoryId,
@@ -423,20 +477,17 @@ export class GmailImportWorkflow extends WorkflowEntrypoint<
                   historyTypes: ['messageAdded', 'labelAdded', 'labelRemoved'],
                 })
                 .pipe(
-                  Effect.flatMap((page) =>
-                    repository
-                      .persistMailSyncPage({
-                        workspaceId: params.workspaceId,
-                        runId: params.runId,
-                        items: historyWorkItems(page.history ?? []),
-                      })
-                      .pipe(
-                        Effect.as<HistoryEnumerationPage>({
-                          nextPageToken: page.nextPageToken ?? null,
-                          historyId: page.historyId,
-                          expired: false,
-                        }),
-                      ),
+                  Effect.map(
+                    (
+                      page,
+                    ): HistoryEnumerationPage & {
+                      readonly items: ReturnType<typeof historyWorkItems>
+                    } => ({
+                      items: historyWorkItems(page.history ?? []),
+                      nextPageToken: page.nextPageToken ?? null,
+                      historyId: page.historyId,
+                      expired: false,
+                    }),
                   ),
                   Effect.catchIf(
                     (error) =>
@@ -444,7 +495,12 @@ export class GmailImportWorkflow extends WorkflowEntrypoint<
                       error.operation === 'listHistory' &&
                       error.reason === 'not_found',
                     () =>
-                      Effect.succeed<HistoryEnumerationPage>({
+                      Effect.succeed<
+                        HistoryEnumerationPage & {
+                          readonly items: ReturnType<typeof historyWorkItems>
+                        }
+                      >({
+                        items: [],
                         nextPageToken: null,
                         historyId: profileOutcome.value.historyId,
                         expired: true,
@@ -461,6 +517,28 @@ export class GmailImportWorkflow extends WorkflowEntrypoint<
             `history-${pageIndex}`,
             pageOutcome.message,
           )
+        }
+        if (!pageOutcome.value.expired) {
+          const persistOutcome = await step.do(
+            `history-persist-${pageIndex}`,
+            () =>
+              runMailImportDatabaseStep(this.env, (repository) =>
+                repository.persistMailSyncPage({
+                  workspaceId: params.workspaceId,
+                  runId: params.runId,
+                  items: pageOutcome.value.items,
+                }),
+              ),
+          )
+          if (persistOutcome._tag === 'Failure') {
+            return await failImportRun(
+              step,
+              this.env,
+              params,
+              `history-persist-${pageIndex}`,
+              persistOutcome.message,
+            )
+          }
         }
         historyExpired = pageOutcome.value.expired
         completionHistoryId = pageOutcome.value.historyId
@@ -499,29 +577,30 @@ export class GmailImportWorkflow extends WorkflowEntrypoint<
         let pageIndex = 0
         do {
           const currentToken = pageToken
-          const pageOutcome = await step.do(`rescan-${pageIndex}`, () =>
-            runGmailImportStep(
+          const pageOutcome = await step.do(`rescan-read-${pageIndex}`, () =>
+            runGmailReadStep(
               this.env,
               params,
               account.executorConnectionName,
-              ({ gmail, repository }) =>
-                Effect.gen(function* () {
-                  const page = yield* gmail.listMessages({
+              (gmail) =>
+                gmail
+                  .listMessages({
                     maxResults: GMAIL_ENUMERATION_PAGE_SIZE,
                     pageToken: currentToken,
                     query: '-in:drafts',
                     includeSpamTrash: false,
                   })
-                  yield* repository.persistMailSyncPage({
-                    workspaceId: params.workspaceId,
-                    runId: params.runId,
-                    items: (page.messages ?? []).map((message) => ({
-                      providerMessageId: ProviderObjectId.make(message.id),
-                      providerThreadId: ProviderObjectId.make(message.threadId),
+                  .pipe(
+                    Effect.map((page) => ({
+                      items: (page.messages ?? []).map((message) => ({
+                        providerMessageId: ProviderObjectId.make(message.id),
+                        providerThreadId: ProviderObjectId.make(
+                          message.threadId,
+                        ),
+                      })),
+                      nextPageToken: page.nextPageToken ?? null,
                     })),
-                  })
-                  return { nextPageToken: page.nextPageToken ?? null }
-                }),
+                  ),
             ),
           )
           if (pageOutcome._tag === 'Failure') {
@@ -531,6 +610,26 @@ export class GmailImportWorkflow extends WorkflowEntrypoint<
               params,
               `rescan-${pageIndex}`,
               pageOutcome.message,
+            )
+          }
+          const persistOutcome = await step.do(
+            `rescan-persist-${pageIndex}`,
+            () =>
+              runMailImportDatabaseStep(this.env, (repository) =>
+                repository.persistMailSyncPage({
+                  workspaceId: params.workspaceId,
+                  runId: params.runId,
+                  items: pageOutcome.value.items,
+                }),
+              ),
+          )
+          if (persistOutcome._tag === 'Failure') {
+            return await failImportRun(
+              step,
+              this.env,
+              params,
+              `rescan-persist-${pageIndex}`,
+              persistOutcome.message,
             )
           }
           pageToken = pageOutcome.value.nextPageToken ?? undefined
@@ -559,29 +658,28 @@ export class GmailImportWorkflow extends WorkflowEntrypoint<
       let pageIndex = 0
       do {
         const currentToken = pageToken
-        const pageOutcome = await step.do(`enumerate-${pageIndex}`, () =>
-          runGmailImportStep(
+        const pageOutcome = await step.do(`enumerate-read-${pageIndex}`, () =>
+          runGmailReadStep(
             this.env,
             params,
             account.executorConnectionName,
-            ({ gmail, repository }) =>
-              Effect.gen(function* () {
-                const page = yield* gmail.listMessages({
+            (gmail) =>
+              gmail
+                .listMessages({
                   maxResults: GMAIL_ENUMERATION_PAGE_SIZE,
                   pageToken: currentToken,
                   query: '-in:drafts',
                   includeSpamTrash: false,
                 })
-                yield* repository.persistMailSyncPage({
-                  workspaceId: params.workspaceId,
-                  runId: params.runId,
-                  items: (page.messages ?? []).map((message) => ({
-                    providerMessageId: ProviderObjectId.make(message.id),
-                    providerThreadId: ProviderObjectId.make(message.threadId),
+                .pipe(
+                  Effect.map((page) => ({
+                    items: (page.messages ?? []).map((message) => ({
+                      providerMessageId: ProviderObjectId.make(message.id),
+                      providerThreadId: ProviderObjectId.make(message.threadId),
+                    })),
+                    nextPageToken: page.nextPageToken ?? null,
                   })),
-                })
-                return { nextPageToken: page.nextPageToken ?? null }
-              }),
+                ),
           ),
         )
         if (pageOutcome._tag === 'Failure') {
@@ -591,6 +689,26 @@ export class GmailImportWorkflow extends WorkflowEntrypoint<
             params,
             `enumerate-${pageIndex}`,
             pageOutcome.message,
+          )
+        }
+        const persistOutcome = await step.do(
+          `enumerate-persist-${pageIndex}`,
+          () =>
+            runMailImportDatabaseStep(this.env, (repository) =>
+              repository.persistMailSyncPage({
+                workspaceId: params.workspaceId,
+                runId: params.runId,
+                items: pageOutcome.value.items,
+              }),
+            ),
+        )
+        if (persistOutcome._tag === 'Failure') {
+          return await failImportRun(
+            step,
+            this.env,
+            params,
+            `enumerate-persist-${pageIndex}`,
+            persistOutcome.message,
           )
         }
         pageToken = pageOutcome.value.nextPageToken ?? undefined
@@ -616,9 +734,14 @@ export class GmailImportWorkflow extends WorkflowEntrypoint<
       }
     }
 
+    const segmentIndex = params.segmentIndex ?? 0
     let batchIndex = 0
+    let segmentItems = 0
     while (true) {
-      const claimKey = `batch-${batchIndex}`
+      const claimKey =
+        segmentIndex === 0
+          ? `batch-${batchIndex}`
+          : `segment-${segmentIndex}-batch-${batchIndex}`
       const batchOutcome = await step.do(`claim-${claimKey}`, () =>
         runMailImportDatabaseStep(this.env, (repository) =>
           repository.claimPendingMailSyncBatch({
@@ -640,34 +763,43 @@ export class GmailImportWorkflow extends WorkflowEntrypoint<
       }
       if (batchOutcome.value.length === 0) break
 
-      const processOutcome = await step.do(`process-${claimKey}`, () =>
-        runGmailImportStep(
-          this.env,
-          params,
-          account.executorConnectionName,
-          (services) =>
-            Effect.forEach(
-              batchOutcome.value,
-              (item) =>
-                item.status === 'imported' ||
-                item.status === 'duplicate' ||
-                item.status === 'failed'
-                  ? Effect.void
-                  : settleImportedItem(services, params, account, item),
-              { concurrency: 1, discard: true },
-            ),
-        ),
-      )
-      if (processOutcome._tag === 'Failure') {
-        return await failImportRun(
-          step,
-          this.env,
-          params,
-          `process-${claimKey}`,
-          processOutcome.message,
+      for (const item of batchOutcome.value) {
+        if (
+          item.status === 'imported' ||
+          item.status === 'duplicate' ||
+          item.status === 'failed'
+        ) {
+          continue
+        }
+        const processStep = `process-${claimKey}-${item.ordinal}`
+        const processOutcome = await step.do(processStep, () =>
+          runGmailImportStep(
+            this.env,
+            params,
+            account.executorConnectionName,
+            (services) => settleImportedItem(services, params, account, item),
+          ),
         )
+        if (processOutcome._tag === 'Failure') {
+          return await failImportRun(
+            step,
+            this.env,
+            params,
+            processStep,
+            processOutcome.message,
+          )
+        }
       }
+      segmentItems += batchOutcome.value.length
       batchIndex += 1
+      if (segmentItems >= GMAIL_IMPORT_ITEMS_PER_WORKFLOW) {
+        const nextSegmentIndex = segmentIndex + 1
+        const nextInstanceId = await step.do(
+          `continue-segment-${nextSegmentIndex}`,
+          () => continueImportRun(this.env, params, nextSegmentIndex),
+        )
+        return { status: 'continued', runId: params.runId, nextInstanceId }
+      }
     }
 
     const completionOutcome = await step.do('complete-run', () =>

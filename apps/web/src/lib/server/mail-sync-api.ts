@@ -188,6 +188,7 @@ export async function startPersonalGmailImport(
         syncAccountId: run.syncAccountId,
         userId: identity.userId,
         memberId: identity.authority.actor.memberId,
+        segmentIndex: 0,
       }
       yield* Effect.tryPromise({
         try: () =>

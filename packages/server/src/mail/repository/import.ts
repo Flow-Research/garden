@@ -134,7 +134,7 @@ const reconcileImportedConversationState = Effect.fn(
             sql`${mailMessage.ingressProviderMessageId} like ${`${input.syncAccountId}:%`}`,
           ),
         )
-        .orderBy(desc(mailMessage.authoredAt), desc(mailMessage.createdAt)),
+        .orderBy(desc(mailMessage.authoredAt), desc(mailMessage.id)),
   )
   const labels = messages.map((item) => providerLabelIds(item.evidence ?? null))
   const read = labels.every((item) => !item.has('UNREAD'))

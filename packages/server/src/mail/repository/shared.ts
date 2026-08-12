@@ -136,6 +136,7 @@ export const databaseEffect = <A>(
     try: run,
     catch: (cause) =>
       new MailRepositoryPersistenceError({
+        reason: 'query',
         operation,
         message: 'Garden Mail persistence operation failed.',
         cause,
@@ -152,6 +153,7 @@ export const decodeRow = <A>(
     Effect.mapError(
       (cause) =>
         new MailRepositoryPersistenceError({
+          reason: 'decode',
           operation,
           message: 'Garden Mail returned an invalid persisted value.',
           cause,
@@ -174,6 +176,7 @@ export const transactionFailure = (
     return cause
   }
   return new MailRepositoryPersistenceError({
+    reason: 'transaction',
     operation,
     message: 'Garden Mail transaction failed.',
     cause,
