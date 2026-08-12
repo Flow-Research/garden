@@ -5,6 +5,7 @@ import alchemy from 'alchemy'
 import { CloudflareStateStore } from 'alchemy/state'
 import {
   Ai,
+  AiGateway,
   BrowserRendering,
   Container,
   D1Database,
@@ -130,6 +131,18 @@ const automationTrigger = DurableObjectNamespace(
 )
 
 /**
+ * Owns the gateway named by the deployment target so every environment has a
+ * real Workers AI routing/logging boundary. Previously preview referenced a
+ * gateway that did not exist, causing every agent turn to fail after its
+ * Durable Object accepted the message.
+ */
+const aiGateway = await AiGateway(`${deployTarget.workerId}-ai-gateway`, {
+  ...cloudflareApiOptions,
+  gatewayName: deployTarget.aiGatewayId,
+  collectLogs: true,
+})
+
+/**
  * Receives sampled execution events from staging without introducing runtime
  * secrets. This must deploy during push-to-deploy too; otherwise source changes
  * can leave the dashboard Worker on an older ad hoc probe script while the
@@ -223,7 +236,7 @@ export const web = await TanStackStart(deployTarget.workerId, {
     BROWSER: BrowserRendering(),
     AI: Ai(),
     EMAIL: EmailSender({ dev: { remote: true } }),
-    AI_GATEWAY_ID: plainEnv('AI_GATEWAY_ID', deployTarget.aiGatewayId),
+    AI_GATEWAY_ID: aiGateway.id,
     SANDBOX_TRANSPORT: plainEnv('SANDBOX_TRANSPORT', 'rpc'),
     SANDBOX_LOG_LEVEL: plainEnv('SANDBOX_LOG_LEVEL', 'warn'),
     GARDEN_LOG_LEVEL: plainEnv('GARDEN_LOG_LEVEL', 'warn'),
