@@ -69,6 +69,7 @@ const importedEnvelope = (
   providerMessageId: string,
   providerThreadId = 'gmail-thread-1',
   internetMessageId: string | null = null,
+  labelIds: ReadonlyArray<string> = ['INBOX'],
 ) =>
   ImportedMailEnvelope.make({
     workspaceId,
@@ -76,7 +77,7 @@ const importedEnvelope = (
     provider: ProviderKey.make('gmail'),
     providerMessageId: ProviderObjectId.make(providerMessageId),
     providerThreadId: ProviderObjectId.make(providerThreadId),
-    providerEvidence: { labelIds: ['INBOX'] },
+    providerEvidence: { labelIds: [...labelIds] },
     rawStorageKey: null,
     internetMessageId:
       internetMessageId === null
@@ -324,6 +325,54 @@ describe('MailRepository Gmail sync ledger (integration)', () => {
         expect(
           importedMessages.every((message) => message.rawStorageKey === null),
         ).toBe(true)
+
+        yield* repository.ingestImported(
+          importedEnvelope(
+            account.id,
+            'gmail-message-1',
+            'gmail-thread-1',
+            null,
+            ['STARRED'],
+          ),
+        )
+        yield* repository.ingestImported(
+          importedEnvelope(
+            account.id,
+            'gmail-message-2',
+            'gmail-thread-1',
+            null,
+            [],
+          ),
+        )
+        const archived = yield* repository.listConversations({
+          workspaceId,
+          actor,
+          mailboxId: account.mailboxId,
+        })
+        expect(archived[0]).toMatchObject({
+          unread: false,
+          state: { pinned: true },
+        })
+        expect(archived[0]?.state?.archivedAt).not.toBeNull()
+
+        yield* repository.ingestImported(
+          importedEnvelope(
+            account.id,
+            'gmail-message-2',
+            'gmail-thread-1',
+            null,
+            ['UNREAD'],
+          ),
+        )
+        const unread = yield* repository.listConversations({
+          workspaceId,
+          actor,
+          mailboxId: account.mailboxId,
+        })
+        expect(unread[0]).toMatchObject({
+          unread: true,
+          state: { pinned: true },
+        })
       }).pipe(Effect.provide(makeMailRepositoryLayer(testDb.db))),
   )
 
