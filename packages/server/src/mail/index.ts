@@ -63,6 +63,17 @@ export {
   sha256,
 } from './content-addressing.ts'
 export {
+  DraftAttachmentDescriptor,
+  DraftAttachmentPersistenceError,
+  DraftAttachmentUploadInput,
+  DraftAttachmentValidationError,
+  MAX_OUTBOUND_ATTACHMENT_BYTES,
+  authorizeDraftAttachmentUpload,
+  deleteUnreferencedDraftAttachment,
+  storeDraftAttachment,
+} from './draft-attachment.ts'
+export { sanitizeAuthoredMailHtml } from './html.ts'
+export {
   DraftCommand,
   DraftTransition,
   InvalidDraftTransitionError,
