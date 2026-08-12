@@ -32,8 +32,13 @@ process.env.CLOUDFLARE_VITE_REMOTE_BINDINGS = '1'
 if (!containers) {
   process.env.ENVIRONMENT = 'development'
 }
-if (process.env.DATABASE_URL) {
-  process.env[LOCAL_HYPERDRIVE_ENV] ??= process.env.DATABASE_URL
+if (process.env.LOCAL_HYPERDRIVE_DATABASE_URL) {
+  process.env[LOCAL_HYPERDRIVE_ENV] ??=
+    process.env.LOCAL_HYPERDRIVE_DATABASE_URL
+} else {
+  throw new Error(
+    'Missing LOCAL_HYPERDRIVE_DATABASE_URL. Point it at local PostgreSQL; DATABASE_URL remains the canonical remote development database.',
+  )
 }
 process.env.CLOUDFLARE_INCLUDE_PROCESS_ENV ??= 'true'
 
