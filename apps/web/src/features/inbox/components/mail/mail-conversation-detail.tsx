@@ -27,6 +27,10 @@ export function MailConversationDetail({
   onToggleMessage,
   messageActions,
 }: MailConversationDetailProps) {
+  const latestMessageId = conversation.messages.at(-1)?.id
+  const latestReplyComposer =
+    replyingToMessageId === latestMessageId ? inlineComposer : null
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
       {toolbar}
@@ -48,11 +52,6 @@ export function MailConversationDetail({
                 <span
                   key={label.id}
                   className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
-                  style={
-                    label.color
-                      ? { borderLeft: `2px solid ${label.color}` }
-                      : undefined
-                  }
                 >
                   {label.name}
                 </span>
@@ -71,11 +70,22 @@ export function MailConversationDetail({
                 onToggleExpanded={() => onToggleMessage(message.id)}
                 {...messageActions?.(message)}
               />
-              {replyingToMessageId === message.id ? inlineComposer : null}
+              {replyingToMessageId === message.id &&
+              message.id !== latestMessageId
+                ? inlineComposer
+                : null}
             </div>
           ))}
         </div>
       </div>
+      {latestReplyComposer ? (
+        <div
+          data-mail-reply-surface="sticky"
+          className="z-10 shrink-0 border-t bg-background px-4 py-2"
+        >
+          {latestReplyComposer}
+        </div>
+      ) : null}
     </div>
   )
 }

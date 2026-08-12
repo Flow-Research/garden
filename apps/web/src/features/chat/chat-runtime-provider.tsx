@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Result } from 'better-result'
 import { useAgent } from 'agents/react'
-import { useAgentChat } from '@cloudflare/ai-chat/react'
+import { useAgentChat, type AITool } from '@cloudflare/ai-chat/react'
 import type { UIMessage } from 'ai'
 import { useAuthStore } from '@garden/app-state/auth'
 import { useChatStore } from '@garden/app-state/chat'
@@ -58,6 +58,57 @@ export type ChatRuntime = {
   status: RealtimeStatus
   stop: AgentChatApi['stop']
   warmRuntime: () => void
+}
+
+type ClientToolCall = {
+  toolCallId: string
+  toolName: string
+  input: unknown
+}
+
+/**
+ * Executes one browser-owned tool and always returns its result through the
+ * Agents SDK continuation channel. Registering schemas alone only advertises
+ * a tool; the installed `useAgentChat` source requires `onToolCall` to execute
+ * it. Failures stay product-safe instead of exposing browser/runtime details.
+ */
+export async function executeRegisteredClientTool(input: {
+  tools: Record<string, AITool<unknown, unknown>> | undefined
+  toolCall: ClientToolCall
+  addToolOutput: (output: {
+    toolCallId: string
+    output?: unknown
+    state?: 'output-available' | 'output-error'
+    errorText?: string
+  }) => void
+}) {
+  const execute = input.tools?.[input.toolCall.toolName]?.execute
+  if (!execute) {
+    input.addToolOutput({
+      toolCallId: input.toolCall.toolCallId,
+      state: 'output-error',
+      errorText: 'This action is not available in the current view.',
+    })
+    return
+  }
+
+  const execution = await Result.tryPromise({
+    try: () => Promise.resolve(execute(input.toolCall.input)),
+    catch: () => new Error('Browser action failed.'),
+  })
+  execution.match({
+    ok: (output) =>
+      input.addToolOutput({
+        toolCallId: input.toolCall.toolCallId,
+        output,
+      }),
+    err: () =>
+      input.addToolOutput({
+        toolCallId: input.toolCall.toolCallId,
+        state: 'output-error',
+        errorText: 'Garden could not complete this action.',
+      }),
+  })
 }
 
 function getText(parts: ChatUiMessage['parts']) {
@@ -181,11 +232,14 @@ export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
 export function useChatRuntimeConnection({
   session,
   updateSessionPreview,
+  clientTools,
 }: {
   session: AgentChatSession
   updateSessionPreview: ReturnType<
     typeof useAgentSessions
   >['updateSessionPreview']
+  /** Browser-owned actions advertised only by the surface mounting this chat. */
+  clientTools?: Record<string, AITool<unknown, unknown>>
 }) {
   const pendingTurnRef = useRef<PendingTurn | null>(null)
 
@@ -241,6 +295,13 @@ export function useChatRuntimeConnection({
     error,
   } = useAgentChat<unknown, ChatUiMessage>({
     agent,
+    ...(clientTools ? { tools: clientTools } : {}),
+    onToolCall: ({ toolCall, addToolOutput }) =>
+      executeRegisteredClientTool({
+        tools: clientTools,
+        toolCall,
+        addToolOutput,
+      }),
     getInitialMessages: null,
     onFinish: ({ message }) => {
       const pending = pendingTurnRef.current

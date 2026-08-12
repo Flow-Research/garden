@@ -1,6 +1,7 @@
 export * from './mail-composer'
 export * from './mail-agent-sidebar'
 export * from './mail-agent-runtime'
+export * from './mail-agent-pane'
 export * from './mail-conversation-detail'
 export * from './mail-conversation-list'
 export * from './mail-conversation-row'

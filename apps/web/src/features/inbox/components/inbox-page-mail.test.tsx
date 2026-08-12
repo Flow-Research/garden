@@ -48,7 +48,10 @@ vi.mock('@garden/app-state/hooks', () => ({
 vi.mock('@tanstack/react-query', () => ({
   queryOptions: (options: unknown) => options,
   useQuery: () => ({ data: [notification] }),
-  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+  useQueryClient: () => ({
+    invalidateQueries: vi.fn(),
+    prefetchQuery: vi.fn(() => Promise.resolve()),
+  }),
 }))
 
 vi.mock('../mail-inbox-controller', async (importOriginal) => {
@@ -93,6 +96,23 @@ vi.mock('./inbox-control-plane', () => ({
   InboxControlPlane: () => null,
 }))
 
+vi.mock('./mail/mail-agent-runtime', () => ({
+  MailAgentConversationPanel: ({
+    conversationId,
+    onClose,
+  }: {
+    conversationId: string | null
+    onClose?: () => void
+  }) => (
+    <aside aria-label="Test mailbox agent">
+      <span>Agent context: {conversationId ?? 'none'}</span>
+      <button type="button" onClick={onClose}>
+        Close test agent
+      </button>
+    </aside>
+  ),
+}))
+
 function activeMailController(
   detail: ActiveMailInboxController['detail'] = { status: 'idle' },
 ): ActiveMailInboxController {
@@ -113,6 +133,7 @@ function activeMailController(
     folders: [],
     actions: {
       openComposer,
+      openAgentDraft: vi.fn(),
       closeComposer: vi.fn(),
       toggleStar: vi.fn(),
       toggleRead,
@@ -121,6 +142,7 @@ function activeMailController(
       reply: vi.fn(),
       replyAll: vi.fn(),
       forward: vi.fn(),
+      editAgentDraft: vi.fn(),
       assignAgent: vi.fn(),
       unassignAgent: vi.fn(),
       messageProps: () => ({}),
@@ -226,6 +248,27 @@ describe('InboxPage mail composition', () => {
     ).toBeInTheDocument()
   })
 
+  it('waits for mail before choosing the automatic first item', () => {
+    const loadingController: ActiveMailInboxController = {
+      ...activeMailController(),
+      list: { status: 'loading' },
+    }
+    const { rerender } = render(
+      <InboxPage mailController={loadingController} />,
+    )
+
+    expect(
+      screen.queryByRole('heading', { name: 'Research finished' }),
+    ).not.toBeInTheDocument()
+
+    rerender(<InboxPage mailController={activeMailController()} />)
+    expect(
+      screen.getByRole('button', {
+        name: 'Unread conversation: Term sheet follow-up',
+      }),
+    ).toHaveAttribute('aria-current', 'true')
+  })
+
   it('archives an open mail conversation and closes its detail surface', () => {
     window.history.replaceState(
       {},
@@ -254,6 +297,76 @@ describe('InboxPage mail composition', () => {
     fireEvent.click(detailArchive)
 
     expect(archiveMail).toHaveBeenCalledWith('conversation-1')
-    expect(replace).toHaveBeenCalledWith(expect.not.stringContaining('item='))
+    expect(replace).toHaveBeenCalledWith(expect.stringContaining('item=none'))
+  })
+
+  it('keeps the inbox agent open after the selected email closes', () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/?item=mail%3Aconversation-1&scope=mail',
+    )
+    replace.mockImplementation((url: string) =>
+      window.history.replaceState({}, '', url),
+    )
+    const page = render(
+      <InboxPage
+        mailController={activeMailController({
+          status: 'ready',
+          conversation: {
+            ...conversation,
+            mailboxId: 'mailbox-1',
+            canSend: true,
+            agentAssignments: [],
+            messages: [],
+          },
+        })}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open agent' }))
+    expect(
+      screen.getByText('Agent context: conversation-1'),
+    ).toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Back to conversations' }),
+    )
+    page.rerender(
+      <InboxPage
+        mailController={activeMailController({
+          status: 'ready',
+          conversation: {
+            ...conversation,
+            mailboxId: 'mailbox-1',
+            canSend: true,
+            agentAssignments: [],
+            messages: [],
+          },
+        })}
+      />,
+    )
+    expect(screen.getByText('Agent context: none')).toBeInTheDocument()
+    expect(screen.getByLabelText('Test mailbox agent')).toBeInTheDocument()
+
+    page.unmount()
+    render(
+      <InboxPage
+        mailController={activeMailController({
+          status: 'ready',
+          conversation: {
+            ...conversation,
+            mailboxId: 'mailbox-1',
+            canSend: true,
+            agentAssignments: [],
+            messages: [],
+          },
+        })}
+      />,
+    )
+    expect(screen.getByText('Agent context: none')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Term sheet follow-up' }),
+    ).toBeNull()
   })
 })

@@ -51,11 +51,15 @@ import type { AppRequestContext } from './context'
 import {
   MailRequestBoundaryError,
   MailRequestForbiddenError,
-  MailRequestUnauthorizedError,
   requireMailMemberAuthority,
 } from './mail-authority'
 import type { MailDeliveryWorkflowParams } from './mail-delivery-workflow'
-import type { MailAgentChatSession } from './mail-agent-orchestration'
+import type {
+  AgentMailDraftProposal,
+  MailAgentChatSession,
+  MailAgentChatSessionInput,
+  MailAgentTurnContextBinding,
+} from './mail-agent-orchestration'
 import {
   gmailPersonalConnectionRef,
   withExecutorGmailClient,
@@ -109,6 +113,21 @@ export type MailDraftAttachmentUploadInput = {
   contentType: string
   content: Uint8Array
 }
+
+export type MailAgentDraftValuesInput = {
+  workspaceId: string
+  agentId: string
+  draftCapability: string
+  mode: AgentMailDraftProposal['mode']
+  to?: string
+  cc?: string
+  bcc?: string
+  subject?: string
+  body: string
+}
+
+/** Exact persisted revision exposed to the composer without sender transport ids. */
+export type MailAgentComposerDraft = Omit<DraftSnapshot, 'sender'>
 
 export type MailConversationStateAction =
   | 'mark-read'
@@ -342,47 +361,151 @@ export async function getEligibleMailAgents(
   )
 }
 
-/**
- * Resolves the one assignment-owned chat session for a selected conversation.
- * Request auth supplies the owner; callers can never open another member's
- * hidden mail thread or bind an unassigned agent to the conversation.
- */
+/** Proves member visibility before authority crosses into the agent runtime. */
+const authorizeMailAgentSession = Effect.fn('GardenMail.authorizeAgentSession')(
+  function* (
+    context: AppRequestContext,
+    input: {
+      workspaceId: string
+      conversationId: string | null
+      agentId: string
+    },
+  ) {
+    const workspaceId = yield* decodeWorkspaceId(input.workspaceId)
+    const authority = yield* requireMailMemberAuthority(context, workspaceId)
+    const conversationId =
+      input.conversationId === null
+        ? null
+        : yield* Schema.decodeUnknownEffect(ConversationId)(
+            input.conversationId,
+          )
+    if (conversationId !== null) {
+      yield* Effect.gen(function* () {
+        const repository = yield* MailRepository
+        yield* repository.getConversation({
+          workspaceId,
+          actor: authority.actor,
+          conversationId,
+        })
+      }).pipe(Effect.provide(makeMailRepositoryLayer(authority.db)))
+    }
+    return {
+      db: authority.db,
+      input: {
+        workspaceId,
+        ownerUserId: authority.userId,
+        memberId: authority.actor.memberId,
+        conversationId,
+        agentId: yield* Schema.decodeUnknownEffect(AgentId)(input.agentId),
+      } satisfies MailAgentChatSessionInput,
+    }
+  },
+)
+
+type MailAgentRequestInput = {
+  workspaceId: string
+  conversationId: string | null
+  agentId: string
+}
+
+/** Returns the stable chat identity without mutating selected-email context. */
 export async function getMailAgentSession(
   context: AppRequestContext,
-  input: { workspaceId: string; conversationId: string; agentId: string },
+  input: MailAgentRequestInput,
 ): Promise<MailAgentChatSession> {
   return await Effect.runPromise(
     Effect.gen(function* () {
-      const workspaceId = yield* decodeWorkspaceId(input.workspaceId)
-      const authority = yield* requireMailMemberAuthority(context, workspaceId)
-      const session = yield* Effect.tryPromise({
-        try: () => context.auth.getSession(),
-        catch: (cause) => cause,
-      })
-      if (!session?.user) {
-        return yield* new MailRequestUnauthorizedError({
-          message: 'Authentication required.',
-        })
-      }
+      const authorized = yield* authorizeMailAgentSession(context, input)
       // Keep AgentDO runtime imports outside client-side Vitest module loading;
       // TanStack executes this branch only inside the authenticated Worker.
       const orchestration = yield* Effect.promise(
         () => import('./mail-agent-orchestration'),
       )
       return yield* orchestration.getOrCreateMailAgentChatSession(
-        authority.db,
-        context.env,
-        {
-          workspaceId,
-          ownerUserId: yield* Schema.decodeUnknownEffect(
-            Schema.String.check(Schema.isUUID()),
-          )(session.user.id),
-          conversationId: yield* Schema.decodeUnknownEffect(ConversationId)(
-            input.conversationId,
-          ),
-          agentId: yield* Schema.decodeUnknownEffect(AgentId)(input.agentId),
-        },
+        authorized.db,
+        authorized.input,
       )
+    }),
+  )
+}
+
+/** Issues a per-turn capability after refreshing member and agent authority. */
+export async function bindMailAgentTurnContext(
+  context: AppRequestContext,
+  input: MailAgentRequestInput,
+): Promise<MailAgentTurnContextBinding> {
+  return await Effect.runPromise(
+    Effect.gen(function* () {
+      const authorized = yield* authorizeMailAgentSession(context, input)
+      const orchestration = yield* Effect.promise(
+        () => import('./mail-agent-orchestration'),
+      )
+      return yield* orchestration.bindMailAgentTurnContext(
+        authorized.db,
+        context.env,
+        authorized.input,
+      )
+    }),
+  )
+}
+
+/**
+ * Persists a browser compose handoff as the authenticated session's agent.
+ * The request carries no actor, member, mailbox, sender, or revision identity;
+ * those are resolved from the stable hidden inbox session and Postgres access.
+ */
+export async function persistAgentMailDraft(
+  context: AppRequestContext,
+  input: MailAgentDraftValuesInput,
+): Promise<MailAgentComposerDraft> {
+  return await Effect.runPromise(
+    Effect.gen(function* () {
+      const authorized = yield* authorizeMailAgentSession(context, {
+        workspaceId: input.workspaceId,
+        conversationId: null,
+        agentId: input.agentId,
+      })
+      const orchestration = yield* Effect.promise(
+        () => import('./mail-agent-orchestration'),
+      )
+      const proposal = yield* Schema.decodeUnknownEffect(
+        orchestration.AgentMailDraftProposal,
+      )({
+        mode: input.mode,
+        ...(input.to === undefined ? {} : { to: input.to }),
+        ...(input.cc === undefined ? {} : { cc: input.cc }),
+        ...(input.bcc === undefined ? {} : { bcc: input.bcc }),
+        ...(input.subject === undefined ? {} : { subject: input.subject }),
+        body: input.body,
+      })
+      const immutableInput =
+        yield* orchestration.consumeMailAgentDraftCapability(
+          authorized.db,
+          context.env,
+          authorized.input,
+          input.draftCapability,
+          proposal,
+        )
+      const draft = yield* orchestration.createAgentMailDraft(
+        authorized.db,
+        immutableInput,
+        proposal,
+      )
+      return {
+        id: draft.id,
+        mailboxId: draft.mailboxId,
+        conversationId: draft.conversationId,
+        author: draft.author,
+        replyToMessageId: draft.replyToMessageId,
+        status: draft.status,
+        revision: draft.revision,
+        subject: draft.subject,
+        textBody: draft.textBody,
+        htmlBody: draft.htmlBody,
+        recipients: draft.recipients,
+        attachments: draft.attachments,
+        updatedAt: draft.updatedAt,
+      }
     }),
   )
 }

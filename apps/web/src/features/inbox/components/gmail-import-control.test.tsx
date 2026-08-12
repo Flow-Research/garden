@@ -11,7 +11,7 @@ const account: GmailImportAccountView = {
   connectionAddress: 'u:user-1/google_gmail/personalGmail',
   identityLabel: 'kixeyems0@gmail.com',
   iconUrl: 'https://example.com/gmail.svg',
-  importMode: 'read_only',
+  importMode: 'gmail_transport',
 }
 
 function controllerFor(
@@ -54,7 +54,7 @@ describe('GmailImportControl', () => {
     expect(controller.actions.connect).toHaveBeenCalledOnce()
   })
 
-  it('shows the connected identity and keeps the imported mailbox read-only', () => {
+  it('shows the connected identity and Gmail sending capability', () => {
     const controller = controllerFor({ status: 'connected' })
     render(<GmailImportControl controller={controller} />)
 
@@ -62,9 +62,8 @@ describe('GmailImportControl', () => {
 
     expect(screen.getByText('kixeyems0@gmail.com')).toBeInTheDocument()
     expect(screen.getByText('Connected · Personal')).toBeInTheDocument()
-    expect(screen.getByText(/read-only Garden mailbox/i)).toBeInTheDocument()
     expect(
-      screen.getByText(/not appear as a sending address/i),
+      screen.getByText(/read, organize, reply, and send/i),
     ).toBeInTheDocument()
     fireEvent.click(
       screen.getAllByRole('button', { name: 'Import emails' }).at(-1)!,

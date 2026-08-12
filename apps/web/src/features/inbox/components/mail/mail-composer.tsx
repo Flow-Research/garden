@@ -14,7 +14,6 @@ import {
   Bold,
   FileText,
   Italic,
-  Link,
   List,
   ListOrdered,
   Send,
@@ -46,7 +45,6 @@ const formatActions: Array<{
     label: 'Numbered list',
     icon: <ListOrdered />,
   },
-  { format: 'link', label: 'Insert link', icon: <Link /> },
 ]
 
 export type MailComposerProps = {
@@ -112,7 +110,11 @@ export function MailComposer({
     onSend()
   }
 
-  /** Applies the existing Zero composer toolbar action to Tiptap state. */
+  /**
+   * Applies Zero's pinned composer toolbar actions to Tiptap state. Zero leaves
+   * links to Tiptap's autolink/link-on-paste behavior, so there is deliberately
+   * no manual URL prompt in this toolbar.
+   */
   const format = (action: MailComposerFormat) => {
     if (onFormat) return onFormat(action)
     if (!richEditor) return
@@ -122,14 +124,6 @@ export function MailComposer({
     if (action === 'underline') chain.toggleUnderline().run()
     if (action === 'bullet-list') chain.toggleBulletList().run()
     if (action === 'ordered-list') chain.toggleOrderedList().run()
-    if (action === 'link') {
-      if (richEditor.isActive('link')) {
-        chain.unsetLink().run()
-        return
-      }
-      const href = window.prompt('Link URL')?.trim()
-      if (href) chain.setLink({ href }).run()
-    }
   }
 
   return (
@@ -200,10 +194,11 @@ export function MailComposer({
               id="mail-composer-to"
               value={values.to}
               disabled={disabled}
+              autoFocus={variant === 'panel'}
               autoComplete="off"
               placeholder="name@company.com"
               onChange={(event) => update('to', event.target.value)}
-              className="h-9 flex-1 border-0 px-0 shadow-none focus-visible:ring-0"
+              className="h-9 flex-1 rounded-none border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
             />
             <Button
               type="button"
@@ -232,7 +227,7 @@ export function MailComposer({
                   disabled={disabled}
                   autoComplete="off"
                   onChange={(event) => update('cc', event.target.value)}
-                  className="h-9 flex-1 border-0 px-0 shadow-none focus-visible:ring-0"
+                  className="h-9 flex-1 rounded-none border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
                 />
               </div>
               <div className="flex min-h-10 items-center gap-2">
@@ -248,7 +243,7 @@ export function MailComposer({
                   disabled={disabled}
                   autoComplete="off"
                   onChange={(event) => update('bcc', event.target.value)}
-                  className="h-9 flex-1 border-0 px-0 shadow-none focus-visible:ring-0"
+                  className="h-9 flex-1 rounded-none border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
                 />
               </div>
             </>
@@ -266,11 +261,11 @@ export function MailComposer({
               value={values.subject}
               disabled={disabled}
               onChange={(event) => update('subject', event.target.value)}
-              className="h-9 flex-1 border-0 px-0 shadow-none focus-visible:ring-0"
+              className="h-9 flex-1 rounded-none border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
             />
           </div>
 
-          {fromOptions.length > 0 ? (
+          {variant === 'panel' && fromOptions.length > 0 ? (
             <div className="flex min-h-10 items-center gap-2">
               <label
                 htmlFor="mail-composer-from"
@@ -300,6 +295,8 @@ export function MailComposer({
             <MailRichEditor
               html={values.htmlBody}
               disabled={disabled}
+              autoFocus={variant === 'inline'}
+              className={variant === 'inline' ? 'min-h-[50px]' : 'min-h-48'}
               onReady={setRichEditor}
               onChange={({ html, text }) =>
                 onChange({ ...values, body: text, htmlBody: html })

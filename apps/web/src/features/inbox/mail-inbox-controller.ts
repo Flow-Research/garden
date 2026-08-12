@@ -31,6 +31,7 @@ import {
   uploadMailAttachment,
 } from './mail.queries'
 import type {
+  MailAgentComposerDraft,
   MailDraftValuesInput,
   MailInboxSnapshot,
 } from '@/lib/server/mail-api'
@@ -72,8 +73,23 @@ export type MailComposerController = {
   props: Omit<MailComposerProps, 'variant'>
 }
 
+export type AgentMailComposerInput = {
+  mode: 'new' | 'reply' | 'reply-all' | 'forward'
+  to?: string
+  cc?: string
+  bcc?: string
+  subject?: string
+  body: string
+}
+
+export type AgentMailComposerOutcome =
+  | { status: 'opened' }
+  | { status: 'no-active-conversation' }
+  | { status: 'sender-unavailable' }
+
 export type MailInboxActions = {
   openComposer: () => void
+  openAgentDraft: (draft: MailAgentComposerDraft) => AgentMailComposerOutcome
   closeComposer: () => void
   toggleStar: (conversationId: string) => void
   toggleRead: (conversationId: string) => void
@@ -82,6 +98,7 @@ export type MailInboxActions = {
   reply: (conversationId: string, messageId?: string) => void
   replyAll: (conversationId: string, messageId?: string) => void
   forward: (conversationId: string, messageId?: string) => void
+  editAgentDraft: (conversationId: string) => void
   assignAgent: (conversationId: string, agentId: string) => void
   unassignAgent: (conversationId: string, agentId: string) => void
   messageProps: (
@@ -601,11 +618,12 @@ export function useMailInboxController(input: {
     (conversationQuery.data?.conversation.id === conversationId
       ? conversationQuery.data.conversation
       : undefined)
-  const beginCompose = (
+  /** Builds one composer state from canonical thread data without persisting it. */
+  const composeState = (
     conversationId: string | null,
     replyToMessageId?: string,
     mode: 'reply' | 'reply-all' | 'forward' = 'reply',
-  ) => {
+  ): ComposerState | null => {
     const detail = conversationQuery.data
     const summary = conversationId === null ? null : summaryFor(conversationId)
     const mailbox =
@@ -613,12 +631,17 @@ export function useMailInboxController(input: {
         (candidate) => candidate.id === summary?.mailboxId,
       ) ?? sendableMailboxes[0]
     if (!mailbox) {
-      toast.error('This mailbox is connected for reading only.')
-      return
+      return null
     }
+    // A new message has no thread source. Previously the global Compose action
+    // reused whichever conversation happened to be open, turning Compose into
+    // a hidden inline reply at the bottom of that thread.
     const source =
-      detail?.messages.find((message) => message.id === replyToMessageId) ??
-      detail?.messages.at(-1)
+      conversationId === null
+        ? undefined
+        : (detail?.messages.find(
+            (message) => message.id === replyToMessageId,
+          ) ?? detail?.messages.at(-1))
     const ownAddresses = new Set<string>(
       mailboxes
         .map((candidate) => candidate.primaryAddress)
@@ -645,7 +668,7 @@ export function useMailInboxController(input: {
         : originalSubject && !originalSubject.match(/^re:/i)
           ? `Re: ${originalSubject}`
           : originalSubject
-    setComposer({
+    return {
       values: {
         to,
         cc: '',
@@ -663,17 +686,32 @@ export function useMailInboxController(input: {
       draftId: null,
       revision: null,
       ccBccVisible: mode === 'reply-all',
-    })
+    }
+  }
+
+  const beginCompose = (
+    conversationId: string | null,
+    replyToMessageId?: string,
+    mode: 'reply' | 'reply-all' | 'forward' = 'reply',
+  ) => {
+    const next = composeState(conversationId, replyToMessageId, mode)
+    if (!next) {
+      toast.error('This mailbox is connected for reading only.')
+      return
+    }
+    setComposer(next)
   }
 
   /** Opens the exact persisted revision so collaborative edits stay optimistic. */
-  const beginEditDraft = (draft: DraftSnapshot) => {
+  const beginEditDraft = (
+    draft: Omit<DraftSnapshot, 'sender'>,
+  ): AgentMailComposerOutcome => {
     const mailbox = mailboxes.find(
       (candidate) => candidate.id === draft.mailboxId,
     )
     if (!mailbox) {
       toast.error('Mailbox access is no longer available.')
-      return
+      return { status: 'sender-unavailable' }
     }
     const addresses = (kind: 'to' | 'cc' | 'bcc') =>
       draft.recipients
@@ -710,6 +748,25 @@ export function useMailInboxController(input: {
         ? { agentAttribution: 'Agent-authored draft' }
         : {}),
     })
+    return { status: 'opened' }
+  }
+
+  /** Opens a canonical agent draft, recording requested changes first when needed. */
+  const editDraft = (draft: DraftSnapshot) => {
+    if (draft.status !== 'awaiting_approval') {
+      beginEditDraft(draft)
+      return
+    }
+    requestChangesMutation.mutate(
+      {
+        data: {
+          workspaceId: input.workspaceId,
+          draftId: draft.id,
+          expectedRevision: draft.revision,
+        },
+      },
+      { onSuccess: beginEditDraft },
+    )
   }
 
   const list: MailListResult = inboxQuery.isPending
@@ -864,6 +921,7 @@ export function useMailInboxController(input: {
       : null,
     actions: {
       openComposer: () => beginCompose(null),
+      openAgentDraft: beginEditDraft,
       closeComposer: () => setComposer(null),
       toggleStar: (conversationId) => {
         const summary = summaryFor(conversationId)
@@ -893,6 +951,17 @@ export function useMailInboxController(input: {
         beginCompose(conversationId, messageId, 'reply-all'),
       forward: (conversationId, messageId) =>
         beginCompose(conversationId, messageId, 'forward'),
+      editAgentDraft: (conversationId) => {
+        if (conversationQuery.data?.conversation.id !== conversationId) return
+        const draft = [...conversationQuery.data.drafts]
+          .reverse()
+          .find((candidate) => candidate.author._tag === 'Agent')
+        if (!draft) {
+          toast.error('The agent has not created a draft yet.')
+          return
+        }
+        editDraft(draft)
+      },
       assignAgent: (conversationId, agentId) =>
         assignmentMutation.mutate({
           action: 'assign',
@@ -933,20 +1002,7 @@ export function useMailInboxController(input: {
                         (candidate) => candidate.id === message.id,
                       )
                       if (!draft) return
-                      if (draft.status === 'awaiting_approval') {
-                        requestChangesMutation.mutate(
-                          {
-                            data: {
-                              workspaceId: input.workspaceId,
-                              draftId: draft.id,
-                              expectedRevision: draft.revision,
-                            },
-                          },
-                          { onSuccess: beginEditDraft },
-                        )
-                        return
-                      }
-                      beginEditDraft(draft)
+                      editDraft(draft)
                     },
                   }
                 : {}),

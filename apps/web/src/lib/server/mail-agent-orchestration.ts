@@ -1,13 +1,32 @@
 import { getAgentByName } from 'agents'
-import { and, eq, isNull } from 'drizzle-orm'
-import { Effect, Schema } from 'effect'
+import { and, eq } from 'drizzle-orm'
+import { Effect, Layer, Schema } from 'effect'
 import {
   AgentId,
   ConversationId,
+  EmailAddress,
+  type EditableRecipient,
   MailboxId,
+  MemberId,
+  NonNegativeInt,
+  UserId,
   WorkspaceId,
 } from '@garden/core/mail'
-import { MailAgentConversationContext } from '@garden/agent-runtime'
+import {
+  MailAgentApplication,
+  MailAgentDeliveryDispatcher,
+  MailAgentPrincipal,
+  mailDraftApplicationLayer,
+  makeMailAgentApplicationLayer,
+  makeMailRepositoryLayer,
+  type DraftSnapshot,
+  type RepositoryMessage,
+} from '@garden/server/mail'
+import {
+  MailAgentConversationContext,
+  type MailAgentDraftCapabilityContext,
+  type MailAgentContextToken,
+} from '@garden/agent-runtime'
 import { disposeRpcResult } from '@garden/app-state/platform/rpc'
 import type { AgentChatSession } from '@garden/core/types'
 import { schema, type Db } from './db'
@@ -29,8 +48,9 @@ const AGENT_ROUTING_RETRY = { maxAttempts: 3 }
 
 export const MailAgentChatSessionInput = Schema.Struct({
   workspaceId: WorkspaceId,
-  ownerUserId: Schema.String.check(Schema.isUUID()),
-  conversationId: ConversationId,
+  ownerUserId: UserId,
+  memberId: MemberId,
+  conversationId: Schema.NullOr(ConversationId),
   agentId: AgentId,
 })
 export interface MailAgentChatSessionInput extends Schema.Schema.Type<
@@ -40,15 +60,26 @@ export interface MailAgentChatSessionInput extends Schema.Schema.Type<
 type ResolvedMailAgentAuthority = {
   readonly agentId: string
   readonly hostName: string
-  readonly mailboxId: string
-  readonly subject: string
+  readonly mailboxIds: ReadonlyArray<string>
+  readonly writableMailboxIds: ReadonlyArray<string>
+  readonly selectedMailboxId: string | null
   readonly needsHostName: boolean
 }
 
-export type MailAgentChatSession = AgentChatSession & {
-  readonly conversationId: string
-  readonly mailboxId: string
-}
+export type MailAgentChatSession = AgentChatSession
+export type MailAgentTurnContextBinding = MailAgentContextToken
+
+export const AgentMailDraftProposal = Schema.Struct({
+  mode: Schema.Literals(['new', 'reply', 'reply-all', 'forward']),
+  to: Schema.optionalKey(Schema.String),
+  cc: Schema.optionalKey(Schema.String),
+  bcc: Schema.optionalKey(Schema.String),
+  subject: Schema.optionalKey(Schema.String),
+  body: Schema.String,
+})
+export interface AgentMailDraftProposal extends Schema.Schema.Type<
+  typeof AgentMailDraftProposal
+> {}
 
 const uuidBytes = (uuid: string) =>
   Uint8Array.from(
@@ -70,7 +101,7 @@ const formatUuid = (bytes: Uint8Array) => {
 }
 
 /**
- * Produces RFC 4122 UUIDv5 so one member/agent/conversation always resolves to
+ * Produces RFC 4122 UUIDv5 so one member/agent inbox always resolves to
  * one hidden chat row without a second mapping table. Web Crypto SHA-1 is used
  * only for UUID identity, never for security or content integrity.
  */
@@ -79,7 +110,7 @@ const mailChatThreadId = Effect.fn('MailAgent.chatThreadId')(function* (
 ) {
   const namespace = uuidBytes(MAIL_CHAT_UUID_NAMESPACE)
   const name = new TextEncoder().encode(
-    `${input.workspaceId}:${input.ownerUserId}:${input.agentId}:${input.conversationId}`,
+    `${input.workspaceId}:${input.ownerUserId}:${input.agentId}:mail-inbox`,
   )
   const source = new Uint8Array(namespace.length + name.length)
   source.set(namespace)
@@ -99,83 +130,130 @@ const mailChatThreadId = Effect.fn('MailAgent.chatThreadId')(function* (
   return formatUuid(bytes)
 })
 
-/** Resolves the assignment, mailbox access, agent host, and conversation title. */
+/** Resolves the effective member∩agent mailbox authority for this request. */
 const resolveMailAgentAuthority = Effect.fn('MailAgent.resolveAuthority')(
   function* (db: Db, input: MailAgentChatSessionInput) {
-    const rows = yield* Effect.tryPromise({
-      try: () =>
-        db
-          .select({
-            agentId: schema.agent.id,
-            hostName: schema.agent.hostName,
-            mailboxId: schema.mailConversation.mailboxId,
-            subject: schema.mailConversation.subject,
-          })
-          .from(schema.mailConversation)
-          .innerJoin(
-            schema.mailConversationAssignment,
-            and(
-              eq(
-                schema.mailConversationAssignment.conversationId,
-                schema.mailConversation.id,
+    const resolved = yield* Effect.tryPromise({
+      try: async () => {
+        const [memberRows, agentRows, memberAccess, agentAccess] =
+          await Promise.all([
+            db
+              .select({ id: schema.member.id })
+              .from(schema.member)
+              .where(
+                and(
+                  eq(schema.member.id, input.memberId),
+                  eq(schema.member.organizationId, input.workspaceId),
+                  eq(schema.member.userId, input.ownerUserId),
+                ),
+              )
+              .limit(1),
+            db
+              .select({ id: schema.agent.id, hostName: schema.agent.hostName })
+              .from(schema.agent)
+              .where(
+                and(
+                  eq(schema.agent.id, input.agentId),
+                  eq(schema.agent.workspaceId, input.workspaceId),
+                  eq(schema.agent.status, 'active'),
+                ),
+              )
+              .limit(1),
+            db
+              .select({
+                mailboxId: schema.mailMailboxAccess.mailboxId,
+                accessLevel: schema.mailMailboxAccess.accessLevel,
+              })
+              .from(schema.mailMailboxAccess)
+              .where(
+                and(
+                  eq(schema.mailMailboxAccess.workspaceId, input.workspaceId),
+                  eq(schema.mailMailboxAccess.actorType, 'member'),
+                  eq(schema.mailMailboxAccess.memberId, input.memberId),
+                ),
               ),
-              eq(
-                schema.mailConversationAssignment.workspaceId,
-                input.workspaceId,
+            db
+              .select({
+                mailboxId: schema.mailMailboxAccess.mailboxId,
+                accessLevel: schema.mailMailboxAccess.accessLevel,
+              })
+              .from(schema.mailMailboxAccess)
+              .where(
+                and(
+                  eq(schema.mailMailboxAccess.workspaceId, input.workspaceId),
+                  eq(schema.mailMailboxAccess.actorType, 'agent'),
+                  eq(schema.mailMailboxAccess.agentId, input.agentId),
+                ),
               ),
-              eq(schema.mailConversationAssignment.assigneeType, 'agent'),
-              eq(
-                schema.mailConversationAssignment.assigneeAgentId,
-                input.agentId,
-              ),
-              isNull(schema.mailConversationAssignment.unassignedAt),
-            ),
-          )
-          .innerJoin(
-            schema.mailMailboxAccess,
-            and(
-              eq(
-                schema.mailMailboxAccess.mailboxId,
-                schema.mailConversation.mailboxId,
-              ),
-              eq(schema.mailMailboxAccess.workspaceId, input.workspaceId),
-              eq(schema.mailMailboxAccess.actorType, 'agent'),
-              eq(schema.mailMailboxAccess.agentId, input.agentId),
-            ),
-          )
-          .innerJoin(
-            schema.agent,
-            and(
-              eq(schema.agent.id, input.agentId),
-              eq(schema.agent.workspaceId, input.workspaceId),
-              eq(schema.agent.status, 'active'),
-            ),
-          )
-          .where(
-            and(
-              eq(schema.mailConversation.id, input.conversationId),
-              eq(schema.mailConversation.workspaceId, input.workspaceId),
-            ),
-          )
-          .limit(1),
+          ])
+        const memberMailboxIds = new Set(
+          memberAccess.map((access) => access.mailboxId),
+        )
+        const writableMemberMailboxIds = new Set(
+          memberAccess
+            .filter((access) => access.accessLevel !== 'viewer')
+            .map((access) => access.mailboxId),
+        )
+        const mailboxIds = agentAccess
+          .map((access) => access.mailboxId)
+          .filter((mailboxId) => memberMailboxIds.has(mailboxId))
+        const writableMailboxIds = agentAccess
+          .filter((access) => access.accessLevel !== 'viewer')
+          .map((access) => access.mailboxId)
+          .filter((mailboxId) => writableMemberMailboxIds.has(mailboxId))
+        const selectedConversation =
+          input.conversationId === null
+            ? null
+            : (
+                await db
+                  .select({ mailboxId: schema.mailConversation.mailboxId })
+                  .from(schema.mailConversation)
+                  .where(
+                    and(
+                      eq(schema.mailConversation.id, input.conversationId),
+                      eq(
+                        schema.mailConversation.workspaceId,
+                        input.workspaceId,
+                      ),
+                    ),
+                  )
+                  .limit(1)
+              )[0]
+        return {
+          agent: agentRows[0] ?? null,
+          member: memberRows[0] ?? null,
+          mailboxIds,
+          writableMailboxIds,
+          selectedMailboxId: selectedConversation?.mailboxId ?? null,
+        }
+      },
       catch: (cause) =>
         new MailAgentOrchestrationError({
           operation: 'resolveAuthority.select',
-          message: 'Garden could not resolve the assigned mail agent.',
+          message: 'Garden could not resolve the mailbox agent.',
           cause,
         }),
     })
-    const row = rows[0]
-    if (!row) {
+    if (
+      !resolved.agent ||
+      !resolved.member ||
+      resolved.mailboxIds.length === 0 ||
+      (input.conversationId !== null &&
+        (resolved.selectedMailboxId === null ||
+          !resolved.mailboxIds.includes(resolved.selectedMailboxId)))
+    ) {
       return yield* new MailAgentOrchestrationError({
         operation: 'resolveAuthority',
-        message: 'Assigned mail agent access was not found.',
+        message: 'Mailbox agent access was not found.',
       })
     }
     return {
-      ...row,
-      hostName: row.hostName ?? row.agentId,
-      needsHostName: row.hostName === null,
+      agentId: resolved.agent.id,
+      hostName: resolved.agent.hostName ?? resolved.agent.id,
+      mailboxIds: resolved.mailboxIds,
+      writableMailboxIds: resolved.writableMailboxIds,
+      selectedMailboxId: resolved.selectedMailboxId,
+      needsHostName: resolved.agent.hostName === null,
     } satisfies ResolvedMailAgentAuthority
   },
 )
@@ -196,6 +274,7 @@ const ensureMailChatThread = Effect.fn('MailAgent.ensureChatThread')(function* (
             .set({ hostName: authority.agentId })
             .where(eq(schema.agent.id, authority.agentId))
         }
+        const runtimeKey = crypto.randomUUID()
         await tx
           .insert(schema.chatThread)
           .values({
@@ -204,12 +283,25 @@ const ensureMailChatThread = Effect.fn('MailAgent.ensureChatThread')(function* (
             ownerUserId: input.ownerUserId,
             agentId: input.agentId,
             runtimeKind: 'chat',
-            runtimeKey: threadId,
-            title: authority.subject.trim() || 'Mail conversation',
+            runtimeKey,
+            title: 'Inbox agent',
             lastMessage: '',
             archivedAt: new Date(0),
           })
           .onConflictDoNothing({ target: schema.chatThread.id })
+        await tx
+          .update(schema.chatThread)
+          .set({ runtimeKey })
+          .where(
+            and(
+              eq(schema.chatThread.id, threadId),
+              eq(schema.chatThread.workspaceId, input.workspaceId),
+              eq(schema.chatThread.ownerUserId, input.ownerUserId),
+              eq(schema.chatThread.agentId, input.agentId),
+              eq(schema.chatThread.runtimeKey, threadId),
+              eq(schema.chatThread.title, 'Inbox agent'),
+            ),
+          )
         return await tx
           .select()
           .from(schema.chatThread)
@@ -240,59 +332,415 @@ const ensureMailChatThread = Effect.fn('MailAgent.ensureChatThread')(function* (
   return thread
 })
 
+/**
+ * Requires the already-open hidden inbox session bound to this authenticated
+ * owner and agent. Draft persistence cannot mint or adopt a different chat
+ * identity from a browser-supplied mail payload.
+ */
+const requireMailChatThread = Effect.fn('MailAgent.requireChatThread')(
+  function* (db: Db, input: MailAgentChatSessionInput) {
+    const threadId = yield* mailChatThreadId(input)
+    const rows = yield* Effect.tryPromise({
+      try: () =>
+        db
+          .select({ runtimeKey: schema.chatThread.runtimeKey })
+          .from(schema.chatThread)
+          .where(
+            and(
+              eq(schema.chatThread.id, threadId),
+              eq(schema.chatThread.workspaceId, input.workspaceId),
+              eq(schema.chatThread.ownerUserId, input.ownerUserId),
+              eq(schema.chatThread.agentId, input.agentId),
+              eq(schema.chatThread.runtimeKind, 'chat'),
+              eq(schema.chatThread.title, 'Inbox agent'),
+            ),
+          )
+          .limit(1),
+      catch: (cause) =>
+        new MailAgentOrchestrationError({
+          operation: 'requireChatThread.select',
+          message: 'Garden could not validate the mail collaboration chat.',
+          cause,
+        }),
+    })
+    if (rows[0] === undefined) {
+      return yield* new MailAgentOrchestrationError({
+        operation: 'requireChatThread',
+        message: 'Open the mailbox agent before creating a draft.',
+      })
+    }
+    return rows[0]
+  },
+)
+
+/** Splits and normalizes one model-proposed address field at the server seam. */
+const proposedAddresses = Effect.fn('MailAgent.proposedAddresses')(function* (
+  value: string | undefined,
+) {
+  const candidates = [
+    ...new Set(
+      (value ?? '')
+        .split(/[;,]/)
+        .map((address) => address.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ]
+  return yield* Effect.forEach(candidates, (address) =>
+    Schema.decodeUnknownEffect(EmailAddress)(address).pipe(
+      Effect.mapError(
+        (cause) =>
+          new MailAgentOrchestrationError({
+            operation: 'createDraft.decodeRecipient',
+            message: `Invalid email recipient: ${address}`,
+            cause,
+          }),
+      ),
+    ),
+  )
+})
+
+/** Derives canonical reply recipients from the open message when omitted. */
+const replyAddresses = (
+  message: RepositoryMessage,
+  mode: AgentMailDraftProposal['mode'],
+  ownAddresses: ReadonlySet<string>,
+): {
+  readonly to: ReadonlyArray<string>
+  readonly cc: ReadonlyArray<string>
+} => {
+  if (mode === 'forward' || mode === 'new') return { to: [], cc: [] }
+  const replyTarget = message.replyTo[0]?.address ?? message.senderAddress
+  if (mode === 'reply') return { to: [replyTarget], cc: [] }
+  const all = [
+    replyTarget,
+    ...message.recipients.map((recipient) => recipient.address),
+  ].filter((address) => !ownAddresses.has(address))
+  return { to: [...new Set(all)], cc: [] }
+}
+
+/** Adds conventional reply/forward prefixes without duplicating them. */
+const proposedSubject = (
+  proposal: AgentMailDraftProposal,
+  conversationSubject: string,
+) => {
+  const explicit = proposal.subject?.trim()
+  if (explicit) return explicit
+  if (proposal.mode === 'new') return ''
+  const prefix = proposal.mode === 'forward' ? 'Fwd:' : 'Re:'
+  const existing = proposal.mode === 'forward' ? /^fwd:/i : /^re:/i
+  return existing.test(conversationSubject)
+    ? conversationSubject
+    : `${prefix} ${conversationSubject}`
+}
+
+/** Converts grouped addresses into one position-stable repository contract. */
+const editableRecipients = (
+  to: ReadonlyArray<typeof EmailAddress.Type>,
+  cc: ReadonlyArray<typeof EmailAddress.Type>,
+  bcc: ReadonlyArray<typeof EmailAddress.Type>,
+): ReadonlyArray<EditableRecipient> =>
+  [
+    ...to.map((address) => ({ kind: 'to' as const, address })),
+    ...cc.map((address) => ({ kind: 'cc' as const, address })),
+    ...bcc.map((address) => ({ kind: 'bcc' as const, address })),
+  ].map((recipient, position) => ({
+    ...recipient,
+    position: NonNegativeInt.make(position),
+    displayName: null,
+  }))
+
 /** Calls the parent AgentDO through native RPC; browser cookies are not involved. */
-const bindMailRuntimeContext = Effect.fn('MailAgent.bindRuntimeContext')(
+const issueMailRuntimeContextToken = Effect.fn('MailAgent.issueContextToken')(
   function* (
     env: Pick<AppEnv, 'AgentDO'>,
     hostName: string,
     threadId: string,
     context: typeof MailAgentConversationContext.Type,
   ) {
-    yield* Effect.tryPromise({
+    return yield* Effect.tryPromise({
       try: async () => {
         const stub = await getAgentByName(env.AgentDO, hostName, {
           routingRetry: AGENT_ROUTING_RETRY,
         })
         return disposeRpcResult(
-          await stub.setThreadMailConversationContext(threadId, context),
+          await stub.issueThreadMailContextToken(threadId, context),
         )
       },
       catch: (cause) =>
         new MailAgentOrchestrationError({
-          operation: 'bindRuntimeContext.rpc',
-          message: 'Garden could not bind mail context to the agent runtime.',
+          operation: 'issueContextToken.rpc',
+          message: 'Garden could not authorize mail context for this turn.',
           cause,
         }),
     })
   },
 )
 
+/** Consumes model-tool proof through native RPC; browser state stays untrusted. */
+const consumeMailRuntimeDraftCapability = Effect.fn(
+  'MailAgent.consumeDraftCapabilityRpc',
+)(function* (
+  env: Pick<AppEnv, 'AgentDO'>,
+  hostName: string,
+  threadId: string,
+  capability: string,
+  proposal: AgentMailDraftProposal,
+) {
+  return yield* Effect.tryPromise({
+    try: async () => {
+      const stub = await getAgentByName(env.AgentDO, hostName, {
+        routingRetry: AGENT_ROUTING_RETRY,
+      })
+      return disposeRpcResult(
+        await stub.consumeThreadMailDraftCapability(
+          threadId,
+          capability,
+          proposal,
+        ),
+      ) as MailAgentDraftCapabilityContext
+    },
+    catch: (cause) =>
+      new MailAgentOrchestrationError({
+        operation: 'consumeDraftCapability.rpc',
+        message: 'Garden could not verify the active agent draft action.',
+        cause,
+      }),
+  })
+})
+
 /** Authenticated server seam consumed by the Inbox agent panel. */
 export const getOrCreateMailAgentChatSession = Effect.fn(
   'MailAgent.getOrCreateChatSession',
-)(function* (
-  db: Db,
-  env: Pick<AppEnv, 'AgentDO'>,
-  input: MailAgentChatSessionInput,
-) {
+)(function* (db: Db, input: MailAgentChatSessionInput) {
   const authority = yield* resolveMailAgentAuthority(db, input)
   const thread = yield* ensureMailChatThread(db, input, authority)
-  const context = MailAgentConversationContext.make({
-    workspaceId: input.workspaceId,
-    mailboxId: MailboxId.make(authority.mailboxId),
-    conversationId: input.conversationId,
-  })
-  yield* bindMailRuntimeContext(
-    env,
-    authority.hostName,
-    thread.runtimeKey,
-    context,
-  )
   return {
     ...toChatThread(thread, authority.hostName),
     status: 'idle',
     unread: false,
-    conversationId: input.conversationId,
-    mailboxId: authority.mailboxId,
   } satisfies MailAgentChatSession
 })
+
+/**
+ * Resolves immutable context from proof minted during the actual compose_mail
+ * call, then revalidates current member∩agent authority before persistence.
+ */
+export const consumeMailAgentDraftCapability = Effect.fn(
+  'MailAgent.consumeDraftCapability',
+)(function* (
+  db: Db,
+  env: Pick<AppEnv, 'AgentDO'>,
+  input: MailAgentChatSessionInput,
+  capability: string,
+  proposal: AgentMailDraftProposal,
+) {
+  const authority = yield* resolveMailAgentAuthority(db, input)
+  const thread = yield* requireMailChatThread(db, input)
+  const context = yield* consumeMailRuntimeDraftCapability(
+    env,
+    authority.hostName,
+    thread.runtimeKey,
+    capability,
+    proposal,
+  )
+  if (
+    context.workspaceId !== input.workspaceId ||
+    context.ownerUserId !== input.ownerUserId ||
+    context.memberId !== input.memberId
+  ) {
+    return yield* new MailAgentOrchestrationError({
+      operation: 'consumeDraftCapability.identity',
+      message: 'Agent draft capability does not belong to this member.',
+    })
+  }
+  const immutableInput: MailAgentChatSessionInput = {
+    ...input,
+    conversationId:
+      context.conversationId === null
+        ? null
+        : yield* Schema.decodeUnknownEffect(ConversationId)(
+            context.conversationId,
+          ),
+  }
+  const refreshed = yield* resolveMailAgentAuthority(db, immutableInput)
+  if (
+    context.mailboxId !== null &&
+    refreshed.selectedMailboxId !== context.mailboxId
+  ) {
+    return yield* new MailAgentOrchestrationError({
+      operation: 'consumeDraftCapability.mailbox',
+      message: 'Agent draft mailbox access changed before persistence.',
+    })
+  }
+  return immutableInput
+})
+
+/**
+ * Persists the proposal as an agent-authored canonical draft after proving the
+ * current member owns the stable hidden session and both actors can write the
+ * selected mailbox. Sender selection remains inside MailAgentApplication.
+ */
+export const createAgentMailDraft = Effect.fn('MailAgent.createDraft')(
+  function* (
+    db: Db,
+    input: MailAgentChatSessionInput,
+    proposal: AgentMailDraftProposal,
+  ) {
+    const authority = yield* resolveMailAgentAuthority(db, input)
+    yield* requireMailChatThread(db, input)
+
+    const principal = MailAgentPrincipal.make({
+      workspaceId: input.workspaceId,
+      agentId: input.agentId,
+      sendExternal: 'manual',
+    })
+    const repositoryLayer = makeMailRepositoryLayer(db)
+    const draftApplicationLayer = mailDraftApplicationLayer.pipe(
+      Layer.provide(repositoryLayer),
+    )
+    const dispatcherLayer = Layer.succeed(
+      MailAgentDeliveryDispatcher,
+      MailAgentDeliveryDispatcher.of({
+        dispatch: () => Effect.die('Draft creation cannot dispatch delivery.'),
+      }),
+    )
+    const applicationLayer = makeMailAgentApplicationLayer(principal).pipe(
+      Layer.provide(
+        Layer.mergeAll(repositoryLayer, draftApplicationLayer, dispatcherLayer),
+      ),
+    )
+
+    return yield* Effect.gen(function* () {
+      const application = yield* MailAgentApplication
+      const mailboxes = yield* application.listMailboxes()
+      const mailbox =
+        input.conversationId === null
+          ? mailboxes.find(
+              (candidate) =>
+                authority.writableMailboxIds.includes(candidate.id) &&
+                candidate.sendCapability !== 'read_only',
+            )
+          : mailboxes.find(
+              (candidate) =>
+                candidate.id === authority.selectedMailboxId &&
+                authority.writableMailboxIds.includes(candidate.id) &&
+                candidate.sendCapability !== 'read_only',
+            )
+      if (mailbox === undefined) {
+        return yield* new MailAgentOrchestrationError({
+          operation: 'createDraft.resolveMailbox',
+          message: 'No jointly writable mailbox sender is available.',
+        })
+      }
+
+      const threaded = proposal.mode !== 'new'
+      if (threaded && input.conversationId === null) {
+        return yield* new MailAgentOrchestrationError({
+          operation: 'createDraft.resolveConversation',
+          message: 'Open an email before drafting a reply or forward.',
+        })
+      }
+      const detail =
+        input.conversationId === null
+          ? null
+          : yield* application.readConversation({
+              conversationId: input.conversationId,
+            })
+      const source = threaded ? detail?.messages.at(-1) : undefined
+      if (threaded && source === undefined) {
+        return yield* new MailAgentOrchestrationError({
+          operation: 'createDraft.resolveMessage',
+          message: 'The open conversation has no message to draft from.',
+        })
+      }
+
+      const ownAddresses = new Set(
+        mailboxes.flatMap((candidate) =>
+          [candidate.primaryAddress, candidate.externalAddress].filter(
+            (address): address is typeof EmailAddress.Type => address !== null,
+          ),
+        ),
+      )
+      const derived =
+        source === undefined
+          ? { to: [], cc: [] }
+          : replyAddresses(source, proposal.mode, ownAddresses)
+      const proposedTo = yield* proposedAddresses(proposal.to)
+      const proposedCc = yield* proposedAddresses(proposal.cc)
+      const proposedBcc = yield* proposedAddresses(proposal.bcc)
+      const to =
+        proposedTo.length > 0
+          ? proposedTo
+          : yield* Effect.forEach(derived.to, (address) =>
+              Schema.decodeUnknownEffect(EmailAddress)(address),
+            )
+      const cc =
+        proposedCc.length > 0
+          ? proposedCc
+          : yield* Effect.forEach(derived.cc, (address) =>
+              Schema.decodeUnknownEffect(EmailAddress)(address),
+            )
+      if (to.length === 0) {
+        return yield* new MailAgentOrchestrationError({
+          operation: 'createDraft.resolveRecipients',
+          message: 'At least one To recipient is required.',
+        })
+      }
+
+      const draft: DraftSnapshot = yield* application.createDraft({
+        mailboxId: MailboxId.make(mailbox.id),
+        conversationId: threaded ? input.conversationId : null,
+        replyToMessageId:
+          proposal.mode === 'reply' || proposal.mode === 'reply-all'
+            ? (source?.id ?? null)
+            : null,
+        subject: proposedSubject(proposal, detail?.conversation.subject ?? ''),
+        textBody: proposal.body || null,
+        htmlBody: null,
+        recipients: editableRecipients(to, cc, proposedBcc),
+        attachments: [],
+      })
+      return draft
+    }).pipe(Effect.provide(applicationLayer))
+  },
+)
+
+/** Issues one server-authorized context capability for an imminent mail turn. */
+export const bindMailAgentTurnContext = Effect.fn('MailAgent.bindTurnContext')(
+  function* (
+    db: Db,
+    env: Pick<AppEnv, 'AgentDO'>,
+    input: MailAgentChatSessionInput,
+  ) {
+    const authority = yield* resolveMailAgentAuthority(db, input)
+    const thread = yield* ensureMailChatThread(db, input, authority)
+    let context: typeof MailAgentConversationContext.Type
+    if (input.conversationId === null) {
+      context = MailAgentConversationContext.cases.Inbox.make({
+        workspaceId: input.workspaceId,
+        ownerUserId: input.ownerUserId,
+        memberId: input.memberId,
+      })
+    } else {
+      if (authority.selectedMailboxId === null) {
+        return yield* new MailAgentOrchestrationError({
+          operation: 'bindTurnContext',
+          message: 'Selected conversation mailbox was not authorized.',
+        })
+      }
+      context = MailAgentConversationContext.cases.Conversation.make({
+        workspaceId: input.workspaceId,
+        ownerUserId: input.ownerUserId,
+        memberId: input.memberId,
+        mailboxId: MailboxId.make(authority.selectedMailboxId),
+        conversationId: input.conversationId,
+      })
+    }
+    return yield* issueMailRuntimeContextToken(
+      env,
+      authority.hostName,
+      thread.runtimeKey,
+      context,
+    )
+  },
+)

@@ -1,5 +1,6 @@
 import { EditorContent, useEditor, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
+import { cn } from '@garden/ui/lib/utils'
 
 /**
  * Zero-derived HTML composer editor. Tiptap owns document state and emits both
@@ -8,11 +9,15 @@ import StarterKit from '@tiptap/starter-kit'
 export function MailRichEditor({
   html,
   disabled,
+  autoFocus = false,
+  className,
   onChange,
   onReady,
 }: {
   html: string
   disabled: boolean
+  autoFocus?: boolean
+  className?: string
   onChange: (value: { html: string; text: string }) => void
   onReady: (editor: Editor | null) => void
 }) {
@@ -28,11 +33,14 @@ export function MailRichEditor({
     ],
     content: html,
     editable: !disabled,
+    autofocus: autoFocus ? 'end' : false,
     editorProps: {
       attributes: {
         'aria-label': 'Message body',
-        class:
-          'min-h-48 w-full px-0 py-2 text-sm outline-none [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5',
+        class: cn(
+          'w-full px-0 py-2 text-sm outline-none [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5',
+          className ?? 'min-h-48',
+        ),
       },
     },
     onCreate: ({ editor: created }) => onReady(created),

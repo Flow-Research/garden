@@ -8,7 +8,6 @@ import {
   CircleAlert,
   Mail,
   MailOpen,
-  Reply,
   Star,
   Trash2,
 } from 'lucide-react'
@@ -67,11 +66,9 @@ export function MailConversationRow({
       onClick={onOpen}
       onKeyDown={activate}
       className={cn(
-        'group relative mx-1 min-h-24 cursor-pointer rounded-lg border-b px-3 py-2 text-left text-sm outline-none transition-colors last:border-b-0',
-        'hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring/60',
-        (selected || bulkSelected) &&
-          'bg-sidebar-accent text-sidebar-accent-foreground',
-        !conversation.unread && !selected && 'text-foreground/65',
+        'group relative mx-1 cursor-pointer rounded-lg px-3 py-2 text-left text-sm outline-none transition-colors',
+        'hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/60',
+        (selected || bulkSelected) && 'bg-primary/5 text-foreground',
       )}
     >
       <div className="flex min-w-0 gap-3">
@@ -117,15 +114,6 @@ export function MailConversationRow({
                 Draft
               </span>
             ) : null}
-            {conversation.needsReply ? (
-              <span
-                aria-label="Needs reply"
-                title="Needs reply"
-                className="shrink-0 text-warning"
-              >
-                <Reply className="size-3.5" />
-              </span>
-            ) : null}
             <time className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
               {conversation.dateLabel}
             </time>
@@ -141,18 +129,13 @@ export function MailConversationRow({
           </div>
 
           <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
-            <p className="line-clamp-2 min-w-0 flex-1 text-xs leading-4 text-muted-foreground">
+            <p className="line-clamp-1 min-w-0 flex-1 text-xs leading-4 text-muted-foreground">
               {conversation.snippet}
             </p>
             {conversation.labels?.slice(0, 2).map((label) => (
               <span
                 key={label.id}
                 className="max-w-24 shrink-0 truncate rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                style={
-                  label.color
-                    ? { borderLeft: `2px solid ${label.color}` }
-                    : undefined
-                }
               >
                 {label.name}
               </span>
@@ -161,7 +144,7 @@ export function MailConversationRow({
         </div>
       </div>
 
-      <div className="absolute top-1.5 right-2 z-10 hidden items-center gap-0.5 rounded-xl border bg-background p-1 shadow-sm group-hover:flex group-focus-within:flex">
+      <div className="absolute top-1.5 right-2 z-10 hidden items-center gap-0.5 rounded-xl border bg-popover p-1 text-popover-foreground shadow-sm group-hover:flex group-focus-within:flex">
         <Button
           variant="ghost"
           size="icon-sm"

@@ -182,7 +182,7 @@ function GmailImportDialog({
 
   let title = 'Import Gmail'
   let description =
-    'Import existing mail into a read-only Garden mailbox. It will not appear as a sending address.'
+    'Import existing mail into Garden. You can read, organize, reply, and send from the connected Gmail account.'
   if (disconnected) {
     title = 'Connect Google'
     description =
@@ -351,21 +351,26 @@ function GmailImportDialog({
 /** Header action and modal for one injected, provider-backed import controller. */
 export function GmailImportControl({
   controller,
+  compact = false,
 }: {
   controller: GmailImportController
+  compact?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const action = headerAction(controller)
   if (!action) return null
+  const showLabel = !compact || action.busy
 
   return (
     <>
       <Button
-        size="sm"
+        size={showLabel ? 'sm' : 'icon-sm'}
         variant="outline"
         disabled={action.disabled}
         onClick={() => setOpen(true)}
-        className="max-w-72"
+        aria-label={compact ? action.label : undefined}
+        title={compact ? action.label : undefined}
+        className={showLabel ? 'max-w-72' : undefined}
       >
         {action.busy ? (
           <Loader2 className="animate-spin" />
@@ -375,7 +380,9 @@ export function GmailImportControl({
             className="size-4 object-contain"
           />
         )}
-        <span className="truncate tabular-nums">{action.label}</span>
+        {showLabel ? (
+          <span className="truncate tabular-nums">{action.label}</span>
+        ) : null}
       </Button>
       <GmailImportDialog
         controller={controller}

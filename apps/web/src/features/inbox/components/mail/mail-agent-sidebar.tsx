@@ -1,34 +1,48 @@
 // Direct adaptation of Cloudflare Agentic Inbox's AgentSidebar and AgentPanel (Apache-2.0).
 // Pinned source and notice: docs/architecture/garden-mail-ui-sources.md and THIRD_PARTY_NOTICES.md.
 
-import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'
 import { Spinner } from '@garden/ui/components/ui/spinner'
 import { Markdown } from '@garden/ui/markdown'
 import { cn } from '@garden/ui/lib/utils'
 import {
+  Confirmation,
+  ConfirmationAction,
+  ConfirmationActions,
+  ConfirmationRequest,
+} from '@/components/ai-elements/confirmation'
+import {
+  Archive,
   ArrowUp,
   Bot,
   CheckCircle2,
-  Eye,
+  CircleAlert,
+  CircleSlash2,
   Mail,
-  Pencil,
-  Plug,
+  MailOpen,
+  Paperclip,
+  PenLine,
   Reply,
   Search,
+  Star,
   Square,
+  Tag,
   Trash2,
+  Undo2,
   User,
   Wrench,
+  X,
 } from 'lucide-react'
-import type { KeyboardEvent, ReactNode } from 'react'
+import { useState, type KeyboardEvent, type ReactNode } from 'react'
 
 export type MailAgentToolState =
   | 'input-streaming'
   | 'input-available'
   | 'running'
+  | 'waiting-approval'
   | 'output-available'
   | 'output-error'
+  | 'denied'
   | 'result'
 
 export type MailAgentTextPart = {
@@ -40,6 +54,8 @@ export type MailAgentToolPart = {
   type: 'tool'
   toolName: string
   state: MailAgentToolState
+  input?: unknown
+  output?: unknown
 }
 
 export type MailAgentMessage = {
@@ -51,66 +67,400 @@ export type MailAgentMessage = {
 export type MailAgentStatus = 'idle' | 'submitted' | 'streaming' | 'error'
 
 export type MailAgentSidebarProps = {
-  activeTab: 'agent' | 'integrations'
-  onTabChange: (tab: 'agent' | 'integrations') => void
-  integrationsPanel?: ReactNode
   messages: ReadonlyArray<MailAgentMessage>
   status: MailAgentStatus
+  errorMessage?: string
   input: string
   onInputChange: (value: string) => void
   onSend: (text: string) => void
   onStop: () => void
   onClear?: () => void
-  onEditDraft?: (messageId: string) => void
-  title?: string
+  onClose?: () => void
+  onResolveApproval?: (
+    executionId: string,
+    approved: boolean,
+  ) => Promise<'approved' | 'declined' | 'expired'>
 }
 
-const toolLabels: Readonly<Record<string, { label: string; icon: ReactNode }>> =
+type ToolPresentation = {
+  activeLabel: string
+  completeLabel: string
+  errorLabel: string
+  icon: ReactNode
+}
+
+const toolPresentations: Readonly<Record<string, ToolPresentation>> = {
+  tool_executor_skills: {
+    activeLabel: 'Checking email tools',
+    completeLabel: 'Email tools ready',
+    errorLabel: 'Email tools unavailable',
+    icon: <Search />,
+  },
+  tool_executor_resume: {
+    activeLabel: 'Waiting for approval',
+    completeLabel: 'Approval resolved',
+    errorLabel: 'Approval expired',
+    icon: <Reply />,
+  },
+  compose_mail: {
+    activeLabel: 'Saving draft',
+    completeLabel: 'Draft saved and opened',
+    errorLabel: 'Draft could not be saved',
+    icon: <PenLine />,
+  },
+}
+
+const executorOperations: ReadonlyArray<{
+  matches: (code: string) => boolean
+  presentation: ToolPresentation
+}> = [
   {
-    list_emails: { label: 'Fetching emails', icon: <Mail /> },
-    mail_list_mailboxes: { label: 'Loading mailboxes', icon: <Mail /> },
-    mail_list_conversations: { label: 'Fetching emails', icon: <Mail /> },
-    mail_read_conversation: { label: 'Reading email', icon: <Eye /> },
-    mail_create_draft: { label: 'Drafting email', icon: <Mail /> },
-    mail_save_draft: { label: 'Saving draft', icon: <Mail /> },
-    mail_request_draft_delivery: {
-      label: 'Requesting approval',
-      icon: <CheckCircle2 />,
+    matches: (code) =>
+      /\.threads\.modify|\.messages\.modify/.test(code) &&
+      /removeLabelIds\s*:\s*\[[^\]]*["']INBOX["']/.test(code),
+    presentation: {
+      activeLabel: 'Archiving email',
+      completeLabel: 'Email archived',
+      errorLabel: 'Email could not be archived',
+      icon: <Archive />,
     },
-    get_email: { label: 'Reading email', icon: <Eye /> },
-    get_thread: { label: 'Loading thread', icon: <Reply /> },
-    search_emails: { label: 'Searching', icon: <Search /> },
-    draft_email: { label: 'Drafting email', icon: <Mail /> },
-    draft_reply: { label: 'Drafting reply', icon: <Mail /> },
-    discard_draft: { label: 'Discarding draft', icon: <Trash2 /> },
-    mark_email_read: { label: 'Updating status', icon: <CheckCircle2 /> },
-    move_email: { label: 'Moving email', icon: <Mail /> },
+  },
+  {
+    matches: (code) =>
+      /\.threads\.modify|\.messages\.modify/.test(code) &&
+      /addLabelIds\s*:\s*\[[^\]]*["']INBOX["']/.test(code),
+    presentation: {
+      activeLabel: 'Moving to inbox',
+      completeLabel: 'Moved to inbox',
+      errorLabel: 'Email could not be moved',
+      icon: <Undo2 />,
+    },
+  },
+  {
+    matches: (code) =>
+      /\.threads\.modify|\.messages\.modify/.test(code) &&
+      /removeLabelIds\s*:\s*\[[^\]]*["']UNREAD["']/.test(code),
+    presentation: {
+      activeLabel: 'Marking as read',
+      completeLabel: 'Marked as read',
+      errorLabel: 'Read status could not be changed',
+      icon: <MailOpen />,
+    },
+  },
+  {
+    matches: (code) =>
+      /\.threads\.modify|\.messages\.modify/.test(code) &&
+      /addLabelIds\s*:\s*\[[^\]]*["']UNREAD["']/.test(code),
+    presentation: {
+      activeLabel: 'Marking as unread',
+      completeLabel: 'Marked as unread',
+      errorLabel: 'Read status could not be changed',
+      icon: <Mail />,
+    },
+  },
+  {
+    matches: (code) =>
+      /\.threads\.modify|\.messages\.modify/.test(code) &&
+      /(?:add|remove)LabelIds\s*:\s*\[[^\]]*["']STARRED["']/.test(code),
+    presentation: {
+      activeLabel: 'Updating star',
+      completeLabel: 'Star updated',
+      errorLabel: 'Star could not be changed',
+      icon: <Star />,
+    },
+  },
+  {
+    matches: (code) => /\.threads\.trash|\.messages\.trash/.test(code),
+    presentation: {
+      activeLabel: 'Moving to trash',
+      completeLabel: 'Moved to trash',
+      errorLabel: 'Email could not be moved to trash',
+      icon: <Trash2 />,
+    },
+  },
+  {
+    matches: (code) => /\.threads\.untrash|\.messages\.untrash/.test(code),
+    presentation: {
+      activeLabel: 'Restoring email',
+      completeLabel: 'Email restored',
+      errorLabel: 'Email could not be restored',
+      icon: <Undo2 />,
+    },
+  },
+  {
+    matches: (code) => /\.messages\.attachments\.get/.test(code),
+    presentation: {
+      activeLabel: 'Loading attachment',
+      completeLabel: 'Attachment loaded',
+      errorLabel: 'Attachment could not be loaded',
+      icon: <Paperclip />,
+    },
+  },
+  {
+    matches: (code) => /\.threads\.get/.test(code),
+    presentation: {
+      activeLabel: 'Reading conversation',
+      completeLabel: 'Conversation read',
+      errorLabel: 'Conversation could not be read',
+      icon: <Reply />,
+    },
+  },
+  {
+    matches: (code) => /\.messages\.get/.test(code),
+    presentation: {
+      activeLabel: 'Reading email',
+      completeLabel: 'Email read',
+      errorLabel: 'Email could not be read',
+      icon: <MailOpen />,
+    },
+  },
+  {
+    matches: (code) =>
+      /\.threads\.list|\.messages\.list/.test(code) && /\bq\s*:/.test(code),
+    presentation: {
+      activeLabel: 'Searching emails',
+      completeLabel: 'Emails found',
+      errorLabel: 'Emails could not be searched',
+      icon: <Search />,
+    },
+  },
+  {
+    matches: (code) => /\.threads\.list|\.messages\.list/.test(code),
+    presentation: {
+      activeLabel: 'Fetching emails',
+      completeLabel: 'Emails loaded',
+      errorLabel: 'Emails could not be loaded',
+      icon: <Mail />,
+    },
+  },
+  {
+    matches: (code) => /\.threads\.modify|\.messages\.modify/.test(code),
+    presentation: {
+      activeLabel: 'Updating email',
+      completeLabel: 'Email updated',
+      errorLabel: 'Email could not be updated',
+      icon: <Mail />,
+    },
+  },
+  {
+    matches: (code) => /\.labels\.(?:get|list)/.test(code),
+    presentation: {
+      activeLabel: 'Checking labels',
+      completeLabel: 'Labels checked',
+      errorLabel: 'Labels could not be checked',
+      icon: <Tag />,
+    },
+  },
+  {
+    matches: (code) => /\.getProfile/.test(code),
+    presentation: {
+      activeLabel: 'Checking mailbox',
+      completeLabel: 'Mailbox checked',
+      errorLabel: 'Mailbox could not be checked',
+      icon: <Mail />,
+    },
+  },
+]
+
+const genericExecutorPresentation: ToolPresentation = {
+  activeLabel: 'Working with email',
+  completeLabel: 'Email action complete',
+  errorLabel: 'Email action failed',
+  icon: <Mail />,
+}
+
+const genericToolPresentation: ToolPresentation = {
+  activeLabel: 'Working',
+  completeLabel: 'Done',
+  errorLabel: 'Action failed',
+  icon: <Wrench />,
+}
+
+/**
+ * Converts Executor's single codemode surface into the same human activity
+ * labels used by Cloudflare Agentic Inbox. Only the operation name is inferred;
+ * code, provider identifiers, arguments, and outputs never enter the UI.
+ */
+export function mailAgentToolPresentation(
+  part: MailAgentToolPart,
+): ToolPresentation {
+  if (part.toolName !== 'tool_executor_execute') {
+    return toolPresentations[part.toolName] ?? genericToolPresentation
   }
+  const code =
+    part.input && typeof part.input === 'object' && 'code' in part.input
+      ? (part.input as { code?: unknown }).code
+      : null
+  if (typeof code !== 'string') return genericExecutorPresentation
+  return (
+    executorOperations.find((operation) => operation.matches(code))
+      ?.presentation ?? genericExecutorPresentation
+  )
+}
+
+/** Reads only Executor's public status discriminator, never result content. */
+const outputStatus = (output: unknown): string | null => {
+  if (!output || typeof output !== 'object') return null
+  const record = output as Record<string, unknown>
+  if (typeof record.status === 'string') return record.status
+  const structured = record.structuredContent
+  if (!structured || typeof structured !== 'object') return null
+  const status = (structured as Record<string, unknown>).status
+  return typeof status === 'string' ? status : null
+}
+
+/** Extracts only Executor's opaque execution handle from a paused result. */
+export const mailAgentApprovalExecutionId = (
+  output: unknown,
+): string | null => {
+  if (!output || typeof output !== 'object') return null
+  const record = output as Record<string, unknown>
+  const structured =
+    record.structuredContent && typeof record.structuredContent === 'object'
+      ? (record.structuredContent as Record<string, unknown>)
+      : record
+  const status = structured.status
+  const executionId = structured.executionId
+  return (status === 'waiting_for_interaction' ||
+    status === 'user_approval_required') &&
+    typeof executionId === 'string' &&
+    /^exec_[0-9a-f-]{36}$/i.test(executionId)
+    ? executionId
+    : null
+}
 
 const suggestedPrompts = [
-  'Show me the latest inbox emails',
-  'Any unread emails?',
-  'Draft a response to the latest email',
+  'Summarize this email',
+  'What needs action?',
+  'Draft a reply',
 ] as const
 
 /** Mirrors Cloudflare's tool activity row while keeping tool state external. */
-function ToolCallBadge({ part }: { part: MailAgentToolPart }) {
-  const info = toolLabels[part.toolName] ?? {
-    label: part.toolName,
-    icon: <Wrench />,
-  }
-  const done =
-    part.state === 'output-available' ||
+function ToolCallBadge({
+  part,
+  approvalState,
+  onResolveApproval,
+}: {
+  part: MailAgentToolPart
+  approvalState?: 'resolving' | 'approved' | 'declined' | 'expired'
+  onResolveApproval?: (executionId: string, approved: boolean) => void
+}) {
+  const presentation = mailAgentToolPresentation(part)
+  const status = outputStatus(part.output)
+  const needsApproval =
+    part.state === 'waiting-approval' ||
+    status === 'paused' ||
+    status === 'waiting_for_interaction' ||
+    status === 'user_approval_required'
+  const denied =
+    part.state === 'denied' ||
+    Boolean(status && /declin|denied|cancel/.test(status))
+  const failed =
     part.state === 'output-error' ||
-    part.state === 'result'
+    Boolean(
+      status &&
+      (/error|fail|expired|forbidden|not_found|unavailable/.test(status) ||
+        status === 'needs_open_email' ||
+        status === 'sender_unavailable'),
+    )
+  const done =
+    !needsApproval &&
+    !denied &&
+    !failed &&
+    (part.state === 'output-available' || part.state === 'result')
+  const label = needsApproval
+    ? 'Approval needed'
+    : denied
+      ? 'Action declined'
+      : failed
+        ? presentation.errorLabel
+        : done
+          ? presentation.completeLabel
+          : presentation.activeLabel
+  const executionId = mailAgentApprovalExecutionId(part.output)
+
+  if (needsApproval && executionId && onResolveApproval) {
+    if (approvalState && approvalState !== 'resolving') {
+      const resolvedLabel =
+        approvalState === 'approved'
+          ? 'Action approved'
+          : approvalState === 'declined'
+            ? 'Action declined'
+            : 'Approval expired'
+      return (
+        <div className="flex items-center gap-1.5 rounded bg-muted/50 px-2 py-1 text-xs">
+          {approvalState === 'approved' ? (
+            <CheckCircle2 className="size-3.5 text-success" />
+          ) : (
+            <CircleSlash2 className="size-3.5 text-muted-foreground" />
+          )}
+          <span className="font-medium text-foreground">{resolvedLabel}</span>
+        </div>
+      )
+    }
+    return (
+      <Confirmation
+        approval={{ id: executionId }}
+        state="approval-requested"
+        className="gap-2 p-2"
+      >
+        <ConfirmationRequest>
+          <p className="text-xs font-medium text-foreground">
+            Allow {presentation.activeLabel.toLowerCase()}?
+          </p>
+        </ConfirmationRequest>
+        <ConfirmationActions>
+          <ConfirmationAction
+            variant="outline"
+            disabled={approvalState === 'resolving'}
+            onClick={() => onResolveApproval(executionId, false)}
+          >
+            Deny
+          </ConfirmationAction>
+          <ConfirmationAction
+            disabled={approvalState === 'resolving'}
+            onClick={() => onResolveApproval(executionId, true)}
+          >
+            {approvalState === 'resolving' ? <Spinner /> : null}
+            Approve
+          </ConfirmationAction>
+        </ConfirmationActions>
+      </Confirmation>
+    )
+  }
 
   return (
-    <div className="flex items-center gap-1.5 rounded bg-muted/50 px-2 py-1 text-xs">
-      <span className="text-brand [&_svg]:size-3.5">{info.icon}</span>
-      <span className="font-medium text-foreground">{info.label}</span>
+    <div
+      className="flex items-center gap-1.5 rounded bg-muted/50 px-2 py-1 text-xs"
+      role="status"
+      aria-label={label}
+    >
+      <span
+        className={cn(
+          '[&_svg]:size-3.5',
+          failed
+            ? 'text-destructive'
+            : needsApproval
+              ? 'text-warning'
+              : denied
+                ? 'text-muted-foreground'
+                : 'text-brand',
+        )}
+      >
+        {needsApproval ? (
+          <CircleAlert />
+        ) : failed ? (
+          <CircleAlert />
+        ) : denied ? (
+          <CircleSlash2 />
+        ) : (
+          presentation.icon
+        )}
+      </span>
+      <span className="font-medium text-foreground">{label}</span>
       {done ? (
         <CheckCircle2 className="ml-auto size-3 text-success" />
-      ) : (
+      ) : failed || denied || needsApproval ? null : (
         <Spinner className="ml-auto size-3" />
       )}
     </div>
@@ -118,22 +468,21 @@ function ToolCallBadge({ part }: { part: MailAgentToolPart }) {
 }
 
 /**
- * Ports Cloudflare's user/agent message row. Tool activity and draft handoff
- * are rendered from canonical controller data rather than fixture-only cards.
+ * Ports Cloudflare's user/agent message row. Tool activity is rendered from
+ * the live AI SDK message parts rather than fixture-only cards.
  */
 function MessageBubble({
   message,
-  streaming,
-  onEditDraft,
+  approvalStates,
+  onResolveApproval,
 }: {
   message: MailAgentMessage
-  streaming: boolean
-  onEditDraft?: (messageId: string) => void
+  approvalStates: Readonly<
+    Record<string, 'resolving' | 'approved' | 'declined' | 'expired'>
+  >
+  onResolveApproval?: (executionId: string, approved: boolean) => void
 }) {
   const isUser = message.role === 'user'
-  const hasDraftReply = message.parts.some(
-    (part) => part.type === 'tool' && part.toolName === 'draft_reply',
-  )
 
   return (
     <div className={cn('flex gap-2', isUser && 'flex-row-reverse')}>
@@ -171,20 +520,20 @@ function MessageBubble({
               )}
             </div>
           ) : part.type === 'tool' ? (
-            <ToolCallBadge key={`${message.id}-part-${index}`} part={part} />
+            <ToolCallBadge
+              key={`${message.id}-part-${index}`}
+              part={part}
+              approvalState={
+                mailAgentApprovalExecutionId(part.output)
+                  ? approvalStates[
+                      mailAgentApprovalExecutionId(part.output) ?? ''
+                    ]
+                  : undefined
+              }
+              onResolveApproval={onResolveApproval}
+            />
           ) : null,
         )}
-        {!isUser && hasDraftReply && onEditDraft ? (
-          <Button
-            size="sm"
-            className="mt-1"
-            onClick={() => onEditDraft(message.id)}
-            disabled={streaming}
-          >
-            <Pencil />
-            Edit &amp; send in composer
-          </Button>
-        ) : null}
       </div>
     </div>
   )
@@ -197,18 +546,39 @@ function MessageBubble({
 function MailAgentPanel({
   messages,
   status,
+  errorMessage,
   input,
   onInputChange,
   onSend,
   onStop,
   onClear,
-  onEditDraft,
-  title = 'Email Agent',
-}: Omit<
-  MailAgentSidebarProps,
-  'activeTab' | 'onTabChange' | 'integrationsPanel'
->) {
+  onClose,
+  onResolveApproval,
+}: MailAgentSidebarProps) {
   const streaming = status === 'streaming' || status === 'submitted'
+  const [approvalStates, setApprovalStates] = useState<
+    Record<string, 'resolving' | 'approved' | 'declined' | 'expired'>
+  >({})
+  const resolveApproval = onResolveApproval
+    ? (executionId: string, approved: boolean) => {
+        setApprovalStates((current) => ({
+          ...current,
+          [executionId]: 'resolving',
+        }))
+        void onResolveApproval(executionId, approved).then(
+          (next) =>
+            setApprovalStates((current) => ({
+              ...current,
+              [executionId]: next,
+            })),
+          () =>
+            setApprovalStates((current) => ({
+              ...current,
+              [executionId]: 'expired',
+            })),
+        )
+      }
+    : undefined
 
   const send = (text: string) => {
     const trimmed = text.trim()
@@ -223,28 +593,30 @@ function MailAgentPanel({
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center justify-between border-b px-3 py-1.5">
-        <div className="flex items-center gap-2">
-          <Badge className="bg-brand text-brand-foreground">AI</Badge>
-          <span className="text-xs text-muted-foreground">{title}</span>
-        </div>
-        <div className="flex items-center gap-1">
-          {streaming ? <Spinner className="size-3.5" /> : null}
-          {messages.length > 0 && onClear ? (
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={onClear}
-              aria-label="Clear chat"
-            >
-              <Trash2 />
-            </Button>
-          ) : null}
-        </div>
-      </div>
-
+    <div className="relative flex h-full flex-col">
+      {onClose ? (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={onClose}
+          aria-label="Close agent"
+          className="absolute right-2 top-2 z-10"
+        >
+          <X />
+        </Button>
+      ) : null}
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+        {messages.length > 0 && onClear ? (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={onClear}
+            aria-label="Clear chat"
+            className="float-right"
+          >
+            <Trash2 />
+          </Button>
+        ) : null}
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4">
             <div className="flex size-12 items-center justify-center rounded-xl bg-brand/10">
@@ -272,8 +644,8 @@ function MailAgentPanel({
               <MessageBubble
                 key={message.id}
                 message={message}
-                streaming={streaming}
-                onEditDraft={onEditDraft}
+                approvalStates={approvalStates}
+                onResolveApproval={resolveApproval}
               />
             ))}
             {streaming ? (
@@ -291,6 +663,15 @@ function MailAgentPanel({
             ) : null}
           </div>
         )}
+        {status === 'error' && errorMessage ? (
+          <div
+            role="alert"
+            className="mt-3 flex items-center gap-2 rounded-md bg-destructive/10 px-2.5 py-2 text-xs text-destructive"
+          >
+            <CircleAlert className="size-3.5 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+        ) : null}
       </div>
 
       <div className="shrink-0 border-t px-3 py-2">
@@ -317,6 +698,7 @@ function MailAgentPanel({
                   target.scrollHeight > 100 ? 'auto' : 'hidden'
               }}
               placeholder="Ask your email agent..."
+              autoFocus
               rows={1}
               aria-label="Chat message input"
               className="min-h-9 max-h-[100px] flex-1 resize-none overflow-hidden rounded-lg border bg-card px-3 py-2 text-xs text-card-foreground outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-ring"
@@ -337,8 +719,9 @@ function MailAgentPanel({
 }
 
 /**
- * Controlled port of Cloudflare's mailbox AgentSidebar. The agent panel stays
- * mounted when integrations are selected, preserving warm controller state.
+ * Controlled port of Cloudflare's mailbox agent panel. Garden intentionally
+ * omits Cloudflare's MCP tab: connector administration is a separate product
+ * surface, while this panel exists only for collaborating on selected mail.
  */
 export function MailAgentSidebar(props: MailAgentSidebarProps) {
   return (
@@ -346,40 +729,7 @@ export function MailAgentSidebar(props: MailAgentSidebarProps) {
       aria-label="Mailbox agent"
       className="flex h-full flex-col bg-background"
     >
-      <div className="flex shrink-0 items-center border-b">
-        <button
-          type="button"
-          onClick={() => props.onTabChange('agent')}
-          className={cn(
-            'flex cursor-pointer items-center gap-1.5 border-b-2 bg-transparent px-4 py-2.5 text-sm font-medium transition-colors',
-            props.activeTab === 'agent'
-              ? 'border-brand text-foreground'
-              : 'border-transparent text-muted-foreground hover:text-foreground',
-          )}
-        >
-          <Bot className="size-3.5" />
-          Agent
-        </button>
-        <button
-          type="button"
-          onClick={() => props.onTabChange('integrations')}
-          className={cn(
-            'flex cursor-pointer items-center gap-1.5 border-b-2 bg-transparent px-4 py-2.5 text-sm font-medium transition-colors',
-            props.activeTab === 'integrations'
-              ? 'border-brand text-foreground'
-              : 'border-transparent text-muted-foreground hover:text-foreground',
-          )}
-        >
-          <Plug className="size-3.5" />
-          MCP
-        </button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <div className={props.activeTab === 'agent' ? 'h-full' : 'hidden'}>
-          <MailAgentPanel {...props} />
-        </div>
-        {props.activeTab === 'integrations' ? props.integrationsPanel : null}
-      </div>
+      <MailAgentPanel {...props} />
     </aside>
   )
 }

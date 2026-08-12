@@ -1,9 +1,11 @@
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
+import { Effect, Schema } from 'effect'
 import { requireAppRequestContext } from '@/lib/server/context'
 import {
   assignMailConversationAgent,
+  bindMailAgentTurnContext as issueMailAgentTurnContext,
   deleteMailDraftAttachment,
   getEligibleMailAgents,
   getMailAgentSession,
@@ -11,17 +13,25 @@ import {
   getMailInboxSnapshot,
   discardPersistedMailDraft,
   mutateMailConversationState,
+  persistAgentMailDraft,
   persistMailDraft,
   requestPersistedMailDraftChanges,
   requestMailDraftDelivery,
   uploadMailDraftAttachment,
   unassignMailConversationAgent,
   type MailConversationStateAction,
+  type MailAgentComposerDraft,
+  type MailAgentDraftValuesInput,
   type MailDraftValuesInput,
   type MailInboxSnapshot,
   type EligibleMailAgent,
 } from '@/lib/server/mail-api'
 import type { MailAgentChatSession } from '@/lib/server/mail-agent-orchestration'
+import {
+  MailExecutorApprovalInput,
+  resolveMailExecutorApproval,
+  type MailExecutorApprovalResult,
+} from '@/lib/server/mail-executor-approval'
 import type {
   ConversationActorState,
   ConversationDetail,
@@ -78,6 +88,25 @@ const sendDraftInput = workspaceInput.extend({
 })
 const changeDraftInput = sendDraftInput
 const conversationAgentInput = conversationInput.extend({ agentId: z.uuid() })
+const mailAgentSessionInput = workspaceInput.extend({
+  agentId: z.uuid(),
+})
+const mailAgentContextInput = mailAgentSessionInput.extend({
+  conversationId: z.uuid().nullable(),
+})
+const agentDraftInput = mailAgentSessionInput.extend({
+  draftCapability: z.uuid(),
+  mode: z.enum(['new', 'reply', 'reply-all', 'forward']),
+  to: z.string().max(2_000).optional(),
+  cc: z.string().max(2_000).optional(),
+  bcc: z.string().max(2_000).optional(),
+  subject: z.string().max(998).optional(),
+  body: z.string(),
+})
+const executorApprovalInput = mailAgentSessionInput.extend({
+  executionId: z.string().regex(/^exec_[0-9a-f-]{36}$/i),
+  action: z.enum(['accept', 'decline']),
+})
 const deleteAttachmentInput = workspaceInput.extend({
   mailboxId: z.uuid(),
   attachmentId: z.uuid(),
@@ -93,13 +122,15 @@ export const mailKeys = {
     [...mailKeys.all(workspaceId), 'conversation', conversationId] as const,
   agentSession: (
     workspaceId: string,
-    conversationId: string,
     agentId: string,
+    ownerUserId: string | null,
   ) =>
     [
-      ...mailKeys.conversation(workspaceId, conversationId),
+      ...mailKeys.all(workspaceId),
       'agent',
       agentId,
+      'owner',
+      ownerUserId ?? 'anonymous',
     ] as const,
 }
 
@@ -116,9 +147,18 @@ const getConversation = createServerFn({ method: 'GET' })
   )
 
 const getAgentSession = createServerFn({ method: 'GET' })
-  .inputValidator(conversationAgentInput)
+  .inputValidator(mailAgentSessionInput)
   .handler(({ context, data }) =>
-    getMailAgentSession(requireAppRequestContext(context), data),
+    getMailAgentSession(requireAppRequestContext(context), {
+      ...data,
+      conversationId: null,
+    }),
+  )
+
+const setAgentContext = createServerFn({ method: 'POST' })
+  .inputValidator(mailAgentContextInput)
+  .handler(({ context, data }) =>
+    issueMailAgentTurnContext(requireAppRequestContext(context), data),
   )
 
 const getConversationAgents = createServerFn({ method: 'GET' })
@@ -137,6 +177,24 @@ const persistDraft = createServerFn({ method: 'POST' })
   .inputValidator(draftValuesInput)
   .handler(({ context, data }) =>
     persistMailDraft(requireAppRequestContext(context), data),
+  )
+
+const persistAgentDraft = createServerFn({ method: 'POST' })
+  .inputValidator(agentDraftInput)
+  .handler(({ context, data }) =>
+    persistAgentMailDraft(requireAppRequestContext(context), data),
+  )
+
+const resolveExecutorApproval = createServerFn({ method: 'POST' })
+  .inputValidator(executorApprovalInput)
+  .handler(({ context, data }) =>
+    Effect.runPromise(
+      Schema.decodeUnknownEffect(MailExecutorApprovalInput)(data).pipe(
+        Effect.andThen((input) =>
+          resolveMailExecutorApproval(requireAppRequestContext(context), input),
+        ),
+      ),
+    ),
   )
 
 const uploadAttachment = createServerFn({ method: 'POST' })
@@ -215,6 +273,25 @@ export async function saveMailDraft(input: {
   return await persistDraft(input)
 }
 
+/** Saves an agent-authored canonical revision for immediate composer review. */
+export async function saveAgentMailDraft(input: {
+  data: MailAgentDraftValuesInput
+}): Promise<MailAgentComposerDraft> {
+  return await persistAgentDraft(input)
+}
+
+/** Delivers one inline human decision to the authorized Executor pause. */
+export async function resolveMailAgentAction(input: {
+  data: {
+    workspaceId: string
+    agentId: string
+    executionId: string
+    action: 'accept' | 'decline'
+  }
+}): Promise<MailExecutorApprovalResult> {
+  return await resolveExecutorApproval(input)
+}
+
 /** Uploads one file through TanStack's multipart server-function transport. */
 export async function uploadMailAttachment(input: {
   workspaceId: string
@@ -270,6 +347,17 @@ export async function unassignAgentFromMailConversation(input: {
   return await unassignAgent(input)
 }
 
+/** Issues a server-authorized capability for exactly one submitted mail turn. */
+export async function bindMailAgentContext(input: {
+  data: {
+    workspaceId: string
+    conversationId: string | null
+    agentId: string
+  }
+}): Promise<{ token: string }> {
+  return await setAgentContext(input)
+}
+
 /** Actor-scoped keyset pages remain warm independently per search/filter. */
 export function mailInboxOptions(
   workspaceId: string,
@@ -311,21 +399,25 @@ export function mailConversationOptions(
   })
 }
 
-/** Assignment-scoped chat stays disabled until a concrete agent is selected. */
+/** Stable session cache is partitioned by authenticated owner to prevent reuse. */
 export function mailAgentSessionOptions(input: {
   workspaceId: string
-  conversationId: string
   agentId: string
+  ownerUserId: string | null
 }) {
   return queryOptions({
     queryKey: mailKeys.agentSession(
       input.workspaceId,
-      input.conversationId,
       input.agentId,
+      input.ownerUserId,
     ),
     queryFn: (): Promise<MailAgentChatSession> =>
-      getAgentSession({ data: input }),
+      getAgentSession({
+        data: { workspaceId: input.workspaceId, agentId: input.agentId },
+      }),
+    enabled: input.ownerUserId !== null,
     staleTime: Infinity,
+    retry: false,
   })
 }
 

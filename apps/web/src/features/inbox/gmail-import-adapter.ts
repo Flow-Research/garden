@@ -132,7 +132,7 @@ export function useGmailImportController(input: {
         () => connection.name,
       ),
       iconUrl,
-      importMode: 'read_only',
+      importMode: 'gmail_transport',
     }),
   )
   const effectiveAddress =

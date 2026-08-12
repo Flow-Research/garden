@@ -214,7 +214,8 @@ export function MailMessage({
           <MailHtmlFrame
             body={message.html}
             title={`Message from ${message.from.name || message.from.address}`}
-            className="block h-72 min-h-48 w-full border-0"
+            autoSize
+            className="block min-h-[100px] w-full border-0"
           />
         </div>
 

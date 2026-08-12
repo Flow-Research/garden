@@ -6,7 +6,8 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useAuthStore } from '@garden/app-state/auth'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { inboxListOptions, deduplicateInboxItems } from '@/lib/inbox/queries'
 import {
@@ -30,7 +31,6 @@ import {
   ArrowLeft,
   ExternalLink,
   Bot,
-  ChevronDown,
   PanelLeftClose,
   SquarePen,
 } from 'lucide-react'
@@ -50,7 +50,7 @@ import { InboxControlPlane } from './inbox-control-plane'
 import {
   MailComposer,
   MailAgentConversationPanel,
-  MailAgentSessionPreloader,
+  MailAgentPane,
   MailConversationDetail,
   MailConversationList,
   MailConversationRow,
@@ -65,7 +65,10 @@ import {
   type MailConversationView,
   type MailScope,
 } from './mail'
-import { eligibleMailAgentsOptions } from '../mail.queries'
+import {
+  eligibleMailAgentsOptions,
+  mailAgentSessionOptions,
+} from '../mail.queries'
 import {
   type ActiveMailInboxController,
   type MailInboxController,
@@ -76,6 +79,8 @@ import {
   unavailableGmailImportController,
 } from '../gmail-import-controller'
 import { GmailImportControl } from './gmail-import-control'
+
+const NO_INBOX_SELECTION = 'none'
 
 // ---------------------------------------------------------------------------
 // Unified list pane header — Zero/Cloudflare composition
@@ -124,16 +129,28 @@ function InboxListHeader({
   return (
     <div className="shrink-0">
       <div className="flex h-11 w-full items-center justify-between gap-2 px-3">
-        <div className="flex items-baseline gap-2">
-          <h1 className="text-base font-medium text-foreground">Inbox</h1>
-          {unreadCount > 0 && (
+        <div className="flex min-w-0 items-center gap-2">
+          {compact && canCollapse ? (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Collapse conversation list"
+              title="Collapse conversation list"
+              onClick={onCollapse}
+            >
+              <PanelLeftClose />
+            </Button>
+          ) : (
+            <h1 className="text-base font-medium text-foreground">Inbox</h1>
+          )}
+          {!compact && unreadCount > 0 && (
             <span className="text-xs text-muted-foreground tabular-nums">
               {unreadCount} unread
             </span>
           )}
         </div>
         <div className="flex items-center gap-1.5">
-          {canCollapse ? (
+          {canCollapse && !compact ? (
             <Button
               variant="ghost"
               size="icon-sm"
@@ -144,11 +161,19 @@ function InboxListHeader({
               <PanelLeftClose />
             </Button>
           ) : null}
-          <GmailImportControl controller={gmailImportController} />
+          <GmailImportControl
+            controller={gmailImportController}
+            compact={compact}
+          />
           {onCompose ? (
-            <Button size="sm" onClick={onCompose}>
+            <Button
+              size={compact ? 'icon-sm' : 'sm'}
+              aria-label="Compose"
+              title={compact ? 'Compose' : undefined}
+              onClick={onCompose}
+            >
               <SquarePen />
-              Compose
+              {!compact ? 'Compose' : null}
             </Button>
           ) : null}
           <DropdownMenu>
@@ -374,21 +399,22 @@ function MailDetailSurface({
   conversationId,
   compact,
   onClose,
+  agentPanel,
+  onToggleAgent,
 }: {
   controller: ActiveMailInboxController
   workspaceId: string
   conversationId: string
   compact: boolean
   onClose: () => void
+  agentPanel: { agentId: string; open: boolean } | null
+  onToggleAgent: (agentId: string) => void
 }) {
+  const queryClient = useQueryClient()
+  const ownerUserId = useAuthStore((state) => state.user?.id ?? null)
   const [expansion, setExpansion] = useState<{
     conversationId: string
     expandedIds: ReadonlySet<string>
-  } | null>(null)
-  const [agentPanel, setAgentPanel] = useState<{
-    conversationId: string
-    agentId: string
-    open: boolean
   } | null>(null)
   const eligibleAgentsQuery = useQuery(
     eligibleMailAgentsOptions({ workspaceId, conversationId }),
@@ -410,29 +436,21 @@ function MailDetailSurface({
   if (detail.conversation.id !== conversationId) return <MailDetailSkeleton />
 
   const conversation: MailConversationView = detail.conversation
-  const assignedAgentIds = new Set(
-    conversation.agentAssignments.map((assignment) => assignment.agentId),
-  )
   const selectedAgentId =
-    agentPanel?.conversationId === conversation.id &&
-    assignedAgentIds.has(agentPanel.agentId)
+    agentPanel &&
+    eligibleAgentsQuery.data?.some((agent) => agent.id === agentPanel.agentId)
       ? agentPanel.agentId
-      : (conversation.agentAssignments[0]?.agentId ?? null)
+      : (conversation.agentAssignments[0]?.agentId ??
+        eligibleAgentsQuery.data?.[0]?.id ??
+        null)
   const selectedAgent = eligibleAgentsQuery.data?.find(
     (agent) => agent.id === selectedAgentId,
   )
   const agentPanelOpen =
-    agentPanel?.conversationId === conversation.id &&
-    agentPanel.open &&
+    agentPanel?.open === true &&
+    agentPanel.agentId === selectedAgent?.id &&
     selectedAgent !== undefined
 
-  const agentSessionPreloader = selectedAgent ? (
-    <MailAgentSessionPreloader
-      workspaceId={workspaceId}
-      conversationId={conversation.id}
-      agentId={selectedAgent.id}
-    />
-  ) : null
   const newestMessageId = conversation.messages.at(-1)?.id
   const expandedMessageIds =
     expansion?.conversationId === conversation.id
@@ -467,19 +485,9 @@ function MailDetailSurface({
       folders={controller.folders}
       onBack={onClose}
       onClose={onClose}
-      onReply={
-        conversation.canSend
-          ? () => controller.actions.reply(conversation.id)
-          : undefined
-      }
       onReplyAll={
         conversation.canSend
           ? () => controller.actions.replyAll(conversation.id)
-          : undefined
-      }
-      onForward={
-        conversation.canSend
-          ? () => controller.actions.forward(conversation.id)
           : undefined
       }
       onToggleStar={() => controller.actions.toggleStar(conversation.id)}
@@ -490,117 +498,61 @@ function MailDetailSurface({
       }}
       onViewSource={() => controller.actions.viewSource(conversation.id)}
       agentControl={
-        <div className="flex items-center gap-0.5">
-          {selectedAgent ? (
-            <Button
-              variant={agentPanelOpen ? 'secondary' : 'ghost'}
-              size="icon-sm"
-              aria-label="Toggle agent panel"
-              title={agentPanelOpen ? 'Hide agent panel' : 'Show agent panel'}
-              onClick={() =>
-                setAgentPanel({
-                  conversationId: conversation.id,
-                  agentId: selectedAgent.id,
-                  open: !agentPanelOpen,
-                })
-              }
-            >
-              <Bot />
-            </Button>
-          ) : null}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size={selectedAgent ? 'icon-sm' : 'sm'}
-                  aria-label={selectedAgent ? 'Manage agent' : 'Assign agent'}
-                />
-              }
-            >
-              {selectedAgent ? null : <Bot />}
-              {selectedAgent ? null : 'Assign agent'}
-              <ChevronDown />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              {eligibleAgentsQuery.data?.length ? (
-                eligibleAgentsQuery.data.map((agent) => (
-                  <DropdownMenuItem
-                    key={agent.id}
-                    onClick={() => {
-                      if (!assignedAgentIds.has(agent.id)) {
-                        controller.actions.assignAgent(
-                          conversation.id,
-                          agent.id,
-                        )
-                      }
-                      setAgentPanel({
-                        conversationId: conversation.id,
-                        agentId: agent.id,
-                        open: true,
-                      })
-                    }}
-                  >
-                    <Bot />
-                    {assignedAgentIds.has(agent.id)
-                      ? agent.name
-                      : `Assign ${agent.name}`}
-                  </DropdownMenuItem>
-                ))
-              ) : (
-                <DropdownMenuItem disabled>
-                  Grant an agent mailbox access in Mail settings
-                </DropdownMenuItem>
-              )}
-              {selectedAgent ? <DropdownMenuSeparator /> : null}
-              {selectedAgent ? (
-                <DropdownMenuItem
-                  variant="destructive"
-                  onClick={() => {
-                    controller.actions.unassignAgent(
-                      conversation.id,
-                      selectedAgent.id,
-                    )
-                    setAgentPanel(null)
-                  }}
-                >
-                  Unassign {selectedAgent.name}
-                </DropdownMenuItem>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <Button
+          variant={agentPanelOpen ? 'secondary' : 'ghost'}
+          size="icon-sm"
+          disabled={!selectedAgent}
+          aria-label={agentPanelOpen ? 'Close agent' : 'Open agent'}
+          title={
+            selectedAgent
+              ? agentPanelOpen
+                ? 'Close agent'
+                : 'Open agent'
+              : 'No mailbox agent available'
+          }
+          onClick={() => {
+            if (!selectedAgent) return
+            onToggleAgent(selectedAgent.id)
+          }}
+          onPointerEnter={() => {
+            if (!selectedAgent) return
+            void queryClient.prefetchQuery(
+              mailAgentSessionOptions({
+                workspaceId,
+                agentId: selectedAgent.id,
+                ownerUserId,
+              }),
+            )
+          }}
+          onFocus={() => {
+            if (!selectedAgent) return
+            void queryClient.prefetchQuery(
+              mailAgentSessionOptions({
+                workspaceId,
+                agentId: selectedAgent.id,
+                ownerUserId,
+              }),
+            )
+          }}
+        >
+          <Bot />
+        </Button>
       }
     />
   )
 
   return (
-    <div className="flex h-full min-h-0 min-w-0">
-      {agentSessionPreloader}
-      <div className="min-w-0 flex-1">
-        <MailConversationDetail
-          conversation={conversation}
-          toolbar={toolbar}
-          expandedMessageIds={expandedMessageIds}
-          replyingToMessageId={controller.composer?.replyToMessageId}
-          inlineComposer={inlineComposer}
-          onToggleMessage={toggleMessage}
-          messageActions={(message) =>
-            controller.actions.messageProps(conversation.id, message)
-          }
-        />
-      </div>
-      {agentPanelOpen && selectedAgent ? (
-        <div className="flex w-[380px] shrink-0 flex-col overflow-hidden border-l bg-background">
-          <MailAgentConversationPanel
-            workspaceId={workspaceId}
-            conversationId={conversation.id}
-            agentId={selectedAgent.id}
-            agentName={selectedAgent.name}
-          />
-        </div>
-      ) : null}
-    </div>
+    <MailConversationDetail
+      conversation={conversation}
+      toolbar={toolbar}
+      expandedMessageIds={expandedMessageIds}
+      replyingToMessageId={controller.composer?.replyToMessageId}
+      inlineComposer={inlineComposer}
+      onToggleMessage={toggleMessage}
+      messageActions={(message) =>
+        controller.actions.messageProps(conversation.id, message)
+      }
+    />
   )
 }
 
@@ -619,6 +571,7 @@ export function InboxPage({
   mailController?: MailInboxController
   gmailImportController?: GmailImportController
 } = {}) {
+  const wsId = useWorkspaceId()
   const { searchParams, replace } = useNavigation()
   const dock = useWorkspaceDock()
   const selectedKey = searchParams.get('item') ?? ''
@@ -629,8 +582,24 @@ export function InboxPage({
   const [scope, setScope] = useState<MailScope>('all')
   const [searchExpanded, setSearchExpanded] = useState(false)
   const [listCollapsed, setListCollapsed] = useState(false)
+  const mailAgentId = searchParams.get('mailAgent')
+  const agentPanel = mailAgentId
+    ? { agentId: mailAgentId, open: true as const }
+    : null
   const deferredMailSearch = useDeferredValue(search)
   const { ref: paneRef, compact } = useCompactInboxPane()
+
+  /** Keeps the independent inbox chat pane stable across URL-driven selection. */
+  const setAgentPanelVisibility = useCallback(
+    (next: { agentId: string; open: boolean } | null) => {
+      if (typeof window === 'undefined') return
+      const url = new URL(window.location.href)
+      if (next?.open) url.searchParams.set('mailAgent', next.agentId)
+      else url.searchParams.delete('mailAgent')
+      replace(`${url.pathname}${url.search}`)
+    },
+    [replace],
+  )
 
   const setSelectedKey = useCallback(
     (key: string, item?: InboxItem | null) => {
@@ -639,8 +608,7 @@ export function InboxPage({
       // the inbox is a dock panel, not a path).
       if (typeof window === 'undefined') return
       const url = new URL(window.location.href)
-      if (key) url.searchParams.set('item', key)
-      else url.searchParams.delete('item')
+      url.searchParams.set('item', key || NO_INBOX_SELECTION)
 
       if (item?.issue_id) url.searchParams.set('issue', item.issue_id)
       else url.searchParams.delete('issue')
@@ -653,7 +621,6 @@ export function InboxPage({
     [replace],
   )
 
-  const wsId = useWorkspaceId()
   const defaultMailController = useMailInboxController({
     workspaceId: wsId,
     selectedConversationId: mailConversationId,
@@ -729,7 +696,12 @@ export function InboxPage({
     unifiedRows[0]?.kind === 'mail'
       ? mailSelectionKey(unifiedRows[0].conversation.id)
       : (unifiedRows[0]?.item.id ?? '')
-  const effectiveSelectedKey = selectedKey || firstSelectionKey
+  const waitingForAutomaticMailSelection =
+    scope !== 'notifications' &&
+    mailController.status === 'active' &&
+    mailController.list.status === 'loading'
+  const effectiveSelectedKey =
+    selectedKey || (waitingForAutomaticMailSelection ? '' : firstSelectionKey)
   const effectiveMailConversationId = selectedMailId(effectiveSelectedKey)
   const selectedNotification =
     effectiveMailConversationId === null
@@ -819,6 +791,13 @@ export function InboxPage({
     }
   }
 
+  /** Keeps one inbox-agent pane alive while selected-email context changes. */
+  const toggleMailAgent = (agentId: string) => {
+    const opening = agentPanel?.agentId !== agentId || !agentPanel.open
+    if (opening) setListCollapsed(true)
+    setAgentPanelVisibility({ agentId, open: opening })
+  }
+
   const renderMailRow = (conversation: MailConversationSummaryView) => {
     if (mailController.status !== 'active') return null
     return (
@@ -853,7 +832,7 @@ export function InboxPage({
   const listHeader = (
     <InboxListHeader
       unreadCount={unreadCount}
-      compact={compact}
+      compact={compact || detailOpen}
       scope={scope}
       search={search}
       searchExpanded={searchExpanded}
@@ -993,6 +972,8 @@ export function InboxPage({
         conversationId={effectiveMailConversationId}
         compact={compact}
         onClose={() => setSelectedKey('')}
+        agentPanel={agentPanel}
+        onToggleAgent={toggleMailAgent}
       />
     )
   } else if (effectiveMailConversationId) {
@@ -1006,42 +987,59 @@ export function InboxPage({
 
   return (
     <div ref={paneRef} className="flex min-h-0 flex-1">
-      <MailSplitView
-        compact={compact}
-        detailOpen={detailOpen}
-        listCollapsed={listCollapsed}
-        onExpandList={() => setListCollapsed(false)}
-        list={
-          <div className="flex h-full min-h-0 flex-col">
-            {listHeader}
-            <div
-              className="min-h-0 flex-1 overflow-y-auto"
-              onScroll={(event) => {
-                if (
-                  mailController.status !== 'active' ||
-                  mailController.list.status !== 'ready' ||
-                  !mailController.list.hasMore ||
-                  mailController.list.loadingMore
-                ) {
-                  return
-                }
-                const viewport = event.currentTarget
-                if (
-                  viewport.scrollHeight -
-                    viewport.scrollTop -
-                    viewport.clientHeight <
-                  320
-                ) {
-                  mailController.list.loadMore?.()
-                }
-              }}
-            >
-              {listBody}
+      <div className="min-w-0 flex-1">
+        <MailSplitView
+          compact={compact}
+          detailOpen={detailOpen}
+          listCollapsed={listCollapsed}
+          onExpandList={() => setListCollapsed(false)}
+          list={
+            <div className="flex h-full min-h-0 flex-col">
+              {listHeader}
+              <div
+                className="min-h-0 flex-1 overflow-y-auto"
+                onScroll={(event) => {
+                  if (
+                    mailController.status !== 'active' ||
+                    mailController.list.status !== 'ready' ||
+                    !mailController.list.hasMore ||
+                    mailController.list.loadingMore
+                  ) {
+                    return
+                  }
+                  const viewport = event.currentTarget
+                  if (
+                    viewport.scrollHeight -
+                      viewport.scrollTop -
+                      viewport.clientHeight <
+                    320
+                  ) {
+                    mailController.list.loadMore?.()
+                  }
+                }}
+              >
+                {listBody}
+              </div>
             </div>
-          </div>
-        }
-        detail={detailContent ?? <MailNoSelectionState />}
-      />
+          }
+          detail={detailContent ?? <MailNoSelectionState />}
+        />
+      </div>
+      {agentPanel?.open ? (
+        <MailAgentPane>
+          <MailAgentConversationPanel
+            workspaceId={wsId}
+            conversationId={effectiveMailConversationId}
+            agentId={agentPanel.agentId}
+            onClose={() => setAgentPanelVisibility(null)}
+            onOpenDraft={
+              mailController.status === 'active'
+                ? mailController.actions.openAgentDraft
+                : undefined
+            }
+          />
+        </MailAgentPane>
+      ) : null}
     </div>
   )
 }

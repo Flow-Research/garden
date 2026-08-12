@@ -1,12 +1,9 @@
-/**
- * A Gmail connection is an external, read-only import source. It must never be
- * offered by Garden's composer as a sending mailbox.
- */
+/** Gmail connection identity and the capability its canonical mailbox exposes. */
 export type GmailImportAccountView = {
   connectionAddress: string
   identityLabel: string
   iconUrl: string | null
-  importMode: 'read_only'
+  importMode: 'gmail_transport' | 'read_only'
 }
 
 export type GmailImportState =

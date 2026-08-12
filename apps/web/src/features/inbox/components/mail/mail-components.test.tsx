@@ -7,6 +7,7 @@ import {
 } from './mail-agent-sidebar'
 import { MailConversationRow } from './mail-conversation-row'
 import { MailConversationList } from './mail-conversation-list'
+import { MailConversationDetail } from './mail-conversation-detail'
 import { MailHtmlFrame } from './mail-html-frame'
 import { MailListToolbar } from './mail-list-toolbar'
 import { MailMessage } from './mail-message'
@@ -37,7 +38,10 @@ describe('MailConversationRow', () => {
 
     render(
       <MailConversationRow
-        conversation={conversation}
+        conversation={{
+          ...conversation,
+          labels: [{ id: 'label-1', name: 'Investors', color: '#ff0000' }],
+        }}
         selected={false}
         onOpen={onOpen}
         onToggleStar={onToggleStar}
@@ -58,7 +62,12 @@ describe('MailConversationRow', () => {
     expect(onOpen).toHaveBeenCalledOnce()
 
     expect(screen.queryByText('Needs reply')).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Needs reply')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Needs reply')).not.toBeInTheDocument()
+    expect(screen.getByText('Investors')).not.toHaveStyle({
+      borderLeft: '2px solid #ff0000',
+    })
+    expect(row).not.toHaveClass('min-h-24', 'border-b')
+    expect(screen.getByText(conversation.snippet)).toHaveClass('line-clamp-1')
   })
 })
 
@@ -139,21 +148,86 @@ describe('MailSplitView', () => {
   })
 })
 
+describe('MailConversationDetail', () => {
+  it('pins the latest-message composer below the scroll surface', () => {
+    const latestMessage: MailMessageView = {
+      id: 'message-1',
+      from: { name: 'Ada', address: 'ada@example.com' },
+      to: [{ address: 'me@example.com' }],
+      sentAtLabel: 'Now',
+      html: '<p>Hello</p>',
+      textPreview: 'Hello',
+      status: 'sent',
+      agentAuthored: false,
+    }
+
+    render(
+      <MailConversationDetail
+        conversation={{
+          ...conversation,
+          messageCount: 1,
+          labels: [{ id: 'label-1', name: 'Investors', color: '#ff0000' }],
+          messages: [latestMessage],
+        }}
+        toolbar={<div>Thread toolbar</div>}
+        expandedMessageIds={new Set(['message-1'])}
+        replyingToMessageId="message-1"
+        inlineComposer={<div>Reply composer</div>}
+        onToggleMessage={vi.fn()}
+      />,
+    )
+
+    const composer = screen.getByText('Reply composer')
+    expect(composer.parentElement).toHaveAttribute(
+      'data-mail-reply-surface',
+      'sticky',
+    )
+    expect(screen.getByText('Investors')).not.toHaveStyle({
+      borderLeft: '2px solid #ff0000',
+    })
+  })
+})
+
 describe('MailHtmlFrame', () => {
-  it('sanitizes active content and uses an opaque sandbox with CSP', async () => {
-    render(<MailHtmlFrame body={'<p>Hello</p><script>alert("xss")</script>'} />)
+  it('sanitizes active content and auto-sizes inside an opaque sandbox', async () => {
+    render(
+      <MailHtmlFrame
+        body={'<p>Hello</p><script>alert("xss")</script>'}
+        autoSize
+      />,
+    )
 
     const frame = screen.getByTitle('Email content')
     await waitFor(() => expect(frame.getAttribute('srcdoc')).toContain('Hello'))
 
     const document = frame.getAttribute('srcdoc') ?? ''
-    expect(document).not.toContain('<script')
+    expect(document).not.toContain('alert("xss")')
     expect(document).not.toContain('alert("xss")')
     expect(document).toContain('Content-Security-Policy')
     expect(document).toContain("default-src 'none'")
+    expect(document).toContain('__gardenMailFrameHeight')
+    expect(document).toContain('overflow-x: hidden')
     expect(frame.getAttribute('sandbox')).not.toContain('allow-same-origin')
-    expect(frame.getAttribute('sandbox')).not.toContain('allow-scripts')
+    expect(frame.getAttribute('sandbox')).toContain('allow-scripts')
     expect(frame.getAttribute('referrerpolicy')).toBe('no-referrer')
+    expect(frame).toHaveStyle({ height: '100px' })
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        source: (frame as HTMLIFrameElement).contentWindow,
+        data: { __gardenMailFrameHeight: true, height: 412 },
+      }),
+    )
+    await waitFor(() => expect(frame).toHaveStyle({ height: '412px' }))
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        source: (frame as HTMLIFrameElement).contentWindow,
+        data: { __gardenMailFrameHeight: true, height: 10_000_000 },
+      }),
+    )
+    await waitFor(() => expect(frame).toHaveStyle({ height: '4000px' }))
+    expect(frame).toHaveAttribute('scrolling', 'yes')
   })
 
   it('blocks remote tracking images while preserving embedded image content', async () => {
@@ -218,6 +292,9 @@ describe('MailMessage', () => {
       'bg-warning/[0.02]',
     )
     expect(screen.getByRole('article')).not.toHaveClass('rounded-lg', 'border')
+    expect(screen.getByTitle('Message from Garden Agent')).not.toHaveClass(
+      'h-72',
+    )
     fireEvent.click(screen.getByRole('button', { name: 'Approve & send' }))
     expect(onSendDraft).toHaveBeenCalledOnce()
   })
@@ -225,8 +302,6 @@ describe('MailMessage', () => {
 
 describe('MailAgentSidebar', () => {
   const baseProps: MailAgentSidebarProps = {
-    activeTab: 'agent',
-    onTabChange: vi.fn(),
     messages: [],
     status: 'idle',
     input: '',
@@ -234,6 +309,15 @@ describe('MailAgentSidebar', () => {
     onSend: vi.fn(),
     onStop: vi.fn(),
   }
+
+  it('keeps the mail surface focused on the agent, without an MCP tab', () => {
+    render(<MailAgentSidebar {...baseProps} />)
+
+    expect(screen.queryByText('AI')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'MCP' }),
+    ).not.toBeInTheDocument()
+  })
 
   it('sends controlled input and source prompts without effect state', () => {
     const onSend = vi.fn()
@@ -258,14 +342,13 @@ describe('MailAgentSidebar', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Show me the latest inbox emails',
+        name: 'Summarize this email',
       }),
     )
-    expect(onSend).toHaveBeenCalledWith('Show me the latest inbox emails')
+    expect(onSend).toHaveBeenCalledWith('Summarize this email')
   })
 
-  it('shows live tool activity, draft handoff, and stop control', () => {
-    const onEditDraft = vi.fn()
+  it('shows live composer activity and stop control', () => {
     const onStop = vi.fn()
 
     const { rerender } = render(
@@ -273,7 +356,6 @@ describe('MailAgentSidebar', () => {
         {...baseProps}
         status="idle"
         onStop={onStop}
-        onEditDraft={onEditDraft}
         messages={[
           {
             id: 'agent-message',
@@ -282,7 +364,7 @@ describe('MailAgentSidebar', () => {
               { type: 'text', text: 'I prepared a reply.' },
               {
                 type: 'tool',
-                toolName: 'draft_reply',
+                toolName: 'compose_mail',
                 state: 'output-available',
               },
             ],
@@ -291,11 +373,7 @@ describe('MailAgentSidebar', () => {
       />,
     )
 
-    expect(screen.getByText('Drafting reply')).toBeInTheDocument()
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Edit & send in composer' }),
-    )
-    expect(onEditDraft).toHaveBeenCalledWith('agent-message')
+    expect(screen.getByText('Draft saved and opened')).toBeInTheDocument()
 
     rerender(
       <MailAgentSidebar
@@ -331,8 +409,11 @@ describe('MailAgentSidebar', () => {
             parts: [
               {
                 type: 'tool',
-                toolName: 'mail_read_conversation',
+                toolName: 'tool_executor_execute',
                 state: 'output-available',
+                input: {
+                  code: 'await tools.google_gmail.user.gmail.gmail.users.threads.get({ threadId })',
+                },
               },
             ],
           },
@@ -345,8 +426,139 @@ describe('MailAgentSidebar', () => {
       'text-brand-foreground',
     )
     expect(
-      screen.getByText('Reading email').previousElementSibling,
+      screen.getByText('Conversation read').previousElementSibling,
     ).toHaveClass('text-brand')
+  })
+
+  it('shows provider actions without exposing Executor code or identifiers', () => {
+    render(
+      <MailAgentSidebar
+        {...baseProps}
+        messages={[
+          {
+            id: 'archive-action',
+            role: 'assistant',
+            parts: [
+              {
+                type: 'tool',
+                toolName: 'tool_executor_execute',
+                state: 'running',
+                input: {
+                  code: `await tools.google_gmail.user.gmail.gmail.users.threads.modify({
+                    id: 'provider-thread-id',
+                    removeLabelIds: ['INBOX'],
+                  })`,
+                },
+              },
+            ],
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('Archiving email')).toBeInTheDocument()
+    expect(screen.queryByText(/provider-thread-id/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/threads\.modify/)).not.toBeInTheDocument()
+  })
+
+  it('distinguishes approval, failure, and unknown tool states', () => {
+    render(
+      <MailAgentSidebar
+        {...baseProps}
+        messages={[
+          {
+            id: 'tool-states',
+            role: 'assistant',
+            parts: [
+              {
+                type: 'tool',
+                toolName: 'tool_executor_execute',
+                state: 'output-available',
+                output: {
+                  structuredContent: {
+                    status: 'user_approval_required',
+                    executionId: 'private-execution-id',
+                  },
+                },
+              },
+              {
+                type: 'tool',
+                toolName: 'compose_mail',
+                state: 'output-error',
+              },
+              {
+                type: 'tool',
+                toolName: 'obsolete_internal_tool_123',
+                state: 'running',
+              },
+            ],
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('Approval needed')).toBeInTheDocument()
+    expect(screen.getByText('Draft could not be saved')).toBeInTheDocument()
+    expect(screen.getByText('Working')).toBeInTheDocument()
+    expect(screen.queryByText('private-execution-id')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('obsolete_internal_tool_123'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('resolves a paused Executor action inline without exposing its handle', async () => {
+    const onResolveApproval = vi.fn().mockResolvedValue('approved')
+    const executionId = 'exec_174e67d2-bcbc-420b-a1f5-289ee6681b8f'
+    render(
+      <MailAgentSidebar
+        {...baseProps}
+        onResolveApproval={onResolveApproval}
+        messages={[
+          {
+            id: 'approval',
+            role: 'assistant',
+            parts: [
+              {
+                type: 'tool',
+                toolName: 'tool_executor_execute',
+                state: 'output-available',
+                input: {
+                  code: `await google_gmail.user.gmail.gmail.users.threads.modify({})`,
+                },
+                output: {
+                  structuredContent: {
+                    status: 'waiting_for_interaction',
+                    executionId,
+                  },
+                },
+              },
+            ],
+          },
+        ]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    expect(onResolveApproval).toHaveBeenCalledWith(executionId, true)
+    await waitFor(() =>
+      expect(screen.getByText('Action approved')).toBeInTheDocument(),
+    )
+    expect(screen.queryByText(executionId)).not.toBeInTheDocument()
+    expect(screen.queryByText(/threads\.modify/)).not.toBeInTheDocument()
+  })
+
+  it('shows a concise runtime failure without backend details', () => {
+    render(
+      <MailAgentSidebar
+        {...baseProps}
+        status="error"
+        errorMessage="Agent could not finish. Try again."
+      />,
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Agent could not finish. Try again.',
+    )
   })
 })
 
@@ -422,5 +634,37 @@ describe('MailComposer', () => {
     expect(screen.getByText('investor.pdf')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Remove investor.pdf' }))
     expect(onRemoveAttachment).toHaveBeenCalledWith('attachment-id')
+  })
+
+  it('matches Zero link behavior without a manual URL prompt', () => {
+    const onFormat = vi.fn()
+    const prompt = vi.spyOn(window, 'prompt')
+
+    render(
+      <MailComposer
+        variant="inline"
+        values={{
+          to: 'ada@example.com',
+          cc: '',
+          bcc: '',
+          from: 'investor@example.com',
+          subject: 'Links',
+          body: '',
+          htmlBody: '',
+        }}
+        ccBccVisible={false}
+        onChange={vi.fn()}
+        onToggleCcBcc={vi.fn()}
+        onFormat={onFormat}
+        onSend={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Insert link' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Bold' }))
+    expect(onFormat).toHaveBeenCalledWith('bold')
+    expect(prompt).not.toHaveBeenCalled()
+    prompt.mockRestore()
   })
 })

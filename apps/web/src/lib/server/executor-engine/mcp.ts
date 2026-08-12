@@ -34,11 +34,20 @@ import {
 } from '@executor-js/cloudflare/mcp/execution-owner-directory'
 import { mcpSessionStub } from '@executor-js/cloudflare/mcp/session-stub'
 import { makeDynamicWorkerExecutor } from '@executor-js/runtime-dynamic-worker'
-
 import { createD1ExecutorDb } from './d1'
 import { makeR2BlobStore } from './r2'
 import { makeExecutorPlugins, type GardenExecutorPlugins } from './plugins'
 import { boundExecutionEngine } from './output-bound'
+import {
+  gardenMailExecutorConnectionPattern,
+  gardenMailExecutorPolicyRules,
+  isGardenMailExecutorConnectionName,
+  isGardenMailExecutorToolkit,
+} from './mail-toolkit'
+
+type GardenMailSessionMeta = SessionMeta & {
+  readonly toolkitConnectionNames?: readonly string[]
+}
 
 type ExecutorMcpEnv = Env & {
   readonly BETTER_AUTH_URL?: string
@@ -58,6 +67,97 @@ interface GardenSessionDb {
   readonly attachExecutor: (executor: GardenExecutor) => void
   readonly end: () => Promise<void>
 }
+
+/**
+ * Materializes an isolated toolkit for one hidden Inbox facet. Exact Gmail
+ * connections come from Garden's member∩agent mailbox authorization; reads run
+ * through Executor and provider mutations require approval. Source consulted:
+ * vendored `plugin-toolkits/src/server.ts` and SDK `policies.ts`.
+ */
+const ensureGardenMailExecutorToolkit = Effect.fn(
+  'GardenMailExecutorToolkit.ensure',
+)(function* (
+  executor: GardenExecutor,
+  toolkitSlug: string,
+  connectionNames: readonly string[],
+) {
+  if (
+    !isGardenMailExecutorToolkit(toolkitSlug) ||
+    connectionNames.length === 0 ||
+    connectionNames.some((name) => !isGardenMailExecutorConnectionName(name))
+  ) {
+    return yield* Effect.fail(new Error('Invalid Garden Mail toolkit scope'))
+  }
+  const existingToolkits = yield* executor.toolkits.list()
+  const toolkit =
+    existingToolkits.find((candidate) => candidate.slug === toolkitSlug) ??
+    (yield* executor.toolkits.create({
+      owner: 'user',
+      name: 'Garden Mail',
+      slug: toolkitSlug,
+    }))
+
+  const connectionPatterns = connectionNames.map(
+    gardenMailExecutorConnectionPattern,
+  )
+
+  const existingConnections = yield* executor.toolkits.listConnections(
+    toolkit.id,
+  )
+  yield* Effect.forEach(
+    existingConnections.filter(
+      (connection) => !connectionPatterns.includes(connection.pattern),
+    ),
+    (connection) =>
+      executor.toolkits.removeConnection(toolkit.id, connection.id),
+    { discard: true },
+  )
+  yield* Effect.forEach(
+    connectionPatterns.filter(
+      (pattern) =>
+        !existingConnections.some(
+          (connection) => connection.pattern === pattern,
+        ),
+    ),
+    (pattern) => executor.toolkits.createConnection(toolkit.id, { pattern }),
+    { discard: true },
+  )
+
+  // `createPolicy` prepends, so create the inverse of Executor's canonical
+  // first-match resolution order.
+  const requiredPolicies = [
+    ...gardenMailExecutorPolicyRules(connectionNames),
+  ].reverse()
+  const existingPolicies = yield* executor.toolkits.listPolicies(toolkit.id)
+  const currentOrder = [...existingPolicies]
+    .sort((left, right) => left.position.localeCompare(right.position))
+    .map(({ pattern, action }) => ({ pattern, action }))
+  // Toolkit policy resolution is first-match by ascending fractional position.
+  // `createPolicy` prepends by default, so creating the broad block first and
+  // exact rules afterwards yields exact rules first and the block last. Rebuild
+  // only when that canonical order differs; preserving matching but stale rows
+  // can otherwise leave the broad block ahead of every Gmail allow rule.
+  const requiredOrder = [...requiredPolicies].reverse()
+  const policyOrderMatches =
+    currentOrder.length === requiredOrder.length &&
+    currentOrder.every(
+      (policy, index) =>
+        policy.pattern === requiredOrder[index]?.pattern &&
+        policy.action === requiredOrder[index]?.action,
+    )
+  if (!policyOrderMatches) {
+    yield* Effect.forEach(
+      existingPolicies,
+      (existing) => executor.toolkits.removePolicy(toolkit.id, existing.id),
+      { discard: true, concurrency: 1 },
+    )
+    yield* Effect.forEach(
+      requiredPolicies,
+      (policy) => executor.toolkits.createPolicy(toolkit.id, policy),
+      { discard: true, concurrency: 1 },
+    )
+  }
+})
 
 /**
  * Opens one D1 handle for the hibernatable session and makes the SDK handle
@@ -129,6 +229,17 @@ const buildGardenExecutionStack = (
     })
     database.attachExecutor(executor)
 
+    if (
+      session.resource.kind === 'toolkit' &&
+      isGardenMailExecutorToolkit(session.resource.slug)
+    ) {
+      yield* ensureGardenMailExecutorToolkit(
+        executor,
+        session.resource.slug,
+        (session as GardenMailSessionMeta).toolkitConnectionNames ?? [],
+      )
+    }
+
     const engine = boundExecutionEngine(
       createExecutionEngine({
         executor,
@@ -161,6 +272,12 @@ export class ExecutorMcpSession extends McpAgentSessionDOBase<
   protected override resolveSessionMeta(
     token: McpSessionInit,
   ): Effect.Effect<SessionMeta> {
+    const toolkitConnectionNames =
+      'toolkitConnectionNames' in token &&
+      Array.isArray(token.toolkitConnectionNames) &&
+      token.toolkitConnectionNames.every((name) => typeof name === 'string')
+        ? token.toolkitConnectionNames
+        : undefined
     return Effect.succeed({
       organizationId: token.organizationId,
       organizationName: token.organizationId,
@@ -170,6 +287,9 @@ export class ExecutorMcpSession extends McpAgentSessionDOBase<
       artifactsEnabled: false,
       resource: token.resource,
       webOrigin: token.webOrigin,
+      ...(toolkitConnectionNames === undefined
+        ? {}
+        : { toolkitConnectionNames }),
     })
   }
 
@@ -190,7 +310,16 @@ export class ExecutorMcpSession extends McpAgentSessionDOBase<
           pausedExecutionLeaseMs: PAUSED_APPROVAL_TIMEOUT_MS,
           resumeFallback: this.modelResumeFallback,
           parentSpan: () => this.currentParentSpan(),
-          elicitationMode: { mode: 'model' as const },
+          elicitationMode:
+            session.elicitationMode === 'browser'
+              ? {
+                  mode: 'browser' as const,
+                  // Garden renders the decision in the trusted mailbox panel.
+                  // The real execution/session identifiers stay in the MCP
+                  // payload and authenticated server function, never a URL.
+                  approvalUrl: () => '#garden-mail-approval',
+                }
+              : { mode: 'model' as const },
         }).pipe(Effect.map((mcpServer) => ({ mcpServer, engine }))),
       ),
       Effect.catchCause((cause) =>
