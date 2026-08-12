@@ -118,6 +118,16 @@ export interface GetDraftInput extends Schema.Schema.Type<
   typeof GetDraftInput
 > {}
 
+/** Server-owned sender lookup; transport identifiers never cross UI or model boundaries. */
+export const ResolveDraftSenderInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  actor: MailActor,
+  mailboxId: MailboxId,
+})
+export interface ResolveDraftSenderInput extends Schema.Schema.Type<
+  typeof ResolveDraftSenderInput
+> {}
+
 export const GetRawMessageContentRefInput = Schema.Struct({
   workspaceId: WorkspaceId,
   actor: MailActor,
@@ -472,6 +482,16 @@ export class MailRepositoryInvariantError extends Schema.TaggedErrorClass<MailRe
   },
 ) {}
 
+/** An authorized mailbox has no active outbound identity. */
+export class MailDraftSenderUnavailableError extends Schema.TaggedErrorClass<MailDraftSenderUnavailableError>()(
+  'MailDraftSenderUnavailableError',
+  {
+    mailboxId: MailboxId,
+    operation: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
 export class MailRepositoryPersistenceError extends Schema.TaggedErrorClass<MailRepositoryPersistenceError>()(
   'MailRepositoryPersistenceError',
   {
@@ -486,6 +506,7 @@ export type MailRepositoryError =
   | MailRepositoryAccessDeniedError
   | MailRepositoryNotFoundError
   | MailDraftRevisionConflictError
+  | MailDraftSenderUnavailableError
   | MailRepositoryInvariantError
   | MailRepositoryPersistenceError
 
@@ -505,6 +526,9 @@ export interface MailRepositoryService {
   readonly getDraft: (
     input: GetDraftInput,
   ) => Effect.Effect<DraftSnapshot, MailRepositoryError>
+  readonly resolveDraftSender: (
+    input: ResolveDraftSenderInput,
+  ) => Effect.Effect<DraftSender, MailRepositoryError>
   readonly getRawMessageContentRef: (
     input: GetRawMessageContentRefInput,
   ) => Effect.Effect<RawMessageContentRef, MailRepositoryError>

@@ -12,6 +12,7 @@ import {
 import { describe, expect, it } from '@effect/vitest'
 import { Effect, Layer } from 'effect'
 import {
+  AgentCreateDraftInput,
   MailAgentApplication,
   MailAgentDeliveryDispatcher,
   type MailAgentDeliveryDispatcherService,
@@ -127,6 +128,19 @@ const provideApplication = <A, E>(
   })
 
 describe('MailAgentApplication', () => {
+  it('keeps transport sender identifiers out of the model command', () => {
+    expect(Object.keys(AgentCreateDraftInput.fields)).toEqual([
+      'mailboxId',
+      'conversationId',
+      'replyToMessageId',
+      'subject',
+      'textBody',
+      'htmlBody',
+      'recipients',
+      'attachments',
+    ])
+  })
+
   it.effect(
     'injects the server-owned workspace and agent actor into writes',
     () =>
@@ -144,6 +158,7 @@ describe('MailAgentApplication', () => {
               seen.push(input)
               return Effect.succeed(draft)
             },
+            resolveDraftSender: () => Effect.succeed(draft.sender),
             saveDraft: (input) => {
               seen.push(input)
               return Effect.succeed(draft)
@@ -153,7 +168,6 @@ describe('MailAgentApplication', () => {
             const application = yield* MailAgentApplication
             yield* application.createDraft({
               mailboxId,
-              sender: draft.sender,
               conversationId,
               replyToMessageId: null,
               subject: draft.subject,

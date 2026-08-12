@@ -106,6 +106,7 @@ export type { MailIngressError, MailIngressService } from './ingress.ts'
 export {
   MailRepository,
   MailRepositoryAccessDeniedError,
+  MailDraftSenderUnavailableError,
   MailRepositoryInvariantError,
   MailRepositoryNotFoundError,
   MailRepositoryPersistenceError,

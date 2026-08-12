@@ -11,8 +11,11 @@ import {
 } from '@garden/db/schema'
 import {
   DraftId,
+  MailAddressId,
   MailboxId,
+  MailSyncAccountId,
   type CreateDraftInput,
+  type DraftSender,
   type EditableAttachment,
   type EditableRecipient,
   type MailActor,
@@ -25,8 +28,10 @@ import { MAX_OUTBOUND_ATTACHMENT_BYTES } from '../draft-attachment.ts'
 import { sanitizeAuthoredMailHtml } from '../html.ts'
 import {
   MailDraftRevisionConflictError,
+  MailDraftSenderUnavailableError,
   MailRepositoryInvariantError,
   MailRepositoryNotFoundError,
+  type ResolveDraftSenderInput,
 } from './contracts.ts'
 import { loadDraftSnapshot } from './queries.ts'
 import {
@@ -37,6 +42,80 @@ import {
   storedActor,
   type MailTransaction,
 } from './shared.ts'
+
+/**
+ * Resolves the one active outbound identity owned by an authorized mailbox.
+ * Previously callers had to know private address/account IDs, which made
+ * model-authored drafts guess transport state. Sender selection now stays
+ * behind the repository boundary and follows the persisted mailbox origin.
+ */
+export const resolveDraftSender = Effect.fn(
+  'MailRepository.resolveDraftSender',
+)(function* (db: GardenDatabase, input: ResolveDraftSenderInput) {
+  yield* requireMailboxAccess(db, {
+    ...input,
+    write: true,
+    operation: 'resolveDraftSender.authorize',
+  })
+  const rows = yield* databaseEffect('resolveDraftSender.select', () =>
+    db
+      .select({
+        origin: mailMailbox.origin,
+        addressId: mailAddress.id,
+        syncAccountId: mailSyncAccount.id,
+      })
+      .from(mailMailbox)
+      .leftJoin(
+        mailAddress,
+        and(
+          eq(mailAddress.workspaceId, input.workspaceId),
+          eq(mailAddress.mailboxId, mailMailbox.id),
+          eq(mailAddress.kind, 'primary'),
+          eq(mailAddress.status, 'active'),
+        ),
+      )
+      .leftJoin(
+        mailSyncAccount,
+        and(
+          eq(mailSyncAccount.workspaceId, input.workspaceId),
+          eq(mailSyncAccount.mailboxId, mailMailbox.id),
+          eq(mailSyncAccount.provider, 'gmail'),
+          inArray(mailSyncAccount.status, [
+            'connected',
+            'syncing',
+            'ready',
+            'degraded',
+          ]),
+        ),
+      )
+      .where(
+        and(
+          eq(mailMailbox.workspaceId, input.workspaceId),
+          eq(mailMailbox.id, input.mailboxId),
+          eq(mailMailbox.status, 'active'),
+        ),
+      )
+      .limit(1),
+  )
+  const row = rows[0]
+  if (row?.origin === 'garden_hosted' && row.addressId !== null) {
+    return {
+      _tag: 'GardenAddress',
+      addressId: MailAddressId.make(row.addressId),
+    } satisfies DraftSender
+  }
+  if (row?.origin === 'external_import' && row.syncAccountId !== null) {
+    return {
+      _tag: 'ExternalAccount',
+      syncAccountId: MailSyncAccountId.make(row.syncAccountId),
+    } satisfies DraftSender
+  }
+  return yield* new MailDraftSenderUnavailableError({
+    mailboxId: input.mailboxId,
+    operation: 'resolveDraftSender',
+    message: 'This mailbox is not connected for sending.',
+  })
+})
 
 /** Verifies every referenced immutable attachment belongs to the draft workspace. */
 const verifyDraftAttachments = Effect.fn(

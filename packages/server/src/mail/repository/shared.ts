@@ -16,6 +16,7 @@ import { and, eq } from 'drizzle-orm'
 import { Effect, Schema } from 'effect'
 import {
   MailDraftRevisionConflictError,
+  MailDraftSenderUnavailableError,
   MailRepositoryAccessDeniedError,
   MailRepositoryInvariantError,
   MailRepositoryNotFoundError,
@@ -170,6 +171,7 @@ export const transactionFailure = (
     cause instanceof MailRepositoryAccessDeniedError ||
     cause instanceof MailRepositoryNotFoundError ||
     cause instanceof MailDraftRevisionConflictError ||
+    cause instanceof MailDraftSenderUnavailableError ||
     cause instanceof MailRepositoryInvariantError ||
     cause instanceof MailRepositoryPersistenceError
   ) {

@@ -10,7 +10,11 @@ import {
   getRawMessageContentRef,
 } from './repository/content.ts'
 import { MailRepository } from './repository/contracts.ts'
-import { createDraft, saveDraft } from './repository/drafts.ts'
+import {
+  createDraft,
+  resolveDraftSender,
+  saveDraft,
+} from './repository/drafts.ts'
 import { transitionDraft } from './repository/transitions.ts'
 import { ingestInbound } from './repository/ingest.ts'
 import { ingestImported } from './repository/import.ts'
@@ -55,6 +59,7 @@ export const makeMailRepositoryLayer = (
       listConversationPage: (input) => listConversationPage(db, input),
       getConversation: (input) => getConversation(db, input),
       getDraft: (input) => getDraft(db, input),
+      resolveDraftSender: (input) => resolveDraftSender(db, input),
       getRawMessageContentRef: (input) => getRawMessageContentRef(db, input),
       getAttachmentContentRef: (input) => getAttachmentContentRef(db, input),
       resolveLocalAddress: (input) => resolveLocalAddress(db, input),

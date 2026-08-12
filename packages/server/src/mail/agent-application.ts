@@ -2,7 +2,6 @@ import {
   AgentId,
   ConversationId,
   DraftId,
-  DraftSender,
   EditableAttachment,
   EditableRecipient,
   MailActor,
@@ -52,7 +51,6 @@ export interface AgentReadConversationInput extends Schema.Schema.Type<
 
 export const AgentCreateDraftInput = Schema.Struct({
   mailboxId: MailboxId,
-  sender: DraftSender,
   conversationId: Schema.NullOr(ConversationId),
   replyToMessageId: Schema.NullOr(MessageId),
   subject: Schema.String,
@@ -288,8 +286,14 @@ export const makeMailAgentApplicationLayer = (
         ),
         createDraft: Effect.fn('MailAgentApplication.createDraft')(
           function* (input) {
+            const sender = yield* repository.resolveDraftSender({
+              workspaceId: principal.workspaceId,
+              mailboxId: input.mailboxId,
+              actor,
+            })
             return yield* repository.createDraft({
               ...input,
+              sender,
               workspaceId: principal.workspaceId,
               author: actor,
             })

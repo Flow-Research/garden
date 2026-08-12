@@ -78,6 +78,7 @@ const repositoryLayer = (
     listConversationPage: unavailable,
     getConversation: unavailable,
     getDraft: unavailable,
+    resolveDraftSender: unavailable,
     getRawMessageContentRef: unavailable,
     getAttachmentContentRef: unavailable,
     resolveLocalAddress: () =>
