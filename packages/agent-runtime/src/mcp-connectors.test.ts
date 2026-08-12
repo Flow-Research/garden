@@ -313,6 +313,55 @@ describe('RuntimeMcpController native installations', () => {
   })
 })
 
+describe('RuntimeMcpConnectionPreparer scoped reload', () => {
+  it('waits for default prewarm before replacing it with the mail-turn session', async () => {
+    let releasePrewarm: (() => void) | undefined
+    let ensureCalls = 0
+    const events: string[] = []
+    const controller = {
+      ensureProxyMcpConnections: async () => {
+        ensureCalls += 1
+        events.push(`ensure:${ensureCalls}:start`)
+        if (ensureCalls === 1) {
+          await new Promise<void>((resolve) => {
+            releasePrewarm = resolve
+          })
+        }
+        events.push(`ensure:${ensureCalls}:end`)
+        return Result.ok(undefined)
+      },
+      resetProxyMcpServers: async () => {
+        events.push('reset')
+        return Result.ok(undefined)
+      },
+      captureObservedMcpToolChanges: () => Result.ok([]),
+    } as unknown as RuntimeMcpController
+    const preparer = new RuntimeMcpConnectionPreparer({
+      getController: () => controller,
+      fullSyncIntervalMs: 60_000,
+      backgroundRefreshFailedMessage: 'background failed',
+      refreshFailedMessage: 'refresh failed',
+      continuingWithoutReadyMessage: 'continuing',
+    })
+
+    const prewarm = preparer.ensureLoaded('client-prewarm')
+    const mailTurn = preparer.reload('mail-turn')
+    await Promise.resolve()
+    expect(events).toEqual(['ensure:1:start'])
+
+    releasePrewarm?.()
+    expect((await prewarm).isOk()).toBe(true)
+    expect((await mailTurn).isOk()).toBe(true)
+    expect(events).toEqual([
+      'ensure:1:start',
+      'ensure:1:end',
+      'reset',
+      'ensure:2:start',
+      'ensure:2:end',
+    ])
+  })
+})
+
 describe('RuntimeMcpController GitHub tools', () => {
   it('executes the hosted GitHub MCP source instead of mirroring native REST tools', async () => {
     const calls: Array<{ name: string; input: unknown }> = []

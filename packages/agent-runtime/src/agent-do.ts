@@ -82,6 +82,11 @@ import {
   type McpHost,
   type RuntimeMcpServerStates,
 } from './runtime-mcp-controller'
+import {
+  mailExecutorScopeChanged,
+  readMailExecutorConnectionNames,
+  replaceMailExecutorConnectionNames,
+} from './mail-runtime-scope'
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
 import {
@@ -1631,14 +1636,13 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     ) {
       throw new Error('Authorized Gmail connection not found')
     }
-    const previousConnectionNames = Array.from(
-      this.ctx.storage.sql.exec(
-        'select connection_name from mail_executor_connection order by connection_name',
-      ),
-      (row) => String(row.connection_name),
+    const previousConnectionNames = readMailExecutorConnectionNames(
+      this.ctx.storage.sql,
     )
-    const executorScopeChanged =
-      previousConnectionNames.join('\n') !== connectionNames.join('\n')
+    const executorScopeChanged = mailExecutorScopeChanged(
+      previousConnectionNames,
+      connectionNames,
+    )
     const now = new Date()
     const nowIso = now.toISOString()
     const expiresAt = new Date(
@@ -1698,35 +1702,29 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       `,
       toolkitSlug,
     )
-    this.ctx.storage.sql.exec('delete from mail_executor_connection')
-    for (const connectionName of connectionNames) {
-      this.ctx.storage.sql.exec(
-        'insert into mail_executor_connection (connection_name) values (?)',
-        connectionName,
-      )
-    }
-    if (!alreadyMailRuntime || executorScopeChanged) {
-      const reset = await this.getMcpController().resetProxyMcpServers()
-      if (reset.isErr()) {
-        this.ctx.storage.sql.exec(
-          'delete from mail_context_token where token = ?',
-          token,
-        )
-        this.ctx.storage.sql.exec(
-          'delete from mail_runtime_config where singleton = 1',
-        )
-        this.ctx.storage.sql.exec('delete from mail_executor_connection')
-        throw new Error('Garden could not isolate Inbox agent tools', {
-          cause: reset.error,
-        })
-      }
-    }
-    const prepared = await this.mcpConnectionPreparer.ensureLoaded('mail-turn')
+    replaceMailExecutorConnectionNames(this.ctx.storage.sql, connectionNames)
+    const requiresReload = !alreadyMailRuntime || executorScopeChanged
+    const prepared = requiresReload
+      ? await this.mcpConnectionPreparer.reload('mail-turn')
+      : await this.mcpConnectionPreparer.ensureLoaded('mail-turn')
     if (prepared.isErr()) {
       this.ctx.storage.sql.exec(
         'delete from mail_context_token where token = ?',
         token,
       )
+      if (requiresReload) {
+        if (alreadyMailRuntime) {
+          replaceMailExecutorConnectionNames(
+            this.ctx.storage.sql,
+            previousConnectionNames,
+          )
+        } else {
+          this.ctx.storage.sql.exec(
+            'delete from mail_runtime_config where singleton = 1',
+          )
+          replaceMailExecutorConnectionNames(this.ctx.storage.sql, [])
+        }
+      }
       throw new Error('Garden could not prepare Inbox agent tools', {
         cause: prepared.error,
       })

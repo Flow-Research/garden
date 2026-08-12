@@ -2,7 +2,7 @@ import type { MCPServerFilter } from 'agents/mcp/client'
 import { jsonSchema, tool, type ModelMessage, type ToolSet } from 'ai'
 import { Effect } from 'effect'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { getWorkerPooledDb } from '@garden/db/runtime'
 import { getConnectorById } from '@garden/connectors'
 import { discordNativeTools } from '@garden/connectors/discord/tools'
@@ -70,6 +70,42 @@ export type ThreadRuntimeIdentity = {
   agentId: string
   issueId?: string
   runId?: string
+}
+
+export type ThreadRuntimeIdentityRow = {
+  readonly threadId: string
+  readonly workspaceId: string
+  readonly userId: string
+  readonly agentId: string
+}
+
+/** Matches both public thread ids and private facet runtime keys. */
+export const threadRuntimeIdentityCondition = (runtimeRef: string) =>
+  sql<boolean>`${schema.chatThread.id} = ${runtimeRef} or ${schema.chatThread.runtimeKey} = ${runtimeRef}`
+
+/** Normalizes a runtime-key lookup row to the canonical thread identity. */
+export const threadRuntimeIdentityFromRow = (
+  row: ThreadRuntimeIdentityRow,
+): ThreadRuntimeIdentity => ({
+  threadId: row.threadId,
+  workspaceId: row.workspaceId,
+  userId: row.userId,
+  agentId: row.agentId,
+})
+
+/**
+ * Resolves a runtime reference through an injected query boundary. This keeps
+ * runtime-key behavior testable without a Worker-bound Postgres client while
+ * production executes the same condition and canonical-id normalization.
+ */
+export const findThreadRuntimeIdentity = async (
+  runtimeRef: string,
+  execute: (
+    condition: ReturnType<typeof threadRuntimeIdentityCondition>,
+  ) => Promise<readonly ThreadRuntimeIdentityRow[]>,
+): Promise<ThreadRuntimeIdentity | null> => {
+  const [row] = await execute(threadRuntimeIdentityCondition(runtimeRef))
+  return row ? threadRuntimeIdentityFromRow(row) : null
 }
 
 type StoredConnectorServerRowRecord = {
@@ -1013,6 +1049,13 @@ export class RuntimeMcpController {
     })
   }
 
+  /**
+   * Resolves either a canonical thread id or its private facet runtime key.
+   * Hidden Inbox threads intentionally use an unguessable `runtimeKey` as the
+   * ChatSubAgent name; resolving only `chatThread.id` previously returned
+   * `thread_not_found`, paused MCP during `mail-turn`, and removed Executor from
+   * the model. The returned identity always carries the canonical thread id.
+   */
   private async resolveThreadRuntimeIdentity(): Promise<
     ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
   > {
@@ -1029,15 +1072,18 @@ export class RuntimeMcpController {
     const db = this.getDb()
     const threadResult = await Result.tryPromise({
       try: async () =>
-        db
-          .select({
-            workspaceId: schema.chatThread.workspaceId,
-            userId: schema.chatThread.ownerUserId,
-            agentId: schema.chatThread.agentId,
-          })
-          .from(schema.chatThread)
-          .where(eq(schema.chatThread.id, threadId))
-          .limit(1),
+        findThreadRuntimeIdentity(threadId, (condition) =>
+          db
+            .select({
+              threadId: schema.chatThread.id,
+              workspaceId: schema.chatThread.workspaceId,
+              userId: schema.chatThread.ownerUserId,
+              agentId: schema.chatThread.agentId,
+            })
+            .from(schema.chatThread)
+            .where(condition)
+            .limit(1),
+        ),
       catch: (cause) =>
         new RuntimeMcpError({
           code: 'database_failed',
@@ -1049,7 +1095,7 @@ export class RuntimeMcpController {
     })
     if (threadResult.isErr()) return Result.err(threadResult.error)
 
-    const thread = threadResult.value[0]
+    const thread = threadResult.value
     if (!thread) {
       return Result.err(
         new RuntimeMcpError({
@@ -1059,12 +1105,7 @@ export class RuntimeMcpController {
       )
     }
 
-    return Result.ok({
-      threadId,
-      workspaceId: thread.workspaceId,
-      userId: thread.userId,
-      agentId: thread.agentId,
-    } satisfies ThreadRuntimeIdentity)
+    return Result.ok(thread)
   }
 
   private async resolveRuntimeIdentity(): Promise<
@@ -1455,6 +1496,24 @@ export class RuntimeMcpConnectionPreparer {
     )
 
     return this.refreshInFlight
+  }
+
+  /**
+   * Replaces an already-warming Executor session after its authority/resource
+   * scope changes. A first Inbox bind can race the panel's default prewarm;
+   * returning that old in-flight promise would leave the default session in
+   * place (or let its completion overwrite the scoped reset). Serializing the
+   * old refresh, reset, and scoped refresh makes the mail-turn resource win.
+   */
+  async reload(reason: string): Promise<RuntimeMcpPrepareResult> {
+    if (this.refreshInFlight) await this.refreshInFlight
+
+    const controller = this.options.getController()
+    const reset = await controller.resetProxyMcpServers()
+    if (reset.isErr()) return Result.err(reset.error.message)
+
+    this.lastFullSyncAt = 0
+    return await this.ensureLoaded(reason)
   }
 
   private async refreshWithRetries(
