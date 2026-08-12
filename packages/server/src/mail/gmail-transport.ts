@@ -81,7 +81,9 @@ const base64Text = (value: string): string =>
   base64(new TextEncoder().encode(value))
 
 const wrappedBase64 = (bytes: Uint8Array): string =>
-  base64(bytes).match(/.{1,76}/g)?.join('\r\n') ?? ''
+  base64(bytes)
+    .match(/.{1,76}/g)
+    ?.join('\r\n') ?? ''
 
 const encodedWord = (value: string): string =>
   /^[\x20-\x7e]*$/.test(value)
@@ -212,8 +214,7 @@ export const makeRoutedMailTransportLayer = (
                 syncAccountId: request.route.syncAccountId,
                 userId: request.route.userId,
                 executorIntegration: request.route.executorIntegration,
-                executorConnectionName:
-                  request.route.executorConnectionName,
+                executorConnectionName: request.route.executorConnectionName,
               },
               GmailSendMessageInput.make({
                 raw: gmailRawBase64Url(request.mail),

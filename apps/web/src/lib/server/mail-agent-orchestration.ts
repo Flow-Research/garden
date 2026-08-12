@@ -7,9 +7,7 @@ import {
   MailboxId,
   WorkspaceId,
 } from '@garden/core/mail'
-import {
-  MailAgentConversationContext,
-} from '@garden/agent-runtime'
+import { MailAgentConversationContext } from '@garden/agent-runtime'
 import { disposeRpcResult } from '@garden/app-state/platform/rpc'
 import type { AgentChatSession } from '@garden/core/types'
 import { schema, type Db } from './db'

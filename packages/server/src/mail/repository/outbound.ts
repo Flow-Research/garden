@@ -396,12 +396,7 @@ const materializeFirstDelivery = Effect.fn(
       message: 'Draft sender metadata is incomplete.',
     })
   }
-  const {
-    provider,
-    senderName,
-    senderAddress,
-    internetMessageDomain,
-  } = source
+  const { provider, senderName, senderAddress, internetMessageDomain } = source
   const recipients = yield* databaseEffect(
     'prepareDelivery.loadDraftRecipients',
     () =>
@@ -780,9 +775,7 @@ export const prepareDraftDelivery = Effect.fn(
                     )
                   : Effect.succeed({
                       messageId,
-                      conversationId: ConversationId.make(
-                        draft.conversationId,
-                      ),
+                      conversationId: ConversationId.make(draft.conversationId),
                       provider: previous.provider,
                     })
               }),

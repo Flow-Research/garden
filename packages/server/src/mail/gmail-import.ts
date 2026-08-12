@@ -23,14 +23,8 @@ import {
   type MailMimeValidationError,
   parseNormalizedMime,
 } from './mime.ts'
-import {
-  MailObjectStore,
-  type MailObjectWriteError,
-} from './object-store.ts'
-import {
-  MailRepository,
-  type MailRepositoryError,
-} from './repository.ts'
+import { MailObjectStore, type MailObjectWriteError } from './object-store.ts'
+import { MailRepository, type MailRepositoryError } from './repository.ts'
 
 const GMAIL_PROVIDER = ProviderKey.make('gmail')
 

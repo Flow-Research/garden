@@ -1,5 +1,9 @@
 import { Context, Effect, Layer, Option, Ref, Schema } from 'effect'
-import type { MailSendReceipt, OutboundMail, RoutedOutboundMail } from './model.ts'
+import type {
+  MailSendReceipt,
+  OutboundMail,
+  RoutedOutboundMail,
+} from './model.ts'
 
 /** Expected provider failure, including the native code needed for policy decisions. */
 export class MailTransportSendError extends Schema.TaggedErrorClass<MailTransportSendError>()(

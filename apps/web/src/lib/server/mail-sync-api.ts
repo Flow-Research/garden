@@ -6,10 +6,7 @@ import {
   type MailSyncRun,
   type PersonalMailSyncState,
 } from '@garden/core/mail'
-import {
-  MailRepository,
-  makeMailRepositoryLayer,
-} from '@garden/server/mail'
+import { MailRepository, makeMailRepositoryLayer } from '@garden/server/mail'
 import { Effect, Schema } from 'effect'
 import type { AppRequestContext } from './context'
 import {
@@ -37,26 +34,25 @@ export class GmailImportConnectionError extends Schema.TaggedErrorClass<GmailImp
 ) {}
 
 /** Resolves session identity once for all mail sync operations. */
-const requireGmailImportAuthority = Effect.fn(
-  'GmailImport.requireAuthority',
-)(function* (context: AppRequestContext, rawWorkspaceId: string) {
-  const workspaceId = yield* Schema.decodeUnknownEffect(WorkspaceId)(
-    rawWorkspaceId,
-  )
-  const authority = yield* requireMailMemberAuthority(context, workspaceId)
-  const session = yield* Effect.tryPromise({
-    try: () => context.auth.getSession(),
-    catch: (cause) => cause,
-  })
-  if (!session?.user) {
-    return yield* new GmailImportConnectionError({
-      reason: 'not_found',
-      message: 'Authenticated user could not be resolved.',
+const requireGmailImportAuthority = Effect.fn('GmailImport.requireAuthority')(
+  function* (context: AppRequestContext, rawWorkspaceId: string) {
+    const workspaceId =
+      yield* Schema.decodeUnknownEffect(WorkspaceId)(rawWorkspaceId)
+    const authority = yield* requireMailMemberAuthority(context, workspaceId)
+    const session = yield* Effect.tryPromise({
+      try: () => context.auth.getSession(),
+      catch: (cause) => cause,
     })
-  }
-  const userId = yield* Schema.decodeUnknownEffect(UserId)(session.user.id)
-  return { authority, userId, workspaceId }
-})
+    if (!session?.user) {
+      return yield* new GmailImportConnectionError({
+        reason: 'not_found',
+        message: 'Authenticated user could not be resolved.',
+      })
+    }
+    const userId = yield* Schema.decodeUnknownEffect(UserId)(session.user.id)
+    return { authority, userId, workspaceId }
+  },
+)
 
 /** Lists every durable personal Gmail import state for the current user. */
 export async function getPersonalGmailImportStates(

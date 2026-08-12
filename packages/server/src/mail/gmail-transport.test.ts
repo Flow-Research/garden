@@ -1,10 +1,6 @@
 /// <reference types="@cloudflare/workers-types" />
 
-import {
-  MailSyncAccountId,
-  ProviderObjectId,
-  UserId,
-} from '@garden/core/mail'
+import { MailSyncAccountId, ProviderObjectId, UserId } from '@garden/core/mail'
 import { describe, expect, it } from '@effect/vitest'
 import { Effect, Layer, Ref } from 'effect'
 import {
@@ -33,7 +29,8 @@ const outbound: OutboundMail = {
 
 /** Gmail route never invokes Cloudflare; the binding is a failing tripwire. */
 const unusedCloudflareBinding: SendEmail = {
-  send: () => Promise.reject(new Error('Cloudflare must not receive Gmail mail.')),
+  send: () =>
+    Promise.reject(new Error('Cloudflare must not receive Gmail mail.')),
 }
 
 const decodeBase64Url = (value: string): string => {
@@ -62,52 +59,60 @@ describe('Gmail outbound transport', () => {
     }),
   )
 
-  it.effect('selects the connected account and preserves Gmail thread identity', () =>
-    Effect.gen(function* () {
-      const observed = yield* Ref.make<ReadonlyArray<unknown>>([])
-      const gatewayLayer = Layer.succeed(
-        GmailOutboundGateway,
-        GmailOutboundGateway.of({
-          send: (account, input) =>
-            Ref.update(observed, (values) => [...values, { account, input }]).pipe(
-              Effect.as({ id: 'gmail-message-1', threadId: 'gmail-thread-1' }),
-            ),
-        }),
-      )
-      const transportLayer = makeRoutedMailTransportLayer(
-        unusedCloudflareBinding,
-      ).pipe(Layer.provide(gatewayLayer))
-      const receipt = yield* Effect.gen(function* () {
-        const transport = yield* MailTransport
-        return yield* transport.send({
-          route: {
-            _tag: 'Gmail',
-            provider: 'gmail',
-            syncAccountId: MailSyncAccountId.make(
-              '40000000-0000-4000-8000-000000000001',
-            ),
-            userId: UserId.make('40000000-0000-4000-8000-000000000002'),
-            executorIntegration: 'google_gmail',
-            executorConnectionName: 'person@gmail.com',
-            threadId: ProviderObjectId.make('gmail-thread-1'),
-          },
-          mail: outbound,
-        })
-      }).pipe(Effect.provide(transportLayer))
+  it.effect(
+    'selects the connected account and preserves Gmail thread identity',
+    () =>
+      Effect.gen(function* () {
+        const observed = yield* Ref.make<ReadonlyArray<unknown>>([])
+        const gatewayLayer = Layer.succeed(
+          GmailOutboundGateway,
+          GmailOutboundGateway.of({
+            send: (account, input) =>
+              Ref.update(observed, (values) => [
+                ...values,
+                { account, input },
+              ]).pipe(
+                Effect.as({
+                  id: 'gmail-message-1',
+                  threadId: 'gmail-thread-1',
+                }),
+              ),
+          }),
+        )
+        const transportLayer = makeRoutedMailTransportLayer(
+          unusedCloudflareBinding,
+        ).pipe(Layer.provide(gatewayLayer))
+        const receipt = yield* Effect.gen(function* () {
+          const transport = yield* MailTransport
+          return yield* transport.send({
+            route: {
+              _tag: 'Gmail',
+              provider: 'gmail',
+              syncAccountId: MailSyncAccountId.make(
+                '40000000-0000-4000-8000-000000000001',
+              ),
+              userId: UserId.make('40000000-0000-4000-8000-000000000002'),
+              executorIntegration: 'google_gmail',
+              executorConnectionName: 'person@gmail.com',
+              threadId: ProviderObjectId.make('gmail-thread-1'),
+            },
+            mail: outbound,
+          })
+        }).pipe(Effect.provide(transportLayer))
 
-      expect(receipt).toEqual({
-        provider: 'gmail',
-        providerMessageId: 'gmail-message-1',
-      })
-      expect(yield* Ref.get(observed)).toMatchObject([
-        {
-          account: {
-            executorIntegration: 'google_gmail',
-            executorConnectionName: 'person@gmail.com',
+        expect(receipt).toEqual({
+          provider: 'gmail',
+          providerMessageId: 'gmail-message-1',
+        })
+        expect(yield* Ref.get(observed)).toMatchObject([
+          {
+            account: {
+              executorIntegration: 'google_gmail',
+              executorConnectionName: 'person@gmail.com',
+            },
+            input: { threadId: 'gmail-thread-1' },
           },
-          input: { threadId: 'gmail-thread-1' },
-        },
-      ])
-    }),
+        ])
+      }),
   )
 })
