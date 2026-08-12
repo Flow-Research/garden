@@ -36,6 +36,7 @@ import {
   makeR2MailObjectStoreLayer,
   makeMailRepositoryLayer,
   storeDraftAttachment,
+  gmailLabelMutation,
   type AccessibleMailbox,
   type AssignmentSnapshot,
   type ConversationActorState,
@@ -116,25 +117,6 @@ export type MailConversationStateAction =
   | 'unarchive'
   | 'pin'
   | 'unpin'
-
-export const gmailLabelMutation = (
-  action: MailConversationStateAction,
-): { readonly addLabelIds: string[]; readonly removeLabelIds: string[] } => {
-  switch (action) {
-    case 'mark-read':
-      return { addLabelIds: [], removeLabelIds: ['UNREAD'] }
-    case 'mark-unread':
-      return { addLabelIds: ['UNREAD'], removeLabelIds: [] }
-    case 'archive':
-      return { addLabelIds: [], removeLabelIds: ['INBOX'] }
-    case 'unarchive':
-      return { addLabelIds: ['INBOX'], removeLabelIds: [] }
-    case 'pin':
-      return { addLabelIds: ['STARRED'], removeLabelIds: [] }
-    case 'unpin':
-      return { addLabelIds: [], removeLabelIds: ['STARRED'] }
-  }
-}
 
 /**
  * Mirrors state changes for imported Gmail threads before updating Garden's

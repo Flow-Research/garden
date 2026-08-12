@@ -180,6 +180,10 @@ export {
 } from './gmail-client.ts'
 export type { GmailClientService } from './gmail-client.ts'
 export {
+  gmailLabelMutation,
+  type GmailConversationStateAction,
+} from './gmail-labels.ts'
+export {
   GmailOutboundAccount,
   GmailOutboundGateway,
   GmailOutboundGatewayError,
