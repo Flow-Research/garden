@@ -289,8 +289,13 @@ export async function cancelPersonalGmailImport(
             await instance.terminate()
           }
         },
-        catch: () => undefined,
-      }).pipe(Effect.catchAll(() => Effect.void))
+        catch: (cause) =>
+          new GmailImportConnectionError({
+            reason: 'cancel_failed',
+            message: 'Workflow termination could not be confirmed.',
+            cause,
+          }),
+      }).pipe(Effect.catch(() => Effect.void))
 
       return cancelled
     }),

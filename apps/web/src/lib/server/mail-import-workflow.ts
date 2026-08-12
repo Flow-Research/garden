@@ -243,7 +243,7 @@ const runGmailImportItemStep = (
   connectionName: string,
   account: MailSyncAccount,
   item: MailSyncItem,
-): Promise<MailImportStepOutcome<MailSyncItem>> => {
+): Promise<MailImportStepOutcome<MailSyncRun>> => {
   bindAppEnv(env)
   return Effect.runPromise(
     executorProgram(
@@ -394,16 +394,12 @@ const settleImportedItem = (
       ),
       Effect.catchIf(
         (error) =>
-          typeof error === 'object' &&
-          error !== null &&
-          '_tag' in error &&
-          (error._tag === 'GmailImportContentError' ||
-            error._tag === 'MailMimeParseError' ||
-            error._tag === 'MailMimeValidationError' ||
-            (error._tag === 'GmailApiError' &&
-              'reason' in error &&
-              (error.reason === 'not_found' ||
-                error.reason === 'invalid_response'))),
+          (typeof error === 'object' &&
+            error !== null &&
+            '_tag' in error &&
+            error._tag === 'GmailImportContentError') ||
+          error._tag === 'MailMimeParseError' ||
+          error._tag === 'MailMimeValidationError',
         (error) =>
           Effect.succeed(
             MailSyncItemSettlement.cases.Failed.make({
