@@ -14,6 +14,29 @@ const pgMocks = vi.hoisted(() => ({
   }>,
 }))
 
+const neonMocks = vi.hoisted(() => ({
+  pools: [] as Array<{ connectionString: string }>,
+  errorHandlers: [] as Array<(cause: unknown) => void>,
+}))
+
+vi.mock('@neondatabase/serverless', () => {
+  class MockPool {
+    readonly on = vi.fn((event: string, listener: (cause: unknown) => void) => {
+      if (event === 'error') neonMocks.errorHandlers.push(listener)
+      return this
+    })
+
+    constructor(readonly config: { connectionString: string }) {
+      neonMocks.pools.push(config)
+    }
+  }
+
+  return {
+    Client: class MockClient {},
+    Pool: MockPool,
+  }
+})
+
 vi.mock('pg', () => {
   class MockClient {
     readonly connect = vi.fn(async () => {
@@ -45,13 +68,67 @@ vi.mock('pg', () => {
   }
 })
 
-import { createDb, createRuntimeDbClient, getPooledDb } from '../runtime.js'
+import {
+  createDb,
+  createRuntimeDbClient,
+  getPooledDb,
+  getWorkerPooledDb,
+} from '../runtime.js'
 
 describe('runtime database lifecycle', () => {
   beforeEach(() => {
     pgMocks.clients.length = 0
     pgMocks.connectFailures = 0
     pgMocks.pools.length = 0
+    neonMocks.pools.length = 0
+    neonMocks.errorHandlers.length = 0
+  })
+
+  it('keeps local Worker calls off the raw-TCP Hyperdrive bridge', () => {
+    getWorkerPooledDb({
+      environment: 'development',
+      directConnectionString: 'postgres://garden.test/direct',
+      hyperdrive: { connectionString: 'postgres://garden.test/hyperdrive' },
+    })
+
+    expect(neonMocks.pools).toHaveLength(1)
+    expect(neonMocks.pools[0]).toMatchObject({
+      connectionString: 'postgres://garden.test/direct',
+    })
+    expect(pgMocks.pools).toHaveLength(0)
+  })
+
+  it('keeps deployed Worker calls on Hyperdrive', () => {
+    getWorkerPooledDb({
+      environment: 'production',
+      directConnectionString: 'postgres://garden.test/direct',
+      hyperdrive: { connectionString: 'postgres://garden.test/hyperdrive' },
+    })
+
+    expect(neonMocks.pools).toHaveLength(0)
+    expect(pgMocks.pools[0]?.config).toMatchObject({
+      connectionString: 'postgres://garden.test/hyperdrive',
+    })
+  })
+
+  it('never logs connection parameters from a Neon error event', () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    getWorkerPooledDb({
+      environment: 'development',
+      directConnectionString: 'postgres://garden.test/direct',
+    })
+
+    neonMocks.errorHandlers[0]?.({
+      error: new Error('Network connection lost.'),
+      pool: { password: 'must-not-appear' },
+    })
+
+    expect(errorLog).toHaveBeenCalledWith(
+      '[garden-db] idle development PostgreSQL client failed',
+      { message: 'Network connection lost.' },
+    )
+    expect(JSON.stringify(errorLog.mock.calls)).not.toContain('must-not-appear')
+    errorLog.mockRestore()
   })
 
   it('bounds Promise-only callers to one short-lived pool with an idle error listener', async () => {

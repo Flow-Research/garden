@@ -3,7 +3,7 @@ import { jsonSchema, tool, type ModelMessage, type ToolSet } from 'ai'
 import { Effect } from 'effect'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, desc, eq } from 'drizzle-orm'
-import { getPooledDb } from '@garden/db/runtime'
+import { getWorkerPooledDb } from '@garden/db/runtime'
 import { getConnectorById } from '@garden/connectors'
 import { discordNativeTools } from '@garden/connectors/discord/tools'
 import { makeDiscordBaseLayer } from '@garden/connectors/discord/services'
@@ -85,6 +85,7 @@ export type McpHostEnv = {
   BETTER_AUTH_SECRET: string
   BETTER_AUTH_URL: string
   HYPERDRIVE: Hyperdrive
+  DATABASE_URL?: string
   DISCORD_BOT_TOKEN?: string
   GITHUB_APP_ID?: string
   GITHUB_CLIENT_ID?: string
@@ -201,16 +202,13 @@ export class RuntimeMcpController {
 
   constructor(private readonly host: McpHost) {}
 
-  /**
-   * Resolves the MCP-controller Drizzle client through Hyperdrive's pooled
-   * connection string. Previously called `drizzle(this.host.env.DATABASE_URL)`
-   * from the neon-serverless driver, opening a fresh direct-to-Neon WebSocket
-   * pool per call that bypassed Hyperdrive, never closed, and defeated Neon
-   * autosuspend. `getPooledDb` now uses one short-idle socket per
-   * invocation-local adapter so no pool survives into another request.
-   */
+  /** Uses Hyperdrive in production and the Worker-safe direct adapter locally. */
   private getDb() {
-    return getPooledDb(this.host.env.HYPERDRIVE.connectionString)
+    return getWorkerPooledDb({
+      environment: this.host.env.ENVIRONMENT,
+      directConnectionString: this.host.env.DATABASE_URL,
+      hyperdrive: this.host.env.HYPERDRIVE,
+    })
   }
 
   /**

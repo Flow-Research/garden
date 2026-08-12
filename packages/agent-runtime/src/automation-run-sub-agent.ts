@@ -24,7 +24,7 @@ import {
 } from 'ai'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
-import { getPooledDb } from '@garden/db/runtime'
+import { getWorkerPooledDb } from '@garden/db/runtime'
 import { z } from 'zod'
 import {
   parseAutomationExecutionConfig,
@@ -82,6 +82,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   BETTER_AUTH_SECRET: string
   BETTER_AUTH_URL: string
   HYPERDRIVE: Hyperdrive
+  DATABASE_URL: string
   DISCORD_BOT_TOKEN?: string
   EXA_API_KEY?: string
   AI: Ai
@@ -360,7 +361,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     return loadRuntimeSkillSources(
       {
         bucket: this.env.FILES,
-        databaseUrl: this.env.HYPERDRIVE.connectionString,
+        database: this.getDb(),
       },
       { kind: 'automation', id: this.name },
     )
@@ -1055,16 +1056,13 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     })
   }
 
-  /**
-   * Resolves the automation-run-sub-agent Drizzle client through Hyperdrive's
-   * pooled connection string. Previously called `drizzle(this.env.DATABASE_URL)`
-   * from the neon-serverless driver, opening a fresh direct-to-Neon WebSocket
-   * pool per call that bypassed Hyperdrive, never closed, and defeated Neon
-   * autosuspend. `getPooledDb` now uses one short-idle socket per
-   * invocation-local adapter so no pool survives into another request.
-   */
+  /** Uses Hyperdrive in production and the Worker-safe direct adapter locally. */
   private getDb() {
-    return getPooledDb(this.env.HYPERDRIVE.connectionString)
+    return getWorkerPooledDb({
+      environment: this.env.ENVIRONMENT,
+      directConnectionString: this.env.DATABASE_URL,
+      hyperdrive: this.env.HYPERDRIVE,
+    })
   }
 
   private getSandboxId() {

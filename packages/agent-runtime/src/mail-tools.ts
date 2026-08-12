@@ -7,7 +7,6 @@ import {
   type RequestDraftDeliveryInput,
 } from '@garden/core/mail'
 import type { GardenDatabase } from '@garden/db'
-import { getPooledDb } from '@garden/db/runtime'
 import { agent, chatThread } from '@garden/db/schema'
 import {
   AgentCreateDraftInput,
@@ -30,7 +29,7 @@ import { and, eq, or } from 'drizzle-orm'
 import { Effect, Layer, Result as EffectResult, Schema } from 'effect'
 
 export interface MailAgentToolContext {
-  readonly databaseUrl: string
+  readonly database: GardenDatabase
   readonly threadId: string
   readonly dispatchDelivery: MailAgentDeliveryDispatcherService['dispatch']
   readonly getScope?: () => MailAgentToolScope | null
@@ -185,7 +184,7 @@ const runMailOperation = <A, E>(
   context: MailAgentToolContext,
   operation: (application: MailAgentApplicationService) => Effect.Effect<A, E>,
 ) => {
-  const db = getPooledDb(context.databaseUrl)
+  const db = context.database
   return resolveMailAgentPrincipal(db, context.threadId).pipe(
     Effect.flatMap((principal) => {
       const repositoryLayer = makeMailRepositoryLayer(db)

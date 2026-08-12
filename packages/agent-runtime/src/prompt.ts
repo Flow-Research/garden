@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm'
-import { getPooledDb } from '@garden/db/runtime'
+import type { GardenDatabase } from '@garden/db'
 import type { ContextProvider } from 'agents/experimental/memory/session'
 import * as schema from '@garden/db/schema'
 import {
@@ -54,18 +54,6 @@ function createStaticPromptProvider(content: string): ContextProvider {
   }
 }
 
-/**
- * Resolves the prompt-catalog Drizzle client through Hyperdrive's pooled
- * connection string. Callers pass `env.HYPERDRIVE.connectionString`. Previously
- * called `drizzle(databaseUrl)` from the neon-serverless driver, opening a fresh
- * direct-to-Neon WebSocket pool per call that bypassed Hyperdrive, never closed,
- * and defeated Neon autosuspend. `getPooledDb` now uses one short-idle socket
- * per invocation-local adapter so no pool survives into another request.
- */
-function createPromptDb(databaseUrl: string) {
-  return getPooledDb(databaseUrl)
-}
-
 export function assembleFoundationPrompt() {
   return renderOrderedPromptSections({
     order: FOUNDATION_SECTION_ORDER,
@@ -107,11 +95,7 @@ export function assembleWorkspacePrompt(
 }
 
 export class PostgresAgentPromptCatalog implements AgentPromptCatalog {
-  private readonly db: ReturnType<typeof createPromptDb>
-
-  constructor(databaseUrl: string) {
-    this.db = createPromptDb(databaseUrl)
-  }
+  constructor(private readonly db: GardenDatabase) {}
 
   async getAgentPromptContext(input: {
     agentRuntimeName: string

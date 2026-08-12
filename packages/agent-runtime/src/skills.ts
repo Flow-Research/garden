@@ -6,7 +6,7 @@ import {
   workspaceChatSkillTarget,
   type SkillTarget,
 } from '@garden/core/skills'
-import { getPooledDb } from '@garden/db/runtime'
+import type { GardenDatabase } from '@garden/db'
 import * as schema from '@garden/db/schema'
 import { workspaceSkillR2Prefix } from './skill-storage-paths'
 
@@ -43,7 +43,7 @@ export class RuntimeSkillSourceError extends Schema.TaggedErrorClass<RuntimeSkil
 
 export interface RuntimeSkillEnvironmentService {
   readonly bucket: R2Bucket
-  readonly databaseUrl: string
+  readonly database: GardenDatabase
 }
 
 export class RuntimeSkillEnvironment extends Context.Service<
@@ -165,7 +165,7 @@ export const runtimeSkillSourcesLayer = Layer.effect(
   RuntimeSkillSources,
   Effect.gen(function* () {
     const environment = yield* RuntimeSkillEnvironment
-    const db = getPooledDb(environment.databaseUrl)
+    const db = environment.database
 
     const dbOperation = <A>(operation: string, run: () => Promise<A>) =>
       Effect.tryPromise({

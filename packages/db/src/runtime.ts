@@ -13,6 +13,11 @@ import * as schema from './schema/index.js'
 
 export type Db = GardenDatabase
 export type DatabaseConnection = { readonly connectionString: string }
+export type WorkerDatabaseBindings = {
+  readonly environment?: string
+  readonly directConnectionString?: string
+  readonly hyperdrive?: DatabaseConnection
+}
 export type RuntimeDbClient = {
   readonly db: Db
   readonly close: () => Promise<void>
@@ -20,6 +25,20 @@ export type RuntimeDbClient = {
 
 const CONNECTION_TIMEOUT_MS = 5_000
 const SHORT_LIVED_POOL_IDLE_TIMEOUT_MS = 250
+
+/**
+ * Reduces driver errors to a safe message before logging. Neon error events can
+ * retain their originating Pool and connection parameters, so logging the raw
+ * event exposes database credentials even though the application never does.
+ */
+function databaseErrorMessage(cause: unknown): string {
+  if (cause instanceof Error) return cause.message
+  if (typeof cause === 'object' && cause !== null && 'error' in cause) {
+    const nested = cause.error
+    if (nested instanceof Error) return nested.message
+  }
+  return 'Unknown PostgreSQL client error'
+}
 
 /** Explicit Hyperdrive acquisition failure for Effect callers and adapters. */
 export class DatabaseConnectionError extends Schema.TaggedErrorClass<DatabaseConnectionError>()(
@@ -110,13 +129,38 @@ export function getDirectPooledDb(connectionString: string): Db {
     allowExitOnIdle: true,
   })
   pool.on('error', (cause: unknown) => {
-    console.error(
-      '[garden-db] idle development PostgreSQL client failed',
-      cause,
-    )
+    console.error('[garden-db] idle development PostgreSQL client failed', {
+      message: databaseErrorMessage(cause),
+    })
   })
 
   return drizzleNeon(pool, { schema }) as unknown as Db
+}
+
+/**
+ * Selects the database transport at the Worker boundary. Local Workerd must not
+ * traverse Miniflare's raw-TCP Hyperdrive bridge: an origin socket failure is
+ * emitted outside the request and terminates the Vite host. Production keeps
+ * Hyperdrive, while development uses Neon's Worker-native WebSocket transport.
+ */
+export function getWorkerPooledDb(bindings: WorkerDatabaseBindings): Db {
+  if (bindings.environment === 'development') {
+    if (!bindings.directConnectionString) {
+      throw new DatabaseConnectionError({
+        operation: 'connect',
+        message: 'Missing direct development database connection string',
+      })
+    }
+    return getDirectPooledDb(bindings.directConnectionString)
+  }
+
+  if (!bindings.hyperdrive?.connectionString) {
+    throw new DatabaseConnectionError({
+      operation: 'connect',
+      message: 'Missing Hyperdrive database connection string',
+    })
+  }
+  return getPooledDb(bindings.hyperdrive.connectionString)
 }
 
 /**
@@ -137,7 +181,9 @@ function createShortLivedPool(connectionString: string) {
   })
 
   pool.on('error', (cause) => {
-    console.error('[garden-db] idle PostgreSQL client failed', cause)
+    console.error('[garden-db] idle PostgreSQL client failed', {
+      message: databaseErrorMessage(cause),
+    })
   })
 
   return pool

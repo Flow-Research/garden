@@ -118,7 +118,7 @@ describe('Garden Mail agent tools', () => {
 
   it('registers only authority-free Garden Mail input contracts', () => {
     const tools = createGardenMailTools({
-      databaseUrl: 'postgres://unused',
+      database: testDb.db,
       threadId: ids.thread,
       dispatchDelivery: () => Effect.die('Tool was not executed.'),
     })
@@ -138,7 +138,7 @@ describe('Garden Mail agent tools', () => {
       'fa100000-0000-4000-8000-000000000006',
     )
     const tools = createGardenMailTools({
-      databaseUrl: 'postgres://must-not-connect',
+      database: testDb.db,
       threadId: ids.thread,
       getScope: () => ({
         mailboxId: MailboxId.make('fa100000-0000-4000-8000-000000000007'),

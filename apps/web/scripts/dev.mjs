@@ -23,11 +23,12 @@ const configSelection = selectWorkerConfig({
   containers,
 })
 process.env.CLOUDFLARE_WORKER_CONFIG_PATH ??= configSelection.path
-// Root `pnpm dev` runs the package's `dev:local` target. Keep that path
-// independent of Cloudflare's remote-binding control tunnel: D1/R2/DO/
-// Workflows and the copied Executor credentials are local state. Container
-// mode remains the explicit path that enables remote AI/blob/email bindings.
-process.env.CLOUDFLARE_VITE_REMOTE_BINDINGS = containers ? '1' : '0'
+// The tracked binding config is the source of truth for local vs remote:
+// D1/R2/DO/Workflows stay local, while Workers AI is explicitly remote because
+// Cloudflare does not provide a local simulator. Disabling the Vite remote
+// proxy globally silently overrides that per-binding contract and makes every
+// manual agent turn fail before model inference.
+process.env.CLOUDFLARE_VITE_REMOTE_BINDINGS = '1'
 if (!containers) {
   process.env.ENVIRONMENT = 'development'
 }
