@@ -95,11 +95,6 @@
       "binding": "MAIL_DELIVERY_WORKFLOW",
       "class_name": "MailDeliveryWorkflow",
     },
-    {
-      "name": "garden-mail-agent-local",
-      "binding": "MAIL_AGENT_WORKFLOW",
-      "class_name": "MailAgentWorkflow",
-    },
   ],
   "r2_buckets": [
     {

@@ -39,7 +39,6 @@ export interface MailAgentToolContext {
 export interface MailAgentToolScope {
   readonly mailboxId: MailboxId
   readonly conversationId: ConversationId
-  readonly draftOnly: boolean
 }
 
 export interface MailDeliveryWorkflowBinding {
@@ -378,20 +377,8 @@ export const createGardenMailTools = (
     description:
       'Request delivery under mailbox access and send-external policy. Manual policy records an approval request; auto policy starts the durable delivery Workflow. Workflow dispatch never claims provider delivery completed.',
     inputSchema: RequestDraftDeliveryToolInput,
-    execute: (input) => {
-      const scope = currentScope(context)
-      if (scope?.draftOnly) {
-        return executeForModel(
-          Effect.fail(
-            new MailAgentScopeError({
-              operation: 'mail_request_draft_delivery.scope',
-              message:
-                'Automatic mailbox turns may save drafts but never request delivery.',
-            }),
-          ),
-        )
-      }
-      return executeForModel(
+    execute: (input) =>
+      executeForModel(
         requireScopedConversation(
           context,
           'mail_request_draft_delivery.scope',
@@ -403,7 +390,6 @@ export const createGardenMailTools = (
             ),
           ),
         ),
-      )
-    },
+      ),
   }),
 })

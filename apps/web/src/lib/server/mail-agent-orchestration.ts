@@ -9,14 +9,22 @@ import {
 } from '@garden/core/mail'
 import {
   MailAgentConversationContext,
-  type MailAgentConversationTriggerValue,
 } from '@garden/agent-runtime'
 import { disposeRpcResult } from '@garden/app-state/platform/rpc'
 import type { AgentChatSession } from '@garden/core/types'
 import { schema, type Db } from './db'
 import type { AppEnv } from './env'
 import { toChatThread } from './control-plane'
-import { MailAgentOrchestrationError } from './mail-agent-workflow-dispatch'
+
+/** Manual mail collaboration session could not be authorized or prepared. */
+export class MailAgentOrchestrationError extends Schema.TaggedErrorClass<MailAgentOrchestrationError>()(
+  'MailAgentOrchestrationError',
+  {
+    operation: Schema.String,
+    message: Schema.String,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
 
 const MAIL_CHAT_UUID_NAMESPACE = '28ad243e-f655-5a4d-bf5a-2309351ec75e'
 const AGENT_ROUTING_RETRY = { maxAttempts: 3 }
@@ -290,39 +298,3 @@ export const getOrCreateMailAgentChatSession = Effect.fn(
     mailboxId: authority.mailboxId,
   } satisfies MailAgentChatSession
 })
-
-/** Executes one durable Workflow checkpoint after assignment authorization. */
-export const triggerAssignedMailAgentNow = Effect.fn(
-  'MailAgent.triggerAssignedConversation',
-)(function* (
-  db: Db,
-  env: Pick<AppEnv, 'AgentDO'>,
-  input: MailAgentChatSessionInput,
-  trigger: MailAgentConversationTriggerValue,
-) {
-  const authority = yield* resolveMailAgentAuthority(db, input)
-  const thread = yield* ensureMailChatThread(db, input, authority)
-  return yield* Effect.tryPromise({
-    try: async () => {
-      const stub = await getAgentByName(env.AgentDO, authority.hostName, {
-        routingRetry: AGENT_ROUTING_RETRY,
-      })
-      return disposeRpcResult(
-        await stub.triggerAssignedMailConversation(thread.runtimeKey, trigger),
-      )
-    },
-    catch: (cause) =>
-      new MailAgentOrchestrationError({
-        operation: 'triggerAssignedConversation.rpc',
-        message: 'Garden could not start the assigned mail agent turn.',
-        cause,
-      }),
-  })
-})
-
-export { MailAgentOrchestrationError } from './mail-agent-workflow-dispatch'
-export {
-  MailAgentDispatchParams,
-  dispatchAssignedMailAgent,
-} from './mail-agent-workflow-dispatch'
-export type { MailAgentWorkflowBinding } from './mail-agent-workflow-dispatch'

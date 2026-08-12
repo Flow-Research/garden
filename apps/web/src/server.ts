@@ -36,7 +36,6 @@ import { createRequestDbProvider } from '@/lib/server/db'
 import { processCloudflareInboundMail } from '@/lib/server/mail-inbound'
 import { MailDeliveryWorkflow } from '@/lib/server/mail-delivery-workflow'
 import { GmailImportWorkflow } from '@/lib/server/mail-import-workflow'
-import { MailAgentWorkflow } from '@/lib/server/mail-agent-workflow'
 import { Effect } from 'effect'
 import { capturePostHogException } from '@/lib/posthog-server'
 import {
@@ -56,7 +55,6 @@ export { IssueRunSubAgent }
 export { RunWorkflow }
 export { MailDeliveryWorkflow }
 export { GmailImportWorkflow }
-export { MailAgentWorkflow }
 export { Sandbox }
 /**
  * Exposes Code Mode's durable facet through `ctx.exports`. Think creates this

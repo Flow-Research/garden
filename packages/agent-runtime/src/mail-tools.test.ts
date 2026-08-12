@@ -143,7 +143,6 @@ describe('Garden Mail agent tools', () => {
       getScope: () => ({
         mailboxId: MailboxId.make('fa100000-0000-4000-8000-000000000007'),
         conversationId: selectedConversationId,
-        draftOnly: false,
       }),
       dispatchDelivery: () => Effect.die('Tool was not executed.'),
     })
@@ -169,46 +168,6 @@ describe('Garden Mail agent tools', () => {
       error: {
         code: 'MailAgentScopeError',
         message: 'This mail turn is restricted to the selected conversation.',
-      },
-    })
-  })
-
-  it('blocks delivery requests during automatic draft turns', async () => {
-    const conversationId = ConversationId.make(
-      'fa100000-0000-4000-8000-000000000009',
-    )
-    const tools = createGardenMailTools({
-      databaseUrl: 'postgres://must-not-connect',
-      threadId: ids.thread,
-      getScope: () => ({
-        mailboxId: MailboxId.make('fa100000-0000-4000-8000-00000000000a'),
-        conversationId,
-        draftOnly: true,
-      }),
-      dispatchDelivery: () => Effect.die('Tool was not executed.'),
-    })
-    const delivery = tools.mail_request_draft_delivery
-    if (!delivery?.execute) throw new Error('Delivery tool is unavailable.')
-
-    const result = await delivery.execute(
-      {
-        conversationId,
-        draftId: DraftId.make('fa100000-0000-4000-8000-00000000000b'),
-        expectedRevision: 0,
-      },
-      {
-        abortSignal: undefined,
-        messages: [],
-        toolCallId: 'draft-only-test',
-      },
-    )
-
-    expect(result).toEqual({
-      ok: false,
-      error: {
-        code: 'MailAgentScopeError',
-        message:
-          'Automatic mailbox turns may save drafts but never request delivery.',
       },
     })
   })

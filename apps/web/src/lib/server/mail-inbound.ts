@@ -7,7 +7,6 @@ import {
 import { Effect, Layer, Schema } from 'effect'
 import type { AppEnv } from './env'
 import { createRequestDbProvider } from './db'
-import { dispatchInboundMailAgents } from './mail-agent-workflow'
 
 /** Request-scoped Hyperdrive setup failed before Garden Mail could run. */
 export class MailInboundDatabaseError extends Schema.TaggedErrorClass<MailInboundDatabaseError>()(
@@ -60,12 +59,6 @@ export const processCloudflareInboundMail = Effect.fn(
 
       return normalizeCloudflareInbound(message).pipe(
         Effect.flatMap(ingestNormalizedMail),
-        Effect.flatMap((ingested) =>
-          dispatchInboundMailAgents(db, env.MAIL_AGENT_WORKFLOW, {
-            conversationIds: ingested.conversationIds,
-            eventId: ingested.messageId,
-          }).pipe(Effect.asVoid),
-        ),
         Effect.provide(dependencies),
         Effect.catchTag('MailRepositoryNotFoundError', () =>
           rejectInboundMessage(message, 'Unknown recipient'),
