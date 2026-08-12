@@ -9,7 +9,6 @@ import {
 } from '@garden/ui/components/ui/alert'
 import { Button } from '@garden/ui/components/ui/button'
 import { Input } from '@garden/ui/components/ui/input'
-import { Textarea } from '@garden/ui/components/ui/textarea'
 import { cn } from '@garden/ui/lib/utils'
 import {
   Bold,
@@ -24,11 +23,14 @@ import {
   X,
 } from 'lucide-react'
 import type { FormEvent, ReactNode } from 'react'
+import { useState } from 'react'
+import type { Editor } from '@tiptap/react'
 import type {
   MailAttachmentView,
   MailComposerFormat,
   MailComposerValues,
 } from './types'
+import { MailRichEditor } from './mail-rich-editor'
 
 const formatActions: Array<{
   format: MailComposerFormat
@@ -55,6 +57,7 @@ export type MailComposerProps = {
   ccBccVisible: boolean
   sending?: boolean
   savingDraft?: boolean
+  uploadingAttachment?: boolean
   error?: string
   agentAttribution?: string
   approvalRequired?: boolean
@@ -84,6 +87,7 @@ export function MailComposer({
   ccBccVisible,
   sending = false,
   savingDraft = false,
+  uploadingAttachment = false,
   error,
   agentAttribution,
   approvalRequired = false,
@@ -99,12 +103,33 @@ export function MailComposer({
   onDiscard,
   onClose,
 }: MailComposerProps) {
+  const [richEditor, setRichEditor] = useState<Editor | null>(null)
   const update = (field: keyof MailComposerValues, value: string) => {
     onChange({ ...values, [field]: value })
   }
   const submit = (event: FormEvent) => {
     event.preventDefault()
     onSend()
+  }
+
+  /** Applies the existing Zero composer toolbar action to Tiptap state. */
+  const format = (action: MailComposerFormat) => {
+    if (onFormat) return onFormat(action)
+    if (!richEditor) return
+    const chain = richEditor.chain().focus()
+    if (action === 'bold') chain.toggleBold().run()
+    if (action === 'italic') chain.toggleItalic().run()
+    if (action === 'underline') chain.toggleUnderline().run()
+    if (action === 'bullet-list') chain.toggleBulletList().run()
+    if (action === 'ordered-list') chain.toggleOrderedList().run()
+    if (action === 'link') {
+      if (richEditor.isActive('link')) {
+        chain.unsetLink().run()
+        return
+      }
+      const href = window.prompt('Link URL')?.trim()
+      if (href) chain.setLink({ href }).run()
+    }
   }
 
   return (
@@ -272,16 +297,13 @@ export function MailComposer({
 
         <div className={cn('px-3 py-2', variant === 'panel' && 'min-h-52')}>
           {editor ?? (
-            <Textarea
-              aria-label="Message body"
-              value={values.body}
+            <MailRichEditor
+              html={values.htmlBody}
               disabled={disabled}
-              placeholder="Write a message…"
-              onChange={(event) => update('body', event.target.value)}
-              className={cn(
-                'resize-none border-0 px-0 shadow-none focus-visible:ring-0',
-                variant === 'panel' ? 'min-h-48' : 'min-h-28',
-              )}
+              onReady={setRichEditor}
+              onChange={({ html, text }) =>
+                onChange({ ...values, body: text, htmlBody: html })
+              }
             />
           )}
         </div>
@@ -315,7 +337,7 @@ export function MailComposer({
         ) : null}
       </div>
 
-      {onFormat ? (
+      {editor || richEditor || onFormat ? (
         <div className="flex shrink-0 items-center gap-0.5 border-t px-3 py-1">
           {formatActions.map((action) => (
             <Button
@@ -326,7 +348,7 @@ export function MailComposer({
               aria-label={action.label}
               title={action.label}
               disabled={disabled}
-              onClick={() => onFormat(action.format)}
+              onClick={() => format(action.format)}
             >
               {action.icon}
             </Button>
@@ -349,7 +371,7 @@ export function MailComposer({
         {onAttach ? (
           <FileUploadButton
             size="default"
-            disabled={disabled || sending}
+            disabled={disabled || sending || uploadingAttachment}
             onSelect={onAttach}
           />
         ) : null}

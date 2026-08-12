@@ -25,12 +25,14 @@
     "better-result": "^2.9.2",
     "drizzle-orm": "catalog:",
     "effect": "catalog:",
-    "postal-mime": "2.7.4"
+    "postal-mime": "2.7.4",
+    "sanitize-html": "^2.17.6"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
     "@effect/vitest": "catalog:",
     "@garden/tsconfig": "workspace:*",
+    "@types/sanitize-html": "^2.16.1",
     "@typescript/native": "catalog:",
     "vitest": "catalog:"
   }

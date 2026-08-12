@@ -82,6 +82,7 @@ export type MailComposerValues = {
   from: string
   subject: string
   body: string
+  htmlBody: string
 }
 
 export type MailComposerFormat =

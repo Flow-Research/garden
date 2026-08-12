@@ -6,6 +6,7 @@ import {
   type MailAgentSidebarProps,
 } from './mail-agent-sidebar'
 import { MailConversationRow } from './mail-conversation-row'
+import { MailConversationList } from './mail-conversation-list'
 import { MailHtmlFrame } from './mail-html-frame'
 import { MailListToolbar } from './mail-list-toolbar'
 import { MailMessage } from './mail-message'
@@ -57,6 +58,31 @@ describe('MailConversationRow', () => {
 
     expect(screen.queryByText('Needs reply')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Needs reply')).toBeInTheDocument()
+  })
+})
+
+describe('MailConversationList', () => {
+  it('requests the next server page near the existing scroll boundary', () => {
+    const onLoadMore = vi.fn()
+    const { container } = render(
+      <MailConversationList
+        state="ready"
+        conversations={[conversation]}
+        renderConversation={(item) => <div>{item.subject}</div>}
+        hasMore
+        onLoadMore={onLoadMore}
+      />,
+    )
+    const viewport = container.firstElementChild
+    expect(viewport).toBeInstanceOf(HTMLElement)
+    if (!(viewport instanceof HTMLElement)) return
+    Object.defineProperties(viewport, {
+      clientHeight: { configurable: true, value: 400 },
+      scrollHeight: { configurable: true, value: 1_000 },
+      scrollTop: { configurable: true, value: 350 },
+    })
+    fireEvent.scroll(viewport)
+    expect(onLoadMore).toHaveBeenCalledOnce()
   })
 })
 
@@ -282,6 +308,7 @@ describe('MailComposer', () => {
           from: 'investor@example.com',
           subject: 'Re: Quarterly update',
           body: '',
+          htmlBody: '',
         }}
         ccBccVisible={false}
         onChange={onChange}
@@ -291,11 +318,9 @@ describe('MailComposer', () => {
       />,
     )
 
-    fireEvent.change(screen.getByLabelText('Message body'), {
-      target: { value: 'Looks good.' },
-    })
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ body: 'Looks good.' }),
+    expect(screen.getByLabelText('Message body')).toHaveAttribute(
+      'contenteditable',
+      'true',
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Cc/Bcc' }))
@@ -303,5 +328,41 @@ describe('MailComposer', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     expect(onSend).toHaveBeenCalledOnce()
+  })
+
+  it('renders uploaded attachment metadata and removes by opaque id', () => {
+    const onRemoveAttachment = vi.fn()
+    render(
+      <MailComposer
+        variant="inline"
+        values={{
+          to: 'ada@example.com',
+          cc: '',
+          bcc: '',
+          from: 'investor@example.com',
+          subject: 'Documents',
+          body: '',
+          htmlBody: '',
+        }}
+        attachments={[
+          {
+            id: 'attachment-id',
+            filename: 'investor.pdf',
+            contentType: 'application/pdf',
+            sizeLabel: '3.0 KB',
+          },
+        ]}
+        ccBccVisible={false}
+        onChange={vi.fn()}
+        onToggleCcBcc={vi.fn()}
+        onSend={vi.fn()}
+        onDiscard={vi.fn()}
+        onRemoveAttachment={onRemoveAttachment}
+      />,
+    )
+
+    expect(screen.getByText('investor.pdf')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove investor.pdf' }))
+    expect(onRemoveAttachment).toHaveBeenCalledWith('attachment-id')
   })
 })

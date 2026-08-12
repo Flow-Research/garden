@@ -21,6 +21,8 @@ import {
 } from '@garden/core/mail'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { Effect } from 'effect'
+import { MAX_OUTBOUND_ATTACHMENT_BYTES } from '../draft-attachment.ts'
+import { sanitizeAuthoredMailHtml } from '../html.ts'
 import {
   MailDraftRevisionConflictError,
   MailRepositoryInvariantError,
@@ -57,7 +59,7 @@ const verifyDraftAttachments = Effect.fn(
   if (ids.length === 0) return
   const rows = yield* databaseEffect(operation, () =>
     tx
-      .select({ id: mailAttachment.id })
+      .select({ id: mailAttachment.id, sizeBytes: mailAttachment.sizeBytes })
       .from(mailAttachment)
       .where(
         and(
@@ -70,6 +72,16 @@ const verifyDraftAttachments = Effect.fn(
     return yield* new MailRepositoryInvariantError({
       operation,
       message: 'Draft references an attachment outside its workspace.',
+    })
+  }
+  const totalSizeBytes = rows.reduce(
+    (total, attachment) => total + attachment.sizeBytes,
+    0,
+  )
+  if (totalSizeBytes > MAX_OUTBOUND_ATTACHMENT_BYTES) {
+    return yield* new MailRepositoryInvariantError({
+      operation,
+      message: 'Draft attachments cannot exceed 25 MB in total.',
     })
   }
 })
@@ -202,10 +214,7 @@ export const createDraft = Effect.fn('MailRepository.createDraft')(function* (
             tx
               .select({ id: mailAddress.id, kind: mailAddress.kind })
               .from(mailAddress)
-              .innerJoin(
-                mailMailbox,
-                eq(mailMailbox.id, mailAddress.mailboxId),
-              )
+              .innerJoin(mailMailbox, eq(mailMailbox.id, mailAddress.mailboxId))
               .where(
                 and(
                   eq(mailAddress.workspaceId, input.workspaceId),
@@ -307,7 +316,10 @@ export const createDraft = Effect.fn('MailRepository.createDraft')(function* (
             revision: 0,
             subject: input.subject,
             textBody: input.textBody,
-            htmlBody: input.htmlBody,
+            htmlBody:
+              input.htmlBody === null
+                ? null
+                : sanitizeAuthoredMailHtml(input.htmlBody),
           })
           .returning(),
       )
@@ -392,7 +404,10 @@ export const saveDraft = Effect.fn('MailRepository.saveDraft')(function* (
           .set({
             subject: input.subject,
             textBody: input.textBody,
-            htmlBody: input.htmlBody,
+            htmlBody:
+              input.htmlBody === null
+                ? null
+                : sanitizeAuthoredMailHtml(input.htmlBody),
             revision: sql`${mailDraft.revision} + 1`,
             updatedAt: new Date(),
           })
