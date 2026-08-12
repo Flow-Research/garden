@@ -97,6 +97,7 @@ describe('GmailClient', () => {
             labelIds: ['INBOX', 'STARRED'],
           },
         },
+        { body: { id: 'thread-1', historyId: '104' } },
       ])
 
       return Effect.gen(function* () {
@@ -141,6 +142,13 @@ describe('GmailClient', () => {
             removeLabelIds: ['UNREAD'],
           }),
         ).toMatchObject({ id: 'message-1', labelIds: ['INBOX', 'STARRED'] })
+        expect(
+          yield* client.modifyThread({
+            threadId: 'thread/1',
+            addLabelIds: [],
+            removeLabelIds: ['INBOX'],
+          }),
+        ).toMatchObject({ id: 'thread-1', historyId: '104' })
 
         expect(
           fixture.requests.map((request) => [
@@ -169,6 +177,10 @@ describe('GmailClient', () => {
             'POST',
             'https://gmail.googleapis.com/gmail/v1/users/me/messages/message%2F1/modify',
           ],
+          [
+            'POST',
+            'https://gmail.googleapis.com/gmail/v1/users/me/threads/thread%2F1/modify',
+          ],
         ])
         const recordedSendRequest = fixture.requests[4]
         if (recordedSendRequest === undefined) {
@@ -189,6 +201,17 @@ describe('GmailClient', () => {
         expect(yield* Effect.promise(() => modifyRequest.json())).toEqual({
           addLabelIds: ['STARRED'],
           removeLabelIds: ['UNREAD'],
+        })
+        const recordedThreadRequest = fixture.requests[6]
+        if (recordedThreadRequest === undefined) {
+          return yield* Effect.die('Expected Gmail thread modify request.')
+        }
+        const threadRequest = yield* HttpClientRequest.toWeb(
+          recordedThreadRequest,
+        )
+        expect(yield* Effect.promise(() => threadRequest.json())).toEqual({
+          addLabelIds: [],
+          removeLabelIds: ['INBOX'],
         })
         expect(
           fixture.requests.every((request) =>

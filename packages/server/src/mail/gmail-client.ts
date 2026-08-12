@@ -96,6 +96,23 @@ export interface GmailModifyMessageResponse extends Schema.Schema.Type<
   typeof GmailModifyMessageResponse
 > {}
 
+export const GmailModifyThreadInput = Schema.Struct({
+  threadId: NonEmptyString,
+  addLabelIds: Schema.Array(NonEmptyString),
+  removeLabelIds: Schema.Array(NonEmptyString),
+})
+export interface GmailModifyThreadInput extends Schema.Schema.Type<
+  typeof GmailModifyThreadInput
+> {}
+
+export const GmailModifyThreadResponse = Schema.Struct({
+  id: NonEmptyString,
+  historyId: Schema.optionalKey(NonEmptyString),
+})
+export interface GmailModifyThreadResponse extends Schema.Schema.Type<
+  typeof GmailModifyThreadResponse
+> {}
+
 export const GmailHistoryType = Schema.Literals([
   'messageAdded',
   'messageDeleted',
@@ -158,6 +175,7 @@ export const GmailApiOperation = Schema.Literals([
   'listHistory',
   'sendMessage',
   'modifyMessage',
+  'modifyThread',
 ])
 export type GmailApiOperation = typeof GmailApiOperation.Type
 
@@ -195,6 +213,9 @@ export interface GmailClientService {
   readonly modifyMessage: (
     input: GmailModifyMessageInput,
   ) => Effect.Effect<GmailModifyMessageResponse, GmailApiError>
+  readonly modifyThread: (
+    input: GmailModifyThreadInput,
+  ) => Effect.Effect<GmailModifyThreadResponse, GmailApiError>
 }
 
 export class GmailClient extends Context.Service<
@@ -398,6 +419,38 @@ export const makeGmailClient = Effect.fn('GmailClient.make')(function* (
         'modifyMessage',
         request,
         GmailModifyMessageResponse,
+      )
+    }),
+    modifyThread: Effect.fn('GmailClient.modifyThread')(function* (input) {
+      const body = {
+        addLabelIds: input.addLabelIds,
+        removeLabelIds: input.removeLabelIds,
+      }
+      const request = yield* HttpClientRequest.schemaBodyJson(
+        Schema.Struct({
+          addLabelIds: Schema.Array(NonEmptyString),
+          removeLabelIds: Schema.Array(NonEmptyString),
+        }),
+      )(
+        HttpClientRequest.post(
+          `/users/me/threads/${encodeURIComponent(input.threadId)}/modify`,
+        ),
+        body,
+      ).pipe(
+        Effect.mapError(
+          () =>
+            new GmailApiError({
+              operation: 'modifyThread',
+              reason: 'invalid_response',
+              message: 'Gmail thread label mutation could not be encoded.',
+            }),
+        ),
+      )
+      return yield* executeJson(
+        client,
+        'modifyThread',
+        request,
+        GmailModifyThreadResponse,
       )
     }),
   })
