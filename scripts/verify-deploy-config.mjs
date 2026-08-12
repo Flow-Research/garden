@@ -175,6 +175,10 @@ assert.match(alchemySource, /image:\s*SANDBOX_IMAGE/)
 assert.match(alchemySource, /SANDBOX_TRANSPORT[^\n]+rpc/)
 assert.match(alchemySource, /empty:\s*deployTarget\.emptyBucketsOnDestroy/)
 assert.match(alchemySource, /deploymentTargetFromEnv\(\)/)
+assert.match(
+  alchemySource,
+  /deployTarget\.key === 'production'[\s\S]+EXA_API_KEY: alchemy\.secret\.env\.EXA_API_KEY[\s\S]+optionalSecretBindings\(\['EXA_API_KEY'\]\)/,
+)
 assert.equal(webPackageJson.devDependencies['@posthog/cli'], '0.8.4')
 assert.equal(packageJson.pnpm.overrides['@posthog/cli'], '0.8.4')
 assert.match(alchemySource, /POSTHOG_CLI_SOURCEMAP_UPLOAD_CONCURRENCY/)

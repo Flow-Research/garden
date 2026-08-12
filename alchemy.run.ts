@@ -213,7 +213,12 @@ export const web = await TanStackStart(deployTarget.workerId, {
     DATABASE_URL: alchemy.secret.env.DATABASE_URL,
     BETTER_AUTH_SECRET: alchemy.secret.env.BETTER_AUTH_SECRET,
     RESEND_API_KEY: alchemy.secret.env.RESEND_API_KEY,
-    EXA_API_KEY: alchemy.secret.env.EXA_API_KEY,
+    // EXA remains mandatory for production, but Cloudflare cannot reveal an
+    // existing Worker's secret for reuse by a temporary preview. Mail preview
+    // does not require EXA, so omit that binding when no preview value exists.
+    ...(deployTarget.key === 'production'
+      ? { EXA_API_KEY: alchemy.secret.env.EXA_API_KEY }
+      : optionalSecretBindings(['EXA_API_KEY'])),
     LOADER: WorkerLoader(),
     BROWSER: BrowserRendering(),
     AI: Ai(),
