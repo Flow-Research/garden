@@ -78,6 +78,24 @@ export interface GmailSendMessageResponse extends Schema.Schema.Type<
   typeof GmailSendMessageResponse
 > {}
 
+export const GmailModifyMessageInput = Schema.Struct({
+  messageId: NonEmptyString,
+  addLabelIds: Schema.Array(NonEmptyString),
+  removeLabelIds: Schema.Array(NonEmptyString),
+})
+export interface GmailModifyMessageInput extends Schema.Schema.Type<
+  typeof GmailModifyMessageInput
+> {}
+
+export const GmailModifyMessageResponse = Schema.Struct({
+  id: NonEmptyString,
+  threadId: NonEmptyString,
+  labelIds: Schema.optionalKey(Schema.Array(NonEmptyString)),
+})
+export interface GmailModifyMessageResponse extends Schema.Schema.Type<
+  typeof GmailModifyMessageResponse
+> {}
+
 export const GmailHistoryType = Schema.Literals([
   'messageAdded',
   'messageDeleted',
@@ -139,6 +157,7 @@ export const GmailApiOperation = Schema.Literals([
   'getRawMessage',
   'listHistory',
   'sendMessage',
+  'modifyMessage',
 ])
 export type GmailApiOperation = typeof GmailApiOperation.Type
 
@@ -173,6 +192,9 @@ export interface GmailClientService {
   readonly sendMessage: (
     input: GmailSendMessageInput,
   ) => Effect.Effect<GmailSendMessageResponse, GmailApiError>
+  readonly modifyMessage: (
+    input: GmailModifyMessageInput,
+  ) => Effect.Effect<GmailModifyMessageResponse, GmailApiError>
 }
 
 export class GmailClient extends Context.Service<
@@ -344,6 +366,38 @@ export const makeGmailClient = Effect.fn('GmailClient.make')(function* (
         'sendMessage',
         request,
         GmailSendMessageResponse,
+      )
+    }),
+    modifyMessage: Effect.fn('GmailClient.modifyMessage')(function* (input) {
+      const body = {
+        addLabelIds: input.addLabelIds,
+        removeLabelIds: input.removeLabelIds,
+      }
+      const request = yield* HttpClientRequest.schemaBodyJson(
+        Schema.Struct({
+          addLabelIds: Schema.Array(NonEmptyString),
+          removeLabelIds: Schema.Array(NonEmptyString),
+        }),
+      )(
+        HttpClientRequest.post(
+          `/users/me/messages/${encodeURIComponent(input.messageId)}/modify`,
+        ),
+        body,
+      ).pipe(
+        Effect.mapError(
+          () =>
+            new GmailApiError({
+              operation: 'modifyMessage',
+              reason: 'invalid_response',
+              message: 'Gmail label mutation could not be encoded.',
+            }),
+        ),
+      )
+      return yield* executeJson(
+        client,
+        'modifyMessage',
+        request,
+        GmailModifyMessageResponse,
       )
     }),
   })

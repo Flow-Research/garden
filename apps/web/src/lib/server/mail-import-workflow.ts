@@ -63,6 +63,56 @@ type GmailWorkflowServices = {
   readonly importer: GmailImportService
 }
 
+type HistoryEnumerationPage = {
+  readonly nextPageToken: string | null
+  readonly historyId: string
+  readonly expired: boolean
+}
+
+/**
+ * Collapses Gmail history categories into one durable message workset.
+ * Label-only changes re-fetch the same RAW object to reconcile canonical state.
+ */
+const historyWorkItems = (
+  history: ReadonlyArray<{
+    readonly messagesAdded?: ReadonlyArray<{
+      readonly message: { readonly id: string; readonly threadId: string }
+    }>
+    readonly labelsAdded?: ReadonlyArray<{
+      readonly message: { readonly id: string; readonly threadId: string }
+    }>
+    readonly labelsRemoved?: ReadonlyArray<{
+      readonly message: { readonly id: string; readonly threadId: string }
+    }>
+  }>,
+) => {
+  const items = new Map<
+    string,
+    {
+      providerMessageId: typeof ProviderObjectId.Type
+      providerThreadId: typeof ProviderObjectId.Type
+    }
+  >()
+  for (const record of history) {
+    for (const change of record.messagesAdded ?? []) {
+      items.set(change.message.id, {
+        providerMessageId: ProviderObjectId.make(change.message.id),
+        providerThreadId: ProviderObjectId.make(change.message.threadId),
+      })
+    }
+    for (const change of [
+      ...(record.labelsAdded ?? []),
+      ...(record.labelsRemoved ?? []),
+    ]) {
+      items.set(change.message.id, {
+        providerMessageId: ProviderObjectId.make(change.message.id),
+        providerThreadId: ProviderObjectId.make(change.message.threadId),
+      })
+    }
+  }
+  return [...items.values()]
+}
+
 /** Keeps Workflow checkpoints useful without serializing defects or private data. */
 const workflowErrorMessage = (error: unknown): string => {
   if (
@@ -351,7 +401,160 @@ export class GmailImportWorkflow extends WorkflowEntrypoint<
       )
     }
 
-    if (run.status !== 'importing') {
+    let completionHistoryId = profileOutcome.value.historyId
+    if (run.status !== 'importing' && account.historyId !== null) {
+      const startHistoryId = account.historyId
+      let pageToken: string | undefined
+      let pageIndex = 0
+      let historyExpired = false
+      do {
+        const currentToken = pageToken
+        const pageOutcome = await step.do(`history-${pageIndex}`, () =>
+          runGmailImportStep(
+            this.env,
+            params,
+            account.executorConnectionName,
+            ({ gmail, repository }) =>
+              gmail
+                .listHistory({
+                  startHistoryId,
+                  maxResults: GMAIL_ENUMERATION_PAGE_SIZE,
+                  pageToken: currentToken,
+                  historyTypes: ['messageAdded', 'labelAdded', 'labelRemoved'],
+                })
+                .pipe(
+                  Effect.flatMap((page) =>
+                    repository
+                      .persistMailSyncPage({
+                        workspaceId: params.workspaceId,
+                        runId: params.runId,
+                        items: historyWorkItems(page.history ?? []),
+                      })
+                      .pipe(
+                        Effect.as<HistoryEnumerationPage>({
+                          nextPageToken: page.nextPageToken ?? null,
+                          historyId: page.historyId,
+                          expired: false,
+                        }),
+                      ),
+                  ),
+                  Effect.catchIf(
+                    (error) =>
+                      error._tag === 'GmailApiError' &&
+                      error.operation === 'listHistory' &&
+                      error.reason === 'not_found',
+                    () =>
+                      Effect.succeed<HistoryEnumerationPage>({
+                        nextPageToken: null,
+                        historyId: profileOutcome.value.historyId,
+                        expired: true,
+                      }),
+                  ),
+                ),
+          ),
+        )
+        if (pageOutcome._tag === 'Failure') {
+          return await failImportRun(
+            step,
+            this.env,
+            params,
+            `history-${pageIndex}`,
+            pageOutcome.message,
+          )
+        }
+        historyExpired = pageOutcome.value.expired
+        completionHistoryId = pageOutcome.value.historyId
+        pageToken = pageOutcome.value.nextPageToken ?? undefined
+        pageIndex += 1
+      } while (pageToken !== undefined)
+
+      if (!historyExpired) {
+        const finalizeOutcome = await step.do('freeze-exact-total', () =>
+          runMailImportDatabaseStep(this.env, (repository) =>
+            repository.finalizeMailSyncEnumeration({
+              workspaceId: params.workspaceId,
+              runId: params.runId,
+            }),
+          ),
+        )
+        if (finalizeOutcome._tag === 'Failure') {
+          return await failImportRun(
+            step,
+            this.env,
+            params,
+            'freeze-exact-total',
+            finalizeOutcome.message,
+          )
+        }
+      }
+      if (!historyExpired) {
+        // Incremental history has been frozen; do not enumerate the mailbox.
+      } else {
+        completionHistoryId = profileOutcome.value.historyId
+      }
+      if (!historyExpired) {
+        // Continue directly to the shared durable batch processor below.
+      } else {
+        let pageToken: string | undefined
+        let pageIndex = 0
+        do {
+          const currentToken = pageToken
+          const pageOutcome = await step.do(`rescan-${pageIndex}`, () =>
+            runGmailImportStep(
+              this.env,
+              params,
+              account.executorConnectionName,
+              ({ gmail, repository }) =>
+                Effect.gen(function* () {
+                  const page = yield* gmail.listMessages({
+                    maxResults: GMAIL_ENUMERATION_PAGE_SIZE,
+                    pageToken: currentToken,
+                    query: '-in:drafts',
+                    includeSpamTrash: false,
+                  })
+                  yield* repository.persistMailSyncPage({
+                    workspaceId: params.workspaceId,
+                    runId: params.runId,
+                    items: (page.messages ?? []).map((message) => ({
+                      providerMessageId: ProviderObjectId.make(message.id),
+                      providerThreadId: ProviderObjectId.make(message.threadId),
+                    })),
+                  })
+                  return { nextPageToken: page.nextPageToken ?? null }
+                }),
+            ),
+          )
+          if (pageOutcome._tag === 'Failure') {
+            return await failImportRun(
+              step,
+              this.env,
+              params,
+              `rescan-${pageIndex}`,
+              pageOutcome.message,
+            )
+          }
+          pageToken = pageOutcome.value.nextPageToken ?? undefined
+          pageIndex += 1
+        } while (pageToken !== undefined)
+        const finalizeOutcome = await step.do('freeze-rescan-total', () =>
+          runMailImportDatabaseStep(this.env, (repository) =>
+            repository.finalizeMailSyncEnumeration({
+              workspaceId: params.workspaceId,
+              runId: params.runId,
+            }),
+          ),
+        )
+        if (finalizeOutcome._tag === 'Failure') {
+          return await failImportRun(
+            step,
+            this.env,
+            params,
+            'freeze-rescan-total',
+            finalizeOutcome.message,
+          )
+        }
+      }
+    } else if (run.status !== 'importing') {
       let pageToken: string | undefined
       let pageIndex = 0
       do {
@@ -472,7 +675,7 @@ export class GmailImportWorkflow extends WorkflowEntrypoint<
         repository.completeMailSyncRun({
           workspaceId: params.workspaceId,
           runId: params.runId,
-          historyId: ProviderObjectId.make(profileOutcome.value.historyId),
+          historyId: ProviderObjectId.make(completionHistoryId),
         }),
       ),
     )

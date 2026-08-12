@@ -3,19 +3,21 @@ import {
   mailAttachment,
   mailConversation,
   mailConversationMessage,
+  mailConversationState,
   mailMailbox,
   mailMessage,
   mailMessageAttachment,
   mailMessageReplyTo,
   mailRecipient,
   mailSyncAccount,
+  member,
 } from '@garden/db/schema'
 import {
   IngestedMail,
   type ImportedMailEnvelope,
   type MessageAuthor,
 } from '@garden/core/mail'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { Effect } from 'effect'
 import { MailRepositoryInvariantError } from './contracts.ts'
 import {
@@ -55,6 +57,130 @@ const normalizedImportedSubject = (subject: string): string =>
     .replace(/^\s*(?:(?:re|fw|fwd)\s*:\s*)+/i, '')
     .trim()
     .toLowerCase()
+
+/** Reads Gmail system labels from evidence produced by the decoded client. */
+const providerLabelIds = (
+  evidence: Readonly<Record<string, unknown>> | null,
+): ReadonlySet<string> => {
+  const value = evidence?.labelIds
+  return new Set(
+    Array.isArray(value)
+      ? value.filter((label): label is string => typeof label === 'string')
+      : [],
+  )
+}
+
+/**
+ * Reconciles Gmail's per-message labels into the connected account owner's
+ * conversation state. Evidence remains the durable per-message source so a
+ * later label-only history event can update read, archive, and star without
+ * duplicating canonical message content.
+ */
+const reconcileImportedConversationState = Effect.fn(
+  'MailRepository.reconcileImportedConversationState',
+)(function* (
+  tx: MailTransaction,
+  input: ImportedMailEnvelope,
+  conversationId: string,
+) {
+  if (input.provider !== 'gmail') return
+  const owner = (yield* databaseEffect(
+    'ingestImported.resolveOwnerMember',
+    () =>
+      tx
+        .select({ memberId: member.id })
+        .from(mailSyncAccount)
+        .innerJoin(
+          member,
+          and(
+            eq(member.userId, mailSyncAccount.userId),
+            eq(member.organizationId, mailSyncAccount.workspaceId),
+          ),
+        )
+        .where(
+          and(
+            eq(mailSyncAccount.id, input.syncAccountId),
+            eq(mailSyncAccount.workspaceId, input.workspaceId),
+          ),
+        )
+        .limit(1),
+  ))[0]
+  if (owner === undefined) {
+    return yield* new MailRepositoryInvariantError({
+      operation: 'ingestImported.resolveOwnerMember',
+      message: 'Imported Gmail account owner is not a workspace member.',
+    })
+  }
+  const messages = yield* databaseEffect(
+    'ingestImported.listConversationProviderState',
+    () =>
+      tx
+        .select({
+          id: mailMessage.id,
+          evidence: mailMessage.ingressProviderEvidence,
+        })
+        .from(mailConversationMessage)
+        .innerJoin(
+          mailMessage,
+          and(
+            eq(mailMessage.id, mailConversationMessage.messageId),
+            eq(mailMessage.workspaceId, mailConversationMessage.workspaceId),
+          ),
+        )
+        .where(
+          and(
+            eq(mailConversationMessage.conversationId, conversationId),
+            eq(mailMessage.ingressProvider, 'gmail'),
+            sql`${mailMessage.ingressProviderMessageId} like ${`${input.syncAccountId}:%`}`,
+          ),
+        )
+        .orderBy(desc(mailMessage.authoredAt), desc(mailMessage.createdAt)),
+  )
+  const labels = messages.map((item) => providerLabelIds(item.evidence ?? null))
+  const read = labels.every((item) => !item.has('UNREAD'))
+  const archived = labels.every((item) => !item.has('INBOX'))
+  const starred = labels.some((item) => item.has('STARRED'))
+  const current = (yield* databaseEffect(
+    'ingestImported.findOwnerConversationState',
+    () =>
+      tx
+        .select()
+        .from(mailConversationState)
+        .where(
+          and(
+            eq(mailConversationState.conversationId, conversationId),
+            eq(mailConversationState.memberId, owner.memberId),
+          ),
+        )
+        .limit(1),
+  ))[0]
+  const now = new Date()
+  const values = {
+    workspaceId: input.workspaceId,
+    conversationId,
+    actorType: 'member' as const,
+    memberId: owner.memberId,
+    agentId: null,
+    lastReadMessageId: read ? (messages[0]?.id ?? null) : null,
+    readAt: read ? now : null,
+    archivedAt: archived ? now : null,
+    mutedAt: current?.mutedAt ?? null,
+    pinned: starred,
+    updatedAt: now,
+  }
+  if (current === undefined) {
+    yield* databaseEffect('ingestImported.insertOwnerConversationState', () =>
+      tx.insert(mailConversationState).values(values),
+    )
+  } else {
+    yield* databaseEffect('ingestImported.updateOwnerConversationState', () =>
+      tx
+        .update(mailConversationState)
+        .set(values)
+        .where(eq(mailConversationState.id, current.id)),
+    )
+  }
+})
 
 /**
  * Stores imported attachment metadata by immutable storage key. A conflicting
@@ -228,6 +354,13 @@ export const ingestImported = Effect.fn('MailRepository.ingestImported')(
           })
         }
 
+        yield* databaseEffect('ingestImported.refreshProviderEvidence', () =>
+          tx
+            .update(mailMessage)
+            .set({ ingressProviderEvidence: input.providerEvidence })
+            .where(eq(mailMessage.id, message.id)),
+        )
+
         if (!duplicate) {
           if (input.recipients.length > 0) {
             yield* databaseEffect('ingestImported.insertRecipients', () =>
@@ -316,6 +449,7 @@ export const ingestImported = Effect.fn('MailRepository.ingestImported')(
             })
             .where(eq(mailConversation.id, conversation.id)),
         )
+        yield* reconcileImportedConversationState(tx, input, conversation.id)
 
         return yield* decodeRow(
           IngestedMail,
