@@ -1,4 +1,4 @@
-import { queryOptions } from '@tanstack/react-query'
+import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 import { requireAppRequestContext } from '@/lib/server/context'
@@ -27,6 +27,16 @@ import type {
 } from '@garden/server/mail'
 
 const workspaceInput = z.object({ workspaceId: z.uuid() })
+const inboxCursorInput = z.object({
+  activityAt: z.iso.datetime(),
+  conversationId: z.uuid(),
+})
+const inboxInput = workspaceInput.extend({
+  cursor: inboxCursorInput.nullable(),
+  query: z.string().max(256),
+  unreadOnly: z.boolean(),
+  limit: z.number().int().min(1).max(100),
+})
 const conversationInput = workspaceInput.extend({ conversationId: z.uuid() })
 const conversationStateInput = conversationInput.extend({
   action: z.enum([
@@ -62,6 +72,8 @@ export const mailKeys = {
   all: (workspaceId: string) => ['garden-mail', workspaceId] as const,
   inbox: (workspaceId: string) =>
     [...mailKeys.all(workspaceId), 'inbox'] as const,
+  inboxPage: (workspaceId: string, query: string, unreadOnly: boolean) =>
+    [...mailKeys.inbox(workspaceId), { query, unreadOnly }] as const,
   conversation: (workspaceId: string, conversationId: string) =>
     [...mailKeys.all(workspaceId), 'conversation', conversationId] as const,
   agentSession: (
@@ -77,9 +89,9 @@ export const mailKeys = {
 }
 
 const getInbox = createServerFn({ method: 'GET' })
-  .inputValidator(workspaceInput)
+  .inputValidator(inboxInput)
   .handler(({ context, data }) =>
-    getMailInboxSnapshot(requireAppRequestContext(context), data.workspaceId),
+    getMailInboxSnapshot(requireAppRequestContext(context), data),
   )
 
 const getConversation = createServerFn({ method: 'GET' })
@@ -195,12 +207,30 @@ export async function unassignAgentFromMailConversation(input: {
   return await unassignAgent(input)
 }
 
-/** Actor-scoped mailbox and summary cache shared by Inbox and composer. */
-export function mailInboxOptions(workspaceId: string) {
-  return queryOptions({
-    queryKey: mailKeys.inbox(workspaceId),
-    queryFn: (): Promise<MailInboxSnapshot> =>
-      getInbox({ data: { workspaceId } }),
+/** Actor-scoped keyset pages remain warm independently per search/filter. */
+export function mailInboxOptions(
+  workspaceId: string,
+  query = '',
+  unreadOnly = false,
+) {
+  const normalizedQuery = query.trim()
+  return infiniteQueryOptions({
+    queryKey: mailKeys.inboxPage(workspaceId, normalizedQuery, unreadOnly),
+    queryFn: ({ pageParam }): Promise<MailInboxSnapshot> =>
+      getInbox({
+        data: {
+          workspaceId,
+          cursor: pageParam,
+          query: normalizedQuery,
+          unreadOnly,
+          limit: 50,
+        },
+      }),
+    initialPageParam: null as {
+      activityAt: string
+      conversationId: string
+    } | null,
+    getNextPageParam: (lastPage) => lastPage.page.nextCursor ?? undefined,
     staleTime: 10_000,
   })
 }

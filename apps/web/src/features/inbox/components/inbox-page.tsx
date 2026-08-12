@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useDeferredValue,
   useMemo,
   useState,
   useSyncExternalStore,
@@ -601,6 +602,7 @@ export function InboxPage({
   const [unreadsOnly, setUnreadsOnly] = useState(false)
   const [scope, setScope] = useState<MailScope>('all')
   const [searchExpanded, setSearchExpanded] = useState(false)
+  const deferredMailSearch = useDeferredValue(search)
   const { ref: paneRef, compact } = useCompactInboxPane()
 
   const setSelectedKey = useCallback(
@@ -628,6 +630,8 @@ export function InboxPage({
   const defaultMailController = useMailInboxController({
     workspaceId: wsId,
     selectedConversationId: mailConversationId,
+    search: deferredMailSearch,
+    unreadOnly: unreadsOnly,
   })
   const mailController = suppliedMailController ?? defaultMailController
   const { data: rawItems = [] } = useQuery(inboxListOptions(wsId))
@@ -667,9 +671,7 @@ export function InboxPage({
     mailController.status === 'active' && mailController.list.status === 'ready'
       ? mailController.list.entries
       : []
-  const filteredMailEntries = readyMailEntries.filter(({ conversation }) =>
-    mailConversationMatches(conversation, search, unreadsOnly),
-  )
+  const filteredMailEntries = readyMailEntries
   const unreadCount =
     allItems.filter((item) => !item.read).length +
     readyMailEntries.filter(({ conversation }) => conversation.unread).length
@@ -847,6 +849,8 @@ export function InboxPage({
         filtered={Boolean(search || unreadsOnly)}
         refreshing={list.status === 'ready' && list.refreshing}
         loadingMore={list.status === 'ready' && list.loadingMore}
+        hasMore={list.status === 'ready' && list.hasMore}
+        onLoadMore={list.status === 'ready' ? list.loadMore : undefined}
         onRetry={list.status === 'error' ? list.retry : undefined}
       />
     )
@@ -969,7 +973,30 @@ export function InboxPage({
         list={
           <div className="flex h-full min-h-0 flex-col">
             {listHeader}
-            <div className="min-h-0 flex-1 overflow-y-auto">{listBody}</div>
+            <div
+              className="min-h-0 flex-1 overflow-y-auto"
+              onScroll={(event) => {
+                if (
+                  mailController.status !== 'active' ||
+                  mailController.list.status !== 'ready' ||
+                  !mailController.list.hasMore ||
+                  mailController.list.loadingMore
+                ) {
+                  return
+                }
+                const viewport = event.currentTarget
+                if (
+                  viewport.scrollHeight -
+                    viewport.scrollTop -
+                    viewport.clientHeight <
+                  320
+                ) {
+                  mailController.list.loadMore?.()
+                }
+              }}
+            >
+              {listBody}
+            </div>
           </div>
         }
         detail={detailContent ?? <MailNoSelectionState />}

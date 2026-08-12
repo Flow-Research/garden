@@ -581,6 +581,15 @@ export const mailConversation = pgTable(
       table.workspaceId,
       table.lastMessageAt,
     ),
+    index('mail_conversation_workspace_activity_keyset_idx').on(
+      table.workspaceId,
+      table.lastMessageAt,
+      table.id,
+    ),
+    index('mail_conversation_subject_search_idx').using(
+      'gin',
+      sql`to_tsvector('simple', coalesce(${table.subject}, ''))`,
+    ),
     foreignKey({
       name: 'mail_conversation_workspace_mailbox_fk',
       columns: [table.workspaceId, table.mailboxId],
@@ -662,6 +671,10 @@ export const mailMessage = pgTable(
     index('mail_message_workspace_authored_at_idx').on(
       table.workspaceId,
       table.authoredAt,
+    ),
+    index('mail_message_content_search_idx').using(
+      'gin',
+      sql`to_tsvector('simple', coalesce(${table.subject}, '') || ' ' || coalesce(${table.senderName}, '') || ' ' || coalesce(${table.senderAddress}, '') || ' ' || coalesce(${table.textBody}, ''))`,
     ),
     foreignKey({
       name: 'mail_message_workspace_sender_address_fk',
@@ -844,6 +857,10 @@ export const mailRecipient = pgTable(
       table.messageId,
       table.kind,
       table.position,
+    ),
+    index('mail_recipient_search_idx').using(
+      'gin',
+      sql`to_tsvector('simple', coalesce(${table.displayName}, '') || ' ' || coalesce(${table.address}, ''))`,
     ),
     foreignKey({
       name: 'mail_recipient_workspace_message_fk',

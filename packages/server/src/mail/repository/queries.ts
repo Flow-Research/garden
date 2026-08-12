@@ -18,12 +18,13 @@ import {
   mailRecipient,
   mailSyncAccount,
 } from '@garden/db/schema'
-import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm'
 import { Effect } from 'effect'
 import { MailboxId } from '@garden/core/mail'
 import {
   AccessibleMailbox,
   AssignmentSnapshot,
+  ConversationPage,
   ConversationSummary,
   DraftSnapshot,
   MailRepositoryNotFoundError,
@@ -31,6 +32,7 @@ import {
   ResolvedLocalAddress,
   type GetConversationInput,
   type GetDraftInput,
+  type ListConversationPageInput,
   type ListConversationsInput,
   type ListMailboxesInput,
   type ResolveLocalAddressInput,
@@ -135,159 +137,282 @@ export const listMailboxes = Effect.fn('MailRepository.listMailboxes')(
   },
 )
 
+type ConversationQueryInput = ListConversationsInput & {
+  readonly activeOnly: boolean
+  readonly cursor: ListConversationPageInput['cursor']
+  readonly query: string
+  readonly unreadOnly: boolean
+  readonly limit: number | null
+}
+
+/**
+ * Owns the shared authorization, search, state filtering, and keyset ordering.
+ * The prior unbounded query and the new page query therefore cannot drift in
+ * actor visibility or summary semantics.
+ */
+const conversationRows = (
+  db: GardenDatabase,
+  input: ConversationQueryInput,
+) => {
+  const actorStateJoin = and(
+    eq(mailConversationState.conversationId, mailConversation.id),
+    stateActorPredicate(input.actor),
+  )
+  const latestMessage = db
+    .selectDistinctOn([mailConversationMessage.conversationId], {
+      conversationId: mailConversationMessage.conversationId,
+      id: mailMessage.id,
+      source: mailMessage.source,
+      authorType: mailMessage.authorType,
+      authorMemberId: mailMessage.authorMemberId,
+      authorAgentId: mailMessage.authorAgentId,
+      senderName: mailMessage.senderName,
+      senderAddress: mailMessage.senderAddress,
+      textBody: mailMessage.textBody,
+      htmlBody: mailMessage.htmlBody,
+      authoredAt: mailMessage.authoredAt,
+    })
+    .from(mailConversationMessage)
+    .innerJoin(
+      mailMessage,
+      and(
+        eq(mailMessage.id, mailConversationMessage.messageId),
+        eq(mailMessage.workspaceId, mailConversationMessage.workspaceId),
+      ),
+    )
+    .orderBy(
+      mailConversationMessage.conversationId,
+      desc(mailMessage.authoredAt),
+      desc(mailMessage.id),
+    )
+    .as('latest_conversation_message')
+  const messageTotals = db
+    .select({
+      conversationId: mailConversationMessage.conversationId,
+      count: sql<number>`count(*)::int`.as('message_count'),
+    })
+    .from(mailConversationMessage)
+    .groupBy(mailConversationMessage.conversationId)
+    .as('conversation_message_totals')
+  const activeDrafts = db
+    .select({
+      conversationId: mailDraft.conversationId,
+      count: sql<number>`count(*)::int`.as('active_draft_count'),
+      latestUpdatedAt: sql<Date>`max(${mailDraft.updatedAt})`.as(
+        'latest_draft_updated_at',
+      ),
+    })
+    .from(mailDraft)
+    .where(inArray(mailDraft.status, activeDraftStatuses))
+    .groupBy(mailDraft.conversationId)
+    .as('active_conversation_drafts')
+  const activityAt = sql<string>`coalesce(${mailConversation.lastMessageAt}, ${mailConversation.createdAt})`
+  const normalizedQuery = input.query.trim()
+  const search =
+    normalizedQuery.length === 0
+      ? undefined
+      : sql`(
+          to_tsvector('simple', coalesce(${mailConversation.subject}, ''))
+            @@ websearch_to_tsquery('simple', ${normalizedQuery})
+          or exists (
+            select 1
+            from mail_conversation_message search_link
+            inner join mail_message search_message
+              on search_message.id = search_link.message_id
+              and search_message.workspace_id = search_link.workspace_id
+            where search_link.conversation_id = ${mailConversation.id}
+              and search_link.workspace_id = ${mailConversation.workspaceId}
+              and (
+                to_tsvector(
+                  'simple',
+                  coalesce(search_message.subject, '') || ' ' ||
+                  coalesce(search_message.sender_name, '') || ' ' ||
+                  coalesce(search_message.sender_address, '') || ' ' ||
+                  coalesce(search_message.text_body, '')
+                ) @@ websearch_to_tsquery('simple', ${normalizedQuery})
+                or exists (
+                  select 1
+                  from mail_recipient search_recipient
+                  where search_recipient.message_id = search_message.id
+                    and search_recipient.workspace_id = search_message.workspace_id
+                    and to_tsvector(
+                      'simple',
+                      coalesce(search_recipient.display_name, '') || ' ' ||
+                      coalesce(search_recipient.address, '')
+                    ) @@ websearch_to_tsquery('simple', ${normalizedQuery})
+                )
+              )
+          )
+        )`
+  const cursorAt =
+    input.cursor === null ? null : new Date(input.cursor.activityAt)
+  const query = db
+    .select({
+      conversation: mailConversation,
+      state: mailConversationState,
+      activityAt,
+      latestMessageId: latestMessage.id,
+      latestMessageSource: latestMessage.source,
+      latestAuthorType: latestMessage.authorType,
+      latestAuthorMemberId: latestMessage.authorMemberId,
+      latestAuthorAgentId: latestMessage.authorAgentId,
+      latestSenderName: latestMessage.senderName,
+      latestSenderAddress: latestMessage.senderAddress,
+      latestTextBody: latestMessage.textBody,
+      latestHtmlBody: latestMessage.htmlBody,
+      latestAuthoredAt: latestMessage.authoredAt,
+      messageCount: messageTotals.count,
+      activeDraftCount: activeDrafts.count,
+      latestDraftUpdatedAt: activeDrafts.latestUpdatedAt,
+    })
+    .from(mailConversation)
+    .innerJoin(
+      mailMailboxAccess,
+      and(
+        eq(mailMailboxAccess.mailboxId, mailConversation.mailboxId),
+        eq(mailMailboxAccess.workspaceId, mailConversation.workspaceId),
+        mailboxActorPredicate(input.actor),
+      ),
+    )
+    .innerJoin(
+      mailMailbox,
+      and(
+        eq(mailMailbox.id, mailConversation.mailboxId),
+        eq(mailMailbox.status, 'active'),
+      ),
+    )
+    .leftJoin(mailConversationState, actorStateJoin)
+    .leftJoin(
+      latestMessage,
+      eq(latestMessage.conversationId, mailConversation.id),
+    )
+    .leftJoin(
+      messageTotals,
+      eq(messageTotals.conversationId, mailConversation.id),
+    )
+    .leftJoin(
+      activeDrafts,
+      eq(activeDrafts.conversationId, mailConversation.id),
+    )
+    .where(
+      and(
+        eq(mailConversation.workspaceId, input.workspaceId),
+        input.mailboxId === null
+          ? undefined
+          : eq(mailConversation.mailboxId, input.mailboxId),
+        input.activeOnly ? isNull(mailConversationState.archivedAt) : undefined,
+        input.unreadOnly
+          ? sql`${latestMessage.id} is not null and ${mailConversationState.lastReadMessageId} is distinct from ${latestMessage.id}`
+          : undefined,
+        search,
+        cursorAt === null || input.cursor === null
+          ? undefined
+          : or(
+              lt(activityAt, cursorAt),
+              and(
+                eq(activityAt, cursorAt),
+                lt(mailConversation.id, input.cursor.conversationId),
+              ),
+            ),
+      ),
+    )
+    .orderBy(desc(activityAt), desc(mailConversation.id))
+    .$dynamic()
+
+  return input.limit === null ? query : query.limit(input.limit)
+}
+
+type ConversationRow = Awaited<ReturnType<typeof conversationRows>>[number]
+
+/** Restores one joined projection through the canonical summary schema. */
+const decodeConversationRow = (row: ConversationRow, operation: string) =>
+  decodeRow(
+    ConversationSummary,
+    {
+      id: row.conversation.id,
+      mailboxId: row.conversation.mailboxId,
+      subject: row.conversation.subject,
+      lastMessageAt: timestamp(row.conversation.lastMessageAt),
+      lastSenderName: row.latestSenderName,
+      lastSenderAddress: row.latestSenderAddress,
+      lastAuthor:
+        row.latestMessageId === null
+          ? null
+          : messageAuthorValue({
+              authorType: row.latestAuthorType!,
+              authorMemberId: row.latestAuthorMemberId,
+              authorAgentId: row.latestAuthorAgentId,
+            }),
+      snippet: mailMessageSnippet(row.latestTextBody, row.latestHtmlBody),
+      messageCount: row.messageCount ?? 0,
+      unread:
+        row.latestMessageId !== null &&
+        row.state?.lastReadMessageId !== row.latestMessageId,
+      hasDraft: (row.activeDraftCount ?? 0) > 0,
+      needsReply:
+        row.latestAuthorType === 'external' &&
+        row.latestMessageId !== null &&
+        row.state?.lastReadMessageId === row.latestMessageId &&
+        (row.latestDraftUpdatedAt === null ||
+          row.latestDraftUpdatedAt === undefined ||
+          (row.latestAuthoredAt !== null &&
+            row.latestDraftUpdatedAt <= row.latestAuthoredAt)),
+      state: conversationStateValue(row.state),
+    },
+    operation,
+  )
+
 /** Lists actor-visible mailbox conversations with only that actor's state. */
 export const listConversations = Effect.fn('MailRepository.listConversations')(
   function* (db: GardenDatabase, input: ListConversationsInput) {
-    const actorStateJoin = and(
-      eq(mailConversationState.conversationId, mailConversation.id),
-      stateActorPredicate(input.actor),
-    )
-    const latestMessage = db
-      .selectDistinctOn([mailConversationMessage.conversationId], {
-        conversationId: mailConversationMessage.conversationId,
-        id: mailMessage.id,
-        source: mailMessage.source,
-        authorType: mailMessage.authorType,
-        authorMemberId: mailMessage.authorMemberId,
-        authorAgentId: mailMessage.authorAgentId,
-        senderName: mailMessage.senderName,
-        senderAddress: mailMessage.senderAddress,
-        textBody: mailMessage.textBody,
-        htmlBody: mailMessage.htmlBody,
-        authoredAt: mailMessage.authoredAt,
-      })
-      .from(mailConversationMessage)
-      .innerJoin(
-        mailMessage,
-        and(
-          eq(mailMessage.id, mailConversationMessage.messageId),
-          eq(mailMessage.workspaceId, mailConversationMessage.workspaceId),
-        ),
-      )
-      .orderBy(
-        mailConversationMessage.conversationId,
-        desc(mailMessage.authoredAt),
-        desc(mailMessage.id),
-      )
-      .as('latest_conversation_message')
-    const messageTotals = db
-      .select({
-        conversationId: mailConversationMessage.conversationId,
-        count: sql<number>`count(*)::int`.as('message_count'),
-      })
-      .from(mailConversationMessage)
-      .groupBy(mailConversationMessage.conversationId)
-      .as('conversation_message_totals')
-    const activeDrafts = db
-      .select({
-        conversationId: mailDraft.conversationId,
-        count: sql<number>`count(*)::int`.as('active_draft_count'),
-        latestUpdatedAt: sql<Date>`max(${mailDraft.updatedAt})`.as(
-          'latest_draft_updated_at',
-        ),
-      })
-      .from(mailDraft)
-      .where(inArray(mailDraft.status, activeDraftStatuses))
-      .groupBy(mailDraft.conversationId)
-      .as('active_conversation_drafts')
     const rows = yield* databaseEffect('listConversations', () =>
-      db
-        .select({
-          conversation: mailConversation,
-          state: mailConversationState,
-          latestMessageId: latestMessage.id,
-          latestMessageSource: latestMessage.source,
-          latestAuthorType: latestMessage.authorType,
-          latestAuthorMemberId: latestMessage.authorMemberId,
-          latestAuthorAgentId: latestMessage.authorAgentId,
-          latestSenderName: latestMessage.senderName,
-          latestSenderAddress: latestMessage.senderAddress,
-          latestTextBody: latestMessage.textBody,
-          latestHtmlBody: latestMessage.htmlBody,
-          latestAuthoredAt: latestMessage.authoredAt,
-          messageCount: messageTotals.count,
-          activeDraftCount: activeDrafts.count,
-          latestDraftUpdatedAt: activeDrafts.latestUpdatedAt,
-        })
-        .from(mailConversation)
-        .innerJoin(
-          mailMailboxAccess,
-          and(
-            eq(mailMailboxAccess.mailboxId, mailConversation.mailboxId),
-            eq(mailMailboxAccess.workspaceId, mailConversation.workspaceId),
-            mailboxActorPredicate(input.actor),
-          ),
-        )
-        .innerJoin(
-          mailMailbox,
-          and(
-            eq(mailMailbox.id, mailConversation.mailboxId),
-            eq(mailMailbox.status, 'active'),
-          ),
-        )
-        .leftJoin(mailConversationState, actorStateJoin)
-        .leftJoin(
-          latestMessage,
-          eq(latestMessage.conversationId, mailConversation.id),
-        )
-        .leftJoin(
-          messageTotals,
-          eq(messageTotals.conversationId, mailConversation.id),
-        )
-        .leftJoin(
-          activeDrafts,
-          eq(activeDrafts.conversationId, mailConversation.id),
-        )
-        .where(
-          and(
-            eq(mailConversation.workspaceId, input.workspaceId),
-            input.mailboxId === null
-              ? undefined
-              : eq(mailConversation.mailboxId, input.mailboxId),
-          ),
-        )
-        .orderBy(desc(mailConversation.lastMessageAt)),
+      conversationRows(db, {
+        ...input,
+        activeOnly: false,
+        cursor: null,
+        query: '',
+        unreadOnly: false,
+        limit: null,
+      }),
     )
-
     return yield* Effect.forEach(rows, (row) =>
-      decodeRow(
-        ConversationSummary,
-        {
-          id: row.conversation.id,
-          mailboxId: row.conversation.mailboxId,
-          subject: row.conversation.subject,
-          lastMessageAt: timestamp(row.conversation.lastMessageAt),
-          lastSenderName: row.latestSenderName,
-          lastSenderAddress: row.latestSenderAddress,
-          lastAuthor:
-            row.latestMessageId === null
-              ? null
-              : messageAuthorValue({
-                  authorType: row.latestAuthorType!,
-                  authorMemberId: row.latestAuthorMemberId,
-                  authorAgentId: row.latestAuthorAgentId,
-                }),
-          snippet: mailMessageSnippet(row.latestTextBody, row.latestHtmlBody),
-          messageCount: row.messageCount ?? 0,
-          unread:
-            row.latestMessageId !== null &&
-            row.state?.lastReadMessageId !== row.latestMessageId,
-          hasDraft: (row.activeDraftCount ?? 0) > 0,
-          needsReply:
-            row.latestAuthorType === 'external' &&
-            row.latestMessageId !== null &&
-            row.state?.lastReadMessageId === row.latestMessageId &&
-            (row.latestDraftUpdatedAt === null ||
-              row.latestDraftUpdatedAt === undefined ||
-              (row.latestAuthoredAt !== null &&
-                row.latestDraftUpdatedAt <= row.latestAuthoredAt)),
-          state: conversationStateValue(row.state),
-        },
-        'listConversations.decode',
-      ),
+      decodeConversationRow(row, 'listConversations.decode'),
     )
   },
 )
+
+/** Returns one stable, actor-authorized inbox page and its next keyset cursor. */
+export const listConversationPage = Effect.fn(
+  'MailRepository.listConversationPage',
+)(function* (db: GardenDatabase, input: ListConversationPageInput) {
+  const rows = yield* databaseEffect('listConversationPage', () =>
+    conversationRows(db, {
+      ...input,
+      activeOnly: true,
+      limit: input.limit + 1,
+    }),
+  )
+  const hasNextPage = rows.length > input.limit
+  const pageRows = hasNextPage ? rows.slice(0, input.limit) : rows
+  const items = yield* Effect.forEach(pageRows, (row) =>
+    decodeConversationRow(row, 'listConversationPage.decodeSummary'),
+  )
+  const last = pageRows.at(-1)
+  return yield* decodeRow(
+    ConversationPage,
+    {
+      items,
+      nextCursor:
+        hasNextPage && last !== undefined
+          ? {
+              activityAt: new Date(last.activityAt).toISOString(),
+              conversationId: last.conversation.id,
+            }
+          : null,
+    },
+    'listConversationPage.decode',
+  )
+})
 
 /** Resolves exact addresses before a domain catch-all and rejects inactive routes. */
 export const resolveLocalAddress = Effect.fn(

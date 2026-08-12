@@ -427,6 +427,140 @@ describe('MailRepository (integration)', () => {
       }).pipe(Effect.provide(makeMailRepositoryLayer(testDb.db))),
   )
 
+  it.effect(
+    'searches and keyset-paginates actor-visible conversations without duplicates',
+    () =>
+      Effect.gen(function* () {
+        const repository = yield* MailRepository
+        const providerIds = [
+          'provider-pagination-alpha',
+          'provider-pagination-beta',
+          'provider-pagination-gamma',
+        ] as const
+        for (const [index, providerMessageId] of providerIds.entries()) {
+          yield* repository.ingestInbound(
+            InboundMailEnvelope.make({
+              ...inbound(
+                providerMessageId,
+                [
+                  {
+                    localAddressId: ids.addressA,
+                    envelopeAddress: 'alpha@garden.test',
+                  },
+                ],
+                `Pagination result ${index + 1}`,
+              ),
+              authoredAt: UtcTimestamp.make(`2026-08-10T1${index}:00:00.000Z`),
+              receivedAt: UtcTimestamp.make(`2026-08-10T1${index}:00:01.000Z`),
+              textBody:
+                index === 0
+                  ? 'historical-needle appears only in the older message.'
+                  : 'Private delivery test.',
+            }),
+          )
+        }
+        yield* repository.ingestInbound(
+          InboundMailEnvelope.make({
+            ...inbound(
+              'provider-pagination-alpha-reply',
+              [
+                {
+                  localAddressId: ids.addressA,
+                  envelopeAddress: 'alpha@garden.test',
+                },
+              ],
+              'Latest response',
+            ),
+            inReplyToMessageId: InternetMessageId.make(
+              '<provider-pagination-alpha@example.com>',
+            ),
+            referenceMessageIds: [
+              InternetMessageId.make('<provider-pagination-alpha@example.com>'),
+            ],
+            textBody: 'Newest message intentionally omits the search term.',
+            authoredAt: UtcTimestamp.make('2026-08-10T14:00:00.000Z'),
+            receivedAt: UtcTimestamp.make('2026-08-10T14:00:01.000Z'),
+          }),
+        )
+
+        const olderMessageMatch = yield* repository.listConversationPage({
+          workspaceId,
+          actor: memberA,
+          mailboxId: null,
+          cursor: null,
+          query: 'historical-needle',
+          unreadOnly: false,
+          limit: 10,
+        })
+        expect(olderMessageMatch.items).toHaveLength(1)
+        expect(olderMessageMatch.items[0]?.snippet).toBe(
+          'Newest message intentionally omits the search term.',
+        )
+
+        const first = yield* repository.listConversationPage({
+          workspaceId,
+          actor: memberA,
+          mailboxId: null,
+          cursor: null,
+          query: 'pagination RESULT',
+          unreadOnly: false,
+          limit: 2,
+        })
+        expect(first.items).toHaveLength(2)
+        expect(first.nextCursor).not.toBeNull()
+        const second = yield* repository.listConversationPage({
+          workspaceId,
+          actor: memberA,
+          mailboxId: null,
+          cursor: first.nextCursor,
+          query: 'pagination RESULT',
+          unreadOnly: false,
+          limit: 2,
+        })
+        expect(second.items).toHaveLength(1)
+        expect(second.nextCursor).toBeNull()
+        expect(
+          new Set([...first.items, ...second.items].map((item) => item.id))
+            .size,
+        ).toBe(3)
+
+        const newest = first.items[0]
+        if (newest === undefined) {
+          return yield* Effect.die('Expected the first conversation page.')
+        }
+        const detail = yield* repository.getConversation({
+          workspaceId,
+          actor: memberA,
+          conversationId: newest.id,
+        })
+        const latestMessageId = detail.messages.at(-1)?.id
+        if (latestMessageId === undefined) {
+          return yield* Effect.die('Expected a paginated conversation message.')
+        }
+        yield* repository.updateConversationState({
+          workspaceId,
+          conversationId: newest.id,
+          actor: memberA,
+          lastReadMessageId: latestMessageId,
+          readAt: UtcTimestamp.make('2026-08-10T13:00:00.000Z'),
+          archivedAt: null,
+          mutedAt: null,
+          pinned: false,
+        })
+        const unread = yield* repository.listConversationPage({
+          workspaceId,
+          actor: memberA,
+          mailboxId: null,
+          cursor: null,
+          query: 'pagination result',
+          unreadOnly: true,
+          limit: 10,
+        })
+        expect(unread.items.map((item) => item.id)).not.toContain(newest.id)
+        expect(unread.items).toHaveLength(2)
+      }).pipe(Effect.provide(makeMailRepositoryLayer(testDb.db))),
+  )
+
   it.effect('keeps state actor-owned and assignments auditable', () =>
     Effect.gen(function* () {
       const repository = yield* MailRepository

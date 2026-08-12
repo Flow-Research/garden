@@ -14,6 +14,8 @@ export type MailConversationListProps = {
   filtered?: boolean
   refreshing?: boolean
   loadingMore?: boolean
+  hasMore?: boolean
+  onLoadMore?: () => void
   onRetry?: () => void
 }
 
@@ -26,6 +28,8 @@ export function MailConversationList({
   filtered = false,
   refreshing = false,
   loadingMore = false,
+  hasMore = false,
+  onLoadMore,
   onRetry,
 }: MailConversationListProps) {
   if (state === 'loading') return <MailListSkeleton />
@@ -51,7 +55,20 @@ export function MailConversationList({
   }
 
   return (
-    <div className="relative h-full min-h-0 overflow-y-auto py-1">
+    <div
+      className="relative h-full min-h-0 overflow-y-auto py-1"
+      onScroll={(event) => {
+        const viewport = event.currentTarget
+        if (
+          hasMore &&
+          !loadingMore &&
+          viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <
+            320
+        ) {
+          onLoadMore?.()
+        }
+      }}
+    >
       {refreshing ? (
         <div
           aria-label="Refreshing conversations"

@@ -23,6 +23,7 @@ import { prepareDraftDelivery } from './repository/outbound.ts'
 import {
   getConversation,
   getDraft,
+  listConversationPage,
   listConversations,
   listMailboxes,
   resolveLocalAddress,
@@ -50,6 +51,7 @@ export const makeMailRepositoryLayer = (
     MailRepository.of({
       listMailboxes: (input) => listMailboxes(db, input),
       listConversations: (input) => listConversations(db, input),
+      listConversationPage: (input) => listConversationPage(db, input),
       getConversation: (input) => getConversation(db, input),
       getDraft: (input) => getDraft(db, input),
       getRawMessageContentRef: (input) => getRawMessageContentRef(db, input),

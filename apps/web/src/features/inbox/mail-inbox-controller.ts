@@ -1,6 +1,12 @@
 import type { MailComposerProps } from './components/mail/mail-composer'
 import type { MailMessageProps } from './components/mail/mail-message'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+} from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import type {
@@ -48,6 +54,8 @@ export type MailListResult =
       entries: MailConversationListEntry[]
       refreshing?: boolean
       loadingMore?: boolean
+      hasMore?: boolean
+      loadMore?: () => void
     }
 
 export type MailDetailResult =
@@ -324,10 +332,14 @@ function composerDraftInput(
 export function useMailInboxController(input: {
   workspaceId: string
   selectedConversationId: string | null
+  search: string
+  unreadOnly: boolean
 }): MailInboxController {
   const queryClient = useQueryClient()
   const [composer, setComposer] = useState<ComposerState | null>(null)
-  const inboxQuery = useQuery(mailInboxOptions(input.workspaceId))
+  const inboxQuery = useInfiniteQuery(
+    mailInboxOptions(input.workspaceId, input.search, input.unreadOnly),
+  )
   const conversationQuery = useQuery({
     ...mailConversationOptions(
       input.workspaceId,
@@ -335,64 +347,106 @@ export function useMailInboxController(input: {
     ),
     enabled: input.selectedConversationId !== null,
   })
+  const deleteAttachmentMutation = useMutation({
+    mutationFn: deleteMailAttachment,
+    onError: () => toast.error('Attachment could not be removed'),
+  })
+  const uploadAttachmentMutation = useMutation({
+    mutationFn: uploadMailAttachment,
+    onSuccess: (attachment) => {
+      setComposer((current) =>
+        current
+          ? {
+              ...current,
+              attachments: [
+                ...current.attachments,
+                {
+                  id: attachment.attachmentId,
+                  filename: attachment.fileName,
+                  contentType: attachment.contentType,
+                  sizeLabel: sizeLabel(attachment.sizeBytes),
+                },
+              ],
+              error: undefined,
+            }
+          : current,
+      )
+    },
+    onError: (error) => {
+      setComposer((current) =>
+        current
+          ? {
+              ...current,
+              error:
+                error instanceof Error
+                  ? error.message
+                  : 'Attachment upload failed.',
+            }
+          : current,
+      )
+    },
+  })
   const stateMutation = useMutation({
     mutationFn: changeMailConversationState,
     onMutate: async ({ data }) => {
       await queryClient.cancelQueries({
         queryKey: mailKeys.inbox(input.workspaceId),
       })
-      const previous = queryClient.getQueryData<MailInboxSnapshot>(
-        mailKeys.inbox(input.workspaceId),
-      )
-      queryClient.setQueryData<MailInboxSnapshot>(
-        mailKeys.inbox(input.workspaceId),
+      const previous = queryClient.getQueriesData<
+        InfiniteData<MailInboxSnapshot>
+      >({ queryKey: mailKeys.inbox(input.workspaceId) })
+      queryClient.setQueriesData<InfiniteData<MailInboxSnapshot>>(
+        { queryKey: mailKeys.inbox(input.workspaceId) },
         (current) =>
           current
             ? {
                 ...current,
-                conversations: current.conversations.map((conversation) =>
-                  conversation.id !== data.conversationId
-                    ? conversation
-                    : {
-                        ...conversation,
-                        unread:
-                          data.action === 'mark-read'
-                            ? false
-                            : data.action === 'mark-unread'
-                              ? true
-                              : conversation.unread,
-                        state: {
-                          lastReadMessageId:
-                            conversation.state?.lastReadMessageId ?? null,
-                          readAt: conversation.state?.readAt ?? null,
-                          archivedAt:
-                            data.action === 'archive'
-                              ? UtcTimestamp.make(new Date().toISOString())
-                              : data.action === 'unarchive'
-                                ? null
-                                : (conversation.state?.archivedAt ?? null),
-                          mutedAt: conversation.state?.mutedAt ?? null,
-                          pinned:
-                            data.action === 'pin'
-                              ? true
-                              : data.action === 'unpin'
+                pages: current.pages.map((snapshot) => ({
+                  ...snapshot,
+                  page: {
+                    ...snapshot.page,
+                    items: snapshot.page.items.map((conversation) =>
+                      conversation.id !== data.conversationId
+                        ? conversation
+                        : {
+                            ...conversation,
+                            unread:
+                              data.action === 'mark-read'
                                 ? false
-                                : (conversation.state?.pinned ?? false),
-                        },
-                      },
-                ),
+                                : data.action === 'mark-unread'
+                                  ? true
+                                  : conversation.unread,
+                            state: {
+                              lastReadMessageId:
+                                conversation.state?.lastReadMessageId ?? null,
+                              readAt: conversation.state?.readAt ?? null,
+                              archivedAt:
+                                data.action === 'archive'
+                                  ? UtcTimestamp.make(new Date().toISOString())
+                                  : data.action === 'unarchive'
+                                    ? null
+                                    : (conversation.state?.archivedAt ?? null),
+                              mutedAt: conversation.state?.mutedAt ?? null,
+                              pinned:
+                                data.action === 'pin'
+                                  ? true
+                                  : data.action === 'unpin'
+                                    ? false
+                                    : (conversation.state?.pinned ?? false),
+                            },
+                          },
+                    ),
+                  },
+                })),
               }
             : current,
       )
       return { previous }
     },
     onError: (_error, _variables, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(
-          mailKeys.inbox(input.workspaceId),
-          context.previous,
-        )
-      }
+      context?.previous.forEach(([queryKey, snapshot]) =>
+        queryClient.setQueryData(queryKey, snapshot),
+      )
       toast.error('Mail action failed')
     },
     onSettled: () =>
@@ -493,11 +547,12 @@ export function useMailInboxController(input: {
     onError: () => toast.error('Agent assignment could not be changed'),
   })
 
-  const mailboxes = inboxQuery.data?.mailboxes ?? []
+  const mailboxes = inboxQuery.data?.pages[0]?.mailboxes ?? []
   const sendableMailboxes = mailboxes.filter(
     (mailbox) => mailbox.sendCapability !== 'read_only',
   )
-  const summaries = inboxQuery.data?.conversations ?? []
+  const summaries =
+    inboxQuery.data?.pages.flatMap((snapshot) => snapshot.page.items) ?? []
   const summaryById = useMemo(
     () =>
       new Map<string, ConversationSummary>(
@@ -505,14 +560,18 @@ export function useMailInboxController(input: {
       ),
     [summaries],
   )
+  const summaryFor = (conversationId: string) =>
+    summaryById.get(conversationId) ??
+    (conversationQuery.data?.conversation.id === conversationId
+      ? conversationQuery.data.conversation
+      : undefined)
   const beginCompose = (
     conversationId: string | null,
     replyToMessageId?: string,
     mode: 'reply' | 'reply-all' | 'forward' = 'reply',
   ) => {
     const detail = conversationQuery.data
-    const summary =
-      conversationId === null ? null : summaryById.get(conversationId)
+    const summary = conversationId === null ? null : summaryFor(conversationId)
     const mailbox =
       sendableMailboxes.find(
         (candidate) => candidate.id === summary?.mailboxId,
@@ -618,7 +677,9 @@ export function useMailInboxController(input: {
           status: 'ready',
           entries: summaries
             .filter(
-              (summary) => summary.state?.archivedAt === null || !summary.state,
+              (summary) =>
+                (summary.state?.archivedAt === null || !summary.state) &&
+                (!input.unreadOnly || summary.unread),
             )
             .map((summary) => ({
               conversation: summaryView(summary),
@@ -626,6 +687,9 @@ export function useMailInboxController(input: {
                 summary.lastMessageAt ?? '1970-01-01T00:00:00.000Z',
             })),
           refreshing: inboxQuery.isFetching,
+          loadingMore: inboxQuery.isFetchingNextPage,
+          hasMore: inboxQuery.hasNextPage,
+          loadMore: () => void inboxQuery.fetchNextPage(),
         }
   const detail: MailDetailResult = !input.selectedConversationId
     ? { status: 'idle' }
@@ -719,13 +783,13 @@ export function useMailInboxController(input: {
       openComposer: () => beginCompose(null),
       closeComposer: () => setComposer(null),
       toggleStar: (conversationId) => {
-        const summary = summaryById.get(conversationId)
+        const summary = summaryFor(conversationId)
         mutateState(conversationId, summary?.state?.pinned ? 'unpin' : 'pin')
       },
       toggleRead: (conversationId) =>
         mutateState(
           conversationId,
-          summaryById.get(conversationId)?.unread ? 'mark-read' : 'mark-unread',
+          summaryFor(conversationId)?.unread ? 'mark-read' : 'mark-unread',
         ),
       archive: (conversationId) => mutateState(conversationId, 'archive'),
       viewSource: (conversationId) => {

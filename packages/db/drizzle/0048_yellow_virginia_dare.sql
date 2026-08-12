@@ -1,0 +1,4 @@
+CREATE INDEX "mail_conversation_workspace_activity_keyset_idx" ON "mail_conversation" USING btree ("workspace_id","last_message_at","id");--> statement-breakpoint
+CREATE INDEX "mail_conversation_subject_search_idx" ON "mail_conversation" USING gin (to_tsvector('simple', coalesce("subject", '')));--> statement-breakpoint
+CREATE INDEX "mail_message_content_search_idx" ON "mail_message" USING gin (to_tsvector('simple', coalesce("subject", '') || ' ' || coalesce("sender_name", '') || ' ' || coalesce("sender_address", '') || ' ' || coalesce("text_body", '')));--> statement-breakpoint
+CREATE INDEX "mail_recipient_search_idx" ON "mail_recipient" USING gin (to_tsvector('simple', coalesce("display_name", '') || ' ' || coalesce("address", '')));

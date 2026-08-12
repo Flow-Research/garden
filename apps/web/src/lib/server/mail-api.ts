@@ -10,6 +10,7 @@ import {
   MailSyncAccountId,
   MessageId,
   NonNegativeInt,
+  PositiveInt,
   SaveDraftInput,
   UpdateConversationStateInput,
   UtcTimestamp,
@@ -31,7 +32,7 @@ import {
   type AssignmentSnapshot,
   type ConversationActorState,
   type ConversationDetail,
-  type ConversationSummary,
+  type ConversationPage,
   type DraftSnapshot,
   type MemberDraftCommandInput,
 } from '@garden/server/mail'
@@ -92,7 +93,7 @@ export type MailConversationStateAction =
 
 export type MailInboxSnapshot = {
   mailboxes: ReadonlyArray<AccessibleMailbox>
-  conversations: ReadonlyArray<ConversationSummary>
+  page: ConversationPage
 }
 
 export type EligibleMailAgent = {
@@ -130,22 +131,43 @@ const withMemberRepository = <A, E>(
 /** Lists actor-visible mailboxes and their conversations in one request. */
 export async function getMailInboxSnapshot(
   context: AppRequestContext,
-  workspaceId: string,
+  input: {
+    workspaceId: string
+    cursor: { activityAt: string; conversationId: string } | null
+    query: string
+    unreadOnly: boolean
+    limit: number
+  },
 ): Promise<MailInboxSnapshot> {
   return await Effect.runPromise(
-    withMemberRepository(context, workspaceId, ({ workspaceId, actor }) =>
+    withMemberRepository(context, input.workspaceId, ({ workspaceId, actor }) =>
       Effect.gen(function* () {
         const repository = yield* MailRepository
-        const mailboxes = yield* repository.listMailboxes({
-          workspaceId,
-          actor,
-        })
-        const conversations = yield* repository.listConversations({
+        const mailboxes =
+          input.cursor === null
+            ? yield* repository.listMailboxes({ workspaceId, actor })
+            : []
+        const cursor =
+          input.cursor === null
+            ? null
+            : {
+                activityAt: yield* Schema.decodeUnknownEffect(UtcTimestamp)(
+                  input.cursor.activityAt,
+                ),
+                conversationId: yield* Schema.decodeUnknownEffect(
+                  ConversationId,
+                )(input.cursor.conversationId),
+              }
+        const page = yield* repository.listConversationPage({
           workspaceId,
           actor,
           mailboxId: null,
+          cursor,
+          query: input.query,
+          unreadOnly: input.unreadOnly,
+          limit: yield* Schema.decodeUnknownEffect(PositiveInt)(input.limit),
         })
-        return { mailboxes, conversations }
+        return { mailboxes, page }
       }),
     ),
   )

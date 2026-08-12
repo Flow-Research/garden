@@ -77,6 +77,28 @@ export interface ListConversationsInput extends Schema.Schema.Type<
   typeof ListConversationsInput
 > {}
 
+/** Opaque keyset position for the descending conversation activity order. */
+export const MailConversationCursor = Schema.Struct({
+  activityAt: UtcTimestamp,
+  conversationId: ConversationId,
+})
+export interface MailConversationCursor extends Schema.Schema.Type<
+  typeof MailConversationCursor
+> {}
+
+export const ListConversationPageInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  actor: MailActor,
+  mailboxId: Schema.NullOr(MailboxId),
+  cursor: Schema.NullOr(MailConversationCursor),
+  query: Schema.String,
+  unreadOnly: Schema.Boolean,
+  limit: PositiveInt,
+})
+export interface ListConversationPageInput extends Schema.Schema.Type<
+  typeof ListConversationPageInput
+> {}
+
 export const GetConversationInput = Schema.Struct({
   workspaceId: WorkspaceId,
   actor: MailActor,
@@ -166,6 +188,14 @@ export const ConversationSummary = Schema.Struct({
 })
 export interface ConversationSummary extends Schema.Schema.Type<
   typeof ConversationSummary
+> {}
+
+export const ConversationPage = Schema.Struct({
+  items: Schema.Array(ConversationSummary),
+  nextCursor: Schema.NullOr(MailConversationCursor),
+})
+export interface ConversationPage extends Schema.Schema.Type<
+  typeof ConversationPage
 > {}
 
 export const RepositoryRecipient = Schema.Struct({
@@ -457,6 +487,9 @@ export interface MailRepositoryService {
   readonly listConversations: (
     input: ListConversationsInput,
   ) => Effect.Effect<ReadonlyArray<ConversationSummary>, MailRepositoryError>
+  readonly listConversationPage: (
+    input: ListConversationPageInput,
+  ) => Effect.Effect<ConversationPage, MailRepositoryError>
   readonly getConversation: (
     input: GetConversationInput,
   ) => Effect.Effect<ConversationDetail, MailRepositoryError>

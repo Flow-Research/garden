@@ -75,6 +75,7 @@ const repositoryLayer = (
   const service: MailRepositoryService = {
     listMailboxes: unavailable,
     listConversations: unavailable,
+    listConversationPage: unavailable,
     getConversation: unavailable,
     getDraft: unavailable,
     getRawMessageContentRef: unavailable,

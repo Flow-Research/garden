@@ -1,5 +1,10 @@
 import { Option } from 'effect'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { useState } from 'react'
 import {
   connectIntegration,
@@ -132,7 +137,7 @@ export function useGmailImportController(input: {
     selectedSyncState?.latestRun?.status === 'importing'
 
   // A second observer on the shared key makes imported rows appear progressively.
-  useQuery({
+  useInfiniteQuery({
     ...mailInboxOptions(input.workspaceId),
     enabled: active,
     refetchInterval: active ? 2_000 : false,
