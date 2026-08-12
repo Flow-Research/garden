@@ -1,8 +1,10 @@
 import {
   AgentId,
+  AttachmentId,
   ConversationId,
   CreateDraftInput,
   DraftId,
+  EditableAttachment,
   EmailAddress,
   MailActor,
   MailAddressId,
@@ -24,10 +26,15 @@ import {
   mailSyncAccount,
 } from '@garden/db/schema'
 import {
+  deleteUnreferencedDraftAttachment,
+  DraftAttachmentUploadInput,
+  authorizeDraftAttachmentUpload,
   MailRepository,
   MailDraftApplication,
   mailDraftApplicationLayer,
+  makeR2MailObjectStoreLayer,
   makeMailRepositoryLayer,
+  storeDraftAttachment,
   type AccessibleMailbox,
   type AssignmentSnapshot,
   type ConversationActorState,
@@ -81,6 +88,21 @@ export type MailDraftValuesInput = {
   bcc: string[]
   subject: string
   body: string
+  htmlBody: string | null
+  attachments: Array<{
+    attachmentId: string
+    disposition: 'attachment' | 'inline'
+    contentId: string | null
+    position: number
+  }>
+}
+
+export type MailDraftAttachmentUploadInput = {
+  workspaceId: string
+  mailboxId: string
+  fileName: string
+  contentType: string
+  content: Uint8Array
 }
 
 export type MailConversationStateAction =
@@ -381,46 +403,6 @@ export async function assignMailConversationAgent(
           },
           assignedBy: actor,
         })
-        const detail = yield* repository.getConversation({
-          workspaceId,
-          actor,
-          conversationId,
-        })
-        const session = yield* Effect.tryPromise({
-          try: () => context.auth.getSession(),
-          catch: (cause) => cause,
-        })
-        if (!session?.user) {
-          return yield* new MailRequestUnauthorizedError({
-            message: 'Authentication required.',
-          })
-        }
-        const params = MailAgentDispatchParams.make({
-          workspaceId,
-          ownerUserId: yield* Schema.decodeUnknownEffect(
-            Schema.String.check(Schema.isUUID()),
-          )(session.user.id),
-          conversationId,
-          agentId,
-          mailboxId: detail.conversation.mailboxId,
-          eventId: assignment.id,
-          reason: 'assignment',
-        })
-        yield* dispatchAssignedMailAgent(
-          context.env.MAIL_AGENT_WORKFLOW,
-          params,
-        ).pipe(
-          Effect.catch((cause) =>
-            Effect.logWarning('mail.agent.assignment_dispatch_failed').pipe(
-              Effect.annotateLogs({
-                workspaceId,
-                conversationId,
-                agentId,
-                cause,
-              }),
-            ),
-          ),
-        )
         return assignment
       }),
     ),
@@ -483,6 +465,69 @@ const draftRecipients = (values: MailDraftValuesInput) =>
     return recipients
   })
 
+/** Decodes attachment handles; storage keys never enter this contract. */
+const draftAttachments = (values: MailDraftValuesInput) =>
+  Effect.forEach(values.attachments, (attachment) =>
+    Schema.decodeUnknownEffect(EditableAttachment)(attachment),
+  )
+
+/**
+ * Stores one member upload after proving writable mailbox access. R2 and DB
+ * operations remain in the Effect application seam; this Promise is only the
+ * TanStack server-function boundary.
+ */
+export async function uploadMailDraftAttachment(
+  context: AppRequestContext,
+  values: MailDraftAttachmentUploadInput,
+) {
+  return await Effect.runPromise(
+    Effect.gen(function* () {
+      const input = yield* Schema.decodeUnknownEffect(
+        DraftAttachmentUploadInput,
+      )(values)
+      const authority = yield* requireMailMemberAuthority(
+        context,
+        input.workspaceId,
+      )
+      const repositoryLayer = makeMailRepositoryLayer(authority.db)
+      const mailboxes = yield* Effect.gen(function* () {
+        const repository = yield* MailRepository
+        return yield* repository.listMailboxes({
+          workspaceId: input.workspaceId,
+          actor: authority.actor,
+        })
+      }).pipe(Effect.provide(repositoryLayer))
+      yield* authorizeDraftAttachmentUpload(mailboxes, input.mailboxId)
+      return yield* storeDraftAttachment(authority.db, input).pipe(
+        Effect.provide(makeR2MailObjectStoreLayer(context.env.FILES)),
+      )
+    }),
+  )
+}
+
+/** Deletes an abandoned, unreferenced upload inside the member workspace. */
+export async function deleteMailDraftAttachment(
+  context: AppRequestContext,
+  values: { workspaceId: string; mailboxId: string; attachmentId: string },
+): Promise<boolean> {
+  return await Effect.runPromise(
+    Effect.gen(function* () {
+      const workspaceId = yield* decodeWorkspaceId(values.workspaceId)
+      const attachmentId = yield* Schema.decodeUnknownEffect(AttachmentId)(
+        values.attachmentId,
+      )
+      const authority = yield* requireMailMemberAuthority(context, workspaceId)
+      return yield* deleteUnreferencedDraftAttachment(authority.db, {
+        workspaceId,
+        mailboxId: yield* Schema.decodeUnknownEffect(MailboxId)(
+          values.mailboxId,
+        ),
+        attachmentId,
+      }).pipe(Effect.provide(makeR2MailObjectStoreLayer(context.env.FILES)))
+    }),
+  )
+}
+
 /** Creates a new draft or saves the caller-owned optimistic revision. */
 export async function persistMailDraft(
   context: AppRequestContext,
@@ -495,6 +540,8 @@ export async function persistMailDraft(
       const repositoryProgram = Effect.gen(function* () {
         const repository = yield* MailRepository
         const recipients = yield* draftRecipients(values)
+        const attachments = yield* draftAttachments(values)
+        const htmlBody = values.htmlBody
         if (values.draftId !== null) {
           const input = yield* Schema.decodeUnknownEffect(SaveDraftInput)({
             workspaceId,
@@ -503,9 +550,9 @@ export async function persistMailDraft(
             expectedRevision: NonNegativeInt.make(values.expectedRevision ?? 0),
             subject: values.subject,
             textBody: values.body || null,
-            htmlBody: null,
+            htmlBody,
             recipients,
-            attachments: [],
+            attachments,
           })
           return yield* repository.saveDraft(input)
         }
@@ -590,9 +637,9 @@ export async function persistMailDraft(
               : MessageId.make(values.replyToMessageId),
           subject: values.subject,
           textBody: values.body || null,
-          htmlBody: null,
+          htmlBody,
           recipients,
-          attachments: [],
+          attachments,
         })
         return yield* repository.createDraft(input)
       })

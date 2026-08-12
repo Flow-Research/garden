@@ -157,6 +157,8 @@ export {
   GmailListMessagesResponse,
   GmailModifyMessageInput,
   GmailModifyMessageResponse,
+  GmailModifyThreadInput,
+  GmailModifyThreadResponse,
   GmailMessageReference,
   GmailProfile,
   GmailRawMessage,
