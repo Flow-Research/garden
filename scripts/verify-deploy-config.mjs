@@ -195,6 +195,4 @@ assert.match(
   /GARDEN_DEPLOY_TARGET=preview/,
 )
 
-console.log(
-  'deploy config passed: preview shares only approved data resources',
-)
+console.log('deploy config passed: preview shares only approved data resources')

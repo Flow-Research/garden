@@ -13,6 +13,7 @@ export interface DeploymentTarget {
   readonly databaseUrlEnv: string
   readonly executorDatabaseId: string
   readonly executorDatabaseName: string
+  readonly executorDatabaseDelete: boolean
   readonly executorBlobsId: string
   readonly executorBlobsBucket: string
   readonly agentDoId: string
