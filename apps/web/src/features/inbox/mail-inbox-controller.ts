@@ -19,6 +19,7 @@ import type {
 import {
   assignAgentToMailConversation,
   changeMailConversationState,
+  deleteMailAttachment,
   discardMailDraft,
   mailConversationOptions,
   mailInboxOptions,
@@ -27,6 +28,7 @@ import {
   sendMailDraft,
   unassignAgentFromMailConversation,
   requestMailDraftChanges,
+  uploadMailAttachment,
 } from './mail.queries'
 import type {
   MailDraftValuesInput,
@@ -36,6 +38,7 @@ import { UtcTimestamp } from '@garden/core/mail'
 import type {
   MailConversationSummaryView,
   MailConversationView,
+  MailAttachmentView,
   MailFolderAction,
   MailMessageView,
 } from './components/mail/types'
@@ -113,6 +116,8 @@ const EMPTY_CONVERSATION_ID = '00000000-0000-4000-8000-000000000000'
 
 type ComposerState = {
   values: MailComposerProps['values']
+  attachments: MailAttachmentView[]
+  removedAttachmentIds: string[]
   conversationId: string | null
   replyToMessageId?: string
   draftId: string | null
@@ -255,6 +260,12 @@ function draftView(
     textPreview: draft.textBody ?? undefined,
     status: draft.status === 'send_failed' ? 'failed' : 'draft',
     draftStatus: draft.status,
+    attachments: draft.attachments.map((attachment) => ({
+      id: attachment.attachmentId,
+      filename: attachment.fileName,
+      contentType: attachment.contentType,
+      sizeLabel: sizeLabel(attachment.sizeBytes),
+    })),
     agentAuthored: draft.author._tag === 'Agent',
     authorLabel: draft.author._tag === 'Agent' ? 'Garden agent' : 'Team member',
   }
@@ -321,6 +332,13 @@ function composerDraftInput(
     bcc: recipientValues(state.values.bcc),
     subject: state.values.subject,
     body: state.values.body,
+    htmlBody: state.values.htmlBody || null,
+    attachments: state.attachments.map((attachment, position) => ({
+      attachmentId: attachment.id,
+      disposition: 'attachment',
+      contentId: null,
+      position,
+    })),
   }
 }
 
@@ -457,9 +475,23 @@ export function useMailInboxController(input: {
   const draftMutation = useMutation({
     mutationFn: saveMailDraft,
     onSuccess: (draft) => {
+      for (const attachmentId of composer?.removedAttachmentIds ?? []) {
+        deleteAttachmentMutation.mutate({
+          data: {
+            workspaceId: input.workspaceId,
+            mailboxId: composer?.values.from ?? draft.mailboxId,
+            attachmentId,
+          },
+        })
+      }
       setComposer((current) =>
         current
-          ? { ...current, draftId: draft.id, revision: draft.revision }
+          ? {
+              ...current,
+              draftId: draft.id,
+              revision: draft.revision,
+              removedAttachmentIds: [],
+            }
           : current,
       )
       void queryClient.invalidateQueries({
@@ -617,7 +649,10 @@ export function useMailInboxController(input: {
         from: mailbox.id,
         subject,
         body: '',
+        htmlBody: '',
       },
+      attachments: [],
+      removedAttachmentIds: [],
       conversationId,
       replyToMessageId:
         mode === 'forward' ? undefined : (replyToMessageId ?? source?.id),
@@ -651,7 +686,15 @@ export function useMailInboxController(input: {
         from: mailbox.id,
         subject: draft.subject,
         body: draft.textBody ?? '',
+        htmlBody: draft.htmlBody ?? '',
       },
+      attachments: draft.attachments.map((attachment) => ({
+        id: attachment.attachmentId,
+        filename: attachment.fileName,
+        contentType: attachment.contentType,
+        sizeLabel: sizeLabel(attachment.sizeBytes),
+      })),
+      removedAttachmentIds: [],
       conversationId: draft.conversationId,
       ...(draft.replyToMessageId
         ? { replyToMessageId: draft.replyToMessageId }
@@ -738,6 +781,7 @@ export function useMailInboxController(input: {
             ccBccVisible: composer.ccBccVisible,
             savingDraft: draftMutation.isPending,
             sending: sendMutation.isPending,
+            uploadingAttachment: uploadAttachmentMutation.isPending,
             error: composer.error,
             agentAttribution: composer.agentAttribution,
             onChange: (values) =>
@@ -748,6 +792,29 @@ export function useMailInboxController(input: {
               setComposer((current) =>
                 current
                   ? { ...current, ccBccVisible: !current.ccBccVisible }
+                  : current,
+              ),
+            onAttach: (file) => {
+              if (!composer) return
+              uploadAttachmentMutation.mutate({
+                workspaceId: input.workspaceId,
+                mailboxId: composer.values.from,
+                file,
+              })
+            },
+            onRemoveAttachment: (attachmentId) =>
+              setComposer((current) =>
+                current
+                  ? {
+                      ...current,
+                      attachments: current.attachments.filter(
+                        (attachment) => attachment.id !== attachmentId,
+                      ),
+                      removedAttachmentIds: [
+                        ...current.removedAttachmentIds,
+                        attachmentId,
+                      ],
+                    }
                   : current,
               ),
             onSend: () => {
@@ -774,7 +841,19 @@ export function useMailInboxController(input: {
                 data: composerDraftInput(input.workspaceId, composer),
               })
             },
-            onDiscard: () => setComposer(null),
+            attachments: composer.attachments,
+            onDiscard: () => {
+              for (const attachment of composer.attachments) {
+                deleteAttachmentMutation.mutate({
+                  data: {
+                    workspaceId: input.workspaceId,
+                    mailboxId: composer.values.from,
+                    attachmentId: attachment.id,
+                  },
+                })
+              }
+              setComposer(null)
+            },
             onClose: () => setComposer(null),
           },
         }

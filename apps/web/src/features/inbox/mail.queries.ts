@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { requireAppRequestContext } from '@/lib/server/context'
 import {
   assignMailConversationAgent,
+  deleteMailDraftAttachment,
   getEligibleMailAgents,
   getMailAgentSession,
   getMailConversation,
@@ -13,6 +14,7 @@ import {
   persistMailDraft,
   requestPersistedMailDraftChanges,
   requestMailDraftDelivery,
+  uploadMailDraftAttachment,
   unassignMailConversationAgent,
   type MailConversationStateAction,
   type MailDraftValuesInput,
@@ -60,6 +62,15 @@ const draftValuesInput = z.object({
   bcc: z.array(z.email()),
   subject: z.string(),
   body: z.string(),
+  htmlBody: z.string().nullable(),
+  attachments: z.array(
+    z.object({
+      attachmentId: z.uuid(),
+      disposition: z.enum(['attachment', 'inline']),
+      contentId: z.string().min(1).nullable(),
+      position: z.number().int().nonnegative(),
+    }),
+  ),
 })
 const sendDraftInput = workspaceInput.extend({
   draftId: z.uuid(),
@@ -67,6 +78,10 @@ const sendDraftInput = workspaceInput.extend({
 })
 const changeDraftInput = sendDraftInput
 const conversationAgentInput = conversationInput.extend({ agentId: z.uuid() })
+const deleteAttachmentInput = workspaceInput.extend({
+  mailboxId: z.uuid(),
+  attachmentId: z.uuid(),
+})
 
 export const mailKeys = {
   all: (workspaceId: string) => ['garden-mail', workspaceId] as const,
@@ -124,6 +139,34 @@ const persistDraft = createServerFn({ method: 'POST' })
     persistMailDraft(requireAppRequestContext(context), data),
   )
 
+const uploadAttachment = createServerFn({ method: 'POST' })
+  .inputValidator((value: FormData) => value)
+  .handler(async ({ context, data }) => {
+    const workspaceId = data.get('workspaceId')
+    const mailboxId = data.get('mailboxId')
+    const file = data.get('file')
+    if (
+      typeof workspaceId !== 'string' ||
+      typeof mailboxId !== 'string' ||
+      !(file instanceof File)
+    ) {
+      throw new Error('Workspace, mailbox, and attachment file are required.')
+    }
+    return await uploadMailDraftAttachment(requireAppRequestContext(context), {
+      workspaceId,
+      mailboxId,
+      fileName: file.name,
+      contentType: file.type || 'application/octet-stream',
+      content: new Uint8Array(await file.arrayBuffer()),
+    })
+  })
+
+const deleteAttachment = createServerFn({ method: 'POST' })
+  .inputValidator(deleteAttachmentInput)
+  .handler(({ context, data }) =>
+    deleteMailDraftAttachment(requireAppRequestContext(context), data),
+  )
+
 const dispatchDraft = createServerFn({ method: 'POST' })
   .inputValidator(sendDraftInput)
   .handler(({ context, data }) =>
@@ -170,6 +213,26 @@ export async function saveMailDraft(input: {
   data: MailDraftValuesInput
 }): Promise<DraftSnapshot> {
   return await persistDraft(input)
+}
+
+/** Uploads one file through TanStack's multipart server-function transport. */
+export async function uploadMailAttachment(input: {
+  workspaceId: string
+  mailboxId: string
+  file: File
+}) {
+  const data = new FormData()
+  data.set('workspaceId', input.workspaceId)
+  data.set('mailboxId', input.mailboxId)
+  data.set('file', input.file)
+  return await uploadAttachment({ data })
+}
+
+/** Deletes an abandoned upload without revealing its internal storage key. */
+export async function deleteMailAttachment(input: {
+  data: { workspaceId: string; mailboxId: string; attachmentId: string }
+}): Promise<boolean> {
+  return await deleteAttachment(input)
 }
 
 /** Starts the deterministic durable delivery Workflow for a persisted draft. */

@@ -68,7 +68,7 @@ describe('MailConversationList', () => {
       <MailConversationList
         state="ready"
         conversations={[conversation]}
-        renderConversation={(item) => <div>{item.subject}</div>}
+        renderConversation={(item) => <div key={item.id}>{item.subject}</div>}
         hasMore
         onLoadMore={onLoadMore}
       />,

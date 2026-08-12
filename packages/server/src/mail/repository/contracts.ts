@@ -279,7 +279,14 @@ export const DraftSnapshot = Schema.Struct({
   textBody: Schema.NullOr(Schema.String),
   htmlBody: Schema.NullOr(Schema.String),
   recipients: Schema.Array(EditableRecipient),
-  attachments: Schema.Array(EditableAttachment),
+  attachments: Schema.Array(
+    Schema.Struct({
+      ...EditableAttachment.fields,
+      fileName: NonEmptyString,
+      contentType: NonEmptyString,
+      sizeBytes: NonNegativeInt,
+    }),
+  ),
   updatedAt: UtcTimestamp,
 })
 export interface DraftSnapshot extends Schema.Schema.Type<

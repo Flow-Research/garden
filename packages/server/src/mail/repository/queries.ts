@@ -496,8 +496,15 @@ export const loadDraftSnapshot = Effect.fn('MailRepository.loadDraftSnapshot')(
       ),
       databaseEffect('loadDraft.attachments', () =>
         db
-          .select({ reference: mailDraftAttachment })
+          .select({
+            reference: mailDraftAttachment,
+            attachment: mailAttachment,
+          })
           .from(mailDraftAttachment)
+          .innerJoin(
+            mailAttachment,
+            eq(mailAttachment.id, mailDraftAttachment.attachmentId),
+          )
           .where(eq(mailDraftAttachment.draftId, draft.id))
           .orderBy(asc(mailDraftAttachment.position)),
       ),
@@ -532,11 +539,14 @@ export const loadDraftSnapshot = Effect.fn('MailRepository.loadDraftSnapshot')(
           displayName: recipient.displayName,
           address: recipient.address,
         })),
-        attachments: attachments.map(({ reference }) => ({
+        attachments: attachments.map(({ reference, attachment }) => ({
           attachmentId: reference.attachmentId,
           disposition: reference.disposition,
           contentId: reference.contentId,
           position: reference.position,
+          fileName: attachment.fileName,
+          contentType: attachment.contentType,
+          sizeBytes: attachment.sizeBytes,
         })),
         updatedAt: timestamp(draft.updatedAt),
       },

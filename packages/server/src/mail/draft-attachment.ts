@@ -13,7 +13,7 @@ import {
   StorageKey,
   WorkspaceId,
 } from '@garden/core/mail'
-import { and, eq, isNotNull, or } from 'drizzle-orm'
+import { and, eq, isNotNull, like, or } from 'drizzle-orm'
 import { Effect, Schema } from 'effect'
 import { sha256 } from './content-addressing.ts'
 import { MailObjectStore } from './object-store.ts'
@@ -101,11 +101,12 @@ const safeContentType = (value: string): string => {
 /** Draft uploads use an opaque id plus content hash inside the existing mail prefix. */
 const draftAttachmentStorageKey = (input: {
   workspaceId: typeof WorkspaceId.Type
+  mailboxId: typeof MailboxId.Type
   attachmentId: typeof AttachmentId.Type
   contentHash: typeof Sha256.Type
 }): typeof StorageKey.Type =>
   StorageKey.make(
-    `mail/${input.workspaceId}/attachments/drafts/${input.attachmentId}-${input.contentHash}`,
+    `mail/${input.workspaceId}/mailboxes/${input.mailboxId}/attachments/drafts/${input.attachmentId}-${input.contentHash}`,
   )
 
 /**
@@ -135,6 +136,7 @@ export const storeDraftAttachment = Effect.fn('DraftAttachment.store')(
     const contentHash = yield* sha256(input.content)
     const storageKey = draftAttachmentStorageKey({
       workspaceId: input.workspaceId,
+      mailboxId: input.mailboxId,
       attachmentId,
       contentHash,
     })
@@ -190,6 +192,7 @@ export const deleteUnreferencedDraftAttachment = Effect.fn(
   db: GardenDatabase,
   input: {
     workspaceId: typeof WorkspaceId.Type
+    mailboxId: typeof MailboxId.Type
     attachmentId: typeof AttachmentId.Type
   },
 ) {
@@ -210,6 +213,10 @@ export const deleteUnreferencedDraftAttachment = Effect.fn(
           and(
             eq(mailAttachment.workspaceId, input.workspaceId),
             eq(mailAttachment.id, input.attachmentId),
+            like(
+              mailAttachment.storageKey,
+              `mail/${input.workspaceId}/mailboxes/${input.mailboxId}/attachments/drafts/%`,
+            ),
             or(
               isNotNull(mailDraftAttachment.attachmentId),
               isNotNull(mailMessageAttachment.attachmentId),
@@ -237,6 +244,10 @@ export const deleteUnreferencedDraftAttachment = Effect.fn(
           and(
             eq(mailAttachment.workspaceId, input.workspaceId),
             eq(mailAttachment.id, input.attachmentId),
+            like(
+              mailAttachment.storageKey,
+              `mail/${input.workspaceId}/mailboxes/${input.mailboxId}/attachments/drafts/%`,
+            ),
           ),
         )
         .limit(1),
@@ -258,6 +269,10 @@ export const deleteUnreferencedDraftAttachment = Effect.fn(
           and(
             eq(mailAttachment.workspaceId, input.workspaceId),
             eq(mailAttachment.id, input.attachmentId),
+            like(
+              mailAttachment.storageKey,
+              `mail/${input.workspaceId}/mailboxes/${input.mailboxId}/attachments/drafts/%`,
+            ),
           ),
         )
         .returning({ storageKey: mailAttachment.storageKey }),
