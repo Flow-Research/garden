@@ -102,6 +102,7 @@ const repositoryLayer = (
     settleMailSyncItem: unavailable,
     completeMailSyncRun: unavailable,
     failMailSyncRun: unavailable,
+    cancelMailSyncRun: unavailable,
     createDraft: unavailable,
     saveDraft: unavailable,
     transitionDraft: unavailable,

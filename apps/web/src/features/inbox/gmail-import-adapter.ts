@@ -14,6 +14,7 @@ import {
 import { connectionListOptions, workspaceKeys } from '@/lib/workspace/queries'
 import { mailInboxOptions, mailKeys } from './mail.queries'
 import {
+  cancelGmailImport,
   gmailImportKeys,
   gmailImportStatesOptions,
   startGmailImport,
@@ -42,6 +43,7 @@ const importState = (input: {
   checking: boolean
   authorizing: boolean
   starting: boolean
+  cancelling: boolean
   hasAccounts: boolean
   run: {
     status: string
@@ -59,6 +61,13 @@ const importState = (input: {
   if (input.starting) return { status: 'scanning' }
   const run = input.run
   if (run === null) return { status: 'connected' }
+  if (input.cancelling) {
+    return {
+      status: 'cancelling',
+      processed: run.processedMessages,
+      total: run.totalMessages,
+    }
+  }
   if (run.status === 'queued' || run.status === 'enumerating') {
     return { status: 'scanning' }
   }
@@ -83,6 +92,13 @@ const importState = (input: {
       processed: run.processedMessages,
       total: run.totalMessages,
       message: run.error ?? 'Gmail import failed before it could complete.',
+    }
+  }
+  if (run.status === 'cancelled' && run.totalMessages !== null) {
+    return {
+      status: 'paused',
+      processed: run.processedMessages,
+      total: run.totalMessages,
     }
   }
   return { status: 'connected' }
@@ -185,6 +201,18 @@ export function useGmailImportController(input: {
     },
   })
 
+  const cancelMutation = useMutation({
+    mutationFn: (runId: string) =>
+      cancelGmailImport({
+        data: { workspaceId: input.workspaceId, runId },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: gmailImportKeys.all(input.workspaceId),
+      })
+    },
+  })
+
   const startSelectedImport = () => {
     if (effectiveAddress !== null) startMutation.mutate(effectiveAddress)
   }
@@ -194,6 +222,7 @@ export function useGmailImportController(input: {
       checking: connectionsQuery.isLoading || statesQuery.isLoading,
       authorizing: connectMutation.isPending,
       starting: startMutation.isPending,
+      cancelling: cancelMutation.isPending,
       hasAccounts: accounts.length > 0,
       run: selectedSyncState?.latestRun ?? null,
     }),
@@ -205,6 +234,11 @@ export function useGmailImportController(input: {
       selectAccount: setSelectedAddress,
       startImport: startSelectedImport,
       retryImport: startSelectedImport,
+      cancelImport: () => {
+        const runId = selectedSyncState?.latestRun?.id
+        if (runId !== undefined) cancelMutation.mutate(runId)
+      },
+      resumeImport: startSelectedImport,
     },
   }
 }

@@ -30,6 +30,7 @@ import {
 } from './repository/queries.ts'
 import {
   claimPendingMailSyncBatch,
+  cancelMailSyncRun,
   completeMailSyncRun,
   failMailSyncRun,
   finalizeMailSyncEnumeration,
@@ -71,6 +72,7 @@ export const makeMailRepositoryLayer = (
       settleMailSyncItem: (input) => settleMailSyncItem(db, input),
       completeMailSyncRun: (input) => completeMailSyncRun(db, input),
       failMailSyncRun: (input) => failMailSyncRun(db, input),
+      cancelMailSyncRun: (input) => cancelMailSyncRun(db, input),
       createDraft: (input) => createDraft(db, input),
       saveDraft: (input) => saveDraft(db, input),
       transitionDraft: (input) => transitionDraft(db, input),

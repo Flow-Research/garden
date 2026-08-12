@@ -29,6 +29,8 @@ function controllerFor(
       selectAccount: vi.fn(),
       startImport: vi.fn(),
       retryImport: vi.fn(),
+      cancelImport: vi.fn(),
+      resumeImport: vi.fn(),
     },
     ...overrides,
   }
@@ -82,15 +84,12 @@ describe('GmailImportControl', () => {
   })
 
   it('renders durable server counters during sync', () => {
-    render(
-      <GmailImportControl
-        controller={controllerFor({
-          status: 'syncing',
-          processed: 1_248,
-          total: 8_421,
-        })}
-      />,
-    )
+    const controller = controllerFor({
+      status: 'syncing',
+      processed: 1_248,
+      total: 8_421,
+    })
+    render(<GmailImportControl controller={controller} />)
 
     fireEvent.click(
       screen.getByRole('button', {
@@ -103,6 +102,24 @@ describe('GmailImportControl', () => {
         name: 'Syncing 1,248 of 8,421 emails',
       }),
     ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel import' }))
+    expect(controller.actions.cancelImport).toHaveBeenCalledOnce()
+  })
+
+  it('resumes a cancelled run without rescanning its frozen workset', () => {
+    const controller = controllerFor({
+      status: 'paused',
+      processed: 106,
+      total: 19_252,
+    })
+    render(<GmailImportControl controller={controller} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resume import' }))
+    expect(screen.getByText(/saved progress/i)).toBeInTheDocument()
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Resume import' }).at(-1)!,
+    )
+    expect(controller.actions.resumeImport).toHaveBeenCalledOnce()
   })
 
   it('preserves failed progress and delegates retry', () => {

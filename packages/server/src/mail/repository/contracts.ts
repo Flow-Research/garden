@@ -35,6 +35,7 @@ import {
   PersistMailSyncPageInput,
   FinalizeMailSyncEnumerationInput,
   ClaimPendingMailSyncBatchInput,
+  CancelMailSyncRunInput,
   SettleMailSyncItemInput,
   CompleteMailSyncRunInput,
   FailMailSyncRunInput,
@@ -545,6 +546,9 @@ export interface MailRepositoryService {
   ) => Effect.Effect<MailSyncRun, MailRepositoryError>
   readonly failMailSyncRun: (
     input: FailMailSyncRunInput,
+  ) => Effect.Effect<MailSyncRun, MailRepositoryError>
+  readonly cancelMailSyncRun: (
+    input: CancelMailSyncRunInput,
   ) => Effect.Effect<MailSyncRun, MailRepositoryError>
   readonly createDraft: (
     input: CreateDraftInput,

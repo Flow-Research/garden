@@ -1,4 +1,5 @@
 import {
+  CancelMailSyncRunInput,
   EmailAddress,
   MailSyncRunId,
   UserId,
@@ -27,6 +28,7 @@ export class GmailImportConnectionError extends Schema.TaggedErrorClass<GmailImp
       'not_found',
       'invalid_identity',
       'dispatch_failed',
+      'cancel_failed',
     ]),
     message: Schema.String,
     cause: Schema.optional(Schema.Defect()),
@@ -212,6 +214,92 @@ export async function startPersonalGmailImport(
         ),
       )
       return run
+    }),
+  )
+}
+
+/**
+ * Terminates the caller-owned Workflow before marking its durable workset
+ * paused. Unknown/terminal runtime state is safe to cancel in Postgres because
+ * no live instance remains; active state must acknowledge termination first.
+ */
+export async function cancelPersonalGmailImport(
+  context: AppRequestContext,
+  input: { workspaceId: string; runId: string },
+): Promise<MailSyncRun> {
+  return await Effect.runPromise(
+    Effect.gen(function* () {
+      const identity = yield* requireGmailImportAuthority(
+        context,
+        input.workspaceId,
+      )
+      const runId = yield* Schema.decodeUnknownEffect(MailSyncRunId)(
+        input.runId,
+      )
+      const repositoryLayer = makeMailRepositoryLayer(identity.authority.db)
+      const run = yield* Effect.gen(function* () {
+        const repository = yield* MailRepository
+        const states = yield* repository.listPersonalMailSyncStates({
+          workspaceId: identity.workspaceId,
+          userId: identity.userId,
+          provider: 'gmail',
+        })
+        const owned = states.find((state) => state.latestRun?.id === runId)
+        if (owned?.latestRun === null || owned?.latestRun === undefined) {
+          return yield* new GmailImportConnectionError({
+            reason: 'not_found',
+            message: 'Gmail import run was not found for this user.',
+          })
+        }
+        return owned.latestRun
+      }).pipe(Effect.provide(repositoryLayer))
+
+      const instance = yield* Effect.tryPromise({
+        try: () =>
+          context.env.GMAIL_IMPORT_WORKFLOW.get(run.workflowInstanceId),
+        catch: (cause) =>
+          new GmailImportConnectionError({
+            reason: 'cancel_failed',
+            message: 'Garden could not inspect the Gmail import Workflow.',
+            cause,
+          }),
+      })
+      const runtime = yield* Effect.tryPromise({
+        try: () => instance.status(),
+        catch: (cause) =>
+          new GmailImportConnectionError({
+            reason: 'cancel_failed',
+            message: 'Garden could not inspect the Gmail import Workflow.',
+            cause,
+          }),
+      })
+      if (
+        runtime.status === 'queued' ||
+        runtime.status === 'running' ||
+        runtime.status === 'waiting' ||
+        runtime.status === 'paused' ||
+        runtime.status === 'waitingForPause'
+      ) {
+        yield* Effect.tryPromise({
+          try: () => instance.terminate(),
+          catch: (cause) =>
+            new GmailImportConnectionError({
+              reason: 'cancel_failed',
+              message: 'Garden could not stop the Gmail import Workflow.',
+              cause,
+            }),
+        })
+      }
+
+      return yield* Effect.gen(function* () {
+        const repository = yield* MailRepository
+        return yield* repository.cancelMailSyncRun(
+          CancelMailSyncRunInput.make({
+            workspaceId: identity.workspaceId,
+            runId,
+          }),
+        )
+      }).pipe(Effect.provide(repositoryLayer))
     }),
   )
 }

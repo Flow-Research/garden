@@ -141,6 +141,8 @@ function connectedGmailController(): GmailImportController {
       selectAccount: vi.fn(),
       startImport: vi.fn(),
       retryImport: vi.fn(),
+      cancelImport: vi.fn(),
+      resumeImport: vi.fn(),
     },
   }
 }

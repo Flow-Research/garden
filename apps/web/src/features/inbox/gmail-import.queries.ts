@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { PersonalMailSyncState } from '@garden/core/mail'
 import { requireAppRequestContext } from '@/lib/server/context'
 import {
+  cancelPersonalGmailImport,
   getPersonalGmailImportStates,
   startPersonalGmailImport,
 } from '@/lib/server/mail-sync-api'
@@ -12,6 +13,7 @@ const workspaceInput = z.object({ workspaceId: z.uuid() })
 const startInput = workspaceInput.extend({
   connectionAddress: z.string().trim().min(1),
 })
+const cancelInput = workspaceInput.extend({ runId: z.uuid() })
 
 const getImportStates = createServerFn({ method: 'GET' })
   .inputValidator(workspaceInput)
@@ -26,6 +28,12 @@ const startImport = createServerFn({ method: 'POST' })
   .inputValidator(startInput)
   .handler(({ context, data }) =>
     startPersonalGmailImport(requireAppRequestContext(context), data),
+  )
+
+const cancelImport = createServerFn({ method: 'POST' })
+  .inputValidator(cancelInput)
+  .handler(({ context, data }) =>
+    cancelPersonalGmailImport(requireAppRequestContext(context), data),
   )
 
 export const gmailImportKeys = {
@@ -66,4 +74,11 @@ export async function startGmailImport(input: {
   data: { workspaceId: string; connectionAddress: string }
 }) {
   return await startImport(input)
+}
+
+/** Stops one caller-owned Workflow and preserves its frozen workset. */
+export async function cancelGmailImport(input: {
+  data: { workspaceId: string; runId: string }
+}) {
+  return await cancelImport(input)
 }

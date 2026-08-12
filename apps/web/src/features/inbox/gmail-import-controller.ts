@@ -17,6 +17,8 @@ export type GmailImportState =
   | { status: 'connected' }
   | { status: 'scanning' }
   | { status: 'syncing'; processed: number; total: number }
+  | { status: 'cancelling'; processed: number; total: number | null }
+  | { status: 'paused'; processed: number; total: number }
   | {
       status: 'complete'
       imported: number
@@ -40,6 +42,8 @@ export type GmailImportController = {
     selectAccount: (connectionAddress: string) => void
     startImport: () => void
     retryImport: () => void
+    cancelImport: () => void
+    resumeImport: () => void
   }
 }
 
@@ -56,6 +60,8 @@ export const unavailableGmailImportController: GmailImportController = {
     selectAccount: unavailableAction,
     startImport: unavailableAction,
     retryImport: unavailableAction,
+    cancelImport: unavailableAction,
+    resumeImport: unavailableAction,
   },
 }
 

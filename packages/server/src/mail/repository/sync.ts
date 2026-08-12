@@ -13,6 +13,7 @@ import {
   MailSyncRun,
   PersonalMailSyncState,
   type ClaimPendingMailSyncBatchInput,
+  type CancelMailSyncRunInput,
   type CompleteMailSyncRunInput,
   type FailMailSyncRunInput,
   type FinalizeMailSyncEnumerationInput,
@@ -358,7 +359,7 @@ export const startMailSyncRun = Effect.fn('MailRepository.startMailSyncRun')(
               .where(
                 and(
                   eq(mailSyncRun.syncAccountId, input.syncAccountId),
-                  eq(mailSyncRun.status, 'failed'),
+                  inArray(mailSyncRun.status, ['failed', 'cancelled']),
                   isNotNull(mailSyncRun.totalMessages),
                 ),
               )
@@ -681,6 +682,7 @@ export const settleMailSyncItem = Effect.fn(
   return yield* inTransaction(db, 'settleMailSyncItem', (tx) =>
     Effect.gen(function* () {
       const run = yield* requireSyncRun(tx, input.workspaceId, input.runId)
+      if (run.status !== 'importing') return yield* decodeSyncRun(run)
       const item = (yield* databaseEffect('settleMailSyncItem.item', () =>
         tx
           .select()
@@ -851,6 +853,91 @@ export const failMailSyncRun = Effect.fn('MailRepository.failMailSyncRun')(
           tx
             .update(mailSyncAccount)
             .set({ status: 'degraded', lastError: input.error, updatedAt: now })
+            .where(eq(mailSyncAccount.id, run.syncAccountId)),
+        )
+        return yield* decodeSyncRun(updated)
+      }),
+    )
+  },
+)
+
+/**
+ * Pauses an active import without discarding its exact provider workset.
+ * Workflow termination happens at the application boundary first; this
+ * transaction makes the UI terminal and releases interrupted claims so Resume
+ * can start a uniquely named Workflow over the same run.
+ */
+export const cancelMailSyncRun = Effect.fn('MailRepository.cancelMailSyncRun')(
+  function* (db: GardenDatabase, input: CancelMailSyncRunInput) {
+    return yield* inTransaction(db, 'cancelMailSyncRun', (tx) =>
+      Effect.gen(function* () {
+        const run = yield* requireSyncRun(tx, input.workspaceId, input.runId)
+        if (run.status === 'cancelled') return yield* decodeSyncRun(run)
+        if (run.status === 'completed' || run.status === 'failed') {
+          return yield* new MailRepositoryInvariantError({
+            operation: 'cancelMailSyncRun.status',
+            message: 'A terminal sync run cannot be cancelled.',
+          })
+        }
+        const account = (yield* databaseEffect(
+          'cancelMailSyncRun.account',
+          () =>
+            tx
+              .select()
+              .from(mailSyncAccount)
+              .where(eq(mailSyncAccount.id, run.syncAccountId))
+              .limit(1),
+        ))[0]
+        if (account === undefined) {
+          return yield* new MailRepositoryInvariantError({
+            operation: 'cancelMailSyncRun.account',
+            message: 'Mail sync account disappeared while cancelling.',
+          })
+        }
+        const now = new Date()
+        yield* databaseEffect('cancelMailSyncRun.releaseItems', () =>
+          tx
+            .update(mailSyncItem)
+            .set({
+              status: 'pending',
+              claimKey: null,
+              messageId: null,
+              error: null,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(mailSyncItem.runId, run.id),
+                inArray(mailSyncItem.status, ['processing', 'failed']),
+              ),
+            ),
+        )
+        const updated = (yield* databaseEffect('cancelMailSyncRun.update', () =>
+          tx
+            .update(mailSyncRun)
+            .set({
+              status: 'cancelled',
+              error: null,
+              completedAt: now,
+              updatedAt: now,
+            })
+            .where(eq(mailSyncRun.id, run.id))
+            .returning(),
+        ))[0]
+        if (updated === undefined) {
+          return yield* new MailRepositoryInvariantError({
+            operation: 'cancelMailSyncRun.update',
+            message: 'Mail sync run disappeared while cancelling.',
+          })
+        }
+        yield* databaseEffect('cancelMailSyncRun.accountStatus', () =>
+          tx
+            .update(mailSyncAccount)
+            .set({
+              status: account.historyId === null ? 'connected' : 'ready',
+              lastError: null,
+              updatedAt: now,
+            })
             .where(eq(mailSyncAccount.id, run.syncAccountId)),
         )
         return yield* decodeSyncRun(updated)

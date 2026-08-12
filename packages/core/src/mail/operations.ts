@@ -327,6 +327,14 @@ export interface FailMailSyncRunInput extends Schema.Schema.Type<
   typeof FailMailSyncRunInput
 > {}
 
+export const CancelMailSyncRunInput = Schema.Struct({
+  workspaceId: WorkspaceId,
+  runId: MailSyncRunId,
+})
+export interface CancelMailSyncRunInput extends Schema.Schema.Type<
+  typeof CancelMailSyncRunInput
+> {}
+
 export const ClaimedMailSyncBatch = Schema.Array(MailSyncItem)
 export type ClaimedMailSyncBatch = typeof ClaimedMailSyncBatch.Type
 

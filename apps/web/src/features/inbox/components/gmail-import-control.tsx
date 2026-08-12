@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { Check, Loader2, Mail, RotateCcw } from 'lucide-react'
+import { Check, Loader2, Mail, RotateCcw, Square } from 'lucide-react'
 import { Alert, AlertDescription } from '@garden/ui/components/ui/alert'
 import { Button } from '@garden/ui/components/ui/button'
 import {
@@ -73,6 +73,12 @@ function headerAction(controller: GmailImportController): {
       disabled: false,
       busy: true,
     }
+  }
+  if (state.status === 'cancelling') {
+    return { label: 'Stopping import…', disabled: true, busy: true }
+  }
+  if (state.status === 'paused') {
+    return { label: 'Resume import', disabled: false, busy: false }
   }
   if (state.status === 'failed') {
     return { label: 'Retry import', disabled: false, busy: false }
@@ -161,10 +167,18 @@ function GmailImportDialog({
   const authorizing = state.status === 'authorizing'
   const scanning = state.status === 'scanning'
   const syncing = state.status === 'syncing'
+  const cancelling = state.status === 'cancelling'
+  const paused = state.status === 'paused'
   const failed = state.status === 'failed'
   const complete = state.status === 'complete'
   const connected = state.status === 'connected' || complete
   const canImport = selectedGmailImportAccount(controller) !== null
+  const progress =
+    state.status === 'syncing' || state.status === 'paused'
+      ? state
+      : state.status === 'cancelling' && state.total !== null
+        ? { processed: state.processed, total: state.total }
+        : null
 
   let title = 'Import Gmail'
   let description =
@@ -176,10 +190,14 @@ function GmailImportDialog({
   } else if (authorizing) {
     title = 'Connect Google'
     description = 'Finish authorization in the Google window.'
-  } else if (scanning || syncing) {
+  } else if (scanning || syncing || cancelling) {
     title = 'Importing Gmail'
     description =
       'Garden is importing in the background. You can safely close this window.'
+  } else if (paused) {
+    title = 'Gmail import paused'
+    description =
+      'Garden kept the exact mailbox workset and saved progress. Resume without scanning Gmail again.'
   } else if (complete) {
     title = 'Gmail imported'
     description = 'The imported mailbox is ready in Garden.'
@@ -229,22 +247,24 @@ function GmailImportDialog({
           </div>
         ) : null}
 
-        {syncing ? (
+        {progress ? (
           <Progress
             value={
-              state.total === 0 ? 0 : (state.processed / state.total) * 100
+              progress.total === 0
+                ? 0
+                : (progress.processed / progress.total) * 100
             }
-            aria-label={syncLabel(state.processed, state.total)}
+            aria-label={syncLabel(progress.processed, progress.total)}
             aria-live="polite"
           >
             <ProgressLabel>
-              {syncLabel(state.processed, state.total)}
+              {syncLabel(progress.processed, progress.total)}
             </ProgressLabel>
             <ProgressValue>
               {() =>
-                state.total === 0
+                progress.total === 0
                   ? '0%'
-                  : `${Math.round((state.processed / state.total) * 100)}%`
+                  : `${Math.round((progress.processed / progress.total) * 100)}%`
               }
             </ProgressValue>
           </Progress>
@@ -280,8 +300,26 @@ function GmailImportDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {disconnected || connected || failed ? 'Cancel' : 'Close'}
+            {disconnected || connected || failed || paused ? 'Cancel' : 'Close'}
           </Button>
+          {scanning || syncing ? (
+            <Button
+              variant="destructive"
+              onClick={controller.actions.cancelImport}
+            >
+              <Square className="fill-current" />
+              Cancel import
+            </Button>
+          ) : null}
+          {paused ? (
+            <Button
+              disabled={!canImport}
+              onClick={controller.actions.resumeImport}
+            >
+              <RotateCcw />
+              Resume import
+            </Button>
+          ) : null}
           {disconnected ? (
             <Button onClick={controller.actions.connect}>
               Continue with Google

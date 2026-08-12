@@ -1,5 +1,6 @@
 import {
   ClaimPendingMailSyncBatchInput,
+  CancelMailSyncRunInput,
   CompleteMailSyncRunInput,
   CreateDraftInput,
   DraftId,
@@ -506,6 +507,93 @@ describe('MailRepository Gmail sync ledger (integration)', () => {
           'recovery-message-3',
         ])
       }).pipe(Effect.provide(makeMailRepositoryLayer(testDb.db))),
+  )
+
+  it.effect('cancels and resumes the same frozen workset', () =>
+    Effect.gen(function* () {
+      const repository = yield* MailRepository
+      const account = yield* repository.resolveMailSyncAccount(
+        ResolveMailSyncAccountInput.make({
+          workspaceId,
+          userId,
+          memberId,
+          provider: 'gmail',
+          providerEmail: EmailAddress.make('paused@gmail.com'),
+          mailboxName: 'Paused Gmail',
+          executorIntegration: 'google_gmail',
+          executorConnectionName: 'paused',
+        }),
+      )
+      const original = yield* repository.startMailSyncRun(
+        StartMailSyncRunInput.make({
+          workspaceId,
+          syncAccountId: account.id,
+          workflowInstanceId: 'gmail-pause-original',
+          trigger: 'initial',
+        }),
+      )
+      yield* repository.persistMailSyncPage(
+        PersistMailSyncPageInput.make({
+          workspaceId,
+          runId: original.id,
+          items: [
+            {
+              providerMessageId: ProviderObjectId.make('paused-message'),
+              providerThreadId: ProviderObjectId.make('paused-thread'),
+            },
+          ],
+        }),
+      )
+      yield* repository.finalizeMailSyncEnumeration(
+        FinalizeMailSyncEnumerationInput.make({
+          workspaceId,
+          runId: original.id,
+        }),
+      )
+      yield* repository.claimPendingMailSyncBatch(
+        ClaimPendingMailSyncBatchInput.make({
+          workspaceId,
+          runId: original.id,
+          claimKey: 'paused-claim',
+          limit: 1,
+        }),
+      )
+
+      const cancelled = yield* repository.cancelMailSyncRun(
+        CancelMailSyncRunInput.make({ workspaceId, runId: original.id }),
+      )
+      expect(cancelled).toMatchObject({
+        status: 'cancelled',
+        processedMessages: 0,
+        totalMessages: 1,
+      })
+
+      const resumed = yield* repository.startMailSyncRun(
+        StartMailSyncRunInput.make({
+          workspaceId,
+          syncAccountId: account.id,
+          workflowInstanceId: 'gmail-pause-resumed',
+          trigger: 'manual',
+        }),
+      )
+      expect(resumed).toMatchObject({
+        id: original.id,
+        status: 'importing',
+        trigger: 'recovery',
+        workflowInstanceId: 'gmail-pause-resumed',
+      })
+      const remaining = yield* repository.claimPendingMailSyncBatch(
+        ClaimPendingMailSyncBatchInput.make({
+          workspaceId,
+          runId: original.id,
+          claimKey: 'resumed-claim',
+          limit: 1,
+        }),
+      )
+      expect(remaining.map((item) => item.providerMessageId)).toEqual([
+        'paused-message',
+      ])
+    }).pipe(Effect.provide(makeMailRepositoryLayer(testDb.db))),
   )
 
   it.effect(
