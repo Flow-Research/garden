@@ -863,9 +863,10 @@ export const failMailSyncRun = Effect.fn('MailRepository.failMailSyncRun')(
 
 /**
  * Pauses an active import without discarding its exact provider workset.
- * Workflow termination happens at the application boundary first; this
- * transaction makes the UI terminal and releases interrupted claims so Resume
- * can start a uniquely named Workflow over the same run.
+ * This transaction is the cancellation fence: it makes the UI terminal and
+ * releases interrupted claims before the application boundary best-effort
+ * terminates runtime execution. Resume can then start a uniquely named
+ * Workflow over the same frozen run.
  */
 export const cancelMailSyncRun = Effect.fn('MailRepository.cancelMailSyncRun')(
   function* (db: GardenDatabase, input: CancelMailSyncRunInput) {

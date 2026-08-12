@@ -219,9 +219,13 @@ export async function startPersonalGmailImport(
 }
 
 /**
- * Terminates the caller-owned Workflow before marking its durable workset
- * paused. Unknown/terminal runtime state is safe to cancel in Postgres because
- * no live instance remains; active state must acknowledge termination first.
+ * Pauses the durable workset before asking the runtime to stop. Local Workflow
+ * instances disappear whenever Vite reloads; previously `instance.status()`
+ * could then hang forever and the user could not cancel the stale Postgres
+ * ledger. The ledger is the product authority, and every later Workflow write
+ * re-checks it, so cancelling it first immediately fences stale execution.
+ * Production still asks Cloudflare to terminate a live instance; a missing or
+ * already-terminal instance cannot undo the durable cancellation.
  */
 export async function cancelPersonalGmailImport(
   context: AppRequestContext,
@@ -254,44 +258,7 @@ export async function cancelPersonalGmailImport(
         return owned.latestRun
       }).pipe(Effect.provide(repositoryLayer))
 
-      const instance = yield* Effect.tryPromise({
-        try: () =>
-          context.env.GMAIL_IMPORT_WORKFLOW.get(run.workflowInstanceId),
-        catch: (cause) =>
-          new GmailImportConnectionError({
-            reason: 'cancel_failed',
-            message: 'Garden could not inspect the Gmail import Workflow.',
-            cause,
-          }),
-      })
-      const runtime = yield* Effect.tryPromise({
-        try: () => instance.status(),
-        catch: (cause) =>
-          new GmailImportConnectionError({
-            reason: 'cancel_failed',
-            message: 'Garden could not inspect the Gmail import Workflow.',
-            cause,
-          }),
-      })
-      if (
-        runtime.status === 'queued' ||
-        runtime.status === 'running' ||
-        runtime.status === 'waiting' ||
-        runtime.status === 'paused' ||
-        runtime.status === 'waitingForPause'
-      ) {
-        yield* Effect.tryPromise({
-          try: () => instance.terminate(),
-          catch: (cause) =>
-            new GmailImportConnectionError({
-              reason: 'cancel_failed',
-              message: 'Garden could not stop the Gmail import Workflow.',
-              cause,
-            }),
-        })
-      }
-
-      return yield* Effect.gen(function* () {
+      const cancelled = yield* Effect.gen(function* () {
         const repository = yield* MailRepository
         return yield* repository.cancelMailSyncRun(
           CancelMailSyncRunInput.make({
@@ -300,6 +267,32 @@ export async function cancelPersonalGmailImport(
           }),
         )
       }).pipe(Effect.provide(repositoryLayer))
+
+      // Vite-backed local Workflows have no durable runtime state across HMR.
+      // The database fence above is sufficient and avoids awaiting a vanished
+      // instance. Cloudflare owns runtime termination outside local dev.
+      if (context.env.ENVIRONMENT === 'development') return cancelled
+
+      yield* Effect.tryPromise({
+        try: async () => {
+          const instance = await context.env.GMAIL_IMPORT_WORKFLOW.get(
+            run.workflowInstanceId,
+          )
+          const runtime = await instance.status()
+          if (
+            runtime.status === 'queued' ||
+            runtime.status === 'running' ||
+            runtime.status === 'waiting' ||
+            runtime.status === 'paused' ||
+            runtime.status === 'waitingForPause'
+          ) {
+            await instance.terminate()
+          }
+        },
+        catch: () => undefined,
+      }).pipe(Effect.catchAll(() => Effect.void))
+
+      return cancelled
     }),
   )
 }
