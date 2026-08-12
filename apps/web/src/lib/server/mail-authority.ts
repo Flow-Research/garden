@@ -1,4 +1,4 @@
-import { MailActor, MemberId, WorkspaceId } from '@garden/core/mail'
+import { MailActor, MemberId, UserId, WorkspaceId } from '@garden/core/mail'
 import type { GardenDatabase } from '@garden/db'
 import { schema } from '@garden/db/runtime'
 import { and, eq } from 'drizzle-orm'
@@ -33,6 +33,7 @@ export class MailRequestBoundaryError extends Schema.TaggedErrorClass<MailReques
 export type MailMemberAuthority = {
   db: GardenDatabase
   actor: typeof MailActor.cases.Member.Type
+  userId: typeof UserId.Type
   role: string
 }
 
@@ -111,7 +112,12 @@ export const requireMailMemberAuthority = Effect.fn(
     ),
   )
 
-  return { db, actor, role: membership.role } satisfies MailMemberAuthority
+  return {
+    db,
+    actor,
+    userId: UserId.make(session.user.id),
+    role: membership.role,
+  } satisfies MailMemberAuthority
 })
 
 /** Owner/admin authorization for provider and mailbox provisioning mutations. */
