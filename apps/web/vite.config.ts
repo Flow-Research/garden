@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import {
   createLogger,
   defineConfig,
+  esmExternalRequirePlugin,
   loadEnv,
   type Logger,
   type LogOptions,
@@ -91,6 +92,26 @@ const ssrDependencyStubs = new Map([
     ),
   ],
 ])
+const workerNodeBuiltins = [
+  'buffer',
+  'child_process',
+  'crypto',
+  'dns',
+  'events',
+  'fs',
+  'fs/promises',
+  'net',
+  'os',
+  'path',
+  'stream',
+  'string_decoder',
+  'tls',
+  'url',
+  'util',
+] as const
+const workerNodeBuiltinPaths = Object.fromEntries(
+  workerNodeBuiltins.map((specifier) => [specifier, `node:${specifier}`]),
+)
 const rootEnv = loadEnv(process.env.NODE_ENV ?? 'development', rootDir, '')
 for (const [key, value] of Object.entries(rootEnv)) {
   process.env[key] ??= value
@@ -223,6 +244,18 @@ const config = defineConfig({
   },
   environments: {
     ssr: {
+      build: {
+        rolldownOptions: {
+          // Cloudflare exposes Node compatibility through ESM `node:` imports,
+          // while bundled CommonJS dependencies such as pg still call require.
+          // Rolldown's built-in bridge rewrites those external require calls and
+          // the path map emits the Worker-compatible specifiers.
+          plugins: [esmExternalRequirePlugin()],
+          output: {
+            paths: workerNodeBuiltinPaths,
+          },
+        },
+      },
       optimizeDeps: {
         include: [
           'react',
