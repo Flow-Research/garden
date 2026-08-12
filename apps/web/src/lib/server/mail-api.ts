@@ -22,6 +22,7 @@ import type { GardenDatabase } from '@garden/db'
 import {
   agent,
   mailAddress,
+  mailConversation,
   mailMailboxAccess,
   mailSyncAccount,
 } from '@garden/db/schema'
@@ -47,15 +48,18 @@ import { and, eq } from 'drizzle-orm'
 import { Effect, Layer, Schema } from 'effect'
 import type { AppRequestContext } from './context'
 import {
+  MailRequestBoundaryError,
+  MailRequestForbiddenError,
   MailRequestUnauthorizedError,
   requireMailMemberAuthority,
 } from './mail-authority'
 import type { MailDeliveryWorkflowParams } from './mail-delivery-workflow'
 import type { MailAgentChatSession } from './mail-agent-orchestration'
 import {
-  dispatchAssignedMailAgent,
-  MailAgentDispatchParams,
-} from './mail-agent-workflow-dispatch'
+  gmailPersonalConnectionRef,
+  withExecutorGmailClient,
+} from './executor-engine/gmail-mail-import-plugin'
+import { executorProgram } from './executor-runtime'
 
 /** Workflow dispatch failed after draft authorization was durably recorded. */
 export class MailDeliveryDispatchError extends Schema.TaggedErrorClass<MailDeliveryDispatchError>()(
@@ -113,6 +117,100 @@ export type MailConversationStateAction =
   | 'pin'
   | 'unpin'
 
+export const gmailLabelMutation = (
+  action: MailConversationStateAction,
+): { readonly addLabelIds: string[]; readonly removeLabelIds: string[] } => {
+  switch (action) {
+    case 'mark-read':
+      return { addLabelIds: [], removeLabelIds: ['UNREAD'] }
+    case 'mark-unread':
+      return { addLabelIds: ['UNREAD'], removeLabelIds: [] }
+    case 'archive':
+      return { addLabelIds: [], removeLabelIds: ['INBOX'] }
+    case 'unarchive':
+      return { addLabelIds: ['INBOX'], removeLabelIds: [] }
+    case 'pin':
+      return { addLabelIds: ['STARRED'], removeLabelIds: [] }
+    case 'unpin':
+      return { addLabelIds: [], removeLabelIds: ['STARRED'] }
+  }
+}
+
+/**
+ * Mirrors state changes for imported Gmail threads before updating Garden's
+ * local projection. Hosted mailboxes have no sync account and pass through.
+ * Gmail label mutation is idempotent, so retrying a failed request is safe.
+ */
+const writeGmailConversationState = Effect.fn(
+  'GardenMail.writeGmailConversationState',
+)(function* (input: {
+  db: GardenDatabase
+  workspaceId: typeof WorkspaceId.Type
+  userId: string
+  conversationId: typeof ConversationId.Type
+  action: MailConversationStateAction
+}) {
+  const rows = yield* Effect.tryPromise({
+    try: () =>
+      input.db
+        .select({
+          syncAccountId: mailSyncAccount.id,
+          ownerUserId: mailSyncAccount.userId,
+          provider: mailSyncAccount.provider,
+          executorConnectionName: mailSyncAccount.executorConnectionName,
+          threadKey: mailConversation.threadKey,
+        })
+        .from(mailConversation)
+        .innerJoin(
+          mailSyncAccount,
+          and(
+            eq(mailSyncAccount.workspaceId, mailConversation.workspaceId),
+            eq(mailSyncAccount.mailboxId, mailConversation.mailboxId),
+          ),
+        )
+        .where(
+          and(
+            eq(mailConversation.workspaceId, input.workspaceId),
+            eq(mailConversation.id, input.conversationId),
+          ),
+        )
+        .limit(1),
+    catch: (cause) =>
+      new MailRequestBoundaryError({
+        operation: 'gmail.state.resolve',
+        message: 'Garden could not resolve the Gmail thread.',
+        cause,
+      }),
+  })
+  const account = rows[0]
+  if (account === undefined) return
+  if (account.provider !== 'gmail' || account.ownerUserId !== input.userId) {
+    return yield* new MailRequestForbiddenError({
+      workspaceId: input.workspaceId,
+      message:
+        'Only the connected Gmail account owner can change provider state.',
+    })
+  }
+  const prefix = `gmail:${account.syncAccountId}:`
+  if (!account.threadKey.startsWith(prefix)) {
+    return yield* new MailRequestBoundaryError({
+      operation: 'gmail.state.thread',
+      message: 'Garden could not resolve the Gmail provider thread.',
+    })
+  }
+  const threadId = account.threadKey.slice(prefix.length)
+  const labels = gmailLabelMutation(input.action)
+  yield* executorProgram(
+    { tenant: input.workspaceId, subject: input.userId },
+    (executor) =>
+      withExecutorGmailClient(
+        executor.gmailMailImport,
+        gmailPersonalConnectionRef(account.executorConnectionName),
+        (gmail) => gmail.modifyThread({ threadId, ...labels }),
+      ),
+  )
+})
+
 export type MailInboxSnapshot = {
   mailboxes: ReadonlyArray<AccessibleMailbox>
   page: ConversationPage
@@ -134,6 +232,7 @@ const withMemberRepository = <A, E>(
   program: (input: {
     workspaceId: typeof WorkspaceId.Type
     actor: typeof MailActor.Type
+    userId: string
     db: GardenDatabase
   }) => Effect.Effect<A, E, MailRepository>,
 ) =>
@@ -146,6 +245,7 @@ const withMemberRepository = <A, E>(
     return yield* program({
       workspaceId: canonicalWorkspaceId,
       actor: authority.actor,
+      userId: authority.userId,
       db: authority.db,
     }).pipe(Effect.provide(makeMailRepositoryLayer(authority.db)))
   })
@@ -319,54 +419,64 @@ export async function mutateMailConversationState(
   },
 ): Promise<ConversationActorState> {
   return await Effect.runPromise(
-    withMemberRepository(context, input.workspaceId, ({ workspaceId, actor }) =>
-      Effect.gen(function* () {
-        const repository = yield* MailRepository
-        const conversationId = yield* Schema.decodeUnknownEffect(
-          ConversationId,
-        )(input.conversationId)
-        const detail = yield* repository.getConversation({
-          workspaceId,
-          actor,
-          conversationId,
-        })
-        const current = detail.conversation.state
-        const now = UtcTimestamp.make(new Date().toISOString())
-        const latestMessageId = detail.messages.at(-1)?.id ?? null
-        const next = yield* Schema.decodeUnknownEffect(
-          UpdateConversationStateInput,
-        )({
-          workspaceId,
-          conversationId,
-          actor,
-          lastReadMessageId:
-            input.action === 'mark-read'
-              ? latestMessageId
-              : input.action === 'mark-unread'
-                ? null
-                : (current?.lastReadMessageId ?? null),
-          readAt:
-            input.action === 'mark-read'
-              ? now
-              : input.action === 'mark-unread'
-                ? null
-                : (current?.readAt ?? null),
-          archivedAt:
-            input.action === 'archive'
-              ? now
-              : input.action === 'unarchive'
-                ? null
-                : (current?.archivedAt ?? null),
-          mutedAt: current?.mutedAt ?? null,
-          pinned:
-            input.action === 'pin'
-              ? true
-              : input.action === 'unpin'
-                ? false
-                : (current?.pinned ?? false),
-        })
-        return yield* repository.updateConversationState(next)
-      }),
+    withMemberRepository(
+      context,
+      input.workspaceId,
+      ({ workspaceId, actor, userId, db }) =>
+        Effect.gen(function* () {
+          const repository = yield* MailRepository
+          const conversationId = yield* Schema.decodeUnknownEffect(
+            ConversationId,
+          )(input.conversationId)
+          const detail = yield* repository.getConversation({
+            workspaceId,
+            actor,
+            conversationId,
+          })
+          const current = detail.conversation.state
+          const now = UtcTimestamp.make(new Date().toISOString())
+          const latestMessageId = detail.messages.at(-1)?.id ?? null
+          const next = yield* Schema.decodeUnknownEffect(
+            UpdateConversationStateInput,
+          )({
+            workspaceId,
+            conversationId,
+            actor,
+            lastReadMessageId:
+              input.action === 'mark-read'
+                ? latestMessageId
+                : input.action === 'mark-unread'
+                  ? null
+                  : (current?.lastReadMessageId ?? null),
+            readAt:
+              input.action === 'mark-read'
+                ? now
+                : input.action === 'mark-unread'
+                  ? null
+                  : (current?.readAt ?? null),
+            archivedAt:
+              input.action === 'archive'
+                ? now
+                : input.action === 'unarchive'
+                  ? null
+                  : (current?.archivedAt ?? null),
+            mutedAt: current?.mutedAt ?? null,
+            pinned:
+              input.action === 'pin'
+                ? true
+                : input.action === 'unpin'
+                  ? false
+                  : (current?.pinned ?? false),
+          })
+          yield* writeGmailConversationState({
+            db,
+            workspaceId,
+            userId,
+            conversationId,
+            action: input.action,
+          })
+          return yield* repository.updateConversationState(next)
+        }),
     ),
   )
 }
