@@ -105,6 +105,23 @@ describe('MailHtmlFrame', () => {
     expect(frame.getAttribute('sandbox')).not.toContain('allow-scripts')
     expect(frame.getAttribute('referrerpolicy')).toBe('no-referrer')
   })
+
+  it('blocks remote tracking images while preserving embedded image content', async () => {
+    render(
+      <MailHtmlFrame
+        body={
+          '<img src="https://tracker.example/open.gif"><img src="data:image/gif;base64,AAAA">'
+        }
+      />,
+    )
+
+    const frame = await screen.findByTitle('Email content')
+    expect(frame.getAttribute('srcdoc')).not.toContain(
+      'https://tracker.example/open.gif',
+    )
+    expect(frame.getAttribute('srcdoc')).toContain('data:image/gif;base64,AAAA')
+    expect(frame.getAttribute('srcdoc')).toContain('img-src data: cid:;')
+  })
 })
 
 describe('MailMessage', () => {

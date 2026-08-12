@@ -8,6 +8,14 @@ const subscribeToBrowser = () => () => undefined
 
 function buildEmailDocument(body: string): string {
   const purifier = createDOMPurify(window)
+  purifier.addHook('uponSanitizeAttribute', (_node, data) => {
+    if (
+      (data.attrName === 'src' || data.attrName === 'srcset') &&
+      /^https?:/i.test(data.attrValue.trim())
+    ) {
+      data.keepAttr = false
+    }
+  })
   const cleanBody = purifier.sanitize(body, {
     USE_PROFILES: { html: true },
     FORBID_TAGS: ['style'],
@@ -20,7 +28,7 @@ function buildEmailDocument(body: string): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: cid: https:; base-uri 'none'; form-action 'none'; object-src 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: cid:; base-uri 'none'; form-action 'none'; object-src 'none';">
 <style>
 * { box-sizing: border-box; }
 html { background: #fff; color-scheme: light; }
@@ -50,9 +58,11 @@ ul, ol { margin: 4px 0; padding-left: 20px; }
 }
 
 /**
- * Sanitizes mail HTML, applies a strict CSP, and isolates it in an opaque-origin
- * iframe. Browser detection uses `useSyncExternalStore`, so hydration is safe
- * without the banned `useEffect` lifecycle.
+ * Sanitizes mail HTML, strips remote image requests, applies a strict CSP, and
+ * isolates it in an opaque-origin iframe. Remote images previously allowed
+ * tracking pixels to contact senders as soon as a message opened. Browser
+ * detection uses `useSyncExternalStore`, so hydration is safe without the
+ * banned `useEffect` lifecycle.
  */
 export function MailHtmlFrame({
   body,
