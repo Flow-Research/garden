@@ -31,6 +31,7 @@ import {
   ExternalLink,
   Bot,
   ChevronDown,
+  PanelLeftClose,
   SquarePen,
 } from 'lucide-react'
 import type { InboxItem } from '@garden/core/types'
@@ -49,6 +50,7 @@ import { InboxControlPlane } from './inbox-control-plane'
 import {
   MailComposer,
   MailAgentConversationPanel,
+  MailAgentSessionPreloader,
   MailConversationDetail,
   MailConversationList,
   MailConversationRow,
@@ -97,6 +99,8 @@ function InboxListHeader({
   onArchiveAll,
   onArchiveAllRead,
   onArchiveCompleted,
+  canCollapse,
+  onCollapse,
 }: {
   unreadCount: number
   compact: boolean
@@ -114,6 +118,8 @@ function InboxListHeader({
   onArchiveAll: () => void
   onArchiveAllRead: () => void
   onArchiveCompleted: () => void
+  canCollapse: boolean
+  onCollapse: () => void
 }) {
   return (
     <div className="shrink-0">
@@ -127,6 +133,17 @@ function InboxListHeader({
           )}
         </div>
         <div className="flex items-center gap-1.5">
+          {canCollapse ? (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Collapse conversation list"
+              title="Collapse conversation list"
+              onClick={onCollapse}
+            >
+              <PanelLeftClose />
+            </Button>
+          ) : null}
           <GmailImportControl controller={gmailImportController} />
           {onCompose ? (
             <Button size="sm" onClick={onCompose}>
@@ -408,6 +425,14 @@ function MailDetailSurface({
     agentPanel?.conversationId === conversation.id &&
     agentPanel.open &&
     selectedAgent !== undefined
+
+  const agentSessionPreloader = selectedAgent ? (
+    <MailAgentSessionPreloader
+      workspaceId={workspaceId}
+      conversationId={conversation.id}
+      agentId={selectedAgent.id}
+    />
+  ) : null
   const newestMessageId = conversation.messages.at(-1)?.id
   const expandedMessageIds =
     expansion?.conversationId === conversation.id
@@ -551,6 +576,7 @@ function MailDetailSurface({
 
   return (
     <div className="flex h-full min-h-0 min-w-0">
+      {agentSessionPreloader}
       <div className="min-w-0 flex-1">
         <MailConversationDetail
           conversation={conversation}
@@ -602,6 +628,7 @@ export function InboxPage({
   const [unreadsOnly, setUnreadsOnly] = useState(false)
   const [scope, setScope] = useState<MailScope>('all')
   const [searchExpanded, setSearchExpanded] = useState(false)
+  const [listCollapsed, setListCollapsed] = useState(false)
   const deferredMailSearch = useDeferredValue(search)
   const { ref: paneRef, compact } = useCompactInboxPane()
 
@@ -803,6 +830,16 @@ export function InboxPage({
     )
   }
 
+  const panelComposer =
+    mailController.status === 'active' &&
+    mailController.composer &&
+    mailController.composer.replyToMessageId === undefined
+      ? mailController.composer
+      : null
+  const detailOpen = Boolean(
+    panelComposer || selectedNotification || mailConversationId,
+  )
+
   // -- Shared sub-components --------------------------------------------------
 
   const listHeader = (
@@ -827,6 +864,8 @@ export function InboxPage({
       onArchiveAll={handleArchiveAll}
       onArchiveAllRead={handleArchiveAllRead}
       onArchiveCompleted={handleArchiveCompleted}
+      canCollapse={detailOpen && !compact}
+      onCollapse={() => setListCollapsed(true)}
     />
   )
 
@@ -904,13 +943,6 @@ export function InboxPage({
     )
   }
 
-  const panelComposer =
-    mailController.status === 'active' &&
-    mailController.composer &&
-    mailController.composer.replyToMessageId === undefined
-      ? mailController.composer
-      : null
-
   let detailContent: ReactNode = null
   if (panelComposer) {
     detailContent = <MailComposer variant="panel" {...panelComposer.props} />
@@ -961,15 +993,13 @@ export function InboxPage({
     )
   }
 
-  const detailOpen = Boolean(
-    panelComposer || selectedNotification || mailConversationId,
-  )
-
   return (
     <div ref={paneRef} className="flex min-h-0 flex-1">
       <MailSplitView
         compact={compact}
         detailOpen={detailOpen}
+        listCollapsed={listCollapsed}
+        onExpandList={() => setListCollapsed(false)}
         list={
           <div className="flex h-full min-h-0 flex-col">
             {listHeader}

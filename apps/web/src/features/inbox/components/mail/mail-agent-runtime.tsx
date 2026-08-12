@@ -164,3 +164,22 @@ export function MailAgentConversationPanel({
     />
   )
 }
+
+/**
+ * Creates and binds the selected agent session while the user reads the email.
+ * Before this preloader, the first panel click paid the full Postgres + AgentDO
+ * binding latency. The shared infinite-stale query now makes opening a cache hit
+ * without opening a background chat WebSocket.
+ */
+export function MailAgentSessionPreloader({
+  workspaceId,
+  conversationId,
+  agentId,
+}: {
+  workspaceId: string
+  conversationId: string
+  agentId: string
+}) {
+  useQuery(mailAgentSessionOptions({ workspaceId, conversationId, agentId }))
+  return null
+}

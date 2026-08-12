@@ -10,6 +10,7 @@ import { MailConversationList } from './mail-conversation-list'
 import { MailHtmlFrame } from './mail-html-frame'
 import { MailListToolbar } from './mail-list-toolbar'
 import { MailMessage } from './mail-message'
+import { MailSplitView } from './mail-split-view'
 import type { MailConversationView, MailMessageView } from './types'
 
 const conversation: MailConversationView = {
@@ -112,6 +113,29 @@ describe('MailListToolbar', () => {
     ).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Search mail' }))
     expect(onSearchExpandedChange).toHaveBeenCalledWith(true)
+  })
+})
+
+describe('MailSplitView', () => {
+  it('collapses the conversation list into a reopen control', () => {
+    const onExpandList = vi.fn()
+    render(
+      <MailSplitView
+        compact={false}
+        detailOpen
+        listCollapsed
+        onExpandList={onExpandList}
+        list={<div>Conversation rows</div>}
+        detail={<div>Selected conversation</div>}
+      />,
+    )
+
+    expect(screen.queryByText('Conversation rows')).not.toBeInTheDocument()
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Expand conversation list' }),
+    )
+    expect(onExpandList).toHaveBeenCalledOnce()
+    expect(screen.getByText('Selected conversation')).toBeInTheDocument()
   })
 })
 
@@ -289,6 +313,40 @@ describe('MailAgentSidebar', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: 'Stop generating' }))
     expect(onStop).toHaveBeenCalledOnce()
+  })
+
+  it('uses Garden brand tokens instead of the inverted dark primary token', () => {
+    render(
+      <MailAgentSidebar
+        {...baseProps}
+        messages={[
+          {
+            id: 'user-message',
+            role: 'user',
+            parts: [{ type: 'text', text: 'Summarize this email' }],
+          },
+          {
+            id: 'agent-message',
+            role: 'assistant',
+            parts: [
+              {
+                type: 'tool',
+                toolName: 'mail_read_conversation',
+                state: 'output-available',
+              },
+            ],
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('Summarize this email')).toHaveClass(
+      'bg-brand',
+      'text-brand-foreground',
+    )
+    expect(
+      screen.getByText('Reading email').previousElementSibling,
+    ).toHaveClass('text-brand')
   })
 })
 

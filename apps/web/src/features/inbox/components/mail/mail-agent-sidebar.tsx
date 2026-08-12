@@ -106,7 +106,7 @@ function ToolCallBadge({ part }: { part: MailAgentToolPart }) {
 
   return (
     <div className="flex items-center gap-1.5 rounded bg-muted/50 px-2 py-1 text-xs">
-      <span className="text-primary [&_svg]:size-3.5">{info.icon}</span>
+      <span className="text-brand [&_svg]:size-3.5">{info.icon}</span>
       <span className="font-medium text-foreground">{info.label}</span>
       {done ? (
         <CheckCircle2 className="ml-auto size-3 text-success" />
@@ -141,7 +141,7 @@ function MessageBubble({
         className={cn(
           'flex size-6 shrink-0 items-center justify-center rounded-full',
           isUser
-            ? 'bg-primary text-primary-foreground'
+            ? 'bg-brand text-brand-foreground'
             : 'bg-muted text-foreground',
         )}
       >
@@ -160,8 +160,8 @@ function MessageBubble({
               className={cn(
                 'max-w-full break-words rounded-lg px-3 py-2 text-[13px] leading-relaxed',
                 isUser
-                  ? 'rounded-br-sm bg-primary text-primary-foreground'
-                  : 'overflow-hidden rounded-bl-sm border bg-background text-foreground',
+                  ? 'rounded-br-sm bg-brand text-brand-foreground'
+                  : 'overflow-hidden rounded-bl-sm border bg-card text-card-foreground',
               )}
             >
               {isUser ? (
@@ -226,7 +226,7 @@ function MailAgentPanel({
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 items-center justify-between border-b px-3 py-1.5">
         <div className="flex items-center gap-2">
-          <Badge>AI</Badge>
+          <Badge className="bg-brand text-brand-foreground">AI</Badge>
           <span className="text-xs text-muted-foreground">{title}</span>
         </div>
         <div className="flex items-center gap-1">
@@ -247,8 +247,8 @@ function MailAgentPanel({
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4">
-            <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10">
-              <Bot className="size-6 text-primary" />
+            <div className="flex size-12 items-center justify-center rounded-xl bg-brand/10">
+              <Bot className="size-6 text-brand" />
             </div>
             <p className="px-4 text-center text-xs leading-relaxed text-muted-foreground">
               I can read emails, search conversations, and draft replies.
@@ -281,7 +281,7 @@ function MailAgentPanel({
                 <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
                   <Bot className="size-3" />
                 </div>
-                <div className="flex items-center gap-1.5 rounded-lg rounded-bl-sm border bg-background px-3 py-2">
+                <div className="flex items-center gap-1.5 rounded-lg rounded-bl-sm border bg-card px-3 py-2">
                   <Spinner className="size-3" />
                   <span className="text-xs text-muted-foreground">
                     Thinking...
@@ -319,7 +319,7 @@ function MailAgentPanel({
               placeholder="Ask your email agent..."
               rows={1}
               aria-label="Chat message input"
-              className="min-h-9 max-h-[100px] flex-1 resize-none overflow-hidden rounded-lg border bg-background px-3 py-2 text-xs text-foreground outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-ring"
+              className="min-h-9 max-h-[100px] flex-1 resize-none overflow-hidden rounded-lg border bg-card px-3 py-2 text-xs text-card-foreground outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-ring"
             />
             <Button
               size="icon-sm"
@@ -353,7 +353,7 @@ export function MailAgentSidebar(props: MailAgentSidebarProps) {
           className={cn(
             'flex cursor-pointer items-center gap-1.5 border-b-2 bg-transparent px-4 py-2.5 text-sm font-medium transition-colors',
             props.activeTab === 'agent'
-              ? 'border-primary text-foreground'
+              ? 'border-brand text-foreground'
               : 'border-transparent text-muted-foreground hover:text-foreground',
           )}
         >
@@ -366,7 +366,7 @@ export function MailAgentSidebar(props: MailAgentSidebarProps) {
           className={cn(
             'flex cursor-pointer items-center gap-1.5 border-b-2 bg-transparent px-4 py-2.5 text-sm font-medium transition-colors',
             props.activeTab === 'integrations'
-              ? 'border-primary text-foreground'
+              ? 'border-brand text-foreground'
               : 'border-transparent text-muted-foreground hover:text-foreground',
           )}
         >
