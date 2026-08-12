@@ -67,8 +67,7 @@ export type GmailImportWorkflowResult =
       nextInstanceId: string
     }
 
-type GmailWorkflowServices = {
-  readonly gmail: GmailClientService
+type GmailPersistenceServices = {
   readonly repository: MailRepositoryService
   readonly importer: GmailImportService
 }
@@ -199,53 +198,70 @@ const runMailImportDatabaseStep = <A, E>(
  * supplies Gmail plus Garden persistence services, and returns decoded data.
  * Tokens never enter Workflow payloads, checkpoints, Postgres, or logs.
  */
-const runGmailImportStep = <A, E>(
+const runGmailImportPersistence = <A, E>(
+  env: AppEnv,
+  use: (services: GmailPersistenceServices) => Effect.Effect<A, E>,
+): Effect.Effect<A, E | MailRepositoryPersistenceError> => {
+  const provider = createRequestDbProvider(env)
+  return Effect.acquireUseRelease(
+    Effect.tryPromise({
+      try: () => provider.db(),
+      catch: (cause) =>
+        new MailRepositoryPersistenceError({
+          reason: 'connection',
+          operation: 'GmailImportWorkflow.connectDatabase',
+          message: 'Garden Mail could not connect to persistence.',
+          cause,
+        }),
+    }),
+    (db) => {
+      const dependencies = Layer.mergeAll(
+        makeMailRepositoryLayer(db),
+        makeR2MailObjectStoreLayer(env.FILES),
+      )
+      const application = gmailImportLayer.pipe(Layer.provide(dependencies))
+      const layer = Layer.merge(dependencies, application)
+      return Effect.gen(function* () {
+        const repository = yield* MailRepository
+        const importer = yield* GmailImport
+        return yield* use({ repository, importer })
+      }).pipe(Effect.provide(layer))
+    },
+    () => Effect.promise(() => provider.close()),
+  ).pipe(retryMailImportPersistenceAtWorkflowBoundary)
+}
+
+/**
+ * Downloads one Gmail object before opening persistence. The previous shape
+ * held a Neon connection across provider download, MIME parsing, and R2 writes;
+ * a dropped idle connection could strand a large import on one claimed item.
+ * RAW bytes remain inside this Workflow callback and never become step output.
+ */
+const runGmailImportItemStep = (
   env: AppEnv,
   params: GmailImportWorkflowParams,
   connectionName: string,
-  use: (services: GmailWorkflowServices) => Effect.Effect<A, E>,
-): Promise<MailImportStepOutcome<A>> => {
+  account: MailSyncAccount,
+  item: MailSyncItem,
+): Promise<MailImportStepOutcome<MailSyncItem>> => {
   bindAppEnv(env)
-  const provider = createRequestDbProvider(env)
   return Effect.runPromise(
-    Effect.acquireUseRelease(
-      Effect.tryPromise({
-        try: () => provider.db(),
-        catch: (cause) =>
-          new MailRepositoryPersistenceError({
-            reason: 'connection',
-            operation: 'GmailImportWorkflow.connectDatabase',
-            message: 'Garden Mail could not connect to persistence.',
-            cause,
-          }),
-      }),
-      (db) => {
-        const dependencies = Layer.mergeAll(
-          makeMailRepositoryLayer(db),
-          makeR2MailObjectStoreLayer(env.FILES),
-        )
-        const application = gmailImportLayer.pipe(Layer.provide(dependencies))
-        const layer = Layer.merge(dependencies, application)
-        return executorProgram(
-          { tenant: params.workspaceId, subject: params.userId },
-          (executor) =>
-            withExecutorGmailClient(
-              executor.gmailMailImport,
-              gmailPersonalConnectionRef(connectionName),
-              (gmail) =>
-                Effect.gen(function* () {
-                  const repository = yield* MailRepository
-                  const importer = yield* GmailImport
-                  return yield* use({ gmail, repository, importer })
-                }).pipe(Effect.provide(layer)),
-            ),
-        ).pipe(
-          retryTransientGmailAtWorkflowBoundary,
-          retryMailImportPersistenceAtWorkflowBoundary,
-          mailImportCheckpointOutcome,
-        )
-      },
-      () => Effect.promise(() => provider.close()),
+    executorProgram(
+      { tenant: params.workspaceId, subject: params.userId },
+      (executor) =>
+        withExecutorGmailClient(
+          executor.gmailMailImport,
+          gmailPersonalConnectionRef(connectionName),
+          (gmail) => gmail.getRawMessage(item.providerMessageId),
+        ),
+    ).pipe(
+      retryTransientGmailAtWorkflowBoundary,
+      Effect.flatMap((message) =>
+        runGmailImportPersistence(env, (services) =>
+          settleImportedItem(services, params, account, item, message),
+        ),
+      ),
+      mailImportCheckpointOutcome,
     ),
   )
 }
@@ -352,59 +368,59 @@ const resolveWorkflowAccount = (
 
 /** Settles one provider item after its canonical import result is known. */
 const settleImportedItem = (
-  services: GmailWorkflowServices,
+  services: GmailPersistenceServices,
   params: GmailImportWorkflowParams,
   account: MailSyncAccount,
   item: MailSyncItem,
+  message: Parameters<GmailImportService['importMessage']>[0]['message'],
 ) =>
-  services.gmail.getRawMessage(item.providerMessageId).pipe(
-    Effect.flatMap((message) =>
-      services.importer.importMessage({
-        workspaceId: params.workspaceId,
-        syncAccountId: params.syncAccountId,
-        memberId: params.memberId,
-        providerEmail: account.providerEmail,
-        message,
-      }),
-    ),
-    Effect.map((ingested) =>
-      ingested.duplicate
-        ? MailSyncItemSettlement.cases.Duplicate.make({
-            messageId: ingested.messageId,
-          })
-        : MailSyncItemSettlement.cases.Imported.make({
-            messageId: ingested.messageId,
-          }),
-    ),
-    Effect.catchIf(
-      (error) =>
-        typeof error === 'object' &&
-        error !== null &&
-        '_tag' in error &&
-        (error._tag === 'GmailImportContentError' ||
-          error._tag === 'MailMimeParseError' ||
-          error._tag === 'MailMimeValidationError' ||
-          (error._tag === 'GmailApiError' &&
-            'reason' in error &&
-            (error.reason === 'not_found' ||
-              error.reason === 'invalid_response'))),
-      (error) =>
-        Effect.succeed(
-          MailSyncItemSettlement.cases.Failed.make({
-            error: mailImportWorkflowErrorMessage(error),
-          }),
-        ),
-    ),
-    Effect.flatMap((settlement) =>
-      services.repository.settleMailSyncItem({
-        workspaceId: params.workspaceId,
-        runId: params.runId,
-        providerMessageId: item.providerMessageId,
-        claimKey: item.claimKey ?? `batch-unclaimed-${item.ordinal}`,
-        settlement,
-      }),
-    ),
-  )
+  services.importer
+    .importMessage({
+      workspaceId: params.workspaceId,
+      syncAccountId: params.syncAccountId,
+      memberId: params.memberId,
+      providerEmail: account.providerEmail,
+      message,
+    })
+    .pipe(
+      Effect.map((ingested) =>
+        ingested.duplicate
+          ? MailSyncItemSettlement.cases.Duplicate.make({
+              messageId: ingested.messageId,
+            })
+          : MailSyncItemSettlement.cases.Imported.make({
+              messageId: ingested.messageId,
+            }),
+      ),
+      Effect.catchIf(
+        (error) =>
+          typeof error === 'object' &&
+          error !== null &&
+          '_tag' in error &&
+          (error._tag === 'GmailImportContentError' ||
+            error._tag === 'MailMimeParseError' ||
+            error._tag === 'MailMimeValidationError' ||
+            (error._tag === 'GmailApiError' &&
+              'reason' in error &&
+              (error.reason === 'not_found' ||
+                error.reason === 'invalid_response'))),
+        (error) =>
+          Effect.succeed(
+            MailSyncItemSettlement.cases.Failed.make({
+              error: mailImportWorkflowErrorMessage(error),
+            }),
+          ),
+      ),
+      Effect.flatMap((settlement) =>
+        services.repository.settleMailSyncItem({
+          workspaceId: params.workspaceId,
+          runId: params.runId,
+          providerMessageId: item.providerMessageId,
+          claimKey: item.claimKey ?? `batch-unclaimed-${item.ordinal}`,
+          settlement,
+        }),
+      ),
+    )
 
 /**
  * Durable Gmail import and recovery. Initial enumeration intentionally ignores
@@ -438,11 +454,11 @@ export class GmailImportWorkflow extends WorkflowEntrypoint<
     const { account, run } = accountOutcome.value
 
     const profileOutcome = await step.do('gmail-profile', () =>
-      runGmailImportStep(
+      runGmailReadStep(
         this.env,
         params,
         account.executorConnectionName,
-        ({ gmail }) => gmail.getProfile(),
+        (gmail) => gmail.getProfile(),
       ),
     )
     if (profileOutcome._tag === 'Failure') {
@@ -773,11 +789,12 @@ export class GmailImportWorkflow extends WorkflowEntrypoint<
         }
         const processStep = `process-${claimKey}-${item.ordinal}`
         const processOutcome = await step.do(processStep, () =>
-          runGmailImportStep(
+          runGmailImportItemStep(
             this.env,
             params,
             account.executorConnectionName,
-            (services) => settleImportedItem(services, params, account, item),
+            account,
+            item,
           ),
         )
         if (processOutcome._tag === 'Failure') {
