@@ -245,6 +245,8 @@ describe('isMcpFailedConnectionStateMessage', () => {
 describe('RuntimeMcpController native installations', () => {
   it('activates Discord tools with the persisted workspace guild binding', async () => {
     let registeredServerId: string | undefined
+    let registeredResource: { kind: string; slug?: string } | undefined
+    let registeredConnectionNames: readonly string[] | undefined
     const host: McpHost = {
       name: 'chat:thread-1',
       env: {
@@ -262,10 +264,17 @@ describe('RuntimeMcpController native installations', () => {
         listServers: () => [],
         discoverIfConnected: async () => ({ success: true }),
       },
-      addExecutorMcpServer: async ({ id }) => {
+      addExecutorMcpServer: async ({ id, props }) => {
         registeredServerId = id
+        registeredResource = props.session.resource
+        registeredConnectionNames = props.session.toolkitConnectionNames
         return { state: 'connected' }
       },
+      getExecutorMcpResource: () => ({
+        kind: 'toolkit',
+        slug: 'garden-mail-174e67d2-bcbc-420b-a1f5-289ee6681b8f',
+      }),
+      getExecutorToolkitConnectionNames: () => ['gmail_personal'],
       removeMcpServer: async () => undefined,
       resolveRuntimeIdentity: async () =>
         Result.ok({
@@ -291,6 +300,11 @@ describe('RuntimeMcpController native installations', () => {
     const ready = await controller.ensureProxyMcpConnections()
     expect(ready.isOk()).toBe(true)
     expect(registeredServerId).toBe('executor')
+    expect(registeredResource).toEqual({
+      kind: 'toolkit',
+      slug: 'garden-mail-174e67d2-bcbc-420b-a1f5-289ee6681b8f',
+    })
+    expect(registeredConnectionNames).toEqual(['gmail_personal'])
 
     const aiTools = controller.wrapGetAITools(() => ({}))
     expect(

@@ -32,6 +32,7 @@ import {
 } from './mcp-connectors'
 import { listAvailableConnectorBindings } from '@garden/server/connectors/availability'
 import { mcpRuntimeConfig } from './mcp-runtime-config'
+import type { ExecutorMcpResource } from './mail-tool-boundary'
 
 export { canonicalJsonString } from '@garden/connectors/capabilities'
 
@@ -165,12 +166,15 @@ export type McpHost = {
       session: {
         organizationId: string
         userId: string
-        elicitationMode: 'model'
-        resource: { kind: 'default' }
+        elicitationMode: 'model' | 'browser'
+        resource: ExecutorMcpResource
+        toolkitConnectionNames?: readonly string[]
         webOrigin?: string
       }
     }
   }) => Promise<McpRegistration & { id?: string }>
+  getExecutorMcpResource?: () => ExecutorMcpResource
+  getExecutorToolkitConnectionNames?: () => readonly string[]
   removeMcpServer: (connectorId: string) => Promise<void>
   githubHostedMcp?: {
     listTools: (
@@ -1192,14 +1196,23 @@ export class RuntimeMcpController {
         .listServers()
         .some((server) => server.id === executorServerId)
     ) {
+      const resource = this.host.getExecutorMcpResource?.() ?? {
+        kind: 'default' as const,
+      }
       const registration = await addExecutorMcpServer({
         id: executorServerId,
         props: {
           session: {
             organizationId: identityResult.value.workspaceId,
             userId: identityResult.value.userId,
-            elicitationMode: 'model',
-            resource: { kind: 'default' },
+            elicitationMode: resource.kind === 'toolkit' ? 'browser' : 'model',
+            resource,
+            ...(this.host.getExecutorToolkitConnectionNames
+              ? {
+                  toolkitConnectionNames:
+                    this.host.getExecutorToolkitConnectionNames(),
+                }
+              : {}),
             ...(this.host.env.BETTER_AUTH_URL
               ? { webOrigin: this.host.env.BETTER_AUTH_URL }
               : {}),

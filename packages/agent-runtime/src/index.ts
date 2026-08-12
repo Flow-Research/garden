@@ -1,5 +1,8 @@
 export { AgentDO, ChatSubAgent, MailAgentConversationContext } from './agent-do'
 export type { MailAgentConversationContext as MailAgentConversationContextValue } from './agent-do'
+export type { MailAgentContextToken } from './agent-do'
+export type { MailAgentDraftCapabilityContext } from './agent-do'
+export type { MailAgentToolScope } from './mail-tool-scope'
 export { IssueRunSubAgent } from './issue-run-sub-agent'
 export { AutomationRunSubAgent } from './automation-run-sub-agent'
 export { AutomationTriggerDO } from './automation-trigger-do'
@@ -41,18 +44,6 @@ export {
   workspaceSkillR2Prefix,
 } from './skill-storage-paths'
 export { buildBuiltinSkillObjectKey } from './bundled-skills'
-export {
-  createGardenMailTools,
-  MailAgentIdentityError,
-  MailAgentScopeError,
-  makeMailDeliveryWorkflowDispatcher,
-  resolveMailAgentPrincipal,
-} from './mail-tools'
-export type {
-  MailAgentToolContext,
-  MailAgentToolScope,
-  MailDeliveryWorkflowBinding,
-} from './mail-tools'
 export type {
   AgentPromptCatalog,
   AgentPromptCatalog as PromptCatalog,
