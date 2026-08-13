@@ -7,7 +7,7 @@ const chatSubAgentSource = source.slice(
 )
 
 describe('ChatSubAgent security contract', () => {
-  it('prunes non-Executor MCP rows before the SDK restore lifecycle', () => {
+  it('prunes MCP rows outside the facet-specific Executor route before restore', () => {
     const constructorIndex = chatSubAgentSource.indexOf(
       'constructor(ctx: DurableObjectState',
     )
@@ -20,9 +20,9 @@ describe('ChatSubAgent security contract', () => {
     expect(constructorSource).toContain(
       'pruneInboxMcpServers(this.ctx.storage)',
     )
-    expect(source).toContain(
-      "where id <> 'executor' or server_url <> 'rpc:executor'",
-    )
+    expect(source).toContain('executorMcpServerNameForResource({')
+    expect(source).toContain('where id <> ? or server_url <> ?')
+    expect(source).toContain('bindingName !== EXECUTOR_MCP_BINDING_NAME')
   })
 
   it('never streams model reasoning into Garden chat UI', () => {

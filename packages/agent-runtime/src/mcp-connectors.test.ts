@@ -246,6 +246,7 @@ describe('isMcpFailedConnectionStateMessage', () => {
 describe('RuntimeMcpController native installations', () => {
   it('activates Discord tools with the persisted workspace guild binding', async () => {
     let registeredServerId: string | undefined
+    let registeredServerName: string | undefined
     let registeredResource: { kind: string; slug?: string } | undefined
     let registeredConnectionNames: readonly string[] | undefined
     const host: McpHost = {
@@ -265,8 +266,9 @@ describe('RuntimeMcpController native installations', () => {
         listServers: () => [],
         discoverIfConnected: async () => ({ success: true }),
       },
-      addExecutorMcpServer: async ({ id, props }) => {
+      addExecutorMcpServer: async ({ id, serverName, props }) => {
         registeredServerId = id
+        registeredServerName = serverName
         registeredResource = props.session.resource
         registeredConnectionNames = props.session.toolkitConnectionNames
         return { state: 'connected' }
@@ -301,6 +303,9 @@ describe('RuntimeMcpController native installations', () => {
     const ready = await controller.ensureProxyMcpConnections()
     expect(ready.isOk()).toBe(true)
     expect(registeredServerId).toBe('executor')
+    expect(registeredServerName).toBe(
+      'garden-mail-174e67d2-bcbc-420b-a1f5-289ee6681b8f',
+    )
     expect(registeredResource).toEqual({
       kind: 'toolkit',
       slug: 'garden-mail-174e67d2-bcbc-420b-a1f5-289ee6681b8f',
@@ -327,48 +332,95 @@ describe('RuntimeMcpController Executor session scope', () => {
     webOrigin: 'https://garden.test',
   }
 
-  const storedOptions = (session: unknown) =>
+  const desiredRegistration = {
+    bindingName: 'EXECUTOR_MCP_SESSION',
+    serverName: 'garden-mail-runtime-1',
+    session: desiredSession,
+  }
+
+  const storedOptions = (
+    session: unknown,
+    bindingName = 'EXECUTOR_MCP_SESSION',
+  ) =>
     JSON.stringify({
-      bindingName: 'EXECUTOR_MCP_SESSION',
+      bindingName,
       props: { session },
     })
 
-  it('compares the complete restored RPC authority rather than the server id', () => {
+  it('compares the complete restored RPC route and authority', () => {
     expect(
       executorMcpSessionScopeMatches(
-        storedOptions({ ...desiredSession, toolkitConnectionNames: ['gmail'] }),
-        desiredSession,
+        {
+          server_url: 'rpc:garden-mail-runtime-1',
+          server_options: storedOptions({
+            ...desiredSession,
+            toolkitConnectionNames: ['gmail'],
+          }),
+        },
+        desiredRegistration,
       ),
     ).toBe(true)
     expect(
       executorMcpSessionScopeMatches(
-        storedOptions({
-          ...desiredSession,
-          elicitationMode: 'model',
-          resource: { kind: 'default' },
-          toolkitConnectionNames: [],
-        }),
-        desiredSession,
+        {
+          server_url: 'rpc:executor',
+          server_options: storedOptions(desiredSession),
+        },
+        desiredRegistration,
       ),
     ).toBe(false)
-    expect(executorMcpSessionScopeMatches('{broken', desiredSession)).toBe(
-      false,
-    )
+    expect(
+      executorMcpSessionScopeMatches(
+        {
+          server_url: 'rpc:garden-mail-runtime-1',
+          server_options: storedOptions(desiredSession, 'OTHER_BINDING'),
+        },
+        desiredRegistration,
+      ),
+    ).toBe(false)
+    expect(
+      executorMcpSessionScopeMatches(
+        {
+          server_url: 'rpc:garden-mail-runtime-1',
+          server_options: '{broken',
+        },
+        desiredRegistration,
+      ),
+    ).toBe(false)
   })
 
+  type RestoredExecutor = {
+    readonly bindingName: string
+    readonly serverName: string
+    readonly session: unknown
+  }
+
   /** Builds a restored Agents SDK server plus observable registration seams. */
-  const makeController = (initialSession: unknown) => {
+  const makeController = (initial: RestoredExecutor) => {
     let executorRegistered = true
-    let persistedOptions: string | null = storedOptions(initialSession)
+    let persistedServerUrl: string | null = `rpc:${initial.serverName}`
+    let persistedOptions: string | null = storedOptions(
+      initial.session,
+      initial.bindingName,
+    )
     const registeredSessions: unknown[] = []
+    const registeredServerNames: string[] = []
     const removedServerIds: string[] = []
     const storage = {
       exec(sql: string) {
         const normalized = sql.trim().toLowerCase()
-        if (normalized.startsWith('select server_options')) {
+        if (
+          normalized.startsWith('select server_url, server_options') &&
+          normalized.includes('from cf_agents_mcp_servers')
+        ) {
           return persistedOptions === null
             ? []
-            : [{ server_options: persistedOptions }]
+            : [
+                {
+                  server_url: persistedServerUrl,
+                  server_options: persistedOptions,
+                },
+              ]
         }
         return []
       },
@@ -388,13 +440,15 @@ describe('RuntimeMcpController Executor session scope', () => {
         listTools: () => [],
         listServers: () =>
           executorRegistered
-            ? [{ id: 'executor', server_url: 'rpc:executor' }]
+            ? [{ id: 'executor', server_url: persistedServerUrl }]
             : [],
         discoverIfConnected: async () => ({ success: true }),
       },
-      addExecutorMcpServer: async ({ props }) => {
+      addExecutorMcpServer: async ({ serverName, props }) => {
+        registeredServerNames.push(serverName)
         registeredSessions.push(props.session)
         executorRegistered = true
+        persistedServerUrl = `rpc:${serverName}`
         persistedOptions = storedOptions(props.session)
         return { state: 'connected' }
       },
@@ -404,6 +458,7 @@ describe('RuntimeMcpController Executor session scope', () => {
       removeMcpServer: async (serverId) => {
         removedServerIds.push(serverId)
         executorRegistered = false
+        persistedServerUrl = null
         persistedOptions = null
       },
       resolveRuntimeIdentity: async () =>
@@ -420,31 +475,61 @@ describe('RuntimeMcpController Executor session scope', () => {
         listActiveConnectorBindings: () => Promise<Result<Array<never>, never>>
       }
     ).listActiveConnectorBindings = async () => Result.ok([])
-    return { controller, registeredSessions, removedServerIds }
+    return {
+      controller,
+      registeredServerNames,
+      registeredSessions,
+      removedServerIds,
+    }
   }
 
   it('replaces a restored default Executor session with the Inbox toolkit', async () => {
     const runtime = makeController({
-      ...desiredSession,
-      elicitationMode: 'model',
-      resource: { kind: 'default' },
-      toolkitConnectionNames: [],
+      bindingName: 'EXECUTOR_MCP_SESSION',
+      serverName: 'executor',
+      session: {
+        ...desiredSession,
+        elicitationMode: 'model',
+        resource: { kind: 'default' },
+        toolkitConnectionNames: [],
+      },
     })
 
     const prepared = await runtime.controller.ensureProxyMcpConnections()
 
     expect(prepared.isOk()).toBe(true)
     expect(runtime.removedServerIds).toEqual(['executor'])
+    expect(runtime.registeredServerNames).toEqual(['garden-mail-runtime-1'])
+    expect(runtime.registeredSessions).toEqual([desiredSession])
+  })
+
+  it('replaces a matching remote route restored through the wrong binding', async () => {
+    const runtime = makeController({
+      bindingName: 'OTHER_BINDING',
+      serverName: 'garden-mail-runtime-1',
+      session: desiredSession,
+    })
+
+    const prepared = await runtime.controller.ensureProxyMcpConnections()
+
+    expect(prepared.isOk()).toBe(true)
+    expect(runtime.removedServerIds).toEqual(['executor'])
+    expect(runtime.registeredServerNames).toEqual(['garden-mail-runtime-1'])
     expect(runtime.registeredSessions).toEqual([desiredSession])
   })
 
   it('keeps a restored Executor session whose Inbox scope still matches', async () => {
-    const runtime = makeController(desiredSession)
+    const runtime = makeController({
+      bindingName: 'EXECUTOR_MCP_SESSION',
+      serverName: 'garden-mail-runtime-1',
+      session: desiredSession,
+    })
 
     const prepared = await runtime.controller.ensureProxyMcpConnections()
 
     expect(prepared.isOk()).toBe(true)
     expect(runtime.removedServerIds).toEqual([])
+    expect(runtime.registeredServerNames).toEqual([])
     expect(runtime.registeredSessions).toEqual([])
   })
 })

@@ -158,9 +158,24 @@ export type ExecutorMcpSessionScope = {
   readonly webOrigin?: string
 }
 
-type StoredExecutorMcpServerRow = {
+export type ExecutorMcpRegistrationScope = {
+  readonly bindingName: string
+  readonly serverName: string
+  readonly session: ExecutorMcpSessionScope
+}
+
+export type StoredExecutorMcpServerRow = {
+  readonly server_url: string
   readonly server_options: string | null
 }
+
+export const EXECUTOR_MCP_LOCAL_SERVER_ID = 'executor'
+export const EXECUTOR_MCP_BINDING_NAME = 'EXECUTOR_MCP_SESSION'
+
+/** Gives scoped Inbox authority its own remote Durable Object identity. */
+export const executorMcpServerNameForResource = (
+  resource: ExecutorMcpResource,
+) => (resource.kind === 'toolkit' ? resource.slug : 'executor')
 
 /**
  * Compares the authority-bearing RPC props persisted by Agents SDK with the
@@ -173,10 +188,16 @@ type StoredExecutorMcpServerRow = {
  * those props without asking Garden to rebuild them.
  */
 export const executorMcpSessionScopeMatches = (
-  serverOptions: string | null,
-  desired: ExecutorMcpSessionScope,
+  stored: StoredExecutorMcpServerRow | null,
+  desired: ExecutorMcpRegistrationScope,
 ): boolean => {
-  if (!serverOptions) return false
+  if (
+    !stored?.server_options ||
+    stored.server_url !== `rpc:${desired.serverName}`
+  ) {
+    return false
+  }
+  const serverOptions = stored.server_options
 
   const decoded = Result.try({
     try: () => JSON.parse(serverOptions) as unknown,
@@ -204,23 +225,25 @@ export const executorMcpSessionScopeMatches = (
   }
 
   const value = session as Record<string, unknown>
+  const bindingName = (decoded.value as { bindingName?: unknown }).bindingName
   const normalizedConnections = (input: unknown) =>
     Array.isArray(input) && input.every((name) => typeof name === 'string')
       ? [...new Set(input)].sort()
       : []
   const normalizedDesiredConnections = normalizedConnections(
-    desired.toolkitConnectionNames,
+    desired.session.toolkitConnectionNames,
   )
 
   return (
-    value.organizationId === desired.organizationId &&
-    value.userId === desired.userId &&
-    value.elicitationMode === desired.elicitationMode &&
+    bindingName === desired.bindingName &&
+    value.organizationId === desired.session.organizationId &&
+    value.userId === desired.session.userId &&
+    value.elicitationMode === desired.session.elicitationMode &&
     canonicalJsonString(value.resource) ===
-      canonicalJsonString(desired.resource) &&
+      canonicalJsonString(desired.session.resource) &&
     canonicalJsonString(normalizedConnections(value.toolkitConnectionNames)) ===
       canonicalJsonString(normalizedDesiredConnections) &&
-    value.webOrigin === desired.webOrigin
+    value.webOrigin === desired.session.webOrigin
   )
 }
 
@@ -273,15 +296,9 @@ export type McpHost = {
   }) => Promise<McpRegistration & { id?: string }>
   addExecutorMcpServer?: (input: {
     id: string
+    serverName: string
     props: {
-      session: {
-        organizationId: string
-        userId: string
-        elicitationMode: 'model' | 'browser'
-        resource: ExecutorMcpResource
-        toolkitConnectionNames?: readonly string[]
-        webOrigin?: string
-      }
+      session: ExecutorMcpSessionScope
     }
   }) => Promise<McpRegistration & { id?: string }>
   getExecutorMcpResource?: () => ExecutorMcpResource
@@ -343,21 +360,18 @@ export class RuntimeMcpController {
   }
 
   /** Reads the SDK-owned persisted RPC props used during cold restoration. */
-  private executorSessionScopeMatches(desired: ExecutorMcpSessionScope) {
+  private executorSessionScopeMatches(desired: ExecutorMcpRegistrationScope) {
     return Result.try({
       try: () => {
         const [row] = Array.from(
           this.host.ctx.storage.sql.exec(
-            `select server_options
+            `select server_url, server_options
              from cf_agents_mcp_servers
-             where id = 'executor' and server_url = 'rpc:executor'
+             where id = 'executor'
              limit 1`,
           ),
         ) as StoredExecutorMcpServerRow[]
-        return executorMcpSessionScopeMatches(
-          row?.server_options ?? null,
-          desired,
-        )
+        return executorMcpSessionScopeMatches(row ?? null, desired)
       },
       catch: () =>
         new RuntimeMcpError({
@@ -1326,7 +1340,7 @@ export class RuntimeMcpController {
 
     this.activateNativeConnectorBindings(bindingsResult.value)
     await this.refreshGitHubHostedMcpTools()
-    const executorServerId = 'executor'
+    const executorServerId = EXECUTOR_MCP_LOCAL_SERVER_ID
     for (const server of this.host.mcp.listServers()) {
       if (server.id !== executorServerId && getConnectorById(server.id)) {
         await this.host.removeMcpServer(server.id)
@@ -1347,12 +1361,17 @@ export class RuntimeMcpController {
         ? { webOrigin: this.host.env.BETTER_AUTH_URL }
         : {}),
     } satisfies ExecutorMcpSessionScope
+    const desiredRegistration = {
+      bindingName: EXECUTOR_MCP_BINDING_NAME,
+      serverName: executorMcpServerNameForResource(resource),
+      session: desiredSession,
+    } satisfies ExecutorMcpRegistrationScope
     const existingExecutor = this.host.mcp
       .listServers()
       .find((server) => server.id === executorServerId)
     let needsExecutorRegistration = existingExecutor === undefined
     if (existingExecutor) {
-      const scopeMatches = this.executorSessionScopeMatches(desiredSession)
+      const scopeMatches = this.executorSessionScopeMatches(desiredRegistration)
       if (scopeMatches.isErr()) return scopeMatches
       if (!scopeMatches.value) {
         const reset = await this.resetProxyMcpServers([executorServerId])
@@ -1363,6 +1382,7 @@ export class RuntimeMcpController {
     if (needsExecutorRegistration) {
       const registration = await addExecutorMcpServer({
         id: executorServerId,
+        serverName: desiredRegistration.serverName,
         props: {
           session: desiredSession,
         },

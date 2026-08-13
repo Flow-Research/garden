@@ -77,8 +77,11 @@ import {
   createPromptContextProviders,
 } from './prompt'
 import {
+  EXECUTOR_MCP_BINDING_NAME,
+  EXECUTOR_MCP_LOCAL_SERVER_ID,
   RuntimeMcpConnectionPreparer,
   RuntimeMcpController,
+  executorMcpServerNameForResource,
   type McpHost,
   type RuntimeMcpServerStates,
 } from './runtime-mcp-controller'
@@ -535,10 +538,50 @@ const ensureMailContextTokenSchema = (storage: DurableObjectStorage) => {
  * to ensure mail runtimes can expose only Garden's scoped Executor RPC.
  */
 export const pruneInboxMcpServers = (storage: DurableObjectStorage) => {
+  const [runtimeConfig] = Array.from(
+    storage.sql.exec(
+      'select toolkit_slug from mail_runtime_config where singleton = 1',
+    ),
+  )
+  const toolkitSlug = runtimeConfig?.toolkit_slug?.toString()
+  if (!toolkitSlug) {
+    storage.sql.exec('delete from cf_agents_mcp_servers')
+    return
+  }
+  const expectedServerUrl = `rpc:${executorMcpServerNameForResource({
+    kind: 'toolkit',
+    slug: toolkitSlug,
+  })}`
   storage.sql.exec(
     `delete from cf_agents_mcp_servers
-     where id <> 'executor' or server_url <> 'rpc:executor'`,
+     where id <> ? or server_url <> ?`,
+    EXECUTOR_MCP_LOCAL_SERVER_ID,
+    expectedServerUrl,
   )
+  const [executorRow] = Array.from(
+    storage.sql.exec(
+      `select server_options
+       from cf_agents_mcp_servers
+       where id = ?
+       limit 1`,
+      EXECUTOR_MCP_LOCAL_SERVER_ID,
+    ),
+  )
+  const bindingName = Result.try({
+    try: () => {
+      const options = JSON.parse(
+        executorRow?.server_options?.toString() ?? '',
+      ) as { bindingName?: unknown }
+      return options.bindingName
+    },
+    catch: () => null,
+  }).unwrapOr(null)
+  if (bindingName !== EXECUTOR_MCP_BINDING_NAME) {
+    storage.sql.exec(
+      'delete from cf_agents_mcp_servers where id = ?',
+      EXECUTOR_MCP_LOCAL_SERVER_ID,
+    )
+  }
 }
 
 type ThreadDocumentUploadPayload = Awaited<
@@ -3273,8 +3316,8 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       mcp: this.mcp,
       getServerStates: () =>
         this.getMcpServers().servers as RuntimeMcpServerStates,
-      addExecutorMcpServer: async ({ id, props }) =>
-        await this.addMcpServer(id, this.env.EXECUTOR_MCP_SESSION, {
+      addExecutorMcpServer: async ({ id, serverName, props }) =>
+        await this.addMcpServer(serverName, this.env.EXECUTOR_MCP_SESSION, {
           id,
           props,
         }),
