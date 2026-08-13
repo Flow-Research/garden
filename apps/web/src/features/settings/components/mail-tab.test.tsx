@@ -117,15 +117,13 @@ describe('MailTab', () => {
     expect(getSettings).toHaveBeenCalledWith('workspace-1')
   })
 
-  it('is available as a workspace settings tab', () => {
-    render(
-      <SettingsPage defaultTab="mail" mailController={{ status: 'loading' }} />,
-    )
+  it('keeps hosted mail administration out of shipped workspace settings', () => {
+    render(<SettingsPage />)
 
-    expect(screen.getByRole('tab', { name: 'Mail' })).toHaveAttribute(
-      'data-active',
-    )
-    expect(screen.getByLabelText('Loading mail settings')).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Mail' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByLabelText('Loading mail settings'),
+    ).not.toBeInTheDocument()
   })
 
   it('reports an unavailable adapter without manufacturing settings rows', () => {

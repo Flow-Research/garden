@@ -1,5 +1,5 @@
 import React from 'react'
-import { Bug, User, Palette, Settings, Users, Mail } from 'lucide-react'
+import { Bug, User, Palette, Settings, Users } from 'lucide-react'
 import {
   Tabs,
   TabsList,
@@ -12,8 +12,6 @@ import { AppearanceTab } from './appearance-tab'
 import { DeveloperTab } from './developer-tab'
 import { WorkspaceTab } from './workspace-tab'
 import { MembersTab } from './members-tab'
-import { MailTab } from './mail-tab'
-import type { MailSettingsController } from '../mail-settings-controller'
 
 const accountTabs = [
   { value: 'profile', label: 'Account', icon: User },
@@ -23,7 +21,6 @@ const accountTabs = [
 
 const workspaceTabs = [
   { value: 'workspace', label: 'General', icon: Settings },
-  { value: 'mail', label: 'Mail', icon: Mail },
   { value: 'members', label: 'Members', icon: Users },
 ]
 
@@ -39,14 +36,11 @@ export interface SettingsPageProps {
   extraAccountTabs?: ExtraSettingsTab[]
   /** Initial tab to show; defaults to "profile". */
   defaultTab?: string
-  /** Authenticated Garden Mail adapter supplied by the application boundary. */
-  mailController?: MailSettingsController
 }
 
 export function SettingsPage({
   extraAccountTabs,
   defaultTab = 'profile',
-  mailController,
 }: SettingsPageProps = {}) {
   const workspaceName = useWorkspaceStore((s) => s.workspace?.name)
 
@@ -116,9 +110,6 @@ export function SettingsPage({
           </TabsContent>
           <TabsContent value="workspace">
             <WorkspaceTab />
-          </TabsContent>
-          <TabsContent value="mail">
-            <MailTab controller={mailController} />
           </TabsContent>
           <TabsContent value="members">
             <MembersTab />

@@ -260,8 +260,10 @@ describe('InboxPage mail composition', () => {
     expect(
       screen.queryByRole('heading', { name: 'Research finished' }),
     ).not.toBeInTheDocument()
+    expect(screen.queryByText('Research finished')).not.toBeInTheDocument()
 
     rerender(<InboxPage mailController={activeMailController()} />)
+    expect(screen.getByText('Research finished')).toBeInTheDocument()
     expect(
       screen.getByRole('button', {
         name: 'Unread conversation: Term sheet follow-up',

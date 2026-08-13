@@ -882,7 +882,6 @@ export function InboxPage({
     )
   } else if (
     scope === 'all' &&
-    unifiedRows.length === 0 &&
     mailController.status === 'active' &&
     mailController.list.status === 'loading'
   ) {
