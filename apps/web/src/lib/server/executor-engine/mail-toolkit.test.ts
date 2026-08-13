@@ -4,6 +4,7 @@ import {
   GARDEN_MAIL_EXECUTOR_READ_TOOLS,
   GARDEN_MAIL_EXECUTOR_WRITE_TOOLS,
   gardenMailApprovalTarget,
+  gardenMailThreadMutation,
   gardenMailExecutorConnectionPattern,
   resolveGardenMailExecutorPolicy,
   isGardenMailExecutorConnectionName,
@@ -53,6 +54,15 @@ describe('Garden Mail Executor toolkit', () => {
       'gmail.users.threads.modify',
     )
     expect(GARDEN_MAIL_EXECUTOR_WRITE_TOOLS).not.toContain(
+      'gmail.users.messages.modify',
+    )
+    expect(GARDEN_MAIL_EXECUTOR_WRITE_TOOLS).not.toContain(
+      'gmail.users.threads.trash',
+    )
+    expect(GARDEN_MAIL_EXECUTOR_WRITE_TOOLS).not.toContain(
+      'gmail.users.threads.untrash',
+    )
+    expect(GARDEN_MAIL_EXECUTOR_WRITE_TOOLS).not.toContain(
       'gmail.users.messages.delete',
     )
     expect(GARDEN_MAIL_EXECUTOR_READ_TOOLS).not.toContain(
@@ -65,6 +75,38 @@ describe('Garden Mail Executor toolkit', () => {
       ...GARDEN_MAIL_EXECUTOR_READ_TOOLS,
       ...GARDEN_MAIL_EXECUTOR_WRITE_TOOLS,
     ]).not.toContain('gmail.users.settings.delegates.create')
+  })
+
+  it('accepts only exact thread-state label mutations', () => {
+    expect(
+      gardenMailThreadMutation({
+        id: 'thread-1',
+        addLabelIds: ['STARRED'],
+        removeLabelIds: ['INBOX', 'UNREAD'],
+      }),
+    ).toEqual({
+      threadId: 'thread-1',
+      addLabelIds: ['STARRED'],
+      removeLabelIds: ['INBOX', 'UNREAD'],
+    })
+    expect(
+      gardenMailThreadMutation({ id: 'thread-1', addLabelIds: ['SPAM'] }),
+    ).toBeNull()
+    expect(
+      gardenMailThreadMutation({
+        id: 'thread-1',
+        addLabelIds: ['INBOX'],
+        removeLabelIds: ['INBOX'],
+      }),
+    ).toBeNull()
+    expect(
+      gardenMailThreadMutation({
+        id: 'thread-1',
+        addLabelIds: ['STARRED'],
+        requestBody: {},
+      }),
+    ).toBeNull()
+    expect(gardenMailThreadMutation({ id: 'thread-1' })).toBeNull()
   })
 
   it('accepts only reversible Gmail mutation approval addresses', () => {

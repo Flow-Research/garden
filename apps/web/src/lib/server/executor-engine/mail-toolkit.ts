@@ -20,12 +20,7 @@ export const GARDEN_MAIL_EXECUTOR_READ_TOOLS = [
 
 /** Provider mutations stay behind Executor's explicit approval path. */
 export const GARDEN_MAIL_EXECUTOR_WRITE_TOOLS = [
-  'gmail.users.messages.modify',
-  'gmail.users.messages.trash',
-  'gmail.users.messages.untrash',
   'gmail.users.threads.modify',
-  'gmail.users.threads.trash',
-  'gmail.users.threads.untrash',
 ] as const
 
 /** Sync states whose Gmail connection can still execute provider actions. */
@@ -72,6 +67,67 @@ export const resolveGardenMailExecutorPolicy = (
 export type GardenMailApprovalTarget = {
   readonly connectionName: string
   readonly toolName: (typeof GARDEN_MAIL_EXECUTOR_WRITE_TOOLS)[number]
+}
+
+const GARDEN_GMAIL_STATE_LABELS = ['INBOX', 'UNREAD', 'STARRED'] as const
+type GardenGmailStateLabel = (typeof GARDEN_GMAIL_STATE_LABELS)[number]
+
+export type GardenMailThreadMutation = {
+  readonly threadId: string
+  readonly addLabelIds: readonly GardenGmailStateLabel[]
+  readonly removeLabelIds: readonly GardenGmailStateLabel[]
+}
+
+/**
+ * Decodes the exact Gmail thread mutation represented by Garden's actor-state
+ * model. Message-level and trash operations cannot be projected honestly, and
+ * unknown fields or labels could hide a broader provider mutation, so they are
+ * rejected before the human approval reaches Executor.
+ */
+export const gardenMailThreadMutation = (
+  args: unknown,
+): GardenMailThreadMutation | null => {
+  if (args === null || typeof args !== 'object' || Array.isArray(args)) {
+    return null
+  }
+  const record = args as Record<string, unknown>
+  const keys = Object.keys(record)
+  if (
+    keys.some(
+      (key) =>
+        key !== 'id' && key !== 'addLabelIds' && key !== 'removeLabelIds',
+    )
+  ) {
+    return null
+  }
+  if (typeof record.id !== 'string' || record.id.trim().length === 0) {
+    return null
+  }
+  const decodeLabels = (
+    value: unknown,
+  ): readonly GardenGmailStateLabel[] | null => {
+    if (value === undefined) return []
+    if (!Array.isArray(value)) return null
+    const labels = value.filter(
+      (label): label is GardenGmailStateLabel =>
+        typeof label === 'string' &&
+        GARDEN_GMAIL_STATE_LABELS.some((candidate) => candidate === label),
+    )
+    return labels.length === value.length &&
+      new Set(labels).size === labels.length
+      ? labels
+      : null
+  }
+  const addLabelIds = decodeLabels(record.addLabelIds)
+  const removeLabelIds = decodeLabels(record.removeLabelIds)
+  if (addLabelIds === null || removeLabelIds === null) return null
+  if (addLabelIds.length === 0 && removeLabelIds.length === 0) return null
+  if (addLabelIds.some((label) => removeLabelIds.includes(label))) return null
+  return {
+    threadId: record.id,
+    addLabelIds,
+    removeLabelIds,
+  }
 }
 
 /**

@@ -13,7 +13,9 @@ import {
 } from "@executor-js/execution/core";
 import {
   PAUSED_APPROVAL_TIMEOUT_MS,
+  browserApprovalOutcomeWaitMs,
   formatMcpExecutionOutcome,
+  type BrowserApprovalOutcome,
   type PausedExecutionHooks,
   type ResumeFallbackOutcome,
 } from "@executor-js/host-mcp/tool-server";
@@ -73,6 +75,8 @@ export type McpSessionApprovalResult =
       readonly status: "ok";
       readonly text: string;
       readonly structured: Record<string, unknown>;
+      /** Immutable MCP resource whose session owns this paused execution. */
+      readonly resource: McpResource;
     }
   | McpSessionApprovalErrorResult;
 
@@ -129,6 +133,10 @@ export interface BuiltMcpServer {
 export interface BrowserApprovalStore {
   readonly takeResponse: (executionId: string) => Effect.Effect<ResumeResponse | null>;
   readonly waitForResponse: (executionId: string) => Effect.Effect<ResumeResponse | null>;
+  readonly completeOutcome: (
+    executionId: string,
+    outcome: BrowserApprovalOutcome,
+  ) => Effect.Effect<void>;
 }
 
 const SESSION_META_KEY = "session-meta";
@@ -141,6 +149,9 @@ const MCP_MESSAGE_HEADER = "cf-mcp-message";
 const MODEL_RESUME_FORWARD_TIMEOUT_MS = 10_000;
 const MCP_STREAM_REQS_KEY_PREFIX = "__mcp_stream_reqs__:";
 const approvalResponseKey = (executionId: string) => `approval-response:${executionId}`;
+const approvalResponseTakenKey = (executionId: string) =>
+  `approval-response-taken:${executionId}`;
+const approvalOutcomeKey = (executionId: string) => `approval-outcome:${executionId}`;
 
 type JsonRpcRequestId = string | number;
 const JsonRpcRequestWithId = Schema.Struct({
@@ -154,6 +165,7 @@ const decodeJsonRpcRequestWithId = Schema.decodeUnknownOption(JsonRpcRequestWith
 const resumeApprovalResult = (
   executionId: string,
   response: ResumeResponse,
+  outcome: BrowserApprovalOutcome,
 ): Extract<McpSessionResumeApprovalResult, { readonly status: "ok" }> => {
   const textByAction = {
     accept: "I've approved it",
@@ -168,10 +180,13 @@ const resumeApprovalResult = (
 
   return {
     status: "ok",
-    executionStatus: "completed",
+    executionStatus: outcome.status === "paused" ? "paused" : "completed",
     text: textByAction[response.action],
-    structured: { status: statusByAction[response.action], executionId },
-    isError: false,
+    structured: { status: statusByAction[response.action], executionId, executionOutcome: outcome.status },
+    isError:
+      outcome.status === "failed" ||
+      outcome.status === "not_found" ||
+      (outcome.status === "completed" && outcome.isError),
   };
 };
 
@@ -232,6 +247,10 @@ export abstract class McpAgentSessionDOBase<
   private onStartPromise: Promise<void> | null = null;
   private lastActivityMs = 0;
   private approvalResponses = new Map<string, ResumeResponse>();
+  private approvalResponseTaken = new Set<string>();
+  private approvalResponseTakenWaiters = new Map<string, Deferred.Deferred<void>>();
+  private approvalOutcomes = new Map<string, BrowserApprovalOutcome>();
+  private approvalOutcomeWaiters = new Map<string, Deferred.Deferred<BrowserApprovalOutcome>>();
   private approvalWaiters = new Map<string, Deferred.Deferred<ResumeResponse>>();
   private pendingApprovalLeases = new Map<string, PendingApprovalLease>();
 
@@ -311,6 +330,7 @@ export abstract class McpAgentSessionDOBase<
   protected readonly browserApprovalStore: BrowserApprovalStore = {
     takeResponse: (executionId) => this.takeApprovalResponse(executionId),
     waitForResponse: (executionId) => this.waitForApprovalResponse(executionId),
+    completeOutcome: (executionId, outcome) => this.completeApprovalOutcome(executionId, outcome),
   };
 
   protected readonly modelResumeFallback = (
@@ -805,6 +825,7 @@ export abstract class McpAgentSessionDOBase<
           status: "ok" as const,
           text: formatted.text,
           structured: formatted.structured,
+          resource: (yield* self.loadSessionMeta())?.resource ?? defaultMcpResource,
         };
       }).pipe(
         Effect.withSpan("McpSessionDO.getPausedExecutionForApproval", {
@@ -895,8 +916,20 @@ export abstract class McpAgentSessionDOBase<
         const paused = yield* self.engine.getPausedExecution(executionId);
         if (!paused) return { status: "not_found" } as const;
 
+        const deadline = yield* self.deadlineForExecution(executionId);
         yield* self.recordApprovalResponse(executionId, response);
-        return resumeApprovalResult(executionId, response);
+        const responseTaken = yield* self.waitForApprovalResponseTaken(executionId).pipe(
+          Effect.timeoutOrElse({
+            duration: `${browserApprovalOutcomeWaitMs(deadline)} millis`,
+            orElse: () => Effect.succeed(false),
+          }),
+        );
+        if (!responseTaken) {
+          yield* self.clearApprovalResponse(executionId);
+          return resumeApprovalResult(executionId, response, { status: "not_found" });
+        }
+        const outcome = yield* self.waitForApprovalOutcome(executionId);
+        return resumeApprovalResult(executionId, response, outcome);
       }).pipe(
         Effect.withSpan("McpSessionDO.resumeExecutionForApproval", {
           attributes: { "mcp.execution.id": executionId },
@@ -1283,6 +1316,109 @@ export abstract class McpAgentSessionDOBase<
     });
   }
 
+  /** Prevents an approval that outlived its execution lease from running later. */
+  private clearApprovalResponse(executionId: string): Effect.Effect<void> {
+    const self = this;
+    return Effect.promise(async () => {
+      self.approvalResponses.delete(executionId);
+      self.approvalResponseTaken.delete(executionId);
+      await self.ctx.storage.delete([
+        approvalResponseKey(executionId),
+        approvalResponseTakenKey(executionId),
+      ]);
+    });
+  }
+
+  /** Proves the waiting MCP resume call consumed the browser decision. */
+  private markApprovalResponseTaken(executionId: string): Effect.Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      self.approvalResponseTaken.add(executionId);
+      yield* Effect.promise(() => self.ctx.storage.put(approvalResponseTakenKey(executionId), true));
+      const waiter = self.approvalResponseTakenWaiters.get(executionId);
+      if (waiter) yield* Deferred.succeed(waiter, undefined);
+    });
+  }
+
+  /** Waits only until the existing approval lease proves a resume consumer. */
+  private waitForApprovalResponseTaken(executionId: string): Effect.Effect<boolean> {
+    const self = this;
+    return Effect.gen(function* () {
+      if (self.approvalResponseTaken.has(executionId)) return true;
+      const stored = yield* Effect.promise(() =>
+        self.ctx.storage.get<boolean>(approvalResponseTakenKey(executionId)),
+      );
+      if (stored === true) return true;
+      const waiter =
+        self.approvalResponseTakenWaiters.get(executionId) ??
+        (yield* Deferred.make<void>());
+      self.approvalResponseTakenWaiters.set(executionId, waiter);
+      yield* Deferred.await(waiter).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (self.approvalResponseTakenWaiters.get(executionId) === waiter) {
+              self.approvalResponseTakenWaiters.delete(executionId);
+            }
+          }),
+        ),
+      );
+      return true;
+    });
+  }
+
+  /** Completes the browser RPC only after the resumed provider program settles. */
+  private completeApprovalOutcome(
+    executionId: string,
+    outcome: BrowserApprovalOutcome,
+  ): Effect.Effect<void> {
+    const self = this;
+    return Effect.gen(function* () {
+      self.approvalOutcomes.set(executionId, outcome);
+      yield* Effect.promise(() => self.ctx.storage.put(approvalOutcomeKey(executionId), outcome));
+      const waiter = self.approvalOutcomeWaiters.get(executionId);
+      if (waiter) yield* Deferred.succeed(waiter, outcome);
+    });
+  }
+
+  /** Waits on the existing paused-execution lease; no second timeout is added. */
+  private waitForApprovalOutcome(executionId: string): Effect.Effect<BrowserApprovalOutcome> {
+    const self = this;
+    return Effect.gen(function* () {
+      const memoryOutcome = self.approvalOutcomes.get(executionId);
+      if (memoryOutcome) {
+        self.approvalOutcomes.delete(executionId);
+        yield* Effect.promise(() => self.ctx.storage.delete(approvalOutcomeKey(executionId)));
+        yield* self.clearApprovalResponse(executionId);
+        return memoryOutcome;
+      }
+      const stored = yield* Effect.promise(() =>
+        self.ctx.storage.get<BrowserApprovalOutcome>(approvalOutcomeKey(executionId)),
+      );
+      if (stored) {
+        yield* Effect.promise(() => self.ctx.storage.delete(approvalOutcomeKey(executionId)));
+        yield* self.clearApprovalResponse(executionId);
+        return stored;
+      }
+      const waiter =
+        self.approvalOutcomeWaiters.get(executionId) ??
+        (yield* Deferred.make<BrowserApprovalOutcome>());
+      self.approvalOutcomeWaiters.set(executionId, waiter);
+      const outcome = yield* Deferred.await(waiter).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (self.approvalOutcomeWaiters.get(executionId) === waiter) {
+              self.approvalOutcomeWaiters.delete(executionId);
+            }
+          }),
+        ),
+      );
+      self.approvalOutcomes.delete(executionId);
+      yield* Effect.promise(() => self.ctx.storage.delete(approvalOutcomeKey(executionId)));
+      yield* self.clearApprovalResponse(executionId);
+      return outcome;
+    });
+  }
+
   private expirePendingApproval(executionId: string): Effect.Effect<void> {
     const self = this;
     return Effect.gen(function* () {
@@ -1315,16 +1451,20 @@ export abstract class McpAgentSessionDOBase<
 
   private takeApprovalResponse(executionId: string): Effect.Effect<ResumeResponse | null> {
     const self = this;
-    return Effect.promise(async () => {
+    return Effect.gen(function* () {
       const memoryResponse = self.approvalResponses.get(executionId);
       if (memoryResponse) {
         self.approvalResponses.delete(executionId);
-        await self.ctx.storage.delete(approvalResponseKey(executionId));
+        yield* Effect.promise(() => self.ctx.storage.delete(approvalResponseKey(executionId)));
+        yield* self.markApprovalResponseTaken(executionId);
         return memoryResponse;
       }
-      const stored = await self.ctx.storage.get<ResumeResponse>(approvalResponseKey(executionId));
+      const stored = yield* Effect.promise(() =>
+        self.ctx.storage.get<ResumeResponse>(approvalResponseKey(executionId)),
+      );
       if (!stored) return null;
-      await self.ctx.storage.delete(approvalResponseKey(executionId));
+      yield* Effect.promise(() => self.ctx.storage.delete(approvalResponseKey(executionId)));
+      yield* self.markApprovalResponseTaken(executionId);
       return stored;
     });
   }

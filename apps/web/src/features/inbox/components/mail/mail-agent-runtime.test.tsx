@@ -19,6 +19,7 @@ const setPendingTurn = vi.hoisted(() => vi.fn())
 const runtimeOptions = vi.hoisted(() => vi.fn())
 const saveAgentMailDraft = vi.hoisted(() => vi.fn())
 const resolveMailAgentAction = vi.hoisted(() => vi.fn())
+const sidebarProps = vi.hoisted(() => vi.fn())
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: vi.fn(),
@@ -60,11 +61,20 @@ vi.mock('../../mail.queries', () => ({
 }))
 
 vi.mock('./mail-agent-sidebar', () => ({
-  MailAgentSidebar: ({ onSend }: { onSend: (text: string) => void }) => (
-    <button type="button" onClick={() => onSend('Summarize this email')}>
-      Send agent turn
-    </button>
-  ),
+  MailAgentSidebar: (props: {
+    onSend: (text: string) => void
+    onResolveApproval: (executionId: string, approved: boolean) => unknown
+  }) => {
+    sidebarProps(props)
+    return (
+      <button
+        type="button"
+        onClick={() => props.onSend('Summarize this email')}
+      >
+        Send agent turn
+      </button>
+    )
+  },
 }))
 
 const session: AgentChatSession = {
@@ -95,6 +105,8 @@ describe('MailAgentRuntime', () => {
     setPendingTurn.mockReset()
     runtimeOptions.mockReset()
     saveAgentMailDraft.mockReset()
+    resolveMailAgentAction.mockReset()
+    sidebarProps.mockReset()
   })
 
   it('binds an authorized context token immediately before each turn', async () => {
@@ -142,6 +154,43 @@ describe('MailAgentRuntime', () => {
 
     await waitFor(() => expect(markTurnError).toHaveBeenCalledWith(denial))
     expect(sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('approves by opaque execution id without browser-selected agent authority', async () => {
+    resolveMailAgentAction.mockResolvedValue({ status: 'approved' })
+    render(
+      <MailAgentRuntime
+        workspaceId={session.workspaceId}
+        conversationId="00000000-0000-4000-8000-000000000006"
+        session={session}
+      />,
+    )
+    const props = sidebarProps.mock.lastCall?.[0] as {
+      onResolveApproval: (
+        executionId: string,
+        approved: boolean,
+      ) => Promise<string>
+    }
+
+    await expect(
+      props.onResolveApproval(
+        'exec_174e67d2-bcbc-420b-a1f5-289ee6681b8f',
+        true,
+      ),
+    ).resolves.toBe('approved')
+    expect(resolveMailAgentAction).toHaveBeenCalledWith({
+      data: {
+        workspaceId: session.workspaceId,
+        executionId: 'exec_174e67d2-bcbc-420b-a1f5-289ee6681b8f',
+        action: 'accept',
+      },
+    })
+    expect(resolveMailAgentAction.mock.calls[0]?.[0].data).not.toHaveProperty(
+      'agentId',
+    )
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['garden-mail', session.workspaceId],
+    })
   })
 
   it('persists and opens the exact agent draft without transport identifiers', async () => {

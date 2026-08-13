@@ -3,18 +3,26 @@ import { Effect, Schema } from 'effect'
 import type { ResumeResponse } from '@executor-js/execution/core'
 import { mcpExecutionOwnerDirectoryFromNamespace } from '@executor-js/cloudflare/mcp/execution-owner-directory'
 import { mcpSessionStub } from '@executor-js/cloudflare/mcp/session-stub'
-import { AgentId, WorkspaceId } from '@garden/core/mail'
+import {
+  ConversationId,
+  gardenMailExecutorToolkitSlug,
+  UpdateConversationStateInput,
+  UtcTimestamp,
+  WorkspaceId,
+} from '@garden/core/mail'
 import * as schema from '@garden/db/schema'
+import { MailRepository, makeMailRepositoryLayer } from '@garden/server/mail'
 import type { AppRequestContext } from './context'
 import { requireMailMemberAuthority } from './mail-authority'
 import {
   gardenMailApprovalTarget,
+  gardenMailThreadMutation,
   MAIL_EXECUTOR_ACTIVE_SYNC_STATUSES,
+  type GardenMailThreadMutation,
 } from './executor-engine/mail-toolkit'
 
 export const MailExecutorApprovalInput = Schema.Struct({
   workspaceId: WorkspaceId,
-  agentId: AgentId,
   executionId: Schema.String,
   action: Schema.Literals(['accept', 'decline']),
 })
@@ -46,11 +54,106 @@ const pausedProviderAddress = (
     : undefined
 }
 
+/** Reads immutable provider arguments from Executor's paused interaction. */
+const pausedProviderArgs = (structured: Record<string, unknown>): unknown => {
+  const interaction = structured.interaction
+  return interaction && typeof interaction === 'object'
+    ? Reflect.get(interaction, 'args')
+    : undefined
+}
+
+/** Applies one validated Gmail label mutation to the member-owned projection. */
+export const approvedGmailThreadState = (input: {
+  readonly mutation: GardenMailThreadMutation
+  readonly current: {
+    readonly lastReadMessageId: string | null
+    readonly readAt: string | null
+    readonly archivedAt: string | null
+    readonly mutedAt: string | null
+    readonly pinned: boolean
+  } | null
+  readonly latestMessageId: string | null
+  readonly now: string
+}) => {
+  const added = new Set(input.mutation.addLabelIds)
+  const removed = new Set(input.mutation.removeLabelIds)
+  const read = removed.has('UNREAD') ? true : added.has('UNREAD') ? false : null
+  return {
+    lastReadMessageId:
+      read === true
+        ? input.latestMessageId
+        : read === false
+          ? null
+          : (input.current?.lastReadMessageId ?? null),
+    readAt:
+      read === true
+        ? input.now
+        : read === false
+          ? null
+          : (input.current?.readAt ?? null),
+    archivedAt: removed.has('INBOX')
+      ? input.now
+      : added.has('INBOX')
+        ? null
+        : (input.current?.archivedAt ?? null),
+    mutedAt: input.current?.mutedAt ?? null,
+    pinned: added.has('STARRED')
+      ? true
+      : removed.has('STARRED')
+        ? false
+        : (input.current?.pinned ?? false),
+  }
+}
+
+/** True only after Executor advanced beyond the approved provider call. */
+export const approvedProviderMutationCompleted = (input: {
+  readonly status: string
+  readonly executionStatus?: string
+  readonly isError?: boolean
+  readonly structured?: Record<string, unknown>
+}): boolean =>
+  input.status === 'ok' &&
+  input.isError !== true &&
+  ((input.executionStatus === 'completed' &&
+    input.structured?.executionOutcome === 'completed') ||
+    (input.executionStatus === 'paused' &&
+      input.structured?.executionOutcome === 'paused'))
+
 /**
- * Revalidates the exact paused Gmail connection against current member∩agent
- * mailbox authority, then records one human decision in Executor's owning DO.
- * The browser supplies only an opaque execution id; its session route and
- * provider address are recovered from trusted Durable Object state.
+ * Matches the immutable Executor toolkit resource to one server-resolved
+ * active agent. Approval requests used to accept an unrelated browser agent
+ * id; the paused session is now the only source of agent authority.
+ */
+export const resolveExecutorApprovalAgentId = async (input: {
+  readonly resource: { readonly kind: string; readonly slug?: string }
+  readonly workspaceId: string
+  readonly userId: string
+  readonly candidateAgentIds: readonly string[]
+}): Promise<string | null> => {
+  if (input.resource.kind !== 'toolkit' || !input.resource.slug) return null
+  const candidates = await Promise.all(
+    [...new Set(input.candidateAgentIds)].map(async (agentId) => ({
+      agentId,
+      toolkitSlug: await gardenMailExecutorToolkitSlug({
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        agentId,
+      }),
+    })),
+  )
+  return (
+    candidates.find(
+      (candidate) => candidate.toolkitSlug === input.resource.slug,
+    )?.agentId ?? null
+  )
+}
+
+/**
+ * Revalidates the exact paused Gmail connection and session-bound agent against
+ * current member∩agent mailbox authority, then records one human decision in
+ * Executor's owning DO. The browser supplies only an opaque execution id; its
+ * session route, toolkit resource, and provider address come from trusted DO
+ * state.
  */
 export const resolveMailExecutorApproval = Effect.fn(
   'GardenMail.resolveExecutorApproval',
@@ -120,7 +223,10 @@ export const resolveMailExecutorApproval = Effect.fn(
   const target = gardenMailApprovalTarget(
     pausedProviderAddress(paused.structured),
   )
-  if (target === null) {
+  const mutation = gardenMailThreadMutation(
+    pausedProviderArgs(paused.structured),
+  )
+  if (target === null || mutation === null) {
     return yield* new MailExecutorApprovalError({
       operation: 'validatePausedAction',
       message: 'This mail action cannot be approved.',
@@ -130,7 +236,10 @@ export const resolveMailExecutorApproval = Effect.fn(
   const scope = yield* Effect.tryPromise({
     try: async () => {
       const [account] = await authority.db
-        .select({ mailboxId: schema.mailSyncAccount.mailboxId })
+        .select({
+          id: schema.mailSyncAccount.id,
+          mailboxId: schema.mailSyncAccount.mailboxId,
+        })
         .from(schema.mailSyncAccount)
         .where(
           and(
@@ -150,6 +259,21 @@ export const resolveMailExecutorApproval = Effect.fn(
         )
         .limit(1)
       if (account === undefined) return null
+      const [conversation] = await authority.db
+        .select({ id: schema.mailConversation.id })
+        .from(schema.mailConversation)
+        .where(
+          and(
+            eq(schema.mailConversation.workspaceId, input.workspaceId),
+            eq(schema.mailConversation.mailboxId, account.mailboxId),
+            eq(
+              schema.mailConversation.threadKey,
+              `gmail:${account.id}:${mutation.threadId}`,
+            ),
+          ),
+        )
+        .limit(1)
+      if (conversation === undefined) return null
       const [memberAccess, agentAccess] = await Promise.all([
         authority.db
           .select({ mailboxId: schema.mailMailboxAccess.mailboxId })
@@ -165,20 +289,33 @@ export const resolveMailExecutorApproval = Effect.fn(
           )
           .limit(1),
         authority.db
-          .select({ mailboxId: schema.mailMailboxAccess.mailboxId })
+          .select({ agentId: schema.mailMailboxAccess.agentId })
           .from(schema.mailMailboxAccess)
+          .innerJoin(
+            schema.agent,
+            eq(schema.agent.id, schema.mailMailboxAccess.agentId),
+          )
           .where(
             and(
               eq(schema.mailMailboxAccess.workspaceId, input.workspaceId),
               eq(schema.mailMailboxAccess.mailboxId, account.mailboxId),
               eq(schema.mailMailboxAccess.actorType, 'agent'),
-              eq(schema.mailMailboxAccess.agentId, input.agentId),
               ne(schema.mailMailboxAccess.accessLevel, 'viewer'),
+              eq(schema.agent.workspaceId, input.workspaceId),
+              eq(schema.agent.status, 'active'),
             ),
-          )
-          .limit(1),
+          ),
       ])
-      return memberAccess[0] && agentAccess[0] ? account : null
+      if (!memberAccess[0]) return null
+      const agentId = await resolveExecutorApprovalAgentId({
+        resource: paused.resource,
+        workspaceId: input.workspaceId,
+        userId: authority.userId,
+        candidateAgentIds: agentAccess.flatMap((access) =>
+          access.agentId === null ? [] : [access.agentId],
+        ),
+      })
+      return agentId === null ? null : { conversation }
     },
     catch: (cause) =>
       new MailExecutorApprovalError({
@@ -205,7 +342,50 @@ export const resolveMailExecutorApproval = Effect.fn(
         cause,
       }),
   })
-  return resumed.status === 'ok'
-    ? { status: input.action === 'accept' ? 'approved' : 'declined' }
-    : { status: 'expired' }
+  if (resumed.status !== 'ok') return { status: 'expired' }
+  if (input.action === 'decline') return { status: 'declined' }
+  if (!approvedProviderMutationCompleted(resumed)) {
+    return yield* new MailExecutorApprovalError({
+      operation: 'executeApprovedAction',
+      message: 'Gmail could not complete the approved mail action.',
+    })
+  }
+
+  yield* Effect.gen(function* () {
+    const repository = yield* MailRepository
+    const conversationId = yield* Schema.decodeUnknownEffect(ConversationId)(
+      scope.conversation.id,
+    )
+    const detail = yield* repository.getConversation({
+      workspaceId: input.workspaceId,
+      actor: authority.actor,
+      conversationId,
+    })
+    const now = UtcTimestamp.make(new Date().toISOString())
+    const next = yield* Schema.decodeUnknownEffect(
+      UpdateConversationStateInput,
+    )({
+      workspaceId: input.workspaceId,
+      conversationId,
+      actor: authority.actor,
+      ...approvedGmailThreadState({
+        mutation,
+        current: detail.conversation.state,
+        latestMessageId: detail.messages.at(-1)?.id ?? null,
+        now,
+      }),
+    })
+    yield* repository.updateConversationState(next)
+  }).pipe(
+    Effect.provide(makeMailRepositoryLayer(authority.db)),
+    Effect.mapError(
+      (cause) =>
+        new MailExecutorApprovalError({
+          operation: 'reconcileCanonicalState',
+          message: 'Gmail changed, but Garden could not refresh the inbox.',
+          cause,
+        }),
+    ),
+  )
+  return { status: 'approved' }
 })

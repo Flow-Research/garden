@@ -263,10 +263,29 @@ export type ExecutorMcpServerConfig<E extends Cause.YieldableError = Cause.Yield
 export type BrowserApprovalStore = {
   readonly takeResponse: (executionId: string) => Effect.Effect<ResumeResponse | null>;
   readonly waitForResponse?: (executionId: string) => Effect.Effect<ResumeResponse | null>;
+  readonly completeOutcome?: (
+    executionId: string,
+    outcome: BrowserApprovalOutcome,
+  ) => Effect.Effect<void>;
 };
+
+export type BrowserApprovalOutcome =
+  | { readonly status: "completed"; readonly isError: boolean }
+  | { readonly status: "paused" }
+  | { readonly status: "not_found" }
+  | { readonly status: "failed" };
 
 export const PAUSED_APPROVAL_TIMEOUT_MS = 4 * 60 * 1000;
 const BROWSER_APPROVAL_WAIT_TIMEOUT_MS = PAUSED_APPROVAL_TIMEOUT_MS + 1000;
+
+/** Bounds provider completion to the paused execution's existing lease. */
+export const browserApprovalOutcomeWaitMs = (
+  deadline: PausedExecutionDeadline | undefined,
+  now = Date.now(),
+): number =>
+  deadline === undefined
+    ? PAUSED_APPROVAL_TIMEOUT_MS
+    : Math.max(0, Date.parse(deadline.expiresAt) - now);
 
 export type PausedExecutionHooks = {
   readonly onExecutionPaused?: (
@@ -1445,6 +1464,12 @@ export const createExecutorMcpServer = <E extends Cause.YieldableError>(
       );
     };
 
+    const completeBrowserApprovalOutcome = (
+      executionId: string,
+      outcome: BrowserApprovalOutcome,
+    ): Effect.Effect<void> =>
+      config.browserApprovalStore?.completeOutcome?.(executionId, outcome) ?? Effect.void;
+
     const resumeAfterBrowserApproval = (
       executionId: string,
       extra: McpRequestJoinKeys,
@@ -1457,8 +1482,13 @@ export const createExecutorMcpServer = <E extends Cause.YieldableError>(
         const response = yield* waitForBrowserApprovalResponse(executionId);
         if (!response) return yield* requireUserResumeApproval(executionId);
 
-        const outcome = yield* resumeWithLifecycle(executionId, response);
+        const outcome = yield* resumeWithLifecycle(executionId, response).pipe(
+          Effect.tapCause(() =>
+            completeBrowserApprovalOutcome(executionId, { status: "failed" }),
+          ),
+        );
         if (!outcome) {
+          yield* completeBrowserApprovalOutcome(executionId, { status: "not_found" });
           return missingExecutionResult(executionId);
         }
         if (outcome.status === "paused") {
@@ -1469,10 +1499,15 @@ export const createExecutorMcpServer = <E extends Cause.YieldableError>(
             "mcp.execute.pause_source": "browser_resume",
           });
           yield* onExecutionPaused(outcome.execution.id, deadline);
+          yield* completeBrowserApprovalOutcome(executionId, { status: "paused" });
+          return yield* requireUserResumeApproval(outcome.execution.id);
         }
-        return outcome.status === "completed"
-          ? toMcpResult(outcome.result)
-          : yield* requireUserResumeApproval(outcome.execution.id);
+        const result = toMcpResult(outcome.result);
+        yield* completeBrowserApprovalOutcome(executionId, {
+          status: "completed",
+          isError: result.isError === true,
+        });
+        return result;
       }).pipe(
         Effect.withSpan("mcp.host.tool.resume.browser_approval", {
           attributes: {

@@ -232,11 +232,15 @@ export function MailAgentRuntime({
         const result = await resolveMailAgentAction({
           data: {
             workspaceId,
-            agentId: session.agentId,
             executionId,
             action: approved ? 'accept' : 'decline',
           },
         })
+        if (result.status === 'approved') {
+          await queryClient.invalidateQueries({
+            queryKey: mailKeys.all(workspaceId),
+          })
+        }
         return result.status
       }}
       errorMessage={
