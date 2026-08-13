@@ -7,6 +7,7 @@ import {
   type BlobStore,
   type Executor,
   type ExecutorDb,
+  type ElicitationContext,
 } from '@executor-js/sdk/core'
 import { createExecutionEngine } from '@executor-js/execution/core'
 import type { ResumeResponse } from '@executor-js/execution/core'
@@ -44,6 +45,11 @@ import {
   isGardenMailExecutorConnectionName,
   isGardenMailExecutorToolkit,
 } from './mail-toolkit'
+import {
+  makeApprovalInvocationTracker,
+  observeApprovalInvocation,
+  type ApprovalInvocationTracker,
+} from './approval-invocation'
 
 type GardenMailSessionMeta = SessionMeta & {
   readonly toolkitConnectionNames?: readonly string[]
@@ -60,6 +66,36 @@ type ExecutorMcpEnv = Env & {
 }
 
 type GardenExecutor = Executor<GardenExecutorPlugins>
+
+/**
+ * Observes the provider invocation inside Executor, before its result crosses
+ * into generated JavaScript. A sandbox program may catch the later dispatcher
+ * error, but cannot turn this exact invocation outcome back into success.
+ */
+const observeApprovalInvocations = (
+  executor: GardenExecutor,
+  tracker: ApprovalInvocationTracker,
+): GardenExecutor => ({
+  ...executor,
+  execute: (address, args, options) => {
+    const handler = options?.onElicitation
+    if (typeof handler !== 'function') {
+      return executor.execute(address, args, options)
+    }
+    const contexts = new Set<ElicitationContext>()
+    return observeApprovalInvocation(
+      executor.execute(address, args, {
+        ...options,
+        onElicitation: (context) =>
+          Effect.sync(() => contexts.add(context)).pipe(
+            Effect.andThen(handler(context)),
+          ),
+      }),
+      contexts,
+      tracker,
+    )
+  },
+})
 
 interface GardenSessionDb {
   readonly db: ExecutorDb['db']
@@ -197,6 +233,7 @@ const buildGardenExecutionStack = (
   env: ExecutorMcpEnv,
   session: SessionMeta,
   database: GardenSessionDb,
+  approvalInvocationTracker: ApprovalInvocationTracker,
 ) =>
   Effect.gen(function* () {
     const hostedHttpOptions = { allowLocalNetwork: false }
@@ -240,9 +277,13 @@ const buildGardenExecutionStack = (
       )
     }
 
+    const observedExecutor = observeApprovalInvocations(
+      executor,
+      approvalInvocationTracker,
+    )
     const engine = boundExecutionEngine(
       createExecutionEngine({
-        executor,
+        executor: observedExecutor,
         codeExecutor: makeDynamicWorkerExecutor({ loader: env.LOADER }),
       }),
     )
@@ -259,6 +300,10 @@ export class ExecutorMcpSession extends McpAgentSessionDOBase<
   GardenSessionDb
 > {
   private readonly gardenEnv: ExecutorMcpEnv
+  private readonly approvalInvocationTracker = makeApprovalInvocationTracker(
+    (executionId, outcome) =>
+      this.browserApprovalStore.completeOutcome(executionId, outcome),
+  )
 
   constructor(ctx: DurableObjectState, env: ExecutorMcpEnv) {
     super(ctx, env)
@@ -297,7 +342,12 @@ export class ExecutorMcpSession extends McpAgentSessionDOBase<
     session: SessionMeta,
     database: GardenSessionDb,
   ): Effect.Effect<BuiltMcpServer> {
-    return buildGardenExecutionStack(this.gardenEnv, session, database).pipe(
+    return buildGardenExecutionStack(
+      this.gardenEnv,
+      session,
+      database,
+      this.approvalInvocationTracker,
+    ).pipe(
       Effect.flatMap(({ executor, engine }) =>
         createExecutorMcpServer({
           engine,
@@ -335,6 +385,19 @@ export class ExecutorMcpSession extends McpAgentSessionDOBase<
     return mcpExecutionOwnerDirectoryFromNamespace(
       this.gardenEnv.EXECUTOR_MCP_EXECUTION_OWNER,
     )
+  }
+
+  protected override bindApprovalInvocation(
+    executionId: string,
+    context: ElicitationContext,
+  ): Effect.Effect<void> {
+    return this.approvalInvocationTracker.bind(executionId, context)
+  }
+
+  protected override forgetApprovalInvocation(
+    executionId: string,
+  ): Effect.Effect<void> {
+    return this.approvalInvocationTracker.forget(executionId)
   }
 
   protected override forwardModelResumeToOwner(

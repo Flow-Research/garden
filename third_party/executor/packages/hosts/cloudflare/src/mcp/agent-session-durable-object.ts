@@ -11,9 +11,10 @@ import {
   type PausedExecutionDeadline,
   type ResumeResponse,
 } from "@executor-js/execution/core";
+import type { ElicitationContext } from "@executor-js/sdk/core";
 import {
   PAUSED_APPROVAL_TIMEOUT_MS,
-  browserApprovalOutcomeWaitMs,
+  awaitApprovalSignalBeforeDeadline,
   formatMcpExecutionOutcome,
   type BrowserApprovalOutcome,
   type PausedExecutionHooks,
@@ -180,7 +181,7 @@ const resumeApprovalResult = (
 
   return {
     status: "ok",
-    executionStatus: outcome.status === "paused" ? "paused" : "completed",
+    executionStatus: "completed",
     text: textByAction[response.action],
     structured: { status: statusByAction[response.action], executionId, executionOutcome: outcome.status },
     isError:
@@ -347,6 +348,19 @@ export abstract class McpAgentSessionDOBase<
     onResumeStarted: (executionId) => this.beginPendingApprovalResume(executionId),
     onResumeSettled: (executionId) => this.finishPendingApprovalResume(executionId),
   };
+
+  /** Lets a concrete host bind the paused id to its exact provider invocation. */
+  protected bindApprovalInvocation(
+    _executionId: string,
+    _context: ElicitationContext,
+  ): Effect.Effect<void> {
+    return Effect.void;
+  }
+
+  /** Lets a concrete host discard a provider invocation after lease expiry. */
+  protected forgetApprovalInvocation(_executionId: string): Effect.Effect<void> {
+    return Effect.void;
+  }
 
   override async onConnect(conn: Connection, context: ConnectionContext): Promise<void> {
     const requestIds = readActivePostRequestIds(context.request);
@@ -821,6 +835,7 @@ export abstract class McpAgentSessionDOBase<
 
         const deadline = yield* self.deadlineForExecution(executionId);
         const formatted = formatPausedExecution(paused, { deadline });
+        yield* self.bindApprovalInvocation(executionId, paused.elicitationContext);
         return {
           status: "ok" as const,
           text: formatted.text,
@@ -916,19 +931,29 @@ export abstract class McpAgentSessionDOBase<
         const paused = yield* self.engine.getPausedExecution(executionId);
         if (!paused) return { status: "not_found" } as const;
 
-        const deadline = yield* self.deadlineForExecution(executionId);
+        const deadline =
+          (yield* self.deadlineForExecution(executionId)) ?? self.approvalDeadline();
+        yield* self.bindApprovalInvocation(executionId, paused.elicitationContext);
         yield* self.recordApprovalResponse(executionId, response);
-        const responseTaken = yield* self.waitForApprovalResponseTaken(executionId).pipe(
-          Effect.timeoutOrElse({
-            duration: `${browserApprovalOutcomeWaitMs(deadline)} millis`,
-            orElse: () => Effect.succeed(false),
-          }),
+        const responseTaken = yield* awaitApprovalSignalBeforeDeadline(
+          self.waitForApprovalResponseTaken(executionId),
+          deadline,
+          false,
         );
         if (!responseTaken) {
           yield* self.clearApprovalResponse(executionId);
+          yield* self.forgetApprovalInvocation(executionId);
           return resumeApprovalResult(executionId, response, { status: "not_found" });
         }
-        const outcome = yield* self.waitForApprovalOutcome(executionId);
+        const outcome = yield* awaitApprovalSignalBeforeDeadline(
+          self.waitForApprovalOutcome(executionId),
+          deadline,
+          { status: "not_found" } as const,
+        );
+        if (outcome.status === "not_found") {
+          yield* self.clearApprovalResponse(executionId);
+          yield* self.forgetApprovalInvocation(executionId);
+        }
         return resumeApprovalResult(executionId, response, outcome);
       }).pipe(
         Effect.withSpan("McpSessionDO.resumeExecutionForApproval", {
@@ -1366,7 +1391,7 @@ export abstract class McpAgentSessionDOBase<
     });
   }
 
-  /** Completes the browser RPC only after the resumed provider program settles. */
+  /** Completes the browser RPC only after the exact resumed provider invocation settles. */
   private completeApprovalOutcome(
     executionId: string,
     outcome: BrowserApprovalOutcome,

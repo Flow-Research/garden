@@ -105,7 +105,7 @@ export const approvedGmailThreadState = (input: {
   }
 }
 
-/** True only after Executor advanced beyond the approved provider call. */
+/** True only after the exact approved provider invocation succeeded. */
 export const approvedProviderMutationCompleted = (input: {
   readonly status: string
   readonly executionStatus?: string
@@ -114,10 +114,8 @@ export const approvedProviderMutationCompleted = (input: {
 }): boolean =>
   input.status === 'ok' &&
   input.isError !== true &&
-  ((input.executionStatus === 'completed' &&
-    input.structured?.executionOutcome === 'completed') ||
-    (input.executionStatus === 'paused' &&
-      input.structured?.executionOutcome === 'paused'))
+  input.executionStatus === 'completed' &&
+  input.structured?.executionOutcome === 'completed'
 
 /**
  * Matches the immutable Executor toolkit resource to one server-resolved

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { Effect } from 'effect'
 import { gardenMailExecutorToolkitSlug } from '@garden/core/mail'
 import {
+  awaitApprovalSignalBeforeDeadline,
   browserApprovalOutcomeWaitMs,
   PAUSED_APPROVAL_TIMEOUT_MS,
 } from '@executor-js/host-mcp/tool-server'
@@ -139,7 +141,7 @@ describe('approved Gmail thread reconciliation', () => {
         executionStatus: 'paused',
         structured: { executionOutcome: 'paused' },
       }),
-    ).toBe(true)
+    ).toBe(false)
     expect(
       approvedProviderMutationCompleted({
         status: 'ok',
@@ -173,5 +175,18 @@ describe('Executor approval outcome lease', () => {
     expect(browserApprovalOutcomeWaitMs(undefined, 0)).toBe(
       PAUSED_APPROVAL_TIMEOUT_MS,
     )
+  })
+
+  it('expires a hung or missing exact invocation result at that deadline', async () => {
+    await expect(
+      Effect.runPromise(
+        awaitApprovalSignalBeforeDeadline(
+          Effect.never,
+          { expiresAt: '2026-08-13T10:00:00.000Z', ttlMs: 240_000 },
+          { status: 'not_found' as const },
+          Date.parse('2026-08-13T10:01:00.000Z'),
+        ),
+      ),
+    ).resolves.toEqual({ status: 'not_found' })
   })
 })

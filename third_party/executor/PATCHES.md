@@ -35,6 +35,11 @@ documented compatibility changes:
    results through `Buffer.from` before base64 encoding. Cloudflare Workers
    Types v5 models these Node-compatible values as `Uint8Array`, whose native
    `toString` has no encoding parameter; the byte output is unchanged.
+8. Browser approval coordination exposes response-consumed and exact provider
+   invocation outcome signals from the Cloudflare session host. Both waits use
+   the paused execution's persisted platform deadline, so a caught generated
+   program error cannot be mistaken for provider success and a missing exact
+   result cannot hold the approval RPC beyond its existing lease.
 
 Garden aliases only the exact retained entrypoints. The generic MCP serving
 envelope and in-memory session host, its browser-approval store, and Executor's
