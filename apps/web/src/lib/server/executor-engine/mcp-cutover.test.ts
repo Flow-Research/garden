@@ -41,4 +41,35 @@ describe('Executor MCP one-Worker cutover', () => {
     expect(source).toContain('undelivered responses are')
     expect(source).toContain('persisted in durable storage and replayed')
   })
+
+  it('never replaces a missing approval lease with a fresh deadline', () => {
+    const source = projectFile(
+      '../../third_party/executor/packages/hosts/cloudflare/src/mcp/agent-session-durable-object.ts',
+    )
+    const resumeApproval = source.slice(
+      source.indexOf('async resumeExecutionForApproval('),
+      source.indexOf('override async destroy()'),
+    )
+
+    expect(resumeApproval).toContain(
+      'const deadline = yield* self.deadlineForExecution(executionId);',
+    )
+    expect(resumeApproval).toContain('if (!deadline) {')
+    expect(resumeApproval).not.toContain('?? self.approvalDeadline()')
+  })
+
+  it('records one durable decision for concurrent approval requests', () => {
+    const source = projectFile(
+      '../../third_party/executor/packages/hosts/cloudflare/src/mcp/agent-session-durable-object.ts',
+    )
+    const recorder = source.slice(
+      source.indexOf('private recordApprovalResponse('),
+      source.indexOf('/** Prevents an approval'),
+    )
+
+    expect(recorder).toContain('self.ctx.storage.transaction')
+    expect(recorder).toContain('approvalDecisionKey(executionId)')
+    expect(recorder).toContain('if (existing)')
+    expect(recorder).toContain('return recorded.response;')
+  })
 })

@@ -341,7 +341,12 @@ export const resolveMailExecutorApproval = Effect.fn(
       }),
   })
   if (resumed.status !== 'ok') return { status: 'expired' }
-  if (input.action === 'decline') return { status: 'declined' }
+  if (
+    resumed.structured?.status === 'denied' ||
+    resumed.structured?.status === 'canceled'
+  ) {
+    return { status: 'declined' }
+  }
   if (!approvedProviderMutationCompleted(resumed)) {
     return yield* new MailExecutorApprovalError({
       operation: 'executeApprovedAction',

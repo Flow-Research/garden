@@ -150,6 +150,7 @@ const MCP_MESSAGE_HEADER = "cf-mcp-message";
 const MODEL_RESUME_FORWARD_TIMEOUT_MS = 10_000;
 const MCP_STREAM_REQS_KEY_PREFIX = "__mcp_stream_reqs__:";
 const approvalResponseKey = (executionId: string) => `approval-response:${executionId}`;
+const approvalDecisionKey = (executionId: string) => `approval-decision:${executionId}`;
 const approvalResponseTakenKey = (executionId: string) =>
   `approval-response-taken:${executionId}`;
 const approvalOutcomeKey = (executionId: string) => `approval-outcome:${executionId}`;
@@ -931,10 +932,13 @@ export abstract class McpAgentSessionDOBase<
         const paused = yield* self.engine.getPausedExecution(executionId);
         if (!paused) return { status: "not_found" } as const;
 
-        const deadline =
-          (yield* self.deadlineForExecution(executionId)) ?? self.approvalDeadline();
+        const deadline = yield* self.deadlineForExecution(executionId);
+        if (!deadline) {
+          yield* self.forgetApprovalInvocation(executionId);
+          return { status: "not_found" } as const;
+        }
         yield* self.bindApprovalInvocation(executionId, paused.elicitationContext);
-        yield* self.recordApprovalResponse(executionId, response);
+        const recordedResponse = yield* self.recordApprovalResponse(executionId, response);
         const responseTaken = yield* awaitApprovalSignalBeforeDeadline(
           self.waitForApprovalResponseTaken(executionId),
           deadline,
@@ -943,7 +947,7 @@ export abstract class McpAgentSessionDOBase<
         if (!responseTaken) {
           yield* self.clearApprovalResponse(executionId);
           yield* self.forgetApprovalInvocation(executionId);
-          return resumeApprovalResult(executionId, response, { status: "not_found" });
+          return resumeApprovalResult(executionId, recordedResponse, { status: "not_found" });
         }
         const outcome = yield* awaitApprovalSignalBeforeDeadline(
           self.waitForApprovalOutcome(executionId),
@@ -954,7 +958,7 @@ export abstract class McpAgentSessionDOBase<
           yield* self.clearApprovalResponse(executionId);
           yield* self.forgetApprovalInvocation(executionId);
         }
-        return resumeApprovalResult(executionId, response, outcome);
+        return resumeApprovalResult(executionId, recordedResponse, outcome);
       }).pipe(
         Effect.withSpan("McpSessionDO.resumeExecutionForApproval", {
           attributes: { "mcp.execution.id": executionId },
@@ -1331,13 +1335,25 @@ export abstract class McpAgentSessionDOBase<
   private recordApprovalResponse(
     executionId: string,
     response: ResumeResponse,
-  ): Effect.Effect<void> {
+  ): Effect.Effect<ResumeResponse> {
     const self = this;
     return Effect.gen(function* () {
-      self.approvalResponses.set(executionId, response);
-      yield* Effect.promise(() => self.ctx.storage.put(approvalResponseKey(executionId), response));
+      const recorded = yield* Effect.promise(() =>
+        self.ctx.storage.transaction(async (transaction) => {
+          const existing = await transaction.get<ResumeResponse>(approvalDecisionKey(executionId));
+          if (existing) return { response: existing, created: false } as const;
+          await transaction.put({
+            [approvalDecisionKey(executionId)]: response,
+            [approvalResponseKey(executionId)]: response,
+          });
+          return { response, created: true } as const;
+        }),
+      );
+      if (!recorded.created) return recorded.response;
+      self.approvalResponses.set(executionId, recorded.response);
       const waiter = self.approvalWaiters.get(executionId);
-      if (waiter) yield* Deferred.succeed(waiter, response);
+      if (waiter) yield* Deferred.succeed(waiter, recorded.response);
+      return recorded.response;
     });
   }
 
@@ -1348,6 +1364,7 @@ export abstract class McpAgentSessionDOBase<
       self.approvalResponses.delete(executionId);
       self.approvalResponseTaken.delete(executionId);
       await self.ctx.storage.delete([
+        approvalDecisionKey(executionId),
         approvalResponseKey(executionId),
         approvalResponseTakenKey(executionId),
       ]);
@@ -1462,9 +1479,9 @@ export abstract class McpAgentSessionDOBase<
       yield* Effect.sync(() => {
         console.info(JSON.stringify({ event: "mcp_pending_approval_lease_expire", executionId }));
       });
-      yield* self.recordApprovalResponse(executionId, response);
+      const recordedResponse = yield* self.recordApprovalResponse(executionId, response);
       if (self.engine && !self.approvalWaiters.has(executionId)) {
-        yield* self.engine.resume(executionId, response).pipe(Effect.ignore);
+        yield* self.engine.resume(executionId, recordedResponse).pipe(Effect.ignore);
       }
     }).pipe(
       Effect.ensuring(self.releasePendingApprovalLease(executionId)),
