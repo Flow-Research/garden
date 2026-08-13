@@ -149,6 +149,81 @@ export type RpcMcpConnectorProps = {
   accountId?: string
 }
 
+export type ExecutorMcpSessionScope = {
+  readonly organizationId: string
+  readonly userId: string
+  readonly elicitationMode: 'model' | 'browser'
+  readonly resource: ExecutorMcpResource
+  readonly toolkitConnectionNames?: readonly string[]
+  readonly webOrigin?: string
+}
+
+type StoredExecutorMcpServerRow = {
+  readonly server_options: string | null
+}
+
+/**
+ * Compares the authority-bearing RPC props persisted by Agents SDK with the
+ * scope Garden needs for this turn. An `executor` server id alone is not proof
+ * that a restored session still belongs to the same user, workspace, toolkit,
+ * or Gmail connection set.
+ *
+ * Source: installed Agents SDK `saveRpcServerToStorage`, which persists RPC
+ * props at `server_options.props`, and `_restoreRpcMcpServers`, which restores
+ * those props without asking Garden to rebuild them.
+ */
+export const executorMcpSessionScopeMatches = (
+  serverOptions: string | null,
+  desired: ExecutorMcpSessionScope,
+): boolean => {
+  if (!serverOptions) return false
+
+  const decoded = Result.try({
+    try: () => JSON.parse(serverOptions) as unknown,
+    catch: () => undefined,
+  })
+  if (decoded.isErr()) return false
+  if (
+    decoded.value === null ||
+    typeof decoded.value !== 'object' ||
+    Array.isArray(decoded.value)
+  ) {
+    return false
+  }
+  const props = (decoded.value as { props?: unknown }).props
+  if (props === null || typeof props !== 'object' || Array.isArray(props)) {
+    return false
+  }
+  const session = (props as { session?: unknown }).session
+  if (
+    session === null ||
+    typeof session !== 'object' ||
+    Array.isArray(session)
+  ) {
+    return false
+  }
+
+  const value = session as Record<string, unknown>
+  const normalizedConnections = (input: unknown) =>
+    Array.isArray(input) && input.every((name) => typeof name === 'string')
+      ? [...new Set(input)].sort()
+      : []
+  const normalizedDesiredConnections = normalizedConnections(
+    desired.toolkitConnectionNames,
+  )
+
+  return (
+    value.organizationId === desired.organizationId &&
+    value.userId === desired.userId &&
+    value.elicitationMode === desired.elicitationMode &&
+    canonicalJsonString(value.resource) ===
+      canonicalJsonString(desired.resource) &&
+    canonicalJsonString(normalizedConnections(value.toolkitConnectionNames)) ===
+      canonicalJsonString(normalizedDesiredConnections) &&
+    value.webOrigin === desired.webOrigin
+  )
+}
+
 export type McpToolRecord = {
   name: string
   description?: string | null
@@ -265,6 +340,31 @@ export class RuntimeMcpController {
     return this.host.mcp
       .listServers()
       .find((server) => server.id === connectorId)
+  }
+
+  /** Reads the SDK-owned persisted RPC props used during cold restoration. */
+  private executorSessionScopeMatches(desired: ExecutorMcpSessionScope) {
+    return Result.try({
+      try: () => {
+        const [row] = Array.from(
+          this.host.ctx.storage.sql.exec(
+            `select server_options
+             from cf_agents_mcp_servers
+             where id = 'executor' and server_url = 'rpc:executor'
+             limit 1`,
+          ),
+        ) as StoredExecutorMcpServerRow[]
+        return executorMcpSessionScopeMatches(
+          row?.server_options ?? null,
+          desired,
+        )
+      },
+      catch: () =>
+        new RuntimeMcpError({
+          code: 'database_failed',
+          message: 'Failed to validate persisted Executor MCP session scope',
+        }),
+    })
   }
 
   ensureConnectorServerTable() {
@@ -1232,32 +1332,39 @@ export class RuntimeMcpController {
         await this.host.removeMcpServer(server.id)
       }
     }
-    if (
-      !this.host.mcp
-        .listServers()
-        .some((server) => server.id === executorServerId)
-    ) {
-      const resource = this.host.getExecutorMcpResource?.() ?? {
-        kind: 'default' as const,
+    const resource = this.host.getExecutorMcpResource?.() ?? {
+      kind: 'default' as const,
+    }
+    const toolkitConnectionNames =
+      this.host.getExecutorToolkitConnectionNames?.()
+    const desiredSession = {
+      organizationId: identityResult.value.workspaceId,
+      userId: identityResult.value.userId,
+      elicitationMode: resource.kind === 'toolkit' ? 'browser' : 'model',
+      resource,
+      ...(toolkitConnectionNames ? { toolkitConnectionNames } : {}),
+      ...(this.host.env.BETTER_AUTH_URL
+        ? { webOrigin: this.host.env.BETTER_AUTH_URL }
+        : {}),
+    } satisfies ExecutorMcpSessionScope
+    const existingExecutor = this.host.mcp
+      .listServers()
+      .find((server) => server.id === executorServerId)
+    let needsExecutorRegistration = existingExecutor === undefined
+    if (existingExecutor) {
+      const scopeMatches = this.executorSessionScopeMatches(desiredSession)
+      if (scopeMatches.isErr()) return scopeMatches
+      if (!scopeMatches.value) {
+        const reset = await this.resetProxyMcpServers([executorServerId])
+        if (reset.isErr()) return reset
+        needsExecutorRegistration = true
       }
+    }
+    if (needsExecutorRegistration) {
       const registration = await addExecutorMcpServer({
         id: executorServerId,
         props: {
-          session: {
-            organizationId: identityResult.value.workspaceId,
-            userId: identityResult.value.userId,
-            elicitationMode: resource.kind === 'toolkit' ? 'browser' : 'model',
-            resource,
-            ...(this.host.getExecutorToolkitConnectionNames
-              ? {
-                  toolkitConnectionNames:
-                    this.host.getExecutorToolkitConnectionNames(),
-                }
-              : {}),
-            ...(this.host.env.BETTER_AUTH_URL
-              ? { webOrigin: this.host.env.BETTER_AUTH_URL }
-              : {}),
-          },
+          session: desiredSession,
         },
       })
       if (registration.state === 'failed') {
