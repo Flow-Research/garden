@@ -25,6 +25,27 @@ describe('ChatSubAgent security contract', () => {
     )
   })
 
+  it('keeps one-time mail schema migration work out of cold start', () => {
+    const schemaStart = source.indexOf(
+      'const ensureMailContextTokenSchema = (storage: DurableObjectStorage)',
+    )
+    const schemaEnd = source.indexOf(
+      'export const pruneInboxMcpServers',
+      schemaStart,
+    )
+    const schemaSource = source.slice(schemaStart, schemaEnd)
+
+    expect(schemaSource).toContain('MAIL_CONTEXT_TOKEN_SCHEMA_SQL')
+    expect(schemaSource).toContain('MAIL_RUNTIME_CONFIG_SCHEMA_SQL')
+    expect(schemaSource).toContain('MAIL_DRAFT_CAPABILITY_SCHEMA_SQL')
+    expect(schemaSource).not.toContain('pragma table_info')
+    expect(schemaSource).not.toContain('alter table')
+    expect(schemaSource).not.toContain('delete from')
+    expect(chatSubAgentSource).toContain(
+      'delete from mail_draft_capability where expires_at <= ? or consumed_at is not null',
+    )
+  })
+
   it('prepares scoped Executor before assembling continued-turn tools', () => {
     const prepareIndex = chatSubAgentSource.indexOf(
       'this.mcpConnectionPreparer.ensureForTurn(',

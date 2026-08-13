@@ -6,12 +6,6 @@ export const isGardenMailExecutorConnectionName = (connectionName: string) =>
 export const gardenMailExecutorConnectionPattern = (connectionName: string) =>
   `google_gmail.user.${connectionName}.*`
 
-/** Hidden Inbox facets use isolated toolkits, never the shared default catalog. */
-export const isGardenMailExecutorToolkit = (slug: string) =>
-  /^garden-mail-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-    slug,
-  )
-
 /** Gmail reads that operate on the selected provider thread/account. */
 export const GARDEN_MAIL_EXECUTOR_READ_TOOLS = [
   'gmail.users.getProfile',
@@ -108,3 +102,4 @@ export const gardenMailApprovalTarget = (
     : { connectionName: parts[2] ?? '', toolName: allowedToolName }
 }
 import { matchPattern, type ToolPolicyAction } from '@executor-js/sdk/core'
+export { isGardenMailExecutorToolkit } from '@garden/core/mail'

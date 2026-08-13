@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   clearPersistedInboxMcpServersBeforeRestore,
-  mailExecutorToolkitSlugForAuthority,
   mailExecutorScopeChanged,
   readMailExecutorConnectionNames,
   replaceMailExecutorConnectionNames,
@@ -22,25 +21,6 @@ const createStorage = (initialConnectionNames: string[]) => {
 }
 
 describe('Inbox Executor connection scope persistence', () => {
-  it('keys toolkits by member and agent authority rather than chat', async () => {
-    const authority = {
-      workspaceId: 'workspace-1',
-      userId: 'user-1',
-      agentId: 'agent-1',
-    }
-
-    const first = await mailExecutorToolkitSlugForAuthority(authority)
-    const second = await mailExecutorToolkitSlugForAuthority(authority)
-    const anotherAgent = await mailExecutorToolkitSlugForAuthority({
-      ...authority,
-      agentId: 'agent-2',
-    })
-
-    expect(first).toBe(second)
-    expect(first).toMatch(/^garden-mail-[a-f0-9]{40}$/)
-    expect(anotherAgent).not.toBe(first)
-  })
-
   it('restores the old scope after a failed reload so the retry reloads', () => {
     const storage = createStorage(['gmail-old'])
     const previous = readMailExecutorConnectionNames(storage)

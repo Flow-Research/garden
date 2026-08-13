@@ -52,6 +52,7 @@ import { createGardenLogger } from '@garden/observability/logger'
 import * as schema from '@garden/db/schema'
 import {
   ConversationId,
+  gardenMailExecutorToolkitSlug,
   MailboxAccessLevel,
   MailboxId,
   MemberId,
@@ -84,7 +85,6 @@ import {
 } from './runtime-mcp-controller'
 import {
   clearPersistedInboxMcpServersBeforeRestore,
-  mailExecutorToolkitSlugForAuthority,
   mailExecutorScopeChanged,
   readMailExecutorConnectionNames,
   replaceMailExecutorConnectionNames,
@@ -481,53 +481,15 @@ const canonicalToolInput = (input: unknown): string => {
 }
 
 /**
- * Evolves facet-local ephemeral capability storage without preserving tokens
- * that predate owner, expiry, or consumption binding. The 15-minute expiry is
- * aligned with Think's installed `submissionRecoveryStaleMs`, so a token lives
- * for the same window in which the SDK considers a submitted turn recoverable.
+ * Creates the canonical facet-local capability tables. Schema evolution is
+ * deliberately absent from this cold-start path; one-time changes belong in a
+ * one-shot migration, while expired records are reclaimed when a new Inbox
+ * turn is issued.
  */
 const ensureMailContextTokenSchema = (storage: DurableObjectStorage) => {
   storage.sql.exec(MAIL_CONTEXT_TOKEN_SCHEMA_SQL)
   storage.sql.exec(MAIL_RUNTIME_CONFIG_SCHEMA_SQL)
   storage.sql.exec(MAIL_DRAFT_CAPABILITY_SCHEMA_SQL)
-  const runtimeConfigColumns = new Set(
-    Array.from(storage.sql.exec('pragma table_info(mail_runtime_config)')).map(
-      (row) => String(row.name),
-    ),
-  )
-  if (!runtimeConfigColumns.has('toolkit_slug')) {
-    storage.sql.exec(
-      'alter table mail_runtime_config add column toolkit_slug text',
-    )
-  }
-  const columns = new Set(
-    Array.from(storage.sql.exec('pragma table_info(mail_context_token)')).map(
-      (row) => String(row.name),
-    ),
-  )
-  const additions = [
-    ['owner_user_id', 'text'],
-    ['consumed_at', 'text'],
-    ['completed_at', 'text'],
-    ['recovery_pending', 'integer not null default 0'],
-    ['expires_at', 'text'],
-  ] as const
-  for (const [name, type] of additions) {
-    if (!columns.has(name)) {
-      storage.sql.exec(
-        `alter table mail_context_token add column ${name} ${type}`,
-      )
-    }
-  }
-  storage.sql.exec(`
-    delete from mail_context_token
-    where owner_user_id is null or expires_at is null
-  `)
-  storage.sql.exec(`
-    delete from mail_draft_capability
-    where expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-      or consumed_at is not null
-  `)
 }
 
 /**
@@ -1648,6 +1610,10 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       now.getTime() + MAIL_CONTEXT_TOKEN_TTL_MS,
     ).toISOString()
     this.ctx.storage.sql.exec(
+      `delete from mail_draft_capability where expires_at <= ? or consumed_at is not null`,
+      nowIso,
+    )
+    this.ctx.storage.sql.exec(
       `delete from mail_context_token where expires_at <= ? or completed_at is not null`,
       nowIso,
     )
@@ -1690,7 +1656,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       nowIso,
       expiresAt,
     )
-    const toolkitSlug = await mailExecutorToolkitSlugForAuthority({
+    const toolkitSlug = await gardenMailExecutorToolkitSlug({
       workspaceId: input.workspaceId,
       userId: input.ownerUserId,
       agentId: thread.agentId,
