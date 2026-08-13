@@ -172,10 +172,39 @@ export type StoredExecutorMcpServerRow = {
 export const EXECUTOR_MCP_LOCAL_SERVER_ID = 'executor'
 export const EXECUTOR_MCP_BINDING_NAME = 'EXECUTOR_MCP_SESSION'
 
-/** Gives scoped Inbox authority its own remote Durable Object identity. */
-export const executorMcpServerNameForResource = (
-  resource: ExecutorMcpResource,
-) => (resource.kind === 'toolkit' ? resource.slug : 'executor')
+/**
+ * Names the stateful Executor bridge by authorization scope, never by chat.
+ *
+ * Executor's current Cloudflare host persists approval/resume state and an
+ * immutable SessionMeta in its Durable Object, so callers may share a remote
+ * runtime only when every authority-bearing input matches. Hashing the full
+ * canonical scope gives ordinary chats for one workspace member one runtime,
+ * while a changed toolkit or Gmail allowlist receives a fresh runtime. Chat
+ * transcript facets remain independent clients of that shared authority.
+ *
+ * Cloudflare's current MCP guidance prefers stateless `createMcpHandler` for
+ * new servers; this key is the narrow legacy boundary until Executor's paused
+ * execution bridge moves to that transport:
+ * https://developers.cloudflare.com/agents/model-context-protocol/apis/handler-api/
+ */
+export const executorMcpServerNameForScope = async (
+  session: ExecutorMcpSessionScope,
+) => {
+  const canonicalScope = canonicalJsonString({
+    ...session,
+    toolkitConnectionNames: [
+      ...new Set(session.toolkitConnectionNames ?? []),
+    ].sort(),
+  })
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(canonicalScope),
+  )
+  const fingerprint = Array.from(new Uint8Array(digest).slice(0, 20), (byte) =>
+    byte.toString(16).padStart(2, '0'),
+  ).join('')
+  return `garden-executor-${fingerprint}`
+}
 
 /**
  * Compares the authority-bearing RPC props persisted by Agents SDK with the
@@ -1363,7 +1392,7 @@ export class RuntimeMcpController {
     } satisfies ExecutorMcpSessionScope
     const desiredRegistration = {
       bindingName: EXECUTOR_MCP_BINDING_NAME,
-      serverName: executorMcpServerNameForResource(resource),
+      serverName: await executorMcpServerNameForScope(desiredSession),
       session: desiredSession,
     } satisfies ExecutorMcpRegistrationScope
     const existingExecutor = this.host.mcp

@@ -11,6 +11,7 @@ import {
 import {
   isMcpFailedConnectionStateMessage,
   isMcpDiscoveryCancellation,
+  executorMcpServerNameForScope,
   executorMcpSessionScopeMatches,
   RuntimeMcpController,
   RuntimeMcpConnectionPreparer,
@@ -304,7 +305,17 @@ describe('RuntimeMcpController native installations', () => {
     expect(ready.isOk()).toBe(true)
     expect(registeredServerId).toBe('executor')
     expect(registeredServerName).toBe(
-      'garden-mail-174e67d2-bcbc-420b-a1f5-289ee6681b8f',
+      await executorMcpServerNameForScope({
+        organizationId: 'workspace-1',
+        userId: 'user-1',
+        elicitationMode: 'browser',
+        resource: {
+          kind: 'toolkit',
+          slug: 'garden-mail-174e67d2-bcbc-420b-a1f5-289ee6681b8f',
+        },
+        toolkitConnectionNames: ['gmail_personal'],
+        webOrigin: 'https://garden.test',
+      }),
     )
     expect(registeredResource).toEqual({
       kind: 'toolkit',
@@ -316,6 +327,65 @@ describe('RuntimeMcpController native installations', () => {
     expect(
       aiTools[buildMcpAiToolKey('discord', 'discord_list_servers')],
     ).toBeDefined()
+  })
+
+  it('shares one remote Executor scope across ordinary chat facets', async () => {
+    const registrations: Array<{ id: string; serverName: string }> = []
+
+    /** Prepares one ordinary facet through the real controller decision path. */
+    const prepareFacet = async (runtimeName: string) => {
+      const host: McpHost = {
+        name: runtimeName,
+        env: {
+          BETTER_AUTH_SECRET: 'secret',
+          BETTER_AUTH_URL: 'https://garden.test',
+          HYPERDRIVE: {
+            connectionString: 'postgres://garden.test/db',
+          } as unknown as Hyperdrive,
+        },
+        ctx: { storage: { sql: createSqlStorageStub() } },
+        mcp: {
+          getAITools: () => ({}),
+          listTools: () => [],
+          listServers: () => [],
+          discoverIfConnected: async () => ({ success: true }),
+        },
+        addExecutorMcpServer: async ({ id, serverName }) => {
+          registrations.push({ id, serverName })
+          return { state: 'connected' }
+        },
+        getExecutorMcpResource: () => ({ kind: 'default' }),
+        removeMcpServer: async () => undefined,
+        resolveRuntimeIdentity: async () =>
+          Result.ok({
+            threadId: runtimeName,
+            workspaceId: 'workspace-1',
+            userId: 'user-1',
+            agentId: 'agent-1',
+          }),
+      }
+      const controller = new RuntimeMcpController(host)
+      ;(
+        controller as unknown as {
+          listActiveConnectorBindings: () => Promise<
+            Result<Array<never>, never>
+          >
+        }
+      ).listActiveConnectorBindings = async () => Result.ok([])
+
+      expect((await controller.ensureProxyMcpConnections()).isOk()).toBe(true)
+    }
+
+    await prepareFacet('chat:thread-a')
+    await prepareFacet('chat:thread-b')
+
+    expect(registrations).toHaveLength(2)
+    expect(registrations[0]?.id).toBe('executor')
+    expect(registrations[1]?.id).toBe('executor')
+    expect(registrations[0]?.serverName).toBe(registrations[1]?.serverName)
+    expect(registrations[0]?.serverName).toMatch(
+      /^garden-executor-[a-f0-9]{40}$/,
+    )
   })
 })
 
@@ -346,6 +416,32 @@ describe('RuntimeMcpController Executor session scope', () => {
       bindingName,
       props: { session },
     })
+
+  it('keys the remote runtime by authority and exact connection scope', async () => {
+    const sameScopeDifferentOrder = {
+      ...desiredSession,
+      toolkitConnectionNames: ['work', 'gmail', 'gmail'],
+    }
+    const canonicalOrder = {
+      ...desiredSession,
+      toolkitConnectionNames: ['gmail', 'work'],
+    }
+    const anotherUser = { ...desiredSession, userId: 'user-2' }
+    const anotherConnection = {
+      ...desiredSession,
+      toolkitConnectionNames: ['other'],
+    }
+
+    expect(await executorMcpServerNameForScope(sameScopeDifferentOrder)).toBe(
+      await executorMcpServerNameForScope(canonicalOrder),
+    )
+    expect(await executorMcpServerNameForScope(anotherUser)).not.toBe(
+      await executorMcpServerNameForScope(desiredSession),
+    )
+    expect(await executorMcpServerNameForScope(anotherConnection)).not.toBe(
+      await executorMcpServerNameForScope(desiredSession),
+    )
+  })
 
   it('compares the complete restored RPC route and authority', () => {
     expect(
@@ -499,14 +595,17 @@ describe('RuntimeMcpController Executor session scope', () => {
 
     expect(prepared.isOk()).toBe(true)
     expect(runtime.removedServerIds).toEqual(['executor'])
-    expect(runtime.registeredServerNames).toEqual(['garden-mail-runtime-1'])
+    expect(runtime.registeredServerNames).toEqual([
+      await executorMcpServerNameForScope(desiredSession),
+    ])
     expect(runtime.registeredSessions).toEqual([desiredSession])
   })
 
   it('replaces a matching remote route restored through the wrong binding', async () => {
+    const serverName = await executorMcpServerNameForScope(desiredSession)
     const runtime = makeController({
       bindingName: 'OTHER_BINDING',
-      serverName: 'garden-mail-runtime-1',
+      serverName,
       session: desiredSession,
     })
 
@@ -514,14 +613,15 @@ describe('RuntimeMcpController Executor session scope', () => {
 
     expect(prepared.isOk()).toBe(true)
     expect(runtime.removedServerIds).toEqual(['executor'])
-    expect(runtime.registeredServerNames).toEqual(['garden-mail-runtime-1'])
+    expect(runtime.registeredServerNames).toEqual([serverName])
     expect(runtime.registeredSessions).toEqual([desiredSession])
   })
 
   it('keeps a restored Executor session whose Inbox scope still matches', async () => {
+    const serverName = await executorMcpServerNameForScope(desiredSession)
     const runtime = makeController({
       bindingName: 'EXECUTOR_MCP_SESSION',
-      serverName: 'garden-mail-runtime-1',
+      serverName,
       session: desiredSession,
     })
 

@@ -77,15 +77,14 @@ import {
   createPromptContextProviders,
 } from './prompt'
 import {
-  EXECUTOR_MCP_BINDING_NAME,
-  EXECUTOR_MCP_LOCAL_SERVER_ID,
   RuntimeMcpConnectionPreparer,
   RuntimeMcpController,
-  executorMcpServerNameForResource,
   type McpHost,
   type RuntimeMcpServerStates,
 } from './runtime-mcp-controller'
 import {
+  clearPersistedInboxMcpServersBeforeRestore,
+  mailExecutorToolkitSlugForAuthority,
   mailExecutorScopeChanged,
   readMailExecutorConnectionNames,
   replaceMailExecutorConnectionNames,
@@ -532,56 +531,13 @@ const ensureMailContextTokenSchema = (storage: DurableObjectStorage) => {
 }
 
 /**
- * Removes client-added MCP rows before the Agents SDK restores them for a
- * hidden Inbox facet. The SDK restores every persisted row during its wrapped
- * `onStart`; constructor-time pruning is therefore the only point early enough
- * to ensure mail runtimes can expose only Garden's scoped Executor RPC.
+ * Removes every persisted MCP row before Agents SDK restores a hidden Inbox
+ * facet. Mail runtime authority is rebuilt from trusted local scope tables;
+ * retaining even a route-matching row could restore stale client props into a
+ * still-warm remote Durable Object before Garden can validate them.
  */
 export const pruneInboxMcpServers = (storage: DurableObjectStorage) => {
-  const [runtimeConfig] = Array.from(
-    storage.sql.exec(
-      'select toolkit_slug from mail_runtime_config where singleton = 1',
-    ),
-  )
-  const toolkitSlug = runtimeConfig?.toolkit_slug?.toString()
-  if (!toolkitSlug) {
-    storage.sql.exec('delete from cf_agents_mcp_servers')
-    return
-  }
-  const expectedServerUrl = `rpc:${executorMcpServerNameForResource({
-    kind: 'toolkit',
-    slug: toolkitSlug,
-  })}`
-  storage.sql.exec(
-    `delete from cf_agents_mcp_servers
-     where id <> ? or server_url <> ?`,
-    EXECUTOR_MCP_LOCAL_SERVER_ID,
-    expectedServerUrl,
-  )
-  const [executorRow] = Array.from(
-    storage.sql.exec(
-      `select server_options
-       from cf_agents_mcp_servers
-       where id = ?
-       limit 1`,
-      EXECUTOR_MCP_LOCAL_SERVER_ID,
-    ),
-  )
-  const bindingName = Result.try({
-    try: () => {
-      const options = JSON.parse(
-        executorRow?.server_options?.toString() ?? '',
-      ) as { bindingName?: unknown }
-      return options.bindingName
-    },
-    catch: () => null,
-  }).unwrapOr(null)
-  if (bindingName !== EXECUTOR_MCP_BINDING_NAME) {
-    storage.sql.exec(
-      'delete from cf_agents_mcp_servers where id = ?',
-      EXECUTOR_MCP_LOCAL_SERVER_ID,
-    )
-  }
+  clearPersistedInboxMcpServersBeforeRestore(storage.sql)
 }
 
 type ThreadDocumentUploadPayload = Awaited<
@@ -1734,7 +1690,11 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       nowIso,
       expiresAt,
     )
-    const toolkitSlug = `garden-mail-${this.name}`
+    const toolkitSlug = await mailExecutorToolkitSlugForAuthority({
+      workspaceId: input.workspaceId,
+      userId: input.ownerUserId,
+      agentId: thread.agentId,
+    })
     this.ctx.storage.sql.exec(
       `
         insert into mail_runtime_config (singleton, runtime_kind, toolkit_slug)
@@ -2462,6 +2422,15 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       typeof mailContextToken === 'string'
         ? await this.readMailTurnContext(mailContextToken, mailTurnMode)
         : null
+    await this.mcpConnectionPreparer.ensureForTurn(
+      mailTurn
+        ? mailTurnMode === 'continuation'
+          ? 'mail-continuation'
+          : 'mail-initial-turn'
+        : ctx.continuation
+          ? 'chat-continuation'
+          : 'chat-initial-turn',
+    )
     this.activeMailContextToken =
       mailTurn && typeof mailContextToken === 'string' ? mailContextToken : null
     const selectedProviderContext = mailTurn

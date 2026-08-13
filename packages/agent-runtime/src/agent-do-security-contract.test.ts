@@ -7,7 +7,7 @@ const chatSubAgentSource = source.slice(
 )
 
 describe('ChatSubAgent security contract', () => {
-  it('prunes MCP rows outside the facet-specific Executor route before restore', () => {
+  it('clears every persisted Inbox MCP row before the SDK restore lifecycle', () => {
     const constructorIndex = chatSubAgentSource.indexOf(
       'constructor(ctx: DurableObjectState',
     )
@@ -20,9 +20,23 @@ describe('ChatSubAgent security contract', () => {
     expect(constructorSource).toContain(
       'pruneInboxMcpServers(this.ctx.storage)',
     )
-    expect(source).toContain('executorMcpServerNameForResource({')
-    expect(source).toContain('where id <> ? or server_url <> ?')
-    expect(source).toContain('bindingName !== EXECUTOR_MCP_BINDING_NAME')
+    expect(source).toContain(
+      'clearPersistedInboxMcpServersBeforeRestore(storage.sql)',
+    )
+  })
+
+  it('prepares scoped Executor before assembling continued-turn tools', () => {
+    const prepareIndex = chatSubAgentSource.indexOf(
+      'this.mcpConnectionPreparer.ensureForTurn(',
+    )
+    const assembleIndex = chatSubAgentSource.indexOf(
+      'const stableMcpTools = mcpController.wrapGetAITools(',
+    )
+
+    expect(prepareIndex).toBeGreaterThan(-1)
+    expect(prepareIndex).toBeLessThan(assembleIndex)
+    expect(chatSubAgentSource).toContain("'mail-continuation'")
+    expect(chatSubAgentSource).toContain("'chat-continuation'")
   })
 
   it('never streams model reasoning into Garden chat UI', () => {
