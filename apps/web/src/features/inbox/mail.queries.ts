@@ -103,7 +103,7 @@ const agentDraftInput = mailAgentSessionInput.extend({
   subject: z.string().max(998).optional(),
   body: z.string(),
 })
-const executorApprovalInput = mailAgentSessionInput.extend({
+const executorApprovalInput = workspaceInput.extend({
   executionId: z.string().regex(/^exec_[0-9a-f-]{36}$/i),
   action: z.enum(['accept', 'decline']),
 })
@@ -284,7 +284,6 @@ export async function saveAgentMailDraft(input: {
 export async function resolveMailAgentAction(input: {
   data: {
     workspaceId: string
-    agentId: string
     executionId: string
     action: 'accept' | 'decline'
   }
@@ -382,6 +381,14 @@ export function mailInboxOptions(
       conversationId: string
     } | null,
     getNextPageParam: (lastPage) => lastPage.page.nextCursor ?? undefined,
+    // Zero keeps the conversation list stable while a filter/search request
+    // replaces it. Reuse only data owned by this workspace: carrying a prior
+    // workspace's inbox through a workspace switch would leak private mail.
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[0] === 'garden-mail' &&
+      previousQuery.queryKey[1] === workspaceId
+        ? previousData
+        : undefined,
     staleTime: 10_000,
   })
 }
