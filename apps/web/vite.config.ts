@@ -132,6 +132,7 @@ const postHogReleaseVersion =
   process.env.WORKERS_CI_COMMIT_SHA ??
   process.env.CF_PAGES_COMMIT_SHA ??
   process.env.GITHUB_SHA
+const gardenReleaseVersion = postHogReleaseVersion ?? 'development'
 const requirePostHogSourcemaps = process.env.GARDEN_REQUIRE_POSTHOG === '1'
 const baseLogger = createLogger()
 
@@ -224,6 +225,32 @@ function postHogSourcemapPlugins() {
   ]
 }
 
+/**
+ * Publishes the same immutable deploy identifier into browser code and a
+ * cache-busted static manifest. An already-open tab can compare the two after
+ * a deploy and ask the user to refresh, matching T3 Code's persistent update
+ * control instead of failing later when old code meets a new Worker. The
+ * release identifier comes from Alchemy/CI; local builds stay on `development`
+ * and intentionally do not advertise updates.
+ */
+function gardenReleasePlugin(releaseVersion: string): Plugin {
+  return {
+    name: 'garden-release-version',
+    config: () => ({
+      define: {
+        __GARDEN_RELEASE_VERSION__: JSON.stringify(releaseVersion),
+      },
+    }),
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'garden-version.json',
+        source: JSON.stringify({ version: releaseVersion }),
+      })
+    },
+  }
+}
+
 const config = defineConfig({
   clearScreen: false,
   envDir: rootDir,
@@ -275,6 +302,7 @@ const config = defineConfig({
   },
   plugins: [
     ...(enableDevtools ? [devtools()] : []),
+    gardenReleasePlugin(gardenReleaseVersion),
     ssrDependencyStubsPlugin(),
     cloudflare({
       viteEnvironment: { name: 'ssr' },

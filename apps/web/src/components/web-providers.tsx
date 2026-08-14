@@ -4,6 +4,7 @@ import { Toaster } from '@garden/ui/components/ui/sonner'
 import { WebNavigationProvider } from '@/platform/navigation'
 import { api, configureApi } from '@/lib/api'
 import { resetPostHogIdentity } from '@/lib/posthog-browser'
+import { AppUpdateNotice } from '@/components/app-update-notice'
 
 function redirectToLogin() {
   if (typeof window !== 'undefined') {
@@ -23,6 +24,7 @@ export function WebProviders({ children }: { children: React.ReactNode }) {
       >
         <WebNavigationProvider>{children}</WebNavigationProvider>
       </CoreProvider>
+      <AppUpdateNotice />
       <Toaster />
     </ThemeProvider>
   )

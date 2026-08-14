@@ -1,0 +1,1 @@
+declare const __GARDEN_RELEASE_VERSION__: string
