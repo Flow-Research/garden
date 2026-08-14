@@ -74,7 +74,10 @@ export const deploymentTargets = {
     sandboxName: 'garden-web-sandbox-preview',
     aiGatewayId: 'garden-preview',
     stateWorkerName: 'garden-alchemy-state-preview',
-    environment: 'development',
+    // Preview is a remote Worker, so it must exercise the production transport
+    // boundary (Hyperdrive, Workflows, Durable Objects). `development` is
+    // reserved for local Workerd and deliberately selects direct Neon clients.
+    environment: 'staging',
     bindConfiguredBetterAuthUrl: false,
     emptyBucketsOnDestroy: true,
   },

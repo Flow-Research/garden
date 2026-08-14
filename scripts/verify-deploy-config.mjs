@@ -39,6 +39,7 @@ assert.equal(deploymentTargets.preview.workerName, 'garden-preview')
 assert.equal(deploymentTargets.production.emptyBucketsOnDestroy, false)
 assert.equal(deploymentTargets.preview.emptyBucketsOnDestroy, true)
 assert.equal(deploymentTargets.preview.databaseUrlEnv, 'DATABASE_URL')
+assert.equal(deploymentTargets.preview.environment, 'staging')
 assert.equal(deploymentTargets.preview.bindConfiguredBetterAuthUrl, false)
 assert.equal(
   deploymentTargets.preview.executorDatabaseName,
