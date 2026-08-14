@@ -153,11 +153,7 @@ export const web = await TanStackStart(deployTarget.workerId, {
   cwd: './apps/web',
   adopt: true,
   compatibilityDate: '2026-04-18',
-  // Codemode stores execution state in a Durable Object facet resolved through
-  // `this.ctx.exports.CodemodeRuntime`. Exporting the class is only half of the
-  // contract: Workers must also enable the ctx.exports runtime API. Reference:
-  // https://developers.cloudflare.com/workers/runtime-apis/context/#exports
-  compatibilityFlags: ['nodejs_compat', 'enable_ctx_exports'],
+  compatibilityFlags: ['nodejs_compat'],
   observability: {
     enabled: true,
     headSamplingRate: 1,
