@@ -177,6 +177,18 @@ assert.match(
   /import codemode from ['"]@cloudflare\/codemode\/vite['"]/,
 )
 assert.match(viteSource, /\bcodemode\(\),/)
+assert.match(
+  alchemySource,
+  /compatibilityFlags:\s*\[[^\]]*['"]enable_ctx_exports['"]/,
+  'Alchemy deploy must enable ctx.exports for the CodemodeRuntime facet',
+)
+for (const source of publicWranglerSources) {
+  assert.match(
+    source,
+    /"compatibility_flags"\s*:\s*\[[^\]]*"enable_ctx_exports"/,
+    'Public Wrangler configs must enable ctx.exports for the CodemodeRuntime facet',
+  )
+}
 assert.match(alchemySource, /POSTHOG_CLI_SOURCEMAP_UPLOAD_CONCURRENCY/)
 assert.match(alchemySource, /WORKERS_CI_COMMIT_SHA/)
 assert.match(viteSource, /WORKERS_CI_COMMIT_SHA/)

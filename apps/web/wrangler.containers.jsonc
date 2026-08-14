@@ -2,7 +2,9 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "garden-local",
   "compatibility_date": "2026-04-18",
-  "compatibility_flags": ["nodejs_compat"],
+  // @cloudflare/codemode resolves its exported runtime facet through
+  // DurableObjectState.exports; keep this aligned with alchemy.run.ts.
+  "compatibility_flags": ["nodejs_compat", "enable_ctx_exports"],
   "main": "src/server.ts",
   "observability": {
     "enabled": true,
