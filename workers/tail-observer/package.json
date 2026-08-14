@@ -8,12 +8,14 @@
   "scripts": {
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint -c ../../.oxlintrc.json ."
+    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
     "@garden/tsconfig": "workspace:*",
     "@typescript/native": "catalog:",
+    "vitest": "catalog:",
     "wrangler": "catalog:"
   }
 }

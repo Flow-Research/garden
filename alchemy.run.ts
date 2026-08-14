@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { loadEnvFile } from 'node:process'
 import { fileURLToPath } from 'node:url'
 import alchemy from 'alchemy'
@@ -162,6 +163,11 @@ const tailConsumer = await Worker(deployTarget.tailWorkerId, {
       persist: true,
       invocationLogs: true,
     },
+  },
+  bindings: {
+    ENVIRONMENT: deployTarget.environment,
+    POSTHOG_PROJECT_TOKEN: plainEnv('VITE_PUBLIC_POSTHOG_PROJECT_TOKEN'),
+    POSTHOG_LOGS_HOST: plainEnv('VITE_PUBLIC_POSTHOG_HOST'),
   },
 })
 
@@ -372,6 +378,40 @@ function postHogBuildHost() {
 }
 
 /**
+ * Gives local Alchemy builds the same immutable source-map release identity as
+ * CI. Before this, the PostHog CLI ran inside Alchemy's build directory and
+ * could not discover the repository commit, aborting every preview deploy.
+ */
+function repositoryCommitSha() {
+  return execFileSync('git', ['rev-parse', '--verify', 'HEAD'], {
+    cwd: fileURLToPath(new URL('.', import.meta.url)),
+    encoding: 'utf8',
+  }).trim()
+}
+
+/** Supplies PostHog's CLI with repository metadata from the real checkout. */
+function repositoryReleaseMetadata() {
+  const cwd = fileURLToPath(new URL('.', import.meta.url))
+  const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+    cwd,
+    encoding: 'utf8',
+  }).trim()
+  const remote = execFileSync('git', ['remote', 'get-url', 'origin'], {
+    cwd,
+    encoding: 'utf8',
+  }).trim()
+  const repository = remote.match(
+    /github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/,
+  )?.[1]
+  if (!repository) {
+    throw new Error(
+      'Garden origin must be a GitHub repository for source maps.',
+    )
+  }
+  return { branch, repository }
+}
+
+/**
  * Supplies PostHog source-map upload credentials only to the Alchemy build
  * process. Runtime gets the public Vite token/host bindings above; the personal
  * API key is not attached as a Worker binding. PostHog is a required production
@@ -383,7 +423,10 @@ function postHogBuildHost() {
  */
 function postHogBuildEnv() {
   const releaseVersion =
-    process.env.POSTHOG_RELEASE_VERSION ?? process.env.WORKERS_CI_COMMIT_SHA
+    process.env.POSTHOG_RELEASE_VERSION ??
+    process.env.WORKERS_CI_COMMIT_SHA ??
+    repositoryCommitSha()
+  const repository = repositoryReleaseMetadata()
 
   return {
     GARDEN_REQUIRE_POSTHOG: '1',
@@ -394,6 +437,14 @@ function postHogBuildEnv() {
       '20',
     ),
     POSTHOG_HOST: postHogBuildHost(),
-    ...(releaseVersion ? { POSTHOG_RELEASE_VERSION: releaseVersion } : {}),
+    POSTHOG_RELEASE_VERSION: releaseVersion,
+    // PostHog CLI only inspects the build working directory for `.git` and
+    // Alchemy runs Vite from apps/web. Accurate GitHub metadata prevents it
+    // from guessing against that nested directory and aborting the upload.
+    GITHUB_ACTIONS: 'true',
+    GITHUB_REF_NAME: process.env.GITHUB_REF_NAME ?? repository.branch,
+    GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY ?? repository.repository,
+    GITHUB_SERVER_URL: process.env.GITHUB_SERVER_URL ?? 'https://github.com',
+    GITHUB_SHA: process.env.GITHUB_SHA ?? releaseVersion,
   }
 }
