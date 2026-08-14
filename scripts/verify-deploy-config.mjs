@@ -171,6 +171,12 @@ assert.match(alchemySource, /empty:\s*deployTarget\.emptyBucketsOnDestroy/)
 assert.match(alchemySource, /deploymentTargetFromEnv\(\)/)
 assert.equal(webPackageJson.devDependencies['@posthog/cli'], '0.8.4')
 assert.equal(packageJson.pnpm.overrides['@posthog/cli'], '0.8.4')
+assert.equal(webPackageJson.dependencies['@cloudflare/codemode'], 'catalog:')
+assert.match(
+  viteSource,
+  /import codemode from ['"]@cloudflare\/codemode\/vite['"]/,
+)
+assert.match(viteSource, /\bcodemode\(\),/)
 assert.match(alchemySource, /POSTHOG_CLI_SOURCEMAP_UPLOAD_CONCURRENCY/)
 assert.match(alchemySource, /WORKERS_CI_COMMIT_SHA/)
 assert.match(viteSource, /WORKERS_CI_COMMIT_SHA/)
