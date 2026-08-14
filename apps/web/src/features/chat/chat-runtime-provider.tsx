@@ -92,8 +92,18 @@ export async function executeRegisteredClientTool(input: {
     return
   }
 
+  const toolInput =
+    input.toolCall.toolName === 'compose_mail' &&
+    input.toolCall.input !== null &&
+    typeof input.toolCall.input === 'object' &&
+    !Array.isArray(input.toolCall.input)
+      ? {
+          ...input.toolCall.input,
+          __garden_tool_call_id: input.toolCall.toolCallId,
+        }
+      : input.toolCall.input
   const execution = await Result.tryPromise({
-    try: () => Promise.resolve(execute(input.toolCall.input)),
+    try: () => Promise.resolve(execute(toolInput)),
     catch: () => new Error('Browser action failed.'),
   })
   execution.match({

@@ -95,13 +95,7 @@ const mailAgentContextInput = mailAgentSessionInput.extend({
   conversationId: z.uuid().nullable(),
 })
 const agentDraftInput = mailAgentSessionInput.extend({
-  draftCapability: z.uuid(),
-  mode: z.enum(['new', 'reply', 'reply-all', 'forward']),
-  to: z.string().max(2_000).optional(),
-  cc: z.string().max(2_000).optional(),
-  bcc: z.string().max(2_000).optional(),
-  subject: z.string().max(998).optional(),
-  body: z.string(),
+  toolCallId: z.string().min(1).max(256),
 })
 const executorApprovalInput = workspaceInput.extend({
   executionId: z.string().regex(/^exec_[0-9a-f-]{36}$/i),

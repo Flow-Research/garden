@@ -19,7 +19,7 @@ import {
 } from 'vitest'
 import {
   bindMailAgentTurnContext,
-  consumeMailAgentDraftCapability,
+  consumeMailAgentDraftToolCall,
   createAgentMailDraft,
   getOrCreateMailAgentChatSession,
   MailAgentOrchestrationError,
@@ -27,11 +27,11 @@ import {
 } from './mail-agent-orchestration'
 
 const issueThreadMailContextToken = vi.hoisted(() => vi.fn())
-const consumeThreadMailDraftCapability = vi.hoisted(() => vi.fn())
+const consumeThreadMailDraftToolCall = vi.hoisted(() => vi.fn())
 const getAgentByName = vi.hoisted(() =>
   vi.fn(() =>
     Promise.resolve({
-      consumeThreadMailDraftCapability,
+      consumeThreadMailDraftToolCall,
       issueThreadMailContextToken,
     }),
   ),
@@ -229,7 +229,7 @@ describe('mail agent session authority', () => {
   beforeEach(async () => {
     getAgentByName.mockClear()
     issueThreadMailContextToken.mockReset()
-    consumeThreadMailDraftCapability.mockReset()
+    consumeThreadMailDraftToolCall.mockReset()
     await testDb.db.delete(tables.mailDraftActivity)
     await testDb.db.delete(tables.mailDraftRecipient)
     await testDb.db.delete(tables.mailDraft)
@@ -342,29 +342,28 @@ describe('mail agent session authority', () => {
     })
   })
 
-  it('rejects direct draft attribution without a runtime-minted capability', async () => {
+  it('rejects direct draft attribution without a server-observed tool call', async () => {
     await Effect.runPromise(
       getOrCreateMailAgentChatSession(
         testDb.db,
         inputFor(ids.userA, ids.memberA),
       ),
     )
-    consumeThreadMailDraftCapability.mockRejectedValue(
-      new Error('Mail draft capability is invalid'),
+    consumeThreadMailDraftToolCall.mockRejectedValue(
+      new Error('Mail draft tool call is invalid'),
     )
 
     const error = await Effect.runPromise(
-      consumeMailAgentDraftCapability(
+      consumeMailAgentDraftToolCall(
         testDb.db,
         { AgentDO: {} as never },
         inputFor(ids.userA, ids.memberA),
-        'forged-capability',
-        { mode: 'new', to: 'customer@example.com', body: 'Forged' },
+        'forged-tool-call',
       ).pipe(Effect.flip),
     )
 
     expect(error).toBeInstanceOf(MailAgentOrchestrationError)
-    expect(error.operation).toBe('consumeDraftCapability.rpc')
+    expect(error.operation).toBe('consumeDraftToolCall.rpc')
   })
 
   it('uses immutable turn context after the browser selection changes', async () => {
@@ -374,29 +373,32 @@ describe('mail agent session authority', () => {
         inputFor(ids.userB, ids.memberB),
       ),
     )
-    consumeThreadMailDraftCapability.mockResolvedValue({
+    consumeThreadMailDraftToolCall.mockResolvedValue({
       workspaceId: ids.workspace,
       ownerUserId: ids.userB,
       memberId: ids.memberB,
       mailboxId: ids.mailboxB,
       conversationId: ids.conversationB,
+      proposal: { mode: 'reply', body: 'Bound to the original email' },
     })
 
     const immutable = await Effect.runPromise(
-      consumeMailAgentDraftCapability(
+      consumeMailAgentDraftToolCall(
         testDb.db,
         { AgentDO: {} as never },
         inputFor(ids.userB, ids.memberB),
-        'server-capability',
-        { mode: 'reply', body: 'Bound to the original email' },
+        'server-tool-call',
       ),
     )
 
-    expect(immutable.conversationId).toBe(ids.conversationB)
-    expect(consumeThreadMailDraftCapability).toHaveBeenCalledWith(
+    expect(immutable.input.conversationId).toBe(ids.conversationB)
+    expect(immutable.proposal).toEqual({
+      mode: 'reply',
+      body: 'Bound to the original email',
+    })
+    expect(consumeThreadMailDraftToolCall).toHaveBeenCalledWith(
       session.runtime_key,
-      'server-capability',
-      { mode: 'reply', body: 'Bound to the original email' },
+      'server-tool-call',
     )
   })
 

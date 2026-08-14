@@ -37,13 +37,36 @@ describe('ChatSubAgent security contract', () => {
 
     expect(schemaSource).toContain('MAIL_CONTEXT_TOKEN_SCHEMA_SQL')
     expect(schemaSource).toContain('MAIL_RUNTIME_CONFIG_SCHEMA_SQL')
-    expect(schemaSource).toContain('MAIL_DRAFT_CAPABILITY_SCHEMA_SQL')
+    expect(schemaSource).toContain('MAIL_DRAFT_TOOL_CALL_SCHEMA_SQL')
     expect(schemaSource).not.toContain('pragma table_info')
     expect(schemaSource).not.toContain('alter table')
     expect(schemaSource).not.toContain('delete from')
     expect(chatSubAgentSource).toContain(
-      'delete from mail_draft_capability where expires_at <= ? or consumed_at is not null',
+      'delete from mail_draft_tool_call where expires_at <= ? or consumed_at is not null',
     )
+  })
+
+  it('captures client compose proposals from stream chunks, not server tool hooks', () => {
+    const beforeToolCallIndex = chatSubAgentSource.indexOf(
+      'override async beforeToolCall',
+    )
+    const onChunkIndex = chatSubAgentSource.indexOf('override async onChunk')
+    const responseIndex = chatSubAgentSource.indexOf(
+      'override async onChatResponse',
+    )
+    const beforeToolCallSource = chatSubAgentSource.slice(
+      beforeToolCallIndex,
+      onChunkIndex,
+    )
+    const onChunkSource = chatSubAgentSource.slice(onChunkIndex, responseIndex)
+
+    expect(beforeToolCallSource).not.toContain(
+      "ctx.toolName === 'compose_mail'",
+    )
+    expect(onChunkSource).toContain("chunk.type !== 'tool-call'")
+    expect(onChunkSource).toContain("chunk.toolName !== 'compose_mail'")
+    expect(onChunkSource).toContain('insert into mail_draft_tool_call')
+    expect(chatSubAgentSource).toContain('!this.mailDraftContinuationPending')
   })
 
   it('prepares scoped Executor before assembling continued-turn tools', () => {

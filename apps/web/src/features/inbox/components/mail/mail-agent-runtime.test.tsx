@@ -62,6 +62,8 @@ vi.mock('../../mail.queries', () => ({
 
 vi.mock('./mail-agent-sidebar', () => ({
   MailAgentSidebar: (props: {
+    errorMessage?: string
+    input: string
     onSend: (text: string) => void
     onResolveApproval: (executionId: string, approved: boolean) => unknown
   }) => {
@@ -154,6 +156,12 @@ describe('MailAgentRuntime', () => {
 
     await waitFor(() => expect(markTurnError).toHaveBeenCalledWith(denial))
     expect(sendMessage).not.toHaveBeenCalled()
+    await waitFor(() =>
+      expect(sidebarProps.mock.lastCall?.[0]).toMatchObject({
+        input: 'Summarize this email',
+        errorMessage: 'Agent context could not be prepared. Try again.',
+      }),
+    )
   })
 
   it('approves by opaque execution id without browser-selected agent authority', async () => {
@@ -237,7 +245,7 @@ describe('MailAgentRuntime', () => {
       output = await options.clientTools.compose_mail?.execute?.({
         mode: 'reply',
         body: 'Thanks — I will review this.',
-        draft_capability: '00000000-0000-4000-8000-000000000009',
+        __garden_tool_call_id: 'tool-call-9',
       })
     })
 
@@ -245,9 +253,7 @@ describe('MailAgentRuntime', () => {
       data: {
         workspaceId: session.workspaceId,
         agentId: session.agentId,
-        draftCapability: '00000000-0000-4000-8000-000000000009',
-        mode: 'reply',
-        body: 'Thanks — I will review this.',
+        toolCallId: 'tool-call-9',
       },
     })
     expect(onOpenDraft).toHaveBeenCalledWith(persistedDraft)
@@ -288,12 +294,12 @@ describe('MailAgentRuntime', () => {
     await options.clientTools.compose_mail?.execute?.({
       mode: 'reply',
       body: 'Thanks.',
-      draft_capability: '00000000-0000-4000-8000-000000000010',
+      __garden_tool_call_id: 'tool-call-10',
     })
 
     expect(saveAgentMailDraft).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        draftCapability: '00000000-0000-4000-8000-000000000010',
+        toolCallId: 'tool-call-10',
       }),
     })
     expect(saveAgentMailDraft.mock.calls[0]?.[0].data).not.toHaveProperty(

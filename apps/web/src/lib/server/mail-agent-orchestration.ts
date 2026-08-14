@@ -24,7 +24,7 @@ import {
 } from '@garden/server/mail'
 import {
   MailAgentConversationContext,
-  type MailAgentDraftCapabilityContext,
+  type MailAgentDraftToolCallContext,
   type MailAgentContextToken,
 } from '@garden/agent-runtime'
 import { disposeRpcResult } from '@garden/app-state/platform/rpc'
@@ -476,15 +476,14 @@ const issueMailRuntimeContextToken = Effect.fn('MailAgent.issueContextToken')(
   },
 )
 
-/** Consumes model-tool proof through native RPC; browser state stays untrusted. */
-const consumeMailRuntimeDraftCapability = Effect.fn(
-  'MailAgent.consumeDraftCapabilityRpc',
+/** Loads and consumes the exact server-observed client-tool proposal. */
+const consumeMailRuntimeDraftToolCall = Effect.fn(
+  'MailAgent.consumeDraftToolCallRpc',
 )(function* (
   env: Pick<AppEnv, 'AgentDO'>,
   hostName: string,
   threadId: string,
-  capability: string,
-  proposal: AgentMailDraftProposal,
+  toolCallId: string,
 ) {
   return yield* Effect.tryPromise({
     try: async () => {
@@ -492,17 +491,13 @@ const consumeMailRuntimeDraftCapability = Effect.fn(
         routingRetry: AGENT_ROUTING_RETRY,
       })
       return disposeRpcResult(
-        await stub.consumeThreadMailDraftCapability(
-          threadId,
-          capability,
-          proposal,
-        ),
-      ) as MailAgentDraftCapabilityContext
+        await stub.consumeThreadMailDraftToolCall(threadId, toolCallId),
+      ) as MailAgentDraftToolCallContext
     },
     catch: (cause) =>
       new MailAgentOrchestrationError({
-        operation: 'consumeDraftCapability.rpc',
-        message: 'Garden could not verify the active agent draft action.',
+        operation: 'consumeDraftToolCall.rpc',
+        message: 'Garden could not load the active agent draft action.',
         cause,
       }),
   })
@@ -525,54 +520,64 @@ export const getOrCreateMailAgentChatSession = Effect.fn(
  * Resolves immutable context from proof minted during the actual compose_mail
  * call, then revalidates current member∩agent authority before persistence.
  */
-export const consumeMailAgentDraftCapability = Effect.fn(
-  'MailAgent.consumeDraftCapability',
+export const consumeMailAgentDraftToolCall = Effect.fn(
+  'MailAgent.consumeDraftToolCall',
 )(function* (
   db: Db,
   env: Pick<AppEnv, 'AgentDO'>,
   input: MailAgentChatSessionInput,
-  capability: string,
-  proposal: AgentMailDraftProposal,
+  toolCallId: string,
 ) {
   const authority = yield* resolveMailAgentAuthority(db, input)
   const thread = yield* requireMailChatThread(db, input)
-  const context = yield* consumeMailRuntimeDraftCapability(
+  const toolCall = yield* consumeMailRuntimeDraftToolCall(
     env,
     authority.hostName,
     thread.runtimeKey,
-    capability,
-    proposal,
+    toolCallId,
+  )
+  const proposal = yield* Schema.decodeUnknownEffect(AgentMailDraftProposal)(
+    toolCall.proposal,
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new MailAgentOrchestrationError({
+          operation: 'consumeDraftToolCall.decodeProposal',
+          message: 'Agent draft proposal was invalid.',
+          cause,
+        }),
+    ),
   )
   if (
-    context.workspaceId !== input.workspaceId ||
-    context.ownerUserId !== input.ownerUserId ||
-    context.memberId !== input.memberId
+    toolCall.workspaceId !== input.workspaceId ||
+    toolCall.ownerUserId !== input.ownerUserId ||
+    toolCall.memberId !== input.memberId
   ) {
     return yield* new MailAgentOrchestrationError({
-      operation: 'consumeDraftCapability.identity',
-      message: 'Agent draft capability does not belong to this member.',
+      operation: 'consumeDraftToolCall.identity',
+      message: 'Agent draft tool call does not belong to this member.',
     })
   }
   const immutableInput: MailAgentChatSessionInput = {
     ...input,
     conversationId:
-      context.conversationId === null
+      toolCall.conversationId === null
         ? null
         : yield* Schema.decodeUnknownEffect(ConversationId)(
-            context.conversationId,
+            toolCall.conversationId,
           ),
   }
   const refreshed = yield* resolveMailAgentAuthority(db, immutableInput)
   if (
-    context.mailboxId !== null &&
-    refreshed.selectedMailboxId !== context.mailboxId
+    toolCall.mailboxId !== null &&
+    refreshed.selectedMailboxId !== toolCall.mailboxId
   ) {
     return yield* new MailAgentOrchestrationError({
-      operation: 'consumeDraftCapability.mailbox',
+      operation: 'consumeDraftToolCall.mailbox',
       message: 'Agent draft mailbox access changed before persistence.',
     })
   }
-  return immutableInput
+  return { input: immutableInput, proposal }
 })
 
 /**

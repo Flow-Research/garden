@@ -22,6 +22,7 @@ import {
   Think,
   type ChatRecoveryContext,
   type ChatResponseResult,
+  type ChunkContext,
   type MessageConcurrency,
   type StepContext,
   type ToolCallContext,
@@ -391,12 +392,13 @@ export type MailAgentConversationContext =
 
 export type MailAgentContextToken = { readonly token: string }
 
-export type MailAgentDraftCapabilityContext = {
+export type MailAgentDraftToolCallContext = {
   readonly workspaceId: string
   readonly ownerUserId: string
   readonly memberId: string
   readonly mailboxId: string | null
   readonly conversationId: string | null
+  readonly proposal: unknown
 }
 
 interface MailDeliveryWorkflowBinding {
@@ -454,11 +456,10 @@ const MAIL_RUNTIME_CONFIG_SCHEMA_SQL = `
   );
 `
 
-const MAIL_DRAFT_CAPABILITY_SCHEMA_SQL = `
-  create table if not exists mail_draft_capability (
-    capability text primary key,
+const MAIL_DRAFT_TOOL_CALL_SCHEMA_SQL = `
+  create table if not exists mail_draft_tool_call (
+    tool_call_id text primary key,
     mail_context_token text not null,
-    tool_call_id text not null,
     proposal_json text not null,
     created_at text not null,
     expires_at text not null,
@@ -466,13 +467,12 @@ const MAIL_DRAFT_CAPABILITY_SCHEMA_SQL = `
   );
 `
 
-/** Canonicalizes plain tool input so a capability cannot authorize another draft. */
+/** Canonicalizes the exact model proposal observed in one client tool call. */
 const canonicalToolInput = (input: unknown): string => {
   if (input === null || typeof input !== 'object' || Array.isArray(input)) {
     return JSON.stringify(input)
   }
   return `{${Object.entries(input)
-    .filter(([key]) => key !== 'draft_capability')
     .sort(([left], [right]) => left.localeCompare(right))
     .map(
       ([key, value]) => `${JSON.stringify(key)}:${canonicalToolInput(value)}`,
@@ -481,7 +481,7 @@ const canonicalToolInput = (input: unknown): string => {
 }
 
 /**
- * Creates the canonical facet-local capability tables. Schema evolution is
+ * Creates the canonical facet-local mail-turn tables. Schema evolution is
  * deliberately absent from this cold-start path; one-time changes belong in a
  * one-shot migration, while expired records are reclaimed when a new Inbox
  * turn is issued.
@@ -489,7 +489,7 @@ const canonicalToolInput = (input: unknown): string => {
 const ensureMailContextTokenSchema = (storage: DurableObjectStorage) => {
   storage.sql.exec(MAIL_CONTEXT_TOKEN_SCHEMA_SQL)
   storage.sql.exec(MAIL_RUNTIME_CONFIG_SCHEMA_SQL)
-  storage.sql.exec(MAIL_DRAFT_CAPABILITY_SCHEMA_SQL)
+  storage.sql.exec(MAIL_DRAFT_TOOL_CALL_SCHEMA_SQL)
 }
 
 /**
@@ -1296,15 +1296,14 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return await thread.issueMailContextToken(context)
   }
 
-  /** Consumes proof minted only by the model's active compose_mail tool call. */
-  async consumeThreadMailDraftCapability(
+  /** Consumes the exact proposal observed from the active compose_mail call. */
+  async consumeThreadMailDraftToolCall(
     threadId: string,
-    capability: string,
-    proposal: unknown,
-  ): Promise<MailAgentDraftCapabilityContext> {
+    toolCallId: string,
+  ): Promise<MailAgentDraftToolCallContext> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
-    return await thread.consumeMailDraftCapability(capability, proposal)
+    return await thread.consumeMailDraftToolCall(toolCallId)
   }
 
   private async checkIssueAccess(issueId: string) {
@@ -1368,6 +1367,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
 
 export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   private activeMailContextToken: string | null = null
+  private mailDraftContinuationPending = false
 
   /** Creates facet-local capability storage before any chat turn can start. */
   constructor(ctx: DurableObjectState, env: AgentRuntimeEnv) {
@@ -1610,7 +1610,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       now.getTime() + MAIL_CONTEXT_TOKEN_TTL_MS,
     ).toISOString()
     this.ctx.storage.sql.exec(
-      `delete from mail_draft_capability where expires_at <= ? or consumed_at is not null`,
+      `delete from mail_draft_tool_call where expires_at <= ? or consumed_at is not null`,
       nowIso,
     )
     this.ctx.storage.sql.exec(
@@ -1706,10 +1706,9 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
    * Consumes one model-tool proof and returns its immutable server-bound mail
    * context. Browser calls cannot mint this proof, reuse it, or alter proposal.
    */
-  async consumeMailDraftCapability(
-    capability: string,
-    proposal: unknown,
-  ): Promise<MailAgentDraftCapabilityContext> {
+  async consumeMailDraftToolCall(
+    toolCallId: string,
+  ): Promise<MailAgentDraftToolCallContext> {
     const nowIso = new Date().toISOString()
     const rows = Array.from(
       this.ctx.storage.sql.exec(
@@ -1718,40 +1717,55 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
             t.workspace_id, t.owner_user_id, t.member_id,
             t.mailbox_id, t.conversation_id, t.consumed_at as turn_consumed_at,
             t.completed_at as turn_completed_at
-          from mail_draft_capability c
+          from mail_draft_tool_call c
           inner join mail_context_token t on t.token = c.mail_context_token
-          where c.capability = ?
+          where c.tool_call_id = ?
           limit 1
         `,
-        capability,
+        toolCallId,
       ),
     )
     const row = rows[0]
-    if (
-      !row ||
-      row.consumed_at !== null ||
-      String(row.expires_at) <= nowIso ||
-      row.turn_consumed_at === null ||
-      row.turn_completed_at !== null ||
-      row.proposal_json !== canonicalToolInput(proposal)
-    ) {
-      throw new Error('Mail draft capability is invalid')
+    if (!row) {
+      agentRuntimeLogger.warn('mail.agent.draft_tool_call_rejected', {
+        reason: 'missing',
+      })
+      throw new Error('Mail draft tool call is invalid')
+    }
+    const rejectionReason =
+      row.consumed_at !== null
+        ? 'already_consumed'
+        : String(row.expires_at) <= nowIso
+          ? 'expired'
+          : row.turn_consumed_at === null
+            ? 'turn_not_consumed'
+            : row.turn_completed_at !== null
+              ? 'turn_completed'
+              : null
+    if (rejectionReason !== null) {
+      agentRuntimeLogger.warn('mail.agent.draft_tool_call_rejected', {
+        reason: rejectionReason,
+      })
+      throw new Error('Mail draft tool call is invalid')
     }
     const consumed = Array.from(
       this.ctx.storage.sql.exec(
         `
-          update mail_draft_capability
+          update mail_draft_tool_call
           set consumed_at = ?
-          where capability = ? and consumed_at is null and expires_at > ?
-          returning capability
+          where tool_call_id = ? and consumed_at is null and expires_at > ?
+          returning tool_call_id
         `,
         nowIso,
-        capability,
+        toolCallId,
         nowIso,
       ),
     )
     if (consumed.length !== 1) {
-      throw new Error('Mail draft capability was already consumed')
+      agentRuntimeLogger.warn('mail.agent.draft_tool_call_rejected', {
+        reason: 'consume_race',
+      })
+      throw new Error('Mail draft tool call was already consumed')
     }
     return {
       workspaceId: String(row.workspace_id),
@@ -1760,6 +1774,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       mailboxId: row.mailbox_id === null ? null : String(row.mailbox_id),
       conversationId:
         row.conversation_id === null ? null : String(row.conversation_id),
+      proposal: JSON.parse(String(row.proposal_json)),
     }
   }
 
@@ -2340,6 +2355,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async beforeTurn(ctx: TurnContext) {
+    this.mailDraftContinuationPending = false
     const [identity] = await this.getDb()
       .select({
         id: schema.chatThread.id,
@@ -2504,56 +2520,55 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     ctx: ToolCallContext,
   ): Promise<ToolCallDecision | undefined> {
     this.aiObservation.beforeToolCall(ctx)
-    if (ctx.toolName === 'compose_mail') {
-      const token = this.activeMailContextToken
-      if (!token || ctx.input === null || typeof ctx.input !== 'object') {
-        return {
-          action: 'block',
-          reason: 'Mail draft context is unavailable.',
-        }
-      }
-      const [turn] = Array.from(
-        this.ctx.storage.sql.exec(
-          `
-            select expires_at
-            from mail_context_token
-            where token = ? and consumed_at is not null and completed_at is null
-            limit 1
-          `,
-          token,
-        ),
-      )
-      if (!turn) {
-        return {
-          action: 'block',
-          reason: 'Mail draft context is unavailable.',
-        }
-      }
-      const capability = crypto.randomUUID()
-      const nowIso = new Date().toISOString()
+    return undefined
+  }
+
+  /**
+   * Persists a client-tool proposal at the server-observed stream boundary.
+   * Think does not invoke `beforeToolCall` for client tools, so the previous
+   * proof mint never ran. The browser now submits only the tool-call id;
+   * the canonical proposal comes from this facet-local record.
+   */
+  override async onChunk(ctx: ChunkContext) {
+    const chunk = ctx.chunk
+    if (
+      chunk.type !== 'tool-call' ||
+      chunk.toolName !== 'compose_mail' ||
+      chunk.input === null ||
+      typeof chunk.input !== 'object'
+    ) {
+      return
+    }
+    const token = this.activeMailContextToken
+    if (!token) return
+    const [turn] = Array.from(
       this.ctx.storage.sql.exec(
         `
-          insert into mail_draft_capability (
-            capability, mail_context_token, tool_call_id, proposal_json,
-            created_at, expires_at
-          ) values (?, ?, ?, ?, ?, ?)
+          select expires_at
+          from mail_context_token
+          where token = ? and consumed_at is not null and completed_at is null
+          limit 1
         `,
-        capability,
         token,
-        ctx.toolCallId,
-        canonicalToolInput(ctx.input),
-        nowIso,
-        String(turn.expires_at),
-      )
-      return {
-        action: 'allow',
-        input: {
-          ...(ctx.input as Record<string, unknown>),
-          draft_capability: capability,
-        },
-      }
-    }
-    return undefined
+      ),
+    )
+    if (!turn) return
+    const nowIso = new Date().toISOString()
+    this.ctx.storage.sql.exec(
+      `
+        insert into mail_draft_tool_call (
+          tool_call_id, mail_context_token, proposal_json,
+          created_at, expires_at
+        ) values (?, ?, ?, ?, ?)
+        on conflict (tool_call_id) do nothing
+      `,
+      chunk.toolCallId,
+      token,
+      canonicalToolInput(chunk.input),
+      nowIso,
+      String(turn.expires_at),
+    )
+    this.mailDraftContinuationPending = true
   }
 
   override async afterToolCall(ctx: ToolCallResultContext) {
@@ -2570,7 +2585,9 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     const terminal =
       result.status === 'aborted' ||
       result.status === 'error' ||
-      (result.status === 'completed' && !this.hasPendingInteraction())
+      (result.status === 'completed' &&
+        !this.hasPendingInteraction() &&
+        !this.mailDraftContinuationPending)
     if (token && terminal) {
       this.ctx.storage.sql.exec(
         `

@@ -1,7 +1,7 @@
 export { AgentDO, ChatSubAgent, MailAgentConversationContext } from './agent-do'
 export type { MailAgentConversationContext as MailAgentConversationContextValue } from './agent-do'
 export type { MailAgentContextToken } from './agent-do'
-export type { MailAgentDraftCapabilityContext } from './agent-do'
+export type { MailAgentDraftToolCallContext } from './agent-do'
 export type { MailAgentToolScope } from './mail-tool-scope'
 export { IssueRunSubAgent } from './issue-run-sub-agent'
 export { AutomationRunSubAgent } from './automation-run-sub-agent'

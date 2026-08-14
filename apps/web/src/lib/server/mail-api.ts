@@ -47,6 +47,7 @@ import {
 } from '@garden/server/mail'
 import { and, eq } from 'drizzle-orm'
 import { Effect, Layer, Schema } from 'effect'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import type { AppRequestContext } from './context'
 import {
   MailRequestBoundaryError,
@@ -55,7 +56,6 @@ import {
 } from './mail-authority'
 import type { MailDeliveryWorkflowParams } from './mail-delivery-workflow'
 import type {
-  AgentMailDraftProposal,
   MailAgentChatSession,
   MailAgentChatSessionInput,
   MailAgentTurnContextBinding,
@@ -65,6 +65,11 @@ import {
   withExecutorGmailClient,
 } from './executor-engine/gmail-mail-import-plugin'
 import { executorProgram } from './executor-runtime'
+
+const mailAgentLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'mail-agent',
+})
 
 /** Workflow dispatch failed after draft authorization was durably recorded. */
 export class MailDeliveryDispatchError extends Schema.TaggedErrorClass<MailDeliveryDispatchError>()(
@@ -117,13 +122,7 @@ export type MailDraftAttachmentUploadInput = {
 export type MailAgentDraftValuesInput = {
   workspaceId: string
   agentId: string
-  draftCapability: string
-  mode: AgentMailDraftProposal['mode']
-  to?: string
-  cc?: string
-  bcc?: string
-  subject?: string
-  body: string
+  toolCallId: string
 }
 
 /** Exact persisted revision exposed to the composer without sender transport ids. */
@@ -445,7 +444,18 @@ export async function bindMailAgentTurnContext(
         context.env,
         authorized.input,
       )
-    }),
+    }).pipe(
+      Effect.tapError((error) =>
+        Effect.sync(() => {
+          mailAgentLogger.error('mail.agent.context_bind_failed', {
+            workspaceId: input.workspaceId,
+            agentId: input.agentId,
+            conversationId: input.conversationId,
+            ...errorFields(error),
+          })
+        }),
+      ),
+    ),
   )
 }
 
@@ -468,28 +478,16 @@ export async function persistAgentMailDraft(
       const orchestration = yield* Effect.promise(
         () => import('./mail-agent-orchestration'),
       )
-      const proposal = yield* Schema.decodeUnknownEffect(
-        orchestration.AgentMailDraftProposal,
-      )({
-        mode: input.mode,
-        ...(input.to === undefined ? {} : { to: input.to }),
-        ...(input.cc === undefined ? {} : { cc: input.cc }),
-        ...(input.bcc === undefined ? {} : { bcc: input.bcc }),
-        ...(input.subject === undefined ? {} : { subject: input.subject }),
-        body: input.body,
-      })
-      const immutableInput =
-        yield* orchestration.consumeMailAgentDraftCapability(
-          authorized.db,
-          context.env,
-          authorized.input,
-          input.draftCapability,
-          proposal,
-        )
+      const toolCall = yield* orchestration.consumeMailAgentDraftToolCall(
+        authorized.db,
+        context.env,
+        authorized.input,
+        input.toolCallId,
+      )
       const draft = yield* orchestration.createAgentMailDraft(
         authorized.db,
-        immutableInput,
-        proposal,
+        toolCall.input,
+        toolCall.proposal,
       )
       return {
         id: draft.id,
@@ -506,7 +504,17 @@ export async function persistAgentMailDraft(
         attachments: draft.attachments,
         updatedAt: draft.updatedAt,
       }
-    }),
+    }).pipe(
+      Effect.tapError((error) =>
+        Effect.sync(() => {
+          mailAgentLogger.error('mail.agent.draft_persist_failed', {
+            workspaceId: input.workspaceId,
+            agentId: input.agentId,
+            ...errorFields(error),
+          })
+        }),
+      ),
+    ),
   )
 }
 

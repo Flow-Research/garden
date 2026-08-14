@@ -4,10 +4,11 @@ import { executeRegisteredClientTool } from './chat-runtime-provider'
 describe('client chat tools', () => {
   it('executes a registered browser action and returns its output', async () => {
     const addToolOutput = vi.fn()
+    const execute = vi.fn(async () => ({ status: 'opened' }))
     await executeRegisteredClientTool({
       tools: {
         compose_mail: {
-          execute: async () => ({ status: 'opened' }),
+          execute,
         },
       },
       toolCall: {
@@ -21,6 +22,10 @@ describe('client chat tools', () => {
     expect(addToolOutput).toHaveBeenCalledWith({
       toolCallId: 'tool-call-1',
       output: { status: 'opened' },
+    })
+    expect(execute).toHaveBeenCalledWith({
+      body: 'Hello',
+      __garden_tool_call_id: 'tool-call-1',
     })
   })
 

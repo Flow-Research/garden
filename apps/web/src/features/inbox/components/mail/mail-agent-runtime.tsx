@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Result } from 'better-result'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getToolInput,
@@ -139,9 +140,9 @@ export function MailAgentRuntime({
             }
           }
           const input = rawInput as AgentMailComposerInput & {
-            draft_capability?: unknown
+            __garden_tool_call_id?: unknown
           }
-          if (typeof input.draft_capability !== 'string') {
+          if (typeof input.__garden_tool_call_id !== 'string') {
             return {
               status: 'unavailable',
               message: 'This draft is not bound to an active agent turn.',
@@ -151,15 +152,7 @@ export function MailAgentRuntime({
             data: {
               workspaceId,
               agentId: session.agentId,
-              draftCapability: input.draft_capability,
-              mode: input.mode,
-              ...(input.to === undefined ? {} : { to: input.to }),
-              ...(input.cc === undefined ? {} : { cc: input.cc }),
-              ...(input.bcc === undefined ? {} : { bcc: input.bcc }),
-              ...(input.subject === undefined
-                ? {}
-                : { subject: input.subject }),
-              body: input.body,
+              toolCallId: input.__garden_tool_call_id,
             },
           })
           const outcome = onOpenDraft(draft)
@@ -186,37 +179,48 @@ export function MailAgentRuntime({
     clientTools,
   })
   const [input, setInput] = useState('')
+  const [submissionError, setSubmissionError] = useState<string | null>(null)
   const messages = useMemo(
     () => mailboxAgentMessages(runtime.messages),
     [runtime.messages],
   )
 
   const send = (text: string) => {
+    const pendingText = text.trim()
+    if (!pendingText) return
     setInput('')
-    runtime.setPendingTurn({ title: null, preview: text })
-    void bindMailAgentContext({
-      data: { workspaceId, conversationId, agentId: session.agentId },
-    })
-      .then((binding) =>
-        runtime.sendMessage(
-          { text },
+    setSubmissionError(null)
+    runtime.setPendingTurn({ title: null, preview: pendingText })
+    void Result.tryPromise({
+      try: async () => {
+        const binding = await bindMailAgentContext({
+          data: { workspaceId, conversationId, agentId: session.agentId },
+        })
+        await runtime.sendMessage(
+          { text: pendingText },
           { body: { mail_context_token: binding.token } },
-        ),
-      )
-      .then(() =>
-        conversationId === null
+        )
+        await (conversationId === null
           ? queryClient.invalidateQueries({
               queryKey: mailKeys.all(workspaceId),
             })
           : queryClient.invalidateQueries({
               queryKey: mailKeys.conversation(workspaceId, conversationId),
-            }),
-      )
-      .catch((cause: unknown) =>
-        runtime.markTurnError(
-          cause instanceof Error ? cause : new Error(String(cause)),
-        ),
-      )
+            }))
+      },
+      catch: (cause) => cause,
+    }).then((result) =>
+      result.match({
+        ok: () => undefined,
+        err: (cause) => {
+          setInput((current) => current || pendingText)
+          setSubmissionError('Agent context could not be prepared. Try again.')
+          runtime.markTurnError(
+            cause instanceof Error ? cause : new Error(String(cause)),
+          )
+        },
+      }),
+    )
   }
 
   return (
@@ -244,9 +248,10 @@ export function MailAgentRuntime({
         return result.status
       }}
       errorMessage={
-        runtime.status === 'error'
+        submissionError ??
+        (runtime.status === 'error'
           ? 'Agent could not finish. Try again.'
-          : undefined
+          : undefined)
       }
     />
   )
