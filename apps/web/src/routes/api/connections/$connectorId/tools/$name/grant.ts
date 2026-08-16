@@ -17,6 +17,10 @@ import {
 import { schema } from '@/lib/server/db'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { capturePostHogEvent } from '@/lib/posthog-server'
+import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
 
 type PermissionTrustLevel = 'auto' | 'allow' | 'ask'
 
@@ -65,6 +69,15 @@ export const Route = createFileRoute(
         if (!workspaceId) {
           return notFound('Workspace not found')
         }
+
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request,
+          workspaceId,
+          permissions: workspacePermissions.permissionManage,
+        })
+
+        if (permission) return permission
 
         const payloadResult = await parseGrantPayload(request)
         if (payloadResult.isErr()) {
