@@ -59,6 +59,10 @@ export const member = pgTable(
       table.organizationId,
       table.userId,
     ),
+    uniqueIndex('member_organization_id_unique').on(
+      table.organizationId,
+      table.id,
+    ),
     check(
       'member_role_check',
       sql`${table.role} in ('owner', 'admin', 'member')`,
