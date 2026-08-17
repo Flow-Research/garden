@@ -9,6 +9,9 @@ import {
   agent,
   agentProposalRequest,
   chatThread,
+  department,
+  departmentMember,
+  departmentRoleValues,
   invitation,
   issue,
   issueAttachment,
@@ -38,6 +41,8 @@ export const jsonObjectSchema = z.record(z.string(), z.unknown())
 
 export const memberRoleValues = ['owner', 'admin', 'member'] as const
 export const memberRoleSchema = z.enum(memberRoleValues)
+export { departmentRoleValues }
+export const departmentRoleSchema = z.enum(departmentRoleValues)
 
 export const invitationStatusValues = [
   'pending',
@@ -110,6 +115,75 @@ export const organizationUpdateSchema = createUpdateSchema(organization, {
   slug: (schema) => schema.trim().min(1),
   settings: () => jsonObjectSchema,
 })
+
+export const departmentSelectSchema = createSelectSchema(department, {
+  id: () => uuidSchema,
+  workspaceId: () => uuidSchema,
+  name: (schema) => schema.trim().min(1),
+  slug: (schema) => schema.trim().min(1),
+})
+
+export const departmentInsertSchema = createInsertSchema(department, {
+  workspaceId: () => uuidSchema,
+  name: (schema) => schema.trim().min(1),
+  slug: (schema) => schema.trim().min(1),
+})
+  .pick({
+    workspaceId: true,
+    name: true,
+    slug: true,
+  })
+  .strict()
+
+export const departmentUpdateSchema = createUpdateSchema(department, {
+  name: (schema) => schema.trim().min(1),
+  slug: (schema) => schema.trim().min(1),
+})
+  .pick({
+    name: true,
+    slug: true,
+  })
+  .strict()
+
+export const departmentMemberSelectSchema = createSelectSchema(
+  departmentMember,
+  {
+    id: () => uuidSchema,
+    workspaceId: () => uuidSchema,
+    departmentId: () => uuidSchema,
+    memberId: () => uuidSchema,
+    role: () => departmentRoleSchema,
+  },
+)
+
+export const departmentMemberInsertSchema = createInsertSchema(
+  departmentMember,
+  {
+    workspaceId: () => uuidSchema,
+    departmentId: () => uuidSchema,
+    memberId: () => uuidSchema,
+    role: () => departmentRoleSchema,
+  },
+)
+  .pick({
+    workspaceId: true,
+    departmentId: true,
+    memberId: true,
+    role: true,
+  })
+  .strict()
+
+export const departmentMemberUpdateSchema = createUpdateSchema(
+  departmentMember,
+  {
+    role: () => departmentRoleSchema,
+  },
+)
+  .pick({
+    role: true,
+  })
+  .required()
+  .strict()
 
 export const memberSelectSchema = createSelectSchema(member, {
   id: () => uuidSchema,
