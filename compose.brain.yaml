@@ -1,0 +1,55 @@
+services:
+  helix:
+    image: ghcr.io/helixdb/helixdb:v0.0.4
+    restart: unless-stopped
+    environment:
+      HELIX_DATA_DIR: /var/lib/helix
+    volumes:
+      - helix-data:/var/lib/helix
+
+  gateway:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - helix
+    environment:
+      BRAIN_API_SECRET: ${BRAIN_API_SECRET}
+    expose:
+      - "3000"
+    configs:
+      - source: brain-caddyfile
+        target: /etc/caddy/Caddyfile
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --quiet
+        - --tries=1
+        - --spider
+        - http://127.0.0.1:3000/healthz
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+configs:
+  brain-caddyfile:
+    content: |
+      :3000 {
+          handle /healthz {
+              respond "OK" 200
+          }
+
+          @authorized header Authorization "Bearer ${BRAIN_API_SECRET}"
+
+          handle @authorized {
+              reverse_proxy helix:8080 {
+                  header_up -Authorization
+              }
+          }
+
+          respond "Unauthorized" 401
+      }
+
+volumes:
+  helix-data:
