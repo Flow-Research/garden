@@ -77,7 +77,7 @@ catalogs:
       version: 5.0.12
 
 overrides:
-  alchemy@0.93.12>miniflare: 4.20260714.0
+  alchemy>miniflare: 4.20260714.0
   '@posthog/cli': 0.8.4
   effect: 4.0.0-rc.111
   '@effect/atom-react': 4.0.0-rc.111
