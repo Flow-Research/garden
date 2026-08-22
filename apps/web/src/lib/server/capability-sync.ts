@@ -9,7 +9,7 @@ import {
 import { getDb, schema } from './db'
 import { appEnv } from './env'
 
-export class CapabilitySyncError extends Schema.ErrorClass<CapabilitySyncError>(
+export class CapabilitySyncError extends Schema.Error<CapabilitySyncError>(
   'CapabilitySyncError',
 )({
   code: Schema.Literals([

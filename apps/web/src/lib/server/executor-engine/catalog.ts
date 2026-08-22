@@ -83,7 +83,7 @@ export const CatalogProvider = Schema.Struct({
 })
 export type CatalogProvider = typeof CatalogProvider.Type
 
-export class CatalogProviderNotFoundError extends Schema.ErrorClass<CatalogProviderNotFoundError>(
+export class CatalogProviderNotFoundError extends Schema.Error<CatalogProviderNotFoundError>(
   'CatalogProviderNotFoundError',
 )({ providerId: ExecutorProviderId }) {}
 

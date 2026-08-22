@@ -327,7 +327,7 @@ export const htmlToDocumentBlocks = (html: string) => {
 }
 
 /** DOCX import failure at the external converter boundary. */
-export class DocumentArtifactImportError extends Schema.TaggedErrorClass<DocumentArtifactImportError>()(
+export class DocumentArtifactImportError extends Schema.TaggedError<DocumentArtifactImportError>()(
   'DocumentArtifactImportError',
   {
     filename: Schema.String,

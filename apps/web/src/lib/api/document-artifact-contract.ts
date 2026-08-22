@@ -17,17 +17,17 @@ const DocumentArtifactId = Schema.String.pipe(Schema.check(Schema.isUUID()))
 
 export const DocumentArtifactParams = Schema.Struct({ id: DocumentArtifactId })
 
-export class DocumentArtifactUnauthorizedError extends Schema.TaggedErrorClass<DocumentArtifactUnauthorizedError>()(
+export class DocumentArtifactUnauthorizedError extends Schema.TaggedError<DocumentArtifactUnauthorizedError>()(
   'DocumentArtifactUnauthorizedError',
   { message: Schema.String },
 ) {}
 
-export class DocumentArtifactForbiddenError extends Schema.TaggedErrorClass<DocumentArtifactForbiddenError>()(
+export class DocumentArtifactForbiddenError extends Schema.TaggedError<DocumentArtifactForbiddenError>()(
   'DocumentArtifactForbiddenError',
   { message: Schema.String },
 ) {}
 
-export class DocumentArtifactOperationError extends Schema.TaggedErrorClass<DocumentArtifactOperationError>()(
+export class DocumentArtifactOperationError extends Schema.TaggedError<DocumentArtifactOperationError>()(
   'DocumentArtifactOperationError',
   { operation: Schema.String, message: Schema.String },
 ) {}

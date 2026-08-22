@@ -17,7 +17,7 @@ import { previewProviderTools } from '@/lib/server/executor-engine/tool-preview'
 import { logApiFailure } from '@/lib/server/api-logging'
 import { runExecutorRouteEffect } from '@/lib/server/executor-observability'
 
-class ExecutorPreviewRouteError extends Schema.ErrorClass<ExecutorPreviewRouteError>(
+class ExecutorPreviewRouteError extends Schema.Error<ExecutorPreviewRouteError>(
   'ExecutorPreviewRouteError',
 )({
   status: Schema.Number,

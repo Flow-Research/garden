@@ -95,7 +95,7 @@ const modelExecutorAuthMethods = (
     })
   })
 
-class ExecutorConnectionsRouteError extends Schema.ErrorClass<ExecutorConnectionsRouteError>(
+class ExecutorConnectionsRouteError extends Schema.Error<ExecutorConnectionsRouteError>(
   'ExecutorConnectionsRouteError',
 )({
   status: Schema.Number,

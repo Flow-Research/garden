@@ -22,7 +22,7 @@ import { IntegrationsShDomainSurface } from '@/lib/server/executor-engine/integr
 import { runExecutorRouteEffect } from '@/lib/server/executor-observability'
 import { executorProgram } from '@/lib/server/executor-runtime'
 
-class ExecutorInstallRouteError extends Schema.ErrorClass<ExecutorInstallRouteError>(
+class ExecutorInstallRouteError extends Schema.Error<ExecutorInstallRouteError>(
   'ExecutorInstallRouteError',
 )({
   status: Schema.Number,

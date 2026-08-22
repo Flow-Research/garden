@@ -58,11 +58,11 @@ export interface PresetTarget {
 
 export type InstallTarget = McpTarget | OpenApiTarget | PresetTarget
 
-export class ExecutorInstallUnavailableError extends Schema.ErrorClass<ExecutorInstallUnavailableError>(
+export class ExecutorInstallUnavailableError extends Schema.Error<ExecutorInstallUnavailableError>(
   'ExecutorInstallUnavailableError',
 )({ reasons: Schema.NonEmptyArray(Schema.String) }) {}
 
-class ExecutorCandidateError extends Schema.ErrorClass<ExecutorCandidateError>(
+class ExecutorCandidateError extends Schema.Error<ExecutorCandidateError>(
   'ExecutorCandidateError',
 )({ reason: Schema.String }) {}
 

@@ -11,7 +11,7 @@ import { DiscordRestClient } from '@garden/connectors/discord/rest-client'
 import { schema, type Db } from './db'
 import type { AppEnv } from './env'
 
-export class DiscordInstallDatabaseError extends Schema.ErrorClass<DiscordInstallDatabaseError>(
+export class DiscordInstallDatabaseError extends Schema.Error<DiscordInstallDatabaseError>(
   'DiscordInstallDatabaseError',
 )({
   kind: Schema.Literal('database'),

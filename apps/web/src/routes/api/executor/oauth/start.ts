@@ -29,7 +29,7 @@ import {
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
 
-class ExecutorOAuthRouteError extends Schema.ErrorClass<ExecutorOAuthRouteError>(
+class ExecutorOAuthRouteError extends Schema.Error<ExecutorOAuthRouteError>(
   'ExecutorOAuthRouteError',
 )({
   status: Schema.Number,
