@@ -91,7 +91,12 @@
       "ws": "8.21.0"
     },
     "patchedDependencies": {
-      "agents@0.17.3": "patches/agents@0.17.3.patch"
+      "agents@0.17.3": "patches/agents@0.17.3.patch",
+      "@executor-js/sdk@1.5.40": "patches/@executor-js__sdk@1.5.40.patch",
+      "@executor-js/config@1.5.40": "patches/@executor-js__config@1.5.40.patch",
+      "@executor-js/plugin-graphql@1.5.40": "patches/@executor-js__plugin-graphql@1.5.40.patch",
+      "@executor-js/plugin-mcp@1.5.40": "patches/@executor-js__plugin-mcp@1.5.40.patch",
+      "@executor-js/plugin-openapi@1.5.40": "patches/@executor-js__plugin-openapi@1.5.40.patch"
     }
   },
   "dependencies": {
