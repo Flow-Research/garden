@@ -1,128 +1,60 @@
-import { existsSync } from 'node:fs'
-import { loadEnvFile } from 'node:process'
-import { fileURLToPath } from 'node:url'
-import alchemy from 'alchemy'
-import { CloudflareStateStore } from 'alchemy/state'
-import {
-  Ai,
-  BrowserRendering,
-  Container,
-  D1Database,
-  DurableObjectNamespace,
-  Hyperdrive,
-  R2Bucket,
-  TanStackStart,
-  Worker,
-  WorkerLoader,
-  Workflow,
-} from 'alchemy/cloudflare'
+/**
+ * Garden deployment program for Alchemy v2.
+ *
+ * Previously this was an Alchemy v1 async/await program (`await Worker(...)`,
+ * `alchemy.secret.env`, TanStackStart resource). Alchemy 0.93.x is superseded by
+ * the v2 line (2.0.0-beta.x), whose Effect-native resource model replaces the
+ * v1 binding helpers that no longer exist. This file declares the same physical
+ * Cloudflare resources with pinned names so `alchemy deploy --adopt` takes over
+ * the existing infrastructure without recreating anything.
+ *
+ * References: https://alchemy.run/migrating-from-v1 and the installed
+ * node_modules/alchemy/lib/*.d.ts type surface (docs lag the beta).
+ */
+import * as Alchemy from 'alchemy'
+import * as Cloudflare from 'alchemy/Cloudflare'
+import * as Config from 'effect/Config'
+import * as Effect from 'effect/Effect'
+import * as Redacted from 'effect/Redacted'
 import { deploymentTargetFromEnv } from './deploy-targets.mjs'
 
-const rootEnvPath = fileURLToPath(new URL('./.env', import.meta.url))
-if (existsSync(rootEnvPath)) loadEnvFile(rootEnvPath)
-
-/**
- * Workers Builds exposes Wrangler-compatible CF_* auth in some build contexts.
- * Alchemy and Wrangler both read CLOUDFLARE_*; mirror deprecated CF_* values
- * before resolving the account so both tools target the same account without a
- * repo-pinned fallback.
- */
-if (!process.env.CLOUDFLARE_API_TOKEN && process.env.CF_API_TOKEN) {
-  process.env.CLOUDFLARE_API_TOKEN = process.env.CF_API_TOKEN
-}
-if (!process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CF_ACCOUNT_ID) {
-  process.env.CLOUDFLARE_ACCOUNT_ID = process.env.CF_ACCOUNT_ID
-}
-
 const deployTarget = deploymentTargetFromEnv()
-const cloudflareAccountId = cloudflareAccountIdFromEnv()
-const cloudflareApiOptions = { accountId: cloudflareAccountId }
 const SANDBOX_IMAGE = 'docker.io/cloudflare/sandbox:0.12.4-python'
 
-const app = await alchemy(deployTarget.appName, {
-  stage: deployTarget.stage,
-  password: process.env.ALCHEMY_PASSWORD,
-  stateStore: createCiStateStore(),
-})
-
-const files = await R2Bucket(deployTarget.filesId, {
-  ...cloudflareApiOptions,
+const files = Cloudflare.R2.Bucket(deployTarget.filesId, {
   name: deployTarget.filesBucket,
-  adopt: true,
-  empty: deployTarget.emptyBucketsOnDestroy,
+  // Shared preview storage is binding-compatible with canonical Postgres, but
+  // only production owns destructive lifecycle.
+  forceDestroy: deployTarget.emptyBucketsOnDestroy,
 })
 
-/**
- * Runtime Postgres traffic goes through Hyperdrive while migrations and other
- * Node-only tooling keep using the direct DATABASE_URL. Hyperdrive owns origin
- * pooling, so Worker code creates short-lived pg.Client instances against the
- * binding instead of app-managed Pools or module-scope database clients.
- */
-const database = await Hyperdrive(deployTarget.databaseId, {
-  ...cloudflareApiOptions,
-  name: deployTarget.databaseName,
-  // Preview intentionally shares the current Postgres origin by explicit user
-  // decision. Its Hyperdrive configuration remains independently destructible.
-  origin: plainEnv(deployTarget.databaseUrlEnv),
-  adopt: true,
-})
-
-const executorDatabase = await D1Database(deployTarget.executorDatabaseId, {
-  ...cloudflareApiOptions,
-  name: deployTarget.executorDatabaseName,
-  adopt: true,
-})
-
-const executorBlobs = await R2Bucket(deployTarget.executorBlobsId, {
-  ...cloudflareApiOptions,
+const executorBlobs = Cloudflare.R2.Bucket(deployTarget.executorBlobsId, {
   name: deployTarget.executorBlobsBucket,
-  adopt: true,
-  empty: deployTarget.emptyBucketsOnDestroy,
+  forceDestroy: deployTarget.emptyBucketsOnDestroy,
 })
 
-const executorMcpSession = DurableObjectNamespace(
-  `${deployTarget.workerId}-executor-mcp-session`,
+const database = Cloudflare.Hyperdrive.Connection(deployTarget.databaseId, {
+  name: deployTarget.databaseName,
+  origin: postgresOriginFromEnv(deployTarget.databaseUrlEnv),
+})
+
+const executorDatabase = Cloudflare.D1.Database(
+  deployTarget.executorDatabaseId,
   {
-    className: 'ExecutorMcpSession',
-    sqlite: true,
-  },
-)
-const executorExecutionOwnerDirectory = DurableObjectNamespace(
-  `${deployTarget.workerId}-executor-owner-directory`,
-  {
-    className: 'ExecutorMcpExecutionOwnerDirectory',
-    sqlite: true,
+    name: deployTarget.executorDatabaseName,
   },
 )
 
 /**
- * Use Cloudflare's version-matched prebuilt Sandbox image in every deployment
- * environment. Alchemy receives a complete Container resource, so it can create
- * or adopt the Container Application and preserve the Sandbox binding without
- * requiring Docker inside Workers Builds.
+ * Owns the gateway named by the deployment target so every environment has a
+ * real Workers AI routing/logging boundary. Previously preview referenced a
+ * gateway that did not exist, causing every agent turn to fail after its
+ * Durable Object accepted the message.
  */
-const sandbox = await Container(deployTarget.sandboxId, {
-  ...cloudflareApiOptions,
-  className: 'Sandbox',
-  name: deployTarget.sandboxName,
-  image: SANDBOX_IMAGE,
-  instanceType: 'lite',
-  maxInstances: 4,
-  adopt: true,
+const aiGateway = Cloudflare.AI.Gateway(`${deployTarget.workerId}-ai-gateway`, {
+  id: deployTarget.aiGatewayId,
+  collectLogs: true,
 })
-
-const agentDo = DurableObjectNamespace(deployTarget.agentDoId, {
-  className: 'AgentDO',
-  sqlite: true,
-})
-
-const automationTrigger = DurableObjectNamespace(
-  deployTarget.automationTriggerId,
-  {
-    className: 'AutomationTriggerDO',
-    sqlite: true,
-  },
-)
 
 /**
  * Receives sampled execution events from staging without introducing runtime
@@ -130,13 +62,12 @@ const automationTrigger = DurableObjectNamespace(
  * can leave the dashboard Worker on an older ad hoc probe script while the
  * producer keeps sending events to it.
  */
-const tailConsumer = await Worker(deployTarget.tailWorkerId, {
-  ...cloudflareApiOptions,
+const tailConsumer = Cloudflare.Worker(deployTarget.tailWorkerId, {
   name: deployTarget.tailWorkerName,
-  adopt: true,
-  cwd: './workers/tail-observer',
-  entrypoint: 'src/index.ts',
-  compatibilityDate: '2026-04-18',
+  main: './workers/tail-observer/src/index.ts',
+  compatibility: {
+    date: '2026-04-18',
+  },
   observability: {
     enabled: true,
     logs: {
@@ -145,15 +76,20 @@ const tailConsumer = await Worker(deployTarget.tailWorkerId, {
       invocationLogs: true,
     },
   },
+  env: {
+    ENVIRONMENT: deployTarget.environment,
+    POSTHOG_PROJECT_TOKEN: plainEnv('VITE_PUBLIC_POSTHOG_PROJECT_TOKEN'),
+    POSTHOG_LOGS_HOST: plainEnv('VITE_PUBLIC_POSTHOG_HOST'),
+  },
 })
 
-export const web = await TanStackStart(deployTarget.workerId, {
-  ...cloudflareApiOptions,
+export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
   name: deployTarget.workerName,
-  cwd: './apps/web',
-  adopt: true,
-  compatibilityDate: '2026-04-18',
-  compatibilityFlags: ['nodejs_compat'],
+  rootDir: './apps/web',
+  compatibility: {
+    date: '2026-04-18',
+    flags: ['nodejs_compat'],
+  },
   observability: {
     enabled: true,
     headSamplingRate: 1,
@@ -169,46 +105,54 @@ export const web = await TanStackStart(deployTarget.workerId, {
       persist: true,
     },
   },
-  // Alchemy owns the deployed cron. The reconciler performs ledger cleanup
-  // without a durable deadline, so a 12-hour cadence avoids unnecessary
-  // database wakeups while still repairing stale product state.
+  // The reconciler performs ledger cleanup without a durable deadline, so a
+  // 12-hour cadence avoids unnecessary database wakeups while still repairing
+  // stale product state.
   crons: ['0 */12 * * *'],
   tailConsumers: [tailConsumer],
-  // Alchemy owns the production build environment. PostHog is required for
-  // Garden deploys, so missing analytics or source-map credentials should fail
-  // here with a clear configuration error instead of silently shipping an
-  // uninstrumented Worker.
-  build: {
-    env: postHogBuildEnv(),
-  },
-  bindings: {
-    AgentDO: agentDo,
-    Sandbox: sandbox,
-    AUTOMATION_TRIGGER: automationTrigger,
+  env: {
+    AgentDO: Cloudflare.DurableObject('AgentDO'),
+    Sandbox: Cloudflare.Container('Sandbox', {
+      name: deployTarget.sandboxName,
+      className: 'Sandbox',
+      image: SANDBOX_IMAGE,
+      instanceType: 'lite',
+      maxInstances: 4,
+    }),
+    AUTOMATION_TRIGGER: Cloudflare.DurableObject('AUTOMATION_TRIGGER', {
+      className: 'AutomationTriggerDO',
+    }),
     EXECUTOR_DB: executorDatabase,
     EXECUTOR_BLOBS: executorBlobs,
-    EXECUTOR_MCP_SESSION: executorMcpSession,
-    EXECUTOR_MCP_EXECUTION_OWNER: executorExecutionOwnerDirectory,
-    EXECUTOR_SECRET_KEY: alchemy.secret.env.EXECUTOR_SECRET_KEY,
-    RUN_WORKFLOW: Workflow(deployTarget.workflowId, {
-      workflowName: deployTarget.workflowName,
+    EXECUTOR_MCP_SESSION: Cloudflare.DurableObject('EXECUTOR_MCP_SESSION', {
+      className: 'ExecutorMcpSession',
+    }),
+    EXECUTOR_MCP_EXECUTION_OWNER: Cloudflare.DurableObject(
+      'EXECUTOR_MCP_EXECUTION_OWNER',
+      { className: 'ExecutorMcpExecutionOwnerDirectory' },
+    ),
+    EXECUTOR_SECRET_KEY: Config.redacted('EXECUTOR_SECRET_KEY'),
+    RUN_WORKFLOW: Cloudflare.Workflow(deployTarget.workflowName, {
       className: 'RunWorkflow',
     }),
     FILES: files,
     HYPERDRIVE: database,
-    DATABASE_URL: alchemy.secret.env.DATABASE_URL,
-    BETTER_AUTH_SECRET: alchemy.secret.env.BETTER_AUTH_SECRET,
-    RESEND_API_KEY: alchemy.secret.env.RESEND_API_KEY,
+    DATABASE_URL: Config.redacted('DATABASE_URL'),
+    BETTER_AUTH_SECRET: Config.redacted('BETTER_AUTH_SECRET'),
+    RESEND_API_KEY: Config.redacted('RESEND_API_KEY'),
     // Cloudflare does not expose existing Worker secret values. Omitting EXA
     // when the deploy environment lacks its plaintext value lets Workers retain
     // the currently configured secret, while CI can still rotate it by setting
     // EXA_API_KEY explicitly. Cloudflare documents that Worker secrets omitted
     // from a deployment are preserved.
     ...optionalSecretBindings(['EXA_API_KEY']),
-    LOADER: WorkerLoader(),
-    BROWSER: BrowserRendering(),
-    AI: Ai(),
-    AI_GATEWAY_ID: plainEnv('AI_GATEWAY_ID', deployTarget.aiGatewayId),
+    LOADER: Cloudflare.WorkerLoader(),
+    BROWSER: Cloudflare.Workers.Browser,
+    AI: Cloudflare.Workers.AI,
+    EMAIL: Cloudflare.Email.SendEmail('EMAIL').pipe(Alchemy.remote()),
+    // Same literal the gateway resource provisions; bound as a plain var so
+    // runtime model calls route through it without a service binding.
+    AI_GATEWAY_ID: deployTarget.aiGatewayId,
     SANDBOX_TRANSPORT: plainEnv('SANDBOX_TRANSPORT', 'rpc'),
     SANDBOX_LOG_LEVEL: plainEnv('SANDBOX_LOG_LEVEL', 'warn'),
     GARDEN_LOG_LEVEL: plainEnv('GARDEN_LOG_LEVEL', 'warn'),
@@ -223,6 +167,8 @@ export const web = await TanStackStart(deployTarget.workerId, {
       ? { BETTER_AUTH_URL: requiredProductionWebOrigin(deployTarget) }
       : {}),
     ENVIRONMENT: deployTarget.environment,
+    CLOUDFLARE_ACCOUNT_ID: cloudflareAccountIdFromEnv(),
+    CLOUDFLARE_MAIL_WORKER_NAME: deployTarget.workerName,
     GOOGLE_CLIENT_ID: plainEnv('GOOGLE_CLIENT_ID'),
     ...optionalPlainBindings([
       'GITHUB_CLIENT_ID',
@@ -230,29 +176,32 @@ export const web = await TanStackStart(deployTarget.workerId, {
       'GITHUB_APP_SLUG',
       'SLACK_CLIENT_ID',
     ]),
-    GOOGLE_CLIENT_SECRET: alchemy.secret.env.GOOGLE_CLIENT_SECRET,
+    GOOGLE_CLIENT_SECRET: Config.redacted('GOOGLE_CLIENT_SECRET'),
     ...optionalSecretBindings([
+      'CLOUDFLARE_MAIL_API_TOKEN',
       'GITHUB_CLIENT_SECRET',
       'GITHUB_APP_PRIVATE_KEY',
       'GITHUB_WEBHOOK_SECRET',
       'SLACK_CLIENT_SECRET',
     ]),
-  },
-  dev: {
-    command: 'pnpm exec vite dev',
-    domain: 'localhost:3000',
-  },
-  wrangler: {
-    transform: (spec) => ({
-      ...spec,
-      keep_vars: true,
-    }),
+    ...optionalPlainBindings(['CLOUDFLARE_MAIL_API_BASE_URL']),
   },
 })
 
-console.log({ web: web.url })
-
-await app.finalize()
+export default Alchemy.Stack(
+  `garden-${deployTarget.key}`,
+  {
+    providers: Cloudflare.providers(),
+    state: Cloudflare.state(),
+  },
+  Effect.gen(function* () {
+    // Provisioning the gateway is what creates/updates it; the web Worker
+    // receives its id as a plain AI_GATEWAY_ID var below.
+    yield* aiGateway
+    const deployed = yield* web
+    return { url: deployed.url }
+  }),
+)
 
 function plainEnv(name: string, fallback?: string) {
   const value = process.env[name] ?? fallback
@@ -283,9 +232,10 @@ function requiredProductionWebOrigin(
 }
 
 /**
- * Keeps Alchemy account selection aligned with Wrangler. Cloudflare docs allow
- * either wrangler.jsonc `account_id` or CLOUDFLARE_ACCOUNT_ID; Garden uses the
- * env var so local dev, CI, Alchemy, and Wrangler share one account source.
+ * Uses the Cloudflare-backed Alchemy state store only when non-Workers CI
+ * supplies the dedicated state token. Cloudflare Workers Builds can deploy with
+ * ephemeral state because every staging resource adopts existing
+ * Cloudflare infrastructure.
  */
 function cloudflareAccountIdFromEnv() {
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
@@ -296,28 +246,39 @@ function cloudflareAccountIdFromEnv() {
   )
 }
 
-/**
- * Uses the Cloudflare-backed Alchemy state worker only when non-Workers CI
- * supplies the dedicated state token. Cloudflare Workers Builds can deploy with
- * ephemeral state because every staging resource is configured to adopt existing
- * Cloudflare infrastructure.
- */
-function createCiStateStore() {
-  const stateToken = process.env.ALCHEMY_STATE_TOKEN
-  if (process.env.WORKERS_CI || !process.env.CI || !stateToken) return undefined
+type PostgresOrigin = {
+  scheme: 'postgres'
+  host: string
+  port: number
+  database: string
+  user: string
+  password: Redacted.Redacted<string>
+}
 
-  return (scope: ConstructorParameters<typeof CloudflareStateStore>[0]) =>
-    new CloudflareStateStore(scope, {
-      ...cloudflareApiOptions,
-      scriptName: deployTarget.stateWorkerName,
-      stateToken: alchemy.secret(stateToken),
-    })
+/** Parses a Postgres connection URL into Hyperdrive's structured origin. */
+function postgresOriginFromEnv(name: string): PostgresOrigin {
+  const raw = plainEnv(name)
+  const url = new URL(raw)
+  if (
+    url.protocol.replace(':', '') !== 'postgresql' &&
+    url.protocol.replace(':', '') !== 'postgres'
+  ) {
+    throw new Error(`${name} must be a postgres:// URL for Hyperdrive`)
+  }
+  return {
+    scheme: 'postgres' as const,
+    host: url.hostname,
+    port: Number(url.port || 5432),
+    database: url.pathname.replace(/^\//, ''),
+    user: decodeURIComponent(url.username),
+    password: Redacted.make(decodeURIComponent(url.password)),
+  }
 }
 
 /**
  * Optional public runtime bindings are attached only when available in the
- * deploy environment. Secret runtime bindings use `alchemy.secret.env` below so
- * Workers Builds build secrets become Cloudflare Worker secret_text bindings.
+ * deploy environment. Secret runtime bindings use `Config.redacted` so Workers
+ * Builds build secrets become Cloudflare Worker secret_text bindings.
  */
 function optionalPlainBindings(names: string[]) {
   return Object.fromEntries(
@@ -331,37 +292,6 @@ function optionalSecretBindings(names: string[]) {
   return Object.fromEntries(
     names
       .filter((name) => process.env[name])
-      .map((name) => [name, alchemy.secret.env(name)]),
+      .map((name) => [name, Config.redacted(name)]),
   )
-}
-
-function postHogBuildHost() {
-  return process.env.POSTHOG_HOST ?? plainEnv('VITE_PUBLIC_POSTHOG_HOST')
-}
-
-/**
- * Supplies PostHog source-map upload credentials only to the Alchemy build
- * process. Runtime gets the public Vite token/host bindings above; the personal
- * API key is not attached as a Worker binding. PostHog is a required production
- * dependency for Garden, so deploys should fail fast if the Alchemy environment
- * is missing the CLI upload key or project ID. `GARDEN_REQUIRE_POSTHOG=1` also tells
- * vite.config.ts to fail if someone bypasses this helper and runs an Alchemy
- * build without the required values. References: Alchemy Website build.env docs
- * and PostHog Vite source-map upload docs.
- */
-function postHogBuildEnv() {
-  const releaseVersion =
-    process.env.POSTHOG_RELEASE_VERSION ?? process.env.WORKERS_CI_COMMIT_SHA
-
-  return {
-    GARDEN_REQUIRE_POSTHOG: '1',
-    POSTHOG_CLI_API_KEY: plainEnv('POSTHOG_CLI_API_KEY'),
-    POSTHOG_CLI_PROJECT_ID: plainEnv('POSTHOG_CLI_PROJECT_ID'),
-    POSTHOG_CLI_SOURCEMAP_UPLOAD_CONCURRENCY: plainEnv(
-      'POSTHOG_CLI_SOURCEMAP_UPLOAD_CONCURRENCY',
-      '20',
-    ),
-    POSTHOG_HOST: postHogBuildHost(),
-    ...(releaseVersion ? { POSTHOG_RELEASE_VERSION: releaseVersion } : {}),
-  }
 }
