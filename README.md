@@ -189,8 +189,8 @@ Workers free plan (see above).
 `pnpm --filter @garden/db db:migrate`. For a non-Docker database, check the
 connection string and that the user can create and alter tables.
 
-**Postgres port conflict:** the local Postgres maps port 55432 specifically
-to avoid a system Postgres on 5432; if 55432 is also taken, override
+**Postgres port conflict:** the local Postgres maps port 15432 specifically
+to avoid a system Postgres on 5432; if 15432 is also taken, override
 `DATABASE_URL`.
 
 **A connector is unavailable:** provider credentials are optional. Add only

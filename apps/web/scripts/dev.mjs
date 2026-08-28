@@ -38,7 +38,7 @@ if (offline) {
     delete process.env.DATABASE_URL
   }
   process.env.DATABASE_URL ??=
-    'postgresql://garden:garden@localhost:55432/garden'
+    'postgresql://garden:garden@localhost:15432/garden'
 }
 if (!args.has('--containers')) {
   process.env.ENVIRONMENT = 'development'

@@ -2,7 +2,7 @@
 #
 # `pnpm offline:up` boots Postgres for local dev (the recommended database for
 # ALL local development — a fresh, private DB that `pnpm --filter @garden/db
-# db:migrate` can own; Neon is for staging/deploys). Port 55432 avoids
+# db:migrate` can own; Neon is for staging/deploys). Port 15432 avoids
 # colliding with any system Postgres on 5432.
 #
 # `pnpm offline:up:ollama` additionally starts Ollama for offline mode
@@ -12,7 +12,7 @@ services:
   postgres:
     image: postgres:16-alpine
     ports:
-      - '55432:5432'
+      - '15432:5432'
     environment:
       POSTGRES_USER: garden
       POSTGRES_PASSWORD: garden
