@@ -11,6 +11,7 @@ import {
   Loader2,
   ArrowLeft,
   Download,
+  FileInput,
 } from 'lucide-react'
 import { Command as CommandPrimitive } from 'cmdk'
 import type {
@@ -64,7 +65,7 @@ import {
 } from '@garden/ui/components/ui/input-group'
 import { Kbd, KbdGroup } from '@garden/ui/components/ui/kbd'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
-import { Button } from '@garden/ui/components/ui/button'
+import { Button, buttonVariants } from '@garden/ui/components/ui/button'
 import { Input } from '@garden/ui/components/ui/input'
 import { Label } from '@garden/ui/components/ui/label'
 import { toast } from 'sonner'
@@ -80,6 +81,12 @@ import { skillListOptions, workspaceKeys } from '@/lib/workspace/queries'
 
 import { FileTree } from './file-tree'
 import { FileViewer } from './file-viewer'
+import { readMarkdownFileText } from '../skill-from-markdown'
+import {
+  isProtectedSkillPath,
+  renameCollides,
+  rewriteFilePath,
+} from '../skill-file-paths'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -385,7 +392,15 @@ function SkillWorkspace({
   const setSelectedPath = useSkillEditorStore((s) => s.setSelectedPath)
   const setActiveBundle = useSkillEditorStore((s) => s.setActiveBundle)
   const setStoreFilePaths = useSkillEditorStore((s) => s.setFilePaths)
+  const setFileMutations = useSkillEditorStore((s) => s.setFileMutations)
   const clearActiveBundle = useSkillEditorStore((s) => s.clear)
+  const selectedPathRef = useRef(selectedPath)
+  selectedPathRef.current = selectedPath
+  const fileMutationsRef = useRef({
+    deleteFile: (_path: string) => {},
+    renameFile: (_fromPath: string, _toPath: string) => {},
+  })
+  const publishedMutationsFor = useRef('')
 
   if (bundleKey && syncedKey.current !== bundleKey) {
     syncedKey.current = bundleKey
@@ -460,10 +475,56 @@ function SkillWorkspace({
     setSelectedPath(path)
   }
 
+  const handleDeleteFileAt = (path: string) => {
+    if (isProtectedSkillPath(path)) return
+    setFiles((prev) =>
+      prev.filter(
+        (file) => file.path !== path && !file.path.startsWith(`${path}/`),
+      ),
+    )
+    const selected = selectedPathRef.current
+    if (selected === path || selected.startsWith(`${path}/`)) {
+      setSelectedPath(SKILL_MD)
+    }
+  }
+
+  const handleRenameFileAt = (fromPath: string, toPath: string) => {
+    if (fromPath === toPath) return
+    if (isProtectedSkillPath(fromPath) || isProtectedSkillPath(toPath)) return
+    const paths = [SKILL_MD, ...files.map((file) => file.path)]
+    if (renameCollides(paths, fromPath, toPath)) {
+      toast.error('A file already uses that name')
+      return
+    }
+    setFiles((prev) =>
+      prev.map((file) => {
+        const nextPath = rewriteFilePath(file.path, fromPath, toPath)
+        return nextPath === file.path ? file : { ...file, path: nextPath }
+      }),
+    )
+    const selected = selectedPathRef.current
+    if (selected === fromPath || selected.startsWith(`${fromPath}/`)) {
+      setSelectedPath(rewriteFilePath(selected, fromPath, toPath))
+    }
+  }
+
   const handleDeleteFile = () => {
-    if (selectedPath === SKILL_MD) return
-    setFiles((prev) => prev.filter((f) => f.path !== selectedPath))
-    setSelectedPath(SKILL_MD)
+    handleDeleteFileAt(selectedPath)
+  }
+
+  fileMutationsRef.current = {
+    deleteFile: handleDeleteFileAt,
+    renameFile: handleRenameFileAt,
+  }
+  if (loaded && publishedMutationsFor.current !== loaded.id) {
+    publishedMutationsFor.current = loaded.id
+    schedulePostRender(() => {
+      setFileMutations({
+        deleteFile: (path) => fileMutationsRef.current.deleteFile(path),
+        renameFile: (fromPath, toPath) =>
+          fileMutationsRef.current.renameFile(fromPath, toPath),
+      })
+    })
   }
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -497,6 +558,10 @@ function SkillWorkspace({
             canSync={canSync}
             canDeleteFile={selectedPath !== SKILL_MD}
             onAddFile={() => setShowAddFile(true)}
+            onImportMarkdown={(text) => {
+              if (selectedContent.trim()) return
+              handleFileContentChange(text)
+            }}
             onDeleteFile={handleDeleteFile}
             onSave={handleSave}
             onDelete={() => setConfirmDelete(true)}
@@ -555,6 +620,7 @@ function SkillEditor({
   canSync,
   canDeleteFile,
   onAddFile,
+  onImportMarkdown,
   onDeleteFile,
   onSave,
   onDelete,
@@ -570,6 +636,7 @@ function SkillEditor({
   canSync: boolean
   canDeleteFile: boolean
   onAddFile: () => void
+  onImportMarkdown: (content: string) => void
   onDeleteFile: () => void
   onSave: () => void
   onDelete: () => void
@@ -581,11 +648,13 @@ function SkillEditor({
       <SkillEditorHeader
         skill={skill}
         selectedPath={selectedPath}
+        selectedContent={selectedContent}
         isDirty={isDirty}
         saving={saving}
         canSync={canSync}
         canDeleteFile={canDeleteFile}
         onAddFile={onAddFile}
+        onImportMarkdown={onImportMarkdown}
         onDeleteFile={onDeleteFile}
         onSave={onSave}
         onDelete={onDelete}
@@ -611,11 +680,13 @@ function SkillEditor({
 function SkillEditorHeader({
   skill,
   selectedPath,
+  selectedContent,
   isDirty,
   saving,
   canSync,
   canDeleteFile,
   onAddFile,
+  onImportMarkdown,
   onDeleteFile,
   onSave,
   onDelete,
@@ -623,16 +694,30 @@ function SkillEditorHeader({
 }: {
   skill: Skill
   selectedPath: string
+  selectedContent: string
   isDirty: boolean
   saving: boolean
   canSync: boolean
   canDeleteFile: boolean
   onAddFile: () => void
+  onImportMarkdown: (content: string) => void
   onDeleteFile: () => void
   onSave: () => void
   onDelete: () => void
   onSync: () => void
 }) {
+  const sheetEmpty = selectedContent.trim().length === 0
+
+  const importMarkdownFile = (file: File) => {
+    if (!sheetEmpty) return
+    void readMarkdownFileText(file).then((result) =>
+      result.match({
+        ok: onImportMarkdown,
+        err: (error) => toast.error(error.message),
+      }),
+    )
+  }
+
   return (
     <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
       <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -668,6 +753,36 @@ function SkillEditorHeader({
           />
           <TooltipContent side="bottom">Add file</TooltipContent>
         </Tooltip>
+        {sheetEmpty ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <label
+                  aria-label="Import markdown"
+                  className={cn(
+                    buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
+                    'cursor-pointer text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <FileInput />
+                  <input
+                    type="file"
+                    accept=".md,.mdx,text/markdown"
+                    className="sr-only"
+                    onClick={(event) => {
+                      event.currentTarget.value = ''
+                    }}
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.item(0)
+                      if (file) importMarkdownFile(file)
+                    }}
+                  />
+                </label>
+              }
+            />
+            <TooltipContent side="bottom">Import markdown</TooltipContent>
+          </Tooltip>
+        ) : null}
         {canDeleteFile ? (
           <Tooltip>
             <TooltipTrigger

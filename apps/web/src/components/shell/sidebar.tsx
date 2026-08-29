@@ -749,6 +749,7 @@ function SkillsRailExplorer({
   const editorFilePaths = useSkillEditorStore((s) => s.filePaths)
   const editorSelectedPath = useSkillEditorStore((s) => s.selectedPath)
   const setEditorSelectedPath = useSkillEditorStore((s) => s.setSelectedPath)
+  const fileMutations = useSkillEditorStore((s) => s.fileMutations)
 
   const skills = skillsQuery.data ?? []
   const visible = useMemo(() => {
@@ -857,6 +858,8 @@ function SkillsRailExplorer({
                         filePaths={editorFilePaths}
                         selectedPath={editorSelectedPath}
                         onSelect={setEditorSelectedPath}
+                        onRename={fileMutations?.renameFile}
+                        onDelete={fileMutations?.deleteFile}
                       />
                     </div>
                   ) : null}

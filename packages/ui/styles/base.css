@@ -123,6 +123,41 @@
      * Progressive enhancement: browsers that don't support it simply ignore the rule. */
     text-autospace: ideograph-alpha ideograph-numeric;
   }
+
+  /* Pointer on clickable chrome. :where() keeps specificity at 0 so
+   * cursor-text / cursor-grab / resize utilities still win. */
+  :where(
+    a[href],
+    button,
+    summary,
+    label,
+    select,
+    input[type='button'],
+    input[type='submit'],
+    input[type='reset'],
+    input[type='checkbox'],
+    input[type='radio'],
+    input[type='file'],
+    [role='button'],
+    [role='link'],
+    [role='menuitem'],
+    [role='menuitemcheckbox'],
+    [role='menuitemradio'],
+    [role='option'],
+    [role='tab'],
+    [role='switch'],
+    [role='checkbox'],
+    [role='radio'],
+    [role='combobox'],
+    [role='treeitem'],
+    [role='slider']
+  ) {
+    cursor: pointer;
+
+    &:is(:disabled, [aria-disabled='true'], [data-disabled]) {
+      cursor: not-allowed;
+    }
+  }
 }
 
 /* =============================================================================

@@ -182,7 +182,7 @@ export function HeaderAttachmentsMenu({
             type="button"
             className={cn(
               COMPOSER_INLINE_SKILL_CHIP_CLASS_NAME,
-              'h-6 max-w-[11rem] cursor-default px-2 text-fuchsia-700 transition-colors hover:border-fuchsia-500/40 hover:bg-fuchsia-500/18 dark:text-fuchsia-300',
+              'h-6 max-w-[11rem] cursor-pointer px-2 text-fuchsia-700 transition-colors hover:border-fuchsia-500/40 hover:bg-fuchsia-500/18 dark:text-fuchsia-300',
             )}
             aria-label={`View ${attachments.length} attachment${attachments.length === 1 ? '' : 's'}`}
             title="View attachments"
