@@ -148,7 +148,7 @@ export function Conversation<TItem>({
           estimatedListSize={estimatedListSize}
           estimatedItemSize={estimateItemSize}
           initialContainerPoolRatio={initialContainerPoolRatio}
-          maintainScrollAtEnd
+          maintainScrollAtEnd={isAtBottom}
           maintainScrollAtEndThreshold={0.1}
           onLoad={scrollToBottomOnLoad}
           onScroll={updateStickiness}
