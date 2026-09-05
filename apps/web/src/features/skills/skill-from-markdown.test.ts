@@ -8,7 +8,6 @@ function markdownFile(contents: string, name = 'README.md') {
   return new File([contents], name, { type: 'text/markdown' })
 }
 
-/** File whose `text()` stays pending until `release` is called. */
 function gatedMarkdownFile(contents: string) {
   let release = () => {}
   const gate = new Promise<void>((resolve) => {

@@ -14,7 +14,6 @@ export function isMarkdownSkillFile(file: File) {
   )
 }
 
-/** Reads a local markdown file as-is for an empty skill editor sheet. */
 export function readMarkdownFileText(file: File) {
   if (!isMarkdownSkillFile(file)) {
     return Promise.resolve(
@@ -39,11 +38,6 @@ export function readMarkdownFileText(file: File) {
   )
 }
 
-/**
- * Import markdown only if the sheet is still empty after the async read.
- * `file.text()` can resolve after the user has already typed, so callers pass
- * a getter rather than a render-time snapshot.
- */
 export function importMarkdownIntoEmptySheet(
   file: File,
   getSheetContent: () => string,

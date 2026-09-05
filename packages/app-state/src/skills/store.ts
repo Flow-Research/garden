@@ -27,14 +27,6 @@ export const useSkillsBrowseStore = create<SkillsBrowseStore>((set) => ({
     set({ browseSearch: '', previewUrl: null, addMode: null, listFilter: '' }),
 }))
 
-// ---------------------------------------------------------------------------
-// Skill editor cross-surface state
-// ---------------------------------------------------------------------------
-// The skills page (right pane) owns the editor's local bundle state, but the
-// sidebar's skills explorer renders the file tree of whatever skill is being
-// edited. This store is the bridge: the editor publishes its file list and
-// selected path here, the sidebar reads them and writes back path selections.
-
 interface SkillFileMutations {
   renameFile: (fromPath: string, toPath: string) => void
   deleteFile: (path: string) => void
