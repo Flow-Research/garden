@@ -35,13 +35,20 @@ export const useSkillsBrowseStore = create<SkillsBrowseStore>((set) => ({
 // edited. This store is the bridge: the editor publishes its file list and
 // selected path here, the sidebar reads them and writes back path selections.
 
+interface SkillFileMutations {
+  renameFile: (fromPath: string, toPath: string) => void
+  deleteFile: (path: string) => void
+}
+
 interface SkillEditorStore {
   activeSkillId: string | null
   filePaths: string[]
   selectedPath: string
+  fileMutations: SkillFileMutations | null
   setActiveBundle: (skillId: string, filePaths: string[]) => void
   setFilePaths: (filePaths: string[]) => void
   setSelectedPath: (path: string) => void
+  setFileMutations: (fileMutations: SkillFileMutations | null) => void
   clear: () => void
 }
 
@@ -49,10 +56,17 @@ export const useSkillEditorStore = create<SkillEditorStore>((set) => ({
   activeSkillId: null,
   filePaths: [],
   selectedPath: 'SKILL.md',
+  fileMutations: null,
   setActiveBundle: (activeSkillId, filePaths) =>
     set({ activeSkillId, filePaths, selectedPath: 'SKILL.md' }),
   setFilePaths: (filePaths) => set({ filePaths }),
   setSelectedPath: (selectedPath) => set({ selectedPath }),
+  setFileMutations: (fileMutations) => set({ fileMutations }),
   clear: () =>
-    set({ activeSkillId: null, filePaths: [], selectedPath: 'SKILL.md' }),
+    set({
+      activeSkillId: null,
+      filePaths: [],
+      selectedPath: 'SKILL.md',
+      fileMutations: null,
+    }),
 }))
