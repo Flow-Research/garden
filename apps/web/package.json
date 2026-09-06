@@ -86,7 +86,7 @@
     "@tanstack/react-start": "latest",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/router-plugin": "^1.132.0",
-    "@tiptap/core": "^3.22.1",
+    "@tiptap/core": "^3.30.4",
     "@tiptap/extension-code-block-lowlight": "^3.22.1",
     "@tiptap/extension-document": "^3.22.1",
     "@tiptap/extension-image": "^3.22.1",
