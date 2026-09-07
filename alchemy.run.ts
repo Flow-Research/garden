@@ -167,8 +167,8 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
     // from a deployment are preserved.
     ...optionalSecretBindings(['EXA_API_KEY']),
     LOADER: Cloudflare.WorkerLoader(),
-    BROWSER: Cloudflare.Workers.Browser,
-    AI: Cloudflare.Workers.AI,
+    BROWSER: Cloudflare.Workers.Browser(),
+    AI: Cloudflare.Workers.AI(),
     // Same literal the gateway resource provisions; bound as a plain var so
     // runtime model calls route through it without a service binding.
     AI_GATEWAY_ID: deployTarget.aiGatewayId,

@@ -179,6 +179,8 @@ assert.match(
   alchemySource,
   /HELIX_API_KEY:\s*Config\.redacted\('HELIX_API_KEY'\)/,
 )
+assert.match(alchemySource, /BROWSER:\s*Cloudflare\.Workers\.Browser\(\)/)
+assert.match(alchemySource, /AI:\s*Cloudflare\.Workers\.AI\(\)/)
 
 for (const field of [
   'workerName',
