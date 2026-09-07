@@ -62,7 +62,7 @@ export const IntegrationsShDomainSurface = Schema.Struct({
 export type IntegrationsShDomainSurface =
   typeof IntegrationsShDomainSurface.Type
 
-export class IntegrationsShTransportError extends Schema.ErrorClass<IntegrationsShTransportError>(
+export class IntegrationsShTransportError extends Schema.Error<IntegrationsShTransportError>(
   'IntegrationsShTransportError',
 )({
   operation: Schema.String,
@@ -71,7 +71,7 @@ export class IntegrationsShTransportError extends Schema.ErrorClass<Integrations
   cause: Schema.Defect(),
 }) {}
 
-export class IntegrationsShHttpError extends Schema.ErrorClass<IntegrationsShHttpError>(
+export class IntegrationsShHttpError extends Schema.Error<IntegrationsShHttpError>(
   'IntegrationsShHttpError',
 )({
   operation: Schema.String,
@@ -79,7 +79,7 @@ export class IntegrationsShHttpError extends Schema.ErrorClass<IntegrationsShHtt
   status: Schema.Number,
 }) {}
 
-export class IntegrationsShDecodeError extends Schema.ErrorClass<IntegrationsShDecodeError>(
+export class IntegrationsShDecodeError extends Schema.Error<IntegrationsShDecodeError>(
   'IntegrationsShDecodeError',
 )({
   operation: Schema.String,

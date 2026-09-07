@@ -34,7 +34,7 @@ type BrainAuditConfig = ReturnType<typeof brainAuditToolContext>
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.brain-audit.turn'
 
-class BrainAuditTurnError extends Schema.TaggedErrorClass<BrainAuditTurnError>()(
+class BrainAuditTurnError extends Schema.TaggedError<BrainAuditTurnError>()(
   'BrainAuditTurnError',
   {
     operation: Schema.String,

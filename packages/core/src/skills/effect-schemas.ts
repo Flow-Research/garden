@@ -158,32 +158,32 @@ export type SkillPreview = typeof SkillPreview.Type
 export const SkillIdParams = Schema.Struct({ id: Schema.String })
 export const AgentIdParams = Schema.Struct({ id: Schema.String })
 
-export class SkillValidationError extends Schema.TaggedErrorClass<SkillValidationError>()(
+export class SkillValidationError extends Schema.TaggedError<SkillValidationError>()(
   'SkillValidationError',
   { operation: Schema.String, message: Schema.String },
 ) {}
 
-export class SkillUnauthorizedError extends Schema.TaggedErrorClass<SkillUnauthorizedError>()(
+export class SkillUnauthorizedError extends Schema.TaggedError<SkillUnauthorizedError>()(
   'SkillUnauthorizedError',
   { message: Schema.String },
 ) {}
 
-export class SkillForbiddenError extends Schema.TaggedErrorClass<SkillForbiddenError>()(
+export class SkillForbiddenError extends Schema.TaggedError<SkillForbiddenError>()(
   'SkillForbiddenError',
   { message: Schema.String },
 ) {}
 
-export class SkillNotFoundError extends Schema.TaggedErrorClass<SkillNotFoundError>()(
+export class SkillNotFoundError extends Schema.TaggedError<SkillNotFoundError>()(
   'SkillNotFoundError',
   { resource: Schema.String, id: Schema.String, message: Schema.String },
 ) {}
 
-export class SkillConflictError extends Schema.TaggedErrorClass<SkillConflictError>()(
+export class SkillConflictError extends Schema.TaggedError<SkillConflictError>()(
   'SkillConflictError',
   { resource: Schema.String, id: Schema.String, message: Schema.String },
 ) {}
 
-export class SkillOperationError extends Schema.TaggedErrorClass<SkillOperationError>()(
+export class SkillOperationError extends Schema.TaggedError<SkillOperationError>()(
   'SkillOperationError',
   {
     operation: Schema.String,

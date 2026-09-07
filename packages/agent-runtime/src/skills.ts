@@ -32,7 +32,7 @@ export type RuntimeSkillAssignment = {
   readonly slug: string
 }
 
-export class RuntimeSkillSourceError extends Schema.TaggedErrorClass<RuntimeSkillSourceError>()(
+export class RuntimeSkillSourceError extends Schema.TaggedError<RuntimeSkillSourceError>()(
   'RuntimeSkillSourceError',
   {
     operation: Schema.String,

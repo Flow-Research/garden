@@ -16,7 +16,7 @@ const AGENT_ROUTING_RETRY = { maxAttempts: 3 }
 const messageFromUnknown = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause)
 
-export class BrainAuditRequestError extends Schema.TaggedErrorClass<BrainAuditRequestError>()(
+export class BrainAuditRequestError extends Schema.TaggedError<BrainAuditRequestError>()(
   'BrainAuditRequestError',
   {
     operation: Schema.String,

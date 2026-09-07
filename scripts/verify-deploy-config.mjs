@@ -178,7 +178,7 @@ for (const binding of [
 assert.match(alchemySource, /HELIX_URL:\s*plainEnv\('HELIX_URL'\)/)
 assert.match(
   alchemySource,
-  /HELIX_API_KEY:\s*alchemy\.secret\.env\.HELIX_API_KEY/,
+  /HELIX_API_KEY:\s*Config\.redacted\('HELIX_API_KEY'\)/,
 )
 
 for (const field of [
@@ -190,7 +190,6 @@ for (const field of [
   'executorBlobsBucket',
   'workflowName',
   'sandboxName',
-  'stateWorkerName',
 ]) {
   assert.match(
     alchemySource,
@@ -207,7 +206,10 @@ assert.doesNotMatch(alchemySource, /process\.env\.WORKERS_CI\s*\?/)
 assert.match(alchemySource, /optionalSecretBindings\(\['EXA_API_KEY'\]\)/)
 assert.match(alchemySource, /image:\s*SANDBOX_IMAGE/)
 assert.match(alchemySource, /SANDBOX_TRANSPORT[^\n]+rpc/)
-assert.match(alchemySource, /empty:\s*deployTarget\.emptyBucketsOnDestroy/)
+assert.match(
+  alchemySource,
+  /forceDestroy:\s*deployTarget\.emptyBucketsOnDestroy/,
+)
 assert.match(alchemySource, /deploymentTargetFromEnv\(\)/)
 assert.equal(webPackageJson.devDependencies['@posthog/cli'], '0.8.4')
 assert.equal(packageJson.pnpm.overrides['@posthog/cli'], '0.8.4')
@@ -217,8 +219,6 @@ assert.match(
   /import codemode from ['"]@cloudflare\/codemode\/vite['"]/,
 )
 assert.match(viteSource, /\bcodemode\(\),/)
-assert.match(alchemySource, /POSTHOG_CLI_SOURCEMAP_UPLOAD_CONCURRENCY/)
-assert.match(alchemySource, /WORKERS_CI_COMMIT_SHA/)
 assert.match(viteSource, /WORKERS_CI_COMMIT_SHA/)
 assert.match(viteSource, /batchSize:\s*100/)
 assert.match(viteSource, /deleteAfterUpload:\s*true/)

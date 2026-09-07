@@ -1,0 +1,30 @@
+diff --git a/dist/chunk-IPRQBRDZ.js b/dist/chunk-IPRQBRDZ.js
+index 543cd8944014ec37a765d4827f9ecb32c167676a..016b05383438cee6e5935a2065011b076c174bc5 100644
+--- a/dist/chunk-IPRQBRDZ.js
++++ b/dist/chunk-IPRQBRDZ.js
+@@ -1,6 +1,6 @@
+ // src/sdk/errors.ts
+ import { Data, Schema } from "effect";
+-var McpConnectionError = class extends Schema.TaggedErrorClass()(
++var McpConnectionError = class extends Schema.TaggedError()(
+   "McpConnectionError",
+   {
+     transport: Schema.String,
+@@ -17,7 +17,7 @@ var McpConnectionError = class extends Schema.TaggedErrorClass()(
+   { httpApiStatus: 400 }
+ ) {
+ };
+-var McpToolDiscoveryError = class extends Schema.TaggedErrorClass()(
++var McpToolDiscoveryError = class extends Schema.TaggedError()(
+   "McpToolDiscoveryError",
+   {
+     stage: Schema.Literals(["connect", "list_tools"]),
+@@ -36,7 +36,7 @@ var McpOAuthReauthorizationRequired = class extends Data.TaggedError(
+ };
+ var McpInsufficientScopeError = class extends Data.TaggedError("McpInsufficientScopeError") {
+ };
+-var McpOAuthError = class extends Schema.TaggedErrorClass()(
++var McpOAuthError = class extends Schema.TaggedError()(
+   "McpOAuthError",
+   {
+     message: Schema.String

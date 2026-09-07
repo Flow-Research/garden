@@ -16,7 +16,7 @@ const brainIngestionLogger = createGardenLogger({
   component: 'brain-ingestion',
 })
 
-export class BrainFileIngestionError extends Schema.TaggedErrorClass<BrainFileIngestionError>()(
+export class BrainFileIngestionError extends Schema.TaggedError<BrainFileIngestionError>()(
   'BrainFileIngestionError',
   {
     operation: Schema.String,

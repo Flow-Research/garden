@@ -232,7 +232,7 @@ type ObserveMentionInput = z.infer<typeof brainObserveMentionInputSchema>
 type LinkInput = z.infer<typeof brainLinkInputSchema>
 type NeighborhoodInput = z.infer<typeof brainNeighborhoodInputSchema>
 
-class BrainToolContextError extends Schema.TaggedErrorClass<BrainToolContextError>()(
+class BrainToolContextError extends Schema.TaggedError<BrainToolContextError>()(
   'BrainToolContextError',
   {
     message: Schema.String,
@@ -240,7 +240,7 @@ class BrainToolContextError extends Schema.TaggedErrorClass<BrainToolContextErro
   },
 ) {}
 
-class BrainToolsUnavailableError extends Schema.TaggedErrorClass<BrainToolsUnavailableError>()(
+class BrainToolsUnavailableError extends Schema.TaggedError<BrainToolsUnavailableError>()(
   'BrainToolsUnavailableError',
   { message: Schema.String },
 ) {}

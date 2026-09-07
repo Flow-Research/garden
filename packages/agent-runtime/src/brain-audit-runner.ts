@@ -5,7 +5,7 @@ type BrainAuditFacet = {
   runAudit(input: BrainAuditRunInput): Promise<{ status: 'completed' }>
 }
 
-export class BrainAuditRunError extends Schema.TaggedErrorClass<BrainAuditRunError>()(
+export class BrainAuditRunError extends Schema.TaggedError<BrainAuditRunError>()(
   'BrainAuditRunError',
   {
     operation: Schema.String,
