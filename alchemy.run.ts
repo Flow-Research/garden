@@ -255,21 +255,35 @@ type PostgresOrigin = {
   password: Redacted.Redacted<string>
 }
 
-/** Parses a Postgres connection URL into Hyperdrive's structured origin. */
+/**
+ * Converts Garden's Postgres URL into the structured origin required by
+ * Alchemy beta.74. The v1 deployment passed the URL through as one string; v2
+ * requires separate connection fields. Validate the protocol and required
+ * fields here so a bad build variable fails before Alchemy plans Cloudflare
+ * changes. See the installed `Cloudflare/Hyperdrive/Connection.ts` source.
+ */
 function postgresOriginFromEnv(name: string): PostgresOrigin {
   const raw = plainEnv(name)
-  const url = new URL(raw)
+  const url = URL.parse(raw)
   if (
-    url.protocol.replace(':', '') !== 'postgresql' &&
-    url.protocol.replace(':', '') !== 'postgres'
+    url === null ||
+    (url.protocol !== 'postgresql:' && url.protocol !== 'postgres:')
   ) {
     throw new Error(`${name} must be a postgres:// URL for Hyperdrive`)
   }
+
+  const database = decodeURIComponent(url.pathname).replace(/^\//, '')
+  if (!url.hostname || !url.username || !database) {
+    throw new Error(
+      `${name} must include a host, user, and database for Hyperdrive`,
+    )
+  }
+
   return {
     scheme: 'postgres' as const,
     host: url.hostname,
     port: Number(url.port || 5432),
-    database: url.pathname.replace(/^\//, ''),
+    database,
     user: decodeURIComponent(url.username),
     password: Redacted.make(decodeURIComponent(url.password)),
   }

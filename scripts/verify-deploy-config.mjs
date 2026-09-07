@@ -134,7 +134,6 @@ const uniqueFields = [
   'workflowName',
   'sandboxId',
   'sandboxName',
-  'stateWorkerName',
 ]
 
 for (const field of uniqueFields) {
@@ -232,17 +231,26 @@ assert.equal(
 )
 assert.match(
   packageJson.scripts['deploy:alchemy'],
-  /GARDEN_DEPLOY_TARGET=production/,
+  /GARDEN_DEPLOY_TARGET=production.*alchemy deploy --stage production --yes/,
 )
+assert.doesNotMatch(packageJson.scripts['deploy:alchemy'], /--adopt/)
+assert.doesNotMatch(packageJson.scripts['deploy:alchemy'], /ALCHEMY_STAGE/)
 assert.doesNotMatch(packageJson.scripts['deploy:preview'], /deploy:migrate/)
 assert.match(
   packageJson.scripts['deploy:preview:alchemy'],
-  /GARDEN_DEPLOY_TARGET=preview/,
+  /GARDEN_DEPLOY_TARGET=preview.*alchemy deploy --stage preview --yes/,
+)
+assert.doesNotMatch(packageJson.scripts['deploy:preview:alchemy'], /--adopt/)
+assert.doesNotMatch(
+  packageJson.scripts['deploy:preview:alchemy'],
+  /ALCHEMY_STAGE/,
 )
 assert.match(
   packageJson.scripts['destroy:preview'],
-  /GARDEN_DEPLOY_TARGET=preview/,
+  /GARDEN_DEPLOY_TARGET=preview.*alchemy destroy --stage preview --yes/,
 )
+assert.doesNotMatch(packageJson.scripts['destroy:preview'], /--adopt/)
+assert.doesNotMatch(packageJson.scripts['destroy:preview'], /ALCHEMY_STAGE/)
 
 console.log(
   'deploy config passed: garden-staging and garden-preview are isolated Alchemy targets',

@@ -24,7 +24,6 @@ export interface DeploymentTarget {
   readonly sandboxId: string
   readonly sandboxName: string
   readonly aiGatewayId: string
-  readonly stateWorkerName: string
   readonly environment: 'production' | 'development'
   readonly bindConfiguredBetterAuthUrl: boolean
   readonly emptyBucketsOnDestroy: boolean
