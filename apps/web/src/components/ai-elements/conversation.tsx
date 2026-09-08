@@ -66,10 +66,16 @@ export function Conversation<TItem>({
 }: ConversationProps<TItem>) {
   const listRef = useRef<LegendListRef | null>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
+  const userScrolledUp = useRef(false)
+  const touchStartY = useRef(0)
 
   const updateStickiness = useCallback(() => {
     const state = listRef.current?.getState?.()
     if (!state) return
+    if (userScrolledUp.current) {
+      if (state.isAtEnd) userScrolledUp.current = false
+      return
+    }
     setIsAtBottom((current) =>
       current === state.isAtEnd ? current : state.isAtEnd,
     )
@@ -77,6 +83,7 @@ export function Conversation<TItem>({
 
   const scrollToBottom = useCallback(() => {
     listRef.current?.scrollToEnd?.({ animated: true })
+    userScrolledUp.current = false
     setIsAtBottom(true)
   }, [])
 
@@ -112,6 +119,10 @@ export function Conversation<TItem>({
 
   const handleWheel = useCallback(
     (event: ReactWheelEvent<HTMLDivElement>) => {
+      if (event.deltaY < 0) {
+        userScrolledUp.current = true
+        setIsAtBottom(false)
+      }
       onWheel?.(event)
     },
     [onWheel],
@@ -119,9 +130,21 @@ export function Conversation<TItem>({
 
   const handleTouchStart = useCallback(
     (event: ReactTouchEvent<HTMLDivElement>) => {
+      touchStartY.current = event.touches[0]!.clientY
       onTouchStart?.(event)
     },
     [onTouchStart],
+  )
+
+  const handleTouchMove = useCallback(
+    (event: ReactTouchEvent<HTMLDivElement>) => {
+      const dy = event.touches[0]!.clientY - touchStartY.current
+      if (dy > 10) {
+        userScrolledUp.current = true
+        setIsAtBottom(false)
+      }
+    },
+    [],
   )
 
   const contextValue = useMemo(
@@ -135,6 +158,7 @@ export function Conversation<TItem>({
         role="log"
         {...props}
         onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
         onWheel={handleWheel}
         className={cn('relative min-h-0 flex-1 overflow-hidden', className)}
       >
