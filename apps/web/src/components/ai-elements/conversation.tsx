@@ -3,16 +3,12 @@ import { cn } from '@garden/ui/lib/utils'
 import { LegendList, type LegendListRef } from '@legendapp/list/react'
 import type { UIMessage } from 'ai'
 import { ChevronDownIcon, DownloadIcon } from 'lucide-react'
-import type {
-  ComponentProps,
-  ReactNode,
-  TouchEvent as ReactTouchEvent,
-  WheelEvent as ReactWheelEvent,
-} from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -59,23 +55,17 @@ export function Conversation<TItem>({
   estimateItemSize = 90,
   getItemKey,
   initialContainerPoolRatio,
-  onTouchStart,
-  onWheel,
   renderItem: renderDataItem,
   ...props
 }: ConversationProps<TItem>) {
   const listRef = useRef<LegendListRef | null>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
-  const userScrolledUp = useRef(false)
-  const touchStartY = useRef(0)
+  const isAtBottomRef = useRef(true)
 
   const updateStickiness = useCallback(() => {
     const state = listRef.current?.getState?.()
     if (!state) return
-    if (userScrolledUp.current) {
-      if (state.isAtEnd) userScrolledUp.current = false
-      return
-    }
+    isAtBottomRef.current = state.isAtEnd
     setIsAtBottom((current) =>
       current === state.isAtEnd ? current : state.isAtEnd,
     )
@@ -83,15 +73,17 @@ export function Conversation<TItem>({
 
   const scrollToBottom = useCallback(() => {
     listRef.current?.scrollToEnd?.({ animated: true })
-    userScrolledUp.current = false
+    isAtBottomRef.current = true
     setIsAtBottom(true)
   }, [])
 
-  const scrollToBottomOnLoad = useCallback(() => {
-    if (data.length === 0) return
-    listRef.current?.scrollToEnd?.({ animated: false })
-    setIsAtBottom((current) => (current ? current : true))
-  }, [data.length])
+  useEffect(() => {
+    if (!isAtBottomRef.current) return
+    const id = requestAnimationFrame(() => {
+      listRef.current?.scrollToEnd?.({ animated: false })
+    })
+    return () => cancelAnimationFrame(id)
+  }, [data])
 
   const rawRows = useMemo(
     () =>
@@ -117,36 +109,6 @@ export function Conversation<TItem>({
     [renderDataItem],
   )
 
-  const handleWheel = useCallback(
-    (event: ReactWheelEvent<HTMLDivElement>) => {
-      if (event.deltaY < 0) {
-        userScrolledUp.current = true
-        setIsAtBottom(false)
-      }
-      onWheel?.(event)
-    },
-    [onWheel],
-  )
-
-  const handleTouchStart = useCallback(
-    (event: ReactTouchEvent<HTMLDivElement>) => {
-      touchStartY.current = event.touches[0]!.clientY
-      onTouchStart?.(event)
-    },
-    [onTouchStart],
-  )
-
-  const handleTouchMove = useCallback(
-    (event: ReactTouchEvent<HTMLDivElement>) => {
-      const dy = event.touches[0]!.clientY - touchStartY.current
-      if (dy > 10) {
-        userScrolledUp.current = true
-        setIsAtBottom(false)
-      }
-    },
-    [],
-  )
-
   const contextValue = useMemo(
     () => ({ isAtBottom, scrollToBottom }),
     [isAtBottom, scrollToBottom],
@@ -157,9 +119,6 @@ export function Conversation<TItem>({
       <div
         role="log"
         {...props}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onWheel={handleWheel}
         className={cn('relative min-h-0 flex-1 overflow-hidden', className)}
       >
         <LegendList<ConversationRow<TItem>>
@@ -172,9 +131,8 @@ export function Conversation<TItem>({
           estimatedListSize={estimatedListSize}
           estimatedItemSize={estimateItemSize}
           initialContainerPoolRatio={initialContainerPoolRatio}
-          maintainScrollAtEnd={isAtBottom}
+          maintainScrollAtEnd={false}
           maintainScrollAtEndThreshold={0.1}
-          onLoad={scrollToBottomOnLoad}
           onScroll={updateStickiness}
           className="h-full overflow-x-hidden overscroll-y-contain"
         />
