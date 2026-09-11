@@ -155,7 +155,6 @@ for (const binding of [
   'EXECUTOR_BLOBS',
   'EXECUTOR_MCP_SESSION',
   'EXECUTOR_MCP_EXECUTION_OWNER',
-  'RUN_WORKFLOW',
   'BRAIN_FILES',
   'FILES',
   'HYPERDRIVE',
@@ -185,6 +184,25 @@ assert.match(
   /const sandbox = Cloudflare\.Container\(deployTarget\.sandboxId,\s*\{/,
 )
 assert.match(alchemySource, /deployed\.bind\(deployTarget\.sandboxId,\s*\{/)
+assert.match(
+  alchemySource,
+  /Cloudflare\.WorkflowResource\(deployTarget\.workflowId,\s*\{/,
+)
+assert.match(
+  alchemySource,
+  /workflowName:\s*deployTarget\.workflowName,\s*className:\s*'RunWorkflow',\s*scriptName:\s*deployTarget\.workerName/s,
+)
+assert.match(alchemySource, /deployed\.bind\(deployTarget\.workflowId,\s*\{/)
+assert.match(alchemySource, /tailConsumers:\s*\[deployTarget\.tailWorkerName\]/)
+assert.match(alchemySource, /yield\* tailConsumer/)
+assert.match(
+  alchemySource,
+  /runWorkflow\.pipe\(\s*Effect\.provide\(Cloudflare\.Workflows\.WorkflowProvider\(\)\),\s*\)/,
+)
+assert.match(
+  alchemySource,
+  /name:\s*'RUN_WORKFLOW',\s*workflowName:\s*deployedRunWorkflow\.workflowName,\s*className:\s*'RunWorkflow'/s,
+)
 assert.match(alchemySource, /name:\s*'AgentDO',\s*className:\s*'AgentDO'/s)
 assert.match(alchemySource, /name:\s*'Sandbox',\s*className:\s*'Sandbox'/s)
 assert.match(

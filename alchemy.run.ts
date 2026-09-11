@@ -69,6 +69,19 @@ const executorDatabase = Cloudflare.D1.Database(
 )
 
 /**
+ * Keeps the existing account-global Workflow name during v2 adoption.
+ * The async Worker `env` helper derives a hashed physical name from the Worker
+ * and class names, which created a second preview Workflow. Declare the
+ * resource directly so both targets retain their v1 Workflow identity.
+ * See the installed `Cloudflare/Workflows/Workflow.ts` provider source.
+ */
+const runWorkflow = Cloudflare.WorkflowResource(deployTarget.workflowId, {
+  workflowName: deployTarget.workflowName,
+  className: 'RunWorkflow',
+  scriptName: deployTarget.workerName,
+})
+
+/**
  * Owns the gateway named by the deployment target so every environment has a
  * real Workers AI routing/logging boundary. Previously preview referenced a
  * gateway that did not exist, causing every agent turn to fail after its
@@ -143,7 +156,9 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
   // 12-hour cadence avoids unnecessary database wakeups while still repairing
   // stale product state.
   crons: ['0 */12 * * *'],
-  tailConsumers: [tailConsumer],
+  // Use the stable script name here. Passing the Worker declaration can
+  // resolve to `undefined` while Alchemy plans another direct resource.
+  tailConsumers: [deployTarget.tailWorkerName],
   env: {
     AUTOMATION_TRIGGER: Cloudflare.DurableObject('AUTOMATION_TRIGGER', {
       className: 'AutomationTriggerDO',
@@ -158,9 +173,6 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
       { className: 'ExecutorMcpExecutionOwnerDirectory' },
     ),
     EXECUTOR_SECRET_KEY: Config.redacted('EXECUTOR_SECRET_KEY'),
-    RUN_WORKFLOW: Cloudflare.Workflow(deployTarget.workflowName, {
-      className: 'RunWorkflow',
-    }),
     BRAIN_FILES: brainFiles,
     FILES: files,
     HYPERDRIVE: database,
@@ -222,6 +234,7 @@ export default Alchemy.Stack(
     // Provisioning the gateway is what creates/updates it; the web Worker
     // receives its id as a plain AI_GATEWAY_ID var below.
     yield* aiGateway
+    yield* tailConsumer
     const deployed = yield* web
     const sandboxApplication = yield* sandbox.Application
 
@@ -250,6 +263,19 @@ export default Alchemy.Stack(
         },
       ],
       containers: [{ className: 'Sandbox', dev: sandboxApplication.dev }],
+    })
+    const deployedRunWorkflow = yield* runWorkflow.pipe(
+      Effect.provide(Cloudflare.Workflows.WorkflowProvider()),
+    )
+    yield* deployed.bind(deployTarget.workflowId, {
+      bindings: [
+        {
+          type: 'workflow',
+          name: 'RUN_WORKFLOW',
+          workflowName: deployedRunWorkflow.workflowName,
+          className: 'RunWorkflow',
+        },
+      ],
     })
     yield* sandboxApplication.bind('Sandbox', {
       durableObjects: {
