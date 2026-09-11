@@ -181,6 +181,19 @@ assert.match(
 )
 assert.match(alchemySource, /BROWSER:\s*Cloudflare\.Workers\.Browser\(\)/)
 assert.match(alchemySource, /AI:\s*Cloudflare\.Workers\.AI\(\)/)
+assert.match(
+  alchemySource,
+  /AgentDO:\s*Cloudflare\.DurableObject\(deployTarget\.agentDoId\)/,
+)
+assert.match(
+  alchemySource,
+  /const sandbox = Cloudflare\.Container\(deployTarget\.sandboxId,\s*\{/,
+)
+assert.match(alchemySource, /Sandbox:\s*sandbox,/)
+assert.match(
+  alchemySource,
+  /sandbox\.Application = sandbox\.Application\.pipe\(Alchemy\.renamedFrom\('Sandbox'\)\)/,
+)
 
 for (const field of [
   'workerName',

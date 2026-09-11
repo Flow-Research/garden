@@ -100,6 +100,22 @@ const tailConsumer = Cloudflare.Worker(deployTarget.tailWorkerId, {
   },
 })
 
+/**
+ * Preserves the v1 Sandbox identity while adopting it into Alchemy v2. The
+ * first partial v2 deployment stored this application as `Sandbox`; rename
+ * that state row instead of deleting the physical preview container. Decorate
+ * `Application`, not the Container declaration, so its Worker-binding metadata
+ * remains intact. See Alchemy's installed `Rename.d.ts` migration semantics.
+ */
+const sandbox = Cloudflare.Container(deployTarget.sandboxId, {
+  name: deployTarget.sandboxName,
+  className: 'Sandbox',
+  image: SANDBOX_IMAGE,
+  instanceType: 'lite',
+  maxInstances: 4,
+})
+sandbox.Application = sandbox.Application.pipe(Alchemy.renamedFrom('Sandbox'))
+
 export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
   name: deployTarget.workerName,
   rootDir: './apps/web',
@@ -128,14 +144,10 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
   crons: ['0 */12 * * *'],
   tailConsumers: [tailConsumer],
   env: {
-    AgentDO: Cloudflare.DurableObject('AgentDO'),
-    Sandbox: Cloudflare.Container('Sandbox', {
-      name: deployTarget.sandboxName,
-      className: 'Sandbox',
-      image: SANDBOX_IMAGE,
-      instanceType: 'lite',
-      maxInstances: 4,
-    }),
+    // Keep the v1 logical IDs during adoption. Changing these IDs makes
+    // Alchemy treat the existing Durable Object classes as deleted.
+    AgentDO: Cloudflare.DurableObject(deployTarget.agentDoId),
+    Sandbox: sandbox,
     AUTOMATION_TRIGGER: Cloudflare.DurableObject('AUTOMATION_TRIGGER', {
       className: 'AutomationTriggerDO',
     }),
