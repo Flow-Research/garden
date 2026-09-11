@@ -57,7 +57,7 @@ catalog:
   mammoth: "^1.12.0"
 
   # Testing
-  vitest: "^4.1.0"
+  vitest: "^4.1.11"
 
   # State Management
   zustand: "^5.0.12"
