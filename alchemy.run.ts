@@ -18,6 +18,7 @@ import * as Alchemy from 'alchemy'
 import * as Cloudflare from 'alchemy/Cloudflare'
 import * as Config from 'effect/Config'
 import * as Effect from 'effect/Effect'
+import * as Output from 'alchemy/Output'
 import * as Redacted from 'effect/Redacted'
 import { deploymentTargetFromEnv } from './deploy-targets.mjs'
 
@@ -144,10 +145,6 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
   crons: ['0 */12 * * *'],
   tailConsumers: [tailConsumer],
   env: {
-    // Keep the v1 logical IDs during adoption. Changing these IDs makes
-    // Alchemy treat the existing Durable Object classes as deleted.
-    AgentDO: Cloudflare.DurableObject(deployTarget.agentDoId),
-    Sandbox: sandbox,
     AUTOMATION_TRIGGER: Cloudflare.DurableObject('AUTOMATION_TRIGGER', {
       className: 'AutomationTriggerDO',
     }),
@@ -226,6 +223,41 @@ export default Alchemy.Stack(
     // receives its id as a plain AI_GATEWAY_ID var below.
     yield* aiGateway
     const deployed = yield* web
+    const sandboxApplication = yield* sandbox.Application
+
+    /**
+     * Preserve the v1 Durable Object logical IDs during v2 adoption. The v2
+     * async `env` helper uses the binding name as its logical ID, which would
+     * make Alchemy delete the existing `AgentDO` and `Sandbox` namespaces.
+     * These explicit bindings keep the old identities while retaining the
+     * exported class names and runtime binding names used by Garden.
+     */
+    yield* deployed.bind(deployTarget.agentDoId, {
+      bindings: [
+        {
+          type: 'durable_object_namespace',
+          name: 'AgentDO',
+          className: 'AgentDO',
+        },
+      ],
+    })
+    yield* deployed.bind(deployTarget.sandboxId, {
+      bindings: [
+        {
+          type: 'durable_object_namespace',
+          name: 'Sandbox',
+          className: 'Sandbox',
+        },
+      ],
+      containers: [{ className: 'Sandbox', dev: sandboxApplication.dev }],
+    })
+    yield* sandboxApplication.bind('Sandbox', {
+      durableObjects: {
+        namespaceId: deployed.durableObjectNamespaces.pipe(
+          Output.map((namespaces) => namespaces?.Sandbox),
+        ),
+      },
+    })
     return { url: deployed.url }
   }),
 )

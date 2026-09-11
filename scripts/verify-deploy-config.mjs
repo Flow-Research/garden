@@ -150,8 +150,6 @@ for (const field of uniqueFields) {
 }
 
 for (const binding of [
-  'AgentDO',
-  'Sandbox',
   'AUTOMATION_TRIGGER',
   'EXECUTOR_DB',
   'EXECUTOR_BLOBS',
@@ -181,15 +179,18 @@ assert.match(
 )
 assert.match(alchemySource, /BROWSER:\s*Cloudflare\.Workers\.Browser\(\)/)
 assert.match(alchemySource, /AI:\s*Cloudflare\.Workers\.AI\(\)/)
-assert.match(
-  alchemySource,
-  /AgentDO:\s*Cloudflare\.DurableObject\(deployTarget\.agentDoId\)/,
-)
+assert.match(alchemySource, /deployed\.bind\(deployTarget\.agentDoId,\s*\{/)
 assert.match(
   alchemySource,
   /const sandbox = Cloudflare\.Container\(deployTarget\.sandboxId,\s*\{/,
 )
-assert.match(alchemySource, /Sandbox:\s*sandbox,/)
+assert.match(alchemySource, /deployed\.bind\(deployTarget\.sandboxId,\s*\{/)
+assert.match(alchemySource, /name:\s*'AgentDO',\s*className:\s*'AgentDO'/s)
+assert.match(alchemySource, /name:\s*'Sandbox',\s*className:\s*'Sandbox'/s)
+assert.match(
+  alchemySource,
+  /deployed\.bind\(deployTarget\.sandboxId,[\s\S]*?containers:\s*\[\{\s*className:\s*'Sandbox'/,
+)
 assert.match(
   alchemySource,
   /sandbox\.Application = sandbox\.Application\.pipe\(Alchemy\.renamedFrom\('Sandbox'\)\)/,
