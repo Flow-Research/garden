@@ -150,7 +150,6 @@ for (const field of uniqueFields) {
 }
 
 for (const binding of [
-  'AUTOMATION_TRIGGER',
   'EXECUTOR_DB',
   'EXECUTOR_BLOBS',
   'EXECUTOR_MCP_SESSION',
@@ -178,6 +177,11 @@ assert.match(
 )
 assert.match(alchemySource, /BROWSER:\s*Cloudflare\.Workers\.Browser\(\)/)
 assert.match(alchemySource, /AI:\s*Cloudflare\.Workers\.AI\(\)/)
+assert.match(alchemySource, /\.bind\(deployTarget\.automationTriggerId,\s*\{/)
+assert.match(
+  alchemySource,
+  /name:\s*'AUTOMATION_TRIGGER',\s*className:\s*'AutomationTriggerDO'/s,
+)
 assert.match(alchemySource, /deployed\.bind\(deployTarget\.agentDoId,\s*\{/)
 assert.match(
   alchemySource,
@@ -242,6 +246,10 @@ assert.match(alchemySource, /SANDBOX_TRANSPORT[^\n]+rpc/)
 assert.match(
   alchemySource,
   /forceDestroy:\s*deployTarget\.emptyBucketsOnDestroy/,
+)
+assert.match(
+  alchemySource,
+  /!url\.hostname\s*\|\|\s*!url\.username\s*\|\|\s*!url\.password\s*\|\|\s*!database/,
 )
 assert.match(alchemySource, /deploymentTargetFromEnv\(\)/)
 assert.equal(webPackageJson.devDependencies['@posthog/cli'], '0.8.4')

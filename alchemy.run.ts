@@ -160,9 +160,6 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
   // resolve to `undefined` while Alchemy plans another direct resource.
   tailConsumers: [deployTarget.tailWorkerName],
   env: {
-    AUTOMATION_TRIGGER: Cloudflare.DurableObject('AUTOMATION_TRIGGER', {
-      className: 'AutomationTriggerDO',
-    }),
     EXECUTOR_DB: executorDatabase,
     EXECUTOR_BLOBS: executorBlobs,
     EXECUTOR_MCP_SESSION: Cloudflare.DurableObject('EXECUTOR_MCP_SESSION', {
@@ -241,10 +238,20 @@ export default Alchemy.Stack(
     /**
      * Preserve the v1 Durable Object logical IDs during v2 adoption. The v2
      * async `env` helper uses the binding name as its logical ID, which would
-     * make Alchemy delete the existing `AgentDO` and `Sandbox` namespaces.
-     * These explicit bindings keep the old identities while retaining the
-     * exported class names and runtime binding names used by Garden.
+     * make Alchemy replace existing namespaces. These explicit bindings keep
+     * the old identities while retaining the exported class names and runtime
+     * binding names used by Garden. The first deploy changes only Alchemy's
+     * binding ledger key; the Cloudflare binding and class names stay fixed.
      */
+    yield* deployed.bind(deployTarget.automationTriggerId, {
+      bindings: [
+        {
+          type: 'durable_object_namespace',
+          name: 'AUTOMATION_TRIGGER',
+          className: 'AutomationTriggerDO',
+        },
+      ],
+    })
     yield* deployed.bind(deployTarget.agentDoId, {
       bindings: [
         {
@@ -343,9 +350,9 @@ function postgresOriginFromEnv(name: string): PostgresOrigin {
   }
 
   const database = decodeURIComponent(url.pathname).replace(/^\//, '')
-  if (!url.hostname || !url.username || !database) {
+  if (!url.hostname || !url.username || !url.password || !database) {
     throw new Error(
-      `${name} must include a host, user, and database for Hyperdrive`,
+      `${name} must include a host, user, password, and database for Hyperdrive`,
     )
   }
 

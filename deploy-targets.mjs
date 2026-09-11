@@ -57,7 +57,9 @@ export const deploymentTargets = {
     executorBlobsId: 'executor-blobs-preview',
     executorBlobsBucket: 'harnessy-connectors-blobs-preview',
     agentDoId: 'agent-do-preview',
-    automationTriggerId: 'automation-trigger-preview',
+    // The first v2 preview adoption registered this binding under its runtime
+    // name. Keep that state identity to avoid a Durable Object class migration.
+    automationTriggerId: 'AUTOMATION_TRIGGER',
     workflowId: 'run-workflow-preview',
     workflowName: 'garden-run-workflow-preview',
     sandboxId: 'sandbox-preview',
