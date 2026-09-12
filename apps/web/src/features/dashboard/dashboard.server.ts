@@ -165,42 +165,37 @@ async function loadDashboardConnections(
   workspaceId: string,
 ) {
   const { db, session } = await requireDashboardAccess(appContext, workspaceId)
-  const [
-    connections,
-    availableConnectors,
-    capabilities,
-    permissionGrants,
-    toolCallAudits,
-  ] = await Promise.all([
-    db
-      .select()
-      .from(schema.account)
-      .where(eq(schema.account.workspaceId, workspaceId)),
-    listAvailableConnectorBindings({
-      db,
-      getEnvVar: (name) => {
-        const value = (appEnv as Record<string, unknown>)[name]
-        return typeof value === 'string' ? value : undefined
-      },
-      userId: session.user.id,
-      workspaceId,
-    }),
-    db.select().from(schema.capability),
-    db.select().from(schema.permissionGrant),
-    db
-      .select()
-      .from(schema.toolCallAudit)
-      .where(eq(schema.toolCallAudit.workspaceId, workspaceId))
-      .orderBy(desc(schema.toolCallAudit.ts))
-      .limit(500),
-  ])
+  const [connections, availableConnectors, capabilities, toolCallAudits] =
+    await Promise.all([
+      db
+        .select()
+        .from(schema.account)
+        .where(eq(schema.account.workspaceId, workspaceId)),
+      listAvailableConnectorBindings({
+        db,
+        getEnvVar: (name) => {
+          const value = (appEnv as Record<string, unknown>)[name]
+          return typeof value === 'string' ? value : undefined
+        },
+        userId: session.user.id,
+        workspaceId,
+      }),
+      db.select().from(schema.capability),
+      db
+        .select()
+        .from(schema.toolCallAudit)
+        .where(eq(schema.toolCallAudit.workspaceId, workspaceId))
+        .orderBy(desc(schema.toolCallAudit.ts))
+        .limit(500),
+    ])
 
   return buildConnectionSurface({
     agentIds: [],
     connections,
     availableConnectors,
     capabilities,
-    permissionGrants,
+    permissionGrants: [],
+    connectionGrants: [],
     toolCallAudits,
   })
 }

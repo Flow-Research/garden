@@ -16,6 +16,10 @@ import {
   requireWorkspaceContext,
   toIssue,
 } from '@/lib/server/control-plane'
+import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { capturePostHogEvent } from '@/lib/posthog-server'
 
@@ -97,6 +101,13 @@ export const Route = createFileRoute('/api/issues')({
         const workspaceContext = await requireWorkspaceContext(appContext)
         if (workspaceContext instanceof Response) return workspaceContext
         const { session, workspaceId } = workspaceContext
+        const managePermission = await requireWorkspacePermission({
+          appContext,
+          request,
+          workspaceId,
+          permissions: workspacePermissions.issueManage,
+        })
+        if (managePermission) return managePermission
         const bodyResult = await parseJsonBody(
           request,
           createIssueBodySchema,

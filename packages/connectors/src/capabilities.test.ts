@@ -4,6 +4,7 @@ import {
   canonicalJsonString,
   defaultTrustLevelForRisk,
   guardedMcpToolDescription,
+  resolveEffectiveTrust,
 } from './capabilities'
 
 describe('connector capability helpers', () => {
@@ -37,5 +38,32 @@ describe('connector capability helpers', () => {
         description: 'Create a comment.',
       }),
     ).toContain('External github write tool.')
+  })
+
+  it('prefers the tool grant over connection grant and risk default', () => {
+    expect(
+      resolveEffectiveTrust({
+        toolTrust: 'ask',
+        connectionTrust: 'allow',
+        riskClass: 'write',
+      }),
+    ).toEqual({ trust: 'ask', visible: false })
+  })
+
+  it('falls back to the connection grant before the risk default', () => {
+    expect(
+      resolveEffectiveTrust({ connectionTrust: 'allow', riskClass: 'read' }),
+    ).toEqual({ trust: 'allow', visible: true })
+  })
+
+  it('derives visibility last from the resolved trust', () => {
+    expect(resolveEffectiveTrust({ riskClass: 'read' })).toEqual({
+      trust: 'auto',
+      visible: true,
+    })
+    expect(resolveEffectiveTrust({ riskClass: 'destructive' })).toEqual({
+      trust: 'ask',
+      visible: false,
+    })
   })
 })

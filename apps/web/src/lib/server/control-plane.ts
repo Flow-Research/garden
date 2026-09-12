@@ -3,6 +3,7 @@ import { getDb, schema, type Db } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import type { AppRequestContext } from '@/lib/server/context'
 import { formatIssueIdentifier } from '@garden/core/issues/identifier'
+import type { AgentPermissions } from '@garden/core/agents/permissions'
 import { getAuthSession, toCoreUser } from '@/lib/server/session'
 import type { MemberRole } from '@garden/core/types'
 
@@ -342,6 +343,7 @@ export function toAgent(record: typeof schema.agent.$inferSelect) {
     max_concurrent_tasks: 1,
     owner_id: record.ownerUserId ?? null,
     skills: [],
+    permissions: (record.permissions ?? null) as AgentPermissions | null,
     created_at: created,
     updated_at: created,
     archived_at: record.status === 'archived' ? created : null,

@@ -5,6 +5,8 @@ import discordConnector from '@garden/connectors/discord'
 import { discordNativeTools } from '@garden/connectors/discord/tools'
 import githubConnector from '@garden/connectors/github'
 import { githubNativeTools } from '@garden/connectors/github/tools'
+import { getConnectorById } from '@garden/connectors'
+import { getConnectorByExecutorSlug } from '@garden/connectors/registry'
 import {
   ExecutorConnectionHealth,
   ExecutorConnectionsSnapshot,
@@ -242,6 +244,11 @@ const connectionsResponse = Effect.fn('ExecutorConnections.response')(
       return ExecutorIntegrationItem.make({
         providerId: providerIdForIntegration(provider, slug, displayUrl),
         slug,
+        gardenConnectorId: Option.fromNullishOr(
+          getConnectorById(slug)?.id ??
+            getConnectorByExecutorSlug(slug)?.id ??
+            null,
+        ),
         label: integration.name,
         description: integration.description,
         protocol:
@@ -315,6 +322,7 @@ const connectionsResponse = Effect.fn('ExecutorConnections.response')(
         ExecutorIntegrationItem.make({
           providerId: ExecutorProviderId.make('github.com'),
           slug: ExecutorIntegrationSlug.make('github'),
+          gardenConnectorId: Option.some('github'),
           label: 'GitHub',
           description:
             'Repository-scoped access through the Garden GitHub App installation.',
@@ -331,6 +339,7 @@ const connectionsResponse = Effect.fn('ExecutorConnections.response')(
         ExecutorIntegrationItem.make({
           providerId: ExecutorProviderId.make('github.com'),
           slug: ExecutorIntegrationSlug.make('github--mcp'),
+          gardenConnectorId: Option.some('github'),
           label: 'GitHub',
           description:
             'Official GitHub MCP tool surface authenticated by the Garden GitHub App.',
@@ -357,6 +366,7 @@ const connectionsResponse = Effect.fn('ExecutorConnections.response')(
         ExecutorIntegrationItem.make({
           providerId: ExecutorProviderId.make('discord.com'),
           slug: ExecutorIntegrationSlug.make('discord'),
+          gardenConnectorId: Option.some('discord'),
           label: discordConnector.label,
           description: discordConnector.description,
           protocol: 'discord-bot',

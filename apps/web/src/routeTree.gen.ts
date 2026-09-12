@@ -107,6 +107,7 @@ import { Route as ApiDocumentsIdVersionsRouteImport } from './routes/api/documen
 import { Route as ApiDocumentsIdMetadataRouteImport } from './routes/api/documents/$id/metadata'
 import { Route as ApiDocumentsIdDocxRouteImport } from './routes/api/documents/$id/docx'
 import { Route as ApiDocumentsIdDisplayRouteImport } from './routes/api/documents/$id/display'
+import { Route as ApiConnectionsConnectorIdGrantRouteImport } from './routes/api/connections/$connectorId/grant'
 import { Route as ApiConnectionsConnectorIdActivityRouteImport } from './routes/api/connections/$connectorId/activity'
 import { Route as ApiCommentsIdReactionsRouteImport } from './routes/api/comments/$id/reactions'
 import { Route as ApiChatThreadsIdRouteImport } from './routes/api/chat/threads/$id'
@@ -117,6 +118,8 @@ import { Route as ApiAutomationsIdTriggerRouteImport } from './routes/api/automa
 import { Route as ApiAutomationsIdRunsRouteImport } from './routes/api/automations/$id/runs'
 import { Route as ApiAgentsIdRestoreRouteImport } from './routes/api/agents/$id/restore'
 import { Route as ApiAgentsIdArchiveRouteImport } from './routes/api/agents/$id/archive'
+import { Route as ApiAgentsIdActivityRouteImport } from './routes/api/agents/$id/activity'
+import { Route as ApiAgentsIdAccessRouteImport } from './routes/api/agents/$id/access'
 import { Route as AuthenticatedAppWorkflowsIdRouteImport } from './routes/_authenticated/_app/workflows.$id'
 import { Route as AuthenticatedAppTasksIssueIdRouteImport } from './routes/_authenticated/_app/tasks.$issueId'
 import { Route as AuthenticatedAppChatsThreadIdRouteImport } from './routes/_authenticated/_app/chats.$threadId'
@@ -639,6 +642,12 @@ const ApiDocumentsIdDisplayRoute = ApiDocumentsIdDisplayRouteImport.update({
   path: '/api/documents/$id/display',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiConnectionsConnectorIdGrantRoute =
+  ApiConnectionsConnectorIdGrantRouteImport.update({
+    id: '/grant',
+    path: '/grant',
+    getParentRoute: () => ApiConnectionsConnectorIdRoute,
+  } as any)
 const ApiConnectionsConnectorIdActivityRoute =
   ApiConnectionsConnectorIdActivityRouteImport.update({
     id: '/activity',
@@ -689,6 +698,16 @@ const ApiAgentsIdRestoreRoute = ApiAgentsIdRestoreRouteImport.update({
 const ApiAgentsIdArchiveRoute = ApiAgentsIdArchiveRouteImport.update({
   id: '/archive',
   path: '/archive',
+  getParentRoute: () => ApiAgentsIdRoute,
+} as any)
+const ApiAgentsIdActivityRoute = ApiAgentsIdActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
+  getParentRoute: () => ApiAgentsIdRoute,
+} as any)
+const ApiAgentsIdAccessRoute = ApiAgentsIdAccessRouteImport.update({
+  id: '/access',
+  path: '/access',
   getParentRoute: () => ApiAgentsIdRoute,
 } as any)
 const AuthenticatedAppWorkflowsIdRoute =
@@ -858,6 +877,8 @@ export interface FileRoutesByFullPath {
   '/chats/$threadId': typeof AuthenticatedAppChatsThreadIdRoute
   '/tasks/$issueId': typeof AuthenticatedAppTasksIssueIdRoute
   '/workflows/$id': typeof AuthenticatedAppWorkflowsIdRoute
+  '/api/agents/$id/access': typeof ApiAgentsIdAccessRoute
+  '/api/agents/$id/activity': typeof ApiAgentsIdActivityRoute
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
   '/api/automations/$id/runs': typeof ApiAutomationsIdRunsRoute
@@ -868,6 +889,7 @@ export interface FileRoutesByFullPath {
   '/api/chat/threads/$id': typeof ApiChatThreadsIdRouteWithChildren
   '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
   '/api/connections/$connectorId/activity': typeof ApiConnectionsConnectorIdActivityRoute
+  '/api/connections/$connectorId/grant': typeof ApiConnectionsConnectorIdGrantRoute
   '/api/documents/$id/display': typeof ApiDocumentsIdDisplayRoute
   '/api/documents/$id/docx': typeof ApiDocumentsIdDocxRoute
   '/api/documents/$id/metadata': typeof ApiDocumentsIdMetadataRoute
@@ -978,6 +1000,8 @@ export interface FileRoutesByTo {
   '/chats/$threadId': typeof AuthenticatedAppChatsThreadIdRoute
   '/tasks/$issueId': typeof AuthenticatedAppTasksIssueIdRoute
   '/workflows/$id': typeof AuthenticatedAppWorkflowsIdRoute
+  '/api/agents/$id/access': typeof ApiAgentsIdAccessRoute
+  '/api/agents/$id/activity': typeof ApiAgentsIdActivityRoute
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
   '/api/automations/$id/runs': typeof ApiAutomationsIdRunsRoute
@@ -988,6 +1012,7 @@ export interface FileRoutesByTo {
   '/api/chat/threads/$id': typeof ApiChatThreadsIdRouteWithChildren
   '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
   '/api/connections/$connectorId/activity': typeof ApiConnectionsConnectorIdActivityRoute
+  '/api/connections/$connectorId/grant': typeof ApiConnectionsConnectorIdGrantRoute
   '/api/documents/$id/display': typeof ApiDocumentsIdDisplayRoute
   '/api/documents/$id/docx': typeof ApiDocumentsIdDocxRoute
   '/api/documents/$id/metadata': typeof ApiDocumentsIdMetadataRoute
@@ -1105,6 +1130,8 @@ export interface FileRoutesById {
   '/_authenticated/_app/chats/$threadId': typeof AuthenticatedAppChatsThreadIdRoute
   '/_authenticated/_app/tasks/$issueId': typeof AuthenticatedAppTasksIssueIdRoute
   '/_authenticated/_app/workflows/$id': typeof AuthenticatedAppWorkflowsIdRoute
+  '/api/agents/$id/access': typeof ApiAgentsIdAccessRoute
+  '/api/agents/$id/activity': typeof ApiAgentsIdActivityRoute
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
   '/api/automations/$id/runs': typeof ApiAutomationsIdRunsRoute
@@ -1115,6 +1142,7 @@ export interface FileRoutesById {
   '/api/chat/threads/$id': typeof ApiChatThreadsIdRouteWithChildren
   '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
   '/api/connections/$connectorId/activity': typeof ApiConnectionsConnectorIdActivityRoute
+  '/api/connections/$connectorId/grant': typeof ApiConnectionsConnectorIdGrantRoute
   '/api/documents/$id/display': typeof ApiDocumentsIdDisplayRoute
   '/api/documents/$id/docx': typeof ApiDocumentsIdDocxRoute
   '/api/documents/$id/metadata': typeof ApiDocumentsIdMetadataRoute
@@ -1231,6 +1259,8 @@ export interface FileRouteTypes {
     | '/chats/$threadId'
     | '/tasks/$issueId'
     | '/workflows/$id'
+    | '/api/agents/$id/access'
+    | '/api/agents/$id/activity'
     | '/api/agents/$id/archive'
     | '/api/agents/$id/restore'
     | '/api/automations/$id/runs'
@@ -1241,6 +1271,7 @@ export interface FileRouteTypes {
     | '/api/chat/threads/$id'
     | '/api/comments/$id/reactions'
     | '/api/connections/$connectorId/activity'
+    | '/api/connections/$connectorId/grant'
     | '/api/documents/$id/display'
     | '/api/documents/$id/docx'
     | '/api/documents/$id/metadata'
@@ -1351,6 +1382,8 @@ export interface FileRouteTypes {
     | '/chats/$threadId'
     | '/tasks/$issueId'
     | '/workflows/$id'
+    | '/api/agents/$id/access'
+    | '/api/agents/$id/activity'
     | '/api/agents/$id/archive'
     | '/api/agents/$id/restore'
     | '/api/automations/$id/runs'
@@ -1361,6 +1394,7 @@ export interface FileRouteTypes {
     | '/api/chat/threads/$id'
     | '/api/comments/$id/reactions'
     | '/api/connections/$connectorId/activity'
+    | '/api/connections/$connectorId/grant'
     | '/api/documents/$id/display'
     | '/api/documents/$id/docx'
     | '/api/documents/$id/metadata'
@@ -1477,6 +1511,8 @@ export interface FileRouteTypes {
     | '/_authenticated/_app/chats/$threadId'
     | '/_authenticated/_app/tasks/$issueId'
     | '/_authenticated/_app/workflows/$id'
+    | '/api/agents/$id/access'
+    | '/api/agents/$id/activity'
     | '/api/agents/$id/archive'
     | '/api/agents/$id/restore'
     | '/api/automations/$id/runs'
@@ -1487,6 +1523,7 @@ export interface FileRouteTypes {
     | '/api/chat/threads/$id'
     | '/api/comments/$id/reactions'
     | '/api/connections/$connectorId/activity'
+    | '/api/connections/$connectorId/grant'
     | '/api/documents/$id/display'
     | '/api/documents/$id/docx'
     | '/api/documents/$id/metadata'
@@ -2268,6 +2305,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiDocumentsIdDisplayRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/connections/$connectorId/grant': {
+      id: '/api/connections/$connectorId/grant'
+      path: '/grant'
+      fullPath: '/api/connections/$connectorId/grant'
+      preLoaderRoute: typeof ApiConnectionsConnectorIdGrantRouteImport
+      parentRoute: typeof ApiConnectionsConnectorIdRoute
+    }
     '/api/connections/$connectorId/activity': {
       id: '/api/connections/$connectorId/activity'
       path: '/activity'
@@ -2336,6 +2380,20 @@ declare module '@tanstack/react-router' {
       path: '/archive'
       fullPath: '/api/agents/$id/archive'
       preLoaderRoute: typeof ApiAgentsIdArchiveRouteImport
+      parentRoute: typeof ApiAgentsIdRoute
+    }
+    '/api/agents/$id/activity': {
+      id: '/api/agents/$id/activity'
+      path: '/activity'
+      fullPath: '/api/agents/$id/activity'
+      preLoaderRoute: typeof ApiAgentsIdActivityRouteImport
+      parentRoute: typeof ApiAgentsIdRoute
+    }
+    '/api/agents/$id/access': {
+      id: '/api/agents/$id/access'
+      path: '/access'
+      fullPath: '/api/agents/$id/access'
+      preLoaderRoute: typeof ApiAgentsIdAccessRouteImport
       parentRoute: typeof ApiAgentsIdRoute
     }
     '/_authenticated/_app/workflows/$id': {
@@ -2579,11 +2637,15 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 )
 
 interface ApiAgentsIdRouteChildren {
+  ApiAgentsIdAccessRoute: typeof ApiAgentsIdAccessRoute
+  ApiAgentsIdActivityRoute: typeof ApiAgentsIdActivityRoute
   ApiAgentsIdArchiveRoute: typeof ApiAgentsIdArchiveRoute
   ApiAgentsIdRestoreRoute: typeof ApiAgentsIdRestoreRoute
 }
 
 const ApiAgentsIdRouteChildren: ApiAgentsIdRouteChildren = {
+  ApiAgentsIdAccessRoute: ApiAgentsIdAccessRoute,
+  ApiAgentsIdActivityRoute: ApiAgentsIdActivityRoute,
   ApiAgentsIdArchiveRoute: ApiAgentsIdArchiveRoute,
   ApiAgentsIdRestoreRoute: ApiAgentsIdRestoreRoute,
 }
@@ -2648,6 +2710,7 @@ const ApiAutomationsRouteWithChildren = ApiAutomationsRoute._addFileChildren(
 
 interface ApiConnectionsConnectorIdRouteChildren {
   ApiConnectionsConnectorIdActivityRoute: typeof ApiConnectionsConnectorIdActivityRoute
+  ApiConnectionsConnectorIdGrantRoute: typeof ApiConnectionsConnectorIdGrantRoute
   ApiConnectionsConnectorIdToolsNameGrantRoute: typeof ApiConnectionsConnectorIdToolsNameGrantRoute
 }
 
@@ -2655,6 +2718,7 @@ const ApiConnectionsConnectorIdRouteChildren: ApiConnectionsConnectorIdRouteChil
   {
     ApiConnectionsConnectorIdActivityRoute:
       ApiConnectionsConnectorIdActivityRoute,
+    ApiConnectionsConnectorIdGrantRoute: ApiConnectionsConnectorIdGrantRoute,
     ApiConnectionsConnectorIdToolsNameGrantRoute:
       ApiConnectionsConnectorIdToolsNameGrantRoute,
   }
@@ -2968,13 +3032,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

@@ -14,6 +14,11 @@ import {
 import { requireAppRequestContext } from '@/lib/server/context'
 import { capturePostHogEvent } from '@/lib/posthog-server'
 import { syncCapabilities } from '@/lib/server/capability-sync'
+import {
+  markMirrorDegraded,
+  mirrorExecutorConnection,
+  unmirrorExecutorConnection,
+} from '@/lib/server/executor-engine/connection-mirror'
 import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { captureApiFailure, logApiFailure } from '@/lib/server/api-logging'
@@ -47,6 +52,17 @@ interface CredentialConnectionInput {
   readonly name: string
   readonly template: string
   readonly values: Record<string, string>
+}
+
+export function isPersonalOnlyConnectionAction(
+  action: string,
+  owners: readonly string[],
+): boolean {
+  return (
+    (action === 'delete' || action === 'disconnect') &&
+    owners.length > 0 &&
+    owners.every((owner) => owner === 'user')
+  )
 }
 
 /**
@@ -202,14 +218,6 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
         const workspaceContext = await requireWorkspaceContext(appContext)
         if (workspaceContext instanceof Response) return workspaceContext
 
-        const permission = await requireWorkspacePermission({
-          appContext,
-          request,
-          workspaceId: workspaceContext.workspaceId,
-          permissions: workspacePermissions.connectionManage,
-        })
-        if (permission) return permission
-
         const bodyResult = await parseJsonBody(
           request,
           connectionActionBodySchema,
@@ -218,6 +226,13 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
 
         if (params.connectorId === 'github') {
+          const githubPermission = await requireWorkspacePermission({
+            appContext,
+            request,
+            workspaceId: workspaceContext.workspaceId,
+            permissions: workspacePermissions.connectionManage,
+          })
+          if (githubPermission) return githubPermission
           if (bodyResult.value.action === 'connect') {
             return badRequest('Use Add to GitHub to connect this integration')
           }
@@ -348,6 +363,13 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
         }
 
         if (params.connectorId === 'discord') {
+          const discordPermission = await requireWorkspacePermission({
+            appContext,
+            request,
+            workspaceId: workspaceContext.workspaceId,
+            permissions: workspacePermissions.connectionManage,
+          })
+          if (discordPermission) return discordPermission
           const db = await appContext.db()
           if (bodyResult.value.action === 'connect') {
             return badRequest('Use Add to Discord to connect this integration')
@@ -499,11 +521,50 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
                 (connection) =>
                   String(connection.integration) === params.connectorId,
               )
+              const personalOnly = isPersonalOnlyConnectionAction(
+                bodyResult.value.action,
+                connections.map((connection) => connection.owner),
+              )
+              if (!personalOnly) {
+                const denied = yield* Effect.promise(() =>
+                  requireWorkspacePermission({
+                    appContext,
+                    request,
+                    workspaceId: workspaceContext.workspaceId,
+                    permissions: workspacePermissions.connectionManage,
+                  }),
+                )
+                if (denied) {
+                  return { kind: 'denied' as const, response: denied }
+                }
+              }
               if (bodyResult.value.action === 'delete') {
                 yield* Effect.all(
                   connections.map((connection) =>
                     executor.connections.remove(connection),
                   ),
+                )
+                yield* Effect.all(
+                  connections.map((connection) =>
+                    unmirrorExecutorConnection({
+                      executorSlug: String(connection.integration),
+                      connectionName: String(connection.name),
+                      userId: workspaceContext.session.user.id,
+                      workspaceId: workspaceContext.workspaceId,
+                    }).pipe(
+                      Effect.tapError((cause) =>
+                        Effect.sync(() =>
+                          console.warn('[garden] unmirror failed', {
+                            integration: String(connection.integration),
+                            workspaceId: workspaceContext.workspaceId,
+                            cause,
+                          }),
+                        ),
+                      ),
+                      Effect.ignore,
+                    ),
+                  ),
+                  { discard: true },
                 )
                 yield* executor.integrations.remove(integration.slug)
                 return { kind: 'updated' as const }
@@ -541,16 +602,94 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
                     executor.connections.remove(connection),
                   ),
                 )
+                yield* Effect.all(
+                  connections.map((connection) =>
+                    unmirrorExecutorConnection({
+                      executorSlug: String(connection.integration),
+                      connectionName: String(connection.name),
+                      userId: workspaceContext.session.user.id,
+                      workspaceId: workspaceContext.workspaceId,
+                    }).pipe(
+                      Effect.tapError((cause) =>
+                        Effect.sync(() =>
+                          console.warn('[garden] unmirror failed', {
+                            integration: String(connection.integration),
+                            workspaceId: workspaceContext.workspaceId,
+                            cause,
+                          }),
+                        ),
+                      ),
+                      Effect.ignore,
+                    ),
+                  ),
+                  { discard: true },
+                )
               } else {
                 yield* Effect.all(
                   connections.map((connection) =>
                     executor.connections.refresh(connection),
                   ),
                 )
+                const fresh = yield* executor.connections.list()
+                yield* Effect.all(
+                  fresh
+                    .filter(
+                      (connection) =>
+                        String(connection.integration) === params.connectorId &&
+                        connection.owner !== 'org',
+                    )
+                    .map((connection) =>
+                      connection.lastHealth?.status === 'healthy'
+                        ? mirrorExecutorConnection({
+                            executorSlug: String(connection.integration),
+                            connectionName: String(connection.name),
+                            userId: workspaceContext.session.user.id,
+                            workspaceId: workspaceContext.workspaceId,
+                            identityLabel: connection.identityLabel ?? null,
+                            scopes:
+                              connection.oauthScope
+                                ?.split(' ')
+                                .filter(Boolean) ?? null,
+                            expiresAtMs: connection.expiresAt ?? null,
+                          }).pipe(
+                            Effect.tapError((cause) =>
+                              Effect.sync(() =>
+                                console.warn('[garden] mirror failed', {
+                                  integration: String(connection.integration),
+                                  workspaceId: workspaceContext.workspaceId,
+                                  cause,
+                                }),
+                              ),
+                            ),
+                            Effect.ignore,
+                          )
+                        : markMirrorDegraded({
+                            executorSlug: String(connection.integration),
+                            connectionName: String(connection.name),
+                            userId: workspaceContext.session.user.id,
+                            workspaceId: workspaceContext.workspaceId,
+                          }).pipe(
+                            Effect.tapError((cause) =>
+                              Effect.sync(() =>
+                                console.warn('[garden] mirror degrade failed', {
+                                  integration: String(connection.integration),
+                                  workspaceId: workspaceContext.workspaceId,
+                                  cause,
+                                }),
+                              ),
+                            ),
+                            Effect.ignore,
+                          ),
+                    ),
+                  { discard: true },
+                )
               }
               return { kind: 'updated' as const }
             }),
         )
+        if (outcome.kind === 'denied') {
+          return outcome.response
+        }
         if (outcome.kind === 'not-found') {
           return notFound('Integration not found')
         }

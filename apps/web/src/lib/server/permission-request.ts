@@ -212,8 +212,12 @@ async function loadMatchingPendingRequests(args: {
       )
 }
 
-async function writeDenialAuditRows(args: {
-  db: ServerDb
+/**
+ * Every connector-write resolution stores one audit row per tool call, so the
+ * activity feed shows approvals alongside denials. Before this, only denials
+ * wrote rows and approvals vanished from history entirely.
+ */
+async function buildResolutionAuditRows(args: {
   requests: Array<{
     agentId: string
     argsJson: unknown
@@ -221,6 +225,7 @@ async function writeDenialAuditRows(args: {
     toolCallId: string
   }>
   workspaceId: string
+  approved: boolean
 }) {
   const auditRows: Array<typeof schema.toolCallAudit.$inferInsert> = []
   for (const request of args.requests) {
@@ -234,26 +239,13 @@ async function writeDenialAuditRows(args: {
       capabilityId: request.capabilityId,
       toolCallId: request.toolCallId,
       argsHash: argsHashResult.value,
-      resultStatus: 'denied',
+      resultStatus: args.approved ? 'approved' : 'denied',
       durationMs: 0,
-      error: 'User denied approval',
+      error: args.approved ? null : 'User denied approval',
     })
   }
 
-  if (auditRows.length === 0) return Result.ok(undefined)
-
-  return Result.tryPromise({
-    try: async () => {
-      await args.db.insert(schema.toolCallAudit).values(auditRows)
-    },
-    catch: (cause) =>
-      new PermissionRequestServiceError({
-        code: 'database_failed',
-        status: 500,
-        message: 'Failed to write denial audit rows',
-        cause,
-      }),
-  })
+  return Result.ok(auditRows)
 }
 
 export async function resolveConnectorWritePermissionRequests(
@@ -278,39 +270,46 @@ export async function resolveConnectorWritePermissionRequests(
   const matchingRequests = matchingRequestsResult.value
   const matchingRequestIds = matchingRequests.map((request) => request.id)
   const resolvedAt = new Date()
+  const auditRowsResult = await buildResolutionAuditRows({
+    requests: matchingRequests,
+    workspaceId: input.workspaceId,
+    approved: input.approved,
+  })
+  if (auditRowsResult.isErr()) return Result.err(auditRowsResult.error)
+
+  const auditRows = auditRowsResult.value
   const updateResult = await Result.tryPromise({
     try: async () =>
-      input.db
-        .update(schema.permissionRequest)
-        .set({
-          status: input.approved ? 'approved' : 'denied',
-          resolvedBy: input.actorUserId,
-          resolvedAt,
-        })
-        .where(inArray(schema.permissionRequest.id, matchingRequestIds))
-        .returning({
-          argsJson: schema.permissionRequest.argsJson,
-          capabilityId: schema.permissionRequest.capabilityId,
-          toolCallId: schema.permissionRequest.toolCallId,
-        }),
-    catch: (cause) =>
-      new PermissionRequestServiceError({
-        code: 'database_failed',
-        status: 500,
-        message: 'Failed to resolve permission request',
-        cause,
+      input.db.transaction(async (tx) => {
+        const updated = await tx
+          .update(schema.permissionRequest)
+          .set({
+            status: input.approved ? 'approved' : 'denied',
+            resolvedBy: input.actorUserId,
+            resolvedAt,
+          })
+          .where(inArray(schema.permissionRequest.id, matchingRequestIds))
+          .returning({
+            argsJson: schema.permissionRequest.argsJson,
+            capabilityId: schema.permissionRequest.capabilityId,
+            toolCallId: schema.permissionRequest.toolCallId,
+          })
+        if (auditRows.length > 0) {
+          await tx.insert(schema.toolCallAudit).values(auditRows)
+        }
+        return updated
       }),
+    catch: (cause) =>
+      cause instanceof PermissionRequestServiceError
+        ? cause
+        : new PermissionRequestServiceError({
+            code: 'database_failed',
+            status: 500,
+            message: 'Failed to resolve permission request',
+            cause,
+          }),
   })
   if (updateResult.isErr()) return Result.err(updateResult.error)
-
-  if (!input.approved) {
-    const auditResult = await writeDenialAuditRows({
-      db: input.db,
-      requests: matchingRequests,
-      workspaceId: input.workspaceId,
-    })
-    if (auditResult.isErr()) return Result.err(auditResult.error)
-  }
 
   const retryToolCalls = updateResult.value.flatMap((request) =>
     request.capabilityId

@@ -45,9 +45,13 @@ import { Workspace } from '@cloudflare/shell'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { getPooledDb } from '@garden/db/runtime'
 import { and, asc, eq, or, type SQL } from 'drizzle-orm'
-import { Result } from 'better-result'
+import { Result, TaggedError } from 'better-result'
 import { Effect, Layer, ManagedRuntime, Option, Schema, Stream } from 'effect'
 import { connectorRegistry } from '@garden/connectors'
+import {
+  derivePermissions,
+  type AgentPermissions,
+} from '@garden/core/agents/permissions'
 import { createGardenLogger } from '@garden/observability/logger'
 import * as schema from '@garden/db/schema'
 import {
@@ -72,6 +76,7 @@ import {
   createPromptContextProviders,
 } from './prompt'
 import {
+  EXECUTOR_TOOL_KEY_PREFIX,
   RuntimeMcpConnectionPreparer,
   RuntimeMcpController,
   type McpHost,
@@ -79,6 +84,7 @@ import {
 } from './runtime-mcp-controller'
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
+import { isChatToolAllowed } from './chat-permissions'
 import {
   getDocumentBytes,
   getDocumentVersionBytes,
@@ -1177,6 +1183,10 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   }
 }
 
+export class ChatToolDeniedError extends TaggedError('ChatToolDeniedError')<{
+  message: string
+}>() {}
+
 export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   /**
    * Handles chat websocket disconnects without promoting normal deploy/client
@@ -1230,6 +1240,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   )
   override classifyChatError = classifyGardenContextOverflow
   private readonly aiObservation = new AiObservation(this.ctx, this.env)
+  private currentPermissions: AgentPermissions | null = null
   private mcpController: RuntimeMcpController | null = null
   private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
     getController: () => this.getMcpController(),
@@ -1636,6 +1647,15 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     return activated.join('\n\n')
   }
 
+  private shouldAutoApproveRiskClass(riskClass: string) {
+    const permissions = this.currentPermissions
+    if (!permissions) return false
+    if (riskClass !== 'send_external' && riskClass !== 'destructive') {
+      return false
+    }
+    return permissions.approval_overrides[riskClass] === 'auto'
+  }
+
   override async beforeTurn(ctx: TurnContext) {
     const [identity] = await this.getDb()
       .select({
@@ -1643,8 +1663,13 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         workspaceId: schema.chatThread.workspaceId,
         ownerUserId: schema.chatThread.ownerUserId,
         agentId: schema.chatThread.agentId,
+        agentPermissions: schema.agent.permissions,
       })
       .from(schema.chatThread)
+      .innerJoin(
+        schema.agent,
+        eq(schema.agent.id, schema.chatThread.agentId),
+      )
       .where(
         or(
           eq(schema.chatThread.id, this.name),
@@ -1652,6 +1677,9 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         ),
       )
       .limit(1)
+    this.currentPermissions = identity
+      ? derivePermissions({ agent: { permissions: identity.agentPermissions } })
+      : null
     if (identity) {
       this.aiObservation.startTurn(
         {
@@ -1706,11 +1734,23 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
 
     const stableMcpTools = mcpController.wrapGetAITools(
       this.mcp.getAITools.bind(this.mcp),
+      undefined,
+      {
+        shouldAutoApprove: ({ riskClass }) =>
+          this.shouldAutoApproveRiskClass(riskClass),
+      },
     )
     const activeTools = mcpController.activeToolKeysWithoutRawMcp({
       assembledTools: ctx.tools,
       stableMcpTools,
     })
+    const isToolVisible = (key: string) =>
+      key.startsWith(EXECUTOR_TOOL_KEY_PREFIX) ||
+      isChatToolAllowed(this.currentPermissions, key)
+    const visibleTools = Object.fromEntries(
+      Object.entries(stableMcpTools).filter(([key]) => isToolVisible(key)),
+    ) as ToolSet
+    const visibleActiveTools = activeTools.filter((key) => isToolVisible(key))
 
     return {
       model: createAgentModel({
@@ -1734,12 +1774,17 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       ...(systemAdditions
         ? { system: `${ctx.system}\n\n${systemAdditions}` }
         : {}),
-      tools: stableMcpTools,
-      activeTools,
+      tools: visibleTools,
+      activeTools: visibleActiveTools,
     } satisfies TurnConfig
   }
 
   override async beforeToolCall(ctx: ToolCallContext) {
+    if (!isChatToolAllowed(this.currentPermissions, ctx.toolName)) {
+      throw new ChatToolDeniedError({
+        message: `Tool ${ctx.toolName} is not allowed for this agent.`,
+      })
+    }
     this.aiObservation.beforeToolCall(ctx)
     return undefined
   }

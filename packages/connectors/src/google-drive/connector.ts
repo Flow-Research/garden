@@ -9,6 +9,7 @@ export default defineConnector({
   description:
     'Find files, inspect permissions, read content, and create new docs through Google Drive MCP.',
   icon: './icon.svg',
+  executorSlug: 'google_drive',
   upstream: {
     mcpServerUrl: 'https://drivemcp.googleapis.com/mcp/v1',
     transport: 'streamable-http',

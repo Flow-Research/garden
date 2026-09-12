@@ -11,6 +11,7 @@ export default defineConnector({
   description:
     'Search threads, manage labels, and create drafts through Google Workspace’s Gmail MCP.',
   icon: './icon.svg',
+  executorSlug: 'google_gmail',
   upstream: {
     mcpServerUrl: 'https://gmailmcp.googleapis.com/mcp/v1',
     transport: 'streamable-http',

@@ -41,6 +41,8 @@ import {
   CodeBlockTitle,
 } from '@/components/ai-elements/code-block'
 import type { ChatUiMessage } from '../chat-runtime-provider'
+import { extractExecutorToolRefs } from '@garden/connectors/capabilities'
+import { getConnectorByExecutorSlug } from '@garden/connectors/registry'
 import {
   canonicalJsonString,
   formatApprovalInput,
@@ -192,6 +194,17 @@ export function extractApprovalDescription(input: unknown): string | null {
   }
   if (typeof record.description === 'string' && record.description.trim()) {
     return record.description.trim()
+  }
+  if (typeof record.code === 'string' && record.code.includes('tools.')) {
+    const refs = extractExecutorToolRefs(record.code)
+    const first = refs[0]
+    if (first) {
+      const label =
+        getConnectorByExecutorSlug(first.executorSlug)?.label ??
+        first.executorSlug
+      const rest = refs.length > 1 ? ` (+${refs.length - 1} more)` : ''
+      return `${label} · ${first.tool}${rest}`
+    }
   }
   return null
 }

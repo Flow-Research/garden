@@ -36,6 +36,7 @@ type ConnectorSpecBase = {
   description: string
   icon?: string
   tools: Record<string, ConnectorToolClassification>
+  executorSlug?: string
 }
 
 type ConnectorMcpSpecBase = ConnectorSpecBase & {

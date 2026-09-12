@@ -62,6 +62,12 @@ export const Route = createFileRoute('/api/agents/$id')({
               ? JSON.stringify(body.runtime_config)
               : null
         }
+        if (
+          Object.prototype.hasOwnProperty.call(body, 'permissions') &&
+          body.permissions !== undefined
+        ) {
+          updateValues.permissions = body.permissions
+        }
 
         const db = await appContext.db()
         const [existingAgent] = await db

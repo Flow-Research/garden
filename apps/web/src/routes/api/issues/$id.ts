@@ -26,6 +26,10 @@ import {
   toIssue,
 } from '@/lib/server/control-plane'
 import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
+import {
   cancelIssueRun,
   startIssueRun,
 } from '@garden/server/issues/run-service'
@@ -124,6 +128,14 @@ export const Route = createFileRoute('/api/issues/$id')({
           existingIssue.workspaceId,
         )
         if (access instanceof Response) return access
+
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request,
+          workspaceId: existingIssue.workspaceId,
+          permissions: workspacePermissions.issueManage,
+        })
+        if (permission) return permission
 
         const [issue] = await db
           .update(schema.issue)
@@ -300,6 +312,14 @@ export const Route = createFileRoute('/api/issues/$id')({
           existingIssue.workspaceId,
         )
         if (access instanceof Response) return access
+
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request,
+          workspaceId: existingIssue.workspaceId,
+          permissions: workspacePermissions.issueManage,
+        })
+        if (permission) return permission
 
         await db
           .delete(schema.issue)

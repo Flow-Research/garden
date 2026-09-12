@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Bot, Loader2 } from 'lucide-react'
 import type { Agent } from '@garden/core/types'
-import { agentDetailOptions } from '@/lib/workspace/queries'
+import { useAuthStore } from '@garden/app-state/auth'
+import { useWorkspaceId } from '@garden/app-state/hooks'
+import { agentDetailOptions, memberListOptions } from '@/lib/workspace/queries'
 import {
   Avatar,
   AvatarFallback,
@@ -39,6 +41,12 @@ export function AgentDetail({
   const [tab, setTab] = useState('overview')
   const detailQuery = useQuery(agentDetailOptions(agentId))
   const agent = detailQuery.data ?? null
+  const wsId = useWorkspaceId()
+  const user = useAuthStore((s) => s.user)
+  const { data: members = [] } = useQuery(memberListOptions(wsId))
+  const currentMember = members.find((m) => m.user_id === user?.id) ?? null
+  const canManageAccess =
+    currentMember?.role === 'owner' || currentMember?.role === 'admin'
 
   if (detailQuery.isPending) {
     return <AgentDetailSkeleton />
@@ -87,7 +95,9 @@ export function AgentDetail({
           <TabsList variant="line" className="h-9">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="skills">Skills</TabsTrigger>
-            <TabsTrigger value="access">Access</TabsTrigger>
+            {canManageAccess ? (
+              <TabsTrigger value="access">Access</TabsTrigger>
+            ) : null}
             <TabsTrigger value="instructions">Instructions</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
           </TabsList>
@@ -100,9 +110,11 @@ export function AgentDetail({
           <TabsContent value="skills" className="px-6 py-5">
             <AgentSkillsTab agentId={agent.id} onOpenSkill={onOpenSkill} />
           </TabsContent>
-          <TabsContent value="access" className="px-6 py-5">
-            <AgentAccessTab agentId={agent.id} />
-          </TabsContent>
+          {canManageAccess ? (
+            <TabsContent value="access" className="px-6 py-5">
+              <AgentAccessTab agentId={agent.id} />
+            </TabsContent>
+          ) : null}
           <TabsContent value="instructions" className="px-6 py-5">
             <InstructionsPane agent={agent} />
           </TabsContent>

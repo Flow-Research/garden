@@ -26,6 +26,7 @@ import { SkillBundles, type StoredSkillBundleFile } from './skill-bundles'
 import { SkillDocuments } from './skill-documents'
 import { SkillsSh } from './skills-sh'
 import { WorkspaceAccess } from './workspace-access'
+import { workspacePermissions } from './workspace-permissions'
 
 type SkillRow = typeof schema.skill.$inferSelect
 type SkillFileRow = typeof schema.skillFile.$inferSelect
@@ -224,6 +225,10 @@ export const skillsLayer = Layer.effect(
       input: CreateSkillRequest,
     ) {
       const workspace = yield* access.current()
+      yield* access.requirePermission(
+        workspace.workspaceId,
+        workspacePermissions.skillManage,
+      )
       const description = input.description?.trim() ?? ''
       if (!input.content && !description) {
         return yield* new SkillValidationError({
@@ -342,6 +347,10 @@ export const skillsLayer = Layer.effect(
         })
       }
       const existing = yield* loadSkill(id)
+      yield* access.requirePermission(
+        existing.workspaceId,
+        workspacePermissions.skillManage,
+      )
       const oldFileRows = yield* fileRows(id)
       const oldFiles = yield* bundles.loadFiles(oldFileRows)
       const content = yield* documents.update({
@@ -408,6 +417,10 @@ export const skillsLayer = Layer.effect(
 
     const remove = Effect.fn('Skills.remove')(function* (id: string) {
       const existing = yield* loadSkill(id)
+      yield* access.requirePermission(
+        existing.workspaceId,
+        workspacePermissions.skillManage,
+      )
       const files = yield* fileRows(id)
       yield* bundles.deleteFiles(files)
       yield* bundles.deleteRuntime({
@@ -423,6 +436,10 @@ export const skillsLayer = Layer.effect(
       input: ImportSkillRequest,
     ) {
       const workspace = yield* access.current()
+      yield* access.requirePermission(
+        workspace.workspaceId,
+        workspacePermissions.skillManage,
+      )
       const imported = yield* skillsSh.download(input)
       const existingRows = yield* operation('find imported skill', () =>
         db
@@ -568,6 +585,10 @@ export const skillsLayer = Layer.effect(
     const setAgentAssignments = Effect.fn('Skills.setAgentAssignments')(
       function* (agentId: string, input: SetAgentSkillsRequest) {
         const { workspace, target } = yield* access.targetForAgent(agentId)
+        yield* access.requirePermission(
+          workspace.workspaceId,
+          workspacePermissions.skillManage,
+        )
         const ids = [...new Set(input.skills.map((item) => item.skill_id))]
         const allowed =
           ids.length === 0

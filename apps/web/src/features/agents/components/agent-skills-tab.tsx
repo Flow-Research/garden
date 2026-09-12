@@ -7,9 +7,14 @@ import type {
   AgentSkillAssignment,
   Skill,
 } from '@garden/core/types'
+import {
+  DEFAULT_AGENT_PERMISSIONS,
+  type AgentPermissions,
+} from '@garden/core/agents/permissions'
 import { api } from '@/lib/api'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import {
+  agentDetailOptions,
   agentSkillListOptions,
   skillListOptions,
   workspaceKeys,
@@ -53,10 +58,17 @@ export function AgentSkillsTab({
 
   const attachedQuery = useQuery(agentSkillListOptions(wsId, agentId))
   const libraryQuery = useQuery(skillListOptions(wsId))
+  const detailQuery = useQuery(agentDetailOptions(agentId))
 
   const attached = attachedQuery.data ?? []
   const library = libraryQuery.data ?? []
   const assignmentKey = workspaceKeys.agentSkills(wsId, agentId)
+  const agentKey = workspaceKeys.agent(agentId)
+  const agentPermissions = detailQuery.data?.permissions ?? null
+  const fullAccess = agentPermissions?.full_access !== false
+  const allowedSlugs = new Set(
+    fullAccess ? [] : (agentPermissions?.allowed_skills ?? []),
+  )
 
   const setSkillsMutation = useMutation({
     mutationFn: (skills: AgentSkillAssignment[]) =>
@@ -92,6 +104,63 @@ export function AgentSkillsTab({
       qc.setQueryData<AgentSkill[]>(assignmentKey, attached)
     })
     toast.success('Skill detached')
+  }
+
+  const permissionsMutation = useMutation({
+    mutationFn: (permissions: AgentPermissions) =>
+      api.updateAgentPermissions(agentId, permissions),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: agentKey })
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to update permissions',
+      )
+    },
+  })
+
+  const commitPermissions = async (next: AgentPermissions) => {
+    qc.setQueryData(agentKey, (previous: unknown) =>
+      previous && typeof previous === 'object'
+        ? { ...previous, permissions: next }
+        : previous,
+    )
+    await permissionsMutation.mutateAsync(next).catch(() => {
+      qc.invalidateQueries({ queryKey: agentKey })
+    })
+  }
+
+  const handleFullAccessToggle = async (checked: boolean) => {
+    const base = agentPermissions ?? DEFAULT_AGENT_PERMISSIONS
+    if (checked) {
+      await commitPermissions({
+        ...base,
+        full_access: true,
+      })
+      return
+    }
+    await commitPermissions({
+      ...base,
+      full_access: false,
+      allowed_skills: attached.map((s) => s.slug),
+    })
+  }
+
+  const handleAllowedToggle = async (slug: string, allowed: boolean) => {
+    const base = agentPermissions ?? DEFAULT_AGENT_PERMISSIONS
+    const next = new Set(
+      base.full_access ? attached.map((s) => s.slug) : base.allowed_skills,
+    )
+    if (allowed) {
+      next.add(slug)
+    } else {
+      next.delete(slug)
+    }
+    await commitPermissions({
+      ...base,
+      full_access: false,
+      allowed_skills: [...next],
+    })
   }
 
   const handleAttach = async (ids: string[]) => {
@@ -133,6 +202,20 @@ export function AgentSkillsTab({
               ? 'No skills attached yet.'
               : `${attached.length} attached`}
           </p>
+          <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <Switch
+              checked={fullAccess}
+              onCheckedChange={(checked) =>
+                void handleFullAccessToggle(checked)
+              }
+              aria-label={
+                fullAccess ? 'Restrict skill access' : 'Allow full access'
+              }
+            />
+            {fullAccess
+              ? 'Full access: agent may load any attached skill'
+              : 'Restricted: agent may load allowed skills only'}
+          </label>
         </div>
         <Button size="sm" onClick={() => setPickerOpen(true)}>
           <Plus />
@@ -177,6 +260,20 @@ export function AgentSkillsTab({
                 ) : null}
               </button>
               <div className="flex shrink-0 items-center gap-2">
+                <Switch
+                  checked={fullAccess || allowedSlugs.has(skill.slug)}
+                  disabled={fullAccess}
+                  onCheckedChange={(checked) =>
+                    void handleAllowedToggle(skill.slug, checked)
+                  }
+                  aria-label={
+                    fullAccess
+                      ? `${skill.name} allowed by full access`
+                      : allowedSlugs.has(skill.slug)
+                        ? `Disallow ${skill.name}`
+                        : `Allow ${skill.name}`
+                  }
+                />
                 <Switch
                   checked={skill.enabled}
                   onCheckedChange={(checked) =>

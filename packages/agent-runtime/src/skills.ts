@@ -6,9 +6,18 @@ import {
   workspaceChatSkillTarget,
   type SkillTarget,
 } from '@garden/core/skills'
+import {
+  derivePermissions,
+  type AgentPermissions,
+} from '@garden/core/agents/permissions'
 import { getPooledDb } from '@garden/db/runtime'
 import * as schema from '@garden/db/schema'
 import { workspaceSkillR2Prefix } from './skill-storage-paths'
+import {
+  allowedSlugsForPermissions,
+  filterBuiltinSkillSource,
+  filterSkillRowsByAllowedSlugs,
+} from './skills-filter'
 
 const BUILTIN_SKILL_R2_PREFIX = 'builtin-skills'
 
@@ -25,6 +34,7 @@ export type RuntimeSkillSubject =
 export type RuntimeSkillIdentity = {
   readonly workspaceId: string
   readonly target: SkillTarget
+  readonly permissions: AgentPermissions | null
 }
 
 export type RuntimeSkillAssignment = {
@@ -182,9 +192,27 @@ export const runtimeSkillSourcesLayer = Layer.effect(
       subject: RuntimeSkillSubject,
     ) {
       if (subject.kind === 'target') {
+        if (subject.target.kind === 'agent') {
+          const rows = yield* dbOperation('load target agent permissions', () =>
+            db
+              .select({ permissions: schema.agent.permissions })
+              .from(schema.agent)
+              .where(eq(schema.agent.id, subject.target.id))
+              .limit(1),
+          )
+          const row = rows[0]
+          return {
+            workspaceId: subject.workspaceId,
+            target: subject.target,
+            permissions: row
+              ? derivePermissions({ agent: { permissions: row.permissions } })
+              : null,
+          }
+        }
         return {
           workspaceId: subject.workspaceId,
           target: subject.target,
+          permissions: null,
         }
       }
       if (subject.kind === 'chat') {
@@ -194,6 +222,7 @@ export const runtimeSkillSourcesLayer = Layer.effect(
               workspaceId: schema.chatThread.workspaceId,
               agentId: schema.chatThread.agentId,
               isDefault: schema.agent.isDefault,
+              agentPermissions: schema.agent.permissions,
             })
             .from(schema.chatThread)
             .innerJoin(
@@ -213,7 +242,13 @@ export const runtimeSkillSourcesLayer = Layer.effect(
         const target = row.isDefault
           ? workspaceChatSkillTarget(row.workspaceId)
           : agentSkillTarget(row.agentId)
-        return { workspaceId: row.workspaceId, target }
+        return {
+          workspaceId: row.workspaceId,
+          target,
+          permissions: derivePermissions({
+            agent: { permissions: row.agentPermissions },
+          }),
+        }
       }
       if (subject.kind === 'issue') {
         const rows = yield* dbOperation('load issue skill target', () =>
@@ -221,11 +256,17 @@ export const runtimeSkillSourcesLayer = Layer.effect(
             .select({
               workspaceId: schema.issueRun.workspaceId,
               agentId: schema.issueRun.agentId,
+              agentPermissions: schema.agent.permissions,
+              issuePermissionsOverride: schema.issue.permissionsOverride,
             })
             .from(schema.issue)
             .innerJoin(
               schema.issueRun,
               eq(schema.issueRun.id, schema.issue.activeRunId),
+            )
+            .innerJoin(
+              schema.agent,
+              eq(schema.agent.id, schema.issueRun.agentId),
             )
             .where(eq(schema.issue.id, subject.id))
             .limit(1),
@@ -235,6 +276,10 @@ export const runtimeSkillSourcesLayer = Layer.effect(
           ? {
               workspaceId: row.workspaceId,
               target: agentSkillTarget(row.agentId),
+              permissions: derivePermissions({
+                agent: { permissions: row.agentPermissions },
+                issue: { permissionsOverride: row.issuePermissionsOverride },
+              }),
             }
           : null
       }
@@ -243,8 +288,13 @@ export const runtimeSkillSourcesLayer = Layer.effect(
           .select({
             workspaceId: schema.automationRun.workspaceId,
             agentId: schema.automationRun.agentId,
+            agentPermissions: schema.agent.permissions,
           })
           .from(schema.automationRun)
+          .innerJoin(
+            schema.agent,
+            eq(schema.agent.id, schema.automationRun.agentId),
+          )
           .where(eq(schema.automationRun.id, subject.id))
           .limit(1),
       )
@@ -253,6 +303,9 @@ export const runtimeSkillSourcesLayer = Layer.effect(
         ? {
             workspaceId: row.workspaceId,
             target: agentSkillTarget(row.agentId),
+            permissions: derivePermissions({
+              agent: { permissions: row.agentPermissions },
+            }),
           }
         : null
     })
@@ -260,7 +313,7 @@ export const runtimeSkillSourcesLayer = Layer.effect(
     const assignmentsForIdentity = Effect.fn(
       'RuntimeSkillSources.assignmentsForIdentity',
     )(function* (resolved: RuntimeSkillIdentity) {
-      return yield* dbOperation('load skill assignments', () =>
+      const rows = yield* dbOperation('load skill assignments', () =>
         db
           .select({ name: schema.skill.name, slug: schema.skill.slug })
           .from(schema.skillAssignment)
@@ -276,6 +329,10 @@ export const runtimeSkillSourcesLayer = Layer.effect(
               eq(schema.skillAssignment.enabled, true),
             ),
           ),
+      )
+      return filterSkillRowsByAllowedSlugs(
+        rows,
+        allowedSlugsForPermissions(resolved.permissions),
       )
     })
 
@@ -302,11 +359,14 @@ export const runtimeSkillSourcesLayer = Layer.effect(
         )
       }
       sources.push(
-        r2(environment.bucket, {
-          id: 'garden-builtins',
-          prefix: `${BUILTIN_SKILL_R2_PREFIX}/`,
-          refreshIntervalMs: 0,
-        }),
+        filterBuiltinSkillSource(
+          r2(environment.bucket, {
+            id: 'garden-builtins',
+            prefix: `${BUILTIN_SKILL_R2_PREFIX}/`,
+            refreshIntervalMs: 0,
+          }),
+          resolved?.permissions ?? null,
+        ),
       )
       return sources
     })

@@ -1,4 +1,5 @@
 import { jsonObjectSchema, uuidSchema } from '@garden/db/validation'
+import { AgentPermissionsSchema } from '@garden/core/agents/permissions'
 import { z } from 'zod'
 import {
   nonEmptyStringSchema,
@@ -47,6 +48,7 @@ export const updateAgentBodySchema = z
     visibility: agentVisibilitySchema.optional(),
     status: agentStatusSchema.optional(),
     max_concurrent_tasks: z.number().int().positive().optional(),
+    permissions: AgentPermissionsSchema.optional(),
   })
   .strict()
   .refine(

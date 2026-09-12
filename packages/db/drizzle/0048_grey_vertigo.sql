@@ -1,0 +1,2 @@
+ALTER TABLE "tool_call_audit" DROP CONSTRAINT "tool_call_audit_result_status_check";--> statement-breakpoint
+ALTER TABLE "tool_call_audit" ADD CONSTRAINT "tool_call_audit_result_status_check" CHECK ("tool_call_audit"."result_status" in ('success', 'error', 'denied', 'timeout', 'approved'));

@@ -72,7 +72,7 @@ export const toolCallAudit = pgTable(
     index('tool_call_audit_capability_ts_idx').on(table.capabilityId, table.ts),
     check(
       'tool_call_audit_result_status_check',
-      sql`${table.resultStatus} in ('success', 'error', 'denied', 'timeout')`,
+      sql`${table.resultStatus} in ('success', 'error', 'denied', 'timeout', 'approved')`,
     ),
   ],
 )

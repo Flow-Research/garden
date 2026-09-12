@@ -214,6 +214,7 @@ export type ExecutorIntegrationConnection =
 export const ExecutorIntegrationItem = Schema.Struct({
   providerId: ExecutorProviderId,
   slug: ExecutorIntegrationSlug,
+  gardenConnectorId: OptionalString,
   label: NonBlankString,
   description: Schema.String,
   protocol: Schema.String,

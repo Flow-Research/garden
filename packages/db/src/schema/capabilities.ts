@@ -76,6 +76,35 @@ export const permissionGrant = pgTable(
   ],
 )
 
+export const connectionGrant = pgTable(
+  'connection_grant',
+  {
+    id: uuid('id').primaryKey(),
+    agentId: uuid('agent_id')
+      .notNull()
+      .references(() => agent.id),
+    connectorId: text('connector_id').notNull(),
+    trustLevel: text('trust_level').notNull().default('ask'),
+    grantedBy: uuid('granted_by')
+      .notNull()
+      .references(() => user.id),
+    grantedAt: timestamp('granted_at', { mode: 'date' })
+      .notNull()
+      .default(sql`now()`),
+    expiresAt: timestamp('expires_at', { mode: 'date' }),
+  },
+  (table) => [
+    uniqueIndex('connection_grant_agent_connector_unique').on(
+      table.agentId,
+      table.connectorId,
+    ),
+    check(
+      'connection_grant_trust_level_check',
+      sql`${table.trustLevel} in ('auto', 'allow', 'ask')`,
+    ),
+  ],
+)
+
 export const permissionRequest = pgTable(
   'permission_request',
   {

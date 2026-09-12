@@ -9,6 +9,8 @@ import type {
   UpdateMemberRequest,
   Workspace,
 } from '@garden/core/types'
+import type { AgentPermissions } from '@garden/core/agents/permissions'
+import type { PermissionTrustLevel } from '@garden/connectors/capabilities'
 import { getApiTransport } from './state'
 
 export function listWorkspaces(): Promise<Workspace[]> {
@@ -123,6 +125,123 @@ export function listAgents(params?: {
 
 export function getAgent(id: string): Promise<Agent> {
   return getApiTransport().request(`/api/agents/${id}`)
+}
+
+export function updateAgentPermissions(
+  id: string,
+  permissions: AgentPermissions,
+): Promise<Agent> {
+  return getApiTransport().request(`/api/agents/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ permissions }),
+  })
+}
+
+export interface AgentConnectionTrust {
+  connector_id: string
+  trust: PermissionTrustLevel
+  granted: boolean
+  visible: boolean
+}
+
+export interface AgentToolTrust {
+  connector_id: string
+  tool_name: string
+  risk_class: string
+  trust: PermissionTrustLevel
+  granted: boolean
+  visible: boolean
+}
+
+export function getAgentAccess(id: string): Promise<{
+  connections: AgentConnectionTrust[]
+  tools: AgentToolTrust[]
+}> {
+  return getApiTransport().request(`/api/agents/${id}/access`)
+}
+
+export type AgentActivityEvent =
+  | {
+      id: string
+      kind: 'tool_decision'
+      tool_call_id: string
+      connector_id: string
+      tool_name: string
+      result_status: string
+      error: string | null
+      timestamp: string | null
+    }
+  | {
+      id: string
+      kind: 'grant_change'
+      event_type: string
+      scope: string | null
+      connector_id: string | null
+      tool_name: string | null
+      trust: string | null
+      timestamp: string | null
+    }
+
+export function getAgentActivity(id: string): Promise<{
+  events: AgentActivityEvent[]
+}> {
+  return getApiTransport().request(`/api/agents/${id}/activity`)
+}
+
+export function setAgentConnectionTrust(
+  agentId: string,
+  connectorId: string,
+  trustLevel: PermissionTrustLevel,
+): Promise<{ ok: true }> {
+  return getApiTransport().request(
+    `/api/connections/${encodeURIComponent(connectorId)}/grant`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ agentId, trustLevel }),
+    },
+  )
+}
+
+export function setAgentToolTrust(
+  agentId: string,
+  connectorId: string,
+  toolName: string,
+  trustLevel: PermissionTrustLevel,
+): Promise<{ ok: true }> {
+  return getApiTransport().request(
+    `/api/connections/${encodeURIComponent(connectorId)}/tools/${encodeURIComponent(toolName)}/grant`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ agentId, trustLevel }),
+    },
+  )
+}
+
+export function deleteAgentToolTrust(
+  agentId: string,
+  connectorId: string,
+  toolName: string,
+): Promise<{ ok: true }> {
+  return getApiTransport().request(
+    `/api/connections/${encodeURIComponent(connectorId)}/tools/${encodeURIComponent(toolName)}/grant`,
+    {
+      method: 'DELETE',
+      body: JSON.stringify({ agentId }),
+    },
+  )
+}
+
+export function deleteAgentConnectionTrust(
+  agentId: string,
+  connectorId: string,
+): Promise<{ ok: true }> {
+  return getApiTransport().request(
+    `/api/connections/${encodeURIComponent(connectorId)}/grant`,
+    {
+      method: 'DELETE',
+      body: JSON.stringify({ agentId }),
+    },
+  )
 }
 
 export function createAgent(data: CreateAgentRequest): Promise<Agent> {

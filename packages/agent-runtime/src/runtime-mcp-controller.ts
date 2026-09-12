@@ -5,6 +5,7 @@ import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, desc, eq } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
 import { getConnectorById } from '@garden/connectors'
+import { getConnectorByExecutorSlug } from '@garden/connectors/registry'
 import { discordNativeTools } from '@garden/connectors/discord/tools'
 import { makeDiscordBaseLayer } from '@garden/connectors/discord/services'
 import {
@@ -18,9 +19,10 @@ import { isNativeConnector } from '@garden/connectors/sdk'
 import {
   buildMcpAiToolKey,
   canonicalJsonString,
-  defaultTrustLevelForRisk,
   guardedMcpToolDescription,
+  resolveEffectiveTrust,
 } from '@garden/connectors/capabilities'
+import { extractExecutorToolRefsFromInput, mentionsUnparsedExecutorTools } from './executor-codemode'
 import * as schema from '@garden/db/schema'
 import { captureGardenAnalyticsEvent } from '@garden/observability/analytics/client'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
@@ -50,6 +52,13 @@ export const MCP_CONNECTOR_SERVER_SCHEMA_SQL = `
 
 export const PERMISSION_APPROVAL_REUSE_WINDOW_MS = 60 * 1000
 
+const EXECUTOR_MCP_SERVER_ID = 'executor'
+
+export const EXECUTOR_TOOL_KEY_PREFIX = buildMcpAiToolKey(
+  EXECUTOR_MCP_SERVER_ID,
+  '',
+)
+
 export class RuntimeMcpError extends TaggedError('RuntimeMcpError')<{
   code:
     | 'connector_not_found'
@@ -58,6 +67,7 @@ export class RuntimeMcpError extends TaggedError('RuntimeMcpError')<{
     | 'mcp_discover_failed'
     | 'mcp_readiness_failed'
     | 'mcp_register_failed'
+    | 'permission_denied'
     | 'thread_not_found'
   message: string
 }>() {}
@@ -273,18 +283,38 @@ export class RuntimeMcpController {
     const wrappedTools = this.host.mcp
       .listTools(filter)
       .reduce<ToolSet>((acc, tool) => {
-        const connectorId = this.connectorIdForServerId(tool.serverId)
-        if (!connectorId) {
-          return acc
-        }
-
         const rawToolKey = buildMcpAiToolKey(tool.serverId, tool.name)
-        const toolKey = buildMcpAiToolKey(connectorId, tool.name)
         const rawTool = rawTools[rawToolKey]
         if (!rawTool) {
           return acc
         }
+        const connectorId = this.connectorIdForServerId(tool.serverId)
+        if (!connectorId && tool.serverId !== EXECUTOR_MCP_SERVER_ID) {
+          return acc
+        }
         wrappedRawToolKeys.add(rawToolKey)
+
+        if (!connectorId) {
+          acc[rawToolKey] = {
+            ...rawTool,
+            needsApproval: async (
+              input: unknown,
+              options: {
+                toolCallId: string
+                messages: ModelMessage[]
+                experimental_context?: unknown
+              },
+            ) =>
+              this.ensureExecutorToolNeedsApproval({
+                toolCallId: options.toolCallId,
+                toolArgs: input,
+                shouldAutoApprove: wrapOptions?.shouldAutoApprove,
+              }),
+          }
+          return acc
+        }
+
+        const toolKey = buildMcpAiToolKey(connectorId, tool.name)
 
         const baseNeedsApproval = rawTool.needsApproval
         const baseExecute = rawTool.execute
@@ -722,6 +752,44 @@ export class RuntimeMcpController {
    * That created stale approval cards for read tools and blocked connector
    * writes that had product-default grants backfilled later.
    */
+  private async ensureExecutorToolNeedsApproval(args: {
+    toolCallId: string
+    toolArgs: unknown
+    shouldAutoApprove?: (input: {
+      connectorId: string
+      toolName: string
+      riskClass: string
+    }) => boolean
+  }) {
+    const refs = extractExecutorToolRefsFromInput(args.toolArgs)
+    if (refs.length === 0 && mentionsUnparsedExecutorTools(args.toolArgs)) {
+      console.warn('[agent-runtime] unparsed executor tool call', {
+        toolCallId: args.toolCallId,
+      })
+    }
+    let needsApproval = false
+    for (const ref of refs) {
+      const connector = getConnectorByExecutorSlug(ref.executorSlug)
+      if (!connector) {
+        continue
+      }
+      const approvalResult = await this.ensureConnectorToolNeedsApproval({
+        connectorId: connector.id,
+        toolName: ref.tool,
+        toolCallId: args.toolCallId,
+        toolArgs: args.toolArgs,
+        shouldAutoApprove: args.shouldAutoApprove,
+      })
+      if (approvalResult.isErr()) {
+        throw approvalResult.error
+      }
+      if (approvalResult.value) {
+        needsApproval = true
+      }
+    }
+    return needsApproval
+  }
+
   private async ensureConnectorToolNeedsApproval(args: {
     connectorId: string
     toolName: string
@@ -816,11 +884,17 @@ export class RuntimeMcpController {
       return Result.ok(true)
     }
 
-    if (
-      existingRequest?.status === 'approved' ||
-      existingRequest?.status === 'denied'
-    ) {
+    if (existingRequest?.status === 'approved') {
       return Result.ok(false)
+    }
+
+    if (existingRequest?.status === 'denied') {
+      return Result.err(
+        new RuntimeMcpError({
+          code: 'permission_denied',
+          message: `Permission denied for ${args.connectorId}.${args.toolName} (tool call ${args.toolCallId}). The user denied this call; do not retry it.`,
+        }),
+      )
     }
 
     const grantResult = await Result.tryPromise({
@@ -848,9 +922,36 @@ export class RuntimeMcpController {
     })
     if (grantResult.isErr()) return grantResult
 
-    const trustLevel =
-      grantResult.value[0]?.trustLevel ??
-      defaultTrustLevelForRisk(capability.riskClass)
+    const connectionGrantResult = await Result.tryPromise({
+      try: async () =>
+        db
+          .select({
+            trustLevel: schema.connectionGrant.trustLevel,
+          })
+          .from(schema.connectionGrant)
+          .where(
+            and(
+              eq(schema.connectionGrant.agentId, identityResult.value.agentId),
+              eq(schema.connectionGrant.connectorId, args.connectorId),
+            ),
+          )
+          .limit(1),
+      catch: (cause) =>
+        new RuntimeMcpError({
+          code: 'database_failed',
+          message:
+            cause instanceof Error
+              ? cause.message
+              : `Failed to load connection grant for ${args.connectorId}`,
+        }),
+    })
+    if (connectionGrantResult.isErr()) return connectionGrantResult
+
+    const { trust: trustLevel } = resolveEffectiveTrust({
+      toolTrust: grantResult.value[0]?.trustLevel,
+      connectionTrust: connectionGrantResult.value[0]?.trustLevel,
+      riskClass: capability.riskClass,
+    })
     if (trustLevel !== 'ask') {
       return Result.ok(false)
     }
@@ -1183,7 +1284,7 @@ export class RuntimeMcpController {
 
     this.activateNativeConnectorBindings(bindingsResult.value)
     await this.refreshGitHubHostedMcpTools()
-    const executorServerId = 'executor'
+    const executorServerId = EXECUTOR_MCP_SERVER_ID
     for (const server of this.host.mcp.listServers()) {
       if (server.id !== executorServerId && getConnectorById(server.id)) {
         await this.host.removeMcpServer(server.id)

@@ -22,6 +22,7 @@ export default defineConnector({
   description:
     'Search channels and people, read thread context, draft messages, and publish updates via Slack’s MCP.',
   icon: './icon.svg',
+  executorSlug: 'slack',
   upstream: {
     mcpServerUrl: 'https://mcp.slack.com/mcp',
     transport: 'streamable-http',

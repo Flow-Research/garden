@@ -9,6 +9,10 @@ import {
 import { requireAppRequestContext } from '@/lib/server/context'
 import { requireWorkspaceContext } from '@/lib/server/control-plane'
 import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
+import {
   CatalogProviderNotFoundError,
   catalogCandidateSource,
   getExecutorCatalogSurfaces,
@@ -144,6 +148,14 @@ export const Route = createFileRoute('/api/executor/install')({
         const appContext = requireAppRequestContext(context)
         const workspaceContext = await requireWorkspaceContext(appContext)
         if (workspaceContext instanceof Response) return workspaceContext
+
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request,
+          workspaceId: workspaceContext.workspaceId,
+          permissions: workspacePermissions.connectionManage,
+        })
+        if (permission) return permission
 
         const outcome = await runExecutorRouteEffect({
           effect: installResponse(request, {

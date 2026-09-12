@@ -138,6 +138,25 @@
     "GARDEN_MODEL_ID": "",
     "GARDEN_MODEL_API_KEY": "",
     "GARDEN_MODEL_CONTEXT_WINDOW_TOKENS": "",
+    // Provider OAuth credentials. Empty string means "unset"; local dev fills
+    // these from process env (wrangler only forwards declared keys), deployed
+    // workers use real secrets which override these defaults.
+    "GITHUB_CLIENT_ID": "",
+    "GITHUB_CLIENT_SECRET": "",
+    "GITHUB_APP_ID": "",
+    "GITHUB_APP_SLUG": "",
+    "GITHUB_APP_PRIVATE_KEY": "",
+    "GITHUB_WEBHOOK_SECRET": "",
+    "GOOGLE_CLIENT_ID": "",
+    "GOOGLE_CLIENT_SECRET": "",
+    "SLACK_CLIENT_ID": "",
+    "SLACK_CLIENT_SECRET": "",
+    "DISCORD_CLIENT_ID": "",
+    "DISCORD_CLIENT_SECRET": "",
+    "DISCORD_BOT_TOKEN": "",
+    "DISCORD_PUBLIC_KEY": "",
+    "DISCORD_BOT_PERMISSIONS": "",
+    "RESEND_API_KEY": "",
   },
   "migrations": [
     {
