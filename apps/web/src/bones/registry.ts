@@ -1,7 +1,6 @@
 // Auto-generated from real app captures and adjusted for TypeScript typing.
 import { registerBones } from 'boneyard-js'
 
-import _dashboard_page from './dashboard-page.bones.json'
 import _inbox_page_mobile from './inbox-page-mobile.bones.json'
 import _inbox_page_desktop from './inbox-page-desktop.bones.json'
 import _issues_page from './issues-page.bones.json'
@@ -14,7 +13,6 @@ import _skills_file_tree from './skills-file-tree.bones.json'
 import _skills_file_viewer from './skills-file-viewer.bones.json'
 
 registerBones({
-  'dashboard-page': _dashboard_page,
   'inbox-page-mobile': _inbox_page_mobile,
   'inbox-page-desktop': _inbox_page_desktop,
   'issues-page': _issues_page,

@@ -3,7 +3,7 @@ import { Result } from 'better-result'
 import { toast } from 'sonner'
 import {
   IconBook,
-  IconLayoutDashboard,
+  IconHome,
   IconInbox,
   IconKeyboard,
   IconMessageCircle,
@@ -98,12 +98,12 @@ interface NavPage {
 
 const navPages: NavPage[] = [
   {
-    id: 'dashboard',
+    id: 'home',
     to: '/home',
-    title: 'Dashboard',
-    label: 'Dashboard',
-    icon: IconLayoutDashboard,
-    keywords: ['dashboard', 'home', 'overview', 'workspace'],
+    title: 'Home',
+    label: 'Home',
+    icon: IconHome,
+    keywords: ['home', 'overview', 'workspace'],
   },
   {
     id: 'inbox',
