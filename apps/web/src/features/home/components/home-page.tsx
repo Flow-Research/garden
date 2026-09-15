@@ -101,7 +101,7 @@ function StatCard({
           {formatNumber(value)}
         </p>
         <Button
-          variant="secondary"
+          variant="outline"
           size="sm"
           disabled={disabled}
           onClick={onAction}
