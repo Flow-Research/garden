@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Result } from 'better-result'
 import { toast } from 'sonner'
+import { AppFab } from '@garden/ui/components/shell/app-fab'
 import { AppSidebar } from '@garden/ui/components/shell/app-sidebar'
 import { AppTopBar } from '@garden/ui/components/shell/app-topbar'
 import { Button } from '@garden/ui/components/ui/button'
@@ -295,8 +296,11 @@ export function AppShell() {
                   ) : null
                 }
               />
-              <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
                 <Outlet />
+                {/* Harnessy FAB shell (Penpot "Harnessy_FAB"); popover behavior
+                    lands with the Harnessy surface. */}
+                <AppFab />
               </main>
             </div>
             <SearchCommand />
