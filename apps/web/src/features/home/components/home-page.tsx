@@ -69,8 +69,8 @@ function sharePercent(value: number, total: number) {
 
 function PointsPill({ points, nairaValue }: { points: number; nairaValue: number }) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background-main-default px-2 py-1.5 shadow-[var(--shadow-hairline)]">
-      <span className="inline-flex items-center rounded-full bg-background-brand-default px-2.5 py-1 text-xs font-medium text-text-neutral-on-neutral">
+    <div className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-border bg-background-main-default px-2 py-1.5 shadow-[var(--shadow-hairline)]">
+      <span className="inline-flex items-center rounded-[var(--radius-md)] bg-background-brand-default px-2.5 py-1 text-xs font-medium text-text-neutral-on-neutral">
         {formatNumber(points)} Points
       </span>
       <span className="h-4 w-px bg-border" aria-hidden="true" />
