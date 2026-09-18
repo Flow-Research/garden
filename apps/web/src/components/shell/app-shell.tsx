@@ -139,8 +139,6 @@ export function AppShell() {
 
   const activeNavId = navItemForPathname(pathname)?.id ?? null
 
-  // Tab arrows (tabbable surfaces only): step the active selection through the
-  // surface's open tabs. Active id comes from the route param when present.
   const tabbedNav =
     activeNavId === 'chats' || activeNavId === 'tasks' ? activeNavId : null
   const storedSurfaceTabs = useSurfaceTabsStore((s) =>
@@ -298,8 +296,6 @@ export function AppShell() {
               />
               <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
                 <Outlet />
-                {/* Harnessy FAB shell (Penpot "Harnessy_FAB"); popover behavior
-                    lands with the Harnessy surface. */}
                 <AppFab />
               </main>
             </div>
