@@ -746,7 +746,7 @@ export function InboxPage() {
 
   // -- Desktop
 
-  const listWidth = hasSelection && 'w-[320px]'
+  const listWidth = 'w-[320px]'
 
   return (
     <div className="flex flex-1 min-h-0">
