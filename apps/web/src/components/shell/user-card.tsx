@@ -30,7 +30,7 @@ import type { MemberRole } from '@garden/core/types'
  * Account flyout — the sidebar's bottom user card per the design's
  * User-profile_Flyout (Penpot "Admin Profile" page): profile header, User ID
  * copy + role badge, Settings / Invite members actions, Theme segmented
- * control (System/Light/Dark), an expandable "Add workspace" row that carries
+ * control (System/Light/Dark), an expandable "Workspaces" row that carries
  * workspace switching + creation, and Sign out. The card itself shows avatar +
  * name only; the role badge is exclusive to the flyout's User ID row.
  */
@@ -66,7 +66,7 @@ export function UserCard({
 }) {
   const { theme, setTheme } = useTheme()
   const [flyoutOpen, setFlyoutOpen] = useState(false)
-  const [addWorkspaceOpen, setAddWorkspaceOpen] = useState(false)
+  const [workspacesOpen, setWorkspacesOpen] = useState(false)
   const initials = user.name
     .split(' ')
     .map((word) => word[0])
@@ -98,7 +98,7 @@ export function UserCard({
       open={flyoutOpen}
       onOpenChange={(open) => {
         setFlyoutOpen(open)
-        if (!open) setAddWorkspaceOpen(false)
+        if (!open) setWorkspacesOpen(false)
       }}
     >
       <DropdownMenuTrigger
@@ -222,24 +222,24 @@ export function UserCard({
           </div>
         </div>
 
-        {/* Add workspace (expandable — carries switching + creation) */}
+        {/* Workspaces (expandable — carries switching + creation) */}
         <div className="border-t border-border-default">
           <button
             type="button"
-            onClick={() => setAddWorkspaceOpen((value) => !value)}
-            aria-expanded={addWorkspaceOpen}
+            onClick={() => setWorkspacesOpen((value) => !value)}
+            aria-expanded={workspacesOpen}
             className="cursor-pointer flex h-10 w-full items-center gap-3 px-2 text-sm tracking-wider text-text-neutral-default transition-colors hover:bg-background-main-secondary [&_svg]:size-[18px]"
           >
-            <Plus className="size-4 text-icon-neutral-secondary" />
-            <span className="flex-1 text-left">Add workspace</span>
+            <Buildings className="size-4 text-icon-neutral-secondary" />
+            <span className="flex-1 text-left">Workspaces</span>
             <CaretRight
               className={cn(
                 'size-3.5 text-icon-neutral-tertiary transition-transform',
-                addWorkspaceOpen && 'rotate-90',
+                workspacesOpen && 'rotate-90',
               )}
             />
           </button>
-          {addWorkspaceOpen ? (
+          {workspacesOpen ? (
             <div className="px-4 pb-3">
               <div className="max-h-40 overflow-y-auto">
                 {workspaces.map((workspace) => {
