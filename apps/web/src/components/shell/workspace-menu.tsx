@@ -35,7 +35,7 @@ const menuItemClass =
  * and Learn more rendered disabled until those surfaces exist.
  *
  * Workspace switching/creation deliberately lives elsewhere: the account
- * flyout's "Add workspace" row (design's account flow). Collapse control
+ * flyout's "Workspaces" row (design's account flow). Collapse control
  * lives in the top bar.
  */
 export function WorkspaceMenu({
