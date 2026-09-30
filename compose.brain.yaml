@@ -3,9 +3,14 @@ services:
     image: ghcr.io/helixdb/helixdb:v0.0.4
     restart: unless-stopped
     environment:
-      HELIX_DATA_DIR: /var/lib/helix
-    volumes:
-      - helix-data:/var/lib/helix
+      # R2 (S3-compatible) object storage. Required vars fail fast so the stack
+      # never silently falls back to in-memory mode (data loss on restart).
+      S3_BUCKET: ${S3_BUCKET:?set S3_BUCKET to the R2 bucket name}
+      S3_REGION: ${S3_REGION:-auto}
+      DB_PATH: ${DB_PATH:-production/}
+      AWS_ENDPOINT: ${AWS_ENDPOINT:?set AWS_ENDPOINT to the R2 S3 endpoint URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?set AWS_ACCESS_KEY_ID for the R2 token}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?set AWS_SECRET_ACCESS_KEY for the R2 token}
 
   gateway:
     image: caddy:2-alpine
@@ -51,5 +56,3 @@ configs:
           respond "Unauthorized" 401
       }
 
-volumes:
-  helix-data:

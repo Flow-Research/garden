@@ -52,7 +52,7 @@ HelixDB provides graph and vector storage and query execution. It:
 - Listens internally on port `8080`.
 - Is accessible only through the private Docker network.
 - Has no public domain or host port.
-- Uses a persistent Docker volume until R2 storage is available.
+- Uses Cloudflare R2 (S3-compatible object storage) for persistence.
 
 ### Docker Compose
 
@@ -61,8 +61,8 @@ Docker Compose:
 - Defines the HelixDB and Caddy services.
 - Places both services on the same private network.
 - Provides service discovery through the hostname `helix`.
-- Manages the persistent `helix-data` volume.
 - Supplies the gateway environment variable and Caddy configuration.
+- Passes the R2 object-storage credentials to HelixDB.
 
 ### Coolify
 
@@ -87,9 +87,8 @@ compose.brain.yaml
 
 It contains:
 
-- `helix` — the private HelixDB service.
+- `helix` — the private HelixDB service, backed by R2 object storage.
 - `gateway` — the Caddy authentication and reverse-proxy service.
-- `helix-data` — persistent local storage for HelixDB.
 - `brain-caddyfile` — the embedded Caddy gateway configuration.
 
 ## Docker Compose configuration
@@ -100,9 +99,12 @@ services:
     image: ghcr.io/helixdb/helixdb:v0.0.4
     restart: unless-stopped
     environment:
-      HELIX_DATA_DIR: /var/lib/helix
-    volumes:
-      - helix-data:/var/lib/helix
+      S3_BUCKET: ${S3_BUCKET:?set S3_BUCKET to the R2 bucket name}
+      S3_REGION: ${S3_REGION:-auto}
+      DB_PATH: ${DB_PATH:-production/}
+      AWS_ENDPOINT: ${AWS_ENDPOINT:?set AWS_ENDPOINT to the R2 S3 endpoint URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?set AWS_ACCESS_KEY_ID for the R2 token}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?set AWS_SECRET_ACCESS_KEY for the R2 token}
 
   gateway:
     image: caddy:2-alpine
@@ -147,9 +149,6 @@ configs:
 
           respond "Unauthorized" 401
       }
-
-volumes:
-  helix-data:
 ```
 
 The `${BRAIN_API_SECRET}` reference inside the Caddy configuration is intentionally resolved by Docker Compose from the deployment environment.
@@ -327,50 +326,22 @@ A request with the correct secret but an invalid Helix query should receive a He
 
 ## Storage
 
-The initial deployment uses:
+HelixDB persists to Cloudflare R2 through its S3-compatible object-storage mode:
 
 ```env
-HELIX_DATA_DIR=/var/lib/helix
+S3_BUCKET=<r2-bucket-name>
+S3_REGION=auto
+DB_PATH=production/
+AWS_ENDPOINT=<r2-s3-endpoint-url>
+AWS_ACCESS_KEY_ID=<r2-token-access-key>
+AWS_SECRET_ACCESS_KEY=<r2-token-secret-key>
 ```
 
-with the persistent Docker volume:
+`S3_BUCKET`, `AWS_ENDPOINT`, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are required. The Compose file uses `${VAR:?...}` required-variable syntax so a deploy with missing R2 configuration fails fast instead of silently starting Helix in in-memory mode, where all data is lost on restart.
 
-```text
-helix-data
-```
+Do not set `HELIX_DATA_DIR`. Helix rejects a configuration that sets both `HELIX_DATA_DIR` and `S3_BUCKET`.
 
-This allows the deployment to run before Cloudflare R2 is ready.
-
-Do not remove the volume while it contains data that must be preserved.
-
-## Migrating to R2
-
-Helix supports either local persistent storage or S3-compatible object storage. `HELIX_DATA_DIR` and `S3_BUCKET` must not be configured simultaneously.
-
-When R2 is ready, remove the following from the `helix` service:
-
-```yaml
-environment:
-  HELIX_DATA_DIR: /var/lib/helix
-volumes:
-  - helix-data:/var/lib/helix
-```
-
-Replace it with:
-
-```yaml
-environment:
-  S3_BUCKET: ${S3_BUCKET}
-  S3_REGION: ${S3_REGION:-auto}
-  DB_PATH: ${DB_PATH:-production/}
-  AWS_ENDPOINT: ${AWS_ENDPOINT}
-  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-```
-
-Add the corresponding values to the deployment environment as protected variables.
-
-Plan the data migration before switching storage modes. Changing the configuration does not automatically copy existing local-volume data into R2.
+The R2 token needs read/write access to the bucket only.
 
 ## Secret rotation
 
