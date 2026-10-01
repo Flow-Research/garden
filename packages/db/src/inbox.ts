@@ -16,6 +16,7 @@ type InboxItemType =
   | 'task_failed'
   | 'waiting_for_input'
   | 'wp_review'
+  | 'connector_needed'
 
 type InboxWrite = {
   workspaceId: string
@@ -335,6 +336,47 @@ export async function upsertWorkProductReviewInbox(args: {
           row.workProduct.updatedAt,
           row.workProduct.createdAt,
         ),
+      }),
+    ),
+  )
+}
+
+export async function upsertConnectorNeededInbox(args: {
+  db: GardenDb
+  workspaceId: string
+  issueId: string
+  connectorId: string
+  connectorLabel: string
+  reason: string
+  runId: string
+  agentId?: string | null
+}): Promise<void> {
+  const issue = await loadIssue(args.db, args.workspaceId, args.issueId)
+  if (!issue || issue.status === 'done' || issue.status === 'cancelled') return
+
+  const recipients = await issueRecipientIds(args.db, issue)
+  await Promise.all(
+    recipients.map((recipientId) =>
+      upsertInboxItem(args.db, {
+        workspaceId: args.workspaceId,
+        recipientId,
+        itemKey: `connector_needed:${args.issueId}:${args.connectorId}`,
+        type: 'connector_needed',
+        severity: 'action_required',
+        issueId: issue.id,
+        issueStatus: issue.status,
+        title: `Connect ${args.connectorLabel} to continue`,
+        body: truncate(args.reason),
+        actorType: 'agent',
+        actorId: args.agentId ?? null,
+        details: {
+          ...issueDetails(issue),
+          kind: 'connector_needed',
+          connector_id: args.connectorId,
+          connector_label: args.connectorLabel,
+          run_id: args.runId,
+        },
+        activityAt: preferDate(issue.updatedAt, issue.createdAt),
       }),
     ),
   )

@@ -53,7 +53,7 @@ export function RunPlanCard({ todos, streaming = false }: RunPlanCardProps) {
               <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center">
                 {todo.status === 'completed' ? (
                   <Check className="h-3.5 w-3.5 text-success" />
-                ) : todo.status === 'in_progress' ? (
+                ) : todo.status === 'in_progress' && streaming ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-info" />
                 ) : (
                   <Circle className="h-3 w-3 text-muted-foreground/50" />

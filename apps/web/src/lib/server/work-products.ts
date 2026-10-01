@@ -509,7 +509,7 @@ async function approveWorkProduct(args: {
 }): Promise<ResultValue<WorkProductReviewOutcome, WorkProductReviewError>> {
   const contextResult = await loadWorkProductContext(args)
   if (contextResult.isErr()) return Result.err(contextResult.error)
-  const { workProduct } = contextResult.value
+  const { issue, workProduct } = contextResult.value
   if (!workProduct.runId) {
     return Result.err(invalidState('Work product is not tied to an issue run'))
   }
@@ -576,6 +576,30 @@ async function approveWorkProduct(args: {
             work_product_id: workProduct.id,
           },
         })
+        const [moved] = await tx
+          .update(schema.issue)
+          .set({ status: 'done', updatedAt: now })
+          .where(
+            and(
+              eq(schema.issue.id, issue.id),
+              eq(schema.issue.status, 'in_review'),
+            ),
+          )
+          .returning({ id: schema.issue.id })
+        if (moved) {
+          await tx.insert(schema.issueRunEvent).values({
+            id: crypto.randomUUID(),
+            workspaceId: workProduct.workspaceId,
+            issueId: workProduct.issueId,
+            runId: workProduct.runId as string,
+            seq: nextSeq + 1,
+            eventType: 'issue_run:message',
+            stream: 'system',
+            level: 'info',
+            message: 'Issue moved to done after review',
+            payload: { from: 'in_review', to: 'done' },
+          })
+        }
       })
     },
     catch: (cause) => dbError('Failed to approve work product', cause),

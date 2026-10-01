@@ -477,6 +477,7 @@ export function useCreateComment(issueId: string) {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: issueKeys.timeline(issueId) })
+      qc.invalidateQueries({ queryKey: issueKeys.activeRun(issueId) })
     },
   })
 }

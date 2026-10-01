@@ -8,6 +8,7 @@ import {
   MessageCircle,
   MessageCircleQuestion,
   MessageSquare,
+  Plug,
   ShieldAlert,
   UserPlus,
   XCircle,
@@ -108,6 +109,18 @@ function previewFor(item: InboxItem): Preview {
           </p>
         ),
       }
+    case 'brain_proposal':
+      return {
+        tone: 'action',
+        Icon: FileText,
+        label: 'Knowledge to review',
+        cta: 'Review knowledge',
+        body: bodyParagraph(item.body) ?? (
+          <p className="text-sm text-muted-foreground">
+            Garden proposed knowledge for the Org Brain. Approve or reject it.
+          </p>
+        ),
+      }
     case 'wp_review': {
       const wpType = details.work_product_type ?? 'brief'
       const Icon = WORK_PRODUCT_ICON[wpType] ?? FileText
@@ -145,6 +158,18 @@ function previewFor(item: InboxItem): Preview {
         body: bodyParagraph(item.body) ?? (
           <p className="text-sm text-muted-foreground">
             Work paused. Garden needs a decision or a dependency cleared.
+          </p>
+        ),
+      }
+    case 'connector_needed':
+      return {
+        tone: 'action',
+        Icon: Plug,
+        label: 'Connector needed',
+        cta: 'Connect connector',
+        body: bodyParagraph(item.body) ?? (
+          <p className="text-sm text-muted-foreground">
+            Connect a connector to continue.
           </p>
         ),
       }

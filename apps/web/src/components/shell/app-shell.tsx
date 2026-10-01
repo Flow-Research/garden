@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 import {
   Outlet,
   useNavigate,
@@ -15,6 +15,7 @@ import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { useAuthStore } from '@garden/app-state/auth'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { deduplicateInboxItems, inboxListOptions } from '@/lib/inbox/queries'
+import { subscribeInboxToasts } from '@/features/inbox/inbox-toast'
 import { workspaceListOptions } from '@/lib/workspace/queries'
 import {
   agentListOptions,
@@ -95,6 +96,8 @@ function WorkspaceSetupState({ onCreate }: { onCreate: () => void }) {
   )
 }
 
+const getInboxToastSnapshot = () => 0
+
 /**
  * The redesigned app shell: flat labeled sidebar + 40px top bar + routed
  * content pane (Penpot "Garden" file, 2026-09). Replaces the icon rail +
@@ -136,10 +139,26 @@ export function AppShell() {
     [memberListQuery.data, user?.id],
   )
 
-  const unreadCount = useMemo(
-    () =>
-      deduplicateInboxItems(rawInboxItems).filter((item) => !item.read).length,
+  const unreadInboxItems = useMemo(
+    () => deduplicateInboxItems(rawInboxItems).filter((item) => !item.read),
     [rawInboxItems],
+  )
+  const unreadCount = unreadInboxItems.length
+
+  const openInbox = useCallback(() => navigate({ to: '/inbox' }), [navigate])
+  const subscribeInbox = useCallback(
+    () =>
+      subscribeInboxToasts({
+        queryClient,
+        workspaceId,
+        onOpen: openInbox,
+      }),
+    [queryClient, workspaceId, openInbox],
+  )
+  useSyncExternalStore(
+    subscribeInbox,
+    getInboxToastSnapshot,
+    getInboxToastSnapshot,
   )
 
   const activeNavId = navItemForPathname(pathname)?.id ?? null

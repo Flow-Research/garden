@@ -2,6 +2,7 @@ export { AgentDO, ChatSubAgent } from './agent-do'
 export { IssueRunSubAgent } from './issue-run-sub-agent'
 export { AutomationRunSubAgent } from './automation-run-sub-agent'
 export { BrainAuditSubAgent } from './brain-audit-sub-agent'
+export { BrainWriteBackSubAgent } from './brain-write-back-sub-agent'
 export type { BrainAuditRunInput } from './brain-audit'
 export { AutomationTriggerDO } from './automation-trigger-do'
 export {

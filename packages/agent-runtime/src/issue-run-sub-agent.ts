@@ -25,6 +25,7 @@ import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
 import { classifyConnectorError } from '@garden/core/connectors/errors'
 import { createGardenLogger } from '@garden/observability/logger'
+import { latestUserText, loadBrainInjection } from './brain-injection'
 import {
   GARDEN_ANALYTICS_EVENTS,
   type GardenAnalyticsEventName,
@@ -403,6 +404,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
               workspaceId: run.workspaceId,
               agentId: run.agentId,
               runId: run.runId,
+              userId: run.agentOwnerUserId,
             }
           },
         },
@@ -480,6 +482,43 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       },
     )
 
+    const brainContext = (
+      await Result.tryPromise({
+        try: () =>
+          loadBrainInjection({
+            env: {
+              ...(this.env.HELIX_URL === undefined
+                ? {}
+                : { HELIX_URL: this.env.HELIX_URL }),
+              ...(this.env.HELIX_API_KEY === undefined
+                ? {}
+                : { HELIX_API_KEY: this.env.HELIX_API_KEY }),
+            },
+            ai: this.env.AI,
+            files: this.env.BRAIN_FILES,
+            workspaceId: loadedResult.value.runState.workspaceId,
+            viewer: {
+              teamIds: new Set<string>(),
+              userId: loadedResult.value.runState.agentOwnerUserId,
+            },
+            query: latestUserText(ctx.messages),
+            log: (event) =>
+              console.info('[brain-injection]', {
+                ...event,
+                surface: 'issue_run',
+              }),
+          }),
+        catch: (cause) =>
+          cause instanceof Error ? cause.message : String(cause),
+      })
+    ).match({
+      ok: (injection) => injection.text,
+      err: (error) => {
+        console.warn('[agent-runtime] brain injection failed', { error })
+        return ''
+      },
+    })
+
     return {
       model: createAgentModel({
         ai: this.env.AI,
@@ -502,7 +541,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       maxSteps: this.maxSteps,
       sendReasoning: true,
       stopWhen: ISSUE_RUN_TERMINAL_TOOL_STOP_CONDITIONS,
-      system: `${ctx.system}\n\n${loadedResult.value.contextBlock}`,
+      system: `${ctx.system}\n\n${[loadedResult.value.contextBlock, brainContext].filter((part) => part.trim() !== '').join('\n\n')}`,
       tools: stableMcpTools,
       activeTools: mcpController.activeToolKeysWithoutRawMcp({
         assembledTools: ctx.tools,
@@ -856,7 +895,12 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   async completeWorkflowTurn(input: {
     runId: string
     submissionId: string
-  }): Promise<{ status: string }> {
+  }): Promise<{
+    status: string
+    workspaceId: string | null
+    ownerUserId: string | null
+    summary: string
+  }> {
     const inspectionResult = await Result.tryPromise({
       try: async () => await this.inspectSubmission(input.submissionId),
       catch: (cause) => cause,
@@ -919,7 +963,18 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       await this.forceCloseFailed(input.runId, statusResult.error.message)
       throw new Error(statusResult.error.message)
     }
-    return { status: statusResult.value }
+    const runStateResult = await this.loadRunState(input.runId)
+    const summaryResult = await this.readRunSummary(input.runId)
+    return {
+      status: statusResult.value,
+      workspaceId: runStateResult.isOk()
+        ? runStateResult.value.workspaceId
+        : null,
+      ownerUserId: runStateResult.isOk()
+        ? runStateResult.value.agentOwnerUserId
+        : null,
+      summary: summaryResult.isOk() ? summaryResult.value : '',
+    }
   }
 
   async requestCancel(input: {
@@ -1310,6 +1365,45 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
         return row?.status ?? 'unknown'
       },
       catch: (cause) => dbError('load issue run status', cause),
+    })
+    if (result.isErr()) return Result.err(result.error)
+    return Result.ok(result.value)
+  }
+
+  private async readRunSummary(
+    runId: string,
+  ): Promise<ResultValue<string, IssueRunSubAgentError>> {
+    const result = await Result.tryPromise({
+      try: async () => {
+        const db = this.getDb()
+        const products = await db
+          .select({
+            title: schema.issueWorkProduct.title,
+            body: schema.issueWorkProduct.body,
+          })
+          .from(schema.issueWorkProduct)
+          .where(eq(schema.issueWorkProduct.runId, runId))
+          .orderBy(desc(schema.issueWorkProduct.createdAt))
+          .limit(3)
+        const productText = products
+          .map((product) =>
+            [product.title, product.body]
+              .filter(
+                (part): part is string => part !== null && part.trim() !== '',
+              )
+              .join('\n'),
+          )
+          .join('\n\n')
+          .trim()
+        if (productText !== '') return productText
+        const [run] = await db
+          .select({ error: schema.issueRun.error })
+          .from(schema.issueRun)
+          .where(eq(schema.issueRun.id, runId))
+          .limit(1)
+        return (run?.error ?? '').trim()
+      },
+      catch: (cause) => dbError('read issue run summary', cause),
     })
     if (result.isErr()) return Result.err(result.error)
     return Result.ok(result.value)

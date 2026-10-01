@@ -184,4 +184,112 @@ layer(BrainTestLive, { excludeTestServices: true })('brain', (it) => {
         }),
       ),
   )
+
+  it.effect.skipIf(skipHelixIntegration)(
+    'keeps a user scoped note out of another viewer results',
+    () =>
+      Effect.gen(function* () {
+        const brain = yield* Brain
+        yield* brain.ensureIndexes()
+        const owner = { teamIds: new Set<string>(), userId: 'owner-user' }
+        const stranger = { teamIds: new Set<string>(), userId: 'other-user' }
+        const added = yield* brain.addText({
+          tenantId: workspaceId,
+          label: 'Private note',
+          body: 'the secret solarpunk roadmap stays with the owner',
+          scope: { kind: 'user', userId: 'owner-user' },
+          actor: { _tag: 'Agent' as const, agentId: 'agent', runId: 'run' },
+        })
+        expect(added.scope).toEqual({ kind: 'user', userId: 'owner-user' })
+
+        const ownerHits = yield* brain.search({
+          tenantId: workspaceId,
+          query: 'secret solarpunk roadmap',
+          k: 5,
+          viewer: owner,
+        })
+        expect(ownerHits.some((hit) => hit.item.id === added.id)).toBe(true)
+
+        const strangerHits = yield* brain.search({
+          tenantId: workspaceId,
+          query: 'secret solarpunk roadmap',
+          k: 5,
+          viewer: stranger,
+        })
+        expect(strangerHits.some((hit) => hit.item.id === added.id)).toBe(false)
+
+        expect(yield* brain.read(added.id, workspaceId, stranger)).toBeNull()
+        expect((yield* brain.read(added.id, workspaceId, owner))?.id).toBe(
+          added.id,
+        )
+      }),
+  )
+
+  it.effect.skipIf(skipHelixIntegration)(
+    'shows an org note to every viewer',
+    () =>
+      Effect.gen(function* () {
+        const brain = yield* Brain
+        yield* brain.ensureIndexes()
+        const added = yield* brain.addText({
+          tenantId: workspaceId,
+          label: 'Shared note',
+          body: 'the quixotic harbor manifest belongs to the whole org',
+          actor: { _tag: 'Agent' as const, agentId: 'agent', runId: 'run' },
+        })
+        expect(added.scope).toEqual({ kind: 'org' })
+
+        for (const userId of ['owner-user', 'other-user', undefined] as const) {
+          const hits = yield* brain.search({
+            tenantId: workspaceId,
+            query: 'quixotic harbor manifest',
+            k: 5,
+            viewer: { teamIds: new Set<string>(), userId },
+          })
+          expect(hits.some((hit) => hit.item.id === added.id)).toBe(true)
+        }
+      }),
+  )
+
+  it.effect.skipIf(skipHelixIntegration)(
+    'returns k visible notes when a higher-ranked invisible note matches',
+    () =>
+      Effect.gen(function* () {
+        const brain = yield* Brain
+        yield* brain.ensureIndexes()
+        const token = `zephyrous-quokka-${crypto.randomUUID()}`
+        const stranger = { teamIds: new Set<string>(), userId: 'other-user' }
+
+        const hidden = yield* brain.addText({
+          tenantId: workspaceId,
+          label: 'Private protocol',
+          body: `the ${token} protocol ${token} ${token} ${token} ${token}`,
+          scope: { kind: 'user', userId: 'owner-user' },
+          actor: { _tag: 'Agent' as const, agentId: 'agent', runId: 'run' },
+        })
+        for (let index = 0; index < 5; index += 1) {
+          yield* brain.addText({
+            tenantId: workspaceId,
+            label: `Shared protocol ${index}`,
+            body: `quarterly planning notes and travel receipts while mentioning the ${token} protocol once`,
+            actor: { _tag: 'Agent' as const, agentId: 'agent', runId: 'run' },
+          })
+        }
+
+        const strangerHits = yield* brain.search({
+          tenantId: workspaceId,
+          query: `the ${token} protocol`,
+          k: 5,
+          viewer: stranger,
+        })
+
+        expect(strangerHits).toHaveLength(5)
+        expect(strangerHits.some((hit) => hit.item.id === hidden.id)).toBe(
+          false,
+        )
+        expect(
+          strangerHits.every((hit) => hit.item.scope?.kind !== 'user'),
+        ).toBe(true)
+      }),
+  )
 })
