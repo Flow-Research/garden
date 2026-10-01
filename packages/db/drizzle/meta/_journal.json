@@ -344,6 +344,13 @@
       "when": 1788790387452,
       "tag": "0048_grey_vertigo",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1790877360429,
+      "tag": "0049_harsh_lifeguard",
+      "breakpoints": true
     }
   ]
 }
