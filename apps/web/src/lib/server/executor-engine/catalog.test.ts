@@ -2,6 +2,7 @@ import { Effect, Option } from 'effect'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   catalogCandidateSource,
+  filterAndOrderExecutorProviders,
   getFeaturedExecutorCatalog,
   listServerOwnedExecutorProviders,
   projectExecutorProviders,
@@ -217,5 +218,39 @@ describe('Executor server-owned preset catalog', () => {
           ?.candidates.map(catalogCandidateSource),
       ),
     ).toEqual(new Set(['native', 'mcp']))
+  })
+
+  it('orders exact names before partial names and description-only matches', () => {
+    const github = providers.find((provider) => provider.name === 'GitHub')
+    const partialName = providers.find((provider) =>
+      provider.name.toLowerCase().includes('post'),
+    )
+    expect(github).toBeDefined()
+    expect(partialName).toBeDefined()
+
+    if (github === undefined || partialName === undefined) return
+    const ranked = filterAndOrderExecutorProviders(
+      [
+        { ...partialName, name: 'GitHub Actions' },
+        { ...partialName, name: 'Alpha', description: 'Works with GitHub.' },
+        github,
+      ],
+      { query: 'github', category: '' },
+    )
+
+    expect(ranked.map((provider) => provider.name).slice(0, 3)).toEqual([
+      'GitHub',
+      'GitHub Actions',
+      'Alpha',
+    ])
+  })
+
+  it('matches underscore filters against hyphenated provider categories', () => {
+    const matches = filterAndOrderExecutorProviders(providers, {
+      query: 'github',
+      category: 'developer_tools',
+    })
+
+    expect(matches.some((provider) => provider.name === 'GitHub')).toBe(true)
   })
 })

@@ -569,6 +569,62 @@ const providerNameOrder = (
   comparison: CatalogProvider,
 ): number => provider.name.localeCompare(comparison.name)
 
+const canonicalCategory = (category: string): string =>
+  category.trim().toLowerCase().replaceAll('_', '-')
+
+/** Score a matching provider by the field that matched. The catalog previously
+ * discarded this signal and sorted every match alphabetically, burying the
+ * connector whose name the user entered beneath description-only results. */
+const providerSearchRank = (
+  provider: CatalogProvider,
+  query: string,
+): number | null => {
+  if (query.length === 0) return 0
+
+  const name = provider.name.toLowerCase()
+  if (name === query) return 0
+  if (name.includes(query)) return 1
+
+  const identityValues = [String(provider.providerId), String(provider.domain)]
+  if (identityValues.some((value) => value.toLowerCase().includes(query))) {
+    return 2
+  }
+  if (provider.description.toLowerCase().includes(query)) return 3
+  return null
+}
+
+/** Apply registry filters before pagination. Category separators are
+ * canonicalized because integrations.sh uses underscores while server-owned
+ * providers use hyphens. Search order promotes exact names, partial names,
+ * provider identities, then description-only matches; names break rank ties. */
+export const filterAndOrderExecutorProviders = (
+  providers: readonly CatalogProvider[],
+  input: { readonly query: string; readonly category: string },
+): readonly CatalogProvider[] => {
+  const query = input.query.trim().toLowerCase()
+  const category = canonicalCategory(input.category)
+
+  return providers
+    .filter(
+      (provider) =>
+        category.length === 0 ||
+        provider.categories.some(
+          (providerCategory) =>
+            canonicalCategory(providerCategory) === category,
+        ),
+    )
+    .flatMap((provider) => {
+      const rank = providerSearchRank(provider, query)
+      return rank === null ? [] : [{ provider, rank }]
+    })
+    .sort(
+      (match, comparison) =>
+        match.rank - comparison.rank ||
+        providerNameOrder(match.provider, comparison.provider),
+    )
+    .map(({ provider }) => provider)
+}
+
 const withHttpClient = <A, E>(
   effect: Effect.Effect<A, E, HttpClient.HttpClient>,
 ): Effect.Effect<A, E> => Effect.provide(effect, FetchHttpClient.layer)
@@ -643,22 +699,7 @@ export const searchExecutorCatalog = Effect.fn('ExecutorCatalog.search')(
   }) {
     const catalog = yield* withHttpClient(integrations.catalog())
     const providers = projectExecutorProviders(catalog.data)
-    const matches = providers
-      .filter((provider) => {
-        if (input.category.length === 0) return true
-        return provider.categories.includes(input.category)
-      })
-      .filter((provider) => {
-        if (input.query.length === 0) return true
-        const values = [
-          provider.name,
-          String(provider.providerId),
-          String(provider.domain),
-          provider.description,
-        ]
-        return values.some((value) => value.toLowerCase().includes(input.query))
-      })
-    matches.sort(providerNameOrder)
+    const matches = filterAndOrderExecutorProviders(providers, input)
 
     const page = matches.slice(input.offset, input.offset + input.limit)
     const next = input.offset + page.length
