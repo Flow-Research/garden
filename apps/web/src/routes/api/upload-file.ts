@@ -10,6 +10,7 @@ import {
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import { badRequest, requireWorkspaceContext } from '@/lib/server/control-plane'
+import { requireIssueAccess } from '@/lib/server/issue-access'
 import { toIssueAttachment } from '@garden/server/issues/server'
 
 class IssueAttachmentUploadError extends TaggedError(
@@ -86,11 +87,19 @@ export const Route = createFileRoute('/api/upload-file')({
           if (!issue || issue.workspaceId !== workspaceContext.workspaceId) {
             return badRequest('Issue attachment target not found')
           }
+          const issueAccess = await requireIssueAccess(
+            appContext,
+            requestedIssueId,
+          )
+          if (issueAccess instanceof Response) return issueAccess
         }
 
         if (requestedCommentId) {
           const [comment] = await db
-            .select({ workspaceId: schema.issue.workspaceId })
+            .select({
+              workspaceId: schema.issue.workspaceId,
+              issueId: schema.issueComment.issueId,
+            })
             .from(schema.issueComment)
             .innerJoin(
               schema.issue,
@@ -104,6 +113,11 @@ export const Route = createFileRoute('/api/upload-file')({
           ) {
             return badRequest('Comment attachment target not found')
           }
+          const commentAccess = await requireIssueAccess(
+            appContext,
+            comment.issueId,
+          )
+          if (commentAccess instanceof Response) return commentAccess
         }
 
         const attachmentId = crypto.randomUUID()

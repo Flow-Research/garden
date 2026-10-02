@@ -1,13 +1,12 @@
-import { eq } from 'drizzle-orm'
+
 import { createFileRoute } from '@tanstack/react-router'
 import { setIssueSubscription } from '@garden/db/subscribers'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { schema } from '@/lib/server/db'
+
 import {
   badRequest,
-  notFound,
-  requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
+import { requireIssueAccess } from '@/lib/server/issue-access'
 
 export const Route = createFileRoute('/api/issues/$id/subscribe')({
   server: {
@@ -20,18 +19,10 @@ export const Route = createFileRoute('/api/issues/$id/subscribe')({
        */
       POST: async ({ context, request, params }) => {
         const appContext = requireAppRequestContext(context)
-        const db = await appContext.db()
-        const [issue] = await db
-          .select({ workspaceId: schema.issue.workspaceId })
-          .from(schema.issue)
-          .where(eq(schema.issue.id, params.id))
-        if (!issue) return notFound('Issue not found')
-
-        const access = await requireWorkspaceAccess(
-          appContext,
-          issue.workspaceId,
-        )
+        const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
+        const db = access.db
+        const issue = access.issue
 
         const body = (await request.json().catch(() => ({}))) as {
           user_id?: string

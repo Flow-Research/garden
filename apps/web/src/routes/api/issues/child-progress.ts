@@ -1,29 +1,49 @@
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import {
   requireSession,
+  requireWorkspaceAccess,
   resolveWorkspaceId,
   unauthorized,
 } from '@/lib/server/control-plane'
+import { teamIssueVisibilityCondition } from '@/lib/server/issue-access'
+import { isWorkspaceManager } from '@/lib/server/team-access'
 
 export const Route = createFileRoute('/api/issues/child-progress')({
   server: {
     handlers: {
-      GET: async ({ context, request }) => {
+      GET: async ({ context }) => {
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
+        const workspaceId = await resolveWorkspaceId(
+          appContext,
+          session.user.id,
+        )
         if (!workspaceId) return Response.json({ progress: [] })
+
+        const workspaceAccess = await requireWorkspaceAccess(
+          appContext,
+          workspaceId,
+        )
+        if (workspaceAccess instanceof Response) return workspaceAccess
 
         const db = await appContext.db()
         const rows = await db
           .select()
           .from(schema.issue)
-          .where(eq(schema.issue.workspaceId, workspaceId))
+          .where(
+            and(
+              eq(schema.issue.workspaceId, workspaceId),
+              teamIssueVisibilityCondition({
+                viewerId: session.user.id,
+                manager: isWorkspaceManager(workspaceAccess.membership.role),
+              }),
+            ),
+          )
 
         const progress = Array.from(
           rows.reduce((map, issue) => {

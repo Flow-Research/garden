@@ -9,12 +9,41 @@ import {
   notFound,
   requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
+import { requireIssueAccess } from '@/lib/server/issue-access'
 
 class IssueAttachmentStorageError extends TaggedError(
   'IssueAttachmentStorageError',
 )<{
   message: string
 }>() {}
+
+/**
+ * Attachments inherit the access rules of the issue they belong to. Rows with
+ * no issue/comment (legacy uploads) fall back to workspace membership.
+ */
+async function requireAttachmentAccess(
+  appContext: ReturnType<typeof requireAppRequestContext>,
+  request: Request,
+  attachment: typeof schema.issueAttachment.$inferSelect,
+) {
+  let issueId = attachment.issueId
+  if (!issueId && attachment.commentId) {
+    const [comment] = await appContext
+      .db()
+      .then((db) =>
+        db
+          .select({ issueId: schema.issueComment.issueId })
+          .from(schema.issueComment)
+          .where(eq(schema.issueComment.id, attachment.commentId as string)),
+      )
+    issueId = comment?.issueId ?? null
+  }
+
+  if (issueId) {
+    return await requireIssueAccess(appContext, issueId)
+  }
+  return await requireWorkspaceAccess(request, attachment.workspaceId)
+}
 
 /**
  * Serves and deletes issue attachment bytes from FILES only after workspace
@@ -37,9 +66,10 @@ export const Route = createFileRoute('/api/attachments/$id')({
           .limit(1)
         if (!attachment) return notFound('Attachment not found')
 
-        const access = await requireWorkspaceAccess(
+        const access = await requireAttachmentAccess(
+          appContext,
           request,
-          attachment.workspaceId,
+          attachment,
         )
         if (access instanceof Response) return access
 
@@ -77,9 +107,10 @@ export const Route = createFileRoute('/api/attachments/$id')({
           .limit(1)
         if (!attachment) return notFound('Attachment not found')
 
-        const access = await requireWorkspaceAccess(
+        const access = await requireAttachmentAccess(
+          appContext,
           request,
-          attachment.workspaceId,
+          attachment,
         )
         if (access instanceof Response) return access
 
