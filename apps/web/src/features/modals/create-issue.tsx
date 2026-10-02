@@ -94,6 +94,14 @@ export function CreateIssueModal({
   const setDraft = useIssueDraftStore((s) => s.setDraft)
   const clearDraft = useIssueDraftStore((s) => s.clearDraft)
 
+  // Team-scoped creates carry team_id; normal Team members are locked to
+  // self-assignment (the server enforces the same rule).
+  const teamId = typeof data?.team_id === 'string' ? data.team_id : undefined
+  const lockedAssigneeUserId =
+    typeof data?.lock_assignee_user_id === 'string'
+      ? data.lock_assignee_user_id
+      : undefined
+
   const [title, setTitle] = useState(draft.title)
   const descEditorRef = useRef<ContentEditorRef>(null)
   const { isDragOver: descDragOver, dropZoneProps: descDropZoneProps } =
@@ -108,9 +116,9 @@ export function CreateIssueModal({
   const [submitting, setSubmitting] = useState(false)
   const [assigneeType, setAssigneeType] = useState<
     IssueAssigneeType | undefined
-  >(draft.assigneeType)
+  >(lockedAssigneeUserId ? 'member' : draft.assigneeType)
   const [assigneeId, setAssigneeId] = useState<string | undefined>(
-    draft.assigneeId,
+    lockedAssigneeUserId ?? draft.assigneeId,
   )
   const [dueDate, setDueDate] = useState<string | null>(draft.dueDate)
   const [projectId, setProjectId] = useState<string | undefined>(
@@ -165,8 +173,9 @@ export function CreateIssueModal({
         description: descEditorRef.current?.getMarkdown()?.trim() || undefined,
         status,
         priority,
-        assignee_type: assigneeType,
-        assignee_id: assigneeId,
+        assignee_type: lockedAssigneeUserId ? 'member' : assigneeType,
+        assignee_id: lockedAssigneeUserId ?? assigneeId,
+        team_id: teamId,
         due_date: dueDate || undefined,
         attachment_ids: attachmentIds.length > 0 ? attachmentIds : undefined,
         auto_start: autoStart,
@@ -379,18 +388,24 @@ export function CreateIssueModal({
               />
 
               {/* Assignee */}
-              <AssigneePicker
-                assigneeType={assigneeType ?? null}
-                assigneeId={assigneeId ?? null}
-                onUpdate={(u) =>
-                  updateAssignee(
-                    u.assignee_type ?? undefined,
-                    u.assignee_id ?? undefined,
-                  )
-                }
-                triggerRender={<PillButton />}
-                align="start"
-              />
+              {lockedAssigneeUserId ? (
+                <span className="flex h-7 items-center rounded-full bg-muted px-3 text-xs text-muted-foreground">
+                  Assigned to you
+                </span>
+              ) : (
+                <AssigneePicker
+                  assigneeType={assigneeType ?? null}
+                  assigneeId={assigneeId ?? null}
+                  onUpdate={(u) =>
+                    updateAssignee(
+                      u.assignee_type ?? undefined,
+                      u.assignee_id ?? undefined,
+                    )
+                  }
+                  triggerRender={<PillButton />}
+                  align="start"
+                />
+              )}
 
               {/* Due date */}
               <DueDatePicker
