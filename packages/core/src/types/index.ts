@@ -62,6 +62,20 @@ export type {
 } from './workspace'
 export type { InboxItem, InboxSeverity, InboxItemType } from './inbox'
 export type {
+  Team,
+  TeamSummary,
+  TeamMember,
+  TeamMemberKind,
+  TeamCurrentMembership,
+  AddTeamMemberRequest,
+  CreateTeamRequest,
+  UpdateTeamRequest,
+  TransferTeamOwnerRequest,
+  ListTeamIssuesParams,
+  ListTeamsResponse,
+  ListTeamMembersResponse,
+} from './team'
+export type {
   Comment,
   CommentType,
   CommentAuthorType,

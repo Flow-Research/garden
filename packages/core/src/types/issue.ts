@@ -22,6 +22,7 @@ export interface IssueReaction {
 export interface Issue {
   id: string
   workspace_id: string
+  team_id: string | null
   number: number
   identifier: string
   title: string
