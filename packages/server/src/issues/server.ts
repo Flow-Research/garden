@@ -226,6 +226,7 @@ export function toIssue(
   return {
     id: record.id,
     workspace_id: record.workspaceId,
+    team_id: record.teamId ?? null,
     number: record.number,
     identifier: formatIssueIdentifier(options.issuePrefix, record.number),
     title: record.title,
