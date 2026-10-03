@@ -1,23 +1,13 @@
-import { Suspense } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
-import { TeamOverview } from '@/features/teams/components/team-overview'
-import { teamListOptions } from '@/features/teams/queries'
-import { prefetchActiveWorkspace } from '@/lib/navigation/prefetch'
+import { Outlet, createFileRoute } from '@tanstack/react-router'
 
+/**
+ * Teams layout: the tab strip lives in the app shell's top bar, so this route
+ * only needs to provide the outlet for the overview and detail children.
+ */
 export const Route = createFileRoute('/_authenticated/_app/teams')({
-  loader: ({ context }) =>
-    prefetchActiveWorkspace(context.queryClient, (workspaceId) => [
-      teamListOptions(workspaceId),
-    ]),
-  component: TeamsRoute,
+  component: TeamsLayoutRoute,
 })
 
-function TeamsRoute() {
-  return (
-    <Suspense
-      fallback={<div className="flex-1 p-6 text-sm text-text-secondary">Loading Teams…</div>}
-    >
-      <TeamOverview />
-    </Suspense>
-  )
+function TeamsLayoutRoute() {
+  return <Outlet />
 }

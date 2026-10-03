@@ -1,4 +1,4 @@
-import { queryOptions } from '@tanstack/react-query'
+import { queryOptions, useQuery } from '@tanstack/react-query'
 import type { Issue } from '@garden/core/types'
 import { api } from '@/lib/api'
 
@@ -65,4 +65,18 @@ export function teamIssueListOptions(wsId: string, teamId: string) {
     staleTime: 15_000,
     placeholderData: (previous: Issue[] | undefined) => previous,
   })
+}
+
+/**
+ * Resolves a Team summary from the visible Team list so issue surfaces can
+ * render a Team breadcrumb without a dedicated endpoint. Returns null for
+ * workspace issues or when the list has not loaded.
+ */
+export function useTeamSummary(wsId: string, teamId: string | null) {
+  const query = useQuery({
+    ...teamListOptions(wsId),
+    enabled: Boolean(wsId && teamId),
+  })
+  if (!teamId) return null
+  return query.data?.find((team) => team.id === teamId) ?? null
 }

@@ -85,6 +85,7 @@ import { Route as AuthenticatedAppConnectorsRouteImport } from './routes/_authen
 import { Route as AuthenticatedAppChatsRouteImport } from './routes/_authenticated/_app/chats'
 import { Route as AuthenticatedAppAgentsRouteImport } from './routes/_authenticated/_app/agents'
 import { Route as AuthenticatedAppWorkflowsIndexRouteImport } from './routes/_authenticated/_app/workflows.index'
+import { Route as AuthenticatedAppTeamsIndexRouteImport } from './routes/_authenticated/_app/teams.index'
 import { Route as AuthenticatedAppTasksIndexRouteImport } from './routes/_authenticated/_app/tasks.index'
 import { Route as AuthenticatedAppChatsIndexRouteImport } from './routes/_authenticated/_app/chats.index'
 import { Route as AuthenticatedAppAgentsIndexRouteImport } from './routes/_authenticated/_app/agents.index'
@@ -535,6 +536,12 @@ const AuthenticatedAppWorkflowsIndexRoute =
     id: '/',
     path: '/',
     getParentRoute: () => AuthenticatedAppWorkflowsRoute,
+  } as any)
+const AuthenticatedAppTeamsIndexRoute =
+  AuthenticatedAppTeamsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedAppTeamsRoute,
   } as any)
 const AuthenticatedAppTasksIndexRoute =
   AuthenticatedAppTasksIndexRouteImport.update({
@@ -988,6 +995,7 @@ export interface FileRoutesByFullPath {
   '/agents/': typeof AuthenticatedAppAgentsIndexRoute
   '/chats/': typeof AuthenticatedAppChatsIndexRoute
   '/tasks/': typeof AuthenticatedAppTasksIndexRoute
+  '/teams/': typeof AuthenticatedAppTeamsIndexRoute
   '/workflows/': typeof AuthenticatedAppWorkflowsIndexRoute
   '/api/automations/$id/triggers/$triggerId': typeof ApiAutomationsIdTriggersTriggerIdRoute
   '/api/brain/files/$id/content': typeof ApiBrainFilesIdContentRoute
@@ -1035,7 +1043,6 @@ export interface FileRoutesByTo {
   '/home': typeof AuthenticatedAppHomeRoute
   '/inbox': typeof AuthenticatedAppInboxRoute
   '/skills': typeof AuthenticatedAppSkillsRoute
-  '/teams': typeof AuthenticatedAppTeamsRouteWithChildren
   '/automations/$id': typeof AuthenticatedAutomationsIdRoute
   '/invitations/$id': typeof AuthenticatedInvitationsIdRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
@@ -1121,6 +1128,7 @@ export interface FileRoutesByTo {
   '/agents': typeof AuthenticatedAppAgentsIndexRoute
   '/chats': typeof AuthenticatedAppChatsIndexRoute
   '/tasks': typeof AuthenticatedAppTasksIndexRoute
+  '/teams': typeof AuthenticatedAppTeamsIndexRoute
   '/workflows': typeof AuthenticatedAppWorkflowsIndexRoute
   '/api/automations/$id/triggers/$triggerId': typeof ApiAutomationsIdTriggersTriggerIdRoute
   '/api/brain/files/$id/content': typeof ApiBrainFilesIdContentRoute
@@ -1261,6 +1269,7 @@ export interface FileRoutesById {
   '/_authenticated/_app/agents/': typeof AuthenticatedAppAgentsIndexRoute
   '/_authenticated/_app/chats/': typeof AuthenticatedAppChatsIndexRoute
   '/_authenticated/_app/tasks/': typeof AuthenticatedAppTasksIndexRoute
+  '/_authenticated/_app/teams/': typeof AuthenticatedAppTeamsIndexRoute
   '/_authenticated/_app/workflows/': typeof AuthenticatedAppWorkflowsIndexRoute
   '/api/automations/$id/triggers/$triggerId': typeof ApiAutomationsIdTriggersTriggerIdRoute
   '/api/brain/files/$id/content': typeof ApiBrainFilesIdContentRoute
@@ -1400,6 +1409,7 @@ export interface FileRouteTypes {
     | '/agents/'
     | '/chats/'
     | '/tasks/'
+    | '/teams/'
     | '/workflows/'
     | '/api/automations/$id/triggers/$triggerId'
     | '/api/brain/files/$id/content'
@@ -1447,7 +1457,6 @@ export interface FileRouteTypes {
     | '/home'
     | '/inbox'
     | '/skills'
-    | '/teams'
     | '/automations/$id'
     | '/invitations/$id'
     | '/api/agents/$id'
@@ -1533,6 +1542,7 @@ export interface FileRouteTypes {
     | '/agents'
     | '/chats'
     | '/tasks'
+    | '/teams'
     | '/workflows'
     | '/api/automations/$id/triggers/$triggerId'
     | '/api/brain/files/$id/content'
@@ -1672,6 +1682,7 @@ export interface FileRouteTypes {
     | '/_authenticated/_app/agents/'
     | '/_authenticated/_app/chats/'
     | '/_authenticated/_app/tasks/'
+    | '/_authenticated/_app/teams/'
     | '/_authenticated/_app/workflows/'
     | '/api/automations/$id/triggers/$triggerId'
     | '/api/brain/files/$id/content'
@@ -2277,6 +2288,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppWorkflowsIndexRouteImport
       parentRoute: typeof AuthenticatedAppWorkflowsRoute
     }
+    '/_authenticated/_app/teams/': {
+      id: '/_authenticated/_app/teams/'
+      path: '/'
+      fullPath: '/teams/'
+      preLoaderRoute: typeof AuthenticatedAppTeamsIndexRouteImport
+      parentRoute: typeof AuthenticatedAppTeamsRoute
+    }
     '/_authenticated/_app/tasks/': {
       id: '/_authenticated/_app/tasks/'
       path: '/'
@@ -2755,10 +2773,12 @@ const AuthenticatedAppTasksRouteWithChildren =
 
 interface AuthenticatedAppTeamsRouteChildren {
   AuthenticatedAppTeamsTeamIdRoute: typeof AuthenticatedAppTeamsTeamIdRoute
+  AuthenticatedAppTeamsIndexRoute: typeof AuthenticatedAppTeamsIndexRoute
 }
 
 const AuthenticatedAppTeamsRouteChildren: AuthenticatedAppTeamsRouteChildren = {
   AuthenticatedAppTeamsTeamIdRoute: AuthenticatedAppTeamsTeamIdRoute,
+  AuthenticatedAppTeamsIndexRoute: AuthenticatedAppTeamsIndexRoute,
 }
 
 const AuthenticatedAppTeamsRouteWithChildren =
@@ -3297,3 +3317,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

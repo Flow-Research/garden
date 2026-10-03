@@ -131,6 +131,8 @@ import {
 } from '@/lib/issues/queries'
 import { inboxKeys } from '@/lib/inbox/queries'
 import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigation'
+import { useTeamSummary } from '@/features/teams/queries'
+import { teamColor } from '@/features/teams/components/team-tokens'
 
 import { ProgressRing } from './progress-ring'
 
@@ -653,6 +655,7 @@ export function IssueDetail({
   } = useIssueDetailData(id)
   const isMobile = useIsMobile()
   const { openChatSession, navigate } = useSurfaceNavigation()
+  const issueTeam = useTeamSummary(workspace?.id ?? '', issue?.team_id ?? null)
   const queryClient = useQueryClient()
   const [sidebarOpen, setSidebarOpen] = useState(defaultSidebarOpen)
   const debugMode = useDevSettingsStore((s) => s.debugMode)
@@ -1121,6 +1124,28 @@ export function IssueDetail({
                       className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
                     >
                       {workspace.name}
+                    </button>
+                    <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                  </>
+                )}
+                {issueTeam && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void navigate({
+                          to: '/teams/$teamId',
+                          params: { teamId: issueTeam.id },
+                          search: { tab: 'issues' },
+                        })
+                      }
+                      className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                    >
+                      <span
+                        className="size-1.5 rounded-full"
+                        style={{ background: teamColor(issueTeam.id) }}
+                      />
+                      {issueTeam.name}
                     </button>
                     <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
                   </>
