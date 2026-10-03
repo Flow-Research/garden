@@ -84,7 +84,7 @@ export const ListRow = memo(function ListRow({
 
   if (variant === 'team') {
     return (
-      <div className="flex h-[54px] items-center gap-3 px-6 text-sm transition-colors hover:bg-background-main-secondary/50">
+      <div className="flex h-[54px] items-center gap-3 px-6 text-sm">
         <StatusIcon
           status={issue.status}
           className="size-4.5 text-icon-secondary"

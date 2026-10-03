@@ -7,6 +7,7 @@ import {
   TooltipContent,
 } from '@garden/ui/components/ui/tooltip'
 import { Button } from '@garden/ui/components/ui/button'
+import { cn } from '@garden/ui/lib/utils'
 import type { Issue, IssueStatus } from '@garden/core/types'
 import { useLoadMoreDoneIssues } from '@/lib/issues/mutations'
 import { STATUS_CONFIG } from '@garden/core/issues/config'
@@ -116,6 +117,7 @@ export function ListView({
           const someSelected = selectedCount > 0
           const statusCount =
             status === 'done' ? displayDoneTotal : statusIssues.length
+          const expanded = expandedStatuses.includes(status)
 
           const rows =
             statusIssues.length > 0 ? (
@@ -147,7 +149,15 @@ export function ListView({
           return (
             <Accordion.Item key={status} value={status}>
               {isTeam ? (
-                <Accordion.Header className="flex h-[54px] items-center rounded-xl bg-background-main-secondary transition-colors hover:bg-background-main-secondary-hover">
+                // Open groups merge the header into the body: top corners on
+                // the header, bottom corners on the body. Collapsed groups
+                // keep the fully-rounded pill.
+                <Accordion.Header
+                  className={cn(
+                    'flex h-[54px] items-center bg-background-main-secondary',
+                    expanded ? 'rounded-t-xl' : 'rounded-xl',
+                  )}
+                >
                   <Accordion.Trigger className="group/trigger flex h-full flex-1 items-center gap-2 px-4 text-left outline-none">
                     <ChevronRight className="size-3.5 shrink-0 text-icon-secondary transition-transform group-aria-expanded/trigger:rotate-90" />
                     <StatusIcon status={status} className="size-4.5" />
