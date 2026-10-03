@@ -394,7 +394,7 @@ export function TeamDetail({
       </PageHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[80rem] flex-col px-6 py-6">
+        <div className="mx-auto flex w-full max-w-[80rem] flex-col px-6 pt-6 pb-12">
           <header className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex min-w-0 flex-col gap-2">
               <h1 className="text-base font-semibold tracking-tight">

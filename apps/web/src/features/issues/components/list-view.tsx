@@ -93,7 +93,7 @@ export function ListView({
     <div className="flex-1 min-h-0 overflow-y-auto p-2">
       <Accordion.Root
         multiple
-        className="space-y-1"
+        className={cn('space-y-1', isTeam && 'space-y-2')}
         value={expandedStatuses}
         onValueChange={(value: string[]) => {
           for (const status of visibleStatuses) {
