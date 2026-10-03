@@ -6,6 +6,8 @@ import type { Team, TeamMember } from '@garden/core/types'
 import { toast } from 'sonner'
 import { TeamOverview } from './team-overview'
 import { TeamDetail } from './team-detail'
+import { TeamWorkPage } from './team-work-page'
+import { AppSidebar } from '@garden/ui/components/shell/app-sidebar'
 import {
   AddTeamMemberDialog,
   DeleteTeamDialog,
@@ -18,7 +20,32 @@ vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, to }: { children: React.ReactNode; to?: string }) => (
     <a href={typeof to === 'string' ? to : '#'}>{children}</a>
   ),
+  Navigate: ({ to }: { to: string }) => (
+    <div data-testid="navigate" data-to={to} />
+  ),
   useNavigate: () => mockNavigate,
+}))
+
+vi.mock('@/features/layout/page-header', () => ({
+  PageHeader: ({ children }: { children: React.ReactNode }) => (
+    <header>{children}</header>
+  ),
+}))
+
+vi.mock('@/features/issues/components/list-view', () => ({
+  ListView: ({ issues }: { issues: Array<{ id: string }> }) => (
+    <div data-testid="team-list">
+      {issues.map((issue) => issue.id).join(',')}
+    </div>
+  ),
+}))
+
+vi.mock('@/features/issues/components/board-view', () => ({
+  BoardView: ({ issues }: { issues: Array<{ id: string }> }) => (
+    <div data-testid="team-board">
+      {issues.map((issue) => issue.id).join(',')}
+    </div>
+  ),
 }))
 
 vi.mock('sonner', () => ({
@@ -367,5 +394,105 @@ describe('teams UI', () => {
         owner_user_id: 'user-2',
       })
     })
+  })
+
+  it('renders the Teams dropdown children and toggles them', () => {
+    const onSelect = vi.fn()
+    const onToggleExpand = vi.fn()
+    render(
+      <AppSidebar
+        header={<span>Header</span>}
+        items={[
+          {
+            id: 'teams',
+            label: 'Teams',
+            icon: ({ className }: { className?: string }) => (
+              <span className={className} />
+            ),
+            children: [
+              {
+                id: 'teams-issues',
+                label: 'Issues',
+                icon: ({ className }: { className?: string }) => (
+                  <span className={className} />
+                ),
+              },
+              {
+                id: 'teams-tasks',
+                label: 'Tasks',
+                icon: ({ className }: { className?: string }) => (
+                  <span className={className} />
+                ),
+              },
+            ],
+          },
+        ]}
+        activeId="teams"
+        activeChildId="teams-issues"
+        expandedIds={['teams']}
+        onToggleExpand={onToggleExpand}
+        onSelect={onSelect}
+        collapsed={false}
+        userCard={<span>User</span>}
+      />,
+    )
+
+    expect(screen.getByText('Issues')).toBeInTheDocument()
+    expect(screen.getByText('Tasks')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Issues'))
+    expect(onSelect).toHaveBeenCalledWith('teams-issues')
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse Teams' }))
+    expect(onToggleExpand).toHaveBeenCalledWith('teams')
+  })
+
+  it('filters the admin work page by Team pill', async () => {
+    apiMocks.listTeams.mockResolvedValue({
+      teams: [
+        makeTeam({ id: 'team-1', name: 'Engineering' }),
+        makeTeam({ id: 'team-2', name: 'Finance', member_count: 1 }),
+      ],
+      total: 2,
+    })
+    apiMocks.listIssues.mockResolvedValue({
+      issues: [
+        { id: 'issue-1', team_id: 'team-1', status: 'todo' },
+        { id: 'issue-2', team_id: 'team-2', status: 'in_progress' },
+        { id: 'issue-3', team_id: null, status: 'todo' },
+      ],
+      total: 3,
+    })
+
+    renderWithQuery(<TeamWorkPage mode="tasks" />)
+
+    expect(await screen.findByText('Total Tasks')).toBeInTheDocument()
+    expect(screen.getByText('Engineering')).toBeInTheDocument()
+    expect(screen.getByText('Finance')).toBeInTheDocument()
+    expect(await screen.findByTestId('team-board')).toHaveTextContent('issue-1')
+
+    fireEvent.click(screen.getByText('Finance'))
+    await waitFor(() => {
+      expect(screen.getByTestId('team-board')).toHaveTextContent('issue-2')
+    })
+  })
+
+  it('redirects non-admins away from the admin work pages', async () => {
+    apiMocks.listMembers.mockResolvedValue([
+      {
+        id: 'm-2',
+        workspace_id: 'ws-1',
+        user_id: 'user-1',
+        role: 'member',
+        name: 'Owner',
+        email: 'owner@test.com',
+        avatar_url: null,
+      },
+    ])
+    apiMocks.listTeams.mockResolvedValue({ teams: [], total: 0 })
+    apiMocks.listIssues.mockResolvedValue({ issues: [], total: 0 })
+
+    renderWithQuery(<TeamWorkPage mode="issues" />)
+
+    const redirect = await screen.findByTestId('navigate')
+    expect(redirect).toHaveAttribute('data-to', '/teams')
   })
 })

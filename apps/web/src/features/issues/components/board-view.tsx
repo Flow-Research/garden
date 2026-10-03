@@ -126,7 +126,8 @@ export function BoardView({
   childProgressMap?: Map<string, ChildProgress>
   /** Override the done-column count (e.g. with a server-filtered total). */
   doneTotal?: number
-  onCreateIssue: (data?: Record<string, unknown> | null) => void
+  /** When omitted, create affordances are hidden (read-only cross-team views). */
+  onCreateIssue?: (data?: Record<string, unknown> | null) => void
 }) {
   const sortBy = useViewStore((s) => s.sortBy)
   const sortDirection = useViewStore((s) => s.sortDirection)

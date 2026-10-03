@@ -130,6 +130,8 @@ import { Route as ApiAgentsIdArchiveRouteImport } from './routes/api/agents/$id/
 import { Route as ApiAgentsIdActivityRouteImport } from './routes/api/agents/$id/activity'
 import { Route as ApiAgentsIdAccessRouteImport } from './routes/api/agents/$id/access'
 import { Route as AuthenticatedAppWorkflowsIdRouteImport } from './routes/_authenticated/_app/workflows.$id'
+import { Route as AuthenticatedAppTeamsTasksRouteImport } from './routes/_authenticated/_app/teams.tasks'
+import { Route as AuthenticatedAppTeamsIssuesRouteImport } from './routes/_authenticated/_app/teams.issues'
 import { Route as AuthenticatedAppTeamsTeamIdRouteImport } from './routes/_authenticated/_app/teams.$teamId'
 import { Route as AuthenticatedAppTasksIssueIdRouteImport } from './routes/_authenticated/_app/tasks.$issueId'
 import { Route as AuthenticatedAppChatsThreadIdRouteImport } from './routes/_authenticated/_app/chats.$threadId'
@@ -773,6 +775,18 @@ const AuthenticatedAppWorkflowsIdRoute =
     path: '/$id',
     getParentRoute: () => AuthenticatedAppWorkflowsRoute,
   } as any)
+const AuthenticatedAppTeamsTasksRoute =
+  AuthenticatedAppTeamsTasksRouteImport.update({
+    id: '/tasks',
+    path: '/tasks',
+    getParentRoute: () => AuthenticatedAppTeamsRoute,
+  } as any)
+const AuthenticatedAppTeamsIssuesRoute =
+  AuthenticatedAppTeamsIssuesRouteImport.update({
+    id: '/issues',
+    path: '/issues',
+    getParentRoute: () => AuthenticatedAppTeamsRoute,
+  } as any)
 const AuthenticatedAppTeamsTeamIdRoute =
   AuthenticatedAppTeamsTeamIdRouteImport.update({
     id: '/$teamId',
@@ -951,6 +965,8 @@ export interface FileRoutesByFullPath {
   '/chats/$threadId': typeof AuthenticatedAppChatsThreadIdRoute
   '/tasks/$issueId': typeof AuthenticatedAppTasksIssueIdRoute
   '/teams/$teamId': typeof AuthenticatedAppTeamsTeamIdRoute
+  '/teams/issues': typeof AuthenticatedAppTeamsIssuesRoute
+  '/teams/tasks': typeof AuthenticatedAppTeamsTasksRoute
   '/workflows/$id': typeof AuthenticatedAppWorkflowsIdRoute
   '/api/agents/$id/access': typeof ApiAgentsIdAccessRoute
   '/api/agents/$id/activity': typeof ApiAgentsIdActivityRoute
@@ -1084,6 +1100,8 @@ export interface FileRoutesByTo {
   '/chats/$threadId': typeof AuthenticatedAppChatsThreadIdRoute
   '/tasks/$issueId': typeof AuthenticatedAppTasksIssueIdRoute
   '/teams/$teamId': typeof AuthenticatedAppTeamsTeamIdRoute
+  '/teams/issues': typeof AuthenticatedAppTeamsIssuesRoute
+  '/teams/tasks': typeof AuthenticatedAppTeamsTasksRoute
   '/workflows/$id': typeof AuthenticatedAppWorkflowsIdRoute
   '/api/agents/$id/access': typeof ApiAgentsIdAccessRoute
   '/api/agents/$id/activity': typeof ApiAgentsIdActivityRoute
@@ -1225,6 +1243,8 @@ export interface FileRoutesById {
   '/_authenticated/_app/chats/$threadId': typeof AuthenticatedAppChatsThreadIdRoute
   '/_authenticated/_app/tasks/$issueId': typeof AuthenticatedAppTasksIssueIdRoute
   '/_authenticated/_app/teams/$teamId': typeof AuthenticatedAppTeamsTeamIdRoute
+  '/_authenticated/_app/teams/issues': typeof AuthenticatedAppTeamsIssuesRoute
+  '/_authenticated/_app/teams/tasks': typeof AuthenticatedAppTeamsTasksRoute
   '/_authenticated/_app/workflows/$id': typeof AuthenticatedAppWorkflowsIdRoute
   '/api/agents/$id/access': typeof ApiAgentsIdAccessRoute
   '/api/agents/$id/activity': typeof ApiAgentsIdActivityRoute
@@ -1365,6 +1385,8 @@ export interface FileRouteTypes {
     | '/chats/$threadId'
     | '/tasks/$issueId'
     | '/teams/$teamId'
+    | '/teams/issues'
+    | '/teams/tasks'
     | '/workflows/$id'
     | '/api/agents/$id/access'
     | '/api/agents/$id/activity'
@@ -1498,6 +1520,8 @@ export interface FileRouteTypes {
     | '/chats/$threadId'
     | '/tasks/$issueId'
     | '/teams/$teamId'
+    | '/teams/issues'
+    | '/teams/tasks'
     | '/workflows/$id'
     | '/api/agents/$id/access'
     | '/api/agents/$id/activity'
@@ -1638,6 +1662,8 @@ export interface FileRouteTypes {
     | '/_authenticated/_app/chats/$threadId'
     | '/_authenticated/_app/tasks/$issueId'
     | '/_authenticated/_app/teams/$teamId'
+    | '/_authenticated/_app/teams/issues'
+    | '/_authenticated/_app/teams/tasks'
     | '/_authenticated/_app/workflows/$id'
     | '/api/agents/$id/access'
     | '/api/agents/$id/activity'
@@ -2603,6 +2629,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppWorkflowsIdRouteImport
       parentRoute: typeof AuthenticatedAppWorkflowsRoute
     }
+    '/_authenticated/_app/teams/tasks': {
+      id: '/_authenticated/_app/teams/tasks'
+      path: '/tasks'
+      fullPath: '/teams/tasks'
+      preLoaderRoute: typeof AuthenticatedAppTeamsTasksRouteImport
+      parentRoute: typeof AuthenticatedAppTeamsRoute
+    }
+    '/_authenticated/_app/teams/issues': {
+      id: '/_authenticated/_app/teams/issues'
+      path: '/issues'
+      fullPath: '/teams/issues'
+      preLoaderRoute: typeof AuthenticatedAppTeamsIssuesRouteImport
+      parentRoute: typeof AuthenticatedAppTeamsRoute
+    }
     '/_authenticated/_app/teams/$teamId': {
       id: '/_authenticated/_app/teams/$teamId'
       path: '/$teamId'
@@ -2773,11 +2813,15 @@ const AuthenticatedAppTasksRouteWithChildren =
 
 interface AuthenticatedAppTeamsRouteChildren {
   AuthenticatedAppTeamsTeamIdRoute: typeof AuthenticatedAppTeamsTeamIdRoute
+  AuthenticatedAppTeamsIssuesRoute: typeof AuthenticatedAppTeamsIssuesRoute
+  AuthenticatedAppTeamsTasksRoute: typeof AuthenticatedAppTeamsTasksRoute
   AuthenticatedAppTeamsIndexRoute: typeof AuthenticatedAppTeamsIndexRoute
 }
 
 const AuthenticatedAppTeamsRouteChildren: AuthenticatedAppTeamsRouteChildren = {
   AuthenticatedAppTeamsTeamIdRoute: AuthenticatedAppTeamsTeamIdRoute,
+  AuthenticatedAppTeamsIssuesRoute: AuthenticatedAppTeamsIssuesRoute,
+  AuthenticatedAppTeamsTasksRoute: AuthenticatedAppTeamsTasksRoute,
   AuthenticatedAppTeamsIndexRoute: AuthenticatedAppTeamsIndexRoute,
 }
 

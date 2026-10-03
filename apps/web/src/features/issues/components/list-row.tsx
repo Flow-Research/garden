@@ -22,10 +22,13 @@ function formatDate(date: string): string {
 export const ListRow = memo(function ListRow({
   issue,
   childProgress,
+  team,
   onOpen,
 }: {
   issue: Issue
   childProgress?: ChildProgress
+  /** Team chip for cross-team views (Teams › Issues). */
+  team?: { name: string; color: string }
   /** Click handler for the row. Caller wires this to a navigation source
    * (workspace dock, router push, etc.). When omitted, the row acts as a
    * no-op anchor — useful for previews / dev showcases. */
@@ -84,6 +87,15 @@ export const ListRow = memo(function ListRow({
             </Badge>
           )}
         </span>
+        {team && (
+          <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
+            <span
+              className="size-1.5 rounded-full"
+              style={{ background: team.color }}
+            />
+            {team.name}
+          </span>
+        )}
         {issue.due_date && (
           <span className="shrink-0 text-xs text-muted-foreground">
             {formatDate(issue.due_date)}

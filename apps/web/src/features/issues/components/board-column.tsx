@@ -36,7 +36,8 @@ export function BoardColumn({
   childProgressMap?: Map<string, ChildProgress>
   totalCount?: number
   footer?: ReactNode
-  onCreateIssue: (data?: Record<string, unknown> | null) => void
+  /** When omitted, the add-issue button is hidden. */
+  onCreateIssue?: (data?: Record<string, unknown> | null) => void
 }) {
   const cfg = STATUS_CONFIG[status]
   const { setNodeRef, isOver } = useDroppable({ id: status })
@@ -93,21 +94,23 @@ export function BoardColumn({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="rounded-full text-muted-foreground"
-                  onClick={() => onCreateIssue({ status })}
-                >
-                  <Plus className="size-3.5" />
-                </Button>
-              }
-            />
-            <TooltipContent>Add issue</TooltipContent>
-          </Tooltip>
+          {onCreateIssue ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="rounded-full text-muted-foreground"
+                    onClick={() => onCreateIssue({ status })}
+                  >
+                    <Plus className="size-3.5" />
+                  </Button>
+                }
+              />
+              <TooltipContent>Add issue</TooltipContent>
+            </Tooltip>
+          ) : null}
         </div>
       </div>
       <div

@@ -2,9 +2,8 @@ import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
-import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { useAuthStore } from '@garden/app-state/auth'
-import { ChevronRight, Plus, Users } from 'lucide-react'
+import { Plus, Users } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
 import {
   Empty,
@@ -15,7 +14,6 @@ import {
   EmptyTitle,
 } from '@garden/ui/components/ui/empty'
 import { PageHeader } from '@/features/layout/page-header'
-import { WorkspaceAvatar } from '@/features/workspace/workspace-avatar'
 import { memberListOptions } from '@/lib/workspace/queries'
 import { teamListOptions } from '../queries'
 import { CreateTeamDialog } from './create-team-dialog'
@@ -37,7 +35,6 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
  */
 export function TeamOverview() {
   const wsId = useWorkspaceId()
-  const workspace = useWorkspaceStore((s) => s.workspace)
   const currentUserId = useAuthStore((s) => s.user?.id)
   const [createOpen, setCreateOpen] = useState(false)
 
@@ -53,11 +50,6 @@ export function TeamOverview() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader className="gap-1.5">
-        <WorkspaceAvatar name={workspace?.name ?? 'W'} size="sm" />
-        <span className="text-sm text-text-secondary">
-          {workspace?.name ?? 'Workspace'}
-        </span>
-        <ChevronRight className="size-3 text-text-secondary" />
         <span className="text-sm font-medium">Teams</span>
       </PageHeader>
 

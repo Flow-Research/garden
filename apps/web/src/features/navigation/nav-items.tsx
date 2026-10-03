@@ -9,6 +9,7 @@ import {
   Plugs,
   Tray,
   UsersThree,
+  Warning,
 } from '@phosphor-icons/react'
 import type { ComponentType } from 'react'
 
@@ -40,6 +41,25 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'connections', label: 'Connectors', to: '/connectors', icon: Plugs },
   { id: 'teams', label: 'Teams', to: '/teams', icon: UsersThree },
 ]
+
+/**
+ * Admin-only Teams dropdown children (Penpot Teams_Main `Items`): the
+ * cross-team Issues list and Tasks board. Members keep the flat Teams item and
+ * reach their work through the Team detail tabs.
+ */
+export const TEAM_NAV_CHILDREN: NavItem[] = [
+  { id: 'teams-issues', label: 'Issues', to: '/teams/issues', icon: Warning },
+  { id: 'teams-tasks', label: 'Tasks', to: '/teams/tasks', icon: ListChecks },
+]
+
+/** Resolves the nav child that owns a pathname (exact route-base match). */
+export function teamNavChildForPathname(pathname: string): NavItem | null {
+  return (
+    TEAM_NAV_CHILDREN.find(
+      (item) => pathname === item.to || pathname.startsWith(`${item.to}/`),
+    ) ?? null
+  )
+}
 
 /** Resolves the nav item that owns a pathname (longest route-base match). */
 export function navItemForPathname(pathname: string): NavItem | null {

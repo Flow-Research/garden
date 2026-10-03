@@ -30,8 +30,6 @@ import { toast } from 'sonner'
 import { ActorAvatar } from '@/features/common/actor-avatar'
 import { PageHeader } from '@/features/layout/page-header'
 import { CreateIssueModal } from '@/features/modals/create-issue'
-import { WorkspaceAvatar } from '@/features/workspace/workspace-avatar'
-import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { useRemoveTeamMember } from '../mutations'
 import {
   teamDetailOptions,
@@ -82,7 +80,6 @@ export function TeamDetail({
 }) {
   const wsId = useWorkspaceId()
   const navigate = useNavigate()
-  const workspace = useWorkspaceStore((s) => s.workspace)
   const currentUserId = useAuthStore((s) => s.user?.id ?? '')
 
   const [{ data: team }, { data: members }, { data: issues }] =
@@ -139,11 +136,6 @@ export function TeamDetail({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader className="gap-1.5">
-        <WorkspaceAvatar name={workspace?.name ?? 'W'} size="sm" />
-        <span className="text-sm text-text-secondary">
-          {workspace?.name ?? 'Workspace'}
-        </span>
-        <ChevronRight className="size-3 text-text-secondary" />
         <Link to="/teams" className="text-sm text-text-secondary hover:underline">
           Teams
         </Link>

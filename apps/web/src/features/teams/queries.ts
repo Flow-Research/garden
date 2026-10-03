@@ -1,4 +1,4 @@
-import { queryOptions, useQuery } from '@tanstack/react-query'
+import { queryOptions } from '@tanstack/react-query'
 import type { Issue } from '@garden/core/types'
 import { api } from '@/lib/api'
 
@@ -68,15 +68,18 @@ export function teamIssueListOptions(wsId: string, teamId: string) {
 }
 
 /**
- * Resolves a Team summary from the visible Team list so issue surfaces can
- * render a Team breadcrumb without a dedicated endpoint. Returns null for
- * workspace issues or when the list has not loaded.
+ * Every Team issue visible to the caller, across Teams. Used by the admin
+ * Teams › Issues / Teams › Tasks pages; the `'all'` key sits under the team
+ * issue prefix so existing issue mutations invalidate it.
  */
-export function useTeamSummary(wsId: string, teamId: string | null) {
-  const query = useQuery({
-    ...teamListOptions(wsId),
-    enabled: Boolean(wsId && teamId),
+export function allTeamIssuesOptions(wsId: string) {
+  return queryOptions({
+    queryKey: [...teamKeys.issues(wsId, 'all')],
+    queryFn: async () => {
+      const response = await api.listIssues({ workspace_id: wsId })
+      return response.issues.filter((issue) => issue.team_id !== null)
+    },
+    staleTime: 15_000,
+    placeholderData: (previous: Issue[] | undefined) => previous,
   })
-  if (!teamId) return null
-  return query.data?.find((team) => team.id === teamId) ?? null
 }

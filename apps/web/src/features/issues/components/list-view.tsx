@@ -24,15 +24,19 @@ export function ListView({
   issues,
   visibleStatuses,
   childProgressMap = EMPTY_PROGRESS_MAP,
+  teamChips,
   doneTotal: doneTotalOverride,
   onCreateIssue,
 }: {
   issues: Issue[]
   visibleStatuses: IssueStatus[]
   childProgressMap?: Map<string, ChildProgress>
+  /** Team chip per issue for cross-team views (Teams › Issues). */
+  teamChips?: Map<string, { name: string; color: string }>
   /** Override the done-group count (e.g. with a server-filtered total). */
   doneTotal?: number
-  onCreateIssue: (data?: Record<string, unknown> | null) => void
+  /** When omitted, create affordances are hidden (read-only cross-team views). */
+  onCreateIssue?: (data?: Record<string, unknown> | null) => void
 }) {
   const { openIssue } = useSurfaceNavigation()
   const handleOpenIssue = useCallback(
@@ -135,21 +139,23 @@ export function ListView({
                   </span>
                 </Accordion.Trigger>
                 <div className="pr-2">
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          className="rounded-full text-muted-foreground opacity-0 group-hover/header:opacity-100 transition-opacity"
-                          onClick={() => onCreateIssue({ status })}
-                        />
-                      }
-                    >
-                      <Plus className="size-3.5" />
-                    </TooltipTrigger>
-                    <TooltipContent>Add issue</TooltipContent>
-                  </Tooltip>
+                  {onCreateIssue ? (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="rounded-full text-muted-foreground opacity-0 group-hover/header:opacity-100 transition-opacity"
+                            onClick={() => onCreateIssue({ status })}
+                          />
+                        }
+                      >
+                        <Plus className="size-3.5" />
+                      </TooltipTrigger>
+                      <TooltipContent>Add issue</TooltipContent>
+                    </Tooltip>
+                  ) : null}
                 </div>
               </Accordion.Header>
               <Accordion.Panel className="pt-1">
@@ -160,6 +166,7 @@ export function ListView({
                         key={issue.id}
                         issue={issue}
                         childProgress={childProgressMap.get(issue.id)}
+                        team={teamChips?.get(issue.id)}
                         onOpen={handleOpenIssue}
                       />
                     ))}
