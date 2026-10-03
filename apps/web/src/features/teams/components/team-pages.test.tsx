@@ -33,8 +33,14 @@ vi.mock('@/features/layout/page-header', () => ({
 }))
 
 vi.mock('@/features/issues/components/list-view', () => ({
-  ListView: ({ issues }: { issues: Array<{ id: string }> }) => (
-    <div data-testid="team-list">
+  ListView: ({
+    issues,
+    variant,
+  }: {
+    issues: Array<{ id: string }>
+    variant?: string
+  }) => (
+    <div data-testid="team-list" data-variant={variant ?? 'default'}>
       {issues.map((issue) => issue.id).join(',')}
     </div>
   ),
@@ -708,6 +714,10 @@ describe('teams UI', () => {
 
     expect(await screen.findByTestId('team-list')).toHaveTextContent(
       'issue-1,issue-2',
+    )
+    expect(screen.getByTestId('team-list')).toHaveAttribute(
+      'data-variant',
+      'team',
     )
     expect(screen.getByText('Todo')).toBeInTheDocument()
     expect(screen.getByText('02')).toBeInTheDocument()

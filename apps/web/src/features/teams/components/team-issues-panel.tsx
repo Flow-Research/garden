@@ -1,4 +1,6 @@
 import { useCallback, useDeferredValue, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import type { Issue, IssueStatus } from '@garden/core/types'
 import { BOARD_STATUSES } from '@garden/core/issues/config'
 import { useViewStore } from '@garden/app-state/issues/stores/view-store-context'
@@ -7,7 +9,9 @@ import { BoardView } from '@/features/issues/components/board-view'
 import { ListView } from '@/features/issues/components/list-view'
 import { filterIssues, matchesIssueSearch } from '@/features/issues/utils/filter'
 import { useUpdateIssue } from '@/lib/issues/mutations'
+import { projectListOptions } from '@/lib/projects/queries'
 import { teamIssueViewStore } from '../view-store'
+import { hashColor } from './team-tokens'
 
 const STATUSES = BOARD_STATUSES
 
@@ -16,7 +20,8 @@ const STATUSES = BOARD_STATUSES
  * Team-filtered issue set. The Team detail tab toolbar owns search and filter
  * state (matching the design's single control row); this panel applies the
  * shared `teamIssueViewStore` filters plus the search query. The Teams Issues
- * tab renders the list, the Tasks tab the board.
+ * tab renders the design list (no selection, team/project/description chips);
+ * the Tasks tab renders the board.
  */
 export function TeamIssuesPanel({
   issues,
@@ -31,8 +36,23 @@ export function TeamIssuesPanel({
   teamChips?: Map<string, { name: string; color: string }>
   onCreateIssue: (data?: Record<string, unknown> | null) => void
 }) {
+  const wsId = useWorkspaceId()
   const [viewReady, setViewReady] = useState(false)
   const deferredSearch = useDeferredValue(searchQuery.trim())
+  const { data: projectList = [] } = useQuery(projectListOptions(wsId))
+  const projects = useMemo(
+    () =>
+      new Map(
+        projectList.map(
+          (project) =>
+            [
+              project.id,
+              { title: project.title, color: hashColor(project.id) },
+            ] as const,
+        ),
+      ),
+    [projectList],
+  )
   const statusFilters = useViewStore((s) => s.statusFilters)
   const priorityFilters = useViewStore((s) => s.priorityFilters)
   const assigneeFilters = useViewStore((s) => s.assigneeFilters)
@@ -128,7 +148,9 @@ export function TeamIssuesPanel({
           doneTotal={doneTotal}
           issues={filteredIssues}
           onCreateIssue={onCreateIssue}
+          projects={projects}
           teamChips={teamChips}
+          variant="team"
           visibleStatuses={visibleStatuses}
         />
       )}

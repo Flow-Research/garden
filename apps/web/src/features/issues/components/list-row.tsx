@@ -1,11 +1,13 @@
 import { memo, useCallback } from 'react'
 import type { Issue } from '@garden/core/types'
+import { FileText } from 'lucide-react'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Checkbox } from '@garden/ui/components/ui/checkbox'
 import { ActorAvatar } from '../../common/actor-avatar'
 import { useIssueSelectionStore } from '@garden/app-state/issues/stores/selection-store'
 import { PriorityIcon } from './priority-icon'
 import { ProgressRing } from './progress-ring'
+import { StatusIcon } from './status-icon'
 
 export interface ChildProgress {
   done: number
@@ -19,16 +21,51 @@ function formatDate(date: string): string {
   })
 }
 
+/** Design pill used by the Team list variant's team/project/description chips. */
+function Chip({
+  children,
+  dot,
+  icon,
+}: {
+  children: React.ReactNode
+  dot?: string
+  icon?: React.ReactNode
+}) {
+  return (
+    <span className="inline-flex h-[30px] items-center gap-1.5 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-3 text-sm text-text-default">
+      {dot ? (
+        <span
+          aria-hidden
+          className="size-2 shrink-0 rounded-full"
+          style={{ background: dot }}
+        />
+      ) : null}
+      {icon}
+      {children}
+    </span>
+  )
+}
+
 export const ListRow = memo(function ListRow({
   issue,
   childProgress,
   team,
+  project,
+  variant = 'default',
   onOpen,
 }: {
   issue: Issue
   childProgress?: ChildProgress
   /** Team chip for cross-team views (Teams › Issues). */
   team?: { name: string; color: string }
+  /** Project chip for the Team list variant. */
+  project?: { title: string; color: string }
+  /**
+   * `team` renders the design's issue row for the Team detail Issues tab:
+   * muted status icon + title, then team/project/description chips — no
+   * selection, identifier, priority, avatar, or due date.
+   */
+  variant?: 'default' | 'team'
   /** Click handler for the row. Caller wires this to a navigation source
    * (workspace dock, router push, etc.). When omitted, the row acts as a
    * no-op anchor — useful for previews / dev showcases. */
@@ -44,6 +81,34 @@ export const ListRow = memo(function ListRow({
     },
     [onOpen, issue],
   )
+
+  if (variant === 'team') {
+    return (
+      <div className="flex h-[54px] items-center gap-3 px-6 text-sm transition-colors hover:bg-background-main-secondary/50">
+        <StatusIcon
+          status={issue.status}
+          className="size-4.5 text-icon-secondary"
+          inheritColor
+        />
+        <a
+          href={`/issues/${issue.id}`}
+          onClick={handleOpen}
+          className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-4"
+        >
+          <span className="truncate text-text-default">{issue.title}</span>
+          <span className="flex shrink-0 items-center gap-2">
+            {team ? <Chip dot={team.color}>{team.name}</Chip> : null}
+            {project ? <Chip dot={project.color}>{project.title}</Chip> : null}
+            {issue.description ? (
+              <Chip icon={<FileText className="size-3.5" />}>
+                <span className="max-w-80 truncate">{issue.description}</span>
+              </Chip>
+            ) : null}
+          </span>
+        </a>
+      </div>
+    )
+  }
 
   return (
     <div
