@@ -108,10 +108,6 @@ vi.mock('@/features/common/actor-avatar', () => ({
   ),
 }))
 
-vi.mock('./team-issues-panel', () => ({
-  TeamIssuesPanel: () => <div data-testid="team-issues-panel" />,
-}))
-
 vi.mock('@/features/modals/create-issue', () => ({
   CreateIssueModal: ({ data }: { data?: Record<string, unknown> | null }) => (
     <div data-testid="create-issue-modal">{JSON.stringify(data)}</div>
@@ -128,6 +124,7 @@ function makeTeam(overrides: Partial<Team> = {}): Team {
     created_by: 'user-1',
     member_count: 2,
     issue_count: 3,
+    activity_count: 4,
     can_manage: true,
     can_transfer_owner: true,
     current_membership: {
@@ -292,7 +289,7 @@ describe('teams UI', () => {
     expect(
       await screen.findByRole('heading', { name: 'Engineering' }),
     ).toBeInTheDocument()
-    expect(screen.queryByText('Add member')).not.toBeInTheDocument()
+    expect(screen.queryByText('Add a team member')).not.toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'Team actions' }),
     ).not.toBeInTheDocument()
@@ -510,5 +507,187 @@ describe('teams UI', () => {
 
     const redirect = await screen.findByTestId('navigate')
     expect(redirect).toHaveAttribute('data-to', '/teams')
+  })
+
+  const caseyMember = makeMember({
+    id: 'tm-2',
+    user_id: 'user-2',
+    name: 'Casey',
+    email: 'casey@test.com',
+    workspace_role: 'member',
+    assigned_issue_count: 0,
+  })
+
+  it('renders the designed member table, summary cards and header actions', async () => {
+    apiMocks.getTeam.mockResolvedValue(
+      makeTeam({ activity_count: 7, member_count: 2 }),
+    )
+    apiMocks.listTeamMembers.mockResolvedValue({
+      members: [makeMember(), caseyMember],
+      total: 2,
+    })
+
+    renderWithQuery(
+      <TeamDetail teamId="team-1" tab="members" onTabChange={() => {}} />,
+    )
+
+    expect(
+      await screen.findByRole('heading', { name: 'Engineering' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Builds things')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Add a team member' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Owner: Owner' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Team actions' }),
+    ).toBeInTheDocument()
+
+    for (const header of ['User', 'Role', 'Assigned Tasks', 'Activity']) {
+      expect(
+        screen.getByRole('columnheader', { name: header }),
+      ).toBeInTheDocument()
+    }
+    expect(screen.getByText('casey@test.com')).toBeInTheDocument()
+    expect(screen.getByText('None')).toBeInTheDocument()
+    const viewAll = screen.getAllByRole('button', { name: 'View all' })
+    expect(viewAll).toHaveLength(2)
+    for (const button of viewAll) expect(button).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Export Data' })).toBeDisabled()
+
+    expect(screen.getByText('Total members')).toBeInTheDocument()
+    expect(screen.getByText('Total Roles')).toBeInTheDocument()
+    expect(screen.getByText('Total Activity')).toBeInTheDocument()
+    expect(screen.getAllByText('02')).toHaveLength(2)
+    expect(screen.getByText('07')).toBeInTheDocument()
+  })
+
+  it('shows a static owner display when transfer is not allowed', async () => {
+    apiMocks.getTeam.mockResolvedValue(
+      makeTeam({ can_transfer_owner: false }),
+    )
+    apiMocks.listTeamMembers.mockResolvedValue({
+      members: [makeMember()],
+      total: 1,
+    })
+
+    renderWithQuery(
+      <TeamDetail teamId="team-1" tab="members" onTabChange={() => {}} />,
+    )
+
+    expect(await screen.findByText('Owner: Owner')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Owner: Owner' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('filters members by search and role', async () => {
+    apiMocks.getTeam.mockResolvedValue(makeTeam())
+    apiMocks.listTeamMembers.mockResolvedValue({
+      members: [makeMember(), caseyMember],
+      total: 2,
+    })
+
+    renderWithQuery(
+      <TeamDetail teamId="team-1" tab="members" onTabChange={() => {}} />,
+    )
+
+    expect(await screen.findByText('casey@test.com')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Search members'), {
+      target: { value: 'casey' },
+    })
+    await waitFor(() => {
+      expect(screen.queryByText('owner@test.com')).not.toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByLabelText('Search members'), {
+      target: { value: '' },
+    })
+    await waitFor(() => {
+      expect(screen.getByText('owner@test.com')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
+    fireEvent.click(
+      await screen.findByRole('menuitemradio', { name: 'Member' }),
+    )
+    await waitFor(() => {
+      expect(screen.queryByText('owner@test.com')).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('casey@test.com')).toBeInTheDocument()
+  })
+
+  it('removes a non-owner member from the row action', async () => {
+    apiMocks.getTeam.mockResolvedValue(makeTeam())
+    apiMocks.listTeamMembers.mockResolvedValue({
+      members: [makeMember(), caseyMember],
+      total: 2,
+    })
+    apiMocks.removeTeamMember.mockResolvedValue(undefined)
+
+    renderWithQuery(
+      <TeamDetail teamId="team-1" tab="members" onTabChange={() => {}} />,
+    )
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Remove Casey' }),
+    )
+    await waitFor(() => {
+      expect(apiMocks.removeTeamMember).toHaveBeenCalledWith('team-1', 'tm-2')
+    })
+    expect(toast.success).toHaveBeenCalledWith('Casey removed from the Team')
+  })
+
+  it('searches Team issues and shows status summaries from the toolbar', async () => {
+    apiMocks.getTeam.mockResolvedValue(makeTeam())
+    apiMocks.listTeamMembers.mockResolvedValue({
+      members: [makeMember()],
+      total: 1,
+    })
+    apiMocks.listIssues.mockResolvedValue({
+      issues: [
+        {
+          id: 'issue-1',
+          team_id: 'team-1',
+          status: 'todo',
+          identifier: 'ISS-1',
+          title: 'Fix login',
+          description: null,
+        },
+        {
+          id: 'issue-2',
+          team_id: 'team-1',
+          status: 'todo',
+          identifier: 'ISS-2',
+          title: 'Write docs',
+          description: null,
+        },
+      ],
+      total: 2,
+    })
+
+    renderWithQuery(
+      <TeamDetail teamId="team-1" tab="issues" onTabChange={() => {}} />,
+    )
+
+    expect(await screen.findByTestId('team-list')).toHaveTextContent(
+      'issue-1,issue-2',
+    )
+    expect(screen.getByText('Todo')).toBeInTheDocument()
+    expect(screen.getByText('02')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export Data' })).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: /New Issue/ }),
+    ).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Search issues'), {
+      target: { value: 'login' },
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('team-list')).toHaveTextContent('issue-1')
+    })
+    expect(screen.getByTestId('team-list')).not.toHaveTextContent('issue-2')
   })
 })

@@ -18,33 +18,12 @@ import { useSettingsDialogStore } from '@/features/settings'
 import { memberListOptions } from '@/lib/workspace/queries'
 import { teamListOptions, teamMemberListOptions } from '../queries'
 import { CreateTeamDialog } from './create-team-dialog'
+import { TeamSummaryCard } from './team-summary-card'
 import {
   DeleteTeamDialog,
   EditTeamDialog,
   TransferOwnerDialog,
 } from './team-dialogs'
-
-function SummaryCard({
-  label,
-  value,
-  action,
-}: {
-  label: string
-  value: number
-  action?: React.ReactNode
-}) {
-  return (
-    <div className="flex min-h-[113px] min-w-0 flex-1 flex-col gap-2 rounded-xl border-[0.5px] border-border-default bg-background-main-default p-4">
-      <span className="text-sm text-text-secondary">{label}</span>
-      <div className="flex min-h-11 items-center justify-between gap-3">
-        <span className="text-3xl font-semibold tracking-tight tabular-nums">
-          {value}
-        </span>
-        {action}
-      </div>
-    </div>
-  )
-}
 
 function TeamCard({
   team,
@@ -216,8 +195,8 @@ export function TeamOverview() {
                 {canManage ? (
                   <>
                     <div className="flex gap-4">
-                      <SummaryCard label="Total Teams" value={teams.length} />
-                      <SummaryCard
+                      <TeamSummaryCard label="Total Teams" value={teams.length} />
+                      <TeamSummaryCard
                         label="Total Members"
                         value={totalMembers}
                         action={
@@ -230,7 +209,7 @@ export function TeamOverview() {
                           </Button>
                         }
                       />
-                      <SummaryCard
+                      <TeamSummaryCard
                         label="Total Issues"
                         value={totalIssues}
                         action={
