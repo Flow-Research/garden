@@ -195,18 +195,6 @@ export function TeamOverview() {
           </header>
 
           <div className="flex flex-col gap-6 rounded-xl bg-background-main-secondary p-10">
-            {canManage ? (
-              <div className="flex items-center justify-end">
-                <Button
-                  className="h-10 gap-2 rounded-md px-3"
-                  onClick={() => setCreateOpen(true)}
-                >
-                  <Plus className="size-4" />
-                  Create a Team
-                </Button>
-              </div>
-            ) : null}
-
             {teams.length === 0 ? (
               <div className="flex min-h-[18rem] flex-col items-center justify-center gap-4 text-center">
                 <Users className="size-6 text-icon-neutral-default" />
@@ -222,35 +210,43 @@ export function TeamOverview() {
             ) : (
               <>
                 {canManage ? (
-                  <div className="flex gap-4">
-                    <SummaryCard label="Total Teams" value={teams.length} />
-                    <SummaryCard
-                      label="Total Members"
-                      value={totalMembers}
-                      action={
-                        <Button
-                          variant="outline"
-                          className="h-10 rounded-md"
-                          onClick={() => openSettingsDialog('members')}
-                        >
-                          See members
-                        </Button>
-                      }
+                  <>
+                    <div className="flex gap-4">
+                      <SummaryCard label="Total Teams" value={teams.length} />
+                      <SummaryCard
+                        label="Total Members"
+                        value={totalMembers}
+                        action={
+                          <Button
+                            variant="outline"
+                            className="h-10 rounded-md"
+                            onClick={() => openSettingsDialog('members')}
+                          >
+                            See members
+                          </Button>
+                        }
+                      />
+                      <SummaryCard
+                        label="Total Issues"
+                        value={totalIssues}
+                        action={
+                          <Button
+                            variant="outline"
+                            className="h-10 rounded-md"
+                            onClick={() =>
+                              void navigate({ to: '/teams/issues' })
+                            }
+                          >
+                            See issues
+                          </Button>
+                        }
+                      />
+                    </div>
+                    <div
+                      aria-hidden
+                      className="h-px w-full shrink-0 bg-border-default"
                     />
-                    <SummaryCard
-                      label="Total Issues"
-                      value={totalIssues}
-                      action={
-                        <Button
-                          variant="outline"
-                          className="h-10 rounded-md"
-                          onClick={() => void navigate({ to: '/teams/issues' })}
-                        >
-                          See issues
-                        </Button>
-                      }
-                    />
-                  </div>
+                  </>
                 ) : null}
 
                 <section className="flex flex-col gap-4">
