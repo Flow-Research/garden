@@ -2,9 +2,28 @@ import { and, eq } from 'drizzle-orm'
 import type { AppRequestContext } from '@/lib/server/context'
 import { getDb, schema, type Db } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
+import { createGardenLogger } from '@garden/observability/logger'
 import { requireSession, unauthorized } from './control-plane'
 
 type RequestBoundary = Request | AppRequestContext
+
+const accessLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'team-access',
+})
+
+/**
+ * Records denied Team access with ids only. No member emails or resource
+ * content are logged.
+ */
+function logAccessDenied(args: {
+  userId: string
+  teamId: string
+  workspaceId?: string
+  reason: string
+}) {
+  accessLogger.warn('team.access_denied', args)
+}
 
 export type TeamErrorCode =
   | 'TEAM_NOT_FOUND'
@@ -86,6 +105,12 @@ export async function requireTeamAccess(
       ),
     )
   if (!workspaceMembership) {
+    logAccessDenied({
+      userId: session.user.id,
+      teamId: team.id,
+      workspaceId: team.workspaceId,
+      reason: 'workspace_membership_missing',
+    })
     return teamError(403, 'TEAM_ACCESS_DENIED', 'Team access denied')
   }
 
@@ -101,6 +126,12 @@ export async function requireTeamAccess(
 
   const manager = isWorkspaceManager(workspaceMembership.role)
   if (!manager && !teamMembership) {
+    logAccessDenied({
+      userId: session.user.id,
+      teamId: team.id,
+      workspaceId: team.workspaceId,
+      reason: 'team_membership_missing',
+    })
     return teamError(403, 'TEAM_ACCESS_DENIED', 'Team access denied')
   }
 
@@ -123,6 +154,12 @@ export async function requireTeamManage(
   const access = await requireTeamAccess(input, teamId)
   if (access instanceof Response) return access
   if (!access.canManage) {
+    logAccessDenied({
+      userId: access.session.user.id,
+      teamId: access.team.id,
+      workspaceId: access.team.workspaceId,
+      reason: 'manage_denied',
+    })
     return teamError(403, 'TEAM_ACCESS_DENIED', 'Team management denied')
   }
   return access
@@ -136,6 +173,12 @@ export async function requireTeamOwnerTransfer(
   const access = await requireTeamAccess(input, teamId)
   if (access instanceof Response) return access
   if (!access.canTransferOwner) {
+    logAccessDenied({
+      userId: access.session.user.id,
+      teamId: access.team.id,
+      workspaceId: access.team.workspaceId,
+      reason: 'owner_transfer_denied',
+    })
     return teamError(
       403,
       'TEAM_ACCESS_DENIED',
@@ -153,6 +196,12 @@ export async function requireTeamMember(
   const access = await requireTeamAccess(input, teamId)
   if (access instanceof Response) return access
   if (!access.teamMembership) {
+    logAccessDenied({
+      userId: access.session.user.id,
+      teamId: access.team.id,
+      workspaceId: access.team.workspaceId,
+      reason: 'team_member_required',
+    })
     return teamError(403, 'TEAM_ACCESS_DENIED', 'Team membership required')
   }
   return access

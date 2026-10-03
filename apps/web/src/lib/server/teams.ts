@@ -11,6 +11,7 @@ import type {
   UpdateTeamRequest,
 } from '@garden/core/types'
 import { schema, type Db } from '@/lib/server/db'
+import { createGardenLogger } from '@garden/observability/logger'
 import { isWorkspaceManager, type TeamErrorCode } from './team-access'
 
 type TeamRow = typeof schema.team.$inferSelect
@@ -23,6 +24,15 @@ export class TeamServiceError extends TaggedError('TeamServiceError')<{
   status: number
   message: string
 }>() {}
+
+/**
+ * Team control-plane logs. Events carry workspace/Team ids and the actor id
+ * only — never member emails, issue content, connector arguments, or prompts.
+ */
+const teamLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'teams',
+})
 
 function serviceError(
   code: TeamErrorCode,
@@ -475,6 +485,11 @@ export async function createTeam(args: {
   const membership = outcome.memberships.find(
     (row) => row.userId === args.actorUserId,
   )
+  teamLogger.info('team.created', {
+    workspaceId: args.workspaceId,
+    teamId: outcome.team.id,
+    actorId: args.actorUserId,
+  })
   return Result.ok(
     toTeam(outcome.team, {
       memberCount: outcome.memberships.length,
@@ -556,6 +571,11 @@ export async function updateTeam(args: {
   if (outcome.kind === 'not_found') {
     return Result.err(serviceError('TEAM_NOT_FOUND', 404, 'Team not found'))
   }
+  teamLogger.info('team.updated', {
+    workspaceId: args.team.workspaceId,
+    teamId: args.team.id,
+    actorId: args.actorUserId,
+  })
   return Result.ok(outcome.team)
 }
 
@@ -657,6 +677,12 @@ export async function transferTeamOwner(args: {
       ),
     )
   }
+  teamLogger.info('team.owner_transferred', {
+    workspaceId: args.team.workspaceId,
+    teamId: args.team.id,
+    actorId: args.actorUserId,
+    ownerUserId: args.ownerUserId,
+  })
   return Result.ok(outcome.team)
 }
 
@@ -765,6 +791,12 @@ export async function addTeamMember(args: {
       ),
     )
   }
+  teamLogger.info('team.member_added', {
+    workspaceId: args.team.workspaceId,
+    teamId: args.team.id,
+    actorId: args.actorUserId,
+    memberType: args.member.member_type,
+  })
   return Result.ok(outcome.membership)
 }
 
@@ -832,6 +864,12 @@ export async function removeTeamMember(args: {
       ),
     )
   }
+  teamLogger.info('team.member_removed', {
+    workspaceId: args.team.workspaceId,
+    teamId: args.team.id,
+    actorId: args.actorUserId,
+    membershipId: args.membershipId,
+  })
   return Result.ok(undefined)
 }
 
@@ -877,6 +915,11 @@ export async function deleteTeam(args: {
       ),
     )
   }
+  teamLogger.info('team.deleted', {
+    workspaceId: args.team.workspaceId,
+    teamId: args.team.id,
+    actorId: args.actorUserId,
+  })
   return Result.ok(undefined)
 }
 
