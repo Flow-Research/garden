@@ -246,7 +246,7 @@ export function CreateTeamDialog({ onClose }: { onClose: () => void }) {
           ) : null}
         </div>
 
-        <DialogFooter className="border-t px-6 py-4">
+        <DialogFooter className="border-t px-6 pt-4 pb-6">
           {step === 1 ? (
             <>
               <Button variant="outline" onClick={onClose}>

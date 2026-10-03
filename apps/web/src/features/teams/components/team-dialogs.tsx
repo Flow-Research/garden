@@ -153,7 +153,7 @@ export function AddTeamMemberDialog({
             </ul>
           )}
         </div>
-        <DialogFooter className="border-t px-6 py-4">
+        <DialogFooter className="border-t px-6 pt-4 pb-6">
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
@@ -220,7 +220,7 @@ export function EditTeamDialog({
             />
           </label>
         </div>
-        <DialogFooter>
+        <DialogFooter className="pb-6">
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
@@ -299,7 +299,7 @@ export function TransferOwnerDialog({
             </li>
           ))}
         </ul>
-        <DialogFooter className="border-t px-6 py-4">
+        <DialogFooter className="border-t px-6 pt-4 pb-6">
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
@@ -349,7 +349,7 @@ export function DeleteTeamDialog({
             deleted with a Team.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
+        <AlertDialogFooter className="pb-6">
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction onClick={handleDelete}>
             Delete Team
