@@ -96,6 +96,10 @@ export function toCurrentMembership(
   }
 }
 
+/**
+ * Maps a Team row plus caller-relative counts. `activity_count` is only
+ * computed on detail reads (`getTeamForViewer`), so the base shape omits it.
+ */
 export function toTeam(
   record: TeamRow,
   options: {
@@ -105,7 +109,7 @@ export function toTeam(
     canTransferOwner: boolean
     currentMembership: TeamCurrentMembership | null
   },
-): Team {
+): Omit<Team, 'activity_count'> {
   return {
     id: record.id,
     workspace_id: record.workspaceId,
@@ -232,6 +236,7 @@ export async function getTeamForViewer(args: {
         manager,
         viewerId: args.viewerId,
       })})`,
+      activityCount: sql<number>`(select cast(count(*) as int) from ${schema.activityEvent} where ${schema.activityEvent.subjectType} = 'team' and ${schema.activityEvent.subjectId} = "team"."id")`,
     })
     .from(schema.team)
     .where(eq(schema.team.id, args.team.id))
@@ -246,13 +251,16 @@ export async function getTeamForViewer(args: {
       ),
     )
 
-  return toTeam(args.team, {
-    memberCount: counts?.memberCount ?? 0,
-    issueCount: counts?.issueCount ?? 0,
-    canManage: manager || args.team.ownerUserId === args.viewerId,
-    canTransferOwner: manager,
-    currentMembership: membership ? toCurrentMembership(membership) : null,
-  })
+  return {
+    ...toTeam(args.team, {
+      memberCount: counts?.memberCount ?? 0,
+      issueCount: counts?.issueCount ?? 0,
+      canManage: manager || args.team.ownerUserId === args.viewerId,
+      canTransferOwner: manager,
+      currentMembership: membership ? toCurrentMembership(membership) : null,
+    }),
+    activity_count: counts?.activityCount ?? 0,
+  }
 }
 
 /**
@@ -490,15 +498,17 @@ export async function createTeam(args: {
     teamId: outcome.team.id,
     actorId: args.actorUserId,
   })
-  return Result.ok(
-    toTeam(outcome.team, {
+  return Result.ok({
+    ...toTeam(outcome.team, {
       memberCount: outcome.memberships.length,
       issueCount: 0,
       canManage: true,
       canTransferOwner: true,
       currentMembership: membership ? toCurrentMembership(membership) : null,
     }),
-  )
+    // The transaction above writes exactly one team.created activity row.
+    activity_count: 1,
+  })
 }
 
 export async function updateTeam(args: {

@@ -298,12 +298,14 @@ describe('teams API (integration)', () => {
       name: string
       owner_user_id: string
       member_count: number
+      activity_count: number
       can_manage: boolean
       current_membership: { member_type: string; user_id: string } | null
     }
     expect(team.name).toBe('Engineering')
     expect(team.owner_user_id).toBe(fixture.ownerId)
     expect(team.member_count).toBe(1)
+    expect(team.activity_count).toBe(1)
     expect(team.can_manage).toBe(true)
     expect(team.current_membership).toMatchObject({
       member_type: 'user',
@@ -327,6 +329,73 @@ describe('teams API (integration)', () => {
         ),
       )
     expect(events).toHaveLength(1)
+  })
+
+  it('reports Team activity count on detail reads', async () => {
+    const fixture = await seedWorkspace(testDb)
+    const createRequest = jsonRequest(
+      'https://garden.test/api/teams',
+      fixture.workspaceId,
+      'POST',
+      { name: 'Counted' },
+    )
+    const createResponse = await handlerFor(TeamsRoute, 'POST')(
+      invocation(
+        makeContext({
+          testDb,
+          userId: fixture.ownerId,
+          role: 'owner',
+          request: createRequest,
+        }),
+        createRequest,
+        {},
+        '/api/teams',
+      ),
+    )
+    expect(createResponse.status).toBe(201)
+    const created = (await createResponse.json()) as { id: string }
+
+    const addRequest = jsonRequest(
+      `https://garden.test/api/teams/${created.id}/members`,
+      fixture.workspaceId,
+      'POST',
+      { member_type: 'user', user_id: fixture.memberId },
+    )
+    const addResponse = await handlerFor(TeamMembersRoute, 'POST')(
+      invocation(
+        makeContext({
+          testDb,
+          userId: fixture.ownerId,
+          role: 'owner',
+          request: addRequest,
+        }),
+        addRequest,
+        { teamId: created.id },
+        '/api/teams/$teamId/members',
+      ),
+    )
+    expect(addResponse.status).toBe(201)
+
+    const detailRequest = new Request(
+      `https://garden.test/api/teams/${created.id}`,
+      { headers: { 'X-Workspace-ID': fixture.workspaceId } },
+    )
+    const detailResponse = await handlerFor(TeamRoute, 'GET')(
+      invocation(
+        makeContext({
+          testDb,
+          userId: fixture.ownerId,
+          role: 'owner',
+          request: detailRequest,
+        }),
+        detailRequest,
+        { teamId: created.id },
+        '/api/teams/$teamId',
+      ),
+    )
+    expect(detailResponse.status).toBe(200)
+    const detail = (await detailResponse.json()) as { activity_count: number }
+    expect(detail.activity_count).toBe(2)
   })
 
   it('rejects duplicate names case-insensitively', async () => {

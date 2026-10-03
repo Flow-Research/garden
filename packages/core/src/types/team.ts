@@ -43,6 +43,8 @@ export interface TeamSummary {
 
 export interface Team extends TeamSummary {
   created_by: string
+  /** Count of activity_event rows recorded against this Team. */
+  activity_count: number
 }
 
 /**
