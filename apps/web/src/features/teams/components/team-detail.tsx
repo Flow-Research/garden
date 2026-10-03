@@ -5,7 +5,6 @@ import { useWorkspaceId } from '@garden/app-state/hooks'
 import { useAuthStore } from '@garden/app-state/auth'
 import type { TeamMember } from '@garden/core/types'
 import {
-  ChevronRight,
   MoreHorizontal,
   Plus,
   Trash2,
@@ -43,7 +42,6 @@ import {
   TransferOwnerDialog,
 } from './team-dialogs'
 import { TeamIssuesPanel } from './team-issues-panel'
-import { teamColor } from './team-tokens'
 
 export type TeamTab = 'members' | 'issues' | 'tasks'
 
@@ -139,12 +137,8 @@ export function TeamDetail({
         <Link to="/teams" className="text-sm text-text-secondary hover:underline">
           Teams
         </Link>
-        <ChevronRight className="size-3 text-text-secondary" />
-        <span className="flex items-center gap-1.5 text-sm font-medium">
-          <span
-            className="size-2 rounded-full"
-            style={{ background: teamColor(team.id) }}
-          />
+        <span className="text-sm text-text-tertiary">/</span>
+        <span className="text-sm font-medium text-text-default">
           {team.name}
         </span>
       </PageHeader>

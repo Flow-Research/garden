@@ -49,7 +49,7 @@ vi.mock('@/features/issues/components/board-view', () => ({
 }))
 
 vi.mock('sonner', () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), custom: vi.fn() },
 }))
 
 const apiMocks = vi.hoisted(() => ({
@@ -238,9 +238,7 @@ describe('teams UI', () => {
         initial_members: undefined,
       })
     })
-    expect(toast.success).toHaveBeenCalledWith(
-      'Engineering team has been created',
-    )
+    expect(toast.custom).toHaveBeenCalled()
   })
 
   it('hides management controls from normal members', async () => {
@@ -394,6 +392,24 @@ describe('teams UI', () => {
         owner_user_id: 'user-2',
       })
     })
+  })
+
+  it('wires the admin summary actions', async () => {
+    apiMocks.listTeams.mockResolvedValue({
+      teams: [makeTeam()],
+      total: 1,
+    })
+
+    renderWithQuery(<TeamOverview />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'See issues' }))
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/teams/issues' })
+    expect(
+      screen.getByRole('button', { name: 'See members' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Manage Teams' }),
+    ).toBeDisabled()
   })
 
   it('renders the Teams dropdown children and toggles them', () => {

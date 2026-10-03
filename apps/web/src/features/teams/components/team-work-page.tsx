@@ -12,7 +12,6 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from '@garden/ui/components/ui/empty'
-import { ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { BoardView } from '@/features/issues/components/board-view'
 import { ListView } from '@/features/issues/components/list-view'
@@ -144,8 +143,8 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
         <Link to="/teams" className="text-sm text-text-secondary hover:underline">
           Teams
         </Link>
-        <ChevronRight className="size-3 text-text-secondary" />
-        <span className="text-sm font-medium">
+        <span className="text-sm text-text-tertiary">/</span>
+        <span className="text-sm font-medium text-text-default">
           {isIssues ? 'Issues' : 'Tasks'}
         </span>
       </PageHeader>

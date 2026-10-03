@@ -18,6 +18,7 @@ import { toast } from 'sonner'
 import { ActorAvatar } from '@/features/common/actor-avatar'
 import { agentListOptions, memberListOptions } from '@/lib/workspace/queries'
 import { useCreateTeam } from '../mutations'
+import { TeamCreatedToast } from './team-created-toast'
 import { teamColor } from './team-tokens'
 
 type PickerEntry =
@@ -109,7 +110,10 @@ export function CreateTeamDialog({ onClose }: { onClose: () => void }) {
       )
       return
     }
-    toast.success(`${result.team.name} team has been created`)
+    toast.custom(
+      () => <TeamCreatedToast title={`${result.team.name} team has been created`} />,
+      { position: 'top-center' },
+    )
     onClose()
   }
 

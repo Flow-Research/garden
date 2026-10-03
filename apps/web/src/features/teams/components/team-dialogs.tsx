@@ -1,7 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
-import type { AddTeamMemberRequest, Team, TeamMember } from '@garden/core/types'
+import type {
+  AddTeamMemberRequest,
+  TeamMember,
+  TeamSummary,
+} from '@garden/core/types'
 import { Button } from '@garden/ui/components/ui/button'
 import {
   AlertDialog,
@@ -166,7 +170,7 @@ export function EditTeamDialog({
   team,
   onClose,
 }: {
-  team: Team
+  team: TeamSummary
   onClose: () => void
 }) {
   const [name, setName] = useState(team.name)
@@ -234,7 +238,7 @@ export function TransferOwnerDialog({
   members,
   onClose,
 }: {
-  team: Team
+  team: TeamSummary
   members: TeamMember[]
   onClose: () => void
 }) {
@@ -313,7 +317,7 @@ export function DeleteTeamDialog({
   onClose,
   onDeleted,
 }: {
-  team: Team
+  team: TeamSummary
   onClose: () => void
   onDeleted: () => void
 }) {

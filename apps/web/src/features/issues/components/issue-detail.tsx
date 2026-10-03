@@ -1122,7 +1122,7 @@ export function IssueDetail({
                     >
                       Teams
                     </button>
-                    <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                    <span className="text-muted-foreground/50 shrink-0">/</span>
                     <button
                       type="button"
                       onClick={() =>
@@ -1136,7 +1136,7 @@ export function IssueDetail({
                     >
                       Issues
                     </button>
-                    <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                    <span className="text-muted-foreground/50 shrink-0">/</span>
                   </>
                 ) : workspace ? (
                   <>
