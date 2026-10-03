@@ -13,7 +13,7 @@ export function TeamCreatedToast({
   body?: string
 }) {
   return (
-    <div className="flex w-[268px] items-center gap-3 rounded-lg bg-background-success-tertiary px-4 py-3">
+    <div className="flex w-[268px] items-center gap-3 rounded-lg border border-border-success-tertiary bg-background-success-tertiary px-4 py-3">
       <Triangle className="size-5 shrink-0 text-text-success-default" />
       <div className="flex min-w-0 flex-col">
         <span className="truncate text-sm text-text-default">{title}</span>

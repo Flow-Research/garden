@@ -34,7 +34,7 @@ function SummaryCard({
   action?: React.ReactNode
 }) {
   return (
-    <div className="flex min-h-[113px] min-w-0 flex-1 flex-col gap-2 rounded-xl bg-background-main-default p-4">
+    <div className="flex min-h-[113px] min-w-0 flex-1 flex-col gap-2 rounded-xl border-[0.5px] border-border-default bg-background-main-default p-4">
       <span className="text-sm text-text-secondary">{label}</span>
       <div className="flex min-h-11 items-center justify-between gap-3">
         <span className="text-3xl font-semibold tracking-tight tabular-nums">
@@ -58,7 +58,7 @@ function TeamCard({
   onDelete: (team: TeamSummary) => void
 }) {
   return (
-    <div className="group relative flex min-h-[196px] flex-col justify-between gap-12 rounded-xl bg-background-main-default p-4 transition-colors hover:bg-background-main-default-hover">
+    <div className="group relative flex min-h-[196px] flex-col justify-between gap-12 rounded-xl border-[0.5px] border-border-default bg-background-main-default p-4 transition-shadow hover:shadow-float-2">
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
           <Link
@@ -123,7 +123,7 @@ function TeamCard({
             {team.member_count === 1 ? 'member' : 'members'}
           </span>
         </span>
-        <span className="inline-flex h-8 items-center rounded-md border border-border-default bg-background-main-default px-2.5 text-sm">
+        <span className="inline-flex h-8 items-center rounded-md border border-border-default bg-background-main-default px-3 text-sm shadow-1">
           View all
         </span>
       </div>
@@ -180,7 +180,11 @@ export function TeamOverview() {
             </div>
             {canManage ? (
               <div className="flex items-center gap-3">
-                <Button variant="outline" className="h-10 rounded-md" disabled>
+                <Button
+                  variant="outline"
+                  className="h-10 rounded-md px-3 shadow-1"
+                  disabled
+                >
                   Manage Teams
                 </Button>
                 <Button
@@ -219,7 +223,7 @@ export function TeamOverview() {
                         action={
                           <Button
                             variant="outline"
-                            className="h-10 rounded-md"
+                            className="h-10 rounded-md px-3 shadow-1"
                             onClick={() => openSettingsDialog('members')}
                           >
                             See members
@@ -232,7 +236,7 @@ export function TeamOverview() {
                         action={
                           <Button
                             variant="outline"
-                            className="h-10 rounded-md"
+                            className="h-10 rounded-md px-3 shadow-1"
                             onClick={() =>
                               void navigate({ to: '/teams/issues' })
                             }
