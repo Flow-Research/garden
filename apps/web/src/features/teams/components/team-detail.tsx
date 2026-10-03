@@ -67,7 +67,7 @@ import {
 import { TeamIssuesPanel } from './team-issues-panel'
 import { TeamMembersPanel } from './team-members-panel'
 import { memberRoleLabel } from './team-members-table'
-import { TeamSummaryCard, TeamSummaryMenu } from './team-summary-card'
+import { TeamSummaryCard } from './team-summary-card'
 import { teamColor } from './team-tokens'
 
 export type TeamTab = 'members' | 'issues' | 'tasks'
@@ -263,31 +263,14 @@ function IssuesToolbar({
 /** Status summary cards for the Issues/Tasks tabs (Backlog maps to Todo). */
 function StatusCards({
   counts,
-  menuLabel,
-  onSeeOther,
 }: {
   counts: { todo: number; in_progress: number; done: number }
-  menuLabel: string
-  onSeeOther: () => void
 }) {
-  const items = [{ label: menuLabel, onSelect: onSeeOther }]
   return (
     <div className="flex gap-3">
-      <TeamSummaryCard
-        action={<TeamSummaryMenu items={items} />}
-        label="Todo"
-        value={counts.todo}
-      />
-      <TeamSummaryCard
-        action={<TeamSummaryMenu items={items} />}
-        label="In Progress"
-        value={counts.in_progress}
-      />
-      <TeamSummaryCard
-        action={<TeamSummaryMenu items={items} />}
-        label="Done"
-        value={counts.done}
-      />
+      <TeamSummaryCard label="Todo" value={counts.todo} />
+      <TeamSummaryCard label="In Progress" value={counts.in_progress} />
+      <TeamSummaryCard label="Done" value={counts.done} />
     </div>
   )
 }
@@ -540,11 +523,7 @@ export function TeamDetail({
                 value="issues"
               >
                 <div className="flex flex-col gap-8">
-                  <StatusCards
-                    counts={statusCounts}
-                    menuLabel="See tasks"
-                    onSeeOther={() => onTabChange('tasks')}
-                  />
+                  <StatusCards counts={statusCounts} />
                   <TeamIssuesPanel
                     initialView="list"
                     issues={issues}
@@ -560,11 +539,7 @@ export function TeamDetail({
                 value="tasks"
               >
                 <div className="flex flex-col gap-8">
-                  <StatusCards
-                    counts={statusCounts}
-                    menuLabel="See issues"
-                    onSeeOther={() => onTabChange('issues')}
-                  />
+                  <StatusCards counts={statusCounts} />
                   <TeamIssuesPanel
                     initialView="board"
                     issues={issues}
