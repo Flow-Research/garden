@@ -15,8 +15,10 @@ export function memberRoleLabel(member: TeamMember, ownerUserId: string) {
  * mirroring the shared FileListTable pattern from the Files display: a
  * rounded-2xl bordered container, an unbroken gray header band, and vertical
  * rules between body cells. The first column left-aligns identity; the rest
- * center. Remove is P0 but absent from the design, so it is a ghost trash
- * action revealed on row hover/focus (owner rows never show it).
+ * center. Remove is P0 but absent from the design, so it renders as a visible
+ * ghost trash action on every removable row (users and agents, never the
+ * owner); rows without it keep a same-size spacer so every View all stays
+ * aligned in the column.
  */
 export function TeamMembersTable({
   members,
@@ -55,14 +57,11 @@ export function TeamMembersTable({
         </thead>
         <tbody>
           {members.map((member) => {
-            const removable =
-              canManage &&
-              member.member_type === 'user' &&
-              member.user_id !== ownerUserId
+            const removable = canManage && member.user_id !== ownerUserId
             return (
               <tr
                 key={member.id}
-                className="group border-t border-border-default bg-background-main-default"
+                className="border-t border-border-default bg-background-main-default"
               >
                 <td className="px-6 py-5">
                   <span className="flex min-w-0 flex-col">
@@ -96,14 +95,15 @@ export function TeamMembersTable({
                     {removable ? (
                       <Button
                         aria-label={`Remove ${member.name}`}
-                        className="pointer-events-none opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
                         onClick={() => onRemove(member)}
                         size="icon-sm"
                         variant="ghost"
                       >
                         <Trash2 className="size-4" />
                       </Button>
-                    ) : null}
+                    ) : (
+                      <span aria-hidden className="size-7" />
+                    )}
                   </span>
                 </td>
               </tr>

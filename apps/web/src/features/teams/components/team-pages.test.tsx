@@ -556,6 +556,9 @@ describe('teams UI', () => {
     expect(viewAll).toHaveLength(2)
     for (const button of viewAll) expect(button).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Export Data' })).toBeDisabled()
+    expect(
+      screen.queryByRole('button', { name: 'Remove Owner' }),
+    ).not.toBeInTheDocument()
 
     expect(screen.getByText('Total members')).toBeInTheDocument()
     expect(screen.getByText('Total Roles')).toBeInTheDocument()
@@ -638,6 +641,37 @@ describe('teams UI', () => {
       expect(apiMocks.removeTeamMember).toHaveBeenCalledWith('team-1', 'tm-2')
     })
     expect(toast.success).toHaveBeenCalledWith('Casey removed from the Team')
+  })
+
+  it('removes an agent member from its row action', async () => {
+    const agentMember = makeMember({
+      id: 'tm-3',
+      member_type: 'agent',
+      user_id: null,
+      agent_id: 'agent-1',
+      name: 'Garden',
+      email: null,
+      workspace_role: null,
+      agent_status: 'active',
+      assigned_issue_count: 0,
+    })
+    apiMocks.getTeam.mockResolvedValue(makeTeam())
+    apiMocks.listTeamMembers.mockResolvedValue({
+      members: [makeMember(), agentMember],
+      total: 2,
+    })
+    apiMocks.removeTeamMember.mockResolvedValue(undefined)
+
+    renderWithQuery(
+      <TeamDetail teamId="team-1" tab="members" onTabChange={() => {}} />,
+    )
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Remove Garden' }),
+    )
+    await waitFor(() => {
+      expect(apiMocks.removeTeamMember).toHaveBeenCalledWith('team-1', 'tm-3')
+    })
   })
 
   it('searches Team issues and shows status summaries from the toolbar', async () => {
