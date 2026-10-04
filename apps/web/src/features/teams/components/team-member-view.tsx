@@ -20,7 +20,6 @@ import {
   TabsList,
   TabsTrigger,
 } from '@garden/ui/components/ui/tabs'
-import { PageHeader } from '@/features/layout/page-header'
 import { CreateIssueModal } from '@/features/modals/create-issue'
 import { teamIssueListOptions, teamListOptions } from '../queries'
 import { teamIssueViewStore } from '../view-store'
@@ -143,23 +142,28 @@ function TeamMemberWork({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader className="gap-1.5">
-        <span className="text-sm font-medium">Teams</span>
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-sm text-text-secondary">Member:</span>
-          <TeamSelector
-            onSelect={onSelectTeam}
-            selected={selected}
-            teams={teams}
-          />
-        </div>
-      </PageHeader>
-
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex min-h-full w-full max-w-[80rem] flex-col px-6 pt-6 pb-12">
-          <p className="text-sm text-text-secondary">
-            {selected.description ?? 'No description'}
-          </p>
+        <div className="mx-auto flex min-h-full w-full max-w-[80rem] flex-col px-6 pt-12 pb-12">
+          {/* Design header: the selected Team's name + description with the
+              Member selector centered against the block. No breadcrumb bar. */}
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex min-w-0 flex-col gap-1">
+              <h1 className="text-2xl font-semibold tracking-tight">
+                {selected.name}
+              </h1>
+              <p className="text-base text-text-secondary">
+                {selected.description ?? 'No description'}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="text-sm text-text-secondary">Member:</span>
+              <TeamSelector
+                onSelect={onSelectTeam}
+                selected={selected}
+                teams={teams}
+              />
+            </div>
+          </div>
 
           <ViewStoreProvider store={teamIssueViewStore}>
             <Tabs
@@ -243,17 +247,19 @@ function TeamMemberWork({
 function NoTeamsState() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader className="gap-1.5">
-        <span className="text-sm font-medium">Teams</span>
-      </PageHeader>
-      <div className="flex flex-1 items-center justify-center p-6">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <Users className="size-6 text-icon-neutral-default" />
-          <span className="text-sm">No Teams yet</span>
-          <span className="text-xs text-text-secondary">
-            You aren&apos;t part of any Team yet. Ask a workspace admin to add
-            you.
-          </span>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex min-h-full w-full max-w-[80rem] flex-col px-6 pt-12 pb-12">
+          <h1 className="text-2xl font-semibold tracking-tight">Teams</h1>
+          <div className="flex flex-1 items-center justify-center py-16">
+            <div className="flex flex-col items-center gap-2 text-center">
+              <Users className="size-6 text-icon-neutral-default" />
+              <span className="text-sm">No Teams yet</span>
+              <span className="text-xs text-text-secondary">
+                You aren&apos;t part of any Team yet. Ask a workspace admin to
+                add you.
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

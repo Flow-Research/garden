@@ -269,7 +269,12 @@ describe('teams UI', () => {
 
     // Member view: team selector + Issues/Tasks tabs only.
     expect(await screen.findByText('Member:')).toBeInTheDocument()
-    expect(screen.getByText('Engineering')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Engineering' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /Engineering/ }),
+    ).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Issues' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Tasks' })).toBeInTheDocument()
     expect(
