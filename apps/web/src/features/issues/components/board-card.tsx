@@ -82,6 +82,7 @@ export const BoardCardContent = memo(function BoardCardContent({
   editable = false,
   childProgress,
   projectTitle,
+  team,
   onUpdate,
 }: {
   issue: Issue
@@ -89,6 +90,8 @@ export const BoardCardContent = memo(function BoardCardContent({
   childProgress?: ChildProgress
   /** Project title for the footer chip; undefined renders "No project". */
   projectTitle?: string
+  /** Team chip for cross-team boards (Teams › Tasks); omitted elsewhere. */
+  team?: { name: string; color: string }
   /** Mutation handler for editable pickers. Required when `editable` is true.
    * Caller wires this (typically via `useUpdateIssue`); previews can omit it
    * and pass `editable={false}` to render in read-only mode without touching
@@ -120,7 +123,7 @@ export const BoardCardContent = memo(function BoardCardContent({
 
   return (
     <div className="rounded-md border-[0.5px] border-border-default bg-background-main-default p-3">
-      {/* Row 1: Identifier + live indicators */}
+      {/* Row 1: Identifier + live indicators + team chip (cross-team only) */}
       <div className="flex items-center gap-1.5 text-xs text-text-brand-default">
         {issue.source_summary && (
           <ConnectorIcon
@@ -130,6 +133,16 @@ export const BoardCardContent = memo(function BoardCardContent({
         )}
         <span>{issue.identifier}</span>
         {liveVariant && <LiveDot variant={liveVariant} className="ml-0.5" />}
+        {team ? (
+          <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-2 py-0.5 text-xs text-text-default">
+            <span
+              aria-hidden
+              className="size-1.5 rounded-full"
+              style={{ background: team.color }}
+            />
+            {team.name}
+          </span>
+        ) : null}
       </div>
 
       <p className="mt-1.5 text-sm font-semibold leading-snug line-clamp-2">
@@ -234,10 +247,12 @@ export const DraggableBoardCard = memo(function DraggableBoardCard({
   issue,
   childProgress,
   projectTitle,
+  team,
 }: {
   issue: Issue
   childProgress?: ChildProgress
   projectTitle?: string
+  team?: { name: string; color: string }
 }) {
   const {
     attributes,
@@ -287,6 +302,7 @@ export const DraggableBoardCard = memo(function DraggableBoardCard({
           editable
           childProgress={childProgress}
           projectTitle={projectTitle}
+          team={team}
           onUpdate={handleUpdate}
         />
       </a>

@@ -464,7 +464,7 @@ describe('teams UI', () => {
     expect(onToggleExpand).toHaveBeenCalledWith('teams')
   })
 
-  it('filters the admin work page by Team pill', async () => {
+  it('shows all teams by default and filters by Team pill', async () => {
     apiMocks.listTeams.mockResolvedValue({
       teams: [
         makeTeam({ id: 'team-1', name: 'Engineering' }),
@@ -486,11 +486,50 @@ describe('teams UI', () => {
     expect(await screen.findByText('Total Tasks')).toBeInTheDocument()
     expect(screen.getByText('Engineering')).toBeInTheDocument()
     expect(screen.getByText('Finance')).toBeInTheDocument()
-    expect(await screen.findByTestId('team-board')).toHaveTextContent('issue-1')
 
+    // All view: every team-scoped task, unscoped ones excluded.
+    const board = await screen.findByTestId('team-board')
+    expect(board).toHaveTextContent('issue-1')
+    expect(board).toHaveTextContent('issue-2')
+    expect(board).not.toHaveTextContent('issue-3')
+
+    // Filtering to one Team narrows the board.
     fireEvent.click(screen.getByText('Finance'))
     await waitFor(() => {
       expect(screen.getByTestId('team-board')).toHaveTextContent('issue-2')
+    })
+    expect(screen.getByTestId('team-board')).not.toHaveTextContent('issue-1')
+
+    // Clicking the active pill toggles back to All.
+    fireEvent.click(screen.getByText('Finance'))
+    await waitFor(() => {
+      expect(screen.getByTestId('team-board')).toHaveTextContent('issue-1')
+    })
+  })
+
+  it('scopes the create modal to the Team picker in the All view', async () => {
+    apiMocks.listTeams.mockResolvedValue({
+      teams: [
+        makeTeam({ id: 'team-1', name: 'Engineering' }),
+        makeTeam({ id: 'team-2', name: 'Finance', member_count: 1 }),
+      ],
+      total: 2,
+    })
+    apiMocks.listIssues.mockResolvedValue({ issues: [], total: 0 })
+
+    renderWithQuery(<TeamWorkPage mode="tasks" />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /New Issue/ }))
+    expect(
+      (await screen.findByTestId('create-issue-modal')).textContent,
+    ).toContain('"show_team_picker":true')
+
+    fireEvent.click(screen.getByText('Finance'))
+    fireEvent.click(screen.getByRole('button', { name: /New Issue/ }))
+    await waitFor(() => {
+      expect(screen.getByTestId('create-issue-modal').textContent).toContain(
+        '"team_id":"team-2"',
+      )
     })
   })
 

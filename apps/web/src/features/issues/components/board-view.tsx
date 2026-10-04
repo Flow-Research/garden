@@ -116,6 +116,7 @@ export function BoardView({
   childProgressMap = EMPTY_PROGRESS_MAP,
   doneTotal: doneTotalOverride,
   onCreateIssue,
+  teamChips,
 }: {
   issues: Issue[]
   allIssues: Issue[]
@@ -131,6 +132,8 @@ export function BoardView({
   doneTotal?: number
   /** When omitted, create affordances are hidden (read-only cross-team views). */
   onCreateIssue?: (data?: Record<string, unknown> | null) => void
+  /** Team chip lookup for cross-team boards (Teams › Tasks). */
+  teamChips?: Map<string, { name: string; color: string }>
 }) {
   const sortBy = useViewStore((s) => s.sortBy)
   const sortDirection = useViewStore((s) => s.sortDirection)
@@ -314,6 +317,7 @@ export function BoardView({
             totalCount={status === 'done' ? displayDoneTotal : undefined}
             onCreateIssue={onCreateIssue}
             projectTitleById={projectTitleById}
+            teamChips={teamChips}
             footer={
               status === 'done' && canLoadMoreDone ? (
                 <InfiniteScrollSentinel
@@ -344,6 +348,7 @@ export function BoardView({
                   ? projectTitleById.get(activeIssue.project_id)
                   : undefined
               }
+              team={teamChips?.get(activeIssue.id)}
             />
           </div>
         ) : null}

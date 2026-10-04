@@ -42,6 +42,7 @@ import {
 } from '../issues/components'
 import { TodoAgentHintContent } from '../issues/components/todo-agent-hint-dialog'
 import { ProjectPicker } from '../projects/components/project-picker'
+import { TeamPicker } from '../teams/components/team-picker'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { useIssueDraftStore } from '@garden/app-state/issues/stores/draft-store'
 import { useCreateIssue, useUpdateIssue } from '@/lib/issues/mutations'
@@ -97,6 +98,13 @@ export function CreateIssueModal({
   // Team-scoped creates carry team_id; normal Team members are locked to
   // self-assignment (the server enforces the same rule).
   const teamId = typeof data?.team_id === 'string' ? data.team_id : undefined
+  // Cross-team surfaces (Teams › Tasks in the All view) pass no team_id and
+  // set show_team_picker, so the creator must choose the owning Team.
+  const showTeamPicker = data?.show_team_picker === true && !teamId
+  const [pickedTeamId, setPickedTeamId] = useState<string | undefined>(undefined)
+  // The API rejects team-scoped creates without an assignee ("Team issues
+  // must be assigned to a Team member"), so the Team modes require one.
+  const requiresAssignee = Boolean(teamId || pickedTeamId)
   const lockedAssigneeUserId =
     typeof data?.lock_assignee_user_id === 'string'
       ? data.lock_assignee_user_id
@@ -166,6 +174,8 @@ export function CreateIssueModal({
   const updateIssueMutation = useUpdateIssue()
   const handleSubmit = async () => {
     if (!title.trim() || submitting) return
+    if (showTeamPicker && !pickedTeamId) return
+    if (requiresAssignee && !lockedAssigneeUserId && !assigneeId) return
     setSubmitting(true)
     try {
       const issue = await createIssueMutation.mutateAsync({
@@ -175,7 +185,7 @@ export function CreateIssueModal({
         priority,
         assignee_type: lockedAssigneeUserId ? 'member' : assigneeType,
         assignee_id: lockedAssigneeUserId ?? assigneeId,
-        team_id: teamId,
+        team_id: teamId ?? pickedTeamId,
         due_date: dueDate || undefined,
         attachment_ids: attachmentIds.length > 0 ? attachmentIds : undefined,
         auto_start: autoStart,
@@ -422,6 +432,16 @@ export function CreateIssueModal({
                 triggerRender={<PillButton />}
                 align="start"
               />
+
+              {/* Team — required only for cross-team creates (All view) */}
+              {showTeamPicker ? (
+                <TeamPicker
+                  teamId={pickedTeamId ?? null}
+                  onUpdate={setPickedTeamId}
+                  triggerRender={<PillButton />}
+                  align="start"
+                />
+              ) : null}
             </div>
 
             {/* Footer */}
@@ -430,6 +450,11 @@ export function CreateIssueModal({
                 onSelect={(file) => descEditorRef.current?.uploadFile(file)}
               />
               <div className="flex items-center gap-3">
+                {requiresAssignee && !lockedAssigneeUserId && !assigneeId ? (
+                  <span className="text-xs text-text-secondary">
+                    Team tasks need an assignee
+                  </span>
+                ) : null}
                 {assigneeType === 'agent' &&
                 assigneeId &&
                 !['todo', 'blocked', 'done', 'cancelled'].includes(status) ? (
@@ -446,7 +471,12 @@ export function CreateIssueModal({
                 <Button
                   size="sm"
                   onClick={handleSubmit}
-                  disabled={!title.trim() || submitting}
+                  disabled={
+                    !title.trim() ||
+                    submitting ||
+                    (showTeamPicker && !pickedTeamId) ||
+                    (requiresAssignee && !lockedAssigneeUserId && !assigneeId)
+                  }
                 >
                   {submitting ? 'Creating...' : 'Create Issue'}
                 </Button>

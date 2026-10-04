@@ -12,26 +12,21 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from '@garden/ui/components/ui/empty'
+import { Button } from '@garden/ui/components/ui/button'
+import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { BoardView } from '@/features/issues/components/board-view'
 import { ListView } from '@/features/issues/components/list-view'
 import { PageHeader } from '@/features/layout/page-header'
+import { CreateIssueModal } from '@/features/modals/create-issue'
 import { useUpdateIssue } from '@/lib/issues/mutations'
 import { memberListOptions } from '@/lib/workspace/queries'
 import { allTeamIssuesOptions, teamListOptions } from '../queries'
 import { teamIssueViewStore } from '../view-store'
+import { TeamSummaryCard } from './team-summary-card'
 import { teamColor } from './team-tokens'
 
 type TeamWorkMode = 'issues' | 'tasks'
-
-function SummaryCard({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex min-w-0 flex-1 flex-col gap-3 rounded-xl bg-background-main-default p-4">
-      <span className="text-sm text-text-secondary">{label}</span>
-      <span className="text-3xl font-semibold tracking-tight">{value}</span>
-    </div>
-  )
-}
 
 /**
  * Admin-only cross-team work surface backing the sidebar Teams dropdown:
@@ -43,6 +38,7 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
   const wsId = useWorkspaceId()
   const currentUserId = useAuthStore((s) => s.user?.id ?? '')
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
   const [viewReady, setViewReady] = useState(false)
   const updateIssueMutation = useUpdateIssue()
 
@@ -59,8 +55,10 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
     () => new Map(teams.map((team) => [team.id, team] as const)),
     [teams],
   )
-  const effectiveTeam =
-    teams.find((team) => team.id === selectedTeamId) ?? teams[0] ?? null
+  // null = the All view: every team's tasks, the page's default.
+  const effectiveTeam = selectedTeamId
+    ? (teams.find((team) => team.id === selectedTeamId) ?? null)
+    : null
 
   const teamChips = useMemo(() => {
     const map = new Map<string, { name: string; color: string }>()
@@ -79,7 +77,7 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
     () =>
       effectiveTeam
         ? allIssues.filter((issue) => issue.team_id === effectiveTeam.id)
-        : [],
+        : allIssues,
     [allIssues, effectiveTeam],
   )
 
@@ -147,22 +145,31 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
         <span className="text-sm font-medium text-text-default">
           {isIssues ? 'Issues' : 'Tasks'}
         </span>
+        {teams.length > 0 ? (
+          <Button
+            className="ml-auto h-8 gap-2 rounded-md px-3"
+            onClick={() => setCreateOpen(true)}
+          >
+            <Plus className="size-4" />
+            New Issue
+          </Button>
+        ) : null}
       </PageHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col gap-5 px-6 py-5">
+        <div className="mx-auto flex min-h-full w-full max-w-[80rem] flex-col gap-5 px-6 py-5">
           <div className="flex gap-4">
             {isIssues ? (
               <>
-                <SummaryCard label="Todo" value={counts.todo} />
-                <SummaryCard label="In Progress" value={counts.inProgress} />
-                <SummaryCard label="Done" value={counts.done} />
+                <TeamSummaryCard label="Todo" value={counts.todo} />
+                <TeamSummaryCard label="In Progress" value={counts.inProgress} />
+                <TeamSummaryCard label="Done" value={counts.done} />
               </>
             ) : (
               <>
-                <SummaryCard label="Total Tasks" value={counts.total} />
-                <SummaryCard label="In Progress" value={counts.inProgress} />
-                <SummaryCard label="Done" value={counts.done} />
+                <TeamSummaryCard label="Total Tasks" value={counts.total} />
+                <TeamSummaryCard label="In Progress" value={counts.inProgress} />
+                <TeamSummaryCard label="Done" value={counts.done} />
               </>
             )}
           </div>
@@ -179,13 +186,26 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedTeamId(null)}
+                  className={
+                    !effectiveTeam
+                      ? 'flex h-6 items-center rounded-pill bg-background-brand-tertiary px-4 text-sm text-text-brand-secondary'
+                      : 'flex h-6 items-center rounded-pill bg-background-main-secondary px-4 text-sm text-text-neutral-default hover:bg-background-main-secondary-hover'
+                  }
+                >
+                  All
+                </button>
                 {teams.map((team) => {
                   const active = team.id === effectiveTeam?.id
                   return (
                     <button
                       key={team.id}
                       type="button"
-                      onClick={() => setSelectedTeamId(team.id)}
+                      onClick={() =>
+                        setSelectedTeamId(active ? null : team.id)
+                      }
                       className={
                         active
                           ? 'flex h-6 items-center rounded-pill bg-background-brand-tertiary px-4 text-sm text-text-brand-secondary'
@@ -215,6 +235,7 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
                       hiddenStatuses={[]}
                       onMoveIssue={handleMoveIssue}
                       doneTotal={doneTotal}
+                      teamChips={teamChips}
                     />
                   )}
                 </div>
@@ -223,6 +244,17 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
           )}
         </div>
       </div>
+
+      {createOpen ? (
+        <CreateIssueModal
+          onClose={() => setCreateOpen(false)}
+          data={
+            selectedTeamId
+              ? { team_id: selectedTeamId }
+              : { show_team_picker: true }
+          }
+        />
+      ) : null}
     </div>
   )
 }

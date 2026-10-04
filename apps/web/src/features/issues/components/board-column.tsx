@@ -34,6 +34,7 @@ export function BoardColumn({
   footer,
   onCreateIssue,
   projectTitleById,
+  teamChips,
 }: {
   status: IssueStatus
   issueIds: string[]
@@ -45,6 +46,8 @@ export function BoardColumn({
   onCreateIssue?: (data?: Record<string, unknown> | null) => void
   /** Project title lookup for the card's project chip. */
   projectTitleById?: Map<string, string>
+  /** Team chip lookup for cross-team boards (Teams › Tasks). */
+  teamChips?: Map<string, { name: string; color: string }>
 }) {
   const cfg = STATUS_CONFIG[status]
   const { setNodeRef, isOver } = useDroppable({ id: status })
@@ -134,6 +137,7 @@ export function BoardColumn({
                   ? projectTitleById?.get(issue.project_id)
                   : undefined
               }
+              team={teamChips?.get(issue.id)}
             />
           ))}
         </SortableContext>
