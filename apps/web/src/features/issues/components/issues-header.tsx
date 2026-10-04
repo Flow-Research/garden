@@ -2,6 +2,8 @@ import { useMemo } from 'react'
 import {
   ArrowDown,
   ArrowUp,
+  Check,
+  ChevronDown,
   Columns3,
   Filter,
   List,
@@ -10,6 +12,7 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react'
+import { useNavigate } from '@tanstack/react-router'
 import type {
   IssueViewState,
   SortField,
@@ -21,6 +24,12 @@ import {
 import type { IssuesScope } from '@garden/app-state/issues/stores/issues-scope-store'
 import type { Issue } from '@garden/core/types'
 import { Button } from '@garden/ui/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@garden/ui/components/ui/dropdown-menu'
 import { Input } from '@garden/ui/components/ui/input'
 import {
   Popover,
@@ -43,8 +52,8 @@ const SCOPE_OPTIONS: readonly {
   value: IssuesScope
 }[] = [
   { description: 'Every issue', label: 'All', value: 'all' },
-  { description: 'Assigned to people', label: 'Members', value: 'members' },
   { description: 'Assigned to agents', label: 'Agents', value: 'agents' },
+  { description: 'Assigned to people', label: 'Members', value: 'members' },
 ]
 
 function DisplaySettings({
@@ -133,6 +142,7 @@ export function IssuesHeader({
   searchQuery: string
 }) {
   const view = useIssuesHeaderViewState()
+  const navigate = useNavigate()
   const counts = useMemo(() => countIssues(scopedIssues), [scopedIssues])
   const filterCount = numberOfActiveFilters(view)
 
@@ -140,7 +150,7 @@ export function IssuesHeader({
     <header className="flex min-h-12 shrink-0 items-center gap-2 border-b px-4 py-2">
       <div
         aria-label="Issue scope"
-        className="flex rounded-lg border bg-muted/30 p-0.5"
+        className="flex h-[35px] items-center rounded-sm bg-background-main-secondary p-1"
         role="group"
       >
         {SCOPE_OPTIONS.map((option) => (
@@ -148,20 +158,48 @@ export function IssuesHeader({
             aria-label={`${option.label}: ${option.description}`}
             aria-pressed={view.scope === option.value}
             className={cn(
-              'h-7 border-0 px-2.5 text-xs shadow-none',
+              'h-[27px] rounded-sm border-0 px-2.5 text-sm font-normal shadow-none',
               view.scope === option.value
-                ? 'bg-background text-foreground shadow-sm'
-                : 'bg-transparent text-muted-foreground hover:bg-background/60',
+                ? 'bg-background-brand-default text-text-brand-onBrand'
+                : 'bg-transparent text-text-default hover:bg-background-main-secondary-hover',
             )}
             key={option.value}
             onClick={() => view.setScope(option.value)}
-            size="sm"
             variant="outline"
           >
             {option.label}
           </Button>
         ))}
       </div>
+
+      {/* Design's "Internal Tasks ▾" view switcher — Issues is the current
+          surface; External Tasks maps to the existing Workflows page and
+          System is a disabled design placeholder. */}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="outline"
+              className="h-[35px] gap-1.5 rounded-md px-3 text-sm font-normal shadow-1"
+            >
+              Issues
+              <ChevronDown className="size-4" />
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="start" className="w-44">
+          <DropdownMenuItem className="justify-between" disabled>
+            Issues
+            <Check className="size-4" />
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => void navigate({ to: '/workflows' })}
+          >
+            Workflows
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled>System</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <div className="relative min-w-36 max-w-md flex-1">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -188,8 +226,11 @@ export function IssuesHeader({
         ) : null}
       </div>
 
-      <Button className="gap-1.5" onClick={() => onCreateIssue()} size="sm">
-        <Plus className="size-3.5" />
+      <Button
+        className="h-10 gap-2 rounded-md px-3"
+        onClick={() => onCreateIssue()}
+      >
+        <Plus className="size-4" />
         <span className="hidden sm:inline">New issue</span>
       </Button>
 
@@ -198,14 +239,13 @@ export function IssuesHeader({
           render={
             <Button
               aria-label="Filters"
-              className="relative gap-1.5"
-              size="sm"
+              className="relative"
+              size="icon-sm"
               variant="outline"
             >
-              <Filter className="size-3.5" />
-              <span className="hidden lg:inline">Filters</span>
+              <Filter className="size-4" />
               {filterCount ? (
-                <span className="flex size-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+                <span className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
                   {filterCount}
                 </span>
               ) : null}

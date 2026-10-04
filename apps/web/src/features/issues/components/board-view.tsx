@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   DndContext,
   DragOverlay,
@@ -17,6 +18,8 @@ import { Eye, MoreHorizontal } from 'lucide-react'
 import type { Issue, IssueStatus } from '@garden/core/types'
 import { Button } from '@garden/ui/components/ui/button'
 import { useLoadMoreDoneIssues } from '@/lib/issues/mutations'
+import { useWorkspaceId } from '@garden/app-state/hooks'
+import { projectListOptions } from '@/lib/projects/queries'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -139,6 +142,15 @@ export function BoardView({
   } = useLoadMoreDoneIssues()
   const displayDoneTotal = doneTotalOverride ?? hookDoneTotal
   const canLoadMoreDone = doneTotalOverride === undefined && hasMore
+
+  // Project titles for the card's project chip, resolved once here (shared
+  // query cache) and threaded to each card as a plain string.
+  const workspaceId = useWorkspaceId()
+  const { data: projectList } = useQuery(projectListOptions(workspaceId))
+  const projectTitleById = useMemo(
+    () => new Map((projectList ?? []).map((p) => [p.id, p.title] as const)),
+    [projectList],
+  )
 
   // --- Drag state ---
   const [activeIssue, setActiveIssue] = useState<Issue | null>(null)
@@ -301,6 +313,7 @@ export function BoardView({
             childProgressMap={childProgressMap}
             totalCount={status === 'done' ? displayDoneTotal : undefined}
             onCreateIssue={onCreateIssue}
+            projectTitleById={projectTitleById}
             footer={
               status === 'done' && canLoadMoreDone ? (
                 <InfiniteScrollSentinel
@@ -326,6 +339,11 @@ export function BoardView({
             <BoardCardContent
               issue={activeIssue}
               childProgress={childProgressMap.get(activeIssue.id)}
+              projectTitle={
+                activeIssue.project_id
+                  ? projectTitleById.get(activeIssue.project_id)
+                  : undefined
+              }
             />
           </div>
         ) : null}
