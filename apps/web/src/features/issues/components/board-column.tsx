@@ -119,7 +119,7 @@ export function BoardColumn({
       </div>
       <div
         ref={setNodeRef}
-        className={`mt-6 flex min-h-[200px] flex-1 flex-col gap-6 overflow-y-auto rounded-md transition-colors ${
+        className={`mt-4 flex min-h-[200px] flex-1 flex-col gap-2 overflow-y-auto rounded-md transition-colors ${
           isOver ? 'bg-accent/60' : ''
         }`}
       >

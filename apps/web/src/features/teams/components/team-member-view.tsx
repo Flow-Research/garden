@@ -52,26 +52,31 @@ function TeamSelector({
   selected: TeamSummary
   teams: TeamSummary[]
 }) {
+  // Controlled so the menu closes as soon as a Team is picked; the selection
+  // also navigates (replacing the ?team= param), which re-renders in place.
+  const [open, setOpen] = useState(false)
+
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={setOpen} open={open}>
       <DropdownMenuTrigger
         render={
           <Button
             className="h-8 gap-1.5 rounded-md px-3 text-sm font-normal shadow-1"
             variant="outline"
           >
-            <span
-              aria-hidden
-              className="size-2 shrink-0 rounded-full"
-              style={{ background: teamColor(selected.id) }}
-            />
             {selected.name}
             <ChevronDown className="size-4" />
           </Button>
         }
       />
       <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuRadioGroup onValueChange={onSelect} value={selected.id}>
+        <DropdownMenuRadioGroup
+          onValueChange={(value) => {
+            onSelect(value)
+            setOpen(false)
+          }}
+          value={selected.id}
+        >
           {teams.map((team) => (
             <DropdownMenuRadioItem key={team.id} value={team.id}>
               {team.name}
