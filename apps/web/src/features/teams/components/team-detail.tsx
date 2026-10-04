@@ -3,19 +3,12 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useSuspenseQueries } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { useAuthStore } from '@garden/app-state/auth'
+import { ViewStoreProvider } from '@garden/app-state/issues/stores/view-store-context'
+import type { TeamMember } from '@garden/core/types'
 import {
-  useViewStore,
-  useViewStoreApi,
-  ViewStoreProvider,
-} from '@garden/app-state/issues/stores/view-store-context'
-import type { Issue, TeamMember } from '@garden/core/types'
-import {
-  Database,
   Funnel,
   ListChecks,
   MoreHorizontal,
-  Plus,
-  Search,
   Trash2,
   TriangleAlert,
   Users,
@@ -30,25 +23,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@garden/ui/components/ui/dropdown-menu'
-import { Input } from '@garden/ui/components/ui/input'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@garden/ui/components/ui/popover'
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from '@garden/ui/components/ui/tabs'
-import { cn } from '@garden/ui/lib/utils'
 import { toast } from 'sonner'
-import {
-  IssueFilterTray,
-  countIssues,
-  numberOfActiveFilters,
-} from '@/features/issues/components/issue-filter-tray'
 import { PageHeader } from '@/features/layout/page-header'
 import { CreateIssueModal } from '@/features/modals/create-issue'
 import { useRemoveTeamMember } from '../mutations'
@@ -68,6 +49,14 @@ import { TeamIssuesPanel } from './team-issues-panel'
 import { TeamMembersPanel } from './team-members-panel'
 import { memberRoleLabel } from './team-members-table'
 import { TeamSummaryCard } from './team-summary-card'
+import {
+  ExportDataButton,
+  IssuesToolbar,
+  SearchField,
+  TEAM_TAB_TRIGGER_CLASS,
+  TEAM_TABS_LIST_CLASS,
+  TOOLBAR_BUTTON_CLASS,
+} from './team-tab-toolbar'
 import { teamColor } from './team-tokens'
 
 export type TeamTab = 'members' | 'issues' | 'tasks'
@@ -83,44 +72,6 @@ const TAB_ITEMS: readonly {
   { value: 'issues', label: 'Issues', icon: TriangleAlert },
   { value: 'tasks', label: 'Tasks', icon: ListChecks },
 ]
-
-/** Design toolbar buttons: transparent, hairline border, secondary text. */
-const TOOLBAR_BUTTON_CLASS =
-  'h-8 gap-2 rounded-md border-[0.5px] border-border-default bg-transparent px-3 text-sm font-normal text-text-secondary shadow-none hover:bg-background-main-secondary'
-
-function SearchField({
-  label,
-  onChange,
-  placeholder,
-  value,
-}: {
-  label: string
-  onChange: (value: string) => void
-  placeholder: string
-  value: string
-}) {
-  return (
-    <div className="relative w-[21.25rem] max-w-full">
-      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-icon-secondary" />
-      <Input
-        aria-label={label}
-        className="h-8 rounded-md border-0 bg-background-main-secondary pl-9 shadow-none placeholder:text-text-secondary"
-        onChange={(event) => onChange(event.currentTarget.value)}
-        placeholder={placeholder}
-        value={value}
-      />
-    </div>
-  )
-}
-
-function ExportDataButton() {
-  return (
-    <Button className={TOOLBAR_BUTTON_CLASS} disabled variant="outline">
-      <Database className="size-4" />
-      Export Data
-    </Button>
-  )
-}
 
 /** Members toolbar: identity search plus a role/type filter. */
 function MembersToolbar({
@@ -172,90 +123,6 @@ function MembersToolbar({
         </DropdownMenuContent>
       </DropdownMenu>
       <ExportDataButton />
-    </div>
-  )
-}
-
-/**
- * Issues/Tasks toolbar. Lives inside the shared `teamIssueViewStore` provider
- * so its Filter popover and the panel below read the same view state.
- */
-function IssuesToolbar({
-  issues,
-  onCreateIssue,
-  onSearchChange,
-  search,
-}: {
-  issues: Issue[]
-  onCreateIssue: () => void
-  onSearchChange: (value: string) => void
-  search: string
-}) {
-  const actions = useViewStoreApi().getState()
-  const statusFilters = useViewStore((s) => s.statusFilters)
-  const priorityFilters = useViewStore((s) => s.priorityFilters)
-  const assigneeFilters = useViewStore((s) => s.assigneeFilters)
-  const includeNoAssignee = useViewStore((s) => s.includeNoAssignee)
-  const creatorFilters = useViewStore((s) => s.creatorFilters)
-  const projectFilters = useViewStore((s) => s.projectFilters)
-  const includeNoProject = useViewStore((s) => s.includeNoProject)
-  const counts = useMemo(() => countIssues(issues), [issues])
-  const filterCount = numberOfActiveFilters({
-    statusFilters,
-    priorityFilters,
-    assigneeFilters,
-    includeNoAssignee,
-    creatorFilters,
-    projectFilters,
-    includeNoProject,
-  })
-
-  return (
-    <div className="flex items-center gap-3">
-      <SearchField
-        label="Search issues"
-        onChange={onSearchChange}
-        placeholder="Search issues..."
-        value={search}
-      />
-      <Popover>
-        <PopoverTrigger
-          render={
-            <Button className={TOOLBAR_BUTTON_CLASS} variant="outline">
-              <Funnel className="size-4" />
-              Filter
-              {filterCount ? (
-                <span className="flex size-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
-                  {filterCount}
-                </span>
-              ) : null}
-            </Button>
-          }
-        />
-        <PopoverContent
-          align="end"
-          className="max-h-[min(70vh,38rem)] w-[min(34rem,calc(100vw-2rem))] overflow-y-auto p-4"
-        >
-          <IssueFilterTray
-            actions={actions}
-            counts={counts}
-            state={{
-              statusFilters,
-              priorityFilters,
-              assigneeFilters,
-              includeNoAssignee,
-              creatorFilters,
-              projectFilters,
-              includeNoProject,
-            }}
-          />
-        </PopoverContent>
-      </Popover>
-      <ExportDataButton />
-      <Button className="h-8 gap-2 rounded-md px-3" onClick={onCreateIssue}>
-        <Plus className="size-4" />
-        New Issue
-      </Button>
     </div>
   )
 }
@@ -471,16 +338,10 @@ export function TeamDetail({
               value={tab}
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <TabsList className="h-auto gap-2 rounded-none bg-transparent p-0">
+                <TabsList className={TEAM_TABS_LIST_CLASS}>
                   {TAB_ITEMS.map((item) => (
                     <TabsTrigger
-                      className={cn(
-                        'h-8 gap-2 rounded-pill border-[0.5px] border-border-default bg-background-main-secondary px-4 text-sm font-normal text-text-default',
-                        'data-active:border-border-brand-secondary data-active:bg-background-brand-tertiary data-active:text-text-brand-secondary',
-                        'group-data-[variant=default]/tabs-list:data-active:shadow-none',
-                        'dark:text-text-default dark:hover:text-text-default',
-                        'dark:data-active:bg-background-brand-tertiary dark:data-active:text-text-brand-secondary',
-                      )}
+                      className={TEAM_TAB_TRIGGER_CLASS}
                       key={item.value}
                       value={item.value}
                     >

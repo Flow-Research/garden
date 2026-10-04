@@ -18,6 +18,7 @@ import { useSettingsDialogStore } from '@/features/settings'
 import { memberListOptions } from '@/lib/workspace/queries'
 import { teamListOptions, teamMemberListOptions } from '../queries'
 import { CreateTeamDialog } from './create-team-dialog'
+import { TeamMemberView } from './team-member-view'
 import { TeamSummaryCard } from './team-summary-card'
 import {
   DeleteTeamDialog,
@@ -136,6 +137,16 @@ export function TeamOverview() {
   const currentMemberRole =
     members?.find((member) => member.user_id === currentUserId)?.role ?? null
   const canManage = currentMemberRole === 'owner' || currentMemberRole === 'admin'
+
+  // Members get the design's combined Team view (selector + Issues/Tasks)
+  // instead of the admin overview grid. Wait for the role query so admins
+  // never flash the member surface.
+  if (!members) {
+    return (
+      <div className="flex-1 p-6 text-sm text-text-secondary">Loading…</div>
+    )
+  }
+  if (!canManage) return <TeamMemberView />
 
   const totalMembers = teams.reduce((sum, team) => sum + team.member_count, 0)
   const totalIssues = teams.reduce((sum, team) => sum + team.issue_count, 0)

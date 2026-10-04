@@ -24,6 +24,7 @@ vi.mock('@tanstack/react-router', () => ({
     <div data-testid="navigate" data-to={to} />
   ),
   useNavigate: () => mockNavigate,
+  useSearch: () => ({}),
 }))
 
 vi.mock('@/features/layout/page-header', () => ({
@@ -246,7 +247,7 @@ describe('teams UI', () => {
     expect(toast.custom).toHaveBeenCalled()
   })
 
-  it('hides management controls from normal members', async () => {
+  it('shows members the combined Team view without admin controls', async () => {
     apiMocks.listTeams.mockResolvedValue({
       teams: [makeTeam({ can_manage: false, can_transfer_owner: false })],
       total: 1,
@@ -262,13 +263,84 @@ describe('teams UI', () => {
         avatar_url: null,
       },
     ])
+    apiMocks.listIssues.mockResolvedValue({ issues: [], total: 0 })
 
     renderWithQuery(<TeamOverview />)
 
-    expect(await screen.findByText('Engineering')).toBeInTheDocument()
+    // Member view: team selector + Issues/Tasks tabs only.
+    expect(await screen.findByText('Member:')).toBeInTheDocument()
+    expect(screen.getByText('Engineering')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Issues' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Tasks' })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('tab', { name: 'Members' }),
+    ).not.toBeInTheDocument()
     expect(screen.queryByText('Create a Team')).not.toBeInTheDocument()
     expect(screen.queryByText('Manage Teams')).not.toBeInTheDocument()
     expect(screen.queryByText('Total Teams')).not.toBeInTheDocument()
+    expect(await screen.findByText('No Issues')).toBeInTheDocument()
+  })
+
+  it('switches the member view Team from the selector', async () => {
+    apiMocks.listTeams.mockResolvedValue({
+      teams: [
+        makeTeam({ id: 'team-1', name: 'Engineering', can_manage: false }),
+        makeTeam({ id: 'team-2', name: 'Finance', can_manage: false }),
+      ],
+      total: 2,
+    })
+    apiMocks.listMembers.mockResolvedValue([
+      {
+        id: 'm-2',
+        workspace_id: 'ws-1',
+        user_id: 'user-1',
+        role: 'member',
+        name: 'Owner',
+        email: 'owner@test.com',
+        avatar_url: null,
+      },
+    ])
+    apiMocks.listIssues.mockResolvedValue({ issues: [], total: 0 })
+
+    renderWithQuery(<TeamOverview />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /Engineering/ }))
+    fireEvent.click(
+      await screen.findByRole('menuitemradio', { name: 'Finance' }),
+    )
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: '/teams',
+        search: { team: 'team-2', tab: undefined },
+        replace: true,
+      })
+    })
+  })
+
+  it('locks member-created issues to the Team and to self', async () => {
+    apiMocks.listTeams.mockResolvedValue({
+      teams: [makeTeam({ can_manage: false, can_transfer_owner: false })],
+      total: 1,
+    })
+    apiMocks.listMembers.mockResolvedValue([
+      {
+        id: 'm-2',
+        workspace_id: 'ws-1',
+        user_id: 'user-1',
+        role: 'member',
+        name: 'Owner',
+        email: 'owner@test.com',
+        avatar_url: null,
+      },
+    ])
+    apiMocks.listIssues.mockResolvedValue({ issues: [], total: 0 })
+
+    renderWithQuery(<TeamOverview />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /New Issue/ }))
+    const modal = await screen.findByTestId('create-issue-modal')
+    expect(modal.textContent).toContain('"team_id":"team-1"')
+    expect(modal.textContent).toContain('"lock_assignee_user_id":"user-1"')
   })
 
   it('locks self-assignment for Team members creating issues', async () => {
