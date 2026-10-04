@@ -20,29 +20,35 @@ import { ListView } from '@/features/issues/components/list-view'
 import { PageHeader } from '@/features/layout/page-header'
 import { CreateIssueModal } from '@/features/modals/create-issue'
 import { useUpdateIssue } from '@/lib/issues/mutations'
+import { projectListOptions } from '@/lib/projects/queries'
 import { memberListOptions } from '@/lib/workspace/queries'
 import { allTeamIssuesOptions, teamListOptions } from '../queries'
 import { teamIssueViewStore } from '../view-store'
 import { TeamSummaryCard } from './team-summary-card'
-import { teamColor } from './team-tokens'
+import { hashColor, teamColor } from './team-tokens'
 
 type TeamWorkMode = 'issues' | 'tasks'
 
 /**
  * Admin-only cross-team work surface backing the sidebar Teams dropdown:
- * Teams › Issues renders the grouped list, Teams › Tasks the kanban board.
- * Summary cards show workspace-wide Team totals (per the design); the Team
- * pills filter the content below to one Team at a time.
+ * Teams › Issues renders the design's grouped Team list, Teams › Tasks the
+ * kanban board. The page defaults to the All view (every team-scoped issue)
+ * and the Team pills toggle single-Team filters.
  */
 export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
   const wsId = useWorkspaceId()
   const currentUserId = useAuthStore((s) => s.user?.id ?? '')
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [createData, setCreateData] = useState<Record<
+    string,
+    unknown
+  > | null>(null)
   const [viewReady, setViewReady] = useState(false)
   const updateIssueMutation = useUpdateIssue()
 
   const { data: members } = useQuery(memberListOptions(wsId))
+  const { data: projectList = [] } = useQuery(projectListOptions(wsId))
   const [{ data: allIssues }, { data: teams }] = useSuspenseQueries({
     queries: [allTeamIssuesOptions(wsId), teamListOptions(wsId)],
   })
@@ -54,6 +60,20 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
   const teamById = useMemo(
     () => new Map(teams.map((team) => [team.id, team] as const)),
     [teams],
+  )
+  // Project chips for the Team list variant (Teams › Issues).
+  const projects = useMemo(
+    () =>
+      new Map(
+        projectList.map(
+          (project) =>
+            [
+              project.id,
+              { title: project.title, color: hashColor(project.id) },
+            ] as const,
+        ),
+      ),
+    [projectList],
   )
   // null = the All view: every team's tasks, the page's default.
   const effectiveTeam = selectedTeamId
@@ -96,6 +116,19 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
   const doneTotal = useMemo(
     () => filteredIssues.filter((issue) => issue.status === 'done').length,
     [filteredIssues],
+  )
+
+  /**
+   * Shared by the header CTA and the per-status/column plus buttons. The modal
+   * receives the filtered Team when one is active, otherwise the Team picker
+   * (All view), plus any per-status data from the list/board.
+   */
+  const openCreateIssue = useCallback(
+    (data?: Record<string, unknown> | null) => {
+      setCreateData(data ?? null)
+      setCreateOpen(true)
+    },
+    [],
   )
 
   const handleMoveIssue = useCallback(
@@ -148,7 +181,7 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
         {teams.length > 0 ? (
           <Button
             className="ml-auto h-8 gap-2 rounded-md px-3"
-            onClick={() => setCreateOpen(true)}
+            onClick={() => openCreateIssue()}
           >
             <Plus className="size-4" />
             New Issue
@@ -225,7 +258,10 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
                       issues={filteredIssues}
                       visibleStatuses={BOARD_STATUSES}
                       teamChips={teamChips}
+                      projects={projects}
+                      variant="team"
                       doneTotal={doneTotal}
+                      onCreateIssue={openCreateIssue}
                     />
                   ) : (
                     <BoardView
@@ -236,6 +272,7 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
                       onMoveIssue={handleMoveIssue}
                       doneTotal={doneTotal}
                       teamChips={teamChips}
+                      onCreateIssue={openCreateIssue}
                     />
                   )}
                 </div>
@@ -247,12 +284,16 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
 
       {createOpen ? (
         <CreateIssueModal
-          onClose={() => setCreateOpen(false)}
-          data={
-            selectedTeamId
+          onClose={() => {
+            setCreateOpen(false)
+            setCreateData(null)
+          }}
+          data={{
+            ...(selectedTeamId
               ? { team_id: selectedTeamId }
-              : { show_team_picker: true }
-          }
+              : { show_team_picker: true }),
+            ...(createData ?? null),
+          }}
         />
       ) : null}
     </div>

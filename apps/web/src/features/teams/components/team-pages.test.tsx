@@ -71,6 +71,7 @@ const apiMocks = vi.hoisted(() => ({
   listMembers: vi.fn(),
   listAgents: vi.fn(),
   listIssues: vi.fn(),
+  listProjects: vi.fn(),
 }))
 
 vi.mock('@/lib/api', () => ({
@@ -203,6 +204,7 @@ describe('teams UI', () => {
       },
     ])
     apiMocks.listIssues.mockResolvedValue({ issues: [], total: 0 })
+    apiMocks.listProjects.mockResolvedValue({ projects: [] })
     apiMocks.listTeamMembers.mockResolvedValue({ members: [], total: 0 })
   })
 
@@ -505,6 +507,25 @@ describe('teams UI', () => {
     await waitFor(() => {
       expect(screen.getByTestId('team-board')).toHaveTextContent('issue-1')
     })
+  })
+
+  it('renders the design Team list on Teams › Issues', async () => {
+    apiMocks.listTeams.mockResolvedValue({
+      teams: [makeTeam({ id: 'team-1', name: 'Engineering' })],
+      total: 1,
+    })
+    apiMocks.listIssues.mockResolvedValue({
+      issues: [{ id: 'issue-1', team_id: 'team-1', status: 'todo' }],
+      total: 1,
+    })
+
+    renderWithQuery(<TeamWorkPage mode="issues" />)
+
+    expect(await screen.findByTestId('team-list')).toHaveAttribute(
+      'data-variant',
+      'team',
+    )
+    expect(screen.getByTestId('team-list')).toHaveTextContent('issue-1')
   })
 
   it('scopes the create modal to the Team picker in the All view', async () => {
