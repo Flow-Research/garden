@@ -2,12 +2,6 @@ import type { Team, TeamMember } from '@garden/core/types'
 import { TeamSummaryCard, TeamSummaryMenu } from './team-summary-card'
 import { TeamMembersTable, memberRoleLabel } from './team-members-table'
 
-function scrollToMembersTable() {
-  document
-    .getElementById('team-members-table')
-    ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-}
-
 /**
  * Members tab of the Team detail page, matched to the Penpot design: three
  * bordered summary cards (Total members / Total Roles / Total Activity) with
@@ -39,20 +33,10 @@ export function TeamMembersPanel({
         <TeamSummaryCard
           label="Total members"
           value={team.member_count}
-          action={
-            <TeamSummaryMenu
-              items={[{ label: 'See members', onSelect: scrollToMembersTable }]}
-            />
-          }
         />
         <TeamSummaryCard
           label="Total Roles"
           value={roleCount}
-          action={
-            <TeamSummaryMenu
-              items={[{ label: 'See members', onSelect: scrollToMembersTable }]}
-            />
-          }
         />
         <TeamSummaryCard
           label="Total Activity"
