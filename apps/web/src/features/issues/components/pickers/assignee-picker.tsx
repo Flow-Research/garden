@@ -14,6 +14,7 @@ import {
   assigneeFrequencyOptions,
   memberListOptions,
 } from '@/lib/workspace/queries'
+import { teamMemberListOptions } from '@/features/teams/queries'
 import { ActorAvatar } from '../../../common/actor-avatar'
 import {
   PickerEmpty,
@@ -38,6 +39,20 @@ export function canAssignAgent(
 
 type AssigneeChoice = { type: IssueAssigneeType; id: string }
 
+/** Human option, sourced from either the workspace or the Team member list. */
+interface AssigneeMemberOption {
+  user_id: string
+  name: string
+}
+
+/** Agent option with its assignment affordance pre-resolved. */
+interface AssigneeAgentOption {
+  id: string
+  name: string
+  allowed: boolean
+  isPrivate: boolean
+}
+
 /** Member and agent picker ranked by recent assignment frequency. */
 export function AssigneePicker({
   assigneeType,
@@ -48,6 +63,7 @@ export function AssigneePicker({
   open: controlledOpen,
   onOpenChange,
   align,
+  teamId = null,
 }: {
   assigneeType: IssueAssigneeType | null
   assigneeId: string | null
@@ -57,14 +73,34 @@ export function AssigneePicker({
   open?: boolean
   onOpenChange?: (open: boolean) => void
   align?: 'start' | 'center' | 'end'
+  /**
+   * Team scope for the assignee list. When set, only that Team's members are
+   * offered (the API rejects non-members) and "Unassigned" is hidden (Team
+   * issues must always carry a Team member assignee).
+   */
+  teamId?: string | null
 }) {
   const [open, setOpen] = usePickerOpen(controlledOpen, onOpenChange)
   const [query, setQuery] = useState('')
   const workspaceId = useWorkspaceId()
   const user = useAuthStore((state) => state.user)
   const { getActorName } = useActorName()
-  const { data: members = [] } = useQuery(memberListOptions(workspaceId))
-  const { data: agents = [] } = useQuery(agentListOptions(workspaceId))
+  const teamScoped = Boolean(teamId)
+
+  // Workspace-wide sources stay disabled for Team-scoped pickers: the Team
+  // member list is the only valid assignee set there.
+  const { data: workspaceMembers = [] } = useQuery({
+    ...memberListOptions(workspaceId),
+    enabled: !teamScoped,
+  })
+  const { data: workspaceAgents = [] } = useQuery({
+    ...agentListOptions(workspaceId),
+    enabled: !teamScoped,
+  })
+  const { data: teamMembers = [] } = useQuery({
+    ...teamMemberListOptions(workspaceId, teamId ?? ''),
+    enabled: teamScoped,
+  })
   const { data: frequencies = [] } = useQuery(
     assigneeFrequencyOptions(workspaceId),
   )
@@ -80,8 +116,57 @@ export function AssigneePicker({
     [frequencies],
   )
   const normalizedQuery = query.trim().toLocaleLowerCase()
-  const memberRole = members.find((member) => member.user_id === user?.id)?.role
-  const visibleMembers = [...members]
+
+  // The current user's workspace role gates private-agent assignment in the
+  // workspace list; in Team scope, membership itself is the boundary.
+  const memberRole = teamScoped
+    ? teamMembers.find((member) => member.user_id === user?.id)?.workspace_role
+    : workspaceMembers.find((member) => member.user_id === user?.id)?.role
+
+  const memberOptions = useMemo<AssigneeMemberOption[]>(
+    () =>
+      teamScoped
+        ? teamMembers
+            .filter((member) => member.member_type === 'user' && member.user_id)
+            .map((member) => ({
+              user_id: member.user_id as string,
+              name: member.name,
+            }))
+        : workspaceMembers.map((member) => ({
+            user_id: member.user_id,
+            name: member.name,
+          })),
+    [teamMembers, teamScoped, workspaceMembers],
+  )
+
+  const agentOptions = useMemo<AssigneeAgentOption[]>(
+    () =>
+      teamScoped
+        ? teamMembers
+            .filter(
+              (member) =>
+                member.member_type === 'agent' &&
+                member.agent_id &&
+                member.agent_status === 'active',
+            )
+            .map((member) => ({
+              id: member.agent_id as string,
+              name: member.name,
+              allowed: true,
+              isPrivate: false,
+            }))
+        : workspaceAgents
+            .filter((agent) => !agent.archived_at)
+            .map((agent) => ({
+              id: agent.id,
+              name: agent.name,
+              allowed: canAssignAgent(agent, user?.id, memberRole ?? undefined),
+              isPrivate: agent.visibility === 'private',
+            })),
+    [memberRole, teamMembers, teamScoped, user?.id, workspaceAgents],
+  )
+
+  const visibleMembers = [...memberOptions]
     .filter((member) =>
       member.name.toLocaleLowerCase().includes(normalizedQuery),
     )
@@ -90,12 +175,8 @@ export function AssigneePicker({
         (rank.get(`member:${right.user_id}`) ?? 0) -
         (rank.get(`member:${left.user_id}`) ?? 0),
     )
-  const visibleAgents = [...agents]
-    .filter(
-      (agent) =>
-        !agent.archived_at &&
-        agent.name.toLocaleLowerCase().includes(normalizedQuery),
-    )
+  const visibleAgents = [...agentOptions]
+    .filter((agent) => agent.name.toLocaleLowerCase().includes(normalizedQuery))
     .sort(
       (left, right) =>
         (rank.get(`agent:${right.id}`) ?? 0) -
@@ -139,11 +220,13 @@ export function AssigneePicker({
             </span>
           </>
         ) : (
-          <span className="text-muted-foreground">Unassigned</span>
+          <span className="text-muted-foreground">
+            {teamScoped ? 'Select assignee' : 'Unassigned'}
+          </span>
         ))
       }
     >
-      {!normalizedQuery ? (
+      {!normalizedQuery && !teamScoped ? (
         <PickerItem selected={!assigneeId} onClick={() => choose(null)}>
           <UserMinus className="size-3.5 text-muted-foreground" />
           <span className="text-muted-foreground">Unassigned</span>
@@ -176,19 +259,20 @@ export function AssigneePicker({
         <PickerSection label="Agents">
           {visibleAgents.map((agent) => {
             const choice = { type: 'agent' as const, id: agent.id }
-            const allowed = canAssignAgent(agent, user?.id, memberRole)
             return (
               <PickerItem
                 key={agent.id}
                 selected={selected(choice)}
-                disabled={!allowed}
+                disabled={!agent.allowed}
                 onClick={() => choose(choice)}
               >
                 <ActorAvatar actorType="agent" actorId={agent.id} size={18} />
-                <span className={allowed ? undefined : 'text-muted-foreground'}>
+                <span
+                  className={agent.allowed ? undefined : 'text-muted-foreground'}
+                >
                   {agent.name}
                 </span>
-                {agent.visibility === 'private' ? (
+                {agent.isPrivate ? (
                   <Lock className="ml-auto size-3 text-muted-foreground" />
                 ) : null}
               </PickerItem>
@@ -197,7 +281,9 @@ export function AssigneePicker({
         </PickerSection>
       ) : null}
 
-      {!visibleMembers.length && !visibleAgents.length && query ? (
+      {!visibleMembers.length &&
+      !visibleAgents.length &&
+      (query || teamScoped) ? (
         <PickerEmpty />
       ) : null}
     </PropertyPicker>

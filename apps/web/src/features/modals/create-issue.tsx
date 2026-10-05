@@ -122,11 +122,14 @@ export function CreateIssueModal({
   )
   const [priority, setPriority] = useState<IssuePriority>(draft.priority)
   const [submitting, setSubmitting] = useState(false)
+  // Team creates must assign to a Team member, so a persisted draft assignee
+  // (which may be a non-member) is not inherited; the picker starts empty and
+  // lists only the Team's members.
   const [assigneeType, setAssigneeType] = useState<
     IssueAssigneeType | undefined
-  >(lockedAssigneeUserId ? 'member' : draft.assigneeType)
+  >(lockedAssigneeUserId ? 'member' : teamId ? undefined : draft.assigneeType)
   const [assigneeId, setAssigneeId] = useState<string | undefined>(
-    lockedAssigneeUserId ?? draft.assigneeId,
+    lockedAssigneeUserId ?? (teamId ? undefined : draft.assigneeId),
   )
   const [dueDate, setDueDate] = useState<string | null>(draft.dueDate)
   const [projectId, setProjectId] = useState<string | undefined>(
@@ -239,8 +242,12 @@ export function CreateIssueModal({
           { duration: 5000 },
         )
       }
-    } catch {
-      toast.error('Failed to create issue')
+    } catch (error) {
+      // Surface the server message: Team creates fail with actionable reasons
+      // ("Assignee must be a Team member", access denials, ...).
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to create issue',
+      )
     } finally {
       setSubmitting(false)
     }
@@ -397,15 +404,36 @@ export function CreateIssueModal({
                 align="start"
               />
 
-              {/* Assignee */}
+              {/* Team — required only for cross-team creates (All view) */}
+              {showTeamPicker ? (
+                <TeamPicker
+                  teamId={pickedTeamId ?? null}
+                  onUpdate={(nextTeamId) => {
+                    if (nextTeamId !== pickedTeamId) {
+                      // The new Team's member set differs; drop any assignee
+                      // that may not belong to it (the API rejects those).
+                      updateAssignee(undefined, undefined)
+                    }
+                    setPickedTeamId(nextTeamId)
+                  }}
+                  triggerRender={<PillButton />}
+                  align="start"
+                />
+              ) : null}
+
+              {/* Assignee — filtered to the Team's members for Team creates */}
               {lockedAssigneeUserId ? (
                 <span className="flex h-7 items-center rounded-full bg-muted px-3 text-xs text-muted-foreground">
                   Assigned to you
                 </span>
+              ) : showTeamPicker && !pickedTeamId ? (
+                // The valid assignee set is unknown until a Team is chosen.
+                <PillButton disabled>Select Team first</PillButton>
               ) : (
                 <AssigneePicker
                   assigneeType={assigneeType ?? null}
                   assigneeId={assigneeId ?? null}
+                  teamId={teamId ?? pickedTeamId ?? null}
                   onUpdate={(u) =>
                     updateAssignee(
                       u.assignee_type ?? undefined,
@@ -432,16 +460,6 @@ export function CreateIssueModal({
                 triggerRender={<PillButton />}
                 align="start"
               />
-
-              {/* Team — required only for cross-team creates (All view) */}
-              {showTeamPicker ? (
-                <TeamPicker
-                  teamId={pickedTeamId ?? null}
-                  onUpdate={setPickedTeamId}
-                  triggerRender={<PillButton />}
-                  align="start"
-                />
-              ) : null}
             </div>
 
             {/* Footer */}
