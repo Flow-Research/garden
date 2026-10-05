@@ -48,7 +48,7 @@ import {
 import { TeamIssuesPanel } from './team-issues-panel'
 import { TeamMembersPanel } from './team-members-panel'
 import { memberRoleLabel } from './team-members-table'
-import { TeamSummaryCard } from './team-summary-card'
+import { TeamSummaryCard, TeamSummaryStatusIcon } from './team-summary-card'
 import {
   ExportDataButton,
   IssuesToolbar,
@@ -135,9 +135,21 @@ function StatusCards({
 }) {
   return (
     <div className="flex gap-3">
-      <TeamSummaryCard label="Todo" value={counts.todo} />
-      <TeamSummaryCard label="In Progress" value={counts.in_progress} />
-      <TeamSummaryCard label="Done" value={counts.done} />
+      <TeamSummaryCard
+        icon={<TeamSummaryStatusIcon status="todo" />}
+        label="Todo"
+        value={counts.todo}
+      />
+      <TeamSummaryCard
+        icon={<TeamSummaryStatusIcon status="in_progress" />}
+        label="In Progress"
+        value={counts.in_progress}
+      />
+      <TeamSummaryCard
+        icon={<TeamSummaryStatusIcon status="done" />}
+        label="Done"
+        value={counts.done}
+      />
     </div>
   )
 }

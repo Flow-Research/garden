@@ -24,7 +24,7 @@ import { projectListOptions } from '@/lib/projects/queries'
 import { memberListOptions } from '@/lib/workspace/queries'
 import { allTeamIssuesOptions, teamListOptions } from '../queries'
 import { teamIssueViewStore } from '../view-store'
-import { TeamSummaryCard } from './team-summary-card'
+import { TeamSummaryCard, TeamSummaryStatusIcon } from './team-summary-card'
 import { hashColor, teamColor } from './team-tokens'
 
 type TeamWorkMode = 'issues' | 'tasks'
@@ -194,15 +194,35 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
           <div className="flex gap-4">
             {isIssues ? (
               <>
-                <TeamSummaryCard label="Todo" value={counts.todo} />
-                <TeamSummaryCard label="In Progress" value={counts.inProgress} />
-                <TeamSummaryCard label="Done" value={counts.done} />
+                <TeamSummaryCard
+                  icon={<TeamSummaryStatusIcon status="todo" />}
+                  label="Todo"
+                  value={counts.todo}
+                />
+                <TeamSummaryCard
+                  icon={<TeamSummaryStatusIcon status="in_progress" />}
+                  label="In Progress"
+                  value={counts.inProgress}
+                />
+                <TeamSummaryCard
+                  icon={<TeamSummaryStatusIcon status="done" />}
+                  label="Done"
+                  value={counts.done}
+                />
               </>
             ) : (
               <>
                 <TeamSummaryCard label="Total Tasks" value={counts.total} />
-                <TeamSummaryCard label="In Progress" value={counts.inProgress} />
-                <TeamSummaryCard label="Done" value={counts.done} />
+                <TeamSummaryCard
+                  icon={<TeamSummaryStatusIcon status="in_progress" />}
+                  label="In Progress"
+                  value={counts.inProgress}
+                />
+                <TeamSummaryCard
+                  icon={<TeamSummaryStatusIcon status="done" />}
+                  label="Done"
+                  value={counts.done}
+                />
               </>
             )}
           </div>
