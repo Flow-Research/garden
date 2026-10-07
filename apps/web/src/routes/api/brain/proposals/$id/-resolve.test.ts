@@ -2,7 +2,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DateTime, Effect, Layer } from 'effect'
 import { ItemId, Kind } from '@garden/brain/domain'
-import { Brain } from '@garden/brain/services/brain'
 import type { AppRequestContext } from '@/lib/server/context'
 import { bindAppEnv, type AppEnv } from '@/lib/server/env'
 import { resolveBrainProposal } from './resolve'
