@@ -23,7 +23,8 @@ export const Route = createFileRoute('/api/teams')({
       GET: async ({ context }) => {
         const appContext = requireAppRequestContext(context)
         const workspaceContext = await requireWorkspaceContext(appContext, {
-          missingWorkspaceResponse: () => Response.json({ teams: [], total: 0 }),
+          missingWorkspaceResponse: () =>
+            Response.json({ teams: [], total: 0, unique_member_count: 0 }),
         })
         if (workspaceContext instanceof Response) return workspaceContext
 
@@ -33,13 +34,17 @@ export const Route = createFileRoute('/api/teams')({
         )
         if (access instanceof Response) return access
 
-        const teams = await listTeams({
+        const { teams, uniqueMemberCount } = await listTeams({
           db: await appContext.db(),
           workspaceId: access.membership.organizationId,
           viewerId: access.session.user.id,
           viewerRole: access.membership.role,
         })
-        return json({ teams, total: teams.length })
+        return json({
+          teams,
+          total: teams.length,
+          unique_member_count: uniqueMemberCount,
+        })
       },
       POST: async ({ context, request }) => {
         const appContext = requireAppRequestContext(context)

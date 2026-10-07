@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 import type { Team, TeamMember } from '@garden/core/types'
@@ -478,8 +478,12 @@ describe('teams UI', () => {
 
   it('wires the admin summary actions', async () => {
     apiMocks.listTeams.mockResolvedValue({
-      teams: [makeTeam()],
-      total: 1,
+      teams: [
+        makeTeam({ id: 'team-1', name: 'Engineering', member_count: 2 }),
+        makeTeam({ id: 'team-2', name: 'Finance', member_count: 3 }),
+      ],
+      total: 2,
+      unique_member_count: 4,
     })
 
     renderWithQuery(<TeamOverview />)
@@ -492,6 +496,13 @@ describe('teams UI', () => {
     expect(
       screen.getByRole('button', { name: 'Manage Teams' }),
     ).toBeDisabled()
+    // The card shows the server's distinct member count (4), not the
+    // per-Team sum (5).
+    const membersCard = screen.getByText('Total Members').closest('div')
+    expect(membersCard).not.toBeNull()
+    expect(
+      within(membersCard as HTMLElement).getByText('04'),
+    ).toBeInTheDocument()
   })
 
   it('renders the Teams dropdown children and toggles them', () => {

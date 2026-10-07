@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { Result, TaggedError } from 'better-result'
 import type {
   AddTeamMemberRequest,
@@ -265,14 +265,16 @@ export async function getTeamForViewer(args: {
 
 /**
  * Lists visible Teams with per-caller counts. Normal members only see Teams
- * they belong to; managers see every Team in the workspace.
+ * they belong to; managers see every Team in the workspace. `uniqueMemberCount`
+ * deduplicates people who belong to several visible Teams and never counts
+ * Teams the caller cannot see.
  */
 export async function listTeams(args: {
   db: Db
   workspaceId: string
   viewerId: string
   viewerRole: string
-}): Promise<TeamSummary[]> {
+}): Promise<{ teams: TeamSummary[]; uniqueMemberCount: number }> {
   const manager = isWorkspaceManager(args.viewerRole)
   const rows = await args.db
     .select({
@@ -309,16 +311,43 @@ export async function listTeams(args: {
     memberships.map((membership) => [membership.teamId, membership]),
   )
 
-  return rows.map((row) => {
-    const membership = membershipByTeam.get(row.team.id)
-    return toTeam(row.team, {
-      memberCount: row.memberCount,
-      issueCount: row.issueCount,
-      canManage: manager || row.team.ownerUserId === args.viewerId,
-      canTransferOwner: manager,
-      currentMembership: membership ? toCurrentMembership(membership) : null,
-    })
-  })
+  // Distinct members across the caller-visible Teams: a person on several
+  // Teams counts once. Scoping to the visible Team ids keeps a normal
+  // member's number free of Teams they cannot see.
+  const visibleTeamIds = rows.map((row) => row.team.id)
+  let uniqueMemberCount = 0
+  if (visibleTeamIds.length > 0) {
+    const [userCounts, agentCounts] = await Promise.all([
+      args.db
+        .select({
+          count: sql<number>`cast(count(distinct ${schema.teamMember.userId}) as int)`,
+        })
+        .from(schema.teamMember)
+        .where(inArray(schema.teamMember.teamId, visibleTeamIds)),
+      args.db
+        .select({
+          count: sql<number>`cast(count(distinct ${schema.teamMember.agentId}) as int)`,
+        })
+        .from(schema.teamMember)
+        .where(inArray(schema.teamMember.teamId, visibleTeamIds)),
+    ])
+    uniqueMemberCount =
+      (userCounts[0]?.count ?? 0) + (agentCounts[0]?.count ?? 0)
+  }
+
+  return {
+    teams: rows.map((row) => {
+      const membership = membershipByTeam.get(row.team.id)
+      return toTeam(row.team, {
+        memberCount: row.memberCount,
+        issueCount: row.issueCount,
+        canManage: manager || row.team.ownerUserId === args.viewerId,
+        canTransferOwner: manager,
+        currentMembership: membership ? toCurrentMembership(membership) : null,
+      })
+    }),
+    uniqueMemberCount,
+  }
 }
 
 type CreateOutcome =

@@ -534,17 +534,41 @@ describe('teams API (integration)', () => {
 
   it('lists all Teams for managers and only member Teams for members', async () => {
     const fixture = await seedWorkspace(testDb)
-    await seedTeamRow(testDb, {
+    const alphaId = await seedTeamRow(testDb, {
       workspaceId: fixture.workspaceId,
       name: 'Alpha',
       ownerUserId: fixture.ownerId,
       memberUserIds: [fixture.memberId],
     })
-    await seedTeamRow(testDb, {
+    const betaId = await seedTeamRow(testDb, {
       workspaceId: fixture.workspaceId,
       name: 'Beta',
       ownerUserId: fixture.ownerId,
     })
+    // The active agent is on both Teams, the archived one only on Beta.
+    await testDb.db.insert(schema.teamMember).values([
+      {
+        id: randomUUID(),
+        teamId: alphaId,
+        workspaceId: fixture.workspaceId,
+        agentId: fixture.activeAgentId,
+        createdBy: fixture.ownerId,
+      },
+      {
+        id: randomUUID(),
+        teamId: betaId,
+        workspaceId: fixture.workspaceId,
+        agentId: fixture.activeAgentId,
+        createdBy: fixture.ownerId,
+      },
+      {
+        id: randomUUID(),
+        teamId: betaId,
+        workspaceId: fixture.workspaceId,
+        agentId: fixture.archivedAgentId,
+        createdBy: fixture.ownerId,
+      },
+    ])
 
     const managerRequest = new Request('https://garden.test/api/teams', {
       headers: { 'X-Workspace-ID': fixture.workspaceId },
@@ -564,11 +588,16 @@ describe('teams API (integration)', () => {
     )
     const managerBody = (await managerResponse.json()) as {
       teams: Array<{ name: string }>
+      unique_member_count: number
     }
     expect(managerBody.teams.map((team) => team.name).sort()).toEqual([
       'Alpha',
       'Beta',
     ])
+    // Distinct members across both Teams: owner, member, and both agents —
+    // the owner and the active agent appear once despite two memberships each
+    // (per-Team counts would sum to 6).
+    expect(managerBody.unique_member_count).toBe(4)
 
     const memberRequest = new Request('https://garden.test/api/teams', {
       headers: { 'X-Workspace-ID': fixture.workspaceId },
@@ -588,8 +617,11 @@ describe('teams API (integration)', () => {
     )
     const memberBody = (await memberResponse.json()) as {
       teams: Array<{ name: string }>
+      unique_member_count: number
     }
     expect(memberBody.teams.map((team) => team.name)).toEqual(['Alpha'])
+    // Members only see Alpha, so Beta's archived agent is not counted.
+    expect(memberBody.unique_member_count).toBe(3)
   })
 
   it('scopes issue counts to the caller visibility', async () => {

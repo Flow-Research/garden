@@ -73,6 +73,12 @@ export interface TeamMember {
 export interface ListTeamsResponse {
   teams: TeamSummary[]
   total: number
+  /**
+   * Distinct members (users + agents) across the caller-visible Teams. A
+   * person on several Teams counts once; for normal members only their own
+   * Teams are counted, so the number never leaks Teams they cannot see.
+   */
+  unique_member_count: number
 }
 
 export interface ListTeamMembersResponse {

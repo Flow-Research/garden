@@ -127,7 +127,13 @@ export function TeamOverview() {
   const [transferTeam, setTransferTeam] = useState<TeamSummary | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<TeamSummary | null>(null)
 
-  const { data: teams } = useSuspenseQuery(teamListOptions(wsId))
+  // The full list envelope is needed for the workspace-wide unique member
+  // count; `teamListOptions` selects only the Teams.
+  const { data: teamsResponse } = useSuspenseQuery({
+    ...teamListOptions(wsId),
+    select: (data) => data,
+  })
+  const teams = teamsResponse.teams
   const { data: members } = useQuery(memberListOptions(wsId))
   const { data: transferMembers } = useQuery({
     ...teamMemberListOptions(wsId, transferTeam?.id ?? ''),
@@ -148,7 +154,9 @@ export function TeamOverview() {
   }
   if (!canManage) return <TeamMemberView />
 
-  const totalMembers = teams.reduce((sum, team) => sum + team.member_count, 0)
+  // Server-computed distinct members across the visible Teams, so people on
+  // several Teams are not counted once per Team.
+  const totalMembers = teamsResponse.unique_member_count
   const totalIssues = teams.reduce((sum, team) => sum + team.issue_count, 0)
 
   return (
