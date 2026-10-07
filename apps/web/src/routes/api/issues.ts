@@ -13,6 +13,7 @@ import {
 } from '@/lib/server/validation/issues'
 import {
   badRequest,
+  getWorkspaceIssuePrefix,
   requireWorkspaceAccess,
   requireWorkspaceContext,
   toIssue,
@@ -106,9 +107,10 @@ export const Route = createFileRoute('/api/issues')({
         const rows = await (safeLimit !== null
           ? query.limit(safeLimit).offset(safeOffset)
           : query.offset(safeOffset))
+        const issuePrefix = await getWorkspaceIssuePrefix(db, workspaceId)
 
         return Response.json({
-          issues: rows.map((row) => toIssue(row)),
+          issues: rows.map((row) => toIssue(row, { issuePrefix })),
           total: count,
         })
       },

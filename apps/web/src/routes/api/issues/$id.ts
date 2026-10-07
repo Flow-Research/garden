@@ -21,6 +21,7 @@ import {
 } from '@/lib/server/validation/issues'
 import {
   badRequest,
+  getWorkspaceIssuePrefix,
   notFound,
   toIssue,
 } from '@/lib/server/control-plane'
@@ -47,7 +48,11 @@ export const Route = createFileRoute('/api/issues/$id')({
         const appContext = requireAppRequestContext(context)
         const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
-        return Response.json(toIssue(access.issue))
+        const issuePrefix = await getWorkspaceIssuePrefix(
+          access.db,
+          access.issue.workspaceId,
+        )
+        return Response.json(toIssue(access.issue, { issuePrefix }))
       },
       PUT: async ({ context, request, params }) => {
         const appContext = requireAppRequestContext(context)
@@ -370,7 +375,14 @@ export const Route = createFileRoute('/api/issues/$id')({
           })
           if (startResult.isErr()) console.error(startResult.error.message)
         }
-        return Response.json(toIssue(issue))
+        return Response.json(
+          toIssue(issue, {
+            issuePrefix: await getWorkspaceIssuePrefix(
+              db,
+              existingIssue.workspaceId,
+            ),
+          }),
+        )
       },
       DELETE: async ({ context, request, params }) => {
         const appContext = requireAppRequestContext(context)

@@ -275,11 +275,31 @@ export function toInvitation(record: InvitationRecord) {
   }
 }
 
+/**
+ * Resolves the workspace's issue identifier prefix for response mapping.
+ * `toIssue` falls back to 'ISS' when the prefix is omitted, which made list,
+ * detail, and update responses disagree with create responses (the issue
+ * service resolves the real prefix internally). Routes that map issue rows
+ * must pass this value through.
+ */
+export async function getWorkspaceIssuePrefix(
+  db: Db,
+  workspaceId: string,
+): Promise<string> {
+  const [row] = await db
+    .select({ issuePrefix: schema.organization.issuePrefix })
+    .from(schema.organization)
+    .where(eq(schema.organization.id, workspaceId))
+    .limit(1)
+  return row && typeof row.issuePrefix === 'string' && row.issuePrefix
+    ? row.issuePrefix
+    : 'ISS'
+}
+
 export function toIssue(
   record: typeof schema.issue.$inferSelect,
   options: { issuePrefix?: string } = {},
-) {
-  const sourceSummary = record.sourceSummary
+) {  const sourceSummary = record.sourceSummary
     ? {
         connector_id: 'manual',
         display_ref: record.sourceSummary,

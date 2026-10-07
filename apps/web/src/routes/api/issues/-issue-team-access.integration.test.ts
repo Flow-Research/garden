@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { eq } from 'drizzle-orm'
+import * as schema from '@garden/db/schema'
 import { startTestDb, type TestDb } from '@garden/db/testing'
 import { Route as IssuesRoute } from '../issues'
 import { Route as IssueRoute } from './$id'
@@ -549,5 +551,86 @@ describe('team issue access (integration)', () => {
     expect(moveOutResponse.status).toBe(200)
     const movedOut = (await moveOutResponse.json()) as { team_id: string | null }
     expect(movedOut.team_id).toBeNull()
+  })
+
+  it('renders identifiers with the workspace issue prefix on list, detail, and update', async () => {
+    const fixture = await seedWorkspace(testDb)
+    // A non-default prefix proves the routes resolve the organization row
+    // instead of falling back to 'ISS' (which disagreed with create).
+    await testDb.db
+      .update(schema.organization)
+      .set({ issuePrefix: 'GAR' })
+      .where(eq(schema.organization.id, fixture.workspaceId))
+    const issueId = await seedTeamIssue(testDb, {
+      workspaceId: fixture.workspaceId,
+      teamId: null,
+      number: 42,
+      createdBy: fixture.ownerId,
+    })
+
+    const listRequest = new Request('https://garden.test/api/issues', {
+      headers: { 'X-Workspace-ID': fixture.workspaceId },
+    })
+    const listResponse = await handlerFor(IssuesRoute, 'GET')(
+      invocation(
+        makeContext({
+          testDb,
+          userId: fixture.ownerId,
+          role: 'owner',
+          request: listRequest,
+        }),
+        listRequest,
+        {},
+        '/api/issues',
+      ),
+    )
+    const listBody = (await listResponse.json()) as {
+      issues: Array<{ id: string; identifier: string }>
+    }
+    expect(
+      listBody.issues.find((issue) => issue.id === issueId)?.identifier,
+    ).toBe('GAR-42')
+
+    const detailRequest = new Request(
+      `https://garden.test/api/issues/${issueId}`,
+      { headers: { 'X-Workspace-ID': fixture.workspaceId } },
+    )
+    const detailResponse = await handlerFor(IssueRoute, 'GET')(
+      invocation(
+        makeContext({
+          testDb,
+          userId: fixture.ownerId,
+          role: 'owner',
+          request: detailRequest,
+        }),
+        detailRequest,
+        { id: issueId },
+        '/api/issues/$id',
+      ),
+    )
+    const detailBody = (await detailResponse.json()) as { identifier: string }
+    expect(detailBody.identifier).toBe('GAR-42')
+
+    const updateRequest = jsonRequest(
+      `https://garden.test/api/issues/${issueId}`,
+      fixture.workspaceId,
+      'PUT',
+      { title: 'Prefixed issue' },
+    )
+    const updateResponse = await handlerFor(IssueRoute, 'PUT')(
+      invocation(
+        makeContext({
+          testDb,
+          userId: fixture.ownerId,
+          role: 'owner',
+          request: updateRequest,
+        }),
+        updateRequest,
+        { id: issueId },
+        '/api/issues/$id',
+      ),
+    )
+    const updateBody = (await updateResponse.json()) as { identifier: string }
+    expect(updateBody.identifier).toBe('GAR-42')
   })
 })
