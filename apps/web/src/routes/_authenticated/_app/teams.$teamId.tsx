@@ -9,6 +9,7 @@ import {
   teamIssueListOptions,
   teamMemberListOptions,
 } from '@/features/teams/queries'
+import { TeamRouteError } from '@/features/teams/components/team-route-error'
 import { prefetchActiveWorkspace } from '@/lib/navigation/prefetch'
 
 export const Route = createFileRoute('/_authenticated/_app/teams/$teamId')({
@@ -30,6 +31,7 @@ export const Route = createFileRoute('/_authenticated/_app/teams/$teamId')({
       teamIssueListOptions(workspaceId, params.teamId),
     ]),
   component: TeamDetailRoute,
+  errorComponent: TeamRouteError,
 })
 
 function TeamDetailRoute() {

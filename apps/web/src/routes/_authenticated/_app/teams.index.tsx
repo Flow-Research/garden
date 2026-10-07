@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { TeamOverview } from '@/features/teams/components/team-overview'
+import { TeamRouteError } from '@/features/teams/components/team-route-error'
 import type { TeamMemberTab } from '@/features/teams/components/team-member-view'
 import { teamListOptions } from '@/features/teams/queries'
 import { prefetchActiveWorkspace } from '@/lib/navigation/prefetch'
@@ -21,6 +22,7 @@ export const Route = createFileRoute('/_authenticated/_app/teams/')({
       memberListOptions(workspaceId),
     ]),
   component: TeamsIndexRoute,
+  errorComponent: TeamRouteError,
 })
 
 function TeamsIndexRoute() {

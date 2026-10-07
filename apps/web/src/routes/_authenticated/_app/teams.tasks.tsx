@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
+import { TeamRouteError } from '@/features/teams/components/team-route-error'
 import { TeamWorkPage } from '@/features/teams/components/team-work-page'
 import {
   allTeamIssuesOptions,
@@ -14,6 +15,7 @@ export const Route = createFileRoute('/_authenticated/_app/teams/tasks')({
       teamListOptions(workspaceId),
     ]),
   component: TeamsTasksRoute,
+  errorComponent: TeamRouteError,
 })
 
 function TeamsTasksRoute() {
