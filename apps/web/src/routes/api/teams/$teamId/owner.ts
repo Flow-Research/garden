@@ -5,6 +5,7 @@ import { requireTeamOwnerTransfer } from '@/lib/server/team-access'
 import { getTeamForViewer, transferTeamOwner } from '@/lib/server/teams'
 import { parseJsonBody } from '@/lib/server/validation/common'
 import { transferTeamOwnerBodySchema } from '@/lib/server/validation/teams'
+import { publishWorkspaceEvent } from '@/lib/server/realtime'
 
 export const Route = createFileRoute('/api/teams/$teamId/owner')({
   server: {
@@ -40,6 +41,16 @@ export const Route = createFileRoute('/api/teams/$teamId/owner')({
           viewerId: access.session.user.id,
           viewerRole: access.workspaceMembership.role,
         })
+        appContext.waitUntil(
+          publishWorkspaceEvent(appContext.env, access.team.workspaceId, {
+            type: 'team:updated',
+            payload: {
+              workspace_id: access.team.workspaceId,
+              team_id: team.id,
+              team,
+            },
+          }),
+        )
         return json(team)
       },
     },

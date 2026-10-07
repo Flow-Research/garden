@@ -8,6 +8,7 @@ import {
   ChatSubAgent,
   IssueRunSubAgent,
   RunWorkflow,
+  WorkspaceRealtimeDO,
 } from '@garden/agent-runtime'
 import { proxyToSandbox, Sandbox } from '@cloudflare/sandbox'
 import { Result } from 'better-result'
@@ -32,6 +33,7 @@ import {
   createAppRequestContext,
   getLoggedAuthSession,
 } from '@/lib/server/context'
+import { handleRealtimeConnect } from '@/lib/server/realtime'
 import { capturePostHogException } from '@/lib/posthog-server'
 import {
   ExecutorMcpExecutionOwnerDirectory,
@@ -50,6 +52,7 @@ export { ChatSubAgent }
 export { IssueRunSubAgent }
 export { RunWorkflow }
 export { Sandbox }
+export { WorkspaceRealtimeDO }
 export { ExecutorMcpExecutionOwnerDirectory, ExecutorMcpSession }
 
 type ServerEnv = AppEnv
@@ -343,6 +346,26 @@ export default {
     }
 
     const url = new URL(request.url)
+
+    if (url.pathname === '/api/realtime') {
+      const realtimeResult = await Result.tryPromise({
+        try: async () => await handleRealtimeConnect(request, env),
+        catch: (cause) => cause,
+      })
+      if (realtimeResult.isErr()) {
+        return responseFromCaughtError({
+          event: 'realtime.connect.failed',
+          status: 500,
+          fallback: 'Realtime connection failed',
+          cause: realtimeResult.error,
+          logger: webLogger,
+        })
+      }
+      return withRequestIdHeader(
+        realtimeResult.value,
+        baseRequestFields.requestId,
+      )
+    }
 
     if (url.pathname.startsWith('/agents/')) {
       const agentAuth = await authorizeAgentRequest(request, env, logger)

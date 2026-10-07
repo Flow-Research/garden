@@ -12,6 +12,7 @@ import {
 } from '@/lib/server/teams'
 import { parseJsonBody } from '@/lib/server/validation/common'
 import { addTeamMemberBodySchema } from '@/lib/server/validation/teams'
+import { publishWorkspaceEvent } from '@/lib/server/realtime'
 
 export const Route = createFileRoute('/api/teams/$teamId/members')({
   server: {
@@ -57,6 +58,19 @@ export const Route = createFileRoute('/api/teams/$teamId/members')({
           teamId: access.team.id,
           membershipId: result.value.id,
         })
+        appContext.waitUntil(
+          publishWorkspaceEvent(appContext.env, access.team.workspaceId, {
+            type: 'team_member:added',
+            payload: {
+              workspace_id: access.team.workspaceId,
+              team_id: access.team.id,
+              membership_id: result.value.id,
+              member_type: result.value.userId ? 'user' : 'agent',
+              user_id: result.value.userId,
+              agent_id: result.value.agentId,
+            },
+          }),
+        )
         return json(member ?? { id: result.value.id }, 201)
       },
     },

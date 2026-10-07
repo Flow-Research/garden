@@ -16,6 +16,7 @@ import {
 } from '@/lib/server/workspace-permissions'
 import { parseJsonBody } from '@/lib/server/validation/common'
 import { createTeamBodySchema } from '@/lib/server/validation/teams'
+import { publishWorkspaceEvent } from '@/lib/server/realtime'
 
 export const Route = createFileRoute('/api/teams')({
   server: {
@@ -75,7 +76,19 @@ export const Route = createFileRoute('/api/teams')({
         })
 
         return result.match({
-          ok: (team) => json(team, 201),
+          ok: (team) => {
+            appContext.waitUntil(
+              publishWorkspaceEvent(appContext.env, workspaceId, {
+                type: 'team:created',
+                payload: {
+                  workspace_id: workspaceId,
+                  team_id: team.id,
+                  team,
+                },
+              }),
+            )
+            return json(team, 201)
+          },
           err: (error) => json({ error: error.message, code: error.code }, error.status),
         })
       },

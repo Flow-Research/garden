@@ -13,6 +13,7 @@ import {
 } from '@/lib/server/teams'
 import { parseJsonBody } from '@/lib/server/validation/common'
 import { updateTeamBodySchema } from '@/lib/server/validation/teams'
+import { publishWorkspaceEvent } from '@/lib/server/realtime'
 
 export const Route = createFileRoute('/api/teams/$teamId')({
   server: {
@@ -61,6 +62,16 @@ export const Route = createFileRoute('/api/teams/$teamId')({
           viewerId: access.session.user.id,
           viewerRole: access.workspaceMembership.role,
         })
+        appContext.waitUntil(
+          publishWorkspaceEvent(appContext.env, access.team.workspaceId, {
+            type: 'team:updated',
+            payload: {
+              workspace_id: access.team.workspaceId,
+              team_id: team.id,
+              team,
+            },
+          }),
+        )
         return json(team)
       },
       DELETE: async ({ context, params }) => {
@@ -86,6 +97,16 @@ export const Route = createFileRoute('/api/teams/$teamId')({
             result.error.status,
           )
         }
+        appContext.waitUntil(
+          publishWorkspaceEvent(appContext.env, access.team.workspaceId, {
+            type: 'team:deleted',
+            payload: {
+              workspace_id: access.team.workspaceId,
+              team_id: access.team.id,
+              name: access.team.name,
+            },
+          }),
+        )
         return new Response(null, { status: 204 })
       },
     },

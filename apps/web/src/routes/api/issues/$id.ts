@@ -29,6 +29,7 @@ import {
   requireWorkspacePermission,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
+import { publishWorkspaceEvent } from '@/lib/server/realtime'
 import { requireIssueAccess } from '@/lib/server/issue-access'
 import {
   isWorkspaceManager,
@@ -375,14 +376,18 @@ export const Route = createFileRoute('/api/issues/$id')({
           })
           if (startResult.isErr()) console.error(startResult.error.message)
         }
-        return Response.json(
-          toIssue(issue, {
-            issuePrefix: await getWorkspaceIssuePrefix(
-              db,
-              existingIssue.workspaceId,
-            ),
+        const issuePrefix = await getWorkspaceIssuePrefix(
+          db,
+          existingIssue.workspaceId,
+        )
+        const updatedIssue = toIssue(issue, { issuePrefix })
+        appContext.waitUntil(
+          publishWorkspaceEvent(appContext.env, existingIssue.workspaceId, {
+            type: 'issue:updated',
+            payload: { issue: updatedIssue },
           }),
         )
+        return Response.json(updatedIssue)
       },
       DELETE: async ({ context, request, params }) => {
         const appContext = requireAppRequestContext(context)
@@ -405,6 +410,16 @@ export const Route = createFileRoute('/api/issues/$id')({
               eq(schema.issue.workspaceId, access.issue.workspaceId),
             ),
           )
+        appContext.waitUntil(
+          publishWorkspaceEvent(appContext.env, access.issue.workspaceId, {
+            type: 'issue:deleted',
+            payload: {
+              issue_id: access.issue.id,
+              team_id: access.issue.teamId,
+              assignee_id: access.issue.assigneeId,
+            },
+          }),
+        )
 
         return new Response(null, { status: 204 })
       },

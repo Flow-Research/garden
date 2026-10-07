@@ -18,6 +18,7 @@ import {
   requireWorkspaceContext,
   toIssue,
 } from '@/lib/server/control-plane'
+import { publishWorkspaceEvent } from '@/lib/server/realtime'
 import {
   requireWorkspacePermission,
   workspacePermissions,
@@ -212,6 +213,12 @@ export const Route = createFileRoute('/api/issues')({
         })
         if (issueResult.isErr()) return badRequest(issueResult.error.message)
         const issue = issueResult.value
+        appContext.waitUntil(
+          publishWorkspaceEvent(appContext.env, workspaceId, {
+            type: 'issue:created',
+            payload: { issue },
+          }),
+        )
         if (
           body.auto_start !== false &&
           issue.assignee_type === 'agent' &&

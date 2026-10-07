@@ -844,7 +844,12 @@ export async function removeTeamMember(args: {
   team: TeamRow
   actorUserId: string
   membershipId: string
-}): Promise<Result<void, TeamServiceError>> {
+}): Promise<
+  Result<
+    { id: string; userId: string | null; agentId: string | null },
+    TeamServiceError
+  >
+> {
   const outcomeResult = await Result.tryPromise({
     try: async () =>
       args.db.transaction(async (tx) => {
@@ -882,7 +887,7 @@ export async function removeTeamMember(args: {
           },
         })
 
-        return { kind: 'ok' as const }
+        return { kind: 'ok' as const, membership }
       }),
     catch: mapDbError,
   })
@@ -909,7 +914,11 @@ export async function removeTeamMember(args: {
     actorId: args.actorUserId,
     membershipId: args.membershipId,
   })
-  return Result.ok(undefined)
+  return Result.ok({
+    id: outcome.membership.id,
+    userId: outcome.membership.userId,
+    agentId: outcome.membership.agentId,
+  })
 }
 
 export async function deleteTeam(args: {
