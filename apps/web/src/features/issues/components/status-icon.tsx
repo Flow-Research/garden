@@ -1,19 +1,31 @@
+import type { ComponentType } from 'react'
 import {
   Ban,
   Circle,
   CircleCheck,
   CircleDot,
-  CircleDotDashed,
   CircleX,
-  type LucideIcon,
 } from 'lucide-react'
+import { CircleHalf } from '@phosphor-icons/react'
 import type { IssueStatus } from '@garden/core/types'
 import { STATUS_CONFIG } from '@garden/core/issues/config'
 import { cn } from '@garden/ui/lib/utils'
 
-const STATUS_ICONS: Record<IssueStatus, LucideIcon> = {
+/**
+ * Design glyphs per workflow state. The Penpot set is Phosphor (circle /
+ * circle-half / circle-dashed / check-circle / prohibit / x-circle); Lucide
+ * has no half circle, so `in_progress` uses Phosphor's CircleHalf and the
+ * remaining states stay Lucide to match the rest of Garden.
+ */
+const STATUS_ICONS: Record<
+  IssueStatus,
+  ComponentType<{
+    className?: string
+    'aria-hidden'?: boolean | 'true' | 'false'
+  }>
+> = {
   todo: Circle,
-  in_progress: CircleDotDashed,
+  in_progress: CircleHalf,
   in_review: CircleDot,
   done: CircleCheck,
   blocked: Ban,

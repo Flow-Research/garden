@@ -1,6 +1,4 @@
-import { CheckCircle, Circle, CircleHalf } from '@phosphor-icons/react'
 import { MoreVertical } from 'lucide-react'
-import { cn } from '@garden/ui/lib/utils'
 import { Button } from '@garden/ui/components/ui/button'
 import {
   DropdownMenu,
@@ -8,27 +6,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@garden/ui/components/ui/dropdown-menu'
-
-const SUMMARY_STATUS_ICONS = {
-  todo: { Icon: Circle, color: 'text-muted-foreground' },
-  in_progress: { Icon: CircleHalf, color: 'text-warning' },
-  done: { Icon: CheckCircle, color: 'text-success' },
-} as const
-
-/**
- * Leading glyph for a status summary card, matching the Penpot design's card
- * icons (circle / circle-half / check-circle) and their colors (neutral /
- * warning / success). The design renders these at 18px, 12px before the label.
- */
-export function TeamSummaryStatusIcon({
-  status,
-}: {
-  status: keyof typeof SUMMARY_STATUS_ICONS
-}) {
-  const { Icon, color } = SUMMARY_STATUS_ICONS[status]
-
-  return <Icon aria-hidden="true" className={cn('size-[18px] shrink-0', color)} />
-}
 
 /**
  * The Teams design's summary card (label over value, optional trailing

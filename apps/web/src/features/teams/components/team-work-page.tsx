@@ -24,7 +24,8 @@ import { projectListOptions } from '@/lib/projects/queries'
 import { memberListOptions } from '@/lib/workspace/queries'
 import { allTeamIssuesOptions, teamListOptions } from '../queries'
 import { teamIssueViewStore } from '../view-store'
-import { TeamSummaryCard, TeamSummaryStatusIcon } from './team-summary-card'
+import { StatusIcon } from '@/features/issues/components/status-icon'
+import { TeamSummaryCard } from './team-summary-card'
 import { hashColor, teamColor } from './team-tokens'
 
 type TeamWorkMode = 'issues' | 'tasks'
@@ -195,17 +196,17 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
             {isIssues ? (
               <>
                 <TeamSummaryCard
-                  icon={<TeamSummaryStatusIcon status="todo" />}
+                  icon={<StatusIcon status="todo" className="size-4.5" />}
                   label="Todo"
                   value={counts.todo}
                 />
                 <TeamSummaryCard
-                  icon={<TeamSummaryStatusIcon status="in_progress" />}
+                  icon={<StatusIcon status="in_progress" className="size-4.5" />}
                   label="In Progress"
                   value={counts.inProgress}
                 />
                 <TeamSummaryCard
-                  icon={<TeamSummaryStatusIcon status="done" />}
+                  icon={<StatusIcon status="done" className="size-4.5" />}
                   label="Done"
                   value={counts.done}
                 />
@@ -214,12 +215,12 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
               <>
                 <TeamSummaryCard label="Total Tasks" value={counts.total} />
                 <TeamSummaryCard
-                  icon={<TeamSummaryStatusIcon status="in_progress" />}
+                  icon={<StatusIcon status="in_progress" className="size-4.5" />}
                   label="In Progress"
                   value={counts.inProgress}
                 />
                 <TeamSummaryCard
-                  icon={<TeamSummaryStatusIcon status="done" />}
+                  icon={<StatusIcon status="done" className="size-4.5" />}
                   label="Done"
                   value={counts.done}
                 />

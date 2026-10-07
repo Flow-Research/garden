@@ -59,7 +59,7 @@ export const STATUS_CONFIG: Record<
   },
   in_review: {
     label: 'In Review',
-    iconColor: 'text-success',
+    iconColor: 'text-info',
     hoverBg: 'hover:bg-success/10',
     dividerColor: 'bg-success',
     badgeBg: 'bg-success',
@@ -68,7 +68,7 @@ export const STATUS_CONFIG: Record<
   },
   done: {
     label: 'Done',
-    iconColor: 'text-info',
+    iconColor: 'text-success',
     hoverBg: 'hover:bg-info/10',
     dividerColor: 'bg-info',
     badgeBg: 'bg-info',
