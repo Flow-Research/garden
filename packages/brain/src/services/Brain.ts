@@ -82,6 +82,7 @@ export type BrainShape = {
     kind?: Kind
     summary?: string
     scope?: BrainScope
+    canonical?: { readonly type: string; readonly value: string }
     actor: Actor
   }) => Effect.Effect<BrainItem, HelixError | WriteConflict | EmbedError>
 
@@ -1296,6 +1297,12 @@ export const makeBrain = Effect.gen(function* () {
               IndexSpec.nodeEquality(LABELS.Section, SOURCE_KEY_PROP),
             ),
           )
+          .varAs(
+            'idx_note_source',
+            g().createIndexIfNotExists(
+              IndexSpec.nodeEquality(LABELS.Note, SOURCE_KEY_PROP),
+            ),
+          )
           .returning([
             'idx_file_vector',
             'idx_file_text',
@@ -1305,6 +1312,7 @@ export const makeBrain = Effect.gen(function* () {
             'idx_note_text',
             'idx_file_source',
             'idx_section_source',
+            'idx_note_source',
           ])
           .toQueryRequest({ queryName: QUERY.ensureIndexes })
         const result = yield* helix.run(request)
@@ -1316,6 +1324,7 @@ export const makeBrain = Effect.gen(function* () {
           .concat(toRows(result['idx_note_text']))
           .concat(toRows(result['idx_file_source']))
           .concat(toRows(result['idx_section_source']))
+          .concat(toRows(result['idx_note_source']))
           .flatMap((row) => {
             const id = row.operation_id
             return typeof id === 'string' ? [id] : []
@@ -1411,7 +1420,16 @@ export const makeBrain = Effect.gen(function* () {
           ),
         )
       }),
-    addText: ({ tenantId, label, body, kind, summary, scope, actor }) =>
+    addText: ({
+      tenantId,
+      label,
+      body,
+      kind,
+      summary,
+      scope,
+      canonical,
+      actor,
+    }) =>
       Effect.gen(function* () {
         const item: NewBrainItem = {
           tenantId,
@@ -1419,6 +1437,7 @@ export const makeBrain = Effect.gen(function* () {
           label,
           ...(summary === undefined ? {} : { summary }),
           ...(scope === undefined ? {} : { scope }),
+          ...(canonical === undefined ? {} : { canonical }),
           body,
           origin: { actor, at: DateTime.makeUnsafe(new Date()) },
         }
@@ -1428,14 +1447,36 @@ export const makeBrain = Effect.gen(function* () {
           ...propsWithEmbedding(item, vector),
           [PROPS.indexed]: true,
         }
-        const request = writeBatch()
-          .varAs('created', g().addN(storageLabelOf(item), props))
-          .returning(['created'])
+        const sourceKey = item.canonical?.value
+        const batch = writeBatch()
+        const request = (
+          sourceKey === undefined
+            ? batch.varAs('created', g().addN(storageLabelOf(item), props))
+            : batch
+                .varAs(
+                  'existing',
+                  g()
+                    .nWithLabelWhere(
+                      storageLabelOf(item),
+                      SourcePredicate.eq(SOURCE_KEY_PROP, sourceKey),
+                    )
+                    .where(Predicate.eq(PROPS.tenantId, item.tenantId)),
+                )
+                .varAsIf(
+                  'created',
+                  BatchCondition.varEmpty('existing'),
+                  g().addN(storageLabelOf(item), props),
+                )
+        )
+          .returning(
+            sourceKey === undefined ? ['created'] : ['existing', 'created'],
+          )
           .toQueryRequest({ queryName: QUERY.index })
         const result = yield* retryWriteConflict(
           helix.run(request, { awaitDurability: true }),
         )
-        const row = firstRow(result, 'created')
+        const row =
+          firstRow(result, 'existing') ?? firstRow(result, 'created')
         if (row === undefined) {
           return yield* Effect.fail(
             new HelixError({ message: 'addText returned no node' }),

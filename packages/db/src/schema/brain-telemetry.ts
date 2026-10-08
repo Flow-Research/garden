@@ -10,6 +10,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
 import { user } from './users.js'
@@ -83,6 +84,7 @@ export const brainWriteProposal = pgTable(
       .notNull()
       .references(() => organization.id),
     runId: text('run_id').notNull(),
+    operationKey: text('operation_key').notNull(),
     claimHash: text('claim_hash').notNull(),
     claim: text('claim').notNull(),
     kind: text('kind').notNull(),
@@ -109,8 +111,12 @@ export const brainWriteProposal = pgTable(
       table.workspaceId,
       table.status,
     ),
-    index('brain_write_proposal_run_claim_idx').on(
-      table.runId,
+    uniqueIndex('brain_write_proposal_operation_unique').on(
+      table.workspaceId,
+      table.operationKey,
+    ),
+    uniqueIndex('brain_write_proposal_claim_unique').on(
+      table.workspaceId,
       table.claimHash,
     ),
     check(
