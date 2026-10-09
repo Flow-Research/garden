@@ -1091,7 +1091,13 @@ async function assignIssueFromChat(
     return issueToolErr(`assign_issue: cannot assign a ${currentStatus} issue.`)
   }
 
-  if ('assignee_member' in input) {
+  if (input.target === 'member') {
+    const assigneeMember = input.assignee_member
+    if (assigneeMember === undefined) {
+      return issueToolErr(
+        'assign_issue: target member requires assignee_member.',
+      )
+    }
     const membersResult = await loadWorkspaceMemberCandidates({
       db,
       workspaceId: identity.workspaceId,
@@ -1099,7 +1105,7 @@ async function assignIssueFromChat(
     if (membersResult.isErr()) return issueToolErr(membersResult.error)
     const memberResult = resolveWorkspaceMember(
       membersResult.value,
-      input.assignee_member,
+      assigneeMember,
     )
     if (memberResult.isErr()) {
       return issueToolErr(`assign_issue: ${memberResult.error}`)
@@ -1223,11 +1229,10 @@ async function assignIssueFromChat(
     })
   }
 
-  const assigneeAgentId =
-    'assignee_agent_id' in input ? input.assignee_agent_id : null
+  const assigneeAgentId = input.assignee_agent_id ?? null
   if (!assigneeAgentId) {
     return issueToolErr(
-      'assign_issue: provide assignee_agent_id or assignee_member.',
+      'assign_issue: target agent requires assignee_agent_id.',
     )
   }
   const assigneeResult = await requireActiveWorkspaceAgent({
@@ -1801,6 +1806,7 @@ export function createChatSubAgentTools({
             workspaceId: threadResult.value.workspaceId,
             agentId: threadResult.value.agentId,
             runId: threadResult.value.threadId,
+            userId: threadResult.value.ownerUserId,
           }
         }),
     }),

@@ -190,6 +190,7 @@ const mockApiObj = vi.hoisted(() => ({
     work_products: [],
     events: [],
   }),
+  getIssuePendingApproval: vi.fn().mockResolvedValue({ approval: null }),
   getRunEvents: vi.fn().mockResolvedValue([]),
   listIssueWorkProducts: vi.fn().mockResolvedValue([]),
   getChildIssueProgress: vi.fn().mockResolvedValue({ progress: [] }),
@@ -462,6 +463,7 @@ describe('IssueDetail (shared)', () => {
       work_products: [],
       events: [],
     })
+    mockApiObj.getIssuePendingApproval.mockResolvedValue({ approval: null })
     mockApiObj.getRunEvents.mockResolvedValue([])
     mockApiObj.listMembers.mockResolvedValue([
       {
@@ -579,5 +581,54 @@ describe('IssueDetail (shared)', () => {
     })
 
     expect(screen.getByText('I can help with this')).toBeInTheDocument()
+  })
+
+  it('disables approval actions when the preview has no request id', async () => {
+    mockApiObj.getActiveRun.mockResolvedValue({
+      run: {
+        id: 'run-1',
+        workspace_id: 'ws-1',
+        issue_id: 'issue-1',
+        agent_id: 'agent-1',
+        host_name: 'garden',
+        status: 'waiting_for_approval',
+        trigger_source: 'manual',
+        trigger_ref: null,
+        parent_run_id: null,
+        workflow_instance_id: null,
+        cancel_requested_at: null,
+        context_snapshot: null,
+        result_json: null,
+        usage_json: null,
+        usage: null,
+        error: null,
+        started_at: '2026-01-20T00:00:00Z',
+        finished_at: null,
+        created_at: '2026-01-20T00:00:00Z',
+        updated_at: '2026-01-20T00:00:00Z',
+      },
+      work_products: [],
+      events: [
+        {
+          id: 'event-1',
+          workspace_id: 'ws-1',
+          issue_id: 'issue-1',
+          run_id: 'run-1',
+          seq: 1,
+          event_type: 'issue_run:approval_requested',
+          stream: 'system',
+          level: 'info',
+          message: null,
+          payload: { title: 'Garden wants to comment', body: 'Comment body' },
+          created_at: '2026-01-20T00:00:00Z',
+        },
+      ],
+    })
+
+    renderIssueDetail()
+
+    const approve = await screen.findByRole('button', { name: 'Approve' })
+    expect(approve).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeDisabled()
   })
 })

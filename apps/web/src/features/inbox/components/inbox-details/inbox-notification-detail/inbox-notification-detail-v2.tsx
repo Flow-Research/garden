@@ -62,6 +62,13 @@ function MailHeader({
   )
 }
 
+const RICH_ACTION_TYPES = new Set<InboxItem['type']>([
+  'wp_review',
+  'waiting_for_input',
+  'brain_proposal',
+  'review_requested',
+])
+
 /** Renders one real API event inside an issue thread. */
 function InboxThreadEvent({
   item,
@@ -78,6 +85,7 @@ function InboxThreadEvent({
       item.actor_id ?? item.recipient_id,
     ) ??
     typeLabels[item.type]
+  const showPreview = !(latest && RICH_ACTION_TYPES.has(item.type))
 
   return (
     <article className="rounded-lg border border-border bg-background/50 p-4 sm:p-5">
@@ -87,9 +95,11 @@ function InboxThreadEvent({
         avatarUrl={item.details?.avatar_url}
         time={formatThreadTime(item.created_at)}
       />
-      <div className="mt-4">
-        <InboxItemPreviewCard item={item} />
-      </div>
+      {showPreview && (
+        <div className="mt-4">
+          <InboxItemPreviewCard item={item} />
+        </div>
+      )}
       {latest && (
         <div className="mt-4">
           <InboxControlPlane item={item} />

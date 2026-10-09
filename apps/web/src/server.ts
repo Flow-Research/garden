@@ -5,6 +5,7 @@ import {
   AutomationRunSubAgent,
   AutomationTriggerDO,
   BrainAuditSubAgent,
+  BrainWriteBackSubAgent,
   ChatSubAgent,
   IssueRunSubAgent,
   RunWorkflow,
@@ -48,6 +49,7 @@ export { AgentDO }
 export { AutomationRunSubAgent }
 export { AutomationTriggerDO }
 export { BrainAuditSubAgent }
+export { BrainWriteBackSubAgent }
 export { ChatSubAgent }
 export { IssueRunSubAgent }
 export { RunWorkflow }

@@ -12,6 +12,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./domain": "./src/domain/items.ts",
+    "./domain/scope": "./src/domain/scope.ts",
     "./errors": "./src/errors.ts",
     "./helix": "./src/helix/constants.ts",
     "./services/helix-client": "./src/services/HelixClient.ts",
@@ -22,6 +23,9 @@
     "./services/chunker": "./src/services/Chunker.ts",
     "./services/extractor": "./src/services/Extractor.ts",
     "./services/raw-file-store": "./src/services/RawFileStore.ts",
+    "./services/selection": "./src/services/selection.ts",
+    "./services/freshness": "./src/services/freshness.ts",
+    "./services/write-back": "./src/services/write-back.ts",
     "./services/page-index": "./src/services/PageIndex.ts",
     "./services/brain": "./src/services/Brain.ts",
     "./layers": "./src/layers.ts"

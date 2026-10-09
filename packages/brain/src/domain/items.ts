@@ -1,4 +1,5 @@
 import { Schema } from 'effect'
+import { BrainScope, orgScope } from './scope.ts'
 
 export const WorkspaceId = Schema.String.pipe(Schema.brand('WorkspaceId'))
 export type WorkspaceId = typeof WorkspaceId.Type
@@ -62,6 +63,8 @@ export class BrainItem extends Schema.Class<BrainItem>('BrainItem')({
   indexError: Schema.optional(Schema.String),
   origin: Origin,
   body: Schema.optional(Schema.String),
+  scope: Schema.optional(BrainScope),
+  occurredAt: Schema.optional(Schema.DateTimeUtc),
 }) {}
 
 export class NewBrainItem extends Schema.Class<NewBrainItem>('NewBrainItem')({
@@ -76,6 +79,8 @@ export class NewBrainItem extends Schema.Class<NewBrainItem>('NewBrainItem')({
   indexError: Schema.optional(Schema.String),
   origin: Origin,
   body: Schema.optional(Schema.String),
+  scope: Schema.optional(BrainScope),
+  occurredAt: Schema.optional(Schema.DateTimeUtc),
 }) {}
 
 export class SearchHit extends Schema.Class<SearchHit>('SearchHit')({
@@ -84,6 +89,8 @@ export class SearchHit extends Schema.Class<SearchHit>('SearchHit')({
   bm25Score: Schema.optional(Schema.Number),
   distance: Schema.optional(Schema.Number),
   cite: Schema.optional(Schema.String),
+  freshness: Schema.optional(Schema.Number),
+  rankScore: Schema.optional(Schema.Number),
 }) {}
 
 export const MentionObservation = Schema.Struct({
@@ -110,3 +117,6 @@ export const BrainNeighborhood = Schema.Struct({
   edges: Schema.Array(BrainEdge),
 })
 export type BrainNeighborhood = typeof BrainNeighborhood.Type
+
+export const scopeOf = (item: { readonly scope?: BrainScope }): BrainScope =>
+  item.scope ?? orgScope()

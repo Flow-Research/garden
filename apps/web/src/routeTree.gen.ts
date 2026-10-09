@@ -104,6 +104,7 @@ import { Route as ApiIssuesIdSubscribeRouteImport } from './routes/api/issues/$i
 import { Route as ApiIssuesIdSourceBindingsRouteImport } from './routes/api/issues/$id/source-bindings'
 import { Route as ApiIssuesIdRunsRouteImport } from './routes/api/issues/$id/runs'
 import { Route as ApiIssuesIdReactionsRouteImport } from './routes/api/issues/$id/reactions'
+import { Route as ApiIssuesIdPendingApprovalRouteImport } from './routes/api/issues/$id/pending-approval'
 import { Route as ApiIssuesIdEventsRouteImport } from './routes/api/issues/$id/events'
 import { Route as ApiIssuesIdCommentsRouteImport } from './routes/api/issues/$id/comments'
 import { Route as ApiIssuesIdCancelRouteImport } from './routes/api/issues/$id/cancel'
@@ -143,6 +144,7 @@ import { Route as ApiChatThreadsIdToolApprovalRouteImport } from './routes/api/c
 import { Route as ApiChatThreadsIdPrimaryIssueRouteImport } from './routes/api/chat/threads/$id/primary-issue'
 import { Route as ApiChatThreadsIdPermissionRequestsRouteImport } from './routes/api/chat/threads/$id/permission-requests'
 import { Route as ApiChatThreadsIdDocumentsRouteImport } from './routes/api/chat/threads/$id/documents'
+import { Route as ApiBrainProposalsIdResolveRouteImport } from './routes/api/brain/proposals/$id/resolve'
 import { Route as ApiBrainFoldersIdFilesRouteImport } from './routes/api/brain/folders/$id/files'
 import { Route as ApiBrainFilesIdTextRouteImport } from './routes/api/brain/files/$id/text'
 import { Route as ApiBrainFilesIdContentRouteImport } from './routes/api/brain/files/$id/content'
@@ -640,6 +642,12 @@ const ApiIssuesIdReactionsRoute = ApiIssuesIdReactionsRouteImport.update({
   path: '/reactions',
   getParentRoute: () => ApiIssuesIdRoute,
 } as any)
+const ApiIssuesIdPendingApprovalRoute =
+  ApiIssuesIdPendingApprovalRouteImport.update({
+    id: '/pending-approval',
+    path: '/pending-approval',
+    getParentRoute: () => ApiIssuesIdRoute,
+  } as any)
 const ApiIssuesIdEventsRoute = ApiIssuesIdEventsRouteImport.update({
   id: '/events',
   path: '/events',
@@ -852,6 +860,12 @@ const ApiChatThreadsIdDocumentsRoute =
     path: '/documents',
     getParentRoute: () => ApiChatThreadsIdRoute,
   } as any)
+const ApiBrainProposalsIdResolveRoute =
+  ApiBrainProposalsIdResolveRouteImport.update({
+    id: '/api/brain/proposals/$id/resolve',
+    path: '/api/brain/proposals/$id/resolve',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiBrainFoldersIdFilesRoute = ApiBrainFoldersIdFilesRouteImport.update({
   id: '/files',
   path: '/files',
@@ -985,6 +999,7 @@ export interface FileRoutesByFullPath {
   '/api/issues/$id/cancel': typeof ApiIssuesIdCancelRoute
   '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
   '/api/issues/$id/events': typeof ApiIssuesIdEventsRoute
+  '/api/issues/$id/pending-approval': typeof ApiIssuesIdPendingApprovalRoute
   '/api/issues/$id/reactions': typeof ApiIssuesIdReactionsRoute
   '/api/issues/$id/runs': typeof ApiIssuesIdRunsRoute
   '/api/issues/$id/source-bindings': typeof ApiIssuesIdSourceBindingsRouteWithChildren
@@ -1009,6 +1024,7 @@ export interface FileRoutesByFullPath {
   '/api/brain/files/$id/content': typeof ApiBrainFilesIdContentRoute
   '/api/brain/files/$id/text': typeof ApiBrainFilesIdTextRoute
   '/api/brain/folders/$id/files': typeof ApiBrainFoldersIdFilesRoute
+  '/api/brain/proposals/$id/resolve': typeof ApiBrainProposalsIdResolveRoute
   '/api/chat/threads/$id/documents': typeof ApiChatThreadsIdDocumentsRoute
   '/api/chat/threads/$id/permission-requests': typeof ApiChatThreadsIdPermissionRequestsRoute
   '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
@@ -1119,6 +1135,7 @@ export interface FileRoutesByTo {
   '/api/issues/$id/cancel': typeof ApiIssuesIdCancelRoute
   '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
   '/api/issues/$id/events': typeof ApiIssuesIdEventsRoute
+  '/api/issues/$id/pending-approval': typeof ApiIssuesIdPendingApprovalRoute
   '/api/issues/$id/reactions': typeof ApiIssuesIdReactionsRoute
   '/api/issues/$id/runs': typeof ApiIssuesIdRunsRoute
   '/api/issues/$id/source-bindings': typeof ApiIssuesIdSourceBindingsRouteWithChildren
@@ -1143,6 +1160,7 @@ export interface FileRoutesByTo {
   '/api/brain/files/$id/content': typeof ApiBrainFilesIdContentRoute
   '/api/brain/files/$id/text': typeof ApiBrainFilesIdTextRoute
   '/api/brain/folders/$id/files': typeof ApiBrainFoldersIdFilesRoute
+  '/api/brain/proposals/$id/resolve': typeof ApiBrainProposalsIdResolveRoute
   '/api/chat/threads/$id/documents': typeof ApiChatThreadsIdDocumentsRoute
   '/api/chat/threads/$id/permission-requests': typeof ApiChatThreadsIdPermissionRequestsRoute
   '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
@@ -1261,6 +1279,7 @@ export interface FileRoutesById {
   '/api/issues/$id/cancel': typeof ApiIssuesIdCancelRoute
   '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
   '/api/issues/$id/events': typeof ApiIssuesIdEventsRoute
+  '/api/issues/$id/pending-approval': typeof ApiIssuesIdPendingApprovalRoute
   '/api/issues/$id/reactions': typeof ApiIssuesIdReactionsRoute
   '/api/issues/$id/runs': typeof ApiIssuesIdRunsRoute
   '/api/issues/$id/source-bindings': typeof ApiIssuesIdSourceBindingsRouteWithChildren
@@ -1285,6 +1304,7 @@ export interface FileRoutesById {
   '/api/brain/files/$id/content': typeof ApiBrainFilesIdContentRoute
   '/api/brain/files/$id/text': typeof ApiBrainFilesIdTextRoute
   '/api/brain/folders/$id/files': typeof ApiBrainFoldersIdFilesRoute
+  '/api/brain/proposals/$id/resolve': typeof ApiBrainProposalsIdResolveRoute
   '/api/chat/threads/$id/documents': typeof ApiChatThreadsIdDocumentsRoute
   '/api/chat/threads/$id/permission-requests': typeof ApiChatThreadsIdPermissionRequestsRoute
   '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
@@ -1402,6 +1422,7 @@ export interface FileRouteTypes {
     | '/api/issues/$id/cancel'
     | '/api/issues/$id/comments'
     | '/api/issues/$id/events'
+    | '/api/issues/$id/pending-approval'
     | '/api/issues/$id/reactions'
     | '/api/issues/$id/runs'
     | '/api/issues/$id/source-bindings'
@@ -1426,6 +1447,7 @@ export interface FileRouteTypes {
     | '/api/brain/files/$id/content'
     | '/api/brain/files/$id/text'
     | '/api/brain/folders/$id/files'
+    | '/api/brain/proposals/$id/resolve'
     | '/api/chat/threads/$id/documents'
     | '/api/chat/threads/$id/permission-requests'
     | '/api/chat/threads/$id/primary-issue'
@@ -1536,6 +1558,7 @@ export interface FileRouteTypes {
     | '/api/issues/$id/cancel'
     | '/api/issues/$id/comments'
     | '/api/issues/$id/events'
+    | '/api/issues/$id/pending-approval'
     | '/api/issues/$id/reactions'
     | '/api/issues/$id/runs'
     | '/api/issues/$id/source-bindings'
@@ -1560,6 +1583,7 @@ export interface FileRouteTypes {
     | '/api/brain/files/$id/content'
     | '/api/brain/files/$id/text'
     | '/api/brain/folders/$id/files'
+    | '/api/brain/proposals/$id/resolve'
     | '/api/chat/threads/$id/documents'
     | '/api/chat/threads/$id/permission-requests'
     | '/api/chat/threads/$id/primary-issue'
@@ -1677,6 +1701,7 @@ export interface FileRouteTypes {
     | '/api/issues/$id/cancel'
     | '/api/issues/$id/comments'
     | '/api/issues/$id/events'
+    | '/api/issues/$id/pending-approval'
     | '/api/issues/$id/reactions'
     | '/api/issues/$id/runs'
     | '/api/issues/$id/source-bindings'
@@ -1701,6 +1726,7 @@ export interface FileRouteTypes {
     | '/api/brain/files/$id/content'
     | '/api/brain/files/$id/text'
     | '/api/brain/folders/$id/files'
+    | '/api/brain/proposals/$id/resolve'
     | '/api/chat/threads/$id/documents'
     | '/api/chat/threads/$id/permission-requests'
     | '/api/chat/threads/$id/primary-issue'
@@ -1765,6 +1791,7 @@ export interface RootRouteChildren {
   ApiExecutorOauthStartRoute: typeof ApiExecutorOauthStartRoute
   ApiPermissionRequestsIdResolveRoute: typeof ApiPermissionRequestsIdResolveRoute
   ApiWorkProductsIdReviewRoute: typeof ApiWorkProductsIdReviewRoute
+  ApiBrainProposalsIdResolveRoute: typeof ApiBrainProposalsIdResolveRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -2434,6 +2461,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiIssuesIdReactionsRouteImport
       parentRoute: typeof ApiIssuesIdRoute
     }
+    '/api/issues/$id/pending-approval': {
+      id: '/api/issues/$id/pending-approval'
+      path: '/pending-approval'
+      fullPath: '/api/issues/$id/pending-approval'
+      preLoaderRoute: typeof ApiIssuesIdPendingApprovalRouteImport
+      parentRoute: typeof ApiIssuesIdRoute
+    }
     '/api/issues/$id/events': {
       id: '/api/issues/$id/events'
       path: '/events'
@@ -2706,6 +2740,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/chat/threads/$id/documents'
       preLoaderRoute: typeof ApiChatThreadsIdDocumentsRouteImport
       parentRoute: typeof ApiChatThreadsIdRoute
+    }
+    '/api/brain/proposals/$id/resolve': {
+      id: '/api/brain/proposals/$id/resolve'
+      path: '/api/brain/proposals/$id/resolve'
+      fullPath: '/api/brain/proposals/$id/resolve'
+      preLoaderRoute: typeof ApiBrainProposalsIdResolveRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/brain/folders/$id/files': {
       id: '/api/brain/folders/$id/files'
@@ -3037,6 +3078,7 @@ interface ApiIssuesIdRouteChildren {
   ApiIssuesIdCancelRoute: typeof ApiIssuesIdCancelRoute
   ApiIssuesIdCommentsRoute: typeof ApiIssuesIdCommentsRoute
   ApiIssuesIdEventsRoute: typeof ApiIssuesIdEventsRoute
+  ApiIssuesIdPendingApprovalRoute: typeof ApiIssuesIdPendingApprovalRoute
   ApiIssuesIdReactionsRoute: typeof ApiIssuesIdReactionsRoute
   ApiIssuesIdRunsRoute: typeof ApiIssuesIdRunsRoute
   ApiIssuesIdSourceBindingsRoute: typeof ApiIssuesIdSourceBindingsRouteWithChildren
@@ -3053,6 +3095,7 @@ const ApiIssuesIdRouteChildren: ApiIssuesIdRouteChildren = {
   ApiIssuesIdCancelRoute: ApiIssuesIdCancelRoute,
   ApiIssuesIdCommentsRoute: ApiIssuesIdCommentsRoute,
   ApiIssuesIdEventsRoute: ApiIssuesIdEventsRoute,
+  ApiIssuesIdPendingApprovalRoute: ApiIssuesIdPendingApprovalRoute,
   ApiIssuesIdReactionsRoute: ApiIssuesIdReactionsRoute,
   ApiIssuesIdRunsRoute: ApiIssuesIdRunsRoute,
   ApiIssuesIdSourceBindingsRoute: ApiIssuesIdSourceBindingsRouteWithChildren,
@@ -3335,6 +3378,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiExecutorOauthStartRoute: ApiExecutorOauthStartRoute,
   ApiPermissionRequestsIdResolveRoute: ApiPermissionRequestsIdResolveRoute,
   ApiWorkProductsIdReviewRoute: ApiWorkProductsIdReviewRoute,
+  ApiBrainProposalsIdResolveRoute: ApiBrainProposalsIdResolveRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

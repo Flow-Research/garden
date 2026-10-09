@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { getPooledDb } from '@garden/db/runtime'
 import type {
@@ -840,13 +840,20 @@ export async function listIssueRunEvents(args: {
         .from(schema.issueRunEvent)
         .where(and(...conditions))
 
-      return args.runId
-        ? await baseQuery
-            .orderBy(schema.issueRunEvent.seq)
-            .limit(args.limit ?? 200)
-        : await baseQuery
-            .orderBy(schema.issueRunEvent.createdAt, schema.issueRunEvent.seq)
-            .limit(args.limit ?? 200)
+      if (!args.runId) {
+        return await baseQuery
+          .orderBy(schema.issueRunEvent.createdAt, schema.issueRunEvent.seq)
+          .limit(args.limit ?? 200)
+      }
+      if (args.after !== undefined) {
+        return await baseQuery
+          .orderBy(asc(schema.issueRunEvent.seq))
+          .limit(args.limit ?? 200)
+      }
+      const rows = await baseQuery
+        .orderBy(desc(schema.issueRunEvent.seq))
+        .limit(args.limit ?? 200)
+      return rows.reverse()
     },
     catch: (cause) => serviceDbError('list issue run events', cause),
   })

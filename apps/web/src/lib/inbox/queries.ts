@@ -21,7 +21,7 @@ export function inboxListOptions(wsId: string) {
     queryKey: inboxKeys.list(wsId),
     queryFn: () => api.listInbox({ workspace_id: wsId }),
     staleTime: 30_000,
-    refetchInterval: 60_000,
+    refetchInterval: 15_000,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   })

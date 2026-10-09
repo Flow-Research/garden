@@ -18,11 +18,13 @@ const typeLabels: Record<InboxItemType, string> = {
   new_comment: 'New comment',
   mentioned: 'Mentioned',
   review_requested: 'Approval needed',
+  brain_proposal: 'Knowledge to review',
   waiting_for_input: 'Question waiting',
   wp_review: 'Ready for review',
   task_completed: 'Task completed',
   task_failed: 'Task failed',
   agent_blocked: 'Agent blocked',
+  connector_needed: 'Connector needed',
   agent_completed: 'Agent completed',
   reaction_added: 'Reacted',
 }

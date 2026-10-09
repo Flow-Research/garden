@@ -63,6 +63,7 @@ export interface ActiveRunPanelProps {
     body: string
     targetLabel?: string
   } | null
+  approvalDisabled?: boolean
   /** Pulse the question/approval card on mount — for inbox deep-link arrivals. */
   pulseFocus?: boolean
   /**
@@ -282,6 +283,7 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
     lastEventSummary,
     pendingQuestion,
     pendingApprovalPreview,
+    approvalDisabled = false,
     pulseFocus = false,
     presence,
     onStop,
@@ -433,6 +435,7 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
               targetLabel={pendingApprovalPreview.targetLabel}
               body={<ConnectorWriteBody text={pendingApprovalPreview.body} />}
               pulseOnMount={pulseFocus}
+              disabled={approvalDisabled}
               onApprove={() => onApprove?.()}
               onDeny={() => onDeny?.()}
               onEditApprove={onEditApprove ? () => onEditApprove() : undefined}
