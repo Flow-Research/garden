@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { Issue } from '@garden/core/types'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
@@ -479,7 +479,9 @@ describe('IssuesPage (shared)', () => {
       ),
     )
 
-    renderWithQuery(<IssuesPage />)
+    await act(async () => {
+      renderWithQuery(<IssuesPage />)
+    })
 
     await screen.findByText('Implement auth')
     expect(screen.getByText('Design landing page')).toBeInTheDocument()
