@@ -282,7 +282,14 @@ export default {
               brain.addText({
                 tenantId: WorkspaceId.make(input.workspaceId),
                 label: input.label,
-                body: input.label,
+                // Give every audience the same lexical relevance to real
+                // start/resume queries. Real ranking must cross the production
+                // injection floor; authorization alone selects visible items.
+                body: [
+                  input.label,
+                  'Start this issue run using the injected issue context. Produce a useful work product, ask one focused question, mark blocked, or decompose into child issues.',
+                  'Resume this issue run using the latest issue context. If the user answered a pending question, use that answer now.',
+                ].join('\n'),
                 summary: input.label,
                 scope: input.scope,
                 actor: { _tag: 'Agent', agentId: 'fixture', runId: 'fixture' },

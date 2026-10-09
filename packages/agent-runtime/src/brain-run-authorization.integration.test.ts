@@ -35,6 +35,48 @@ const modelRequests: Array<{
   tools?: Array<{ function: { name: string } }>
 }> = []
 
+/** Proves automatic injection independently of later explicit tool retrieval. */
+function assertOrgInjection(
+  request: (typeof modelRequests)[number],
+  markers: string[],
+) {
+  const text = request.messages
+    .flatMap((message) => {
+      if (typeof message.content === 'string') return [message.content]
+      if (!Array.isArray(message.content)) return []
+      return message.content.flatMap((part: unknown) =>
+        part !== null &&
+        typeof part === 'object' &&
+        'text' in part &&
+        typeof part.text === 'string'
+          ? [part.text]
+          : [],
+      )
+    })
+    .join('\n')
+  const blocks = [
+    ...text.matchAll(
+      /Org Brain memory for this turn\.[\s\S]*?Call brain_search or brain_neighborhood with an id above for more\./g,
+    ),
+  ].map((match) => match[0])
+  expect(
+    blocks.length,
+    'automatic injection must be present before explicit retrieval',
+  ).toBeGreaterThan(0)
+  const injected = blocks.join('\n')
+  for (const marker of markers) expect(injected).toContain(marker)
+  const ids = [...injected.matchAll(/^\d+\. \[([^\]]+)\]/gm)].map(
+    (match) => match[1],
+  )
+  expect(ids).toContain(seededIds[0])
+  for (const marker of deniedMarkers)
+    expect(
+      injected.includes(marker),
+      `automatic injection disclosed ${marker}`,
+    ).toBe(false)
+  for (const id of seededIds.slice(1)) expect(ids).not.toContain(id)
+}
+
 // Match apps/web/vite.config.ts source aliases so the fixture runs the same
 // vendored Executor implementation, including its actual MCP/D1 storage host.
 const executorSource = (path: string) =>
@@ -502,6 +544,10 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       expect(products).toHaveLength(1)
       expect(products[0]!.body).toContain(allowedMarker)
       expect(modelRequests.length).toBeGreaterThanOrEqual(2)
+      expect(
+        modelRequests[0]!.messages.some((message) => message.role === 'tool'),
+      ).toBe(false)
+      assertOrgInjection(modelRequests[0]!, [allowedMarker])
       const proposals = await database!.db
         .select()
         .from(schema.brainWriteProposal)
@@ -766,6 +812,10 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       expect(JSON.stringify(modelRequests.slice(resumedStart))).toContain(
         resumeMarker,
       )
+      assertOrgInjection(modelRequests[resumedStart]!, [
+        allowedMarker,
+        resumeMarker,
+      ])
       // Preserve this live facet and history while local Hyperdrive clients close.
       const readinessStarted = Date.now()
       const connectionSamples: number[] = []
