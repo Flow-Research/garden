@@ -405,7 +405,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
             : { helixApiKey: this.env.HELIX_API_KEY }),
           ai: this.env.AI,
           files: this.env.BRAIN_FILES,
-          getContext: async (toolName = 'brain_search') => {
+          getContext: async (toolName) => {
             const run = this.currentRunState
             if (run === null) return null
             const origin: BrainRunOrigin = {
@@ -443,6 +443,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async beforeTurn(ctx: TurnContext): Promise<TurnConfig | void> {
+    const runtimeName = this.parentPath.at(-1)?.name ?? ''
     const runId = this.currentRunId ?? stringValue(ctx.body?.run_id)
     if (!runId) {
       throw new Error('IssueRunSubAgent.beforeTurn missing run_id.')
@@ -453,7 +454,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       {
         runKind: 'issue',
         runId: runId,
-        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        runtimeName,
         objectId: this.name,
       },
     )
@@ -476,7 +477,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
 
     const grantHistory = await this.ensureBrainGrantHistory({
       runKind: 'issue',
-      runtimeName: this.parentPath.at(-1)?.name ?? '',
+      runtimeName,
       objectId: this.name,
       runId: loadedResult.value.runState.runId,
       workspaceId: loadedResult.value.runState.workspaceId,
@@ -533,7 +534,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       this.env.HYPERDRIVE.connectionString,
       {
         runKind: 'issue',
-        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        runtimeName,
         objectId: this.name,
         runId,
         workspaceId: loadedResult.value.runState.workspaceId,
@@ -546,7 +547,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       const exposure = await this.ensureBrainGrantHistory(
         {
           runKind: 'issue',
-          runtimeName: this.parentPath.at(-1)?.name ?? '',
+          runtimeName,
           objectId: this.name,
           runId,
           workspaceId: loadedResult.value.runState.workspaceId,
@@ -976,12 +977,13 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
 
   /** Revalidates durable originating exposure before a separate memory submission. */
   async validateBrainSummaryAccess(runId: string): Promise<void> {
+    const runtimeName = this.parentPath.at(-1)?.name ?? ''
     const binding = await verifyBrainRunBinding(
       this.env.HYPERDRIVE.connectionString,
       {
         runKind: 'issue',
         runId,
-        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        runtimeName,
         objectId: this.name,
       },
     )
@@ -989,7 +991,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     const access = await this.ensureBrainGrantHistory({
       runKind: 'issue',
       runId,
-      runtimeName: this.parentPath.at(-1)?.name ?? '',
+      runtimeName,
       objectId: this.name,
       workspaceId: binding.value.context.workspaceId,
       agentId: binding.value.context.agentId,
@@ -1012,12 +1014,13 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     ownerUserId: string | null
     summary: string
   }> {
+    const runtimeName = this.parentPath.at(-1)?.name ?? ''
     const binding = await verifyBrainRunBinding(
       this.env.HYPERDRIVE.connectionString,
       {
         runKind: 'issue',
         runId: input.runId,
-        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        runtimeName,
         objectId: this.name,
       },
     )
@@ -1087,7 +1090,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     const runStateResult = await this.loadRunState(input.runId)
     const summaryGrant = await this.ensureBrainGrantHistory({
       runKind: 'issue',
-      runtimeName: this.parentPath.at(-1)?.name ?? '',
+      runtimeName,
       objectId: this.name,
       runId: input.runId,
       workspaceId: binding.value.context.workspaceId,

@@ -245,7 +245,7 @@ export type BrainToolDependencies = {
   ai: WorkersAiBinding
   files: R2BucketLike
   getContext: (
-    toolName?: string,
+    toolName: string,
   ) => BrainToolContext | null | Promise<BrainToolContext | null>
   brain?: BrainToolOperations
 }

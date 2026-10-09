@@ -11,7 +11,7 @@ import {
 } from 'testcontainers'
 import { startTestDb, type TestDb } from '@garden/db/testing'
 import * as schema from '@garden/db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 
 const ownerId = crypto.randomUUID()
 const initiatorId = crypto.randomUUID()
@@ -38,15 +38,23 @@ let grantScenario:
       neighborhood?: boolean
       handoffRevoke?: boolean
       pause?: boolean
-      writebackRevoke?: 'before-proposal' | 'during-dedupe'
+      writebackRevoke?:
+        | 'before-proposal'
+        | 'during-dedupe'
+        | 'before-dedupe-read'
       confidence?: number
       scope?: 'org' | 'user'
+      mutation?: 'create' | 'update' | 'mention' | 'link'
+      mutationRevoke?: boolean
     }
   | undefined
 let brainRequests: string[] = []
 let revokedAtBrainRequest: number | undefined
 let dedupeRevocationRequest: string | undefined
+const modelBrainCounts: number[] = []
 let handoffCount = 0
+let mutationArmed = false
+let mutationBoundary: string | undefined
 const seededIds: string[] = []
 const modelRequests: Array<{
   messages: Array<{ role: string; content?: unknown }>
@@ -150,10 +158,13 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
     beforeEach(async (context) => {
       nextIssueNumber = 2
       modelRequests.length = 0
+      modelBrainCounts.length = 0
       seededIds.length = 0
       modelMode = 'issue'
       grantScenario = undefined
       handoffCount = 0
+      mutationArmed = false
+      mutationBoundary = undefined
       brainRequests = []
       revokedAtBrainRequest = undefined
       dedupeRevocationRequest = undefined
@@ -179,6 +190,41 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             ...(body ? { body } : {}),
           },
         )
+        if (
+          mutationArmed &&
+          grantScenario?.mutationRevoke &&
+          body.includes(
+            grantScenario.mutation === 'create'
+              ? 'brain.ensure_indexes'
+              : 'brain.read',
+          )
+        ) {
+          mutationArmed = false
+          mutationBoundary = body
+          const revokedTool =
+            grantScenario.mutation === 'mention'
+              ? 'brain_observe_mention'
+              : grantScenario.mutation === 'link'
+                ? 'brain_link'
+                : 'add_to_brain'
+          await database!.db
+            .update(schema.agent)
+            .set({
+              permissions: {
+                full_access: false,
+                allowed_tools: [
+                  'brain_search',
+                  'brain_neighborhood',
+                  'add_to_brain',
+                  'brain_observe_mention',
+                  'brain_link',
+                  'create_work_product',
+                ].filter((tool) => tool !== revokedTool),
+              },
+            })
+            .where(eq(schema.agent.id, agentId))
+          revokedAtBrainRequest = brainRequests.length
+        }
         if (
           grantScenario?.writebackRevoke === 'during-dedupe' &&
           body.includes('G08 durable')
@@ -234,6 +280,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         }
         const body = JSON.parse(raw) as (typeof modelRequests)[number]
         modelRequests.push(body)
+        modelBrainCounts.push(brainRequests.length)
         const toolResults = body.messages.filter(
           (message) => message.role === 'tool',
         )
@@ -327,14 +374,19 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
                   }
             if (
               n === 1 &&
-              grantScenario.writebackRevoke === 'before-proposal'
+              ['before-proposal', 'before-dedupe-read'].includes(
+                grantScenario.writebackRevoke ?? '',
+              )
             ) {
               await database!.db
                 .update(schema.agent)
                 .set({
                   permissions: {
                     full_access: false,
-                    allowed_tools: ['brain_search'],
+                    allowed_tools:
+                      grantScenario.writebackRevoke === 'before-dedupe-read'
+                        ? ['add_to_brain']
+                        : ['brain_search'],
                   },
                 })
                 .where(eq(schema.agent.id, agentId))
@@ -391,6 +443,38 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
               grantScenario.revoke = undefined
             }
           }
+        }
+        if (grantScenario?.mutation && !writeback && toolResults.length === 0) {
+          mutationArmed = true
+          const operation = grantScenario.mutation
+          toolName =
+            operation === 'mention'
+              ? 'brain_observe_mention'
+              : operation === 'link'
+                ? 'brain_link'
+                : 'add_to_brain'
+          args =
+            operation === 'create'
+              ? {
+                  mode: 'create',
+                  label: 'G06_MUTATION_CREATED',
+                  content: 'G06_MUTATION_CREATED',
+                  scope: 'org',
+                }
+              : operation === 'update'
+                ? {
+                    mode: 'update',
+                    itemId: seededIds[0],
+                    kind: 'note',
+                    summary: 'G06_MUTATION_UPDATED',
+                  }
+                : operation === 'mention'
+                  ? { itemId: seededIds[0], text: 'G06_MUTATION_MENTION' }
+                  : {
+                      from: seededIds[0],
+                      to: seededIds[0],
+                      edge: 'G06_MUTATION_EDGE',
+                    }
         }
         const chunk = {
           id: crypto.randomUUID(),
@@ -472,6 +556,9 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         .update(schema.issue)
         .set({ activeRunId: runId })
         .where(eq(schema.issue.id, issueId))
+      const persistenceFault = context.task.name.match(
+        /^simulates (issue|automation) (before-turn|injection|tool) provenance persistence failure$/,
+      )
       const config: Unstable_RawConfig = {
         name: 'garden-g06-integration',
         alias: executorAliases,
@@ -544,6 +631,16 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           },
         ],
         vars: {
+          ...(persistenceFault
+            ? {
+                G08_GRANT_FAULT_KIND: persistenceFault[1]!,
+                G08_GRANT_FAULT_AT: String(
+                  { 'before-turn': 2, injection: 3, tool: 4 }[
+                    persistenceFault[2] as 'before-turn' | 'injection' | 'tool'
+                  ],
+                ),
+              }
+            : {}),
           EXECUTOR_SECRET_KEY: 'g06-synthetic-encryption-key-only',
           HELIX_URL: `http://127.0.0.1:${brainAddress.port}`,
           GARDEN_MODEL_PROVIDER: 'openai-compatible',
@@ -577,6 +674,42 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         'uses the real issue guard durable-history reader when hydration is empty or storage fails':
           [],
       }
+      rolesByScenario[
+        'closes native authority connections after repeated allowed and denied checks'
+      ] = ['IssueRunSubAgent.validateBrainSummaryAccess']
+      for (const kind of ['issue', 'automation'])
+        rolesByScenario[
+          `fails closed on ${kind} grant provenance storage faults`
+        ] = []
+      for (const kind of ['issue', 'automation'])
+        rolesByScenario[
+          `rejects absent trusted ${kind} principals at every entry boundary`
+        ] = []
+      for (const kind of ['issue', 'automation'])
+        for (const phase of ['before-turn', 'injection', 'tool'])
+          rolesByScenario[
+            `simulates ${kind} ${phase} provenance persistence failure`
+          ] = [
+            `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.completeWorkflowTurn`,
+            ...(phase === 'tool'
+              ? ['BrainWriteBackSubAgent.runWriteBack']
+              : []),
+          ]
+      for (const form of ['legacy', 'uuid'])
+        rolesByScenario[
+          `resolves ${form} runtime aliases without accepting missing principals`
+        ] = [
+          'IssueRunSubAgent.completeWorkflowTurn',
+          'BrainWriteBackSubAgent.runWriteBack',
+        ]
+      for (const operation of ['create', 'update', 'mention', 'link'])
+        for (const revoked of [false, true])
+          rolesByScenario[
+            `rechecks ${operation} grant after native preflight revoked=${revoked}`
+          ] = [
+            'IssueRunSubAgent.completeWorkflowTurn',
+            ...(revoked ? [] : ['BrainWriteBackSubAgent.runWriteBack']),
+          ]
       for (const kind of ['issue', 'automation']) {
         for (const policy of [
           'denied',
@@ -604,7 +737,11 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       ] = ['BrainWriteBackSubAgent.runWriteBack']
       rolesByScenario[
         'rejects issue RPC run and principal substitution without ledger mutations'
-      ] = ['IssueRunSubAgent.executeWorkflowTurn']
+      ] = [
+        'IssueRunSubAgent.executeWorkflowTurn',
+        'IssueRunSubAgent.completeWorkflowTurn',
+        'BrainWriteBackSubAgent.runWriteBack',
+      ]
       for (const kind of ['issue', 'automation']) {
         for (const state of kind === 'automation'
           ? ['revoked', 'always-denied', 'owner-changed']
@@ -655,6 +792,13 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.completeWorkflowTurn`,
             'BrainWriteBackSubAgent.runWriteBack',
           ]
+      for (const kind of ['issue', 'automation'])
+        rolesByScenario[
+          `denies ${kind} proposal dedupe after read-only revocation`
+        ] = [
+          `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.completeWorkflowTurn`,
+          'BrainWriteBackSubAgent.runWriteBack',
+        ]
       for (const [scenario, roles] of Object.entries(rolesByScenario)) {
         if (
           scenario.startsWith('revalidates ') ||
@@ -1172,7 +1316,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             .where(eq(schema.issue.id, base.originObjectId))
           const denied = await harness!.fetch('/writeback-origin', {
             method: 'POST',
-            body: JSON.stringify(base),
+            body: JSON.stringify({ ...base, expectOriginValidation: false }),
           })
           expect(await denied.json()).toMatchObject({ ok: false })
           expect(modelRequests).toHaveLength(0)
@@ -1285,6 +1429,17 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         expect(response.status).toBe(200)
         expect(await response.json()).toMatchObject({ ok: false })
       }
+      const automation = await seedAutomation()
+      const missingAutomation = await harness!.fetch('/writeback-origin', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...base,
+          runKind: 'automation',
+          runId: automation.runId,
+          originObjectId: crypto.randomUUID(),
+        }),
+      })
+      expect(await missingAutomation.json()).toMatchObject({ ok: false })
       for (const permissions of [null, { full_access: 'yes' }]) {
         await database!.db
           .update(schema.agent)
@@ -1302,6 +1457,175 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         await database!.db.select().from(schema.brainWriteProposal),
       ).toHaveLength(0)
     }, 90_000)
+
+    for (const kind of ['issue', 'automation'] as const)
+      for (const phase of ['before-turn', 'injection', 'tool'] as const)
+        it(`simulates ${kind} ${phase} provenance persistence failure`, async () => {
+          grantScenario = { kind, read: true }
+          const input =
+            kind === 'issue'
+              ? await seedIssue('G08 storage failure simulation')
+              : await seedAutomation()
+          const before = brainRequests.length
+          expect(
+            (
+              await harness!.fetch(
+                kind === 'issue' ? '/start' : '/automation-start',
+                { method: 'POST', body: JSON.stringify(input) },
+              )
+            ).status,
+          ).toBe(200)
+          const table =
+            kind === 'issue' ? schema.issueRun : schema.automationRun
+          await expect
+            .poll(
+              async () =>
+                (
+                  await database!.db
+                    .select({ status: table.status })
+                    .from(table)
+                    .where(eq(table.id, input.runId))
+                )[0]?.status,
+              { timeout: 60000 },
+            )
+            .toBe(
+              phase === 'tool'
+                ? kind === 'issue'
+                  ? 'succeeded'
+                  : 'completed'
+                : 'failed',
+            )
+          const logs = JSON.stringify(harness!.getLogs())
+          const ordinal = { 'before-turn': 2, injection: 3, tool: 4 }[phase]
+          expect(logs).toContain('G08_CONFIG_PERSISTED')
+          expect(logs).toContain('G08_CONFIG_FAULT')
+          const faults = harness!
+            .getLogs()
+            .filter((log) => String(log.message).startsWith('G08_CONFIG_FAULT'))
+          expect(faults).toHaveLength(1)
+          expect(
+            JSON.parse(
+              String(faults[0]!.message)
+                .slice('G08_CONFIG_FAULT'.length)
+                .trim(),
+            ),
+          ).toEqual({
+            kind,
+            ordinal,
+            provenance: {
+              identity: `${kind}:${workspaceId}:${agentId}:${ownerId}`,
+              tools: phase === 'before-turn' ? [] : ['brain_search'],
+            },
+          })
+          const persisted = harness!
+            .getLogs()
+            .filter((log) =>
+              String(log.message).startsWith('G08_CONFIG_PERSISTED'),
+            )
+            .map((log) =>
+              JSON.parse(
+                String(log.message).slice('G08_CONFIG_PERSISTED'.length).trim(),
+              ),
+            )
+          expect(persisted).toContainEqual({
+            kind,
+            ordinal: 1,
+            provenance: {
+              identity: `${kind}:${workspaceId}:${agentId}:${ownerId}`,
+              tools: [],
+            },
+          })
+          if (phase === 'tool') {
+            if (kind === 'issue') {
+              assertOrgInjection(modelRequests[0]!, [allowedMarker])
+            } else {
+              const injected = JSON.stringify(modelRequests[0]!.messages)
+              expect(injected).toContain(allowedMarker)
+              expect(injected).toContain(deniedMarkers[0])
+              for (const marker of deniedMarkers.slice(1))
+                expect(injected).not.toContain(marker)
+              for (const id of seededIds.slice(0, 2))
+                expect(injected).toContain(id)
+              for (const id of seededIds.slice(2))
+                expect(injected).not.toContain(id)
+            }
+            const result = modelRequests[1]!.messages
+              .filter((m) => m.role === 'tool')
+              .map((m) => JSON.parse(String(m.content)))
+            expect(result).toContainEqual({
+              ok: false,
+              error:
+                'No active run context; the brain tools need a workspace and agent.',
+            })
+            expect(modelBrainCounts[1]).toBe(modelBrainCounts[0])
+            await expect
+              .poll(() => JSON.stringify(harness!.getLogs()), {
+                timeout: 60000,
+              })
+              .toContain('agent_do.brain_write_back.completed')
+          } else {
+            expect(modelRequests).toHaveLength(0)
+            expect(brainRequests.length).toBe(before)
+            expect(
+              await database!.db.select().from(schema.brainWriteProposal),
+            ).toHaveLength(0)
+          }
+        }, 90000)
+
+    for (const form of ['legacy', 'uuid'] as const)
+      it(`resolves ${form} runtime aliases without accepting missing principals`, async () => {
+        const alias =
+          form === 'legacy' ? 'legacy-runtime-host' : crypto.randomUUID()
+        await database!.db
+          .update(schema.agent)
+          .set({ hostName: alias })
+          .where(eq(schema.agent.id, agentId))
+        const denied = await harness!.fetch('/binding-fault', {
+          method: 'POST',
+          body: JSON.stringify({
+            kind: 'issue',
+            agentId: 'missing-runtime-host',
+            objectId: issueId,
+            runId,
+            method: 'validateBrainSummaryAccess',
+            missingParent: false,
+          }),
+        })
+        expect(await denied.json()).toMatchObject({
+          denied: true,
+          message: expect.stringContaining(
+            'Brain runtime principal is missing or ambiguous.',
+          ),
+        })
+        expect(modelRequests).toHaveLength(0)
+        grantScenario = { kind: 'issue', read: true }
+        expect(
+          (
+            await harness!.fetch('/start', {
+              method: 'POST',
+              body: JSON.stringify({ agentId: alias, issueId, runId }),
+            })
+          ).status,
+        ).toBe(200)
+        await expect
+          .poll(() => JSON.stringify(harness!.getLogs()), { timeout: 60000 })
+          .toContain('agent_do.brain_write_back.completed')
+        expect(
+          (
+            await database!.db
+              .select()
+              .from(schema.issueRun)
+              .where(eq(schema.issueRun.id, runId))
+          )[0]?.status,
+        ).toBe('succeeded')
+        assertOrgInjection(modelRequests[0]!, [allowedMarker])
+        expect(
+          await database!.db
+            .select()
+            .from(schema.issueWorkProduct)
+            .where(eq(schema.issueWorkProduct.runId, runId)),
+        ).toHaveLength(1)
+      }, 90000)
 
     it('rejects issue RPC run and principal substitution without ledger mutations', async () => {
       const otherIssue = await seedIssue('Other issue')
@@ -1342,9 +1666,53 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         expect(await response.json()).toMatchObject({ ok: false })
       }
       const rows = await database!.db.select().from(schema.issueRun)
-      expect(rows.every((row) => row.status === 'queued')).toBe(true)
+      expect(
+        rows
+          .map((row) => ({ id: row.id, status: row.status }))
+          .sort((a, b) => a.id.localeCompare(b.id)),
+      ).toEqual(
+        [runId, otherIssue.runId, otherRun]
+          .sort()
+          .map((id) => ({ id, status: 'queued' })),
+      )
       expect(modelRequests).toHaveLength(0)
       expect(brainRequests.length).toBe(initialReads)
+      grantScenario = { kind: 'issue', read: false }
+      const positive = await harness!.fetch('/start', {
+        method: 'POST',
+        body: JSON.stringify({ agentId, issueId, runId }),
+      })
+      expect(positive.status).toBe(200)
+      await expect
+        .poll(
+          async () =>
+            (
+              await database!.db
+                .select()
+                .from(schema.issueRun)
+                .where(eq(schema.issueRun.id, runId))
+            )[0]?.status,
+          { timeout: 60000 },
+        )
+        .toBe('succeeded')
+      await expect
+        .poll(() => JSON.stringify(harness!.getLogs()), { timeout: 60000 })
+        .toContain('agent_do.brain_write_back.completed')
+      expect(
+        await database!.db
+          .select()
+          .from(schema.issueWorkProduct)
+          .where(eq(schema.issueWorkProduct.runId, runId)),
+      ).toHaveLength(1)
+      for (const untouched of [otherIssue.runId, otherRun])
+        expect(
+          (
+            await database!.db
+              .select()
+              .from(schema.issueRun)
+              .where(eq(schema.issueRun.id, untouched))
+          )[0]?.status,
+        ).toBe('queued')
     }, 90_000)
 
     for (const kind of ['issue', 'automation'] as const)
@@ -1534,6 +1902,149 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             expect(await snapshot.text()).not.toContain('G08 durable')
           }, 90_000)
         }
+
+    for (const kind of ['issue', 'automation'] as const)
+      it(`denies ${kind} proposal dedupe after read-only revocation`, async () => {
+        grantScenario = {
+          kind,
+          read: true,
+          writebackRevoke: 'before-dedupe-read',
+          confidence: 0.5,
+        }
+        const input =
+          kind === 'issue'
+            ? await seedIssue('G08 dedupe read revoke')
+            : await seedAutomation()
+        expect(
+          (
+            await harness!.fetch(
+              kind === 'issue' ? '/start' : '/automation-start',
+              { method: 'POST', body: JSON.stringify(input) },
+            )
+          ).status,
+        ).toBe(200)
+        await expect
+          .poll(() => JSON.stringify(harness!.getLogs()), { timeout: 60000 })
+          .toContain('agent_do.brain_write_back.completed')
+        expect(revokedAtBrainRequest).toBeTypeOf('number')
+        expect(brainRequests.length).toBe(revokedAtBrainRequest)
+        const calls = modelRequests.filter((r) =>
+          r.tools?.some((t) => t.function.name === 'propose_brain_item'),
+        )
+        expect(calls.length).toBeGreaterThan(1)
+        expect(JSON.stringify(calls)).toContain('Brain read is not permitted.')
+        expect(
+          await database!.db.select().from(schema.brainWriteProposal),
+        ).toHaveLength(0)
+      }, 90000)
+
+    for (const operation of ['create', 'update', 'mention', 'link'] as const)
+      for (const revoked of [false, true])
+        it(`rechecks ${operation} grant after native preflight revoked=${revoked}`, async () => {
+          grantScenario = {
+            kind: 'issue',
+            read: true,
+            mutation: operation,
+            mutationRevoke: revoked,
+          }
+          const inspect = async () => {
+            const response = await harness!.fetch('/inspect', {
+              method: 'POST',
+              body: JSON.stringify({
+                workspaceId,
+                itemId: seededIds[0],
+                userId: ownerId,
+              }),
+            })
+            expect(response.status).toBe(200)
+            return await response.json()
+          }
+          const before = await inspect()
+          const input = await seedIssue('G08 mutation boundary')
+          expect(
+            (
+              await harness!.fetch('/start', {
+                method: 'POST',
+                body: JSON.stringify(input),
+              })
+            ).status,
+          ).toBe(200)
+          await expect
+            .poll(
+              async () =>
+                (
+                  await database!.db
+                    .select()
+                    .from(schema.issueRun)
+                    .where(eq(schema.issueRun.id, input.runId))
+                )[0]?.status,
+              { timeout: 60000 },
+            )
+            .toBe('succeeded')
+          await expect
+            .poll(() => JSON.stringify(harness!.getLogs()), { timeout: 60000 })
+            .toContain(
+              revoked
+                ? 'agent_runtime.brain_summary_denied'
+                : 'agent_do.brain_write_back.completed',
+            )
+          const results = modelRequests
+            .flatMap((r) => r.messages)
+            .filter((m) => m.role === 'tool')
+            .map(
+              (m) =>
+                JSON.parse(String(m.content)) as {
+                  ok: boolean
+                  error?: string
+                },
+            )
+          expect(results.length).toBeGreaterThan(0)
+          if (revoked) {
+            expect(results[0]).toEqual({
+              ok: false,
+              error:
+                'No active run context; the brain tools need a workspace and agent.',
+            })
+            expect(mutationBoundary).toContain(
+              operation === 'create' ? 'brain.ensure_indexes' : 'brain.read',
+            )
+            const after = brainRequests.slice(revokedAtBrainRequest!)
+            for (const name of [
+              'brain.index',
+              'brain.update_item_metadata',
+              'brain.observe_mention',
+              'brain.link_items',
+            ])
+              expect(after.some((body) => body.includes(`"${name}"`))).toBe(
+                false,
+              )
+            expect(await inspect()).toEqual(before)
+            expect(
+              await database!.db.select().from(schema.brainWriteProposal),
+            ).toHaveLength(0)
+          } else {
+            expect(results[0]?.ok).toBe(true)
+            expect(mutationBoundary).toBeUndefined()
+            const persisted = JSON.stringify(await inspect())
+            if (operation !== 'create')
+              expect(persisted).toContain(
+                operation === 'update'
+                  ? 'G06_MUTATION_UPDATED'
+                  : operation === 'mention'
+                    ? 'G06_MUTATION_MENTION'
+                    : 'G06_MUTATION_EDGE',
+              )
+          }
+          const snapshot = await harness!.fetch('/snapshot', {
+            method: 'POST',
+            body: JSON.stringify({ workspaceId }),
+          })
+          expect(snapshot.status).toBe(200)
+          if (operation === 'create')
+            expect(
+              (await snapshot.text()).includes('G06_MUTATION_CREATED'),
+            ).toBe(!revoked)
+        }, 90000)
 
     it('keeps owner/initiator private, foreign and team memory out of a real shared work product', async () => {
       const response = await harness!.fetch('/start', {
@@ -2153,6 +2664,196 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         ),
       ).toBe(true)
     }, 90_000)
+    for (const kind of ['issue', 'automation'] as const)
+      it(`rejects absent trusted ${kind} principals at every entry boundary`, async () => {
+        const run =
+          kind === 'issue'
+            ? await seedIssue('G08 missing principal')
+            : await seedAutomation()
+        const objectId = 'issueId' in run ? String(run.issueId) : run.runId
+        const table = kind === 'issue' ? schema.issueRun : schema.automationRun
+        const before = await database!.db
+          .select({ id: table.id, status: table.status })
+          .from(table)
+          .where(eq(table.id, run.runId))
+        expect(before).toHaveLength(1)
+        for (const method of [
+          'beforeTurn',
+          'executeWorkflowTurn',
+          'completeWorkflowTurn',
+          'validateBrainSummaryAccess',
+        ]) {
+          const response = await harness!.fetch('/binding-fault', {
+            method: 'POST',
+            body: JSON.stringify({
+              ...run,
+              kind,
+              objectId,
+              method,
+              missingParent: true,
+            }),
+          })
+          expect(response.status).toBe(200)
+          const result = (await response.json()) as {
+            denied: boolean
+            message: string
+          }
+          expect(result.denied).toBe(true)
+          expect(result.message).toContain(
+            'Brain runtime principal is unavailable.',
+          )
+        }
+        const positive = await harness!.fetch('/binding-fault', {
+          method: 'POST',
+          body: JSON.stringify({
+            ...run,
+            kind,
+            objectId,
+            method: 'validateBrainSummaryAccess',
+            missingParent: false,
+          }),
+        })
+        expect(await positive.json()).toEqual({ denied: false })
+        expect(
+          await database!.db
+            .select({ id: table.id, status: table.status })
+            .from(table)
+            .where(eq(table.id, run.runId)),
+        ).toEqual(before)
+        expect(modelRequests).toHaveLength(0)
+        expect(
+          await database!.db.select().from(schema.brainWriteProposal),
+        ).toHaveLength(0)
+      }, 90_000)
+
+    it('closes native authority connections after repeated allowed and denied checks', async () => {
+      const connections = async () =>
+        Number(
+          (
+            await database!.db.execute(
+              sql`select count(*)::int as count from pg_stat_activity where datname=current_database() and backend_type='client backend'`,
+            )
+          ).rows[0]!.count,
+        )
+      const baseline = await connections()
+      const probe = async (expected: boolean, queriedRunId: string = runId) => {
+        const response = await harness!.fetch('/summary-probe', {
+          method: 'POST',
+          body: JSON.stringify({
+            agentId,
+            issueId,
+            runId: queriedRunId,
+            count: 30,
+          }),
+        })
+        expect(response.status).toBe(200)
+        expect(await response.json()).toEqual({
+          outcomes: Array.from({ length: 30 }, () => expected),
+        })
+        expect(await connections()).toBeLessThanOrEqual(baseline + 1)
+      }
+      await probe(true)
+      await database!.db
+        .update(schema.agent)
+        .set({ permissions: null })
+        .where(eq(schema.agent.id, agentId))
+      await probe(false)
+      await database!.db
+        .update(schema.agent)
+        .set({ permissions: { full_access: true } })
+        .where(eq(schema.agent.id, agentId))
+      await probe(true)
+      await probe(false, 'not-a-postgres-uuid')
+      await probe(true)
+      expect(modelRequests).toHaveLength(0)
+      expect(
+        await database!.db.select().from(schema.brainWriteProposal),
+      ).toHaveLength(0)
+    }, 90_000)
+
+    for (const kind of ['issue', 'automation'] as const)
+      it(`fails closed on ${kind} grant provenance storage faults`, async () => {
+        const run =
+          kind === 'issue'
+            ? await seedIssue('G08 storage faults')
+            : await seedAutomation()
+        const base = {
+          kind,
+          ...run,
+          objectId: 'issueId' in run ? String(run.issueId) : run.runId,
+          workspaceId,
+          ownerUserId: ownerId,
+        }
+        const beforeBrain = brainRequests.length
+        for (const fault of [
+          {
+            failRead: true,
+            message: 'Cannot verify retained Brain access.',
+            reads: 1,
+          },
+          {
+            failPersist: true,
+            message: 'Cannot persist Brain access provenance.',
+            reads: 1,
+          },
+          {
+            retained: true,
+            message: 'Retained Brain history has no verified provenance.',
+            reads: 1,
+          },
+          {
+            marker: { identity: 'another principal', tools: [] },
+            message: 'Retained Brain provenance is invalid',
+            reads: 0,
+          },
+          {
+            marker: {
+              identity: `${kind}:${workspaceId}:${agentId}:${ownerId}`,
+              tools: ['invented'],
+            },
+            message: 'Retained Brain provenance is invalid',
+            reads: 0,
+          },
+        ]) {
+          const response = await harness!.fetch('/grant-fault', {
+            method: 'POST',
+            body: JSON.stringify({ ...base, ...fault }),
+          })
+          expect(response.status).toBe(200)
+          const result = (await response.json()) as {
+            denied: boolean
+            message: string
+            reads: number
+            persisted: unknown[]
+          }
+          expect(result.denied).toBe(true)
+          expect(result.message).toContain(fault.message)
+          expect(result.reads).toBe(fault.reads)
+          expect(result.persisted).toEqual([])
+        }
+        const positive = await harness!.fetch('/grant-fault', {
+          method: 'POST',
+          body: JSON.stringify({ ...base, exposeTool: 'brain_search' }),
+        })
+        expect(await positive.json()).toEqual({
+          denied: false,
+          reads: 1,
+          persisted: [
+            {
+              brainGrantHistory: {
+                identity: `${kind}:${workspaceId}:${agentId}:${ownerId}`,
+                tools: ['brain_search'],
+              },
+            },
+          ],
+        })
+        expect(brainRequests.length).toBe(beforeBrain)
+        expect(modelRequests).toHaveLength(0)
+        expect(
+          await database!.db.select().from(schema.brainWriteProposal),
+        ).toHaveLength(0)
+      }, 90_000)
+
     it('uses the real issue guard durable-history reader when hydration is empty or storage fails', async () => {
       for (const { failRead, failPersist, beforeTurn = false } of [
         { failRead: false, failPersist: false },
@@ -2164,6 +2865,9 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           method: 'POST',
           body: JSON.stringify({
             workspaceId,
+            agentId,
+            issueId,
+            runId,
             failRead,
             failPersist,
             beforeTurn,

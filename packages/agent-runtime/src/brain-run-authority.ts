@@ -5,7 +5,7 @@ import {
   derivePermissions,
   type AgentPermissions,
 } from '@garden/core/agents/permissions'
-import { getPooledDb } from '@garden/db/runtime'
+import { createRuntimeDbClient, type Db } from '@garden/db/runtime'
 import * as schema from '@garden/db/schema'
 import type { BrainToolContext } from './agent-tools/brain'
 
@@ -26,6 +26,23 @@ export class BrainRunAuthorityError extends TaggedError(
   cause?: unknown
 }>() {}
 
+/** Each fresh authorization query owns and closes its invocation-local socket. */
+async function queryBrainAuthority<T>(
+  databaseUrl: string,
+  message: string,
+  query: (db: Db) => Promise<T>,
+) {
+  return Result.tryPromise({
+    try: async () => {
+      const client = await createRuntimeDbClient({
+        connectionString: databaseUrl,
+      })
+      return await query(client.db).finally(() => client.close())
+    },
+    catch: (cause) => new BrainRunAuthorityError({ message, cause }),
+  })
+}
+
 /** Uses the existing issue/automation empty-list semantics, never chat defaults. */
 export function isBrainRunToolAllowed(
   permissions: AgentPermissions,
@@ -43,10 +60,11 @@ export async function resolveBrainRuntimeAgentId(
   databaseUrl: string,
   runtimeName: string,
 ) {
-  const db = getPooledDb(databaseUrl)
   return (
-    await Result.tryPromise({
-      try: async () => {
+    await queryBrainAuthority(
+      databaseUrl,
+      'Cannot resolve Brain runtime principal.',
+      async (db) => {
         if (/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(runtimeName)) {
           const [direct] = await db
             .select({ id: schema.agent.id })
@@ -61,12 +79,7 @@ export async function resolveBrainRuntimeAgentId(
           .where(eq(schema.agent.hostName, runtimeName))
           .limit(2)
       },
-      catch: (cause) =>
-        new BrainRunAuthorityError({
-          message: 'Cannot resolve Brain runtime principal.',
-          cause,
-        }),
-    })
+    )
   ).andThen((rows) =>
     rows.length === 1
       ? Result.ok(rows[0]!.id)
@@ -94,7 +107,6 @@ export async function loadBrainRunAuthority(
         message: 'Brain runtime principal is unavailable.',
       }),
     )
-  const db = getPooledDb(databaseUrl)
   const principalResult = await resolveBrainRuntimeAgentId(
     databaseUrl,
     origin.runtimeName,
@@ -107,8 +119,10 @@ export async function loadBrainRunAuthority(
       }),
     )
   const principal = eq(schema.agent.id, principalResult.value)
-  const loaded = await Result.tryPromise({
-    try: async () => {
+  const loaded = await queryBrainAuthority(
+    databaseUrl,
+    'Brain run authority could not be loaded.',
+    async (db) => {
       const columns = {
         permissions: schema.agent.permissions,
         ownerUserId: schema.agent.ownerUserId,
@@ -161,12 +175,7 @@ export async function loadBrainRunAuthority(
         .limit(1)
       return row ? { ...row, permissionsOverride: null } : undefined
     },
-    catch: (cause) =>
-      new BrainRunAuthorityError({
-        message: 'Brain run authority could not be loaded.',
-        cause,
-      }),
-  })
+  )
   return loaded.andThen((row) => {
     if (
       !row ||
@@ -257,7 +266,7 @@ export async function ensureBrainRunHistory(input: {
     return Result.err(
       new BrainRunAuthorityError({
         message:
-          'Retained Brain provenance is invalid or belongs to another principal. Start a new run.',
+          'Retained Brain provenance is invalid or belongs to another principal. A fresh context session with reviewed content is required.',
       }),
     )
   let tools: string[]
@@ -277,7 +286,7 @@ export async function ensureBrainRunHistory(input: {
       return Result.err(
         new BrainRunAuthorityError({
           message:
-            'Retained Brain history has no verified provenance. Start a new run with reviewed context.',
+            'Retained Brain history has no verified provenance. A fresh context session with reviewed content is required.',
         }),
       )
     tools = []
@@ -288,7 +297,7 @@ export async function ensureBrainRunHistory(input: {
     return Result.err(
       new BrainRunAuthorityError({
         message:
-          'Retained history may contain Brain context whose grant is unavailable. Start a new run with reviewed context.',
+          'Retained history may contain Brain context whose grant is unavailable. A fresh context session with reviewed content is required.',
       }),
     )
   return Result.try({
@@ -306,11 +315,12 @@ export async function verifyBrainRunBinding(
   databaseUrl: string,
   input: Pick<BrainRunOrigin, 'runId' | 'runKind' | 'runtimeName' | 'objectId'>,
 ) {
-  const db = getPooledDb(databaseUrl)
   const table =
     input.runKind === 'issue' ? schema.issueRun : schema.automationRun
-  const loaded = await Result.tryPromise({
-    try: async () => {
+  const loaded = await queryBrainAuthority(
+    databaseUrl,
+    'Cannot verify Brain run binding.',
+    async (db) => {
       const [row] = await db
         .select({
           workspaceId: table.workspaceId,
@@ -323,12 +333,7 @@ export async function verifyBrainRunBinding(
         .limit(1)
       return row
     },
-    catch: (cause) =>
-      new BrainRunAuthorityError({
-        message: 'Cannot verify Brain run binding.',
-        cause,
-      }),
-  })
+  )
   return await loaded.andThenAsync(async (row) =>
     row
       ? loadBrainRunAuthority(databaseUrl, { ...input, ...row })

@@ -13,7 +13,8 @@ import type { BrainScope } from '@garden/brain/domain/scope'
 
 export { AgentDO, RunWorkflow }
 export { IssueRunSubAgent }
-export { AutomationRunSubAgent } from '../src/automation-run-sub-agent'
+import { AutomationRunSubAgent } from '../src/automation-run-sub-agent'
+export { AutomationRunSubAgent }
 export { ChatSubAgent } from '../src/agent-do'
 import { BrainWriteBackSubAgent } from '../src/brain-write-back-sub-agent'
 export { BrainWriteBackSubAgent }
@@ -36,6 +37,53 @@ AgentDO.prototype.startBrainWriteBack = async function (input) {
   })
   if (!response.ok) throw new Error('Fixture writeback handoff barrier failed')
   return await startBrainWriteBack.call(this, input)
+}
+
+// Deliberate application-facet storage-failure simulation. The SDK prototypes
+// and production code remain unchanged; all healthy writes use their real method.
+for (const [kind, facet] of [
+  ['issue', IssueRunSubAgent],
+  ['automation', AutomationRunSubAgent],
+] as const) {
+  const configure = facet.prototype.configure
+  const writes = new WeakMap<object, number>()
+  facet.prototype.configure = function (config) {
+    const host = this as unknown as {
+      env: { G08_GRANT_FAULT_KIND?: string; G08_GRANT_FAULT_AT?: string }
+      getConfig(): { brainGrantHistory?: unknown } | null
+    }
+    const targeted =
+      host.env.G08_GRANT_FAULT_KIND === kind &&
+      config !== null &&
+      typeof config === 'object' &&
+      Object.hasOwn(config, 'brainGrantHistory')
+    if (!targeted) return configure.call(this, config)
+    const ordinal = (writes.get(this) ?? 0) + 1
+    writes.set(this, ordinal)
+    if (ordinal === Number(host.env.G08_GRANT_FAULT_AT)) {
+      console.info(
+        'G08_CONFIG_FAULT',
+        JSON.stringify({
+          kind,
+          ordinal,
+          provenance: Reflect.get(config, 'brainGrantHistory'),
+        }),
+      )
+      throw new Error(
+        `Deliberate ${kind} provenance persistence failure at ${ordinal}`,
+      )
+    }
+    const result = configure.call(this, config)
+    console.info(
+      'G08_CONFIG_PERSISTED',
+      JSON.stringify({
+        kind,
+        ordinal,
+        provenance: host.getConfig()?.brainGrantHistory,
+      }),
+    )
+    return result
+  }
 }
 
 /**
@@ -97,6 +145,9 @@ export default {
         '/brain-tool',
         '/inspect',
         '/audience-fault',
+        '/grant-fault',
+        '/binding-fault',
+        '/summary-probe',
         '/start',
         '/automation-start',
         '/automation-turn',
@@ -110,9 +161,136 @@ export default {
       ].includes(url.pathname)
     )
       return new Response('Not found', { status: 404 })
+    if (url.pathname === '/binding-fault') {
+      const input = await request.json<{
+        kind: 'issue' | 'automation'
+        agentId: string
+        runId: string
+        objectId: string
+        method: string
+        missingParent: boolean
+      }>()
+      const facet =
+        input.kind === 'issue' ? IssueRunSubAgent : AutomationRunSubAgent
+      const host = {
+        env,
+        parentPath: input.missingParent ? [] : [{ name: input.agentId }],
+        name: input.objectId,
+        currentRunId: input.runId,
+        getConfig: () => ({}),
+        configure: () => undefined,
+        session: { getHistory: async () => [] },
+        ensureBrainGrantHistory(origin: unknown) {
+          return Reflect.get(facet.prototype, 'ensureBrainGrantHistory').call(
+            this,
+            origin,
+          )
+        },
+      }
+      const args =
+        input.method === 'beforeTurn'
+          ? [{ body: { run_id: input.runId }, messages: [] }]
+          : input.method === 'executeWorkflowTurn'
+            ? ['start', { runId: input.runId, turn: 0 }]
+            : input.method === 'completeWorkflowTurn'
+              ? [{ runId: input.runId, submissionId: 'unrelated' }]
+              : [input.runId]
+      const result = await Result.tryPromise(() =>
+        Reflect.get(facet.prototype, input.method).apply(host, args),
+      )
+      return Response.json({
+        denied: result.isErr(),
+        message: result.isErr() ? String(result.error) : undefined,
+      })
+    }
+    if (url.pathname === '/summary-probe') {
+      const input = await request.json<{
+        agentId: string
+        issueId: string
+        runId: string
+        count: number
+      }>()
+      const parent = await getAgentByName(env.AgentDO, input.agentId)
+      const facet = await getSubAgentByName(
+        parent,
+        IssueRunSubAgent,
+        input.issueId,
+      )
+      const outcomes: boolean[] = []
+      for (let i = 0; i < input.count; i++) {
+        const result = await Result.tryPromise(() =>
+          facet.validateBrainSummaryAccess(input.runId),
+        )
+        outcomes.push(result.isOk())
+      }
+      return Response.json({ outcomes })
+    }
+    if (url.pathname === '/grant-fault') {
+      const input = await request.json<{
+        kind: 'issue' | 'automation'
+        runId: string
+        objectId: string
+        agentId: string
+        workspaceId: string
+        ownerUserId: string | null
+        marker?: unknown
+        failRead?: boolean
+        failPersist?: boolean
+        retained?: boolean
+        exposeTool?: string
+      }>()
+      let reads = 0
+      const persisted: unknown[] = []
+      const host = {
+        env,
+        getConfig: () => ({ brainGrantHistory: input.marker }),
+        configure: (value: unknown) => {
+          if (input.failPersist)
+            throw new Error('Injected grant provenance persistence failure')
+          persisted.push(value)
+        },
+        session: {
+          getHistory: async () => {
+            reads++
+            if (input.failRead)
+              throw new Error('Injected grant provenance history failure')
+            return input.retained
+              ? [{ role: 'assistant', content: 'G08_UNPROVEN_HISTORY' }]
+              : []
+          },
+        },
+      }
+      const facet =
+        input.kind === 'issue' ? IssueRunSubAgent : AutomationRunSubAgent
+      const result = await Reflect.get(
+        facet.prototype,
+        'ensureBrainGrantHistory',
+      ).call(
+        host,
+        {
+          runKind: input.kind,
+          runId: input.runId,
+          objectId: input.objectId,
+          runtimeName: input.agentId,
+          workspaceId: input.workspaceId,
+          agentId: input.agentId,
+          ownerUserId: input.ownerUserId,
+        },
+        input.exposeTool,
+      )
+      return Response.json({
+        denied: result.isErr(),
+        message: result.error?.message,
+        reads,
+        persisted,
+      })
+    }
     if (url.pathname === '/audience-fault') {
       const input = await request.json<{
         workspaceId: string
+        agentId: string
+        issueId: string
+        runId: string
         failRead: boolean
         failPersist?: boolean
         beforeTurn?: boolean
@@ -163,7 +341,10 @@ export default {
               Reflect.get(IssueRunSubAgent.prototype, 'beforeTurn').call(
                 {
                   ...host,
-                  currentRunId: 'fault-run',
+                  currentRunId: input.runId,
+                  parentPath: [{ name: input.agentId }],
+                  name: input.issueId,
+                  env,
                   loadTurnContext: async () =>
                     Result.ok({ runState: { workspaceId: input.workspaceId } }),
                   applyRunBoundaryGuards: async () => Result.ok('continue'),
@@ -172,7 +353,7 @@ export default {
                     initializeEmpty: boolean,
                   ) => guard.call(host, workspaceId, initializeEmpty),
                 },
-                { body: { run_id: 'fault-run' } },
+                { body: { run_id: input.runId } },
               ),
             catch: (error) => error as { code: string },
           })

@@ -93,7 +93,7 @@ export class BrainWriteBackSubAgent extends Think<AgentRuntimeEnv> {
       ai: this.env.AI,
       files: this.env.BRAIN_FILES,
       databaseUrl: this.env.HYPERDRIVE.connectionString,
-      getContext: async (toolName = 'brain_search') => {
+      getContext: async (toolName) => {
         const config = this.getConfig<BrainWriteBackConfig>()
         if (!config?.origin) return null
         return (

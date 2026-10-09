@@ -448,7 +448,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
         },
         ai: this.env.AI,
         files: this.env.BRAIN_FILES,
-        getContext: async (toolName = 'brain_search') => {
+        getContext: async (toolName) => {
           const ctx = this.currentLogContext
           if (
             ctx === null ||
@@ -485,6 +485,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async beforeTurn(ctx: TurnContext): Promise<TurnConfig | void> {
+    const runtimeName = this.parentPath.at(-1)?.name ?? ''
     const bodyRunId = ctx.body?.run_id
     const runId =
       this.currentRunId ??
@@ -500,7 +501,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       {
         runKind: 'automation',
         runId: runId,
-        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        runtimeName,
         objectId: this.name,
       },
     )
@@ -517,7 +518,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
 
     const grantHistory = await this.ensureBrainGrantHistory({
       runKind: 'automation',
-      runtimeName: this.parentPath.at(-1)?.name ?? '',
+      runtimeName,
       objectId: this.name,
       runId: loadedResult.value.run.id,
       workspaceId: loadedResult.value.run.workspaceId,
@@ -585,7 +586,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       this.env.HYPERDRIVE.connectionString,
       {
         runKind: 'automation',
-        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        runtimeName,
         objectId: this.name,
         runId,
         workspaceId: loadedResult.value.run.workspaceId,
@@ -598,7 +599,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       const exposure = await this.ensureBrainGrantHistory(
         {
           runKind: 'automation',
-          runtimeName: this.parentPath.at(-1)?.name ?? '',
+          runtimeName,
           objectId: this.name,
           runId,
           workspaceId: loadedResult.value.run.workspaceId,
@@ -972,12 +973,13 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
 
   /** Revalidates durable originating exposure before a separate memory submission. */
   async validateBrainSummaryAccess(runId: string): Promise<void> {
+    const runtimeName = this.parentPath.at(-1)?.name ?? ''
     const binding = await verifyBrainRunBinding(
       this.env.HYPERDRIVE.connectionString,
       {
         runKind: 'automation',
         runId,
-        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        runtimeName,
         objectId: this.name,
       },
     )
@@ -985,7 +987,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     const access = await this.ensureBrainGrantHistory({
       runKind: 'automation',
       runId,
-      runtimeName: this.parentPath.at(-1)?.name ?? '',
+      runtimeName,
       objectId: this.name,
       workspaceId: binding.value.context.workspaceId,
       agentId: binding.value.context.agentId,
@@ -1008,12 +1010,13 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     ownerUserId: string | null
     summary: string
   }> {
+    const runtimeName = this.parentPath.at(-1)?.name ?? ''
     const binding = await verifyBrainRunBinding(
       this.env.HYPERDRIVE.connectionString,
       {
         runKind: 'automation',
         runId: input.runId,
-        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        runtimeName,
         objectId: this.name,
       },
     )
@@ -1082,7 +1085,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     }
     const summaryGrant = await this.ensureBrainGrantHistory({
       runKind: 'automation',
-      runtimeName: this.parentPath.at(-1)?.name ?? '',
+      runtimeName,
       objectId: this.name,
       runId: input.runId,
       workspaceId: binding.value.context.workspaceId,

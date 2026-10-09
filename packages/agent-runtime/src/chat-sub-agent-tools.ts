@@ -81,7 +81,7 @@ type ChatSubAgentToolsInput = {
     ai: Ai
     files: R2Bucket
     getContext?: (
-      toolName?: string,
+      toolName: string,
     ) => BrainToolContext | null | Promise<BrainToolContext | null>
   }
 }

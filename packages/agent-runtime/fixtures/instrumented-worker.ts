@@ -447,6 +447,7 @@ export async function startInstrumentedHarness(
           '/automation-turn',
           '/issue-turn',
           '/writeback-origin',
+          '/summary-probe',
           '/chat',
           '/writeback',
         ].includes(path)
@@ -460,8 +461,18 @@ export async function startInstrumentedHarness(
           mode?: 'start' | 'resume'
           turn?: number
           expectCompletion?: boolean
+          expectOriginValidation?: boolean
+          count?: number
         }
-        if (path === '/chat')
+        if (path === '/summary-probe') {
+          for (let index = 0; index < (input.count ?? 0); index++)
+            requireBoundary(
+              'IssueRunSubAgent.validateBrainSummaryAccess',
+              input.runId,
+              'validateBrainSummaryAccess',
+              true,
+            )
+        } else if (path === '/chat')
           requireBoundary('ChatSubAgent.onChatResponse', input.threadId)
         else if (path === '/writeback' || path === '/writeback-origin') {
           requireBoundary(
@@ -471,7 +482,10 @@ export async function startInstrumentedHarness(
             true,
           )
           const validationRole = `${input.runKind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.validateBrainSummaryAccess`
-          if (expectedRoles.includes(validationRole))
+          if (
+            input.expectOriginValidation !== false &&
+            expectedRoles.includes(validationRole)
+          )
             requireBoundary(
               validationRole,
               input.runId,

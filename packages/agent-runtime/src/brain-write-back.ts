@@ -77,7 +77,7 @@ export type BrainWriteBackToolDependencies = {
   readonly files: R2BucketLike
   readonly databaseUrl: string
   readonly getContext: (
-    toolName?: string,
+    toolName: string,
   ) => BrainToolContext | null | Promise<BrainToolContext | null>
 }
 
