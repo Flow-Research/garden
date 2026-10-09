@@ -30,6 +30,7 @@ export type BrainWriteBackRunInput = {
   readonly runId: string
   readonly workspaceId: string
   readonly runKind: BrainWriteBackRunKind
+  readonly originObjectId: string
   readonly ownerUserId: string | null
   readonly summary: string
 }
@@ -75,10 +76,9 @@ export type BrainWriteBackToolDependencies = {
   readonly ai: WorkersAiBinding
   readonly files: R2BucketLike
   readonly databaseUrl: string
-  readonly getContext: () =>
-    | BrainToolContext
-    | null
-    | Promise<BrainToolContext | null>
+  readonly getContext: (
+    toolName?: string,
+  ) => BrainToolContext | null | Promise<BrainToolContext | null>
 }
 
 const proposeInputSchema = z
@@ -169,7 +169,7 @@ export function createBrainWriteBackTools(
       'Propose one durable Org Brain item. The harness decides whether to write it now or send it for human review. Call this only for knowledge that passes the four durability questions.',
     inputSchema: proposeInputSchema,
     execute: async (input) => {
-      const context = await dependencies.getContext()
+      const context = await dependencies.getContext('add_to_brain')
       if (context === null) {
         return { ok: false, error: 'No active run context.' }
       }
@@ -178,11 +178,8 @@ export function createBrainWriteBackTools(
         return { ok: true, action: 'skipped' }
       }
       const normalizedClaim = normalizeBrainWriteBackClaim(input.claim)
-      const scopeIdentity =
-        scope === 'user' ? `user:${context.userId}` : 'org'
-      const claimHash = await claimDigest(
-        `${scopeIdentity}:${normalizedClaim}`,
-      )
+      const scopeIdentity = scope === 'user' ? `user:${context.userId}` : 'org'
+      const claimHash = await claimDigest(`${scopeIdentity}:${normalizedClaim}`)
       const candidate: WriteCandidate = {
         claimHash,
         claim: input.claim,
@@ -205,13 +202,17 @@ export function createBrainWriteBackTools(
               files: dependencies.files,
             })
       if (layer !== undefined) {
+        if ((await dependencies.getContext('brain_search')) === null)
+          return { ok: false, error: 'Brain read is not permitted.' }
         const duplicateCheck = await Effect.runPromise(
           Effect.flatMap(Brain, (brain) =>
             brain.search({
               tenantId: WorkspaceId.make(context.workspaceId),
               query: input.claim,
               k: 5,
-              ...(candidate.scope === 'user' && context.userId !== undefined
+              ...(context.readAudience !== 'org' &&
+              candidate.scope === 'user' &&
+              context.userId !== undefined
                 ? {
                     viewer: {
                       userId: context.userId,
@@ -224,13 +225,12 @@ export function createBrainWriteBackTools(
             Effect.provide(layer),
             Effect.match({
               onFailure: () => ({ ok: false as const }),
-              onSuccess: (hits) =>
-                ({
-                  ok: true as const,
-                  duplicate: hits.some((hit) =>
-                    matchesExistingClaim(input.claim, hit),
-                  ),
-                }),
+              onSuccess: (hits) => ({
+                ok: true as const,
+                duplicate: hits.some((hit) =>
+                  matchesExistingClaim(input.claim, hit),
+                ),
+              }),
             }),
           ),
         )
@@ -248,6 +248,8 @@ export function createBrainWriteBackTools(
         return { ok: false, error: 'No write-back decision.' }
       }
 
+      if ((await dependencies.getContext('add_to_brain')) === null)
+        return { ok: false, error: 'Brain write is not permitted.' }
       if (decision.action === 'write') {
         if (layer === undefined) {
           return { ok: false, error: 'Brain is not configured.' }

@@ -97,6 +97,7 @@ describe('inbox recipient scoping (integration)', () => {
       body: 'Three rules for refund replies.',
     })
     await testDb.db.insert(schema.brainWriteProposal).values({
+      operationKey: crypto.randomUUID(),
       id: proposalId,
       workspaceId,
       runId: `brain-write-back:issue:${runId}`,

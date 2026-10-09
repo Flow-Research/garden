@@ -242,9 +242,7 @@ describe('createBrainWriteBackTools user scope without user context', () => {
   })
 
   it('keeps genuinely changed facts persistable', async () => {
-    const returning = vi
-      .fn()
-      .mockResolvedValue([{ id: 'proposal' }])
+    const returning = vi.fn().mockResolvedValue([{ id: 'proposal' }])
     const values = vi.fn().mockReturnValue({
       onConflictDoNothing: vi.fn().mockReturnValue({ returning }),
     })
@@ -274,10 +272,103 @@ describe('createBrainWriteBackTools user scope without user context', () => {
     expect(await propose('Use D1 for durable workflow state.')).toMatchObject({
       action: 'proposed',
     })
-    expect(await propose('Use Postgres for durable workflow state.')).toMatchObject(
-      { action: 'proposed' },
-    )
+    expect(
+      await propose('Use Postgres for durable workflow state.'),
+    ).toMatchObject({ action: 'proposed' })
     const [firstWrite, changedWrite] = values.mock.calls.map(([value]) => value)
     expect(firstWrite.claimHash).not.toBe(changedWrite.claimHash)
+  })
+})
+
+describe('writeback originating grant boundaries', () => {
+  const context = {
+    workspaceId: 'workspace-1',
+    agentId: 'agent-1',
+    runId: 'run-1',
+    userId: 'owner-1',
+    readAudience: 'org' as const,
+  }
+  const candidate = {
+    claim: 'Durable org policy.',
+    kind: 'policy',
+    confidence: 0.9,
+    sensitive: false,
+    scope: 'org',
+  }
+  const makeTools = (getContext: (tool?: string) => typeof context | null) =>
+    createBrainWriteBackTools({
+      env: { HELIX_URL: 'http://localhost:6968' },
+      ai: { run: async () => ({ data: [] }) },
+      files: { get: async () => null },
+      databaseUrl: 'postgres://fixture',
+      getContext,
+    })
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    const { Effect } = await import('effect')
+    mockSearch.mockReturnValue(Effect.succeed([]))
+    mockAddText.mockReturnValue(Effect.succeed({ id: 'written' }))
+  })
+  it('read-only grants cannot start a proposal or its duplicate lookup', async () => {
+    const result = await execute(
+      makeTools((tool) => (tool === 'brain_search' ? context : null))
+        .propose_brain_item,
+      candidate,
+    )
+    expect(result.ok).toBe(false)
+    expect(mockSearch).not.toHaveBeenCalled()
+    expect(mockAddText).not.toHaveBeenCalled()
+    expect(mockGetPooledDb).not.toHaveBeenCalled()
+  })
+  it('write-only grants do not implicitly authorize deduplication reads', async () => {
+    const result = await execute(
+      makeTools((tool) => (tool === 'add_to_brain' ? context : null))
+        .propose_brain_item,
+      candidate,
+    )
+    expect(result).toEqual({ ok: false, error: 'Brain read is not permitted.' })
+    expect(mockSearch).not.toHaveBeenCalled()
+    expect(mockAddText).not.toHaveBeenCalled()
+  })
+  it.each([0.5, 0.9])(
+    'revocation during dedupe prevents persistence at confidence %s',
+    async (confidence) => {
+      let writes = 0
+      const result = await execute(
+        makeTools((tool) =>
+          tool !== 'add_to_brain' || ++writes === 1 ? context : null,
+        ).propose_brain_item,
+        { ...candidate, confidence },
+      )
+      expect(result).toEqual({
+        ok: false,
+        error: 'Brain write is not permitted.',
+      })
+      expect(mockSearch).toHaveBeenCalledTimes(1)
+      expect(mockAddText).not.toHaveBeenCalled()
+      expect(mockGetPooledDb).not.toHaveBeenCalled()
+    },
+  )
+  it('shared user-scoped claims keep attribution without owner-private dedupe', async () => {
+    const values = vi
+      .fn()
+      .mockReturnValue({
+        onConflictDoNothing: () => ({
+          returning: async () => [{ id: 'proposal' }],
+        }),
+      })
+    mockGetPooledDb.mockReturnValue({ insert: () => ({ values }) })
+    expect(
+      await execute(makeTools(() => context).propose_brain_item, {
+        ...candidate,
+        scope: 'user',
+      }),
+    ).toEqual({ ok: true, action: 'proposed', reason: 'user_scope' })
+    expect(mockSearch.mock.calls[0]![0].viewer).toBeUndefined()
+    expect(values.mock.calls[0]![0].scope).toEqual({
+      kind: 'user',
+      userId: 'owner-1',
+    })
+    expect(values.mock.calls[0]![0].runId).toBe('run-1')
   })
 })

@@ -1,4 +1,8 @@
 import {
+  authorizeBrainRunTool,
+  type BrainRunOrigin,
+} from './brain-run-authority'
+import {
   Session,
   Think,
   type TurnConfig,
@@ -30,7 +34,9 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
 }
 
-type BrainWriteBackConfig = ReturnType<typeof brainWriteBackToolContext>
+type BrainWriteBackConfig = ReturnType<typeof brainWriteBackToolContext> & {
+  origin: BrainRunOrigin
+}
 
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.brain-write-back.turn'
@@ -86,11 +92,36 @@ export class BrainWriteBackSubAgent extends Think<AgentRuntimeEnv> {
       ai: this.env.AI,
       files: this.env.BRAIN_FILES,
       databaseUrl: this.env.HYPERDRIVE.connectionString,
-      getContext: () => this.getConfig<BrainWriteBackConfig>(),
+      getContext: async (toolName = 'brain_search') => {
+        const config = this.getConfig<BrainWriteBackConfig>()
+        if (!config?.origin) return null
+        return (
+          await authorizeBrainRunTool(
+            this.env.HYPERDRIVE.connectionString,
+            config.origin,
+            toolName,
+          )
+        ).match({
+          ok: (context) => ({ ...context, runId: config.runId }),
+          err: () => null,
+        })
+      },
     })
   }
 
   override async beforeTurn(_ctx: TurnContext): Promise<TurnConfig> {
+    const config = this.getConfig<BrainWriteBackConfig>()
+    if (!config?.origin)
+      throw new BrainWriteBackTurnError({
+        operation: 'authorize write-back',
+        message: 'Brain run authority is unavailable.',
+      })
+    const authority = await authorizeBrainRunTool(
+      this.env.HYPERDRIVE.connectionString,
+      config.origin,
+      'add_to_brain',
+    )
+    if (authority.isErr()) throw authority.error
     return Effect.runPromise(
       Effect.suspend(() => {
         const config = this.getConfig<BrainWriteBackConfig>()
@@ -131,6 +162,15 @@ export class BrainWriteBackSubAgent extends Think<AgentRuntimeEnv> {
       Effect.sync(() => {
         this.configure<BrainWriteBackConfig>({
           ...brainWriteBackToolContext(input),
+          origin: {
+            runtimeName: this.parentPath.at(-1)?.name ?? '',
+            objectId: input.originObjectId,
+            runId: input.runId,
+            runKind: input.runKind,
+            agentId: input.agentId,
+            workspaceId: input.workspaceId,
+            ownerUserId: input.ownerUserId,
+          },
           ...(input.runKind === 'issue'
             ? { readAudience: 'org' as const }
             : {}),

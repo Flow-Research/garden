@@ -1,4 +1,11 @@
 import {
+  verifyBrainRunBinding,
+  authorizeBrainRunTool,
+  ensureBrainRunHistory,
+  loadBrainRunAuthority,
+  type BrainRunOrigin,
+} from './brain-run-authority'
+import {
   Session,
   Think,
   type ChatResponseResult,
@@ -441,25 +448,33 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
         },
         ai: this.env.AI,
         files: this.env.BRAIN_FILES,
-        getContext: () => {
+        getContext: async (toolName = 'brain_search') => {
           const ctx = this.currentLogContext
-          if (ctx === null) return null
-          const { workspaceId, agentId, runId, userId } = ctx
           if (
-            typeof workspaceId !== 'string' ||
-            typeof agentId !== 'string' ||
-            typeof runId !== 'string'
-          ) {
+            ctx === null ||
+            typeof ctx.workspaceId !== 'string' ||
+            typeof ctx.agentId !== 'string' ||
+            typeof ctx.runId !== 'string' ||
+            typeof ctx.userId !== 'string'
+          )
             return null
+          const origin: BrainRunOrigin = {
+            runKind: 'automation',
+            runtimeName: this.parentPath.at(-1)?.name ?? '',
+            objectId: this.name,
+            runId: ctx.runId,
+            workspaceId: ctx.workspaceId,
+            agentId: ctx.agentId,
+            ownerUserId: ctx.userId,
           }
-          return {
-            workspaceId,
-            agentId,
-            runId,
-            ...(typeof userId === 'string' && userId !== ''
-              ? { userId }
-              : {}),
-          }
+          const allowed = await authorizeBrainRunTool(
+            this.env.HYPERDRIVE.connectionString,
+            origin,
+            toolName,
+          )
+          if (allowed.isErr()) return null
+          const history = await this.ensureBrainGrantHistory(origin, toolName)
+          return history.isOk() ? allowed.value : null
         },
       }),
       ...createBrowserTools({
@@ -480,6 +495,17 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       throw new Error('AutomationRunSubAgent.beforeTurn missing run_id.')
     }
 
+    const binding = await verifyBrainRunBinding(
+      this.env.HYPERDRIVE.connectionString,
+      {
+        runKind: 'automation',
+        runId: runId,
+        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        objectId: this.name,
+      },
+    )
+    if (binding.isErr()) throw binding.error
+
     const loadedResult = await this.loadTurnContext(runId)
     if (loadedResult.isErr()) throw loadedResult.error
 
@@ -488,6 +514,17 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     if (guardResult.value !== 'continue') {
       throw new AutomationRunTurnStopped(guardResult.value)
     }
+
+    const grantHistory = await this.ensureBrainGrantHistory({
+      runKind: 'automation',
+      runtimeName: this.parentPath.at(-1)?.name ?? '',
+      objectId: this.name,
+      runId: loadedResult.value.run.id,
+      workspaceId: loadedResult.value.run.workspaceId,
+      agentId: loadedResult.value.run.agentId,
+      ownerUserId: loadedResult.value.agent.ownerUserId,
+    })
+    if (grantHistory.isErr()) throw grantHistory.error
 
     this.currentRunId = runId
     this.currentPermissions = loadedResult.value.permissions
@@ -544,42 +581,72 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       },
     )
 
-    const brainContext = (
-      await Result.tryPromise({
-        try: () =>
-          loadBrainInjection({
-            env: {
-              ...(this.env.HELIX_URL === undefined
-                ? {}
-                : { HELIX_URL: this.env.HELIX_URL }),
-              ...(this.env.HELIX_API_KEY === undefined
-                ? {}
-                : { HELIX_API_KEY: this.env.HELIX_API_KEY }),
-            },
-            ai: this.env.AI,
-            files: this.env.BRAIN_FILES,
-            workspaceId: loadedResult.value.run.workspaceId,
-            viewer: {
-              teamIds: new Set<string>(),
-              userId: loadedResult.value.agent.ownerUserId,
-            },
-            query: latestUserText(ctx.messages),
-            log: (event) =>
-              console.info('[brain-injection]', {
-                ...event,
-                surface: 'automation_run',
-              }),
-          }),
-        catch: (cause) =>
-          cause instanceof Error ? cause.message : String(cause),
-      })
-    ).match({
-      ok: (injection) => injection.text,
-      err: (error) => {
-        console.warn('[agent-runtime] brain injection failed', { error })
-        return ''
+    const brainRead = await authorizeBrainRunTool(
+      this.env.HYPERDRIVE.connectionString,
+      {
+        runKind: 'automation',
+        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        objectId: this.name,
+        runId,
+        workspaceId: loadedResult.value.run.workspaceId,
+        agentId: loadedResult.value.run.agentId,
+        ownerUserId: loadedResult.value.agent.ownerUserId,
       },
-    })
+      'brain_search',
+    )
+    if (brainRead.isOk()) {
+      const exposure = await this.ensureBrainGrantHistory(
+        {
+          runKind: 'automation',
+          runtimeName: this.parentPath.at(-1)?.name ?? '',
+          objectId: this.name,
+          runId,
+          workspaceId: loadedResult.value.run.workspaceId,
+          agentId: loadedResult.value.run.agentId,
+          ownerUserId: loadedResult.value.agent.ownerUserId,
+        },
+        'brain_search',
+      )
+      if (exposure.isErr()) throw exposure.error
+    }
+    const brainContext = brainRead.isErr()
+      ? ''
+      : (
+          await Result.tryPromise({
+            try: () =>
+              loadBrainInjection({
+                env: {
+                  ...(this.env.HELIX_URL === undefined
+                    ? {}
+                    : { HELIX_URL: this.env.HELIX_URL }),
+                  ...(this.env.HELIX_API_KEY === undefined
+                    ? {}
+                    : { HELIX_API_KEY: this.env.HELIX_API_KEY }),
+                },
+                ai: this.env.AI,
+                files: this.env.BRAIN_FILES,
+                workspaceId: loadedResult.value.run.workspaceId,
+                viewer: {
+                  teamIds: new Set<string>(),
+                  userId: loadedResult.value.agent.ownerUserId,
+                },
+                query: latestUserText(ctx.messages),
+                log: (event) =>
+                  console.info('[brain-injection]', {
+                    ...event,
+                    surface: 'automation_run',
+                  }),
+              }),
+            catch: (cause) =>
+              cause instanceof Error ? cause.message : String(cause),
+          })
+        ).match({
+          ok: (injection) => injection.text,
+          err: (error) => {
+            console.warn('[agent-runtime] brain injection failed', { error })
+            return ''
+          },
+        })
 
     return {
       model: createAgentModel({
@@ -854,6 +921,16 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     mode: TurnMode,
     input: StartTurnInput,
   ): Promise<RunWorkflowTurnStartResult> {
+    const binding = await verifyBrainRunBinding(
+      this.env.HYPERDRIVE.connectionString,
+      {
+        runKind: 'automation',
+        runId: input.runId,
+        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        objectId: this.name,
+      },
+    )
+    if (binding.isErr()) throw binding.error
     const [runRow] = await this.getDb()
       .select({
         cancelRequestedAt: schema.automationRun.cancelRequestedAt,
@@ -907,6 +984,16 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     ownerUserId: string | null
     summary: string
   }> {
+    const binding = await verifyBrainRunBinding(
+      this.env.HYPERDRIVE.connectionString,
+      {
+        runKind: 'automation',
+        runId: input.runId,
+        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        objectId: this.name,
+      },
+    )
+    if (binding.isErr()) throw binding.error
     const inspectionResult = await Result.tryPromise({
       try: async () => await this.inspectSubmission(input.submissionId),
       catch: (cause) => cause,
@@ -1042,6 +1129,47 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     }
   }
 
+  /** Rejects revoked retained context before submission and before model use. */
+  private async ensureBrainGrantHistory(
+    origin: BrainRunOrigin,
+    exposeTool?: string,
+  ) {
+    const authority = await loadBrainRunAuthority(
+      this.env.HYPERDRIVE.connectionString,
+      origin,
+    )
+    if (authority.isErr())
+      return Result.err(
+        new AutomationRunSubAgentError({
+          code: 'runtime_failed',
+          message: authority.error.message,
+          cause: authority.error,
+        }),
+      )
+    return (
+      await ensureBrainRunHistory({
+        identity: `${origin.runKind}:${origin.workspaceId}:${origin.agentId}:${origin.ownerUserId}`,
+        permissions: authority.value.permissions,
+        exposeTool,
+        marker: this.getConfig<{ brainGrantHistory?: unknown }>()
+          ?.brainGrantHistory,
+        readDurableHistory: () => this.session.getHistory(),
+        persist: (brainGrantHistory) =>
+          this.configure({
+            ...this.getConfig<Record<string, unknown>>(),
+            brainGrantHistory,
+          }),
+      })
+    ).mapError(
+      (error) =>
+        new AutomationRunSubAgentError({
+          code: 'runtime_failed',
+          message: error.message,
+          cause: error,
+        }),
+    )
+  }
+
   private async driveTurn(
     mode: TurnMode,
     input: StartTurnInput,
@@ -1064,6 +1192,17 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     if (boundaryResult.value !== 'continue') {
       return Result.ok({ kind: 'stopped' })
     }
+
+    const grantHistory = await this.ensureBrainGrantHistory({
+      runKind: 'automation',
+      runtimeName: this.parentPath.at(-1)?.name ?? '',
+      objectId: this.name,
+      runId: loadedResult.value.run.id,
+      workspaceId: loadedResult.value.run.workspaceId,
+      agentId: loadedResult.value.run.agentId,
+      ownerUserId: loadedResult.value.agent.ownerUserId,
+    })
+    if (grantHistory.isErr()) return Result.err(grantHistory.error)
 
     const statusResult =
       mode === 'start'
@@ -1392,7 +1531,11 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     runId: string,
   ): Promise<
     ResultValue<
-      { workspaceId: string | null; ownerUserId: string | null; summary: string },
+      {
+        workspaceId: string | null
+        ownerUserId: string | null
+        summary: string
+      },
       AutomationRunSubAgentError
     >
   > {
