@@ -1,3 +1,4 @@
+import { AgentDO } from './agent-do'
 import {
   authorizeBrainRunTool,
   type BrainRunOrigin,
@@ -130,6 +131,15 @@ export class BrainWriteBackSubAgent extends Think<AgentRuntimeEnv> {
       'brain_search',
     )
     if (readAuthority.isErr()) throw readAuthority.error
+    // This is a new submission after the origin returned its summary. Re-read
+    // the origin's durable provenance here; a supplied empty grant list cannot
+    // erase earlier neighborhood/private exposure during the handoff.
+    const parent = await this.parentAgent(AgentDO)
+    await parent.validateBrainWriteBackOrigin({
+      runKind: config.origin.runKind,
+      runId: config.origin.runId,
+      originObjectId: config.origin.objectId,
+    })
     return Effect.runPromise(
       Effect.suspend(() => {
         const config = this.getConfig<BrainWriteBackConfig>()

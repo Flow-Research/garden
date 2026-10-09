@@ -24,6 +24,20 @@ export {
   ExecutorMcpExecutionOwnerDirectory,
 } from '../../../apps/web/src/lib/server/executor-engine/mcp'
 
+// A deterministic local-only barrier between completed-origin handoff and the
+// actual writeback call. It never replaces the production implementation.
+const startBrainWriteBack = AgentDO.prototype.startBrainWriteBack
+AgentDO.prototype.startBrainWriteBack = async function (input) {
+  const env = (this as unknown as { env: { GARDEN_MODEL_BASE_URL: string } })
+    .env
+  const response = await fetch(`${env.GARDEN_MODEL_BASE_URL}/handoff`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+  if (!response.ok) throw new Error('Fixture writeback handoff barrier failed')
+  return await startBrainWriteBack.call(this, input)
+}
+
 /**
  * Replaces only the external embedding provider in the disposable runtime.
  * Identical nonzero vectors keep synthetic records equally discoverable so

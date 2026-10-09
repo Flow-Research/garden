@@ -970,6 +970,30 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     }
   }
 
+  /** Revalidates durable originating exposure before a separate memory submission. */
+  async validateBrainSummaryAccess(runId: string): Promise<void> {
+    const binding = await verifyBrainRunBinding(
+      this.env.HYPERDRIVE.connectionString,
+      {
+        runKind: 'automation',
+        runId,
+        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        objectId: this.name,
+      },
+    )
+    if (binding.isErr()) throw binding.error
+    const access = await this.ensureBrainGrantHistory({
+      runKind: 'automation',
+      runId,
+      runtimeName: this.parentPath.at(-1)?.name ?? '',
+      objectId: this.name,
+      workspaceId: binding.value.context.workspaceId,
+      agentId: binding.value.context.agentId,
+      ownerUserId: binding.value.context.userId,
+    })
+    if (access.isErr()) throw access.error
+  }
+
   /**
    * Converts a terminal Think submission into Garden's automation run status
    * after Workflow receives the durable event. This preserves cancellation,

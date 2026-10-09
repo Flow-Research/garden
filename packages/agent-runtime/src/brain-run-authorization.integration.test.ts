@@ -36,6 +36,7 @@ let grantScenario:
       revoke?: 'tool' | 'completion'
       retainWrite?: boolean
       neighborhood?: boolean
+      handoffRevoke?: boolean
       pause?: boolean
       writebackRevoke?: 'before-proposal' | 'during-dedupe'
       confidence?: number
@@ -45,6 +46,7 @@ let grantScenario:
 let brainRequests: string[] = []
 let revokedAtBrainRequest: number | undefined
 let dedupeRevocationRequest: string | undefined
+let handoffCount = 0
 const seededIds: string[] = []
 const modelRequests: Array<{
   messages: Array<{ role: string; content?: unknown }>
@@ -151,6 +153,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       seededIds.length = 0
       modelMode = 'issue'
       grantScenario = undefined
+      handoffCount = 0
       brainRequests = []
       revokedAtBrainRequest = undefined
       dedupeRevocationRequest = undefined
@@ -207,6 +210,28 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       model = createServer(async (request, response) => {
         let raw = ''
         for await (const chunk of request) raw += String(chunk)
+        if (request.url?.endsWith('/handoff')) {
+          handoffCount += 1
+          if (grantScenario?.handoffRevoke) {
+            await database!.db
+              .update(schema.agent)
+              .set({
+                permissions: {
+                  full_access: false,
+                  allowed_tools: [
+                    'brain_search',
+                    'add_to_brain',
+                    'create_work_product',
+                    'complete_automation',
+                  ],
+                },
+              })
+              .where(eq(schema.agent.id, agentId))
+            revokedAtBrainRequest = brainRequests.length
+          }
+          response.writeHead(200).end('ready')
+          return
+        }
         const body = JSON.parse(raw) as (typeof modelRequests)[number]
         modelRequests.push(body)
         const toolResults = body.messages.filter(
@@ -622,6 +647,14 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         rolesByScenario[`checks native dedupe and policy ${label}`] = [
           'BrainWriteBackSubAgent.runWriteBack',
         ]
+      for (const kind of ['issue', 'automation'])
+        for (const revoked of [false, true])
+          rolesByScenario[
+            `revalidates ${kind} summary handoff revoked=${revoked}`
+          ] = [
+            `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.completeWorkflowTurn`,
+            'BrainWriteBackSubAgent.runWriteBack',
+          ]
       const expectedRoles = rolesByScenario[context.task.name]
       if (!expectedRoles)
         throw new Error('Scenario has no declared native coverage boundary')
@@ -743,29 +776,25 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
     async function seedAutomation() {
       const automationId = crypto.randomUUID()
       const automationRunId = crypto.randomUUID()
-      await database!.db
-        .insert(schema.automation)
-        .values({
-          id: automationId,
-          workspaceId,
-          title: 'G08 automation',
-          createdBy: ownerId,
-          assigneeAgentId: agentId,
-          systemPrompt: 'Report G06 knowledge.',
-          executionConfig: {},
-        })
-      await database!.db
-        .insert(schema.automationRun)
-        .values({
-          id: automationRunId,
-          workspaceId,
-          automationId,
-          agentId,
-          hostName: agentId,
-          source: 'manual',
-          status: 'queued',
-          workflowInstanceId: automationRunId,
-        })
+      await database!.db.insert(schema.automation).values({
+        id: automationId,
+        workspaceId,
+        title: 'G08 automation',
+        createdBy: ownerId,
+        assigneeAgentId: agentId,
+        systemPrompt: 'Report G06 knowledge.',
+        executionConfig: {},
+      })
+      await database!.db.insert(schema.automationRun).values({
+        id: automationRunId,
+        workspaceId,
+        automationId,
+        agentId,
+        hostName: agentId,
+        source: 'manual',
+        status: 'queued',
+        workflowInstanceId: automationRunId,
+      })
       return { agentId, runId: automationRunId }
     }
 
@@ -989,6 +1018,91 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         }, 90_000)
       }
 
+    for (const kind of ['issue', 'automation'] as const)
+      for (const revoked of [false, true]) {
+        it(`revalidates ${kind} summary handoff revoked=${revoked}`, async () => {
+          grantScenario = {
+            kind,
+            read: true,
+            neighborhood: true,
+            handoffRevoke: revoked,
+          }
+          const input =
+            kind === 'issue'
+              ? await seedIssue('G08 handoff')
+              : await seedAutomation()
+          expect(
+            (
+              await harness!.fetch(
+                kind === 'issue' ? '/start' : '/automation-start',
+                { method: 'POST', body: JSON.stringify(input) },
+              )
+            ).status,
+          ).toBe(200)
+          await expect
+            .poll(() => JSON.stringify(harness!.getLogs()), { timeout: 60_000 })
+            .toMatch(/agent_do\.brain_write_back\.(completed|trigger_failed)/)
+          expect(handoffCount).toBe(1)
+          const neighborhoodResults = modelRequests
+            .filter(
+              (request) =>
+                !request.tools?.some(
+                  (tool) => tool.function.name === 'propose_brain_item',
+                ),
+            )
+            .flatMap((request) => request.messages)
+            .filter((message) => message.role === 'tool')
+            .map(
+              (message) =>
+                JSON.parse(String(message.content)) as {
+                  ok?: boolean
+                  items?: Array<{ id: string }>
+                },
+            )
+            .filter((result) => result.items !== undefined)
+          expect(neighborhoodResults).toContainEqual(
+            expect.objectContaining({
+              ok: true,
+              items: expect.arrayContaining([
+                expect.objectContaining({ id: seededIds[0] }),
+              ]),
+            }),
+          )
+          expect(JSON.stringify(neighborhoodResults)).toContain(allowedMarker)
+          expect(JSON.stringify(modelRequests)).toContain(allowedMarker)
+          const calls = modelRequests.filter((request) =>
+            request.tools?.some(
+              (tool) => tool.function.name === 'propose_brain_item',
+            ),
+          )
+          if (revoked) {
+            expect(
+              calls,
+              'a new writeback model must not receive a summary after its originating neighborhood grant is revoked',
+            ).toHaveLength(0)
+            expect(brainRequests.length).toBe(revokedAtBrainRequest)
+            expect(
+              await database!.db.select().from(schema.brainWriteProposal),
+            ).toHaveLength(0)
+          } else {
+            expect(calls.length).toBeGreaterThan(0)
+            expect(
+              await database!.db.select().from(schema.brainWriteProposal),
+            ).toHaveLength(1)
+          }
+          const table =
+            kind === 'issue' ? schema.issueRun : schema.automationRun
+          expect(
+            (
+              await database!.db
+                .select({ status: table.status })
+                .from(table)
+                .where(eq(table.id, input.runId))
+            )[0]?.status,
+          ).toBe(kind === 'issue' ? 'succeeded' : 'completed')
+        }, 90_000)
+      }
+
     for (const label of [
       'issue-owner',
       'issue-org',
@@ -1109,6 +1223,28 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           expect(
             await database!.db.select().from(schema.brainWriteProposal),
           ).toEqual(rows)
+          const thirdStart = modelRequests.length
+          const another = await seedIssue('G08 cross-run private duplicate')
+          const crossRun = await harness!.fetch('/writeback-origin', {
+            method: 'POST',
+            body: JSON.stringify({
+              ...base,
+              ...another,
+              originObjectId: another.issueId,
+            }),
+          })
+          expect(await crossRun.json()).toMatchObject({ ok: true })
+          const thirdResults = modelRequests
+            .slice(thirdStart)
+            .flatMap((request) => request.messages)
+            .filter((message) => message.role === 'tool')
+            .map((message) => JSON.parse(String(message.content)))
+          expect(thirdResults).toContainEqual({ ok: true, action: 'submitted' })
+          expect(JSON.stringify(thirdResults)).not.toContain('duplicate')
+          expect(JSON.stringify(thirdResults)).not.toContain(rows[0]!.id)
+          expect(
+            await database!.db.select().from(schema.brainWriteProposal),
+          ).toEqual(rows)
         }
       }, 90_000)
     }
@@ -1164,26 +1300,22 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         .update(schema.agent)
         .set({ hostName: 'original-host' })
         .where(eq(schema.agent.id, agentId))
-      await database!.db
-        .insert(schema.agent)
-        .values({
-          id: otherAgent,
-          workspaceId,
-          ownerUserId: ownerId,
-          name: 'Other principal',
-          hostName: agentId,
-          permissions: { full_access: true },
-        })
+      await database!.db.insert(schema.agent).values({
+        id: otherAgent,
+        workspaceId,
+        ownerUserId: ownerId,
+        name: 'Other principal',
+        hostName: agentId,
+        permissions: { full_access: true },
+      })
       const otherRun = crypto.randomUUID()
-      await database!.db
-        .insert(schema.issueRun)
-        .values({
-          id: otherRun,
-          workspaceId,
-          issueId,
-          agentId: otherAgent,
-          hostName: agentId,
-        })
+      await database!.db.insert(schema.issueRun).values({
+        id: otherRun,
+        workspaceId,
+        issueId,
+        agentId: otherAgent,
+        hostName: agentId,
+      })
       const initialReads = brainRequests.length
       for (const target of [otherIssue.runId, otherRun, crypto.randomUUID()]) {
         const response = await harness!.fetch('/issue-turn', {
@@ -1272,6 +1404,8 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             expect(JSON.stringify(modelRequests)).toContain(allowedMarker)
           else
             expect(JSON.stringify(modelRequests)).not.toContain(allowedMarker)
+          if (state === 'owner-changed')
+            expect(JSON.stringify(modelRequests)).toContain(deniedMarkers[0])
           await database!.db
             .update(schema.agent)
             .set(

@@ -825,6 +825,22 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return true
   }
 
+  /** Reads provenance from the real origin facet; callers cannot clear its grants. */
+  async validateBrainWriteBackOrigin(
+    input: Pick<BrainWriteBackRunInput, 'runKind' | 'runId' | 'originObjectId'>,
+  ): Promise<void> {
+    if (input.runKind === 'issue') {
+      const origin = await this.subAgent(IssueRunSubAgent, input.originObjectId)
+      await origin.validateBrainSummaryAccess(input.runId)
+    } else {
+      const origin = await this.subAgent(
+        AutomationRunSubAgent,
+        input.originObjectId,
+      )
+      await origin.validateBrainSummaryAccess(input.runId)
+    }
+  }
+
   async startBrainWriteBack(
     input: Omit<BrainWriteBackRunInput, 'agentId'>,
   ): Promise<{ ok: true; status: 'completed' }> {
