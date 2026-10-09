@@ -49,6 +49,7 @@ let grantScenario:
     }
   | undefined
 let brainRequests: string[] = []
+let brainAuthorizationHeaders: Array<string | undefined> = []
 let revokedAtBrainRequest: number | undefined
 let dedupeRevocationRequest: string | undefined
 const modelBrainCounts: number[] = []
@@ -62,10 +63,7 @@ const modelRequests: Array<{
 }> = []
 
 /** Proves automatic injection independently of later explicit tool retrieval. */
-function assertOrgInjection(
-  request: (typeof modelRequests)[number],
-  markers: string[],
-) {
+function readInjection(request: (typeof modelRequests)[number]) {
   const text = request.messages
     .flatMap((message) => {
       if (typeof message.content === 'string') return [message.content]
@@ -90,10 +88,18 @@ function assertOrgInjection(
     'automatic injection must be present before explicit retrieval',
   ).toBeGreaterThan(0)
   const injected = blocks.join('\n')
-  for (const marker of markers) expect(injected).toContain(marker)
   const ids = [...injected.matchAll(/^\d+\. \[([^\]]+)\]/gm)].map(
     (match) => match[1],
   )
+  return { injected, ids }
+}
+
+function assertOrgInjection(
+  request: (typeof modelRequests)[number],
+  markers: string[],
+) {
+  const { injected, ids } = readInjection(request)
+  for (const marker of markers) expect(injected).toContain(marker)
   expect(ids).toContain(seededIds[0])
   for (const marker of deniedMarkers)
     expect(
@@ -166,6 +172,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       mutationArmed = false
       mutationBoundary = undefined
       brainRequests = []
+      brainAuthorizationHeaders = []
       revokedAtBrainRequest = undefined
       dedupeRevocationRequest = undefined
       database = await startTestDb()
@@ -182,11 +189,17 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         let body = ''
         for await (const chunk of request) body += String(chunk)
         brainRequests.push(body)
+        brainAuthorizationHeaders.push(request.headers.authorization)
         const upstream = await fetch(
           `http://${helix!.getHost()}:${helix!.getMappedPort(8080)}${request.url}`,
           {
             method: request.method,
-            headers: { 'content-type': 'application/json' },
+            headers: {
+              'content-type': 'application/json',
+              ...(request.headers.authorization
+                ? { authorization: request.headers.authorization }
+                : {}),
+            },
             ...(body ? { body } : {}),
           },
         )
@@ -643,6 +656,9 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             : {}),
           EXECUTOR_SECRET_KEY: 'g06-synthetic-encryption-key-only',
           HELIX_URL: `http://127.0.0.1:${brainAddress.port}`,
+          ...(context.task.name.includes('configured-key grants')
+            ? { HELIX_API_KEY: 'g08-synthetic-helix-key' }
+            : {}),
           GARDEN_MODEL_PROVIDER: 'openai-compatible',
           GARDEN_MODEL_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
           GARDEN_MODEL_ID: 'fixture',
@@ -720,6 +736,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           'revoked-read-only',
           'default',
           'empty-list',
+          'configured-key',
           'write-only',
         ]) {
           rolesByScenario[
@@ -803,7 +820,9 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         if (
           scenario.startsWith('revalidates ') ||
           scenario.startsWith('checks native dedupe') ||
-          /^enforces (allowed|default|empty-list) grants/.test(scenario)
+          /^enforces (allowed|default|empty-list|configured-key) grants/.test(
+            scenario,
+          )
         ) {
           const kind = scenario.includes('automation') ? 'Automation' : 'Issue'
           roles.push(`${kind}RunSubAgent.validateBrainSummaryAccess`)
@@ -962,11 +981,17 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         'revoked-read-only',
         'default',
         'empty-list',
+        'configured-key',
         'write-only',
       ] as const) {
         it(`enforces ${policy} grants in real ${kind} workflow`, async () => {
           const read = policy !== 'denied' && policy !== 'write-only'
-          const mayWrite = ['allowed', 'default', 'empty-list'].includes(policy)
+          const mayWrite = [
+            'allowed',
+            'default',
+            'empty-list',
+            'configured-key',
+          ].includes(policy)
           grantScenario = {
             kind,
             read,
@@ -988,7 +1013,9 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
                   ? {}
                   : policy === 'empty-list'
                     ? { full_access: false, allowed_tools: [] }
-                    : policy === 'allowed' || policy.startsWith('revoked')
+                    : policy === 'allowed' ||
+                        policy === 'configured-key' ||
+                        policy.startsWith('revoked')
                       ? { full_access: true }
                       : {
                           full_access: false,
@@ -1090,6 +1117,16 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           expect(JSON.stringify(harness!.getLogs())).not.toContain(
             'G08_UNEXPECTED_BROWSER_CALL',
           )
+          // This fixture proves credential propagation, not Helix authentication enforcement.
+          if (policy === 'configured-key') {
+            const observed = brainAuthorizationHeaders.slice(baselineReads)
+            expect(observed.length).toBeGreaterThan(0)
+            expect(
+              observed.every(
+                (value) => value === 'Bearer g08-synthetic-helix-key',
+              ),
+            ).toBe(true)
+          }
           const snapshot = await harness!.fetch('/snapshot', {
             method: 'POST',
             body: JSON.stringify({ workspaceId }),
@@ -1539,15 +1576,13 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             if (kind === 'issue') {
               assertOrgInjection(modelRequests[0]!, [allowedMarker])
             } else {
-              const injected = JSON.stringify(modelRequests[0]!.messages)
+              const { injected, ids } = readInjection(modelRequests[0]!)
               expect(injected).toContain(allowedMarker)
               expect(injected).toContain(deniedMarkers[0])
               for (const marker of deniedMarkers.slice(1))
                 expect(injected).not.toContain(marker)
-              for (const id of seededIds.slice(0, 2))
-                expect(injected).toContain(id)
-              for (const id of seededIds.slice(2))
-                expect(injected).not.toContain(id)
+              for (const id of seededIds.slice(0, 2)) expect(ids).toContain(id)
+              for (const id of seededIds.slice(2)) expect(ids).not.toContain(id)
             }
             const result = modelRequests[1]!.messages
               .filter((m) => m.role === 'tool')
