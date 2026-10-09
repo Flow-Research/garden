@@ -57,7 +57,7 @@ ${className}.prototype.${method} = async function(...args) {
   const target = ${JSON.stringify(counters[method] ?? null)};
   const before = target ? globalThis.__coverage__[target.path].f[target.key] : null;
   return await Promise.resolve(__g06Original${index}.apply(this, args)).finally(() => {
-    const snapshot = __g06Snapshot('${className}.${method}', args[0]?.runId ?? args[1]?.runId ?? args[0]?.metadata?.runId ?? this.currentRunId ?? this.getConfig()?.runId ?? this.name);
+    const snapshot = __g06Snapshot('${className}.${method}', ('${method}' === 'validateBrainSummaryAccess' ? args[0] : undefined) ?? args[0]?.runId ?? args[1]?.runId ?? args[0]?.metadata?.runId ?? this.currentRunId ?? this.getConfig()?.runId ?? this.name);
     snapshot.target = target ? {...target, before, after: globalThis.__coverage__[target.path].f[target.key]} : null;
     snapshot.identityKind = '${className}' === 'ChatSubAgent' ? 'thread' : 'run';
     snapshot.invocation = '${method}' === 'executeWorkflowTurn' ? String(args[1]?.turn) + ':' + args[0] : '${method}' === 'completeWorkflowTurn' ? args[0]?.submissionId : '${method}';
@@ -242,7 +242,14 @@ export async function startInstrumentedHarness(
     const methods =
       file === 'issue-run-sub-agent.ts' ||
       file === 'automation-run-sub-agent.ts'
-        ? ['executeWorkflowTurn', 'completeWorkflowTurn', 'onSubmissionStatus']
+        ? [
+            'executeWorkflowTurn',
+            'completeWorkflowTurn',
+            'onSubmissionStatus',
+            ...(!isBaseline && !isG08Baseline
+              ? ['validateBrainSummaryAccess']
+              : []),
+          ]
         : file === 'brain-write-back-sub-agent.ts'
           ? ['runWriteBack']
           : []
@@ -449,20 +456,29 @@ export async function startInstrumentedHarness(
         const input = JSON.parse(init.body) as {
           runId: string
           threadId: string
+          runKind?: 'issue' | 'automation'
           mode?: 'start' | 'resume'
           turn?: number
           expectCompletion?: boolean
         }
         if (path === '/chat')
           requireBoundary('ChatSubAgent.onChatResponse', input.threadId)
-        else if (path === '/writeback' || path === '/writeback-origin')
+        else if (path === '/writeback' || path === '/writeback-origin') {
           requireBoundary(
             'BrainWriteBackSubAgent.runWriteBack',
             input.runId,
             'runWriteBack',
             true,
           )
-        else {
+          const validationRole = `${input.runKind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.validateBrainSummaryAccess`
+          if (expectedRoles.includes(validationRole))
+            requireBoundary(
+              validationRole,
+              input.runId,
+              'validateBrainSummaryAccess',
+              true,
+            )
+        } else {
           const start = input.mode === 'start' || path.endsWith('start')
           const runClass = path.startsWith('/automation-')
             ? 'AutomationRunSubAgent'
@@ -486,6 +502,13 @@ export async function startInstrumentedHarness(
               input.runId,
               `${kind}-run:${input.runId}:${turn}:${mode}`,
             )
+            if (
+              expectedRoles.includes(`${runClass}.validateBrainSummaryAccess`)
+            )
+              requireBoundary(
+                `${runClass}.validateBrainSummaryAccess`,
+                input.runId,
+              )
             if (expectedRoles.includes('BrainWriteBackSubAgent.runWriteBack'))
               requireBoundary(
                 'BrainWriteBackSubAgent.runWriteBack',

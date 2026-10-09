@@ -655,6 +655,16 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.completeWorkflowTurn`,
             'BrainWriteBackSubAgent.runWriteBack',
           ]
+      for (const [scenario, roles] of Object.entries(rolesByScenario)) {
+        if (
+          scenario.startsWith('revalidates ') ||
+          scenario.startsWith('checks native dedupe') ||
+          /^enforces (allowed|default|empty-list) grants/.test(scenario)
+        ) {
+          const kind = scenario.includes('automation') ? 'Automation' : 'Issue'
+          roles.push(`${kind}RunSubAgent.validateBrainSummaryAccess`)
+        }
+      }
       const expectedRoles = rolesByScenario[context.task.name]
       if (!expectedRoles)
         throw new Error('Scenario has no declared native coverage boundary')
