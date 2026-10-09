@@ -21,7 +21,6 @@ CREATE TABLE "team_member" (
 	CONSTRAINT "team_member_identity_check" CHECK (("team_member"."user_id" is not null) <> ("team_member"."agent_id" is not null))
 );
 --> statement-breakpoint
-ALTER TABLE "tool_call_audit" DROP CONSTRAINT "tool_call_audit_result_status_check";--> statement-breakpoint
 ALTER TABLE "issue" ADD COLUMN "team_id" uuid;--> statement-breakpoint
 ALTER TABLE "team" ADD CONSTRAINT "team_workspace_id_organization_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "team" ADD CONSTRAINT "team_owner_user_id_user_id_fk" FOREIGN KEY ("owner_user_id") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -37,5 +36,4 @@ CREATE UNIQUE INDEX "team_member_team_user_unique" ON "team_member" USING btree 
 CREATE UNIQUE INDEX "team_member_team_agent_unique" ON "team_member" USING btree ("team_id","agent_id");--> statement-breakpoint
 CREATE INDEX "team_member_workspace_team_idx" ON "team_member" USING btree ("workspace_id","team_id");--> statement-breakpoint
 ALTER TABLE "issue" ADD CONSTRAINT "issue_team_workspace_fk" FOREIGN KEY ("team_id","workspace_id") REFERENCES "public"."team"("id","workspace_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "issue_workspace_team_status_idx" ON "issue" USING btree ("workspace_id","team_id","status","updated_at");--> statement-breakpoint
-ALTER TABLE "tool_call_audit" ADD CONSTRAINT "tool_call_audit_result_status_check" CHECK ("tool_call_audit"."result_status" in ('success', 'error', 'denied', 'timeout', 'approved'));
+CREATE INDEX "issue_workspace_team_status_idx" ON "issue" USING btree ("workspace_id","team_id","status","updated_at");
