@@ -162,6 +162,10 @@ export default {
     )
       return new Response('Not found', { status: 404 })
     if (url.pathname === '/binding-fault') {
+      console.info(
+        'G08_BINDING_PHASE',
+        JSON.stringify({ phase: 'handler-enter', time: Date.now() }),
+      )
       const input = await request.json<{
         kind: 'issue' | 'automation'
         agentId: string
@@ -195,8 +199,26 @@ export default {
             : input.method === 'completeWorkflowTurn'
               ? [{ runId: input.runId, submissionId: 'unrelated' }]
               : [input.runId]
+      console.info(
+        'G08_BINDING_PHASE',
+        JSON.stringify({
+          phase: 'method-start',
+          method: input.method,
+          time: Date.now(),
+        }),
+      )
       const result = await Result.tryPromise(() =>
         Reflect.get(facet.prototype, input.method).apply(host, args),
+      )
+      console.info(
+        'G08_BINDING_PHASE',
+        JSON.stringify({
+          phase: 'method-end',
+          method: input.method,
+          time: Date.now(),
+          denied: result.isErr(),
+          error: result.isErr() ? String(result.error) : undefined,
+        }),
       )
       return Response.json({
         denied: result.isErr(),

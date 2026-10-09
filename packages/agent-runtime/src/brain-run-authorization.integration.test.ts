@@ -1611,10 +1611,18 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       it(`resolves ${form} runtime aliases without accepting missing principals`, async () => {
         const alias =
           form === 'legacy' ? 'legacy-runtime-host' : crypto.randomUUID()
+        const phase = (name: string) =>
+          console.info(
+            'G08_ALIAS_PHASE',
+            JSON.stringify({ form, name, time: Date.now() }),
+          )
+        phase('node-update-start')
         await database!.db
           .update(schema.agent)
           .set({ hostName: alias })
           .where(eq(schema.agent.id, agentId))
+        phase('node-update-end')
+        phase('binding-request-start')
         const denied = await harness!.fetch('/binding-fault', {
           method: 'POST',
           body: JSON.stringify({
@@ -1626,7 +1634,20 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             missingParent: false,
           }),
         })
-        expect(await denied.json()).toMatchObject({
+        phase('binding-response-headers')
+        const deniedBody = await denied.json()
+        phase('binding-response-body')
+        console.info(
+          'G08_ALIAS_WORKER_PHASES',
+          JSON.stringify(
+            harness!
+              .getLogs()
+              .filter((log) =>
+                String(log.message).includes('G08_BINDING_PHASE'),
+              ),
+          ),
+        )
+        expect(deniedBody).toMatchObject({
           denied: true,
           message: expect.stringContaining(
             'Brain runtime principal is missing or ambiguous.',
@@ -1634,17 +1655,19 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         })
         expect(modelRequests).toHaveLength(0)
         grantScenario = { kind: 'issue', read: true }
-        expect(
-          (
-            await harness!.fetch('/start', {
-              method: 'POST',
-              body: JSON.stringify({ agentId: alias, issueId, runId }),
-            })
-          ).status,
-        ).toBe(200)
+        phase('start-request-begin')
+        const started = await harness!.fetch('/start', {
+          method: 'POST',
+          body: JSON.stringify({ agentId: alias, issueId, runId }),
+        })
+        phase('start-request-end')
+        expect(started.status).toBe(200)
+        phase('writeback-wait-begin')
         await expect
           .poll(() => JSON.stringify(harness!.getLogs()), { timeout: 60000 })
           .toContain('agent_do.brain_write_back.completed')
+        phase('writeback-wait-end')
+        phase('ledger-read-begin')
         expect(
           (
             await database!.db
@@ -1660,6 +1683,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             .from(schema.issueWorkProduct)
             .where(eq(schema.issueWorkProduct.runId, runId)),
         ).toHaveLength(1)
+        phase('ledger-read-end')
       }, 90000)
 
     it('rejects issue RPC run and principal substitution without ledger mutations', async () => {
