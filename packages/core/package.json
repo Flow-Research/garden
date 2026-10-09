@@ -26,7 +26,8 @@
     "./skills/*": "./src/skills/*.ts",
     "./utils": "./src/utils.ts",
     "./connectors/errors": "./src/connectors/errors.ts",
-    "./constants/*": "./src/constants/*.ts"
+    "./constants/*": "./src/constants/*.ts",
+    "./evaluation/marketplace": "./src/evaluation/marketplace/index.ts"
   },
   "dependencies": {
     "@garden/db": "workspace:*",
