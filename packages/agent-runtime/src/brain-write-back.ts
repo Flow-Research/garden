@@ -308,6 +308,11 @@ export function createBrainWriteBackTools(
           })
           .onConflictDoNothing()
           .returning({ id: schema.brainWriteProposal.id })
+        // Attribution permits owner-scoped submission, but the org read audience
+        // cannot observe whether that owner's private pending claim exists.
+        // Keep storage idempotent and acknowledge both outcomes identically.
+        if (context.readAudience === 'org' && candidate.scope === 'user')
+          return { ok: true, action: 'submitted' }
         if (inserted.length === 0) {
           const existing = await db.query.brainWriteProposal.findFirst({
             columns: { runId: true },

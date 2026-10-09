@@ -28,6 +28,11 @@ const candidateProductionFiles = [
   'brain-write-back-sub-agent.ts',
   'issue-run-sub-agent.ts',
   'issue-brain-audience.ts',
+  'automation-run-sub-agent.ts',
+  'brain-run-authority.ts',
+  'brain-write-back.ts',
+  'chat-sub-agent-tools.ts',
+  'agent-do.ts',
 ]
 const digest = (text: string) => createHash('sha256').update(text).digest('hex')
 const snapshotSource = `function __g06Snapshot(role, runId) {
@@ -136,6 +141,12 @@ export async function startInstrumentedHarness(
     }
   }
   const isBaseline = process.env.G06_NATIVE_BASELINE === '1'
+  const isG08Baseline = process.env.G08_NATIVE_BASELINE === '1'
+  if (
+    isG08Baseline &&
+    existsSync(join(root, 'packages/agent-runtime/src/brain-run-authority.ts'))
+  )
+    throw new Error('G08 baseline must not include candidate grant helper')
   if (
     isBaseline &&
     existsSync(join(root, 'packages/agent-runtime/src/issue-brain-audience.ts'))
@@ -144,7 +155,9 @@ export async function startInstrumentedHarness(
       'Native baseline requires original source without the new audience helper',
     )
   const productionFiles = candidateProductionFiles.filter(
-    (file) => !isBaseline || file !== 'issue-brain-audience.ts',
+    (file) =>
+      (!isBaseline || file !== 'issue-brain-audience.ts') &&
+      (!isG08Baseline || file !== 'brain-run-authority.ts'),
   )
   const directory = await mkdtemp(join(tmpdir(), 'garden-g06-instrumented-'))
   await cp(
@@ -221,11 +234,14 @@ export async function startInstrumentedHarness(
     }
     code += `\nglobalThis.__g06Metadata ??= {}; globalThis.__g06Metadata[${JSON.stringify(path)}] = ${JSON.stringify(metadata[path])};\n`
     const className =
-      file === 'issue-run-sub-agent.ts'
-        ? 'IssueRunSubAgent'
-        : 'BrainWriteBackSubAgent'
+      file === 'automation-run-sub-agent.ts'
+        ? 'AutomationRunSubAgent'
+        : file === 'issue-run-sub-agent.ts'
+          ? 'IssueRunSubAgent'
+          : 'BrainWriteBackSubAgent'
     const methods =
-      file === 'issue-run-sub-agent.ts'
+      file === 'issue-run-sub-agent.ts' ||
+      file === 'automation-run-sub-agent.ts'
         ? ['executeWorkflowTurn', 'completeWorkflowTurn', 'onSubmissionStatus']
         : file === 'brain-write-back-sub-agent.ts'
           ? ['runWriteBack']
@@ -275,7 +291,12 @@ export async function startInstrumentedHarness(
         scenario,
         expectedRoles,
         isBaseline,
-        absentBaselineFiles: isBaseline ? ['issue-brain-audience.ts'] : [],
+        isG08Baseline,
+        absentBaselineFiles: isBaseline
+          ? ['issue-brain-audience.ts']
+          : isG08Baseline
+            ? ['brain-run-authority.ts']
+            : [],
         metadata,
         templates,
       },
@@ -307,7 +328,15 @@ export async function startInstrumentedHarness(
     role: string,
     runId: string,
     invocation = role.split('.').at(-1)!,
+    distinctRequest = false,
   ) => {
+    const existing = expectedBoundaries.find(
+      (item) =>
+        item.role === role &&
+        item.runId === runId &&
+        item.invocation === invocation,
+    )
+    if (distinctRequest && existing) existing.count += 1
     if (
       !expectedBoundaries.some(
         (item) =>
@@ -402,33 +431,66 @@ export async function startInstrumentedHarness(
       )
     },
     fetch: (path: string, init?: Parameters<typeof harness.fetch>[1]) => {
-      if (['/start', '/resume', '/chat', '/writeback'].includes(path)) {
+      if (
+        [
+          '/start',
+          '/resume',
+          '/automation-start',
+          '/automation-resume',
+          '/automation-turn',
+          '/issue-turn',
+          '/writeback-origin',
+          '/chat',
+          '/writeback',
+        ].includes(path)
+      ) {
         if (typeof init?.body !== 'string')
           throw new Error('Native boundary input must declare its identity')
         const input = JSON.parse(init.body) as {
           runId: string
           threadId: string
+          mode?: 'start' | 'resume'
+          turn?: number
+          expectCompletion?: boolean
         }
         if (path === '/chat')
           requireBoundary('ChatSubAgent.onChatResponse', input.threadId)
-        else if (path === '/writeback')
-          requireBoundary('BrainWriteBackSubAgent.runWriteBack', input.runId)
-        else {
-          const turn = path === '/start' ? 0 : (turns.get(input.runId) ?? 0) + 1
-          turns.set(input.runId, turn)
-          const mode = path === '/start' ? 'start' : 'resume'
+        else if (path === '/writeback' || path === '/writeback-origin')
           requireBoundary(
-            'IssueRunSubAgent.executeWorkflowTurn',
+            'BrainWriteBackSubAgent.runWriteBack',
+            input.runId,
+            'runWriteBack',
+            true,
+          )
+        else {
+          const start = input.mode === 'start' || path.endsWith('start')
+          const runClass = path.startsWith('/automation-')
+            ? 'AutomationRunSubAgent'
+            : 'IssueRunSubAgent'
+          const kind = path.startsWith('/automation-') ? 'automation' : 'issue'
+          const turn =
+            input.turn ?? (start ? 0 : (turns.get(input.runId) ?? 0) + 1)
+          turns.set(input.runId, turn)
+          const mode = start ? 'start' : 'resume'
+          requireBoundary(
+            `${runClass}.executeWorkflowTurn`,
             input.runId,
             `${turn}:${mode}`,
           )
-          if (expectedRoles.includes('IssueRunSubAgent.completeWorkflowTurn')) {
+          if (
+            input.expectCompletion !== false &&
+            expectedRoles.includes(`${runClass}.completeWorkflowTurn`)
+          ) {
             requireBoundary(
-              'IssueRunSubAgent.completeWorkflowTurn',
+              `${runClass}.completeWorkflowTurn`,
               input.runId,
-              `issue-run:${input.runId}:${turn}:${mode}`,
+              `${kind}-run:${input.runId}:${turn}:${mode}`,
             )
-            requireBoundary('BrainWriteBackSubAgent.runWriteBack', input.runId)
+            if (expectedRoles.includes('BrainWriteBackSubAgent.runWriteBack'))
+              requireBoundary(
+                'BrainWriteBackSubAgent.runWriteBack',
+                input.runId,
+              )
           }
         }
       }

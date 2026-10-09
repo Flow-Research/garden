@@ -1056,6 +1056,27 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
       await this.forceCloseFailed(input.runId, statusResult.error.message)
       throw new Error(statusResult.error.message)
     }
+    const summaryGrant = await this.ensureBrainGrantHistory({
+      runKind: 'automation',
+      runtimeName: this.parentPath.at(-1)?.name ?? '',
+      objectId: this.name,
+      runId: input.runId,
+      workspaceId: binding.value.context.workspaceId,
+      agentId: binding.value.context.agentId,
+      ownerUserId: binding.value.context.userId,
+    })
+    if (summaryGrant.isErr()) {
+      console.info('agent_runtime.brain_summary_denied', {
+        runId: input.runId,
+        reason: summaryGrant.error.message,
+      })
+      return {
+        status: statusResult.value,
+        workspaceId: binding.value.context.workspaceId,
+        ownerUserId: binding.value.context.userId,
+        summary: '',
+      }
+    }
     const summaryResult = await this.readRunSummary(input.runId)
     return {
       status: statusResult.value,
@@ -1527,9 +1548,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     return Result.ok(result.value)
   }
 
-  private async readRunSummary(
-    runId: string,
-  ): Promise<
+  private async readRunSummary(runId: string): Promise<
     ResultValue<
       {
         workspaceId: string | null

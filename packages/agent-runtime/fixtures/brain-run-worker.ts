@@ -13,6 +13,7 @@ import type { BrainScope } from '@garden/brain/domain/scope'
 
 export { AgentDO, RunWorkflow }
 export { IssueRunSubAgent }
+export { AutomationRunSubAgent } from '../src/automation-run-sub-agent'
 export { ChatSubAgent } from '../src/agent-do'
 import { BrainWriteBackSubAgent } from '../src/brain-write-back-sub-agent'
 export { BrainWriteBackSubAgent }
@@ -35,6 +36,16 @@ export class FixtureEmbeddings extends WorkerEntrypoint {
         Array.from({ length: 384 }, () => 1 / Math.sqrt(384)),
       ),
     }
+  }
+}
+
+/** Disabled automation browser capability must never reach the external provider. */
+export class FixtureBrowser extends WorkerEntrypoint {
+  async fetch() {
+    console.error('G08_UNEXPECTED_BROWSER_CALL')
+    return new Response('Browser provider is forbidden in this fixture', {
+      status: 503,
+    })
   }
 }
 
@@ -73,6 +84,11 @@ export default {
         '/inspect',
         '/audience-fault',
         '/start',
+        '/automation-start',
+        '/automation-turn',
+        '/issue-turn',
+        '/writeback-origin',
+        '/automation-resume',
         '/history',
         '/chat',
         '/resume',
@@ -287,6 +303,8 @@ export default {
                 // injection floor; authorization alone selects visible items.
                 body: [
                   input.label,
+                  'Start this automation run using the injected automation context. Complete the task directly, then call complete_automation. Respect the injected closure controls: do not create issues, update GitHub, draft PRs, update QA artifacts, or mutate source unless the run payload explicitly enables that closure action.',
+                  'Resume this automation run using the injected automation context. Complete required work, then call complete_automation with the final result.',
                   'Start this issue run using the injected issue context. Produce a useful work product, ask one focused question, mark blocked, or decompose into child issues.',
                   'Resume this issue run using the latest issue context. If the user answered a pending question, use that answer now.',
                 ].join('\n'),
@@ -308,6 +326,61 @@ export default {
       )
       return Response.json(item)
     }
+    if (url.pathname === '/writeback-origin') {
+      const input = await request.json<{
+        agentId: string
+        claimedAgentId: string
+        runKind: 'issue' | 'automation'
+        runId: string
+        originObjectId: string
+        workspaceId: string
+        ownerUserId: string
+      }>()
+      const agent = await getAgentByName(env.AgentDO, input.agentId)
+      const facet = await getSubAgentByName(
+        agent,
+        BrainWriteBackSubAgent,
+        `probe:${crypto.randomUUID()}`,
+      )
+      const result = await Result.tryPromise({
+        try: () =>
+          facet.runWriteBack({
+            ...input,
+            agentId: input.claimedAgentId,
+            summary: 'Origin binding probe.',
+          }),
+        catch: (cause) => String(cause),
+      })
+      return Response.json(
+        result.match({
+          ok: (value) => ({ ok: true, value }),
+          err: (error) => ({ ok: false, error }),
+        }),
+      )
+    }
+    if (url.pathname === '/automation-turn' || url.pathname === '/issue-turn') {
+      const input = await request.json<{
+        agentId: string
+        issueId: string
+        runId: string
+        mode: 'start' | 'resume'
+        turn: number
+      }>()
+      const agent = await getAgentByName(env.AgentDO, input.agentId)
+      const result = await Result.tryPromise({
+        try: () =>
+          url.pathname === '/automation-turn'
+            ? agent.executeAutomationRunTurn(input)
+            : agent.executeRunTurn(input),
+        catch: (cause) => String(cause),
+      })
+      return Response.json(
+        result.match({
+          ok: (value) => ({ ok: true, value }),
+          err: (error) => ({ ok: false, error }),
+        }),
+      )
+    }
     if (url.pathname === '/writeback') {
       const input = await request.json<{
         agentId: string
@@ -325,6 +398,7 @@ export default {
         await facet.runWriteBack({
           ...input,
           runKind: 'automation',
+          originObjectId: input.runId,
           summary: 'Inspect G06 knowledge. No new durable claim is present.',
         }),
       )
@@ -358,13 +432,17 @@ export default {
         }),
       )
     }
-    if (url.pathname === '/resume') {
+    if (url.pathname === '/resume' || url.pathname === '/automation-resume') {
       const workflow = await env.RUN_WORKFLOW.get(input.runId)
       await workflow.sendEvent({
         type: 'run-control',
         payload: { kind: 'resume' },
       })
       return Response.json({ resumed: input.runId })
+    }
+    if (url.pathname === '/automation-start') {
+      await agent.startAutomationRunWorkflow({ runId: input.runId })
+      return Response.json({ started: input.runId })
     }
     await agent.startIssueRunWorkflow({
       issueId: input.issueId,

@@ -29,6 +29,22 @@ const deniedMarkers = [
   'G06_TEAM_MARKER',
 ]
 let modelMode: 'issue' | 'chat' | 'pause' = 'issue'
+let grantScenario:
+  | {
+      kind: 'issue' | 'automation'
+      read: boolean
+      revoke?: 'tool' | 'completion'
+      retainWrite?: boolean
+      neighborhood?: boolean
+      pause?: boolean
+      writebackRevoke?: 'before-proposal' | 'during-dedupe'
+      confidence?: number
+      scope?: 'org' | 'user'
+    }
+  | undefined
+let brainRequests: string[] = []
+let revokedAtBrainRequest: number | undefined
+let dedupeRevocationRequest: string | undefined
 const seededIds: string[] = []
 const modelRequests: Array<{
   messages: Array<{ role: string; content?: unknown }>
@@ -124,6 +140,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
     let database: TestDb | undefined
     let helix: StartedTestContainer | undefined
     let model: Server | undefined
+    let brainProxy: Server | undefined
     let harness:
       | Awaited<ReturnType<typeof startInstrumentedHarness>>
       | undefined
@@ -133,6 +150,10 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       modelRequests.length = 0
       seededIds.length = 0
       modelMode = 'issue'
+      grantScenario = undefined
+      brainRequests = []
+      revokedAtBrainRequest = undefined
+      dedupeRevocationRequest = undefined
       database = await startTestDb()
       helix = await new GenericContainer('ghcr.io/helixdb/helixdb:v0.0.4')
         .withTmpFs({ '/var/lib/helix': 'uid=65532,gid=65532,mode=0700' })
@@ -143,6 +164,46 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         // additionally prove actual durable writes through the Brain service.
         .withWaitStrategy(Wait.forHttp('/v2/query', 8080).forStatusCode(405))
         .start()
+      brainProxy = createServer(async (request, response) => {
+        let body = ''
+        for await (const chunk of request) body += String(chunk)
+        brainRequests.push(body)
+        const upstream = await fetch(
+          `http://${helix!.getHost()}:${helix!.getMappedPort(8080)}${request.url}`,
+          {
+            method: request.method,
+            headers: { 'content-type': 'application/json' },
+            ...(body ? { body } : {}),
+          },
+        )
+        if (
+          grantScenario?.writebackRevoke === 'during-dedupe' &&
+          body.includes('G08 durable')
+        ) {
+          dedupeRevocationRequest = body
+          await database!.db
+            .update(schema.agent)
+            .set({
+              permissions: {
+                full_access: false,
+                allowed_tools: ['brain_search'],
+              },
+            })
+            .where(eq(schema.agent.id, agentId))
+          grantScenario.writebackRevoke = undefined
+          revokedAtBrainRequest = brainRequests.length
+        }
+        response.writeHead(upstream.status, {
+          'content-type':
+            upstream.headers.get('content-type') ?? 'application/json',
+        })
+        response.end(await upstream.text())
+      })
+      brainProxy.listen(0, '127.0.0.1')
+      await once(brainProxy, 'listening')
+      const brainAddress = brainProxy.address()
+      if (!brainAddress || typeof brainAddress === 'string')
+        throw new Error('Brain proxy not listening')
       model = createServer(async (request, response) => {
         let raw = ''
         for await (const chunk of request) raw += String(chunk)
@@ -177,10 +238,10 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             )
           }),
         }
-        const finished =
+        let finished =
           (writeback && toolResults.length >= 3) ||
           (modelMode === 'chat' && toolResults.length >= 1)
-        const toolName =
+        let toolName =
           toolResults.length === 0
             ? 'brain_search'
             : writeback
@@ -194,7 +255,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
                     : modelMode === 'pause'
                       ? 'ask_question'
                       : 'create_work_product'
-        const args =
+        let args: Record<string, unknown> =
           toolResults.length === 0
             ? { query: 'G06', k: 8 }
             : writeback
@@ -223,6 +284,89 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
                           title: 'Shared retrieval evidence',
                           body: JSON.stringify(observations),
                         }
+        if (grantScenario) {
+          const n = toolResults.length
+          if (writeback) {
+            finished = n >= (grantScenario.confidence === undefined ? 3 : 2)
+            toolName = n === 0 ? 'brain_search' : 'propose_brain_item'
+            args =
+              n === 0
+                ? { query: 'G06', k: 8 }
+                : {
+                    claim: `G08 durable ${n === 1 ? 'review' : 'direct'} knowledge ${runId}`,
+                    kind: 'policy',
+                    confidence:
+                      grantScenario.confidence ?? (n === 1 ? 0.5 : 0.9),
+                    sensitive: false,
+                    scope: grantScenario.scope ?? 'org',
+                  }
+            if (
+              n === 1 &&
+              grantScenario.writebackRevoke === 'before-proposal'
+            ) {
+              await database!.db
+                .update(schema.agent)
+                .set({
+                  permissions: {
+                    full_access: false,
+                    allowed_tools: ['brain_search'],
+                  },
+                })
+                .where(eq(schema.agent.id, agentId))
+              grantScenario.writebackRevoke = undefined
+              revokedAtBrainRequest = brainRequests.length
+            }
+          } else {
+            finished = false
+            const readStep = grantScenario.read && n === 0
+            toolName = readStep
+              ? grantScenario.neighborhood
+                ? 'brain_neighborhood'
+                : 'brain_search'
+              : grantScenario.kind === 'automation'
+                ? 'complete_automation'
+                : grantScenario.pause
+                  ? 'ask_question'
+                  : 'create_work_product'
+            args = readStep
+              ? grantScenario.neighborhood
+                ? { itemId: seededIds[0], depth: 1 }
+                : { query: 'G06', k: 8 }
+              : grantScenario.kind === 'automation'
+                ? { output: JSON.stringify(observations) }
+                : grantScenario.pause
+                  ? { question: 'Continue G08?' }
+                  : {
+                      type: 'report',
+                      title: 'G08 grant evidence',
+                      body: JSON.stringify(observations),
+                    }
+            if (
+              (grantScenario.revoke === 'tool' && readStep) ||
+              (grantScenario.revoke === 'completion' && !readStep)
+            ) {
+              await database!.db
+                .update(schema.agent)
+                .set({
+                  permissions: {
+                    full_access: false,
+                    allowed_tools: [
+                      'create_work_product',
+                      'complete_automation',
+                      'ask_question',
+                      ...(grantScenario.retainWrite ? ['add_to_brain'] : []),
+                      ...(grantScenario.neighborhood
+                        ? ['brain_search', 'add_to_brain']
+                        : []),
+                    ],
+                  },
+                })
+                .where(eq(schema.agent.id, agentId))
+              revokedAtBrainRequest = brainRequests.length
+              grantScenario.revoke = undefined
+            }
+          }
+        }
         const chunk = {
           id: crypto.randomUUID(),
           object: 'chat.completion.chunk',
@@ -349,6 +493,11 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         ],
         services: [
           {
+            binding: 'BROWSER',
+            service: 'garden-g06-integration',
+            entrypoint: 'FixtureBrowser',
+          },
+          {
             binding: 'AI',
             service: 'garden-g06-integration',
             entrypoint: 'FixtureEmbeddings',
@@ -371,7 +520,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         ],
         vars: {
           EXECUTOR_SECRET_KEY: 'g06-synthetic-encryption-key-only',
-          HELIX_URL: `http://${helix.getHost()}:${helix.getMappedPort(8080)}`,
+          HELIX_URL: `http://127.0.0.1:${brainAddress.port}`,
           GARDEN_MODEL_PROVIDER: 'openai-compatible',
           GARDEN_MODEL_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
           GARDEN_MODEL_ID: 'fixture',
@@ -403,6 +552,76 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         'uses the real issue guard durable-history reader when hydration is empty or storage fails':
           [],
       }
+      for (const kind of ['issue', 'automation']) {
+        for (const policy of [
+          'denied',
+          'read-only',
+          'allowed',
+          'revoked-tool',
+          'revoked-completion',
+          'revoked-read-only',
+          'default',
+          'empty-list',
+          'write-only',
+        ]) {
+          rolesByScenario[
+            `enforces ${policy} grants in real ${kind} workflow`
+          ] = [
+            `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.completeWorkflowTurn`,
+            ...(policy.startsWith('revoked')
+              ? []
+              : ['BrainWriteBackSubAgent.runWriteBack']),
+          ]
+        }
+      }
+      rolesByScenario[
+        'rejects mismatched or missing authoritative writeback origins and invalid policies'
+      ] = ['BrainWriteBackSubAgent.runWriteBack']
+      rolesByScenario[
+        'rejects issue RPC run and principal substitution without ledger mutations'
+      ] = ['IssueRunSubAgent.executeWorkflowTurn']
+      for (const kind of ['issue', 'automation']) {
+        for (const state of kind === 'automation'
+          ? ['revoked', 'always-denied', 'owner-changed']
+          : ['revoked', 'always-denied'])
+          rolesByScenario[
+            `protects ${state} retained ${kind} history on resume`
+          ] = [
+            `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.executeWorkflowTurn`,
+            `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.completeWorkflowTurn`,
+            ...(state === 'always-denied' || kind === 'automation'
+              ? ['BrainWriteBackSubAgent.runWriteBack']
+              : []),
+          ]
+        for (const phase of ['before-proposal', 'during-dedupe'])
+          for (const confidence of [0.5, 0.9])
+            rolesByScenario[
+              `revokes ${kind} writeback ${phase} at confidence ${confidence}`
+            ] = [
+              `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.completeWorkflowTurn`,
+              'BrainWriteBackSubAgent.runWriteBack',
+            ]
+      }
+      for (const kind of ['issue', 'automation'])
+        for (const revoked of [false, true])
+          rolesByScenario[
+            `protects neighborhood-only ${kind} completion revoked=${revoked}`
+          ] = [
+            `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.completeWorkflowTurn`,
+            ...(revoked ? [] : ['BrainWriteBackSubAgent.runWriteBack']),
+          ]
+      for (const label of [
+        'issue-owner',
+        'issue-org',
+        'automation-owner',
+        'automation-other',
+        'automation-foreign',
+        'private-proposal-oracle',
+        'issue-override',
+      ])
+        rolesByScenario[`checks native dedupe and policy ${label}`] = [
+          'BrainWriteBackSubAgent.runWriteBack',
+        ]
       const expectedRoles = rolesByScenario[context.task.name]
       if (!expectedRoles)
         throw new Error('Scenario has no declared native coverage boundary')
@@ -458,15 +677,27 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
     }, 120_000)
 
     afterEach((context) => {
-      if (context.task.result?.state === 'fail') harness?.debug()
+      if (context.task.result?.state === 'fail') {
+        harness?.debug()
+        console.info('G08 scenario failure', context.task.result.errors)
+      }
     })
 
-    afterEach(async () => {
+    afterEach(async (context) => {
+      if (context.task.result?.state === 'fail') {
+        harness?.debug()
+        console.info('G08 scenario failure', context.task.result.errors)
+      }
       const workerCleanup = await Promise.allSettled([harness?.close()])
       const cleanup = await Promise.allSettled([
         new Promise<void>((resolve, reject) =>
           model
             ? model.close((error) => (error ? reject(error) : resolve()))
+            : resolve(),
+        ),
+        new Promise<void>((resolve, reject) =>
+          brainProxy
+            ? brainProxy.close((error) => (error ? reject(error) : resolve()))
             : resolve(),
         ),
         helix?.stop(),
@@ -508,6 +739,657 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         .where(eq(schema.issue.id, nextIssueId))
       return { agentId, issueId: nextIssueId, runId: nextRunId }
     }
+
+    async function seedAutomation() {
+      const automationId = crypto.randomUUID()
+      const automationRunId = crypto.randomUUID()
+      await database!.db
+        .insert(schema.automation)
+        .values({
+          id: automationId,
+          workspaceId,
+          title: 'G08 automation',
+          createdBy: ownerId,
+          assigneeAgentId: agentId,
+          systemPrompt: 'Report G06 knowledge.',
+          executionConfig: {},
+        })
+      await database!.db
+        .insert(schema.automationRun)
+        .values({
+          id: automationRunId,
+          workspaceId,
+          automationId,
+          agentId,
+          hostName: agentId,
+          source: 'manual',
+          status: 'queued',
+          workflowInstanceId: automationRunId,
+        })
+      return { agentId, runId: automationRunId }
+    }
+
+    for (const kind of ['issue', 'automation'] as const) {
+      for (const policy of [
+        'denied',
+        'read-only',
+        'allowed',
+        'revoked-tool',
+        'revoked-completion',
+        'revoked-read-only',
+        'default',
+        'empty-list',
+        'write-only',
+      ] as const) {
+        it(`enforces ${policy} grants in real ${kind} workflow`, async () => {
+          const read = policy !== 'denied' && policy !== 'write-only'
+          const mayWrite = ['allowed', 'default', 'empty-list'].includes(policy)
+          grantScenario = {
+            kind,
+            read,
+            ...(policy === 'revoked-tool'
+              ? { revoke: 'tool' as const }
+              : policy === 'revoked-completion' ||
+                  policy === 'revoked-read-only'
+                ? {
+                    revoke: 'completion' as const,
+                    retainWrite: policy === 'revoked-read-only',
+                  }
+                : {}),
+          }
+          await database!.db
+            .update(schema.agent)
+            .set({
+              permissions:
+                policy === 'default'
+                  ? {}
+                  : policy === 'empty-list'
+                    ? { full_access: false, allowed_tools: [] }
+                    : policy === 'allowed' || policy.startsWith('revoked')
+                      ? { full_access: true }
+                      : {
+                          full_access: false,
+                          allowed_tools: [
+                            'create_work_product',
+                            'complete_automation',
+                            'ask_question',
+                            ...(read ? ['brain_search'] : []),
+                            ...(policy === 'write-only'
+                              ? ['add_to_brain']
+                              : []),
+                          ],
+                        },
+            })
+            .where(eq(schema.agent.id, agentId))
+          const input =
+            kind === 'issue'
+              ? await seedIssue('G08 grant matrix')
+              : await seedAutomation()
+          const baselineReads = brainRequests.length
+          const response = await harness!.fetch(
+            kind === 'issue' ? '/start' : '/automation-start',
+            { method: 'POST', body: JSON.stringify(input) },
+          )
+          expect(response.status, await response.clone().text()).toBe(200)
+          await expect
+            .poll(
+              async () => {
+                const table =
+                  kind === 'issue' ? schema.issueRun : schema.automationRun
+                const [row] = await database!.db
+                  .select({ status: table.status })
+                  .from(table)
+                  .where(eq(table.id, input.runId))
+                return row?.status
+              },
+              { timeout: 60_000 },
+            )
+            .toMatch(/^(succeeded|completed|failed|cancelled|blocked)$/)
+          const resultTable =
+            kind === 'issue' ? schema.issueRun : schema.automationRun
+          const [result] = await database!.db
+            .select({ status: resultTable.status, error: resultTable.error })
+            .from(resultTable)
+            .where(eq(resultTable.id, input.runId))
+          expect(result?.status, result?.error ?? 'Missing run').toBe(
+            kind === 'issue' ? 'succeeded' : 'completed',
+          )
+          if (!read) expect(brainRequests.length).toBe(baselineReads)
+          if (policy.startsWith('revoked'))
+            await expect
+              .poll(() => JSON.stringify(harness!.getLogs()), {
+                timeout: 60_000,
+              })
+              .toContain('agent_runtime.brain_summary_denied')
+          else
+            await expect
+              .poll(() => JSON.stringify(harness!.getLogs()), {
+                timeout: 60_000,
+              })
+              .toMatch(
+                new RegExp(
+                  `agent_do\\.brain_write_back\\.(?:completed|trigger_failed)[^\n]*${input.runId}`,
+                ),
+              )
+          const writebackCalls = modelRequests.filter((request) =>
+            request.tools?.some(
+              (tool) => tool.function.name === 'propose_brain_item',
+            ),
+          )
+          const proposals = await database!.db
+            .select()
+            .from(schema.brainWriteProposal)
+          if (policy.startsWith('revoked')) {
+            expect(revokedAtBrainRequest).toBeTypeOf('number')
+            expect(brainRequests.length).toBe(revokedAtBrainRequest)
+            if (policy === 'revoked-tool')
+              expect(JSON.stringify(modelRequests)).toContain(
+                'No active run context',
+              )
+          }
+          if (!read) {
+            expect(brainRequests.length).toBe(baselineReads)
+            expect(JSON.stringify(modelRequests)).not.toContain(allowedMarker)
+          } else {
+            expect(JSON.stringify(modelRequests[0])).toContain(
+              'Org Brain memory for this turn.',
+            )
+            expect(JSON.stringify(modelRequests[0])).toContain(allowedMarker)
+          }
+          if (mayWrite) {
+            expect(writebackCalls.length).toBeGreaterThan(0)
+            expect(proposals).toHaveLength(1)
+            expect(proposals[0]!.claim).toContain('G08 durable review')
+          } else {
+            expect(writebackCalls).toHaveLength(0)
+            expect(proposals).toHaveLength(0)
+          }
+          expect(JSON.stringify(harness!.getLogs())).not.toContain(
+            'G08_UNEXPECTED_BROWSER_CALL',
+          )
+          const snapshot = await harness!.fetch('/snapshot', {
+            method: 'POST',
+            body: JSON.stringify({ workspaceId }),
+          })
+          expect(snapshot.status).toBe(200)
+          const persisted = await snapshot.text()
+          if (mayWrite) expect(persisted).toContain('G08 durable direct')
+          else expect(persisted).not.toContain('G08 durable')
+        }, 90_000)
+      }
+    }
+
+    for (const kind of ['issue', 'automation'] as const)
+      for (const revoked of [false, true]) {
+        it(`protects neighborhood-only ${kind} completion revoked=${revoked}`, async () => {
+          grantScenario = {
+            kind,
+            read: true,
+            neighborhood: true,
+            ...(revoked ? { revoke: 'completion' as const } : {}),
+          }
+          await database!.db
+            .update(schema.agent)
+            .set({
+              permissions: {
+                full_access: false,
+                allowed_tools: [
+                  'brain_neighborhood',
+                  'add_to_brain',
+                  'create_work_product',
+                  'complete_automation',
+                ],
+              },
+            })
+            .where(eq(schema.agent.id, agentId))
+          const input =
+            kind === 'issue'
+              ? await seedIssue('G08 neighborhood')
+              : await seedAutomation()
+          expect(
+            (
+              await harness!.fetch(
+                kind === 'issue' ? '/start' : '/automation-start',
+                { method: 'POST', body: JSON.stringify(input) },
+              )
+            ).status,
+          ).toBe(200)
+          await expect
+            .poll(() => JSON.stringify(harness!.getLogs()), { timeout: 60_000 })
+            .toContain(
+              revoked
+                ? 'agent_runtime.brain_summary_denied'
+                : 'agent_do.brain_write_back.trigger_failed',
+            )
+          expect(JSON.stringify(modelRequests[0])).not.toContain(allowedMarker)
+          expect(JSON.stringify(modelRequests.slice(1))).toContain(
+            allowedMarker,
+          )
+          expect(
+            modelRequests.filter((request) =>
+              request.tools?.some(
+                (tool) => tool.function.name === 'propose_brain_item',
+              ),
+            ),
+          ).toHaveLength(0)
+          const table =
+            kind === 'issue' ? schema.issueRun : schema.automationRun
+          expect(
+            (
+              await database!.db
+                .select({ status: table.status })
+                .from(table)
+                .where(eq(table.id, input.runId))
+            )[0]?.status,
+          ).toBe(kind === 'issue' ? 'succeeded' : 'completed')
+          expect(
+            await database!.db.select().from(schema.brainWriteProposal),
+          ).toHaveLength(0)
+          if (revoked) expect(brainRequests.length).toBe(revokedAtBrainRequest)
+        }, 90_000)
+      }
+
+    for (const label of [
+      'issue-owner',
+      'issue-org',
+      'automation-owner',
+      'automation-other',
+      'automation-foreign',
+      'private-proposal-oracle',
+      'issue-override',
+    ] as const) {
+      it(`checks native dedupe and policy ${label}`, async () => {
+        const kind = label.startsWith('automation') ? 'automation' : 'issue'
+        grantScenario = { kind, read: false, confidence: 0.5, scope: 'user' }
+        const input =
+          kind === 'issue'
+            ? await seedIssue('G08 dedupe')
+            : await seedAutomation()
+        const claim = `G08 durable review knowledge ${runId}`
+        const base = {
+          ...input,
+          claimedAgentId: agentId,
+          runKind: kind,
+          originObjectId:
+            'issueId' in input ? String(input.issueId) : input.runId,
+          workspaceId,
+          ownerUserId: ownerId,
+        }
+        if (!['private-proposal-oracle', 'issue-override'].includes(label)) {
+          const seed = await harness!.fetch('/seed', {
+            method: 'POST',
+            body: JSON.stringify({
+              workspaceId:
+                label === 'automation-foreign'
+                  ? foreignWorkspaceId
+                  : workspaceId,
+              label: claim,
+              scope:
+                label === 'issue-org'
+                  ? { kind: 'org' }
+                  : {
+                      kind: 'user',
+                      userId:
+                        label === 'automation-other' ? initiatorId : ownerId,
+                    },
+            }),
+          })
+          expect(seed.status).toBe(200)
+        }
+        if (label === 'issue-override') {
+          await database!.db
+            .update(schema.issue)
+            .set({
+              permissionsOverride: {
+                full_access: false,
+                allowed_tools: ['post_comment'],
+              },
+            })
+            .where(eq(schema.issue.id, base.originObjectId))
+          const denied = await harness!.fetch('/writeback-origin', {
+            method: 'POST',
+            body: JSON.stringify(base),
+          })
+          expect(await denied.json()).toMatchObject({ ok: false })
+          expect(modelRequests).toHaveLength(0)
+          await database!.db
+            .update(schema.agent)
+            .set({
+              permissions: {
+                full_access: false,
+                allowed_tools: ['post_comment'],
+              },
+            })
+            .where(eq(schema.agent.id, agentId))
+          await database!.db
+            .update(schema.issue)
+            .set({ permissionsOverride: { full_access: true } })
+            .where(eq(schema.issue.id, base.originObjectId))
+        }
+        const response = await harness!.fetch('/writeback-origin', {
+          method: 'POST',
+          body: JSON.stringify(base),
+        })
+        expect(await response.json()).toMatchObject({ ok: true })
+        const toolResults = modelRequests
+          .flatMap((request) => request.messages)
+          .filter((message) => message.role === 'tool')
+          .map(
+            (message) =>
+              JSON.parse(String(message.content)) as Record<string, unknown>,
+          )
+        const duplicate = label === 'issue-org' || label === 'automation-owner'
+        expect(toolResults).toContainEqual(
+          duplicate
+            ? { ok: true, action: 'skipped', reason: 'duplicate' }
+            : kind === 'issue'
+              ? { ok: true, action: 'submitted' }
+              : expect.objectContaining({ ok: true, action: 'proposed' }),
+        )
+        const rows = await database!.db.select().from(schema.brainWriteProposal)
+        expect(rows).toHaveLength(duplicate ? 0 : 1)
+        if (label === 'private-proposal-oracle') {
+          const before = modelRequests.length
+          const repeated = await harness!.fetch('/writeback-origin', {
+            method: 'POST',
+            body: JSON.stringify(base),
+          })
+          expect(await repeated.json()).toMatchObject({ ok: true })
+          const secondResults = modelRequests
+            .slice(before)
+            .flatMap((request) => request.messages)
+            .filter((message) => message.role === 'tool')
+            .map((message) => JSON.parse(String(message.content)))
+          expect(secondResults).toContainEqual({
+            ok: true,
+            action: 'submitted',
+          })
+          expect(JSON.stringify(secondResults)).not.toContain('duplicate')
+          expect(JSON.stringify(secondResults)).not.toContain(rows[0]!.id)
+          expect(
+            await database!.db.select().from(schema.brainWriteProposal),
+          ).toEqual(rows)
+        }
+      }, 90_000)
+    }
+
+    it('rejects mismatched or missing authoritative writeback origins and invalid policies', async () => {
+      const initialReads = brainRequests.length
+      const base = {
+        agentId,
+        claimedAgentId: agentId,
+        runKind: 'issue',
+        runId,
+        originObjectId: issueId,
+        workspaceId,
+        ownerUserId: ownerId,
+      }
+      for (const changes of [
+        { runId: crypto.randomUUID() },
+        { originObjectId: crypto.randomUUID() },
+        { workspaceId: foreignWorkspaceId },
+        { ownerUserId: initiatorId },
+        { claimedAgentId: crypto.randomUUID() },
+        { runKind: 'automation' },
+      ]) {
+        const response = await harness!.fetch('/writeback-origin', {
+          method: 'POST',
+          body: JSON.stringify({ ...base, ...changes }),
+        })
+        expect(response.status).toBe(200)
+        expect(await response.json()).toMatchObject({ ok: false })
+      }
+      for (const permissions of [null, { full_access: 'yes' }]) {
+        await database!.db
+          .update(schema.agent)
+          .set({ permissions })
+          .where(eq(schema.agent.id, agentId))
+        const response = await harness!.fetch('/writeback-origin', {
+          method: 'POST',
+          body: JSON.stringify(base),
+        })
+        expect(await response.json()).toMatchObject({ ok: false })
+      }
+      expect(modelRequests).toHaveLength(0)
+      expect(brainRequests.length).toBe(initialReads)
+      expect(
+        await database!.db.select().from(schema.brainWriteProposal),
+      ).toHaveLength(0)
+    }, 90_000)
+
+    it('rejects issue RPC run and principal substitution without ledger mutations', async () => {
+      const otherIssue = await seedIssue('Other issue')
+      const otherAgent = crypto.randomUUID()
+      await database!.db
+        .update(schema.agent)
+        .set({ hostName: 'original-host' })
+        .where(eq(schema.agent.id, agentId))
+      await database!.db
+        .insert(schema.agent)
+        .values({
+          id: otherAgent,
+          workspaceId,
+          ownerUserId: ownerId,
+          name: 'Other principal',
+          hostName: agentId,
+          permissions: { full_access: true },
+        })
+      const otherRun = crypto.randomUUID()
+      await database!.db
+        .insert(schema.issueRun)
+        .values({
+          id: otherRun,
+          workspaceId,
+          issueId,
+          agentId: otherAgent,
+          hostName: agentId,
+        })
+      const initialReads = brainRequests.length
+      for (const target of [otherIssue.runId, otherRun, crypto.randomUUID()]) {
+        const response = await harness!.fetch('/issue-turn', {
+          method: 'POST',
+          body: JSON.stringify({
+            agentId,
+            issueId,
+            runId: target,
+            mode: 'start',
+            turn: 0,
+            expectCompletion: false,
+          }),
+        })
+        expect(await response.json()).toMatchObject({ ok: false })
+      }
+      const rows = await database!.db.select().from(schema.issueRun)
+      expect(rows.every((row) => row.status === 'queued')).toBe(true)
+      expect(modelRequests).toHaveLength(0)
+      expect(brainRequests.length).toBe(initialReads)
+    }, 90_000)
+
+    for (const kind of ['issue', 'automation'] as const)
+      for (const state of kind === 'automation'
+        ? (['revoked', 'always-denied', 'owner-changed'] as const)
+        : (['revoked', 'always-denied'] as const)) {
+        it(`protects ${state} retained ${kind} history on resume`, async () => {
+          const read = state !== 'always-denied'
+          const nonBrainTools = [
+            'create_work_product',
+            'complete_automation',
+            'ask_question',
+          ]
+          grantScenario = { kind, read, pause: kind === 'issue' }
+          await database!.db
+            .update(schema.agent)
+            .set({
+              permissions: {
+                full_access: false,
+                allowed_tools: [
+                  ...nonBrainTools,
+                  ...(read ? ['brain_search'] : []),
+                ],
+              },
+            })
+            .where(eq(schema.agent.id, agentId))
+          const input =
+            kind === 'issue'
+              ? await seedIssue('G08 resume')
+              : await seedAutomation()
+          expect(
+            (
+              await harness!.fetch(
+                kind === 'issue' ? '/start' : '/automation-start',
+                { method: 'POST', body: JSON.stringify(input) },
+              )
+            ).status,
+          ).toBe(200)
+          const table =
+            kind === 'issue' ? schema.issueRun : schema.automationRun
+          await expect
+            .poll(
+              async () =>
+                (
+                  await database!.db
+                    .select({ status: table.status })
+                    .from(table)
+                    .where(eq(table.id, input.runId))
+                )[0]?.status,
+              { timeout: 60_000 },
+            )
+            .toBe(kind === 'issue' ? 'waiting_for_input' : 'completed')
+          if (kind === 'automation') {
+            await expect
+              .poll(() => JSON.stringify(harness!.getLogs()), {
+                timeout: 60_000,
+              })
+              .toContain('agent_do.brain_write_back.trigger_failed')
+            // The product has no automation wait state. Exercise its actual resume
+            // RPC against a persisted running ledger, without claiming Workflow wait.
+            await database!.db
+              .update(schema.automationRun)
+              .set({ status: 'running', completedAt: null })
+              .where(eq(schema.automationRun.id, input.runId))
+          }
+          if (read)
+            expect(JSON.stringify(modelRequests)).toContain(allowedMarker)
+          else
+            expect(JSON.stringify(modelRequests)).not.toContain(allowedMarker)
+          await database!.db
+            .update(schema.agent)
+            .set(
+              state === 'owner-changed'
+                ? {
+                    ownerUserId: initiatorId,
+                    permissions: { full_access: true },
+                  }
+                : {
+                    permissions: {
+                      full_access: false,
+                      allowed_tools: nonBrainTools,
+                    },
+                  },
+            )
+            .where(eq(schema.agent.id, agentId))
+          grantScenario.pause = false
+          grantScenario.read = false
+          const beforeModel = modelRequests.length
+          const beforeBrain = brainRequests.length
+          const response = await harness!.fetch(
+            kind === 'issue' ? '/resume' : '/automation-turn',
+            {
+              method: 'POST',
+              body: JSON.stringify({
+                ...input,
+                mode: 'resume',
+                turn: 1,
+                expectCompletion: kind === 'issue' && state === 'always-denied',
+              }),
+            },
+          )
+          expect(response.status).toBe(200)
+          if (kind === 'automation' && state !== 'always-denied')
+            expect(await response.json()).toMatchObject({ ok: false })
+          await expect
+            .poll(
+              async () =>
+                (
+                  await database!.db
+                    .select({ status: table.status })
+                    .from(table)
+                    .where(eq(table.id, input.runId))
+                )[0]?.status,
+              { timeout: 60_000 },
+            )
+            .toBe(
+              state !== 'always-denied'
+                ? 'failed'
+                : kind === 'issue'
+                  ? 'succeeded'
+                  : 'completed',
+            )
+          if (state !== 'always-denied')
+            expect(modelRequests.length).toBe(beforeModel)
+          else expect(modelRequests.length).toBeGreaterThan(beforeModel)
+          expect(brainRequests.length).toBe(beforeBrain)
+          expect(
+            await database!.db.select().from(schema.brainWriteProposal),
+          ).toHaveLength(0)
+        }, 90_000)
+      }
+
+    for (const kind of ['issue', 'automation'] as const)
+      for (const phase of ['before-proposal', 'during-dedupe'] as const)
+        for (const confidence of [0.5, 0.9]) {
+          it(`revokes ${kind} writeback ${phase} at confidence ${confidence}`, async () => {
+            grantScenario = {
+              kind,
+              read: true,
+              writebackRevoke: phase,
+              confidence,
+            }
+            const input =
+              kind === 'issue'
+                ? await seedIssue('G08 writeback revoke')
+                : await seedAutomation()
+            expect(
+              (
+                await harness!.fetch(
+                  kind === 'issue' ? '/start' : '/automation-start',
+                  { method: 'POST', body: JSON.stringify(input) },
+                )
+              ).status,
+            ).toBe(200)
+            await expect
+              .poll(() => JSON.stringify(harness!.getLogs()), {
+                timeout: 60_000,
+              })
+              .toMatch(
+                new RegExp(
+                  `agent_do\\.brain_write_back\\.completed[^\n]*${input.runId}`,
+                ),
+              )
+            expect(revokedAtBrainRequest).toBeTypeOf('number')
+            expect(
+              await database!.db.select().from(schema.brainWriteProposal),
+            ).toHaveLength(0)
+            const writebackCalls = modelRequests.filter((request) =>
+              request.tools?.some(
+                (tool) => tool.function.name === 'propose_brain_item',
+              ),
+            )
+            expect(writebackCalls.length).toBeGreaterThan(1)
+            expect(JSON.stringify(writebackCalls)).toContain(
+              phase === 'before-proposal'
+                ? 'No active run context.'
+                : 'Brain write is not permitted.',
+            )
+            if (phase === 'during-dedupe')
+              expect(dedupeRevocationRequest).toContain('G08 durable')
+            const snapshot = await harness!.fetch('/snapshot', {
+              method: 'POST',
+              body: JSON.stringify({ workspaceId }),
+            })
+            expect(await snapshot.text()).not.toContain('G08 durable')
+          }, 90_000)
+        }
 
     it('keeps owner/initiator private, foreign and team memory out of a real shared work product', async () => {
       const response = await harness!.fetch('/start', {
@@ -687,13 +1569,14 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       })
       expect(neighborhood.status, await neighborhood.clone().text()).toBe(200)
       expect(await neighborhood.text()).toContain(deniedMarkers[0])
+      const automationOrigin = await seedAutomation()
       const writebackStart = modelRequests.length
       const writeback = await harness!.fetch('/writeback', {
         method: 'POST',
         body: JSON.stringify({
           workspaceId,
           agentId,
-          runId: crypto.randomUUID(),
+          runId: automationOrigin.runId,
           ownerUserId: ownerId,
         }),
       })

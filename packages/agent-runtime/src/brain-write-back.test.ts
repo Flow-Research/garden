@@ -350,20 +350,18 @@ describe('writeback originating grant boundaries', () => {
     },
   )
   it('shared user-scoped claims keep attribution without owner-private dedupe', async () => {
-    const values = vi
-      .fn()
-      .mockReturnValue({
-        onConflictDoNothing: () => ({
-          returning: async () => [{ id: 'proposal' }],
-        }),
-      })
+    const values = vi.fn().mockReturnValue({
+      onConflictDoNothing: () => ({
+        returning: async () => [{ id: 'proposal' }],
+      }),
+    })
     mockGetPooledDb.mockReturnValue({ insert: () => ({ values }) })
     expect(
       await execute(makeTools(() => context).propose_brain_item, {
         ...candidate,
         scope: 'user',
       }),
-    ).toEqual({ ok: true, action: 'proposed', reason: 'user_scope' })
+    ).toEqual({ ok: true, action: 'submitted' })
     expect(mockSearch.mock.calls[0]![0].viewer).toBeUndefined()
     expect(values.mock.calls[0]![0].scope).toEqual({
       kind: 'user',

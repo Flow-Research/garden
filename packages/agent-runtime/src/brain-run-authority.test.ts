@@ -115,7 +115,7 @@ describe('durable Brain history provenance', () => {
       (
         await ensureBrainRunHistory({
           identity,
-          permissions: denied,
+          permissions: allowed,
           marker,
           persist,
           readDurableHistory: async () => ['retained'],

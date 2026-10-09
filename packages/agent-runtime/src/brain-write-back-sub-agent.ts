@@ -122,6 +122,14 @@ export class BrainWriteBackSubAgent extends Think<AgentRuntimeEnv> {
       'add_to_brain',
     )
     if (authority.isErr()) throw authority.error
+    // The summary can contain retrieved Brain content and proposals perform a
+    // dedupe read. Both grants must remain valid before another model sees it.
+    const readAuthority = await authorizeBrainRunTool(
+      this.env.HYPERDRIVE.connectionString,
+      config.origin,
+      'brain_search',
+    )
+    if (readAuthority.isErr()) throw readAuthority.error
     return Effect.runPromise(
       Effect.suspend(() => {
         const config = this.getConfig<BrainWriteBackConfig>()
