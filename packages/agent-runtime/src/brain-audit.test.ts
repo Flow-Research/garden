@@ -1,3 +1,4 @@
+import { Kind } from '@garden/brain/domain'
 import { DateTime, Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 import type { BrainToolOperations } from './agent-tools/brain'
@@ -44,6 +45,18 @@ describe('brain audit prompt and tools', () => {
 
   it('wires exactly the five authorized brain tools to item-scoped context', () => {
     const brain: BrainToolOperations = {
+      read: (id, tenantId) =>
+        Effect.succeed({
+          id,
+          tenantId,
+          kind: Kind.make('note'),
+          label: 'Authorized fixture',
+          indexed: true,
+          origin: {
+            actor: { _tag: 'Human', userId: 'user-1' },
+            at: DateTime.makeUnsafe(new Date('2026-01-01T00:00:00Z')),
+          },
+        }),
       ensureIndexes: () => Effect.void,
       search: () => Effect.succeed([]),
       addText: () => Effect.die('unused addText'),

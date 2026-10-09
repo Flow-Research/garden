@@ -1,3 +1,4 @@
+import { resolveBrainRuntimeAgentId } from './brain-run-authority'
 // ─────────────────────────────────────────────────────────────────────────────
 // Per-agent Durable Object + multi-agent data-driven personas
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,7 +45,7 @@ import { createWorkspaceTools } from '@cloudflare/think/tools/workspace'
 import { Workspace } from '@cloudflare/shell'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { getPooledDb } from '@garden/db/runtime'
-import { and, asc, eq, or, type SQL } from 'drizzle-orm'
+import { and, asc, eq, or } from 'drizzle-orm'
 import { Result, TaggedError } from 'better-result'
 import { Effect, Layer, ManagedRuntime, Option, Schema, Stream } from 'effect'
 import { connectorRegistry } from '@garden/connectors'
@@ -393,8 +394,6 @@ const agentRuntimeLogger = createGardenLogger({
   service: 'garden-staging',
   component: 'agent-do',
 })
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const documentArtifactEventJson = Schema.fromJsonString(DocumentArtifactEvent)
 const documentArtifactEventEncoder = new TextEncoder()
 
@@ -826,6 +825,22 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return true
   }
 
+  /** Reads provenance from the real origin facet; callers cannot clear its grants. */
+  async validateBrainWriteBackOrigin(
+    input: Pick<BrainWriteBackRunInput, 'runKind' | 'runId' | 'originObjectId'>,
+  ): Promise<void> {
+    if (input.runKind === 'issue') {
+      const origin = await this.subAgent(IssueRunSubAgent, input.originObjectId)
+      await origin.validateBrainSummaryAccess(input.runId)
+    } else {
+      const origin = await this.subAgent(
+        AutomationRunSubAgent,
+        input.originObjectId,
+      )
+      await origin.validateBrainSummaryAccess(input.runId)
+    }
+  }
+
   async startBrainWriteBack(
     input: Omit<BrainWriteBackRunInput, 'agentId'>,
   ): Promise<{ ok: true; status: 'completed' }> {
@@ -971,6 +986,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
                 runId: input.runId,
                 workspaceId,
                 runKind: 'issue',
+                originObjectId: input.issueId,
                 ownerUserId: result.ownerUserId,
                 summary: bounded,
               }),
@@ -1045,6 +1061,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
                 runId: input.runId,
                 workspaceId,
                 runKind: 'automation',
+                originObjectId: input.runId,
                 ownerUserId: result.ownerUserId,
                 summary: bounded,
               }),
@@ -1109,32 +1126,16 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return getPooledDb(this.env.HYPERDRIVE.connectionString)
   }
 
-  private agentRuntimeWhere(): SQL {
-    if (!UUID_PATTERN.test(this.name)) {
-      return eq(schema.agent.hostName, this.name)
-    }
-
-    const condition = or(
-      eq(schema.agent.id, this.name),
-      eq(schema.agent.hostName, this.name),
-    )
-    return condition ?? eq(schema.agent.hostName, this.name)
-  }
-
   private async resolveRuntimeAgentId() {
     if (this.runtimeAgentIdValue) return this.runtimeAgentIdValue
 
-    const [row] = await this.getDb()
-      .select({ id: schema.agent.id })
-      .from(schema.agent)
-      .where(this.agentRuntimeWhere())
-      .limit(1)
-
-    if (row) {
-      this.runtimeAgentIdValue = row.id
-    }
-
-    return this.runtimeAgentIdValue ?? this.name
+    const resolved = await resolveBrainRuntimeAgentId(
+      this.env.HYPERDRIVE.connectionString,
+      this.name,
+    )
+    if (resolved.isErr()) throw resolved.error
+    this.runtimeAgentIdValue = resolved.value
+    return resolved.value
   }
 
   private async syncAgentIdentityState() {
@@ -1154,7 +1155,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
         status: schema.agent.status,
       })
       .from(schema.agent)
-      .where(this.agentRuntimeWhere())
+      .where(eq(schema.agent.id, await this.resolveRuntimeAgentId()))
       .limit(1)
 
     if (!row) return
@@ -1334,7 +1335,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     const [row] = await this.getDb()
       .select({ workspaceId: schema.agent.workspaceId })
       .from(schema.agent)
-      .where(this.agentRuntimeWhere())
+      .where(eq(schema.agent.id, await this.resolveRuntimeAgentId()))
       .limit(1)
 
     if (row?.workspaceId === workspaceId) return
