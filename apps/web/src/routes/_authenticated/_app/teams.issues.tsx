@@ -27,7 +27,7 @@ function TeamsIssuesRoute() {
         </div>
       }
     >
-      <TeamWorkPage mode="issues" />
+      <TeamWorkPage />
     </Suspense>
   )
 }

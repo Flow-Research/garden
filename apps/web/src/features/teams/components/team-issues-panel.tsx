@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import type { Issue, IssueStatus } from '@garden/core/types'
@@ -17,27 +17,24 @@ const STATUSES = BOARD_STATUSES
 
 /**
  * Shared Team issue surface: the existing workspace list/board views over a
- * Team-filtered issue set. The Team detail tab toolbar owns search and filter
- * state (matching the design's single control row); this panel applies the
- * shared `teamIssueViewStore` filters plus the search query. The Teams Issues
- * tab renders the design list (no selection, team/project/description chips);
- * the Tasks tab renders the board.
+ * Team-filtered issue set. The toolbar owns search, filter, and the list/board
+ * toggle (matching the design's single control row); this panel applies the
+ * shared `teamIssueViewStore` filters plus the search query and renders the
+ * store's current viewMode — the old per-tab `initialView` forcing is gone
+ * because there is a single Issues view the user flips in place.
  */
 export function TeamIssuesPanel({
   issues,
-  initialView,
   searchQuery,
   teamChips,
   onCreateIssue,
 }: {
   issues: Issue[]
-  initialView: 'list' | 'board'
   searchQuery: string
   teamChips?: Map<string, { name: string; color: string }>
   onCreateIssue: (data?: Record<string, unknown> | null) => void
 }) {
   const wsId = useWorkspaceId()
-  const [viewReady, setViewReady] = useState(false)
   const deferredSearch = useDeferredValue(searchQuery.trim())
   const { data: projectList = [] } = useQuery(projectListOptions(wsId))
   const projects = useMemo(
@@ -53,6 +50,7 @@ export function TeamIssuesPanel({
       ),
     [projectList],
   )
+  const viewMode = useViewStore((s) => s.viewMode)
   const statusFilters = useViewStore((s) => s.statusFilters)
   const priorityFilters = useViewStore((s) => s.priorityFilters)
   const assigneeFilters = useViewStore((s) => s.assigneeFilters)
@@ -61,13 +59,6 @@ export function TeamIssuesPanel({
   const projectFilters = useViewStore((s) => s.projectFilters)
   const includeNoProject = useViewStore((s) => s.includeNoProject)
   const updateIssueMutation = useUpdateIssue()
-
-  // The tab owns the view mode; force it on first render like the pre-refactor
-  // panel did so a persisted board/list preference cannot leak across tabs.
-  if (!viewReady) {
-    teamIssueViewStore.setState({ viewMode: initialView })
-    setViewReady(true)
-  }
 
   const filteredIssues = useMemo(() => {
     const visible = filterIssues(issues, {
@@ -133,7 +124,7 @@ export function TeamIssuesPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {initialView === 'board' ? (
+      {viewMode === 'board' ? (
         <BoardView
           allIssues={filteredIssues}
           doneTotal={doneTotal}

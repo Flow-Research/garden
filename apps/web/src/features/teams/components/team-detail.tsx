@@ -7,7 +7,6 @@ import { ViewStoreProvider } from '@garden/app-state/issues/stores/view-store-co
 import type { TeamMember } from '@garden/core/types'
 import {
   Funnel,
-  ListChecks,
   MoreHorizontal,
   Trash2,
   TriangleAlert,
@@ -60,7 +59,7 @@ import {
 } from './team-tab-toolbar'
 import { teamColor } from './team-tokens'
 
-export type TeamTab = 'members' | 'issues' | 'tasks'
+export type TeamTab = 'members' | 'issues'
 
 type MemberRoleFilter = 'all' | 'Owner' | 'Admin' | 'Member' | 'Agent'
 
@@ -71,7 +70,6 @@ const TAB_ITEMS: readonly {
 }[] = [
   { value: 'members', label: 'Members', icon: Users },
   { value: 'issues', label: 'Issues', icon: TriangleAlert },
-  { value: 'tasks', label: 'Tasks', icon: ListChecks },
 ]
 
 /** Members toolbar: identity search plus a role/type filter. */
@@ -128,7 +126,7 @@ function MembersToolbar({
   )
 }
 
-/** Status summary cards for the Issues/Tasks tabs (Backlog maps to Todo). */
+/** Status summary cards for the Issues tab (Backlog maps to Todo). */
 function StatusCards({
   counts,
 }: {
@@ -156,12 +154,13 @@ function StatusCards({
 }
 
 /**
- * Team detail with Members / Issues / Tasks tabs, matched to the Penpot admin
- * design: header with Add a team member / owner display / ⋯ actions, a
- * hairline divider, pill tabs whose row also carries the per-tab search and
- * filter controls, then the tab content. Controls render from the
- * server-computed `can_manage` / `can_transfer_owner` flags; the API remains
- * the authorization boundary.
+ * Team detail with Members / Issues tabs, matched to the Penpot admin design:
+ * header with Add a team member / owner display / ⋯ actions, a hairline
+ * divider, pill tabs whose row also carries the per-tab search and filter
+ * controls, then the tab content. The Issues tab is a single view — the
+ * toolbar's toggle flips it between list and kanban (the old Tasks tab is
+ * gone). Controls render from the server-computed `can_manage` /
+ * `can_transfer_owner` flags; the API remains the authorization boundary.
  */
 export function TeamDetail({
   teamId,
@@ -399,23 +398,6 @@ export function TeamDetail({
                 <div className="flex flex-col gap-8">
                   <StatusCards counts={statusCounts} />
                   <TeamIssuesPanel
-                    initialView="list"
-                    issues={issues}
-                    onCreateIssue={openCreateIssue}
-                    searchQuery={issueSearch}
-                    teamChips={teamChips}
-                  />
-                </div>
-              </TabsContent>
-
-              <TabsContent
-                className="mt-8 flex min-h-0 flex-1 flex-col"
-                value="tasks"
-              >
-                <div className="flex flex-col gap-8">
-                  <StatusCards counts={statusCounts} />
-                  <TeamIssuesPanel
-                    initialView="board"
                     issues={issues}
                     onCreateIssue={openCreateIssue}
                     searchQuery={issueSearch}

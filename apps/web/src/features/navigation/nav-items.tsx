@@ -43,13 +43,12 @@ export const NAV_ITEMS: NavItem[] = [
 ]
 
 /**
- * Admin-only Teams dropdown children (Penpot Teams_Main `Items`): the
- * cross-team Issues list and Tasks board. Members keep the flat Teams item and
- * reach their work through the Team detail tabs.
+ * Admin-only Teams dropdown child (Penpot Teams_Main `Items`): the cross-team
+ * Issues surface, which toggles between list and board in place. Members keep
+ * the flat Teams item and reach their work through the member Teams view.
  */
 export const TEAM_NAV_CHILDREN: NavItem[] = [
   { id: 'teams-issues', label: 'Issues', to: '/teams/issues', icon: Warning },
-  { id: 'teams-tasks', label: 'Tasks', to: '/teams/tasks', icon: ListChecks },
 ]
 
 /** Resolves the nav child that owns a pathname (exact route-base match). */

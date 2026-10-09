@@ -15,11 +15,7 @@ import { prefetchActiveWorkspace } from '@/lib/navigation/prefetch'
 export const Route = createFileRoute('/_authenticated/_app/teams/$teamId')({
   validateSearch: (search) => {
     const out: { tab?: TeamTab } = {}
-    if (
-      search.tab === 'members' ||
-      search.tab === 'issues' ||
-      search.tab === 'tasks'
-    ) {
+    if (search.tab === 'members' || search.tab === 'issues') {
       out.tab = search.tab
     }
     return out

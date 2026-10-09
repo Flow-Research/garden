@@ -5,7 +5,7 @@ import { useWorkspaceId } from '@garden/app-state/hooks'
 import { useAuthStore } from '@garden/app-state/auth'
 import { ViewStoreProvider } from '@garden/app-state/issues/stores/view-store-context'
 import type { TeamSummary } from '@garden/core/types'
-import { ChevronDown, ListChecks, TriangleAlert, Users } from 'lucide-react'
+import { ChevronDown, Users } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
 import {
   DropdownMenu,
@@ -14,33 +14,12 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@garden/ui/components/ui/dropdown-menu'
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@garden/ui/components/ui/tabs'
 import { CreateIssueModal } from '@/features/modals/create-issue'
 import { teamIssueListOptions, teamListOptions } from '../queries'
 import { teamIssueViewStore } from '../view-store'
 import { TeamIssuesPanel } from './team-issues-panel'
-import {
-  IssuesToolbar,
-  TEAM_TAB_TRIGGER_CLASS,
-  TEAM_TABS_LIST_CLASS,
-} from './team-tab-toolbar'
+import { IssuesToolbar } from './team-tab-toolbar'
 import { teamColor } from './team-tokens'
-
-export type TeamMemberTab = 'issues' | 'tasks'
-
-const TAB_ITEMS: readonly {
-  value: TeamMemberTab
-  label: string
-  icon: typeof Users
-}[] = [
-  { value: 'issues', label: 'Issues', icon: TriangleAlert },
-  { value: 'tasks', label: 'Tasks', icon: ListChecks },
-]
 
 /** Member's Team selector: the design's "Member: [dot] {Team} ▾" dropdown. */
 function TeamSelector({
@@ -90,35 +69,34 @@ function TeamSelector({
 
 /**
  * The design's member empty state: a gray rounded panel with the title and
- * copy for the active tab. (The Penpot frames also overlay admin leftovers —
- * Roles/Guests tabs and a "Create a Department" CTA — which are ignored.)
+ * copy for the single Issues view. (The Penpot frames also overlay admin
+ * leftovers — Roles/Guests tabs and a "Create a Department" CTA — which are
+ * ignored.)
  */
-function MemberEmptyState({ tab }: { tab: TeamMemberTab }) {
-  const isIssues = tab === 'issues'
+function MemberEmptyState() {
   return (
     <div className="flex min-h-[431px] w-full flex-col items-center justify-center gap-2 rounded-xl bg-background-main-secondary px-6 text-center">
-      <p className="text-base font-medium">{isIssues ? 'No Issues' : 'No Tasks'}</p>
+      <p className="text-base font-medium">No Issues</p>
       <p className="text-sm text-text-secondary">
-        {isIssues
-          ? "You don't have any issues yet. Once issues are assigned to you, it'll be recorded here."
-          : "You don't have any tasks yet. Once tasks are assigned to members in Teams, you'll see them here."}
+        You don&apos;t have any issues yet. Once issues are assigned to you,
+        it&apos;ll be recorded here.
       </p>
     </div>
   )
 }
 
-/** Member's Team work surface: selector, description, Issues/Tasks tabs. */
+/**
+ * Member's Team work surface: selector, description, and a single Issues view
+ * whose toolbar carries the list/board toggle on the side (replacing the old
+ * Issues/Tasks pill tabs).
+ */
 function TeamMemberWork({
   onSelectTeam,
-  onTabChange,
   selected,
-  tab,
   teams,
 }: {
   onSelectTeam: (teamId: string) => void
-  onTabChange: (tab: TeamMemberTab) => void
   selected: TeamSummary
-  tab: TeamMemberTab
   teams: TeamSummary[]
 }) {
   const wsId = useWorkspaceId()
@@ -171,24 +149,8 @@ function TeamMemberWork({
           </div>
 
           <ViewStoreProvider store={teamIssueViewStore}>
-            <Tabs
-              className="mt-8 flex min-h-0 flex-1 flex-col gap-0"
-              onValueChange={(value) => onTabChange(value as TeamMemberTab)}
-              value={tab}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <TabsList className={TEAM_TABS_LIST_CLASS}>
-                  {TAB_ITEMS.map((item) => (
-                    <TabsTrigger
-                      className={TEAM_TAB_TRIGGER_CLASS}
-                      key={item.value}
-                      value={item.value}
-                    >
-                      <item.icon className="size-4" />
-                      {item.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
+            <div className="mt-8 flex min-h-0 flex-1 flex-col gap-0">
+              <div className="flex flex-wrap items-center justify-end gap-3">
                 <IssuesToolbar
                   issues={issues}
                   onCreateIssue={openCreateIssue}
@@ -197,40 +159,19 @@ function TeamMemberWork({
                 />
               </div>
 
-              <TabsContent
-                className="mt-8 flex min-h-0 flex-1 flex-col"
-                value="issues"
-              >
+              <div className="mt-8 flex min-h-0 flex-1 flex-col">
                 {issues.length === 0 ? (
-                  <MemberEmptyState tab="issues" />
+                  <MemberEmptyState />
                 ) : (
                   <TeamIssuesPanel
-                    initialView="list"
                     issues={issues}
                     onCreateIssue={openCreateIssue}
                     searchQuery={issueSearch}
                     teamChips={teamChips}
                   />
                 )}
-              </TabsContent>
-
-              <TabsContent
-                className="mt-8 flex min-h-0 flex-1 flex-col"
-                value="tasks"
-              >
-                {issues.length === 0 ? (
-                  <MemberEmptyState tab="tasks" />
-                ) : (
-                  <TeamIssuesPanel
-                    initialView="board"
-                    issues={issues}
-                    onCreateIssue={openCreateIssue}
-                    searchQuery={issueSearch}
-                    teamChips={teamChips}
-                  />
-                )}
-              </TabsContent>
-            </Tabs>
+              </div>
+            </div>
           </ViewStoreProvider>
         </div>
       </div>
@@ -273,9 +214,10 @@ function NoTeamsState() {
 
 /**
  * Member-facing Teams surface (Penpot "Team Member (Member)"): a single page
- * with the Team selector, the selected Team's description, and Issues/Tasks
- * tabs scoped to that Team. The server already limits members to issues
- * assigned to them. Replaces the admin overview grid for non-managers.
+ * with the Team selector, the selected Team's description, and one Issues view
+ * (list/board toggle in the toolbar) scoped to that Team. The server already
+ * limits members to issues assigned to them. Replaces the admin overview grid
+ * for non-managers.
  */
 export function TeamMemberView() {
   const wsId = useWorkspaceId()
@@ -287,32 +229,16 @@ export function TeamMemberView() {
     teams.find((team) => team.id === search.team) ?? teams[0] ?? null
   if (!selected) return <NoTeamsState />
 
-  const tab: TeamMemberTab = search.tab === 'tasks' ? 'tasks' : 'issues'
-
   return (
     <TeamMemberWork
       onSelectTeam={(teamId) =>
         void navigate({
           to: '/teams',
-          search: {
-            team: teamId,
-            tab: tab === 'tasks' ? 'tasks' : undefined,
-          },
-          replace: true,
-        })
-      }
-      onTabChange={(next) =>
-        void navigate({
-          to: '/teams',
-          search: {
-            team: selected.id,
-            tab: next === 'tasks' ? 'tasks' : undefined,
-          },
+          search: { team: teamId },
           replace: true,
         })
       }
       selected={selected}
-      tab={tab}
       teams={teams}
     />
   )

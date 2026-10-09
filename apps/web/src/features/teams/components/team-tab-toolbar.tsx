@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Database, Funnel, Plus, Search } from 'lucide-react'
+import { Columns3, Database, Funnel, List, Plus, Search } from 'lucide-react'
 import type { Issue } from '@garden/core/types'
 import {
   useViewStore,
@@ -72,9 +72,40 @@ export function ExportDataButton() {
 }
 
 /**
- * Issues/Tasks toolbar shared by the Team detail tabs and the member Teams
- * view. Lives inside the shared `teamIssueViewStore` provider so its Filter
- * popover and the panel below read the same view state.
+ * List/board toggle for the Team issues surfaces. Replaces the old
+ * Issues/Tasks pill split: there is one Issues view now and this button flips
+ * it between the list and the kanban board. Reads/writes the surrounding
+ * view-store provider so the toggle, the toolbar filters, and the panel below
+ * stay on the same state. Mirrors the icon-button toggle in the workspace
+ * Issues header.
+ */
+export function ViewModeToggle() {
+  const viewMode = useViewStore((s) => s.viewMode)
+  const actions = useViewStoreApi().getState()
+  return (
+    <Button
+      aria-label={
+        viewMode === 'board' ? 'Switch to list view' : 'Switch to board view'
+      }
+      className={TOOLBAR_BUTTON_CLASS}
+      onClick={() =>
+        actions.setViewMode(viewMode === 'board' ? 'list' : 'board')
+      }
+      variant="outline"
+    >
+      {viewMode === 'board' ? (
+        <List className="size-4" />
+      ) : (
+        <Columns3 className="size-4" />
+      )}
+    </Button>
+  )
+}
+
+/**
+ * Issues toolbar shared by the Team detail tab and the member Teams view.
+ * Lives inside the shared `teamIssueViewStore` provider so its Filter
+ * popover, the view toggle, and the panel below read the same view state.
  */
 export function IssuesToolbar({
   issues,
@@ -148,6 +179,7 @@ export function IssuesToolbar({
         </PopoverContent>
       </Popover>
       <ExportDataButton />
+      <ViewModeToggle />
       <Button className="h-8 gap-2 rounded-md px-3" onClick={onCreateIssue}>
         <Plus className="size-4" />
         New Issue

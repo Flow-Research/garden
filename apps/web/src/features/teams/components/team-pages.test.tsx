@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { TeamOverview } from './team-overview'
 import { TeamDetail } from './team-detail'
 import { TeamWorkPage } from './team-work-page'
+import { teamIssueViewStore } from '../view-store'
 import { AppSidebar } from '@garden/ui/components/shell/app-sidebar'
 import {
   AddTeamMemberDialog,
@@ -207,6 +208,9 @@ describe('teams UI', () => {
     apiMocks.listIssues.mockResolvedValue({ issues: [], total: 0 })
     apiMocks.listProjects.mockResolvedValue({ projects: [] })
     apiMocks.listTeamMembers.mockResolvedValue({ members: [], total: 0 })
+    // The team issues view store is module-level and persisted; pin the view
+    // mode so list/board assertions are deterministic across tests.
+    teamIssueViewStore.setState({ viewMode: 'list' })
   })
 
   it('walks a manager through Team creation and submits the form', async () => {
@@ -267,7 +271,8 @@ describe('teams UI', () => {
 
     renderWithQuery(<TeamOverview />)
 
-    // Member view: team selector + Issues/Tasks tabs only.
+    // Member view: team selector + a single Issues view whose toolbar carries
+    // the list/board toggle (no Issues/Tasks pill tabs).
     expect(await screen.findByText('Member:')).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: 'Engineering' }),
@@ -275,15 +280,54 @@ describe('teams UI', () => {
     expect(
       screen.getByRole('button', { name: /Engineering/ }),
     ).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Issues' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Tasks' })).toBeInTheDocument()
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
     expect(
-      screen.queryByRole('tab', { name: 'Members' }),
-    ).not.toBeInTheDocument()
+      screen.getByRole('button', { name: 'Switch to board view' }),
+    ).toBeInTheDocument()
     expect(screen.queryByText('Create a Team')).not.toBeInTheDocument()
     expect(screen.queryByText('Manage Teams')).not.toBeInTheDocument()
     expect(screen.queryByText('Total Teams')).not.toBeInTheDocument()
     expect(await screen.findByText('No Issues')).toBeInTheDocument()
+  })
+
+  it('toggles the member view between list and board', async () => {
+    apiMocks.listTeams.mockResolvedValue({
+      teams: [makeTeam({ can_manage: false, can_transfer_owner: false })],
+      total: 1,
+    })
+    apiMocks.listMembers.mockResolvedValue([
+      {
+        id: 'm-2',
+        workspace_id: 'ws-1',
+        user_id: 'user-1',
+        role: 'member',
+        name: 'Owner',
+        email: 'owner@test.com',
+        avatar_url: null,
+      },
+    ])
+    apiMocks.listIssues.mockResolvedValue({
+      issues: [{ id: 'issue-1', team_id: 'team-1', status: 'todo' }],
+      total: 1,
+    })
+
+    renderWithQuery(<TeamOverview />)
+
+    expect(await screen.findByTestId('team-list')).toHaveTextContent(
+      'issue-1',
+    )
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Switch to board view' }),
+    )
+    expect(await screen.findByTestId('team-board')).toHaveTextContent(
+      'issue-1',
+    )
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Switch to list view' }),
+    )
+    expect(await screen.findByTestId('team-list')).toHaveTextContent(
+      'issue-1',
+    )
   })
 
   it('switches the member view Team from the selector', async () => {
@@ -316,7 +360,7 @@ describe('teams UI', () => {
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith({
         to: '/teams',
-        search: { team: 'team-2', tab: undefined },
+        search: { team: 'team-2' },
         replace: true,
       })
     })
@@ -505,7 +549,7 @@ describe('teams UI', () => {
     ).toBeInTheDocument()
   })
 
-  it('renders the Teams dropdown children and toggles them', () => {
+  it('renders the Teams dropdown child and toggles it', () => {
     const onSelect = vi.fn()
     const onToggleExpand = vi.fn()
     render(
@@ -526,13 +570,6 @@ describe('teams UI', () => {
                   <span className={className} />
                 ),
               },
-              {
-                id: 'teams-tasks',
-                label: 'Tasks',
-                icon: ({ className }: { className?: string }) => (
-                  <span className={className} />
-                ),
-              },
             ],
           },
         ]}
@@ -547,7 +584,7 @@ describe('teams UI', () => {
     )
 
     expect(screen.getByText('Issues')).toBeInTheDocument()
-    expect(screen.getByText('Tasks')).toBeInTheDocument()
+    expect(screen.queryByText('Tasks')).not.toBeInTheDocument()
     fireEvent.click(screen.getByText('Issues'))
     expect(onSelect).toHaveBeenCalledWith('teams-issues')
     fireEvent.click(screen.getByRole('button', { name: 'Collapse Teams' }))
@@ -571,13 +608,14 @@ describe('teams UI', () => {
       total: 3,
     })
 
-    renderWithQuery(<TeamWorkPage mode="tasks" />)
+    teamIssueViewStore.setState({ viewMode: 'board' })
+    renderWithQuery(<TeamWorkPage />)
 
-    expect(await screen.findByText('Total Tasks')).toBeInTheDocument()
+    expect(await screen.findByText('Todo')).toBeInTheDocument()
     expect(screen.getByText('Engineering')).toBeInTheDocument()
     expect(screen.getByText('Finance')).toBeInTheDocument()
 
-    // All view: every team-scoped task, unscoped ones excluded.
+    // All view: every team-scoped issue, unscoped ones excluded.
     const board = await screen.findByTestId('team-board')
     expect(board).toHaveTextContent('issue-1')
     expect(board).toHaveTextContent('issue-2')
@@ -607,7 +645,7 @@ describe('teams UI', () => {
       total: 1,
     })
 
-    renderWithQuery(<TeamWorkPage mode="issues" />)
+    renderWithQuery(<TeamWorkPage />)
 
     expect(await screen.findByTestId('team-list')).toHaveAttribute(
       'data-variant',
@@ -626,7 +664,7 @@ describe('teams UI', () => {
     })
     apiMocks.listIssues.mockResolvedValue({ issues: [], total: 0 })
 
-    renderWithQuery(<TeamWorkPage mode="tasks" />)
+    renderWithQuery(<TeamWorkPage />)
 
     fireEvent.click(await screen.findByRole('button', { name: /New Issue/ }))
     expect(
@@ -657,7 +695,7 @@ describe('teams UI', () => {
     apiMocks.listTeams.mockResolvedValue({ teams: [], total: 0 })
     apiMocks.listIssues.mockResolvedValue({ issues: [], total: 0 })
 
-    renderWithQuery(<TeamWorkPage mode="issues" />)
+    renderWithQuery(<TeamWorkPage />)
 
     const redirect = await screen.findByTestId('navigate')
     expect(redirect).toHaveAttribute('data-to', '/teams')

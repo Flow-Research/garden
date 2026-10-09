@@ -3,8 +3,11 @@ import { Link, Navigate } from '@tanstack/react-router'
 import { useQuery, useSuspenseQueries } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { useAuthStore } from '@garden/app-state/auth'
-import { ViewStoreProvider } from '@garden/app-state/issues/stores/view-store-context'
-import type { IssueStatus } from '@garden/core/types'
+import {
+  useViewStore,
+  ViewStoreProvider,
+} from '@garden/app-state/issues/stores/view-store-context'
+import type { Issue, IssueStatus } from '@garden/core/types'
 import { BOARD_STATUSES } from '@garden/core/issues/config'
 import {
   Empty,
@@ -26,17 +29,17 @@ import { allTeamIssuesOptions, teamListOptions } from '../queries'
 import { teamIssueViewStore } from '../view-store'
 import { StatusIcon } from '@/features/issues/components/status-icon'
 import { TeamSummaryCard } from './team-summary-card'
+import { ViewModeToggle } from './team-tab-toolbar'
 import { hashColor, teamColor } from './team-tokens'
 
-type TeamWorkMode = 'issues' | 'tasks'
-
 /**
- * Admin-only cross-team work surface backing the sidebar Teams dropdown:
- * Teams › Issues renders the design's grouped Team list, Teams › Tasks the
- * kanban board. The page defaults to the All view (every team-scoped issue)
- * and the Team pills toggle single-Team filters.
+ * Admin-only cross-team work surface backing the sidebar Teams dropdown
+ * (Teams › Issues). A single Issues view: the toggle beside the Team pills
+ * flips between the design's grouped Team list and the kanban board. The page
+ * defaults to the All view (every team-scoped issue) and the Team pills toggle
+ * single-Team filters.
  */
-export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
+export function TeamWorkPage() {
   const wsId = useWorkspaceId()
   const currentUserId = useAuthStore((s) => s.user?.id ?? '')
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
@@ -45,7 +48,6 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
     string,
     unknown
   > | null>(null)
-  const [viewReady, setViewReady] = useState(false)
   const updateIssueMutation = useUpdateIssue()
 
   const { data: members } = useQuery(memberListOptions(wsId))
@@ -111,7 +113,7 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
       else if (issue.status === 'in_progress') inProgress += 1
       else if (issue.status === 'done') done += 1
     }
-    return { todo, inProgress, done, total: allIssues.length }
+    return { todo, inProgress, done }
   }, [allIssues])
 
   const doneTotal = useMemo(
@@ -151,13 +153,6 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
     [updateIssueMutation],
   )
 
-  // The shared team view store is persisted; force the mode this page owns on
-  // first render (the same pattern the Team detail tabs use).
-  if (!viewReady) {
-    teamIssueViewStore.setState({ viewMode: mode === 'tasks' ? 'board' : 'list' })
-    setViewReady(true)
-  }
-
   if (!members) {
     return (
       <div className="flex-1 p-6 text-sm text-text-secondary">Loading…</div>
@@ -167,8 +162,6 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
     return <Navigate to="/teams" replace />
   }
 
-  const isIssues = mode === 'issues'
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader className="gap-1.5">
@@ -176,9 +169,7 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
           Teams
         </Link>
         <span className="text-sm text-text-tertiary">/</span>
-        <span className="text-sm font-medium text-text-default">
-          {isIssues ? 'Issues' : 'Tasks'}
-        </span>
+        <span className="text-sm font-medium text-text-default">Issues</span>
         {teams.length > 0 ? (
           <Button
             className="ml-auto h-8 gap-2 rounded-md px-3"
@@ -193,39 +184,21 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex min-h-full w-full max-w-[80rem] flex-col gap-5 px-6 py-5">
           <div className="flex gap-4">
-            {isIssues ? (
-              <>
-                <TeamSummaryCard
-                  icon={<StatusIcon status="todo" className="size-4.5" />}
-                  label="Todo"
-                  value={counts.todo}
-                />
-                <TeamSummaryCard
-                  icon={<StatusIcon status="in_progress" className="size-4.5" />}
-                  label="In Progress"
-                  value={counts.inProgress}
-                />
-                <TeamSummaryCard
-                  icon={<StatusIcon status="done" className="size-4.5" />}
-                  label="Done"
-                  value={counts.done}
-                />
-              </>
-            ) : (
-              <>
-                <TeamSummaryCard label="Total Tasks" value={counts.total} />
-                <TeamSummaryCard
-                  icon={<StatusIcon status="in_progress" className="size-4.5" />}
-                  label="In Progress"
-                  value={counts.inProgress}
-                />
-                <TeamSummaryCard
-                  icon={<StatusIcon status="done" className="size-4.5" />}
-                  label="Done"
-                  value={counts.done}
-                />
-              </>
-            )}
+            <TeamSummaryCard
+              icon={<StatusIcon status="todo" className="size-4.5" />}
+              label="Todo"
+              value={counts.todo}
+            />
+            <TeamSummaryCard
+              icon={<StatusIcon status="in_progress" className="size-4.5" />}
+              label="In Progress"
+              value={counts.inProgress}
+            />
+            <TeamSummaryCard
+              icon={<StatusIcon status="done" className="size-4.5" />}
+              label="Done"
+              value={counts.done}
+            />
           </div>
 
           {teams.length === 0 ? (
@@ -233,72 +206,57 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
               <EmptyHeader>
                 <EmptyTitle>No Teams yet</EmptyTitle>
                 <EmptyDescription>
-                  Create a Team to see its issues and tasks here.
+                  Create a Team to see its issues here.
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (
-            <>
-              <div className="flex flex-wrap items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setSelectedTeamId(null)}
-                  className={
-                    !effectiveTeam
-                      ? 'flex h-6 items-center rounded-pill bg-background-brand-tertiary px-4 text-sm text-text-brand-secondary'
-                      : 'flex h-6 items-center rounded-pill bg-background-main-secondary px-4 text-sm text-text-neutral-default hover:bg-background-main-secondary-hover'
-                  }
-                >
-                  All
-                </button>
-                {teams.map((team) => {
-                  const active = team.id === effectiveTeam?.id
-                  return (
-                    <button
-                      key={team.id}
-                      type="button"
-                      onClick={() =>
-                        setSelectedTeamId(active ? null : team.id)
-                      }
-                      className={
-                        active
-                          ? 'flex h-6 items-center rounded-pill bg-background-brand-tertiary px-4 text-sm text-text-brand-secondary'
-                          : 'flex h-6 items-center rounded-pill bg-background-main-secondary px-4 text-sm text-text-neutral-default hover:bg-background-main-secondary-hover'
-                      }
-                    >
-                      {team.name}
-                    </button>
-                  )
-                })}
+            <ViewStoreProvider store={teamIssueViewStore}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTeamId(null)}
+                    className={
+                      !effectiveTeam
+                        ? 'flex h-6 items-center rounded-pill bg-background-brand-tertiary px-4 text-sm text-text-brand-secondary'
+                        : 'flex h-6 items-center rounded-pill bg-background-main-secondary px-4 text-sm text-text-neutral-default hover:bg-background-main-secondary-hover'
+                    }
+                  >
+                    All
+                  </button>
+                  {teams.map((team) => {
+                    const active = team.id === effectiveTeam?.id
+                    return (
+                      <button
+                        key={team.id}
+                        type="button"
+                        onClick={() =>
+                          setSelectedTeamId(active ? null : team.id)
+                        }
+                        className={
+                          active
+                            ? 'flex h-6 items-center rounded-pill bg-background-brand-tertiary px-4 text-sm text-text-brand-secondary'
+                            : 'flex h-6 items-center rounded-pill bg-background-main-secondary px-4 text-sm text-text-neutral-default hover:bg-background-main-secondary-hover'
+                        }
+                      >
+                        {team.name}
+                      </button>
+                    )
+                  })}
+                </div>
+                <ViewModeToggle />
               </div>
 
-              <ViewStoreProvider store={teamIssueViewStore}>
-                <div className="flex min-h-0 flex-1 flex-col">
-                  {isIssues ? (
-                    <ListView
-                      issues={filteredIssues}
-                      visibleStatuses={BOARD_STATUSES}
-                      teamChips={teamChips}
-                      projects={projects}
-                      variant="team"
-                      doneTotal={doneTotal}
-                      onCreateIssue={openCreateIssue}
-                    />
-                  ) : (
-                    <BoardView
-                      issues={filteredIssues}
-                      allIssues={filteredIssues}
-                      visibleStatuses={BOARD_STATUSES}
-                      hiddenStatuses={[]}
-                      onMoveIssue={handleMoveIssue}
-                      doneTotal={doneTotal}
-                      teamChips={teamChips}
-                      onCreateIssue={openCreateIssue}
-                    />
-                  )}
-                </div>
-              </ViewStoreProvider>
-            </>
+              <TeamWorkPanel
+                doneTotal={doneTotal}
+                filteredIssues={filteredIssues}
+                onCreateIssue={openCreateIssue}
+                onMoveIssue={handleMoveIssue}
+                projects={projects}
+                teamChips={teamChips}
+              />
+            </ViewStoreProvider>
           )}
         </div>
       </div>
@@ -317,6 +275,61 @@ export function TeamWorkPage({ mode }: { mode: TeamWorkMode }) {
           }}
         />
       ) : null}
+    </div>
+  )
+}
+
+/**
+ * Renders the list or board for the admin cross-team Issues page based on the
+ * shared `teamIssueViewStore` viewMode. Split out of `TeamWorkPage` because
+ * the view store is only available below the `ViewStoreProvider` — the toggle
+ * in the pills row above writes the same state this reads.
+ */
+function TeamWorkPanel({
+  doneTotal,
+  filteredIssues,
+  onCreateIssue,
+  onMoveIssue,
+  projects,
+  teamChips,
+}: {
+  doneTotal: number
+  filteredIssues: Issue[]
+  onCreateIssue: (data?: Record<string, unknown> | null) => void
+  onMoveIssue: (
+    issueId: string,
+    newStatus: IssueStatus,
+    newPosition?: number,
+  ) => void
+  projects: Map<string, { title: string; color: string }>
+  teamChips: Map<string, { name: string; color: string }>
+}) {
+  const viewMode = useViewStore((s) => s.viewMode)
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      {viewMode === 'board' ? (
+        <BoardView
+          issues={filteredIssues}
+          allIssues={filteredIssues}
+          visibleStatuses={BOARD_STATUSES}
+          hiddenStatuses={[]}
+          onMoveIssue={onMoveIssue}
+          doneTotal={doneTotal}
+          teamChips={teamChips}
+          onCreateIssue={onCreateIssue}
+        />
+      ) : (
+        <ListView
+          issues={filteredIssues}
+          visibleStatuses={BOARD_STATUSES}
+          teamChips={teamChips}
+          projects={projects}
+          variant="team"
+          doneTotal={doneTotal}
+          onCreateIssue={onCreateIssue}
+        />
+      )}
     </div>
   )
 }
