@@ -55,6 +55,44 @@ describe('0051 populated Brain proposal migration (PostgreSQL CLI)', () => {
   let workspace: string
   let secondWorkspace: string
   let reviewer: string
+  const poolClosures = new Map<
+    Pool,
+    { pending: Set<Promise<void>>; all: Promise<void>[] }
+  >()
+
+  /** Tracks socket closure because installed pg-pool can finish end() before client end events. */
+  function createOwnedPool(connectionString: string) {
+    const owned = new Pool({ connectionString })
+    const closures = {
+      pending: new Set<Promise<void>>(),
+      all: [] as Promise<void>[],
+    }
+    poolClosures.set(owned, closures)
+    owned.on('connect', (client) => {
+      const closed = new Promise<void>((resolveClosed) =>
+        client.once('end', resolveClosed),
+      )
+      closures.pending.add(closed)
+      closures.all.push(closed)
+      void closed.then(() => closures.pending.delete(closed))
+    })
+    return owned
+  }
+
+  /** Waits for every owned client to close before database or container teardown. */
+  async function closeOwnedPool(owned: Pool | undefined) {
+    if (!owned) return
+    await owned.end()
+    const closures = poolClosures.get(owned)!
+    console.info(
+      'G08_POOL_CLOSE',
+      JSON.stringify({ pendingAfterPoolEnd: closures.pending.size }),
+    )
+    // pg-pool can resolve end() before its clients finish closing their sockets.
+    await Promise.all(closures.all)
+    expect(closures.pending.size).toBe(0)
+    poolClosures.delete(owned)
+  }
 
   beforeAll(async () => {
     directory = await mkdtemp(resolve(tmpdir(), 'garden-0051-migration-'))
@@ -99,16 +137,16 @@ describe('0051 populated Brain proposal migration (PostgreSQL CLI)', () => {
     logStream.on('data', (chunk) => {
       postgresLogs += String(chunk)
     })
-    admin = new Pool({
-      connectionString: `postgres://test:test@${postgres.getHost()}:${postgres.getMappedPort(5432)}/test`,
-    })
+    admin = createOwnedPool(
+      `postgres://test:test@${postgres.getHost()}:${postgres.getMappedPort(5432)}/test`,
+    )
   })
 
   beforeEach(async () => {
     databaseName = `migration_${randomUUID().replaceAll('-', '')}`
     await admin.query(`CREATE DATABASE "${databaseName}"`)
     databaseUrl = `postgres://test:test@${postgres.getHost()}:${postgres.getMappedPort(5432)}/${databaseName}`
-    pool = new Pool({ connectionString: databaseUrl })
+    pool = createOwnedPool(databaseUrl)
     const baseline = await runMigration(preFolder).then((run) => run.done)
     expect(baseline.code, baseline.output).toBe(0)
     expect(
@@ -139,13 +177,29 @@ describe('0051 populated Brain proposal migration (PostgreSQL CLI)', () => {
         child.kill('SIGKILL')
     await Promise.allSettled(children.map((run) => run.done))
     children.length = 0
-    await pool?.end()
-    if (databaseName)
-      await admin.query(`DROP DATABASE "${databaseName}" WITH (FORCE)`)
+    await closeOwnedPool(pool)
+    if (databaseName) {
+      await expect
+        .poll(
+          async () =>
+            (
+              await admin.query(
+                'SELECT pid FROM pg_stat_activity WHERE datname=$1',
+                [databaseName],
+              )
+            ).rows,
+        )
+        .toEqual([])
+      console.info(
+        'G08_DATABASE_DRAINED',
+        JSON.stringify({ databaseName, remainingBackends: 0 }),
+      )
+      await admin.query(`DROP DATABASE "${databaseName}"`)
+    }
   })
 
   afterAll(async () => {
-    await admin?.end()
+    await closeOwnedPool(admin)
     logStream?.destroy()
     await postgres?.stop()
     if (directory) await rm(directory, { recursive: true, force: true })
