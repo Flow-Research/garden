@@ -1,3 +1,4 @@
+import { xResearchPlugin, type XResearchOptions } from './x-research'
 import { graphqlPlugin } from '@executor-js/plugin-graphql/core'
 import { mcpPlugin } from '@executor-js/plugin-mcp/core'
 import { openApiPlugin } from '@executor-js/plugin-openapi/core'
@@ -14,7 +15,10 @@ import { toolkitsPlugin } from '@executor-js/plugin-toolkits/server'
 
 export const makeExecutorPlugins = (
   secretKey: string,
-  options: { readonly activeToolkitSlug?: string } = {},
+  options: {
+    readonly activeToolkitSlug?: string
+    readonly xResearch?: XResearchOptions
+  } = {},
 ) =>
   [
     openApiPlugin({
@@ -23,6 +27,7 @@ export const makeExecutorPlugins = (
     }),
     mcpPlugin({ dangerouslyAllowStdioMCP: false }),
     graphqlPlugin(),
+    xResearchPlugin(options.xResearch),
     toolkitsPlugin({ activeToolkitSlug: options.activeToolkitSlug }),
     encryptedSecretsPlugin({ key: secretKey }),
   ] as const

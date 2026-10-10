@@ -1,3 +1,5 @@
+import { xResearchRuntimeOptions } from './x-budget'
+import { makeXOAuthFetch } from './x-oauth'
 import { Effect } from 'effect'
 import {
   collectTables,
@@ -107,13 +109,14 @@ const buildGardenExecutionStack = (
       db: { db: database.db },
       blobs: database.blobs,
       plugins: makeExecutorPlugins(env.EXECUTOR_SECRET_KEY, {
+        xResearch: xResearchRuntimeOptions(env),
         activeToolkitSlug:
           session.resource.kind === 'toolkit'
             ? session.resource.slug
             : undefined,
       }),
       httpClientLayer: makeHostedHttpClientLayer(hostedHttpOptions),
-      fetch: makeHostedFetch(hostedHttpOptions),
+      fetch: makeXOAuthFetch(makeHostedFetch(hostedHttpOptions)),
       onElicitation: 'accept-all',
       ...(webBaseUrl === undefined
         ? {}

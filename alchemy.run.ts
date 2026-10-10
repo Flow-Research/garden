@@ -205,6 +205,12 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
     // https://alchemy.run/cloudflare/frontend/vite/#the-sites-own-url
     BETTER_AUTH_URL: Cloudflare.Worker.URL,
     ENVIRONMENT: deployTarget.environment,
+    ...optionalCredentialPairBindings('X_CLIENT_ID', 'X_CLIENT_SECRET'),
+    ...optionalPlainBindings([
+      'X_RESEARCH_DAILY_BUDGET_MICROUSD',
+      'X_RESEARCH_POST_PRICE_MICROUSD',
+      'X_RESEARCH_USER_PRICE_MICROUSD',
+    ]),
     GOOGLE_CLIENT_ID: plainEnv('GOOGLE_CLIENT_ID'),
     ...optionalCredentialPairBindings(
       'GOOGLE_AUTH_CLIENT_ID',
@@ -381,11 +387,7 @@ function optionalCredentialPairBindings(
   clientId: string,
   clientSecret: string,
 ) {
-  return optionalCredentialPairIsConfigured(
-    process.env,
-    clientId,
-    clientSecret,
-  )
+  return optionalCredentialPairIsConfigured(process.env, clientId, clientSecret)
     ? {
         [clientId]: plainEnv(clientId),
         [clientSecret]: Config.redacted(clientSecret),

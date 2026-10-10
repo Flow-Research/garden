@@ -1,3 +1,4 @@
+import { X_AUTHORIZATION_URL, X_TOKEN_URL } from './x-oauth'
 import { Array as EffectArray, Effect, Option, Schema } from 'effect'
 import {
   OAuthClientSlug,
@@ -101,13 +102,15 @@ export const oauthClientSupportsMethod = (
   return (client.resource ?? null) === (method.oauth.resource ?? null)
 }
 
-interface GoogleOAuthEnv {
+interface ServerOAuthEnv {
+  readonly X_CLIENT_ID?: string
+  readonly X_CLIENT_SECRET?: string
   readonly GOOGLE_CLIENT_ID?: string
   readonly GOOGLE_CLIENT_SECRET?: string
 }
 
 const googleClientCredentials = (
-  env: GoogleOAuthEnv,
+  env: ServerOAuthEnv,
   method: AuthMethodDescriptor,
 ): Option.Option<{
   readonly clientId: string
@@ -141,7 +144,7 @@ interface OAuthClientRegistry {
   >
 }
 
-/** Ensures plugin-declared Google OAuth uses Garden's deployment-owned app.
+/** Ensures plugin-declared Google and X OAuth uses Garden's deployment-owned app.
  * One workspace OAuth client can serve every curated Google API because scopes
  * belong to each integration method, not to the registered client record. */
 export const ensureServerManagedOAuthClient = Effect.fn(
@@ -150,7 +153,7 @@ export const ensureServerManagedOAuthClient = Effect.fn(
   oauthClients: OAuthClientRegistry,
   integration: Integration,
   method: AuthMethodDescriptor,
-  env: GoogleOAuthEnv,
+  env: ServerOAuthEnv,
 ) {
   const clients = yield* oauthClients.listClients()
   const existing = clients.find(
@@ -165,7 +168,16 @@ export const ensureServerManagedOAuthClient = Effect.fn(
     })
   }
 
-  const credentials = googleClientCredentials(env, method)
+  const isX =
+    method.oauth?.authorizationUrl === X_AUTHORIZATION_URL &&
+    method.oauth.tokenUrl === X_TOKEN_URL
+  const credentials =
+    isX && env.X_CLIENT_ID?.trim() && env.X_CLIENT_SECRET?.trim()
+      ? Option.some({
+          clientId: env.X_CLIENT_ID.trim(),
+          clientSecret: env.X_CLIENT_SECRET.trim(),
+        })
+      : googleClientCredentials(env, method)
   if (Option.isNone(credentials)) {
     return Option.none<ServerManagedOAuthClient>()
   }
@@ -180,7 +192,7 @@ export const ensureServerManagedOAuthClient = Effect.fn(
 
   const slug = yield* oauthClients.createClient({
     owner: 'org',
-    slug: GOOGLE_CLIENT_SLUG,
+    slug: isX ? OAuthClientSlug.make('garden-x') : GOOGLE_CLIENT_SLUG,
     authorizationUrl: oauth.authorizationUrl,
     tokenUrl: oauth.tokenUrl,
     grant: 'authorization_code',

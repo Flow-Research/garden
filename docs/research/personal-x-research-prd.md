@@ -2,7 +2,7 @@
 
 Technical PRD: https://docs.google.com/document/d/1ku2UCOc76FM_joy4NPx783R36H7u4HaP-XXJxZcFrsU
 
-Status: specification prepared; implementation and live connection not yet verified.
+Status: branch implementation verified by 59 integration tests, web typechecking and focused lint checks. Live account connection is not yet verified.
 
 ## Delivery requirements
 
@@ -45,7 +45,7 @@ Code inspection is pinned to commit 6526cfdbcaf4e1cf4fe58120896243eb82e6f614. Th
 
 Codex authenticates to Garden MCP. Garden resolves an authorized personal X connection and calls X using credentials supplied by Executor. These are two separate authorization boundaries: Codex-to-Garden and Garden-to-X. An X API key is not a Garden MCP login credential.
 
-Preferred implementation: curate a read-only X OpenAPI integration and a small research toolkit in the existing Executor plugin stack. First verify the installed SDK handles X’s PKCE, confidential-client token exchange, refresh rotation, and per-call policy controls. If one is absent, implement only the demonstrated missing adapter and document it; do not build a parallel OAuth engine.
+Implementation decision: use a curated X plugin through Executor’s public dynamic-tool hooks. Raw OpenAPI operations cannot enforce personal ownership, resolve the authenticated account, or reserve daily read costs before a call. First verify the installed SDK handles X’s PKCE, confidential-client token exchange, refresh rotation, and per-call policy controls. If one is absent, implement only the demonstrated missing adapter and document it; do not build a parallel OAuth engine.
 
 The personal app’s client ID/secret will be supplied through deployment secrets for this first owner-operated installation. Proposed configuration names: X_CLIENT_ID and X_CLIENT_SECRET. This does not turn the owner’s X connection into an organization connection. Owner-scoped access and refresh tokens remain separate from the deployment’s client registration.
 
@@ -146,3 +146,9 @@ X developer setup — https://docs.x.com/x-api/getting-started/getting-access
 Codex MCP connection — https://learn.chatgpt.com/docs/extend/mcp?surface=cli
 
 ChatGPT Work personal plugins — https://developers.openai.com/plugins/quickstart
+
+## Implementation notes
+
+See [test setup and remaining live checks](personal-x-research-setup.md). Executor 1.5.40 needs an X-token-endpoint-only Basic authentication adapter; its PKCE and encrypted OAuth lifecycle are reused. Daily budget reservations use a conditional PostgreSQL UPSERT because Executor’s D1 adapter disables interactive transactions. No content is saved to shared research or training datasets.
+
+Validation: all 16 Executor integration test files passed (59 tests). The full Garden web typecheck passed. Focused lint checks passed. Budget tests execute the generated migrations and conditional UPSERT against PGlite PostgreSQL; live multi-session refresh and deployment checks remain outstanding.

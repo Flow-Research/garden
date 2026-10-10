@@ -2,6 +2,7 @@ import { Effect, Option, Schema } from 'effect'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   ExecutorInstallAuthorizationRedirect,
+  ExecutorInstallOAuthReady,
   ExecutorInstallRequest,
   ExecutorInstallResponse,
   ExecutorIntegrationSlug,
@@ -58,6 +59,14 @@ const installResponse = Effect.fn('ExecutorInstall.response')(function* (
         cause,
       }),
   )
+  if (String(input.providerId) === 'x.com' && input.source === 'native') {
+    yield* executorProgram(identity, (executor) => executor.xResearch.install())
+    return ExecutorInstallOAuthReady.make({
+      kind: 'oauth_ready',
+      slug: ExecutorIntegrationSlug.make('x-research'),
+      connectUrl: '/api/executor/oauth/start?integration=x-research&owner=user',
+    })
+  }
   if (String(input.providerId) === 'discord.com' && input.source === 'native') {
     return ExecutorInstallAuthorizationRedirect.make({
       kind: 'authorization_redirect',

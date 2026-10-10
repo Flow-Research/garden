@@ -41,8 +41,9 @@ const routeFailure = (message: string, cause: unknown, status = 502) =>
   new ExecutorOAuthRouteError({ status, message, cause })
 
 /** Starts one owner-scoped OAuth flow. Existing user/workspace clients remain
- * valid, Google is provisioned from deployment-owned credentials, and RFC 7591
+ * valid, Google and X use deployment-owned credentials, and RFC 7591
  * remains available for providers that explicitly publish dynamic registration.
+ * The selected method carries optional scopes; X grants must stay personal.
  * Manual client registration was removed because provider apps are host policy. */
 export const beginOAuth = Effect.fn('ExecutorOAuth.begin')(function* (
   request: Request,
@@ -74,8 +75,20 @@ export const beginOAuth = Effect.fn('ExecutorOAuth.begin')(function* (
           })
         }
 
+        if (
+          String(integration.slug) === 'x-research' &&
+          ownership.owner !== 'user'
+        ) {
+          return yield* new ExecutorOAuthRouteError({
+            status: 403,
+            message: 'X research connections must be personal.',
+          })
+        }
+        const methodId = requestUrl?.searchParams.get('method')
         const method = integration.authMethods.find(
-          (candidate) => candidate.kind === 'oauth',
+          (candidate) =>
+            candidate.kind === 'oauth' &&
+            (!methodId || candidate.id === methodId),
         )
         const oauth = method?.oauth
         if (method === undefined || oauth === undefined) {

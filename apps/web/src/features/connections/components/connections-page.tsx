@@ -1213,7 +1213,9 @@ function ManageDrawerBody({
       <Button
         size="sm"
         disabled={saving}
-        onClick={() => onOAuth(executorOAuthStartUrl(integration.slug, owner))}
+        onClick={() =>
+          onOAuth(executorOAuthStartUrl(integration.slug, owner, methodId))
+        }
       >
         Authorize {integration.label}
       </Button>

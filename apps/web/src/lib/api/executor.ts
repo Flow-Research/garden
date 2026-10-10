@@ -84,8 +84,10 @@ export async function previewIntegrationTools(input: {
 export function executorOAuthStartUrl(
   integration: string,
   owner: ExecutorConnectionOwner,
+  method?: string,
 ): string {
   const search = new URLSearchParams({ integration, owner })
+  if (method) search.set('method', method)
   return `/api/executor/oauth/start?${search}`
 }
 

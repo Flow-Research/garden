@@ -1,3 +1,5 @@
+import { xResearchRuntimeOptions } from './executor-engine/x-budget'
+import { makeXOAuthFetch } from './executor-engine/x-oauth'
 import { Effect } from 'effect'
 import {
   type StorageFailure,
@@ -96,7 +98,10 @@ export const executorProgram = <A, E>(
           appEnv.EXECUTOR_BLOBS,
         ).pipe(Effect.map((database) => ({ db: database.db }))),
       blobs: makeR2BlobStore(appEnv.EXECUTOR_BLOBS),
-      plugins: makeExecutorPlugins(appEnv.EXECUTOR_SECRET_KEY),
+      plugins: makeExecutorPlugins(appEnv.EXECUTOR_SECRET_KEY, {
+        xResearch: xResearchRuntimeOptions(appEnv),
+      }),
+      fetch: makeXOAuthFetch(globalThis.fetch),
       onElicitation: () => Effect.succeed({ action: 'decline' as const }),
       oauthCallbackStateOrgSlug: identity.tenant,
     }),

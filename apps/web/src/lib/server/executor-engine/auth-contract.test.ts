@@ -1,3 +1,4 @@
+import { xAuthMethods } from './x-research'
 import { describe, expect, it } from 'vitest'
 import { Effect, Option } from 'effect'
 import {
@@ -124,5 +125,35 @@ describe('Executor auth contract', () => {
     expect(
       oauthClientSupportsMethod(client, googleIntegration, googleMethod),
     ).toBe(true)
+  })
+  it('registers the configured confidential X app with separate personal grant scopes', async () => {
+    const created: CreateOAuthClientInput[] = []
+    const managed = await Effect.runPromise(
+      ensureServerManagedOAuthClient(
+        {
+          listClients: () => Effect.succeed([]),
+          createClient: (input) => {
+            created.push(input)
+            return Effect.succeed(input.slug)
+          },
+        },
+        {
+          ...googleIntegration,
+          slug: IntegrationSlug.make('x-research'),
+          authMethods: xAuthMethods,
+        },
+        xAuthMethods[0],
+        { X_CLIENT_ID: 'x-client', X_CLIENT_SECRET: 'x-secret' },
+      ),
+    )
+    expect(Option.getOrNull(managed)).toMatchObject({
+      slug: 'garden-x',
+      owner: 'org',
+    })
+    expect(created[0]).toMatchObject({
+      clientId: 'x-client',
+      clientSecret: 'x-secret',
+      tokenUrl: 'https://api.x.com/2/oauth2/token',
+    })
   })
 })

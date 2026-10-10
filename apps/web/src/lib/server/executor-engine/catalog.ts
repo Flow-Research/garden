@@ -357,6 +357,16 @@ const githubMcpCandidate = CatalogMcpCandidate.make({
 })
 
 const rawServerOwnedProviders: readonly CatalogProvider[] = [
+  nativeProvider({
+    providerId: 'x.com',
+    icon: 'https://www.google.com/s2/favicons?domain=x.com&sz=128',
+    domain: 'x.com',
+    slug: 'x-research',
+    name: 'X Personal Research',
+    description:
+      'Read your following feed, search recent posts and inspect partial threads through a personal read-only connection.',
+    categories: ['research'],
+  }),
   ...presetProviders(),
   CatalogProvider.make({
     ...githubProvider,
