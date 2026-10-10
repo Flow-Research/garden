@@ -45,6 +45,7 @@
     "@garden/tsconfig": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native": "catalog:",
+    "@vitest/coverage-v8": "4.1.4",
     "vitest": "catalog:"
   }
 }

@@ -129,7 +129,12 @@ export class BrainWriteBackSubAgent extends Think<AgentRuntimeEnv> {
   ): Promise<{ status: 'completed' }> {
     return Effect.runPromise(
       Effect.sync(() => {
-        this.configure<BrainWriteBackConfig>(brainWriteBackToolContext(input))
+        this.configure<BrainWriteBackConfig>({
+          ...brainWriteBackToolContext(input),
+          ...(input.runKind === 'issue'
+            ? { readAudience: 'org' as const }
+            : {}),
+        })
         const message: UIMessage = {
           id: `brain-write-back:${input.runKind}:${input.runId}:summary`,
           role: 'user',
