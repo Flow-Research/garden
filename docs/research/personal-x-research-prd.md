@@ -6,7 +6,7 @@ Status: branch implementation verified by 59 integration tests, web typechecking
 
 ## Delivery requirements
 
-- Work on `feat/personal-x-research`, based on `dev`.
+- Work on `feat/enable-x-connector`, based on `dev` (previously `feat/personal-x-research`).
 - Do not open a PR until requested; keep testing on this branch.
 - Any eventual PR targets `dev` or an explicitly agreed integration branch, never `main`.
 - Include the canonical Technical PRD link above in the PR description, along with validation and unresolved limitations.
@@ -54,6 +54,8 @@ Personal X access must be limited to the same Garden subject and tenant authoriz
 ## X application configuration
 
 Enable OAuth 2.0 and configure the app as a confidential Web App for Garden’s server-side exchange. Register the exact callback URL generated from the verified Garden origin plus /api/oauth/callback. Do not invent a production origin or substitute Codex’s local MCP callback: those callbacks serve different authorization flows.
+
+Confirmed dev origin (10 October 2026): `https://garden-dev.flow-research.workers.dev`. X app callback: `https://garden-dev.flow-research.workers.dev/api/oauth/callback`. The site is reachable and requires Garden sign-in; connector deployment, migration and secrets have not yet been verified live.
 
 - Base scopes: tweet.read, users.read, offline.access. Use PKCE S256 and the existing owner-bound, single-use OAuth state handling.
 
