@@ -41,6 +41,7 @@ export const reactionBodySchema = z
   .strict()
 
 export const issuesListSearchSchema = z.object({
+  team_id: uuidSchema.optional(),
   status: issueStatusSchema.optional(),
   priority: issuePrioritySchema.optional(),
   assignee_id: uuidSchema.optional(),
@@ -71,6 +72,7 @@ export const createIssueBodySchema = z
     priority: issueInsertSchema.shape.priority.optional(),
     assignee_type: issueApiAssigneeTypeSchema.optional().nullable(),
     assignee_id: issueInsertSchema.shape.assigneeId.optional().nullable(),
+    team_id: issueInsertSchema.shape.teamId.optional().nullable(),
     parent_issue_id: issueInsertSchema.shape.parentId.optional().nullable(),
     project_id: issueInsertSchema.shape.projectId.optional().nullable(),
     due_date: issueDueDateApiSchema.optional().nullable(),
@@ -87,6 +89,7 @@ export const updateIssueBodySchema = z
     priority: issueUpdateSchema.shape.priority.optional(),
     assignee_type: issueApiAssigneeTypeSchema.optional().nullable(),
     assignee_id: issueUpdateSchema.shape.assigneeId.optional().nullable(),
+    team_id: issueUpdateSchema.shape.teamId.optional().nullable(),
     parent_issue_id: issueUpdateSchema.shape.parentId.optional().nullable(),
     project_id: issueUpdateSchema.shape.projectId.optional().nullable(),
     position: issueUpdateSchema.shape.position.optional(),

@@ -89,6 +89,10 @@
         "name": "EXECUTOR_MCP_EXECUTION_OWNER",
         "class_name": "ExecutorMcpExecutionOwnerDirectory",
       },
+      {
+        "name": "WORKSPACE_REALTIME",
+        "class_name": "WorkspaceRealtimeDO",
+      },
     ],
   },
   "workflows": [
@@ -214,6 +218,10 @@
         "HarnessyMcpSession",
         "HarnessyExecutionOwnerDirectory",
       ],
+    },
+    {
+      "tag": "v11",
+      "new_sqlite_classes": ["WorkspaceRealtimeDO"],
     },
   ],
 }

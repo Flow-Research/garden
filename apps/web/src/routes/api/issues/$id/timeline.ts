@@ -4,7 +4,7 @@ import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import { toIssueAttachment } from '@garden/server/issues/server'
 import type { Attachment } from '@garden/core/types'
-import { notFound, requireWorkspaceAccess } from '@/lib/server/control-plane'
+import { requireIssueAccess } from '@/lib/server/issue-access'
 
 function toTimelineComment(
   row: typeof schema.issueComment.$inferSelect,
@@ -68,25 +68,12 @@ function toTimelineRunEvent(row: {
 export const Route = createFileRoute('/api/issues/$id/timeline')({
   server: {
     handlers: {
-      GET: async ({ context, request, params }) => {
+      GET: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)
-        const db = await appContext.db()
-        const [existingIssue] = await db
-          .select({
-            id: schema.issue.id,
-            workspaceId: schema.issue.workspaceId,
-            createdBy: schema.issue.createdBy,
-            createdAt: schema.issue.createdAt,
-          })
-          .from(schema.issue)
-          .where(eq(schema.issue.id, params.id))
-        if (!existingIssue) return notFound('Issue not found')
-
-        const access = await requireWorkspaceAccess(
-          request,
-          existingIssue.workspaceId,
-        )
+        const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
+        const db = access.db
+        const existingIssue = access.issue
 
         const comments = await db
           .select()

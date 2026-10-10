@@ -6,8 +6,8 @@ import { appEnv } from '@/lib/server/env'
 import {
   badRequest,
   notFound,
-  requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
+import { requireIssueAccess } from '@/lib/server/issue-access'
 import {
   removeSourceBinding,
   type IssueSourceBindingServiceError,
@@ -26,7 +26,9 @@ export const Route = createFileRoute(
     handlers: {
       DELETE: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)
-        const db = await appContext.db()
+        const access = await requireIssueAccess(appContext, params.id)
+        if (access instanceof Response) return access
+        const db = access.db
         const [binding] = await db
           .select({ workspaceId: schema.issueSourceBinding.workspaceId })
           .from(schema.issueSourceBinding)
@@ -38,12 +40,6 @@ export const Route = createFileRoute(
           )
           .limit(1)
         if (!binding) return notFound('Source binding not found')
-
-        const access = await requireWorkspaceAccess(
-          appContext,
-          binding.workspaceId,
-        )
-        if (access instanceof Response) return access
 
         const removeResult = await removeSourceBinding({
           databaseUrl: appEnv.HYPERDRIVE.connectionString,

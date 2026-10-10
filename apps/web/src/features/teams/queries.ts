@@ -1,0 +1,85 @@
+import { queryOptions } from '@tanstack/react-query'
+import type { Issue } from '@garden/core/types'
+import { api } from '@/lib/api'
+
+/**
+ * Query keys follow the spec: workspace-scoped Team keys plus Team issue keys
+ * under the existing `issues` root so issue mutations can invalidate them by
+ * prefix.
+ */
+export const teamKeys = {
+  all: (wsId: string) => ['teams', wsId] as const,
+  list: (wsId: string) => [...teamKeys.all(wsId), 'list'] as const,
+  detail: (wsId: string, teamId: string) =>
+    [...teamKeys.all(wsId), 'detail', teamId] as const,
+  members: (wsId: string, teamId: string) =>
+    [...teamKeys.all(wsId), 'members', teamId] as const,
+  issues: (wsId: string, teamId: string) =>
+    ['issues', wsId, 'team', teamId] as const,
+}
+
+/** Prefix used by issue mutations to invalidate every Team issue query. */
+export function teamIssueCachesPrefix(wsId: string) {
+  return ['issues', wsId, 'team'] as const
+}
+
+export function teamListOptions(wsId: string) {
+  return queryOptions({
+    queryKey: teamKeys.list(wsId),
+    queryFn: () => api.listTeams(),
+    staleTime: 30_000,
+    placeholderData: (previous) => previous,
+    select: (data) => data.teams,
+  })
+}
+
+export function teamDetailOptions(wsId: string, teamId: string) {
+  return queryOptions({
+    queryKey: teamKeys.detail(wsId, teamId),
+    queryFn: () => api.getTeam(teamId),
+    staleTime: 15_000,
+    placeholderData: (previous) => previous,
+  })
+}
+
+export function teamMemberListOptions(wsId: string, teamId: string) {
+  return queryOptions({
+    queryKey: teamKeys.members(wsId, teamId),
+    queryFn: () => api.listTeamMembers(teamId),
+    staleTime: 15_000,
+    placeholderData: (previous) => previous,
+    select: (data) => data.members,
+  })
+}
+
+export function teamIssueListOptions(wsId: string, teamId: string) {
+  return queryOptions({
+    queryKey: teamKeys.issues(wsId, teamId),
+    queryFn: async () => {
+      const response = await api.listIssues({
+        team_id: teamId,
+        workspace_id: wsId,
+      })
+      return response.issues
+    },
+    staleTime: 15_000,
+    placeholderData: (previous: Issue[] | undefined) => previous,
+  })
+}
+
+/**
+ * Every Team issue visible to the caller, across Teams. Used by the admin
+ * Teams › Issues / Teams › Tasks pages; the `'all'` key sits under the team
+ * issue prefix so existing issue mutations invalidate it.
+ */
+export function allTeamIssuesOptions(wsId: string) {
+  return queryOptions({
+    queryKey: [...teamKeys.issues(wsId, 'all')],
+    queryFn: async () => {
+      const response = await api.listIssues({ workspace_id: wsId })
+      return response.issues.filter((issue) => issue.team_id !== null)
+    },
+    staleTime: 15_000,
+    placeholderData: (previous: Issue[] | undefined) => previous,
+  })
+}

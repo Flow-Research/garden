@@ -5,7 +5,13 @@ import type { AppRequestContext } from '@/lib/server/context'
 import { formatIssueIdentifier } from '@garden/core/issues/identifier'
 import type { AgentPermissions } from '@garden/core/agents/permissions'
 import { getAuthSession, toCoreUser } from '@/lib/server/session'
-import type { MemberRole } from '@garden/core/types'
+import type {
+  Issue,
+  IssueAssigneeType,
+  IssuePriority,
+  IssueStatus,
+  MemberRole,
+} from '@garden/core/types'
 
 export function json(data: unknown, status = 200) {
   return Response.json(data, { status })
@@ -275,11 +281,31 @@ export function toInvitation(record: InvitationRecord) {
   }
 }
 
+/**
+ * Resolves the workspace's issue identifier prefix for response mapping.
+ * `toIssue` falls back to 'ISS' when the prefix is omitted, which made list,
+ * detail, and update responses disagree with create responses (the issue
+ * service resolves the real prefix internally). Routes that map issue rows
+ * must pass this value through.
+ */
+export async function getWorkspaceIssuePrefix(
+  db: Db,
+  workspaceId: string,
+): Promise<string> {
+  const [row] = await db
+    .select({ issuePrefix: schema.organization.issuePrefix })
+    .from(schema.organization)
+    .where(eq(schema.organization.id, workspaceId))
+    .limit(1)
+  return row && typeof row.issuePrefix === 'string' && row.issuePrefix
+    ? row.issuePrefix
+    : 'ISS'
+}
+
 export function toIssue(
   record: typeof schema.issue.$inferSelect,
   options: { issuePrefix?: string } = {},
-) {
-  const sourceSummary = record.sourceSummary
+): Issue {  const sourceSummary = record.sourceSummary
     ? {
         connector_id: 'manual',
         display_ref: record.sourceSummary,
@@ -291,14 +317,17 @@ export function toIssue(
   return {
     id: record.id,
     workspace_id: record.workspaceId,
+    team_id: record.teamId ?? null,
     number: record.number,
     identifier: formatIssueIdentifier(prefix, record.number),
     title: record.title,
     description: record.description ?? null,
-    status: record.status,
-    priority: record.priority,
+    status: record.status as IssueStatus,
+    priority: record.priority as IssuePriority,
     assignee_type:
-      record.assigneeType === 'user' ? 'member' : record.assigneeType,
+      record.assigneeType === 'user'
+        ? 'member'
+        : (record.assigneeType as IssueAssigneeType | null),
     assignee_id: record.assigneeId ?? null,
     creator_type: 'member',
     creator_id: record.createdBy,

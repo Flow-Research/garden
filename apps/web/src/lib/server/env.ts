@@ -22,6 +22,7 @@ export type AppEnv = {
   GARDEN_LOG_LEVEL?: RequiredEnvBinding<'GARDEN_LOG_LEVEL'>
   AgentDO: RequiredEnvBinding<'AgentDO'>
   AUTOMATION_TRIGGER: RequiredEnvBinding<'AUTOMATION_TRIGGER'>
+  WORKSPACE_REALTIME: RequiredEnvBinding<'WORKSPACE_REALTIME'>
   Sandbox: RequiredEnvBinding<'Sandbox'>
   RUN_WORKFLOW: RequiredEnvBinding<'RUN_WORKFLOW'>
   ENVIRONMENT?: 'development' | 'test' | 'staging' | 'production'

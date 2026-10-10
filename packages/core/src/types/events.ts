@@ -7,6 +7,7 @@ import type { Workspace, MemberWithUser, Invitation } from './workspace'
 import type { Project } from './project'
 import type { IssueRun, IssueRunEvent, IssueRunStatus } from './issue-run'
 import type { IssueSourceBinding, IssueWorkProduct } from './issue-work-product'
+import type { Team, TeamMemberKind } from './team'
 
 // App realtime event types.
 export type WSEventType =
@@ -62,12 +63,54 @@ export type WSEventType =
   | 'invitation:accepted'
   | 'invitation:declined'
   | 'invitation:revoked'
+  | 'team:created'
+  | 'team:updated'
+  | 'team:deleted'
+  | 'team_member:added'
+  | 'team_member:removed'
+  | 'team_member:updated'
 
 export interface WSMessage<T = unknown> {
   type: WSEventType
   payload: T
   actor_id?: string
 }
+
+/**
+ * Wire envelope for the workspace realtime channel. Every event carries the
+ * workspace id and a publish timestamp so subscribers can gate delivery and
+ * measure publish → deliver → cache-update latency without extra lookups.
+ */
+export interface RealtimeEventEnvelope<T = unknown> {
+  event_id: string
+  type: WSEventType
+  workspace_id: string
+  /** Epoch milliseconds at the API route, before the Durable Object hop. */
+  published_at: number
+  payload: T
+}
+
+/**
+ * Events the workspace realtime hub currently publishes. Team events drive the
+ * Teams surfaces; issue events carry `team_id` when the issue belongs to a Team
+ * so the hub can gate them per the spec's audience rules.
+ */
+export type RealtimePublishableEvent =
+  | { type: 'team:created'; payload: TeamCreatedPayload }
+  | { type: 'team:updated'; payload: TeamUpdatedPayload }
+  | { type: 'team:deleted'; payload: TeamDeletedPayload }
+  | { type: 'team_member:added'; payload: TeamMemberAddedPayload }
+  | { type: 'team_member:removed'; payload: TeamMemberRemovedPayload }
+  | { type: 'issue:created'; payload: IssueCreatedPayload }
+  | { type: 'issue:updated'; payload: IssueUpdatedPayload }
+  | { type: 'issue:deleted'; payload: IssueDeletedPayload }
+
+/** Envelope union with `type` and `payload` kept correlated for gating. */
+export type RealtimePublishableEnvelope = {
+  [K in RealtimePublishableEvent['type']]: RealtimeEventEnvelope<
+    Extract<RealtimePublishableEvent, { type: K }>['payload']
+  > & { type: K }
+}[RealtimePublishableEvent['type']]
 
 export interface IssueCreatedPayload {
   issue: Issue
@@ -79,6 +122,13 @@ export interface IssueUpdatedPayload {
 
 export interface IssueDeletedPayload {
   issue_id: string
+  /** Present when the deleted issue belonged to a Team. */
+  team_id?: string | null
+  /**
+   * The deleted issue's assignee. Team-scoped deletions gate on this so a
+   * normal member only hears about issues they could see.
+   */
+  assignee_id?: string | null
 }
 
 export interface AgentStatusPayload {
@@ -282,4 +332,54 @@ export interface InvitationDeclinedPayload {
 export interface InvitationRevokedPayload {
   invitationId: string
   email: string
+}
+
+/**
+ * Team event payloads always carry the workspace and Team ids so subscribers
+ * can evaluate audience before rendering anything.
+ */
+export interface TeamCreatedPayload {
+  workspace_id: string
+  team_id: string
+  team: Team
+}
+
+export interface TeamUpdatedPayload {
+  workspace_id: string
+  team_id: string
+  team: Team
+}
+
+export interface TeamDeletedPayload {
+  workspace_id: string
+  team_id: string
+  /** Kept in the payload so the event stays useful after the row is gone. */
+  name: string
+}
+
+export interface TeamMemberAddedPayload {
+  workspace_id: string
+  team_id: string
+  membership_id: string
+  member_type: TeamMemberKind
+  user_id: string | null
+  agent_id: string | null
+}
+
+export interface TeamMemberRemovedPayload {
+  workspace_id: string
+  team_id: string
+  membership_id: string
+  member_type: TeamMemberKind
+  user_id: string | null
+  agent_id: string | null
+}
+
+export interface TeamMemberUpdatedPayload {
+  workspace_id: string
+  team_id: string
+  membership_id: string
+  member_type: TeamMemberKind
+  user_id: string | null
+  agent_id: string | null
 }

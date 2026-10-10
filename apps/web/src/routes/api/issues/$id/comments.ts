@@ -15,27 +15,17 @@ import {
 } from '@/lib/server/validation/issues'
 import {
   badRequest,
-  notFound,
-  requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
+import { requireIssueAccess } from '@/lib/server/issue-access'
 
 export const Route = createFileRoute('/api/issues/$id/comments')({
   server: {
     handlers: {
-      GET: async ({ context, request, params }) => {
+      GET: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)
-        const db = await appContext.db()
-        const [existingIssue] = await db
-          .select({ workspaceId: schema.issue.workspaceId })
-          .from(schema.issue)
-          .where(eq(schema.issue.id, params.id))
-        if (!existingIssue) return notFound('Issue not found')
-
-        const access = await requireWorkspaceAccess(
-          request,
-          existingIssue.workspaceId,
-        )
+        const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
+        const db = access.db
 
         const comments = await db
           .select()
@@ -80,21 +70,9 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
         const body = bodyResult.value
 
         const db = await appContext.db()
-        const [existingIssue] = await db
-          .select({
-            id: schema.issue.id,
-            workspaceId: schema.issue.workspaceId,
-            activeRunId: schema.issue.activeRunId,
-          })
-          .from(schema.issue)
-          .where(eq(schema.issue.id, params.id))
-        if (!existingIssue) return notFound('Issue not found')
-
-        const access = await requireWorkspaceAccess(
-          request,
-          existingIssue.workspaceId,
-        )
+        const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
+        const existingIssue = access.issue
 
         const commentResult = await postIssueComment({
           databaseUrl: appEnv.HYPERDRIVE.connectionString,

@@ -21,6 +21,10 @@ import type {
 } from '@garden/core/types'
 
 /** Keeps auxiliary filtered collections coherent with a confirmed issue write. */
+export function teamIssueCachePrefix(wsId: string) {
+  return ['issues', wsId, 'team'] as const
+}
+
 export function syncFilteredIssueCaches(
   qc: QueryClient,
   wsId: string,
@@ -34,6 +38,9 @@ export function syncFilteredIssueCaches(
       : withoutIssue
   })
   qc.setQueriesData<Issue[]>({ queryKey: issueKeys.searches(wsId) }, (old) =>
+    old?.map((issue) => (issue.id === updatedIssue.id ? updatedIssue : issue)),
+  )
+  qc.setQueriesData<Issue[]>({ queryKey: teamIssueCachePrefix(wsId) }, (old) =>
     old?.map((issue) => (issue.id === updatedIssue.id ? updatedIssue : issue)),
   )
 }
@@ -50,12 +57,16 @@ export function removeFromFilteredIssueCaches(
   qc.setQueriesData<Issue[]>({ queryKey: issueKeys.searches(wsId) }, (old) =>
     old?.filter((issue) => !deletedIds.has(issue.id)),
   )
+  qc.setQueriesData<Issue[]>({ queryKey: teamIssueCachePrefix(wsId) }, (old) =>
+    old?.filter((issue) => !deletedIds.has(issue.id)),
+  )
 }
 
 /** Refetches active authoritative filters after mutations can change membership. */
 export function invalidateFilteredIssueCaches(qc: QueryClient, wsId: string) {
   qc.invalidateQueries({ queryKey: issueKeys.allDone(wsId), exact: true })
   qc.invalidateQueries({ queryKey: issueKeys.searches(wsId) })
+  qc.invalidateQueries({ queryKey: teamIssueCachePrefix(wsId) })
 }
 
 // ---------------------------------------------------------------------------
@@ -144,6 +155,12 @@ export function useCreateIssue() {
             }
           : old,
       )
+      qc.setQueriesData<Issue[]>({ queryKey: teamIssueCachePrefix(wsId) }, (old) =>
+        old && !old.some((i) => i.id === newIssue.id)
+          ? [...old, newIssue]
+          : old,
+      )
+      qc.invalidateQueries({ queryKey: teamIssueCachePrefix(wsId) })
       qc.invalidateQueries({
         queryKey: listKey,
         exact: true,

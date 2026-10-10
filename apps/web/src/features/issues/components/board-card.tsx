@@ -3,12 +3,10 @@ import { useSortable, defaultAnimateLayoutChanges } from '@dnd-kit/sortable'
 import type { AnimateLayoutChanges } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { toast } from 'sonner'
-import type { Issue, UpdateIssueRequest } from '@garden/core/types'
-import { CalendarDays } from 'lucide-react'
+import type { Issue, IssuePriority, UpdateIssueRequest } from '@garden/core/types'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { ActorAvatar } from '../../common/actor-avatar'
 import { useUpdateIssue } from '@/lib/issues/mutations'
-import { PriorityIcon } from './priority-icon'
 import { PriorityPicker, AssigneePicker, DueDatePicker } from './pickers'
 import { PRIORITY_CONFIG } from '@garden/core/issues/config'
 import { useViewStore } from '@garden/app-state/issues/stores/view-store-context'
@@ -36,11 +34,34 @@ function useBoardCardUpdate(issueId: string) {
   )
 }
 
-function formatDate(date: string): string {
-  return new Date(date).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  })
+/** Design's solid priority pill fills (Global util colors — constant in both themes). */
+const PRIORITY_PILL: Record<IssuePriority, { bg: string; text: string }> = {
+  urgent: { bg: 'var(--util-color-19)', text: 'text-white' },
+  high: { bg: 'var(--util-color-18)', text: 'text-white' },
+  medium: { bg: 'var(--util-color-17)', text: 'text-white' },
+  low: { bg: 'var(--util-color-16)', text: 'text-white' },
+  none: { bg: 'var(--util-color-15)', text: 'text-gray-900' },
+}
+
+/** Solid priority pill per the design (util-color fill, label only). */
+function PriorityPill({ priority }: { priority: IssuePriority }) {
+  const pill = PRIORITY_PILL[priority]
+  return (
+    <span
+      className={`inline-flex h-6 items-center rounded-pill px-2 text-xs ${pill.text}`}
+      style={{ backgroundColor: pill.bg }}
+    >
+      {PRIORITY_CONFIG[priority].label}
+    </span>
+  )
+}
+
+/** Design's due-date format: "Due: 02 Jan, 2026". */
+function formatDueDate(date: string): string {
+  const d = new Date(date)
+  const day = String(d.getDate()).padStart(2, '0')
+  const month = d.toLocaleDateString('en-US', { month: 'short' })
+  return `${day} ${month}, ${d.getFullYear()}`
 }
 
 /** Stops event from bubbling to Link/drag handlers */
@@ -60,11 +81,17 @@ export const BoardCardContent = memo(function BoardCardContent({
   issue,
   editable = false,
   childProgress,
+  projectTitle,
+  team,
   onUpdate,
 }: {
   issue: Issue
   editable?: boolean
   childProgress?: ChildProgress
+  /** Project title for the footer chip; undefined renders "No project". */
+  projectTitle?: string
+  /** Team chip for cross-team boards (Teams › Tasks); omitted elsewhere. */
+  team?: { name: string; color: string }
   /** Mutation handler for editable pickers. Required when `editable` is true.
    * Caller wires this (typically via `useUpdateIssue`); previews can omit it
    * and pass `editable={false}` to render in read-only mode without touching
@@ -72,7 +99,6 @@ export const BoardCardContent = memo(function BoardCardContent({
   onUpdate?: (updates: Partial<UpdateIssueRequest>) => void
 }) {
   const storeProperties = useViewStore((s) => s.cardProperties)
-  const priorityCfg = PRIORITY_CONFIG[issue.priority]
 
   // Read-only safe default — pickers receive a no-op when not editable.
   const handleUpdate = useCallback(
@@ -96,9 +122,9 @@ export const BoardCardContent = memo(function BoardCardContent({
         : null
 
   return (
-    <div className="rounded-lg border bg-card p-3.5 shadow-[0_1px_2px_0_rgba(0,0,0,0.03)] transition-shadow group-hover:shadow-sm">
-      {/* Row 1: Identifier + live indicators */}
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+    <div className="rounded-md border-[0.5px] border-border-default bg-background-main-default p-3">
+      {/* Row 1: Identifier + live indicators + team chip (cross-team only) */}
+      <div className="flex items-center gap-1.5 text-xs text-text-brand-default">
         {issue.source_summary && (
           <ConnectorIcon
             connectorId={issue.source_summary.connector_id}
@@ -107,9 +133,19 @@ export const BoardCardContent = memo(function BoardCardContent({
         )}
         <span>{issue.identifier}</span>
         {liveVariant && <LiveDot variant={liveVariant} className="ml-0.5" />}
+        {team ? (
+          <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-2 py-0.5 text-xs text-text-default">
+            <span
+              aria-hidden
+              className="size-1.5 rounded-full"
+              style={{ background: team.color }}
+            />
+            {team.name}
+          </span>
+        ) : null}
       </div>
 
-      <p className="mt-1 text-sm font-medium leading-snug line-clamp-2">
+      <p className="mt-1.5 text-sm font-semibold leading-snug line-clamp-2">
         {issue.title}
       </p>
 
@@ -130,20 +166,54 @@ export const BoardCardContent = memo(function BoardCardContent({
 
       {/* Description */}
       {showDescription && (
-        <p className="mt-1 text-xs text-muted-foreground line-clamp-1">
+        <p className="mt-1 text-sm text-text-secondary line-clamp-3">
           {issue.description}
         </p>
       )}
 
-      {/* Row 3: Assignee, priority badge, due date */}
-      {(showAssignee || showPriority || showDueDate) && (
-        <div className="mt-3 flex items-center gap-2">
-          {showAssignee &&
-            (editable ? (
+      {/* Footer: priority pill, due-date chip, project chip, assignee */}
+      <div className="mt-3 flex items-center gap-1.5">
+        {showPriority &&
+          (editable ? (
+            <PickerWrapper>
+              <PriorityPicker
+                priority={issue.priority}
+                onUpdate={handleUpdate}
+                trigger={<PriorityPill priority={issue.priority} />}
+              />
+            </PickerWrapper>
+          ) : (
+            <PriorityPill priority={issue.priority} />
+          ))}
+        {showDueDate &&
+          (editable ? (
+            <PickerWrapper>
+              <DueDatePicker
+                dueDate={issue.due_date}
+                onUpdate={handleUpdate}
+                trigger={
+                  <span className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-2 text-xs text-text-default">
+                    Due: {formatDueDate(issue.due_date!)}
+                  </span>
+                }
+              />
+            </PickerWrapper>
+          ) : (
+            <span className="inline-flex h-6 items-center gap-1 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-2 text-xs text-text-default">
+              Due: {formatDueDate(issue.due_date!)}
+            </span>
+          ))}
+        <span className="inline-flex h-6 items-center gap-1 truncate rounded-pill border-[0.5px] border-border-default bg-background-main-default px-2 text-xs text-text-default">
+          {projectTitle ?? 'No project'}
+        </span>
+        {showAssignee && (
+          <div className="ml-auto">
+            {editable ? (
               <PickerWrapper>
                 <AssigneePicker
                   assigneeType={issue.assignee_type}
                   assigneeId={issue.assignee_id}
+                  teamId={issue.team_id}
                   onUpdate={handleUpdate}
                   trigger={
                     <ActorAvatar
@@ -160,76 +230,10 @@ export const BoardCardContent = memo(function BoardCardContent({
                 actorId={issue.assignee_id!}
                 size={22}
               />
-            ))}
-          {showPriority &&
-            (editable ? (
-              <PickerWrapper>
-                <PriorityPicker
-                  priority={issue.priority}
-                  onUpdate={handleUpdate}
-                  trigger={
-                    <Badge
-                      className={`rounded px-1.5 ${priorityCfg.badgeBg} ${priorityCfg.badgeText}`}
-                    >
-                      <PriorityIcon
-                        priority={issue.priority}
-                        className="h-3 w-3"
-                        inheritColor
-                      />
-                      {priorityCfg.label}
-                    </Badge>
-                  }
-                />
-              </PickerWrapper>
-            ) : (
-              <Badge
-                className={`rounded px-1.5 ${priorityCfg.badgeBg} ${priorityCfg.badgeText}`}
-              >
-                <PriorityIcon
-                  priority={issue.priority}
-                  className="h-3 w-3"
-                  inheritColor
-                />
-                {priorityCfg.label}
-              </Badge>
-            ))}
-          {showDueDate && (
-            <div className="ml-auto">
-              {editable ? (
-                <PickerWrapper>
-                  <DueDatePicker
-                    dueDate={issue.due_date}
-                    onUpdate={handleUpdate}
-                    trigger={
-                      <span
-                        className={`flex items-center gap-1 text-xs ${
-                          new Date(issue.due_date!) < new Date()
-                            ? 'text-destructive'
-                            : 'text-muted-foreground'
-                        }`}
-                      >
-                        <CalendarDays className="size-3" />
-                        {formatDate(issue.due_date!)}
-                      </span>
-                    }
-                  />
-                </PickerWrapper>
-              ) : (
-                <span
-                  className={`flex items-center gap-1 text-xs ${
-                    new Date(issue.due_date!) < new Date()
-                      ? 'text-destructive'
-                      : 'text-muted-foreground'
-                  }`}
-                >
-                  <CalendarDays className="size-3" />
-                  {formatDate(issue.due_date!)}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 })
@@ -243,9 +247,13 @@ const animateLayoutChanges: AnimateLayoutChanges = (args) => {
 export const DraggableBoardCard = memo(function DraggableBoardCard({
   issue,
   childProgress,
+  projectTitle,
+  team,
 }: {
   issue: Issue
   childProgress?: ChildProgress
+  projectTitle?: string
+  team?: { name: string; color: string }
 }) {
   const {
     attributes,
@@ -294,6 +302,8 @@ export const DraggableBoardCard = memo(function DraggableBoardCard({
           issue={issue}
           editable
           childProgress={childProgress}
+          projectTitle={projectTitle}
+          team={team}
           onUpdate={handleUpdate}
         />
       </a>

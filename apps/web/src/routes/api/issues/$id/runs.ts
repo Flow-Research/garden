@@ -6,8 +6,8 @@ import { appEnv } from '@/lib/server/env'
 import {
   badRequest,
   notFound,
-  requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
+import { requireIssueAccess } from '@/lib/server/issue-access'
 import {
   listIssueRuns,
   startIssueRun,
@@ -23,19 +23,9 @@ export const Route = createFileRoute('/api/issues/$id/runs')({
     handlers: {
       GET: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)
-        const db = await appContext.db()
-        const [issue] = await db
-          .select({ workspaceId: schema.issue.workspaceId })
-          .from(schema.issue)
-          .where(eq(schema.issue.id, params.id))
-          .limit(1)
-        if (!issue) return notFound('Issue not found')
-
-        const access = await requireWorkspaceAccess(
-          appContext,
-          issue.workspaceId,
-        )
+        const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
+        const issue = access.issue
 
         const runsResult = await listIssueRuns({
           env: appEnv,
@@ -47,24 +37,10 @@ export const Route = createFileRoute('/api/issues/$id/runs')({
       },
       POST: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)
-        const db = await appContext.db()
-        const [issue] = await db
-          .select({
-            id: schema.issue.id,
-            workspaceId: schema.issue.workspaceId,
-            assigneeType: schema.issue.assigneeType,
-            assigneeId: schema.issue.assigneeId,
-          })
-          .from(schema.issue)
-          .where(eq(schema.issue.id, params.id))
-          .limit(1)
-        if (!issue) return notFound('Issue not found')
-
-        const access = await requireWorkspaceAccess(
-          appContext,
-          issue.workspaceId,
-        )
+        const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
+        const db = access.db
+        const issue = access.issue
 
         if (issue.assigneeType !== 'agent' || !issue.assigneeId) {
           return badRequest('Issue must be assigned to an agent to start a run')

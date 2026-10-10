@@ -4,6 +4,7 @@ import {
   bigint,
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -15,6 +16,7 @@ import {
 } from 'drizzle-orm/pg-core'
 import { user } from './users.js'
 import { organization } from './workspaces.js'
+import { team } from './teams.js'
 import { agent } from './agents.js'
 import {
   activeIssueRunStatusValues,
@@ -51,6 +53,7 @@ export const issue = pgTable(
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => organization.id),
+    teamId: uuid('team_id'),
     number: integer('number').notNull(),
     title: text('title').notNull(),
     description: text('description'),
@@ -102,6 +105,17 @@ export const issue = pgTable(
       table.assigneeType,
       table.assigneeId,
     ),
+    index('issue_workspace_team_status_idx').on(
+      table.workspaceId,
+      table.teamId,
+      table.status,
+      table.updatedAt,
+    ),
+    foreignKey({
+      name: 'issue_team_workspace_fk',
+      columns: [table.teamId, table.workspaceId],
+      foreignColumns: [team.id, team.workspaceId],
+    }).onDelete('restrict'),
     check(
       'issue_status_check',
       sql`${table.status} in (${sqlValueList(issueStatusValues)})`,

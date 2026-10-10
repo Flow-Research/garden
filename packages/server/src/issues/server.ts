@@ -65,6 +65,7 @@ const createIssueInputSchema = z
     createdBy: issueInsertSchema.shape.createdBy,
     assigneeType: z.enum(['user', 'agent']).optional().nullable(),
     assigneeId: issueInsertSchema.shape.assigneeId.optional().nullable(),
+    teamId: issueInsertSchema.shape.teamId.optional().nullable(),
     parentId: issueInsertSchema.shape.parentId.optional().nullable(),
     projectId: issueInsertSchema.shape.projectId.optional().nullable(),
     dueDate: z.date().optional().nullable(),
@@ -226,6 +227,7 @@ export function toIssue(
   return {
     id: record.id,
     workspace_id: record.workspaceId,
+    team_id: record.teamId ?? null,
     number: record.number,
     identifier: formatIssueIdentifier(options.issuePrefix, record.number),
     title: record.title,
@@ -758,6 +760,7 @@ export async function createIssue(
             createdBy: parsed.data.createdBy,
             assigneeType: parsed.data.assigneeType ?? null,
             assigneeId: parsed.data.assigneeId ?? null,
+            teamId: parsed.data.teamId ?? null,
             parentId: parsed.data.parentId ?? null,
             projectId: parsed.data.projectId ?? null,
             dueDate: parsed.data.dueDate ?? null,

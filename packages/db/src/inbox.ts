@@ -154,6 +154,114 @@ async function issueRecipientIds(
   return Array.from(recipients)
 }
 
+async function isActiveWorkspaceUser(
+  db: GardenDb,
+  workspaceId: string,
+  userId: string,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ userId: schema.member.userId })
+    .from(schema.member)
+    .where(
+      and(
+        eq(schema.member.organizationId, workspaceId),
+        eq(schema.member.userId, userId),
+      ),
+    )
+    .limit(1)
+  return Boolean(row)
+}
+
+/**
+ * Recipient order for Team-linked inbox items, per the Teams spec:
+ * agent owner → linked issue assignee → Team owner → workspace owner/admin.
+ * Every step must resolve to an active workspace user, the first eligible
+ * recipient wins, and a single recipient makes duplicates impossible.
+ *
+ * Applied at the push writers that exist today: review_requested,
+ * waiting_for_input, and wp_review. agent_blocked and task_failed only exist
+ * on the unreferenced compute path, so they are intentionally untouched until
+ * they gain push writers.
+ */
+async function teamItemRecipientId(
+  db: GardenDb,
+  args: {
+    workspaceId: string
+    teamId: string
+    agentId: string | null
+    issue: typeof schema.issue.$inferSelect | null
+    excludeIds: string[]
+  },
+): Promise<string | null> {
+  const eligible = async (userId: string | null | undefined) => {
+    if (!userId) return false
+    if (args.excludeIds.includes(userId)) return false
+    return await isActiveWorkspaceUser(db, args.workspaceId, userId)
+  }
+
+  if (args.agentId) {
+    const [agent] = await db
+      .select({ ownerUserId: schema.agent.ownerUserId })
+      .from(schema.agent)
+      .where(
+        and(
+          eq(schema.agent.id, args.agentId),
+          eq(schema.agent.workspaceId, args.workspaceId),
+        ),
+      )
+      .limit(1)
+    if (agent && (await eligible(agent.ownerUserId))) return agent.ownerUserId
+  }
+
+  if (
+    args.issue?.assigneeType === 'user' &&
+    (await eligible(args.issue.assigneeId))
+  ) {
+    return args.issue.assigneeId
+  }
+
+  const [team] = await db
+    .select({ ownerUserId: schema.team.ownerUserId })
+    .from(schema.team)
+    .where(
+      and(
+        eq(schema.team.id, args.teamId),
+        eq(schema.team.workspaceId, args.workspaceId),
+      ),
+    )
+    .limit(1)
+  if (team && (await eligible(team.ownerUserId))) return team.ownerUserId
+
+  const approvers = await workspacePermissionApproverIds(db, args.workspaceId)
+  for (const approverId of approvers) {
+    if (!args.excludeIds.includes(approverId)) return approverId
+  }
+  return null
+}
+
+/**
+ * Issue-scoped recipients: Team issues use the Team routing order; workspace
+ * issues keep the existing creator + assignee behavior.
+ */
+async function resolveIssueRecipientIds(
+  db: GardenDb,
+  issue: typeof schema.issue.$inferSelect,
+  args: { agentId?: string | null; excludeIds?: string[] } = {},
+): Promise<string[]> {
+  const excludeIds = args.excludeIds ?? []
+  if (issue.teamId) {
+    const recipientId = await teamItemRecipientId(db, {
+      workspaceId: issue.workspaceId,
+      teamId: issue.teamId,
+      agentId: args.agentId ?? null,
+      issue,
+      excludeIds,
+    })
+    return recipientId ? [recipientId] : []
+  }
+  return issueRecipientIds(db, issue, excludeIds)
+}
+
 async function loadIssue(
   db: GardenDb,
   workspaceId: string,
@@ -259,7 +367,9 @@ export async function upsertWaitingForInputInbox(args: {
   const issue = await loadIssue(args.db, args.workspaceId, args.issueId)
   if (!issue || issue.status === 'done' || issue.status === 'cancelled') return
 
-  const recipients = await issueRecipientIds(args.db, issue)
+  const recipients = await resolveIssueRecipientIds(args.db, issue, {
+    agentId: args.agentId,
+  })
   await Promise.all(
     recipients.map((recipientId) =>
       upsertInboxItem(args.db, {
@@ -311,7 +421,9 @@ export async function upsertWorkProductReviewInbox(args: {
   if (row.issue.status === 'done' || row.issue.status === 'cancelled') return
 
   const title = row.workProduct.title?.trim() || `${row.workProduct.type} ready`
-  const recipients = await issueRecipientIds(args.db, row.issue)
+  const recipients = await resolveIssueRecipientIds(args.db, row.issue, {
+    agentId: row.workProduct.agentId,
+  })
   await Promise.all(
     recipients.map((recipientId) =>
       upsertInboxItem(args.db, {
@@ -416,10 +528,11 @@ export async function upsertPermissionRequestInbox(args: {
   )
     return
 
-  const recipients = await workspacePermissionApproverIds(
-    args.db,
-    args.workspaceId,
-  )
+  const recipients = row.issue?.teamId
+    ? await resolveIssueRecipientIds(args.db, row.issue, {
+        agentId: row.request.agentId,
+      })
+    : await workspacePermissionApproverIds(args.db, args.workspaceId)
   const titleSuffix = row.issue ? ` on ${row.issue.title}` : ''
   await Promise.all(
     recipients.map((recipientId) =>
@@ -492,10 +605,11 @@ export async function upsertAgentProposalRequestInbox(args: {
   )
     return
 
-  const recipients = await workspacePermissionApproverIds(
-    args.db,
-    args.workspaceId,
-  )
+  const recipients = row.issue?.teamId
+    ? await resolveIssueRecipientIds(args.db, row.issue, {
+        agentId: row.request.agentId,
+      })
+    : await workspacePermissionApproverIds(args.db, args.workspaceId)
   const titleSuffix = row.issue ? ` on ${row.issue.title}` : ''
   await Promise.all(
     recipients.map((recipientId) =>

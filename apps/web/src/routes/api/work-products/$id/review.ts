@@ -8,7 +8,8 @@ import {
   capturePostHogEvent,
   capturePostHogHandledError,
 } from '@/lib/posthog-server'
-import { json, requireWorkspaceAccess } from '@/lib/server/control-plane'
+import { json } from '@/lib/server/control-plane'
+import { requireIssueAccess } from '@/lib/server/issue-access'
 import { parseJsonBody } from '@/lib/server/validation/common'
 import {
   isConnectorError,
@@ -66,9 +67,9 @@ export const Route = createFileRoute('/api/work-products/$id/review')({
           )
         }
 
-        const access = await requireWorkspaceAccess(
-          request,
-          workspaceResult.value.workspaceId,
+        const access = await requireIssueAccess(
+          appContext,
+          workspaceResult.value.issueId,
         )
         if (access instanceof Response) return access
 

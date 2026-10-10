@@ -142,8 +142,15 @@ function resolveValue(token, seen = new Set()) {
     case 'textCase':
     case 'textDecoration':
       return resolveAlias(value, seen)
-    case 'shadow':
-      return value.map(shadowLayer).join(', ')
+    case 'shadow': {
+      // Semantic shadow tokens alias Global shadows (`{shadow-5}`); the alias
+      // resolver returns the target's already-serialized box-shadow string.
+      const resolved =
+        typeof value === 'string' ? resolveAlias(value, seen) : value
+      return typeof resolved === 'string'
+        ? resolved
+        : resolved.map(shadowLayer).join(', ')
+    }
     case 'typography':
       return value // composites are emitted separately as @utility classes
     default:
@@ -301,11 +308,11 @@ const LEGACY_COMPAT = {
 
 // Legacy shadow names — kept separate from LEGACY_COMPAT colors so emission
 // doesn't sniff value strings to decide whether to add a --color-* binding.
+// `shadow-float-1` / `shadow-float-2` are real semantic tokens now (they flip
+// in dark mode via the Dark set), so only the hairline aliases remain here.
 const LEGACY_SHADOW_COMPAT = {
   'shadow-hairline': 'var(--shadow-1)',
   'shadow-hairline-soft': 'var(--shadow-2)',
-  'shadow-float-1': 'var(--shadow-3)',
-  'shadow-float-2': 'var(--shadow-5)',
 }
 
 // Tailwind namespace mapping for non-color primitives: token name → theme key.
@@ -406,8 +413,10 @@ out.push(`\n  /* Primitive colors */`)
 for (const e of primitiveColors)
   out.push(varLine(`color-${e.path}`, `var(--${e.path})`))
 out.push(`\n  /* Semantic colors */`)
-for (const e of lightFlat)
+for (const e of lightFlat) {
+  if (e.token.$type !== 'color') continue
   out.push(varLine(`color-${e.path}`, `var(--${e.path})`))
+}
 out.push(`\n  /* Compat — shadcn + garden extras */`)
 for (const name of Object.keys(SHADCN_COMPAT)) {
   // `radius` is a bare :root var (shadcn base), not a color utility namespace.
@@ -436,6 +445,11 @@ out.push(`\n  /* Radii — token values override Tailwind defaults */`)
 for (const e of radii) out.push(varLine(e.path, `var(--${e.path})`))
 out.push(`\n  /* Shadows */`)
 for (const e of shadows) out.push(varLine(e.path, `var(--${e.path})`))
+out.push(`\n  /* Semantic shadows (flip with the mode) */`)
+for (const e of lightFlat) {
+  if (e.token.$type === 'shadow')
+    out.push(varLine(e.path, `var(--${e.path})`))
+}
 out.push(`}`)
 
 // 4. Composite typography utilities

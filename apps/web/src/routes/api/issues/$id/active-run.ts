@@ -1,13 +1,12 @@
-import { eq } from 'drizzle-orm'
+
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { schema } from '@/lib/server/db'
+
 import { appEnv } from '@/lib/server/env'
 import {
   badRequest,
-  notFound,
-  requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
+import { requireIssueAccess } from '@/lib/server/issue-access'
 import {
   getActiveIssueRun,
   listIssueRunEvents,
@@ -23,19 +22,9 @@ export const Route = createFileRoute('/api/issues/$id/active-run')({
     handlers: {
       GET: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)
-        const db = await appContext.db()
-        const [issue] = await db
-          .select({ workspaceId: schema.issue.workspaceId })
-          .from(schema.issue)
-          .where(eq(schema.issue.id, params.id))
-          .limit(1)
-        if (!issue) return notFound('Issue not found')
-
-        const access = await requireWorkspaceAccess(
-          appContext,
-          issue.workspaceId,
-        )
+        const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
+                const issue = access.issue
 
         const runResult = await getActiveIssueRun({
           env: appEnv,

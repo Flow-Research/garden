@@ -943,6 +943,7 @@ export function IssueDetail({
               <AssigneePicker
                 assigneeType={issue!.assignee_type}
                 assigneeId={issue!.assignee_id}
+                teamId={issue!.team_id}
                 onUpdate={handleUpdateField}
                 align="start"
               />
@@ -1114,7 +1115,32 @@ export function IssueDetail({
                 </Tooltip>
               )}
               <div className="flex flex-1 items-center gap-1.5 min-w-0">
-                {workspace && (
+                {issue?.team_id ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void navigate({ to: '/teams' })}
+                      className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                    >
+                      Teams
+                    </button>
+                    <span className="text-muted-foreground/50 shrink-0">/</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void navigate({
+                          to: '/teams/$teamId',
+                          params: { teamId: issue.team_id as string },
+                          search: { tab: 'issues' },
+                        })
+                      }
+                      className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                    >
+                      Issues
+                    </button>
+                    <span className="text-muted-foreground/50 shrink-0">/</span>
+                  </>
+                ) : workspace ? (
                   <>
                     <button
                       type="button"
@@ -1125,7 +1151,7 @@ export function IssueDetail({
                     </button>
                     <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
                   </>
-                )}
+                ) : null}
                 <span className="shrink-0">{issue.identifier}</span>
               </div>
               <div className="flex items-center gap-1 shrink-0">

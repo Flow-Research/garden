@@ -33,7 +33,12 @@ import {
   useSurfaceTabsStore,
   withActiveTab,
 } from '@garden/app-state/surface-tabs'
-import { NAV_ITEMS, navItemForPathname } from '@/features/navigation/nav-items'
+import {
+  NAV_ITEMS,
+  TEAM_NAV_CHILDREN,
+  navItemForPathname,
+  teamNavChildForPathname,
+} from '@/features/navigation/nav-items'
 import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigation'
 import { ChatTabsStrip } from './chat-tabs'
 import { TaskTabsStrip } from './task-tabs'
@@ -121,6 +126,9 @@ export function AppShell() {
   const { openIssue, openChatSession } = useSurfaceNavigation()
   const [collapsed, setCollapsed] = useState(false)
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false)
+  const [expandedNavIds, setExpandedNavIds] = useState<string[]>(() =>
+    pathname.startsWith('/teams/') ? ['teams'] : [],
+  )
 
   const workspaceId = workspace?.id ?? ''
   const workspaceListQuery = useQuery(workspaceListOptions())
@@ -200,22 +208,41 @@ export function AppShell() {
     [tabbedNav, surfaceTabs, tabStep.current, openChatSession, openIssue],
   )
 
+  const canManageTeams =
+    currentMemberRole === 'owner' || currentMemberRole === 'admin'
+  const activeTeamChildId = teamNavChildForPathname(pathname)?.id ?? null
+
   const navItems = useMemo(
     () =>
       NAV_ITEMS.map((item) => ({
         ...item,
         badge: item.id === 'inbox' && unreadCount > 0 ? unreadCount : undefined,
+        children:
+          item.id === 'teams' && canManageTeams ? TEAM_NAV_CHILDREN : undefined,
       })),
-    [unreadCount],
+    [unreadCount, canManageTeams],
   )
 
   const handleSelectNav = useCallback(
     (id: string) => {
+      const child = TEAM_NAV_CHILDREN.find((entry) => entry.id === id)
+      if (child) {
+        void navigate({ to: child.to })
+        return
+      }
       const item = NAV_ITEMS.find((entry) => entry.id === id)
       if (item) void navigate({ to: item.to })
     },
     [navigate],
   )
+
+  const handleToggleNav = useCallback((id: string) => {
+    setExpandedNavIds((previous) =>
+      previous.includes(id)
+        ? previous.filter((entry) => entry !== id)
+        : [...previous, id],
+    )
+  }, [])
 
   const handleSwitchWorkspace = useCallback(
     (nextWorkspace: NonNullable<typeof workspace>) => {
@@ -284,6 +311,9 @@ export function AppShell() {
               }
               items={navItems}
               activeId={activeNavId}
+              activeChildId={activeTeamChildId}
+              expandedIds={expandedNavIds}
+              onToggleExpand={handleToggleNav}
               onSelect={handleSelectNav}
               collapsed={collapsed}
               userCard={

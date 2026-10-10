@@ -358,6 +358,13 @@
       "when": 1791202181654,
       "tag": "0050_wet_lord_hawal",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1791544236897,
+      "tag": "0051_condemned_blindfold",
+      "breakpoints": true
     }
   ]
 }

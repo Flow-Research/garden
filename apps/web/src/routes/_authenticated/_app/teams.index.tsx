@@ -1,0 +1,38 @@
+import { Suspense } from 'react'
+import { createFileRoute } from '@tanstack/react-router'
+import { TeamOverview } from '@/features/teams/components/team-overview'
+import { TeamRouteError } from '@/features/teams/components/team-route-error'
+import { teamListOptions } from '@/features/teams/queries'
+import { prefetchActiveWorkspace } from '@/lib/navigation/prefetch'
+import { memberListOptions } from '@/lib/workspace/queries'
+
+export const Route = createFileRoute('/_authenticated/_app/teams/')({
+  // Member view state: the selected Team. Ignored by the admin overview,
+  // which has no selector.
+  validateSearch: (search) => {
+    const out: { team?: string } = {}
+    if (typeof search.team === 'string') out.team = search.team
+    return out
+  },
+  loader: ({ context }) =>
+    prefetchActiveWorkspace(context.queryClient, (workspaceId) => [
+      teamListOptions(workspaceId),
+      memberListOptions(workspaceId),
+    ]),
+  component: TeamsIndexRoute,
+  errorComponent: TeamRouteError,
+})
+
+function TeamsIndexRoute() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex-1 p-6 text-sm text-text-secondary">
+          Loading Teams…
+        </div>
+      }
+    >
+      <TeamOverview />
+    </Suspense>
+  )
+}
