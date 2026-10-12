@@ -15,6 +15,10 @@ import type { R2BucketLike } from '@garden/brain/services/raw-file-store'
 import { getPooledDb } from '@garden/db/runtime'
 import * as schema from '@garden/db/schema'
 import { createBrainTools, type BrainToolContext } from './agent-tools/brain'
+import {
+  brainWriteBackCanonicalKey,
+  normalizeBrainWriteBackClaim,
+} from './brain-write-back-identity'
 
 export const BRAIN_WRITE_BACK_TOOL_NAMES = [
   'brain_search',
@@ -112,14 +116,6 @@ const proposeInputSchema = z
   })
   .strict()
 
-/**
- * Canonicalizes only presentation differences, keeping changed facts distinct.
- * This code-level identity is shared by retry and cross-run duplicate checks;
- * semantic search remains a separate check for existing brain content.
- */
-export const normalizeBrainWriteBackClaim = (claim: string): string =>
-  claim.trim().toLocaleLowerCase('en-US').replace(/\s+/g, ' ')
-
 /** Uses a collision-resistant digest because this value backs unique indexes. */
 const claimDigest = async (value: string): Promise<string> => {
   const bytes = await crypto.subtle.digest(
@@ -134,14 +130,26 @@ const claimDigest = async (value: string): Promise<string> => {
 /** Confirms exact semantic identity after search narrows likely matches. */
 const matchesExistingClaim = (
   claim: string,
+  scope: ReturnType<typeof orgScope> | ReturnType<typeof userScope>,
   hit: {
     readonly item: {
       readonly label: string
       readonly summary?: string
       readonly body?: string
+      readonly scope?: {
+        readonly kind: 'org' | 'team' | 'user'
+        readonly teamId?: string
+        readonly userId?: string
+      }
     }
   },
 ): boolean => {
+  const existingScope = hit.item.scope ?? orgScope()
+  const sameScope =
+    existingScope.kind === scope.kind &&
+    (scope.kind !== 'user' ||
+      (existingScope.kind === 'user' && existingScope.userId === scope.userId))
+  if (!sameScope) return false
   const normalized = normalizeBrainWriteBackClaim(claim)
   return [hit.item.body, hit.item.summary, hit.item.label].some(
     (value) =>
@@ -175,14 +183,11 @@ export function createBrainWriteBackTools(
       }
       const scope = input.scope ?? 'org'
       if (scope === 'user' && context.userId === undefined) {
-        return { ok: true, action: 'skipped' }
+        return { ok: true, action: 'skipped', reason: 'no-user-scope' }
       }
       const normalizedClaim = normalizeBrainWriteBackClaim(input.claim)
-      const scopeIdentity =
-        scope === 'user' ? `user:${context.userId}` : 'org'
-      const claimHash = await claimDigest(
-        `${scopeIdentity}:${normalizedClaim}`,
-      )
+      const scopeIdentity = scope === 'user' ? `user:${context.userId}` : 'org'
+      const claimHash = await claimDigest(`${scopeIdentity}:${normalizedClaim}`)
       const candidate: WriteCandidate = {
         claimHash,
         claim: input.claim,
@@ -195,6 +200,12 @@ export function createBrainWriteBackTools(
         candidate.scope === 'user' && context.userId !== undefined
           ? userScope(context.userId)
           : orgScope()
+      const [decision] = decideWriteBack([candidate], {
+        directWriteConfidence: BRAIN_WRITE_BACK_DIRECT_WRITE_CONFIDENCE,
+      })
+      if (decision === undefined) {
+        return { ok: false, error: 'No write-back decision.' }
+      }
       const layer =
         dependencies.env.HELIX_URL === undefined
           ? undefined
@@ -224,28 +235,21 @@ export function createBrainWriteBackTools(
             Effect.provide(layer),
             Effect.match({
               onFailure: () => ({ ok: false as const }),
-              onSuccess: (hits) =>
-                ({
-                  ok: true as const,
-                  duplicate: hits.some((hit) =>
-                    matchesExistingClaim(input.claim, hit),
-                  ),
-                }),
+              onSuccess: (hits) => ({
+                ok: true as const,
+                duplicate: hits.some((hit) =>
+                  matchesExistingClaim(input.claim, resolvedScope, hit),
+                ),
+              }),
             }),
           ),
         )
-        if (!duplicateCheck.ok) {
+        if (!duplicateCheck.ok && decision.action === 'write') {
           return { ok: false, error: 'Brain duplicate check failed.' }
         }
-        if (duplicateCheck.duplicate) {
+        if (duplicateCheck.ok && duplicateCheck.duplicate) {
           return { ok: true, action: 'skipped', reason: 'duplicate' }
         }
-      }
-      const [decision] = decideWriteBack([candidate], {
-        directWriteConfidence: BRAIN_WRITE_BACK_DIRECT_WRITE_CONFIDENCE,
-      })
-      if (decision === undefined) {
-        return { ok: false, error: 'No write-back decision.' }
       }
 
       if (decision.action === 'write') {
@@ -262,7 +266,10 @@ export function createBrainWriteBackTools(
               scope: resolvedScope,
               canonical: {
                 type: 'brain-write-back-claim',
-                value: candidate.claimHash,
+                value: brainWriteBackCanonicalKey(
+                  context.workspaceId,
+                  candidate.claimHash,
+                ),
               },
               actor: {
                 _tag: 'Agent',
@@ -296,7 +303,6 @@ export function createBrainWriteBackTools(
           .values({
             workspaceId: context.workspaceId,
             runId: context.runId,
-            operationKey: `${context.runId}:${candidate.claimHash}`,
             claimHash: candidate.claimHash,
             claim: input.claim,
             kind: input.kind,
@@ -307,17 +313,19 @@ export function createBrainWriteBackTools(
           .onConflictDoNothing()
           .returning({ id: schema.brainWriteProposal.id })
         if (inserted.length === 0) {
-          const existing = await db.query.brainWriteProposal.findFirst({
-            columns: { runId: true },
+          const retry = await db.query.brainWriteProposal.findFirst({
+            columns: { id: true },
             where: and(
               eq(schema.brainWriteProposal.workspaceId, context.workspaceId),
+              eq(schema.brainWriteProposal.runId, context.runId),
               eq(schema.brainWriteProposal.claimHash, candidate.claimHash),
+              eq(schema.brainWriteProposal.status, 'pending'),
             ),
           })
           return {
             ok: true,
             action: 'skipped',
-            reason: existing?.runId === context.runId ? 'retry' : 'duplicate',
+            reason: retry === undefined ? 'duplicate' : 'retry',
           }
         }
         return { ok: true, action: 'proposed', reason: decision.reason }

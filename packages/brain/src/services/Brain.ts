@@ -1300,7 +1300,7 @@ export const makeBrain = Effect.gen(function* () {
           .varAs(
             'idx_note_source',
             g().createIndexIfNotExists(
-              IndexSpec.nodeEquality(LABELS.Note, SOURCE_KEY_PROP),
+              IndexSpec.nodeUniqueEquality(LABELS.Note, SOURCE_KEY_PROP),
             ),
           )
           .returning([
@@ -1475,8 +1475,7 @@ export const makeBrain = Effect.gen(function* () {
         const result = yield* retryWriteConflict(
           helix.run(request, { awaitDurability: true }),
         )
-        const row =
-          firstRow(result, 'existing') ?? firstRow(result, 'created')
+        const row = firstRow(result, 'existing') ?? firstRow(result, 'created')
         if (row === undefined) {
           return yield* Effect.fail(
             new HelixError({ message: 'addText returned no node' }),

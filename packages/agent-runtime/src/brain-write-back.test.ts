@@ -63,7 +63,11 @@ describe('createBrainWriteBackTools user scope without user context', () => {
       scope: 'user',
     })
 
-    expect(result).toMatchObject({ ok: true, action: 'skipped' })
+    expect(result).toEqual({
+      ok: true,
+      action: 'skipped',
+      reason: 'no-user-scope',
+    })
     expect(mockGetPooledDb).not.toHaveBeenCalled()
     expect(insert).not.toHaveBeenCalled()
     expect(values).not.toHaveBeenCalled()
@@ -114,6 +118,7 @@ describe('createBrainWriteBackTools user scope without user context', () => {
             label: 'Datastore',
             kind: 'decision',
             body: '  THE ORG CHOSE D1 as the primary datastore. ',
+            scope: { kind: 'org' },
           },
           score: 1,
         },
@@ -148,7 +153,7 @@ describe('createBrainWriteBackTools user scope without user context', () => {
     expect(mockGetPooledDb).not.toHaveBeenCalled()
   })
 
-  it('uses one semantic identity across runs and a run-specific operation key', async () => {
+  it('uses one semantic identity across runs', async () => {
     const returning = vi
       .fn()
       .mockResolvedValueOnce([{ id: 'proposal-1' }])
@@ -159,7 +164,7 @@ describe('createBrainWriteBackTools user scope without user context', () => {
       insert: vi.fn().mockReturnValue({ values }),
       query: {
         brainWriteProposal: {
-          findFirst: vi.fn().mockResolvedValue({ runId: 'run-1' }),
+          findFirst: vi.fn().mockResolvedValue(undefined),
         },
       },
     })
@@ -197,7 +202,6 @@ describe('createBrainWriteBackTools user scope without user context', () => {
     })
     const [firstWrite, secondWrite] = values.mock.calls.map(([value]) => value)
     expect(firstWrite.claimHash).toBe(secondWrite.claimHash)
-    expect(firstWrite.operationKey).not.toBe(secondWrite.operationKey)
     expect(onConflictDoNothing).toHaveBeenCalledTimes(2)
   })
 
@@ -210,7 +214,7 @@ describe('createBrainWriteBackTools user scope without user context', () => {
       insert: vi.fn().mockReturnValue({ values }),
       query: {
         brainWriteProposal: {
-          findFirst: vi.fn().mockResolvedValue({ runId: 'run-1' }),
+          findFirst: vi.fn().mockResolvedValue({ id: 'proposal-1' }),
         },
       },
     })
@@ -242,9 +246,7 @@ describe('createBrainWriteBackTools user scope without user context', () => {
   })
 
   it('keeps genuinely changed facts persistable', async () => {
-    const returning = vi
-      .fn()
-      .mockResolvedValue([{ id: 'proposal' }])
+    const returning = vi.fn().mockResolvedValue([{ id: 'proposal' }])
     const values = vi.fn().mockReturnValue({
       onConflictDoNothing: vi.fn().mockReturnValue({ returning }),
     })
@@ -274,10 +276,92 @@ describe('createBrainWriteBackTools user scope without user context', () => {
     expect(await propose('Use D1 for durable workflow state.')).toMatchObject({
       action: 'proposed',
     })
-    expect(await propose('Use Postgres for durable workflow state.')).toMatchObject(
-      { action: 'proposed' },
-    )
+    expect(
+      await propose('Use Postgres for durable workflow state.'),
+    ).toMatchObject({ action: 'proposed' })
     const [firstWrite, changedWrite] = values.mock.calls.map(([value]) => value)
     expect(firstWrite.claimHash).not.toBe(changedWrite.claimHash)
+  })
+
+  it('does not treat an org note as a duplicate of a user claim', async () => {
+    const { Effect } = await import('effect')
+    mockSearch.mockReturnValue(
+      Effect.succeed([
+        {
+          item: {
+            id: 'item-1',
+            label: 'Alice prefers short replies.',
+            kind: 'preference',
+            body: 'Alice prefers short replies.',
+            scope: { kind: 'org' },
+          },
+          score: 1,
+        },
+      ]),
+    )
+    const returning = vi.fn().mockResolvedValue([{ id: 'proposal-1' }])
+    const values = vi.fn().mockReturnValue({
+      onConflictDoNothing: vi.fn().mockReturnValue({ returning }),
+    })
+    mockGetPooledDb.mockReturnValue({
+      insert: vi.fn().mockReturnValue({ values }),
+    })
+    const tools = createBrainWriteBackTools({
+      env: { HELIX_URL: 'http://localhost:6968' },
+      ai: { run: async () => ({ data: [] }) },
+      files: { get: async () => null },
+      databaseUrl: 'postgres://test:test@localhost:5432/test',
+      getContext: () => ({
+        workspaceId: 'workspace-1',
+        userId: 'user-1',
+        agentId: 'agent-1',
+        runId: 'run-1',
+      }),
+    })
+
+    const result = await execute(tools.propose_brain_item, {
+      claim: 'Alice prefers short replies.',
+      kind: 'preference',
+      confidence: 0.9,
+      sensitive: false,
+      scope: 'user',
+    })
+
+    expect(result).toMatchObject({ ok: true, action: 'proposed' })
+    expect(values).toHaveBeenCalledOnce()
+  })
+
+  it('keeps review proposals available when Brain search is unavailable', async () => {
+    const { Effect } = await import('effect')
+    mockSearch.mockReturnValue(Effect.fail(new Error('helix unavailable')))
+    const returning = vi.fn().mockResolvedValue([{ id: 'proposal-1' }])
+    const values = vi.fn().mockReturnValue({
+      onConflictDoNothing: vi.fn().mockReturnValue({ returning }),
+    })
+    mockGetPooledDb.mockReturnValue({
+      insert: vi.fn().mockReturnValue({ values }),
+    })
+    const tools = createBrainWriteBackTools({
+      env: { HELIX_URL: 'http://localhost:6968' },
+      ai: { run: async () => ({ data: [] }) },
+      files: { get: async () => null },
+      databaseUrl: 'postgres://test:test@localhost:5432/test',
+      getContext: () => ({
+        workspaceId: 'workspace-1',
+        agentId: 'agent-1',
+        runId: 'run-1',
+      }),
+    })
+
+    const result = await execute(tools.propose_brain_item, {
+      claim: 'Use D1 for durable workflow state.',
+      kind: 'decision',
+      confidence: 0.4,
+      sensitive: false,
+      scope: 'org',
+    })
+
+    expect(result).toMatchObject({ ok: true, action: 'proposed' })
+    expect(values).toHaveBeenCalledOnce()
   })
 })

@@ -84,7 +84,6 @@ export const brainWriteProposal = pgTable(
       .notNull()
       .references(() => organization.id),
     runId: text('run_id').notNull(),
-    operationKey: text('operation_key').notNull(),
     claimHash: text('claim_hash').notNull(),
     claim: text('claim').notNull(),
     kind: text('kind').notNull(),
@@ -111,14 +110,9 @@ export const brainWriteProposal = pgTable(
       table.workspaceId,
       table.status,
     ),
-    uniqueIndex('brain_write_proposal_operation_unique').on(
-      table.workspaceId,
-      table.operationKey,
-    ),
-    uniqueIndex('brain_write_proposal_claim_unique').on(
-      table.workspaceId,
-      table.claimHash,
-    ),
+    uniqueIndex('brain_write_proposal_claim_unique')
+      .on(table.workspaceId, table.claimHash)
+      .where(sql`${table.status} = 'pending'`),
     check(
       'brain_write_proposal_status_check',
       sql`${table.status} in ('pending', 'approved', 'rejected')`,
