@@ -65,7 +65,7 @@
     "@garden/ui": "workspace:*",
     "@legendapp/list": "3.0.0-beta.44",
     "@modelcontextprotocol/ext-apps": "1.7.4",
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/sdk": "1.31.0",
     "@phosphor-icons/react": "^2.1.10",
     "@posthog/react": "^1.10.2",
     "@radix-ui/react-use-controllable-state": "^1.2.2",
