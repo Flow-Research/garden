@@ -129,7 +129,14 @@ function DisplaySettings({
   )
 }
 
-/** Issues toolbar with compact scopes, search, and Garden-owned popover trays. */
+/**
+ * Issues toolbar with compact scopes, search, and Garden-owned popover trays.
+ *
+ * The previous single-row layout clipped controls below tablet width because
+ * the scope tabs, search field, and action cluster all competed for one line.
+ * Keep those concerns in responsive zones so the tabs can scroll, search can
+ * claim a full row, and actions remain reachable on narrow screens.
+ */
 export function IssuesHeader({
   onCreateIssue,
   onSearchQueryChange,
@@ -147,65 +154,69 @@ export function IssuesHeader({
   const filterCount = numberOfActiveFilters(view)
 
   return (
-    <header className="flex min-h-12 shrink-0 items-center gap-2 border-b px-4 py-2">
-      <div
-        aria-label="Issue scope"
-        className="flex h-[35px] items-center rounded-sm bg-background-main-secondary p-1"
-        role="group"
-      >
-        {SCOPE_OPTIONS.map((option) => (
-          <Button
-            aria-label={`${option.label}: ${option.description}`}
-            aria-pressed={view.scope === option.value}
-            className={cn(
-              'h-[27px] rounded-sm border-0 px-2.5 text-sm font-normal shadow-none',
-              view.scope === option.value
-                ? 'bg-background-brand-default text-text-brand-onBrand'
-                : 'bg-transparent text-text-default hover:bg-background-main-secondary-hover',
-            )}
-            key={option.value}
-            onClick={() => view.setScope(option.value)}
-            variant="outline"
-          >
-            {option.label}
-          </Button>
-        ))}
+    <header className="flex min-h-12 shrink-0 flex-col gap-2 border-b px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2 sm:px-4">
+      <div className="flex min-w-0 items-center gap-2 sm:shrink-0">
+        <div
+          aria-label="Issue scope"
+          className="min-w-0 max-w-full overflow-x-auto rounded-lg bg-background-main-secondary p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          role="group"
+        >
+          <div className="flex w-max items-center">
+            {SCOPE_OPTIONS.map((option) => (
+              <Button
+                aria-label={`${option.label}: ${option.description}`}
+                aria-pressed={view.scope === option.value}
+                className={cn(
+                  'h-[27px] shrink-0 rounded-md border-0 px-2.5 text-sm font-normal shadow-none',
+                  view.scope === option.value
+                    ? 'bg-background-brand-default text-text-brand-onBrand shadow-sm'
+                    : 'bg-transparent text-text-default hover:bg-background-main-secondary-hover',
+                )}
+                key={option.value}
+                onClick={() => view.setScope(option.value)}
+                variant="outline"
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        {/* Design's "Internal Tasks ▾" view switcher — Issues is the current
+            surface; External Tasks maps to the existing Workflows page and
+            System is a disabled design placeholder. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="outline"
+                className="h-[35px] shrink-0 gap-1.5 rounded-lg px-3 text-sm font-normal shadow-1"
+              >
+                Issues
+                <ChevronDown className="size-4" />
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="start" className="w-44">
+            <DropdownMenuItem className="justify-between" disabled>
+              Issues
+              <Check className="size-4" />
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => void navigate({ to: '/workflows' })}
+            >
+              Workflows
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled>System</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
-      {/* Design's "Internal Tasks ▾" view switcher — Issues is the current
-          surface; External Tasks maps to the existing Workflows page and
-          System is a disabled design placeholder. */}
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              variant="outline"
-              className="h-[35px] gap-1.5 rounded-md px-3 text-sm font-normal shadow-1"
-            >
-              Issues
-              <ChevronDown className="size-4" />
-            </Button>
-          }
-        />
-        <DropdownMenuContent align="start" className="w-44">
-          <DropdownMenuItem className="justify-between" disabled>
-            Issues
-            <Check className="size-4" />
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => void navigate({ to: '/workflows' })}
-          >
-            Workflows
-          </DropdownMenuItem>
-          <DropdownMenuItem disabled>System</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <div className="relative min-w-36 max-w-md flex-1">
+      <div className="relative min-w-0 flex-1 sm:min-w-36 sm:max-w-md">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
         <Input
           aria-label="Search issues"
-          className="h-8 bg-background pl-8 pr-8 shadow-none"
+          className="h-9 rounded-lg bg-background pl-8 pr-8 shadow-none"
           onChange={(event) => onSearchQueryChange(event.currentTarget.value)}
           onKeyDown={(event) => {
             if (event.key === 'Escape') onSearchQueryChange('')
@@ -226,79 +237,83 @@ export function IssuesHeader({
         ) : null}
       </div>
 
-      <Button
-        className="h-10 gap-2 rounded-md px-3"
-        onClick={() => onCreateIssue()}
-      >
-        <Plus className="size-4" />
-        <span className="hidden sm:inline">New issue</span>
-      </Button>
-
-      <Popover>
-        <PopoverTrigger
-          render={
-            <Button
-              aria-label="Filters"
-              className="relative"
-              size="icon-sm"
-              variant="outline"
-            >
-              <Filter className="size-4" />
-              {filterCount ? (
-                <span className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
-                  {filterCount}
-                </span>
-              ) : null}
-            </Button>
-          }
-        />
-        <PopoverContent
-          align="end"
-          className="max-h-[min(70vh,38rem)] w-[min(34rem,calc(100vw-2rem))] overflow-y-auto p-4"
+      <div className="flex items-center gap-1.5 sm:shrink-0">
+        <Button
+          className="h-9 flex-1 gap-2 rounded-lg px-3 sm:flex-none"
+          onClick={() => onCreateIssue()}
         >
-          <IssueFilterTray
-            actions={view.actions}
-            counts={counts}
-            state={view}
+          <Plus className="size-4" />
+          <span>New issue</span>
+        </Button>
+
+        <Popover>
+          <PopoverTrigger
+            render={
+              <Button
+                aria-label="Filters"
+                className="relative"
+                size="icon-sm"
+                variant="outline"
+              >
+                <Filter className="size-4" />
+                {filterCount ? (
+                  <span className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+                    {filterCount}
+                  </span>
+                ) : null}
+              </Button>
+            }
           />
-        </PopoverContent>
-      </Popover>
+          <PopoverContent
+            align="end"
+            className="max-h-[min(70vh,38rem)] w-[min(34rem,calc(100vw-2rem))] overflow-y-auto p-4"
+          >
+            <IssueFilterTray
+              actions={view.actions}
+              counts={counts}
+              state={view}
+            />
+          </PopoverContent>
+        </Popover>
 
-      <Popover>
-        <PopoverTrigger
-          render={
-            <Button
-              aria-label="Display settings"
-              size="icon-sm"
-              variant="outline"
-            >
-              <SlidersHorizontal className="size-3.5" />
-            </Button>
+        <Popover>
+          <PopoverTrigger
+            render={
+              <Button
+                aria-label="Display settings"
+                size="icon-sm"
+                variant="outline"
+              >
+                <SlidersHorizontal className="size-3.5" />
+              </Button>
+            }
+          />
+          <PopoverContent align="end" className="w-64 p-4">
+            <DisplaySettings actions={view.actions} state={view} />
+          </PopoverContent>
+        </Popover>
+
+        <Button
+          aria-label={
+            view.viewMode === 'board'
+              ? 'Switch to list view'
+              : 'Switch to board view'
           }
-        />
-        <PopoverContent align="end" className="w-64 p-4">
-          <DisplaySettings actions={view.actions} state={view} />
-        </PopoverContent>
-      </Popover>
-
-      <Button
-        aria-label={
-          view.viewMode === 'board'
-            ? 'Switch to list view'
-            : 'Switch to board view'
-        }
-        onClick={() =>
-          view.actions.setViewMode(view.viewMode === 'board' ? 'list' : 'board')
-        }
-        size="icon-sm"
-        variant="outline"
-      >
-        {view.viewMode === 'board' ? (
-          <Columns3 className="size-3.5" />
-        ) : (
-          <List className="size-3.5" />
-        )}
-      </Button>
+          onClick={() =>
+            view.actions.setViewMode(
+              view.viewMode === 'board' ? 'list' : 'board',
+            )
+          }
+          size="icon-sm"
+          variant="outline"
+        >
+          {view.viewMode === 'board' ? (
+            <Columns3 className="size-3.5" />
+          ) : (
+            <List className="size-3.5" />
+          )}
+        </Button>
+      </div>
     </header>
   )
 }
