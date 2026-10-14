@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import { AppSidebar } from '@garden/ui/components/shell/app-sidebar'
 import { AppTopBar } from '@garden/ui/components/shell/app-topbar'
 import { Button } from '@garden/ui/components/ui/button'
+import { cn } from '@garden/ui/lib/utils'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { useAuthStore } from '@garden/app-state/auth'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
@@ -352,7 +353,12 @@ export function AppShell() {
                   ) : null
                 }
               />
-              <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <main
+                className={cn(
+                  'flex min-h-0 flex-1 flex-col overflow-hidden max-md:transition-[filter] max-md:duration-200',
+                  !collapsed && 'max-md:blur-sm',
+                )}
+              >
                 <Outlet />
               </main>
             </div>
