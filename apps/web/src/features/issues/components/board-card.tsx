@@ -3,7 +3,11 @@ import { useSortable, defaultAnimateLayoutChanges } from '@dnd-kit/sortable'
 import type { AnimateLayoutChanges } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { toast } from 'sonner'
-import type { Issue, IssuePriority, UpdateIssueRequest } from '@garden/core/types'
+import type {
+  Issue,
+  IssuePriority,
+  UpdateIssueRequest,
+} from '@garden/core/types'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { ActorAvatar } from '../../common/actor-avatar'
 import { useUpdateIssue } from '@/lib/issues/mutations'
@@ -48,7 +52,7 @@ function PriorityPill({ priority }: { priority: IssuePriority }) {
   const pill = PRIORITY_PILL[priority]
   return (
     <span
-      className={`inline-flex h-6 items-center rounded-pill px-2 text-xs ${pill.text}`}
+      className={`inline-flex h-4 font-semibold items-center rounded-pill px-1.5 text-[11px] ${pill.text}`}
       style={{ backgroundColor: pill.bg }}
     >
       {PRIORITY_CONFIG[priority].label}
@@ -122,7 +126,7 @@ export const BoardCardContent = memo(function BoardCardContent({
         : null
 
   return (
-    <div className="rounded-md border-[0.5px] border-border-default bg-background-main-default p-3">
+    <div className="rounded-md border-[0.5px] border-border-default bg-background-main-default p-2.5">
       {/* Row 1: Identifier + live indicators + team chip (cross-team only) */}
       <div className="flex items-center gap-1.5 text-xs text-text-brand-default">
         {issue.source_summary && (
@@ -134,7 +138,7 @@ export const BoardCardContent = memo(function BoardCardContent({
         <span>{issue.identifier}</span>
         {liveVariant && <LiveDot variant={liveVariant} className="ml-0.5" />}
         {team ? (
-          <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-2 py-0.5 text-xs text-text-default">
+          <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-1.5 py-0.5 text-[11px] text-text-default">
             <span
               aria-hidden
               className="size-1.5 rounded-full"
@@ -145,7 +149,7 @@ export const BoardCardContent = memo(function BoardCardContent({
         ) : null}
       </div>
 
-      <p className="mt-1.5 text-sm font-semibold leading-snug line-clamp-2">
+      <p className="mt-1 text-sm font-semibold leading-snug line-clamp-2">
         {issue.title}
       </p>
 
@@ -153,7 +157,7 @@ export const BoardCardContent = memo(function BoardCardContent({
       {childProgress && (
         <Badge
           variant="secondary"
-          className="mt-1.5 rounded-full bg-muted/60 px-1.5 text-[11px] font-medium tabular-nums text-muted-foreground"
+          className="mt-1 rounded-full bg-muted/60 px-1.5 text-[11px] font-medium tabular-nums text-muted-foreground"
         >
           <ProgressRing
             done={childProgress.done}
@@ -166,13 +170,13 @@ export const BoardCardContent = memo(function BoardCardContent({
 
       {/* Description */}
       {showDescription && (
-        <p className="mt-1 text-sm text-text-secondary line-clamp-3">
+        <p className="mt-1 text-xs leading-relaxed text-text-secondary line-clamp-2">
           {issue.description}
         </p>
       )}
 
       {/* Footer: priority pill, due-date chip, project chip, assignee */}
-      <div className="mt-3 flex items-center gap-1.5">
+      <div className="mt-2.5 flex items-center gap-1">
         {showPriority &&
           (editable ? (
             <PickerWrapper>
@@ -192,18 +196,18 @@ export const BoardCardContent = memo(function BoardCardContent({
                 dueDate={issue.due_date}
                 onUpdate={handleUpdate}
                 trigger={
-                  <span className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-2 text-xs text-text-default">
+                  <span className="inline-flex h-5 cursor-pointer items-center gap-1 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-1.5 text-[11px] text-text-default">
                     Due: {formatDueDate(issue.due_date!)}
                   </span>
                 }
               />
             </PickerWrapper>
           ) : (
-            <span className="inline-flex h-6 items-center gap-1 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-2 text-xs text-text-default">
+            <span className="inline-flex h-5 items-center gap-1 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-1.5 text-[11px] text-text-default">
               Due: {formatDueDate(issue.due_date!)}
             </span>
           ))}
-        <span className="inline-flex h-6 items-center gap-1 truncate rounded-pill border-[0.5px] border-border-default bg-background-main-default px-2 text-xs text-text-default">
+        <span className="inline-flex h-5 items-center gap-1 truncate rounded-pill border-[0.5px] border-border-default bg-background-main-default px-1.5 text-[11px] text-text-default">
           {projectTitle ?? 'No project'}
         </span>
         {showAssignee && (
