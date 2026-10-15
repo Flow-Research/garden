@@ -108,7 +108,7 @@ export function FileViewer({
   )
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-w-0 flex-col">
       {/* File header */}
       <div className="flex h-10 shrink-0 items-center justify-between border-b px-4">
         <span className="truncate font-mono text-[11px] text-muted-foreground">
@@ -136,9 +136,9 @@ export function FileViewer({
       </div>
 
       {/* File content */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
         {isMd && !isEditing ? (
-          <div className="mx-auto max-w-3xl px-6 py-6">
+          <div className="mx-auto min-w-0 max-w-3xl px-4 py-5 sm:px-6 sm:py-6">
             {frontmatter ? <FrontmatterCard data={frontmatter} /> : null}
             <Markdown mode="full">{body || '*No content yet*'}</Markdown>
           </div>
