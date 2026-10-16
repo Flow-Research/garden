@@ -202,6 +202,8 @@ describe('createBrainWriteBackTools user scope without user context', () => {
     })
     const [firstWrite, secondWrite] = values.mock.calls.map(([value]) => value)
     expect(firstWrite.claimHash).toBe(secondWrite.claimHash)
+    expect(firstWrite.operationKey).toBe(`run-1:${firstWrite.claimHash}`)
+    expect(secondWrite.operationKey).toBe(`run-2:${secondWrite.claimHash}`)
     expect(onConflictDoNothing).toHaveBeenCalledTimes(2)
   })
 

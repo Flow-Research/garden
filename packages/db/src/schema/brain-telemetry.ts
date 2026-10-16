@@ -85,6 +85,7 @@ export const brainWriteProposal = pgTable(
       .references(() => organization.id),
     runId: text('run_id').notNull(),
     claimHash: text('claim_hash').notNull(),
+    operationKey: text('operation_key').notNull(),
     claim: text('claim').notNull(),
     kind: text('kind').notNull(),
     confidence: doublePrecision('confidence').notNull(),
@@ -110,6 +111,12 @@ export const brainWriteProposal = pgTable(
       table.workspaceId,
       table.status,
     ),
+    // Retry identity: one row per run + claim, regardless of review outcome.
+    uniqueIndex('brain_write_proposal_operation_unique').on(
+      table.workspaceId,
+      table.operationKey,
+    ),
+    // Semantic identity: one open proposal per claim; resolved claims can be re-proposed.
     uniqueIndex('brain_write_proposal_claim_unique')
       .on(table.workspaceId, table.claimHash)
       .where(sql`${table.status} = 'pending'`),

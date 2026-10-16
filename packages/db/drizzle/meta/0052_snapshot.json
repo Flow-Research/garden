@@ -1,5 +1,5 @@
 {
-  "id": "216bbe9a-afae-4474-aad0-b74c182be779",
+  "id": "22733c40-7370-4c9f-816f-937ef7312b4e",
   "prevId": "5698720d-e9ae-4a57-9029-0699e9c5078a",
   "version": "7",
   "dialect": "postgresql",
@@ -2431,6 +2431,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "operation_key": {
+          "name": "operation_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "claim": {
           "name": "claim",
           "type": "text",
@@ -2506,6 +2512,27 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "brain_write_proposal_operation_unique": {
+          "name": "brain_write_proposal_operation_unique",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "operation_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}

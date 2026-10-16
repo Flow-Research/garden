@@ -17,6 +17,7 @@ import * as schema from '@garden/db/schema'
 import { createBrainTools, type BrainToolContext } from './agent-tools/brain'
 import {
   brainWriteBackCanonicalKey,
+  brainWriteProposalOperationKey,
   normalizeBrainWriteBackClaim,
 } from './brain-write-back-identity'
 
@@ -298,12 +299,17 @@ export function createBrainWriteBackTools(
 
       if (decision.action === 'review') {
         const db = getPooledDb(dependencies.databaseUrl)
+        const operationKey = brainWriteProposalOperationKey(
+          context.runId,
+          candidate.claimHash,
+        )
         const inserted = await db
           .insert(schema.brainWriteProposal)
           .values({
             workspaceId: context.workspaceId,
             runId: context.runId,
             claimHash: candidate.claimHash,
+            operationKey,
             claim: input.claim,
             kind: input.kind,
             confidence: input.confidence,
@@ -313,13 +319,12 @@ export function createBrainWriteBackTools(
           .onConflictDoNothing()
           .returning({ id: schema.brainWriteProposal.id })
         if (inserted.length === 0) {
+          // Any status counts: a replay after approval/rejection is still a retry.
           const retry = await db.query.brainWriteProposal.findFirst({
             columns: { id: true },
             where: and(
               eq(schema.brainWriteProposal.workspaceId, context.workspaceId),
-              eq(schema.brainWriteProposal.runId, context.runId),
-              eq(schema.brainWriteProposal.claimHash, candidate.claimHash),
-              eq(schema.brainWriteProposal.status, 'pending'),
+              eq(schema.brainWriteProposal.operationKey, operationKey),
             ),
           })
           return {
