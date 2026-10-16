@@ -46,10 +46,12 @@ export async function searchRegistry(options: {
 export async function connectIntegration(input: {
   readonly entry: RegistryEntry
   readonly source: ExecutorIntegrationSource
+  readonly owner: ExecutorConnectionOwner
 }): Promise<ExecutorInstallResponseType> {
   const request = ExecutorInstallRequest.make({
     providerId: input.entry.providerId,
     source: input.source,
+    owner: input.owner,
   })
   const response = await getApiTransport().request<unknown>(
     '/api/executor/install',

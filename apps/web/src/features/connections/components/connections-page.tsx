@@ -521,6 +521,7 @@ export function ConnectionsPage({
                 directConnectMutation.mutate({
                   entry: inspectedEntry,
                   source,
+                  owner: connectionOwner,
                 })
               }}
             />
@@ -549,6 +550,7 @@ export function ConnectionsPage({
                 directConnectMutation.mutate({
                   entry: managedProviderEntry,
                   source,
+                  owner: connectionOwner,
                 })
               }
               onAction={(slug, action) =>
