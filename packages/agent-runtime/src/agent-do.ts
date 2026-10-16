@@ -49,6 +49,10 @@ import { Result, TaggedError } from 'better-result'
 import { Effect, Layer, ManagedRuntime, Option, Schema, Stream } from 'effect'
 import { connectorRegistry } from '@garden/connectors'
 import {
+  executorCatalogSchema,
+  type ExecutorCatalog,
+} from '@garden/core/executor/catalog'
+import {
   derivePermissions,
   type AgentPermissions,
 } from '@garden/core/agents/permissions'
@@ -1511,6 +1515,57 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     )
   }
 
+  /**
+   * Loads the current Executor integration view for Chat inventory queries.
+   * Before this callback, Chat only queried Garden's static connector registry,
+   * so a connected Personal Executor integration such as Decide was reported
+   * as unavailable. The internal route applies the same workspace and user
+   * identity that the MCP session uses. References consulted: the local
+   * Executor catalog route and the shared RuntimeMcpController identity flow.
+   */
+  private async loadChatExecutorCatalog(input: {
+    workspaceId: string
+    userId: string
+  }): Promise<ExecutorCatalog | null> {
+    const result = await Result.tryPromise<ExecutorCatalog, string>({
+      try: async () => {
+        const response = await fetch(
+          new URL('/api/internal/executor/catalog', this.env.BETTER_AUTH_URL),
+          {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-garden-internal-secret': this.env.BETTER_AUTH_SECRET,
+            },
+            body: JSON.stringify(input),
+          },
+        )
+        if (!response.ok) {
+          throw new Error(
+            `Executor catalog request failed with ${response.status}`,
+          )
+        }
+        return executorCatalogSchema.parse(await response.json())
+      },
+      catch: (cause) =>
+        cause instanceof Error
+          ? cause.message
+          : 'Executor catalog request failed',
+    })
+
+    return result.match({
+      ok: (catalog) => catalog,
+      err: (error) => {
+        console.warn('[agent-runtime] chat Executor catalog unavailable', {
+          error,
+          workspaceId: input.workspaceId,
+          userId: input.userId,
+        })
+        return null
+      },
+    })
+  }
+
   override getTools() {
     return createChatSubAgentTools({
       ctx: this.ctx,
@@ -1520,6 +1575,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       threadId: this.name,
       workspace: this.workspace,
       loader: this.env.LOADER,
+      loadExecutorCatalog: (input) => this.loadChatExecutorCatalog(input),
       getSandbox: () => this.getAgentSandbox(),
       issueRunEnv: this.env,
       brain: {
@@ -1897,8 +1953,20 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       )
     }
 
-    const mcpController = this.getMcpController()
-    const captured = mcpController.captureObservedMcpToolChanges()
+    const mcpControllerResult = await Result.tryPromise({
+      try: async () =>
+        await this.mcpConnectionPreparer.ensureForTurn('chat-turn'),
+      catch: (cause) =>
+        cause instanceof Error ? cause.message : 'Chat MCP refresh failed',
+    })
+    const activeMcpController = mcpControllerResult.match({
+      ok: (controller) => controller,
+      err: (error) => {
+        console.warn('[agent-runtime] chat MCP refresh failed', { error })
+        return this.getMcpController()
+      },
+    })
+    const captured = activeMcpController.captureObservedMcpToolChanges()
     if (captured.isErr()) {
       agentRuntimeLogger.warn('chat.mcp_tool_changes_capture_failed', {
         agentName: this.name,
@@ -1934,7 +2002,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       .filter((part): part is string => Boolean(part?.trim()))
       .join('\n\n')
 
-    const stableMcpTools = mcpController.wrapGetAITools(
+    const stableMcpTools = activeMcpController.wrapGetAITools(
       this.mcp.getAITools.bind(this.mcp),
       undefined,
       {
@@ -1942,7 +2010,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
           this.shouldAutoApproveRiskClass(riskClass),
       },
     )
-    const activeTools = mcpController.activeToolKeysWithoutRawMcp({
+    const activeTools = activeMcpController.activeToolKeysWithoutRawMcp({
       assembledTools: ctx.tools,
       stableMcpTools,
     })

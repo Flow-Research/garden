@@ -21,6 +21,7 @@
     "./issues/triggers": "./src/issues/triggers.ts",
     "./issues/config": "./src/issues/config/index.ts",
     "./issues/config/status": "./src/issues/config/status.ts",
+    "./executor/catalog": "./src/executor/catalog.ts",
     "./skills": "./src/skills/index.ts",
     "./skills/*": "./src/skills/*.ts",
     "./format": "./src/format.ts",
