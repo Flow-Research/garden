@@ -842,7 +842,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
           <div
             data-testid="composer-pill"
             className={cn(
-              'relative z-10 flex flex-col gap-3 rounded-2xl border border-border-default bg-background-main-default p-4 shadow-5 transition-colors duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] hover:border-border-brand-secondary focus-within:border-border-brand-secondary',
+              'relative z-10 flex flex-col gap-3 mx-3 md:mx-10 lg:mx-3 rounded-2xl border border-border-default bg-background-main-default p-4 shadow-5 transition-colors duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] hover:border-border-brand-secondary focus-within:border-border-brand-secondary',
               /*
                * The I-beam advertises `handlePillMouseDown`: the chrome around
                * the field is clickable as text, so it should look clickable as

@@ -64,7 +64,7 @@ export function BoardColumn({
   )
 
   return (
-    <div className="flex w-[381px] shrink-0 flex-col rounded-lg border-[0.5px] border-border-default bg-background-main-secondary p-4">
+    <div className="flex w-[calc(100vw-2rem)] max-w-full shrink-0 flex-col rounded-lg border-[0.5px] border-border-default bg-background-main-secondary p-3 sm:w-95.25 sm:p-4">
       <div className="flex items-center justify-between">
         {/* Left: pastel status pill + plain count (design) */}
         <div className="flex items-center gap-2">

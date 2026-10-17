@@ -101,7 +101,9 @@ export function CreateIssueModal({
   // Cross-team surfaces (Teams › Tasks in the All view) pass no team_id and
   // set show_team_picker, so the creator must choose the owning Team.
   const showTeamPicker = data?.show_team_picker === true && !teamId
-  const [pickedTeamId, setPickedTeamId] = useState<string | undefined>(undefined)
+  const [pickedTeamId, setPickedTeamId] = useState<string | undefined>(
+    undefined,
+  )
   // The API rejects team-scoped creates without an assignee ("Team issues
   // must be assigned to a Team member"), so the Team modes require one.
   const requiresAssignee = Boolean(teamId || pickedTeamId)
@@ -273,9 +275,9 @@ export function CreateIssueModal({
             ? '!max-w-[480px] !w-[calc(100vw-2rem)] !h-auto !-translate-y-1/2 !transition-none !duration-0'
             : '!transition-all !duration-300 !ease-out',
           !todoHintIssueId && isExpanded
-            ? '!max-w-4xl !w-full !h-5/6 !-translate-y-1/2'
+            ? '!max-w-4xl !w-[calc(100vw-2rem)] !h-5/6 !-translate-y-1/2'
             : !todoHintIssueId
-              ? '!max-w-2xl !w-full !h-96 !-translate-y-1/2'
+              ? '!max-w-2xl !w-[calc(100vw-2rem)] !h-96 !-translate-y-1/2'
               : '',
         )}
       >
