@@ -1,17 +1,23 @@
-import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { Result, TaggedError } from 'better-result'
 import { requireAppRequestContext } from '@/lib/server/context'
 import {
   badRequest,
+  forbidden,
   requireSession,
   unauthorized,
 } from '@/lib/server/control-plane'
-import { schema, type Db } from '@/lib/server/db'
 import {
   parseJsonBody,
   updateWorkspaceMemberBodySchema,
 } from '@/lib/server/validation/workspaces'
+import {
+  canEditMemberGithubIdentity,
+  readWorkspaceMember,
+  toMemberResponse,
+  updateMemberGithubIdentity,
+  WorkspaceMemberGithubError,
+} from '@/lib/server/workspace-members'
 
 class WorkspaceMemberRoleUpdateError extends TaggedError(
   'WorkspaceMemberRoleUpdateError',
@@ -21,82 +27,19 @@ class WorkspaceMemberRoleUpdateError extends TaggedError(
   cause?: unknown
 }>() {}
 
-type WorkspaceMemberRow = {
-  id: string
-  workspaceId: string
-  userId: string
-  role: string
-  githubUserId: string | null
-  githubLogin: string | null
-  createdAt: Date | null
-  name: string
-  email: string
-  avatarUrl: string | null
-}
-
-function toMemberResponse(member: WorkspaceMemberRow) {
-  return {
-    id: member.id,
-    workspace_id: member.workspaceId,
-    user_id: member.userId,
-    role: member.role,
-    github_user_id: member.githubUserId,
-    github_login: member.githubLogin,
-    created_at: (member.createdAt ?? new Date()).toISOString(),
-    name: member.name,
-    email: member.email,
-    avatar_url: member.avatarUrl,
-  }
-}
-
 function messageFromCause(cause: unknown, fallback: string) {
   return cause instanceof Error ? cause.message : fallback
-}
-
-/**
- * Reads the updated member from Garden's canonical workspace tables after Better
- * Auth has authorized and applied the role change. The old route re-listed
- * members through Better Auth after writing, which made a successful update look
- * like a failure when the list response was stale or shaped differently. Keeping
- * the post-write read scoped to organization id and member id returns the exact
- * row the settings UI needs while preserving Better Auth as the permission and
- * mutation boundary. References: Better Auth organization update-member-role
- * source in node_modules and the local member/user Drizzle schema.
- */
-async function readWorkspaceMember(args: {
-  db: Db
-  workspaceId: string
-  memberId: string
-}) {
-  const [member] = await args.db
-    .select({
-      id: schema.member.id,
-      workspaceId: schema.member.organizationId,
-      userId: schema.member.userId,
-      role: schema.member.role,
-      githubUserId: schema.member.githubUserId,
-      githubLogin: schema.member.githubLogin,
-      createdAt: schema.member.createdAt,
-      name: schema.user.name,
-      email: schema.user.email,
-      avatarUrl: schema.user.avatarUrl,
-    })
-    .from(schema.member)
-    .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
-    .where(
-      and(
-        eq(schema.member.id, args.memberId),
-        eq(schema.member.organizationId, args.workspaceId),
-      ),
-    )
-    .limit(1)
-
-  return member ?? null
 }
 
 export const Route = createFileRoute('/api/workspaces/$id/members/$memberId')({
   server: {
     handlers: {
+      /**
+       * Updates member role (Better Auth) and/or GitHub identity (Garden member
+       * row). Role changes keep Better Auth as the permission boundary. GitHub
+       * link/unlink is self-serve for the target member, or admin/owner for
+       * anyone else — without requiring invitationManage-style org perms.
+       */
       PATCH: async ({ context, request, params }) => {
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
@@ -112,29 +55,103 @@ export const Route = createFileRoute('/api/workspaces/$id/members/$memberId')({
         const db = await appContext.db()
 
         const result = await Result.gen(async function* () {
-          yield* Result.await(
+          const existing = yield* Result.await(
             Result.tryPromise({
-              try: async () => {
-                await auth.api.updateMemberRole({
-                  headers: request.headers,
-                  body: {
-                    memberId: params.memberId,
-                    organizationId: params.id,
-                    role: body.role,
-                  },
-                })
-              },
+              try: async () =>
+                await readWorkspaceMember({
+                  db,
+                  workspaceId: params.id,
+                  memberId: params.memberId,
+                }),
               catch: (cause) =>
                 new WorkspaceMemberRoleUpdateError({
-                  message: messageFromCause(
-                    cause,
-                    'Failed to update member role',
-                  ),
-                  status: 400,
+                  message: messageFromCause(cause, 'Failed to read member'),
+                  status: 500,
                   cause,
                 }),
             }),
           )
+
+          if (!existing) {
+            return Result.err(
+              new WorkspaceMemberRoleUpdateError({
+                message: 'Member not found',
+                status: 404,
+              }),
+            )
+          }
+
+          const nextRole = body.role
+          if (nextRole !== undefined) {
+            yield* Result.await(
+              Result.tryPromise({
+                try: async () => {
+                  await auth.api.updateMemberRole({
+                    headers: request.headers,
+                    body: {
+                      memberId: params.memberId,
+                      organizationId: params.id,
+                      role: nextRole,
+                    },
+                  })
+                },
+                catch: (cause) =>
+                  new WorkspaceMemberRoleUpdateError({
+                    message: messageFromCause(
+                      cause,
+                      'Failed to update member role',
+                    ),
+                    status: 400,
+                    cause,
+                  }),
+              }),
+            )
+          }
+
+          if (
+            body.github_user_id !== undefined &&
+            body.github_login !== undefined
+          ) {
+            const allowed = yield* Result.await(
+              Result.tryPromise({
+                try: async () =>
+                  await canEditMemberGithubIdentity({
+                    db,
+                    workspaceId: params.id,
+                    actorUserId: session.user.id,
+                    targetUserId: existing.userId,
+                  }),
+                catch: (cause) =>
+                  new WorkspaceMemberGithubError({
+                    message: messageFromCause(
+                      cause,
+                      'Failed to check GitHub identity permission',
+                    ),
+                    status: 500,
+                    cause,
+                  }),
+              }),
+            )
+            if (!allowed) {
+              return Result.err(
+                new WorkspaceMemberGithubError({
+                  message:
+                    'Only the member or a workspace owner/admin can update GitHub identity',
+                  status: 403,
+                }),
+              )
+            }
+
+            yield* Result.await(
+              updateMemberGithubIdentity({
+                db,
+                workspaceId: params.id,
+                memberId: params.memberId,
+                githubUserId: body.github_user_id,
+                githubLogin: body.github_login,
+              }),
+            )
+          }
 
           const member = yield* Result.await(
             Result.tryPromise({
@@ -170,8 +187,18 @@ export const Route = createFileRoute('/api/workspaces/$id/members/$memberId')({
 
         return result.match({
           ok: (member) => Response.json(member),
-          err: (error) =>
-            Response.json({ error: error.message }, { status: error.status }),
+          err: (error) => {
+            if (
+              error instanceof WorkspaceMemberGithubError &&
+              error.status === 403
+            ) {
+              return forbidden(error.message)
+            }
+            return Response.json(
+              { error: error.message },
+              { status: error.status },
+            )
+          },
         })
       },
       DELETE: async ({ context, request, params }) => {

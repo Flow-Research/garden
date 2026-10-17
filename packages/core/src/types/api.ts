@@ -82,7 +82,9 @@ export interface CreateMemberRequest {
 }
 
 export interface UpdateMemberRequest {
-  role: MemberRole
+  role?: MemberRole
+  github_user_id?: string | null
+  github_login?: string | null
 }
 
 // Personal Access Tokens
