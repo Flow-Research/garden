@@ -1,3 +1,4 @@
+import { ensureIssueBrainAudience } from './issue-brain-audience'
 import {
   Session,
   Think,
@@ -405,6 +406,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
               agentId: run.agentId,
               runId: run.runId,
               userId: run.agentOwnerUserId,
+              readAudience: 'org' as const,
             }
           },
         },
@@ -437,6 +439,12 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     if (guardResult.value !== 'continue') {
       throw new IssueRunTurnStopped(guardResult.value)
     }
+
+    const audienceResult = await this.ensureBrainAudience(
+      loadedResult.value.runState.workspaceId,
+      false,
+    )
+    if (audienceResult.isErr()) throw audienceResult.error
 
     this.currentRunId = runId
     this.currentRunState = loadedResult.value.runState
@@ -499,7 +507,7 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
             workspaceId: loadedResult.value.runState.workspaceId,
             viewer: {
               teamIds: new Set<string>(),
-              userId: loadedResult.value.runState.agentOwnerUserId,
+              userId: undefined,
             },
             query: latestUserText(ctx.messages),
             log: (event) =>
@@ -1037,6 +1045,33 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     }
   }
 
+  /**
+   * A shared issue facet can resume only history created under this audience.
+   * Unverified Think transcripts remain retained and cannot be replayed.
+   * Stamp a fresh empty facet before submitMessages persists its first turn.
+   */
+  private async ensureBrainAudience(
+    workspaceId: string,
+    initializeEmpty: boolean,
+  ): Promise<ResultValue<void, IssueRunSubAgentError>> {
+    return (
+      await ensureIssueBrainAudience({
+        workspaceId,
+        initializeEmpty,
+        config: this.getConfig<{ brainAudience?: unknown }>(),
+        readDurableHistory: () => this.session.getHistory(),
+        persistAudience: (brainAudience) => this.configure({ brainAudience }),
+      })
+    ).mapError(
+      (error) =>
+        new IssueRunSubAgentError({
+          code: error.code,
+          message: error.message,
+          cause: error.cause,
+        }),
+    )
+  }
+
   private async driveTurn(
     mode: TurnMode,
     input: StartTurnInput,
@@ -1059,6 +1094,12 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     if (boundaryResult.value !== 'continue') {
       return Result.ok({ kind: 'stopped' })
     }
+
+    const audienceResult = await this.ensureBrainAudience(
+      loadedResult.value.runState.workspaceId,
+      true,
+    )
+    if (audienceResult.isErr()) return Result.err(audienceResult.error)
 
     if (mode === 'start') {
       const startResult = await this.markRunStarted(loadedResult.value)

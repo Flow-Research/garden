@@ -14,12 +14,15 @@ export type BrainToolContext = {
   readonly agentId: string
   readonly runId: string
   readonly userId?: string
+  /** Shared outputs may read only org knowledge; userId still identifies the author. */
+  readonly readAudience?: 'org'
 }
 
 export type BrainToolOperations = Pick<
   BrainShape,
   | 'ensureIndexes'
   | 'search'
+  | 'read'
   | 'addText'
   | 'updateItemMetadata'
   | 'observeMention'
@@ -369,9 +372,35 @@ const makeBrainToolsService = (
       tenantId: WorkspaceId.make(ctx.workspaceId),
       query: input.query,
       k: input.k,
-      viewer: { teamIds: new Set<string>(), userId: ctx.userId },
+      viewer: {
+        teamIds: new Set<string>(),
+        userId: ctx.readAudience === 'org' ? undefined : ctx.userId,
+      },
     })
   })
+
+  /** Authorizes target visibility before a mutation can reveal metadata. */
+  const requireVisibleTarget = Effect.fn('BrainTools.requireVisibleTarget')(
+    function* (
+      ctx: BrainToolContext,
+      service: BrainToolOperations,
+      itemId: string,
+    ) {
+      const item = yield* service.read(
+        ItemId.make(itemId),
+        WorkspaceId.make(ctx.workspaceId),
+        {
+          teamIds: new Set<string>(),
+          userId: ctx.readAudience === 'org' ? undefined : ctx.userId,
+        },
+      )
+      if (item === null) {
+        return yield* new BrainToolInputError({
+          message: 'The Brain item is unavailable for this run.',
+        })
+      }
+    },
+  )
 
   const add = Effect.fn('BrainTools.add')(function* (input: AddInput) {
     const ctx = yield* resolveContext()
@@ -386,6 +415,7 @@ const makeBrainToolsService = (
           message: 'mode "update" needs itemId, kind, and summary.',
         })
       }
+      yield* requireVisibleTarget(ctx, service, input.itemId)
       return yield* service.updateItemMetadata({
         tenantId: WorkspaceId.make(ctx.workspaceId),
         itemId: ItemId.make(input.itemId),
@@ -424,6 +454,7 @@ const makeBrainToolsService = (
   ) {
     const ctx = yield* resolveContext()
     const service = yield* requireBrain()
+    yield* requireVisibleTarget(ctx, service, input.itemId)
     return yield* service.observeMention({
       tenantId: WorkspaceId.make(ctx.workspaceId),
       itemId: ItemId.make(input.itemId),
@@ -436,6 +467,8 @@ const makeBrainToolsService = (
   const link = Effect.fn('BrainTools.link')(function* (input: LinkInput) {
     const ctx = yield* resolveContext()
     const service = yield* requireBrain()
+    yield* requireVisibleTarget(ctx, service, input.from)
+    yield* requireVisibleTarget(ctx, service, input.to)
     return yield* service.linkItems({
       tenantId: WorkspaceId.make(ctx.workspaceId),
       from: ItemId.make(input.from),
@@ -454,7 +487,10 @@ const makeBrainToolsService = (
       tenantId: WorkspaceId.make(ctx.workspaceId),
       itemId: ItemId.make(input.itemId),
       ...(input.depth === undefined ? {} : { depth: input.depth }),
-      viewer: { teamIds: new Set<string>(), userId: ctx.userId },
+      viewer: {
+        teamIds: new Set<string>(),
+        userId: ctx.readAudience === 'org' ? undefined : ctx.userId,
+      },
     })
   })
 

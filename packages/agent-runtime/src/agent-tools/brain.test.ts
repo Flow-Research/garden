@@ -20,6 +20,18 @@ describe('createBrainTools', () => {
   it('round-trips an agent-invented free-text kind through add_to_brain', async () => {
     let receivedKind: Kind | undefined
     const brain: BrainToolOperations = {
+      read: (id, tenantId) =>
+        Effect.succeed({
+          id,
+          tenantId,
+          kind: Kind.make('note'),
+          label: 'Authorized fixture',
+          indexed: true,
+          origin: {
+            actor: { _tag: 'Human', userId: 'user-1' },
+            at: DateTime.makeUnsafe(new Date('2026-01-01T00:00:00Z')),
+          },
+        }),
       ensureIndexes: () => Effect.void,
       search: () => Effect.succeed([]),
       addText: (input) => {
@@ -87,6 +99,18 @@ describe('createBrainTools', () => {
       | undefined
     let ensureCount = 0
     const brain: BrainToolOperations = {
+      read: (id, tenantId) =>
+        Effect.succeed({
+          id,
+          tenantId,
+          kind: Kind.make('note'),
+          label: 'Authorized fixture',
+          indexed: true,
+          origin: {
+            actor: { _tag: 'Human', userId: 'user-1' },
+            at: DateTime.makeUnsafe(new Date('2026-01-01T00:00:00Z')),
+          },
+        }),
       ensureIndexes: () => {
         ensureCount += 1
         return Effect.void
@@ -174,6 +198,18 @@ describe('createBrainTools', () => {
         runId: 'run-1',
       }),
       brain: {
+        read: (id, tenantId) =>
+          Effect.succeed({
+            id,
+            tenantId,
+            kind: Kind.make('note'),
+            label: 'Authorized fixture',
+            indexed: true,
+            origin: {
+              actor: { _tag: 'Human', userId: 'user-1' },
+              at: DateTime.makeUnsafe(new Date('2026-01-01T00:00:00Z')),
+            },
+          }),
         ensureIndexes: () => Effect.void,
         search: () => Effect.succeed([]),
         addText: () => Effect.die('unused addText'),
@@ -200,6 +236,18 @@ describe('createBrainTools', () => {
   it('writes org scope by default and user scope with a user context', async () => {
     let receivedScope: unknown
     const brain: BrainToolOperations = {
+      read: (id, tenantId) =>
+        Effect.succeed({
+          id,
+          tenantId,
+          kind: Kind.make('note'),
+          label: 'Authorized fixture',
+          indexed: true,
+          origin: {
+            actor: { _tag: 'Human', userId: 'user-1' },
+            at: DateTime.makeUnsafe(new Date('2026-01-01T00:00:00Z')),
+          },
+        }),
       ensureIndexes: () => Effect.void,
       search: () => Effect.succeed([]),
       addText: (input) => {
