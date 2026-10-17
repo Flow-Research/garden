@@ -56,26 +56,33 @@ describe('resolveGithubIssueAssignees', () => {
   })
 
   it('fails with explicit not_linked instead of inventing handles', () => {
-    expect(
-      resolveGithubIssueAssignees([
-        {
-          label: 'Ada',
-          github_identity: {
-            status: 'linked',
-            user_id: '1',
-            login: 'ada',
-          },
+    const result = resolveGithubIssueAssignees([
+      {
+        label: 'Ada',
+        github_identity: {
+          status: 'linked',
+          user_id: '1',
+          login: 'ada',
         },
-        {
-          label: 'Unlinked User',
-          github_identity: { status: 'not_linked' },
-        },
-      ]),
-    ).toMatchObject({
+      },
+      {
+        label: 'Unlinked User',
+        github_identity: { status: 'not_linked' },
+      },
+      {
+        label: 'Also Missing',
+        github_identity: { status: 'not_linked' },
+      },
+    ])
+    expect(result).toMatchObject({
       ok: false,
       status: 'not_linked',
-      not_linked: ['Unlinked User'],
+      not_linked: ['Unlinked User', 'Also Missing'],
     })
+    if (result.ok) throw new Error('expected not_linked failure')
+    expect(result.message).toContain('Unlinked User')
+    expect(result.message).toContain('Also Missing')
+    expect(result.message).not.toMatch(/invent|guess|assume/i)
   })
 
   it('returns empty assignees for an empty candidate list', () => {

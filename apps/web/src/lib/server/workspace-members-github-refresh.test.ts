@@ -35,4 +35,23 @@ describe('classifyGithubIdentityWrite', () => {
       }),
     ).toBe('link')
   })
+
+  it('treats clear-from-unlinked as unlink and never keys refresh off login alone', () => {
+    expect(
+      classifyGithubIdentityWrite({
+        existingGithubUserId: null,
+        nextGithubUserId: null,
+        nextGithubLogin: null,
+      }),
+    ).toBe('unlink')
+
+    // Same login string with a different id is a new link, not a rename.
+    expect(
+      classifyGithubIdentityWrite({
+        existingGithubUserId: '1',
+        nextGithubUserId: '2',
+        nextGithubLogin: 'octocat',
+      }),
+    ).toBe('link')
+  })
 })

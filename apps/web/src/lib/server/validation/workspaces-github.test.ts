@@ -49,5 +49,17 @@ describe('updateWorkspaceMemberBodySchema github identity', () => {
         github_login: '-bad',
       }).success,
     ).toBe(false)
+    expect(
+      updateWorkspaceMemberBodySchema.safeParse({
+        github_user_id: '',
+        github_login: 'octocat',
+      }).success,
+    ).toBe(false)
+    expect(
+      updateWorkspaceMemberBodySchema.safeParse({
+        github_user_id: '1',
+        github_login: '',
+      }).success,
+    ).toBe(false)
   })
 })

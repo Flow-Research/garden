@@ -340,4 +340,211 @@ describe('member GitHub identity (integration)', () => {
     )
     expect(response.status).toBe(403)
   })
+
+  it('lets an admin unlink another member and frees the github_user_id for reclaim', async () => {
+    const fixture = await seedWorkspace(testDb)
+    const memberRowId = await membershipId(
+      testDb,
+      fixture.workspaceId,
+      fixture.memberId,
+    )
+    const otherRowId = await membershipId(
+      testDb,
+      fixture.workspaceId,
+      fixture.otherId,
+    )
+
+    const link = new Request(
+      `https://garden.test/api/workspaces/${fixture.workspaceId}/members/${memberRowId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          github_user_id: '555',
+          github_login: 'to-be-freed',
+        }),
+      },
+    )
+    expect(
+      (
+        await handlerFor(MemberRoute, 'PATCH')(
+          invocation(
+            makeContext({
+              testDb,
+              userId: fixture.adminId,
+              role: 'admin',
+              request: link,
+            }),
+            link,
+            { id: fixture.workspaceId, memberId: memberRowId },
+            '/api/workspaces/$id/members/$memberId',
+          ),
+        )
+      ).status,
+    ).toBe(200)
+
+    const unlink = new Request(
+      `https://garden.test/api/workspaces/${fixture.workspaceId}/members/${memberRowId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          github_user_id: null,
+          github_login: null,
+        }),
+      },
+    )
+    const unlinked = await handlerFor(MemberRoute, 'PATCH')(
+      invocation(
+        makeContext({
+          testDb,
+          userId: fixture.adminId,
+          role: 'admin',
+          request: unlink,
+        }),
+        unlink,
+        { id: fixture.workspaceId, memberId: memberRowId },
+        '/api/workspaces/$id/members/$memberId',
+      ),
+    )
+    expect(unlinked.status).toBe(200)
+    expect(await unlinked.json()).toMatchObject({
+      github_user_id: null,
+      github_login: null,
+    })
+
+    const reclaim = new Request(
+      `https://garden.test/api/workspaces/${fixture.workspaceId}/members/${otherRowId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          github_user_id: '555',
+          github_login: 'reclaimed',
+        }),
+      },
+    )
+    const reclaimed = await handlerFor(MemberRoute, 'PATCH')(
+      invocation(
+        makeContext({
+          testDb,
+          userId: fixture.ownerId,
+          role: 'owner',
+          request: reclaim,
+        }),
+        reclaim,
+        { id: fixture.workspaceId, memberId: otherRowId },
+        '/api/workspaces/$id/members/$memberId',
+      ),
+    )
+    expect(reclaimed.status).toBe(200)
+    expect(await reclaimed.json()).toMatchObject({
+      github_user_id: '555',
+      github_login: 'reclaimed',
+    })
+  })
+
+  it('allows distinct github_user_id values even when login strings match', async () => {
+    const fixture = await seedWorkspace(testDb)
+    const memberRowId = await membershipId(
+      testDb,
+      fixture.workspaceId,
+      fixture.memberId,
+    )
+    const otherRowId = await membershipId(
+      testDb,
+      fixture.workspaceId,
+      fixture.otherId,
+    )
+
+    const first = new Request(
+      `https://garden.test/api/workspaces/${fixture.workspaceId}/members/${memberRowId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          github_user_id: '1001',
+          github_login: 'same-login',
+        }),
+      },
+    )
+    expect(
+      (
+        await handlerFor(MemberRoute, 'PATCH')(
+          invocation(
+            makeContext({
+              testDb,
+              userId: fixture.memberId,
+              role: 'member',
+              request: first,
+            }),
+            first,
+            { id: fixture.workspaceId, memberId: memberRowId },
+            '/api/workspaces/$id/members/$memberId',
+          ),
+        )
+      ).status,
+    ).toBe(200)
+
+    const second = new Request(
+      `https://garden.test/api/workspaces/${fixture.workspaceId}/members/${otherRowId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          github_user_id: '1002',
+          github_login: 'same-login',
+        }),
+      },
+    )
+    const secondResponse = await handlerFor(MemberRoute, 'PATCH')(
+      invocation(
+        makeContext({
+          testDb,
+          userId: fixture.otherId,
+          role: 'member',
+          request: second,
+        }),
+        second,
+        { id: fixture.workspaceId, memberId: otherRowId },
+        '/api/workspaces/$id/members/$memberId',
+      ),
+    )
+    expect(secondResponse.status).toBe(200)
+  })
+
+  it('rejects half-set github identity payloads at the API boundary', async () => {
+    const fixture = await seedWorkspace(testDb)
+    const memberRowId = await membershipId(
+      testDb,
+      fixture.workspaceId,
+      fixture.memberId,
+    )
+
+    const request = new Request(
+      `https://garden.test/api/workspaces/${fixture.workspaceId}/members/${memberRowId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          github_user_id: '9',
+          github_login: null,
+        }),
+      },
+    )
+    const response = await handlerFor(MemberRoute, 'PATCH')(
+      invocation(
+        makeContext({
+          testDb,
+          userId: fixture.memberId,
+          role: 'member',
+          request,
+        }),
+        request,
+        { id: fixture.workspaceId, memberId: memberRowId },
+        '/api/workspaces/$id/members/$memberId',
+      ),
+    )
+    expect(response.status).toBe(400)
+  })
 })
