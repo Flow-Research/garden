@@ -43,6 +43,7 @@ import { createProposeAgentTool } from './agent-tools/propose-agent'
 import { createWebTools, type WebToolsSqlValue } from './agent-tools/web'
 import { createBrainTools, type BrainToolContext } from './agent-tools/brain'
 import { listAvailableConnectorBindings } from '@garden/server/connectors/availability'
+import { memberGithubIdentity } from './member-github-identity'
 import { createSandboxTools } from './sandbox-tools'
 import {
   createIssue as createIssueService,
@@ -311,6 +312,13 @@ type WorkspaceInventoryToolResult = {
     name: string
     email: string
     role: string
+    /**
+     * Workspace GitHub identity for issue mirroring. linked includes stable
+     * user_id + current login; not_linked means ask a human to link first.
+     */
+    github_identity:
+      | { status: 'linked'; user_id: string; login: string }
+      | { status: 'not_linked' }
   }>
   skills: Array<{
     slug: string
@@ -1469,6 +1477,8 @@ async function listWorkspaceInventoryFromChat(
                 name: schema.user.name,
                 email: schema.user.email,
                 role: schema.member.role,
+                githubUserId: schema.member.githubUserId,
+                githubLogin: schema.member.githubLogin,
               })
               .from(schema.member)
               .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
@@ -1572,6 +1582,8 @@ async function listWorkspaceInventoryFromChat(
           member.name,
           member.email,
           member.role,
+          member.githubLogin,
+          member.githubUserId,
         ),
       )
       const filteredSkills = skills.filter((skill) =>
@@ -1632,7 +1644,7 @@ async function listWorkspaceInventoryFromChat(
           'Use current_agent_id when the current agent is an appropriate assignee for a generic or follow-up task.',
           'Prefer assigning to an existing active agent from this inventory. Propose a new agent only when the task calls for a reusable role that is not already represented.',
           includeMembers
-            ? 'Human workspace members are included. Use their user id, name, or email with assignee_member; membership_id is accepted only as a lookup convenience.'
+            ? 'Human workspace members are included. Use their user id, name, or email with assignee_member; membership_id is accepted only as a lookup convenience. github_identity is linked (stable user_id + current login) or not_linked — required before assigning a mirrored GitHub issue; never invent a handle.'
             : 'Human members were not requested. Pass a named person directly to assign_issue; request members only if resolution is ambiguous or the user asks who is available.',
           includeConnectors
             ? 'Connector/MCP capabilities are included. They are separate from skills; do not require a skill slug for connector tools.'
@@ -1660,6 +1672,10 @@ async function listWorkspaceInventoryFromChat(
           name: member.name,
           email: member.email,
           role: member.role,
+          github_identity: memberGithubIdentity({
+            githubUserId: member.githubUserId,
+            githubLogin: member.githubLogin,
+          }),
         })),
         skills: filteredSkills.slice(0, limit).map((skill) => ({
           slug: skill.slug,
@@ -1897,7 +1913,7 @@ export function createChatSubAgentTools({
     list_workspace_inventory: tool({
       description:
         'List bounded current workspace inventory. Defaults to agents only; request members, skills, or connectors when needed. ' +
-        'Use when browsing possible owners, proposing an agent, resolving an ambiguous person, or checking skills/connectors. ' +
+        'Use when browsing possible owners, proposing an agent, resolving an ambiguous person, checking skills/connectors, or reading member github_identity before GitHub issue mirroring. ' +
         'Use current_agent_id for agent self-assignment; direct named human assignments do not need an inventory preflight.',
       inputSchema: listWorkspaceInventoryInputSchema,
       execute: async (input) => {
