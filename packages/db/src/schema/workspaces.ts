@@ -52,6 +52,8 @@ export const member = pgTable(
       .notNull()
       .references(() => user.id),
     role: text('role').notNull().default('member'),
+    githubUserId: text('github_user_id'),
+    githubLogin: text('github_login'),
     createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
   },
   (table) => [
@@ -59,9 +61,17 @@ export const member = pgTable(
       table.organizationId,
       table.userId,
     ),
+    uniqueIndex('member_organization_github_user_unique')
+      .on(table.organizationId, table.githubUserId)
+      .where(sql`${table.githubUserId} is not null`),
     check(
       'member_role_check',
       sql`${table.role} in ('owner', 'admin', 'member')`,
+    ),
+    // Linked and not_linked are explicit: never store a lone id or login.
+    check(
+      'member_github_identity_pair_check',
+      sql`(${table.githubUserId} is null) = (${table.githubLogin} is null)`,
     ),
   ],
 )

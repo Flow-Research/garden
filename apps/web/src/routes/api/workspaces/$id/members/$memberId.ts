@@ -26,6 +26,8 @@ type WorkspaceMemberRow = {
   workspaceId: string
   userId: string
   role: string
+  githubUserId: string | null
+  githubLogin: string | null
   createdAt: Date | null
   name: string
   email: string
@@ -38,6 +40,8 @@ function toMemberResponse(member: WorkspaceMemberRow) {
     workspace_id: member.workspaceId,
     user_id: member.userId,
     role: member.role,
+    github_user_id: member.githubUserId,
+    github_login: member.githubLogin,
     created_at: (member.createdAt ?? new Date()).toISOString(),
     name: member.name,
     email: member.email,
@@ -70,6 +74,8 @@ async function readWorkspaceMember(args: {
       workspaceId: schema.member.organizationId,
       userId: schema.member.userId,
       role: schema.member.role,
+      githubUserId: schema.member.githubUserId,
+      githubLogin: schema.member.githubLogin,
       createdAt: schema.member.createdAt,
       name: schema.user.name,
       email: schema.user.email,

@@ -133,12 +133,15 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
             }
           }>
         }
+        
         return Response.json(
           result.members.map((row) => ({
             id: row.id,
             workspace_id: row.organizationId,
             user_id: row.userId,
             role: row.role,
+            github_user_id: null,
+            github_login: null,
             created_at: new Date(row.createdAt).toISOString(),
             name: row.user.name,
             email: row.user.email,
