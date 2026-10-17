@@ -104,6 +104,36 @@ layer(BrainTestLive, { excludeTestServices: true })('brain', (it) => {
   )
 
   it.effect.skipIf(skipHelixIntegration)(
+    'converges concurrent canonical text writes on one item',
+    () =>
+      Effect.gen(function* () {
+        const brain = yield* Brain
+        yield* brain.ensureIndexes()
+        const input = {
+          tenantId: workspaceId,
+          label: 'Canonical write-back',
+          body: 'Use D1 for durable workflow state.',
+          kind: Kind.make('decision'),
+          canonical: {
+            type: 'brain-write-back-claim',
+            value: `write-back-${crypto.randomUUID()}`,
+          },
+          actor: {
+            _tag: 'Agent' as const,
+            agentId: 'test-agent',
+            runId: 'test-run',
+          },
+        }
+        const [first, retry] = yield* Effect.all(
+          [brain.addText(input), brain.addText(input)],
+          { concurrency: 'unbounded' },
+        )
+
+        expect(retry.id).toBe(first.id)
+      }),
+  )
+
+  it.effect.skipIf(skipHelixIntegration)(
     'invalidates changed content and removes stale sections on re-index',
     () =>
       Effect.scoped(

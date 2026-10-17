@@ -365,6 +365,13 @@
       "when": 1791544236897,
       "tag": "0051_condemned_blindfold",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1792143020577,
+      "tag": "0052_curvy_wildside",
+      "breakpoints": true
     }
   ]
 }
