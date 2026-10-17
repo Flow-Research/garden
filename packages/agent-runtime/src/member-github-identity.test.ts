@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { memberGithubIdentity } from './member-github-identity'
+import {
+  memberGithubIdentity,
+  resolveGithubIssueAssignees,
+} from './member-github-identity'
 
 describe('memberGithubIdentity', () => {
   it('returns linked when both id and login are present', () => {
@@ -25,5 +28,60 @@ describe('memberGithubIdentity', () => {
     expect(
       memberGithubIdentity({ githubUserId: null, githubLogin: 'octocat' }),
     ).toEqual({ status: 'not_linked' })
+  })
+})
+
+describe('resolveGithubIssueAssignees', () => {
+  it('returns logins for linked members', () => {
+    expect(
+      resolveGithubIssueAssignees([
+        {
+          label: 'Ada',
+          github_identity: {
+            status: 'linked',
+            user_id: '1',
+            login: 'ada',
+          },
+        },
+        {
+          label: 'Grace',
+          github_identity: {
+            status: 'linked',
+            user_id: '2',
+            login: 'grace',
+          },
+        },
+      ]),
+    ).toEqual({ ok: true, assignees: ['ada', 'grace'] })
+  })
+
+  it('fails with explicit not_linked instead of inventing handles', () => {
+    expect(
+      resolveGithubIssueAssignees([
+        {
+          label: 'Ada',
+          github_identity: {
+            status: 'linked',
+            user_id: '1',
+            login: 'ada',
+          },
+        },
+        {
+          label: 'Unlinked User',
+          github_identity: { status: 'not_linked' },
+        },
+      ]),
+    ).toMatchObject({
+      ok: false,
+      status: 'not_linked',
+      not_linked: ['Unlinked User'],
+    })
+  })
+
+  it('returns empty assignees for an empty candidate list', () => {
+    expect(resolveGithubIssueAssignees([])).toEqual({
+      ok: true,
+      assignees: [],
+    })
   })
 })

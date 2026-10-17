@@ -20,3 +20,48 @@ export function memberGithubIdentity(args: {
   }
   return { status: 'not_linked' }
 }
+
+export type GithubAssigneeCandidate = {
+  /** Display label for errors (name, email, or membership id). */
+  label: string
+  github_identity: MemberGithubIdentity
+}
+
+export type ResolveGithubAssigneesResult =
+  | { ok: true; assignees: string[] }
+  | {
+      ok: false
+      status: 'not_linked'
+      not_linked: string[]
+      message: string
+    }
+
+/**
+ * Builds GitHub issue_write.assignees from inventory github_identity values.
+ * Any not_linked member fails the whole resolution — never invent handles.
+ */
+export function resolveGithubIssueAssignees(
+  candidates: readonly GithubAssigneeCandidate[],
+): ResolveGithubAssigneesResult {
+  const assignees: string[] = []
+  const notLinked: string[] = []
+
+  for (const candidate of candidates) {
+    if (candidate.github_identity.status === 'linked') {
+      assignees.push(candidate.github_identity.login)
+    } else {
+      notLinked.push(candidate.label)
+    }
+  }
+
+  if (notLinked.length > 0) {
+    return {
+      ok: false,
+      status: 'not_linked',
+      not_linked: notLinked,
+      message: `GitHub identity not linked for: ${notLinked.join(', ')}. Link github_user_id/github_login on the workspace member before assigning a mirrored GitHub issue.`,
+    }
+  }
+
+  return { ok: true, assignees }
+}

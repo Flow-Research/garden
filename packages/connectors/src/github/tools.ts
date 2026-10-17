@@ -41,6 +41,12 @@ const IssueWriteInput = Schema.Struct({
   body: Schema.optional(Schema.String),
   state: Schema.optional(Schema.Literals(['open', 'closed'])),
   labels: Schema.optional(Schema.Array(Schema.String)),
+  /**
+   * GitHub logins to assign. Requires issues:write (and assignees must have
+   * repo access). Resolve from Garden member github_identity.login when linked;
+   * never invent handles for not_linked members.
+   */
+  assignees: Schema.optional(Schema.Array(Schema.String)),
 })
 const IssueCommentInput = Schema.Struct({
   owner: Schema.String,
@@ -296,7 +302,8 @@ export const githubNativeTools = [
   }),
   defineNativeConnectorTool({
     name: 'issue_write',
-    description: 'Create or update a GitHub issue.',
+    description:
+      'Create or update a GitHub issue. Optional assignees are GitHub logins (from linked Garden member github_identity). Assignees must have repository write access; this call requires issues:write.',
     riskClass: 'send_external',
     requiredScopes: ['issues:write'],
     input: IssueWriteInput,
@@ -316,6 +323,9 @@ export const githubNativeTools = [
           body: input.body,
           state: input.state,
           labels: input.labels,
+          ...(input.assignees !== undefined
+            ? { assignees: input.assignees }
+            : {}),
         },
       })
     },

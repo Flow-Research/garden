@@ -19,6 +19,22 @@ describe('GitHub App tool surface', () => {
         'update_pull_request',
         'update_pull_request_branch',
         'sub_issue_write',
+        'issue_write',
+      ]),
+    )
+  })
+
+  it('accepts assignees on issue_write for create and update', () => {
+    const issueWrite = githubNativeTools.find((tool) => tool.name === 'issue_write')
+    expect(issueWrite).toBeDefined()
+    const fields = issueWrite?.input.fields ?? {}
+    expect(Object.keys(fields)).toEqual(
+      expect.arrayContaining([
+        'owner',
+        'repo',
+        'title',
+        'body',
+        'assignees',
       ]),
     )
   })

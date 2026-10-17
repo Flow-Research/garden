@@ -1644,7 +1644,7 @@ async function listWorkspaceInventoryFromChat(
           'Use current_agent_id when the current agent is an appropriate assignee for a generic or follow-up task.',
           'Prefer assigning to an existing active agent from this inventory. Propose a new agent only when the task calls for a reusable role that is not already represented.',
           includeMembers
-            ? 'Human workspace members are included. Use their user id, name, or email with assignee_member; membership_id is accepted only as a lookup convenience. github_identity is linked (stable user_id + current login) or not_linked — required before assigning a mirrored GitHub issue; never invent a handle.'
+            ? 'Human workspace members are included. Use their user id, name, or email with assignee_member; membership_id is accepted only as a lookup convenience. github_identity is linked (stable user_id + current login) or not_linked — pass linked login as issue_write.assignees when mirroring to GitHub; never invent a handle.'
             : 'Human members were not requested. Pass a named person directly to assign_issue; request members only if resolution is ambiguous or the user asks who is available.',
           includeConnectors
             ? 'Connector/MCP capabilities are included. They are separate from skills; do not require a skill slug for connector tools.'
