@@ -159,6 +159,31 @@ function isUniqueViolation(cause: unknown) {
   return false
 }
 
+export type GithubIdentityWriteKind = 'unlink' | 'refresh_login' | 'link'
+
+/**
+ * Classifies a GitHub identity write. Renames are refresh_login: same stable
+ * github_user_id keeps the link and only updates login. Matching must never
+ * key off login alone.
+ */
+export function classifyGithubIdentityWrite(args: {
+  existingGithubUserId: string | null
+  nextGithubUserId: string | null
+  nextGithubLogin: string | null
+}): GithubIdentityWriteKind {
+  if (args.nextGithubUserId === null && args.nextGithubLogin === null) {
+    return 'unlink'
+  }
+  if (
+    args.existingGithubUserId !== null &&
+    args.nextGithubUserId !== null &&
+    args.existingGithubUserId === args.nextGithubUserId
+  ) {
+    return 'refresh_login'
+  }
+  return 'link'
+}
+
 /**
  * Writes the github identity pair (or clears both for not_linked). Rejects
  * duplicate github_user_id in the same workspace via the partial unique index.
@@ -213,4 +238,90 @@ export async function updateMemberGithubIdentity(args: {
       })
     },
   })
+}
+
+/**
+ * Sync/rename path: after re-fetching a GitHub identity, update login for the
+ * membership that already owns that github_user_id. Does not create new links.
+ * Returns refreshed=false when no row matched (caller may link instead).
+ */
+export async function refreshMemberGithubLoginByUserId(args: {
+  db: Db
+  workspaceId: string
+  githubUserId: string
+  githubLogin: string
+}) {
+  return Result.tryPromise({
+    try: async () => {
+      const updated = await args.db
+        .update(schema.member)
+        .set({ githubLogin: args.githubLogin })
+        .where(
+          and(
+            eq(schema.member.organizationId, args.workspaceId),
+            eq(schema.member.githubUserId, args.githubUserId),
+          ),
+        )
+        .returning({ id: schema.member.id })
+
+      return { refreshed: updated.length > 0, memberId: updated[0]?.id ?? null }
+    },
+    catch: (cause) =>
+      new WorkspaceMemberGithubError({
+        message:
+          cause instanceof Error
+            ? cause.message
+            : 'Failed to refresh GitHub login',
+        status: 500,
+        cause,
+      }),
+  })
+}
+
+/**
+ * Link, unlink, or refresh login for a membership. When the member is already
+ * linked to the same github_user_id, only login is refreshed (rename-safe).
+ */
+export async function linkOrRefreshMemberGithubIdentity(args: {
+  db: Db
+  workspaceId: string
+  memberId: string
+  existingGithubUserId: string | null
+  githubUserId: string | null
+  githubLogin: string | null
+}) {
+  const kind = classifyGithubIdentityWrite({
+    existingGithubUserId: args.existingGithubUserId,
+    nextGithubUserId: args.githubUserId,
+    nextGithubLogin: args.githubLogin,
+  })
+
+  if (kind === 'refresh_login' && args.githubUserId && args.githubLogin) {
+    const refreshResult = await refreshMemberGithubLoginByUserId({
+      db: args.db,
+      workspaceId: args.workspaceId,
+      githubUserId: args.githubUserId,
+      githubLogin: args.githubLogin,
+    })
+    return refreshResult.andThen((result) => {
+      if (!result.refreshed) {
+        return Result.err(
+          new WorkspaceMemberGithubError({
+            message: 'Member GitHub identity not found for refresh',
+            status: 404,
+          }),
+        )
+      }
+      return Result.ok({ kind })
+    })
+  }
+
+  const writeResult = await updateMemberGithubIdentity({
+    db: args.db,
+    workspaceId: args.workspaceId,
+    memberId: args.memberId,
+    githubUserId: args.githubUserId,
+    githubLogin: args.githubLogin,
+  })
+  return writeResult.map(() => ({ kind }))
 }

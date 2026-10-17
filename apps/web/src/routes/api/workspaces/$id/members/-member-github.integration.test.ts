@@ -237,6 +237,75 @@ describe('member GitHub identity (integration)', () => {
     expect(duplicateResponse.status).toBe(409)
   })
 
+  it('refreshes github_login on rename while keeping github_user_id', async () => {
+    const fixture = await seedWorkspace(testDb)
+    const memberRowId = await membershipId(
+      testDb,
+      fixture.workspaceId,
+      fixture.memberId,
+    )
+
+    const linkRequest = new Request(
+      `https://garden.test/api/workspaces/${fixture.workspaceId}/members/${memberRowId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          github_user_id: '777',
+          github_login: 'before-rename',
+        }),
+      },
+    )
+    const linked = await handlerFor(MemberRoute, 'PATCH')(
+      invocation(
+        makeContext({
+          testDb,
+          userId: fixture.memberId,
+          role: 'member',
+          request: linkRequest,
+        }),
+        linkRequest,
+        { id: fixture.workspaceId, memberId: memberRowId },
+        '/api/workspaces/$id/members/$memberId',
+      ),
+    )
+    expect(linked.status).toBe(200)
+
+    const renameRequest = new Request(
+      `https://garden.test/api/workspaces/${fixture.workspaceId}/members/${memberRowId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          github_user_id: '777',
+          github_login: 'after-rename',
+        }),
+      },
+    )
+    const renamed = await handlerFor(MemberRoute, 'PATCH')(
+      invocation(
+        makeContext({
+          testDb,
+          userId: fixture.memberId,
+          role: 'member',
+          request: renameRequest,
+        }),
+        renameRequest,
+        { id: fixture.workspaceId, memberId: memberRowId },
+        '/api/workspaces/$id/members/$memberId',
+      ),
+    )
+    expect(renamed.status).toBe(200)
+    const body = (await renamed.json()) as {
+      github_user_id: string | null
+      github_login: string | null
+    }
+    expect(body).toMatchObject({
+      github_user_id: '777',
+      github_login: 'after-rename',
+    })
+  })
+
   it('forbids a member from editing another member GitHub identity', async () => {
     const fixture = await seedWorkspace(testDb)
     const otherRowId = await membershipId(

@@ -13,9 +13,9 @@ import {
 } from '@/lib/server/validation/workspaces'
 import {
   canEditMemberGithubIdentity,
+  linkOrRefreshMemberGithubIdentity,
   readWorkspaceMember,
   toMemberResponse,
-  updateMemberGithubIdentity,
   WorkspaceMemberGithubError,
 } from '@/lib/server/workspace-members'
 
@@ -143,10 +143,11 @@ export const Route = createFileRoute('/api/workspaces/$id/members/$memberId')({
             }
 
             yield* Result.await(
-              updateMemberGithubIdentity({
+              linkOrRefreshMemberGithubIdentity({
                 db,
                 workspaceId: params.id,
                 memberId: params.memberId,
+                existingGithubUserId: existing.githubUserId,
                 githubUserId: body.github_user_id,
                 githubLogin: body.github_login,
               }),
