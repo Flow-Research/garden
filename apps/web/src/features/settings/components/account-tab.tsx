@@ -21,6 +21,7 @@ import { useFileUpload } from '@garden/app-state/hooks/use-file-upload'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { useNavigation } from '@/features/navigation'
 import { authClient } from '@/lib/auth/client'
+import { GithubWorkspaceIdentitySection } from './github-workspace-identity'
 import { GoogleAccountConnection } from './google-account-connection'
 
 const sessionQueryKey = ['account', 'sessions']
@@ -410,6 +411,8 @@ export function AccountTab() {
           </div>
         </form>
       </section>
+
+      <GithubWorkspaceIdentitySection />
 
       <GoogleAccountConnection />
 
