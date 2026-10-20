@@ -35,6 +35,7 @@ import { useLinkHover, LinkHoverCard } from './link-hover-card'
 import { openLink, isMentionHref } from './utils/link-handler'
 import { preprocessMarkdown } from './utils/preprocess'
 import './content-editor.css'
+import { issuePath } from '@/features/navigation/use-surface-navigation'
 
 // ---------------------------------------------------------------------------
 // Lowlight — same engine + language set as Tiptap's CodeBlockLowlight
@@ -90,7 +91,7 @@ function IssueMentionLink({
   label?: string
 }) {
   const { push, openInNewTab } = useNavigation()
-  const path = `/issues/${issueId}`
+  const path = issuePath(issueId)
   return (
     <span
       className="inline align-middle"

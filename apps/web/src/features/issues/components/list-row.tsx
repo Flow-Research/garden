@@ -6,6 +6,7 @@ import { ActorAvatar } from '../../common/actor-avatar'
 import { useIssueSelectionStore } from '@garden/app-state/issues/stores/selection-store'
 import { PriorityIcon } from './priority-icon'
 import { ProgressRing } from './progress-ring'
+import { issuePath } from '@/features/navigation/use-surface-navigation'
 
 export interface ChildProgress {
   done: number
@@ -61,7 +62,7 @@ export const ListRow = memo(function ListRow({
         />
       </div>
       <a
-        href={`/issues/${issue.id}`}
+        href={issuePath(issue.id)}
         onClick={handleOpen}
         className="flex flex-1 items-center gap-2 min-w-0 cursor-pointer"
       >

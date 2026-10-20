@@ -130,7 +130,10 @@ import {
   issueWorkProductsOptions,
 } from '@/lib/issues/queries'
 import { inboxKeys } from '@/lib/inbox/queries'
-import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigation'
+import {
+  issuePath,
+  useSurfaceNavigation,
+} from '@/features/navigation/use-surface-navigation'
 
 import { ProgressRing } from './progress-ring'
 
@@ -977,7 +980,7 @@ export function IssueDetail({
           {parentIssueOpen && (
             <div className="pl-2">
               <AppLink
-                href={`/issues/${parentIssue.id}`}
+                href={issuePath(parentIssue.id)}
                 className="flex items-center gap-1.5 rounded-md px-2 py-1.5 -mx-2 text-xs hover:bg-accent/50 transition-colors group"
               >
                 <StatusIcon
@@ -1521,7 +1524,7 @@ export function IssueDetail({
 
                 {parentIssue && (
                   <AppLink
-                    href={`/issues/${parentIssue.id}`}
+                    href={issuePath(parentIssue.id)}
                     className="mt-2 inline-flex max-w-full items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors group/parent"
                   >
                     <span className="font-medium shrink-0">Sub-issue of</span>
@@ -1715,7 +1718,7 @@ export function IssueDetail({
                               return (
                                 <AppLink
                                   key={child.id}
-                                  href={`/issues/${child.id}`}
+                                  href={issuePath(child.id)}
                                   className="flex items-center gap-2.5 px-3 py-2 hover:bg-accent/50 transition-colors group/row"
                                 >
                                   <StatusIcon

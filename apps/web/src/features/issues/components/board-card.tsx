@@ -16,7 +16,10 @@ import { ProgressRing } from './progress-ring'
 import type { ChildProgress } from './list-row'
 import { LiveDot } from './live-dot'
 import { ConnectorIcon } from './connector-icon'
-import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigation'
+import {
+  issuePath,
+  useSurfaceNavigation,
+} from '@/features/navigation/use-surface-navigation'
 
 /**
  * Hook variant of `useUpdateIssue` for editable cards. Centralized here so the
@@ -286,7 +289,7 @@ export const DraggableBoardCard = memo(function DraggableBoardCard({
       className={isDragging ? 'opacity-30' : ''}
     >
       <a
-        href={`/issues/${issue.id}`}
+        href={issuePath(issue.id)}
         onClick={handleOpen}
         className={`group block transition-colors cursor-pointer ${isDragging ? 'pointer-events-none' : ''}`}
       >
