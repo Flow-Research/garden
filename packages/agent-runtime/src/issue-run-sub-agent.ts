@@ -44,7 +44,7 @@ import type {
   IssueRunStatus,
   IssueRunUsage,
 } from '@garden/core/types/issue-run'
-import { connectorRegistry } from '@garden/connectors'
+import { evaluateRuntimeToolPermission } from './chat-permissions'
 import * as schema from '@garden/db/schema'
 import issueInteractionSkillMarkdown from './skills/issue-interaction/SKILL.md?raw'
 import { createAskQuestionTool } from './agent-tools/ask-question'
@@ -1208,55 +1208,20 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
     })
   }
 
-  private connectorToolForName(toolName: string) {
-    for (const connector of connectorRegistry) {
-      const prefix = `tool_${connector.id.replace(/-/g, '')}_`
-      if (toolName.startsWith(prefix)) {
-        return {
-          connectorId: connector.id,
-          toolName: toolName.slice(prefix.length),
-        }
-      }
-    }
-    return null
-  }
-
   private assertToolAllowed(
     runtimeToolName: string,
   ): ResultValue<void, IssueRunSubAgentError> {
-    const permissions = this.currentPermissions
-    if (!permissions || permissions.full_access) return Result.ok()
-
-    const connectorTool = this.connectorToolForName(runtimeToolName)
-    const toolName = connectorTool?.toolName ?? runtimeToolName
-
-    if (
-      permissions.allowed_tools.length > 0 &&
-      !permissions.allowed_tools.includes(toolName) &&
-      !permissions.allowed_tools.includes(runtimeToolName)
-    ) {
-      return Result.err(
-        new IssueRunSubAgentError({
-          code: 'runtime_failed',
-          message: `Tool ${toolName} is not allowed for this agent.`,
-        }),
-      )
-    }
-
-    if (
-      connectorTool &&
-      permissions.allowed_connectors.length > 0 &&
-      !permissions.allowed_connectors.includes(connectorTool.connectorId)
-    ) {
-      return Result.err(
-        new IssueRunSubAgentError({
-          code: 'runtime_failed',
-          message: `Connector ${connectorTool.connectorId} is not allowed for this agent.`,
-        }),
-      )
-    }
-
-    return Result.ok()
+    const decision = evaluateRuntimeToolPermission(
+      this.currentPermissions,
+      runtimeToolName,
+    )
+    if (decision.allowed) return Result.ok()
+    return Result.err(
+      new IssueRunSubAgentError({
+        code: 'runtime_failed',
+        message: decision.reason,
+      }),
+    )
   }
 
   private shouldAutoApproveRiskClass(riskClass: string) {

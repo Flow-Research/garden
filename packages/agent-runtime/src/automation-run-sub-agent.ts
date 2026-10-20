@@ -41,6 +41,10 @@ import {
 } from '@garden/observability/analytics/events'
 import { connectorRegistry } from '@garden/connectors'
 import {
+  connectorToolForName,
+  evaluateRuntimeToolPermission,
+} from './chat-permissions'
+import {
   derivePermissions,
   type AgentPermissions,
 } from '@garden/core/agents/permissions'
@@ -1163,19 +1167,6 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     })
   }
 
-  private connectorToolForName(toolName: string) {
-    for (const connector of connectorRegistry) {
-      const prefix = `tool_${connector.id.replace(/-/g, '')}_`
-      if (toolName.startsWith(prefix)) {
-        return {
-          connectorId: connector.id,
-          toolName: toolName.slice(prefix.length),
-        }
-      }
-    }
-    return null
-  }
-
   private assertToolAllowed(
     runtimeToolName: string,
   ): ResultValue<void, AutomationRunSubAgentError> {
@@ -1194,38 +1185,19 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     const permissions = this.currentPermissions
     if (!permissions || permissions.full_access) return Result.ok()
 
-    const connectorTool = this.connectorToolForName(runtimeToolName)
-    const toolName = connectorTool?.toolName ?? runtimeToolName
-    const closureResult = this.assertClosureToolAllowed(connectorTool)
+    const closureResult = this.assertClosureToolAllowed(
+      connectorToolForName(runtimeToolName),
+    )
     if (closureResult.isErr()) return closureResult
 
-    if (
-      permissions.allowed_tools.length > 0 &&
-      !permissions.allowed_tools.includes(toolName) &&
-      !permissions.allowed_tools.includes(runtimeToolName)
-    ) {
-      return Result.err(
-        new AutomationRunSubAgentError({
-          code: 'runtime_failed',
-          message: `Tool ${toolName} is not allowed for this agent.`,
-        }),
-      )
-    }
-
-    if (
-      connectorTool &&
-      permissions.allowed_connectors.length > 0 &&
-      !permissions.allowed_connectors.includes(connectorTool.connectorId)
-    ) {
-      return Result.err(
-        new AutomationRunSubAgentError({
-          code: 'runtime_failed',
-          message: `Connector ${connectorTool.connectorId} is not allowed for this agent.`,
-        }),
-      )
-    }
-
-    return Result.ok()
+    const decision = evaluateRuntimeToolPermission(permissions, runtimeToolName)
+    if (decision.allowed) return Result.ok()
+    return Result.err(
+      new AutomationRunSubAgentError({
+        code: 'runtime_failed',
+        message: decision.reason,
+      }),
+    )
   }
 
   /**
@@ -1237,7 +1209,7 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
    * requested evidence and recommendations.
    */
   private assertClosureToolAllowed(
-    connectorTool: ReturnType<AutomationRunSubAgent['connectorToolForName']>,
+    connectorTool: ReturnType<typeof connectorToolForName>,
   ): ResultValue<void, AutomationRunSubAgentError> {
     if (!connectorTool || connectorTool.connectorId !== 'github') {
       return Result.ok()

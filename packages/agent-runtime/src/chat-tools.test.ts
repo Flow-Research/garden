@@ -22,22 +22,29 @@ describe('chat tool gate', () => {
   it('allows everything when unrestricted', () => {
     expect(isChatToolAllowed(null, 'tool_github_add_issue_comment')).toBe(true)
     expect(isChatToolAllowed(null, 'create_issue')).toBe(true)
-    expect(isChatToolAllowed(FULL_ACCESS, 'tool_slack_post_message')).toBe(
-      true,
-    )
+    expect(isChatToolAllowed(FULL_ACCESS, 'tool_slack_post_message')).toBe(true)
   })
 
   it('allows listed tools by bare and runtime names', () => {
-    expect(
-      isChatToolAllowed(RESTRICTED, 'tool_github_add_issue_comment'),
-    ).toBe(true)
+    expect(isChatToolAllowed(RESTRICTED, 'tool_github_add_issue_comment')).toBe(
+      true,
+    )
     expect(isChatToolAllowed(RESTRICTED, 'create_issue')).toBe(false)
   })
 
   it('blocks connectors outside the list', () => {
-    expect(isChatToolAllowed(RESTRICTED, 'tool_slack_post_message')).toBe(
-      false,
-    )
+    expect(isChatToolAllowed(RESTRICTED, 'tool_slack_post_message')).toBe(false)
+  })
+
+  it('treats empty tool and connector lists as no limit', () => {
+    const skillsOnly: AgentPermissions = {
+      ...RESTRICTED,
+      allowed_skills: ['research'],
+      allowed_tools: [],
+      allowed_connectors: [],
+    }
+    expect(isChatToolAllowed(skillsOnly, 'create_issue')).toBe(true)
+    expect(isChatToolAllowed(skillsOnly, 'tool_slack_post_message')).toBe(true)
   })
 
   it('allows non-connector tools not on a non-empty list only when listed', () => {
