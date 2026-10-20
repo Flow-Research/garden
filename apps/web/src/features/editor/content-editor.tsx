@@ -38,6 +38,7 @@ import { createEditorExtensions } from './extensions'
 import { uploadAndInsertFile } from './extensions/file-upload'
 import { preprocessMarkdown } from './utils/preprocess'
 import { openLink, isMentionHref } from './utils/link-handler'
+import { useNavigation } from '../navigation'
 import { EditorBubbleMenu } from './bubble-menu'
 import { useLinkHover, LinkHoverCard } from './link-hover-card'
 import './content-editor.css'
@@ -111,7 +112,11 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
     const onUploadFileRef = useRef(onUploadFile)
     const prevContentRef = useRef(defaultValue)
 
+    const { push } = useNavigation()
+    const pushRef = useRef(push)
+
     // Keep refs in sync without recreating editor
+    pushRef.current = push
     onUpdateRef.current = onUpdate
     onSubmitRef.current = onSubmit
     onBlurRef.current = onBlur
@@ -157,7 +162,7 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
             if (!href || isMentionHref(href)) return false
 
             event.preventDefault()
-            openLink(href)
+            openLink(href, (path) => pushRef.current(path))
             return true
           },
         },

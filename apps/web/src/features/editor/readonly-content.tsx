@@ -112,6 +112,27 @@ function IssueMentionLink({
   )
 }
 
+function MarkdownLink({
+  href,
+  children,
+}: {
+  href: string | undefined
+  children: React.ReactNode
+}) {
+  const { push } = useNavigation()
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        e.preventDefault()
+        if (href) openLink(href, push)
+      }}
+    >
+      {children}
+    </a>
+  )
+}
+
 const components: Partial<Components> = {
   // Links — route mention:// to mention components, others show preview card
   a: ({ href, children }) => {
@@ -151,17 +172,7 @@ const components: Partial<Components> = {
     }
 
     // Regular links — open directly on click
-    return (
-      <a
-        href={href}
-        onClick={(e) => {
-          e.preventDefault()
-          if (href) openLink(href)
-        }}
-      >
-        {children}
-      </a>
-    )
+    return <MarkdownLink href={href}>{children}</MarkdownLink>
   },
 
   // Images — centered with toolbar + lightbox (matches Tiptap ImageView NodeView)

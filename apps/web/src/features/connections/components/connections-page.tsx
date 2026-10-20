@@ -36,7 +36,6 @@ import {
   type ExecutorToolPreviewItem,
 } from '@/lib/executor-contract'
 import { connectionListOptions, workspaceKeys } from '@/lib/workspace/queries'
-import { notifyConnectionsChanged } from '@/features/connections/events'
 import { Button } from '@garden/ui/components/ui/button'
 import { Input } from '@garden/ui/components/ui/input'
 import {
@@ -183,7 +182,6 @@ export function ConnectionsPage({
     await queryClient.invalidateQueries({
       queryKey: workspaceKeys.connections(wsId),
     })
-    notifyConnectionsChanged()
   }, [queryClient, wsId])
 
   useEffect(() => {

@@ -4,6 +4,7 @@ import { computePosition, flip, offset, shift } from '@floating-ui/dom'
 import { Copy, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@garden/ui/components/ui/button'
+import { useNavigation } from '../navigation'
 import { isMentionHref, openLink } from './utils/link-handler'
 
 const OPEN_DELAY_MS = 300
@@ -120,6 +121,7 @@ function LinkHoverCard({
   onCardEnter,
   onCardLeave,
 }: ReturnType<typeof useLinkHover>) {
+  const { push } = useNavigation()
   const positionCard = useCallback(
     (node: HTMLDivElement | null) => {
       cardRef.current = node
@@ -183,7 +185,7 @@ function LinkHoverCard({
         className="text-muted-foreground"
         title="Open link"
         onMouseDown={preventEditorMouseDown}
-        onClick={() => openLink(preview.href)}
+        onClick={() => openLink(preview.href, push)}
       >
         <ExternalLink />
       </Button>
