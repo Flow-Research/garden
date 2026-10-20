@@ -27,6 +27,15 @@ export function notFound(message = 'Not found') {
   return json({ error: message }, 404)
 }
 
+/**
+ * For infrastructure failures (database, storage). Callers pass a generic
+ * message: provider error text must not reach the client, and a 5xx is what
+ * request logging alerts on.
+ */
+export function serviceUnavailable(message = 'Service unavailable') {
+  return json({ error: message }, 503)
+}
+
 type RequestBoundary = Request | AppRequestContext
 
 function requestFrom(input: RequestBoundary) {

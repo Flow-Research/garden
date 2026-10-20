@@ -1,9 +1,9 @@
 import { Buffer } from 'node:buffer'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { buildContentDisposition } from '@garden/agent-runtime'
 import { readChatThreadDocumentVersionBytes } from '@/lib/server/chat-agents'
 import { getChatDocumentAccess } from '@/lib/server/document-access'
+import { storedObjectHeaders } from '@/lib/server/stored-object-headers'
 
 export const Route = createFileRoute('/api/documents/$id/display')({
   server: {
@@ -36,13 +36,12 @@ export const Route = createFileRoute('/api/documents/$id/display')({
           )
         }
 
-        const filename = bytesResult.filename ?? access.row.filename
         return new Response(Buffer.from(bytesResult.base64, 'base64'), {
-          headers: {
-            'Content-Disposition': buildContentDisposition('inline', filename),
-            'Content-Type':
-              bytesResult.media_type ?? 'application/octet-stream',
-          },
+          headers: storedObjectHeaders({
+            contentType: bytesResult.media_type,
+            filename: bytesResult.filename ?? access.row.filename,
+            download: false,
+          }),
         })
       },
     },
