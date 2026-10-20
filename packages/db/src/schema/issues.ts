@@ -72,7 +72,11 @@ export const issue = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
-    parentId: uuid('parent_id').references((): AnyPgColumn => issue.id),
+    // Deleting a parent promotes its sub-issues to top level rather than
+    // deleting them or blocking the delete.
+    parentId: uuid('parent_id').references((): AnyPgColumn => issue.id, {
+      onDelete: 'set null',
+    }),
     projectId: uuid('project_id'),
     createdBy: uuid('created_by')
       .notNull()
@@ -121,7 +125,7 @@ export const issueComment = pgTable(
     id: uuid('id').primaryKey(),
     issueId: uuid('issue_id')
       .notNull()
-      .references(() => issue.id),
+      .references(() => issue.id, { onDelete: 'cascade' }),
     authorType: text('author_type').notNull(),
     authorId: uuid('author_id').notNull(),
     body: text('body').notNull(),
@@ -129,6 +133,7 @@ export const issueComment = pgTable(
     createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
   },
   (table) => [
+    index('issue_comment_issue_created_idx').on(table.issueId, table.createdAt),
     index('issue_comment_mentions_gin').using('gin', table.mentions),
     check(
       'issue_comment_author_type_check',
