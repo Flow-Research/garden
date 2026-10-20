@@ -184,8 +184,9 @@ export type IssueSummary = {
  * connection string. Callers pass `env.HYPERDRIVE.connectionString`. Previously
  * called `drizzle(databaseUrl)` from the neon-serverless driver, opening a fresh
  * direct-to-Neon WebSocket pool per call that bypassed Hyperdrive, never closed,
- * and defeated Neon autosuspend. `getPooledDb` memoizes one node-postgres pool
- * per connection string per isolate so Hyperdrive owns origin pooling.
+ * and defeated Neon autosuspend. `getPooledDb` creates a new invocation-local
+ * node-postgres pool on every call (it does not memoize), and Hyperdrive owns
+ * origin pooling behind it.
  */
 export function getIssueDb(databaseUrl: string) {
   return getPooledDb(databaseUrl)
