@@ -21,6 +21,10 @@ import {
   requireWorkspacePermission,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
+import {
+  isWorkspaceIssue,
+  isWorkspaceParticipant,
+} from '@/lib/server/workspace-refs'
 import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { capturePostHogEvent } from '@/lib/posthog-server'
@@ -121,6 +125,27 @@ export const Route = createFileRoute('/api/issues')({
         )
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
+
+        const db = await appContext.db()
+        if (body.assignee_id) {
+          const assigneeInWorkspace = await isWorkspaceParticipant(
+            db,
+            workspaceId,
+            {
+              type: body.assignee_type === 'agent' ? 'agent' : 'member',
+              id: body.assignee_id,
+            },
+          )
+          if (!assigneeInWorkspace) {
+            return badRequest('Assignee is not in this workspace')
+          }
+        }
+        if (
+          body.parent_issue_id &&
+          !(await isWorkspaceIssue(db, workspaceId, body.parent_issue_id))
+        ) {
+          return badRequest('Parent issue is not in this workspace')
+        }
 
         const issueResult = await createIssue({
           databaseUrl: appEnv.HYPERDRIVE.connectionString,

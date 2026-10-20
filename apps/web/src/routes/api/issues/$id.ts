@@ -31,6 +31,10 @@ import {
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
 import {
+  isWorkspaceIssue,
+  isWorkspaceParticipant,
+} from '@/lib/server/workspace-refs'
+import {
   cancelIssueRun,
   startIssueRun,
 } from '@garden/server/issues/run-service'
@@ -144,6 +148,35 @@ export const Route = createFileRoute('/api/issues/$id')({
           permissions: workspacePermissions.issueManage,
         })
         if (permission) return permission
+
+        // IDs from the body are global: confirm they live in this workspace
+        // before storing them (and before emailing an assignee below).
+        if (updateValues.assigneeId) {
+          const assigneeInWorkspace = await isWorkspaceParticipant(
+            db,
+            existingIssue.workspaceId,
+            {
+              type: updateValues.assigneeType === 'agent' ? 'agent' : 'member',
+              id: updateValues.assigneeId,
+            },
+          )
+          if (!assigneeInWorkspace) {
+            return badRequest('Assignee is not in this workspace')
+          }
+        }
+        if (updateValues.parentId) {
+          if (updateValues.parentId === params.id) {
+            return badRequest('An issue cannot be its own parent')
+          }
+          const parentInWorkspace = await isWorkspaceIssue(
+            db,
+            existingIssue.workspaceId,
+            updateValues.parentId,
+          )
+          if (!parentInWorkspace) {
+            return badRequest('Parent issue is not in this workspace')
+          }
+        }
 
         const [issue] = await db
           .update(schema.issue)
