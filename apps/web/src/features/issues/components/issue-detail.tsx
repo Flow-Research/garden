@@ -845,16 +845,21 @@ export function IssueDetail({
     if (!focusedCommentId || timeline.length === 0) return
     if (didHighlightRef.current === focusedCommentId) return
     const el = document.getElementById(`comment-${focusedCommentId}`)
-    if (el) {
+    if (!el) return
+    const frame = requestAnimationFrame(() => {
       didHighlightRef.current = focusedCommentId
-      requestAnimationFrame(() => {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        setHighlightedId(focusedCommentId)
-        const timer = setTimeout(() => setHighlightedId(null), 2000)
-        return () => clearTimeout(timer)
-      })
-    }
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setHighlightedId(focusedCommentId)
+    })
+    return () => cancelAnimationFrame(frame)
   }, [focusedCommentId, timeline.length])
+
+  // Fade the highlight after 2s; cleared on unmount or a new highlight.
+  useEffect(() => {
+    if (!highlightedId) return
+    const timer = setTimeout(() => setHighlightedId(null), 2000)
+    return () => clearTimeout(timer)
+  }, [highlightedId])
 
   const handleUpdateField = useCallback(
     (updates: Partial<UpdateIssueRequest>) => {
