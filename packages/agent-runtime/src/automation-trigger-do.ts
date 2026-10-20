@@ -328,15 +328,27 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
     const config = this.getConfig()
     if (!config || config.triggerId !== payload.triggerId) return Result.ok()
 
+    // Each schedule fires once, so the next one is booked whatever happens to
+    // this run. Returning early on a failed policy check or skip record used to
+    // end the automation silently after a single transient error.
+    const fireResult = await this.fireScheduledRun(config)
+    const nextResult = await this.scheduleNext(config.triggerId, new Date())
+    if (nextResult.isErr()) return Result.err(nextResult.error)
+
+    return fireResult
+  }
+
+  private async fireScheduledRun(
+    config: AutomationConfig,
+  ): Promise<ResultValue<void, AutomationDoError>> {
     const policyResult = await this.applyConcurrencyPolicy(config)
     if (policyResult.isErr()) return Result.err(policyResult.error)
 
     if (policyResult.value === 'skip') {
       const skippedResult = await this.recordSkippedRun(config)
-      if (skippedResult.isErr()) return Result.err(skippedResult.error)
-      const nextResult = await this.scheduleNext(config.triggerId, new Date())
-      if (nextResult.isErr()) return Result.err(nextResult.error)
-      return Result.ok()
+      return skippedResult.isErr()
+        ? Result.err(skippedResult.error)
+        : Result.ok()
     }
 
     const dispatchResult = await this.dispatch({ config, source: 'schedule' })
@@ -346,14 +358,10 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
         triggerId: config.triggerId,
         message: dispatchResult.error.message,
       })
+      return Result.err(dispatchResult.error)
     }
 
-    const nextResult = await this.scheduleNext(config.triggerId, new Date())
-    if (nextResult.isErr()) return Result.err(nextResult.error)
-
-    return dispatchResult.isOk()
-      ? Result.ok()
-      : Result.err(dispatchResult.error)
+    return Result.ok()
   }
 
   private getConfig() {
