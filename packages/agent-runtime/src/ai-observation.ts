@@ -46,6 +46,15 @@ type AiTurnState = AiTurnIdentity & {
     system: TurnContext['system']
   }
   startedAtMs: number
+  phaseDurationsMs: Record<string, number>
+  phases: Map<
+    string,
+    {
+      name: string
+      spanId: string
+      startedAtMs: number
+    }
+  >
   toolCalls: Map<
     string,
     {
@@ -98,14 +107,20 @@ export class AiObservation {
     private readonly env: AiRuntimeEnv,
   ) {}
 
-  startTurn(identity: AiTurnIdentity, ctx: TurnContext) {
+  startTurn(
+    identity: AiTurnIdentity,
+    ctx: TurnContext,
+    startedAtMs = Date.now(),
+  ) {
     this.state = {
       ...identity,
       traceId: identity.traceId ?? crypto.randomUUID(),
       turnSpanId: crypto.randomUUID(),
-      startedAtMs: Date.now(),
+      startedAtMs,
       input: { system: ctx.system, messages: ctx.messages, body: ctx.body },
       counts: { steps: 0, tools: 0, toolErrors: 0 },
+      phaseDurationsMs: {},
+      phases: new Map(),
       toolCalls: new Map(),
     }
 
@@ -114,6 +129,71 @@ export class AiObservation {
         input: this.state.input,
       })
     }
+  }
+
+  /**
+   * Starts one named phase inside the active AI turn. The returned token keeps
+   * overlapping phases independent and lets the final trace expose measured
+   * setup costs without adding another telemetry system.
+   */
+  startPhase(name: string, startedAtMs = Date.now()) {
+    const state = this.state
+    if (!state) return null
+
+    const token = crypto.randomUUID()
+    state.phases.set(token, {
+      name,
+      spanId: crypto.randomUUID(),
+      startedAtMs,
+    })
+    return token
+  }
+
+  /** Returns the token for an active named phase in the current turn. */
+  activePhaseToken(name: string) {
+    const state = this.state
+    if (!state) return null
+
+    for (const [token, phase] of state.phases) {
+      if (phase.name === name) return token
+    }
+    return null
+  }
+
+  /** Completes a named phase and emits it as a child span of the active turn. */
+  finishPhase(
+    token: string | null,
+    options: {
+      error?: unknown
+      properties?: Record<string, unknown>
+    } = {},
+  ) {
+    const state = this.state
+    if (!state || !token) return
+
+    const phase = state.phases.get(token)
+    if (!phase) return
+
+    const durationMs = Math.max(0, Date.now() - phase.startedAtMs)
+    state.phaseDurationsMs[phase.name] =
+      (state.phaseDurationsMs[phase.name] ?? 0) + durationMs
+    this.capture(GARDEN_ANALYTICS_EVENTS.aiSpan, state, {
+      $ai_trace_id: state.traceId,
+      $ai_session_id: state.sessionId,
+      $ai_span_id: phase.spanId,
+      $ai_span_name: `phase:${phase.name}`,
+      $ai_parent_id: state.turnSpanId,
+      $ai_latency: durationMs / 1_000,
+      $ai_is_error: options.error !== undefined,
+      $ai_error:
+        options.error === undefined
+          ? undefined
+          : serializedError(options.error),
+      duration_ms: durationMs,
+      phase: phase.name,
+      ...options.properties,
+    })
+    state.phases.delete(token)
   }
 
   modelTracing(): AgentModelTracing | undefined {
@@ -180,6 +260,12 @@ export class AiObservation {
       })
     }
 
+    const durationMs =
+      ctx.durationMs ||
+      (activeTool ? Date.now() - activeTool.startedAtMs : 0)
+    state.phaseDurationsMs.tool_calls =
+      (state.phaseDurationsMs.tool_calls ?? 0) + durationMs
+
     this.capture(GARDEN_ANALYTICS_EVENTS.aiSpan, state, {
       $ai_trace_id: state.traceId,
       $ai_session_id: state.sessionId,
@@ -188,9 +274,7 @@ export class AiObservation {
       $ai_parent_id: state.turnSpanId,
       $ai_input_state: activeTool?.input ?? ctx.input,
       $ai_output_state: ctx.success ? ctx.output : undefined,
-      $ai_latency:
-        ctx.durationMs / 1_000 ||
-        (activeTool ? (Date.now() - activeTool.startedAtMs) / 1_000 : 0),
+      $ai_latency: durationMs / 1_000,
       $ai_is_error: failed,
       $ai_error: ctx.success ? undefined : serializedError(ctx.error),
       tool_name: ctx.toolName,
@@ -215,6 +299,19 @@ export class AiObservation {
       continuation: result.continuation,
       status: result.status,
     }
+    const timingProperties = Object.fromEntries(
+      Object.entries(state.phaseDurationsMs).map(([name, duration]) => [
+        `timing_${name}_ms`,
+        duration,
+      ]),
+    )
+    aiAnalyticsLogger.info('ai.turn_timing', {
+      traceId: state.traceId,
+      sessionId: state.sessionId,
+      status: result.status,
+      totalDurationMs: durationMs,
+      ...timingProperties,
+    })
     this.capture(GARDEN_ANALYTICS_EVENTS.aiSpan, state, {
       $ai_trace_id: state.traceId,
       $ai_session_id: state.sessionId,
@@ -226,6 +323,7 @@ export class AiObservation {
       $ai_is_error: result.status === 'error',
       $ai_error:
         result.status === 'error' ? serializedError(result.error) : undefined,
+      ...timingProperties,
     })
     this.capture(GARDEN_ANALYTICS_EVENTS.aiTrace, state, {
       $ai_trace_id: state.traceId,
@@ -242,6 +340,7 @@ export class AiObservation {
       step_count: state.counts.steps,
       tool_call_count: state.counts.tools,
       tool_error_count: state.counts.toolErrors,
+      ...timingProperties,
     })
 
     if (state.runtimeKind === 'chat') {
@@ -257,6 +356,7 @@ export class AiObservation {
           duration_ms: durationMs,
           step_count: state.counts.steps,
           tool_call_count: state.counts.tools,
+          ...timingProperties,
         },
       )
     }

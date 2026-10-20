@@ -1872,6 +1872,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async beforeTurn(ctx: TurnContext) {
+    const beforeTurnStartedAtMs = Date.now()
     const [identity] = await this.getDb()
       .select({
         id: schema.chatThread.id,
@@ -1903,14 +1904,34 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
           sessionId: `chat:${identity.id}`,
         },
         ctx,
+        beforeTurnStartedAtMs,
       )
     }
 
-    const mcpControllerResult = await Result.tryPromise({
-      try: async () =>
-        await this.mcpConnectionPreparer.ensureForTurn('chat-turn'),
-      catch: (cause) =>
-        cause instanceof Error ? cause.message : 'Chat MCP refresh failed',
+    const beforeTurnPhase = this.aiObservation.startPhase(
+      'before_turn',
+      beforeTurnStartedAtMs,
+    )
+    const identityPhase = this.aiObservation.startPhase(
+      'identity_load',
+      beforeTurnStartedAtMs,
+    )
+    this.aiObservation.finishPhase(identityPhase, {
+      properties: { identity_found: identity !== undefined },
+    })
+
+    const mcpPreparePhase = this.aiObservation.startPhase('mcp_prepare')
+    const mcpControllerResult = (
+      await Result.tryPromise({
+        try: async () =>
+          await this.mcpConnectionPreparer.ensureForTurn('chat-turn'),
+        catch: (cause) =>
+          cause instanceof Error ? cause.message : 'Chat MCP refresh failed',
+      })
+    ).tapBoth({
+      ok: () => this.aiObservation.finishPhase(mcpPreparePhase),
+      err: (error) =>
+        this.aiObservation.finishPhase(mcpPreparePhase, { error }),
     })
     const activeMcpController = mcpControllerResult.match({
       ok: (controller) => controller,
@@ -1927,6 +1948,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       )
     }
 
+    const contextPreparePhase = this.aiObservation.startPhase('context_prepare')
     const documentContext =
       ctx.body &&
       typeof ctx.body.document_context === 'string' &&
@@ -1993,7 +2015,15 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     ]
       .filter((part): part is string => Boolean(part?.trim()))
       .join('\n\n')
+    this.aiObservation.finishPhase(contextPreparePhase, {
+      properties: {
+        has_brain_context: Boolean(brainContext),
+        has_document_context: Boolean(documentContext),
+        has_explicit_skill_context: Boolean(explicitSkillContext),
+      },
+    })
 
+    const toolAssemblyPhase = this.aiObservation.startPhase('tool_assembly')
     const stableMcpTools = activeMcpController.wrapGetAITools(
       this.mcp.getAITools.bind(this.mcp),
       undefined,
@@ -2013,6 +2043,15 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       Object.entries(stableMcpTools).filter(([key]) => isToolVisible(key)),
     ) as ToolSet
     const visibleActiveTools = activeTools.filter((key) => isToolVisible(key))
+    this.aiObservation.finishPhase(toolAssemblyPhase, {
+      properties: {
+        active_tool_count: visibleActiveTools.length,
+        mcp_tool_count: Object.keys(visibleTools).length,
+      },
+    })
+
+    this.aiObservation.finishPhase(beforeTurnPhase)
+    this.aiObservation.startPhase('inference')
 
     return {
       model: createAgentModel({
@@ -2060,6 +2099,11 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async onChatResponse(result: ChatResponseResult) {
+    const inferencePhase = this.aiObservation.activePhaseToken('inference')
+    this.aiObservation.finishPhase(
+      inferencePhase,
+      result.status === 'error' ? { error: result.error } : {},
+    )
     this.aiObservation.finishTurn(result)
   }
 
