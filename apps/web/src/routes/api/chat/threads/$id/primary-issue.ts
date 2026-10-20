@@ -7,6 +7,7 @@ import {
   badRequest,
   forbidden,
   notFound,
+  getWorkspaceIssuePrefix,
   toChatThread,
 } from '@/lib/server/control-plane'
 import { schema } from '@/lib/server/db'
@@ -79,7 +80,19 @@ export const Route = createFileRoute('/api/chat/threads/$id/primary-issue')({
 
         if (!thread) return notFound('Chat thread not found')
         return Response.json(
-          toChatThread(thread, access.hostName, primaryIssue),
+          toChatThread(
+            thread,
+            access.hostName,
+            primaryIssue
+              ? {
+                  ...primaryIssue,
+                  issuePrefix: await getWorkspaceIssuePrefix(
+                    access.db,
+                    access.thread.workspaceId,
+                  ),
+                }
+              : null,
+          ),
         )
       },
     },

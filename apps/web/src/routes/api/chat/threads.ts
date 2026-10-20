@@ -12,6 +12,7 @@ import {
   forbidden,
   requireSession,
   resolveWorkspaceId,
+  getWorkspaceIssuePrefix,
   toChatThread,
   unauthorized,
 } from '@/lib/server/control-plane'
@@ -69,13 +70,14 @@ export const Route = createFileRoute('/api/chat/threads')({
           )
           .orderBy(desc(schema.chatThread.updatedAt))
 
+        const issuePrefix = await getWorkspaceIssuePrefix(db, workspaceId)
         return Response.json(
           rows.flatMap((row) => {
             if (!row.hostName) return []
             const thread = toChatThread(
               row.thread,
               row.hostName,
-              row.primaryIssue,
+              row.primaryIssue ? { ...row.primaryIssue, issuePrefix } : null,
             )
             if (
               thread.title.trim().toLowerCase() !== NEW_CHAT_TITLE.toLowerCase()
@@ -281,7 +283,16 @@ export const Route = createFileRoute('/api/chat/threads')({
           },
         })
         return Response.json(
-          toChatThread(threadResult.thread, agentRuntimeName, primaryIssue),
+          toChatThread(
+            threadResult.thread,
+            agentRuntimeName,
+            primaryIssue
+              ? {
+                  ...primaryIssue,
+                  issuePrefix: await getWorkspaceIssuePrefix(db, workspaceId),
+                }
+              : null,
+          ),
           {
             status: 201,
           },

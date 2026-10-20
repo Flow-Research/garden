@@ -13,6 +13,7 @@ import {
 } from '@/lib/server/validation/issues'
 import {
   badRequest,
+  getWorkspaceIssuePrefix,
   requireWorkspaceContext,
   toIssue,
 } from '@/lib/server/control-plane'
@@ -92,8 +93,12 @@ export const Route = createFileRoute('/api/issues')({
           ? query.limit(safeLimit).offset(safeOffset)
           : query.offset(safeOffset))
 
+        const issuePrefix = await getWorkspaceIssuePrefix(
+          await appContext.db(),
+          workspaceId,
+        )
         return Response.json({
-          issues: rows.map((row) => toIssue(row)),
+          issues: rows.map((row) => toIssue(row, { issuePrefix })),
           total: count,
         })
       },

@@ -284,9 +284,23 @@ export function toInvitation(record: InvitationRecord) {
   }
 }
 
+/** The workspace's issue identifier prefix (e.g. `ENG` in `ENG-42`). */
+export async function getWorkspaceIssuePrefix(db: Db, workspaceId: string) {
+  const [workspace] = await db
+    .select({ issuePrefix: schema.organization.issuePrefix })
+    .from(schema.organization)
+    .where(eq(schema.organization.id, workspaceId))
+    .limit(1)
+  return workspace?.issuePrefix ?? 'ISS'
+}
+
+/**
+ * `issuePrefix` is required: defaulting it made list and detail views show
+ * `ISS-12` for workspaces whose issues are created as `ENG-12`.
+ */
 export function toIssue(
   record: typeof schema.issue.$inferSelect,
-  options: { issuePrefix?: string } = {},
+  options: { issuePrefix: string },
 ) {
   const sourceSummary = record.sourceSummary
     ? {
@@ -295,7 +309,7 @@ export function toIssue(
         external_url: null,
       }
     : null
-  const prefix = options.issuePrefix ?? 'ISS'
+  const prefix = options.issuePrefix
 
   return {
     id: record.id,
@@ -368,6 +382,8 @@ export function toChatThread(
     number: number
     title: string
     status: string | null
+    /** The workspace's prefix; see `getWorkspaceIssuePrefix`. */
+    issuePrefix: string
   } | null,
 ) {
   const createdAt = record.createdAt
@@ -390,7 +406,10 @@ export function toChatThread(
     primaryIssue: primaryIssue
       ? {
           id: primaryIssue.id,
-          identifier: formatIssueIdentifier('ISS', primaryIssue.number),
+          identifier: formatIssueIdentifier(
+            primaryIssue.issuePrefix,
+            primaryIssue.number,
+          ),
           title: primaryIssue.title,
           status: primaryIssue.status ?? 'todo',
         }
