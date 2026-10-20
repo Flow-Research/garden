@@ -4,18 +4,13 @@ import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
-  badRequest,
   notFound,
   requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
+import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import {
   listIssueWorkProducts,
-  type IssueRunServiceError,
 } from '@garden/server/issues/run-service'
-
-function runError(error: IssueRunServiceError) {
-  return badRequest(error.message)
-}
 
 export const Route = createFileRoute('/api/issues/$id/work-products')({
   server: {
@@ -42,7 +37,7 @@ export const Route = createFileRoute('/api/issues/$id/work-products')({
           issueId: params.id,
         })
         if (workProductsResult.isErr())
-          return runError(workProductsResult.error)
+          return serviceErrorResponse(workProductsResult.error)
 
         return Response.json(workProductsResult.value)
       },

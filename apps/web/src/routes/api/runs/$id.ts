@@ -4,20 +4,16 @@ import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
-  badRequest,
   notFound,
   requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
+import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import {
   IssueRunServiceError,
   listIssueRunEvents,
   listIssueWorkProducts,
   toIssueRun,
 } from '@garden/server/issues/run-service'
-
-function runError(error: IssueRunServiceError) {
-  return badRequest(error.message)
-}
 
 export const Route = createFileRoute('/api/runs/$id')({
   server: {
@@ -41,7 +37,7 @@ export const Route = createFileRoute('/api/runs/$id')({
           runId: run.id,
           limit: 200,
         })
-        if (eventsResult.isErr()) return runError(eventsResult.error)
+        if (eventsResult.isErr()) return serviceErrorResponse(eventsResult.error)
 
         const workProducts = await (async () => {
           if (!run.issueId) return []
@@ -53,7 +49,7 @@ export const Route = createFileRoute('/api/runs/$id')({
           return wpResult.isOk() ? wpResult.value : null
         })()
         if (workProducts === null) {
-          return runError(
+          return serviceErrorResponse(
             new IssueRunServiceError({
               code: 'db_error',
               message: 'Failed to load work products.',

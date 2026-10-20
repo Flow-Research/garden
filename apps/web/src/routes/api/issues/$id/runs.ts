@@ -8,15 +8,11 @@ import {
   notFound,
   requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
+import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import {
   listIssueRuns,
   startIssueRun,
-  type IssueRunServiceError,
 } from '@garden/server/issues/run-service'
-
-function runError(error: IssueRunServiceError) {
-  return badRequest(error.message)
-}
 
 export const Route = createFileRoute('/api/issues/$id/runs')({
   server: {
@@ -42,7 +38,7 @@ export const Route = createFileRoute('/api/issues/$id/runs')({
           workspaceId: issue.workspaceId,
           issueId: params.id,
         })
-        if (runsResult.isErr()) return runError(runsResult.error)
+        if (runsResult.isErr()) return serviceErrorResponse(runsResult.error)
         return Response.json(runsResult.value)
       },
       POST: async ({ context, params }) => {
@@ -89,7 +85,7 @@ export const Route = createFileRoute('/api/issues/$id/runs')({
           source: 'manual',
           actor: { type: 'member', id: access.session.user.id },
         })
-        if (startResult.isErr()) return runError(startResult.error)
+        if (startResult.isErr()) return serviceErrorResponse(startResult.error)
         return Response.json(startResult.value, { status: 202 })
       },
     },

@@ -4,19 +4,14 @@ import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
-  badRequest,
   notFound,
   requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
+import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import {
   cancelIssueRun,
   getActiveIssueRun,
-  type IssueRunServiceError,
 } from '@garden/server/issues/run-service'
-
-function runError(error: IssueRunServiceError) {
-  return badRequest(error.message)
-}
 
 export const Route = createFileRoute('/api/issues/$id/cancel')({
   server: {
@@ -42,7 +37,7 @@ export const Route = createFileRoute('/api/issues/$id/cancel')({
           workspaceId: issue.workspaceId,
           issueId: params.id,
         })
-        if (runResult.isErr()) return runError(runResult.error)
+        if (runResult.isErr()) return serviceErrorResponse(runResult.error)
         if (!runResult.value) return notFound('Active run not found')
 
         const cancelResult = await cancelIssueRun(appEnv, {
@@ -51,7 +46,7 @@ export const Route = createFileRoute('/api/issues/$id/cancel')({
           actor: { type: 'member', id: access.session.user.id },
           reason: 'user_cancelled',
         })
-        if (cancelResult.isErr()) return runError(cancelResult.error)
+        if (cancelResult.isErr()) return serviceErrorResponse(cancelResult.error)
         return Response.json({ ok: true })
       },
     },

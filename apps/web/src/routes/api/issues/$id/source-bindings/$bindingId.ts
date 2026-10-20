@@ -4,20 +4,13 @@ import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
-  badRequest,
   notFound,
   requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
+import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import {
   removeSourceBinding,
-  type IssueSourceBindingServiceError,
 } from '@garden/core/issues/source-binding'
-
-function sourceBindingError(error: IssueSourceBindingServiceError) {
-  return error.code === 'binding_not_found'
-    ? notFound(error.message)
-    : badRequest(error.message)
-}
 
 export const Route = createFileRoute(
   '/api/issues/$id/source-bindings/$bindingId',
@@ -49,7 +42,7 @@ export const Route = createFileRoute(
           databaseUrl: appEnv.HYPERDRIVE.connectionString,
           bindingId: params.bindingId,
         })
-        if (removeResult.isErr()) return sourceBindingError(removeResult.error)
+        if (removeResult.isErr()) return serviceErrorResponse(removeResult.error)
         return new Response(null, { status: 204 })
       },
     },

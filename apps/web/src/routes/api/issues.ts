@@ -20,6 +20,7 @@ import {
   requireWorkspacePermission,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
+import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { capturePostHogEvent } from '@/lib/posthog-server'
 
@@ -137,7 +138,7 @@ export const Route = createFileRoute('/api/issues')({
           dueDate: body.due_date ? new Date(body.due_date) : null,
           attachmentIds: body.attachment_ids,
         })
-        if (issueResult.isErr()) return badRequest(issueResult.error.message)
+        if (issueResult.isErr()) return serviceErrorResponse(issueResult.error)
         const issue = issueResult.value
         if (
           body.auto_start !== false &&

@@ -12,17 +12,11 @@ import {
   notFound,
   requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
+import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import {
   attachSourceBinding,
   listIssueSourceBindings,
-  type IssueSourceBindingServiceError,
 } from '@garden/core/issues/source-binding'
-
-function sourceBindingError(error: IssueSourceBindingServiceError) {
-  return error.code === 'binding_not_found'
-    ? notFound(error.message)
-    : badRequest(error.message)
-}
 
 export const Route = createFileRoute('/api/issues/$id/source-bindings')({
   server: {
@@ -48,7 +42,7 @@ export const Route = createFileRoute('/api/issues/$id/source-bindings')({
           issueId: params.id,
         })
         if (bindingsResult.isErr()) {
-          return sourceBindingError(bindingsResult.error)
+          return serviceErrorResponse(bindingsResult.error)
         }
         return Response.json(bindingsResult.value)
       },
@@ -85,7 +79,7 @@ export const Route = createFileRoute('/api/issues/$id/source-bindings')({
           externalId: body.external_id,
           externalUrl: body.external_url,
         })
-        if (attachResult.isErr()) return sourceBindingError(attachResult.error)
+        if (attachResult.isErr()) return serviceErrorResponse(attachResult.error)
         return Response.json(attachResult.value, { status: 201 })
       },
     },

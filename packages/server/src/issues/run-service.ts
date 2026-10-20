@@ -261,11 +261,12 @@ export function toIssueWorkProduct(
   }
 }
 
+// The driver's message stays on `cause` for logs; `message` reaches API clients
+// and must not carry raw Postgres error text.
 function serviceDbError(operation: string, cause: unknown) {
-  const message = cause instanceof Error ? cause.message : String(cause)
   return new IssueRunServiceError({
     code: 'db_error',
-    message: `${operation} failed: ${message}`,
+    message: `${operation} failed`,
     cause,
   })
 }

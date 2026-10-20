@@ -9,10 +9,10 @@ import {
   notFound,
   requireWorkspaceAccess,
 } from '@/lib/server/control-plane'
+import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import { parseSearchParams } from '@/lib/server/validation/issues'
 import {
   listIssueRunEvents,
-  type IssueRunServiceError,
 } from '@garden/server/issues/run-service'
 
 const eventsSearchSchema = z.object({
@@ -20,10 +20,6 @@ const eventsSearchSchema = z.object({
   after: z.coerce.number().int().nonnegative().optional(),
   limit: z.coerce.number().int().positive().max(500).optional(),
 })
-
-function runError(error: IssueRunServiceError) {
-  return badRequest(error.message)
-}
 
 export const Route = createFileRoute('/api/issues/$id/events')({
   server: {
@@ -59,7 +55,7 @@ export const Route = createFileRoute('/api/issues/$id/events')({
           after: searchResult.value.after,
           limit: searchResult.value.limit,
         })
-        if (eventsResult.isErr()) return runError(eventsResult.error)
+        if (eventsResult.isErr()) return serviceErrorResponse(eventsResult.error)
         return Response.json(eventsResult.value)
       },
     },
