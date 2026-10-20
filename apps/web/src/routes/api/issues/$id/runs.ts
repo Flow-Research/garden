@@ -10,6 +10,10 @@ import {
 } from '@/lib/server/control-plane'
 import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
+import {
   listIssueRuns,
   startIssueRun,
 } from '@garden/server/issues/run-service'
@@ -61,6 +65,13 @@ export const Route = createFileRoute('/api/issues/$id/runs')({
           issue.workspaceId,
         )
         if (access instanceof Response) return access
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request: appContext.request,
+          workspaceId: issue.workspaceId,
+          permissions: workspacePermissions.issueManage,
+        })
+        if (permission) return permission
 
         if (issue.assigneeType !== 'agent' || !issue.assigneeId) {
           return badRequest('Issue must be assigned to an agent to start a run')

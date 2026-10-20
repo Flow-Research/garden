@@ -9,6 +9,10 @@ import {
 } from '@/lib/server/control-plane'
 import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
+import {
   cancelIssueRun,
   getActiveIssueRun,
 } from '@garden/server/issues/run-service'
@@ -31,6 +35,13 @@ export const Route = createFileRoute('/api/issues/$id/cancel')({
           issue.workspaceId,
         )
         if (access instanceof Response) return access
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request: appContext.request,
+          workspaceId: issue.workspaceId,
+          permissions: workspacePermissions.issueManage,
+        })
+        if (permission) return permission
 
         const runResult = await getActiveIssueRun({
           env: appEnv,

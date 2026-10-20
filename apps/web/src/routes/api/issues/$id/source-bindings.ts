@@ -14,6 +14,10 @@ import {
 } from '@/lib/server/control-plane'
 import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
+import {
   attachSourceBinding,
   listIssueSourceBindings,
 } from '@garden/core/issues/source-binding'
@@ -69,6 +73,13 @@ export const Route = createFileRoute('/api/issues/$id/source-bindings')({
           issue.workspaceId,
         )
         if (access instanceof Response) return access
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request: appContext.request,
+          workspaceId: issue.workspaceId,
+          permissions: workspacePermissions.issueManage,
+        })
+        if (permission) return permission
 
         const attachResult = await attachSourceBinding({
           databaseUrl: appEnv.HYPERDRIVE.connectionString,

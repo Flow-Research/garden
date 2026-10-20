@@ -8,6 +8,9 @@ export type WorkspacePermission = Record<string, string[]>
 
 export const workspacePermissions = {
   agentManage: { agent: ['create', 'update', 'delete'] },
+  // Automations make agents act on a schedule, so they are governed by agent
+  // management until they get their own access-control statement.
+  automationManage: { agent: ['create', 'update', 'delete'] },
   connectionManage: { connection: ['update'] },
   issueManage: { issue: ['update'] },
   invitationManage: { invitation: ['create', 'cancel'] },

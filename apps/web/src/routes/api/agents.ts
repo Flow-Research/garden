@@ -13,6 +13,10 @@ import {
   requireWorkspaceContext,
   toAgent,
 } from '@/lib/server/control-plane'
+import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { capturePostHogEvent } from '@/lib/posthog-server'
 
@@ -38,6 +42,13 @@ export const Route = createFileRoute('/api/agents')({
         const workspaceContext = await requireWorkspaceContext(appContext)
         if (workspaceContext instanceof Response) return workspaceContext
         const { session, workspaceId } = workspaceContext
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request,
+          workspaceId,
+          permissions: workspacePermissions.agentManage,
+        })
+        if (permission) return permission
 
         const bodyResult = await parseJsonBody(
           request,

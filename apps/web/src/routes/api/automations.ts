@@ -14,6 +14,10 @@ import {
   toAutomationTrigger,
 } from '@/lib/server/automations'
 import { requireWorkspaceContext } from '@/lib/server/control-plane'
+import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { capturePostHogEvent } from '@/lib/posthog-server'
 import {
@@ -80,6 +84,13 @@ export const Route = createFileRoute('/api/automations')({
         const appContext = requireAppRequestContext(context)
         const workspaceContext = await requireWorkspaceContext(appContext)
         if (workspaceContext instanceof Response) return workspaceContext
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request,
+          workspaceId: workspaceContext.workspaceId,
+          permissions: workspacePermissions.automationManage,
+        })
+        if (permission) return permission
 
         const bodyResult = await parseJsonBody(
           request,

@@ -18,6 +18,10 @@ import {
 } from '@/lib/server/automations'
 import { notFound, requireWorkspaceAccess } from '@/lib/server/control-plane'
 import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
+import {
   parseJsonBody,
   updateAutomationBodySchema,
 } from '@/lib/server/validation/automations'
@@ -69,6 +73,13 @@ export const Route = createFileRoute('/api/automations/$id')({
           automation.workspaceId,
         )
         if (access instanceof Response) return access
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request,
+          workspaceId: automation.workspaceId,
+          permissions: workspacePermissions.automationManage,
+        })
+        if (permission) return permission
 
         const bodyResult = await parseJsonBody(
           request,
@@ -174,6 +185,13 @@ export const Route = createFileRoute('/api/automations/$id')({
           automation.workspaceId,
         )
         if (access instanceof Response) return access
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request,
+          workspaceId: automation.workspaceId,
+          permissions: workspacePermissions.automationManage,
+        })
+        if (permission) return permission
 
         const db = await appContext.db()
         const [updated] = await db

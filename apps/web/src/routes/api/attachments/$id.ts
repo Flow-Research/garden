@@ -9,6 +9,10 @@ import {
   requireWorkspaceAccess,
   serviceUnavailable,
 } from '@/lib/server/control-plane'
+import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
 
 class IssueAttachmentStorageError extends TaggedError(
   'IssueAttachmentStorageError',
@@ -78,6 +82,19 @@ export const Route = createFileRoute('/api/attachments/$id')({
           attachment.workspaceId,
         )
         if (access instanceof Response) return access
+
+        const isUploader =
+          attachment.uploaderType === 'member' &&
+          attachment.uploaderId === access.session.user.id
+        if (!isUploader) {
+          const permission = await requireWorkspacePermission({
+            appContext,
+            request,
+            workspaceId: attachment.workspaceId,
+            permissions: workspacePermissions.issueManage,
+          })
+          if (permission) return permission
+        }
 
         const deleteObjectResult = await Result.tryPromise({
           try: async () => await appContext.env.FILES.delete(attachment.r2Key),

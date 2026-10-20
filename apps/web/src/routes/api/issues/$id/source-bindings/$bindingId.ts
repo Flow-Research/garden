@@ -9,6 +9,10 @@ import {
 } from '@/lib/server/control-plane'
 import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
+import {
   removeSourceBinding,
 } from '@garden/core/issues/source-binding'
 
@@ -37,6 +41,13 @@ export const Route = createFileRoute(
           binding.workspaceId,
         )
         if (access instanceof Response) return access
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request: appContext.request,
+          workspaceId: binding.workspaceId,
+          permissions: workspacePermissions.issueManage,
+        })
+        if (permission) return permission
 
         const removeResult = await removeSourceBinding({
           databaseUrl: appEnv.HYPERDRIVE.connectionString,
