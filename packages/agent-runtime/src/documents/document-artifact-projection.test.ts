@@ -11,6 +11,10 @@ import {
   sanitizeDocumentBlockHtml,
 } from './document-artifact-projection'
 
+// Builds and parses real DOCX files through dynamically imported libraries;
+// the first import is slow on a loaded runner, past vitest's 5s default.
+const DOCX_TEST_TIMEOUT_MS = 30_000
+
 const projectionLayer = (ai: DocumentMarkdownAi) =>
   documentArtifactProjectionLayer.pipe(
     Layer.provide(makeWorkersAiDocumentMarkdownLayer(ai)),
@@ -231,7 +235,7 @@ describe('makeMammothDocumentMarkdownLayer', () => {
     const text = documentBlocksToText(result.blocks)
     expect(text).toContain('Launch plan')
     expect(text).toContain('Owner: Ada')
-  })
+  }, DOCX_TEST_TIMEOUT_MS)
 
   it('fails with the typed import error on corrupt bytes', async () => {
     const failure = await Effect.runPromise(

@@ -20,6 +20,10 @@ import {
   type DocumentSnapshot,
 } from './document-artifact-model'
 
+// Builds and parses real DOCX files through dynamically imported libraries;
+// the first import is slow on a loaded runner, past vitest's 5s default.
+const DOCX_TEST_TIMEOUT_MS = 30_000
+
 type QueryChain = {
   from: (...args: unknown[]) => QueryChain
   innerJoin: (...args: unknown[]) => QueryChain
@@ -421,5 +425,5 @@ describe('canonical DOCX document tools', () => {
       documentId: 'document-1',
       filename: 'Generated brief.docx',
     })
-  })
+  }, DOCX_TEST_TIMEOUT_MS)
 })
