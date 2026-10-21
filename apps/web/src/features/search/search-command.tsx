@@ -2,18 +2,18 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { Result } from 'better-result'
 import { toast } from 'sonner'
 import {
-  IconBook,
-  IconLayoutDashboard,
-  IconInbox,
-  IconKeyboard,
-  IconMessageCircle,
-  IconRobot,
-  IconSearch,
-  IconSettings,
-  IconSettingsCog,
-  IconSparkles,
-  type Icon,
-} from '@tabler/icons-react'
+  Book,
+  LayoutDashboard,
+  Inbox,
+  Keyboard,
+  MessageCircle,
+  Bot,
+  Search,
+  Settings,
+  Cog,
+  Sparkles,
+  type LucideIcon,
+} from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useRecentIssuesStore } from '@garden/app-state/issues/stores/recent-issues-store'
 import { issueListOptions } from '@/lib/issues/queries'
@@ -36,7 +36,7 @@ import {
   DialogTitle,
 } from '@garden/ui/components/ui/dialog'
 import { Kbd, KbdGroup } from '@garden/ui/components/ui/kbd'
-import { Loader2 } from 'lucide-react'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import { useAgentSessions } from '@/features/chat/use-agent-chat-sessions'
 import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigation'
 import { useSettingsDialogStore } from '@/features/settings'
@@ -73,7 +73,7 @@ function HighlightText({ text, query }: { text: string; query: string }) {
         part.highlight ? (
           <mark
             key={i}
-            className="rounded-sm bg-yellow-200 text-inherit dark:bg-yellow-900/60"
+            className="rounded-sm bg-background-warning-secondary text-inherit"
           >
             {part.text}
           </mark>
@@ -91,7 +91,7 @@ interface NavPage {
   to: string | null
   title: string
   label: string
-  icon: Icon
+  icon: LucideIcon
   keywords: string[]
   shortcut?: readonly string[]
 }
@@ -102,7 +102,7 @@ const navPages: NavPage[] = [
     to: '/home',
     title: 'Dashboard',
     label: 'Dashboard',
-    icon: IconLayoutDashboard,
+    icon: LayoutDashboard,
     keywords: ['dashboard', 'home', 'overview', 'workspace'],
   },
   {
@@ -110,7 +110,7 @@ const navPages: NavPage[] = [
     to: '/inbox',
     title: 'Inbox',
     label: 'Inbox',
-    icon: IconInbox,
+    icon: Inbox,
     keywords: ['inbox', 'notifications', 'home'],
   },
   {
@@ -118,7 +118,7 @@ const navPages: NavPage[] = [
     to: '/tasks',
     title: 'Tasks',
     label: 'Tasks',
-    icon: IconSparkles,
+    icon: Sparkles,
     keywords: ['issues', 'tasks', 'board', 'work'],
   },
   {
@@ -126,7 +126,7 @@ const navPages: NavPage[] = [
     to: null,
     title: 'New Chat',
     label: 'Chat',
-    icon: IconMessageCircle,
+    icon: MessageCircle,
     keywords: ['chat', 'agent', 'conversation'],
   },
   {
@@ -134,7 +134,7 @@ const navPages: NavPage[] = [
     to: null,
     title: 'Agent Chat',
     label: 'Agent Chat',
-    icon: IconRobot,
+    icon: Bot,
     keywords: ['agent', 'assistant', 'chat'],
   },
   {
@@ -142,7 +142,7 @@ const navPages: NavPage[] = [
     to: '/skills',
     title: 'Skills',
     label: 'Skills',
-    icon: IconBook,
+    icon: Book,
     keywords: ['skills', 'knowledge', 'library'],
   },
   {
@@ -150,7 +150,7 @@ const navPages: NavPage[] = [
     to: '/connectors',
     title: 'Connectors',
     label: 'Connectors',
-    icon: IconSettingsCog,
+    icon: Cog,
     keywords: ['connections', 'capabilities', 'permissions'],
   },
 ]
@@ -158,7 +158,7 @@ const navPages: NavPage[] = [
 interface QuickAction {
   id: string
   label: string
-  icon: Icon
+  icon: LucideIcon
   shortcut?: readonly string[]
   onSelect: (ctx: { setOpen: (open: boolean) => void }) => void
 }
@@ -267,7 +267,7 @@ export function SearchCommand() {
       {
         id: 'open-chat',
         label: 'Start a Chat',
-        icon: IconMessageCircle,
+        icon: MessageCircle,
         shortcut: ['C'],
         onSelect: ({ setOpen }) => {
           setOpen(false)
@@ -287,7 +287,7 @@ export function SearchCommand() {
       {
         id: 'open-settings',
         label: 'Open Settings',
-        icon: IconSettings,
+        icon: Settings,
         shortcut: ['⌘', ','],
         onSelect: ({ setOpen }) => {
           setOpen(false)
@@ -316,7 +316,7 @@ export function SearchCommand() {
           className="flex h-full w-full flex-col overflow-hidden bg-popover **:data-[slot=command-input-wrapper]:h-auto **:data-[slot=command-input-wrapper]:grow **:data-[slot=command-input-wrapper]:border-0 **:data-[slot=command-input-wrapper]:px-0"
         >
           <div className="flex h-12 items-center gap-2 border-border/50 border-b px-4">
-            <IconSearch
+            <Search
               aria-hidden
               className="size-4 shrink-0 text-muted-foreground"
             />
@@ -338,7 +338,7 @@ export function SearchCommand() {
           <CommandList className="max-h-[min(400px,60vh)] py-2">
             {isLoading ? (
               <div className="flex items-center justify-center py-10">
-                <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                <Spinner className="size-5 text-muted-foreground" />
               </div>
             ) : (
               <CommandEmpty>No results found.</CommandEmpty>
@@ -461,7 +461,7 @@ export function SearchCommand() {
                   onSelect={() => setOpen(false)}
                   value="keyboard"
                 >
-                  <IconKeyboard aria-hidden />
+                  <Keyboard aria-hidden />
                   View Keyboard Shortcuts
                   <KbdGroup className="ml-auto">
                     <Kbd>⌘</Kbd>

@@ -37,7 +37,8 @@ import {
   DropdownMenuSeparator,
 } from '@garden/ui/components/ui/dropdown-menu'
 import { useIsMobile } from '@garden/ui/hooks/use-mobile'
-import { InboxListItem, timeAgo } from './inbox-list-item'
+import { timeAgo } from '@garden/core/format'
+import { InboxListItem } from './inbox-list-item'
 import { typeLabels } from './inbox-detail-label'
 import { InboxItemPreviewCard, ctaForInboxItem } from './inbox-item-preview'
 import { InboxControlPlane } from './inbox-control-plane'
@@ -92,6 +93,7 @@ function InboxListHeader({
             <DropdownMenuTrigger
               render={
                 <Button
+                  aria-label="Inbox actions"
                   variant="ghost"
                   size="icon-sm"
                   className="text-muted-foreground"
@@ -222,7 +224,7 @@ function InboxNotificationDetail({
               )}
               <span>{typeLabels[item.type]}</span>
               <span>·</span>
-              <span>{timeAgo(item.created_at)}</span>
+              <span>{timeAgo(item.created_at, { compact: true })}</span>
               {issueNumber && (
                 <>
                   <span>·</span>

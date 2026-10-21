@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { CheckCircle, WarningCircle } from '@phosphor-icons/react'
+import { CircleAlert, CircleCheck } from 'lucide-react'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import {
   Alert,
@@ -91,9 +91,9 @@ function ConnectorCallbackNotice({
       className="mx-8 mt-4 w-auto"
     >
       {failed || event?.status === 'degraded' ? (
-        <WarningCircle className="size-4" />
+        <CircleAlert className="size-4" />
       ) : (
-        <CheckCircle className="size-4" />
+        <CircleCheck className="size-4" />
       )}
       <AlertTitle>{title}</AlertTitle>
       <AlertDescription>{description}</AlertDescription>

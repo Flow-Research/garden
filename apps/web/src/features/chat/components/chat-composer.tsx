@@ -29,7 +29,6 @@ import {
   ArrowUp,
   ChevronDown,
   FileText,
-  Loader2,
   Mic,
   Paperclip,
   Shield,
@@ -59,6 +58,7 @@ import {
 } from '@garden/ui/components/ui/dropdown-menu'
 import { Textarea } from '@garden/ui/components/ui/textarea'
 import { cn } from '@garden/ui/lib/utils'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import { SpeechInput } from '@/components/ai-elements/speech-input'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -605,9 +605,9 @@ export function Composer({
             // Vellum pill — hairline inset instead of drop shadow, per design.
             // The focus state grows a 1.5px moss ring so the composer reads as
             // armed without piling another layer of shadow on top.
-            'relative rounded-[2rem] bg-card p-2.5 shadow-[var(--shadow-hairline)] transition-[box-shadow] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] focus-within:shadow-[0_0_0_1.5px_color-mix(in_oklab,var(--ring)_45%,transparent),var(--shadow-hairline)]',
+            'relative rounded-[2rem] bg-card p-2.5 shadow-1 transition-[box-shadow] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] focus-within:shadow-[0_0_0_1.5px_color-mix(in_oklab,var(--ring)_45%,transparent),var(--shadow-1)]',
             isDragging &&
-              'shadow-[0_0_0_1.5px_color-mix(in_oklab,var(--primary)_45%,transparent),var(--shadow-hairline)]',
+              'shadow-[0_0_0_1.5px_color-mix(in_oklab,var(--primary)_45%,transparent),var(--shadow-1)]',
           )}
           onClick={(event) => {
             // Click anywhere on the composer card focuses the textarea,
@@ -690,7 +690,7 @@ export function Composer({
                     </div>
                   ) : enabledSkillsQuery.isFetching && skills.length === 0 ? (
                     <div className="flex items-center gap-2 px-3 py-2.5 text-xs text-muted-foreground/70">
-                      <Loader2 className="size-3.5 animate-spin" />
+                      <Spinner className="size-3.5" />
                       <span>Loading skills...</span>
                     </div>
                   ) : (
@@ -706,7 +706,7 @@ export function Composer({
               </Command>
             </div>
           ) : memberTrigger && !memberMenuDismissed ? (
-            <div className="absolute inset-x-0 bottom-full z-20 mb-2 overflow-hidden rounded-xl bg-card shadow-[var(--shadow-float-1)]">
+            <div className="absolute inset-x-0 bottom-full z-20 mb-2 overflow-hidden rounded-xl bg-card shadow-3">
               <Command shouldFilter={false} className="bg-card p-1">
                 <CommandList className="max-h-72">
                   {filteredMembers.length > 0 ? (
@@ -718,7 +718,7 @@ export function Composer({
                           className={cn(
                             'cursor-pointer select-none gap-2',
                             highlightedMemberIndex === index &&
-                              'bg-lichen/20 text-moss',
+                              'bg-badge-green-background/20 text-success',
                           )}
                           onMouseMove={() => setHighlightedMemberIndex(index)}
                           onMouseDown={(event) => event.preventDefault()}
@@ -741,7 +741,7 @@ export function Composer({
                     </CommandGroup>
                   ) : membersQuery.isFetching ? (
                     <div className="flex items-center gap-2 px-3 py-2.5 text-xs text-muted-foreground">
-                      <Loader2 className="size-3.5 animate-spin" />
+                      <Spinner className="size-3.5" />
                       <span>Loading members…</span>
                     </div>
                   ) : (
@@ -973,7 +973,7 @@ export function Composer({
                     </DropdownMenuLabel>
                     {documentLoadState === 'loading' ? (
                       <DropdownMenuItem disabled>
-                        <Loader2 className="size-4 animate-spin" />
+                        <Spinner />
                         Loading documents…
                       </DropdownMenuItem>
                     ) : documentLoadState === 'error' ? (
@@ -1021,7 +1021,7 @@ export function Composer({
               {isStreaming ? (
                 <Button
                   type="button"
-                  className="size-9 rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:scale-105 hover:bg-rose-500"
+                  className="size-9 rounded-full bg-destructive/90 text-white transition-all duration-150 hover:scale-105 hover:bg-destructive"
                   onClick={() => void onStop()}
                   aria-label="Stop generation"
                 >
@@ -1068,7 +1068,7 @@ export function Composer({
                   }
                 >
                   {normalizeStatus(status) === 'submitted' ? (
-                    <Loader2 className="size-5 animate-spin" />
+                    <Spinner className="size-5" aria-hidden="true" />
                   ) : (
                     <ArrowUp className="size-5" />
                   )}

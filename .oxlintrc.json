@@ -82,6 +82,14 @@
           {
             "name": "@neondatabase/serverless",
             "message": "Don't use the Neon serverless driver directly \u2014 it bypasses Hyperdrive and burns Neon compute. Go through @garden/db/runtime (Hyperdrive-backed node-postgres)."
+          },
+          {
+            "name": "@phosphor-icons/react",
+            "message": "Garden uses one icon library: import icons from lucide-react instead."
+          },
+          {
+            "name": "@tabler/icons-react",
+            "message": "Garden uses one icon library: import icons from lucide-react instead."
           }
         ]
       }

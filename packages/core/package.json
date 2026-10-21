@@ -23,6 +23,7 @@
     "./issues/config/status": "./src/issues/config/status.ts",
     "./skills": "./src/skills/index.ts",
     "./skills/*": "./src/skills/*.ts",
+    "./format": "./src/format.ts",
     "./utils": "./src/utils.ts",
     "./connectors/errors": "./src/connectors/errors.ts",
     "./constants/*": "./src/constants/*.ts"

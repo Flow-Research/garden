@@ -76,6 +76,7 @@ export function BoardColumn({
             <DropdownMenuTrigger
               render={
                 <Button
+                  aria-label="Column options"
                   variant="ghost"
                   size="icon-sm"
                   className="rounded-full text-muted-foreground"
@@ -97,6 +98,7 @@ export function BoardColumn({
             <TooltipTrigger
               render={
                 <Button
+                  aria-label="Add issue"
                   variant="ghost"
                   size="icon-sm"
                   className="rounded-full text-muted-foreground"

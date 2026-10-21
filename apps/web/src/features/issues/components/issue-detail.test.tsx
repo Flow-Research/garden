@@ -339,8 +339,9 @@ vi.mock('@garden/app-state/issues/stores/recent-issues-store', () => ({
   ),
 }))
 
-// Mock core/utils
-vi.mock('@garden/core/utils', () => ({
+// Mock core/format: pin relative times, keep the other formatters real.
+vi.mock('@garden/core/format', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   timeAgo: () => '1d ago',
 }))
 

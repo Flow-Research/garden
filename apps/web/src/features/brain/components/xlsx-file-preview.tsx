@@ -1,8 +1,8 @@
 import { useId, useMemo, useState, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2 } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
 import { cn } from '@garden/ui/lib/utils'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import { brainFileExtractedTextOptions } from '../queries'
 
 interface SpreadsheetSheet {
@@ -170,7 +170,7 @@ export function XlsxFilePreview({ fileId }: { fileId: string }) {
         role="status"
         className="flex min-h-[65vh] items-center justify-center gap-2 text-sm text-muted-foreground"
       >
-        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+        <Spinner aria-hidden="true" />
         Loading preview...
       </div>
     )

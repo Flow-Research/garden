@@ -1,5 +1,6 @@
 import { memo, useCallback } from 'react'
 import type { Issue } from '@garden/core/types'
+import { formatShortDate } from '@garden/core/format'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Checkbox } from '@garden/ui/components/ui/checkbox'
 import { ActorAvatar } from '../../common/actor-avatar'
@@ -11,13 +12,6 @@ import { issuePath } from '@/features/navigation/use-surface-navigation'
 export interface ChildProgress {
   done: number
   total: number
-}
-
-function formatDate(date: string): string {
-  return new Date(date).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  })
 }
 
 export const ListRow = memo(function ListRow({
@@ -87,7 +81,7 @@ export const ListRow = memo(function ListRow({
         </span>
         {issue.due_date && (
           <span className="shrink-0 text-xs text-muted-foreground">
-            {formatDate(issue.due_date)}
+            {formatShortDate(issue.due_date)}
           </span>
         )}
         {issue.assignee_type && issue.assignee_id && (

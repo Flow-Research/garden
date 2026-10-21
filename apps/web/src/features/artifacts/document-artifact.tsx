@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Result } from 'better-result'
-import { AlertTriangle, Download, Loader2, ZoomIn, ZoomOut } from 'lucide-react'
+import { AlertTriangle, Download, ZoomIn, ZoomOut } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import {
   documentArtifactQueryKey,
   getDocumentArtifact,
@@ -67,16 +68,16 @@ export function DocumentArtifact({
   const canonicalDocx = isDocxArtifact(data) && Boolean(data.id)
   return (
     <div
-      className={`flex ${chrome ? 'h-[420px]' : 'h-full'} flex-col bg-white`}
+      className={`flex ${chrome ? 'h-[420px]' : 'h-full'} flex-col bg-background`}
     >
       {chrome ? (
         <div className="flex items-center justify-end gap-2 py-2 px-3">
           <div className="mr-auto flex min-w-0 items-center gap-2">
-            <span className="truncate text-sm text-gray-700">
+            <span className="truncate text-sm text-foreground">
               {data.filename}
             </span>
             {versionNumber && versionNumber > 0 && (
-              <span className="shrink-0 inline-flex items-center rounded-md border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-gray-600">
+              <span className="shrink-0 inline-flex items-center rounded-md border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                 V{versionNumber}
               </span>
             )}
@@ -85,7 +86,7 @@ export function DocumentArtifact({
             <a
               href={data.url}
               download={data.filename}
-              className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
             >
               <Download className="h-3.5 w-3.5" />
               {canonicalDocx ? 'Original DOCX' : 'Download'}
@@ -104,7 +105,7 @@ export function DocumentArtifact({
         <iframe
           src={withRefreshKey(data.url, refreshKey)}
           title={data.filename}
-          className="min-h-0 flex-1 border-0 bg-gray-50"
+          className="min-h-0 flex-1 border-0 bg-muted/60"
         />
       ) : isDocxArtifact(data) ? (
         data.id ? (
@@ -124,7 +125,7 @@ export function DocumentArtifact({
           </div>
         )
       ) : (
-        <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words border-t border-gray-100 bg-gray-50 px-4 py-3 text-xs leading-relaxed text-gray-700">
+        <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words border-t border-border/60 bg-muted/60 px-4 py-3 text-xs leading-relaxed text-foreground">
           {data.content || 'Preview not available for this document.'}
         </pre>
       )}
@@ -147,7 +148,7 @@ function CanonicalDocxArtifact({ documentId }: { documentId: string }) {
   if (artifactQuery.isPending) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center gap-2 border-t border-border bg-muted/40 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+        <Spinner aria-hidden="true" />
         Loading editable document
       </div>
     )
@@ -353,27 +354,24 @@ function PdfArtifactPreview({
   }
 
   return (
-    <div className="relative min-h-0 flex-1 overflow-hidden border-t border-gray-100">
+    <div className="relative min-h-0 flex-1 overflow-hidden border-t border-border/60">
       {status === 'loading' ? (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-100 text-sm text-gray-500">
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-muted text-sm text-muted-foreground">
           Loading {filename}
         </div>
       ) : null}
       {status === 'error' ? (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-100 text-sm text-red-500">
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-muted text-sm text-destructive">
           Preview not available for this document.
         </div>
       ) : null}
-      <div
-        ref={scrollRef}
-        className="h-full overflow-auto bg-gray-100 px-5 py-5"
-      >
+      <div ref={scrollRef} className="h-full overflow-auto bg-muted px-5 py-5">
         <div ref={containerRef} className="min-h-full" />
       </div>
       {status === 'ready' && numPages > 0 ? (
         <>
           <div className="pointer-events-none absolute bottom-4 left-4">
-            <span className="flex items-center rounded-full border border-white/30 bg-white/25 px-3 py-1.5 text-xs font-medium tabular-nums text-gray-700 shadow-md backdrop-blur-md">
+            <span className="flex items-center rounded-full border border-white/30 bg-white/25 px-3 py-1.5 text-xs font-medium tabular-nums text-foreground shadow-md backdrop-blur-md">
               {currentPage}/{numPages}
             </span>
           </div>
@@ -382,19 +380,19 @@ function PdfArtifactPreview({
               type="button"
               onClick={handleZoomOut}
               disabled={zoom <= PDF_ZOOM_MIN}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-white/80 disabled:opacity-30"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-white/80 disabled:opacity-30"
               aria-label="Zoom out"
             >
               <ZoomOut className="h-3.5 w-3.5" />
             </button>
-            <span className="w-9 select-none text-center text-xs font-medium tabular-nums text-gray-600">
+            <span className="w-9 select-none text-center text-xs font-medium tabular-nums text-muted-foreground">
               {Math.round(zoom * 100)}%
             </span>
             <button
               type="button"
               onClick={handleZoomIn}
               disabled={zoom >= PDF_ZOOM_MAX}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-white/80 disabled:opacity-30"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-white/80 disabled:opacity-30"
               aria-label="Zoom in"
             >
               <ZoomIn className="h-3.5 w-3.5" />
