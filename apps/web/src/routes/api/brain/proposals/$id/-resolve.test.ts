@@ -175,6 +175,10 @@ describe('resolveBrainProposal user scope', () => {
     expect(mockAddText).toHaveBeenCalledOnce()
     expect(mockAddText.mock.calls[0]?.[0]).toMatchObject({
       scope: { kind: 'user', userId: ownerId },
+      canonical: {
+        type: 'brain-write-back-claim',
+        value: `${workspaceId}:hash-1`,
+      },
     })
     expect(updates).toMatchObject([{ status: 'approved', decidedBy: ownerId }])
   })
