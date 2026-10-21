@@ -1,10 +1,12 @@
 import { Effect, Schema } from 'effect'
+import { boundedPageInput } from '../effect/http.ts'
 import { defineNativeConnectorTool } from '../effect/native.ts'
 import { GitHubRestClient, type GitHubRequest } from './rest-client.ts'
 
+// GitHub caps per_page at 100; pages past 100 are almost always a runaway loop.
 const Pagination = {
-  page: Schema.optional(Schema.Number),
-  perPage: Schema.optional(Schema.Number),
+  page: boundedPageInput(100),
+  perPage: boundedPageInput(100),
 }
 const RepositoryListInput = Schema.Struct({
   ...Pagination,
