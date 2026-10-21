@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix .",
     "typecheck": "tsc --noEmit"
   },

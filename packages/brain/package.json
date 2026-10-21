@@ -6,7 +6,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix ."
   },
   "exports": {

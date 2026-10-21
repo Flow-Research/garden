@@ -9,7 +9,7 @@
     "ui:add": "pnpm dlx shadcn@latest add --path components/ui",
     "ui:diff": "pnpm dlx shadcn@latest diff",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix ."
   },
   "exports": {
