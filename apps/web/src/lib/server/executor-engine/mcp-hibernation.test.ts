@@ -44,7 +44,7 @@ const makeHarness = (warm: boolean) => {
   session.engine = warm ? engine : null
   session.initialized = warm
   session.onStartPromise = null
-  session.pendingApprovalLeases = new Map()
+  session.pendingApprovalLeases = new Map<string, never>()
   session.getConnections = () => [
     {
       close: () => {

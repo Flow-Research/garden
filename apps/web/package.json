@@ -16,7 +16,7 @@
     "worker:types:check": "wrangler types worker-configuration.d.ts --include-runtime false --env-file ../../.env.example --check",
     "verify:worker-entry": "node ./scripts/verify-worker-entry.mjs",
     "skills:seed-builtin": "python3 ./scripts/seed_builtin_skills.py",
-    "typecheck": "pnpm run worker:types && tsc -p tsconfig.executor.json --pretty false && tsc -b tsconfig.shared.json --pretty false && tsc -b tsconfig.server.json --pretty false && tsc -b tsconfig.entry.json --pretty false && tsc -p tsconfig.client.json --pretty false && tsc -p tsconfig.tooling.json --pretty false",
+    "typecheck": "pnpm run worker:types && tsc -p tsconfig.executor.json --pretty false && tsc -b tsconfig.shared.json --pretty false && tsc -b tsconfig.server.json --pretty false && tsc -b tsconfig.entry.json --pretty false && tsc -p tsconfig.client.json --pretty false && tsc -p tsconfig.tooling.json --pretty false && tsc -p tsconfig.test.json --pretty false",
     "test": "vitest run",
     "lint": "oxlint -c ../../.oxlintrc.json .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix .",

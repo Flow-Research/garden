@@ -13,6 +13,7 @@ function member(id: string, name: string, email: string): MemberWithUser {
   return {
     id: `membership-${id}`,
     user_id: id,
+    workspace_id: 'workspace-1',
     name,
     email,
     role: 'member',
