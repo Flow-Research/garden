@@ -1,9 +1,15 @@
+import type { ComponentProps } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { Issue } from '@garden/core/types'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 import { issueKeys } from '@/lib/issues/queries'
+import type {
+  ChildrenProps,
+  MockSelector,
+  TriggerProps,
+} from '@/test/mock-props'
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -13,7 +19,7 @@ import { issueKeys } from '@/lib/issues/queries'
 const mockAuthUser = { id: 'user-1', email: 'test@test.com', name: 'Test User' }
 vi.mock('@garden/app-state/auth', () => ({
   useAuthStore: Object.assign(
-    (selector?: any) => {
+    (selector?: MockSelector) => {
       const state = { user: mockAuthUser, isAuthenticated: true }
       return selector ? selector(state) : state
     },
@@ -24,7 +30,7 @@ vi.mock('@garden/app-state/auth', () => ({
 // Mock @garden/app-state/workspace
 vi.mock('@garden/app-state/workspace', () => ({
   useWorkspaceStore: Object.assign(
-    (selector?: any) => {
+    (selector?: MockSelector) => {
       const state = {
         workspace: { id: 'ws-1', name: 'Test WS', slug: 'test' },
         agents: [],
@@ -44,7 +50,7 @@ vi.mock('@garden/app-state/workspace', () => ({
 
 // Mock the application navigation boundary (AppLink + useNavigation).
 vi.mock('../../navigation', () => ({
-  AppLink: ({ children, href, ...props }: any) => (
+  AppLink: ({ children, href, ...props }: ComponentProps<'a'>) => (
     <a href={href} {...props}>
       {children}
     </a>
@@ -73,16 +79,16 @@ const mockSearchIssues = vi.hoisted(() =>
 )
 vi.mock('@/lib/api', () => ({
   api: {
-    listIssues: (...args: any[]) => mockListIssues(...args),
-    searchIssues: (...args: any[]) => mockSearchIssues(...args),
+    listIssues: (...args: unknown[]) => mockListIssues(...args),
+    searchIssues: (...args: unknown[]) => mockSearchIssues(...args),
     updateIssue: vi.fn(),
     getChildIssueProgress: () => Promise.resolve({ progress: [] }),
     listMembers: () => Promise.resolve([]),
     listAgents: () => Promise.resolve([]),
   },
   getApi: () => ({
-    listIssues: (...args: any[]) => mockListIssues(...args),
-    searchIssues: (...args: any[]) => mockSearchIssues(...args),
+    listIssues: (...args: unknown[]) => mockListIssues(...args),
+    searchIssues: (...args: unknown[]) => mockSearchIssues(...args),
     updateIssue: vi.fn(),
     getChildIssueProgress: () => Promise.resolve({ progress: [] }),
     listMembers: () => Promise.resolve([]),
@@ -193,11 +199,12 @@ vi.mock('@garden/app-state/issues/stores/view-store', () => ({
   viewStorePersistOptions: () => ({
     name: 'test',
     storage: undefined,
-    partialize: (s: any) => s,
+    partialize: (s: unknown) => s,
   }),
   viewStoreSlice: vi.fn(),
   useIssueViewStore: Object.assign(
-    (selector?: any) => (selector ? selector(mockViewState) : mockViewState),
+    (selector?: MockSelector) =>
+      selector ? selector(mockViewState) : mockViewState,
     { getState: () => mockViewState, setState: vi.fn() },
   ),
   createIssueViewStore: () => ({
@@ -222,7 +229,7 @@ vi.mock('@garden/app-state/issues/stores/view-store', () => ({
 
 vi.mock('@garden/app-state/issues/stores/view-store-context', () => ({
   ViewStoreProvider: ({ children }: { children: React.ReactNode }) => children,
-  useViewStore: (selector?: any) =>
+  useViewStore: (selector?: MockSelector) =>
     selector ? selector(mockViewState) : mockViewState,
   useViewStoreApi: () => ({
     getState: () => mockViewState,
@@ -233,7 +240,7 @@ vi.mock('@garden/app-state/issues/stores/view-store-context', () => ({
 
 vi.mock('@garden/app-state/issues/stores/issues-scope-store', () => ({
   useIssuesScopeStore: Object.assign(
-    (selector?: any) => {
+    (selector?: MockSelector) => {
       const state = { scope: 'all', setScope: vi.fn() }
       return selector ? selector(state) : state
     },
@@ -243,7 +250,7 @@ vi.mock('@garden/app-state/issues/stores/issues-scope-store', () => ({
 
 vi.mock('@garden/app-state/issues/stores/selection-store', () => ({
   useIssueSelectionStore: Object.assign(
-    (selector?: any) => {
+    (selector?: MockSelector) => {
       const state = {
         selectedIds: new Set(),
         toggle: vi.fn(),
@@ -265,7 +272,7 @@ vi.mock('@garden/app-state/issues/stores/selection-store', () => ({
 
 vi.mock('@garden/app-state/issues/stores/recent-issues-store', () => ({
   useRecentIssuesStore: Object.assign(
-    (selector?: any) => {
+    (selector?: MockSelector) => {
       const state = { items: [], recordVisit: vi.fn() }
       return selector ? selector(state) : state
     },
@@ -280,7 +287,7 @@ vi.mock('sonner', () => ({
 
 // Mock dnd-kit
 vi.mock('@dnd-kit/core', () => ({
-  DndContext: ({ children }: any) => children,
+  DndContext: ({ children }: ChildrenProps) => children,
   DragOverlay: () => null,
   PointerSensor: class {},
   useSensor: () => ({}),
@@ -291,7 +298,7 @@ vi.mock('@dnd-kit/core', () => ({
 }))
 
 vi.mock('@dnd-kit/sortable', () => ({
-  SortableContext: ({ children }: any) => children,
+  SortableContext: ({ children }: ChildrenProps) => children,
   verticalListSortingStrategy: {},
   arrayMove: vi.fn(),
   useSortable: () => ({
@@ -312,34 +319,39 @@ vi.mock('@dnd-kit/utilities', () => ({
 // own component tests. This page suite only needs their trigger controls, and
 // keeping the portals out prevents teardown updates from leaking across tests.
 vi.mock('@garden/ui/components/ui/popover', () => ({
-  Popover: ({ children }: any) => <>{children}</>,
-  PopoverTrigger: ({ children, render }: any) => render ?? children ?? null,
+  Popover: ({ children }: ChildrenProps) => <>{children}</>,
+  PopoverTrigger: ({ children, render }: TriggerProps) =>
+    render ?? children ?? null,
   PopoverContent: () => null,
 }))
 
 vi.mock('@garden/ui/components/ui/dropdown-menu', () => ({
-  DropdownMenu: ({ children }: any) => <>{children}</>,
-  DropdownMenuTrigger: ({ children, render }: any) =>
+  DropdownMenu: ({ children }: ChildrenProps) => <>{children}</>,
+  DropdownMenuTrigger: ({ children, render }: TriggerProps) =>
     render ?? children ?? null,
   DropdownMenuContent: () => null,
-  DropdownMenuItem: ({ children }: any) => <>{children}</>,
+  DropdownMenuItem: ({ children }: ChildrenProps) => <>{children}</>,
 }))
 
 vi.mock('@garden/ui/components/ui/tooltip', () => ({
-  Tooltip: ({ children }: any) => <>{children}</>,
-  TooltipTrigger: ({ children, render }: any) => render ?? children ?? null,
+  Tooltip: ({ children }: ChildrenProps) => <>{children}</>,
+  TooltipTrigger: ({ children, render }: TriggerProps) =>
+    render ?? children ?? null,
   TooltipContent: () => null,
 }))
 
 // Mock @base-ui/react/accordion (used by ListView)
 vi.mock('@base-ui/react/accordion', () => ({
-  Accordion: Object.assign(({ children }: any) => <div>{children}</div>, {
-    Root: ({ children }: any) => <div>{children}</div>,
-    Item: ({ children }: any) => <div>{children}</div>,
-    Header: ({ children }: any) => <div>{children}</div>,
-    Trigger: ({ children }: any) => <button>{children}</button>,
-    Panel: ({ children }: any) => <div>{children}</div>,
-  }),
+  Accordion: Object.assign(
+    ({ children }: ChildrenProps) => <div>{children}</div>,
+    {
+      Root: ({ children }: ChildrenProps) => <div>{children}</div>,
+      Item: ({ children }: ChildrenProps) => <div>{children}</div>,
+      Header: ({ children }: ChildrenProps) => <div>{children}</div>,
+      Trigger: ({ children }: ChildrenProps) => <button>{children}</button>,
+      Panel: ({ children }: ChildrenProps) => <div>{children}</div>,
+    },
+  ),
 }))
 
 // ---------------------------------------------------------------------------
@@ -471,7 +483,7 @@ describe('IssuesPage (shared)', () => {
   })
 
   it('renders issue titles after data loads', async () => {
-    mockListIssues.mockImplementation((params: any) =>
+    mockListIssues.mockImplementation((params?: { open_only?: boolean }) =>
       Promise.resolve(
         params?.open_only
           ? { issues: mockIssues, total: mockIssues.length }
@@ -487,7 +499,7 @@ describe('IssuesPage (shared)', () => {
   })
 
   it('renders board column headers', async () => {
-    mockListIssues.mockImplementation((params: any) =>
+    mockListIssues.mockImplementation((params?: { open_only?: boolean }) =>
       Promise.resolve(
         params?.open_only
           ? { issues: mockIssues, total: mockIssues.length }
@@ -504,7 +516,7 @@ describe('IssuesPage (shared)', () => {
   })
 
   it("shows workspace breadcrumb with 'Issues' label", async () => {
-    mockListIssues.mockImplementation((params: any) =>
+    mockListIssues.mockImplementation((params?: { open_only?: boolean }) =>
       Promise.resolve(
         params?.open_only
           ? { issues: mockIssues, total: mockIssues.length }
@@ -528,7 +540,7 @@ describe('IssuesPage (shared)', () => {
   })
 
   it('searches authoritative issue results and exposes structured filters', async () => {
-    mockListIssues.mockImplementation((params: any) =>
+    mockListIssues.mockImplementation((params?: { open_only?: boolean }) =>
       Promise.resolve(
         params?.open_only
           ? { issues: mockIssues, total: mockIssues.length }
