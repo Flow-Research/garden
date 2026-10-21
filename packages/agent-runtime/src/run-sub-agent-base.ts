@@ -366,7 +366,10 @@ export abstract class RunSubAgentBase<
         ? bodyRunId.trim()
         : null)
     if (!runId) {
-      throw new Error(`${config.agentClass}.beforeTurn missing run_id.`)
+      throw this.runError({
+        code: 'invalid_state',
+        message: `${config.agentClass}.beforeTurn missing run_id.`,
+      })
     }
 
     const loadedResult = await this.loadTurnContext(runId)
@@ -565,6 +568,10 @@ export abstract class RunSubAgentBase<
    * SDK ledger accepts it. The previous implementation waited inside the DO
    * with an arbitrary timer; Workflow now does the durable wait via the terminal
    * submission event emitted from `onSubmissionStatus`.
+   *
+   * This and `completeWorkflowTurn` are Workflow RPC targets, so failures are
+   * thrown (the Workflow step must reject to retry) — always as the run's
+   * tagged error, keeping its code and cause.
    */
   async executeWorkflowTurn(
     mode: RunTurnMode,
@@ -587,7 +594,7 @@ export abstract class RunSubAgentBase<
       )
       if (cancelResult.isErr()) {
         await this.forceCloseFailed(input.runId, cancelResult.error.message)
-        throw new Error(cancelResult.error.message)
+        throw cancelResult.error
       }
       return { kind: 'run_status', status: 'cancelled' }
     }
@@ -595,13 +602,13 @@ export abstract class RunSubAgentBase<
     const driveResult = await this.driveTurn(mode, input)
     if (driveResult.isErr()) {
       await this.forceCloseFailed(input.runId, driveResult.error.message)
-      throw new Error(driveResult.error.message)
+      throw driveResult.error
     }
     if (driveResult.value.kind === 'stopped') {
       const statusResult = await this.readRunStatus(input.runId)
       if (statusResult.isErr()) {
         await this.forceCloseFailed(input.runId, statusResult.error.message)
-        throw new Error(statusResult.error.message)
+        throw statusResult.error
       }
       return { kind: 'run_status', status: statusResult.value }
     }
@@ -629,19 +636,20 @@ export abstract class RunSubAgentBase<
     })
     if (inspectionResult.isErr()) {
       await this.forceCloseFailed(input.runId, String(inspectionResult.error))
-      throw new Error(errorMessage(inspectionResult.error))
+      throw this.runtimeFailure(inspectionResult.error)
     }
 
     const inspection = inspectionResult.value
     if (!inspection) {
       const message = `Submitted ${kind} turn ${input.submissionId} was not found.`
       await this.forceCloseFailed(input.runId, message)
-      throw new Error(message)
+      throw this.runError({ code: 'not_found', message })
     }
     if (!isTerminalSubmissionStatus(inspection.status)) {
-      throw new Error(
-        `Submitted ${kind} turn ${input.submissionId} is still ${inspection.status}.`,
-      )
+      throw this.runError({
+        code: 'invalid_state',
+        message: `Submitted ${kind} turn ${input.submissionId} is still ${inspection.status}.`,
+      })
     }
 
     if (inspection.status === 'error') {
@@ -649,21 +657,21 @@ export abstract class RunSubAgentBase<
         input.runId,
         inspection.error ?? `Submitted ${kind} turn failed.`,
       )
-      if (failedResult.isErr()) throw new Error(failedResult.error.message)
+      if (failedResult.isErr()) throw failedResult.error
       this.clearTurnState()
     }
     if (inspection.status === 'aborted') {
       const cancelResult = await this.cancelRunIfRequested(input.runId)
       if (cancelResult.isErr()) {
         await this.forceCloseFailed(input.runId, cancelResult.error.message)
-        throw new Error(cancelResult.error.message)
+        throw cancelResult.error
       }
       if (!cancelResult.value) {
         const failedResult = await this.forceCloseFailed(
           input.runId,
           'turn_aborted',
         )
-        if (failedResult.isErr()) throw new Error(failedResult.error.message)
+        if (failedResult.isErr()) throw failedResult.error
       }
       this.clearTurnState()
     }
@@ -672,14 +680,14 @@ export abstract class RunSubAgentBase<
         input.runId,
         'turn_skipped',
       )
-      if (failedResult.isErr()) throw new Error(failedResult.error.message)
+      if (failedResult.isErr()) throw failedResult.error
       this.clearTurnState()
     }
 
     const statusResult = await this.readRunStatus(input.runId)
     if (statusResult.isErr()) {
       await this.forceCloseFailed(input.runId, statusResult.error.message)
-      throw new Error(statusResult.error.message)
+      throw statusResult.error
     }
     return { status: statusResult.value }
   }
