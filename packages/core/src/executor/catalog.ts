@@ -6,6 +6,7 @@ export const executorCatalogSchema = z.object({
       slug: z.string(),
       name: z.string(),
       description: z.string(),
+      capabilities: z.array(z.string()),
     }),
   ),
   connections: z.array(

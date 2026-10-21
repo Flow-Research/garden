@@ -88,6 +88,15 @@ import {
   type RuntimeMcpServerStates,
 } from './runtime-mcp-controller'
 import { mcpRuntimeConfig } from './mcp-runtime-config'
+import { extractExecutorToolRefsFromInput } from './executor-codemode'
+import {
+  renderIntegrationRouteDirective,
+  isIntegrationToolAllowed,
+  requestNeedsConnectedTools,
+  selectIntegrationRoute,
+  type IntegrationRouteDecision,
+  type RouteAttachment,
+} from './integration-router'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
 import { isChatToolAllowed } from './chat-permissions'
 import {
@@ -393,6 +402,7 @@ type ThreadDocumentArtifactSubscription = Awaited<
 >
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.workspace-agent.turn'
+const CHAT_EXECUTOR_CATALOG_TTL_MS = 30_000
 const agentRuntimeLogger = createGardenLogger({
   service: 'garden-staging',
   component: 'agent-do',
@@ -401,6 +411,40 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const documentArtifactEventJson = Schema.fromJsonString(DocumentArtifactEvent)
 const documentArtifactEventEncoder = new TextEncoder()
+
+/**
+ * Extracts filenames and media types from the latest user message so the
+ * integration router can use attachment shape (for example CSV) as routing
+ * evidence even when the prose only says "analyze this".
+ */
+function latestUserAttachments(
+  messages: readonly unknown[],
+): RouteAttachment[] {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index] as { role?: string; content?: unknown }
+    if (message?.role !== 'user' || !Array.isArray(message.content)) continue
+    return message.content.flatMap((part) => {
+      if (typeof part !== 'object' || part === null) return []
+      const file = part as {
+        type?: unknown
+        filename?: unknown
+        mediaType?: unknown
+      }
+      if (file.type !== 'file') return []
+      return [
+        {
+          ...(typeof file.filename === 'string'
+            ? { filename: file.filename }
+            : {}),
+          ...(typeof file.mediaType === 'string'
+            ? { mediaType: file.mediaType }
+            : {}),
+        },
+      ]
+    })
+  }
+  return []
+}
 
 /** Encodes one validated collaboration event using the SSE wire grammar. */
 const encodeDocumentArtifactEvent = (
@@ -1404,7 +1448,13 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   override classifyChatError = classifyGardenContextOverflow
   private readonly aiObservation = new AiObservation(this.ctx, this.env)
   private currentPermissions: AgentPermissions | null = null
+  private currentIntegrationRoute: IntegrationRouteDecision | null = null
   private mcpController: RuntimeMcpController | null = null
+  private chatExecutorCatalogCache: {
+    key: string
+    fetchedAtMs: number
+    value: ExecutorCatalog | null
+  } | null = null
   private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
     getController: () => this.getMcpController(),
     fullSyncIntervalMs: mcpRuntimeConfig.connectorFullSyncIntervalMs,
@@ -1480,6 +1530,15 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     workspaceId: string
     userId: string
   }): Promise<ExecutorCatalog | null> {
+    const key = `${input.workspaceId}:${input.userId}`
+    const cached = this.chatExecutorCatalogCache
+    if (
+      cached?.key === key &&
+      Date.now() - cached.fetchedAtMs < CHAT_EXECUTOR_CATALOG_TTL_MS
+    ) {
+      return cached.value
+    }
+
     const result = await Result.tryPromise<ExecutorCatalog, string>({
       try: async () => {
         const response = await fetch(
@@ -1506,7 +1565,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
           : 'Executor catalog request failed',
     })
 
-    return result.match({
+    const value = result.match({
       ok: (catalog) => catalog,
       err: (error) => {
         console.warn('[agent-runtime] chat Executor catalog unavailable', {
@@ -1517,6 +1576,12 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         return null
       },
     })
+    this.chatExecutorCatalogCache = {
+      key,
+      fetchedAtMs: Date.now(),
+      value,
+    }
+    return value
   }
 
   override getTools() {
@@ -1920,11 +1985,52 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       properties: { identity_found: identity !== undefined },
     })
 
+    const documentContext =
+      ctx.body &&
+      typeof ctx.body.document_context === 'string' &&
+      ctx.body.document_context.trim()
+        ? ctx.body.document_context.trim()
+        : null
+    const userAttachments = latestUserAttachments(ctx.messages)
+    const userText = latestUserText(ctx.messages)
+
+    const routePhase = this.aiObservation.startPhase('integration_route')
+    const executorCatalog = identity
+      ? await this.loadChatExecutorCatalog({
+          workspaceId: identity.workspaceId,
+          userId: identity.ownerUserId,
+        })
+      : null
+    const routeDecision: IntegrationRouteDecision = selectIntegrationRoute({
+      userText,
+      documentContext,
+      attachments: userAttachments,
+      catalog: executorCatalog,
+    })
+    this.currentIntegrationRoute = routeDecision
+    const needsConnectedTools = requestNeedsConnectedTools(routeDecision)
+    this.aiObservation.finishPhase(routePhase, {
+      properties: {
+        route_status: routeDecision.status,
+        route_skill: routeDecision.skill?.id ?? null,
+        route_reason: routeDecision.reason,
+        route_integration: routeDecision.routes[0]?.slug ?? null,
+        route_connected: routeDecision.routes[0]?.connected ?? null,
+        route_score: routeDecision.routes[0]?.score ?? null,
+        route_candidate_count: routeDecision.routes.length,
+        route_catalog_available: executorCatalog !== null,
+        needs_connected_tools: needsConnectedTools,
+      },
+    })
+    const integrationDirective = renderIntegrationRouteDirective(routeDecision)
+
     const mcpPreparePhase = this.aiObservation.startPhase('mcp_prepare')
     const mcpControllerResult = (
       await Result.tryPromise({
         try: async () =>
-          await this.mcpConnectionPreparer.ensureForTurn('chat-turn'),
+          await this.mcpConnectionPreparer.ensureForTurn('chat-turn', {
+            waitForReadiness: needsConnectedTools,
+          }),
         catch: (cause) =>
           cause instanceof Error ? cause.message : 'Chat MCP refresh failed',
       })
@@ -1949,12 +2055,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     }
 
     const contextPreparePhase = this.aiObservation.startPhase('context_prepare')
-    const documentContext =
-      ctx.body &&
-      typeof ctx.body.document_context === 'string' &&
-      ctx.body.document_context.trim()
-        ? ctx.body.document_context.trim()
-        : null
 
     const explicitSkillContext = (
       await Result.tryPromise({
@@ -1994,7 +2094,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
                   teamIds: new Set<string>(),
                   userId: identity.ownerUserId,
                 },
-                query: latestUserText(ctx.messages),
+                query: userText,
                 log: (event) => console.info('[brain-injection]', event),
               }),
             catch: (cause) => messageFromUnknown(cause),
@@ -2010,6 +2110,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
 
     const systemAdditions = [
       brainContext,
+      integrationDirective,
       documentContext,
       explicitSkillContext,
     ]
@@ -2018,6 +2119,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     this.aiObservation.finishPhase(contextPreparePhase, {
       properties: {
         has_brain_context: Boolean(brainContext),
+        has_integration_route: routeDecision.status === 'selected',
         has_document_context: Boolean(documentContext),
         has_explicit_skill_context: Boolean(explicitSkillContext),
       },
@@ -2066,6 +2168,8 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         metadata: {
           agentClass: 'ChatSubAgent',
           hasDocumentContext: Boolean(documentContext),
+          hasIntegrationRoute: routeDecision.status === 'selected',
+          selectedIntegration: routeDecision.routes[0]?.slug ?? '',
         },
         recordInputs: false,
         recordOutputs: false,
@@ -2085,6 +2189,23 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       throw new ChatToolDeniedError({
         message: `Tool ${ctx.toolName} is not allowed for this agent.`,
       })
+    }
+    const selectedRoute = this.currentIntegrationRoute?.routes[0]
+    if (selectedRoute && ctx.toolName.startsWith(EXECUTOR_TOOL_KEY_PREFIX)) {
+      const disallowedRef = extractExecutorToolRefsFromInput(ctx.input).find(
+        (ref) =>
+          !isIntegrationToolAllowed(
+            this.currentIntegrationRoute,
+            ref.executorSlug,
+            ref.tool,
+          ),
+      )
+      if (disallowedRef) {
+        return {
+          action: 'block',
+          reason: `This turn is scoped to the selected ${selectedRoute.name} tools. Do not call executor:${disallowedRef.executorSlug}.${disallowedRef.tool}.`,
+        } as const
+      }
     }
     this.aiObservation.beforeToolCall(ctx)
     return undefined

@@ -7,6 +7,11 @@ export default defineConnector({
   label: 'Discord',
   description:
     'Read channels and messages, search server history, create threads, react, and send messages through Garden’s shared Discord bot.',
+  capabilities: [
+    'search and read Discord messages',
+    'create Discord threads and reactions',
+    'send Discord messages',
+  ],
   icon: './icon.svg',
   kind: 'native',
   native: {

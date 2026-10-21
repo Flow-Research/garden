@@ -64,16 +64,16 @@ export const EXECUTOR_TOOL_KEY_PREFIX = buildMcpAiToolKey(
 
 export class RuntimeMcpError extends TaggedError('RuntimeMcpError')<{
   code:
-    | 'connector_not_found'
-    | 'database_failed'
-    | 'mcp_connect_failed'
-    | 'mcp_discover_failed'
-    | 'mcp_readiness_failed'
-    | 'mcp_register_failed'
-    | 'permission_denied'
-    | 'thread_not_found'
+  | 'connector_not_found'
+  | 'database_failed'
+  | 'mcp_connect_failed'
+  | 'mcp_discover_failed'
+  | 'mcp_readiness_failed'
+  | 'mcp_register_failed'
+  | 'permission_denied'
+  | 'thread_not_found'
   message: string
-}>() {}
+}>() { }
 
 export type ThreadRuntimeIdentity = {
   threadId: string
@@ -212,7 +212,7 @@ export class RuntimeMcpController {
   private activeGitHubHostedMcpTools: readonly GitHubHostedMcpTool[] = []
   private githubHostedCapabilitiesSynced = false
 
-  constructor(private readonly host: McpHost) {}
+  constructor(private readonly host: McpHost) { }
 
   /**
    * Resolves the MCP-controller Drizzle client through Hyperdrive's pooled
@@ -325,29 +325,29 @@ export class RuntimeMcpController {
           ...rawTool,
           ...(baseExecute
             ? {
-                execute: async (
-                  ...args: Parameters<NonNullable<typeof baseExecute>>
-                ) => {
-                  const result = await Result.tryPromise({
-                    try: async () => await baseExecute(...args),
-                    catch: (cause) =>
-                      cause instanceof Error ? cause : new Error(String(cause)),
-                  })
+              execute: async (
+                ...args: Parameters<NonNullable<typeof baseExecute>>
+              ) => {
+                const result = await Result.tryPromise({
+                  try: async () => await baseExecute(...args),
+                  catch: (cause) =>
+                    cause instanceof Error ? cause : new Error(String(cause)),
+                })
 
-                  if (result.isOk()) return result.value
+                if (result.isOk()) return result.value
 
-                  console.warn('[agent-runtime] MCP tool call failed', {
-                    connectorId,
-                    toolName: tool.name,
-                    error: result.error.message,
-                  })
+                console.warn('[agent-runtime] MCP tool call failed', {
+                  connectorId,
+                  toolName: tool.name,
+                  error: result.error.message,
+                })
 
-                  return {
-                    error: true,
-                    message: `${connectorId}.${tool.name} failed: ${result.error.message}`,
-                  }
-                },
-              }
+                return {
+                  error: true,
+                  message: `${connectorId}.${tool.name} failed: ${result.error.message}`,
+                }
+              },
+            }
             : {}),
           description: guardedMcpToolDescription({
             connectorId,
@@ -424,17 +424,17 @@ export class RuntimeMcpController {
         this.host.githubHostedMcp
           ? await this.host.githubHostedMcp.listTools(installationId)
           : await Effect.runPromise(
-              Effect.gen(function* () {
-                const client = yield* GitHubHostedMcpClient
-                return yield* client.listTools()
-              }).pipe(
-                Effect.provide(
-                  makeGitHubHostedMcpBaseLayer(
-                    this.githubAppConfig(installationId),
-                  ),
+            Effect.gen(function* () {
+              const client = yield* GitHubHostedMcpClient
+              return yield* client.listTools()
+            }).pipe(
+              Effect.provide(
+                makeGitHubHostedMcpBaseLayer(
+                  this.githubAppConfig(installationId),
                 ),
               ),
             ),
+          ),
       catch: (cause) =>
         cause instanceof Error ? cause : new Error(String(cause)),
     })
@@ -481,22 +481,22 @@ export class RuntimeMcpController {
       try: async () =>
         this.host.githubHostedMcp
           ? await this.host.githubHostedMcp.callTool(
-              installationId,
-              name,
-              input,
-            )
+            installationId,
+            name,
+            input,
+          )
           : await Effect.runPromise(
-              Effect.gen(function* () {
-                const client = yield* GitHubHostedMcpClient
-                return yield* client.callTool(name, input)
-              }).pipe(
-                Effect.provide(
-                  makeGitHubHostedMcpBaseLayer(
-                    this.githubAppConfig(installationId),
-                  ),
+            Effect.gen(function* () {
+              const client = yield* GitHubHostedMcpClient
+              return yield* client.callTool(name, input)
+            }).pipe(
+              Effect.provide(
+                makeGitHubHostedMcpBaseLayer(
+                  this.githubAppConfig(installationId),
                 ),
               ),
             ),
+          ),
       catch: (cause) =>
         cause instanceof Error ? cause : new Error(String(cause)),
     })
@@ -517,228 +517,228 @@ export class RuntimeMcpController {
     const discordGuildId = this.activeNativeConnectorAccounts.get('discord')
     const discordTools = discordGuildId
       ? Object.fromEntries(
-          discordNativeTools.map((nativeTool) => {
-            const toolKey = buildMcpAiToolKey('discord', nativeTool.name)
-            return [
-              toolKey,
-              tool({
-                description: guardedMcpToolDescription({
-                  connectorId: 'discord',
-                  toolName: nativeTool.name,
-                  description: nativeTool.description,
-                }),
-                inputSchema: jsonSchema(asAiJsonSchema(nativeTool.inputSchema)),
-                execute: async (input) => {
-                  const outcome = await Effect.runPromise(
-                    Effect.match(
-                      nativeTool.execute(input).pipe(
-                        Effect.provide(
-                          makeDiscordBaseLayer({
-                            botToken: this.host.env.DISCORD_BOT_TOKEN ?? '',
-                            guildId: discordGuildId,
-                          }),
-                        ),
-                      ),
-                      {
-                        onFailure: (error) => ({
-                          kind: 'failure' as const,
-                          message: error.message,
-                        }),
-                        onSuccess: (value) => ({
-                          kind: 'success' as const,
-                          value,
-                        }),
-                      },
-                    ),
-                  )
-
-                  if (outcome.kind === 'success') return outcome.value
-
-                  console.warn(
-                    '[agent-runtime] native connector tool call failed',
-                    {
-                      connectorId: 'discord',
-                      toolName: nativeTool.name,
-                      error: outcome.message,
-                    },
-                  )
-
-                  return {
-                    error: true,
-                    message: `discord.${nativeTool.name} failed: ${outcome.message}`,
-                  }
-                },
-                needsApproval: async (
-                  input: unknown,
-                  options: {
-                    toolCallId: string
-                    messages: ModelMessage[]
-                    experimental_context?: unknown
-                  },
-                ) => {
-                  const approvalResult =
-                    await this.ensureConnectorToolNeedsApproval({
-                      connectorId: 'discord',
-                      toolName: nativeTool.name,
-                      toolCallId: options.toolCallId,
-                      toolArgs: input,
-                      shouldAutoApprove: wrapOptions?.shouldAutoApprove,
-                    })
-                  if (approvalResult.isErr()) {
-                    throw approvalResult.error
-                  }
-
-                  return approvalResult.value
-                },
+        discordNativeTools.map((nativeTool) => {
+          const toolKey = buildMcpAiToolKey('discord', nativeTool.name)
+          return [
+            toolKey,
+            tool({
+              description: guardedMcpToolDescription({
+                connectorId: 'discord',
+                toolName: nativeTool.name,
+                description: nativeTool.description,
               }),
-            ]
-          }),
-        )
+              inputSchema: jsonSchema(asAiJsonSchema(nativeTool.inputSchema)),
+              execute: async (input) => {
+                const outcome = await Effect.runPromise(
+                  Effect.match(
+                    nativeTool.execute(input).pipe(
+                      Effect.provide(
+                        makeDiscordBaseLayer({
+                          botToken: this.host.env.DISCORD_BOT_TOKEN ?? '',
+                          guildId: discordGuildId,
+                        }),
+                      ),
+                    ),
+                    {
+                      onFailure: (error) => ({
+                        kind: 'failure' as const,
+                        message: error.message,
+                      }),
+                      onSuccess: (value) => ({
+                        kind: 'success' as const,
+                        value,
+                      }),
+                    },
+                  ),
+                )
+
+                if (outcome.kind === 'success') return outcome.value
+
+                console.warn(
+                  '[agent-runtime] native connector tool call failed',
+                  {
+                    connectorId: 'discord',
+                    toolName: nativeTool.name,
+                    error: outcome.message,
+                  },
+                )
+
+                return {
+                  error: true,
+                  message: `discord.${nativeTool.name} failed: ${outcome.message}`,
+                }
+              },
+              needsApproval: async (
+                input: unknown,
+                options: {
+                  toolCallId: string
+                  messages: ModelMessage[]
+                  experimental_context?: unknown
+                },
+              ) => {
+                const approvalResult =
+                  await this.ensureConnectorToolNeedsApproval({
+                    connectorId: 'discord',
+                    toolName: nativeTool.name,
+                    toolCallId: options.toolCallId,
+                    toolArgs: input,
+                    shouldAutoApprove: wrapOptions?.shouldAutoApprove,
+                  })
+                if (approvalResult.isErr()) {
+                  throw approvalResult.error
+                }
+
+                return approvalResult.value
+              },
+            }),
+          ]
+        }),
+      )
       : {}
 
     const githubInstallationId =
       this.activeNativeConnectorAccounts.get('github')
     const githubTools = githubInstallationId
       ? Object.fromEntries(
-          githubNativeTools.map((nativeTool) => {
-            const toolKey = buildMcpAiToolKey('github', nativeTool.name)
-            return [
-              toolKey,
-              tool({
-                description: guardedMcpToolDescription({
-                  connectorId: 'github',
-                  toolName: nativeTool.name,
-                  description: nativeTool.description,
-                }),
-                inputSchema: jsonSchema(asAiJsonSchema(nativeTool.inputSchema)),
-                execute: async (input) => {
-                  const outcome = await Effect.runPromise(
-                    Effect.match(
-                      nativeTool.execute(input).pipe(
-                        Effect.provide(
-                          makeGitHubBaseLayer({
-                            appId: this.host.env.GITHUB_APP_ID,
-                            clientId: this.host.env.GITHUB_CLIENT_ID,
-                            privateKey: this.host.env.GITHUB_APP_PRIVATE_KEY,
-                            installationId: githubInstallationId,
-                          }),
-                        ),
-                      ),
-                      {
-                        onFailure: (error) => ({
-                          kind: 'failure' as const,
-                          message: error.message,
-                        }),
-                        onSuccess: (value) => ({
-                          kind: 'success' as const,
-                          value,
-                        }),
-                      },
-                    ),
-                  )
-
-                  if (outcome.kind === 'success') return outcome.value
-
-                  console.warn(
-                    '[agent-runtime] native connector tool call failed',
-                    {
-                      connectorId: 'github',
-                      toolName: nativeTool.name,
-                      error: outcome.message,
-                    },
-                  )
-
-                  return {
-                    error: true,
-                    message: `github.${nativeTool.name} failed: ${outcome.message}`,
-                  }
-                },
-                needsApproval: async (
-                  input: unknown,
-                  options: {
-                    toolCallId: string
-                    messages: ModelMessage[]
-                    experimental_context?: unknown
-                  },
-                ) => {
-                  const approvalResult =
-                    await this.ensureConnectorToolNeedsApproval({
-                      connectorId: 'github',
-                      toolName: nativeTool.name,
-                      toolCallId: options.toolCallId,
-                      toolArgs: input,
-                      shouldAutoApprove: wrapOptions?.shouldAutoApprove,
-                    })
-                  if (approvalResult.isErr()) {
-                    throw approvalResult.error
-                  }
-
-                  return approvalResult.value
-                },
+        githubNativeTools.map((nativeTool) => {
+          const toolKey = buildMcpAiToolKey('github', nativeTool.name)
+          return [
+            toolKey,
+            tool({
+              description: guardedMcpToolDescription({
+                connectorId: 'github',
+                toolName: nativeTool.name,
+                description: nativeTool.description,
               }),
-            ]
-          }),
-        )
+              inputSchema: jsonSchema(asAiJsonSchema(nativeTool.inputSchema)),
+              execute: async (input) => {
+                const outcome = await Effect.runPromise(
+                  Effect.match(
+                    nativeTool.execute(input).pipe(
+                      Effect.provide(
+                        makeGitHubBaseLayer({
+                          appId: this.host.env.GITHUB_APP_ID,
+                          clientId: this.host.env.GITHUB_CLIENT_ID,
+                          privateKey: this.host.env.GITHUB_APP_PRIVATE_KEY,
+                          installationId: githubInstallationId,
+                        }),
+                      ),
+                    ),
+                    {
+                      onFailure: (error) => ({
+                        kind: 'failure' as const,
+                        message: error.message,
+                      }),
+                      onSuccess: (value) => ({
+                        kind: 'success' as const,
+                        value,
+                      }),
+                    },
+                  ),
+                )
+
+                if (outcome.kind === 'success') return outcome.value
+
+                console.warn(
+                  '[agent-runtime] native connector tool call failed',
+                  {
+                    connectorId: 'github',
+                    toolName: nativeTool.name,
+                    error: outcome.message,
+                  },
+                )
+
+                return {
+                  error: true,
+                  message: `github.${nativeTool.name} failed: ${outcome.message}`,
+                }
+              },
+              needsApproval: async (
+                input: unknown,
+                options: {
+                  toolCallId: string
+                  messages: ModelMessage[]
+                  experimental_context?: unknown
+                },
+              ) => {
+                const approvalResult =
+                  await this.ensureConnectorToolNeedsApproval({
+                    connectorId: 'github',
+                    toolName: nativeTool.name,
+                    toolCallId: options.toolCallId,
+                    toolArgs: input,
+                    shouldAutoApprove: wrapOptions?.shouldAutoApprove,
+                  })
+                if (approvalResult.isErr()) {
+                  throw approvalResult.error
+                }
+
+                return approvalResult.value
+              },
+            }),
+          ]
+        }),
+      )
       : {}
 
     const githubHostedMcpTools = githubInstallationId
       ? Object.fromEntries(
-          this.activeGitHubHostedMcpTools.map((hostedTool) => {
-            const toolKey = buildMcpAiToolKey('github-mcp', hostedTool.name)
-            return [
-              toolKey,
-              tool({
-                description: guardedMcpToolDescription({
-                  connectorId: 'github-mcp',
-                  toolName: hostedTool.name,
-                  description: hostedTool.description,
-                }),
-                inputSchema: jsonSchema(asAiJsonSchema(hostedTool.inputSchema)),
-                execute: async (input) => {
-                  const outcome = await this.callGitHubHostedMcpTool(
-                    githubInstallationId,
-                    hostedTool.name,
-                    input,
-                  )
-                  if (outcome.isOk()) return outcome.value
-
-                  console.warn(
-                    '[agent-runtime] GitHub hosted MCP tool call failed',
-                    {
-                      toolName: hostedTool.name,
-                      error: outcome.error.message,
-                    },
-                  )
-                  return {
-                    error: true,
-                    message: `github-mcp.${hostedTool.name} failed: ${outcome.error.message}`,
-                  }
-                },
-                needsApproval: async (
-                  input: unknown,
-                  options: {
-                    toolCallId: string
-                    messages: ModelMessage[]
-                    experimental_context?: unknown
-                  },
-                ) => {
-                  const approvalResult =
-                    await this.ensureConnectorToolNeedsApproval({
-                      connectorId: 'github',
-                      toolName: hostedTool.name,
-                      toolCallId: options.toolCallId,
-                      toolArgs: input,
-                      shouldAutoApprove: wrapOptions?.shouldAutoApprove,
-                    })
-                  if (approvalResult.isErr()) {
-                    throw approvalResult.error
-                  }
-                  return approvalResult.value
-                },
+        this.activeGitHubHostedMcpTools.map((hostedTool) => {
+          const toolKey = buildMcpAiToolKey('github-mcp', hostedTool.name)
+          return [
+            toolKey,
+            tool({
+              description: guardedMcpToolDescription({
+                connectorId: 'github-mcp',
+                toolName: hostedTool.name,
+                description: hostedTool.description,
               }),
-            ]
-          }),
-        )
+              inputSchema: jsonSchema(asAiJsonSchema(hostedTool.inputSchema)),
+              execute: async (input) => {
+                const outcome = await this.callGitHubHostedMcpTool(
+                  githubInstallationId,
+                  hostedTool.name,
+                  input,
+                )
+                if (outcome.isOk()) return outcome.value
+
+                console.warn(
+                  '[agent-runtime] GitHub hosted MCP tool call failed',
+                  {
+                    toolName: hostedTool.name,
+                    error: outcome.error.message,
+                  },
+                )
+                return {
+                  error: true,
+                  message: `github-mcp.${hostedTool.name} failed: ${outcome.error.message}`,
+                }
+              },
+              needsApproval: async (
+                input: unknown,
+                options: {
+                  toolCallId: string
+                  messages: ModelMessage[]
+                  experimental_context?: unknown
+                },
+              ) => {
+                const approvalResult =
+                  await this.ensureConnectorToolNeedsApproval({
+                    connectorId: 'github',
+                    toolName: hostedTool.name,
+                    toolCallId: options.toolCallId,
+                    toolArgs: input,
+                    shouldAutoApprove: wrapOptions?.shouldAutoApprove,
+                  })
+                if (approvalResult.isErr()) {
+                  throw approvalResult.error
+                }
+                return approvalResult.value
+              },
+            }),
+          ]
+        }),
+      )
       : {}
 
     return {
@@ -997,7 +997,7 @@ export class RuntimeMcpController {
 
       return (
         Date.now() - request.resolvedAt.getTime() <=
-          PERMISSION_APPROVAL_REUSE_WINDOW_MS &&
+        PERMISSION_APPROVAL_REUSE_WINDOW_MS &&
         canonicalJsonString(request.argsJson) === toolArgsSignature
       )
     })
@@ -1463,19 +1463,23 @@ export class RuntimeMcpConnectionPreparer {
   private lastFullSyncAt = 0
   private refreshInFlight: Promise<RuntimeMcpPrepareResult> | null = null
 
-  constructor(private readonly options: RuntimeMcpConnectionPreparerOptions) {}
+  constructor(private readonly options: RuntimeMcpConnectionPreparerOptions) { }
 
-  async ensureForTurn(reason: string) {
+  async ensureForTurn(
+    reason: string,
+    options?: { waitForReadiness?: boolean },
+  ) {
     const controller = this.options.getController()
     const now = Date.now()
     const warmResult = controller.hasWarmProxyMcpConnections(now)
+    const waitForReadiness = options?.waitForReadiness ?? true
 
     if (
       warmResult.isOk() &&
       warmResult.value &&
       now - this.lastFullSyncAt < this.options.fullSyncIntervalMs
     ) {
-      if (!this.shouldWaitForReadiness()) return controller
+      if (!this.shouldWaitForReadiness(waitForReadiness)) return controller
 
       const readinessResult = await this.waitForConnectionsReady(reason)
       if (readinessResult.isOk()) return controller
@@ -1505,7 +1509,7 @@ export class RuntimeMcpConnectionPreparer {
       )
     }
 
-    const readyResult = await this.ensureLoaded(reason)
+    const readyResult = await this.ensureLoaded(reason, { waitForReadiness })
     if (readyResult.isErr()) {
       console.warn(this.options.continuingWithoutReadyMessage, {
         reason,
@@ -1600,9 +1604,10 @@ export class RuntimeMcpConnectionPreparer {
     return Result.ok(undefined)
   }
 
-  private shouldWaitForReadiness() {
-    return Boolean(
-      this.options.waitForConnections && this.options.getServerStates,
+  private shouldWaitForReadiness(enabled = true) {
+    return (
+      enabled &&
+      Boolean(this.options.waitForConnections && this.options.getServerStates)
     )
   }
 
@@ -1617,7 +1622,7 @@ export class RuntimeMcpConnectionPreparer {
       try: async () =>
         await this.options.waitForConnections!(
           this.options.connectionWaitTimeoutMs ??
-            mcpRuntimeConfig.connectionWaitTimeoutMs,
+          mcpRuntimeConfig.connectionWaitTimeoutMs,
         ),
       catch: (cause) =>
         cause instanceof Error

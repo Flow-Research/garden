@@ -8,6 +8,11 @@ export default defineConnector({
   label: 'Google Drive',
   description:
     'Find files, inspect permissions, read content, and create new docs through Google Drive MCP.',
+  capabilities: [
+    'search and read cloud files',
+    'inspect file metadata and permissions',
+    'create Google Drive files',
+  ],
   icon: './icon.svg',
   executorSlug: 'google_drive',
   upstream: {
