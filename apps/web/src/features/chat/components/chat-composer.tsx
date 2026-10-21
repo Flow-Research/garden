@@ -605,9 +605,9 @@ export function Composer({
             // Vellum pill — hairline inset instead of drop shadow, per design.
             // The focus state grows a 1.5px moss ring so the composer reads as
             // armed without piling another layer of shadow on top.
-            'relative rounded-[2rem] bg-card p-2.5 shadow-[var(--shadow-hairline)] transition-[box-shadow] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] focus-within:shadow-[0_0_0_1.5px_color-mix(in_oklab,var(--ring)_45%,transparent),var(--shadow-hairline)]',
+            'relative rounded-[2rem] bg-card p-2.5 shadow-1 transition-[box-shadow] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] focus-within:shadow-[0_0_0_1.5px_color-mix(in_oklab,var(--ring)_45%,transparent),var(--shadow-1)]',
             isDragging &&
-              'shadow-[0_0_0_1.5px_color-mix(in_oklab,var(--primary)_45%,transparent),var(--shadow-hairline)]',
+              'shadow-[0_0_0_1.5px_color-mix(in_oklab,var(--primary)_45%,transparent),var(--shadow-1)]',
           )}
           onClick={(event) => {
             // Click anywhere on the composer card focuses the textarea,
@@ -706,7 +706,7 @@ export function Composer({
               </Command>
             </div>
           ) : memberTrigger && !memberMenuDismissed ? (
-            <div className="absolute inset-x-0 bottom-full z-20 mb-2 overflow-hidden rounded-xl bg-card shadow-[var(--shadow-float-1)]">
+            <div className="absolute inset-x-0 bottom-full z-20 mb-2 overflow-hidden rounded-xl bg-card shadow-3">
               <Command shouldFilter={false} className="bg-card p-1">
                 <CommandList className="max-h-72">
                   {filteredMembers.length > 0 ? (
@@ -718,7 +718,7 @@ export function Composer({
                           className={cn(
                             'cursor-pointer select-none gap-2',
                             highlightedMemberIndex === index &&
-                              'bg-lichen/20 text-moss',
+                              'bg-badge-green-background/20 text-success',
                           )}
                           onMouseMove={() => setHighlightedMemberIndex(index)}
                           onMouseDown={(event) => event.preventDefault()}

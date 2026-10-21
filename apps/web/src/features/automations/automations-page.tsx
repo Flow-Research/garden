@@ -195,8 +195,8 @@ const STATUS_CONFIG: Record<
   AutomationStatus,
   { label: string; color: string; icon: typeof Zap }
 > = {
-  active: { label: 'Active', color: 'text-sage', icon: Play },
-  paused: { label: 'Paused', color: 'text-amber', icon: Pause },
+  active: { label: 'Active', color: 'text-text-success-tertiary', icon: Play },
+  paused: { label: 'Paused', color: 'text-text-warning-tertiary', icon: Pause },
   archived: {
     label: 'Archived',
     color: 'text-muted-foreground',
@@ -466,10 +466,10 @@ function CreateAutomationDialog({
         className={cn(
           '!w-[min(94vw,35rem)] !max-w-[min(94vw,35rem)] sm:!max-w-[min(94vw,35rem)]',
           'flex max-h-[88vh] flex-col gap-0 overflow-hidden rounded-[18px] border-0 p-0',
-          'bg-vellum-heavy shadow-[var(--shadow-float-2)] backdrop-blur-2xl',
+          'bg-popover shadow-5 backdrop-blur-2xl',
         )}
       >
-        <div className="border-b border-hairline px-5 pt-5 pb-3.5">
+        <div className="border-b border-border px-5 pt-5 pb-3.5">
           <DialogTitle className="text-[15px] font-medium tracking-tight">
             New automation
           </DialogTitle>
@@ -528,8 +528,8 @@ function CreateAutomationDialog({
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder="e.g. Daily code review"
                 className={cn(
-                  'h-9 w-full rounded-[6px] border border-hairline bg-bone px-3 text-sm outline-none transition-colors',
-                  'focus:border-moss/60 focus:ring-2 focus:ring-moss/15',
+                  'h-9 w-full rounded-[6px] border border-border bg-card px-3 text-sm outline-none transition-colors',
+                  'focus:border-success/60 focus:ring-2 focus:ring-success/15',
                 )}
                 autoFocus
               />
@@ -542,8 +542,8 @@ function CreateAutomationDialog({
                 placeholder="Step-by-step instructions for the agent…"
                 rows={4}
                 className={cn(
-                  'w-full resize-y rounded-[6px] border border-hairline bg-bone px-3 py-2 text-sm leading-relaxed outline-none transition-colors',
-                  'focus:border-moss/60 focus:ring-2 focus:ring-moss/15',
+                  'w-full resize-y rounded-[6px] border border-border bg-card px-3 py-2 text-sm leading-relaxed outline-none transition-colors',
+                  'focus:border-success/60 focus:ring-2 focus:ring-success/15',
                 )}
               />
             </Field>
@@ -553,7 +553,7 @@ function CreateAutomationDialog({
                 value={assigneeId}
                 onValueChange={(value) => value && setAssigneeId(value)}
               >
-                <SelectTrigger className="h-9 w-full rounded-[6px] border-hairline bg-bone transition-colors hover:border-foreground/20 focus:ring-2 focus:ring-moss/15">
+                <SelectTrigger className="h-9 w-full rounded-[6px] border-border bg-card transition-colors hover:border-foreground/20 focus:ring-2 focus:ring-success/15">
                   <SelectValue placeholder="Select an agent">
                     {() =>
                       selectedAgent ? (
@@ -620,7 +620,7 @@ function CreateAutomationDialog({
               <CollapsibleTrigger
                 className={cn(
                   'group/adv flex w-full items-center justify-between gap-2 rounded-full px-2 py-1.5 text-left transition-colors',
-                  'hover:bg-parchment-deep/50',
+                  'hover:bg-muted/50',
                 )}
               >
                 <span className="flex items-baseline gap-2">
@@ -648,7 +648,7 @@ function CreateAutomationDialog({
                         {totalCapabilities} selected
                       </span>
                     </div>
-                    <div className="mt-2 divide-y divide-hairline-soft overflow-hidden rounded-[10px] border border-hairline bg-bone/70">
+                    <div className="mt-2 divide-y divide-border/60 overflow-hidden rounded-[10px] border border-border bg-card/70">
                       {liveConnectors.map((connector) => {
                         const expanded = expandedConnectorId === connector.slug
                         const selected = selectedConnectorIds.includes(
@@ -659,7 +659,7 @@ function CreateAutomationDialog({
                             <div
                               className={cn(
                                 'flex items-center gap-2.5 px-3 py-2 transition-colors',
-                                selected && 'bg-moss/[0.05]',
+                                selected && 'bg-success/[0.05]',
                               )}
                             >
                               <Checkbox
@@ -689,7 +689,7 @@ function CreateAutomationDialog({
                                       expanded ? null : connector.slug,
                                     )
                                   }
-                                  className="flex shrink-0 items-center gap-1 rounded-full bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-hairline-soft transition-colors hover:bg-muted hover:text-foreground"
+                                  className="flex shrink-0 items-center gap-1 rounded-full bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-border/60 transition-colors hover:bg-muted hover:text-foreground"
                                 >
                                   {connector.tools.length} tools
                                   <ChevronDown
@@ -702,11 +702,11 @@ function CreateAutomationDialog({
                               ) : null}
                             </div>
                             {expanded && connector.tools.length > 0 ? (
-                              <div className="space-y-px bg-parchment-deep/40 px-3 py-2">
+                              <div className="space-y-px bg-muted/40 px-3 py-2">
                                 {connector.tools.map((tool) => (
                                   <label
                                     key={`${connector.slug}:${tool.name}`}
-                                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 transition-colors hover:bg-bone/70"
+                                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 transition-colors hover:bg-card/70"
                                   >
                                     <Checkbox
                                       checked={selectedToolNames.includes(
@@ -744,7 +744,7 @@ function CreateAutomationDialog({
                         {selectedSkillSlugs.length} selected
                       </span>
                     </div>
-                    <div className="mt-2 max-h-44 space-y-px overflow-y-auto rounded-[10px] border border-hairline bg-bone/70">
+                    <div className="mt-2 max-h-44 space-y-px overflow-y-auto rounded-[10px] border border-border bg-card/70">
                       {skills.length === 0 ? (
                         <div className="px-3 py-4 text-center text-xs text-muted-foreground">
                           No skills configured
@@ -759,8 +759,8 @@ function CreateAutomationDialog({
                               className={cn(
                                 'flex cursor-pointer items-center gap-2.5 px-3 py-2 transition-colors',
                                 checked
-                                  ? 'bg-moss/[0.06]'
-                                  : 'hover:bg-parchment-deep/40',
+                                  ? 'bg-success/[0.06]'
+                                  : 'hover:bg-muted/40',
                               )}
                             >
                               <Checkbox
@@ -789,7 +789,7 @@ function CreateAutomationDialog({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-hairline bg-parchment-deep/40 px-5 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/40 px-5 py-3">
           <Button
             size="sm"
             variant="ghost"
@@ -802,7 +802,7 @@ function CreateAutomationDialog({
             size="sm"
             onClick={handleSubmit}
             disabled={!title.trim() || !assigneeId || submitting}
-            className="rounded-full bg-moss text-parchment hover:bg-moss/90 active:scale-[0.98]"
+            className="rounded-full bg-success text-background hover:bg-success/90 active:scale-[0.98]"
           >
             {submitting ? 'Creating…' : 'Create automation'}
           </Button>
@@ -854,8 +854,8 @@ function TemplateRow({
         'group/row flex h-9 items-center gap-2 rounded-[10px] border px-2.5 text-left transition-all duration-150',
         'active:scale-[0.985]',
         selected
-          ? 'border-moss/60 bg-moss/[0.08] text-foreground shadow-[var(--shadow-hairline-soft)]'
-          : 'border-hairline bg-bone/55 hover:border-moss/30 hover:bg-bone',
+          ? 'border-success/60 bg-success/[0.08] text-foreground shadow-2'
+          : 'border-border bg-card/55 hover:border-success/30 hover:bg-card',
       )}
       aria-pressed={selected}
     >
@@ -863,7 +863,7 @@ function TemplateRow({
         className={cn(
           'size-3.5 shrink-0 transition-colors',
           selected
-            ? 'text-moss'
+            ? 'text-success'
             : 'text-muted-foreground group-hover/row:text-foreground',
         )}
         strokeWidth={1.75}
@@ -872,7 +872,7 @@ function TemplateRow({
         {title}
       </span>
       {selected ? (
-        <span className="size-1.5 shrink-0 rounded-full bg-moss" />
+        <span className="size-1.5 shrink-0 rounded-full bg-success" />
       ) : null}
     </button>
   )
@@ -920,7 +920,7 @@ function TemplateDetail({
     Boolean(category)
 
   return (
-    <div className="mt-3 overflow-hidden rounded-[12px] border border-hairline bg-bone/60 shadow-[var(--shadow-hairline-soft)]">
+    <div className="mt-3 overflow-hidden rounded-[12px] border border-border bg-card/60 shadow-2">
       <div className="flex items-baseline justify-between gap-3 px-3.5 pt-3 pb-2">
         <div className="min-w-0">
           <div className="text-[13px] font-medium tracking-tight">{title}</div>
@@ -928,13 +928,13 @@ function TemplateDetail({
             {summary}
           </p>
         </div>
-        <span className="shrink-0 rounded-full bg-parchment-deep/70 px-2 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground ring-1 ring-hairline-soft">
+        <span className="shrink-0 rounded-full bg-muted/70 px-2 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground ring-1 ring-border/60">
           {cadence}
         </span>
       </div>
 
       {promptPreview ? (
-        <div className="border-t border-hairline-soft bg-parchment-deep/30 px-3.5 py-2.5">
+        <div className="border-t border-border/60 bg-muted/30 px-3.5 py-2.5">
           <div className="mb-1 text-[9.5px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">
             What it does
           </div>
@@ -945,7 +945,7 @@ function TemplateDetail({
       ) : null}
 
       {hasChips ? (
-        <div className="flex flex-wrap items-center gap-1 border-t border-hairline-soft px-3.5 py-2.5">
+        <div className="flex flex-wrap items-center gap-1 border-t border-border/60 px-3.5 py-2.5">
           {category ? <DetailChip tone="lichen">{category}</DetailChip> : null}
           {connectors.map((connector) => (
             <DetailChip key={`c:${connector}`} tone="moss">
@@ -977,12 +977,12 @@ function DetailChip({
 }) {
   const toneClass =
     tone === 'moss'
-      ? 'bg-moss/10 text-moss ring-moss/20'
+      ? 'bg-success/10 text-success ring-success/20'
       : tone === 'sage'
-        ? 'bg-sage/15 text-foreground/80 ring-sage/25'
+        ? 'bg-icon-success-tertiary/15 text-foreground/80 ring-border-success-tertiary/25'
         : tone === 'lichen'
-          ? 'bg-parchment-deep text-foreground/80 ring-hairline'
-          : 'bg-muted/60 text-muted-foreground ring-hairline-soft'
+          ? 'bg-muted text-foreground/80 ring-border'
+          : 'bg-muted/60 text-muted-foreground ring-border/60'
   return (
     <span
       className={cn(
@@ -1013,16 +1013,16 @@ function ConnectorStatusDot({
 }) {
   const tone =
     status === 'connected'
-      ? 'bg-sage'
+      ? 'bg-icon-success-tertiary'
       : status === 'degraded'
-        ? 'bg-amber'
+        ? 'bg-icon-warning-tertiary'
         : status === 'disconnected'
-          ? 'bg-stone'
-          : 'bg-stone/60'
+          ? 'bg-icon-tertiary'
+          : 'bg-icon-tertiary/60'
   return (
     <span
       className={cn(
-        'inline-block size-1.5 shrink-0 rounded-full ring-2 ring-bone',
+        'inline-block size-1.5 shrink-0 rounded-full ring-2 ring-card',
         tone,
       )}
       aria-label={status}

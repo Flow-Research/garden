@@ -5,7 +5,7 @@
   font-size: 14.5px;
   line-height: 1.55;
   letter-spacing: -0.005em;
-  color: var(--ink);
+  color: var(--foreground);
 }
 
 .is-assistant code,

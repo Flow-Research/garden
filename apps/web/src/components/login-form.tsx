@@ -97,7 +97,7 @@ export function LoginForm({
 
   return (
     <div className={cn('flex flex-col', className)}>
-      <div className="login-panel-enter vellum-heavy rounded-t-[7rem] rounded-b-2xl px-7 pt-14 pb-8 shadow-(--shadow-float-2) sm:px-9">
+      <div className="login-panel-enter vellum-heavy rounded-t-[7rem] rounded-b-2xl px-7 pt-14 pb-8 shadow-5 sm:px-9">
         <div className="flex flex-col items-center gap-3 text-center">
           <span className="inline-flex size-12 items-center justify-center rounded-full bg-brand/10 text-brand">
             <BrandIcon className="size-6" animate noSpin />
@@ -128,7 +128,7 @@ export function LoginForm({
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-10 w-full bg-bone/60"
+                    className="h-10 w-full bg-card/60"
                     disabled={loading || googleLoading}
                     onClick={onGoogleSignIn}
                   >
@@ -156,7 +156,7 @@ export function LoginForm({
                 <FieldLabel htmlFor="name">Name</FieldLabel>
                 <Input
                   id="name"
-                  className="h-10 bg-bone/60"
+                  className="h-10 bg-card/60"
                   value={name}
                   onChange={(event) => onNameChange(event.target.value)}
                   placeholder="Your name"
@@ -172,7 +172,7 @@ export function LoginForm({
               <Input
                 id="email"
                 type="email"
-                className="h-10 bg-bone/60"
+                className="h-10 bg-card/60"
                 value={email}
                 onChange={(event) => onEmailChange(event.target.value)}
                 placeholder="you@company.com"
@@ -204,7 +204,7 @@ export function LoginForm({
                 <Input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
-                  className="h-10 bg-bone/60 pr-10"
+                  className="h-10 bg-card/60 pr-10"
                   value={password}
                   onChange={(event) => onPasswordChange(event.target.value)}
                   placeholder="Password"

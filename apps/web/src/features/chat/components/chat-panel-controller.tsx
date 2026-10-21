@@ -145,9 +145,9 @@ function EmptyStateTile({
       }}
       whileHover={{ y: -1 }}
       whileTap={{ scale: 0.985 }}
-      className="group pointer-events-auto flex w-full items-start gap-3 rounded-[12px] bg-[color-mix(in_oklab,var(--bone)_55%,transparent)] p-3.5 text-left shadow-[var(--shadow-hairline-soft)] backdrop-blur-md transition-colors duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[color-mix(in_oklab,var(--bone)_85%,transparent)] hover:shadow-[var(--shadow-hairline)] focus-visible:outline-none focus-visible:shadow-[0_0_0_1.5px_color-mix(in_oklab,var(--ring)_45%,transparent),var(--shadow-hairline)]"
+      className="group pointer-events-auto flex w-full items-start gap-3 rounded-[12px] bg-[color-mix(in_oklab,var(--card)_55%,transparent)] p-3.5 text-left shadow-2 backdrop-blur-md transition-colors duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[color-mix(in_oklab,var(--card)_85%,transparent)] hover:shadow-1 focus-visible:outline-none focus-visible:shadow-[0_0_0_1.5px_color-mix(in_oklab,var(--ring)_45%,transparent),var(--shadow-1)]"
     >
-      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklab,var(--moss)_14%,transparent)] text-[color:var(--moss)]">
+      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklab,var(--success)_14%,transparent)] text-success">
         <Icon className="size-[15px]" strokeWidth={1.6} />
       </span>
       <span className="flex min-w-0 flex-col gap-0.5 pt-0.5">
@@ -595,7 +595,7 @@ export function ConnectedChatPanelInteraction({
                   className="pointer-events-none absolute inset-x-0 bottom-[calc(100%+1.25rem)] flex justify-center px-6"
                 >
                   <p
-                    className="max-w-2xl text-balance text-center font-prose text-[34px] italic leading-[1.12] tracking-[-0.003em] text-[color-mix(in_oklab,var(--ink)_82%,transparent)] sm:text-[42px]"
+                    className="max-w-2xl text-balance text-center font-prose text-[34px] italic leading-[1.12] tracking-[-0.003em] text-[color-mix(in_oklab,var(--foreground)_82%,transparent)] sm:text-[42px]"
                     style={{ fontWeight: 600 }}
                   >
                     {buildEmptyPrompt(userFirstName)}

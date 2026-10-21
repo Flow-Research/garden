@@ -90,15 +90,15 @@
  * Cards, rails, popovers all use this. Backdrop blur lets atmosphere through.
  * ============================================================================= */
 .vellum {
-  background-color: var(--vellum);
+  background-color: var(--card);
   backdrop-filter: blur(14px) saturate(1.05);
   -webkit-backdrop-filter: blur(14px) saturate(1.05);
-  box-shadow: var(--shadow-hairline);
+  box-shadow: var(--shadow-1);
 }
 
 .vellum-heavy {
-  background-color: var(--vellum-heavy);
+  background-color: var(--popover);
   backdrop-filter: blur(20px) saturate(1.08);
   -webkit-backdrop-filter: blur(20px) saturate(1.08);
-  box-shadow: var(--shadow-hairline);
+  box-shadow: var(--shadow-1);
 }

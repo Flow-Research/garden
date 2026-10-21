@@ -92,7 +92,7 @@ function useDebouncedValue(value: string, delayMs: number) {
 }
 
 function statusDotColor(status: ExecutorIntegrationStatus) {
-  if (status === 'connected') return 'bg-moss'
+  if (status === 'connected') return 'bg-success'
   if (status === 'degraded') return 'bg-amber-500'
   return 'bg-stone-400'
 }
@@ -494,7 +494,7 @@ export function ConnectionsPage({
                 className={[
                   'h-6 rounded-full border px-2.5 text-[11px] font-medium transition-colors motion-reduce:transition-none',
                   active
-                    ? 'border-moss/40 bg-moss/10 text-moss'
+                    ? 'border-success/40 bg-success/10 text-success'
                     : 'border-border/60 bg-muted/30 text-muted-foreground hover:border-border hover:text-foreground',
                 ].join(' ')}
               >
@@ -717,7 +717,7 @@ function FeaturedCard({
       ref={cardRef}
       className={[
         'flex flex-col rounded-xl border bg-background p-2.5 transition-colors motion-reduce:transition-none',
-        highlighted ? 'border-moss/50' : 'border-border/60',
+        highlighted ? 'border-success/50' : 'border-border/60',
       ].join(' ')}
     >
       <div className="flex items-center gap-2">
@@ -1319,7 +1319,7 @@ function ManageDrawerBody({
                     installedIntegrationSource(providerIntegration) ===
                     candidate,
                 ) ? (
-                  <span className="ml-1.5 text-[10px] text-moss">
+                  <span className="ml-1.5 text-[10px] text-success">
                     Installed
                   </span>
                 ) : null}

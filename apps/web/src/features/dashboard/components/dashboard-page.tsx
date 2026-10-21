@@ -85,26 +85,25 @@ function MetricCard({
   const Inner = (
     <div
       className={cn(
-        'h-full rounded-2xl px-5 py-5 sm:px-6 sm:py-6 transition-all bg-[color:var(--vellum)] backdrop-blur-xl saturate-105 shadow-[var(--shadow-hairline)]',
-        isClickable &&
-          'cursor-pointer hover:bg-[color:var(--vellum-heavy)] hover:shadow-[var(--shadow-float-1)]',
+        'h-full rounded-2xl px-5 py-5 sm:px-6 sm:py-6 transition-all bg-card backdrop-blur-xl saturate-105 shadow-1',
+        isClickable && 'cursor-pointer hover:bg-popover hover:shadow-3',
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-3xl font-semibold tracking-tight tabular-nums text-[color:var(--ink)] sm:text-[2rem]">
+          <p className="text-3xl font-semibold tracking-tight tabular-nums text-foreground sm:text-[2rem]">
             {value}
           </p>
-          <p className="mt-1.5 text-xs font-medium text-[color:var(--gravel)] sm:text-sm">
+          <p className="mt-1.5 text-xs font-medium text-muted-foreground sm:text-sm">
             {label}
           </p>
           {description ? (
-            <div className="mt-2 hidden text-xs text-[color:var(--slate)] sm:block">
+            <div className="mt-2 hidden text-xs text-text-neutral-tertiary sm:block">
               {description}
             </div>
           ) : null}
         </div>
-        <Icon className="mt-1 h-4 w-4 shrink-0 text-[color:var(--slate)]" />
+        <Icon className="mt-1 h-4 w-4 shrink-0 text-text-neutral-tertiary" />
       </div>
     </div>
   )
@@ -127,13 +126,13 @@ function ChartCard({
   children: React.ReactNode
 }) {
   return (
-    <div className="space-y-3 rounded-2xl p-5 bg-[color:var(--vellum)] backdrop-blur-xl saturate-105 shadow-[var(--shadow-hairline)]">
+    <div className="space-y-3 rounded-2xl p-5 bg-card backdrop-blur-xl saturate-105 shadow-1">
       <div>
-        <h3 className="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--gravel)]">
+        <h3 className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
           {title}
         </h3>
         {subtitle ? (
-          <span className="text-[10px] text-[color:var(--slate)]">
+          <span className="text-[10px] text-text-neutral-tertiary">
             {subtitle}
           </span>
         ) : null}
@@ -202,7 +201,7 @@ function DashboardMetricGridFallback() {
       {Array.from({ length: 4 }).map((_, index) => (
         <div
           key={`metric-fallback-${index}`}
-          className="rounded-2xl bg-[color:var(--vellum)] backdrop-blur-xl saturate-105 shadow-[var(--shadow-hairline)] px-4 py-4 sm:px-5 sm:py-5"
+          className="rounded-2xl bg-card backdrop-blur-xl saturate-105 shadow-1 px-4 py-4 sm:px-5 sm:py-5"
         >
           <SectionPlaceholder className="h-8 w-16" />
           <SectionPlaceholder className="mt-2 h-3 w-24" />
@@ -219,7 +218,7 @@ function DashboardChartSectionFallback() {
       {Array.from({ length: 2 }).map((_, index) => (
         <div
           key={`chart-fallback-${index}`}
-          className="space-y-3 rounded-2xl bg-[color:var(--vellum)] backdrop-blur-xl saturate-105 shadow-[var(--shadow-hairline)] p-4"
+          className="space-y-3 rounded-2xl bg-card backdrop-blur-xl saturate-105 shadow-1 p-4"
         >
           <SectionPlaceholder className="h-3 w-28" />
           <SectionPlaceholder className="h-2 w-20" />
@@ -247,12 +246,12 @@ function DashboardListSectionFallback({ title }: { title: string }) {
   return (
     <div className="min-w-0">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--gravel)]">
+        <h3 className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
           {title}
         </h3>
         <SectionPlaceholder className="h-3 w-14" />
       </div>
-      <div className="divide-y divide-[color:var(--hairline-soft)] overflow-hidden rounded-2xl bg-[color:var(--vellum)] backdrop-blur-xl saturate-105 shadow-[var(--shadow-hairline)]">
+      <div className="divide-y divide-border/60 overflow-hidden rounded-2xl bg-card backdrop-blur-xl saturate-105 shadow-1">
         {Array.from({ length: 4 }).map((_, index) => (
           <div key={`${title}-fallback-${index}`} className="px-4 py-3">
             <SectionPlaceholder className="h-4 w-3/4" />
@@ -268,12 +267,12 @@ function DashboardResourceSectionFallback({ title }: { title: string }) {
   return (
     <div className="min-w-0">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--gravel)]">
+        <h3 className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
           {title}
         </h3>
         <SectionPlaceholder className="h-3 w-14" />
       </div>
-      <div className="divide-y divide-[color:var(--hairline-soft)] overflow-hidden rounded-2xl bg-[color:var(--vellum)] backdrop-blur-xl saturate-105 shadow-[var(--shadow-hairline)]">
+      <div className="divide-y divide-border/60 overflow-hidden rounded-2xl bg-card backdrop-blur-xl saturate-105 shadow-1">
         {Array.from({ length: 3 }).map((_, index) => (
           <div
             key={`${title}-resource-${index}`}
@@ -393,7 +392,7 @@ function DashboardPageFixture() {
           ].map(([value, label]) => (
             <div
               key={label}
-              className="h-full rounded-2xl bg-[color:var(--vellum)] backdrop-blur-xl saturate-105 shadow-[var(--shadow-hairline)] px-4 py-4 sm:px-5 sm:py-5"
+              className="h-full rounded-2xl bg-card backdrop-blur-xl saturate-105 shadow-1 px-4 py-4 sm:px-5 sm:py-5"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -432,7 +431,7 @@ function DashboardPageFixture() {
           </ChartCard>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-3 rounded-2xl bg-[color:var(--vellum)] backdrop-blur-xl saturate-105 shadow-[var(--shadow-hairline)] p-4">
+          <div className="space-y-3 rounded-2xl bg-card backdrop-blur-xl saturate-105 shadow-1 p-4">
             <h3 className="text-xs font-medium text-muted-foreground">
               Recent Issues
             </h3>
@@ -443,7 +442,7 @@ function DashboardPageFixture() {
             ].map((title) => (
               <div
                 key={title}
-                className="flex items-center justify-between gap-3 rounded-md border border-[color:var(--hairline-soft)] px-3 py-2"
+                className="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{title}</p>
@@ -455,7 +454,7 @@ function DashboardPageFixture() {
               </div>
             ))}
           </div>
-          <div className="space-y-3 rounded-2xl bg-[color:var(--vellum)] backdrop-blur-xl saturate-105 shadow-[var(--shadow-hairline)] p-4">
+          <div className="space-y-3 rounded-2xl bg-card backdrop-blur-xl saturate-105 shadow-1 p-4">
             <h3 className="text-xs font-medium text-muted-foreground">Inbox</h3>
             {[
               '3 agent replies need review',
@@ -464,7 +463,7 @@ function DashboardPageFixture() {
             ].map((item) => (
               <div
                 key={item}
-                className="rounded-md border border-[color:var(--hairline-soft)] px-3 py-2 text-sm"
+                className="rounded-md border border-border/60 px-3 py-2 text-sm"
               >
                 {item}
               </div>
@@ -620,7 +619,7 @@ function DashboardActivitySection({
     <div className="grid gap-4 md:grid-cols-2">
       <div className="min-w-0">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--gravel)]">
+          <h3 className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
             Recent Activity
           </h3>
           {data.unreadCount > 0 ? (
@@ -645,7 +644,7 @@ function DashboardActivitySection({
             </EmptyHeader>
           </Empty>
         ) : (
-          <div className="divide-y divide-[color:var(--hairline-soft)] overflow-hidden rounded-2xl bg-[color:var(--vellum)] backdrop-blur-xl saturate-105 shadow-[var(--shadow-hairline)]">
+          <div className="divide-y divide-border/60 overflow-hidden rounded-2xl bg-card backdrop-blur-xl saturate-105 shadow-1">
             {data.inbox.map((item) => (
               <button
                 key={item.id}
@@ -675,7 +674,7 @@ function DashboardActivitySection({
 
       <div className="min-w-0">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--gravel)]">
+          <h3 className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
             Recent Tasks
           </h3>
           <Button
@@ -694,7 +693,7 @@ function DashboardActivitySection({
             </EmptyHeader>
           </Empty>
         ) : (
-          <div className="divide-y divide-[color:var(--hairline-soft)] overflow-hidden rounded-2xl bg-[color:var(--vellum)] backdrop-blur-xl saturate-105 shadow-[var(--shadow-hairline)]">
+          <div className="divide-y divide-border/60 overflow-hidden rounded-2xl bg-card backdrop-blur-xl saturate-105 shadow-1">
             {data.recentIssues.slice(0, 10).map((issue) => (
               <button
                 key={issue.id}
@@ -742,10 +741,10 @@ function DashboardResourcesSection({
     <div className="grid gap-4 md:grid-cols-2">
       {data.agents.length > 0 ? (
         <div className="min-w-0">
-          <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--gravel)]">
+          <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
             Agents
           </h3>
-          <div className="divide-y divide-[color:var(--hairline-soft)] overflow-hidden rounded-2xl bg-[color:var(--vellum)] backdrop-blur-xl saturate-105 shadow-[var(--shadow-hairline)]">
+          <div className="divide-y divide-border/60 overflow-hidden rounded-2xl bg-card backdrop-blur-xl saturate-105 shadow-1">
             {data.agents.map((agent) => (
               <div
                 key={agent.id}
@@ -773,7 +772,7 @@ function DashboardResourcesSection({
       {data.connections.length > 0 ? (
         <div className="min-w-0">
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--gravel)]">
+            <h3 className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
               Connections
             </h3>
             <Button
@@ -785,7 +784,7 @@ function DashboardResourcesSection({
               Manage
             </Button>
           </div>
-          <div className="divide-y divide-[color:var(--hairline-soft)] overflow-hidden rounded-2xl bg-[color:var(--vellum)] backdrop-blur-xl saturate-105 shadow-[var(--shadow-hairline)]">
+          <div className="divide-y divide-border/60 overflow-hidden rounded-2xl bg-card backdrop-blur-xl saturate-105 shadow-1">
             {data.connections.map((connection) => {
               const Icon = connectionIcon(connection.id)
               return (

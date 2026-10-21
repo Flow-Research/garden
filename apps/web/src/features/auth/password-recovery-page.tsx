@@ -126,7 +126,7 @@ export function RequestPasswordResetPage({
               <FieldLabel htmlFor="recovery-email">Email</FieldLabel>
               <Input
                 id="recovery-email"
-                className="h-10 bg-bone/60"
+                className="h-10 bg-card/60"
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
@@ -233,7 +233,7 @@ export function ResetPasswordPage({
               <FieldLabel htmlFor="new-password">New password</FieldLabel>
               <Input
                 id="new-password"
-                className="h-10 bg-bone/60"
+                className="h-10 bg-card/60"
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
@@ -249,7 +249,7 @@ export function ResetPasswordPage({
               </FieldLabel>
               <Input
                 id="confirm-password"
-                className="h-10 bg-bone/60"
+                className="h-10 bg-card/60"
                 type="password"
                 value={confirmation}
                 onChange={(event) => setConfirmation(event.target.value)}
