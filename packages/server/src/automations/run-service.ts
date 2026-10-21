@@ -2,40 +2,22 @@ import { and, eq } from 'drizzle-orm'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { getPooledDb } from '@garden/db/runtime'
 import * as schema from '@garden/db/schema'
-
-const AGENT_RUNTIME_NAME_PATTERN = /^[A-Za-z0-9._:-]+$/
-const RUN_WORKFLOW_CONTROL_EVENT_TYPE = 'run-control'
-
-type RunWorkflowControlEvent = { kind: 'resume' | 'cancel' }
-
-type RunWorkflowBinding = {
-  get: (id: string) => Promise<{
-    sendEvent: (event: {
-      type: typeof RUN_WORKFLOW_CONTROL_EVENT_TYPE
-      payload: RunWorkflowControlEvent
-    }) => Promise<void>
-  }>
-}
-
-/**
- * Minimal structural shape of the Cloudflare Hyperdrive binding this package
- * consumes. `@garden/server` does not pull in `@cloudflare/workers-types` as an
- * ambient global, and the run service only reads `connectionString`. Workers
- * (web app, agent runtime) pass the full global `Hyperdrive` binding here, which
- * is structurally assignable to this narrower type.
- */
-type HyperdriveConnection = { readonly connectionString: string }
+import {
+  RUN_WORKFLOW_CONTROL_EVENT_TYPE,
+  isAgentRuntimeName,
+  type AgentDONamespace,
+  type HyperdriveConnection,
+  type RunWorkflowBinding,
+  type RunWorkflowControlEvent,
+} from '../runtime-bindings'
 
 export type AutomationRunEnv = {
   HYPERDRIVE: HyperdriveConnection
   RUN_WORKFLOW?: RunWorkflowBinding
-  AgentDO?: {
-    idFromName: (name: string) => any
-    get: (id: any) => {
-      startAutomationRunWorkflow: (input: { runId: string }) => Promise<void>
-      cancelAutomationRun: (input: { runId: string }) => Promise<void>
-    }
-  }
+  AgentDO?: AgentDONamespace<{
+    startAutomationRunWorkflow: (input: { runId: string }) => Promise<void>
+    cancelAutomationRun: (input: { runId: string }) => Promise<void>
+  }>
 }
 
 export type StartAutomationRunInput = {
@@ -77,10 +59,6 @@ export class AutomationRunServiceError extends TaggedError(
   message: string
   cause?: unknown
 }>() {}
-
-function isAgentRuntimeName(value: string) {
-  return AGENT_RUNTIME_NAME_PATTERN.test(value)
-}
 
 // The driver's message stays on `cause` for logs; `message` reaches API clients
 // and must not carry raw Postgres error text.

@@ -14,10 +14,8 @@ import { Result } from 'better-result'
 import { createAuth } from '@/lib/auth'
 import type { AppEnv } from '@/lib/server/env'
 import { bindAppEnv } from '@/lib/server/env'
-import {
-  isAgentRuntimeName,
-  requireAgentAccess,
-} from '@/lib/server/agent-do-router'
+import { requireAgentAccess } from '@/lib/server/agent-do-router'
+import { isAgentRuntimeName } from '@garden/server/runtime-bindings'
 import { reconcile } from '@/lib/server/issue-run-reconciler'
 import {
   createGardenLogger,

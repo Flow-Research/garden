@@ -14,7 +14,8 @@
     "./connectors/availability": "./src/connectors/availability.ts",
     "./automations/run-service": "./src/automations/run-service.ts",
     "./issues/server": "./src/issues/server.ts",
-    "./issues/run-service": "./src/issues/run-service.ts"
+    "./issues/run-service": "./src/issues/run-service.ts",
+    "./runtime-bindings": "./src/runtime-bindings.ts"
   },
   "dependencies": {
     "@garden/connectors": "workspace:*",
