@@ -14,6 +14,7 @@ import {
 import {
   badRequest,
   requireWorkspaceContext,
+  resolveIssuePrefix,
   toIssue,
 } from '@/lib/server/control-plane'
 import {
@@ -91,8 +92,10 @@ export const Route = createFileRoute('/api/issues')({
           ? query.limit(safeLimit).offset(safeOffset)
           : query.offset(safeOffset))
 
+        const issuePrefix = await resolveIssuePrefix(request, workspaceId)
+
         return Response.json({
-          issues: rows.map((row) => toIssue(row)),
+          issues: rows.map((row) => toIssue(row, { issuePrefix })),
           total: count,
         })
       },

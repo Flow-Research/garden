@@ -101,6 +101,26 @@ export async function resolveWorkspaceId(
   return membership?.organizationId ?? null
 }
 
+/**
+ * Resolves the workspace's issue prefix for response mapping. Issue rows store
+ * only a number; the human identifier is `prefix-number`, and the prefix lives
+ * on the organization. Every endpoint that maps rows through `toIssue` must
+ * pass it, otherwise the identifier falls back to `ISS` and changes between
+ * list, detail, and search responses for the same issue.
+ */
+export async function resolveIssuePrefix(
+  input: RequestBoundary,
+  workspaceId: string,
+) {
+  const db = await dbFrom(input)
+  const [workspace] = await db
+    .select({ issuePrefix: schema.organization.issuePrefix })
+    .from(schema.organization)
+    .where(eq(schema.organization.id, workspaceId))
+    .limit(1)
+  return workspace?.issuePrefix ?? 'ISS'
+}
+
 export async function requireWorkspaceContext(
   input: RequestBoundary,
   options: { missingWorkspaceResponse?: () => Response } = {},
@@ -277,7 +297,7 @@ export function toInvitation(record: InvitationRecord) {
 
 export function toIssue(
   record: typeof schema.issue.$inferSelect,
-  options: { issuePrefix?: string } = {},
+  options: { issuePrefix: string },
 ) {
   const sourceSummary = record.sourceSummary
     ? {
@@ -286,7 +306,7 @@ export function toIssue(
         external_url: null,
       }
     : null
-  const prefix = options.issuePrefix ?? 'ISS'
+  const prefix = options.issuePrefix
 
   return {
     id: record.id,

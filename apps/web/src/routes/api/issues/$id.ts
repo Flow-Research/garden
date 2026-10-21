@@ -23,6 +23,7 @@ import {
   badRequest,
   notFound,
   requireWorkspaceAccess,
+  resolveIssuePrefix,
   toIssue,
 } from '@/lib/server/control-plane'
 import {
@@ -64,7 +65,11 @@ export const Route = createFileRoute('/api/issues/$id')({
           )
 
         if (!issue) return notFound('Issue not found')
-        return Response.json(toIssue(issue))
+        const issuePrefix = await resolveIssuePrefix(
+          request,
+          existingIssue.workspaceId,
+        )
+        return Response.json(toIssue(issue, { issuePrefix }))
       },
       PUT: async ({ context, request, params }) => {
         const appContext = requireAppRequestContext(context)
@@ -296,7 +301,14 @@ export const Route = createFileRoute('/api/issues/$id')({
           })
           if (startResult.isErr()) console.error(startResult.error.message)
         }
-        return Response.json(toIssue(issue))
+        return Response.json(
+          toIssue(issue, {
+            issuePrefix: await resolveIssuePrefix(
+              request,
+              existingIssue.workspaceId,
+            ),
+          }),
+        )
       },
       DELETE: async ({ context, request, params }) => {
         const appContext = requireAppRequestContext(context)
