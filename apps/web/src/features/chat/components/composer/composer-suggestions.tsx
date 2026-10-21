@@ -40,6 +40,11 @@ export interface ComposerSuggestionsProps {
   onDismiss: () => void
 }
 
+const SUGGESTION_ROWS = Array.from(
+  { length: Math.ceil(SUGGESTION_PILLS.length / 3) },
+  (_, index) => SUGGESTION_PILLS.slice(index * 3, index * 3 + 3),
+)
+
 /**
  * Renders the "Jump right in" suggestion pills row.
  * Purely presentational; parent controls visibility and dismissed state.
@@ -50,34 +55,47 @@ export function ComposerSuggestions({
 }: ComposerSuggestionsProps): JSX.Element {
   return (
     <div className={cn('mx-auto w-full', COMPOSER_WIDTH_CLASS_NAME)}>
-      {/* Header row */}
-      <div className="mb-2 flex items-center justify-between">
-        <span className="body-small text-text-secondary">Jump right in</span>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Dismiss suggestions"
-          onClick={onDismiss}
-          className="text-icon-secondary"
-        >
-          <X className="size-4" />
-        </Button>
-      </div>
-
-      {/* Pills */}
-      <div className="flex flex-wrap justify-center gap-x-3 gap-y-2">
-        {SUGGESTION_PILLS.map((pill) => (
-          <button
-            key={pill.id}
-            type="button"
-            aria-label={pill.label}
-            onClick={() => onSelect(pill.starter)}
-            className="inline-flex items-center gap-3 whitespace-nowrap rounded-pill border border-border-default px-4 py-2 transition-colors hover:bg-background-main-secondary"
+      <div className="mx-3 md:mx-10">
+        {/* Header row */}
+        <div className="mb-2 flex items-center justify-between">
+          <span className="body-small text-text-secondary">Jump right in</span>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Dismiss suggestions"
+            onClick={onDismiss}
+            className="text-icon-secondary"
           >
-            <pill.icon className="size-[18px] text-icon-secondary" />
-            <span className="body-small text-text-secondary">{pill.label}</span>
-          </button>
-        ))}
+            <X className="size-4" />
+          </Button>
+        </div>
+
+        {/* Pills */}
+        <div className="space-y-1.5 sm:flex sm:flex-wrap sm:justify-center sm:gap-x-3 sm:gap-y-2 sm:space-y-0">
+          {SUGGESTION_ROWS.map((row, rowIndex) => (
+            <div
+              key={`suggestion-row-${rowIndex}`}
+              className="overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:contents"
+            >
+              <div className="flex min-w-max gap-1.5 sm:contents">
+                {row.map((pill) => (
+                  <button
+                    key={pill.id}
+                    type="button"
+                    aria-label={pill.label}
+                    onClick={() => onSelect(pill.starter)}
+                    className="inline-flex shrink-0 items-center justify-start gap-2 rounded-pill border border-border-default px-2.5 py-1.5 transition-colors hover:bg-background-main-secondary sm:w-auto sm:justify-center sm:gap-3 sm:px-4 sm:py-2"
+                  >
+                    <pill.icon className="size-4 shrink-0 text-icon-secondary sm:size-[18px]" />
+                    <span className="min-w-0 text-left body-small leading-tight text-text-secondary sm:text-center">
+                      {pill.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )
