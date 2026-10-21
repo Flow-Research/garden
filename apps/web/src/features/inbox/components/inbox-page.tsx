@@ -93,6 +93,7 @@ function InboxListHeader({
             <DropdownMenuTrigger
               render={
                 <Button
+                  aria-label="Inbox actions"
                   variant="ghost"
                   size="icon-sm"
                   className="text-muted-foreground"

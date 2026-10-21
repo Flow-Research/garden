@@ -350,6 +350,7 @@ function TriggerRow({
         ) : null}
       </div>
       <Button
+        aria-label="Delete trigger"
         size="icon"
         variant="ghost"
         className="size-7 shrink-0"
@@ -670,6 +671,7 @@ export function AutomationDetailPage({
       <header className="flex h-12 shrink-0 items-center justify-between border-b px-5">
         <div className="flex min-w-0 items-center gap-2">
           <button
+            aria-label="Back to workflows"
             type="button"
             className="text-muted-foreground transition-colors hover:text-foreground"
             onClick={onBack}

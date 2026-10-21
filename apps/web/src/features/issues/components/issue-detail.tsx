@@ -1098,6 +1098,7 @@ export function IssueDetail({
                   <TooltipTrigger
                     render={
                       <Button
+                        aria-label="Toggle context rail"
                         variant={contextRailIsOpen ? 'secondary' : 'ghost'}
                         size="icon-sm"
                         className={
@@ -1134,6 +1135,7 @@ export function IssueDetail({
                   <DropdownMenuTrigger
                     render={
                       <Button
+                        aria-label="Issue actions"
                         variant="ghost"
                         size="icon-sm"
                         className="text-muted-foreground"
@@ -1412,6 +1414,7 @@ export function IssueDetail({
                     <TooltipTrigger
                       render={
                         <Button
+                          aria-label="Toggle properties"
                           variant={sidebarOpen ? 'secondary' : 'ghost'}
                           size="icon-sm"
                           className={sidebarOpen ? '' : 'text-muted-foreground'}

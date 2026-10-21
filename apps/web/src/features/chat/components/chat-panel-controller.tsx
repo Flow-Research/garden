@@ -727,7 +727,12 @@ function ShellFrame({
               <EnvironmentDebugDrawer sessionId={sessionId} />
             ) : null}
             {onClose ? (
-              <Button variant="ghost" size="icon-sm" onClick={onClose}>
+              <Button
+                aria-label="Close panel"
+                variant="ghost"
+                size="icon-sm"
+                onClick={onClose}
+              >
                 <X className="size-4" />
               </Button>
             ) : null}

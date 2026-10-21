@@ -266,6 +266,7 @@ function CommentRow({
               <DropdownMenuTrigger
                 render={
                   <Button
+                    aria-label="Comment actions"
                     variant="ghost"
                     size="icon-sm"
                     className="text-muted-foreground"
@@ -516,6 +517,7 @@ function CommentCard({
                   <DropdownMenuTrigger
                     render={
                       <Button
+                        aria-label="Comment actions"
                         variant="ghost"
                         size="icon-sm"
                         className="text-muted-foreground"
