@@ -247,8 +247,8 @@ export function toIssue(
     active_run_id: record.activeRunId ?? null,
     source_summary: sourceSummary,
     reactions: [],
-    created_at: dateToIso(record.createdAt) ?? new Date().toISOString(),
-    updated_at: dateToIso(record.updatedAt) ?? new Date().toISOString(),
+    created_at: record.createdAt.toISOString(),
+    updated_at: record.updatedAt.toISOString(),
   }
 }
 

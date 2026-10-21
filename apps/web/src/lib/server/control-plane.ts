@@ -294,52 +294,8 @@ export async function getWorkspaceIssuePrefix(db: Db, workspaceId: string) {
   return workspace?.issuePrefix ?? 'ISS'
 }
 
-/**
- * `issuePrefix` is required: defaulting it made list and detail views show
- * `ISS-12` for workspaces whose issues are created as `ENG-12`.
- */
-export function toIssue(
-  record: typeof schema.issue.$inferSelect,
-  options: { issuePrefix: string },
-) {
-  const sourceSummary = record.sourceSummary
-    ? {
-        connector_id: 'manual',
-        display_ref: record.sourceSummary,
-        external_url: null,
-      }
-    : null
-  const prefix = options.issuePrefix
-
-  return {
-    id: record.id,
-    workspace_id: record.workspaceId,
-    number: record.number,
-    identifier: formatIssueIdentifier(prefix, record.number),
-    title: record.title,
-    description: record.description ?? null,
-    status: record.status,
-    priority: record.priority,
-    assignee_type:
-      record.assigneeType === 'user' ? 'member' : record.assigneeType,
-    assignee_id: record.assigneeId ?? null,
-    creator_type: 'member',
-    creator_id: record.createdBy,
-    parent_issue_id: record.parentId ?? null,
-    project_id: record.projectId ?? null,
-    position: record.position,
-    due_date: record.dueDate ? new Date(record.dueDate).toISOString() : null,
-    active_run_id: record.activeRunId ?? null,
-    source_summary: sourceSummary,
-    reactions: [],
-    created_at: record.createdAt
-      ? new Date(record.createdAt).toISOString()
-      : new Date().toISOString(),
-    updated_at: record.updatedAt
-      ? new Date(record.updatedAt).toISOString()
-      : new Date().toISOString(),
-  }
-}
+/** The issue DTO mapper lives with the issue services; re-exported for routes. */
+export { toIssue } from '@garden/server/issues/server'
 
 export function toAgent(record: typeof schema.agent.$inferSelect) {
   const created = record.createdAt
