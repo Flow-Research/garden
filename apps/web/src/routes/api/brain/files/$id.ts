@@ -23,7 +23,6 @@ import {
   notFound,
   requireWorkspaceContext,
 } from '@/lib/server/control-plane'
-import type { AppEnv } from '@/lib/server/env'
 import { makeBrainAuditClientLayer } from '@/lib/server/brain-audit-runtime'
 import {
   BrainFileIngestion,
@@ -70,10 +69,7 @@ export const getBrainFileStatus = async ({
   if (!itemIdResult.success) return badRequest('Invalid Brain file id')
   const itemId = ItemId.make(itemIdResult.data)
 
-  const env = appContext.env as AppEnv & {
-    HELIX_URL?: string
-    HELIX_API_KEY?: string
-  }
+  const env = appContext.env
   const helixUrl = env.HELIX_URL
 
   if (helixUrl === undefined) {
@@ -147,10 +143,7 @@ export const retryBrainFileIndexing = async ({
     workspaceId: workspaceContext.workspaceId,
   }
 
-  const env = appContext.env as AppEnv & {
-    HELIX_URL?: string
-    HELIX_API_KEY?: string
-  }
+  const env = appContext.env
   const helixUrl = env.HELIX_URL
   if (helixUrl === undefined) {
     return badRequest('Brain is not configured (missing HELIX_URL)')
@@ -264,10 +257,7 @@ export const deleteBrainFile = async ({
   if (!itemIdResult.success) return badRequest('Invalid Brain file id')
   const itemId = ItemId.make(itemIdResult.data)
 
-  const env = appContext.env as AppEnv & {
-    HELIX_URL?: string
-    HELIX_API_KEY?: string
-  }
+  const env = appContext.env
   const helixUrl = env.HELIX_URL
   if (helixUrl === undefined) {
     return badRequest('Brain is not configured (missing HELIX_URL)')
