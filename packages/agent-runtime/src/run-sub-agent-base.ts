@@ -460,16 +460,22 @@ export abstract class RunSubAgentBase<
       status: submission.status,
       ...(submission.error ? { error: submission.error } : {}),
     }
-    const sendResult = await Result.tryPromise({
-      try: async () => {
-        const instance = await this.env.RUN_WORKFLOW.get(runId)
-        await instance.sendEvent({
-          type: getRunWorkflowTurnCompleteEventType(submission.submissionId),
-          payload,
-        })
+    // RunWorkflow also reconciles from Think's submission state when this
+    // event never arrives, so a delivery that still fails after these retries
+    // delays the run rather than stranding it.
+    const sendResult = await Result.tryPromise(
+      {
+        try: async () => {
+          const instance = await this.env.RUN_WORKFLOW.get(runId)
+          await instance.sendEvent({
+            type: getRunWorkflowTurnCompleteEventType(submission.submissionId),
+            payload,
+          })
+        },
+        catch: (cause) => cause,
       },
-      catch: (cause) => cause,
-    })
+      { retry: { times: 3, delayMs: 250, backoff: 'exponential' } },
+    )
     if (sendResult.isErr()) {
       this.logRunWarning('workflow_notify_failed', {
         runId,
@@ -685,6 +691,41 @@ export abstract class RunSubAgentBase<
       await this.forceCloseFailed(input.runId, statusResult.error.message)
       throw statusResult.error
     }
+    return { status: statusResult.value }
+  }
+
+  /**
+   * Workflow RPC used when the turn-complete event has not arrived: reports
+   * the submission's current Think status (null when Think has no record) so
+   * Workflow can continue without the event once the turn is terminal.
+   */
+  async readWorkflowTurnStatus(input: {
+    submissionId: string
+  }): Promise<{ status: string | null }> {
+    const inspectionResult = await Result.tryPromise({
+      try: async () => await this.inspectSubmission(input.submissionId),
+      catch: (cause) => cause,
+    })
+    if (inspectionResult.isErr()) {
+      throw this.runtimeFailure(inspectionResult.error)
+    }
+    return { status: inspectionResult.value?.status ?? null }
+  }
+
+  /**
+   * Workflow RPC that closes a run whose turn never settled, so the run is
+   * failed with a reason rather than left in progress.
+   */
+  async failWorkflowTurn(input: {
+    runId: string
+    reason: string
+  }): Promise<{ status: string }> {
+    const failedResult = await this.forceCloseFailed(input.runId, input.reason)
+    if (failedResult.isErr()) throw failedResult.error
+    this.clearTurnState()
+
+    const statusResult = await this.readRunStatus(input.runId)
+    if (statusResult.isErr()) throw statusResult.error
     return { status: statusResult.value }
   }
 

@@ -904,6 +904,59 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return await automationAgent.completeWorkflowTurn(input)
   }
 
+  /**
+   * Workflow-facing RPC that reports an issue turn's Think submission status
+   * when its turn-complete event has not arrived.
+   */
+  async readRunTurnStatus(input: {
+    runId: string
+    issueId: string
+    submissionId: string
+  }): Promise<{ status: string | null }> {
+    await this.requireIssueAccess(input.issueId)
+    const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId)
+    return await issueAgent.readWorkflowTurnStatus(input)
+  }
+
+  /** Automation counterpart of `readRunTurnStatus`. */
+  async readAutomationRunTurnStatus(input: {
+    runId: string
+    submissionId: string
+  }): Promise<{ status: string | null }> {
+    await this.requireAutomationRunAccess(input.runId)
+    const automationAgent = await this.subAgent(
+      AutomationRunSubAgent,
+      input.runId,
+    )
+    return await automationAgent.readWorkflowTurnStatus(input)
+  }
+
+  /**
+   * Workflow-facing RPC that fails an issue run whose turn never settled.
+   */
+  async failRunTurn(input: {
+    runId: string
+    issueId: string
+    reason: string
+  }): Promise<{ status: string }> {
+    await this.requireIssueAccess(input.issueId)
+    const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId)
+    return await issueAgent.failWorkflowTurn(input)
+  }
+
+  /** Automation counterpart of `failRunTurn`. */
+  async failAutomationRunTurn(input: {
+    runId: string
+    reason: string
+  }): Promise<{ status: string }> {
+    await this.requireAutomationRunAccess(input.runId)
+    const automationAgent = await this.subAgent(
+      AutomationRunSubAgent,
+      input.runId,
+    )
+    return await automationAgent.failWorkflowTurn(input)
+  }
+
   override async onBeforeSubAgent(
     _request: Request,
     child: { className: string; name: string },
