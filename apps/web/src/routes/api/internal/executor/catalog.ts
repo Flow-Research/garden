@@ -1,8 +1,13 @@
 import { Effect, Result, Schema } from 'effect'
 import { createFileRoute } from '@tanstack/react-router'
 import { executorCatalogSchema } from '@garden/core/executor/catalog'
+import {
+  getConnectorByExecutorSlug,
+  getConnectorById,
+} from '@garden/connectors/registry'
 import { appEnv } from '@/lib/server/env'
 import { loadExecutorCatalog } from '@/lib/server/executor-runtime'
+import { executorRoutingCapabilities } from '@/lib/server/executor-engine/presets'
 
 const ExecutorCatalogRequest = Schema.Struct({
   userId: Schema.String,
@@ -67,6 +72,14 @@ export const Route = createFileRoute('/api/internal/executor/catalog')({
             slug: integration.slug,
             name: integration.name,
             description: integration.description,
+            capabilities: [
+              ...new Set([
+                ...(getConnectorById(integration.slug)?.capabilities ?? []),
+                ...(getConnectorByExecutorSlug(integration.slug)
+                  ?.capabilities ?? []),
+                ...executorRoutingCapabilities(integration.slug),
+              ]),
+            ],
           })),
           connections: catalog.connections.map((connection) => ({
             owner: connection.owner,

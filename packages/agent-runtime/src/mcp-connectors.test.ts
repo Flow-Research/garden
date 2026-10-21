@@ -502,4 +502,58 @@ describe('RuntimeMcpController GitHub tools', () => {
       code: 'mcp_readiness_failed',
     })
   })
+
+  it('skips the remote readiness wait when the turn does not need tools', async () => {
+    let waits = 0
+    const host: McpHost = {
+      name: 'chat:thread-1',
+      env: {
+        BETTER_AUTH_SECRET: 'secret',
+        BETTER_AUTH_URL: 'https://garden.test',
+        HYPERDRIVE: {
+          connectionString: 'postgres://garden.test/db',
+        } as unknown as Hyperdrive,
+      },
+      ctx: { storage: { sql: createSqlStorageStub() } },
+      mcp: {
+        getAITools: () => ({}),
+        listTools: () => [],
+        listServers: () => [{ id: 'executor', name: 'executor' }],
+        waitForConnections: async () => {
+          waits += 1
+        },
+        discoverIfConnected: async () => ({ success: true }),
+      },
+      addRpcMcpServer: async () => ({ state: 'connected' }),
+      addExecutorMcpServer: async () => ({ state: 'connected' }),
+      removeMcpServer: async () => undefined,
+      resolveRuntimeIdentity: async () =>
+        Result.ok({
+          threadId: 'thread-1',
+          workspaceId: 'workspace-1',
+          userId: 'user-1',
+          agentId: 'agent-1',
+        }),
+    }
+    const controller = new RuntimeMcpController(host)
+    const preparer = new RuntimeMcpConnectionPreparer({
+      getController: () => controller,
+      fullSyncIntervalMs: 60_000,
+      waitForConnections: async () => {
+        waits += 1
+      },
+      getServerStates: () => ({
+        executor: { state: 'ready' },
+      }),
+      backgroundRefreshFailedMessage: 'background failed',
+      refreshFailedMessage: 'refresh failed',
+      continuingWithoutReadyMessage: 'continuing',
+    })
+    ;(preparer as unknown as { lastFullSyncAt: number }).lastFullSyncAt =
+      Date.now()
+
+    await preparer.ensureForTurn('chat-turn', { waitForReadiness: false })
+
+    expect(waits).toBe(0)
+  })
 })
