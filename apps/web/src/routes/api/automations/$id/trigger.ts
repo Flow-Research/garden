@@ -7,9 +7,9 @@ import {
   requireAutomation,
   toAutomationRun,
 } from '@/lib/server/automations'
-import { notFound, requireWorkspaceAccess } from '@/lib/server/control-plane'
+import { notFound } from '@/lib/server/control-plane'
 import {
-  requireWorkspacePermission,
+  requireWorkspaceMember,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
@@ -31,18 +31,12 @@ export const Route = createFileRoute('/api/automations/$id/trigger')({
         const automation = automationResult.value
         if (!automation) return notFound('Automation not found')
 
-        const access = await requireWorkspaceAccess(
+        const access = await requireWorkspaceMember(
           appContext,
           automation.workspaceId,
+          workspacePermissions.automationManage,
         )
         if (access instanceof Response) return access
-        const permission = await requireWorkspacePermission({
-          appContext,
-          request,
-          workspaceId: automation.workspaceId,
-          permissions: workspacePermissions.automationManage,
-        })
-        if (permission) return permission
 
         const bodyResult = await parseJsonBody(
           request,

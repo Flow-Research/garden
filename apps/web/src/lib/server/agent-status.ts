@@ -1,13 +1,9 @@
 import { and, eq } from 'drizzle-orm'
 import type { AppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
+import { notFound, toAgent } from '@/lib/server/control-plane'
 import {
-  notFound,
-  requireWorkspaceAccess,
-  toAgent,
-} from '@/lib/server/control-plane'
-import {
-  requireWorkspacePermission,
+  requireWorkspaceMember,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
 
@@ -25,19 +21,12 @@ export async function setAgentStatus(input: {
     .where(eq(schema.agent.id, agentId))
   if (!existingAgent) return notFound('Agent not found')
 
-  const access = await requireWorkspaceAccess(
+  const access = await requireWorkspaceMember(
     appContext,
     existingAgent.workspaceId,
+    workspacePermissions.agentManage,
   )
   if (access instanceof Response) return access
-
-  const permission = await requireWorkspacePermission({
-    appContext,
-    request: appContext.request,
-    workspaceId: existingAgent.workspaceId,
-    permissions: workspacePermissions.agentManage,
-  })
-  if (permission) return permission
 
   const [agent] = await db
     .update(schema.agent)

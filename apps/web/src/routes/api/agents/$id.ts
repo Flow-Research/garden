@@ -14,7 +14,7 @@ import {
   toAgent,
 } from '@/lib/server/control-plane'
 import {
-  requireWorkspacePermission,
+  requireWorkspaceMember,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
 
@@ -79,18 +79,12 @@ export const Route = createFileRoute('/api/agents/$id')({
           .where(eq(schema.agent.id, params.id))
         if (!existingAgent) return notFound('Agent not found')
 
-        const access = await requireWorkspaceAccess(
+        const access = await requireWorkspaceMember(
           appContext,
           existingAgent.workspaceId,
+          workspacePermissions.agentManage,
         )
         if (access instanceof Response) return access
-        const permission = await requireWorkspacePermission({
-          appContext,
-          request,
-          workspaceId: existingAgent.workspaceId,
-          permissions: workspacePermissions.agentManage,
-        })
-        if (permission) return permission
         if (Object.keys(updateValues).length === 0) {
           return badRequest('No valid agent changes submitted')
         }

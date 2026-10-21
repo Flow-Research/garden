@@ -2,7 +2,11 @@ import { Result, TaggedError } from 'better-result'
 import { createAuth } from '@/lib/auth'
 import { appEnv } from '@/lib/server/env'
 import type { AppRequestContext } from '@/lib/server/context'
-import { forbidden, unauthorized } from './control-plane'
+import {
+  forbidden,
+  requireWorkspaceAccess,
+  unauthorized,
+} from './control-plane'
 
 export type WorkspacePermission = Record<string, string[]>
 
@@ -50,6 +54,29 @@ async function hasWorkspacePermission(args: {
   if (result.isErr()) return Result.err(result.error)
 
   return Result.ok(Boolean(result.value.success))
+}
+
+/**
+ * Requires the caller to be a member of the workspace and, when given, to
+ * hold `permissions` there. Returns the membership access or the 401/403
+ * Response to send. Prefer this over pairing requireWorkspaceAccess with
+ * requireWorkspacePermission by hand.
+ */
+export async function requireWorkspaceMember(
+  appContext: AppRequestContext,
+  workspaceId: string,
+  permissions?: WorkspacePermission,
+) {
+  const access = await requireWorkspaceAccess(appContext, workspaceId)
+  if (access instanceof Response || !permissions) return access
+
+  const denied = await requireWorkspacePermission({
+    appContext,
+    request: appContext.request,
+    workspaceId,
+    permissions,
+  })
+  return denied ?? access
 }
 
 export async function requireWorkspacePermission(args: {

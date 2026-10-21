@@ -3,10 +3,10 @@ import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import { notFound, requireWorkspaceAccess } from '@/lib/server/control-plane'
+import { notFound } from '@/lib/server/control-plane'
 import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import {
-  requireWorkspacePermission,
+  requireWorkspaceMember,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
 import { removeSourceBinding } from '@garden/server/issues/source-binding'
@@ -31,18 +31,12 @@ export const Route = createFileRoute(
           .limit(1)
         if (!binding) return notFound('Source binding not found')
 
-        const access = await requireWorkspaceAccess(
+        const access = await requireWorkspaceMember(
           appContext,
           binding.workspaceId,
+          workspacePermissions.issueManage,
         )
         if (access instanceof Response) return access
-        const permission = await requireWorkspacePermission({
-          appContext,
-          request: appContext.request,
-          workspaceId: binding.workspaceId,
-          permissions: workspacePermissions.issueManage,
-        })
-        if (permission) return permission
 
         const removeResult = await removeSourceBinding({
           databaseUrl: appEnv.HYPERDRIVE.connectionString,

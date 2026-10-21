@@ -27,7 +27,7 @@ import {
   toIssue,
 } from '@/lib/server/control-plane'
 import {
-  requireWorkspacePermission,
+  requireWorkspaceMember,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
 import {
@@ -141,19 +141,12 @@ export const Route = createFileRoute('/api/issues/$id')({
           .where(eq(schema.issue.id, params.id))
         if (!existingIssue) return notFound('Issue not found')
 
-        const access = await requireWorkspaceAccess(
+        const access = await requireWorkspaceMember(
           appContext,
           existingIssue.workspaceId,
+          workspacePermissions.issueManage,
         )
         if (access instanceof Response) return access
-
-        const permission = await requireWorkspacePermission({
-          appContext,
-          request,
-          workspaceId: existingIssue.workspaceId,
-          permissions: workspacePermissions.issueManage,
-        })
-        if (permission) return permission
 
         // IDs from the body are global: confirm they live in this workspace
         // before storing them (and before emailing an assignee below).
@@ -365,7 +358,7 @@ export const Route = createFileRoute('/api/issues/$id')({
           }),
         )
       },
-      DELETE: async ({ context, request, params }) => {
+      DELETE: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)
         const db = await appContext.db()
         const [existingIssue] = await db
@@ -374,19 +367,12 @@ export const Route = createFileRoute('/api/issues/$id')({
           .where(eq(schema.issue.id, params.id))
         if (!existingIssue) return notFound('Issue not found')
 
-        const access = await requireWorkspaceAccess(
+        const access = await requireWorkspaceMember(
           appContext,
           existingIssue.workspaceId,
+          workspacePermissions.issueManage,
         )
         if (access instanceof Response) return access
-
-        const permission = await requireWorkspacePermission({
-          appContext,
-          request,
-          workspaceId: existingIssue.workspaceId,
-          permissions: workspacePermissions.issueManage,
-        })
-        if (permission) return permission
 
         await db
           .delete(schema.issue)

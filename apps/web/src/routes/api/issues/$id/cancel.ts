@@ -3,10 +3,10 @@ import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import { notFound, requireWorkspaceAccess } from '@/lib/server/control-plane'
+import { notFound } from '@/lib/server/control-plane'
 import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import {
-  requireWorkspacePermission,
+  requireWorkspaceMember,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
 import {
@@ -27,18 +27,12 @@ export const Route = createFileRoute('/api/issues/$id/cancel')({
           .limit(1)
         if (!issue) return notFound('Issue not found')
 
-        const access = await requireWorkspaceAccess(
+        const access = await requireWorkspaceMember(
           appContext,
           issue.workspaceId,
+          workspacePermissions.issueManage,
         )
         if (access instanceof Response) return access
-        const permission = await requireWorkspacePermission({
-          appContext,
-          request: appContext.request,
-          workspaceId: issue.workspaceId,
-          permissions: workspacePermissions.issueManage,
-        })
-        if (permission) return permission
 
         const runResult = await getActiveIssueRun({
           env: appEnv,
