@@ -78,28 +78,3 @@ export interface CreateMemberRequest {
 export interface UpdateMemberRequest {
   role: MemberRole
 }
-
-// Personal Access Tokens
-export interface PersonalAccessToken {
-  id: string
-  name: string
-  token_prefix: string
-  expires_at: string | null
-  last_used_at: string | null
-  created_at: string
-}
-
-export interface CreatePersonalAccessTokenRequest {
-  name: string
-  expires_in_days?: number
-}
-
-export interface CreatePersonalAccessTokenResponse extends PersonalAccessToken {
-  token: string
-}
-
-// Pagination
-export interface PaginationParams {
-  limit?: number
-  offset?: number
-}
