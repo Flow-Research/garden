@@ -1,1 +1,7 @@
-export { startTestDb, withTestDb, type TestDb } from './container.js'
+export {
+  MIGRATIONS_DIR,
+  startTestDb,
+  withTestDb,
+  type StartTestDbOptions,
+  type TestDb,
+} from './container.js'
