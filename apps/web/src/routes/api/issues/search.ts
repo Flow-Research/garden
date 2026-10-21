@@ -49,6 +49,10 @@ export const Route = createFileRoute('/api/issues/search')({
           .where(eq(schema.organization.id, workspaceId))
           .limit(1)
         const issuePrefix = workspace?.issuePrefix ?? 'ISS'
+        // The prefix arrives as a bound parameter, so Postgres cannot infer a
+        // type for it inside concat() and rejects the whole statement with
+        // 42P18 (indeterminate datatype). Casting the parameter keeps the
+        // identifier search working without inlining user-controlled text.
         const issueWhere = and(
           eq(schema.issue.workspaceId, workspaceId),
           includeClosed ? undefined : sql`${schema.issue.status} <> 'done'`,
@@ -56,7 +60,7 @@ export const Route = createFileRoute('/api/issues/search')({
             or(
               ilike(schema.issue.title, `%${term}%`),
               ilike(schema.issue.description, `%${term}%`),
-              sql`concat(${issuePrefix}, '-', ${schema.issue.number}::text) ilike ${`%${term}%`}`,
+              sql`concat(${issuePrefix}::text, '-', ${schema.issue.number}::text) ilike ${`%${term}%`}`,
             ),
           ),
         )
