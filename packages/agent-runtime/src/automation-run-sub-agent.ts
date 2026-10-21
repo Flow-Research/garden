@@ -19,6 +19,7 @@ import {
 } from '@garden/core/automations/templates'
 import {
   createGardenLogger,
+  errorFields,
   type GardenLogFields,
 } from '@garden/observability/logger'
 import {
@@ -458,13 +459,11 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
         'automation_completed_without_output',
       )
       if (failedResult.isErr()) {
-        console.warn(
-          '[agent-runtime] failed to close empty automation response',
-          {
-            error: failedResult.error.message,
-            runId,
-          },
-        )
+        this.logRunWarning('close_failed', {
+          runId,
+          reason: 'automation_completed_without_output',
+          ...errorFields(failedResult.error),
+        })
       }
       return
     }
@@ -475,9 +474,9 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
       source: 'assistant',
     })
     if (completeResult.isErr()) {
-      console.warn('[agent-runtime] failed to complete automation run', {
-        error: completeResult.error.message,
+      this.logRunWarning('complete_failed', {
         runId,
+        ...errorFields(completeResult.error),
       })
     }
   }
@@ -941,9 +940,9 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     })
 
     if (result.isErr()) {
-      console.warn('[agent-runtime] failed to persist automation trace', {
-        error: result.error.message,
+      this.logRunWarning('trace_persist_failed', {
         runId,
+        ...errorFields(result.error),
       })
     }
   }

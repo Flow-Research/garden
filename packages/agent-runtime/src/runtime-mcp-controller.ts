@@ -29,6 +29,11 @@ import {
 import * as schema from '@garden/db/schema'
 import { captureGardenAnalyticsEvent } from '@garden/observability/analytics/client'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
+import {
+  createGardenLogger,
+  errorFields,
+  type GardenLogger,
+} from '@garden/observability/logger'
 import { upsertPermissionRequestInbox } from '@garden/db/inbox'
 import {
   extractThreadIdFromAgentName,
@@ -39,6 +44,11 @@ import { listAvailableConnectorBindings } from '@garden/server/connectors/availa
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 
 export { canonicalJsonString } from '@garden/connectors/capabilities'
+
+const runtimeMcpLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'runtime-mcp-controller',
+})
 
 export const MCP_CONNECTOR_SERVER_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS mcp_connector_server (
@@ -336,10 +346,11 @@ export class RuntimeMcpController {
 
                   if (result.isOk()) return result.value
 
-                  console.warn('[agent-runtime] MCP tool call failed', {
+                  runtimeMcpLogger.warn('mcp.tool_call.failed', {
+                    agentName: this.host.name,
                     connectorId,
                     toolName: tool.name,
-                    error: result.error.message,
+                    ...errorFields(result.error),
                   })
 
                   return {
@@ -440,8 +451,9 @@ export class RuntimeMcpController {
     })
     if (result.isErr()) {
       this.activeGitHubHostedMcpTools = []
-      console.warn('[agent-runtime] GitHub hosted MCP discovery failed', {
-        error: result.error.message,
+      runtimeMcpLogger.warn('mcp.github_hosted.discovery_failed', {
+        agentName: this.host.name,
+        ...errorFields(result.error),
       })
       return
     }
@@ -462,10 +474,10 @@ export class RuntimeMcpController {
       ])
       if (syncResult.isErr()) {
         this.activeGitHubHostedMcpTools = []
-        console.warn(
-          '[agent-runtime] GitHub hosted MCP capability sync failed',
-          { error: syncResult.error.message },
-        )
+        runtimeMcpLogger.warn('mcp.github_hosted.capability_sync_failed', {
+          agentName: this.host.name,
+          ...errorFields(syncResult.error),
+        })
         return
       }
       this.githubHostedCapabilitiesSynced = true
@@ -554,14 +566,12 @@ export class RuntimeMcpController {
 
                   if (outcome.kind === 'success') return outcome.value
 
-                  console.warn(
-                    '[agent-runtime] native connector tool call failed',
-                    {
-                      connectorId: 'discord',
-                      toolName: nativeTool.name,
-                      error: outcome.message,
-                    },
-                  )
+                  runtimeMcpLogger.warn('mcp.native_tool_call.failed', {
+                    agentName: this.host.name,
+                    connectorId: 'discord',
+                    toolName: nativeTool.name,
+                    errorMessage: outcome.message,
+                  })
 
                   return {
                     error: true,
@@ -639,14 +649,12 @@ export class RuntimeMcpController {
 
                   if (outcome.kind === 'success') return outcome.value
 
-                  console.warn(
-                    '[agent-runtime] native connector tool call failed',
-                    {
-                      connectorId: 'github',
-                      toolName: nativeTool.name,
-                      error: outcome.message,
-                    },
-                  )
+                  runtimeMcpLogger.warn('mcp.native_tool_call.failed', {
+                    agentName: this.host.name,
+                    connectorId: 'github',
+                    toolName: nativeTool.name,
+                    errorMessage: outcome.message,
+                  })
 
                   return {
                     error: true,
@@ -702,13 +710,11 @@ export class RuntimeMcpController {
                   )
                   if (outcome.isOk()) return outcome.value
 
-                  console.warn(
-                    '[agent-runtime] GitHub hosted MCP tool call failed',
-                    {
-                      toolName: hostedTool.name,
-                      error: outcome.error.message,
-                    },
-                  )
+                  runtimeMcpLogger.warn('mcp.github_hosted.tool_call_failed', {
+                    agentName: this.host.name,
+                    toolName: hostedTool.name,
+                    ...errorFields(outcome.error),
+                  })
                   return {
                     error: true,
                     message: `github-mcp.${hostedTool.name} failed: ${outcome.error.message}`,
@@ -766,7 +772,8 @@ export class RuntimeMcpController {
   }) {
     const refs = extractExecutorToolRefsFromInput(args.toolArgs)
     if (refs.length === 0 && mentionsUnparsedExecutorTools(args.toolArgs)) {
-      console.warn('[agent-runtime] unparsed executor tool call', {
+      runtimeMcpLogger.warn('mcp.executor_tool_call.unparsed', {
+        agentName: this.host.name,
         toolCallId: args.toolCallId,
       })
     }
@@ -1060,12 +1067,10 @@ export class RuntimeMcpController {
       catch: (cause) => cause,
     }).then((result) => {
       if (result.isErr()) {
-        console.warn('[agent-runtime] failed to capture approval request', {
-          error:
-            result.error instanceof Error
-              ? result.error.message
-              : String(result.error),
+        runtimeMcpLogger.warn('mcp.approval_request.capture_failed', {
+          agentName: this.host.name,
           approvalId: insertResult.value,
+          ...errorFields(result.error),
         })
       }
     })
@@ -1448,9 +1453,8 @@ type RuntimeMcpConnectionPreparerOptions = {
   waitForConnections?: (timeoutMs: number) => Promise<unknown>
   getServerStates?: () => RuntimeMcpServerStates
   connectionWaitTimeoutMs?: number
-  backgroundRefreshFailedMessage: string
-  refreshFailedMessage: string
-  continuingWithoutReadyMessage: string
+  /** The owning runtime's logger, so MCP events carry its component. */
+  logger: GardenLogger
   readinessPolicy?: 'opportunistic' | 'required'
   onSuccessfulRefresh?: (controller: RuntimeMcpController) => void
   onThreadNotFound?: (
@@ -1480,8 +1484,9 @@ export class RuntimeMcpConnectionPreparer {
       const readinessResult = await this.waitForConnectionsReady(reason)
       if (readinessResult.isOk()) return controller
 
-      console.warn('[agent-runtime] warm MCP connector state is stale', {
-        error: readinessResult.error.message,
+      this.options.logger.warn('mcp.connectors.stale', {
+        reason,
+        errorMessage: readinessResult.error.message,
         serverIds: readinessResult.error.serverIds,
       })
 
@@ -1491,25 +1496,26 @@ export class RuntimeMcpConnectionPreparer {
           : undefined,
       )
       if (resetResult.isErr()) {
-        console.warn(
-          '[agent-runtime] failed to reset stale MCP connector servers',
-          resetResult.error,
-        )
+        this.options.logger.warn('mcp.connectors.reset_failed', {
+          reason,
+          ...errorFields(resetResult.error),
+        })
       }
     }
 
     if (warmResult.isErr()) {
-      console.warn(
-        '[agent-runtime] failed to inspect warm MCP connector state',
-        warmResult.error,
-      )
+      this.options.logger.warn('mcp.connectors.inspect_failed', {
+        reason,
+        ...errorFields(warmResult.error),
+      })
     }
 
     const readyResult = await this.ensureLoaded(reason)
     if (readyResult.isErr()) {
-      console.warn(this.options.continuingWithoutReadyMessage, {
+      this.options.logger.warn('mcp.connectors.not_ready', {
         reason,
-        error: readyResult.error,
+        readinessPolicy: this.options.readinessPolicy ?? 'opportunistic',
+        errorMessage: readyResult.error,
       })
       if (this.options.readinessPolicy === 'required') {
         throw new RuntimeMcpError({
@@ -1538,9 +1544,9 @@ export class RuntimeMcpConnectionPreparer {
       },
       (cause: unknown) => {
         const message = cause instanceof Error ? cause.message : String(cause)
-        console.warn(this.options.backgroundRefreshFailedMessage, {
+        this.options.logger.warn('mcp.connectors.background_refresh_failed', {
           reason,
-          error: message,
+          errorMessage: message,
         })
         this.refreshInFlight = null
         return Result.err(message)
@@ -1564,9 +1570,9 @@ export class RuntimeMcpConnectionPreparer {
         await this.options.onThreadNotFound?.(reason, controller)
         return Result.ok(undefined)
       }
-      console.warn(this.options.refreshFailedMessage, {
+      this.options.logger.warn('mcp.connectors.refresh_failed', {
         reason,
-        error: connectionResult.error,
+        ...errorFields(connectionResult.error),
       })
       return Result.err(connectionResult.error.message)
     }
@@ -1574,9 +1580,9 @@ export class RuntimeMcpConnectionPreparer {
     if (options?.waitForReadiness !== false && this.shouldWaitForReadiness()) {
       const readinessResult = await this.waitForConnectionsReady(reason)
       if (readinessResult.isErr()) {
-        console.warn('[agent-runtime] MCP connector readiness check failed', {
+        this.options.logger.warn('mcp.connectors.readiness_failed', {
           reason,
-          error: readinessResult.error.message,
+          errorMessage: readinessResult.error.message,
           serverIds: readinessResult.error.serverIds,
         })
 
@@ -1586,10 +1592,10 @@ export class RuntimeMcpConnectionPreparer {
             : undefined,
         )
         if (resetResult.isErr()) {
-          console.warn(
-            '[agent-runtime] failed to reset stale MCP connector servers',
-            resetResult.error,
-          )
+          this.options.logger.warn('mcp.connectors.reset_failed', {
+            reason,
+            ...errorFields(resetResult.error),
+          })
         }
         return Result.err(readinessResult.error.message)
       }

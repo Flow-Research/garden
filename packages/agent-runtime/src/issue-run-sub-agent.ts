@@ -7,7 +7,7 @@ import { hasToolCall, type ToolSet, type UIMessage } from 'ai'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { classifyConnectorError } from '@garden/core/connectors/errors'
-import { createGardenLogger } from '@garden/observability/logger'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import {
   GARDEN_ANALYTICS_EVENTS,
   type GardenAnalyticsEventName,
@@ -370,10 +370,11 @@ export class IssueRunSubAgent extends RunSubAgentBase<
       },
     })
     if (eventResult.isErr()) {
-      console.warn('[agent-runtime] failed to append tool start event', {
-        error: eventResult.error.message,
+      this.logRunWarning('tool.event_append_failed', {
         runId: run.runId,
-        tool: ctx.toolName,
+        toolName: ctx.toolName,
+        eventType: 'issue_run:tool_started',
+        ...errorFields(eventResult.error),
       })
     }
 
@@ -419,10 +420,11 @@ export class IssueRunSubAgent extends RunSubAgentBase<
       },
     })
     if (eventResult.isErr()) {
-      console.warn('[agent-runtime] failed to append tool finish event', {
-        error: eventResult.error.message,
+      this.logRunWarning('tool.event_append_failed', {
         runId: run.runId,
-        tool: ctx.toolName,
+        toolName: ctx.toolName,
+        eventType: 'issue_run:tool_finished',
+        ...errorFields(eventResult.error),
       })
     }
     this.aiObservation.afterToolCall(ctx)
@@ -438,21 +440,18 @@ export class IssueRunSubAgent extends RunSubAgentBase<
   ) {
     const guardResult = await this.enforceResolutionGuard(runId)
     if (guardResult.isErr()) {
-      console.warn('[agent-runtime] issue run exit guard failed', {
-        error: guardResult.error.message,
+      this.logRunWarning('resolution_guard_failed', {
         runId,
+        ...errorFields(guardResult.error),
       })
     }
 
     const finalizeChildResult = await this.finalizeChildIssueResolution(runId)
     if (finalizeChildResult.isErr()) {
-      console.warn(
-        '[agent-runtime] issue run child resolution finalize failed',
-        {
-          error: finalizeChildResult.error.message,
-          runId,
-        },
-      )
+      this.logRunWarning('child_resolution_finalize_failed', {
+        runId,
+        ...errorFields(finalizeChildResult.error),
+      })
     }
 
     const finalStatusResult = await this.readRunStatus(runId)

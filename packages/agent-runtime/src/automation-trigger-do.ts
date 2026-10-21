@@ -9,7 +9,7 @@ import {
 } from 'better-result'
 import { CronExpressionParser } from 'cron-parser'
 import * as schema from '@garden/db/schema'
-import { createGardenLogger } from '@garden/observability/logger'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import {
   cancelAutomationRun,
   startAutomationRun,
@@ -312,9 +312,10 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
         }),
     })
     if (result.isErr()) {
-      console.error('[agent-runtime] automation trigger schedule failed', {
-        message: result.error.message,
-        code: result.error.code,
+      automationTriggerLogger.error('automation_trigger.schedule_failed', {
+        triggerId: payload.triggerId,
+        automationId: payload.automationId,
+        ...errorFields(result.error),
       })
     }
   }
@@ -350,10 +351,10 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
 
     const dispatchResult = await this.dispatch({ config, source: 'schedule' })
     if (dispatchResult.isErr()) {
-      console.error('[agent-runtime] automation dispatch failed', {
+      automationTriggerLogger.error('automation_trigger.dispatch_failed', {
         automationId: config.automationId,
         triggerId: config.triggerId,
-        message: dispatchResult.error.message,
+        ...errorFields(dispatchResult.error),
       })
       return Result.err(dispatchResult.error)
     }

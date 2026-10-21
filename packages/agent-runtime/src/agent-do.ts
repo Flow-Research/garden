@@ -52,7 +52,7 @@ import {
   derivePermissions,
   type AgentPermissions,
 } from '@garden/core/agents/permissions'
-import { createGardenLogger } from '@garden/observability/logger'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import * as schema from '@garden/db/schema'
 import {
   describeSandboxProbe,
@@ -1251,18 +1251,15 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     getServerStates: () =>
       this.getMcpServers().servers as RuntimeMcpServerStates,
     connectionWaitTimeoutMs: mcpRuntimeConfig.connectionWaitTimeoutMs,
-    backgroundRefreshFailedMessage:
-      '[agent-runtime] chat MCP background warm failed',
-    refreshFailedMessage: '[agent-runtime] chat MCP connector warm failed',
-    continuingWithoutReadyMessage:
-      '[agent-runtime] continuing without warmed chat MCP connectors',
+    logger: agentRuntimeLogger,
     onSuccessfulRefresh: (controller) => {
       const captured = controller.captureObservedMcpToolChanges()
       if (captured.isErr()) {
-        console.warn(
-          '[agent-runtime] failed to capture warmed chat MCP tool changes',
-          captured.error,
-        )
+        agentRuntimeLogger.warn('chat.mcp_tool_changes_capture_failed', {
+          agentName: this.name,
+          phase: 'warm',
+          ...errorFields(captured.error),
+        })
       }
     },
     onThreadNotFound: async (reason, controller) =>
@@ -1695,10 +1692,11 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     const mcpController = this.getMcpController()
     const captured = mcpController.captureObservedMcpToolChanges()
     if (captured.isErr()) {
-      console.warn(
-        '[agent-runtime] failed to capture MCP tool changes',
-        captured.error,
-      )
+      agentRuntimeLogger.warn('chat.mcp_tool_changes_capture_failed', {
+        agentName: this.name,
+        phase: 'turn',
+        ...errorFields(captured.error),
+      })
     }
 
     const documentContext =
@@ -1716,12 +1714,10 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     ).match({
       ok: (context) => context,
       err: (error) => {
-        console.warn(
-          '[agent-runtime] failed to activate slash-invoked skills',
-          {
-            error,
-          },
-        )
+        agentRuntimeLogger.warn('chat.slash_skills_activation_failed', {
+          agentName: this.name,
+          errorMessage: error,
+        })
         return ''
       },
     })
@@ -2450,17 +2446,14 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   ) {
     const resetResult = await mcpController.resetProxyMcpServers()
     if (resetResult.isErr()) {
-      console.warn(
-        '[agent-runtime] failed to reset MCP connectors for paused chat facet',
-        {
-          reason,
-          agentName: this.name,
-          error: resetResult.error,
-        },
-      )
+      agentRuntimeLogger.warn('chat.mcp_pause_reset_failed', {
+        reason,
+        agentName: this.name,
+        ...errorFields(resetResult.error),
+      })
     }
 
-    console.warn('[agent-runtime] paused MCP connectors for chat facet', {
+    agentRuntimeLogger.warn('chat.mcp_paused', {
       reason,
       agentName: this.name,
     })

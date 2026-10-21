@@ -18,9 +18,10 @@ import { eq } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
 import * as schema from '@garden/db/schema'
 import type { AgentPermissions } from '@garden/core/agents/permissions'
-import type {
-  GardenLogFields,
-  GardenLogger,
+import {
+  errorFields,
+  type GardenLogFields,
+  type GardenLogger,
 } from '@garden/observability/logger'
 import { evaluateRuntimeToolPermission } from './chat-permissions'
 import {
@@ -228,9 +229,7 @@ export abstract class RunSubAgentBase<
     getServerStates: () =>
       this.getMcpServers().servers as RuntimeMcpServerStates,
     connectionWaitTimeoutMs: mcpRuntimeConfig.connectionWaitTimeoutMs,
-    backgroundRefreshFailedMessage: `[agent-runtime] ${this.runConfig().kind} MCP background refresh failed`,
-    refreshFailedMessage: `[agent-runtime] ${this.runConfig().kind} MCP connector refresh failed`,
-    continuingWithoutReadyMessage: `[agent-runtime] ${this.runConfig().kind} MCP connectors are not ready`,
+    logger: this.runConfig().logger,
     readinessPolicy: 'required',
   })
 
@@ -401,10 +400,10 @@ export abstract class RunSubAgentBase<
     )
     const observedChangesResult = mcpController.captureObservedMcpToolChanges()
     if (observedChangesResult.isErr()) {
-      console.warn(
-        `[agent-runtime] failed to capture MCP tool changes for ${config.kind} run`,
-        observedChangesResult.error,
-      )
+      this.logRunWarning('mcp_tool_changes_capture_failed', {
+        runId,
+        ...errorFields(observedChangesResult.error),
+      })
     }
 
     const stableMcpTools = mcpController.wrapGetAITools(
@@ -472,14 +471,11 @@ export abstract class RunSubAgentBase<
       catch: (cause) => cause,
     })
     if (sendResult.isErr()) {
-      console.warn(
-        `[agent-runtime] failed to notify ${this.runConfig().kind} workflow turn`,
-        {
-          error: errorMessage(sendResult.error),
-          runId,
-          submissionId: submission.submissionId,
-        },
-      )
+      this.logRunWarning('workflow_notify_failed', {
+        runId,
+        submissionId: submission.submissionId,
+        ...errorFields(sendResult.error),
+      })
     }
   }
 
@@ -495,13 +491,10 @@ export abstract class RunSubAgentBase<
 
     const persistResult = await this.persistUsage(runId, nextUsage)
     if (persistResult.isErr()) {
-      console.warn(
-        `[agent-runtime] failed to persist ${this.runConfig().kind} run usage`,
-        {
-          error: persistResult.error.message,
-          runId,
-        },
-      )
+      this.logRunWarning('usage_persist_failed', {
+        runId,
+        ...errorFields(persistResult.error),
+      })
     }
   }
 
@@ -521,9 +514,10 @@ export abstract class RunSubAgentBase<
     if (this.aggUsage) {
       const usageResult = await this.persistUsage(runId, this.aggUsage)
       if (usageResult.isErr()) {
-        console.warn('[agent-runtime] failed to persist final usage', {
-          error: usageResult.error.message,
+        this.logRunWarning('usage_persist_failed', {
           runId,
+          final: true,
+          ...errorFields(usageResult.error),
         })
       }
     }
@@ -531,17 +525,18 @@ export abstract class RunSubAgentBase<
     if (result.status === 'aborted') {
       const cancelResult = await this.cancelRunIfRequested(runId)
       if (cancelResult.isErr()) {
-        console.warn(
-          `[agent-runtime] failed to apply ${config.kind} run cancellation`,
-          { error: cancelResult.error.message, runId },
-        )
+        this.logRunWarning('cancel_failed', {
+          runId,
+          ...errorFields(cancelResult.error),
+        })
       } else if (!cancelResult.value) {
         const failedResult = await this.forceCloseFailed(runId, 'turn_aborted')
         if (failedResult.isErr()) {
-          console.warn(
-            `[agent-runtime] failed to close aborted ${config.kind} run`,
-            { error: failedResult.error.message, runId },
-          )
+          this.logRunWarning('close_failed', {
+            runId,
+            reason: 'turn_aborted',
+            ...errorFields(failedResult.error),
+          })
         }
       }
     } else if (result.status === 'error') {
@@ -550,10 +545,11 @@ export abstract class RunSubAgentBase<
         result.error ?? 'chat_error',
       )
       if (failedResult.isErr()) {
-        console.warn(
-          `[agent-runtime] failed to close errored ${config.kind} run`,
-          { error: failedResult.error.message, runId },
-        )
+        this.logRunWarning('close_failed', {
+          runId,
+          reason: 'turn_error',
+          ...errorFields(failedResult.error),
+        })
       }
     } else {
       await this.finishSettledTurn(runId, result)
@@ -695,13 +691,10 @@ export abstract class RunSubAgentBase<
   async requestCancel(input: { runId: string }): Promise<void> {
     const cancelResult = await this.setCancelRequested(input.runId, 'cancelled')
     if (cancelResult.isErr()) {
-      console.warn(
-        `[agent-runtime] failed to request ${this.runConfig().kind} run cancellation`,
-        {
-          error: cancelResult.error.message,
-          runId: input.runId,
-        },
-      )
+      this.logRunWarning('cancel_request_failed', {
+        runId: input.runId,
+        ...errorFields(cancelResult.error),
+      })
     }
     await this.cancelRunSubmissions(input.runId, 'cancelled')
     this.abortAllRequests()
@@ -714,16 +707,15 @@ export abstract class RunSubAgentBase<
    * recorded cancellation.
    */
   private async cancelRunSubmissions(runId: string, reason: string) {
-    const kind = this.runConfig().kind
     const submissionsResult = await Result.tryPromise({
       try: async () =>
         await this.listSubmissions({ status: ['pending', 'running'] }),
       catch: (cause) => cause,
     })
     if (submissionsResult.isErr()) {
-      console.warn(`[agent-runtime] failed to list ${kind} submissions`, {
-        error: errorMessage(submissionsResult.error),
+      this.logRunWarning('submissions_list_failed', {
         runId,
+        ...errorFields(submissionsResult.error),
       })
       return
     }
@@ -740,9 +732,9 @@ export abstract class RunSubAgentBase<
       catch: (cause) => cause,
     })
     if (cancelResult.isErr()) {
-      console.warn(`[agent-runtime] failed to cancel ${kind} submissions`, {
-        error: errorMessage(cancelResult.error),
+      this.logRunWarning('submissions_cancel_failed', {
         runId,
+        ...errorFields(cancelResult.error),
       })
     }
   }
@@ -817,6 +809,12 @@ export abstract class RunSubAgentBase<
       submissionId: submitResult.value.submissionId,
       status: submitResult.value.status,
     })
+  }
+
+  /** Logs `<kind>_run.<event>` at warn level through the run's logger. */
+  protected logRunWarning(event: string, fields: GardenLogFields) {
+    const config = this.runConfig()
+    config.logger.warn(`${config.kind}_run.${event}`, fields)
   }
 
   protected runtimeFailure(cause: unknown) {
