@@ -46,9 +46,19 @@ const automationStateSchema = z.object({
   inFlightRunId: z.string().nullable(),
 })
 
+const rescheduleRetrySchema = z.object({
+  triggerId: z.string().min(1),
+  attempt: z.number().int().min(1),
+})
+
+/** The SDK passes the schedule row as the callback's second argument. */
+const scheduleRowSchema = z.object({ id: z.string().min(1) })
+
 type AutomationConfig = z.infer<typeof automationConfigSchema>
 
 type AutomationState = z.infer<typeof automationStateSchema>
+
+type RescheduleRetry = z.infer<typeof rescheduleRetrySchema>
 
 type AutomationRow = {
   id: string
@@ -90,6 +100,12 @@ type InFlightRunRow = {
 
 const CONFIG_KEY = 'config'
 const STATE_KEY = 'state'
+const LAST_FIRED_SCHEDULE_KEY = 'lastFiredScheduleId'
+
+const RESCHEDULE_RETRY_BASE_SECONDS = 60
+const RESCHEDULE_RETRY_MAX_SECONDS = 60 * 60
+const RETRYABLE_SCHEDULE_ERRORS: ReadonlySet<AutomationDoError['code']> =
+  new Set(['db_error', 'schedule_error'])
 
 export class AutomationDoError extends TaggedError('AutomationDoError')<{
   code:
@@ -264,6 +280,7 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
 
     this.ctx.storage.kv.delete(CONFIG_KEY)
     this.ctx.storage.kv.delete(STATE_KEY)
+    this.ctx.storage.kv.delete(LAST_FIRED_SCHEDULE_KEY)
 
     return Result.ok()
   }
@@ -323,9 +340,13 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
    * Invoked by the Agents SDK schedule row created for the trigger. Garden
    * still computes timezone-aware next run dates itself, but Cloudflare now
    * owns alarm dispatch, retries, and schedule bookkeeping instead of our DO
-   * writing raw alarms directly.
+   * writing raw alarms directly. The SDK deletes the one-shot row once this
+   * returns, so the next fire is always booked here (see `bookNextRun`).
    */
-  async fireScheduledTrigger(rawPayload: unknown): Promise<void> {
+  async fireScheduledTrigger(
+    rawPayload: unknown,
+    rawRow?: unknown,
+  ): Promise<void> {
     const parsed = automationConfigSchema.safeParse(rawPayload)
     if (!parsed.success) {
       automationTriggerLogger.error('automation_trigger.invalid_payload', {
@@ -333,41 +354,112 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
       })
       return
     }
-    const payload = parsed.data
-    const result = await Result.tryPromise({
-      try: async () => await this.handleScheduledTrigger(payload),
-      catch: (cause) =>
-        automationDoError({
-          code: 'dispatch_failed',
-          message: `Automation trigger schedule failed: ${errorMessage(cause)}`,
-          cause,
-        }),
-    })
-    if (result.isErr()) {
-      automationTriggerLogger.error('automation_trigger.schedule_failed', {
-        triggerId: payload.triggerId,
-        automationId: payload.automationId,
-        ...errorFields(result.error),
-      })
+    const config = this.getConfig()
+    if (!config || config.triggerId !== parsed.data.triggerId) return
+
+    // The SDK retries a callback that throws, so a redelivered schedule row
+    // must not dispatch its run a second time.
+    const scheduleId = scheduleRowSchema.safeParse(rawRow).data?.id ?? null
+    const alreadyFired =
+      scheduleId !== null &&
+      this.ctx.storage.kv.get(LAST_FIRED_SCHEDULE_KEY) === scheduleId
+    if (!alreadyFired) {
+      if (scheduleId)
+        this.ctx.storage.kv.put(LAST_FIRED_SCHEDULE_KEY, scheduleId)
+      const fireResult = await this.serializeFire(() =>
+        this.fireScheduledRun(config),
+      )
+      // A failed fire is recorded on its run; the schedule carries on.
+      if (fireResult.isErr()) {
+        automationTriggerLogger.error('automation_trigger.fire_failed', {
+          automationId: config.automationId,
+          triggerId: config.triggerId,
+          ...errorFields(fireResult.error),
+        })
+      }
     }
+
+    await this.bookNextRun(config.triggerId, 1)
   }
 
-  private async handleScheduledTrigger(
-    payload: AutomationConfig,
-  ): Promise<ResultValue<void, AutomationDoError>> {
+  /**
+   * Invoked by the retry wakeup that `bookNextRun` stores when the next cron
+   * fire could not be booked.
+   */
+  async retryScheduleNext(rawPayload: unknown): Promise<void> {
+    const parsed = rescheduleRetrySchema.safeParse(rawPayload)
+    if (!parsed.success) {
+      automationTriggerLogger.error('automation_trigger.invalid_payload', {
+        errorMessage: parsed.error.message,
+      })
+      return
+    }
     const config = this.getConfig()
-    if (!config || config.triggerId !== payload.triggerId) return Result.ok()
+    if (!config || config.triggerId !== parsed.data.triggerId) return
 
-    // Each schedule fires once, so the next one is booked whatever happens to
-    // this run. Returning early on a failed policy check or skip record used to
-    // end the automation silently after a single transient error.
-    const fireResult = await this.serializeFire(() =>
-      this.fireScheduledRun(config),
+    await this.bookNextRun(parsed.data.triggerId, parsed.data.attempt)
+  }
+
+  /**
+   * Books the trigger's next cron fire. Each SDK schedule fires once and is
+   * deleted afterwards, so a failed booking used to end the automation. A
+   * transient failure (the database or the schedule store) now stores a retry
+   * wakeup in its place, backing off exponentially, so the automation is never
+   * left without a pending schedule. Configuration errors are not retried:
+   * they only heal when the trigger is edited, which reinstalls it. Throws only
+   * when even the retry cannot be stored, so the SDK retries the callback.
+   */
+  private async bookNextRun(triggerId: string, attempt: number) {
+    const nextResult = await this.scheduleNext(triggerId, new Date())
+    if (nextResult.isOk()) return
+
+    const retryable = RETRYABLE_SCHEDULE_ERRORS.has(nextResult.error.code)
+    const retryInSeconds = Math.min(
+      RESCHEDULE_RETRY_BASE_SECONDS * 2 ** (attempt - 1),
+      RESCHEDULE_RETRY_MAX_SECONDS,
     )
-    const nextResult = await this.scheduleNext(config.triggerId, new Date())
-    if (nextResult.isErr()) return Result.err(nextResult.error)
+    automationTriggerLogger.error('automation_trigger.reschedule_failed', {
+      triggerId,
+      attempt,
+      ...(retryable ? { retryInSeconds } : {}),
+      ...errorFields(nextResult.error),
+    })
+    if (!retryable) return
 
-    return fireResult
+    const retryResult = await this.scheduleRescheduleRetry({
+      triggerId,
+      attempt: attempt + 1,
+      delaySeconds: retryInSeconds,
+    })
+    if (retryResult.isErr()) throw retryResult.error
+  }
+
+  private async scheduleRescheduleRetry(args: {
+    triggerId: string
+    attempt: number
+    delaySeconds: number
+  }): Promise<ResultValue<void, AutomationDoError>> {
+    const config = this.getConfig()
+    if (!config || config.triggerId !== args.triggerId) return Result.ok()
+
+    const cancelResult = await this.cancelAutomationSchedule(config)
+    if (cancelResult.isErr()) return Result.err(cancelResult.error)
+
+    const result = await Result.tryPromise({
+      try: async () =>
+        await this.schedule(args.delaySeconds, 'retryScheduleNext', {
+          triggerId: args.triggerId,
+          attempt: args.attempt,
+        } satisfies RescheduleRetry),
+      catch: (cause) => scheduleError('schedule automation retry', cause),
+    })
+    if (result.isErr()) return Result.err(result.error)
+
+    this.ctx.storage.kv.put(CONFIG_KEY, {
+      ...config,
+      scheduleId: result.value.id,
+    } satisfies AutomationConfig)
+    return Result.ok()
   }
 
   private async fireScheduledRun(
@@ -388,14 +480,7 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
       source: 'schedule',
       trackInFlight: true,
     })
-    if (dispatchResult.isErr()) {
-      automationTriggerLogger.error('automation_trigger.dispatch_failed', {
-        automationId: config.automationId,
-        triggerId: config.triggerId,
-        ...errorFields(dispatchResult.error),
-      })
-      return Result.err(dispatchResult.error)
-    }
+    if (dispatchResult.isErr()) return Result.err(dispatchResult.error)
 
     return Result.ok()
   }
