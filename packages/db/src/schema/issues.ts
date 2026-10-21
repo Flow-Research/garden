@@ -37,12 +37,7 @@ import {
   issueWorkProductTypeValues,
   sourceKindValues,
 } from './issue-values.js'
-
-function sqlValueList(values: readonly string[]) {
-  return sql.raw(
-    values.map((value) => `'${value.replace(/'/g, "''")}'`).join(', '),
-  )
-}
+import { sqlValueList } from './sql-values.js'
 
 export const issue = pgTable(
   'issue',

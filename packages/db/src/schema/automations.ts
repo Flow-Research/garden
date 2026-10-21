@@ -22,12 +22,7 @@ import {
 import { issuePriorityValues } from './issue-values.js'
 import { user } from './users.js'
 import { organization } from './workspaces.js'
-
-function sqlValueList(values: readonly string[]) {
-  return sql.raw(
-    values.map((value) => `'${value.replace(/'/g, "''")}'`).join(', '),
-  )
-}
+import { sqlValueList } from './sql-values.js'
 
 export const automation = pgTable(
   'automation',
