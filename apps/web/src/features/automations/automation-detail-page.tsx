@@ -16,6 +16,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { formatCompactNumber, formatDateTime } from '@garden/core/format'
 import type { Agent } from '@garden/core/types'
 import type { Automation, AutomationRun, AutomationTrigger } from '@/lib/api'
 import type { AutomationRunStatus } from '@/lib/api/automations'
@@ -53,15 +54,6 @@ import {
   toCronExpression,
   type TriggerConfig,
 } from './trigger-config'
-
-function formatDate(date: string): string {
-  return new Date(date).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
 
 function numberValue(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
@@ -130,10 +122,6 @@ function traceLabel(kind: string) {
     default:
       return kind.replace(/_/g, ' ')
   }
-}
-
-function formatTokenCount(value: number) {
-  return Intl.NumberFormat(undefined, { notation: 'compact' }).format(value)
 }
 
 const RUN_STATUS_CONFIG: Record<
@@ -285,7 +273,7 @@ function RunRow({
           {debugMode && (totalTokens !== null || model) ? (
             <span className="ml-2 text-[11px] text-muted-foreground">
               {totalTokens !== null
-                ? `${formatTokenCount(totalTokens)} tokens`
+                ? `${formatCompactNumber(totalTokens)} tokens`
                 : 'usage'}
               {model ? ` · ${model}` : null}
             </span>
@@ -293,7 +281,7 @@ function RunRow({
         </span>
         <span className="w-32 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
           {run.triggered_at || run.created_at
-            ? formatDate(run.triggered_at ?? run.created_at ?? '')
+            ? formatDateTime(run.triggered_at ?? run.created_at ?? '')
             : '--'}
         </span>
       </div>
@@ -357,7 +345,7 @@ function TriggerRow({
         ) : null}
         {trigger.next_run_at ? (
           <div className="text-xs text-muted-foreground">
-            Next: {formatDate(trigger.next_run_at)}
+            Next: {formatDateTime(trigger.next_run_at)}
           </div>
         ) : null}
       </div>

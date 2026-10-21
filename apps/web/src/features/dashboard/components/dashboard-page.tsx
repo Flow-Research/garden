@@ -32,6 +32,7 @@ import {
 } from '@garden/ui/components/ui/empty'
 import { cn } from '@garden/ui/lib/utils'
 import { useWorkspaceId } from '@garden/app-state/hooks'
+import { timeAgo } from '@garden/core/format'
 import { STATUS_CONFIG } from '@garden/core/issues/config'
 import { PriorityIcon, StatusIcon } from '@/features/issues/components'
 import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigation'
@@ -44,16 +45,6 @@ import {
 import type { DashboardBucket } from '../dashboard.server'
 
 const DASHBOARD_PAGE_SKELETON = 'dashboard-page'
-
-function timeAgo(date: string) {
-  const delta = Date.now() - new Date(date).getTime()
-  const minutes = Math.max(1, Math.round(delta / 60_000))
-  if (minutes < 60) return `${minutes}m`
-  const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours}h`
-  const days = Math.round(hours / 24)
-  return `${days}d`
-}
 
 function connectionIcon(id: string): LucideIcon {
   switch (id) {
@@ -663,7 +654,7 @@ function DashboardActivitySection({
                     </span>
                   </p>
                   <span className="shrink-0 pt-0.5 text-xs text-muted-foreground">
-                    {timeAgo(item.created_at)}
+                    {timeAgo(item.created_at, { compact: true })}
                   </span>
                 </div>
               </button>
@@ -712,7 +703,7 @@ function DashboardActivitySection({
                     {STATUS_CONFIG[issue.status]?.label ?? issue.status}
                   </span>
                   <span className="shrink-0 text-xs text-muted-foreground">
-                    {timeAgo(issue.updatedAt)}
+                    {timeAgo(issue.updatedAt, { compact: true })}
                   </span>
                 </div>
               </button>

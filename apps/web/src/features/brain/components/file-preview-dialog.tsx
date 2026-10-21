@@ -17,7 +17,8 @@ import {
   brainFilePdfOptions,
   brainFileTextOptions,
 } from '../queries'
-import { formatRelativeTime, truncateMiddle } from '../format'
+import { timeAgo } from '@garden/core/format'
+import { truncateMiddle } from '../format'
 
 type PreviewKind = 'docx' | 'pdf' | 'text' | 'xlsx' | 'unavailable'
 
@@ -146,7 +147,7 @@ export function BrainFilePreviewDialog({
   const pageCount = pdfQuery.data?.numPages
   const metaLine = [
     file.createdByName ? `Made by ${file.createdByName}` : null,
-    file.uploadedAt ? formatRelativeTime(file.uploadedAt) : null,
+    file.uploadedAt ? timeAgo(file.uploadedAt, { absoluteAfterDays: 7 }) : null,
   ]
     .filter(Boolean)
     .join(' · ')

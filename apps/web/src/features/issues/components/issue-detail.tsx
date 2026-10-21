@@ -119,7 +119,7 @@ import { TodoAgentHintDialog } from './todo-agent-hint-dialog'
 import { ReactionBar } from '@garden/ui/components/common/reaction-bar'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { CreateIssueModal } from '../../modals/create-issue'
-import { timeAgo } from '@garden/core/utils'
+import { formatCompactNumber, timeAgo } from '@garden/core/format'
 import { cn } from '@garden/ui/lib/utils'
 import { useIssueSearch } from '../hooks/use-issue-search'
 import { useIssueDetailData } from '../hooks/use-issue-detail-data'
@@ -293,12 +293,6 @@ function RunEventDebugDetails({ entry }: { entry: TimelineEntry }) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function formatTokenCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
-  return String(n)
-}
 
 function IssueDetailPageFixture() {
   return (
@@ -1058,20 +1052,20 @@ export function IssueDetail({
             <div className="space-y-0.5 pl-2">
               <PropRow label="Input">
                 <span className="text-muted-foreground">
-                  {formatTokenCount(usage.total_input_tokens)}
+                  {formatCompactNumber(usage.total_input_tokens)}
                 </span>
               </PropRow>
               <PropRow label="Generated">
                 <span className="text-muted-foreground">
-                  {formatTokenCount(usage.total_output_tokens)}
+                  {formatCompactNumber(usage.total_output_tokens)}
                 </span>
               </PropRow>
               {(usage.total_cache_read_tokens > 0 ||
                 usage.total_cache_write_tokens > 0) && (
                 <PropRow label="Cache">
                   <span className="text-muted-foreground">
-                    {formatTokenCount(usage.total_cache_read_tokens)} read /{' '}
-                    {formatTokenCount(usage.total_cache_write_tokens)} write
+                    {formatCompactNumber(usage.total_cache_read_tokens)} read /{' '}
+                    {formatCompactNumber(usage.total_cache_write_tokens)} write
                   </span>
                 </PropRow>
               )}

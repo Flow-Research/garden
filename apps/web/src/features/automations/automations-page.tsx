@@ -22,6 +22,7 @@ import {
   createAutomationExecutionConfig,
   type AutomationTemplateDefinition,
 } from '@garden/core/automations/templates'
+import { timeAgo } from '@garden/core/format'
 import type { Agent, Skill } from '@garden/core/types'
 import type { Automation, AutomationListItem } from '@/lib/api'
 import type { AutomationStatus } from '@/lib/api/automations'
@@ -181,16 +182,6 @@ const TEMPLATES: AutomationTemplate[] = [
   },
 ]
 
-function formatRelativeDate(date: string): string {
-  const diff = Date.now() - new Date(date).getTime()
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-  if (days < 1) return 'Today'
-  if (days === 1) return '1d ago'
-  if (days < 30) return `${days}d ago`
-  const months = Math.floor(days / 30)
-  return `${months}mo ago`
-}
-
 const STATUS_CONFIG: Record<
   AutomationStatus,
   { label: string; color: string; icon: typeof Zap }
@@ -252,9 +243,7 @@ function AutomationRow({
         {statusConfig.label}
       </span>
       <span className="w-20 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-        {automation.last_run_at
-          ? formatRelativeDate(automation.last_run_at)
-          : '--'}
+        {automation.last_run_at ? timeAgo(automation.last_run_at) : '--'}
       </span>
     </button>
   )

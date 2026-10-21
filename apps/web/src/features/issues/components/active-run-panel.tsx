@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import type { StructuredQuestion } from '@garden/app-state/chat'
 import { cn } from '@garden/ui/lib/utils'
+import { formatCompactNumber } from '@garden/core/format'
 import { Alert, AlertDescription } from '@garden/ui/components/ui/alert'
 import { Button } from '@garden/ui/components/ui/button'
 import { AgentPresence, type AgentPresenceKind } from './agent-presence'
@@ -114,12 +115,6 @@ function elapsed(iso: string): string {
   const min = Math.floor(sec / 60)
   const remSec = sec % 60
   return `${min}m ${remSec}s`
-}
-
-function formatTokens(n: number): string {
-  if (n < 1_000) return `${n}`
-  if (n < 1_000_000) return `${(n / 1_000).toFixed(1)}k`
-  return `${(n / 1_000_000).toFixed(2)}M`
 }
 
 function formatUsd(cents: number): string {
@@ -323,7 +318,7 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
 
   const config = getStateConfig(run.status, agent.name)
   const cost = estimatedCostCents != null ? formatUsd(estimatedCostCents) : null
-  const tokens = run.usage ? formatTokens(run.usage.total_tokens) : null
+  const tokens = run.usage ? formatCompactNumber(run.usage.total_tokens) : null
   const debugErrorDetail = buildDebugErrorDetail({
     run,
     lastEventSummary,
@@ -548,7 +543,7 @@ export function LastRunSummary({
       {debugMode && lastRun.usage && (
         <>
           {' '}
-          · {formatTokens(lastRun.usage.total_tokens)} tokens ·{' '}
+          · {formatCompactNumber(lastRun.usage.total_tokens)} tokens ·{' '}
           {lastRun.usage.model}
         </>
       )}

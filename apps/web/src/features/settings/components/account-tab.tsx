@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { format, formatDistanceToNowStrict } from 'date-fns'
+import { format } from 'date-fns'
+import { timeAgo } from '@garden/core/format'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Camera,
@@ -32,7 +33,7 @@ function formatDateTime(value: string | Date | null | undefined) {
 
 function formatRelativeTime(value: string | Date | null | undefined) {
   if (!value) return 'Unavailable'
-  return formatDistanceToNowStrict(new Date(value), { addSuffix: true })
+  return timeAgo(value)
 }
 
 function describeUserAgent(userAgent: string | null | undefined) {

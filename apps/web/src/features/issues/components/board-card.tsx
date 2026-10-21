@@ -11,6 +11,7 @@ import { useUpdateIssue } from '@/lib/issues/mutations'
 import { PriorityIcon } from './priority-icon'
 import { PriorityPicker, AssigneePicker, DueDatePicker } from './pickers'
 import { PRIORITY_CONFIG } from '@garden/core/issues/config'
+import { formatShortDate } from '@garden/core/format'
 import { useViewStore } from '@garden/app-state/issues/stores/view-store-context'
 import { ProgressRing } from './progress-ring'
 import type { ChildProgress } from './list-row'
@@ -37,13 +38,6 @@ function useBoardCardUpdate(issueId: string) {
     },
     [issueId, updateIssueMutation],
   )
-}
-
-function formatDate(date: string): string {
-  return new Date(date).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  })
 }
 
 /** Stops event from bubbling to Link/drag handlers */
@@ -212,7 +206,7 @@ export const BoardCardContent = memo(function BoardCardContent({
                         }`}
                       >
                         <CalendarDays className="size-3" />
-                        {formatDate(issue.due_date!)}
+                        {formatShortDate(issue.due_date!)}
                       </span>
                     }
                   />
@@ -226,7 +220,7 @@ export const BoardCardContent = memo(function BoardCardContent({
                   }`}
                 >
                   <CalendarDays className="size-3" />
-                  {formatDate(issue.due_date!)}
+                  {formatShortDate(issue.due_date!)}
                 </span>
               )}
             </div>
