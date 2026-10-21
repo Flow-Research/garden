@@ -36,7 +36,7 @@ export const Route = createFileRoute(
         if (!automation) return notFound('Automation not found')
 
         const access = await requireWorkspaceAccess(
-          request,
+          appContext,
           automation.workspaceId,
         )
         if (access instanceof Response) return access
@@ -127,7 +127,7 @@ export const Route = createFileRoute(
         if (!automation) return notFound('Automation not found')
 
         const access = await requireWorkspaceAccess(
-          request,
+          appContext,
           automation.workspaceId,
         )
         if (access instanceof Response) return access

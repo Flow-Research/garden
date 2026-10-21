@@ -80,7 +80,7 @@ export const Route = createFileRoute('/api/agents/$id')({
         if (!existingAgent) return notFound('Agent not found')
 
         const access = await requireWorkspaceAccess(
-          request,
+          appContext,
           existingAgent.workspaceId,
         )
         if (access instanceof Response) return access

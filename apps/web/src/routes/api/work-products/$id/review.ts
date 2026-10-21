@@ -71,7 +71,7 @@ export const Route = createFileRoute('/api/work-products/$id/review')({
         }
 
         const access = await requireWorkspaceAccess(
-          request,
+          appContext,
           workspaceResult.value.workspaceId,
         )
         if (access instanceof Response) return access

@@ -22,7 +22,7 @@ import {
 export const Route = createFileRoute('/api/issues/$id/comments')({
   server: {
     handlers: {
-      GET: async ({ context, request, params }) => {
+      GET: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)
         const db = await appContext.db()
         const [existingIssue] = await db
@@ -32,7 +32,7 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
         if (!existingIssue) return notFound('Issue not found')
 
         const access = await requireWorkspaceAccess(
-          request,
+          appContext,
           existingIssue.workspaceId,
         )
         if (access instanceof Response) return access
@@ -91,7 +91,7 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
         if (!existingIssue) return notFound('Issue not found')
 
         const access = await requireWorkspaceAccess(
-          request,
+          appContext,
           existingIssue.workspaceId,
         )
         if (access instanceof Response) return access

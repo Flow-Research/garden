@@ -23,12 +23,15 @@ class AgentAccessRouteError extends TaggedError('AgentAccessRouteError')<{
 export const Route = createFileRoute('/api/agents/$id/access')({
   server: {
     handlers: {
-      GET: async ({ context, request, params }) => {
+      GET: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
+        const workspaceId = await resolveWorkspaceId(
+          appContext,
+          session.user.id,
+        )
         if (!workspaceId) {
           return notFound('Workspace not found')
         }

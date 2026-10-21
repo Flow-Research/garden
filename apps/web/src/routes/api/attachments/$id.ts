@@ -42,7 +42,7 @@ export const Route = createFileRoute('/api/attachments/$id')({
         if (!attachment) return notFound('Attachment not found')
 
         const access = await requireWorkspaceAccess(
-          request,
+          appContext,
           attachment.workspaceId,
         )
         if (access instanceof Response) return access
@@ -78,7 +78,7 @@ export const Route = createFileRoute('/api/attachments/$id')({
         if (!attachment) return notFound('Attachment not found')
 
         const access = await requireWorkspaceAccess(
-          request,
+          appContext,
           attachment.workspaceId,
         )
         if (access instanceof Response) return access
