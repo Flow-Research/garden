@@ -5,7 +5,6 @@ import {
   Eye,
   Folder as FolderIcon,
   FolderPlus,
-  Loader2,
   Trash2,
 } from 'lucide-react'
 import {
@@ -18,6 +17,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@garden/ui/components/ui/dropdown-menu'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import { brainFileDownloadUrl, type BrainFileSummary } from '../api'
 import type { BrainFolderSummary } from '../contract'
 import {
@@ -153,7 +153,7 @@ export function FileStatusChip({
   return (
     <span className="flex items-center gap-1.5 text-xs text-text-secondary">
       {isPolling || isRetrying ? (
-        <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+        <Spinner className="size-3" aria-hidden="true" />
       ) : null}
       {isRetrying
         ? 'Retrying'

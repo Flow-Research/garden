@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 
 /** Sentinel that triggers `onVisible` when scrolled into view. */
 export function InfiniteScrollSentinel({
@@ -28,9 +28,7 @@ export function InfiniteScrollSentinel({
 
   return (
     <div ref={sentinelRef} className="flex items-center justify-center py-2">
-      {loading && (
-        <Loader2 className="size-3 animate-spin text-muted-foreground" />
-      )}
+      {loading && <Spinner className="size-3 text-muted-foreground" />}
     </div>
   )
 }

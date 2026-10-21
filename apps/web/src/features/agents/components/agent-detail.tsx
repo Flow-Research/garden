@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Bot, Loader2 } from 'lucide-react'
+import { Bot } from 'lucide-react'
 import type { Agent } from '@garden/core/types'
 import { useAuthStore } from '@garden/app-state/auth'
 import { useWorkspaceId } from '@garden/app-state/hooks'
@@ -19,6 +19,7 @@ import {
 } from '@garden/ui/components/ui/tabs'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { cn } from '@garden/ui/lib/utils'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 
 import { AgentAccessTab } from './agent-access-tab'
 import { AgentSkillsTab } from './agent-skills-tab'
@@ -197,7 +198,7 @@ function AgentDetailSkeleton() {
         </div>
       </div>
       <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
-        <Loader2 className="mr-2 size-3.5 animate-spin" />
+        <Spinner className="mr-2 size-3.5" />
         Loading agent…
       </div>
     </div>

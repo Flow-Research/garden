@@ -29,7 +29,6 @@ import {
   ArrowUp,
   ChevronDown,
   FileText,
-  Loader2,
   Mic,
   Paperclip,
   Shield,
@@ -59,6 +58,7 @@ import {
 } from '@garden/ui/components/ui/dropdown-menu'
 import { Textarea } from '@garden/ui/components/ui/textarea'
 import { cn } from '@garden/ui/lib/utils'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import { SpeechInput } from '@/components/ai-elements/speech-input'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -690,7 +690,7 @@ export function Composer({
                     </div>
                   ) : enabledSkillsQuery.isFetching && skills.length === 0 ? (
                     <div className="flex items-center gap-2 px-3 py-2.5 text-xs text-muted-foreground/70">
-                      <Loader2 className="size-3.5 animate-spin" />
+                      <Spinner className="size-3.5" />
                       <span>Loading skills...</span>
                     </div>
                   ) : (
@@ -741,7 +741,7 @@ export function Composer({
                     </CommandGroup>
                   ) : membersQuery.isFetching ? (
                     <div className="flex items-center gap-2 px-3 py-2.5 text-xs text-muted-foreground">
-                      <Loader2 className="size-3.5 animate-spin" />
+                      <Spinner className="size-3.5" />
                       <span>Loading members…</span>
                     </div>
                   ) : (
@@ -973,7 +973,7 @@ export function Composer({
                     </DropdownMenuLabel>
                     {documentLoadState === 'loading' ? (
                       <DropdownMenuItem disabled>
-                        <Loader2 className="size-4 animate-spin" />
+                        <Spinner />
                         Loading documents…
                       </DropdownMenuItem>
                     ) : documentLoadState === 'error' ? (
@@ -1068,7 +1068,7 @@ export function Composer({
                   }
                 >
                   {normalizeStatus(status) === 'submitted' ? (
-                    <Loader2 className="size-5 animate-spin" />
+                    <Spinner className="size-5" aria-hidden="true" />
                   ) : (
                     <ArrowUp className="size-5" />
                   )}

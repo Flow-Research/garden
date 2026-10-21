@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Result } from 'better-result'
-import { AlertTriangle, Download, Loader2, ZoomIn, ZoomOut } from 'lucide-react'
+import { AlertTriangle, Download, ZoomIn, ZoomOut } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import {
   documentArtifactQueryKey,
   getDocumentArtifact,
@@ -147,7 +148,7 @@ function CanonicalDocxArtifact({ documentId }: { documentId: string }) {
   if (artifactQuery.isPending) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center gap-2 border-t border-border bg-muted/40 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+        <Spinner aria-hidden="true" />
         Loading editable document
       </div>
     )

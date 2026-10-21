@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@garden/ui/components/ui/dialog'
-import { Loader2 } from 'lucide-react'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import { BrainFileTypeIcon } from './file-type-icon'
 import { truncateMiddle } from '../format'
 
@@ -69,7 +69,7 @@ export function BrainFileUploadDialog({
             <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
               {uploading ? (
                 <>
-                  <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                  <Spinner className="size-3" aria-hidden="true" />
                   Uploading file
                 </>
               ) : (

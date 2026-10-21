@@ -10,7 +10,8 @@ import {
 } from '@garden/ui/components/ui/field'
 import { Input } from '@garden/ui/components/ui/input'
 import { BrandIcon } from '@garden/ui/components/common/brand-icon'
-import { EyeIcon, EyeOffIcon, Loader2Icon } from 'lucide-react'
+import { Spinner } from '@garden/ui/components/ui/spinner'
+import { EyeIcon, EyeOffIcon } from 'lucide-react'
 import { BrandGoogleIcon } from '@/components/icons/brand-google-icon'
 
 /**
@@ -133,7 +134,7 @@ export function LoginForm({
                     onClick={onGoogleSignIn}
                   >
                     {googleLoading ? (
-                      <Loader2Icon className="size-4 animate-spin" />
+                      <Spinner aria-hidden="true" />
                     ) : (
                       <BrandGoogleIcon className="size-4" aria-hidden="true" />
                     )}
@@ -237,9 +238,7 @@ export function LoginForm({
                 className="h-10 w-full"
                 disabled={loading || googleLoading}
               >
-                {loading ? (
-                  <Loader2Icon className="size-4 animate-spin" />
-                ) : null}
+                {loading ? <Spinner aria-hidden="true" /> : null}
                 {loading
                   ? isSignup
                     ? 'Creating account...'

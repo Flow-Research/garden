@@ -6,7 +6,6 @@ import {
   LayoutDashboard,
   Inbox,
   Keyboard,
-  Loader2,
   MessageCircle,
   Bot,
   Search,
@@ -37,6 +36,7 @@ import {
   DialogTitle,
 } from '@garden/ui/components/ui/dialog'
 import { Kbd, KbdGroup } from '@garden/ui/components/ui/kbd'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import { useAgentSessions } from '@/features/chat/use-agent-chat-sessions'
 import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigation'
 import { useSettingsDialogStore } from '@/features/settings'
@@ -338,7 +338,7 @@ export function SearchCommand() {
           <CommandList className="max-h-[min(400px,60vh)] py-2">
             {isLoading ? (
               <div className="flex items-center justify-center py-10">
-                <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                <Spinner className="size-5 text-muted-foreground" />
               </div>
             ) : (
               <CommandEmpty>No results found.</CommandEmpty>

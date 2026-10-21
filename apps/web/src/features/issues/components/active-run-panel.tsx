@@ -5,7 +5,6 @@ import {
   ChevronDown,
   ChevronUp,
   CircleHelp,
-  Loader2,
   ShieldCheck,
   Square,
   XCircle,
@@ -15,6 +14,7 @@ import { cn } from '@garden/ui/lib/utils'
 import { formatCompactNumber } from '@garden/core/format'
 import { Alert, AlertDescription } from '@garden/ui/components/ui/alert'
 import { Button } from '@garden/ui/components/ui/button'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import { AgentPresence, type AgentPresenceKind } from './agent-presence'
 import { ApprovalCard, ConnectorWriteBody } from './approval-card'
 import { LiveDot } from './live-dot'
@@ -212,14 +212,14 @@ function getStateConfig(
     case 'queued':
       return {
         containerClass: 'border-info/20 bg-info/5',
-        iconNode: <Loader2 className="h-3.5 w-3.5 animate-spin text-info" />,
+        iconNode: <Spinner className="size-3.5 text-info" />,
         headline: `${agentName} is starting…`,
         liveVariant: 'queued',
       }
     case 'running':
       return {
         containerClass: 'border-info/20 bg-info/5',
-        iconNode: <Loader2 className="h-3.5 w-3.5 animate-spin text-info" />,
+        iconNode: <Spinner className="size-3.5 text-info" />,
         headline: `${agentName} is working`,
         liveVariant: 'running',
       }

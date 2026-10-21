@@ -12,8 +12,9 @@
  */
 
 import { useCallback, useMemo, useState } from 'react'
-import { Check, Copy, Loader2, RefreshCw, X } from 'lucide-react'
+import { Check, Copy, RefreshCw, X } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import {
   Message,
   MessageContent,
@@ -142,7 +143,7 @@ export function ChatError({
               className="mt-1 self-start"
             >
               {isRetrying ? (
-                <Loader2 className="mr-2 size-4 animate-spin" />
+                <Spinner className="mr-2" aria-hidden="true" />
               ) : (
                 <RefreshCw className="mr-2 size-4" />
               )}

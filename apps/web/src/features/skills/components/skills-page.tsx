@@ -69,6 +69,7 @@ import { Input } from '@garden/ui/components/ui/input'
 import { Label } from '@garden/ui/components/ui/label'
 import { toast } from 'sonner'
 import { cn } from '@garden/ui/lib/utils'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import { api } from '@/lib/api'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
@@ -879,7 +880,7 @@ function BrowseSearchScreen({
             />
             {isFetching ? (
               <InputGroupAddon align="inline-end">
-                <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+                <Spinner className="size-3.5 text-muted-foreground" />
               </InputGroupAddon>
             ) : null}
           </InputGroup>
@@ -1025,7 +1026,7 @@ function SkillPreviewPage({
           className="gap-1.5"
         >
           {isImporting ? (
-            <Loader2 className="size-3.5 animate-spin" />
+            <Spinner className="size-3.5" aria-hidden="true" />
           ) : (
             <Download className="size-3.5" />
           )}
@@ -1037,7 +1038,7 @@ function SkillPreviewPage({
       <div className="flex min-h-0 flex-1">
         {preview.isPending ? (
           <div className="flex flex-1 items-center justify-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="size-3.5 animate-spin" />
+            <Spinner className="size-3.5" />
             Fetching bundle…
           </div>
         ) : preview.isError || !data ? (

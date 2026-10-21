@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { PdfFilePreview } from './pdf-file-preview'
 import { XlsxFilePreview } from './xlsx-file-preview'
-import { Download, FileText, Loader2, X } from 'lucide-react'
+import { Download, FileText, X } from 'lucide-react'
 import { Button, buttonVariants } from '@garden/ui/components/ui/button'
 import { Markdown } from '@garden/ui/markdown'
 import {
@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@garden/ui/components/ui/dialog'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import type { BrainFileSummary } from '../api'
 import {
   brainFileExtractedTextOptions,
@@ -45,7 +46,7 @@ function PreviewLoading() {
       role="status"
       className="flex min-h-[65vh] items-center justify-center gap-2 text-sm text-muted-foreground"
     >
-      <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+      <Spinner aria-hidden="true" />
       Loading preview...
     </div>
   )

@@ -15,7 +15,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
-import { Loader2, MoreHorizontal, Plug, Search, X } from 'lucide-react'
+import { MoreHorizontal, Plug, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { mutateConnection, type IntegrationAction } from '@/lib/api'
 import {
@@ -58,6 +58,7 @@ import {
   TabsList,
   TabsTrigger,
 } from '@garden/ui/components/ui/tabs'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 
 const SEARCH_DEBOUNCE_MS = 150
 
@@ -703,7 +704,7 @@ function FeaturedCard({
   if (busy) {
     actionContent = (
       <>
-        <Loader2 className="size-3 animate-spin" />
+        <Spinner className="size-3" />
         Connecting…
       </>
     )
@@ -857,8 +858,8 @@ function SearchResults({
       </ul>
       <div ref={loadMoreRef} className="flex h-16 items-center justify-center">
         {loadingMore ? (
-          <Loader2
-            className="size-4 animate-spin text-muted-foreground"
+          <Spinner
+            className="text-muted-foreground"
             aria-label="Loading more integrations"
           />
         ) : null}
@@ -998,7 +999,7 @@ function InstallDrawerBody({
             }
             onClick={() => onInstall(source)}
           >
-            {pending ? <Loader2 className="size-4 animate-spin" /> : null}
+            {pending ? <Spinner aria-hidden="true" /> : null}
             {previewQuery.data?.status === 'definition_missing'
               ? `${sourceLabel(source)} definition unavailable`
               : `Install ${sourceLabel(source)}`}
@@ -1201,7 +1202,7 @@ function ManageDrawerBody({
           disabled={saving || !credentialsComplete}
           onClick={() => void saveCredentials()}
         >
-          {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+          {saving ? <Spinner aria-hidden="true" /> : null}
           Connect
         </Button>
       </div>
@@ -1432,9 +1433,7 @@ function ManageDrawerBody({
                     }
                     onClick={() => onInstall(candidate)}
                   >
-                    {pending ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : null}
+                    {pending ? <Spinner aria-hidden="true" /> : null}
                     {previewQuery.data?.status === 'definition_missing'
                       ? `${sourceLabel(candidate)} definition unavailable`
                       : `Install ${sourceLabel(candidate)}`}
