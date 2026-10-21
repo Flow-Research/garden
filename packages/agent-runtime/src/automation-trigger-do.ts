@@ -15,6 +15,7 @@ import {
   startAutomationRun,
   type AutomationRunEnv,
 } from '@garden/server/automations/run-service'
+import { errorMessage, operationFailedMessage } from './runtime-utils'
 
 type AutomationTriggerEnv = Cloudflare.Env & AutomationRunEnv
 type AutomationConcurrencyPolicy = 'skip' | 'replace'
@@ -98,14 +99,10 @@ function automationDoError(args: {
   return new AutomationDoError(args)
 }
 
-function errorMessage(cause: unknown) {
-  return cause instanceof Error ? cause.message : String(cause)
-}
-
 function dbError(operation: string, cause: unknown) {
   return automationDoError({
     code: 'db_error',
-    message: `${operation} failed: ${errorMessage(cause)}`,
+    message: operationFailedMessage(operation, cause),
     cause,
   })
 }
@@ -113,7 +110,7 @@ function dbError(operation: string, cause: unknown) {
 function dispatchError(operation: string, cause: unknown) {
   return automationDoError({
     code: 'dispatch_failed',
-    message: `${operation} failed: ${errorMessage(cause)}`,
+    message: operationFailedMessage(operation, cause),
     cause,
   })
 }
@@ -121,7 +118,7 @@ function dispatchError(operation: string, cause: unknown) {
 function scheduleError(operation: string, cause: unknown) {
   return automationDoError({
     code: 'schedule_error',
-    message: `${operation} failed: ${errorMessage(cause)}`,
+    message: operationFailedMessage(operation, cause),
     cause,
   })
 }

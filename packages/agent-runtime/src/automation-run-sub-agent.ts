@@ -87,6 +87,13 @@ import {
   type RunWorkflowTurnCompleteEvent,
   type RunWorkflowTurnStartResult,
 } from './run-workflow'
+import {
+  agentSandboxId,
+  errorMessage,
+  isTerminalSubmissionStatus,
+  objectOrNull,
+  operationFailedMessage,
+} from './runtime-utils'
 
 type AgentRuntimeEnv = Cloudflare.Env &
   AgentModelEnv & {
@@ -116,17 +123,6 @@ type TurnMode = 'start' | 'resume'
 type StartTurnInput = {
   runId: string
   turn: number
-}
-
-const TERMINAL_SUBMISSION_STATUSES = new Set([
-  'completed',
-  'aborted',
-  'skipped',
-  'error',
-])
-
-function isTerminalSubmissionStatus(status: string) {
-  return TERMINAL_SUBMISSION_STATUSES.has(status)
 }
 
 type AutomationTraceEvent = {
@@ -225,10 +221,9 @@ class AutomationRunTurnStopped extends Error {
 }
 
 function dbError(operation: string, cause: unknown) {
-  const message = cause instanceof Error ? cause.message : String(cause)
   return new AutomationRunSubAgentError({
     code: 'database_failed',
-    message: `${operation} failed: ${message}`,
+    message: operationFailedMessage(operation, cause),
     cause,
   })
 }
@@ -238,16 +233,6 @@ function previewString(value: string, maxLength = 1200) {
   return trimmed.length > maxLength
     ? `${trimmed.slice(0, maxLength)}…`
     : trimmed
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error)
-}
-
-function objectOrNull(value: unknown) {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null
 }
 
 function previewUnknown(value: unknown) {
@@ -1124,49 +1109,13 @@ export class AutomationRunSubAgent extends Think<AgentRuntimeEnv> {
     return getPooledDb(this.env.HYPERDRIVE.connectionString)
   }
 
-  private getSandboxId() {
-    const pathKey = this.selfPath.map((segment) => segment.name).join('-')
-    const candidate = pathKey || this.name
-    if (candidate.length <= 63) {
-      return candidate
-    }
-
-    return [
-      this.compactSandboxSegment(
-        this.parentPath.at(-1)?.name || 'agent-do',
-        20,
-      ),
-      this.compactSandboxSegment(this.name, 20),
-      this.hashSandboxId(candidate),
-    ].join('-')
-  }
-
-  private compactSandboxSegment(value: string, maxLength: number) {
-    const normalized = value
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
-
-    if (!normalized) {
-      return 'sandbox'
-    }
-
-    return normalized.slice(0, maxLength)
-  }
-
-  private hashSandboxId(value: string) {
-    let hash = 2166136261
-    for (let index = 0; index < value.length; index += 1) {
-      hash ^= value.charCodeAt(index)
-      hash = Math.imul(hash, 16777619)
-    }
-
-    return (hash >>> 0).toString(16)
-  }
-
   private getAgentSandbox() {
-    return getSandbox(this.env.Sandbox, this.getSandboxId(), {
+    const sandboxId = agentSandboxId({
+      selfPath: this.selfPath,
+      parentPath: this.parentPath,
+      name: this.name,
+    })
+    return getSandbox(this.env.Sandbox, sandboxId, {
       normalizeId: true,
       sleepAfter: '5m',
       transport: 'rpc',

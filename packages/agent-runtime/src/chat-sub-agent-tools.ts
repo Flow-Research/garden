@@ -63,6 +63,7 @@ import {
   type WorkspaceMemberCandidate,
 } from './chat-member-resolution'
 import { assignIssueInputSchema } from './chat-assignment-schema'
+import { errorMessage } from './runtime-utils'
 
 type ChatSubAgentToolsInput = {
   ctx: DurableObjectState
@@ -441,10 +442,6 @@ type IssueWorkProductRow = {
  */
 function getReadRunDb(databaseUrl: string) {
   return getPooledDb(databaseUrl)
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error)
 }
 
 function readRunErr<T>(error: string): ResultValue<T, string> {

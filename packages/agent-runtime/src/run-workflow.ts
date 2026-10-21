@@ -7,6 +7,7 @@ import { TaggedError } from 'better-result'
 import { disposeRpcResult } from '@garden/app-state/platform/rpc'
 import { createGardenLogger } from '@garden/observability/logger'
 import type { AgentDO } from './agent-do'
+import { isTerminalSubmissionStatus } from './runtime-utils'
 
 /**
  * Per-run durable executor.
@@ -70,13 +71,6 @@ const workflowLogger = createGardenLogger({
   component: 'run-workflow',
 })
 
-const TERMINAL_SUBMISSION_STATUSES = new Set([
-  'completed',
-  'aborted',
-  'skipped',
-  'error',
-])
-
 export type RunWorkflowTurnStartResult =
   | { kind: 'run_status'; status: string }
   | { kind: 'submitted'; submissionId: string; submissionStatus: string }
@@ -92,10 +86,6 @@ export const RUN_WORKFLOW_TURN_COMPLETE_EVENT_PREFIX =
 
 export function getRunWorkflowTurnCompleteEventType(submissionId: string) {
   return `${RUN_WORKFLOW_TURN_COMPLETE_EVENT_PREFIX}:${submissionId}`
-}
-
-function isTerminalSubmissionStatus(status: string) {
-  return TERMINAL_SUBMISSION_STATUSES.has(status)
 }
 
 export class RunWorkflow extends AgentWorkflow<
