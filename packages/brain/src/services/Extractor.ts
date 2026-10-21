@@ -112,17 +112,15 @@ export const ExtractorLive = Layer.effect(
               new ExtractError({ message: `unsupported file type: ${path}` }),
             )
           }
-          const bytes = yield* fs
-            .readFile(path)
-            .pipe(
-              Effect.mapError(
-                (cause) =>
-                  new ExtractError({
-                    message: `failed to read ${path}`,
-                    cause,
-                  }),
-              ),
-            )
+          const bytes = yield* fs.readFile(path).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ExtractError({
+                  message: `failed to read ${path}`,
+                  cause,
+                }),
+            ),
+          )
           const body = yield* extractText(path, bytes, format)
           return { path, title: titleFromPath(path), body, format }
         }),
