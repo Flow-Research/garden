@@ -10,6 +10,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives ."
   },
+  "dependencies": {
+    "@garden/observability": "workspace:*"
+  },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
     "@garden/tsconfig": "workspace:*",
