@@ -32,6 +32,7 @@
 5. [Enforcement: lint, tsconfig, CI](#5-enforcement)
 6. [Remediation roadmap](#6-remediation-roadmap)
 7. [Appendix: metrics](#7-appendix-metrics)
+8. [Remediation status](#8-remediation-status)
 
 Severity scale: **Critical** means exploitable or causes data loss. **High** means user-visible breakage or a systemic risk. **Medium** means maintainability or latent bugs. **Low** means hygiene.
 
@@ -810,3 +811,50 @@ Each phase can be split into small, independently reviewable PRs.
 | Committed agent-skill files | 454 |
 
 *Counts come from ripgrep and git scans of the working tree. Small differences between sections reflect slightly different scopes, such as whether tests or vendored files were included.*
+
+---
+
+## 8. Remediation status
+
+*Updated 2026-10-21, after Phases 0–4 were carried out on the `audit` branch (about 80 commits, one concern each). Unlike the audit itself, this work was checked with the tools installed: lint, typecheck, unit tests, the format check and the deploy-config check all pass. The only test failures are the four integration suites that need Docker.*
+
+### Done
+
+| Phase | What changed |
+|---|---|
+| 0 | D1: manage permissions are required on mutating routes. Participant and parent IDs are checked against the workspace. User-supplied files are served with safe headers. The PostHog proxy forwards only allowlisted headers. The internal sync secret is compared in constant time. Redirect targets are validated more strictly. |
+| 0 | D2: chat and runs share one tool-permission rule. An empty allowlist means no limit. Permissions that cannot be parsed fail closed. |
+| 0 | D3–D12: comments cascade with their issue and are indexed. The migration journal is repaired and guarded by a test. `createDb` no longer leaks connections. The cron is always rescheduled. Issue identifiers use the workspace prefix. Issue links and editor links go through the router. The comment timer is cleared on unmount. The skill-detach toast appears only on success. The QA closure guard now applies to every agent, and only on QA sweeps. |
+| 0 | A test requires every mutating API route to check a permission, or to state why plain membership is enough. |
+| 1 | §5 lint rules: `no-explicit-any`, `ban-ts-comment`, hooks, a11y and test rules are errors. The web tests are type-checked. `noUncheckedIndexedAccess` and `noImplicitReturns` are on. CI checks formatting, the generated Worker types and the deploy config. |
+| 1 | Dependencies: the Effect catalog is aligned. TanStack is pinned. Each package declares what it imports. There is one lucide major. Dead code is deleted (ai-elements, dead UI components and CSS, 50 unused core types, scaffold files). `CONTRIBUTING.md`, `CODEOWNERS` and `patches/README.md` are added. |
+| 2 | Migrations 0050–0053: every timestamp is `timestamptz`. `created_at`/`updated_at` are NOT NULL, and `updated_at` is maintained. Workspace-owned rows cascade with their workspace. 13 foreign-key indexes are added. |
+| 2 | Server: one service-error-to-HTTP mapper. One membership-plus-permission helper. One issue DTO mapper. Auth is resolved through the request context. Logging is structured, and 5xx bodies are no longer logged. Env is parsed on first use and the Worker bindings are validated. Uploads are size-bounded and cleaned up on failure. Child-issue progress is counted in SQL. Source-binding I/O is moved from `core` to `server`. |
+| 3 | A shared `RunSubAgentBase` lifecycle and shared runtime helpers. Tagged errors are rethrown. Automation trigger fires are serialized. Connector calls (GitHub, Discord) time out, and GitHub installation tokens are cached. The foundation prompt is a Markdown asset. |
+| 4 | lucide-react is the only icon library. The legacy tokens are migrated and `LEGACY_COMPAT` is deleted. Raw palette classes and hex values are replaced with semantic tokens. There is one set of formatters (`@garden/core/format`). Loading indicators use the shared Spinner. The lightboxes are built on Dialog. Icon-only buttons have accessible names. Chat, skills and connectors have query key factories. `issue-detail.tsx` (now 877 lines) and `connections-page.tsx` (now 582 lines) are split into modules. |
+
+### Needs verification before release
+
+- **Migrations 0050–0053** were generated and reviewed, but they have not been run against a real database. Run them first on a copy of production data, since the backfills and the new cascades change existing rows.
+- **Browser smoke tests:**
+  - issue runs and automation runs (they now use the shared run lifecycle)
+  - icons and dark mode across the app
+  - the image lightboxes
+  - the issue page and the connector drawers (both were split)
+  - the new time and date formats
+- **Security fixes** should be published through the private advisory before this branch is pushed or merged publicly.
+
+### Deferred
+
+| Item | Reason |
+|---|---|
+| Renaming the `user` vocabulary to `member` | It touches every layer, and production data must be checked first. (`canceled` is Better Auth's own value and stays.) |
+| Enum CHECK constraints | The values present in production are unknown. A constraint could fail the migration. |
+| ON DELETE for authorship columns | This is a product decision: keep, null or block. |
+| Typed JSONB columns | Without runtime validation, `$type` would only be an unchecked cast. |
+| Full `apiRoute()` rewrite and one error envelope | This changes the response shape that the client depends on. Do it route by route, together with the client. |
+| Rate limiting | It needs a Cloudflare rate-limit binding. |
+| gitleaks in CI | It needs an organization license decision. |
+| Renaming the staging service | Dashboards and alerts depend on the current name. |
+| `docs/design.md` rewrite, remaining god components (`skills-page`, `automations-page`), a few spinners, mention chip colours | These are lower priority, and the patterns to follow are now in place. |
+| Versioned DO storage migrations, auth-cache eviction, `defineAgentTool`, a provider REST client with 429 retry | These are larger runtime changes. Each should be its own PR with tests. |
