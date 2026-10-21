@@ -78,6 +78,7 @@ import {
   useSkillEditorStore,
 } from '@garden/app-state/skills'
 import { skillListOptions, workspaceKeys } from '@/lib/workspace/queries'
+import { skillsShKeys } from '../queries'
 
 import { FileTree } from './file-tree'
 import { FileViewer } from './file-viewer'
@@ -833,7 +834,7 @@ function BrowseSearchScreen({
   const searchQuery = directTarget ? '' : deferred
 
   const searchResults = useQuery({
-    queryKey: ['skills.sh-search', searchQuery],
+    queryKey: skillsShKeys.search(searchQuery),
     queryFn: ({ signal }) => api.searchSkills(searchQuery, 10, signal),
     enabled: searchQuery.length >= 2,
     staleTime: 60_000,
@@ -973,7 +974,7 @@ function SkillPreviewPage({
   const [selectedPath, setSelectedPath] = useState<string>(SKILL_MD)
 
   const preview = useQuery({
-    queryKey: ['skills.sh-preview', url],
+    queryKey: skillsShKeys.preview(url),
     queryFn: ({ signal }) => api.previewSkill(url, signal),
     staleTime: 5 * 60_000,
     gcTime: 10 * 60_000,

@@ -61,6 +61,7 @@ import {
   type GardenCitationQuote,
 } from '@/features/artifacts/artifact-renderer'
 import type { ChatUiMessage } from '../chat-runtime-provider'
+import { chatDocumentKeys } from '../queries'
 
 // ─── Shared types ────────────────────────────────────────────────────────────
 
@@ -506,7 +507,7 @@ export function DocumentSidePanel({
   }, [viewKey])
 
   const versionsQuery = useQuery({
-    queryKey: ['document-versions', view?.artifact.id],
+    queryKey: chatDocumentKeys.versions(view?.artifact.id),
     queryFn: () => fetchDocumentVersions(view?.artifact.id ?? ''),
     enabled: Boolean(
       view?.artifact.id && !isCanonicalDocxArtifact(view.artifact),
@@ -515,7 +516,7 @@ export function DocumentSidePanel({
   })
 
   const metadataQuery = useQuery({
-    queryKey: ['document-metadata', view?.artifact.id],
+    queryKey: chatDocumentKeys.metadata(view?.artifact.id),
     queryFn: () => fetchDocumentMetadata(view?.artifact.id ?? ''),
     enabled: Boolean(view?.artifact.id),
     staleTime: 60_000,

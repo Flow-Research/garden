@@ -73,6 +73,7 @@ import {
 } from 'lucide-react'
 import { HeaderAttachmentsMenu } from './chat-message-files'
 import { IssueMentionCard } from '@/features/issues/components/issue-mention-card'
+import { chatThreadKeys } from '../queries'
 
 // Single ease shared across the few motions that remain.
 const EMPTY_INTRO_EASE = [0.32, 0.72, 0, 1] as const
@@ -333,7 +334,7 @@ export function ConnectedChatPanelInteraction({
     }
     if (uploadResult.value.length > 0) {
       void queryClient.invalidateQueries({
-        queryKey: ['chat-thread-documents', sessionId],
+        queryKey: chatThreadKeys.documents(sessionId),
       })
     }
 

@@ -136,15 +136,12 @@ import {
 } from '@/features/navigation/use-surface-navigation'
 
 import { ProgressRing } from './progress-ring'
+import { chatThreadKeys } from '@/features/chat/queries'
 
 const ISSUE_DETAIL_PAGE_SKELETON = 'issue-detail-page'
 const ISSUE_DETAIL_REACTIONS_SKELETON = 'issue-detail-reactions'
 const ISSUE_DETAIL_SUBSCRIBERS_SKELETON = 'issue-detail-subscribers'
 const ISSUE_DETAIL_TIMELINE_SKELETON = 'issue-detail-timeline'
-
-function chatThreadsQueryKey(workspaceId: string, userId: string) {
-  return ['chat-threads', workspaceId, userId] as const
-}
 
 function shortDate(date: string | null): string {
   if (!date) return '—'
@@ -671,7 +668,7 @@ export function IssueDetail({
     onMutate: async (input) => {
       if (!issue || !user?.id) return null
 
-      const queryKey = chatThreadsQueryKey(input.workspaceId, user.id)
+      const queryKey = chatThreadKeys.list(input.workspaceId, user.id)
       const previousSessions =
         queryClient.getQueryData<AgentChatSession[]>(queryKey)
 

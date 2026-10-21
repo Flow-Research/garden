@@ -36,6 +36,7 @@ import {
   type ExecutorToolPreviewItem,
 } from '@/lib/executor-contract'
 import { connectionListOptions, workspaceKeys } from '@/lib/workspace/queries'
+import { executorRegistryKeys } from '../queries'
 import { Button } from '@garden/ui/components/ui/button'
 import { Input } from '@garden/ui/components/ui/input'
 import {
@@ -160,7 +161,7 @@ export function ConnectionsPage({
 
   const snapshotQuery = useQuery(connectionListOptions(wsId))
   const registryQuery = useInfiniteQuery({
-    queryKey: ['executor-registry', debouncedQuery, category],
+    queryKey: executorRegistryKeys.search(debouncedQuery, category),
     queryFn: ({ pageParam }) =>
       searchRegistry({
         q: debouncedQuery || undefined,
@@ -174,7 +175,7 @@ export function ConnectionsPage({
     staleTime: 10 * 60_000,
   })
   const featuredQuery = useQuery({
-    queryKey: ['executor-registry-featured'],
+    queryKey: executorRegistryKeys.featured(),
     queryFn: () => searchRegistry({ featured: true }),
     staleTime: 60 * 60_000,
   })
@@ -369,10 +370,9 @@ export function ConnectionsPage({
     managedProviderIntegrations[0] ??
     null
   const managedProviderQuery = useQuery({
-    queryKey: [
-      'executor-registry-provider',
+    queryKey: executorRegistryKeys.provider(
       managedProvider?.providerId ?? null,
-    ],
+    ),
     queryFn: async () => {
       if (managedProvider === null) {
         throw new Error('No managed provider selected.')
@@ -923,7 +923,7 @@ function InstallDrawerBody({
     entry.sources[0],
   )
   const previewQuery = useQuery({
-    queryKey: ['executor-tool-preview', entry.providerId, source],
+    queryKey: executorRegistryKeys.toolPreview(entry.providerId, source),
     queryFn: () => previewIntegrationTools({ entry, source }),
     staleTime: 10 * 60_000,
   })
@@ -1095,7 +1095,7 @@ function ManageDrawerBody({
     activeIntegration.providerId === 'github.com' &&
     activeIntegration.status === 'degraded'
   const previewQuery = useQuery({
-    queryKey: ['executor-tool-preview', entry.providerId, source],
+    queryKey: executorRegistryKeys.toolPreview(entry.providerId, source),
     queryFn: () => previewIntegrationTools({ entry, source }),
     enabled: !sourceInstalled || (selectedIntegration?.tools.length ?? 0) === 0,
     staleTime: 10 * 60_000,
