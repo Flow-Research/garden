@@ -18,7 +18,6 @@
     "./issues/deep-link": "./src/issues/deep-link.ts",
     "./issues/identifier": "./src/issues/identifier.ts",
     "./issues/run-sync": "./src/issues/run-sync.ts",
-    "./issues/source-binding": "./src/issues/source-binding.ts",
     "./issues/triggers": "./src/issues/triggers.ts",
     "./issues/config": "./src/issues/config/index.ts",
     "./issues/config/status": "./src/issues/config/status.ts",
@@ -37,6 +36,7 @@
   },
   "devDependencies": {
     "@garden/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
     "@typescript/native": "catalog:",
     "vitest": "catalog:"
   }

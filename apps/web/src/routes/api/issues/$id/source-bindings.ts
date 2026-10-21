@@ -20,7 +20,7 @@ import {
 import {
   attachSourceBinding,
   listIssueSourceBindings,
-} from '@garden/core/issues/source-binding'
+} from '@garden/server/issues/source-binding'
 
 export const Route = createFileRoute('/api/issues/$id/source-bindings')({
   server: {

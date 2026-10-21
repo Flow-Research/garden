@@ -828,6 +828,9 @@ importers:
       '@garden/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.6.0
       '@typescript/native':
         specifier: 'catalog:'
         version: typescript@7.0.2

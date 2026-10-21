@@ -9,7 +9,7 @@ import {
   requireWorkspacePermission,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
-import { removeSourceBinding } from '@garden/core/issues/source-binding'
+import { removeSourceBinding } from '@garden/server/issues/source-binding'
 
 export const Route = createFileRoute(
   '/api/issues/$id/source-bindings/$bindingId',

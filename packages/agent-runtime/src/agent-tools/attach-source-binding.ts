@@ -4,7 +4,7 @@ import { issueSourceBindingInsertSchema } from '@garden/db/validation'
 import {
   attachSourceBinding,
   type IssueSourceBindingServiceError,
-} from '@garden/core/issues/source-binding'
+} from '@garden/server/issues/source-binding'
 import {
   appendIssueRunEvent,
   IssueRunToolError,

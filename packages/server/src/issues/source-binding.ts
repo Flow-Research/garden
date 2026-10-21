@@ -1,7 +1,7 @@
 import { desc, eq } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
-import type { IssueSourceBinding } from '../types/issue-work-product'
+import type { IssueSourceBinding } from '@garden/core/types/issue-work-product'
 import * as schema from '@garden/db/schema'
 import {
   issueSourceBindingInsertSchema,

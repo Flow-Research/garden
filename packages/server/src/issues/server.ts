@@ -34,7 +34,7 @@ import { z } from 'zod'
 import {
   attachSourceBindingInTransaction,
   type AttachSourceBindingInput,
-} from '@garden/core/issues/source-binding'
+} from './source-binding'
 import { startIssueRun, type IssueRunEnv } from './run-service'
 
 const MENTION_PATTERN = /@([A-Za-z0-9._-]+)/g

@@ -15,6 +15,7 @@
     "./automations/run-service": "./src/automations/run-service.ts",
     "./issues/server": "./src/issues/server.ts",
     "./issues/run-service": "./src/issues/run-service.ts",
+    "./issues/source-binding": "./src/issues/source-binding.ts",
     "./runtime-bindings": "./src/runtime-bindings.ts"
   },
   "dependencies": {
