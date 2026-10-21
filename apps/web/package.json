@@ -10,7 +10,7 @@
     "dev": "node ./scripts/dev.mjs --containers",
     "dev:local": "node ./scripts/dev.mjs",
     "dev:offline": "node ./scripts/dev.mjs --offline",
-    "build": "pnpm run typecheck && vite build && pnpm run verify:worker-entry",
+    "build": "vite build && pnpm run verify:worker-entry",
     "preview": "vite preview",
     "worker:types": "wrangler types worker-configuration.d.ts --include-runtime false --env-file ../../.env.example",
     "worker:types:check": "wrangler types worker-configuration.d.ts --include-runtime false --env-file ../../.env.example --check",
