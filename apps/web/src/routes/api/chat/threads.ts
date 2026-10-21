@@ -6,7 +6,7 @@ import {
 } from '@/lib/server/validation/chat'
 import { ensureAgentRow } from '@/lib/server/chat-agents'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { schema } from '@/lib/server/db'
+import { requireReturnedRow, schema } from '@/lib/server/db'
 import {
   badRequest,
   forbidden,
@@ -247,7 +247,8 @@ export const Route = createFileRoute('/api/chat/threads')({
             }
           }
 
-          const [createdThread] = await tx
+          const createdThread = requireReturnedRow(
+            await tx
             .insert(schema.chatThread)
             .values({
               id,
@@ -262,7 +263,9 @@ export const Route = createFileRoute('/api/chat/threads')({
               createdAt: now,
               updatedAt: now,
             })
-            .returning()
+            .returning(),
+            'chat thread',
+          )
 
           return { thread: createdThread, transition: 'created' as const }
         })

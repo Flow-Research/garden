@@ -13,6 +13,20 @@ export async function getDb(env: Pick<AppEnv, 'HYPERDRIVE'>) {
   return await createRuntimeDb(env.HYPERDRIVE)
 }
 
+/**
+ * The row of an `INSERT … RETURNING` (without a conflict clause) or another
+ * statement that must affect exactly one row. Postgres always returns it, so
+ * a missing row is a broken invariant and throws rather than flowing on as
+ * `undefined`.
+ */
+export function requireReturnedRow<T>(rows: readonly T[], what: string): T {
+  const [row] = rows
+  if (row === undefined) {
+    throw new Error(`Expected the ${what} write to return a row`)
+  }
+  return row
+}
+
 export type Db = GardenDatabase
 export type DbProvider = () => Promise<Db>
 export type RequestDbProvider = {

@@ -5,7 +5,7 @@ import {
   cancelAutomationRun,
   startAutomationRun,
 } from '@garden/server/automations/run-service'
-import { getDb, schema } from '@/lib/server/db'
+import { getDb, requireReturnedRow, schema } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
 
 type AutomationRow = typeof schema.automation.$inferSelect
@@ -525,7 +525,8 @@ async function applyDispatchConcurrency(args: {
   if (policyResult.value === 'skip') {
     const insertResult = await Result.tryPromise({
       try: async () => {
-        const [run] = await db
+        const run = requireReturnedRow(
+          await db
           .insert(schema.automationRun)
           .values({
             id: crypto.randomUUID(),
@@ -541,7 +542,9 @@ async function applyDispatchConcurrency(args: {
             triggerPayload: args.payload ?? null,
             updatedAt: now,
           })
-          .returning()
+          .returning(),
+          'skipped automation run',
+        )
         await db
           .update(schema.automation)
           .set({

@@ -24,6 +24,7 @@ import {
 } from '@garden/core/automations/templates'
 import type { Agent, Skill } from '@garden/core/types'
 import type { Automation, AutomationListItem } from '@/lib/api'
+import type { AutomationStatus } from '@/lib/api/automations'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { Button } from '@garden/ui/components/ui/button'
 import { Checkbox } from '@garden/ui/components/ui/checkbox'
@@ -191,7 +192,7 @@ function formatRelativeDate(date: string): string {
 }
 
 const STATUS_CONFIG: Record<
-  string,
+  AutomationStatus,
   { label: string; color: string; icon: typeof Zap }
 > = {
   active: { label: 'Active', color: 'text-sage', icon: Play },

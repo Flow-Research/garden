@@ -1,7 +1,7 @@
 import { and, desc, eq, ne } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { schema } from '@/lib/server/db'
+import { requireReturnedRow, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   automationErr,
@@ -129,7 +129,8 @@ export const Route = createFileRoute('/api/automations')({
         const triggerId = triggerInput ? crypto.randomUUID() : null
         const db = await appContext.db()
         const [automation, trigger] = await db.transaction(async (tx) => {
-          const [automationRow] = await tx
+          const automationRow = requireReturnedRow(
+            await tx
             .insert(schema.automation)
             .values({
               id: automationId,
@@ -155,10 +156,13 @@ export const Route = createFileRoute('/api/automations')({
               templateSource: body.template_source ?? null,
               metadata: body.metadata ?? null,
             })
-            .returning()
+            .returning(),
+            'automation',
+          )
           if (!triggerInput || !triggerId) return [automationRow, null] as const
 
-          const [triggerRow] = await tx
+          const triggerRow = requireReturnedRow(
+            await tx
             .insert(schema.automationTrigger)
             .values({
               id: triggerId,
@@ -169,7 +173,9 @@ export const Route = createFileRoute('/api/automations')({
               cronExpression: triggerInput.cron_expression,
               timezone: triggerInput.timezone,
             })
-            .returning()
+            .returning(),
+            'automation trigger',
+          )
           return [automationRow, triggerRow] as const
         })
 

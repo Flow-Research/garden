@@ -7,7 +7,7 @@ import {
   createAgentBodySchema,
   parseJsonBody,
 } from '@/lib/server/validation/agents'
-import { schema } from '@/lib/server/db'
+import { requireReturnedRow, schema } from '@/lib/server/db'
 import {
   badRequest,
   requireWorkspaceContext,
@@ -77,10 +77,10 @@ export const Route = createFileRoute('/api/agents')({
           permissions: DEFAULT_AGENT_PERMISSIONS,
         } as typeof schema.agent.$inferInsert
         const db = await appContext.db()
-        const [agent] = await db
-          .insert(schema.agent)
-          .values(agentValues)
-          .returning()
+        const agent = requireReturnedRow(
+          await db.insert(schema.agent).values(agentValues).returning(),
+          'agent',
+        )
         await bindExistingCapabilitiesToAgent({
           db,
           schema,

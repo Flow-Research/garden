@@ -3,7 +3,12 @@ import { getAgentByName } from 'agents'
 import { z } from 'zod'
 import type { AgentDO } from '@garden/agent-runtime'
 import { bindExistingCapabilitiesToAgent } from './agent-bindings'
-import { getDb, schema, type Db } from '@/lib/server/db'
+import {
+  getDb,
+  requireReturnedRow,
+  schema,
+  type Db,
+} from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { DEFAULT_AGENT_PERMISSIONS } from '@garden/core/agents/permissions'
 import { disposeRpcResult } from '@garden/app-state/platform/rpc'
@@ -55,7 +60,8 @@ export async function ensureAgentRow(input: {
   }
 
   const agentId = crypto.randomUUID()
-  const [createdAgent] = await db
+  const createdAgent = requireReturnedRow(
+    await db
     .insert(schema.agent)
     .values({
       id: agentId,
@@ -68,7 +74,9 @@ export async function ensureAgentRow(input: {
       hostName: agentId,
       permissions: DEFAULT_AGENT_PERMISSIONS,
     })
-    .returning()
+    .returning(),
+    'default agent',
+  )
 
   await bindExistingCapabilitiesToAgent({
     db,

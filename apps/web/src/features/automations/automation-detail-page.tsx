@@ -18,6 +18,7 @@ import {
 import { toast } from 'sonner'
 import type { Agent } from '@garden/core/types'
 import type { Automation, AutomationRun, AutomationTrigger } from '@/lib/api'
+import type { AutomationRunStatus } from '@/lib/api/automations'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { Button } from '@garden/ui/components/ui/button'
 import {
@@ -136,9 +137,14 @@ function formatTokenCount(value: number) {
 }
 
 const RUN_STATUS_CONFIG: Record<
-  string,
+  AutomationRunStatus,
   { label: string; color: string; icon: typeof CheckCircle2 }
 > = {
+  pending: {
+    label: 'Pending',
+    color: 'text-muted-foreground',
+    icon: Clock,
+  },
   queued: {
     label: 'Queued',
     color: 'text-blue-500',

@@ -646,7 +646,7 @@ describe('POST /api/brain/files', () => {
       }),
     )
     expect(hits.length).toBeGreaterThan(0)
-    expect(hits[0].item.label).toBe('helixdb.pdf')
+    expect(hits[0]?.item.label).toBe('helixdb.pdf')
   })
 
   it('rejects unsupported file types', async () => {

@@ -70,10 +70,11 @@ export const Route = createFileRoute('/api/issues')({
         if (openOnly) conditions.push(sql`${schema.issue.status} <> 'done'`)
 
         const whereClause = and(...conditions)
-        const [{ count }] = await db
+        const [countRow] = await db
           .select({ count: sql<number>`cast(count(*) as int)` })
           .from(schema.issue)
           .where(whereClause)
+        const count = countRow?.count ?? 0
 
         const query = db
           .select()

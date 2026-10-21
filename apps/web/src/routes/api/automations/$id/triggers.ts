@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { schema } from '@/lib/server/db'
+import { requireReturnedRow, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   automationErr,
@@ -84,7 +84,8 @@ export const Route = createFileRoute('/api/automations/$id/triggers')({
         if (nextRunResult?.isErr()) return automationErr(nextRunResult.error)
 
         const db = await appContext.db()
-        const [trigger] = await db
+        const trigger = requireReturnedRow(
+          await db
           .insert(schema.automationTrigger)
           .values({
             id: crypto.randomUUID(),
@@ -95,7 +96,9 @@ export const Route = createFileRoute('/api/automations/$id/triggers')({
             cronExpression: body.cron_expression,
             timezone: body.timezone,
           })
-          .returning()
+          .returning(),
+          'automation trigger',
+        )
 
         const installResult = await installScheduleTrigger({
           env: appEnv,
