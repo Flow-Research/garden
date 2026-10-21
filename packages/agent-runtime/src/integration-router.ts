@@ -281,6 +281,18 @@ export function renderIntegrationRouteDirective(
     `Reason: ${decision.reason}`,
   ]
   if (decision.skill) lines.push(...decision.skill.instructions)
+  if (
+    route.slug === 'decide' &&
+    decision.skill?.id === 'analyze-structured-data'
+  ) {
+    lines.push(
+      'For an uploaded file, call Garden readDocument with the document handle from the document context before calling Decide.',
+      'Pass the complete text returned by readDocument as Decide analyze data. Do not pass a summary, sample, or truncated content.',
+      'For a follow-up analysis, reuse the session_id returned by Decide and omit data unless the user provides a different file.',
+      'Render every text block from Decide in order and return generated report links when present.',
+      'If Decide reports an incomplete analysis or the call times out, show that status and the exact error. Do not retry automatically. Ask for a narrower request or a smaller file.',
+    )
+  }
   if (route.allowedToolNames.length > 0) {
     lines.push(`Allowed tools: ${route.allowedToolNames.join(', ')}.`)
   }

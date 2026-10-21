@@ -27,6 +27,7 @@ export const integrationSkills = [
     ],
     instructions: [
       'Use the selected integration for the analysis.',
+      'When the request includes an uploaded file, read the complete file before analysis and pass the full raw content to the integration. Do not pass a summary, sample, or truncated content.',
       'Return the key findings in chat.',
       'Return a link when the integration generates a report.',
     ],
