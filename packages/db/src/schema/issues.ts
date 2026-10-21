@@ -96,6 +96,7 @@ export const issue = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
+    index('issue_parent_id_idx').on(table.parentId),
     uniqueIndex('issue_workspace_number_unique').on(
       table.workspaceId,
       table.number,
@@ -356,6 +357,7 @@ export const issueRun = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
+    index('issue_run_workspace_id_idx').on(table.workspaceId),
     index('issue_run_issue_idx').on(table.issueId, table.createdAt),
     index('issue_run_agent_active_idx')
       .on(table.agentId)
@@ -455,6 +457,7 @@ export const issueWorkProduct = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
+    index('issue_work_product_run_id_idx').on(table.runId),
     uniqueIndex('issue_work_product_primary_unique')
       .on(table.issueId, table.type)
       .where(sql`${table.isPrimary} = true`),
@@ -548,6 +551,7 @@ export const inboxItem = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
+    index('inbox_item_issue_id_idx').on(table.issueId),
     uniqueIndex('inbox_item_workspace_recipient_key_unique').on(
       table.workspaceId,
       table.recipientType,

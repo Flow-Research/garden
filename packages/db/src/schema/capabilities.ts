@@ -138,6 +138,7 @@ export const permissionRequest = pgTable(
     expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
+    index('permission_request_run_id_idx').on(table.runId),
     check(
       'permission_request_status_check',
       sql`${table.status} in ('pending', 'approved', 'denied')`,

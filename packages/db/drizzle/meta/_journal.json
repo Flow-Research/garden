@@ -372,6 +372,13 @@
       "when": 1792561811476,
       "tag": "0052_workspace_cascade",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1792561894190,
+      "tag": "0053_foreign_key_indexes",
+      "breakpoints": true
     }
   ]
 }

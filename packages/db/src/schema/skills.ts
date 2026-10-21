@@ -51,31 +51,39 @@ export const skill = pgTable(
   ],
 )
 
-export const skillVersion = pgTable('skill_version', {
-  id: uuid('id').primaryKey(),
-  skillId: uuid('skill_id')
-    .notNull()
-    .references(() => skill.id, { onDelete: 'cascade' }),
-  frontmatter: text('frontmatter'),
-  body: text('body'),
-  authorId: uuid('author_id').references(() => user.id),
-  createdAt: timestamp('created_at', {
-    withTimezone: true,
-    mode: 'date',
-  })
-    .notNull()
-    .default(sql`now()`),
-})
+export const skillVersion = pgTable(
+  'skill_version',
+  {
+    id: uuid('id').primaryKey(),
+    skillId: uuid('skill_id')
+      .notNull()
+      .references(() => skill.id, { onDelete: 'cascade' }),
+    frontmatter: text('frontmatter'),
+    body: text('body'),
+    authorId: uuid('author_id').references(() => user.id),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => [index('skill_version_skill_id_idx').on(table.skillId)],
+)
 
-export const skillFile = pgTable('skill_file', {
-  id: uuid('id').primaryKey(),
-  skillId: uuid('skill_id')
-    .notNull()
-    .references(() => skill.id, { onDelete: 'cascade' }),
-  path: text('path').notNull(),
-  contentHash: text('content_hash'),
-  r2Key: text('r2_key'),
-})
+export const skillFile = pgTable(
+  'skill_file',
+  {
+    id: uuid('id').primaryKey(),
+    skillId: uuid('skill_id')
+      .notNull()
+      .references(() => skill.id, { onDelete: 'cascade' }),
+    path: text('path').notNull(),
+    contentHash: text('content_hash'),
+    r2Key: text('r2_key'),
+  },
+  (table) => [index('skill_file_skill_id_idx').on(table.skillId)],
+)
 
 export const skillAssignment = pgTable(
   'skill_assignment',

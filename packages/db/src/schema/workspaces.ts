@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import {
   check,
+  index,
   jsonb,
   pgTable,
   text,
@@ -71,6 +72,7 @@ export const member = pgTable(
       .default(sql`now()`),
   },
   (table) => [
+    index('member_user_id_idx').on(table.userId),
     uniqueIndex('member_organization_user_unique').on(
       table.organizationId,
       table.userId,
@@ -109,6 +111,7 @@ export const invitation = pgTable(
       .references(() => user.id),
   },
   (table) => [
+    index('invitation_organization_id_idx').on(table.organizationId),
     check(
       'invitation_role_check',
       sql`${table.role} in ('owner', 'admin', 'member')`,

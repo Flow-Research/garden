@@ -97,6 +97,7 @@ export const automation = pgTable(
     metadata: jsonb('metadata'),
   },
   (table) => [
+    index('automation_assignee_agent_id_idx').on(table.assigneeAgentId),
     index('automation_workspace_status_idx').on(
       table.workspaceId,
       table.status,
@@ -212,6 +213,7 @@ export const automationRun = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
+    index('automation_run_trigger_id_idx').on(table.triggerId),
     index('automation_run_workspace_idx').on(
       table.workspaceId,
       table.status,
