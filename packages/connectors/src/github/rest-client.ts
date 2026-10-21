@@ -12,7 +12,11 @@ import {
   type ConnectorError,
   ConnectorHttpError,
 } from '../effect/errors.ts'
-import { createGitHubInstallationAccessToken } from '../github-app.ts'
+import { withConnectorTimeout } from '../effect/http.ts'
+import {
+  getCachedGitHubInstallationAccessToken,
+  invalidateCachedGitHubInstallationAccessToken,
+} from '../github-app.ts'
 
 const GITHUB_API_BASE_URL = 'https://api.github.com'
 
@@ -57,17 +61,20 @@ const githubUrl = (input: GitHubRequest): string => {
   return url.toString()
 }
 
+/** Token cache arguments for a GitHub App installation. */
+export const githubAppTokenArgs = (config: GitHubAppConfigShape) => ({
+  env: {
+    GITHUB_APP_ID: config.appId,
+    GITHUB_CLIENT_ID: config.clientId,
+    GITHUB_APP_PRIVATE_KEY: config.privateKey,
+  },
+  installationId: config.installationId,
+})
+
 const installationToken = Effect.fn('GitHubRestClient.installationToken')(
   function* (config: GitHubAppConfigShape, operation: string) {
     const token = yield* Effect.promise(() =>
-      createGitHubInstallationAccessToken({
-        env: {
-          GITHUB_APP_ID: config.appId,
-          GITHUB_CLIENT_ID: config.clientId,
-          GITHUB_APP_PRIVATE_KEY: config.privateKey,
-        },
-        installationId: config.installationId,
-      }),
+      getCachedGitHubInstallationAccessToken(githubAppTokenArgs(config)),
     )
     if (token.isErr()) {
       return yield* new ConnectorAuthError({
@@ -126,18 +133,34 @@ export const makeGitHubRestClientLayer = (): Layer.Layer<
         request: Effect.fn('GitHubRestClient.request')(function* (
           input: GitHubRequest,
         ) {
-          const token = yield* installationToken(config, input.operation)
-          const request = yield* makeRequest(token, input)
-          const response = yield* Effect.mapError(
-            client.execute(request),
-            (cause) =>
-              new ConnectorHttpError({
+          const send = Effect.fn('GitHubRestClient.send')(function* () {
+            const token = yield* installationToken(config, input.operation)
+            const request = yield* makeRequest(token, input)
+            return yield* client.execute(request).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ConnectorHttpError({
+                    connectorId: 'github',
+                    operation: input.operation,
+                    message: 'GitHub API request failed.',
+                    cause,
+                  }),
+              ),
+              withConnectorTimeout({
                 connectorId: 'github',
                 operation: input.operation,
-                message: 'GitHub API request failed.',
-                cause,
               }),
-          )
+            )
+          })
+          let response = yield* send()
+          if (response.status === 401) {
+            // The cached installation token was revoked (suspended
+            // installation, changed permissions): mint a new one and retry.
+            invalidateCachedGitHubInstallationAccessToken(
+              githubAppTokenArgs(config),
+            )
+            response = yield* send()
+          }
           if (response.status < 200 || response.status >= 300) {
             return yield* new ConnectorHttpError({
               connectorId: 'github',
