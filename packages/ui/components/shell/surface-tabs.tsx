@@ -1,4 +1,4 @@
-import { Plus, X } from '@phosphor-icons/react'
+import { Plus, X } from 'lucide-react'
 import type { ComponentType, ReactNode } from 'react'
 import { cn } from '@garden/ui/lib/utils'
 
