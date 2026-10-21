@@ -28,6 +28,7 @@ export const deploymentTargets = {
     executorBlobsId: 'executor-blobs',
     executorBlobsBucket: 'harnessy-connectors-blobs',
     agentDoId: 'agent-do',
+    workspaceRealtimeId: 'workspace-realtime',
     // The v1 Worker tag stored the runtime binding name `AUTOMATION_TRIGGER`
     // as the class for logical ID `automation-trigger`. Use the binding name as
     // the v2 logical ID so adoption matches the observed `AutomationTriggerDO`
@@ -64,6 +65,7 @@ export const deploymentTargets = {
     executorBlobsId: 'executor-blobs-dev',
     executorBlobsBucket: 'harnessy-connectors-blobs-dev',
     agentDoId: 'agent-do-dev',
+    workspaceRealtimeId: 'workspace-realtime-dev',
     // Match the runtime binding name for newly provisioned Durable Objects.
     automationTriggerId: 'AUTOMATION_TRIGGER',
     workflowId: 'run-workflow-dev',
@@ -97,6 +99,7 @@ export const deploymentTargets = {
     executorBlobsId: 'executor-blobs-preview',
     executorBlobsBucket: 'harnessy-connectors-blobs-preview',
     agentDoId: 'agent-do-preview',
+    workspaceRealtimeId: 'workspace-realtime-preview',
     // The first v2 preview adoption registered this binding under its runtime
     // name. Keep that state identity to avoid a Durable Object class migration.
     automationTriggerId: 'AUTOMATION_TRIGGER',
