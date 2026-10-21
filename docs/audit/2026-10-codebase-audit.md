@@ -816,7 +816,7 @@ Each phase can be split into small, independently reviewable PRs.
 
 ## 8. Remediation status
 
-*Updated 2026-10-21, after Phases 0–4 were carried out on the `audit` branch (about 80 commits, one concern each). Unlike the audit itself, this work was checked with the tools installed: lint, typecheck, unit tests, the format check and the deploy-config check all pass. The only test failures are the four integration suites that need Docker.*
+*Updated 2026-10-21, after Phases 0–4 were carried out on the `audit` branch (about 80 commits, one concern each). Unlike the audit itself, this work was checked with the tools installed: lint, typecheck, the format check, the deploy-config check and every test suite pass, including the Docker-backed integration suites.*
 
 ### Done
 
@@ -835,7 +835,7 @@ Each phase can be split into small, independently reviewable PRs.
 
 ### Needs verification before release
 
-- **Migrations 0050–0053** were generated and reviewed, but they have not been run against a real database. Run them first on a copy of production data, since the backfills and the new cascades change existing rows.
+- **Migrations 0049–0053** apply cleanly to an empty database (the integration suites run every migration). They were also run on a database seeded at 0048 with old-style data. Timestamps kept their UTC value under a non-UTC session time zone, null timestamps were backfilled, and issue and workspace deletes cascaded as intended. They have not been run against production-sized data, so rehearse them on a copy to measure lock time, since 0050 rewrites 69 columns.
 - **Browser smoke tests:**
   - issue runs and automation runs (they now use the shared run lifecycle)
   - icons and dark mode across the app
