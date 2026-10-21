@@ -25,15 +25,20 @@ const PERMISSION_CHECKS = [
 ]
 
 const MEMBER_LEVEL_ROUTES: Record<string, string> = {
-  '$.ts': 'Effect HttpApi host; its endpoints authorize through the WorkspaceAccess service',
+  '$.ts':
+    'Effect HttpApi host; its endpoints authorize through the WorkspaceAccess service',
   'auth/$.ts': 'Better Auth handler; it authorizes its own endpoints',
-  'internal/capability-sync.ts': 'internal endpoint authenticated by the shared secret, not a user',
+  'internal/capability-sync.ts':
+    'internal endpoint authenticated by the shared secret, not a user',
   'me.ts': 'the caller updates only their own profile',
   'workspaces.ts': 'any signed-in user may create a workspace',
   'workspaces/$id.ts': 'Better Auth organization API enforces the role',
-  'workspaces/$id/invitations/$invitationId.ts': 'Better Auth organization API enforces the role',
-  'workspaces/$id/members/$memberId.ts': 'Better Auth organization API enforces the role',
-  'upload-file.ts': 'members may attach files; deletion is uploader-or-issueManage',
+  'workspaces/$id/invitations/$invitationId.ts':
+    'Better Auth organization API enforces the role',
+  'workspaces/$id/members/$memberId.ts':
+    'Better Auth organization API enforces the role',
+  'upload-file.ts':
+    'members may attach files; deletion is uploader-or-issueManage',
   'comments/$id.ts': 'members may edit or delete only their own comments',
   'comments/$id/reactions.ts': 'members may react to comments',
   'issues/$id/comments.ts': 'members may comment on issues',
@@ -47,14 +52,16 @@ const MEMBER_LEVEL_ROUTES: Record<string, string> = {
   'chat/threads.ts': 'chat threads are private to their owner',
   'chat/threads/$id.ts': 'chat threads are private to their owner',
   'chat/threads/$id/documents.ts': 'chat threads are private to their owner',
-  'chat/threads/$id/primary-issue.ts': 'chat threads are private to their owner',
+  'chat/threads/$id/primary-issue.ts':
+    'chat threads are private to their owner',
   'debug-stream.ts': "refreshes debug data for the caller's own session",
   'executor/preview.ts': 'read-only preview of a catalog integration',
   'brain/files.ts': 'members may add files to the workspace brain',
   'brain/files/$id.ts': 'members may manage workspace brain files',
   'brain/folders.ts': 'members may create brain folders',
   'brain/folders/$id.ts': 'folder privacy is enforced per creator in the query',
-  'brain/folders/$id/files.ts': 'folder privacy is enforced per creator in the query',
+  'brain/folders/$id/files.ts':
+    'folder privacy is enforced per creator in the query',
 }
 
 function routeFiles(dir: string): string[] {

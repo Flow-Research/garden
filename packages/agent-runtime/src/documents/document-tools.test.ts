@@ -378,52 +378,56 @@ describe('canonical DOCX document tools', () => {
     expect(workspace.writeFileBytes).not.toHaveBeenCalled()
   })
 
-  it('initializes generated DOCX bytes through the canonical authority', async () => {
-    const queryDb = queryDatabase([
-      {
+  it(
+    'initializes generated DOCX bytes through the canonical authority',
+    async () => {
+      const queryDb = queryDatabase([
+        {
+          threadId: 'thread-1',
+          workspaceId: 'workspace-1',
+          ownerUserId: 'user-1',
+        },
+      ])
+      let insertIndex = 0
+      mocks.getPooledDb.mockReturnValue({
+        ...queryDb,
+        insert: () => {
+          const rows =
+            insertIndex++ === 0 ? [{ id: 'document-1' }] : [{ id: 'version-1' }]
+          return { values: () => ({ returning: async () => rows }) }
+        },
+        update: () => ({ set: () => ({ where: async () => undefined }) }),
+      })
+      const initializeDocx = vi.fn(async () => ({
+        ok: true as const,
+        snapshot: canonicalSnapshot,
+      }))
+      const context: DocumentToolContext = {
+        databaseUrl: 'postgres://test',
+        documentArtifacts: documentAuthority({ initializeDocx }),
+        workspace: {
+          writeFileBytes: vi.fn(async () => undefined),
+        } as unknown as WorkspaceFsLike,
         threadId: 'thread-1',
-        workspaceId: 'workspace-1',
-        ownerUserId: 'user-1',
-      },
-    ])
-    let insertIndex = 0
-    mocks.getPooledDb.mockReturnValue({
-      ...queryDb,
-      insert: () => {
-        const rows =
-          insertIndex++ === 0 ? [{ id: 'document-1' }] : [{ id: 'version-1' }]
-        return { values: () => ({ returning: async () => rows }) }
-      },
-      update: () => ({ set: () => ({ where: async () => undefined }) }),
-    })
-    const initializeDocx = vi.fn(async () => ({
-      ok: true as const,
-      snapshot: canonicalSnapshot,
-    }))
-    const context: DocumentToolContext = {
-      databaseUrl: 'postgres://test',
-      documentArtifacts: documentAuthority({ initializeDocx }),
-      workspace: {
-        writeFileBytes: vi.fn(async () => undefined),
-      } as unknown as WorkspaceFsLike,
-      threadId: 'thread-1',
-    }
+      }
 
-    const result = await generateDocx({
-      context,
-      title: 'Generated brief',
-      sections: [{ heading: 'Summary', content: 'Canonical content' }],
-    })
+      const result = await generateDocx({
+        context,
+        title: 'Generated brief',
+        sections: [{ heading: 'Summary', content: 'Canonical content' }],
+      })
 
-    expect(result).toMatchObject({
-      ok: true,
-      canonical_revision: 2,
-      document_id: 'document-1',
-    })
-    expect(initializeDocx).toHaveBeenCalledWith({
-      bytes: expect.any(Uint8Array),
-      documentId: 'document-1',
-      filename: 'Generated brief.docx',
-    })
-  }, DOCX_TEST_TIMEOUT_MS)
+      expect(result).toMatchObject({
+        ok: true,
+        canonical_revision: 2,
+        document_id: 'document-1',
+      })
+      expect(initializeDocx).toHaveBeenCalledWith({
+        bytes: expect.any(Uint8Array),
+        documentId: 'document-1',
+        filename: 'Generated brief.docx',
+      })
+    },
+    DOCX_TEST_TIMEOUT_MS,
+  )
 })
