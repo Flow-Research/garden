@@ -80,7 +80,10 @@ type ChatSubAgentToolsInput = {
     helixApiKey?: string
     ai: Ai
     files: R2Bucket
-    getContext?: () => BrainToolContext | null | Promise<BrainToolContext | null>
+    getContext?: () =>
+      | BrainToolContext
+      | null
+      | Promise<BrainToolContext | null>
   }
 }
 
@@ -1785,19 +1788,21 @@ export function createChatSubAgentTools({
       },
       ai: brain.ai,
       files: brain.files,
-      getContext: brain.getContext ?? (async () => {
-        if (!databaseUrl || !threadId) return null
-        const threadResult = await loadChatThreadContext({
-          databaseUrl,
-          threadId,
-        })
-        if (threadResult.isErr()) return null
-        return {
-          workspaceId: threadResult.value.workspaceId,
-          agentId: threadResult.value.agentId,
-          runId: threadResult.value.threadId,
-        }
-      }),
+      getContext:
+        brain.getContext ??
+        (async () => {
+          if (!databaseUrl || !threadId) return null
+          const threadResult = await loadChatThreadContext({
+            databaseUrl,
+            threadId,
+          })
+          if (threadResult.isErr()) return null
+          return {
+            workspaceId: threadResult.value.workspaceId,
+            agentId: threadResult.value.agentId,
+            runId: threadResult.value.threadId,
+          }
+        }),
     }),
 
     // Client-side tool — no execute function. The UI renders an interactive

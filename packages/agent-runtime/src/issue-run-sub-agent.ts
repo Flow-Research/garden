@@ -104,25 +104,25 @@ import { logAgentSocketError } from './websocket-errors'
 
 type AgentRuntimeEnv = Cloudflare.Env &
   AgentModelEnv & {
-  BETTER_AUTH_SECRET: string
-  BETTER_AUTH_URL: string
-  HYPERDRIVE: Hyperdrive
-  DISCORD_BOT_TOKEN?: string
-  EXA_API_KEY?: string
-  AI: Ai
-  AI_GATEWAY_ID?: string
-  ENVIRONMENT?: string
-  VITE_PUBLIC_POSTHOG_HOST?: string
-  VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
-  BRAIN_FILES: R2Bucket
-  FILES: R2Bucket
-  LOADER: WorkerLoader
-  Sandbox: DurableObjectNamespace<SandboxDO>
-  MCP_SESSION: DurableObjectNamespace
-  RUN_WORKFLOW: RunWorkflowBinding
-  HELIX_URL?: string
-  HELIX_API_KEY?: string
-}
+    BETTER_AUTH_SECRET: string
+    BETTER_AUTH_URL: string
+    HYPERDRIVE: Hyperdrive
+    DISCORD_BOT_TOKEN?: string
+    EXA_API_KEY?: string
+    AI: Ai
+    AI_GATEWAY_ID?: string
+    ENVIRONMENT?: string
+    VITE_PUBLIC_POSTHOG_HOST?: string
+    VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
+    BRAIN_FILES: R2Bucket
+    FILES: R2Bucket
+    LOADER: WorkerLoader
+    Sandbox: DurableObjectNamespace<SandboxDO>
+    MCP_SESSION: DurableObjectNamespace
+    RUN_WORKFLOW: RunWorkflowBinding
+    HELIX_URL?: string
+    HELIX_API_KEY?: string
+  }
 
 type TurnMode = 'start' | 'resume'
 

@@ -22,7 +22,10 @@ import {
   guardedMcpToolDescription,
   resolveEffectiveTrust,
 } from '@garden/connectors/capabilities'
-import { extractExecutorToolRefsFromInput, mentionsUnparsedExecutorTools } from './executor-codemode'
+import {
+  extractExecutorToolRefsFromInput,
+  mentionsUnparsedExecutorTools,
+} from './executor-codemode'
 import * as schema from '@garden/db/schema'
 import { captureGardenAnalyticsEvent } from '@garden/observability/analytics/client'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'

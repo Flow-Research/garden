@@ -92,9 +92,7 @@ async function cleanupSeeded(seeded: Seeded) {
     await db.delete(schema.skill).where(eq(schema.skill.id, skillId))
   }
   await db.delete(schema.agent).where(eq(schema.agent.id, seeded.agentId))
-  await db
-    .delete(schema.member)
-    .where(eq(schema.member.userId, seeded.ownerId))
+  await db.delete(schema.member).where(eq(schema.member.userId, seeded.ownerId))
   await db
     .delete(schema.organization)
     .where(eq(schema.organization.id, seeded.workspaceId))
@@ -102,65 +100,67 @@ async function cleanupSeeded(seeded: Seeded) {
 }
 
 describe.skipIf(!DB_REACHABLE)(
-  'skill assignment filtering by allowed_skills (integration)', () => {
-  beforeAll(async () => {
-    pool = new Pool({ connectionString: TEST_DB_URL })
-    db = drizzle(pool, { schema })
-  })
-
-  afterAll(async () => {
-    await pool.end()
-  }, 30_000)
-
-  it('restricts assigned skills to the allowed slug list', async () => {
-    const seeded = await seedBase({
-      full_access: false,
-      allowed_skills: ['pdf'],
-      allowed_connectors: [],
-      allowed_tools: [],
-      approval_overrides: {},
+  'skill assignment filtering by allowed_skills (integration)',
+  () => {
+    beforeAll(async () => {
+      pool = new Pool({ connectionString: TEST_DB_URL })
+      db = drizzle(pool, { schema })
     })
-    try {
-      const rows = await loadRuntimeSkillAssignments(
-        {
-          bucket: {} as unknown as R2Bucket,
-          databaseUrl: TEST_DB_URL,
-        },
-        {
-          kind: 'target',
-          workspaceId: seeded.workspaceId,
-          target: agentSkillTarget(seeded.agentId),
-        },
-      )
-      expect(rows.map((row) => row.slug).sort()).toEqual(['pdf'])
-    } finally {
-      await cleanupSeeded(seeded)
-    }
-  })
 
-  it('returns all assigned skills for full-access agents', async () => {
-    const seeded = await seedBase({
-      full_access: true,
-      allowed_skills: [],
-      allowed_connectors: [],
-      allowed_tools: [],
-      approval_overrides: {},
+    afterAll(async () => {
+      await pool.end()
+    }, 30_000)
+
+    it('restricts assigned skills to the allowed slug list', async () => {
+      const seeded = await seedBase({
+        full_access: false,
+        allowed_skills: ['pdf'],
+        allowed_connectors: [],
+        allowed_tools: [],
+        approval_overrides: {},
+      })
+      try {
+        const rows = await loadRuntimeSkillAssignments(
+          {
+            bucket: {} as unknown as R2Bucket,
+            databaseUrl: TEST_DB_URL,
+          },
+          {
+            kind: 'target',
+            workspaceId: seeded.workspaceId,
+            target: agentSkillTarget(seeded.agentId),
+          },
+        )
+        expect(rows.map((row) => row.slug).sort()).toEqual(['pdf'])
+      } finally {
+        await cleanupSeeded(seeded)
+      }
     })
-    try {
-      const rows = await loadRuntimeSkillAssignments(
-        {
-          bucket: {} as unknown as R2Bucket,
-          databaseUrl: TEST_DB_URL,
-        },
-        {
-          kind: 'target',
-          workspaceId: seeded.workspaceId,
-          target: agentSkillTarget(seeded.agentId),
-        },
-      )
-      expect(rows.map((row) => row.slug).sort()).toEqual(['pdf', 'xlsx'])
-    } finally {
-      await cleanupSeeded(seeded)
-    }
-  })
-})
+
+    it('returns all assigned skills for full-access agents', async () => {
+      const seeded = await seedBase({
+        full_access: true,
+        allowed_skills: [],
+        allowed_connectors: [],
+        allowed_tools: [],
+        approval_overrides: {},
+      })
+      try {
+        const rows = await loadRuntimeSkillAssignments(
+          {
+            bucket: {} as unknown as R2Bucket,
+            databaseUrl: TEST_DB_URL,
+          },
+          {
+            kind: 'target',
+            workspaceId: seeded.workspaceId,
+            target: agentSkillTarget(seeded.agentId),
+          },
+        )
+        expect(rows.map((row) => row.slug).sort()).toEqual(['pdf', 'xlsx'])
+      } finally {
+        await cleanupSeeded(seeded)
+      }
+    })
+  },
+)

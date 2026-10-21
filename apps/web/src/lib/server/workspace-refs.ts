@@ -53,7 +53,10 @@ export async function isWorkspaceIssue(
     .select({ id: schema.issue.id })
     .from(schema.issue)
     .where(
-      and(eq(schema.issue.id, issueId), eq(schema.issue.workspaceId, workspaceId)),
+      and(
+        eq(schema.issue.id, issueId),
+        eq(schema.issue.workspaceId, workspaceId),
+      ),
     )
     .limit(1)
   return Boolean(row)

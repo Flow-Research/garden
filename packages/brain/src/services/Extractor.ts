@@ -50,9 +50,8 @@ export const extractText = (
         case FileFormat.Markdown:
           return new TextDecoder().decode(bytes)
         case FileFormat.Pdf: {
-          const { extractText: extractPdfText, getDocumentProxy } = await import(
-            'unpdf'
-          )
+          const { extractText: extractPdfText, getDocumentProxy } =
+            await import('unpdf')
           const pdf = await getDocumentProxy(new Uint8Array(bytes))
           const { text } = await extractPdfText(pdf, { mergePages: true })
           return text
@@ -94,7 +93,10 @@ export const extractText = (
       }
     },
     catch: (cause) =>
-      new ExtractError({ message: `failed to extract text from ${path}`, cause }),
+      new ExtractError({
+        message: `failed to extract text from ${path}`,
+        cause,
+      }),
   })
 
 export const ExtractorLive = Layer.effect(
@@ -110,11 +112,17 @@ export const ExtractorLive = Layer.effect(
               new ExtractError({ message: `unsupported file type: ${path}` }),
             )
           }
-          const bytes = yield* fs.readFile(path).pipe(
-            Effect.mapError((cause) =>
-              new ExtractError({ message: `failed to read ${path}`, cause }),
-            ),
-          )
+          const bytes = yield* fs
+            .readFile(path)
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ExtractError({
+                    message: `failed to read ${path}`,
+                    cause,
+                  }),
+              ),
+            )
           const body = yield* extractText(path, bytes, format)
           return { path, title: titleFromPath(path), body, format }
         }),

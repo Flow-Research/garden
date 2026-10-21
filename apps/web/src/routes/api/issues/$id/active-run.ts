@@ -3,10 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import {
-  notFound,
-  requireWorkspaceAccess,
-} from '@/lib/server/control-plane'
+import { notFound, requireWorkspaceAccess } from '@/lib/server/control-plane'
 import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import {
   getActiveIssueRun,
@@ -48,7 +45,8 @@ export const Route = createFileRoute('/api/issues/$id/active-run')({
               limit: 50,
             })
           : null
-        if (eventsResult?.isErr()) return serviceErrorResponse(eventsResult.error)
+        if (eventsResult?.isErr())
+          return serviceErrorResponse(eventsResult.error)
         const events = eventsResult?.isOk() ? eventsResult.value : []
 
         return Response.json({

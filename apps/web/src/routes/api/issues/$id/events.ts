@@ -11,9 +11,7 @@ import {
 } from '@/lib/server/control-plane'
 import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import { parseSearchParams } from '@/lib/server/validation/issues'
-import {
-  listIssueRunEvents,
-} from '@garden/server/issues/run-service'
+import { listIssueRunEvents } from '@garden/server/issues/run-service'
 
 const eventsSearchSchema = z.object({
   run_id: z.string().uuid().optional(),
@@ -55,7 +53,8 @@ export const Route = createFileRoute('/api/issues/$id/events')({
           after: searchResult.value.after,
           limit: searchResult.value.limit,
         })
-        if (eventsResult.isErr()) return serviceErrorResponse(eventsResult.error)
+        if (eventsResult.isErr())
+          return serviceErrorResponse(eventsResult.error)
         return Response.json(eventsResult.value)
       },
     },

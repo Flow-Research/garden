@@ -42,7 +42,9 @@ export function makeWorkerBrainLive(args: {
     }),
   )
   return Layer.effect(Brain, makeBrain).pipe(
-    Layer.provide(makeHelixClientLayer({ baseUrl: args.baseUrl, apiKey: args.apiKey })),
+    Layer.provide(
+      makeHelixClientLayer({ baseUrl: args.baseUrl, apiKey: args.apiKey }),
+    ),
     Layer.provide(WorkersAiEmbeddingsLive(args.ai)),
     Layer.provide(makeR2RawFileStoreLive(args.files)),
     Layer.provide(ChunkerLive),

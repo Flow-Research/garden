@@ -294,38 +294,38 @@ describe('invitation acceptance (integration)', () => {
       seed: { status: 'accepted' } as const,
       reason: 'used',
     },
-  ])('marks $name invites unavailable with a distinct reason', async ({
-    seed,
-    reason,
-  }) => {
-    const suffix = randomUUID()
-    const { org, inviter } = await seedOrganization(testDb, suffix)
-    const inviteeEmail = `invitee-${suffix}@example.com`
-    const invitation = await seedInvitation(testDb, {
-      organizationId: org.id,
-      inviterId: inviter.id,
-      email: inviteeEmail,
-      ...seed,
-    })
-    const { requestHeaders, session } = await signUpUser(auth, inviteeEmail)
-
-    const result = await acceptInvitationWithSession({
-      auth,
-      db: testDb.db,
-      requestHeaders,
-      session,
-      invitationId: invitation.id,
-    })
-
-    expect(result.status).toBe('unavailable')
-    if (result.status === 'unavailable') expect(result.reason).toBe(reason)
-    expect(
-      await readMemberships(testDb, {
+  ])(
+    'marks $name invites unavailable with a distinct reason',
+    async ({ seed, reason }) => {
+      const suffix = randomUUID()
+      const { org, inviter } = await seedOrganization(testDb, suffix)
+      const inviteeEmail = `invitee-${suffix}@example.com`
+      const invitation = await seedInvitation(testDb, {
         organizationId: org.id,
-        userId: session.user.id,
-      }),
-    ).toHaveLength(0)
-  })
+        inviterId: inviter.id,
+        email: inviteeEmail,
+        ...seed,
+      })
+      const { requestHeaders, session } = await signUpUser(auth, inviteeEmail)
+
+      const result = await acceptInvitationWithSession({
+        auth,
+        db: testDb.db,
+        requestHeaders,
+        session,
+        invitationId: invitation.id,
+      })
+
+      expect(result.status).toBe('unavailable')
+      if (result.status === 'unavailable') expect(result.reason).toBe(reason)
+      expect(
+        await readMemberships(testDb, {
+          organizationId: org.id,
+          userId: session.user.id,
+        }),
+      ).toHaveLength(0)
+    },
+  )
 
   it('reports unknown invitation ids as not found', async () => {
     const suffix = randomUUID()

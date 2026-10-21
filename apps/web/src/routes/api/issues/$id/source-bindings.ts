@@ -90,7 +90,8 @@ export const Route = createFileRoute('/api/issues/$id/source-bindings')({
           externalId: body.external_id,
           externalUrl: body.external_url,
         })
-        if (attachResult.isErr()) return serviceErrorResponse(attachResult.error)
+        if (attachResult.isErr())
+          return serviceErrorResponse(attachResult.error)
         return Response.json(attachResult.value, { status: 201 })
       },
     },

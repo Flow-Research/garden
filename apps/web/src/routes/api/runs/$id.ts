@@ -3,10 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import {
-  notFound,
-  requireWorkspaceAccess,
-} from '@/lib/server/control-plane'
+import { notFound, requireWorkspaceAccess } from '@/lib/server/control-plane'
 import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import {
   IssueRunServiceError,
@@ -37,7 +34,8 @@ export const Route = createFileRoute('/api/runs/$id')({
           runId: run.id,
           limit: 200,
         })
-        if (eventsResult.isErr()) return serviceErrorResponse(eventsResult.error)
+        if (eventsResult.isErr())
+          return serviceErrorResponse(eventsResult.error)
 
         const workProducts = await (async () => {
           if (!run.issueId) return []

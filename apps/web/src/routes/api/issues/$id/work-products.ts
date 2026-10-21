@@ -3,14 +3,9 @@ import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import {
-  notFound,
-  requireWorkspaceAccess,
-} from '@/lib/server/control-plane'
+import { notFound, requireWorkspaceAccess } from '@/lib/server/control-plane'
 import { serviceErrorResponse } from '@/lib/server/service-error-response'
-import {
-  listIssueWorkProducts,
-} from '@garden/server/issues/run-service'
+import { listIssueWorkProducts } from '@garden/server/issues/run-service'
 
 export const Route = createFileRoute('/api/issues/$id/work-products')({
   server: {

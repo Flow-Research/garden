@@ -2,12 +2,7 @@ import { useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Result } from 'better-result'
 import { toast } from 'sonner'
-import {
-  FilePlus,
-  Folder as FolderIcon,
-  Plus,
-  ArrowRight,
-} from 'lucide-react'
+import { FilePlus, Folder as FolderIcon, Plus, ArrowRight } from 'lucide-react'
 import { FunnelSimple, PlugsConnected, CaretRight } from '@phosphor-icons/react'
 import {
   AlertDialog,
@@ -29,11 +24,7 @@ import {
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { BrainFileTypeIcon } from './file-type-icon'
 import { BrainAllFilesView } from './all-files-view'
-import {
-  FileCardMenu,
-  FileStatusChip,
-  type FileRetryState,
-} from './file-list'
+import { FileCardMenu, FileStatusChip, type FileRetryState } from './file-list'
 import {
   addFileToBrainFolder,
   createBrainFolder,
@@ -51,10 +42,7 @@ import {
   brainFolderKeys,
   brainFolderListOptions,
 } from '../queries'
-import {
-  BRAIN_ACCEPTED_FILE_TYPES,
-  type BrainFolderSummary,
-} from '../contract'
+import { BRAIN_ACCEPTED_FILE_TYPES, type BrainFolderSummary } from '../contract'
 import { truncateMiddle } from '../format'
 import { BrainFilePreviewDialog } from './file-preview-dialog'
 import { BrainFileUploadDialog } from './file-upload-dialog'
@@ -671,7 +659,11 @@ export function BrainFilesPage() {
                   </span>
                 </span>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" sideOffset={4} className="w-48">
+              <DropdownMenuContent
+                align="start"
+                sideOffset={4}
+                className="w-48"
+              >
                 <DropdownMenuItem onClick={() => openFilePicker()}>
                   <Plus className="size-4" />
                   Add files

@@ -133,7 +133,11 @@ vi.mock('@/lib/server/brain-folders', () => {
       name?: string
       privacy?: 'private' | 'shared'
     }) => {
-      const row = findVisibleRow(input.workspaceId, input.userId, input.folderId)
+      const row = findVisibleRow(
+        input.workspaceId,
+        input.userId,
+        input.folderId,
+      )
       if (row === null) return false
       if (input.name !== undefined) row.name = input.name
       if (input.privacy !== undefined) row.privacy = input.privacy
@@ -144,7 +148,11 @@ vi.mock('@/lib/server/brain-folders', () => {
       userId: string
       folderId: string
     }) => {
-      const row = findVisibleRow(input.workspaceId, input.userId, input.folderId)
+      const row = findVisibleRow(
+        input.workspaceId,
+        input.userId,
+        input.folderId,
+      )
       if (row === null) return false
       folderRows.delete(row.id)
       folderFiles.delete(row.id)
@@ -470,7 +478,10 @@ describe('GET /api/brain/folders/$id', () => {
     })
     folderFiles.set('folder-1', new Set(['item-member']))
     for (let i = 0; i < 100; i += 1) {
-      storeBrainFile({ itemId: `item-filler-${i}`, label: `a-${String(i).padStart(3, '0')}.txt` })
+      storeBrainFile({
+        itemId: `item-filler-${i}`,
+        label: `a-${String(i).padStart(3, '0')}.txt`,
+      })
     }
     storeBrainFile({ itemId: 'item-member', label: 'zzz-member.pdf' })
 
@@ -665,12 +676,13 @@ describe('DELETE /api/brain/folders/$id/files', () => {
     const response = await deleteBrainFolderFile({
       context: ctx,
       params: { id: 'folder-1' },
-      request: new Request(`${foldersUrl}/folder-1/files`, { method: 'DELETE' }),
+      request: new Request(`${foldersUrl}/folder-1/files`, {
+        method: 'DELETE',
+      }),
     })
 
     expect(response.status).toBe(400)
   })
-
 
   it('removes a member file without deleting it', async () => {
     setupRequest('ws-one')

@@ -3,18 +3,13 @@ import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import {
-  notFound,
-  requireWorkspaceAccess,
-} from '@/lib/server/control-plane'
+import { notFound, requireWorkspaceAccess } from '@/lib/server/control-plane'
 import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import {
   requireWorkspacePermission,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
-import {
-  removeSourceBinding,
-} from '@garden/core/issues/source-binding'
+import { removeSourceBinding } from '@garden/core/issues/source-binding'
 
 export const Route = createFileRoute(
   '/api/issues/$id/source-bindings/$bindingId',
@@ -53,7 +48,8 @@ export const Route = createFileRoute(
           databaseUrl: appEnv.HYPERDRIVE.connectionString,
           bindingId: params.bindingId,
         })
-        if (removeResult.isErr()) return serviceErrorResponse(removeResult.error)
+        if (removeResult.isErr())
+          return serviceErrorResponse(removeResult.error)
         return new Response(null, { status: 204 })
       },
     },

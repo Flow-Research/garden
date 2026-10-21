@@ -37,9 +37,7 @@ export async function updateIssueSubscription(input: {
   const access = await requireWorkspaceAccess(appContext, issue.workspaceId)
   if (access instanceof Response) return access
 
-  const rawBody: unknown = await appContext.request
-    .json()
-    .catch(() => ({}))
+  const rawBody: unknown = await appContext.request.json().catch(() => ({}))
   const body = issueSubscriptionBodySchema.safeParse(rawBody)
   if (!body.success) return badRequest('Invalid subscription payload')
 

@@ -415,10 +415,7 @@ function FolderFileMenu({
           Download
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          variant="destructive"
-          onClick={() => onDelete(file)}
-        >
+        <DropdownMenuItem variant="destructive" onClick={() => onDelete(file)}>
           <Trash className="size-4" weight="regular" />
           Delete
         </DropdownMenuItem>

@@ -23,7 +23,10 @@ export function useSurfaceNavigation() {
   const upsertTab = useSurfaceTabsStore((s) => s.upsertTab)
 
   const openIssue = useCallback(
-    (issue: { id: string; title: string }, options?: { focus?: string | null }) => {
+    (
+      issue: { id: string; title: string },
+      options?: { focus?: string | null },
+    ) => {
       upsertTab('tasks', { id: issue.id, title: issue.title })
       void navigate({
         to: '/tasks/$issueId',

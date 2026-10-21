@@ -42,12 +42,9 @@ describe('allowed_skills filtering', () => {
   })
 
   it('matches names as an alias, mirroring slash-token resolution', () => {
-    expect(
-      filterSkillRowsByAllowedSlugs(
-        [{ name: 'PDF' }],
-        ['pdf'],
-      ),
-    ).toEqual([{ name: 'PDF' }])
+    expect(filterSkillRowsByAllowedSlugs([{ name: 'PDF' }], ['pdf'])).toEqual([
+      { name: 'PDF' },
+    ])
     expect(isSkillAllowedBySlugs({ name: 'PDF' }, new Set(['pdf']))).toBe(true)
   })
 
@@ -58,12 +55,10 @@ describe('allowed_skills filtering', () => {
 
   it('prefers the canonical slug over the display name', () => {
     expect(
-      filterSkillRowsByAllowedSlugs([{ name: 'PDF', slug: 'report' }], [
-        'pdf',
-      ]),
+      filterSkillRowsByAllowedSlugs([{ name: 'PDF', slug: 'report' }], ['pdf']),
     ).toEqual([])
-    expect(isSkillAllowedBySlugs({ name: 'PDF', slug: 'report' }, new Set(['pdf']))).toBe(
-      false,
-    )
+    expect(
+      isSkillAllowedBySlugs({ name: 'PDF', slug: 'report' }, new Set(['pdf'])),
+    ).toBe(false)
   })
 })

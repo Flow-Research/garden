@@ -131,49 +131,49 @@ export const Route = createFileRoute('/api/automations')({
         const [automation, trigger] = await db.transaction(async (tx) => {
           const automationRow = requireReturnedRow(
             await tx
-            .insert(schema.automation)
-            .values({
-              id: automationId,
-              workspaceId: workspaceContext.workspaceId,
-              projectId: body.project_id ?? null,
-              title: body.title,
-              description: body.description ?? null,
-              assigneeAgentId: body.assignee_agent_id,
-              priority: body.priority ?? 'medium',
-              status: automationStatus,
-              concurrencyPolicy: body.concurrency_policy ?? 'skip',
-              createdBy: workspaceContext.session.user.id,
+              .insert(schema.automation)
+              .values({
+                id: automationId,
+                workspaceId: workspaceContext.workspaceId,
+                projectId: body.project_id ?? null,
+                title: body.title,
+                description: body.description ?? null,
+                assigneeAgentId: body.assignee_agent_id,
+                priority: body.priority ?? 'medium',
+                status: automationStatus,
+                concurrencyPolicy: body.concurrency_policy ?? 'skip',
+                createdBy: workspaceContext.session.user.id,
 
-              systemPrompt: body.system_prompt ?? null,
-              inputSchema: body.input_schema ?? null,
-              contextSources: body.context_sources ?? null,
-              outputConfig: body.output_config ?? null,
-              executionConfig: body.execution_config ?? null,
-              notificationConfig: body.notification_config ?? null,
-              schedulingConfig: body.scheduling_config ?? null,
-              tags: body.tags ?? [],
-              category: body.category ?? null,
-              templateSource: body.template_source ?? null,
-              metadata: body.metadata ?? null,
-            })
-            .returning(),
+                systemPrompt: body.system_prompt ?? null,
+                inputSchema: body.input_schema ?? null,
+                contextSources: body.context_sources ?? null,
+                outputConfig: body.output_config ?? null,
+                executionConfig: body.execution_config ?? null,
+                notificationConfig: body.notification_config ?? null,
+                schedulingConfig: body.scheduling_config ?? null,
+                tags: body.tags ?? [],
+                category: body.category ?? null,
+                templateSource: body.template_source ?? null,
+                metadata: body.metadata ?? null,
+              })
+              .returning(),
             'automation',
           )
           if (!triggerInput || !triggerId) return [automationRow, null] as const
 
           const triggerRow = requireReturnedRow(
             await tx
-            .insert(schema.automationTrigger)
-            .values({
-              id: triggerId,
-              automationId,
-              kind: 'schedule',
-              label: triggerInput.label ?? null,
-              enabled: triggerEnabled,
-              cronExpression: triggerInput.cron_expression,
-              timezone: triggerInput.timezone,
-            })
-            .returning(),
+              .insert(schema.automationTrigger)
+              .values({
+                id: triggerId,
+                automationId,
+                kind: 'schedule',
+                label: triggerInput.label ?? null,
+                enabled: triggerEnabled,
+                cronExpression: triggerInput.cron_expression,
+                timezone: triggerInput.timezone,
+              })
+              .returning(),
             'automation trigger',
           )
           return [automationRow, triggerRow] as const

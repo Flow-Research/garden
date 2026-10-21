@@ -46,9 +46,7 @@ describe('extractExecutorToolRefs', () => {
   it('returns empty for non-string input and unmatched code', () => {
     expect(extractExecutorToolRefs(undefined)).toEqual([])
     expect(extractExecutorToolRefs('const x = 1')).toEqual([])
-    expect(
-      extractExecutorToolRefs('tools.search("gmail invoice")'),
-    ).toEqual([])
+    expect(extractExecutorToolRefs('tools.search("gmail invoice")')).toEqual([])
   })
 
   it('extracts from tool input objects', () => {

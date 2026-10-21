@@ -244,19 +244,17 @@ export async function deleteBrainFolderMembershipsByFileId(args: {
   fileId: string
 }): Promise<void> {
   const db = await getDb(args.env)
-  await db
-    .delete(schema.brainFolderFile)
-      .where(
-        and(
-          eq(schema.brainFolderFile.fileId, args.fileId),
-          // Scope via the parent folder row in case ids ever collide across tenants.
-          inArray(
-          schema.brainFolderFile.folderId,
-          db
-            .select({ id: schema.brainFolder.id })
-            .from(schema.brainFolder)
-            .where(eq(schema.brainFolder.workspaceId, args.workspaceId)),
-        ),
+  await db.delete(schema.brainFolderFile).where(
+    and(
+      eq(schema.brainFolderFile.fileId, args.fileId),
+      // Scope via the parent folder row in case ids ever collide across tenants.
+      inArray(
+        schema.brainFolderFile.folderId,
+        db
+          .select({ id: schema.brainFolder.id })
+          .from(schema.brainFolder)
+          .where(eq(schema.brainFolder.workspaceId, args.workspaceId)),
       ),
-    )
+    ),
+  )
 }

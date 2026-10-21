@@ -126,7 +126,9 @@ const OPENAI_COMPATIBLE_DEFAULT_CONTEXT_WINDOW_TOKENS = 32_768
  * ≤16k contexts. Pricing is zero — local/self-hosted calls have no per-token
  * cost, and PostHog cost overrides read these fields.
  */
-export function resolveAgentModelProfile(env?: AgentModelEnv): AgentModelProfile {
+export function resolveAgentModelProfile(
+  env?: AgentModelEnv,
+): AgentModelProfile {
   const requested = env?.GARDEN_MODEL_PROVIDER?.trim()
   // Empty string means "unset": the wrangler `vars` block declares these keys
   // with "" defaults so process env can override them in local dev (wrangler

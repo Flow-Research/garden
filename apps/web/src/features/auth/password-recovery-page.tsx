@@ -74,10 +74,7 @@ export function RequestPasswordResetPage({
     setLoading(true)
     setError('')
 
-    const resetUrl = new URL(
-      '/reset-password',
-      window.location.origin,
-    )
+    const resetUrl = new URL('/reset-password', window.location.origin)
     if (redirectTarget) resetUrl.searchParams.set('redirect', redirectTarget)
 
     void runRecoveryRequest(

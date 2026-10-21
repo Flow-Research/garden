@@ -527,22 +527,22 @@ async function applyDispatchConcurrency(args: {
       try: async () => {
         const run = requireReturnedRow(
           await db
-          .insert(schema.automationRun)
-          .values({
-            id: crypto.randomUUID(),
-            workspaceId: args.automation.workspaceId,
-            automationId: args.automation.id,
-            source: args.source,
-            status: 'skipped',
-            agentId: args.automation.assigneeAgentId,
-            hostName: args.automation.assigneeAgentId,
-            triggeredAt: now,
-            completedAt: now,
-            failureReason: 'concurrency_policy_skip',
-            triggerPayload: args.payload ?? null,
-            updatedAt: now,
-          })
-          .returning(),
+            .insert(schema.automationRun)
+            .values({
+              id: crypto.randomUUID(),
+              workspaceId: args.automation.workspaceId,
+              automationId: args.automation.id,
+              source: args.source,
+              status: 'skipped',
+              agentId: args.automation.assigneeAgentId,
+              hostName: args.automation.assigneeAgentId,
+              triggeredAt: now,
+              completedAt: now,
+              failureReason: 'concurrency_policy_skip',
+              triggerPayload: args.payload ?? null,
+              updatedAt: now,
+            })
+            .returning(),
           'skipped automation run',
         )
         await db

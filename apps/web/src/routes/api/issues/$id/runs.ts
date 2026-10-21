@@ -13,10 +13,7 @@ import {
   requireWorkspacePermission,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
-import {
-  listIssueRuns,
-  startIssueRun,
-} from '@garden/server/issues/run-service'
+import { listIssueRuns, startIssueRun } from '@garden/server/issues/run-service'
 
 export const Route = createFileRoute('/api/issues/$id/runs')({
   server: {

@@ -45,7 +45,9 @@ export function makeWebBrainLive(args: {
   files: R2BucketLike
 }): Layer.Layer<Brain> {
   return Layer.effect(Brain, makeBrain).pipe(
-    Layer.provide(makeHelixClientLayer({ baseUrl: args.baseUrl, apiKey: args.apiKey })),
+    Layer.provide(
+      makeHelixClientLayer({ baseUrl: args.baseUrl, apiKey: args.apiKey }),
+    ),
     Layer.provide(WorkersAiEmbeddingsLive(args.ai)),
     Layer.provide(makeR2RawFileStoreLive(args.files)),
     Layer.provide(ChunkerLive),

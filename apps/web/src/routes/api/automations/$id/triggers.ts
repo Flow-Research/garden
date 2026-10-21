@@ -86,17 +86,17 @@ export const Route = createFileRoute('/api/automations/$id/triggers')({
         const db = await appContext.db()
         const trigger = requireReturnedRow(
           await db
-          .insert(schema.automationTrigger)
-          .values({
-            id: crypto.randomUUID(),
-            automationId: automation.id,
-            kind: 'schedule',
-            enabled,
-            label: body.label ?? null,
-            cronExpression: body.cron_expression,
-            timezone: body.timezone,
-          })
-          .returning(),
+            .insert(schema.automationTrigger)
+            .values({
+              id: crypto.randomUUID(),
+              automationId: automation.id,
+              kind: 'schedule',
+              enabled,
+              label: body.label ?? null,
+              cronExpression: body.cron_expression,
+              timezone: body.timezone,
+            })
+            .returning(),
           'automation trigger',
         )
 

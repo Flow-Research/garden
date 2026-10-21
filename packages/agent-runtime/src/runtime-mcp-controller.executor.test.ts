@@ -94,9 +94,7 @@ async function cleanupSeeded(seeded: Seeded) {
     .delete(schema.capability)
     .where(eq(schema.capability.id, seeded.capabilityId))
   await db.delete(schema.agent).where(eq(schema.agent.id, seeded.agentId))
-  await db
-    .delete(schema.member)
-    .where(eq(schema.member.userId, seeded.ownerId))
+  await db.delete(schema.member).where(eq(schema.member.userId, seeded.ownerId))
   await db
     .delete(schema.organization)
     .where(eq(schema.organization.id, seeded.workspaceId))
@@ -171,70 +169,71 @@ async function needsApprovalForExecute(
 describe.skipIf(!DB_REACHABLE)(
   'executor tool approval gate (integration)',
   () => {
-  beforeAll(async () => {
-    pool = new Pool({ connectionString: TEST_DB_URL })
-    db = drizzle(pool, { schema })
-  })
+    beforeAll(async () => {
+      pool = new Pool({ connectionString: TEST_DB_URL })
+      db = drizzle(pool, { schema })
+    })
 
-  afterAll(async () => {
-    await pool.end()
-  })
+    afterAll(async () => {
+      await pool.end()
+    })
 
-  it('asks when codemode touches an ask-granted executor tool', async () => {
-    const seeded = await seedBase('ask')
-    try {
-      const controller = makeController(seeded)
-      const toolCallId = `call-${randomUUID()}`
-      const result = await needsApprovalForExecute(
-        controller,
-        GMAIL_LIST_CODE,
-        toolCallId,
-      )
-      expect(result).toBe(true)
-
-      const requests = await db
-        .select({ id: schema.permissionRequest.id })
-        .from(schema.permissionRequest)
-        .where(
-          and(
-            eq(schema.permissionRequest.agentId, seeded.agentId),
-            eq(schema.permissionRequest.capabilityId, seeded.capabilityId),
-            eq(schema.permissionRequest.toolCallId, toolCallId),
-          ),
+    it('asks when codemode touches an ask-granted executor tool', async () => {
+      const seeded = await seedBase('ask')
+      try {
+        const controller = makeController(seeded)
+        const toolCallId = `call-${randomUUID()}`
+        const result = await needsApprovalForExecute(
+          controller,
+          GMAIL_LIST_CODE,
+          toolCallId,
         )
-      expect(requests).toHaveLength(1)
-    } finally {
-      await cleanupSeeded(seeded)
-    }
-  })
+        expect(result).toBe(true)
 
-  it('allows codemode touching an allow-granted executor tool', async () => {
-    const seeded = await seedBase('allow')
-    try {
-      const controller = makeController(seeded)
-      const result = await needsApprovalForExecute(
-        controller,
-        GMAIL_LIST_CODE,
-        `call-${randomUUID()}`,
-      )
-      expect(result).toBe(false)
-    } finally {
-      await cleanupSeeded(seeded)
-    }
-  })
+        const requests = await db
+          .select({ id: schema.permissionRequest.id })
+          .from(schema.permissionRequest)
+          .where(
+            and(
+              eq(schema.permissionRequest.agentId, seeded.agentId),
+              eq(schema.permissionRequest.capabilityId, seeded.capabilityId),
+              eq(schema.permissionRequest.toolCallId, toolCallId),
+            ),
+          )
+        expect(requests).toHaveLength(1)
+      } finally {
+        await cleanupSeeded(seeded)
+      }
+    })
 
-  it('ignores unmapped integrations instead of blocking', async () => {
-    const seeded = await seedBase('ask')
-    try {
-      const controller = makeController(seeded)
-      const result = await needsApprovalForExecute(
-        controller,
-        UNKNOWN_CODE,
-        `call-${randomUUID()}`,
-      )
-      expect(result).toBe(false)
-    } finally {
-      await cleanupSeeded(seeded)
-    }
-  })
-})
+    it('allows codemode touching an allow-granted executor tool', async () => {
+      const seeded = await seedBase('allow')
+      try {
+        const controller = makeController(seeded)
+        const result = await needsApprovalForExecute(
+          controller,
+          GMAIL_LIST_CODE,
+          `call-${randomUUID()}`,
+        )
+        expect(result).toBe(false)
+      } finally {
+        await cleanupSeeded(seeded)
+      }
+    })
+
+    it('ignores unmapped integrations instead of blocking', async () => {
+      const seeded = await seedBase('ask')
+      try {
+        const controller = makeController(seeded)
+        const result = await needsApprovalForExecute(
+          controller,
+          UNKNOWN_CODE,
+          `call-${randomUUID()}`,
+        )
+        expect(result).toBe(false)
+      } finally {
+        await cleanupSeeded(seeded)
+      }
+    })
+  },
+)

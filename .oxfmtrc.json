@@ -13,6 +13,9 @@
     "**/worker-configuration.d.ts",
     "package-lock.json",
     "pnpm-lock.yaml",
-    "yarn.lock"
+    "yarn.lock",
+    "**/drizzle/meta/**",
+    "**/fixtures/**",
+    "**/routeTree.gen.ts"
   ]
 }

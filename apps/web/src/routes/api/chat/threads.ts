@@ -249,21 +249,21 @@ export const Route = createFileRoute('/api/chat/threads')({
 
           const createdThread = requireReturnedRow(
             await tx
-            .insert(schema.chatThread)
-            .values({
-              id,
-              workspaceId,
-              ownerUserId: session.user.id,
-              agentId: agentRow.id,
-              title,
-              lastMessage: '',
-              primaryIssueId,
-              runtimeKind,
-              runtimeKey,
-              createdAt: now,
-              updatedAt: now,
-            })
-            .returning(),
+              .insert(schema.chatThread)
+              .values({
+                id,
+                workspaceId,
+                ownerUserId: session.user.id,
+                agentId: agentRow.id,
+                title,
+                lastMessage: '',
+                primaryIssueId,
+                runtimeKind,
+                runtimeKey,
+                createdAt: now,
+                updatedAt: now,
+              })
+              .returning(),
             'chat thread',
           )
 

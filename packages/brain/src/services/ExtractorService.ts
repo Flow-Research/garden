@@ -25,10 +25,9 @@ export type ExtractorShape = {
   ) => Effect.Effect<ExtractedDoc, ExtractError>
 }
 
-export class Extractor extends Context.Service<
-  Extractor,
-  ExtractorShape
->()('@garden/brain/Extractor') {}
+export class Extractor extends Context.Service<Extractor, ExtractorShape>()(
+  '@garden/brain/Extractor',
+) {}
 
 const extensionOf = (path: string): string => {
   const base = path.split('/').pop() ?? path

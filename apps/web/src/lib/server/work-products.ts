@@ -188,9 +188,7 @@ function parseGithubIssueRefFromText(value: string | null) {
   return (
     // https://github.com/owner/repo/issues/12 (or /pull/12)
     issueRefFromMatch(
-      value.match(
-        /github\.com\/([^/\s]+)\/([^/\s]+)\/(?:issues|pull)\/(\d+)/i,
-      ),
+      value.match(/github\.com\/([^/\s]+)\/([^/\s]+)\/(?:issues|pull)\/(\d+)/i),
     ) ??
     // owner/repo#12
     issueRefFromMatch(value.match(/^([^/\s]+)\/([^#\s]+)#(\d+)$/)) ??
