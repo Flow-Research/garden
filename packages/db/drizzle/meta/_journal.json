@@ -351,6 +351,13 @@
       "when": 1792535873699,
       "tag": "0049_issue_delete_cascade",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1792561356413,
+      "tag": "0050_timestamps_with_time_zone",
+      "breakpoints": true
     }
   ]
 }

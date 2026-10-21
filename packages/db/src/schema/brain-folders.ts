@@ -33,8 +33,14 @@ export const brainFolder = pgTable(
     createdBy: uuid('created_by')
       .notNull()
       .references(() => user.id),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).default(sql`now()`),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).default(sql`now()`),
   },
   (table) => [
     index('brain_folder_workspace_idx').on(table.workspaceId, table.privacy),
@@ -60,7 +66,10 @@ export const brainFolderFile = pgTable(
     addedBy: uuid('added_by')
       .notNull()
       .references(() => user.id),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).default(sql`now()`),
   },
   (table) => [
     primaryKey({ columns: [table.folderId, table.fileId] }),

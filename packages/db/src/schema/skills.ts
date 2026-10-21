@@ -29,8 +29,14 @@ export const skill = pgTable(
     sourceUrl: text('source_url'),
     bundleHash: text('bundle_hash'),
     authorId: uuid('author_id').references(() => user.id),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).default(sql`now()`),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).default(sql`now()`),
   },
   (table) => [
     uniqueIndex('skill_workspace_slug_unique').on(
@@ -48,7 +54,10 @@ export const skillVersion = pgTable('skill_version', {
   frontmatter: text('frontmatter'),
   body: text('body'),
   authorId: uuid('author_id').references(() => user.id),
-  createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
+  createdAt: timestamp('created_at', {
+    withTimezone: true,
+    mode: 'date',
+  }).default(sql`now()`),
 })
 
 export const skillFile = pgTable('skill_file', {
@@ -75,8 +84,14 @@ export const skillAssignment = pgTable(
       .notNull()
       .references(() => skill.id, { onDelete: 'cascade' }),
     enabled: boolean('enabled').notNull().default(true),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).default(sql`now()`),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).default(sql`now()`),
   },
   (table) => [
     primaryKey({

@@ -37,9 +37,15 @@ export const chatThread = pgTable(
     runtimeKey: uuid('runtime_key').notNull(),
     title: text('title').notNull(),
     lastMessage: text('last_message').notNull().default(''),
-    archivedAt: timestamp('archived_at', { mode: 'date' }),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
+    archivedAt: timestamp('archived_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).default(sql`now()`),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).default(sql`now()`),
   },
   (table) => [
     index('chat_thread_workspace_owner_idx').on(

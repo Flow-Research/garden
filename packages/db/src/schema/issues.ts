@@ -81,8 +81,14 @@ export const issue = pgTable(
     createdBy: uuid('created_by')
       .notNull()
       .references(() => user.id),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).default(sql`now()`),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).default(sql`now()`),
   },
   (table) => [
     uniqueIndex('issue_workspace_number_unique').on(
@@ -130,7 +136,10 @@ export const issueComment = pgTable(
     authorId: uuid('author_id').notNull(),
     body: text('body').notNull(),
     mentions: jsonb('mentions'),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).default(sql`now()`),
   },
   (table) => [
     index('issue_comment_issue_created_idx').on(table.issueId, table.createdAt),
@@ -171,7 +180,10 @@ export const issueAttachment = pgTable(
     r2Key: text('r2_key').notNull(),
     contentType: text('content_type').notNull(),
     sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull().default(0),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).default(sql`now()`),
   },
   (table) => [
     index('issue_attachment_workspace_idx').on(table.workspaceId),
@@ -253,11 +265,14 @@ export const issueSourceBinding = pgTable(
     displayRef: text('display_ref'),
     titleSnapshot: text('title_snapshot'),
     metadata: jsonb('metadata'),
-    lastSyncedAt: timestamp('last_synced_at', { mode: 'date' }),
-    createdAt: timestamp('created_at', { mode: 'date' })
+    lastSyncedAt: timestamp('last_synced_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' })
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
   },
@@ -322,10 +337,10 @@ export const issueRun = pgTable(
       mode: 'date',
       withTimezone: true,
     }),
-    createdAt: timestamp('created_at', { mode: 'date' })
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' })
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
   },
@@ -375,7 +390,7 @@ export const issueRunEvent = pgTable(
     level: text('level').notNull().default('info'),
     message: text('message'),
     payload: jsonb('payload'),
-    createdAt: timestamp('created_at', { mode: 'date' })
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
   },
@@ -420,10 +435,10 @@ export const issueWorkProduct = pgTable(
     }),
     appliedExternalId: text('applied_external_id'),
     appliedExternalUrl: text('applied_external_url'),
-    createdAt: timestamp('created_at', { mode: 'date' })
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' })
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
   },

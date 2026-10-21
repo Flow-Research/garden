@@ -52,10 +52,10 @@ export const automation = pgTable(
     createdBy: uuid('created_by')
       .notNull()
       .references(() => user.id),
-    createdAt: timestamp('created_at', { mode: 'date' })
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' })
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
 
@@ -131,10 +131,10 @@ export const automationTrigger = pgTable(
     cronExpression: text('cron_expression'),
     timezone: text('timezone'),
     webhookTokenHash: text('webhook_token_hash'),
-    createdAt: timestamp('created_at', { mode: 'date' })
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' })
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
   },
@@ -201,10 +201,10 @@ export const automationRun = pgTable(
     }),
     failureReason: text('failure_reason'),
     triggerPayload: jsonb('trigger_payload'),
-    createdAt: timestamp('created_at', { mode: 'date' })
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' })
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
   },

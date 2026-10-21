@@ -28,8 +28,14 @@ export const organization = pgTable(
       .notNull()
       .default(sql`'{}'::jsonb`),
     plan: text('plan').default('free'),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).default(sql`now()`),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).default(sql`now()`),
   },
   (table) => [
     check(
@@ -52,7 +58,10 @@ export const member = pgTable(
       .notNull()
       .references(() => user.id),
     role: text('role').notNull().default('member'),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).default(sql`now()`),
   },
   (table) => [
     uniqueIndex('member_organization_user_unique').on(
@@ -78,8 +87,14 @@ export const invitation = pgTable(
     email: text('email').notNull(),
     role: text('role').notNull(),
     status: text('status').notNull().default('pending'),
-    expiresAt: timestamp('expires_at', { mode: 'date' }).notNull(),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
+    expiresAt: timestamp('expires_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).default(sql`now()`),
     inviterId: uuid('inviter_id')
       .notNull()
       .references(() => user.id),

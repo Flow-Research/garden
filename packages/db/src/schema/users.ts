@@ -9,6 +9,12 @@ export const user = pgTable('user', {
   name: text('name').notNull().default(''),
   emailVerified: boolean('email_verified').notNull().default(false),
   avatarUrl: text('avatar_url'),
-  createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
-  updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
+  createdAt: timestamp('created_at', {
+    withTimezone: true,
+    mode: 'date',
+  }).default(sql`now()`),
+  updatedAt: timestamp('updated_at', {
+    withTimezone: true,
+    mode: 'date',
+  }).default(sql`now()`),
 })
