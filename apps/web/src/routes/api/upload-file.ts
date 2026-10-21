@@ -15,9 +15,11 @@ import {
   requireWorkspaceContext,
   serviceUnavailable,
 } from '@/lib/server/control-plane'
+import {
+  multipartErrorResponse,
+  readMultipartForm,
+} from '@/lib/server/multipart'
 import { toIssueAttachment } from '@garden/server/issues/server'
-
-const MULTIPART_OVERHEAD_BYTES = 1024 * 1024
 
 class IssueAttachmentUploadError extends TaggedError(
   'IssueAttachmentUploadError',
@@ -55,27 +57,14 @@ export const Route = createFileRoute('/api/upload-file')({
         const workspaceContext = await requireWorkspaceContext(appContext)
         if (workspaceContext instanceof Response) return workspaceContext
 
-        // Reject oversized uploads before buffering the multipart body; the
-        // per-file check below still applies when the header is absent. The
-        // margin covers multipart boundaries and the other form fields.
-        const declaredLength = Number(request.headers.get('content-length'))
-        if (declaredLength > MAX_FILE_SIZE + MULTIPART_OVERHEAD_BYTES) {
-          return json({ error: 'File exceeds 100 MB limit' }, 413)
-        }
-
-        const formResult = await Result.tryPromise({
-          try: async () => await request.formData(),
-          catch: (cause) =>
-            new IssueAttachmentUploadError({
-              message: cause instanceof Error ? cause.message : String(cause),
-            }),
-        })
-        if (formResult.isErr()) return badRequest(formResult.error.message)
+        const formResult = await readMultipartForm(request, MAX_FILE_SIZE)
+        if (formResult.isErr()) return multipartErrorResponse(formResult.error)
 
         const file = formResult.value.get('file')
         if (!(file instanceof File)) return badRequest('Missing file')
-        if (file.size > MAX_FILE_SIZE)
-          return badRequest('File exceeds 100 MB limit')
+        if (file.size > MAX_FILE_SIZE) {
+          return json({ error: 'File exceeds 100 MB limit' }, 413)
+        }
 
         const bytesResult = await Result.tryPromise({
           try: async () => Buffer.from(await file.arrayBuffer()),
