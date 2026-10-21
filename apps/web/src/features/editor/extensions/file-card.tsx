@@ -107,9 +107,9 @@ export const FileCardExtension = Node.create({
       }
     },
   },
-  parseMarkdown: (token: any, helpers: any) =>
+  parseMarkdown: (token, helpers) =>
     helpers.createNode('fileCard', token.attributes),
-  renderMarkdown: (node: any) => {
+  renderMarkdown: (node) => {
     const filename = node.attrs?.filename || 'file'
     const href = node.attrs?.href || ''
     return `!file[${filename}](${href})`
