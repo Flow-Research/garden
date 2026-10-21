@@ -9,6 +9,7 @@
     "ui:add": "pnpm dlx shadcn@latest add --path components/ui",
     "ui:diff": "pnpm dlx shadcn@latest diff",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix ."
   },
@@ -54,6 +55,7 @@
     "@types/linkify-it": "^5.0.0",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@typescript/native": "catalog:"
+    "@typescript/native": "catalog:",
+    "vitest": "catalog:"
   }
 }
