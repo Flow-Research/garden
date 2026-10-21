@@ -58,4 +58,16 @@ export function parseServerEnv(runtimeEnv: RuntimeEnv) {
 const nodeRuntimeEnv = ((globalThis as { process?: { env?: RuntimeEnv } })
   .process?.env ?? {}) as RuntimeEnv
 
-export const serverEnv = createServerEnv(nodeRuntimeEnv)
+let serverEnvCache: ReturnType<typeof createServerEnv> | undefined
+
+/**
+ * The server environment parsed from `process.env`, for Node tooling (drizzle
+ * config, the Better Auth CLI). Parsed on first use rather than at import, so
+ * importing this package (or @garden/db) never throws in a Worker or a test
+ * that lacks these variables. Workers validate their bindings with
+ * `parseServerEnv`.
+ */
+export function getServerEnv() {
+  serverEnvCache ??= createServerEnv(nodeRuntimeEnv)
+  return serverEnvCache
+}
