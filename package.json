@@ -104,8 +104,5 @@
       "@executor-js/plugin-mcp@1.5.40": "patches/@executor-js__plugin-mcp@1.5.40.patch",
       "@executor-js/plugin-openapi@1.5.40": "patches/@executor-js__plugin-openapi@1.5.40.patch"
     }
-  },
-  "dependencies": {
-    "better-result": "^2.9.2"
   }
 }

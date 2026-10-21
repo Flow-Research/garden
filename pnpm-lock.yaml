@@ -155,10 +155,6 @@ patchedDependencies:
 importers:
 
   .:
-    dependencies:
-      better-result:
-        specifier: ^2.9.2
-        version: 2.9.2
     devDependencies:
       '@cloudflare/workers-types':
         specifier: 'catalog:'
@@ -638,9 +634,6 @@ importers:
       '@garden/server':
         specifier: workspace:*
         version: link:../server
-      '@neondatabase/serverless':
-        specifier: ^1.0.1
-        version: 1.1.0
       '@posthog/ai':
         specifier: 8.4.0
         version: 8.4.0(@ai-sdk/provider@3.0.10)(@opentelemetry/api@1.9.1)(posthog-node@5.38.2)
@@ -791,6 +784,9 @@ importers:
 
   packages/connectors:
     dependencies:
+      better-result:
+        specifier: ^2.9.2
+        version: 2.9.2
       effect:
         specifier: 4.0.0-rc.111
         version: 4.0.0-rc.111
@@ -816,9 +812,6 @@ importers:
       '@garden/db':
         specifier: workspace:*
         version: link:../db
-      '@neondatabase/serverless':
-        specifier: ^1.0.1
-        version: 1.1.0
       better-result:
         specifier: ^2.9.2
         version: 2.9.2
@@ -847,9 +840,6 @@ importers:
       '@garden/env':
         specifier: workspace:*
         version: link:../env
-      '@neondatabase/serverless':
-        specifier: ^1.0.1
-        version: 1.1.0
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(@cloudflare/workers-types@5.20260907.1)(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.4)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.28.17)(pg@8.20.0)(sql.js@1.14.1)
@@ -928,6 +918,9 @@ importers:
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(@cloudflare/workers-types@5.20260907.1)(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.4)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.28.17)(pg@8.20.0)(sql.js@1.14.1)
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@garden/tsconfig':
         specifier: workspace:*
@@ -997,6 +990,9 @@ importers:
       rehype-raw:
         specifier: ^7.0.0
         version: 7.0.0
+      rehype-sanitize:
+        specifier: ^6.0.0
+        version: 6.0.0
       remark-gfm:
         specifier: ^4.0.1
         version: 4.0.1
@@ -1028,9 +1024,6 @@ importers:
       '@typescript/native':
         specifier: 'catalog:'
         version: typescript@7.0.2
-      rehype-sanitize:
-        specifier: ^6.0.0
-        version: 6.0.0
 
   workers/tail-observer:
     devDependencies:
@@ -11846,7 +11839,8 @@ snapshots:
 
   '@neon-rs/load@0.0.4': {}
 
-  '@neondatabase/serverless@1.1.0': {}
+  '@neondatabase/serverless@1.1.0':
+    optional: true
 
   '@noble/ciphers@2.2.0': {}
 

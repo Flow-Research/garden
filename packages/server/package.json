@@ -22,7 +22,8 @@
     "@garden/db": "workspace:*",
     "@garden/observability": "workspace:*",
     "better-result": "^2.9.2",
-    "drizzle-orm": "catalog:"
+    "drizzle-orm": "catalog:",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@garden/tsconfig": "workspace:*",

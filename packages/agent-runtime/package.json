@@ -28,7 +28,6 @@
     "@garden/db": "workspace:*",
     "@garden/observability": "workspace:*",
     "@garden/server": "workspace:*",
-    "@neondatabase/serverless": "^1.0.1",
     "@posthog/ai": "8.4.0",
     "agents": "catalog:",
     "ai": "6.0.208",
