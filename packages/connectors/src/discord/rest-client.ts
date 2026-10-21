@@ -15,6 +15,7 @@ import {
   ConnectorPermissionError,
   ConnectorRateLimitError,
 } from '../effect/errors.ts'
+import { withConnectorTimeout } from '../effect/http.ts'
 import {
   DiscordChannel,
   DiscordChannels,
@@ -259,6 +260,10 @@ function requestJson<A>(
             cause,
           }),
       ),
+      withConnectorTimeout({
+        connectorId: 'discord',
+        operation: options.operation,
+      }),
     )
 
     if (response.status < 200 || response.status >= 300) {
@@ -304,6 +309,10 @@ function requestVoid(
             cause,
           }),
       ),
+      withConnectorTimeout({
+        connectorId: 'discord',
+        operation: options.operation,
+      }),
     )
 
     if (response.status < 200 || response.status >= 300) {

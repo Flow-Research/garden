@@ -1,23 +1,7 @@
-type GardenStructuredLog = {
-  source: 'garden'
-  schemaVersion: number
-  timestamp?: string
-  level?: string
-  service?: string
-  component?: string
-  event?: string
-  requestId?: string
-  userId?: string
-  workspaceId?: string
-  agentId?: string
-  threadId?: string
-  issueId?: string
-  automationId?: string
-  runId?: string
-  connectorId?: string
-  status?: number
-  durationMs?: number
-}
+import {
+  isGardenStructuredLog,
+  type GardenStructuredLog,
+} from '@garden/observability/logger'
 
 type TailSummary = {
   source: 'garden-tail-observer'
@@ -151,14 +135,6 @@ function extractGardenRecords(message: unknown): GardenStructuredLog[] {
     return message.filter(isGardenStructuredLog)
   }
   return []
-}
-
-function isGardenStructuredLog(value: unknown): value is GardenStructuredLog {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as { source?: unknown; schemaVersion?: unknown }
-  return (
-    candidate.source === 'garden' && typeof candidate.schemaVersion === 'number'
-  )
 }
 
 function triggerName(event: TraceItem['event']) {

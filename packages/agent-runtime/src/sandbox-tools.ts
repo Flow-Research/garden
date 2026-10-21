@@ -2,6 +2,7 @@ import type { Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { tool, type ToolSet } from 'ai'
 import { Result, TaggedError } from 'better-result'
 import { z } from 'zod'
+import { createGardenLogger } from '@garden/observability/logger'
 
 type SandboxProvider = () => SandboxDO
 type SandboxOperationResult<T> =
@@ -12,6 +13,10 @@ const DEFAULT_TIMEOUT_MS = 30_000
 const MAX_TIMEOUT_MS = 120_000
 const MAX_OUTPUT_CHARS = 24_000
 const DEFAULT_CWD = '/workspace'
+const sandboxToolsLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'sandbox-tools',
+})
 
 class SandboxToolError extends TaggedError('SandboxToolError')<{
   operation: string
@@ -76,9 +81,9 @@ async function runSandboxOperation<T>(
   })) as Result<T, SandboxToolError>
 
   if (result.isErr()) {
-    console.warn('[agent-runtime] sandbox operation failed', {
+    sandboxToolsLogger.warn('sandbox.operation_failed', {
       operation: result.error.operation,
-      message: result.error.message,
+      errorMessage: result.error.message,
     })
 
     return {

@@ -16,6 +16,7 @@
     "yarn.lock",
     "**/drizzle/meta/**",
     "**/fixtures/**",
-    "**/routeTree.gen.ts"
+    "**/routeTree.gen.ts",
+    "packages/agent-runtime/src/instructions/*.md"
   ]
 }

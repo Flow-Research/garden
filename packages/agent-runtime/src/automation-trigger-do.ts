@@ -8,13 +8,15 @@ import {
   type SerializedResult,
 } from 'better-result'
 import { CronExpressionParser } from 'cron-parser'
+import { z } from 'zod'
 import * as schema from '@garden/db/schema'
-import { createGardenLogger } from '@garden/observability/logger'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import {
   cancelAutomationRun,
   startAutomationRun,
   type AutomationRunEnv,
 } from '@garden/server/automations/run-service'
+import { errorMessage, operationFailedMessage } from './runtime-utils'
 
 type AutomationTriggerEnv = Cloudflare.Env & AutomationRunEnv
 type AutomationConcurrencyPolicy = 'skip' | 'replace'
@@ -25,16 +27,28 @@ const automationTriggerLogger = createGardenLogger({
   component: 'automation-trigger-do',
 })
 
-type AutomationConfig = {
-  triggerId: string
-  automationId: string
-  concurrencyPolicy: AutomationConcurrencyPolicy
-  scheduleId: string | null
-}
+/**
+ * KV and schedule-payload values are read back from durable storage written
+ * by earlier deployments, so they are validated rather than cast. Configs
+ * written before `scheduleId` existed decode with `scheduleId: null`.
+ */
+const automationConfigSchema = z.object({
+  triggerId: z.string().min(1),
+  automationId: z.string().min(1),
+  concurrencyPolicy: z.enum(['skip', 'replace']),
+  scheduleId: z
+    .string()
+    .nullish()
+    .transform((value) => value ?? null),
+})
 
-type AutomationState = {
-  inFlightRunId: string | null
-}
+const automationStateSchema = z.object({
+  inFlightRunId: z.string().nullable(),
+})
+
+type AutomationConfig = z.infer<typeof automationConfigSchema>
+
+type AutomationState = z.infer<typeof automationStateSchema>
 
 type AutomationRow = {
   id: string
@@ -98,14 +112,10 @@ function automationDoError(args: {
   return new AutomationDoError(args)
 }
 
-function errorMessage(cause: unknown) {
-  return cause instanceof Error ? cause.message : String(cause)
-}
-
 function dbError(operation: string, cause: unknown) {
   return automationDoError({
     code: 'db_error',
-    message: `${operation} failed: ${errorMessage(cause)}`,
+    message: operationFailedMessage(operation, cause),
     cause,
   })
 }
@@ -113,7 +123,7 @@ function dbError(operation: string, cause: unknown) {
 function dispatchError(operation: string, cause: unknown) {
   return automationDoError({
     code: 'dispatch_failed',
-    message: `${operation} failed: ${errorMessage(cause)}`,
+    message: operationFailedMessage(operation, cause),
     cause,
   })
 }
@@ -121,7 +131,7 @@ function dispatchError(operation: string, cause: unknown) {
 function scheduleError(operation: string, cause: unknown) {
   return automationDoError({
     code: 'schedule_error',
-    message: `${operation} failed: ${errorMessage(cause)}`,
+    message: operationFailedMessage(operation, cause),
     cause,
   })
 }
@@ -178,6 +188,9 @@ function emptyState(): AutomationState {
 }
 
 export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
+  /** Tail of the in-instance queue that serializes fires; see serializeFire. */
+  private fireQueue: Promise<void> = Promise.resolve()
+
   /**
    * Resolves the automation-trigger Drizzle client through Hyperdrive's pooled
    * connection string. Previously called `drizzle(this.env.DATABASE_URL)` from
@@ -291,11 +304,19 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
       )
     }
 
-    return await this.dispatch({
-      config,
-      source: args.source,
-      payload: args.payload,
-    })
+    // Manual, webhook and API runs are not subject to the schedule's
+    // concurrency policy (they normally bypass this DO entirely, see
+    // docs/core/workflows-engine.md), so they are not tracked as the
+    // in-flight run either. Previously this overwrote inFlightRunId, which
+    // made the policy lose track of a still-running scheduled run.
+    return await this.serializeFire(() =>
+      this.dispatch({
+        config,
+        source: args.source,
+        payload: args.payload,
+        trackInFlight: false,
+      }),
+    )
   }
 
   /**
@@ -304,7 +325,15 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
    * owns alarm dispatch, retries, and schedule bookkeeping instead of our DO
    * writing raw alarms directly.
    */
-  async fireScheduledTrigger(payload: AutomationConfig): Promise<void> {
+  async fireScheduledTrigger(rawPayload: unknown): Promise<void> {
+    const parsed = automationConfigSchema.safeParse(rawPayload)
+    if (!parsed.success) {
+      automationTriggerLogger.error('automation_trigger.invalid_payload', {
+        errorMessage: parsed.error.message,
+      })
+      return
+    }
+    const payload = parsed.data
     const result = await Result.tryPromise({
       try: async () => await this.handleScheduledTrigger(payload),
       catch: (cause) =>
@@ -315,9 +344,10 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
         }),
     })
     if (result.isErr()) {
-      console.error('[agent-runtime] automation trigger schedule failed', {
-        message: result.error.message,
-        code: result.error.code,
+      automationTriggerLogger.error('automation_trigger.schedule_failed', {
+        triggerId: payload.triggerId,
+        automationId: payload.automationId,
+        ...errorFields(result.error),
       })
     }
   }
@@ -331,7 +361,9 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
     // Each schedule fires once, so the next one is booked whatever happens to
     // this run. Returning early on a failed policy check or skip record used to
     // end the automation silently after a single transient error.
-    const fireResult = await this.fireScheduledRun(config)
+    const fireResult = await this.serializeFire(() =>
+      this.fireScheduledRun(config),
+    )
     const nextResult = await this.scheduleNext(config.triggerId, new Date())
     if (nextResult.isErr()) return Result.err(nextResult.error)
 
@@ -351,12 +383,16 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
         : Result.ok()
     }
 
-    const dispatchResult = await this.dispatch({ config, source: 'schedule' })
+    const dispatchResult = await this.dispatch({
+      config,
+      source: 'schedule',
+      trackInFlight: true,
+    })
     if (dispatchResult.isErr()) {
-      console.error('[agent-runtime] automation dispatch failed', {
+      automationTriggerLogger.error('automation_trigger.dispatch_failed', {
         automationId: config.automationId,
         triggerId: config.triggerId,
-        message: dispatchResult.error.message,
+        ...errorFields(dispatchResult.error),
       })
       return Result.err(dispatchResult.error)
     }
@@ -364,17 +400,41 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
     return Result.ok()
   }
 
-  private getConfig() {
-    const config = this.ctx.storage.kv.get<AutomationConfig>(CONFIG_KEY) ?? null
-    if (!config) return null
-    return {
-      ...config,
-      scheduleId: config.scheduleId ?? null,
-    }
+  /**
+   * Runs one fire (policy check plus dispatch) at a time. Both span several
+   * awaits, and a Durable Object interleaves requests at network awaits, so
+   * two fires used to be able to read the same in-flight state and both
+   * start a run.
+   */
+  private serializeFire<T>(fire: () => Promise<T>): Promise<T> {
+    const next = this.fireQueue.then(fire, fire)
+    this.fireQueue = next.then(
+      () => undefined,
+      () => undefined,
+    )
+    return next
+  }
+
+  private getConfig(): AutomationConfig | null {
+    const stored: unknown = this.ctx.storage.kv.get(CONFIG_KEY)
+    if (stored === undefined || stored === null) return null
+    const parsed = automationConfigSchema.safeParse(stored)
+    if (parsed.success) return parsed.data
+    automationTriggerLogger.error('automation_trigger.invalid_config', {
+      errorMessage: parsed.error.message,
+    })
+    return null
   }
 
   private getRunState(): AutomationState {
-    return this.ctx.storage.kv.get<AutomationState>(STATE_KEY) ?? emptyState()
+    const stored: unknown = this.ctx.storage.kv.get(STATE_KEY)
+    if (stored === undefined || stored === null) return emptyState()
+    const parsed = automationStateSchema.safeParse(stored)
+    if (parsed.success) return parsed.data
+    automationTriggerLogger.warn('automation_trigger.invalid_state', {
+      errorMessage: parsed.error.message,
+    })
+    return emptyState()
   }
 
   private setRunState(state: AutomationState) {
@@ -420,7 +480,7 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
       )
     }
 
-    const updateResult = await this.markAutomationRunReplaced(state)
+    const updateResult = await this.markAutomationRunReplaced(run.id)
     if (updateResult.isErr()) return Result.err(updateResult.error)
 
     this.clearInFlightState()
@@ -451,10 +511,8 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
   }
 
   private async markAutomationRunReplaced(
-    state: AutomationState,
+    runId: string,
   ): Promise<ResultValue<void, AutomationDoError>> {
-    if (!state.inFlightRunId) return Result.ok()
-
     const db = this.db()
     const now = new Date()
     const result = await Result.tryPromise({
@@ -468,7 +526,7 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
             error: 'replaced_by_automation',
             updatedAt: now,
           })
-          .where(eq(schema.automationRun.id, state.inFlightRunId!))
+          .where(eq(schema.automationRun.id, runId))
       },
       catch: (cause) => dbError('mark replaced automation run', cause),
     })
@@ -505,10 +563,11 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
   private async cancelAutomationSchedule(
     config: AutomationConfig | null,
   ): Promise<ResultValue<void, AutomationDoError>> {
-    if (!config?.scheduleId) return Result.ok()
+    const scheduleId = config?.scheduleId
+    if (!scheduleId) return Result.ok()
 
     const result = await Result.tryPromise({
-      try: async () => await this.cancelSchedule(config.scheduleId!),
+      try: async () => await this.cancelSchedule(scheduleId),
       catch: (cause) =>
         scheduleError('cancel automation trigger schedule', cause),
     })
@@ -568,11 +627,36 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
     return Result.ok({ runId })
   }
 
+  /**
+   * Starts one automation run. For tracked (scheduled) dispatches the run id
+   * is reserved as `inFlightRunId` synchronously, before the first await, so
+   * no other fire can observe an empty slot while this one is starting; the
+   * reservation is released again if the run does not start.
+   */
   private async dispatch(args: {
     config: AutomationConfig
     source: AutomationRunSource
     payload?: unknown
+    trackInFlight: boolean
   }): Promise<ResultValue<{ runId: string }, AutomationDoError>> {
+    const runId = crypto.randomUUID()
+    if (!args.trackInFlight) return await this.startRun({ ...args, runId })
+
+    this.setRunState({ inFlightRunId: runId })
+    const result = await this.startRun({ ...args, runId })
+    if (result.isErr() && this.getRunState().inFlightRunId === runId) {
+      this.clearInFlightState()
+    }
+    return result
+  }
+
+  private async startRun(args: {
+    config: AutomationConfig
+    source: AutomationRunSource
+    payload?: unknown
+    runId: string
+  }): Promise<ResultValue<{ runId: string }, AutomationDoError>> {
+    const runId = args.runId
     const automationResult = await this.loadAutomation(args.config.automationId)
     if (automationResult.isErr()) return Result.err(automationResult.error)
 
@@ -597,7 +681,6 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
     const policyResult = parseConcurrencyPolicy(automation.concurrencyPolicy)
     if (policyResult.isErr()) return Result.err(policyResult.error)
 
-    const runId = crypto.randomUUID()
     automationTriggerLogger.info('automation.trigger.dispatch_started', {
       userId: automation.createdBy,
       workspaceId: automation.workspaceId,
@@ -660,10 +743,6 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
       automationId: automation.id,
     })
     if (updateRunResult.isErr()) return Result.err(updateRunResult.error)
-
-    this.setRunState({
-      inFlightRunId: runId,
-    })
 
     automationTriggerLogger.info('automation.trigger.dispatch_completed', {
       userId: automation.createdBy,
