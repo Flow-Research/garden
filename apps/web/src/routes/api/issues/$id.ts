@@ -39,6 +39,12 @@ import {
   startIssueRun,
 } from '@garden/server/issues/run-service'
 import { cancelLiveRunsOnIssueChange } from '@garden/core/issues/run-sync'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
+
+const logger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'issues-api',
+})
 
 export const Route = createFileRoute('/api/issues/$id')({
   server: {
@@ -220,7 +226,10 @@ export const Route = createFileRoute('/api/issues/$id')({
             catch: (cause) => cause,
           })
           if (subscriberResult.isErr())
-            console.error('issue_subscriber_add_failed', subscriberResult.error)
+            logger.error(
+              'issue.subscriber_add_failed',
+              errorFields(subscriberResult.error),
+            )
         }
 
         if (
@@ -272,9 +281,9 @@ export const Route = createFileRoute('/api/issues/$id')({
                 catch: (cause) => cause,
               })
               if (emailResult.isErr())
-                console.error(
-                  'issue_assignment_email_failed',
-                  emailResult.error,
+                logger.error(
+                  'issue.assignment_email_failed',
+                  errorFields(emailResult.error),
                 )
             }
           }
@@ -323,7 +332,12 @@ export const Route = createFileRoute('/api/issues/$id')({
               actor: { type: 'member', id: access.session.user.id },
               reason: 'issue_changed',
             })
-            if (cancelResult.isErr()) console.error(cancelResult.error.message)
+            if (cancelResult.isErr()) {
+              logger.error(
+                'issue.run_cancel_failed',
+                errorFields(cancelResult.error),
+              )
+            }
           }
         }
 
@@ -335,7 +349,12 @@ export const Route = createFileRoute('/api/issues/$id')({
             source: 'assignment',
             actor: { type: 'member', id: access.session.user.id },
           })
-          if (startResult.isErr()) console.error(startResult.error.message)
+          if (startResult.isErr()) {
+            logger.error(
+              'issue.run_start_failed',
+              errorFields(startResult.error),
+            )
+          }
         }
         return Response.json(
           toIssue(issue, {

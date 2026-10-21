@@ -28,6 +28,12 @@ import {
 import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { capturePostHogEvent } from '@/lib/posthog-server'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
+
+const logger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'issues-api',
+})
 
 export const Route = createFileRoute('/api/issues')({
   server: {
@@ -180,15 +186,24 @@ export const Route = createFileRoute('/api/issues')({
           issue.status !== 'done' &&
           issue.status !== 'cancelled'
         ) {
-          void startIssueRun(appEnv, {
-            workspaceId,
-            issueId: issue.id,
-            agentId: issue.assignee_id,
-            source: 'assignment',
-            actor: { type: 'member', id: session.user.id },
-          }).then((startResult) => {
-            if (startResult.isErr()) console.error(startResult.error.message)
-          })
+          // waitUntil keeps the Worker alive until the run has started; a bare
+          // floating promise can be cancelled once the response is sent.
+          appContext.waitUntil(
+            startIssueRun(appEnv, {
+              workspaceId,
+              issueId: issue.id,
+              agentId: issue.assignee_id,
+              source: 'assignment',
+              actor: { type: 'member', id: session.user.id },
+            }).then((startResult) => {
+              if (startResult.isErr()) {
+                logger.error(
+                  'issue.run_start_failed',
+                  errorFields(startResult.error),
+                )
+              }
+            }),
+          )
         }
         capturePostHogEvent(appContext, {
           distinctId: session.user.id,

@@ -46,6 +46,12 @@ import {
   connectionOwnershipLayer,
 } from '@/lib/server/executor-engine/connection-ownership'
 import { runExecutor, type GardenExecutor } from '@/lib/server/executor-runtime'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
+
+const logger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'connections-api',
+})
 
 interface CredentialConnectionInput {
   readonly connectorId: string
@@ -554,10 +560,10 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
                     }).pipe(
                       Effect.tapError((cause) =>
                         Effect.sync(() =>
-                          console.warn('[garden] unmirror failed', {
+                          logger.warn('connection.unmirror_failed', {
                             integration: String(connection.integration),
                             workspaceId: workspaceContext.workspaceId,
-                            cause,
+                            ...errorFields(cause),
                           }),
                         ),
                       ),
@@ -612,10 +618,10 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
                     }).pipe(
                       Effect.tapError((cause) =>
                         Effect.sync(() =>
-                          console.warn('[garden] unmirror failed', {
+                          logger.warn('connection.unmirror_failed', {
                             integration: String(connection.integration),
                             workspaceId: workspaceContext.workspaceId,
-                            cause,
+                            ...errorFields(cause),
                           }),
                         ),
                       ),
@@ -654,10 +660,10 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
                           }).pipe(
                             Effect.tapError((cause) =>
                               Effect.sync(() =>
-                                console.warn('[garden] mirror failed', {
+                                logger.warn('connection.mirror_failed', {
                                   integration: String(connection.integration),
                                   workspaceId: workspaceContext.workspaceId,
-                                  cause,
+                                  ...errorFields(cause),
                                 }),
                               ),
                             ),
@@ -671,11 +677,14 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
                           }).pipe(
                             Effect.tapError((cause) =>
                               Effect.sync(() =>
-                                console.warn('[garden] mirror degrade failed', {
-                                  integration: String(connection.integration),
-                                  workspaceId: workspaceContext.workspaceId,
-                                  cause,
-                                }),
+                                logger.warn(
+                                  'connection.mirror_degrade_failed',
+                                  {
+                                    integration: String(connection.integration),
+                                    workspaceId: workspaceContext.workspaceId,
+                                    ...errorFields(cause),
+                                  },
+                                ),
                               ),
                             ),
                             Effect.ignore,
