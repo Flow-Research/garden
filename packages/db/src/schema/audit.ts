@@ -56,7 +56,7 @@ export const toolCallAudit = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     agentId: uuid('agent_id')
       .notNull()
       .references(() => agent.id),
@@ -88,7 +88,7 @@ export const activityEvent = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     subjectType: text('subject_type').notNull(),
     subjectId: uuid('subject_id').notNull(),
     actorType: text('actor_type').notNull(),

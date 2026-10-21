@@ -25,7 +25,7 @@ export const brainFolder = pgTable(
       .default(sql`gen_random_uuid()`),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     privacy: text('privacy', { enum: ['private', 'shared'] })
       .notNull()

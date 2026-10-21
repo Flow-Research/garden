@@ -28,7 +28,7 @@ export const agent = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     ownerUserId: uuid('owner_user_id')
       .notNull()
       .references(() => user.id),

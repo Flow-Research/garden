@@ -50,7 +50,7 @@ export const issue = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     number: integer('number').notNull(),
     title: text('title').notNull(),
     description: text('description'),
@@ -174,7 +174,7 @@ export const issueAttachment = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     issueId: uuid('issue_id').references(() => issue.id, {
       onDelete: 'cascade',
     }),
@@ -225,7 +225,7 @@ export const issueSubscriber = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     issueId: uuid('issue_id')
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
@@ -263,7 +263,7 @@ export const issueSourceBinding = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     issueId: uuid('issue_id')
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
@@ -311,7 +311,7 @@ export const issueRun = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     issueId: uuid('issue_id')
       .notNull()
       .references(() => issue.id, {
@@ -388,7 +388,7 @@ export const issueRunEvent = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     issueId: uuid('issue_id')
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
@@ -425,7 +425,7 @@ export const issueWorkProduct = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     issueId: uuid('issue_id')
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
@@ -480,7 +480,7 @@ export const inboxDismissal = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     userId: uuid('user_id')
       .notNull()
       .references(() => user.id),
@@ -508,7 +508,7 @@ export const inboxItem = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     recipientType: text('recipient_type').notNull(),
     recipientId: uuid('recipient_id')
       .notNull()

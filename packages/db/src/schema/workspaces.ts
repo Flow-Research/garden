@@ -58,7 +58,7 @@ export const member = pgTable(
       .default(sql`gen_random_uuid()`),
     organizationId: uuid('organization_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     userId: uuid('user_id')
       .notNull()
       .references(() => user.id),
@@ -90,7 +90,7 @@ export const invitation = pgTable(
       .default(sql`gen_random_uuid()`),
     organizationId: uuid('organization_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     email: text('email').notNull(),
     role: text('role').notNull(),
     status: text('status').notNull().default('pending'),

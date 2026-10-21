@@ -23,7 +23,7 @@ export const chatThread = pgTable(
       .default(sql`gen_random_uuid()`),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     ownerUserId: uuid('owner_user_id')
       .notNull()
       .references(() => user.id),
