@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm'
+import { Result } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
@@ -11,6 +12,7 @@ import {
   requireAutomation,
   toAutomationTrigger,
   uninstallScheduleTrigger,
+  writeWithScheduleSync,
 } from '@/lib/server/automations'
 import { notFound } from '@/lib/server/control-plane'
 import {
@@ -95,22 +97,32 @@ export const Route = createFileRoute(
           values.label = body.label ?? null
         }
 
-        const [updated] = await db
-          .update(schema.automationTrigger)
-          .set(values)
-          .where(eq(schema.automationTrigger.id, existing.id))
-          .returning()
-        if (!updated) return notFound('Automation trigger not found')
+        const writeResult = await writeWithScheduleSync(
+          db,
+          async (tx) => {
+            const [updated] = await tx
+              .update(schema.automationTrigger)
+              .set(values)
+              .where(eq(schema.automationTrigger.id, existing.id))
+              .returning()
+            return updated ?? null
+          },
+          async (updated) =>
+            updated
+              ? await installScheduleTrigger({
+                  env: appEnv,
+                  automation,
+                  trigger: updated,
+                  nextRunAt: nextRunResult?.isOk()
+                    ? nextRunResult.value
+                    : undefined,
+                })
+              : Result.ok(),
+        )
+        if (writeResult.isErr()) return automationErr(writeResult.error)
+        if (!writeResult.value) return notFound('Automation trigger not found')
 
-        const installResult = await installScheduleTrigger({
-          env: appEnv,
-          automation,
-          trigger: updated,
-          nextRunAt: nextRunResult?.isOk() ? nextRunResult.value : undefined,
-        })
-        if (installResult.isErr()) return automationErr(installResult.error)
-
-        return automationOk(toAutomationTrigger(updated))
+        return automationOk(toAutomationTrigger(writeResult.value))
       },
       DELETE: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)

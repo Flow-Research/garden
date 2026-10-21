@@ -161,6 +161,24 @@ describe('AutomationTriggerDO scheduled fires', () => {
     expect(scheduleNext).toHaveBeenCalledTimes(2)
   })
 
+  it('delays a first fire due before the installing transaction commits', async () => {
+    const { trigger, schedule } = setup()
+    const before = Date.now()
+
+    const result = await trigger.install({
+      triggerId: 'trigger-1',
+      automationId: 'automation-1',
+      concurrencyPolicy: 'skip',
+      nextRunAt: new Date(before + 1_000),
+    })
+
+    expect(result.status).toBe('ok')
+    const firstRunAt = schedule.mock.calls[0]?.[0]
+    expect(
+      firstRunAt instanceof Date && firstRunAt.getTime(),
+    ).toBeGreaterThanOrEqual(before + 10_000)
+  })
+
   it('ignores fires for a trigger that was uninstalled or replaced', async () => {
     const { trigger, kv, fireScheduledRun, scheduleNext } = setup()
     kv.delete('config')

@@ -5,7 +5,7 @@ import {
   cancelAutomationRun,
   startAutomationRun,
 } from '@garden/server/automations/run-service'
-import { getDb, requireReturnedRow, schema } from '@/lib/server/db'
+import { getDb, requireReturnedRow, schema, type Db } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
 
 type AutomationRow = typeof schema.automation.$inferSelect
@@ -371,6 +371,42 @@ export async function installScheduleTrigger({
   const installResult = hydrateDoResult<void>(rawResult.value)
   if (installResult.isErr()) return Result.err(installResult.error)
   return Result.ok(nextRunAtResult.value)
+}
+
+type AutomationTx = Parameters<Parameters<Db['transaction']>[0]>[0]
+
+/** Thrown inside a transaction to roll it back with the sync's error. */
+class ScheduleSyncAbort extends Error {
+  constructor(readonly error: AutomationApiError) {
+    super(error.message)
+  }
+}
+
+/**
+ * Runs a database write and the matching Durable Object schedule change as
+ * one unit: `sync` runs inside the write's transaction, and a failed sync
+ * rolls the write back. Committing first used to leave triggers stored as
+ * active, with no schedule installed, whenever the install failed. If the
+ * commit itself fails after a successful sync, the schedule corrects itself
+ * at its next fire, which reloads the trigger and uninstalls when it is gone.
+ */
+export async function writeWithScheduleSync<T>(
+  db: Db,
+  write: (tx: AutomationTx) => Promise<T>,
+  sync: (written: T) => Promise<ResultValue<unknown, AutomationApiError>>,
+): Promise<ResultValue<T, AutomationApiError>> {
+  try {
+    const written = await db.transaction(async (tx) => {
+      const value = await write(tx)
+      const syncResult = await sync(value)
+      if (syncResult.isErr()) throw new ScheduleSyncAbort(syncResult.error)
+      return value
+    })
+    return Result.ok(written)
+  } catch (cause) {
+    if (cause instanceof ScheduleSyncAbort) return Result.err(cause.error)
+    throw cause
+  }
 }
 
 export async function uninstallScheduleTrigger(

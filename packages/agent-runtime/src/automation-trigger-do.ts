@@ -102,6 +102,7 @@ const CONFIG_KEY = 'config'
 const STATE_KEY = 'state'
 const LAST_FIRED_SCHEDULE_KEY = 'lastFiredScheduleId'
 
+const MIN_FIRST_FIRE_DELAY_MS = 10_000
 const RESCHEDULE_RETRY_BASE_SECONDS = 60
 const RESCHEDULE_RETRY_MAX_SECONDS = 60 * 60
 const RETRYABLE_SCHEDULE_ERRORS: ReadonlySet<AutomationDoError['code']> =
@@ -248,6 +249,13 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
     const policyResult = parseConcurrencyPolicy(args.concurrencyPolicy)
     if (policyResult.isErr()) return Result.err(policyResult.error)
 
+    // The web app installs inside the transaction that writes the trigger and
+    // commits only after this returns. A fire due sooner could find no trigger
+    // row and uninstall itself, so the first fire waits for the commit.
+    const firstRunAt = new Date(
+      Math.max(nextRunAt.getTime(), Date.now() + MIN_FIRST_FIRE_DELAY_MS),
+    )
+
     const existingConfig = this.getConfig()
     const scheduledResult = await this.scheduleAutomationTrigger(
       {
@@ -256,7 +264,7 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
         concurrencyPolicy: policyResult.value,
         scheduleId: existingConfig?.scheduleId ?? null,
       },
-      nextRunAt,
+      firstRunAt,
     )
     if (scheduledResult.isErr()) return Result.err(scheduledResult.error)
 
