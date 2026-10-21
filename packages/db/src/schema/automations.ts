@@ -57,7 +57,8 @@ export const automation = pgTable(
       .default(sql`now()`),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
-      .default(sql`now()`),
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
 
     // Prompt & input
     systemPrompt: text('system_prompt'),
@@ -136,7 +137,8 @@ export const automationTrigger = pgTable(
       .default(sql`now()`),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
-      .default(sql`now()`),
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index('automation_trigger_automation_idx').on(table.automationId),
@@ -206,7 +208,8 @@ export const automationRun = pgTable(
       .default(sql`now()`),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
-      .default(sql`now()`),
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index('automation_run_workspace_idx').on(

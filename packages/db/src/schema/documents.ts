@@ -37,11 +37,16 @@ export const document = pgTable(
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
-    }).default(sql`now()`),
+    })
+      .notNull()
+      .default(sql`now()`),
     updatedAt: timestamp('updated_at', {
       withTimezone: true,
       mode: 'date',
-    }).default(sql`now()`),
+    })
+      .notNull()
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index('document_workspace_owner_idx').on(
@@ -78,7 +83,9 @@ export const documentVersion = pgTable(
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
-    }).default(sql`now()`),
+    })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [
     index('document_version_document_idx').on(table.documentId),

@@ -34,7 +34,9 @@ export const invocationLog = pgTable(
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
-    }).default(sql`now()`),
+    })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [
     index('invocation_log_agent_created_at_idx').on(
@@ -96,7 +98,9 @@ export const activityEvent = pgTable(
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
-    }).default(sql`now()`),
+    })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [
     index('activity_event_workspace_created_at_idx').on(

@@ -49,7 +49,9 @@ export const agent = pgTable(
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
-    }).default(sql`now()`),
+    })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [
     index('agent_workspace_owner_idx').on(table.workspaceId, table.ownerUserId),

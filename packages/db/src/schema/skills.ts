@@ -32,11 +32,16 @@ export const skill = pgTable(
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
-    }).default(sql`now()`),
+    })
+      .notNull()
+      .default(sql`now()`),
     updatedAt: timestamp('updated_at', {
       withTimezone: true,
       mode: 'date',
-    }).default(sql`now()`),
+    })
+      .notNull()
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex('skill_workspace_slug_unique').on(
@@ -57,7 +62,9 @@ export const skillVersion = pgTable('skill_version', {
   createdAt: timestamp('created_at', {
     withTimezone: true,
     mode: 'date',
-  }).default(sql`now()`),
+  })
+    .notNull()
+    .default(sql`now()`),
 })
 
 export const skillFile = pgTable('skill_file', {
@@ -87,11 +94,16 @@ export const skillAssignment = pgTable(
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
-    }).default(sql`now()`),
+    })
+      .notNull()
+      .default(sql`now()`),
     updatedAt: timestamp('updated_at', {
       withTimezone: true,
       mode: 'date',
-    }).default(sql`now()`),
+    })
+      .notNull()
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     primaryKey({

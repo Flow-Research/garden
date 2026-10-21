@@ -15,11 +15,16 @@ export const session = pgTable('auth_session', {
   createdAt: timestamp('created_at', {
     withTimezone: true,
     mode: 'date',
-  }).notNull(),
+  })
+    .notNull()
+    .default(sql`now()`),
   updatedAt: timestamp('updated_at', {
     withTimezone: true,
     mode: 'date',
-  }).notNull(),
+  })
+    .notNull()
+    .default(sql`now()`)
+    .$onUpdate(() => new Date()),
   ipAddress: text('ip_address'),
   userAgent: text('user_agent'),
   activeOrganizationId: uuid('active_organization_id'),
@@ -63,11 +68,16 @@ export const account = pgTable(
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
-    }).notNull(),
+    })
+      .notNull()
+      .default(sql`now()`),
     updatedAt: timestamp('updated_at', {
       withTimezone: true,
       mode: 'date',
-    }).notNull(),
+    })
+      .notNull()
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     check(
@@ -87,6 +97,11 @@ export const verification = pgTable('auth_verification', {
     withTimezone: true,
     mode: 'date',
   }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }),
-  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+    .notNull()
+    .default(sql`now()`),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+    .notNull()
+    .default(sql`now()`)
+    .$onUpdate(() => new Date()),
 })

@@ -31,11 +31,16 @@ export const organization = pgTable(
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
-    }).default(sql`now()`),
+    })
+      .notNull()
+      .default(sql`now()`),
     updatedAt: timestamp('updated_at', {
       withTimezone: true,
       mode: 'date',
-    }).default(sql`now()`),
+    })
+      .notNull()
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     check(
@@ -61,7 +66,9 @@ export const member = pgTable(
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
-    }).default(sql`now()`),
+    })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [
     uniqueIndex('member_organization_user_unique').on(
@@ -94,7 +101,9 @@ export const invitation = pgTable(
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
-    }).default(sql`now()`),
+    })
+      .notNull()
+      .default(sql`now()`),
     inviterId: uuid('inviter_id')
       .notNull()
       .references(() => user.id),

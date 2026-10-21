@@ -358,6 +358,13 @@
       "when": 1792561356413,
       "tag": "0050_timestamps_with_time_zone",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1792561544663,
+      "tag": "0051_not_null_timestamps",
+      "breakpoints": true
     }
   ]
 }

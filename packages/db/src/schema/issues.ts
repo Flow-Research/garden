@@ -84,11 +84,16 @@ export const issue = pgTable(
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
-    }).default(sql`now()`),
+    })
+      .notNull()
+      .default(sql`now()`),
     updatedAt: timestamp('updated_at', {
       withTimezone: true,
       mode: 'date',
-    }).default(sql`now()`),
+    })
+      .notNull()
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex('issue_workspace_number_unique').on(
@@ -139,7 +144,9 @@ export const issueComment = pgTable(
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
-    }).default(sql`now()`),
+    })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [
     index('issue_comment_issue_created_idx').on(table.issueId, table.createdAt),
@@ -183,7 +190,9 @@ export const issueAttachment = pgTable(
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
-    }).default(sql`now()`),
+    })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [
     index('issue_attachment_workspace_idx').on(table.workspaceId),
@@ -274,7 +283,8 @@ export const issueSourceBinding = pgTable(
       .default(sql`now()`),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
-      .default(sql`now()`),
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex('issue_source_binding_external_unique').on(
@@ -342,7 +352,8 @@ export const issueRun = pgTable(
       .default(sql`now()`),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
-      .default(sql`now()`),
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index('issue_run_issue_idx').on(table.issueId, table.createdAt),
@@ -440,7 +451,8 @@ export const issueWorkProduct = pgTable(
       .default(sql`now()`),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
-      .default(sql`now()`),
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex('issue_work_product_primary_unique')
@@ -532,7 +544,8 @@ export const inboxItem = pgTable(
       withTimezone: true,
     })
       .notNull()
-      .default(sql`now()`),
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex('inbox_item_workspace_recipient_key_unique').on(

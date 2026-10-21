@@ -31,7 +31,8 @@ export const githubAppInstallation = pgTable(
       .default(sql`now()`),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
-      .default(sql`now()`),
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex('github_app_installation_workspace_unique').on(
