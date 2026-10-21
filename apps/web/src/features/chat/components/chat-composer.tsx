@@ -1021,7 +1021,7 @@ export function Composer({
               {isStreaming ? (
                 <Button
                   type="button"
-                  className="size-9 rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:scale-105 hover:bg-rose-500"
+                  className="size-9 rounded-full bg-destructive/90 text-white transition-all duration-150 hover:scale-105 hover:bg-destructive"
                   onClick={() => void onStop()}
                   aria-label="Stop generation"
                 >

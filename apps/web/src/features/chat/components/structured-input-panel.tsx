@@ -168,7 +168,7 @@ export const StructuredInputPanel = memo(function StructuredInputPanel({
                 className={cn(
                   'group flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-all duration-150',
                   isSelected
-                    ? 'border-blue-500/40 bg-blue-500/8 text-foreground'
+                    ? 'border-info/40 bg-info/8 text-foreground'
                     : 'border-transparent bg-muted/20 text-foreground/80 hover:bg-muted/40 hover:border-border/40',
                   disabled && 'opacity-50 cursor-not-allowed',
                 )}
@@ -178,7 +178,7 @@ export const StructuredInputPanel = memo(function StructuredInputPanel({
                     className={cn(
                       'flex size-5 shrink-0 items-center justify-center rounded text-[11px] font-medium tabular-nums transition-colors duration-150',
                       isSelected
-                        ? 'bg-blue-500/20 text-blue-400'
+                        ? 'bg-info/20 text-info'
                         : 'bg-muted/40 text-muted-foreground/50 group-hover:bg-muted/60 group-hover:text-muted-foreground/70',
                     )}
                   >
@@ -194,7 +194,7 @@ export const StructuredInputPanel = memo(function StructuredInputPanel({
                   ) : null}
                 </div>
                 {isSelected ? (
-                  <Check className="size-3.5 shrink-0 text-blue-400" />
+                  <Check className="size-3.5 shrink-0 text-info" />
                 ) : null}
               </button>
             )
@@ -210,9 +210,9 @@ export const StructuredInputPanel = memo(function StructuredInputPanel({
             disabled={disabled}
             onClick={handleAdvance}
             className={cn(
-              'rounded-md bg-blue-500/90 px-3 py-1.5 text-xs font-medium text-white',
-              'hover:bg-blue-500 transition-colors',
-              'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500/50',
+              'rounded-md bg-info/90 px-3 py-1.5 text-xs font-medium text-white',
+              'hover:bg-info transition-colors',
+              'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-info/50',
             )}
           >
             {isLast ? 'Submit' : 'Next'}

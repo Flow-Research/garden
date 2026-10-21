@@ -147,13 +147,13 @@ const RUN_STATUS_CONFIG: Record<
   },
   queued: {
     label: 'Queued',
-    color: 'text-blue-500',
+    color: 'text-info',
     icon: Clock,
   },
-  running: { label: 'Running', color: 'text-blue-500', icon: Loader2 },
+  running: { label: 'Running', color: 'text-info', icon: Loader2 },
   completed: {
     label: 'Completed',
-    color: 'text-emerald-500',
+    color: 'text-text-success-tertiary',
     icon: CheckCircle2,
   },
   failed: { label: 'Failed', color: 'text-destructive', icon: XCircle },
@@ -162,7 +162,11 @@ const RUN_STATUS_CONFIG: Record<
     color: 'text-muted-foreground',
     icon: Pause,
   },
-  skipped: { label: 'Skipped', color: 'text-amber-500', icon: Pause },
+  skipped: {
+    label: 'Skipped',
+    color: 'text-text-warning-tertiary',
+    icon: Pause,
+  },
 }
 
 /**
@@ -690,9 +694,9 @@ export function AutomationDetailPage({
             className={cn(
               'ml-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium capitalize',
               automation.status === 'active'
-                ? 'bg-emerald-500/10 text-emerald-500'
+                ? 'bg-background-success-default/10 text-text-success-tertiary'
                 : automation.status === 'paused'
-                  ? 'bg-amber-500/10 text-amber-500'
+                  ? 'bg-background-warning-default/10 text-text-warning-tertiary'
                   : 'bg-muted text-muted-foreground',
             )}
           >

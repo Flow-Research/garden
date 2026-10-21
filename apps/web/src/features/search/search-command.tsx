@@ -73,7 +73,7 @@ function HighlightText({ text, query }: { text: string; query: string }) {
         part.highlight ? (
           <mark
             key={i}
-            className="rounded-sm bg-yellow-200 text-inherit dark:bg-yellow-900/60"
+            className="rounded-sm bg-background-warning-secondary text-inherit"
           >
             {part.text}
           </mark>

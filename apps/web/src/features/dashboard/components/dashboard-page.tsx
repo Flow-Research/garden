@@ -450,7 +450,7 @@ function DashboardPageFixture() {
                     Updated a moment ago
                   </p>
                 </div>
-                <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                <div className="h-2 w-2 rounded-full bg-background-success-default" />
               </div>
             ))}
           </div>

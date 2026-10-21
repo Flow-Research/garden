@@ -22,14 +22,7 @@ import { cn } from '@garden/ui/lib/utils'
 
 import { AgentAccessTab } from './agent-access-tab'
 import { AgentSkillsTab } from './agent-skills-tab'
-
-const STATUS_COLOR: Record<Agent['status'], string> = {
-  idle: 'bg-zinc-400',
-  working: 'bg-emerald-500',
-  blocked: 'bg-amber-500',
-  error: 'bg-red-500',
-  offline: 'bg-zinc-300',
-}
+import { AGENT_STATUS_COLOR } from './agent-status'
 
 export function AgentDetail({
   agentId,
@@ -133,7 +126,9 @@ function StatusPill({ status }: { status: Agent['status'] }) {
       variant="outline"
       className="rounded-full border-border/70 bg-muted/40 text-[11px] text-muted-foreground capitalize"
     >
-      <span className={cn('size-1.5 rounded-full', STATUS_COLOR[status])} />
+      <span
+        className={cn('size-1.5 rounded-full', AGENT_STATUS_COLOR[status])}
+      />
       {status}
     </Badge>
   )

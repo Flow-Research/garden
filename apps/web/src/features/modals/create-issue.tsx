@@ -191,7 +191,7 @@ export function CreateIssueModal({
           (t) => (
             <div className="bg-popover text-popover-foreground border rounded-lg shadow-lg p-4 w-[360px]">
               <div className="flex items-center gap-2 mb-2">
-                <div className="flex items-center justify-center size-5 rounded-full bg-emerald-500/15 text-emerald-500">
+                <div className="flex items-center justify-center size-5 rounded-full bg-background-success-default/15 text-text-success-tertiary">
                   <Check className="size-3" />
                 </div>
                 <span className="text-sm font-medium">Issue created</span>

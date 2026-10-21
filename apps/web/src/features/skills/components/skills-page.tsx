@@ -645,7 +645,7 @@ function SkillEditorHeader({
         </span>
         {isDirty ? (
           <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
-            <span className="inline-block size-1.5 rounded-full bg-amber-500" />
+            <span className="inline-block size-1.5 rounded-full bg-background-warning-default" />
             Unsaved
           </span>
         ) : null}

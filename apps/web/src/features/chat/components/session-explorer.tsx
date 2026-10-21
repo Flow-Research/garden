@@ -48,13 +48,13 @@ function SessionStatusDot({ session }: { session: AgentChatSession }) {
 
   const dotClass =
     session.status === 'streaming'
-      ? 'bg-blue-400 shadow-[0_0_0_4px_rgba(96,165,250,0.18)]'
+      ? 'bg-info shadow-[0_0_0_4px_color-mix(in_oklab,var(--info)_18%,transparent)]'
       : session.status === 'submitted'
-        ? 'bg-orange-400'
+        ? 'bg-background-warning-default'
         : session.status === 'error'
           ? 'bg-destructive'
           : session.unread
-            ? 'bg-emerald-400'
+            ? 'bg-background-success-default'
             : ''
 
   return <span className={cn('size-1.5 shrink-0 rounded-full', dotClass)} />

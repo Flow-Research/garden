@@ -93,8 +93,8 @@ function useDebouncedValue(value: string, delayMs: number) {
 
 function statusDotColor(status: ExecutorIntegrationStatus) {
   if (status === 'connected') return 'bg-success'
-  if (status === 'degraded') return 'bg-amber-500'
-  return 'bg-stone-400'
+  if (status === 'degraded') return 'bg-background-warning-default'
+  return 'bg-icon-tertiary'
 }
 
 function statusLabelFor(status: ExecutorIntegrationStatus) {
@@ -1274,7 +1274,7 @@ function ManageDrawerBody({
 
       <div className="flex-1 overflow-y-auto px-6 py-5">
         {githubNeedsRepair ? (
-          <section className="mb-5 rounded-lg border border-amber-500/30 bg-amber-500/8 p-4">
+          <section className="mb-5 rounded-lg border border-border-warning-tertiary/30 bg-background-warning-default/8 p-4">
             <h3 className="text-sm font-semibold text-foreground">
               GitHub installation needs repair
             </h3>

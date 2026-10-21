@@ -584,7 +584,7 @@ export function DocumentSidePanel({
     >
       <div
         onMouseDown={handleMouseDown}
-        className="absolute left-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-blue-400"
+        className="absolute left-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-info"
         style={{ marginLeft: -2 }}
       />
 
