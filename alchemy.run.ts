@@ -291,7 +291,9 @@ export default Alchemy.Stack(
           Output.map((namespaces) => {
             const namespaceId = namespaces?.Sandbox
             if (!namespaceId) {
-              throw new Error('The Sandbox Durable Object namespace was not deployed')
+              throw new Error(
+                'The Sandbox Durable Object namespace was not deployed',
+              )
             }
             return namespaceId
           }),

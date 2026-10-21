@@ -114,8 +114,13 @@ function summaryMessage(
   exceptions: Array<{ name: string; message: string }>,
 ) {
   const fields = fetchEventFields(event.event)
-  const route = fields.method && fields.path ? `${fields.method} ${fields.path}` : triggerName(event.event)
-  const firstAppEvent = appEvents.find((entry) => ERROR_LEVELS.has(entry.level ?? '')) ?? appEvents[0]
+  const route =
+    fields.method && fields.path
+      ? `${fields.method} ${fields.path}`
+      : triggerName(event.event)
+  const firstAppEvent =
+    appEvents.find((entry) => ERROR_LEVELS.has(entry.level ?? '')) ??
+    appEvents[0]
   const firstException = exceptions[0]
   const signal = firstException
     ? `${firstException.name}: ${firstException.message}`
@@ -129,7 +134,9 @@ function summaryMessage(
 }
 
 function extractGardenLogs(event: TraceItem): GardenStructuredLog[] {
-  const fromConsole = event.logs.flatMap((log) => extractGardenRecords(log.message))
+  const fromConsole = event.logs.flatMap((log) =>
+    extractGardenRecords(log.message),
+  )
   const fromDiagnostics = event.diagnosticsChannelEvents.flatMap((entry) =>
     entry.channel === 'garden.telemetry'
       ? extractGardenRecords(entry.message)
@@ -149,7 +156,9 @@ function extractGardenRecords(message: unknown): GardenStructuredLog[] {
 function isGardenStructuredLog(value: unknown): value is GardenStructuredLog {
   if (!value || typeof value !== 'object') return false
   const candidate = value as { source?: unknown; schemaVersion?: unknown }
-  return candidate.source === 'garden' && typeof candidate.schemaVersion === 'number'
+  return (
+    candidate.source === 'garden' && typeof candidate.schemaVersion === 'number'
+  )
 }
 
 function triggerName(event: TraceItem['event']) {

@@ -33,8 +33,8 @@
     "lint": "turbo run lint && pnpm run lint:root",
     "lint:root": "oxlint -c ./.oxlintrc.json scripts alchemy.run.ts deploy-targets.mjs",
     "verify:connectors": "pnpm --filter @garden/connectors verify:coverage",
-    "format": "oxfmt -c ./.oxfmtrc.json --check apps packages",
-    "format:write": "oxfmt -c ./.oxfmtrc.json --write apps packages",
+    "format": "oxfmt -c ./.oxfmtrc.json --check apps packages workers scripts alchemy.run.ts deploy-targets.mjs",
+    "format:write": "oxfmt -c ./.oxfmtrc.json --write apps packages workers scripts alchemy.run.ts deploy-targets.mjs",
     "clean": "turbo run clean"
   },
   "devDependencies": {
