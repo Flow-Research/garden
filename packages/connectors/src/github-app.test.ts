@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createGitHubAppJwt, deleteGitHubAppInstallation } from './github-app'
+import {
+  createGitHubAppJwt,
+  createGitHubInstallationAccessToken,
+  deleteGitHubAppInstallation,
+} from './github-app'
 
 function base64UrlJson(segment: string) {
   return JSON.parse(Buffer.from(segment, 'base64url').toString('utf8')) as {
@@ -54,6 +58,84 @@ describe('createGitHubAppJwt', () => {
     expect(payload.exp - payload.iat).toBe(600)
 
     vi.useRealTimers()
+  })
+})
+
+describe('createGitHubInstallationAccessToken', () => {
+  it('returns token, expiresAt, and installationId from GitHub', async () => {
+    const request = vi.fn(
+      async () =>
+        Response.json({
+          token: 'ghs_test_token',
+          expires_at: '2026-10-22T12:00:00Z',
+        }),
+    )
+    const result = await createGitHubInstallationAccessToken({
+      env: {
+        GITHUB_APP_ID: '12345',
+        GITHUB_APP_PRIVATE_KEY: await createPrivateKeyPem(),
+      },
+      installationId: '98765',
+      fetch: request,
+    })
+
+    expect(result.isOk()).toBe(true)
+    if (result.isErr()) throw result.error
+    expect(result.value).toEqual({
+      token: 'ghs_test_token',
+      expiresAt: '2026-10-22T12:00:00Z',
+      installationId: '98765',
+    })
+    expect(request).toHaveBeenCalledWith(
+      'https://api.github.com/app/installations/98765/access_tokens',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          authorization: expect.stringMatching(/^Bearer /),
+        }),
+      }),
+    )
+  })
+
+  it('fails when installation id is missing', async () => {
+    const result = await createGitHubInstallationAccessToken({
+      env: {
+        GITHUB_APP_ID: '12345',
+        GITHUB_APP_PRIVATE_KEY: await createPrivateKeyPem(),
+      },
+      installationId: '   ',
+      fetch: vi.fn(),
+    })
+
+    expect(result.isErr()).toBe(true)
+    if (result.isOk()) throw new Error('expected missing installation id')
+    expect(result.error).toMatchObject({
+      code: 'missing_config',
+      message: 'GitHub installation id is required',
+    })
+  })
+
+  it('maps GitHub token mint failures', async () => {
+    const request = vi.fn(
+      async () =>
+        Response.json({ message: 'Bad credentials' }, { status: 401 }),
+    )
+    const result = await createGitHubInstallationAccessToken({
+      env: {
+        GITHUB_APP_ID: '12345',
+        GITHUB_APP_PRIVATE_KEY: await createPrivateKeyPem(),
+      },
+      installationId: '98765',
+      fetch: request,
+    })
+
+    expect(result.isErr()).toBe(true)
+    if (result.isOk()) throw new Error('expected mint failure')
+    expect(result.error).toMatchObject({
+      code: 'token_request_failed',
+      status: 401,
+      message: 'Bad credentials',
+    })
   })
 })
 

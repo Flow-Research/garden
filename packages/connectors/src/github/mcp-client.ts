@@ -13,8 +13,11 @@ import {
   ConnectorHttpError,
   ConnectorPermissionError,
 } from '../effect/errors.ts'
-import { createGitHubInstallationAccessToken } from '../github-app.ts'
-import { GitHubAppConfig, type GitHubAppConfigShape } from './rest-client.ts'
+import { mintGitHubInstallationAccessToken } from './installation-auth.ts'
+import {
+  GitHubAppConfig,
+  type GitHubAppConfigShape,
+} from './rest-client.ts'
 
 const GITHUB_MCP_URL = 'https://api.githubcopilot.com/mcp/'
 const GITHUB_MCP_TOOLSETS = 'repos,issues,pull_requests,actions'
@@ -64,30 +67,6 @@ export class GitHubHostedMcpClient extends Context.Service<
   GitHubHostedMcpClient,
   GitHubHostedMcpClientShape
 >()('@garden/connectors/GitHubHostedMcpClient') {}
-
-const installationToken = Effect.fn('GitHubHostedMcp.installationToken')(
-  function* (config: GitHubAppConfigShape, operation: string) {
-    const token = yield* Effect.promise(() =>
-      createGitHubInstallationAccessToken({
-        env: {
-          GITHUB_APP_ID: config.appId,
-          GITHUB_CLIENT_ID: config.clientId,
-          GITHUB_APP_PRIVATE_KEY: config.privateKey,
-        },
-        installationId: config.installationId,
-      }),
-    )
-    if (token.isErr()) {
-      return yield* new ConnectorAuthError({
-        connectorId: 'github',
-        operation,
-        message: token.error.message,
-        status: token.error.status,
-      })
-    }
-    return token.value
-  },
-)
 
 const responseError = Effect.fn('GitHubHostedMcp.responseError')(function* (
   response: HttpClientResponse.HttpClientResponse,
@@ -315,7 +294,11 @@ export const makeGitHubHostedMcpClientLayer = (): Layer.Layer<
       const client = yield* HttpClient.HttpClient
       return GitHubHostedMcpClient.of({
         listTools: Effect.fn('GitHubHostedMcp.listTools')(function* () {
-          const token = yield* installationToken(config, 'github.mcp.listTools')
+          const credential = yield* mintGitHubInstallationAccessToken(
+            config,
+            'github.mcp.listTools',
+          )
+          const token = credential.token
           const sessionId = yield* initializeSession(client, token)
           const tools: GitHubHostedMcpTool[] = []
           let cursor: string | undefined
@@ -345,7 +328,11 @@ export const makeGitHubHostedMcpClientLayer = (): Layer.Layer<
           name: string,
           argumentsValue: unknown,
         ) {
-          const token = yield* installationToken(config, `github.mcp.${name}`)
+          const credential = yield* mintGitHubInstallationAccessToken(
+            config,
+            `github.mcp.${name}`,
+          )
+          const token = credential.token
           const sessionId = yield* initializeSession(client, token)
           const response = yield* executeRequest({
             client,

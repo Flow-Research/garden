@@ -189,17 +189,45 @@ export async function createGitHubAppJwt(env: GitHubAppEnv) {
   return Result.ok(`${signingInput}.${signatureResult.value}`)
 }
 
+/**
+ * Short-lived installation credential minted from the workspace GitHub App
+ * install. Phase 1 of flaky-auth hardening (#163): one mint API returns token
+ * plus expiry and installation id so REST and hosted MCP share the same
+ * source of truth (no duplicated mint, expiry no longer discarded).
+ */
+export type GitHubInstallationAccessToken = {
+  token: string
+  /** ISO-8601 expiry from GitHub (`expires_at`). */
+  expiresAt: string
+  installationId: string
+}
+
+/**
+ * Mints an installation access token for the workspace GitHub App install.
+ * Callers must not persist the token; remint per use (cache comes later).
+ */
 export async function createGitHubInstallationAccessToken(args: {
   env: GitHubAppEnv
   installationId: string
+  fetch?: typeof fetch
 }) {
+  const installationId = args.installationId.trim()
+  if (!installationId) {
+    return Result.err(
+      new GitHubAppAuthError({
+        code: 'missing_config',
+        message: 'GitHub installation id is required',
+      }),
+    )
+  }
+
   const jwt = await createGitHubAppJwt(args.env)
   if (jwt.isErr()) return jwt
 
   const responseResult = await Result.tryPromise({
     try: async () => {
-      const response = await fetch(
-        `https://api.github.com/app/installations/${args.installationId}/access_tokens`,
+      const response = await (args.fetch ?? fetch)(
+        `https://api.github.com/app/installations/${installationId}/access_tokens`,
         {
           method: 'POST',
           headers: {
@@ -212,10 +240,11 @@ export async function createGitHubInstallationAccessToken(args: {
       )
       const body = (await response.json()) as {
         token?: string
+        expires_at?: string
         message?: string
       }
 
-      if (!response.ok || !body.token) {
+      if (!response.ok || !body.token || !body.expires_at) {
         throw new GitHubAppAuthError({
           code: 'token_request_failed',
           status: response.status,
@@ -225,7 +254,11 @@ export async function createGitHubInstallationAccessToken(args: {
         })
       }
 
-      return body.token
+      return {
+        token: body.token,
+        expiresAt: body.expires_at,
+        installationId,
+      } satisfies GitHubInstallationAccessToken
     },
     catch: (cause) =>
       cause instanceof GitHubAppAuthError

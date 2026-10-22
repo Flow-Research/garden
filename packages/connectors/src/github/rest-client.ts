@@ -7,12 +7,11 @@ import {
   HttpMethod,
 } from 'effect/unstable/http'
 import {
-  ConnectorAuthError,
   ConnectorDecodeError,
   type ConnectorError,
   ConnectorHttpError,
 } from '../effect/errors.ts'
-import { createGitHubInstallationAccessToken } from '../github-app.ts'
+import { mintGitHubInstallationAccessToken } from './installation-auth.ts'
 
 const GITHUB_API_BASE_URL = 'https://api.github.com'
 
@@ -56,30 +55,6 @@ const githubUrl = (input: GitHubRequest): string => {
   }
   return url.toString()
 }
-
-const installationToken = Effect.fn('GitHubRestClient.installationToken')(
-  function* (config: GitHubAppConfigShape, operation: string) {
-    const token = yield* Effect.promise(() =>
-      createGitHubInstallationAccessToken({
-        env: {
-          GITHUB_APP_ID: config.appId,
-          GITHUB_CLIENT_ID: config.clientId,
-          GITHUB_APP_PRIVATE_KEY: config.privateKey,
-        },
-        installationId: config.installationId,
-      }),
-    )
-    if (token.isErr()) {
-      return yield* new ConnectorAuthError({
-        connectorId: 'github',
-        operation,
-        message: token.error.message,
-        status: token.error.status,
-      })
-    }
-    return token.value
-  },
-)
 
 const makeRequest = Effect.fn('GitHubRestClient.makeRequest')(function* (
   token: string,
@@ -126,8 +101,11 @@ export const makeGitHubRestClientLayer = (): Layer.Layer<
         request: Effect.fn('GitHubRestClient.request')(function* (
           input: GitHubRequest,
         ) {
-          const token = yield* installationToken(config, input.operation)
-          const request = yield* makeRequest(token, input)
+          const credential = yield* mintGitHubInstallationAccessToken(
+            config,
+            input.operation,
+          )
+          const request = yield* makeRequest(credential.token, input)
           const response = yield* Effect.mapError(
             client.execute(request),
             (cause) =>
