@@ -359,6 +359,7 @@ vi.mock('@base-ui/react/accordion', () => ({
 // ---------------------------------------------------------------------------
 
 const issueDefaults = {
+  team_id: null,
   parent_issue_id: null,
   project_id: null,
   position: 0,
@@ -527,7 +528,9 @@ describe('IssuesPage (shared)', () => {
     renderWithQuery(<IssuesPage />)
 
     await screen.findByText('Test WS')
-    expect(screen.getByText('Issues')).toBeInTheDocument()
+    expect(
+      screen.getByText('Issues', { selector: 'span' }),
+    ).toBeInTheDocument()
   })
 
   it('shows empty state when there are no issues', async () => {
@@ -535,8 +538,13 @@ describe('IssuesPage (shared)', () => {
 
     renderWithQuery(<IssuesPage />)
 
-    await screen.findByText('Todo')
-    expect(screen.getAllByText('No issues').length).toBeGreaterThanOrEqual(1)
+    await screen.findByText('No issues yet')
+    expect(
+      screen.getByText('You don’t have any active issues at the moment.'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getAllByRole('button', { name: /New issue/ }).length,
+    ).toBeGreaterThanOrEqual(1)
   })
 
   it('searches authoritative issue results and exposes structured filters', async () => {

@@ -20,6 +20,7 @@ export const workspacePermissions = {
   invitationManage: { invitation: ['create', 'cancel'] },
   permissionManage: { permission: ['approve', 'grant'] },
   skillManage: { skill: ['create', 'update', 'delete'] },
+  teamManage: { team: ['create', 'update', 'delete'] },
 } satisfies Record<string, WorkspacePermission>
 
 class WorkspacePermissionError extends TaggedError('WorkspacePermissionError')<{

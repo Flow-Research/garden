@@ -68,6 +68,7 @@ export type GardenAuthEnv = Pick<
 type GardenAuthRuntime = GardenAuthEnv & {
   request?: Request
   waitUntil?: (promise: Promise<unknown>) => void
+  authMode?: 'full' | 'session'
 }
 
 type AuthDatabase = Db
@@ -390,7 +391,18 @@ function googleAuthProvider(env: GardenAuthRuntime) {
   }
 }
 
+/**
+ * Builds the full Better Auth instance or the optional-provider-free instance
+ * used by agent transport authorization. Before this split, a partial optional
+ * Google OAuth credential pair threw while `/agents/*` requests were only
+ * trying to verify a session. The session mode keeps the database, cookie,
+ * origin, and session configuration while skipping social and connector OAuth
+ * providers.
+ * References: issue #122, Better Auth `getSession` API, and Cloudflare Worker
+ * request-boundary guidance.
+ */
 export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
+  const useOptionalProviders = env.authMode !== 'session'
   const runtimeOrigin = getRequestOrigin(env.request)
   const baseURL =
     runtimeOrigin ?? env.BETTER_AUTH_URL ?? 'http://localhost:3000'
@@ -473,7 +485,11 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
       updateAccountOnSignIn: true,
       accountLinking: {
         trustedProviders: ['google'],
-        disableImplicitLinking: true,
+        // Require the existing Garden account to verify its email before
+        // trusted-provider linking. Otherwise, anyone can pre-register an
+        // unverified password account with another person's email and claim
+        // the account when that person later signs in with Google.
+        requireLocalEmailVerified: true,
         allowDifferentEmails: false,
         allowUnlinkingAll: false,
       },
@@ -484,7 +500,9 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
         connectorType: { type: 'string', required: false, input: false },
       },
     },
-    socialProviders: googleAuthProvider(env),
+    socialProviders: useOptionalProviders
+      ? googleAuthProvider(env)
+      : undefined,
     plugins: [
       organization({
         ac: gardenAccessControl,
@@ -515,9 +533,13 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
           },
         },
       }),
-      genericOAuth({
-        config: buildConnectorOAuthConfigs(oauthEnv),
-      }),
+      ...(useOptionalProviders
+        ? [
+            genericOAuth({
+              config: buildConnectorOAuthConfigs(oauthEnv),
+            }),
+          ]
+        : []),
     ],
     hooks: {
       /**

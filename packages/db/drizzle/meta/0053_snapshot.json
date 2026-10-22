@@ -1,6 +1,6 @@
 {
-  "id": "286dad01-acef-4130-bc01-aaaa0b67eb63",
-  "prevId": "26b281ac-17bf-44e5-b384-d03b936b0bd7",
+  "id": "24e25333-4add-4d29-9ed1-70809d712842",
+  "prevId": "c0b194ca-f7e2-41b4-bf14-c56f855b8034",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -45,14 +45,14 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         }
       },
@@ -172,34 +172,16 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         }
       },
-      "indexes": {
-        "auth_account_user_id_idx": {
-          "name": "auth_account_user_id_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "auth_account_user_id_user_id_fk": {
           "name": "auth_account_user_id_user_id_fk",
@@ -266,15 +248,13 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         },
         "ip_address": {
           "name": "ip_address",
@@ -301,23 +281,7 @@
           "notNull": true
         }
       },
-      "indexes": {
-        "auth_session_user_id_idx": {
-          "name": "auth_session_user_id_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "auth_session_user_id_user_id_fk": {
           "name": "auth_session_user_id_user_id_fk",
@@ -372,15 +336,13 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": false
         },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": false
         }
       },
       "indexes": {},
@@ -437,7 +399,7 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         },
         "inviter_id": {
@@ -447,23 +409,7 @@
           "notNull": true
         }
       },
-      "indexes": {
-        "invitation_organization_id_idx": {
-          "name": "invitation_organization_id_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "invitation_organization_id_organization_id_fk": {
           "name": "invitation_organization_id_organization_id_fk",
@@ -475,7 +421,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "invitation_inviter_id_user_id_fk": {
@@ -541,26 +487,11 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         }
       },
       "indexes": {
-        "member_user_id_idx": {
-          "name": "member_user_id_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "member_organization_user_unique": {
           "name": "member_organization_user_unique",
           "columns": [
@@ -594,7 +525,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "member_user_id_user_id_fk": {
@@ -694,14 +625,14 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         }
       },
@@ -840,7 +771,7 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         }
       },
@@ -915,7 +846,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "agent_owner_user_id_user_id_fk": {
@@ -1197,14 +1128,14 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         }
       },
@@ -1314,7 +1245,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "chat_thread_owner_user_id_user_id_fk": {
@@ -1449,14 +1380,14 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         }
       },
@@ -1524,7 +1455,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "document_owner_user_id_user_id_fk": {
@@ -1620,7 +1551,7 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         }
       },
@@ -1728,14 +1659,14 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         }
       },
@@ -1773,7 +1704,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "brain_folder_created_by_user_id_fk": {
@@ -1831,7 +1762,7 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         }
       },
@@ -1991,7 +1922,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "inbox_dismissal_user_id_user_id_fk": {
@@ -2140,21 +2071,6 @@
         }
       },
       "indexes": {
-        "inbox_item_issue_id_idx": {
-          "name": "inbox_item_issue_id_idx",
-          "columns": [
-            {
-              "expression": "issue_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "inbox_item_workspace_recipient_key_unique": {
           "name": "inbox_item_workspace_recipient_key_unique",
           "columns": [
@@ -2260,7 +2176,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "inbox_item_recipient_id_user_id_fk": {
@@ -2429,33 +2345,18 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         }
       },
       "indexes": {
-        "issue_parent_id_idx": {
-          "name": "issue_parent_id_idx",
-          "columns": [
-            {
-              "expression": "parent_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "issue_workspace_number_unique": {
           "name": "issue_workspace_number_unique",
           "columns": [
@@ -2585,7 +2486,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "issue_active_run_id_issue_run_id_fk": {
@@ -2716,7 +2617,7 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         }
       },
@@ -2778,7 +2679,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "issue_attachment_issue_id_issue_id_fk": {
@@ -2863,7 +2764,7 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         }
       },
@@ -3054,21 +2955,6 @@
         }
       },
       "indexes": {
-        "issue_run_workspace_id_idx": {
-          "name": "issue_run_workspace_id_idx",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "issue_run_issue_idx": {
           "name": "issue_run_issue_idx",
           "columns": [
@@ -3172,7 +3058,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "issue_run_issue_id_issue_id_fk": {
@@ -3359,7 +3245,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "issue_run_event_issue_id_issue_id_fk": {
@@ -3550,7 +3436,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "issue_source_binding_issue_id_issue_id_fk": {
@@ -3685,7 +3571,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "issue_subscriber_issue_id_issue_id_fk": {
@@ -3830,21 +3716,6 @@
         }
       },
       "indexes": {
-        "issue_work_product_run_id_idx": {
-          "name": "issue_work_product_run_id_idx",
-          "columns": [
-            {
-              "expression": "run_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "issue_work_product_primary_unique": {
           "name": "issue_work_product_primary_unique",
           "columns": [
@@ -3900,7 +3771,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "issue_work_product_issue_id_issue_id_fk": {
@@ -4164,21 +4035,6 @@
         }
       },
       "indexes": {
-        "automation_assignee_agent_id_idx": {
-          "name": "automation_assignee_agent_id_idx",
-          "columns": [
-            {
-              "expression": "assignee_agent_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "automation_workspace_status_idx": {
           "name": "automation_workspace_status_idx",
           "columns": [
@@ -4257,7 +4113,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "automation_assignee_agent_id_agent_id_fk": {
@@ -4455,21 +4311,6 @@
         }
       },
       "indexes": {
-        "automation_run_trigger_id_idx": {
-          "name": "automation_run_trigger_id_idx",
-          "columns": [
-            {
-              "expression": "trigger_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "automation_run_workspace_idx": {
           "name": "automation_run_workspace_idx",
           "columns": [
@@ -4562,7 +4403,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "automation_run_automation_id_automation_id_fk": {
@@ -4842,14 +4683,14 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         }
       },
@@ -4949,14 +4790,14 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         }
       },
@@ -5088,23 +4929,7 @@
           "notNull": false
         }
       },
-      "indexes": {
-        "skill_file_skill_id_idx": {
-          "name": "skill_file_skill_id_idx",
-          "columns": [
-            {
-              "expression": "skill_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "skill_file_skill_id_skill_id_fk": {
           "name": "skill_file_skill_id_skill_id_fk",
@@ -5164,27 +4989,11 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         }
       },
-      "indexes": {
-        "skill_version_skill_id_idx": {
-          "name": "skill_version_skill_id_idx",
-          "columns": [
-            {
-              "expression": "skill_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "skill_version_skill_id_skill_id_fk": {
           "name": "skill_version_skill_id_skill_id_fk",
@@ -5658,21 +5467,6 @@
         }
       },
       "indexes": {
-        "permission_request_run_id_idx": {
-          "name": "permission_request_run_id_idx",
-          "columns": [
-            {
-              "expression": "run_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "permission_request_thread_idx": {
           "name": "permission_request_thread_idx",
           "columns": [
@@ -5827,7 +5621,7 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         }
       },
@@ -5865,7 +5659,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
@@ -6137,7 +5931,7 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         }
       },
@@ -6340,7 +6134,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "tool_call_audit_agent_id_agent_id_fk": {

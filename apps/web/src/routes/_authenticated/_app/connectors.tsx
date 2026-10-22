@@ -12,7 +12,8 @@ import {
 import { Button } from '@garden/ui/components/ui/button'
 import { ConnectionsPage } from '@/features/connections'
 import { getConnectorCallbackEvent } from '@/lib/api/connections'
-import { workspaceKeys } from '@/lib/workspace/queries'
+import { connectionListOptions, workspaceKeys } from '@/lib/workspace/queries'
+import { prefetchActiveWorkspace } from '@/lib/navigation/prefetch'
 
 export const Route = createFileRoute('/_authenticated/_app/connectors')({
   // connector_flow + connector_id arrive from connector OAuth/setup callbacks
@@ -26,6 +27,10 @@ export const Route = createFileRoute('/_authenticated/_app/connectors')({
       out.connector_id = search.connector_id
     return out
   },
+  loader: ({ context }) =>
+    prefetchActiveWorkspace(context.queryClient, (workspaceId) => [
+      connectionListOptions(workspaceId),
+    ]),
   component: ConnectionsRoute,
 })
 

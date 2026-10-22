@@ -62,6 +62,20 @@ export type {
 } from './workspace'
 export type { InboxItem, InboxSeverity, InboxItemType } from './inbox'
 export type {
+  Team,
+  TeamSummary,
+  TeamMember,
+  TeamMemberKind,
+  TeamCurrentMembership,
+  AddTeamMemberRequest,
+  CreateTeamRequest,
+  UpdateTeamRequest,
+  TransferTeamOwnerRequest,
+  ListTeamIssuesParams,
+  ListTeamsResponse,
+  ListTeamMembersResponse,
+} from './team'
+export type {
   Comment,
   CommentType,
   CommentAuthorType,
@@ -69,6 +83,7 @@ export type {
 } from './comment'
 export type { TimelineEntry, AssigneeFrequencyEntry } from './activity'
 export type { IssueSubscriber } from './subscriber'
+export type * from './events'
 export type * from './api'
 export type { Attachment } from './attachment'
 export type {

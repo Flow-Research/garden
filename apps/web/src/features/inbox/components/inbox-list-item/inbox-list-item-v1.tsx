@@ -1,11 +1,11 @@
-import { cn } from '@garden/ui/lib/utils'
-import { timeAgo } from '@garden/core/format'
 import { Archive } from 'lucide-react'
 import { useActorName } from '@/lib/workspace/hooks'
 import type { InboxItem } from '@garden/core/types'
-import { InboxDetailLabel, typeLabels } from './inbox-detail-label'
+import { timeAgo } from '@garden/core/format'
+import { cn } from '@garden/ui/lib/utils'
+import { InboxDetailLabel, typeLabels } from '../inbox-detail-label'
 
-export function InboxListItem({
+export function InboxListItemV1({
   item,
   isSelected,
   onClick,
@@ -33,7 +33,6 @@ export function InboxListItem({
           : 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
       )}
     >
-      {/* Row 1: actor + timestamp */}
       <div className="flex w-full items-center gap-2">
         {!item.read && (
           <span className="size-1.5 shrink-0 rounded-full bg-brand" />
@@ -51,15 +50,12 @@ export function InboxListItem({
         </span>
       </div>
 
-      {/* Row 2: subject */}
       <span className="w-full truncate font-medium">{item.title}</span>
 
-      {/* Row 3: teaser */}
       <span className="line-clamp-2 w-full text-xs whitespace-break-spaces text-muted-foreground">
         <InboxDetailLabel item={item} />
       </span>
 
-      {/* Archive action on hover */}
       <span
         role="button"
         tabIndex={-1}

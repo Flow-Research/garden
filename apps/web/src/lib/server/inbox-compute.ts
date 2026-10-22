@@ -5,12 +5,14 @@ import {
   desc,
   eq,
   inArray,
+  like,
   ne,
   notInArray,
   or,
   sql,
 } from 'drizzle-orm'
 import { getDb, schema, type Db } from '@/lib/server/db'
+import { LIVE_RUN_STATUSES } from '@garden/core/issues/run-sync'
 import { appEnv } from '@/lib/server/env'
 import type {
   InboxItem,
@@ -377,6 +379,24 @@ function userIsResponsible(issue: IssueRow, userId: string): boolean {
   )
 }
 
+type BrainWriteBackRunRef = {
+  kind: 'issue' | 'automation'
+  id: string
+}
+
+const BRAIN_WRITE_BACK_RUN_PREFIX = 'brain-write-back:'
+
+function parseBrainWriteBackRunId(runId: string): BrainWriteBackRunRef | null {
+  if (!runId.startsWith(BRAIN_WRITE_BACK_RUN_PREFIX)) return null
+  const rest = runId.slice(BRAIN_WRITE_BACK_RUN_PREFIX.length)
+  const separator = rest.indexOf(':')
+  if (separator === -1) return null
+  const kind = rest.slice(0, separator)
+  const id = rest.slice(separator + 1)
+  if ((kind !== 'issue' && kind !== 'automation') || id === '') return null
+  return { kind, id }
+}
+
 type InboxCandidate = {
   key: string
   read: boolean
@@ -431,6 +451,7 @@ async function computeInboxSourceItems(args: {
     connectorApprovalRows,
     agentProposalRows,
     pendingWorkProducts,
+    pendingBrainProposals,
     pausedRuns,
     failedRuns,
     succeededRuns,
@@ -529,6 +550,17 @@ async function computeInboxSourceItems(args: {
         ),
       )
       .orderBy(desc(schema.issueWorkProduct.updatedAt))
+      .limit(100),
+    db
+      .select()
+      .from(schema.brainWriteProposal)
+      .where(
+        and(
+          eq(schema.brainWriteProposal.workspaceId, workspaceId),
+          eq(schema.brainWriteProposal.status, 'pending'),
+        ),
+      )
+      .orderBy(desc(schema.brainWriteProposal.createdAt))
       .limit(100),
     db
       .select()
@@ -720,7 +752,23 @@ async function computeInboxSourceItems(args: {
               ),
             ),
         )
+  const [viewerMember] =
+    approvalRows.length === 0
+      ? []
+      : await db
+          .select({ role: schema.member.role })
+          .from(schema.member)
+          .where(
+            and(
+              eq(schema.member.organizationId, workspaceId),
+              eq(schema.member.userId, userId),
+            ),
+          )
+          .limit(1)
+  const viewerCanApprove =
+    viewerMember?.role === 'owner' || viewerMember?.role === 'admin'
   for (const request of approvalRows) {
+    if (!viewerCanApprove) continue
     const issue = request.issueId
       ? approvalIssues.get(request.issueId)
       : undefined
@@ -734,7 +782,73 @@ async function computeInboxSourceItems(args: {
     const issue = issuesById.get(wp.issueId)
     if (!issue) continue
     if (isTerminalIssue(issue)) continue
+    if (!userIsResponsible(issue, userId)) continue
     sources.push(buildWorkProductReviewSource(wp, issue))
+  }
+
+  const runRefs = pendingBrainProposals
+    .map((proposal) => parseBrainWriteBackRunId(proposal.runId))
+    .filter((ref): ref is BrainWriteBackRunRef => ref !== null)
+  const issueRunIds = runRefs
+    .filter((ref) => ref.kind === 'issue')
+    .map((ref) => ref.id)
+  const automationRunIds = runRefs
+    .filter((ref) => ref.kind === 'automation')
+    .map((ref) => ref.id)
+  const [issueOwners, automationOwners] = await Promise.all([
+    issueRunIds.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({
+            id: schema.issueRun.id,
+            agentId: schema.issueRun.agentId,
+            ownerUserId: schema.agent.ownerUserId,
+          })
+          .from(schema.issueRun)
+          .innerJoin(schema.agent, eq(schema.agent.id, schema.issueRun.agentId))
+          .where(inArray(schema.issueRun.id, issueRunIds)),
+    automationRunIds.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({
+            id: schema.automationRun.id,
+            agentId: schema.automationRun.agentId,
+            ownerUserId: schema.agent.ownerUserId,
+          })
+          .from(schema.automationRun)
+          .innerJoin(
+            schema.agent,
+            eq(schema.agent.id, schema.automationRun.agentId),
+          )
+          .where(inArray(schema.automationRun.id, automationRunIds)),
+  ])
+  const runOwnerById = new Map(
+    [...issueOwners, ...automationOwners].map((run) => [run.id, run]),
+  )
+
+  for (const proposal of pendingBrainProposals) {
+    const ref = parseBrainWriteBackRunId(proposal.runId)
+    const run = ref === null ? undefined : runOwnerById.get(ref.id)
+    const reviewerUserId =
+      proposal.scope.kind === 'user' ? proposal.scope.userId : run?.ownerUserId
+    if (reviewerUserId !== userId) continue
+    sources.push({
+      key: `brain_proposal:${proposal.id}`,
+      type: 'brain_proposal',
+      severity: 'action_required',
+      issueId: null,
+      title: `Review knowledge: ${proposal.claim.slice(0, 60)}`,
+      body: proposal.claim,
+      issueStatus: null,
+      ...actorFromAgentId(run?.agentId ?? null),
+      activityAt: proposal.createdAt ?? new Date(),
+      details: {
+        proposal_id: proposal.id,
+        run_id: proposal.runId,
+        kind: proposal.kind,
+        confidence: String(proposal.confidence),
+      },
+    })
   }
 
   for (const run of pausedRuns) {
@@ -849,10 +963,57 @@ async function persistInboxSourceItems(args: {
     eq(schema.inboxItem.recipientId, args.userId),
     eq(schema.inboxItem.archived, false),
   )
-  const staleFilter =
-    sourceKeys.length > 0
-      ? and(visibleFilter, notInArray(schema.inboxItem.itemKey, sourceKeys))
-      : visibleFilter
+
+  const existingWaiting = await db
+    .select({ itemKey: schema.inboxItem.itemKey })
+    .from(schema.inboxItem)
+    .where(
+      and(
+        visibleFilter,
+        sql`${schema.inboxItem.itemKey} like ${'waiting_for_input:%'}`,
+      ),
+    )
+  const waitingRunIds = existingWaiting
+    .map((row) => row.itemKey.slice('waiting_for_input:'.length))
+    .filter((id) => id.length > 0)
+  const openWaitingKeys =
+    waitingRunIds.length === 0
+      ? []
+      : (
+          await db
+            .select({ id: schema.issueRun.id })
+            .from(schema.issueRun)
+            .where(
+              and(
+                inArray(schema.issueRun.id, waitingRunIds),
+                inArray(schema.issueRun.status, [...LIVE_RUN_STATUSES]),
+              ),
+            )
+        ).map((row) => `waiting_for_input:${row.id}`)
+
+  const keepKeys = [...sourceKeys, ...openWaitingKeys]
+  const managedPrefixes = [
+    'assigned:',
+    'blocked:',
+    'mention:',
+    'comment:',
+    'approval:',
+    'waiting_for_input:',
+    'wp_review:',
+    'failed_run:',
+    'brain_proposal:',
+  ]
+  const staleFilter = and(
+    visibleFilter,
+    or(
+      ...managedPrefixes.map((prefix) =>
+        like(schema.inboxItem.itemKey, `${prefix}%`),
+      ),
+    ),
+    keepKeys.length > 0
+      ? notInArray(schema.inboxItem.itemKey, keepKeys)
+      : undefined,
+  )
 
   await db
     .update(schema.inboxItem)

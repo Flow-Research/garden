@@ -104,6 +104,7 @@ export function IssueDetailSidebar({
               <AssigneePicker
                 assigneeType={issue.assignee_type}
                 assigneeId={issue.assignee_id}
+                teamId={issue.team_id}
                 onUpdate={onUpdate}
                 align="start"
               />

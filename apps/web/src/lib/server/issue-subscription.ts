@@ -1,12 +1,7 @@
-import { eq } from 'drizzle-orm'
 import { setIssueSubscription } from '@garden/db/subscribers'
 import type { AppRequestContext } from '@/lib/server/context'
-import { schema } from '@/lib/server/db'
-import {
-  badRequest,
-  notFound,
-  requireWorkspaceAccess,
-} from '@/lib/server/control-plane'
+import { badRequest } from '@/lib/server/control-plane'
+import { requireIssueAccess } from '@/lib/server/issue-access'
 import { issueSubscriptionBodySchema } from '@/lib/server/validation/issues'
 import { isWorkspaceParticipant } from '@/lib/server/workspace-refs'
 import {
@@ -27,15 +22,10 @@ export async function updateIssueSubscription(input: {
   subscribed: boolean
 }) {
   const { appContext, issueId, subscribed } = input
-  const db = await appContext.db()
-  const [issue] = await db
-    .select({ workspaceId: schema.issue.workspaceId })
-    .from(schema.issue)
-    .where(eq(schema.issue.id, issueId))
-  if (!issue) return notFound('Issue not found')
-
-  const access = await requireWorkspaceAccess(appContext, issue.workspaceId)
+  const access = await requireIssueAccess(appContext, issueId)
   if (access instanceof Response) return access
+  const db = access.db
+  const issue = access.issue
 
   const rawBody: unknown = await appContext.request.json().catch(() => ({}))
   const body = issueSubscriptionBodySchema.safeParse(rawBody)

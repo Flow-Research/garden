@@ -2,6 +2,7 @@ import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 import { Context, Effect, Layer, Schema } from 'effect'
 import { ItemId, Kind, WorkspaceId } from '@garden/brain/domain'
+import { orgScope, userScope } from '@garden/brain/domain/scope'
 import { Brain } from '@garden/brain/services/brain'
 import type { BrainShape } from '@garden/brain/services/brain'
 import { makeWorkerBrainLive } from '@garden/brain/services/worker'
@@ -12,6 +13,7 @@ export type BrainToolContext = {
   readonly workspaceId: string
   readonly agentId: string
   readonly runId: string
+  readonly userId?: string
 }
 
 export type BrainToolOperations = Pick<
@@ -45,60 +47,78 @@ const brainSearchInputSchema = z
   })
   .strict()
 
-const createBrainItemInputSchema = z
+const addToBrainInputSchema = z
   .object({
-    label: z
-      .string()
-      .trim()
-      .min(1)
-      .describe('Short name for this brain item, e.g. a title.'),
-    content: z
-      .string()
-      .trim()
-      .min(1)
-      .describe('The knowledge to persist, in the agent’s own words.'),
-    kind: z
-      .string()
-      .trim()
-      .min(1)
-      .optional()
+    mode: z
+      .enum(['create', 'update'])
       .describe(
-        'Optional free-text kind you invent, e.g. "decision", "person", or "policy"; it is not an enum. Everything is searchable regardless of kind.',
+        'create a new note from label and content, or update an existing item kind and summary.',
       ),
-    summary: z
-      .string()
-      .trim()
-      .optional()
-      .describe('Optional one-line summary for fast triage.'),
-  })
-  .strict()
-
-const updateBrainItemInputSchema = z
-  .object({
     itemId: z
       .string()
       .trim()
       .min(1)
-      .describe('Existing brain item id whose kind and summary should change.'),
+      .optional()
+      .describe('Existing brain item id. Required when mode is "update".'),
+    label: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe('Short name for a new item. Required when mode is "create".'),
+    content: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe(
+        'The knowledge to persist, in the agent’s own words. Required when mode is "create".',
+      ),
     kind: z
       .string()
       .trim()
       .min(1)
+      .optional()
       .describe(
-        'Free-text kind you judge best for the existing item; it is not an enum.',
+        'Free-text kind you invent, e.g. "decision", "person", or "policy". Required when mode is "update".',
       ),
     summary: z
       .string()
       .trim()
       .min(1)
-      .describe('Concise source-grounded summary of the existing item.'),
+      .optional()
+      .describe(
+        'One-line summary. Optional on create, required when mode is "update".',
+      ),
+    scope: z
+      .enum(['org', 'user'])
+      .optional()
+      .describe(
+        'Who this knowledge belongs to. Use "user" for facts about a person or their preferences; everything else stays "org".',
+      ),
   })
   .strict()
-
-const addToBrainInputSchema = z.union([
-  createBrainItemInputSchema,
-  updateBrainItemInputSchema,
-])
+  .superRefine((value, ctx) => {
+    if (value.mode === 'update') {
+      for (const field of ['itemId', 'kind', 'summary'] as const) {
+        if (value[field] === undefined) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `mode "update" requires ${field}.`,
+          })
+        }
+      }
+      return
+    }
+    for (const field of ['label', 'content'] as const) {
+      if (value[field] === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `mode "create" requires ${field}.`,
+        })
+      }
+    }
+  })
 
 const brainObserveMentionInputSchema = z
   .object({
@@ -245,6 +265,11 @@ class BrainToolsUnavailableError extends Schema.TaggedError<BrainToolsUnavailabl
   { message: Schema.String },
 ) {}
 
+class BrainToolInputError extends Schema.TaggedError<BrainToolInputError>()(
+  'BrainToolInputError',
+  { message: Schema.String },
+) {}
+
 interface BrainToolsServiceShape {
   readonly search: (input: SearchInput) => Effect.Effect<BrainToolOutput>
   readonly add: (input: AddInput) => Effect.Effect<BrainToolOutput>
@@ -285,6 +310,9 @@ const toolOutcome = <A, E>(
   Effect.match(effect, {
     onFailure: (failure) => {
       if (failure instanceof BrainToolsUnavailableError) {
+        return { ok: false, error: failure.message }
+      }
+      if (failure instanceof BrainToolInputError) {
         return { ok: false, error: failure.message }
       }
       if (
@@ -341,13 +369,23 @@ const makeBrainToolsService = (
       tenantId: WorkspaceId.make(ctx.workspaceId),
       query: input.query,
       k: input.k,
+      viewer: { teamIds: new Set<string>(), userId: ctx.userId },
     })
   })
 
   const add = Effect.fn('BrainTools.add')(function* (input: AddInput) {
     const ctx = yield* resolveContext()
     const service = yield* requireBrain()
-    if ('itemId' in input) {
+    if (input.mode === 'update') {
+      if (
+        input.itemId === undefined ||
+        input.kind === undefined ||
+        input.summary === undefined
+      ) {
+        return yield* new BrainToolInputError({
+          message: 'mode "update" needs itemId, kind, and summary.',
+        })
+      }
       return yield* service.updateItemMetadata({
         tenantId: WorkspaceId.make(ctx.workspaceId),
         itemId: ItemId.make(input.itemId),
@@ -355,6 +393,20 @@ const makeBrainToolsService = (
         summary: input.summary,
       })
     }
+    if (input.label === undefined || input.content === undefined) {
+      return yield* new BrainToolInputError({
+        message: 'mode "create" needs label and content.',
+      })
+    }
+    if (input.scope === 'user' && ctx.userId === undefined) {
+      return yield* new BrainToolInputError({
+        message: 'scope "user" needs a user context.',
+      })
+    }
+    const scope =
+      input.scope === 'user' && ctx.userId !== undefined
+        ? userScope(ctx.userId)
+        : orgScope()
     yield* service.ensureIndexes()
     return yield* service.addText({
       tenantId: WorkspaceId.make(ctx.workspaceId),
@@ -362,6 +414,7 @@ const makeBrainToolsService = (
       body: input.content,
       ...(input.kind === undefined ? {} : { kind: Kind.make(input.kind) }),
       ...(input.summary === undefined ? {} : { summary: input.summary }),
+      scope,
       actor: actorFrom(ctx),
     })
   })
@@ -401,6 +454,7 @@ const makeBrainToolsService = (
       tenantId: WorkspaceId.make(ctx.workspaceId),
       itemId: ItemId.make(input.itemId),
       ...(input.depth === undefined ? {} : { depth: input.depth }),
+      viewer: { teamIds: new Set<string>(), userId: ctx.userId },
     })
   })
 
@@ -501,7 +555,7 @@ export function createBrainTools(deps: BrainToolDependencies): ToolSet {
 
     add_to_brain: tool({
       description:
-        'Persist durable knowledge in the workspace’s Org Brain, or update an existing indexed item’s kind and summary by passing itemId. Kind is free text you choose—not an enum. Metadata updates preserve body content and embeddings.',
+        'Persist durable knowledge in the workspace’s Org Brain. Use mode "create" with label and content to add a note, or mode "update" with itemId, kind, and summary to restructure an existing item. Kind is free text you choose, not an enum. Updates preserve body content and embeddings. Use scope "user" for facts about a person or their preferences; everything else stays "org".',
       inputSchema: addToBrainInputSchema,
       execute: (input) => runService((service) => service.add(input)),
     }),

@@ -251,6 +251,61 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     }
   }
 
+  protected brainInjectionIdentity(loaded: LoadedAutomationRunContext) {
+    return {
+      workspaceId: loaded.run.workspaceId,
+      userId: loaded.agent.ownerUserId,
+    }
+  }
+
+  /**
+   * Automation output lives in `resultJson.output`; fall back to the run error
+   * so a failed automation still writes its stated reason to workspace memory.
+   */
+  protected override async readWorkflowTurnSummary(runId: string): Promise<{
+    workspaceId: string | null
+    ownerUserId: string | null
+    summary: string
+  }> {
+    const result = await Result.tryPromise({
+      try: async () => {
+        const [row] = await this.getDb()
+          .select({
+            workspaceId: schema.automationRun.workspaceId,
+            ownerUserId: schema.agent.ownerUserId,
+            resultJson: schema.automationRun.resultJson,
+            error: schema.automationRun.error,
+          })
+          .from(schema.automationRun)
+          .innerJoin(
+            schema.agent,
+            eq(schema.agent.id, schema.automationRun.agentId),
+          )
+          .where(eq(schema.automationRun.id, runId))
+          .limit(1)
+        if (!row) return { workspaceId: null, ownerUserId: null, summary: '' }
+        const output = objectOrNull(row.resultJson)?.output
+        const rawSummary =
+          typeof output === 'string'
+            ? output
+            : output !== undefined
+              ? JSON.stringify(output)
+              : ''
+        const summary = rawSummary.trim()
+        return {
+          workspaceId: row.workspaceId,
+          ownerUserId: row.ownerUserId,
+          summary: summary !== '' ? summary : (row.error ?? '').trim(),
+        }
+      },
+      catch: (cause) => this.dbError('read automation run summary', cause),
+    })
+    if (result.isErr()) {
+      return { workspaceId: null, ownerUserId: null, summary: '' }
+    }
+    return result.value
+  }
+
   protected runLogFields() {
     return { ...this.currentLogContext }
   }

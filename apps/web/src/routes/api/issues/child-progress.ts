@@ -4,9 +4,12 @@ import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import {
   requireSession,
+  requireWorkspaceAccess,
   resolveWorkspaceId,
   unauthorized,
 } from '@/lib/server/control-plane'
+import { teamIssueVisibilityCondition } from '@/lib/server/issue-access'
+import { isWorkspaceManager } from '@/lib/server/team-access'
 
 export const Route = createFileRoute('/api/issues/child-progress')({
   server: {
@@ -22,6 +25,12 @@ export const Route = createFileRoute('/api/issues/child-progress')({
         )
         if (!workspaceId) return Response.json({ progress: [] })
 
+        const workspaceAccess = await requireWorkspaceAccess(
+          appContext,
+          workspaceId,
+        )
+        if (workspaceAccess instanceof Response) return workspaceAccess
+
         // Count children per parent in the database rather than loading every
         // issue in the workspace to tally them in memory.
         const db = await appContext.db()
@@ -36,6 +45,10 @@ export const Route = createFileRoute('/api/issues/child-progress')({
             and(
               eq(schema.issue.workspaceId, workspaceId),
               isNotNull(schema.issue.parentId),
+              teamIssueVisibilityCondition({
+                viewerId: session.user.id,
+                manager: isWorkspaceManager(workspaceAccess.membership.role),
+              }),
             ),
           )
           .groupBy(schema.issue.parentId)

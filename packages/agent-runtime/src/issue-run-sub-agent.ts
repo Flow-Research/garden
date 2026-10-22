@@ -220,6 +220,80 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     }
   }
 
+  protected brainInjectionIdentity(loaded: LoadedTurnContext) {
+    return {
+      workspaceId: loaded.runState.workspaceId,
+      userId: loaded.runState.agentOwnerUserId,
+    }
+  }
+
+  /**
+   * Latest work products are the run's durable account of what it produced.
+   * Falls back to the run error so a blocked/failed run still contributes its
+   * stated reason to workspace memory.
+   */
+  protected override async readWorkflowTurnSummary(runId: string): Promise<{
+    workspaceId: string | null
+    ownerUserId: string | null
+    summary: string
+  }> {
+    const result = await Result.tryPromise({
+      try: async () => {
+        const db = this.getDb()
+        const [state] = await db
+          .select({
+            workspaceId: schema.issueRun.workspaceId,
+            ownerUserId: schema.agent.ownerUserId,
+          })
+          .from(schema.issueRun)
+          .innerJoin(schema.agent, eq(schema.agent.id, schema.issueRun.agentId))
+          .where(eq(schema.issueRun.id, runId))
+          .limit(1)
+        const products = await db
+          .select({
+            title: schema.issueWorkProduct.title,
+            body: schema.issueWorkProduct.body,
+          })
+          .from(schema.issueWorkProduct)
+          .where(eq(schema.issueWorkProduct.runId, runId))
+          .orderBy(desc(schema.issueWorkProduct.createdAt))
+          .limit(3)
+        const productText = products
+          .map((product) =>
+            [product.title, product.body]
+              .filter(
+                (part): part is string => part !== null && part.trim() !== '',
+              )
+              .join('\n'),
+          )
+          .join('\n\n')
+          .trim()
+        if (productText !== '') {
+          return {
+            workspaceId: state?.workspaceId ?? null,
+            ownerUserId: state?.ownerUserId ?? null,
+            summary: productText,
+          }
+        }
+        const [run] = await db
+          .select({ error: schema.issueRun.error })
+          .from(schema.issueRun)
+          .where(eq(schema.issueRun.id, runId))
+          .limit(1)
+        return {
+          workspaceId: state?.workspaceId ?? null,
+          ownerUserId: state?.ownerUserId ?? null,
+          summary: (run?.error ?? '').trim(),
+        }
+      },
+      catch: (cause) => this.dbError('read issue run summary', cause),
+    })
+    if (result.isErr()) {
+      return { workspaceId: null, ownerUserId: null, summary: '' }
+    }
+    return result.value
+  }
+
   protected runLogFields() {
     const run = this.currentRunState
     if (!run) return null

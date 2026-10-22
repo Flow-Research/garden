@@ -24,23 +24,15 @@ vi.mock('./bubble-menu', () => ({
 }))
 
 vi.mock('@tiptap/react', () => ({
-  useEditor: () => ({
-    commands: {
-      focus: mockFocus,
-      clearContent: vi.fn(),
-    },
-    getMarkdown: () => '',
-    state: {
-      doc: {
-        content: {
-          size: 0,
-        },
-      },
-      selection: {
-        empty: true,
-      },
-    },
-  }),
+  useEditor: (options: { onCreate?: (props: { editor: unknown }) => void }) => {
+    const editor = {
+      commands: { focus: mockFocus, clearContent: vi.fn() },
+      getMarkdown: () => '',
+      state: { doc: { content: { size: 0 } }, selection: { empty: true } },
+    }
+    options.onCreate?.({ editor })
+    return editor
+  },
   EditorContent: ({ className }: { className?: string }) => (
     <div className={className} data-testid="editor-content">
       <div className="ProseMirror rich-text-editor" data-testid="prosemirror" />

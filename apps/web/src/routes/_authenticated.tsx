@@ -15,6 +15,7 @@ import { workspaceKeys } from '@/lib/workspace/queries'
 import { sanitizeRedirectTarget } from '@/lib/redirect'
 import { getAuthBootstrap } from '@/lib/server/auth-bootstrap'
 import { synchronizePostHogContext } from '@/lib/posthog-browser'
+import { initRealtime } from '@/lib/realtime/realtime-manager'
 
 function scheduleClientStoreHydration(callback: () => void) {
   if (typeof queueMicrotask === 'function') {
@@ -25,6 +26,11 @@ function scheduleClientStoreHydration(callback: () => void) {
 }
 
 export const Route = createFileRoute('/_authenticated')({
+  // Session and workspace bootstrap is the auth boundary, not page data. Keep
+  // it cached while moving between authenticated surfaces; explicit auth and
+  // workspace changes invalidate the route when the value must change.
+  staleTime: Number.POSITIVE_INFINITY,
+  preloadStaleTime: Number.POSITIVE_INFINITY,
   loader: async ({ location }) => {
     const bootstrap = await getAuthBootstrap()
     if (!bootstrap) {
@@ -123,6 +129,7 @@ function AuthenticatedLayout() {
   // Hydrate singleton stores after the render that consumes loader data.
   // Updating them during render trips React's setState-in-render guard.
   if (typeof window !== 'undefined') {
+    initRealtime(qc)
     const nextKey = `${user.id}:${preferredWorkspaceId ?? ''}:${workspaces.map((workspace) => `${workspace.id}:${workspace.updated_at}`).join(',')}`
     if (hydratedKey.current !== nextKey) {
       hydratedKey.current = nextKey

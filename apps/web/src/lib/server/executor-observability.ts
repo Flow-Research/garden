@@ -93,6 +93,8 @@ export async function runExecutorRouteEffect<A, E>(input: {
   readonly request: Request
   readonly event: string
   readonly fallbackMessage: string
+  readonly tenant?: string
+  readonly subject?: string
 }): Promise<ExecutorRouteOutcome<A>> {
   let traceId: string | undefined
   const observed = input.effect.pipe(
@@ -106,6 +108,8 @@ export async function runExecutorRouteEffect<A, E>(input: {
         return Effect.sync(() => {
           executorLogger.warn(input.event, {
             ...requestFields(input.request),
+            tenant: input.tenant,
+            subject: input.subject,
             ...errorFields(Cause.squash(cause)),
           })
         })
@@ -113,6 +117,8 @@ export async function runExecutorRouteEffect<A, E>(input: {
       return captureExecutorCause(cause, {
         event: input.event,
         request: input.request,
+        tenant: input.tenant,
+        subject: input.subject,
       }).pipe(
         Effect.tap((capturedTraceId) =>
           Effect.sync(() => {

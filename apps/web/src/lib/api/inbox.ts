@@ -10,14 +10,14 @@ export function listInbox(params?: {
   return getApiTransport().request(`/api/inbox${suffix}`)
 }
 
-export function markInboxRead(id: string): Promise<InboxItem> {
+export function markInboxRead(id: string): Promise<{ ok: true }> {
   return getApiTransport().request(
     `/api/inbox/${encodeURIComponent(id)}/read`,
     { method: 'POST' },
   )
 }
 
-export function archiveInbox(id: string): Promise<InboxItem> {
+export function archiveInbox(id: string): Promise<{ ok: true }> {
   return getApiTransport().request(
     `/api/inbox/${encodeURIComponent(id)}/archive`,
     { method: 'POST' },
@@ -51,6 +51,22 @@ export function archiveCompletedInbox(): Promise<{ count: number }> {
  * agent proposals to the dedicated ledger and connector approvals to the
  * legacy permission ledger, so the existing client contract stays unchanged.
  */
+export function resolveBrainProposal(args: {
+  id: string
+  action: 'approve' | 'reject'
+}): Promise<{
+  ok: true
+  status: string
+}> {
+  return getApiTransport().request(
+    `/api/brain/proposals/${encodeURIComponent(args.id)}/resolve`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ action: args.action }),
+    },
+  )
+}
+
 export function resolvePermissionRequest(args: {
   id: string
   approved: boolean

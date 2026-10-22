@@ -57,6 +57,7 @@ import {
   type RunWorkflowTurnCompleteEvent,
   type RunWorkflowTurnStartResult,
 } from './run-workflow'
+import { latestUserText, loadBrainInjection } from './brain-injection'
 import { logAgentSocketError } from './websocket-errors'
 import {
   agentSandboxId,
@@ -92,7 +93,7 @@ export type RunSubAgentEnv = Cloudflare.Env &
     FILES: R2Bucket
     LOADER: WorkerLoader
     Sandbox: DurableObjectNamespace<SandboxDO>
-    MCP_SESSION: DurableObjectNamespace
+    EXECUTOR_MCP_SESSION: DurableObjectNamespace<McpAgent>
     RUN_WORKFLOW: RunWorkflowBinding
     HELIX_URL?: string
     HELIX_API_KEY?: string
@@ -313,6 +314,31 @@ export abstract class RunSubAgentBase<
     _usage: RunUsageSnapshot,
   ): Promise<void> {}
 
+  /**
+   * Workspace and viewer used to inject Brain context for this turn. Returning
+   * null skips injection for run kinds that should not read workspace memory.
+   * The run facet knows these from its loaded context; the shared base must not
+   * assume fields that differ between issue and automation ledgers.
+   */
+  protected brainInjectionIdentity(
+    _loaded: TLoaded,
+  ): { workspaceId: string; userId: string } | null {
+    return null
+  }
+
+  /**
+   * Returns the run's workspace/owner and a short product summary for post-turn
+   * Brain write-back. Defaults keep run kinds that do not write back on the
+   * same Workflow RPC contract without adding a subclass requirement.
+   */
+  protected async readWorkflowTurnSummary(_runId: string): Promise<{
+    workspaceId: string | null
+    ownerUserId: string | null
+    summary: string
+  }> {
+    return { workspaceId: null, ownerUserId: null, summary: '' }
+  }
+
   protected telemetryMetadata(runId: string): Record<string, string> {
     return { agentClass: this.runConfig().agentClass, runId }
   }
@@ -415,6 +441,49 @@ export abstract class RunSubAgentBase<
       },
     )
 
+    const brainIdentity = this.brainInjectionIdentity(loadedResult.value)
+    const brainContext = brainIdentity
+      ? (
+          await Result.tryPromise({
+            try: () =>
+              loadBrainInjection({
+                env: {
+                  ...(this.env.HELIX_URL === undefined
+                    ? {}
+                    : { HELIX_URL: this.env.HELIX_URL }),
+                  ...(this.env.HELIX_API_KEY === undefined
+                    ? {}
+                    : { HELIX_API_KEY: this.env.HELIX_API_KEY }),
+                },
+                ai: this.env.AI,
+                files: this.env.BRAIN_FILES,
+                workspaceId: brainIdentity.workspaceId,
+                viewer: {
+                  teamIds: new Set<string>(),
+                  userId: brainIdentity.userId,
+                },
+                query: latestUserText(ctx.messages),
+                log: (event) =>
+                  console.info('[brain-injection]', {
+                    ...event,
+                    surface: `${config.kind}_run`,
+                  }),
+              }),
+            catch: (cause) =>
+              cause instanceof Error ? cause.message : String(cause),
+          })
+        ).match({
+          ok: (injection) => injection.text,
+          err: (error) => {
+            this.logRunWarning('brain_injection_failed', {
+              runId,
+              message: String(error),
+            })
+            return ''
+          },
+        })
+      : ''
+
     return {
       model: createAgentModel({
         ai: this.env.AI,
@@ -433,7 +502,7 @@ export abstract class RunSubAgentBase<
       maxSteps: this.maxSteps,
       sendReasoning: true,
       stopWhen: this.turnStopConditions(),
-      system: `${ctx.system}\n\n${loadedResult.value.contextBlock}`,
+      system: `${ctx.system}\n\n${[loadedResult.value.contextBlock, brainContext].filter((part) => part.trim() !== '').join('\n\n')}`,
       tools: stableMcpTools,
       activeTools: mcpController.activeToolKeysWithoutRawMcp({
         assembledTools: ctx.tools,
@@ -630,7 +699,12 @@ export abstract class RunSubAgentBase<
   async completeWorkflowTurn(input: {
     runId: string
     submissionId: string
-  }): Promise<{ status: string }> {
+  }): Promise<{
+    status: string
+    workspaceId: string | null
+    ownerUserId: string | null
+    summary: string
+  }> {
     const kind = this.runConfig().kind
     const inspectionResult = await Result.tryPromise({
       try: async () => await this.inspectSubmission(input.submissionId),
@@ -691,7 +765,13 @@ export abstract class RunSubAgentBase<
       await this.forceCloseFailed(input.runId, statusResult.error.message)
       throw statusResult.error
     }
-    return { status: statusResult.value }
+    const turnSummary = await this.readWorkflowTurnSummary(input.runId)
+    return {
+      status: statusResult.value,
+      workspaceId: turnSummary.workspaceId,
+      ownerUserId: turnSummary.ownerUserId,
+      summary: turnSummary.summary,
+    }
   }
 
   /**
@@ -1065,12 +1145,11 @@ export abstract class RunSubAgentBase<
       mcp: this.mcp,
       getServerStates: () =>
         this.getMcpServers().servers as RuntimeMcpServerStates,
-      addRpcMcpServer: async ({ connectorId, id, props }) =>
-        await this.addMcpServer(
-          connectorId,
-          this.env.MCP_SESSION as unknown as DurableObjectNamespace<McpAgent>,
-          { id, props },
-        ),
+      addExecutorMcpServer: async ({ id, props }) =>
+        await this.addMcpServer(id, this.env.EXECUTOR_MCP_SESSION, {
+          id,
+          props,
+        }),
       removeMcpServer: this.removeMcpServer.bind(this),
       resolveRuntimeIdentity: async () => await this.resolveMcpIdentity(),
     }

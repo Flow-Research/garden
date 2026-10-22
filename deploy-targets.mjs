@@ -39,7 +39,6 @@ export const deploymentTargets = {
     sandboxName: 'garden-web-sandbox-staging',
     aiGatewayId: 'garden-staging',
     environment: 'production',
-    bindConfiguredBetterAuthUrl: true,
     emptyBucketsOnDestroy: false,
   },
   dev: {
@@ -73,7 +72,6 @@ export const deploymentTargets = {
     sandboxName: 'garden-web-sandbox-dev',
     aiGatewayId: 'garden-dev',
     environment: 'development',
-    bindConfiguredBetterAuthUrl: false,
     emptyBucketsOnDestroy: false,
   },
   preview: {
@@ -108,7 +106,6 @@ export const deploymentTargets = {
     sandboxName: 'garden-web-sandbox-preview',
     aiGatewayId: 'garden-preview',
     environment: 'development',
-    bindConfiguredBetterAuthUrl: false,
     emptyBucketsOnDestroy: true,
   },
 }

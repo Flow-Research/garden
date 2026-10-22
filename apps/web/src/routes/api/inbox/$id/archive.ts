@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { archiveInboxItem } from '@/lib/server/inbox-dismissal'
+import { archiveInboxThread } from '@/lib/server/inbox-dismissal'
 import {
   requireSession,
   resolveWorkspaceId,
@@ -19,7 +19,7 @@ export const Route = createFileRoute('/api/inbox/$id/archive')({
           session.user.id,
         )
         if (!workspaceId) return unauthorized()
-        await archiveInboxItem({
+        await archiveInboxThread({
           workspaceId,
           userId: session.user.id,
           itemKey: decodeURIComponent(params.id),

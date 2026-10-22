@@ -2,8 +2,8 @@
  * Chat timeline rendering.
  *
  * Extracted from `agent-interaction-screen.tsx`. Owns:
- *   - `CopyButton` — small inline button used by `ChatError` and message
- *     copy actions.
+ *   - `MessageActionButton` / `CopyButton` / `MessageFeedback` — the icon row
+ *     under an assistant reply (copy, thumbs up, thumbs down).
  *   - `ChatError` — recoverable-error surface with retry / copy.
  *   - `ChatTimeline` — the master loop that renders messages, attachments,
  *     tool activity, citations, and approvals into the conversation feed.
@@ -11,10 +11,11 @@
  *     virtualizer.
  */
 
-import { useCallback, useMemo, useState } from 'react'
-import { Check, Copy, RefreshCw, X } from 'lucide-react'
+import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
+import { Check, Copy, RefreshCw, ThumbsDown, ThumbsUp, X } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
 import { Spinner } from '@garden/ui/components/ui/spinner'
+import { cn } from '@garden/ui/lib/utils'
 import {
   Message,
   MessageContent,
@@ -43,7 +44,7 @@ import { isToolPartActive } from './chat-tool-state'
 import { useDevSettingsStore } from '@/features/settings/dev-settings-store'
 import type { RealtimeStatus } from '../chat-runtime-provider'
 import { stripGardenInternalDocumentContext } from './chat-message-parts'
-import { normalizeStatus } from './chat-composer'
+import { normalizeStatus } from './composer'
 
 // Local helpers (formerly in agent-interaction-screen.tsx)
 function getText(parts: ChatUiMessage['parts']) {
@@ -61,6 +62,43 @@ function getDisplayText(message: ChatUiMessage) {
     : text
 }
 
+/**
+ * Shared shell for the message footer icons.
+ *
+ * Before: the copy action was a lone 12px glyph in a tight 6px pad, so it read
+ * as a stray mark rather than a control. The design specifies a 32px hit area
+ * around a 16px icon with a 4px radius and no surface until hover, which is
+ * also what makes the three actions sit on an even 32px rhythm.
+ */
+function MessageActionButton({
+  children,
+  label,
+  onClick,
+  pressed,
+}: {
+  children: ReactNode
+  label: string
+  onClick: () => void
+  pressed?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={pressed}
+      onClick={onClick}
+      title={label}
+      className={cn(
+        'inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded',
+        'text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+        pressed && 'text-foreground',
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
 export function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
 
@@ -71,18 +109,50 @@ export function CopyButton({ text }: { text: string }) {
   }
 
   return (
-    <button
-      type="button"
+    <MessageActionButton
+      label={copied ? 'Copied' : 'Copy'}
       onClick={handleCopy}
-      className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-      title={copied ? 'Copied' : 'Copy'}
     >
       {copied ? (
-        <Check className="size-3.5 text-success" />
+        <Check className="size-4 text-success" />
       ) : (
-        <Copy className="size-3.5" />
+        <Copy className="size-4" />
       )}
-    </button>
+    </MessageActionButton>
+  )
+}
+
+/**
+ * Thumbs up / down on an assistant reply.
+ *
+ * The design pairs a rating with the copy action in the footer. There is no
+ * feedback endpoint or table behind it yet, so the choice is held in component
+ * state: the control shows what the reader picked and lets them take it back,
+ * and it deliberately claims nothing more than that. When a feedback mutation
+ * lands, replace the `setRating` calls with it — the markup does not change.
+ */
+function MessageFeedback() {
+  const [rating, setRating] = useState<'up' | 'down' | null>(null)
+  const toggle = (next: 'up' | 'down') =>
+    setRating((current) => (current === next ? null : next))
+
+  return (
+    <>
+      <MessageActionButton
+        label="Good response"
+        onClick={() => toggle('up')}
+        pressed={rating === 'up'}
+      >
+        <ThumbsUp className="size-4" />
+      </MessageActionButton>
+      <MessageActionButton
+        label="Bad response"
+        onClick={() => toggle('down')}
+        pressed={rating === 'down'}
+      >
+        <ThumbsDown className="size-4" />
+      </MessageActionButton>
+    </>
   )
 }
 
@@ -156,7 +226,17 @@ export function ChatError({
   )
 }
 
-export function ChatTimeline({
+/**
+ * Memoized because the controller above it re-renders on every keystroke: the
+ * composer's draft lives in the chat store and the controller subscribes to it
+ * to drive the (controlled) input field. Without this the whole LegendList
+ * tree re-rendered per character even though nothing it renders had changed.
+ *
+ * That only pays off while every prop keeps its identity between those
+ * renders, which is why the controller routes `onRetry` through a ref and
+ * hands over a shared empty-message constant.
+ */
+const ChatTimelineComponent = ({
   debugMode,
   sessionId,
   messages,
@@ -207,7 +287,7 @@ export function ChatTimeline({
   onRetry?: () => void
   isRetrying?: boolean
   forcePendingActivity?: boolean
-}) {
+}) => {
   const normalizedStatus = normalizeStatus(status)
   const latestMessage = messages[messages.length - 1]
   const latestParts = latestMessage?.parts ?? []
@@ -287,33 +367,46 @@ export function ChatTimeline({
       const text = getDisplayText(item.message)
       const isLatestStreaming =
         isStreaming && item.message.id === latestMessage?.id
+      // `MessageContent` is now the user bubble itself, so attachments have to
+      // sit outside it — the design shows the file card above the bubble, and
+      // leaving it inside painted the card on brand green. It becomes a direct
+      // child of `Message`, which already right-aligns user rows.
+      //
+      // That also means an attachment-only user message (a file dropped with no
+      // prompt) must skip the bubble entirely, otherwise it renders as an empty
+      // green sliver. Assistant rows always keep the wrapper: it is transparent
+      // and carries the tool/citation/approval column.
+      const hasBubble = item.message.role !== 'user' || text.length > 0
       return (
         <Message from={item.message.role}>
-          <MessageContent>
-            <MessageFiles message={item.message} />
-            <MessageOrderedParts
-              debugMode={debugMode}
-              isLatestStreaming={isLatestStreaming}
-              message={item.message}
-              onOpenDocument={onOpenDocument}
-            />
-            <MessageSources message={item.message} />
-            <MessageCitations
-              message={item.message}
-              onOpenCitation={onOpenCitation}
-            />
-            <MessageToolApprovals
-              debugMode={debugMode}
-              message={item.message}
-              onResolve={onResolveToolApproval}
-              resolvedApprovalIds={resolvedApprovalIds}
-              resolvedPermissionRequestIds={resolvedPermissionRequestIds}
-              resolvingToolCallIds={resolvingToolCallIds}
-            />
-          </MessageContent>
+          <MessageFiles message={item.message} />
+          {hasBubble ? (
+            <MessageContent>
+              <MessageOrderedParts
+                debugMode={debugMode}
+                isLatestStreaming={isLatestStreaming}
+                message={item.message}
+                onOpenDocument={onOpenDocument}
+              />
+              <MessageSources message={item.message} />
+              <MessageCitations
+                message={item.message}
+                onOpenCitation={onOpenCitation}
+              />
+              <MessageToolApprovals
+                debugMode={debugMode}
+                message={item.message}
+                onResolve={onResolveToolApproval}
+                resolvedApprovalIds={resolvedApprovalIds}
+                resolvedPermissionRequestIds={resolvedPermissionRequestIds}
+                resolvingToolCallIds={resolvingToolCallIds}
+              />
+            </MessageContent>
+          ) : null}
           {text ? (
             <MessageFooter>
               <CopyButton text={text} />
+              {item.message.role === 'assistant' ? <MessageFeedback /> : null}
             </MessageFooter>
           ) : null}
         </Message>
@@ -350,6 +443,9 @@ export function ChatTimeline({
     </Conversation>
   )
 }
+
+export const ChatTimeline = memo(ChatTimelineComponent)
+ChatTimeline.displayName = 'ChatTimeline'
 
 export function getChatTimelineRowKey(row: ChatTimelineRow) {
   return row.id

@@ -121,6 +121,12 @@ import {
   BrainAuditRunner,
   makeBrainAuditRunnerLayer,
 } from './brain-audit-runner'
+import { BrainWriteBackSubAgent } from './brain-write-back-sub-agent'
+import type { BrainWriteBackRunInput } from './brain-write-back'
+import {
+  BrainWriteBackRunner,
+  makeBrainWriteBackRunnerLayer,
+} from './brain-write-back-runner'
 import {
   RunWorkflowCreateError,
   type RunWorkflowBinding,
@@ -384,6 +390,10 @@ const agentRuntimeLogger = createGardenLogger({
   service: 'garden-staging',
   component: 'agent-do',
 })
+
+/** Run statuses whose summary is worth writing into workspace memory. */
+const ISSUE_WRITE_BACK_STATUSES = new Set(['succeeded', 'blocked'])
+const AUTOMATION_WRITE_BACK_STATUSES = new Set(['completed'])
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const documentArtifactEventJson = Schema.fromJsonString(DocumentArtifactEvent)
@@ -797,6 +807,79 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     )
   }
 
+  /**
+   * Claims one write-back attempt per run. Durable Object SQL keeps the claim,
+   * so a retried workflow completion cannot file the same run's knowledge twice.
+   */
+  private claimBrainWriteBackRun(runId: string): boolean {
+    this.ctx.storage.sql.exec(
+      `create table if not exists brain_write_back_runs (run_id text primary key, fired_at text not null)`,
+    )
+    const existing = this.ctx.storage.sql
+      .exec(`select run_id from brain_write_back_runs where run_id = ?`, runId)
+      .toArray()
+    if (existing.length > 0) return false
+    this.ctx.storage.sql.exec(
+      `insert into brain_write_back_runs (run_id, fired_at) values (?, ?)`,
+      runId,
+      new Date().toISOString(),
+    )
+    return true
+  }
+
+  async startBrainWriteBack(
+    input: Omit<BrainWriteBackRunInput, 'agentId'>,
+  ): Promise<{ ok: true; status: 'completed' }> {
+    const layer = makeBrainWriteBackRunnerLayer({
+      authorize: (workspaceId) => this.requireWorkspaceAccess(workspaceId),
+      resolveAgentId: () => this.resolveRuntimeAgentId(),
+      acquire: (facetName) => this.subAgent(BrainWriteBackSubAgent, facetName),
+      release: (facetName) =>
+        this.deleteSubAgent(BrainWriteBackSubAgent, facetName),
+      onStarted: ({ agentId, runId, workspaceId }) => {
+        agentRuntimeLogger.info('agent_do.brain_write_back.start_requested', {
+          agentId,
+          runId,
+          workspaceId,
+        })
+      },
+      onCleanupFailure: ({ agentId, runId, workspaceId, cause }) => {
+        agentRuntimeLogger.warn('agent_do.brain_write_back.cleanup_failed', {
+          agentId,
+          runId,
+          message: messageFromUnknown(cause),
+          workspaceId,
+        })
+      },
+    })
+    return Effect.runPromise(
+      Effect.flatMap(BrainWriteBackRunner, (runner) => runner.run(input)).pipe(
+        Effect.tap(({ agentId }) =>
+          Effect.sync(() => {
+            agentRuntimeLogger.info('agent_do.brain_write_back.completed', {
+              agentId,
+              runId: input.runId,
+              workspaceId: input.workspaceId,
+            })
+          }),
+        ),
+        Effect.tapError((failure) =>
+          Effect.sync(() => {
+            agentRuntimeLogger.error('agent_do.brain_write_back.failed', {
+              agentId: failure.agentId,
+              message: messageFromUnknown(failure.cause),
+              operation: failure.operation,
+              runId: input.runId,
+              workspaceId: input.workspaceId,
+            })
+          }),
+        ),
+        Effect.map(({ status }) => ({ ok: true as const, status })),
+        Effect.provide(layer),
+      ),
+    )
+  }
+
   async cancelIssueRun(input: {
     runId: string
     issueId: string
@@ -862,10 +945,72 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   }): Promise<{ status: string }> {
     await this.requireIssueAccess(input.issueId)
     const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId)
-    return await issueAgent.completeWorkflowTurn({
+    const result = await issueAgent.completeWorkflowTurn({
       runId: input.runId,
       submissionId: input.submissionId,
     })
+    this.triggerBrainWriteBack({
+      runId: input.runId,
+      workspaceId: result.workspaceId,
+      ownerUserId: result.ownerUserId,
+      summary: result.summary,
+      status: result.status,
+      runKind: 'issue',
+      statuses: ISSUE_WRITE_BACK_STATUSES,
+    })
+    return { status: result.status }
+  }
+
+  /**
+   * Fires an issue/automation Brain write-back once per run without blocking the
+   * Workflow RPC response. Empty summaries and non-product statuses are skipped.
+   */
+  private triggerBrainWriteBack(input: {
+    runId: string
+    workspaceId: string | null
+    ownerUserId: string | null
+    summary: string
+    status: string
+    runKind: 'issue' | 'automation'
+    statuses: ReadonlySet<string>
+  }) {
+    const summary = input.summary.trim()
+    agentRuntimeLogger.info('agent_do.brain_write_back.trigger_check', {
+      runId: input.runId,
+      status: input.status,
+      summaryLength: summary.length,
+      hasWorkspace: input.workspaceId !== null,
+    })
+    if (
+      input.workspaceId === null ||
+      summary === '' ||
+      !input.statuses.has(input.status) ||
+      !this.claimBrainWriteBackRun(input.runId)
+    ) {
+      return
+    }
+    const bounded = summary.slice(0, 8000)
+    this.ctx.waitUntil(
+      (async () => {
+        const fired = await Result.tryPromise({
+          try: () =>
+            this.startBrainWriteBack({
+              runId: input.runId,
+              workspaceId: input.workspaceId as string,
+              runKind: input.runKind,
+              ownerUserId: input.ownerUserId,
+              summary: bounded,
+            }),
+          catch: (cause) => messageFromUnknown(cause),
+        })
+        if (fired.isErr()) {
+          agentRuntimeLogger.warn(
+            'agent_do.brain_write_back.trigger_failed',
+            { runId: input.runId, message: fired.error },
+          )
+        }
+      })(),
+    )
   }
 
   /**
@@ -901,7 +1046,17 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       AutomationRunSubAgent,
       input.runId,
     )
-    return await automationAgent.completeWorkflowTurn(input)
+    const result = await automationAgent.completeWorkflowTurn(input)
+    this.triggerBrainWriteBack({
+      runId: input.runId,
+      workspaceId: result.workspaceId,
+      ownerUserId: result.ownerUserId,
+      summary: result.summary,
+      status: result.status,
+      runKind: 'automation',
+      statuses: AUTOMATION_WRITE_BACK_STATUSES,
+    })
+    return { status: result.status }
   }
 
   /**

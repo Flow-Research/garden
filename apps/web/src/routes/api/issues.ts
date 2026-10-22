@@ -14,9 +14,11 @@ import {
 import {
   badRequest,
   getWorkspaceIssuePrefix,
+  requireWorkspaceAccess,
   requireWorkspaceContext,
   toIssue,
 } from '@/lib/server/control-plane'
+import { publishWorkspaceEvent } from '@/lib/server/realtime'
 import {
   requireWorkspacePermission,
   workspacePermissions,
@@ -26,6 +28,12 @@ import {
   isWorkspaceParticipant,
 } from '@/lib/server/workspace-refs'
 import { serviceErrorResponse } from '@/lib/server/service-error-response'
+import {
+  isWorkspaceManager,
+  requireTeamAccess,
+  teamError,
+} from '@/lib/server/team-access'
+import { teamIssueVisibilityCondition } from '@/lib/server/issue-access'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { capturePostHogEvent } from '@/lib/posthog-server'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
@@ -45,7 +53,12 @@ export const Route = createFileRoute('/api/issues')({
             Response.json({ issues: [], total: 0 }),
         })
         if (workspaceContext instanceof Response) return workspaceContext
-        const { workspaceId } = workspaceContext
+        const { session, workspaceId } = workspaceContext
+        const workspaceAccess = await requireWorkspaceAccess(
+          appContext,
+          workspaceId,
+        )
+        if (workspaceAccess instanceof Response) return workspaceAccess
         const searchResult = parseSearchParams(
           request,
           issuesListSearchSchema,
@@ -62,10 +75,18 @@ export const Route = createFileRoute('/api/issues')({
           open_only: openOnly = false,
           priority,
           status,
+          team_id: teamId,
         } = searchResult.value
         const db = await appContext.db()
 
-        const conditions = [eq(schema.issue.workspaceId, workspaceId)]
+        const conditions = [
+          eq(schema.issue.workspaceId, workspaceId),
+          teamIssueVisibilityCondition({
+            viewerId: session.user.id,
+            manager: isWorkspaceManager(workspaceAccess.membership.role),
+          }),
+        ]
+        if (teamId) conditions.push(eq(schema.issue.teamId, teamId))
         if (status) conditions.push(eq(schema.issue.status, status))
         if (priority) conditions.push(eq(schema.issue.priority, priority))
         if (assigneeId) conditions.push(eq(schema.issue.assigneeId, assigneeId))
@@ -103,11 +124,7 @@ export const Route = createFileRoute('/api/issues')({
         const rows = await (safeLimit !== null
           ? query.limit(safeLimit).offset(safeOffset)
           : query.offset(safeOffset))
-
-        const issuePrefix = await getWorkspaceIssuePrefix(
-          await appContext.db(),
-          workspaceId,
-        )
+        const issuePrefix = await getWorkspaceIssuePrefix(db, workspaceId)
         return Response.json({
           issues: rows.map((row) => toIssue(row, { issuePrefix })),
           total: count,
@@ -118,13 +135,6 @@ export const Route = createFileRoute('/api/issues')({
         const workspaceContext = await requireWorkspaceContext(appContext)
         if (workspaceContext instanceof Response) return workspaceContext
         const { session, workspaceId } = workspaceContext
-        const managePermission = await requireWorkspacePermission({
-          appContext,
-          request,
-          workspaceId,
-          permissions: workspacePermissions.issueManage,
-        })
-        if (managePermission) return managePermission
         const bodyResult = await parseJsonBody(
           request,
           createIssueBodySchema,
@@ -132,8 +142,68 @@ export const Route = createFileRoute('/api/issues')({
         )
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
-
         const db = await appContext.db()
+
+        if (typeof body.team_id === 'string') {
+          // Team-scoped create: normal Team members may create issues even
+          // though they lack the workspace issueManage permission, as long as
+          // the issue is assigned to themselves and the assignee is a Team
+          // member. Workspace managers and the Team owner may assign others.
+          const teamAccess = await requireTeamAccess(appContext, body.team_id)
+          if (teamAccess instanceof Response) return teamAccess
+          const manager = isWorkspaceManager(
+            teamAccess.workspaceMembership.role,
+          )
+          const canAssignOthers =
+            manager || teamAccess.team.ownerUserId === session.user.id
+          if (!manager && !teamAccess.teamMembership) {
+            return teamError(
+              403,
+              'ISSUE_TEAM_ACCESS_DENIED',
+              'Team membership required',
+            )
+          }
+          if (typeof body.assignee_id !== 'string') {
+            return badRequest('Team issues must be assigned to a Team member')
+          }
+          if (
+            !canAssignOthers &&
+            (body.assignee_type === 'agent' ||
+              body.assignee_id !== session.user.id)
+          ) {
+            return teamError(
+              403,
+              'ISSUE_TEAM_ACCESS_DENIED',
+              'Team members can only assign issues to themselves',
+            )
+          }
+          const assigneeCondition =
+            body.assignee_type === 'agent'
+              ? and(
+                  eq(schema.teamMember.teamId, body.team_id),
+                  eq(schema.teamMember.agentId, body.assignee_id),
+                )
+              : and(
+                  eq(schema.teamMember.teamId, body.team_id),
+                  eq(schema.teamMember.userId, body.assignee_id),
+                )
+          const [assigneeMembership] = await db
+            .select({ id: schema.teamMember.id })
+            .from(schema.teamMember)
+            .where(assigneeCondition)
+          if (!assigneeMembership) {
+            return badRequest('Assignee must be a Team member')
+          }
+        } else {
+          const managePermission = await requireWorkspacePermission({
+            appContext,
+            request,
+            workspaceId,
+            permissions: workspacePermissions.issueManage,
+          })
+          if (managePermission) return managePermission
+        }
+
         if (body.assignee_id) {
           const assigneeInWorkspace = await isWorkspaceParticipant(
             db,
@@ -170,6 +240,7 @@ export const Route = createFileRoute('/api/issues')({
                 : 'user'
               : null,
           assigneeId: body.assignee_id ?? null,
+          teamId: body.team_id ?? null,
           parentId: body.parent_issue_id ?? null,
           projectId: body.project_id ?? null,
           dueDate: body.due_date ? new Date(body.due_date) : null,
@@ -177,6 +248,12 @@ export const Route = createFileRoute('/api/issues')({
         })
         if (issueResult.isErr()) return serviceErrorResponse(issueResult.error)
         const issue = issueResult.value
+        appContext.waitUntil(
+          publishWorkspaceEvent(appContext.env, workspaceId, {
+            type: 'issue:created',
+            payload: { issue },
+          }),
+        )
         if (
           body.auto_start !== false &&
           issue.assignee_type === 'agent' &&

@@ -9,8 +9,9 @@ import {
   capturePostHogHandledError,
 } from '@/lib/posthog-server'
 import { json } from '@/lib/server/control-plane'
+import { requireIssueAccess } from '@/lib/server/issue-access'
 import {
-  requireWorkspaceMember,
+  requireWorkspacePermission,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
 import { parseJsonBody } from '@/lib/server/validation/common'
@@ -70,12 +71,18 @@ export const Route = createFileRoute('/api/work-products/$id/review')({
           )
         }
 
-        const access = await requireWorkspaceMember(
+        const access = await requireIssueAccess(
           appContext,
-          workspaceResult.value.workspaceId,
-          workspacePermissions.permissionManage,
+          workspaceResult.value.issueId,
         )
         if (access instanceof Response) return access
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request,
+          workspaceId: workspaceResult.value.workspaceId,
+          permissions: workspacePermissions.permissionManage,
+        })
+        if (permission) return permission
 
         const reviewResult = await reviewWorkProduct({
           actorUserId: access.session.user.id,

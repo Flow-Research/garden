@@ -30,6 +30,25 @@ describe('Executor MCP one-Worker cutover', () => {
     expect(server).toContain('ExecutorMcpExecutionOwnerDirectory')
   })
 
+  it('uses the Executor MCP binding from issue and automation run facets', () => {
+    const issueRun = projectFile(
+      '../../packages/agent-runtime/src/issue-run-sub-agent.ts',
+    )
+    const automationRun = projectFile(
+      '../../packages/agent-runtime/src/automation-run-sub-agent.ts',
+    )
+
+    for (const source of [issueRun, automationRun]) {
+      expect(source).toContain('EXECUTOR_MCP_SESSION')
+      expect(source).toContain(
+        'EXECUTOR_MCP_SESSION: DurableObjectNamespace<McpAgent>',
+      )
+      expect(source).toContain('addExecutorMcpServer')
+      expect(source).not.toContain('this.env.MCP_SESSION')
+      expect(source).not.toContain('addRpcMcpServer')
+    }
+  })
+
   it('keeps upstream cold-restore and hibernated stream preservation code', () => {
     const source = projectFile(
       '../../third_party/executor/packages/hosts/cloudflare/src/mcp/agent-session-durable-object.ts',

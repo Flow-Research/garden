@@ -101,10 +101,23 @@ export function isImageAttachment(file: FileMessagePart) {
   return file.mediaType?.startsWith('image/') ?? false
 }
 
+/** File-kind discriminant shared by `getFileKind`, `FileKindIcon`, and any
+ * caller (e.g. `composer-tools-menu.tsx`) that needs to type a value as
+ * "one of the kinds this module knows how to render an icon for" without
+ * importing `getFileKind` just for its return type. */
+export type FileKind =
+  | 'image'
+  | 'pdf'
+  | 'word'
+  | 'csv'
+  | 'json'
+  | 'text'
+  | 'other'
+
 export function getFileKind(file: {
   mediaType?: string | null
   filename?: string | null
-}): 'image' | 'pdf' | 'word' | 'csv' | 'json' | 'text' | 'other' {
+}): FileKind {
   const media = file.mediaType ?? ''
   const name = (file.filename ?? '').toLowerCase()
   if (media.startsWith('image/')) return 'image'
@@ -147,6 +160,33 @@ export function getFileKindLabel(kind: ReturnType<typeof getFileKind>) {
       return 'TEXT'
     default:
       return 'FILE'
+  }
+}
+
+/**
+ * Tile colours for the attachment card's icon square.
+ *
+ * Before: every attachment rendered the same grey `FileTextIcon`, so a chat
+ * full of files was a wall of identical tiles. The design calls for a filled
+ * red square behind the PDF glyph; extending that to the other kinds we already
+ * classify keeps the row scannable without inventing new colours — each case
+ * reuses an existing semantic token.
+ *
+ * Images fall through to the neutral tile because `AttachmentPreview` paints a
+ * real thumbnail over it.
+ */
+export function getFileKindAccentClassName(kind: FileKind) {
+  switch (kind) {
+    case 'pdf':
+      return 'bg-destructive text-white'
+    case 'word':
+      return 'bg-info text-white'
+    case 'csv':
+      return 'bg-success text-white'
+    case 'json':
+      return 'bg-warning text-white'
+    default:
+      return 'bg-background text-muted-foreground'
   }
 }
 

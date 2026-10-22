@@ -16,6 +16,7 @@
   "exports": {
     "./components/ui/*": "./components/ui/*.tsx",
     "./components/common/*": "./components/common/*.tsx",
+    "./components/icons": "./components/icons/index.ts",
     "./components/shell/*": "./components/shell/*.tsx",
     "./markdown": "./markdown/index.ts",
     "./markdown/*": "./markdown/*.tsx",

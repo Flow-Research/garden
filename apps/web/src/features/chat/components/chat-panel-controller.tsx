@@ -32,11 +32,13 @@ import { EnvironmentDebugDrawer } from '@/features/settings/components/environme
 import { usePrefetchDebugStream } from '@/features/settings/components/use-debug-stream'
 import { useDevSettingsStore } from '@/features/settings/dev-settings-store'
 import {
+  isPendingFirstTurn,
   useAgentSessions,
   type AgentChatSession,
   NEW_SESSION_TITLE,
 } from '../use-agent-chat-sessions'
 import { makeSessionTitle, type ChatRuntime } from '../chat-runtime-provider'
+import { chatThreadKeys } from '../queries'
 import { useToolApprovals } from '../use-tool-approvals'
 import { useStructuredInput } from '../use-structured-input'
 import {
@@ -46,128 +48,77 @@ import {
   type DocumentPanelView,
 } from './chat-document-panel'
 import {
+  COMPOSER_WIDTH_CLASS_NAME,
   Composer,
+  ComposerSuggestions,
+  EMPTY_INTRO_EASE,
   createFileList,
   normalizeStatus,
   shouldPersistAsDocument,
   uploadAgentDocuments,
+  type ComposerHandle,
   type ComposerThreadDocument,
-} from './chat-composer'
+} from './composer'
 import {
   buildSelectedDocumentsContext,
   type SelectedThreadDocument,
 } from './document-selection'
+import { ChatMessageQueue, type QueuedChatMessage } from './chat-message-queue'
 import {
   buildMessageHeaderAttachments,
   type ChatHeaderAttachment,
 } from './chat-message-files'
 import type { GardenArtifactData } from '@/features/artifacts/artifact-renderer'
 import { ChatTimeline } from './chat-timeline'
-import {
-  FileText,
-  ListTodo,
-  Sparkles,
-  Workflow,
-  X,
-  type LucideIcon,
-} from 'lucide-react'
+import { X } from 'lucide-react'
 import { HeaderAttachmentsMenu } from './chat-message-files'
 import { IssueMentionCard } from '@/features/issues/components/issue-mention-card'
-import { chatThreadKeys } from '../queries'
 
-// Single ease shared across the few motions that remain.
-const EMPTY_INTRO_EASE = [0.32, 0.72, 0, 1] as const
+// `EMPTY_INTRO_EASE` is imported from `./composer` rather than redeclared
+// here: the suggestion pills and this panel's lift animation have to move on
+// the same curve, and two copies of a four-number tuple drift silently.
+
+/**
+ * Stand-in for "this session has nothing to show yet". Shared so the identity
+ * is stable across renders (see `visibleMessages`).
+ */
+const NO_MESSAGES: ChatRuntime['messages'] = []
+
+/**
+ * What to show as a thread's preview the moment a turn is dispatched, before
+ * there is any reply to summarise.
+ *
+ * Mirrors `buildSessionPreview` in `chat-runtime-provider.tsx`, which does the
+ * same job for the assistant's message: prefer the prose, and fall back to
+ * naming the attachments so a send that carries only files still produces a
+ * non-empty preview. Non-empty matters beyond looks — an empty preview is half
+ * of what marks a thread as never-used (`isPendingFirstTurn`).
+ */
+export function buildDispatchPreview(text: string, attachmentCount: number) {
+  const trimmed = text.trim()
+  if (trimmed) return trimmed
+  return attachmentCount > 0
+    ? `${attachmentCount} attachment${attachmentCount === 1 ? '' : 's'}`
+    : ''
+}
 
 // Quiet agent prompt — serif, in repose. The agent's voice greeting the
 // person by first name when we have it, otherwise just a soft open.
 function buildEmptyPrompt(firstName: string | null): string {
   return firstName
-    ? `What are you working on, ${firstName}?`
-    : 'What are you working on?'
+    ? `What can I help with, ${firstName}?`
+    : 'What can I help with?'
 }
 
-// Garden-flavored quick starts. Each tile maps to a product surface so the
-// empty state doubles as a low-key launcher.
-type StartTile = {
-  icon: LucideIcon
-  label: string
-  hint: string
-  starter: string
-}
-
-const EMPTY_STATE_TILES: ReadonlyArray<StartTile> = [
-  {
-    icon: FileText,
-    label: 'Draft a document',
-    hint: 'memo, brief, outline',
-    starter: 'Help me draft a document about ',
-  },
-  {
-    icon: Sparkles,
-    label: 'Summarize recent work',
-    hint: 'across docs + threads',
-    starter: 'Summarize what I worked on this week.',
-  },
-  {
-    icon: ListTodo,
-    label: 'Plan my next move',
-    hint: 'priorities, next steps',
-    starter:
-      'Help me figure out what to focus on next. Here is what is on my plate: ',
-  },
-  {
-    icon: Workflow,
-    label: 'Set up an automation',
-    hint: 'trigger on a schedule or event',
-    starter: 'I want to set up an automation that ',
-  },
-]
-
-function EmptyStateTile({
-  index,
-  onSelect,
-  tile,
-}: {
-  index: number
-  onSelect: (starter: string) => void
-  tile: StartTile
-}) {
-  const Icon = tile.icon
-  return (
-    <motion.button
-      type="button"
-      onClick={() => onSelect(tile.starter)}
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{
-        duration: 0.5,
-        delay: 0.22 + index * 0.05,
-        ease: EMPTY_INTRO_EASE,
-      }}
-      whileHover={{ y: -1 }}
-      whileTap={{ scale: 0.985 }}
-      className="group pointer-events-auto flex w-full items-start gap-3 rounded-[12px] bg-[color-mix(in_oklab,var(--card)_55%,transparent)] p-3.5 text-left shadow-2 backdrop-blur-md transition-colors duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[color-mix(in_oklab,var(--card)_85%,transparent)] hover:shadow-1 focus-visible:outline-none focus-visible:shadow-[0_0_0_1.5px_color-mix(in_oklab,var(--ring)_45%,transparent),var(--shadow-1)]"
-    >
-      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklab,var(--success)_14%,transparent)] text-success">
-        <Icon className="size-[15px]" strokeWidth={1.6} />
-      </span>
-      <span className="flex min-w-0 flex-col gap-0.5 pt-0.5">
-        <span className="truncate font-medium text-[13.5px] leading-tight tracking-[-0.005em] text-foreground">
-          {tile.label}
-        </span>
-        <span className="truncate text-[12px] leading-tight text-muted-foreground/85">
-          {tile.hint}
-        </span>
-      </span>
-    </motion.button>
-  )
-}
+// The four `EMPTY_STATE_TILES` and their `EmptyStateTile` renderer lived here
+// until the 2026-09-08 composer overhaul. They are replaced by the seven-pill
+// "Jump right in" row, which owns its own data and presentation in
+// `./composer/composer-suggestions.tsx` (spec §10).
 
 export function ConnectedChatPanelInteraction({
   activeSession,
   className,
   documentAttachments,
-  documentLoadState,
   onClose,
   panelDescription,
   panelTitle,
@@ -177,7 +128,6 @@ export function ConnectedChatPanelInteraction({
   activeSession: AgentChatSession
   className?: string
   documentAttachments: ChatHeaderAttachment[]
-  documentLoadState: 'error' | 'loading' | 'ready'
   onClose?: () => void
   panelDescription?: string | null
   panelTitle: string
@@ -224,6 +174,68 @@ export function ConnectedChatPanelInteraction({
   const [optimisticPendingTurn, setOptimisticPendingTurn] = useState(false)
   const lastSentTextRef = useRef<string | null>(null)
   const pendingMessageCountRef = useRef<number | null>(null)
+  /**
+   * Messages written while a turn was already running (2026-09-16 queue
+   * design). Held here rather than in the chat store because a queued send can
+   * carry `File` handles, which `zustand/persist` cannot serialise — parking
+   * them in persisted state would write a broken draft to storage and hand
+   * back empty attachments on reload.
+   *
+   * The ref is the source of truth and `queuedMessages` mirrors it for render:
+   * the drain loop below reads and writes the queue between awaits, where a
+   * state value captured at call time would already be stale.
+   */
+  const [queuedMessages, setQueuedMessages] = useState<QueuedChatMessage[]>([])
+  const queuedMessagesRef = useRef<QueuedChatMessage[]>([])
+  /**
+   * True from the moment a turn is dispatched until the queue behind it has
+   * drained. `status`/`isStreaming` alone cannot stand in for this: they still
+   * read idle in the gap between one turn resolving and the next one starting,
+   * which is exactly when a second send would jump the queue.
+   */
+  const isTurnInFlightRef = useRef(false)
+  const updateQueue = useCallback(
+    (update: (current: QueuedChatMessage[]) => QueuedChatMessage[]) => {
+      queuedMessagesRef.current = update(queuedMessagesRef.current)
+      setQueuedMessages(queuedMessagesRef.current)
+    },
+    [],
+  )
+  /** Restoring a queued message and focusing after a suggestion-pill prefill. */
+  const composerRef = useRef<ComposerHandle>(null)
+  /**
+   * Which session the user dismissed the suggestion pills for. Keyed by
+   * session id rather than a boolean because this component is NOT
+   * `key`-remounted per session (the `<Composer>` is), so a boolean would
+   * never reset and the pills would stay gone for every later chat. A new
+   * empty chat has a new `sessionId`, so the pills return. No effect needed.
+   */
+  const [dismissedForSession, setDismissedForSession] = useState<string | null>(
+    null,
+  )
+  /**
+   * Per-render values `submitTurn` must read fresh rather than close over.
+   *
+   * Before: the drain loop below reuses the `submitTurn` closure from the
+   * render `handleSend` was first called in, so every queued turn after the
+   * first saw the message count, side-panel document and session title as they
+   * were when the *first* message went out. Concretely: a document opened
+   * mid-reply never reached the queued turns as context, and a session still
+   * titled "New chat" in that old closure got renamed again off the second
+   * queued message.
+   *
+   * After: the loop still runs one closure, but the values it must not stale
+   * on are read from this ref at the top of each turn. `sessionId` rides along
+   * so a turn can tell whether the panel it is about to describe still belongs
+   * to the conversation it was sent from — see `submitTurn`.
+   */
+  const liveTurnContextRef = useRef({
+    sessionId,
+    messages: [] as typeof runtime.messages,
+    documentPanelView,
+    activeSession,
+  })
+
   const {
     addToolApprovalResponse,
     addToolOutput,
@@ -237,6 +249,13 @@ export function ConnectedChatPanelInteraction({
     isRecovering,
     isStreaming,
   } = runtime
+
+  liveTurnContextRef.current = {
+    sessionId,
+    messages,
+    documentPanelView,
+    activeSession,
+  }
 
   // Approval + structured-input surfaces own their own state (review #4); the
   // controller just threads the results into the timeline/composer.
@@ -264,6 +283,11 @@ export function ConnectedChatPanelInteraction({
     setOptimisticPendingTurn(false)
     lastSentTextRef.current = null
     pendingMessageCountRef.current = null
+    // The queue belongs to the conversation it was typed into, so switching
+    // sessions drops it rather than replaying it at whoever is next.
+    queuedMessagesRef.current = []
+    setQueuedMessages([])
+    isTurnInFlightRef.current = false
   }, [sessionId])
 
   useEffect(() => {
@@ -281,7 +305,16 @@ export function ConnectedChatPanelInteraction({
     }
   }, [messages.length, status])
 
-  const handleSend = async ({
+  /**
+   * Runs one turn end to end: uploads, context assembly, dispatch, and the
+   * await on the reply. Resolves `true` when the turn completed, `false` when
+   * it failed before or during dispatch — the drain loop below stops on
+   * `false` so a broken run does not fire the rest of the queue at it.
+   *
+   * This is the body `handleSend` used to have; the queue wrapper now sits in
+   * front of it.
+   */
+  const submitTurn = async ({
     text,
     files,
     selectedDocuments,
@@ -289,9 +322,27 @@ export function ConnectedChatPanelInteraction({
     text: string
     files: File[]
     selectedDocuments: SelectedThreadDocument[]
-  }) => {
+  }): Promise<boolean> => {
+    // A session switch mid-drain leaves the on-screen panel and message list
+    // belonging to another conversation, so the live values are only usable
+    // while this turn is still the active session's.
+    const live = liveTurnContextRef.current
+    const isActiveSession = live.sessionId === sessionId
+    const liveMessages = isActiveSession ? live.messages : messages
+    const liveDocumentPanelView = isActiveSession
+      ? live.documentPanelView
+      : null
+    const liveSession = isActiveSession ? live.activeSession : activeSession
+    const liveTitle = liveSession.title
+    /**
+     * Whether `/chats` would still hand this thread out as the next "New
+     * Chat" (`isPendingFirstTurn`: placeholder title, empty preview). Read
+     * before dispatch, because the write below is what stops it being true.
+     */
+    const wasWarm = isPendingFirstTurn(liveSession)
+
     lastSentTextRef.current = text
-    pendingMessageCountRef.current = messages.length
+    pendingMessageCountRef.current = liveMessages.length
     setOptimisticPendingTurn(true)
     const documentFiles = files.filter(shouldPersistAsDocument)
     const passthroughFiles = files.filter(
@@ -303,19 +354,62 @@ export function ConnectedChatPanelInteraction({
     // here — it'd flash before the reply, and errors would strand a rename
     // we never asked for.
     const nextTitle =
-      activeSession.title === NEW_SESSION_TITLE && text
-        ? makeSessionTitle(text)
-        : null
+      liveTitle === NEW_SESSION_TITLE && text ? makeSessionTitle(text) : null
     runtime.setPendingTurn({
       title: nextTitle,
       preview: text,
     })
 
+    /**
+     * Dispatch-time session write.
+     *
+     * `status` stays client-side as before — it is transient UI noise the
+     * server has no use for. What is new is that a thread's *first* turn also
+     * persists its title and preview here rather than waiting for
+     * `onFinish`.
+     *
+     * Before: those two fields were only committed when the client saw the
+     * reply finish. Between dispatch and that moment the row still read
+     * `title: "New Chat", lastMessage: ""` — which is exactly the
+     * `isPendingFirstTurn` test `/chats` uses to pick the session to show. Two
+     * things fell out of that window:
+     *
+     *   - If the turn never reached `onFinish` on this client — the tab
+     *     closed mid-stream, the machine slept — the thread kept a real
+     *     conversation in its runtime while its row still looked pristine
+     *     forever. The next visit to `/chats` claimed it and rendered that
+     *     conversation under the heading "New Chat". Observed 2026-09-18
+     *     against thread a34f40b5.
+     *   - `agent-interaction-screen.tsx` gates publishing the session to the
+     *     router on the same `isPendingFirstTurn` flag, so the hop from
+     *     `/chats` to `/chats/<id>` only happened once the reply landed. That
+     *     is the "sending from /chats looked like a vanishing send" the route
+     *     comment in `chats.index.tsx` describes.
+     *
+     * After: the row stops looking pristine the moment the turn is dispatched,
+     * which closes both. `onFinish` still runs and still overwrites
+     * `lastMessage` with the real reply — this only seeds it with what was
+     * sent, the same fallback `onFinish` already used when a reply had no text
+     * (`buildSessionPreview` → `pending.preview`).
+     *
+     * Gated on `wasWarm` so later turns keep exactly their old behaviour and
+     * do not add a second round trip each.
+     */
     updateSessionPreview({
-      sessionId: activeSession.id,
+      sessionId,
       status: 'submitted',
       unread: false,
       updatedAt: new Date().toISOString(),
+      ...(wasWarm
+        ? {
+            ...(nextTitle ? { title: nextTitle } : {}),
+            lastMessage: buildDispatchPreview(
+              text,
+              files.length + selectedDocuments.length,
+            ),
+            persist: true,
+          }
+        : {}),
     })
 
     const uploadResult =
@@ -330,7 +424,7 @@ export function ConnectedChatPanelInteraction({
       setOptimisticPendingTurn(false)
       pendingMessageCountRef.current = null
       markTurnError(uploadResult.error)
-      return
+      return false
     }
     if (uploadResult.value.length > 0) {
       void queryClient.invalidateQueries({
@@ -357,13 +451,13 @@ export function ConnectedChatPanelInteraction({
     // Both carry the underlying artifact, and the model wants it so
     // unqualified references like "this" or "the doc" land on the right
     // file. Mode is included so the prompt can mention citation context.
-    const displayedDoc = documentPanelView?.artifact
+    const displayedDoc = liveDocumentPanelView?.artifact
       ? {
-          handle: documentPanelView.artifact.id,
-          filename: documentPanelView.artifact.filename,
-          versionId: documentPanelView.artifact.versionId ?? null,
-          versionNumber: documentPanelView.artifact.versionNumber ?? null,
-          mode: documentPanelView.kind,
+          handle: liveDocumentPanelView.artifact.id,
+          filename: liveDocumentPanelView.artifact.filename,
+          versionId: liveDocumentPanelView.artifact.versionId ?? null,
+          versionNumber: liveDocumentPanelView.artifact.versionNumber ?? null,
+          mode: liveDocumentPanelView.kind,
         }
       : null
 
@@ -413,20 +507,128 @@ export function ConnectedChatPanelInteraction({
           ? result.error
           : new Error(String(result.error)),
       )
+      return false
     }
+    return true
   }
+
+  /**
+   * What the composer calls on submit. Before the 2026-09-16 queue design a
+   * mid-turn submit stopped the run; now it parks the payload and the drain
+   * loop sends it the moment the running turn resolves, in the order it was
+   * written.
+   *
+   * The drain is a loop here rather than an effect on `status` — `sendMessage`
+   * resolves when its reply finishes, so "send the next one" is just the next
+   * statement, with no render pass to synchronise against (and `useEffect` is
+   * out per the repo's rules).
+   */
+  const handleSend = async (payload: {
+    text: string
+    files: File[]
+    selectedDocuments: SelectedThreadDocument[]
+  }) => {
+    if (isTurnInFlightRef.current) {
+      updateQueue((current) => [
+        ...current,
+        { id: crypto.randomUUID(), ...payload },
+      ])
+      return
+    }
+
+    isTurnInFlightRef.current = true
+    let completed = await submitTurn(payload)
+    while (completed) {
+      const [next, ...rest] = queuedMessagesRef.current
+      if (!next) break
+      updateQueue(() => rest)
+      completed = await submitTurn({
+        text: next.text,
+        files: next.files,
+        selectedDocuments: next.selectedDocuments,
+      })
+    }
+    isTurnInFlightRef.current = false
+  }
+
+  /**
+   * `handleSend` is rebuilt every render (it closes over `submitTurn`, which
+   * closes over this render's props), so anything that calls it later has to
+   * reach the current one rather than capture one. Retry used to be a
+   * `useCallback(…, [])` around it, which meant the retry button dispatched
+   * through the very first render's closure for the life of the session.
+   *
+   * Reading through a ref also keeps `handleRetry` identity-stable, which is
+   * what lets `ChatTimeline` below be memoized.
+   */
+  const handleSendRef = useRef(handleSend)
+  handleSendRef.current = handleSend
+
+  /**
+   * Pulls a queued message back into the composer. Removing it from the queue
+   * first is what makes this an edit rather than a copy — leaving it in place
+   * would send the original alongside whatever the person then rewrote.
+   *
+   * The composer owns the whole restore, text included: a queued message holds
+   * what was committed, mentions already serialized, and only the composer can
+   * turn those back into editable `@Label` text with live mention ranges.
+   */
+  const handleEditQueuedMessage = useCallback(
+    (message: QueuedChatMessage) => {
+      updateQueue((current) =>
+        current.filter((queued) => queued.id !== message.id),
+      )
+      composerRef.current?.restoreDraft({
+        text: message.text,
+        files: message.files,
+        selectedDocumentIds: message.selectedDocuments.map(
+          (document) => document.documentId,
+        ),
+      })
+    },
+    [updateQueue],
+  )
+
+  /**
+   * Moves a queued message to the front of the queue (the up-arrow on a row).
+   *
+   * "Send now" is not on offer while a turn is running: dispatching a second
+   * turn into a live one is what the queue exists to prevent, and interrupting
+   * the current reply is the stop button's job, not a side effect of
+   * reordering. So the honest action is "go next", and the row that is already
+   * next does not render the control at all.
+   */
+  const handleSendQueuedMessageNext = useCallback(
+    (id: string) => {
+      updateQueue((current) => {
+        const promoted = current.find((queued) => queued.id === id)
+        if (!promoted) return current
+        return [promoted, ...current.filter((queued) => queued.id !== id)]
+      })
+    },
+    [updateQueue],
+  )
+
+  const handleRemoveQueuedMessage = useCallback(
+    (id: string) => {
+      updateQueue((current) => current.filter((queued) => queued.id !== id))
+    },
+    [updateQueue],
+  )
 
   const handleRetry = useCallback(async () => {
     const text = lastSentTextRef.current
     if (!text) return
     setIsRetrying(true)
-    await handleSend({ text, files: [], selectedDocuments: [] })
+    await handleSendRef.current({ text, files: [], selectedDocuments: [] })
     setIsRetrying(false)
   }, [])
 
   const sessionIsFresh =
     isUnusedIdleSession(activeSession) && messages.length === 0
-  const visibleMessages = sessionIsFresh ? [] : messages
+  // Module constant, not a fresh `[]`: a new array identity every render would
+  // defeat `ChatTimeline`'s memo on exactly the renders it matters for.
+  const visibleMessages = sessionIsFresh ? NO_MESSAGES : messages
   const normalizedStatus = normalizeStatus(status)
   const showEmptyChatState = sessionIsFresh && normalizedStatus === 'idle'
 
@@ -593,12 +795,9 @@ export function ConnectedChatPanelInteraction({
                     delay: 0.06,
                     ease: EMPTY_INTRO_EASE,
                   }}
-                  className="pointer-events-none absolute inset-x-0 bottom-[calc(100%+1.25rem)] flex justify-center px-6"
+                  className="pointer-events-none absolute inset-x-0 bottom-[calc(100%+3rem)] flex justify-center px-6"
                 >
-                  <p
-                    className="max-w-2xl text-balance text-center font-prose text-[34px] italic leading-[1.12] tracking-[-0.003em] text-[color-mix(in_oklab,var(--foreground)_82%,transparent)] sm:text-[42px]"
-                    style={{ fontWeight: 600 }}
-                  >
+                  <p className="max-w-2xl text-balance body-large text-center font-prose text-text-default">
                     {buildEmptyPrompt(userFirstName)}
                   </p>
                 </motion.div>
@@ -606,8 +805,8 @@ export function ConnectedChatPanelInteraction({
             </AnimatePresence>
             <Composer
               key={sessionId}
+              ref={composerRef}
               agentId={activeSession.agentId}
-              documentLoadState={documentLoadState}
               documents={composerDocuments}
               isStreaming={isStreaming || isRecovering}
               status={status}
@@ -618,11 +817,19 @@ export function ConnectedChatPanelInteraction({
               onWarmRuntime={warmRuntime}
               pendingQuestions={pendingStructuredInput?.questions}
               onSubmitAnswers={handleSubmitAnswers}
+              queue={
+                <ChatMessageQueue
+                  messages={queuedMessages}
+                  onEdit={handleEditQueuedMessage}
+                  onSendNext={handleSendQueuedMessageNext}
+                  onRemove={handleRemoveQueuedMessage}
+                />
+              }
             />
             <AnimatePresence initial={false}>
-              {showEmptyChatState ? (
+              {showEmptyChatState && dismissedForSession !== sessionId ? (
                 <motion.div
-                  key="empty-tiles"
+                  key="empty-suggestions"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{
@@ -638,15 +845,25 @@ export function ConnectedChatPanelInteraction({
                   className="pointer-events-none absolute inset-x-0 top-[calc(100%+0.75rem)] mx-auto flex justify-center px-4"
                   style={{ willChange: 'transform, opacity' }}
                 >
-                  <div className="pointer-events-auto grid w-full max-w-2xl grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-                    {EMPTY_STATE_TILES.map((tile, index) => (
-                      <EmptyStateTile
-                        key={tile.label}
-                        index={index}
-                        onSelect={setInput}
-                        tile={tile}
-                      />
-                    ))}
+                  <div
+                    className={cn(
+                      'pointer-events-auto w-full',
+                      COMPOSER_WIDTH_CLASS_NAME,
+                    )}
+                  >
+                    <ComposerSuggestions
+                      onSelect={(starter) => {
+                        // One call, not two: the composer's field is controlled
+                        // by this draft, so writing it is what puts the text on
+                        // screen. (The Tiptap composer needed a second,
+                        // imperative push because its `defaultValue` only
+                        // seeded the editor at creation.) Focus is imperative
+                        // because the draft says nothing about the caret.
+                        setInput(starter)
+                        composerRef.current?.focus()
+                      }}
+                      onDismiss={() => setDismissedForSession(sessionId)}
+                    />
                   </div>
                 </motion.div>
               ) : null}
@@ -728,12 +945,7 @@ function ShellFrame({
               <EnvironmentDebugDrawer sessionId={sessionId} />
             ) : null}
             {onClose ? (
-              <Button
-                aria-label="Close panel"
-                variant="ghost"
-                size="icon-sm"
-                onClick={onClose}
-              >
+              <Button variant="ghost" size="icon-sm" onClick={onClose}>
                 <X className="size-4" />
               </Button>
             ) : null}

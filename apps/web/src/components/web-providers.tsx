@@ -1,4 +1,5 @@
 import { CoreProvider } from '@garden/app-state/platform/core-provider'
+import { useRouter } from '@tanstack/react-router'
 import { ThemeProvider } from '@garden/ui/components/common/theme-provider'
 import { Toaster } from '@garden/ui/components/ui/sonner'
 import { WebNavigationProvider } from '@/platform/navigation'
@@ -14,12 +15,14 @@ function redirectToLogin() {
 }
 
 export function WebProviders({ children }: { children: React.ReactNode }) {
+  const router = useRouter()
   return (
     <ThemeProvider>
       <CoreProvider
         api={api}
         configureApi={configureApi}
         apiBaseUrl=""
+        queryClient={router.options.context.queryClient}
         onLogout={redirectToLogin}
       >
         <WebNavigationProvider>{children}</WebNavigationProvider>

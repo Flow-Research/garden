@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { MemberWithUser } from '@garden/core/types'
 import {
+  deserializeMemberMentions,
   detectMemberMentionTrigger,
   isMemberMentionSelectionKey,
   rebaseMemberMentions,
@@ -173,5 +174,49 @@ describe('member mention composer helpers', () => {
     ).toBe(
       '[@A\\]\\(https\\:\\/\\/evil\\.example\\) \\[x](mention://member/user-1)',
     )
+  })
+
+  /**
+   * Round-trips the queue's edit path: `restoreDraft` feeds serialized text
+   * back through `deserializeMemberMentions`, and the ranges it recovers have
+   * to be the ones `serializeMemberMentions` will accept again. Asserting on
+   * the re-serialized output rather than on the offsets alone is what proves
+   * that, since `serializeMemberMentions` drops any range whose slice no
+   * longer reads `@Label`.
+   */
+  it('round-trips serialized member mentions back into editable text', () => {
+    const serialized = serializeMemberMentions('Ask @Alex and @Sam now', [
+      { id: 'user-1', label: 'Alex', start: 4, end: 9 },
+      { id: 'user-2', label: 'Sam', start: 14, end: 18 },
+    ])
+
+    const restored = deserializeMemberMentions(serialized)
+
+    expect(restored.text).toBe('Ask @Alex and @Sam now')
+    expect(restored.mentions).toEqual([
+      { id: 'user-1', label: 'Alex', start: 4, end: 9 },
+      { id: 'user-2', label: 'Sam', start: 14, end: 18 },
+    ])
+    expect(serializeMemberMentions(restored.text, restored.mentions)).toBe(
+      serialized,
+    )
+  })
+
+  it('unescapes punctuation in restored labels and leaves non-member links alone', () => {
+    const restored = deserializeMemberMentions(
+      '[@A\\.B](mention://member/user-1) then [#12](mention://issue/issue-1)',
+    )
+
+    expect(restored.text).toBe('@A.B then [#12](mention://issue/issue-1)')
+    expect(restored.mentions).toEqual([
+      { id: 'user-1', label: 'A.B', start: 0, end: 4 },
+    ])
+  })
+
+  it('returns plain text untouched when there is nothing to decode', () => {
+    expect(deserializeMemberMentions('just words')).toEqual({
+      text: 'just words',
+      mentions: [],
+    })
   })
 })

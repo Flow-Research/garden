@@ -11,10 +11,6 @@ import {
   sanitizeDocumentBlockHtml,
 } from './document-artifact-projection'
 
-// Builds and parses real DOCX files through dynamically imported libraries;
-// the first import is slow on a loaded runner, past vitest's 5s default.
-const DOCX_TEST_TIMEOUT_MS = 30_000
-
 const projectionLayer = (ai: DocumentMarkdownAi) =>
   documentArtifactProjectionLayer.pipe(
     Layer.provide(makeWorkersAiDocumentMarkdownLayer(ai)),
@@ -206,40 +202,36 @@ describe('makeMammothDocumentMarkdownLayer', () => {
     Layer.provide(makeMammothDocumentMarkdownLayer()),
   )
 
-  it(
-    'imports a real DOCX into sanitized blocks without the AI binding',
-    async () => {
-      const { Document, HeadingLevel, Packer, Paragraph, TextRun } =
-        await import('docx')
-      const doc = new Document({
-        sections: [
-          {
-            children: [
-              new Paragraph({
-                text: 'Launch plan',
-                heading: HeadingLevel.HEADING_1,
-              }),
-              new Paragraph({ children: [new TextRun('Owner: Ada')] }),
-            ],
-          },
-        ],
-      })
-      const bytes = new Uint8Array(await Packer.toBuffer(doc))
+  it('imports a real DOCX into sanitized blocks without the AI binding', async () => {
+    const { Document, HeadingLevel, Packer, Paragraph, TextRun } =
+      await import('docx')
+    const doc = new Document({
+      sections: [
+        {
+          children: [
+            new Paragraph({
+              text: 'Launch plan',
+              heading: HeadingLevel.HEADING_1,
+            }),
+            new Paragraph({ children: [new TextRun('Owner: Ada')] }),
+          ],
+        },
+      ],
+    })
+    const bytes = new Uint8Array(await Packer.toBuffer(doc))
 
-      const result = await Effect.runPromise(
-        Effect.gen(function* () {
-          const projection = yield* DocumentArtifactProjection
-          return yield* projection.importDocx('Launch plan.docx', bytes)
-        }).pipe(Effect.provide(mammothProjectionLayer)),
-      )
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const projection = yield* DocumentArtifactProjection
+        return yield* projection.importDocx('Launch plan.docx', bytes)
+      }).pipe(Effect.provide(mammothProjectionLayer)),
+    )
 
-      expect(result.title).toBe('Launch plan')
-      const text = documentBlocksToText(result.blocks)
-      expect(text).toContain('Launch plan')
-      expect(text).toContain('Owner: Ada')
-    },
-    DOCX_TEST_TIMEOUT_MS,
-  )
+    expect(result.title).toBe('Launch plan')
+    const text = documentBlocksToText(result.blocks)
+    expect(text).toContain('Launch plan')
+    expect(text).toContain('Owner: Ada')
+  })
 
   it('fails with the typed import error on corrupt bytes', async () => {
     const failure = await Effect.runPromise(

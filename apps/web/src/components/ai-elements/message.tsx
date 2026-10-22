@@ -36,7 +36,7 @@ export type MessageProps = HTMLAttributes<HTMLDivElement> & {
 export const Message = ({ className, from, ...props }: MessageProps) => (
   <div
     className={cn(
-      'group flex w-full max-w-[90%] flex-col gap-1.5',
+      'group flex w-full max-w-[90%] flex-col gap-2',
       from === 'user' ? 'is-user ml-auto justify-end' : 'is-assistant',
       className,
     )}
@@ -46,6 +46,22 @@ export const Message = ({ className, from, ...props }: MessageProps) => (
 
 export type MessageContentProps = HTMLAttributes<HTMLDivElement>
 
+/**
+ * Why the two roles diverge so much: the design gives each role a bubble, but
+ * they wrap different things.
+ *
+ * Before: one shared shell painted the user bubble (grey `secondary` with a
+ * `rounded-br-sm` tail) and left the assistant transparent, so assistant text
+ * had no surface of its own and attachments sat *inside* the user bubble.
+ *
+ * After: for a user message the content block IS the bubble — brand green with
+ * `primary-foreground` text, uniform 16px radius, and attachments lifted out to
+ * sit above it as a sibling of `Message` (see `MessageFiles` in chat-timeline).
+ * For an assistant message this stays a transparent full-width column: its
+ * reasoning row, tool activity, artifacts and citations must all sit *outside*
+ * any bubble, so only the prose gets one — drawn per text part by
+ * `MessageBubble`.
+ */
 export const MessageContent = ({
   children,
   className,
@@ -53,9 +69,40 @@ export const MessageContent = ({
 }: MessageContentProps) => (
   <div
     className={cn(
-      'flex w-fit min-w-0 max-w-full flex-col gap-2.5 overflow-hidden text-sm leading-relaxed text-foreground',
-      'group-[.is-user]:ml-auto group-[.is-user]:rounded-2xl group-[.is-user]:rounded-br-sm group-[.is-user]:border group-[.is-user]:border-border group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3',
-      'group-[.is-assistant]:min-w-0 group-[.is-assistant]:px-1 group-[.is-assistant]:py-0.5',
+      'flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm leading-relaxed text-foreground',
+      'group-[.is-user]:ml-auto group-[.is-user]:rounded-2xl group-[.is-user]:bg-primary group-[.is-user]:px-4 group-[.is-user]:py-2 group-[.is-user]:text-primary-foreground',
+      'group-[.is-assistant]:w-full',
+      className,
+    )}
+    {...props}
+  >
+    {children}
+  </div>
+)
+
+export type MessageBubbleProps = HTMLAttributes<HTMLDivElement>
+
+/**
+ * The assistant's prose surface: a `muted` pill that hugs its text.
+ *
+ * Exists because an assistant message is not one block — it interleaves a
+ * reasoning row, tool activity, artifact cards and prose, and only the prose is
+ * meant to sit on a filled surface. Painting `MessageContent` instead would put
+ * a grey rectangle behind full-width artifact and approval cards.
+ *
+ * It is deliberately inert inside a user message (`group-[.is-assistant]:`
+ * scoping only): there the surrounding `MessageContent` is already the bubble,
+ * so a second one would nest grey inside green.
+ */
+export const MessageBubble = ({
+  children,
+  className,
+  ...props
+}: MessageBubbleProps) => (
+  <div
+    className={cn(
+      'min-w-0 max-w-full',
+      'group-[.is-assistant]:w-fit group-[.is-assistant]:rounded-2xl group-[.is-assistant]:bg-muted group-[.is-assistant]:px-4 group-[.is-assistant]:py-2',
       className,
     )}
     {...props}
@@ -427,6 +474,14 @@ MessageResponse.displayName = 'MessageResponse'
 
 export type MessageFooterProps = HTMLAttributes<HTMLDivElement>
 
+/**
+ * The action row under a message.
+ *
+ * No gap between the children on purpose: each action is a 32px square with its
+ * own 8px padding, so butting them together is what puts the icons on the even
+ * 32px rhythm the design specifies, and lines the first icon up with the
+ * bubble's own left padding. An extra gap here pushed them out of that grid.
+ */
 export const MessageFooter = ({
   className,
   children,
@@ -434,7 +489,7 @@ export const MessageFooter = ({
 }: MessageFooterProps) => (
   <div
     className={cn(
-      'flex items-center gap-1 mt-0.5',
+      'flex items-center gap-0',
       'group-[.is-user]:ml-auto',
       className,
     )}

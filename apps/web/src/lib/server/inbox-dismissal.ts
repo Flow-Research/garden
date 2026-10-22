@@ -9,34 +9,55 @@ type DismissArgs = {
   itemKey: string
 }
 
-export async function markInboxItemRead(args: DismissArgs): Promise<void> {
+/**
+ * Updates the issue thread that owns a selected inbox row.
+ * The public Inbox contract exposes `item_key` as `InboxItem.id`; it does not
+ * expose the database row UUID. The key resolves its issue, then the operation
+ * updates every event in that thread. Standalone rows update by key only.
+ */
+async function updateInboxThread(
+  args: DismissArgs & { archive: boolean },
+): Promise<void> {
   const db = await getDb(appEnv)
-  await db
-    .update(schema.inboxItem)
-    .set({ read: true, updatedAt: new Date() })
+  const [target] = await db
+    .select({ issueId: schema.inboxItem.issueId })
+    .from(schema.inboxItem)
     .where(
       and(
         eq(schema.inboxItem.workspaceId, args.workspaceId),
         eq(schema.inboxItem.recipientType, 'member'),
         eq(schema.inboxItem.recipientId, args.userId),
         eq(schema.inboxItem.itemKey, args.itemKey),
+      ),
+    )
+  if (!target) return
+
+  const threadFilter = target.issueId
+    ? eq(schema.inboxItem.issueId, target.issueId)
+    : eq(schema.inboxItem.itemKey, args.itemKey)
+  await db
+    .update(schema.inboxItem)
+    .set({
+      read: true,
+      ...(args.archive ? { archived: true } : {}),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(schema.inboxItem.workspaceId, args.workspaceId),
+        eq(schema.inboxItem.recipientType, 'member'),
+        eq(schema.inboxItem.recipientId, args.userId),
+        threadFilter,
       ),
     )
 }
 
-export async function archiveInboxItem(args: DismissArgs): Promise<void> {
-  const db = await getDb(appEnv)
-  await db
-    .update(schema.inboxItem)
-    .set({ read: true, archived: true, updatedAt: new Date() })
-    .where(
-      and(
-        eq(schema.inboxItem.workspaceId, args.workspaceId),
-        eq(schema.inboxItem.recipientType, 'member'),
-        eq(schema.inboxItem.recipientId, args.userId),
-        eq(schema.inboxItem.itemKey, args.itemKey),
-      ),
-    )
+export async function markInboxThreadRead(args: DismissArgs): Promise<void> {
+  await updateInboxThread({ ...args, archive: false })
+}
+
+export async function archiveInboxThread(args: DismissArgs): Promise<void> {
+  await updateInboxThread({ ...args, archive: true })
 }
 
 export async function markInboxItemsRead(args: {

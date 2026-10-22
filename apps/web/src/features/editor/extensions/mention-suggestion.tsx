@@ -241,60 +241,92 @@ function MentionRow({
 // Suggestion config factory
 // ---------------------------------------------------------------------------
 
+export interface MentionSuggestionOptions {
+  /**
+   * Which mention kinds to offer. Undefined → all of them (existing
+   * behavior for issues / comments / create-issue). Chat passes ['member']
+   * (2026-09-08 spec §12, chat composer overhaul task 1).
+   */
+  types?: readonly MentionItem['type'][]
+}
+
+/**
+ * Builds the `@` suggestion config consumed by BaseMentionExtension.
+ *
+ * The optional `options.types` narrows which candidate groups are computed
+ * and offered. Added for the chat composer overhaul (2026-09-08 spec):
+ * chat's `@` was members-only before this Tiptap migration and the team
+ * chose to keep it that way rather than inherit the shared members + agents
+ * + issues + @all popup. Every other consumer omits `options`, so its
+ * behavior is unchanged (all types allowed).
+ */
 export function createMentionSuggestion(
   qc: QueryClient,
+  options: MentionSuggestionOptions = {},
 ): Omit<SuggestionOptions<MentionItem>, 'editor'> {
+  const allows = (type: MentionItem['type']) =>
+    !options.types || options.types.includes(type)
+
   return {
     items: ({ query }) => {
       const wsId = useWorkspaceStore.getState().workspace?.id
-      const members: MemberWithUser[] = wsId
-        ? (qc.getQueryData(workspaceKeys.members(wsId)) ?? [])
-        : []
-      const agents: Agent[] = wsId
-        ? (qc.getQueryData(workspaceKeys.agents(wsId)) ?? [])
-        : []
-      const issues: Issue[] = wsId
-        ? (qc.getQueryData<ListIssuesResponse>(issueKeys.list(wsId))?.issues ??
-          [])
-        : []
+      const members: MemberWithUser[] =
+        wsId && allows('member')
+          ? (qc.getQueryData(workspaceKeys.members(wsId)) ?? [])
+          : []
+      const agents: Agent[] =
+        wsId && allows('agent')
+          ? (qc.getQueryData(workspaceKeys.agents(wsId)) ?? [])
+          : []
+      const issues: Issue[] =
+        wsId && allows('issue')
+          ? (qc.getQueryData<ListIssuesResponse>(issueKeys.list(wsId))
+              ?.issues ?? [])
+          : []
 
       const q = query.trim().toLocaleLowerCase()
 
       // Show "All members" option when query is empty or matches "all"
       const allItem: MentionItem[] =
-        'all members'.includes(q) || 'all'.includes(q)
+        allows('all') && ('all members'.includes(q) || 'all'.includes(q))
           ? [{ id: 'all', label: 'All members', type: 'all' as const }]
           : []
 
-      const memberItems: MentionItem[] = members
-        .filter(
-          (member) =>
-            member.name.toLocaleLowerCase().includes(q) ||
-            member.email.toLocaleLowerCase().includes(q),
-        )
-        .map((m) => ({
-          id: m.user_id,
-          label: m.name,
-          type: 'member' as const,
-        }))
+      const memberItems: MentionItem[] = allows('member')
+        ? members
+            .filter(
+              (member) =>
+                member.name.toLocaleLowerCase().includes(q) ||
+                member.email.toLocaleLowerCase().includes(q),
+            )
+            .map((m) => ({
+              id: m.user_id,
+              label: m.name,
+              type: 'member' as const,
+            }))
+        : []
 
-      const agentItems: MentionItem[] = agents
-        .filter((a) => !a.archived_at && a.name.toLowerCase().includes(q))
-        .map((a) => ({ id: a.id, label: a.name, type: 'agent' as const }))
+      const agentItems: MentionItem[] = allows('agent')
+        ? agents
+            .filter((a) => !a.archived_at && a.name.toLowerCase().includes(q))
+            .map((a) => ({ id: a.id, label: a.name, type: 'agent' as const }))
+        : []
 
-      const issueItems: MentionItem[] = issues
-        .filter(
-          (i) =>
-            i.identifier.toLowerCase().includes(q) ||
-            i.title.toLowerCase().includes(q),
-        )
-        .map((i) => ({
-          id: i.id,
-          label: i.identifier,
-          type: 'issue' as const,
-          description: i.title,
-          status: i.status as IssueStatus,
-        }))
+      const issueItems: MentionItem[] = allows('issue')
+        ? issues
+            .filter(
+              (i) =>
+                i.identifier.toLowerCase().includes(q) ||
+                i.title.toLowerCase().includes(q),
+            )
+            .map((i) => ({
+              id: i.id,
+              label: i.identifier,
+              type: 'issue' as const,
+              description: i.title,
+              status: i.status as IssueStatus,
+            }))
+        : []
 
       return [...allItem, ...memberItems, ...agentItems, ...issueItems].slice(
         0,

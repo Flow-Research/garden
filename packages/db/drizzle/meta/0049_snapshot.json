@@ -1,5 +1,5 @@
 {
-  "id": "c0b194ca-f7e2-41b4-bf14-c56f855b8034",
+  "id": "a92d3b79-33ab-4f0a-bb04-e04564fa739b",
   "prevId": "8af03d44-b486-40b8-bdca-07abb226031c",
   "version": "7",
   "dialect": "postgresql",
@@ -1825,6 +1825,406 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.brain_retrieval": {
+      "name": "brain_retrieval",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "surface": {
+          "name": "surface",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "query": {
+          "name": "query",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hit_count": {
+          "name": "hit_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "brain_retrieval_workspace_created_idx": {
+          "name": "brain_retrieval_workspace_created_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "brain_retrieval_workspace_id_organization_id_fk": {
+          "name": "brain_retrieval_workspace_id_organization_id_fk",
+          "tableFrom": "brain_retrieval",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "brain_retrieval_actor_user_id_user_id_fk": {
+          "name": "brain_retrieval_actor_user_id_user_id_fk",
+          "tableFrom": "brain_retrieval",
+          "tableTo": "user",
+          "columnsFrom": [
+            "actor_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "brain_retrieval_surface_check": {
+          "name": "brain_retrieval_surface_check",
+          "value": "\"brain_retrieval\".\"surface\" in ('chat', 'issue_run', 'automation_run', 'upload', 'other')"
+        },
+        "brain_retrieval_source_check": {
+          "name": "brain_retrieval_source_check",
+          "value": "\"brain_retrieval\".\"source\" in ('injection', 'tool')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.brain_retrieval_hit": {
+      "name": "brain_retrieval_hit",
+      "schema": "",
+      "columns": {
+        "retrieval_id": {
+          "name": "retrieval_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rank": {
+          "name": "rank",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "score": {
+          "name": "score",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "used": {
+          "name": "used",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "used_at": {
+          "name": "used_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "brain_retrieval_hit_item_idx": {
+          "name": "brain_retrieval_hit_item_idx",
+          "columns": [
+            {
+              "expression": "item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "brain_retrieval_hit_retrieval_id_brain_retrieval_id_fk": {
+          "name": "brain_retrieval_hit_retrieval_id_brain_retrieval_id_fk",
+          "tableFrom": "brain_retrieval_hit",
+          "tableTo": "brain_retrieval",
+          "columnsFrom": [
+            "retrieval_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "brain_retrieval_hit_retrieval_id_item_id_pk": {
+          "name": "brain_retrieval_hit_retrieval_id_item_id_pk",
+          "columns": [
+            "retrieval_id",
+            "item_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "brain_retrieval_hit_rank_check": {
+          "name": "brain_retrieval_hit_rank_check",
+          "value": "\"brain_retrieval_hit\".\"rank\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.brain_write_proposal": {
+      "name": "brain_write_proposal",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "claim_hash": {
+          "name": "claim_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "claim": {
+          "name": "claim",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "confidence": {
+          "name": "confidence",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "evidence": {
+          "name": "evidence",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "decided_by": {
+          "name": "decided_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "brain_write_proposal_workspace_status_idx": {
+          "name": "brain_write_proposal_workspace_status_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "brain_write_proposal_run_claim_idx": {
+          "name": "brain_write_proposal_run_claim_idx",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "claim_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "brain_write_proposal_workspace_id_organization_id_fk": {
+          "name": "brain_write_proposal_workspace_id_organization_id_fk",
+          "tableFrom": "brain_write_proposal",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "brain_write_proposal_decided_by_user_id_fk": {
+          "name": "brain_write_proposal_decided_by_user_id_fk",
+          "tableFrom": "brain_write_proposal",
+          "tableTo": "user",
+          "columnsFrom": [
+            "decided_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "brain_write_proposal_status_check": {
+          "name": "brain_write_proposal_status_check",
+          "value": "\"brain_write_proposal\".\"status\" in ('pending', 'approved', 'rejected')"
+        },
+        "brain_write_proposal_confidence_check": {
+          "name": "brain_write_proposal_confidence_check",
+          "value": "\"brain_write_proposal\".\"confidence\" >= 0 and \"brain_write_proposal\".\"confidence\" <= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.inbox_dismissal": {
       "name": "inbox_dismissal",
       "schema": "",
@@ -2512,7 +2912,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "issue_created_by_user_id_fk": {
@@ -2769,27 +3169,6 @@
         }
       },
       "indexes": {
-        "issue_comment_issue_created_idx": {
-          "name": "issue_comment_issue_created_idx",
-          "columns": [
-            {
-              "expression": "issue_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "issue_comment_mentions_gin": {
           "name": "issue_comment_mentions_gin",
           "columns": [
@@ -2817,7 +3196,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },

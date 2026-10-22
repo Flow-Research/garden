@@ -1,10 +1,10 @@
 const GOOGLE_ACCOUNT_NOT_LINKED_MESSAGE =
-  'An account already exists for this email. Sign in with your password, then link Google in Settings.'
+  'Google could not be linked to this account. Sign in with your password, then connect Google in Settings.'
 
 /**
  * Converts OAuth callback codes into safe user-facing copy. Better Auth returns
- * `account_not_linked` when implicit linking is disabled, so Garden must direct
- * existing password users to the explicit linking flow in Settings.
+ * `account_not_linked` is now a rare fallback for a provider that cannot be
+ * linked. Lazy linking handles trusted Google accounts with matching emails.
  */
 export function oauthErrorMessage(error: unknown) {
   if (typeof error !== 'string') return undefined

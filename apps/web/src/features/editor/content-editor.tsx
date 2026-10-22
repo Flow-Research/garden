@@ -27,6 +27,7 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   type MouseEvent as ReactMouseEvent,
 } from 'react'
@@ -124,6 +125,36 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
 
     const queryClient = useQueryClient()
 
+    /**
+     * Built once per real config change, not once per render.
+     *
+     * Before: this array was constructed inline in the `useEditor` call below.
+     * `useEditor` is called with no dependency list, so on every render
+     * `EditorInstanceManager.onRender` (checked against the installed
+     * `@tiptap/react` 3.22.4) compared the incoming extensions element by
+     * element by identity, always missed, and called `editor.setOptions()` —
+     * which in `@tiptap/core` 3.22.4 runs `view.setProps(editorProps)` plus
+     * `view.updateState(state)`. So a full ProseMirror view update rode along
+     * with every render of every consumer, including the per-keystroke ones.
+     *
+     * After: a stable array identity lets that comparison pass, so the view is
+     * only rebuilt when something in the config genuinely changed. The deps
+     * are the whole option set; the three refs are stable by construction and
+     * are deliberately not listed.
+     */
+    const extensions = useMemo(
+      () =>
+        createEditorExtensions({
+          editable,
+          placeholder: placeholderText,
+          queryClient,
+          onSubmitRef,
+          onUploadFileRef,
+          submitOnEnter,
+        }),
+      [editable, placeholderText, queryClient, submitOnEnter],
+    )
+
     const editor = useEditor({
       immediatelyRender: false,
       // Note: in v3.22.1 the default is already false/undefined (same behavior).
@@ -132,14 +163,7 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
       editable,
       content: defaultValue ? preprocessMarkdown(defaultValue) : '',
       contentType: defaultValue ? 'markdown' : undefined,
-      extensions: createEditorExtensions({
-        editable,
-        placeholder: placeholderText,
-        queryClient,
-        onSubmitRef,
-        onUploadFileRef,
-        submitOnEnter,
-      }),
+      extensions,
       onUpdate: ({ editor: ed }) => {
         if (!onUpdateRef.current) return
         if (debounceRef.current) clearTimeout(debounceRef.current)

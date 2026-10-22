@@ -15,7 +15,10 @@ import { buildMessageRenderModel } from './chat-message-model'
 // from chat-message-parts after the model layer was split out.
 export * from './chat-message-model'
 import { HoverCardTrigger } from '@garden/ui/components/ui/hover-card'
-import { MessageResponse } from '@/components/ai-elements/message'
+import {
+  MessageBubble,
+  MessageResponse,
+} from '@/components/ai-elements/message'
 import {
   Source,
   Sources,
@@ -129,7 +132,15 @@ export function MessageOrderedParts({
               </Reasoning>
             )
           case 'text':
-            return <MessageResponse key={node.key}>{node.text}</MessageResponse>
+            // The bubble lives on the text node, not on the whole message:
+            // reasoning, tool activity and artifact cards are siblings here and
+            // must stay off the filled surface. `MessageBubble` is a no-op on
+            // user rows, where `MessageContent` is already the bubble.
+            return (
+              <MessageBubble key={node.key}>
+                <MessageResponse>{node.text}</MessageResponse>
+              </MessageBubble>
+            )
           case 'work':
             return (
               <PreResponseWrapper
