@@ -1,3 +1,4 @@
+import { ensureIssueBrainAudience } from './issue-brain-audience'
 import type {
   ChatResponseResult,
   ToolCallContext,
@@ -220,11 +221,42 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     }
   }
 
+  /**
+   * Issue runs produce output that every workspace member can see, so automatic
+   * injection reads org-scoped Brain context only. Before this change the
+   * owner's private memory could surface in shared run output (garden#143).
+   */
   protected brainInjectionIdentity(loaded: LoadedTurnContext) {
     return {
       workspaceId: loaded.runState.workspaceId,
-      userId: loaded.runState.agentOwnerUserId,
+      userId: undefined,
     }
+  }
+
+  /**
+   * A shared issue facet can resume only history created under the org Brain
+   * audience. Unverified Think transcripts stay retained but cannot be replayed;
+   * a fresh empty facet is stamped before its first turn is persisted.
+   */
+  protected override async prepareRun(
+    loaded: LoadedTurnContext,
+    initializeEmpty: boolean,
+  ): Promise<ResultValue<void, RunSubAgentError>> {
+    return (
+      await ensureIssueBrainAudience({
+        workspaceId: loaded.runState.workspaceId,
+        initializeEmpty,
+        config: this.getConfig<{ brainAudience?: unknown }>(),
+        readDurableHistory: () => this.session.getHistory(),
+        persistAudience: (brainAudience) => this.configure({ brainAudience }),
+      })
+    ).mapError((error) =>
+      this.runError({
+        code: error.code,
+        message: error.message,
+        cause: error.cause,
+      }),
+    )
   }
 
   /**
@@ -378,6 +410,9 @@ export class IssueRunSubAgent extends RunSubAgentBase<
               workspaceId: run.workspaceId,
               agentId: run.agentId,
               runId: run.runId,
+              // Shared issue output reads only org knowledge; userId still credits writes.
+              userId: run.agentOwnerUserId,
+              readAudience: 'org' as const,
             }
           },
         },

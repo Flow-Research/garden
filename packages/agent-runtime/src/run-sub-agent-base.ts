@@ -322,8 +322,23 @@ export abstract class RunSubAgentBase<
    */
   protected brainInjectionIdentity(
     _loaded: TLoaded,
-  ): { workspaceId: string; userId: string } | null {
+  ): { workspaceId: string; userId: string | undefined } | null {
     return null
+  }
+
+  /**
+   * Runs after the run boundary guards on every turn and before a run is marked
+   * started or resumed. Issue runs use it to verify the facet's Brain audience,
+   * so a shared run never resumes history created under another audience.
+   * `initializeEmpty` is true only on the Workflow-driven start/resume path,
+   * where a fresh facet may be stamped before its first turn is persisted.
+   * Run kinds without such a requirement keep the default no-op.
+   */
+  protected async prepareRun(
+    _loaded: TLoaded,
+    _initializeEmpty: boolean,
+  ): Promise<ResultValue<void, RunSubAgentError>> {
+    return Result.ok(undefined)
   }
 
   /**
@@ -405,6 +420,9 @@ export abstract class RunSubAgentBase<
     if (guardResult.value !== 'continue') {
       throw new RunTurnStopped(this.turnStoppedName(), guardResult.value)
     }
+
+    const prepareResult = await this.prepareRun(loadedResult.value, false)
+    if (prepareResult.isErr()) throw prepareResult.error
 
     this.currentRunId = runId
     this.currentPermissions = loadedResult.value.permissions
@@ -872,6 +890,9 @@ export abstract class RunSubAgentBase<
     if (boundaryResult.value !== 'continue') {
       return Result.ok({ kind: 'stopped' })
     }
+
+    const prepareResult = await this.prepareRun(loadedResult.value, true)
+    if (prepareResult.isErr()) return Result.err(prepareResult.error)
 
     const statusResult =
       mode === 'start'
