@@ -528,9 +528,7 @@ describe('IssuesPage (shared)', () => {
     renderWithQuery(<IssuesPage />)
 
     await screen.findByText('Test WS')
-    expect(
-      screen.getByText('Issues', { selector: 'span' }),
-    ).toBeInTheDocument()
+    expect(screen.getByText('Issues', { selector: 'span' })).toBeInTheDocument()
   })
 
   it('shows empty state when there are no issues', async () => {

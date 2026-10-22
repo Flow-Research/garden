@@ -75,7 +75,10 @@ describe('canReceiveRealtimeEvent', () => {
   it('delivers everything to workspace managers', () => {
     expect(canReceiveRealtimeEvent(manager, teamUpdated)).toBe(true)
     expect(
-      canReceiveRealtimeEvent(manager, issueEvent('issue:updated', 'team-1', null)),
+      canReceiveRealtimeEvent(
+        manager,
+        issueEvent('issue:updated', 'team-1', null),
+      ),
     ).toBe(true)
   })
 
@@ -130,7 +133,10 @@ describe('canReceiveRealtimeEvent', () => {
 
   it('delivers workspace issue events to every member', () => {
     expect(
-      canReceiveRealtimeEvent(outsider, issueEvent('issue:created', null, null)),
+      canReceiveRealtimeEvent(
+        outsider,
+        issueEvent('issue:created', null, null),
+      ),
     ).toBe(true)
   })
 })

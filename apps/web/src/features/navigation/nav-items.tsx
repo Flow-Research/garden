@@ -48,7 +48,12 @@ export const NAV_ITEMS: NavItem[] = [
  * the flat Teams item and reach their work through the member Teams view.
  */
 export const TEAM_NAV_CHILDREN: NavItem[] = [
-  { id: 'teams-issues', label: 'Issues', to: '/teams/issues', icon: TriangleAlert },
+  {
+    id: 'teams-issues',
+    label: 'Issues',
+    to: '/teams/issues',
+    icon: TriangleAlert,
+  },
 ]
 
 /** Resolves the nav child that owns a pathname (exact route-base match). */

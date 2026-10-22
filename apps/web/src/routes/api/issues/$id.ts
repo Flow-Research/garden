@@ -112,10 +112,7 @@ export const Route = createFileRoute('/api/issues/$id')({
             )
           }
           if (nextTeamId !== null) {
-            const targetAccess = await requireTeamAccess(
-              appContext,
-              nextTeamId,
-            )
+            const targetAccess = await requireTeamAccess(appContext, nextTeamId)
             if (targetAccess instanceof Response) return targetAccess
             const targetManager = isWorkspaceManager(
               targetAccess.workspaceMembership.role,

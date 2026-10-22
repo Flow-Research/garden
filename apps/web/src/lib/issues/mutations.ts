@@ -155,10 +155,12 @@ export function useCreateIssue() {
             }
           : old,
       )
-      qc.setQueriesData<Issue[]>({ queryKey: teamIssueCachePrefix(wsId) }, (old) =>
-        old && !old.some((i) => i.id === newIssue.id)
-          ? [...old, newIssue]
-          : old,
+      qc.setQueriesData<Issue[]>(
+        { queryKey: teamIssueCachePrefix(wsId) },
+        (old) =>
+          old && !old.some((i) => i.id === newIssue.id)
+            ? [...old, newIssue]
+            : old,
       )
       qc.invalidateQueries({ queryKey: teamIssueCachePrefix(wsId) })
       qc.invalidateQueries({

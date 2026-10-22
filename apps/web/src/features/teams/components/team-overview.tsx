@@ -99,8 +99,7 @@ function TeamCard({
             <Users className="size-4 text-icon-neutral-secondary" />
           </span>
           <span className="text-sm text-text-secondary">
-            {team.member_count}{' '}
-            {team.member_count === 1 ? 'member' : 'members'}
+            {team.member_count} {team.member_count === 1 ? 'member' : 'members'}
           </span>
         </span>
         <span className="inline-flex h-8 items-center rounded-md border border-border-default bg-background-main-default px-3 text-sm shadow-1">
@@ -142,7 +141,8 @@ export function TeamOverview() {
 
   const currentMemberRole =
     members?.find((member) => member.user_id === currentUserId)?.role ?? null
-  const canManage = currentMemberRole === 'owner' || currentMemberRole === 'admin'
+  const canManage =
+    currentMemberRole === 'owner' || currentMemberRole === 'admin'
 
   // Members get the design's combined Team view (selector + Issues/Tasks)
   // instead of the admin overview grid. Wait for the role query so admins
@@ -214,7 +214,10 @@ export function TeamOverview() {
                 {canManage ? (
                   <>
                     <div className="flex gap-4">
-                      <TeamSummaryCard label="Total Teams" value={teams.length} />
+                      <TeamSummaryCard
+                        label="Total Teams"
+                        value={teams.length}
+                      />
                       <TeamSummaryCard
                         label="Total Members"
                         value={totalMembers}

@@ -37,7 +37,11 @@ function TeamDetailRoute() {
 
   return (
     <Suspense
-      fallback={<div className="flex-1 p-6 text-sm text-text-secondary">Loading Team…</div>}
+      fallback={
+        <div className="flex-1 p-6 text-sm text-text-secondary">
+          Loading Team…
+        </div>
+      }
     >
       <TeamDetail
         teamId={teamId}

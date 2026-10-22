@@ -120,8 +120,14 @@ export async function handleRealtimeConnect(
   const headers = new Headers(request.headers)
   headers.set('x-garden-user-id', session.user.id)
   headers.set('x-garden-role', membership.role)
-  headers.set('x-garden-team-ids', teamMemberships.map((row) => row.teamId).join(','))
-  headers.set('x-garden-owned-team-ids', ownedTeams.map((row) => row.teamId).join(','))
+  headers.set(
+    'x-garden-team-ids',
+    teamMemberships.map((row) => row.teamId).join(','),
+  )
+  headers.set(
+    'x-garden-owned-team-ids',
+    ownedTeams.map((row) => row.teamId).join(','),
+  )
 
   const stub = env.WORKSPACE_REALTIME.get(
     env.WORKSPACE_REALTIME.idFromName(workspaceId),

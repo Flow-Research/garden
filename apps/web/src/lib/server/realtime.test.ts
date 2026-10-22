@@ -36,7 +36,9 @@ function makeEnv() {
   } as never
 }
 
-function upgradeRequest(url = 'https://garden.test/api/realtime?workspace_id=ws-1') {
+function upgradeRequest(
+  url = 'https://garden.test/api/realtime?workspace_id=ws-1',
+) {
   return new Request(url, { headers: { upgrade: 'websocket' } })
 }
 

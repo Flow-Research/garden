@@ -389,11 +389,7 @@ function optionalCredentialPairBindings(
   clientId: string,
   clientSecret: string,
 ) {
-  return optionalCredentialPairIsConfigured(
-    process.env,
-    clientId,
-    clientSecret,
-  )
+  return optionalCredentialPairIsConfigured(process.env, clientId, clientSecret)
     ? {
         [clientId]: plainEnv(clientId),
         [clientSecret]: Config.redacted(clientSecret),

@@ -1004,10 +1004,10 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
           catch: (cause) => messageFromUnknown(cause),
         })
         if (fired.isErr()) {
-          agentRuntimeLogger.warn(
-            'agent_do.brain_write_back.trigger_failed',
-            { runId: input.runId, message: fired.error },
-          )
+          agentRuntimeLogger.warn('agent_do.brain_write_back.trigger_failed', {
+            runId: input.runId,
+            message: fired.error,
+          })
         }
       })(),
     )

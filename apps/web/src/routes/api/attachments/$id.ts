@@ -32,14 +32,12 @@ async function requireAttachmentAccess(
 ) {
   let issueId = attachment.issueId
   if (!issueId && attachment.commentId) {
-    const [comment] = await appContext
-      .db()
-      .then((db) =>
-        db
-          .select({ issueId: schema.issueComment.issueId })
-          .from(schema.issueComment)
-          .where(eq(schema.issueComment.id, attachment.commentId as string)),
-      )
+    const [comment] = await appContext.db().then((db) =>
+      db
+        .select({ issueId: schema.issueComment.issueId })
+        .from(schema.issueComment)
+        .where(eq(schema.issueComment.id, attachment.commentId as string)),
+    )
     issueId = comment?.issueId ?? null
   }
 

@@ -181,7 +181,8 @@ describe('createMentionSuggestion types filter', () => {
 
   it('offers only the requested types', async () => {
     const qc = makeQueryClient()
-    const items = await createMentionSuggestion(qc, { types: ['member'] }).items!({
+    const items = await createMentionSuggestion(qc, { types: ['member'] })
+      .items!({
       query: '',
       editor: null as never,
     })
