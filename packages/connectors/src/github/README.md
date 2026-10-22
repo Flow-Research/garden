@@ -17,3 +17,11 @@ classified (`github.mint_failed`, `github.token_rejected`,
 upstream "Bad credentials". GitHub repository selection and App permissions
 remain authoritative. `list_workspace_inventory` reports the real install
 status (`connected` / `degraded`) from the availability query.
+
+## Path discipline
+
+Agents must call GitHub only through Garden connector tools (`github.*` /
+Garden-hosted `github-mcp.*`). Do not use sandbox `curl`/`gh`, invented
+`GITHUB_TOKEN`/PATs, or Executor `github-rest` / `github-graphql` presets
+(those presets stay disabled in `executor-engine/presets.ts`). Sandbox env
+does not receive a Garden GitHub token.
