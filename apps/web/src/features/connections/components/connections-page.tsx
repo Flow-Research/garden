@@ -134,8 +134,10 @@ function ProviderIcon({
 
 export function ConnectionsPage({
   focusedConnectorId,
+  onDismissFocus,
 }: {
   focusedConnectorId?: string
+  onDismissFocus?: () => void
 } = {}) {
   const queryClient = useQueryClient()
   const wsId = useWorkspaceId()
@@ -148,6 +150,12 @@ export function ConnectionsPage({
   )
   const [managedProvider, setManagedProvider] =
     useState<ManagedProvider | null>(null)
+
+  const closeDrawer = useCallback(() => {
+    setManagedProvider(null)
+    setInspectedEntry(null)
+    onDismissFocus?.()
+  }, [onDismissFocus])
 
   const [inspectingEntryId, setInspectingEntryId] = useState<string | null>(
     null,
@@ -600,8 +608,7 @@ export function ConnectionsPage({
         open={managedProvider !== null || inspectedEntry !== null}
         onOpenChange={(open) => {
           if (open) return
-          setManagedProvider(null)
-          setInspectedEntry(null)
+          closeDrawer()
         }}
         direction="right"
       >
@@ -611,7 +618,7 @@ export function ConnectionsPage({
               key={inspectedEntry.providerId}
               entry={inspectedEntry}
               pending={directConnectMutation.isPending}
-              onClose={() => setInspectedEntry(null)}
+              onClose={closeDrawer}
               onInstall={(source) => {
                 setInspectingEntryId(inspectedEntry.providerId)
                 directConnectMutation.mutate({
@@ -631,7 +638,7 @@ export function ConnectionsPage({
               pending={
                 connectionMutation.isPending || directConnectMutation.isPending
               }
-              onClose={() => setManagedProvider(null)}
+              onClose={closeDrawer}
               onConnect={startInstalledConnection}
               onOAuth={openOAuth}
               onConnected={refreshConnections}
