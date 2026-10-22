@@ -160,9 +160,7 @@ export function TeamOverview() {
     )
   }
   if (membersError || !members) {
-    return (
-      <TeamMembersLoadError onRetry={() => void refetchMembers()} />
-    )
+    return <TeamMembersLoadError onRetry={() => void refetchMembers()} />
   }
   if (!canManage) return <TeamMemberView />
 
