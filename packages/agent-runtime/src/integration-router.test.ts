@@ -250,7 +250,13 @@ describe('integration router', () => {
     expect(directive).toContain(
       'Pass the complete text returned by readDocument',
     )
+    expect(directive).toContain(
+      'Do not pass a summary, sample, or truncated content',
+    )
     expect(directive).toContain('reuse the session_id returned by Decide')
+    expect(directive).toContain(
+      'Render every text block from Decide in order and return generated report links when present',
+    )
     expect(directive).toContain('Do not retry automatically')
     expect(directive).toContain('Do not silently replace it')
   })

@@ -88,7 +88,11 @@ import {
 } from './runtime-mcp-controller'
 import { latestUserText } from './brain-injection'
 import { mcpRuntimeConfig } from './mcp-runtime-config'
-import { extractExecutorToolRefsFromInput } from './executor-codemode'
+import {
+  extractExecutorToolFailure,
+  extractExecutorToolRefsFromInput,
+  type ExecutorToolFailure,
+} from './executor-codemode'
 import {
   renderIntegrationRouteDirective,
   isIntegrationToolAllowed,
@@ -1500,6 +1504,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   private readonly aiObservation = new AiObservation(this.ctx, this.env)
   private currentPermissions: AgentPermissions | null = null
   private currentIntegrationRoute: IntegrationRouteDecision | null = null
+  private currentIntegrationFailure: ExecutorToolFailure | null = null
   private mcpController: RuntimeMcpController | null = null
   private chatExecutorCatalogCache: {
     key: string
@@ -1986,6 +1991,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async beforeTurn(ctx: TurnContext) {
+    this.currentIntegrationFailure = null
     const [identity] = await this.getDb()
       .select({
         id: schema.chatThread.id,
@@ -2044,6 +2050,15 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     this.currentIntegrationRoute = routeDecision
     const needsConnectedTools = requestNeedsConnectedTools(routeDecision)
     const integrationDirective = renderIntegrationRouteDirective(routeDecision)
+    // A selected Decide call is the requested source of truth for this turn.
+    // Stop the AI SDK loop after a failed tool result so the model cannot
+    // continue with a local analysis. The failed tool output remains in the
+    // UI, where the chat model renders its exact error and stage.
+    const stopAfterSelectedDecideFailure =
+      routeDecision.status === 'selected' &&
+      routeDecision.routes[0]?.slug === 'decide'
+        ? () => this.currentIntegrationFailure !== null
+        : undefined
 
     const mcpControllerResult = await Result.tryPromise({
       try: async () =>
@@ -2140,6 +2155,9 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       ...(systemAdditions
         ? { system: `${ctx.system}\n\n${systemAdditions}` }
         : {}),
+      ...(stopAfterSelectedDecideFailure
+        ? { stopWhen: stopAfterSelectedDecideFailure }
+        : {}),
       tools: visibleTools,
       activeTools: visibleActiveTools,
     } satisfies TurnConfig
@@ -2152,6 +2170,16 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       })
     }
     const selectedRoute = this.currentIntegrationRoute?.routes[0]
+    if (selectedRoute && this.currentIntegrationFailure) {
+      return {
+        action: 'block',
+        reason: [
+          `The selected ${selectedRoute.name} call failed at ${this.currentIntegrationFailure.stage}.`,
+          this.currentIntegrationFailure.message,
+          'Do not retry the integration or replace it with local analysis. Report the failure to the user and ask for a narrower request or a smaller file.',
+        ].join(' '),
+      } as const
+    }
     if (selectedRoute && ctx.toolName.startsWith(EXECUTOR_TOOL_KEY_PREFIX)) {
       const disallowedRef = extractExecutorToolRefsFromInput(ctx.input).find(
         (ref) =>
@@ -2173,6 +2201,27 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async afterToolCall(ctx: ToolCallResultContext) {
+    const selectedRoute = this.currentIntegrationRoute?.routes[0]
+    if (selectedRoute && !this.currentIntegrationFailure) {
+      const failure = extractExecutorToolFailure({
+        error: ctx.success ? undefined : ctx.error,
+        output: ctx.success ? ctx.output : undefined,
+        toolName: ctx.toolName,
+        toolInput: ctx.input,
+      })
+      if (failure) {
+        this.currentIntegrationFailure = failure
+        agentRuntimeLogger.error('chat.integration_call_failed', {
+          agentName: this.name,
+          integration: selectedRoute.slug,
+          toolName: ctx.toolName,
+          failureStage: failure.stage,
+          failureCode: failure.code,
+          failureMessage: failure.message,
+          durationMs: ctx.durationMs,
+        })
+      }
+    }
     this.aiObservation.afterToolCall(ctx)
   }
 

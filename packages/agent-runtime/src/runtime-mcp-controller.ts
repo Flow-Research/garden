@@ -23,6 +23,7 @@ import {
   resolveEffectiveTrust,
 } from '@garden/connectors/capabilities'
 import {
+  extractExecutorToolFailure,
   extractExecutorToolRefsFromInput,
   mentionsUnparsedExecutorTools,
 } from './executor-codemode'
@@ -66,6 +67,77 @@ export const MCP_CONNECTOR_SERVER_SCHEMA_SQL = `
 export const PERMISSION_APPROVAL_REUSE_WINDOW_MS = 60 * 1000
 
 const EXECUTOR_MCP_SERVER_ID = 'executor'
+
+/**
+ * Summarizes an Executor call for lifecycle logs without logging code or input
+ * data. The earlier logs showed only the generic MCP method result, so these
+ * fields identify the selected integration and tool call safely.
+ */
+function executorToolCallFields(args: readonly unknown[]) {
+  const input = args[0]
+  const options =
+    args[1] && typeof args[1] === 'object'
+      ? (args[1] as Record<string, unknown>)
+      : null
+  const code =
+    input && typeof input === 'object'
+      ? (input as Record<string, unknown>).code
+      : undefined
+  const refs = extractExecutorToolRefsFromInput(input)
+  return {
+    ...(typeof options?.toolCallId === 'string'
+      ? { toolCallId: options.toolCallId }
+      : {}),
+    executorRefCount: refs.length,
+    executorSlugs: [...new Set(refs.map((ref) => ref.executorSlug))],
+    hasCode: typeof code === 'string',
+    ...(typeof code === 'string' ? { codeLength: code.length } : {}),
+  }
+}
+
+/**
+ * Summarizes an Executor result for lifecycle logs without logging returned
+ * text, file contents, or resource URLs. Counts make delayed or malformed
+ * responses visible while the original result remains unchanged.
+ */
+function executorResultFields(output: unknown) {
+  if (!output || typeof output !== 'object') {
+    return {
+      contentBlockCount: 0,
+      generatedFileUrlCount: 0,
+      hasContinuationId: false,
+    }
+  }
+  const record = output as Record<string, unknown>
+  const content = Array.isArray(record.content) ? record.content : []
+  const structured =
+    record.structuredContent && typeof record.structuredContent === 'object'
+      ? (record.structuredContent as Record<string, unknown>)
+      : null
+  const generatedFileUrlCount = content.filter((block) => {
+    if (!block || typeof block !== 'object') return false
+    const item = block as Record<string, unknown>
+    const resource =
+      item.resource &&
+      typeof item.resource === 'object' &&
+      !Array.isArray(item.resource)
+        ? (item.resource as Record<string, unknown>)
+        : null
+    return (
+      (item.type === 'resource' &&
+        ((typeof item.uri === 'string' && item.uri.length > 0) ||
+          (typeof resource?.uri === 'string' && resource.uri.length > 0))) ||
+      (item.type === 'text' &&
+        typeof item.text === 'string' &&
+        /https?:\/\/\S+/u.test(item.text))
+    )
+  }).length
+  return {
+    contentBlockCount: content.length,
+    generatedFileUrlCount,
+    hasContinuationId: typeof structured?.session_id === 'string',
+  }
+}
 
 export const EXECUTOR_TOOL_KEY_PREFIX = buildMcpAiToolKey(
   EXECUTOR_MCP_SERVER_ID,
@@ -308,8 +380,81 @@ export class RuntimeMcpController {
         wrappedRawToolKeys.add(rawToolKey)
 
         if (!connectorId) {
+          const baseExecute = rawTool.execute
           acc[rawToolKey] = {
             ...rawTool,
+            ...(baseExecute
+              ? {
+                  execute: async (
+                    ...args: Parameters<NonNullable<typeof baseExecute>>
+                  ) => {
+                    const startedAt = Date.now()
+                    const callFields = executorToolCallFields(args)
+                    runtimeMcpLogger.info('mcp.tool_call.started', {
+                      agentName: this.host.name,
+                      serverId: tool.serverId,
+                      toolName: tool.name,
+                      ...callFields,
+                    })
+
+                    const result = await Result.tryPromise({
+                      try: async () => await baseExecute(...args),
+                      catch: (cause) =>
+                        cause instanceof Error
+                          ? cause
+                          : new Error(String(cause)),
+                    })
+
+                    if (result.isErr()) {
+                      const failure = extractExecutorToolFailure({
+                        error: result.error,
+                        toolName: tool.name,
+                        toolInput: args[0],
+                      })
+                      runtimeMcpLogger.error('mcp.tool_call.failed', {
+                        agentName: this.host.name,
+                        serverId: tool.serverId,
+                        toolName: tool.name,
+                        durationMs: Date.now() - startedAt,
+                        failureStage: failure?.stage ?? 'mcp_handoff',
+                        ...callFields,
+                        ...errorFields(result.error),
+                      })
+                      throw result.error
+                    }
+
+                    const failure = extractExecutorToolFailure({
+                      output: result.value,
+                      toolName: tool.name,
+                      toolInput: args[0],
+                    })
+                    if (failure) {
+                      runtimeMcpLogger.error('mcp.tool_call.failed', {
+                        agentName: this.host.name,
+                        serverId: tool.serverId,
+                        toolName: tool.name,
+                        durationMs: Date.now() - startedAt,
+                        failureStage: failure.stage,
+                        failureCode: failure.code,
+                        failureMessage: failure.message,
+                        ...callFields,
+                        ...executorResultFields(result.value),
+                      })
+                    } else {
+                      runtimeMcpLogger.info('mcp.tool_call.completed', {
+                        agentName: this.host.name,
+                        serverId: tool.serverId,
+                        toolName: tool.name,
+                        durationMs: Date.now() - startedAt,
+                        ...callFields,
+                        ...executorResultFields(result.value),
+                      })
+                    }
+
+                    return result.value
+                  },
+                }
+              : {}),
             needsApproval: async (
               input: unknown,
               options: {
