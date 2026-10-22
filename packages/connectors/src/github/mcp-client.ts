@@ -7,12 +7,11 @@ import {
   HttpClientResponse,
 } from 'effect/unstable/http'
 import {
-  ConnectorAuthError,
   ConnectorDecodeError,
   type ConnectorError,
   ConnectorHttpError,
-  ConnectorPermissionError,
 } from '../effect/errors.ts'
+import { connectorErrorFromGitHubHttp } from './auth-errors.ts'
 import { mintGitHubInstallationAccessToken } from './installation-auth.ts'
 import {
   GitHubAppConfig,
@@ -72,21 +71,15 @@ const responseError = Effect.fn('GitHubHostedMcp.responseError')(function* (
   response: HttpClientResponse.HttpClientResponse,
   operation: string,
 ) {
-  const message = yield* response.text.pipe(
+  const bodyText = yield* response.text.pipe(
     Effect.map((body) => body.trim().slice(0, 1_000)),
     Effect.catch(() => Effect.succeed('')),
   )
-  const fields = {
-    connectorId: 'github',
+  return yield* connectorErrorFromGitHubHttp({
     operation,
-    message: message || `GitHub MCP returned ${response.status}.`,
     status: response.status,
-  }
-  if (response.status === 401) return yield* new ConnectorAuthError(fields)
-  if (response.status === 403) {
-    return yield* new ConnectorPermissionError(fields)
-  }
-  return yield* new ConnectorHttpError(fields)
+    bodyText: bodyText || `GitHub MCP returned ${response.status}.`,
+  })
 })
 
 const jsonPayloads = (body: string): readonly string[] => {

@@ -4,6 +4,7 @@ import {
   HttpBody,
   HttpClient,
   HttpClientRequest,
+  HttpClientResponse,
   HttpMethod,
 } from 'effect/unstable/http'
 import {
@@ -11,6 +12,7 @@ import {
   type ConnectorError,
   ConnectorHttpError,
 } from '../effect/errors.ts'
+import { connectorErrorFromGitHubHttp } from './auth-errors.ts'
 import { mintGitHubInstallationAccessToken } from './installation-auth.ts'
 
 const GITHUB_API_BASE_URL = 'https://api.github.com'
@@ -87,6 +89,22 @@ const makeRequest = Effect.fn('GitHubRestClient.makeRequest')(function* (
   return request
 })
 
+/**
+ * Reads a truncated error body so 401/403 can carry GitHub's message into
+ * classified auth errors instead of a bare status code.
+ */
+const readErrorBody = (
+  response: HttpClientResponse.HttpClientResponse,
+  operation: string,
+) =>
+  response.text.pipe(
+    Effect.map((body) => body.trim().slice(0, 1_000)),
+    Effect.catch(() => Effect.succeed('')),
+    Effect.withSpan('connector.github.read_error_body', {
+      attributes: { 'connector.operation': operation },
+    }),
+  )
+
 export const makeGitHubRestClientLayer = (): Layer.Layer<
   GitHubRestClient,
   never,
@@ -117,11 +135,11 @@ export const makeGitHubRestClientLayer = (): Layer.Layer<
               }),
           )
           if (response.status < 200 || response.status >= 300) {
-            return yield* new ConnectorHttpError({
-              connectorId: 'github',
+            const bodyText = yield* readErrorBody(response, input.operation)
+            return yield* connectorErrorFromGitHubHttp({
               operation: input.operation,
-              message: `GitHub API rejected the request (${response.status}).`,
               status: response.status,
+              bodyText,
             })
           }
           if (response.status === 204) return null

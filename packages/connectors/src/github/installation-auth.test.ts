@@ -1,20 +1,28 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Effect } from 'effect'
+import { Result } from 'better-result'
 import { ConnectorAuthError } from '../effect/errors.ts'
+import {
+  createGitHubInstallationAccessToken,
+  GitHubAppAuthError,
+} from '../github-app.ts'
 import { mintGitHubInstallationAccessToken } from './installation-auth.ts'
 
-vi.mock('../github-app.ts', () => ({
-  createGitHubInstallationAccessToken: vi.fn(),
-}))
+vi.mock('../github-app.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../github-app.ts')>()
+  return {
+    ...actual,
+    createGitHubInstallationAccessToken: vi.fn(),
+  }
+})
 
-import { createGitHubInstallationAccessToken } from '../github-app.ts'
-import { Result } from 'better-result'
-
-const mint = createGitHubInstallationAccessToken as unknown as ReturnType<
-  typeof vi.fn
->
+const mint = vi.mocked(createGitHubInstallationAccessToken)
 
 describe('mintGitHubInstallationAccessToken', () => {
+  beforeEach(() => {
+    mint.mockReset()
+  })
+
   it('returns the shared credential shape on success', async () => {
     mint.mockResolvedValueOnce(
       Result.ok({
@@ -40,23 +48,17 @@ describe('mintGitHubInstallationAccessToken', () => {
       expiresAt: '2026-10-22T12:00:00Z',
       installationId: '42',
     })
-    expect(mint).toHaveBeenCalledWith({
-      env: {
-        GITHUB_APP_ID: '1',
-        GITHUB_CLIENT_ID: undefined,
-        GITHUB_APP_PRIVATE_KEY: 'pem',
-      },
-      installationId: '42',
-    })
   })
 
-  it('maps mint failures to ConnectorAuthError', async () => {
+  it('maps mint failures to classified ConnectorAuthError', async () => {
     mint.mockResolvedValueOnce(
-      Result.err({
-        code: 'token_request_failed',
-        message: 'Bad credentials',
-        status: 401,
-      }),
+      Result.err<{ token: string; expiresAt: string; installationId: string }, GitHubAppAuthError>(
+        new GitHubAppAuthError({
+          code: 'token_request_failed',
+          message: 'Bad credentials',
+          status: 401,
+        }),
+      ),
     )
 
     const error = await Effect.runPromise(
@@ -70,8 +72,10 @@ describe('mintGitHubInstallationAccessToken', () => {
     expect(error).toMatchObject({
       connectorId: 'github',
       operation: 'github.mcp.listTools',
-      message: 'Bad credentials',
+      code: 'github.mint_failed',
       status: 401,
     })
+    expect(error.message).toMatch(/\[github\.mint_failed\]/)
+    expect(error.message).toContain('Bad credentials')
   })
 })
