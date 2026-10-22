@@ -266,6 +266,15 @@ export default Alchemy.Stack(
         },
       ],
     })
+    yield* deployed.bind(deployTarget.workspaceRealtimeId, {
+      bindings: [
+        {
+          type: 'durable_object_namespace',
+          name: 'WORKSPACE_REALTIME',
+          className: 'WorkspaceRealtimeDO',
+        },
+      ],
+    })
     yield* deployed.bind(deployTarget.sandboxId, {
       bindings: [
         {
