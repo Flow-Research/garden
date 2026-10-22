@@ -5,17 +5,16 @@ import { SandboxProbeError, describeSandboxProbe } from './sandbox-debug'
 
 describe('sandbox debug helpers', () => {
   it('reports sandbox probe failures without throwing', async () => {
-    const probe = describeSandboxProbe(
-      Result.err(
-        new SandboxProbeError({
-          command: 'ls -la /workspace 2>/dev/null || ls -la .',
-          sessionId: 'thread-123',
-          cause: new Error(
-            'sandbox offline for ls -la /workspace 2>/dev/null || ls -la .',
-          ),
-        }),
-      ) as Result<any, SandboxProbeError>,
+    const failed: Parameters<typeof describeSandboxProbe>[0] = Result.err(
+      new SandboxProbeError({
+        command: 'ls -la /workspace 2>/dev/null || ls -la .',
+        sessionId: 'thread-123',
+        cause: new Error(
+          'sandbox offline for ls -la /workspace 2>/dev/null || ls -la .',
+        ),
+      }),
     )
+    const probe = describeSandboxProbe(failed)
 
     expect(probe.success).toBe(false)
     expect(probe.stdout).toBe('')

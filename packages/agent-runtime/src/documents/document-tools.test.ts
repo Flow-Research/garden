@@ -1,4 +1,5 @@
 import type { WorkspaceFsLike } from '@cloudflare/shell'
+import ExcelJS from 'exceljs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ getPooledDb: vi.fn() }))
@@ -19,6 +20,10 @@ import {
   DocumentOperationOutcome,
   type DocumentSnapshot,
 } from './document-artifact-model'
+
+// Builds and parses real DOCX files through dynamically imported libraries;
+// the first import is slow on a loaded runner, past vitest's 5s default.
+const DOCX_TEST_TIMEOUT_MS = 30_000
 
 type QueryChain = {
   from: (...args: unknown[]) => QueryChain
@@ -83,6 +88,61 @@ function documentAuthority(
 
 beforeEach(() => {
   mocks.getPooledDb.mockReset()
+})
+
+describe('spreadsheet document reads', () => {
+  it('extracts visible XLSX sheets as tab-separated text', async () => {
+    const workbook = new ExcelJS.Workbook()
+    const revenue = workbook.addWorksheet('Revenue')
+    revenue.addRow(['Month', 'Revenue'])
+    revenue.addRow(['Jan', 100])
+    const hidden = workbook.addWorksheet('Hidden')
+    hidden.state = 'hidden'
+    hidden.addRow(['secret'])
+    const bytes = new Uint8Array(await workbook.xlsx.writeBuffer())
+
+    mocks.getPooledDb.mockReturnValue(
+      queryDatabase(
+        [
+          {
+            threadId: 'thread-1',
+            workspaceId: 'workspace-1',
+            ownerUserId: 'user-1',
+          },
+        ],
+        [
+          {
+            id: 'document-1',
+            filename: 'Revenue.xlsx',
+            fileType: 'xlsx',
+            ownerUserId: 'user-1',
+            storagePath: '/documents/revenue.xlsx',
+            versionId: 'version-1',
+            versionNumber: 1,
+          },
+        ],
+      ),
+    )
+
+    const result = await readDocument({
+      context: {
+        databaseUrl: 'postgres://test',
+        documentArtifacts: documentAuthority(),
+        workspace: workspaceReading(bytes),
+        threadId: 'thread-1',
+      },
+      documentId: 'document-1',
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      kind: 'text',
+      media_type:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      text: '## Revenue\nMonth\tRevenue\nJan\t100',
+    })
+    if (result.ok) expect(result.text).not.toContain('secret')
+  })
 })
 
 describe('document image media types', () => {
@@ -374,52 +434,56 @@ describe('canonical DOCX document tools', () => {
     expect(workspace.writeFileBytes).not.toHaveBeenCalled()
   })
 
-  it('initializes generated DOCX bytes through the canonical authority', async () => {
-    const queryDb = queryDatabase([
-      {
+  it(
+    'initializes generated DOCX bytes through the canonical authority',
+    async () => {
+      const queryDb = queryDatabase([
+        {
+          threadId: 'thread-1',
+          workspaceId: 'workspace-1',
+          ownerUserId: 'user-1',
+        },
+      ])
+      let insertIndex = 0
+      mocks.getPooledDb.mockReturnValue({
+        ...queryDb,
+        insert: () => {
+          const rows =
+            insertIndex++ === 0 ? [{ id: 'document-1' }] : [{ id: 'version-1' }]
+          return { values: () => ({ returning: async () => rows }) }
+        },
+        update: () => ({ set: () => ({ where: async () => undefined }) }),
+      })
+      const initializeDocx = vi.fn(async () => ({
+        ok: true as const,
+        snapshot: canonicalSnapshot,
+      }))
+      const context: DocumentToolContext = {
+        databaseUrl: 'postgres://test',
+        documentArtifacts: documentAuthority({ initializeDocx }),
+        workspace: {
+          writeFileBytes: vi.fn(async () => undefined),
+        } as unknown as WorkspaceFsLike,
         threadId: 'thread-1',
-        workspaceId: 'workspace-1',
-        ownerUserId: 'user-1',
-      },
-    ])
-    let insertIndex = 0
-    mocks.getPooledDb.mockReturnValue({
-      ...queryDb,
-      insert: () => {
-        const rows =
-          insertIndex++ === 0 ? [{ id: 'document-1' }] : [{ id: 'version-1' }]
-        return { values: () => ({ returning: async () => rows }) }
-      },
-      update: () => ({ set: () => ({ where: async () => undefined }) }),
-    })
-    const initializeDocx = vi.fn(async () => ({
-      ok: true as const,
-      snapshot: canonicalSnapshot,
-    }))
-    const context: DocumentToolContext = {
-      databaseUrl: 'postgres://test',
-      documentArtifacts: documentAuthority({ initializeDocx }),
-      workspace: {
-        writeFileBytes: vi.fn(async () => undefined),
-      } as unknown as WorkspaceFsLike,
-      threadId: 'thread-1',
-    }
+      }
 
-    const result = await generateDocx({
-      context,
-      title: 'Generated brief',
-      sections: [{ heading: 'Summary', content: 'Canonical content' }],
-    })
+      const result = await generateDocx({
+        context,
+        title: 'Generated brief',
+        sections: [{ heading: 'Summary', content: 'Canonical content' }],
+      })
 
-    expect(result).toMatchObject({
-      ok: true,
-      canonical_revision: 2,
-      document_id: 'document-1',
-    })
-    expect(initializeDocx).toHaveBeenCalledWith({
-      bytes: expect.any(Uint8Array),
-      documentId: 'document-1',
-      filename: 'Generated brief.docx',
-    })
-  })
+      expect(result).toMatchObject({
+        ok: true,
+        canonical_revision: 2,
+        document_id: 'document-1',
+      })
+      expect(initializeDocx).toHaveBeenCalledWith({
+        bytes: expect.any(Uint8Array),
+        documentId: 'document-1',
+        filename: 'Generated brief.docx',
+      })
+    },
+    DOCX_TEST_TIMEOUT_MS,
+  )
 })

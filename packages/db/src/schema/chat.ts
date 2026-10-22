@@ -23,7 +23,7 @@ export const chatThread = pgTable(
       .default(sql`gen_random_uuid()`),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     ownerUserId: uuid('owner_user_id')
       .notNull()
       .references(() => user.id),
@@ -37,9 +37,20 @@ export const chatThread = pgTable(
     runtimeKey: uuid('runtime_key').notNull(),
     title: text('title').notNull(),
     lastMessage: text('last_message').notNull().default(''),
-    archivedAt: timestamp('archived_at', { mode: 'date' }),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
+    archivedAt: timestamp('archived_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index('chat_thread_workspace_owner_idx').on(

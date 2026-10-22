@@ -126,7 +126,7 @@ const MentionList = forwardRef<MentionListRef, MentionListProps>(
 
     if (items.length === 0) {
       return (
-        <div className="rounded-xl bg-popover p-2 text-xs text-muted-foreground shadow-[var(--shadow-float-1)]">
+        <div className="rounded-xl bg-popover p-2 text-xs text-muted-foreground shadow-3">
           No members, agents, or issues found
         </div>
       )
@@ -141,7 +141,7 @@ const MentionList = forwardRef<MentionListRef, MentionListProps>(
       <div
         role="listbox"
         aria-label="Mention suggestions"
-        className="max-h-[300px] w-72 overflow-y-auto rounded-xl bg-popover py-1 shadow-[var(--shadow-float-1)]"
+        className="max-h-[300px] w-72 overflow-y-auto rounded-xl bg-popover py-1 shadow-3"
       >
         {groups.map((group) => (
           <div key={group.label}>

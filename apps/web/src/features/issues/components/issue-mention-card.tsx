@@ -1,7 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { issueListOptions, issueDetailOptions } from '@/lib/issues/queries'
 import { useWorkspaceId } from '@garden/app-state/hooks'
-import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigation'
+import {
+  issuePath,
+  useSurfaceNavigation,
+} from '@/features/navigation/use-surface-navigation'
 import { Badge } from '@garden/ui/components/ui/badge'
 import type { IssueStatus } from '@garden/core/types'
 import { StatusIcon } from './status-icon'
@@ -77,7 +80,7 @@ export function IssueMentionCard({
     <Badge
       variant="outline"
       className="issue-mention mx-0.5 max-w-72 cursor-pointer rounded-md text-xs hover:bg-accent"
-      render={<a href={`/issues/${issueId}`} onClick={handleOpen} />}
+      render={<a href={issuePath(issueId)} onClick={handleOpen} />}
     >
       <StatusIcon
         status={normalizeIssueStatus(issue.status)}

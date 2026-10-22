@@ -20,11 +20,13 @@ import {
   type AppRequestContext,
 } from '@/lib/server/context'
 import { badRequest, requireWorkspaceContext } from '@/lib/server/control-plane'
-import type { AppEnv } from '@/lib/server/env'
+import {
+  multipartErrorResponse,
+  readMultipartForm,
+} from '@/lib/server/multipart'
 import { makeBrainAuditClientLayer } from '@/lib/server/brain-audit-runtime'
 import {
   BrainFileIngestion,
-  BrainFileIngestionError,
   makeBrainFileIngestionLayer,
 } from '@/lib/server/brain-file-ingestion'
 
@@ -60,10 +62,7 @@ export const getBrainFiles = async ({
   const workspaceContext = await requireWorkspaceContext(appContext)
   if (workspaceContext instanceof Response) return workspaceContext
 
-  const env = appContext.env as AppEnv & {
-    HELIX_URL?: string
-    HELIX_API_KEY?: string
-  }
+  const env = appContext.env
   const helixUrl = env.HELIX_URL
 
   if (helixUrl === undefined) {
@@ -127,36 +126,23 @@ export const postBrainFileUpload = async ({
   const workspaceContext = await requireWorkspaceContext(appContext)
   if (workspaceContext instanceof Response) return workspaceContext
 
-  const env = appContext.env as AppEnv & {
-    HELIX_URL?: string
-    HELIX_API_KEY?: string
-  }
+  const env = appContext.env
   const helixUrl = env.HELIX_URL
   if (helixUrl === undefined) {
     return badRequest('Brain is not configured (missing HELIX_URL)')
   }
 
-  const formResult = await Effect.runPromise(
-    Effect.result(
-      Effect.tryPromise({
-        try: () => request.formData(),
-        catch: (cause) =>
-          new BrainFileIngestionError({
-            operation: 'parse brain upload form',
-            message:
-              cause instanceof Error ? cause.message : 'Invalid upload form.',
-            cause,
-          }),
-      }),
-    ),
-  )
-  if (EffectResult.isFailure(formResult)) {
-    return badRequest(formResult.failure.message)
-  }
+  const formResult = await readMultipartForm(request, MAX_FILE_SIZE)
+  if (formResult.isErr()) return multipartErrorResponse(formResult.error)
 
-  const file = formResult.success.get('file')
+  const file = formResult.value.get('file')
   if (!(file instanceof File)) return badRequest('Missing file')
-  if (file.size > MAX_FILE_SIZE) return badRequest('File exceeds 100 MB limit')
+  if (file.size > MAX_FILE_SIZE) {
+    return Response.json(
+      { error: 'File exceeds 100 MB limit' },
+      { status: 413 },
+    )
+  }
   if (formatOf(file.name) === null)
     return badRequest(`Unsupported file type: ${file.name}`)
 

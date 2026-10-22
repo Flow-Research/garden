@@ -13,6 +13,12 @@ import {
 import { schema } from '@/lib/server/db'
 import { badRequest, notFound, toChatThread } from '@/lib/server/control-plane'
 import { getThreadAccess } from '@/lib/server/chat-threads'
+import { createGardenLogger } from '@garden/observability/logger'
+
+const logger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'chat-threads-api',
+})
 
 export const Route = createFileRoute('/api/chat/threads/$id')({
   server: {
@@ -81,9 +87,9 @@ export const Route = createFileRoute('/api/chat/threads/$id')({
               cause instanceof Error ? cause.message : String(cause),
           })
           if (pauseResult.isErr()) {
-            console.warn('[chat] failed to pause archived thread runtime', {
+            logger.warn('chat_thread.archive_pause_failed', {
               threadId: access.thread.id,
-              error: pauseResult.error,
+              message: pauseResult.error,
             })
           }
         }

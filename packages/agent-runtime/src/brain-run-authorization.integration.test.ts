@@ -412,7 +412,10 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         context.task.name,
       )
       await harness.listen()
-      expect(await (await harness.fetch('/')).text()).toBe('ready')
+      // Setup checks throw instead of asserting: expect() is reserved for test bodies.
+      const readiness = await (await harness.fetch('/')).text()
+      if (readiness !== 'ready')
+        throw new Error(`Instrumented harness not ready: ${readiness}`)
       const seeds = [
         { workspaceId, label: allowedMarker, scope: { kind: 'org' } },
         {
@@ -441,9 +444,13 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           method: 'POST',
           body: JSON.stringify(seed),
         })
-        expect(response.status, await response.clone().text()).toBe(200)
-        const item = (await response.json()) as { id: string }
-        expect(item.id).toBeTypeOf('string')
+        if (response.status !== 200)
+          throw new Error(
+            `Seed failed (${response.status}): ${await response.text()}`,
+          )
+        const item = (await response.json()) as { id: unknown }
+        if (typeof item.id !== 'string')
+          throw new Error('Seed response has no string id')
         seededIds.push(item.id)
       }
       const link = await harness.fetch('/link', {
@@ -454,7 +461,8 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           to: seededIds[1],
         }),
       })
-      expect(link.status, await link.clone().text()).toBe(200)
+      if (link.status !== 200)
+        throw new Error(`Link failed (${link.status}): ${await link.text()}`)
     }, 120_000)
 
     afterEach((context) => {

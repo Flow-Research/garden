@@ -6,6 +6,7 @@ export const FileFormat = {
   Pdf: 'pdf',
   Docx: 'docx',
   Xlsx: 'xlsx',
+  Csv: 'csv',
   Text: 'text',
 } as const
 export type FileFormat = (typeof FileFormat)[keyof typeof FileFormat]
@@ -45,6 +46,8 @@ export const formatOf = (path: string): FileFormat | null => {
       return FileFormat.Docx
     case 'xlsx':
       return FileFormat.Xlsx
+    case 'csv':
+      return FileFormat.Csv
     case 'txt':
       return FileFormat.Text
     default:

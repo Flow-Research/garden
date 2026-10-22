@@ -1,44 +1,69 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import {
   requireSession,
+  requireWorkspaceAccess,
   resolveWorkspaceId,
   unauthorized,
 } from '@/lib/server/control-plane'
+import { teamIssueVisibilityCondition } from '@/lib/server/issue-access'
+import { isWorkspaceManager } from '@/lib/server/team-access'
 
 export const Route = createFileRoute('/api/issues/child-progress')({
   server: {
     handlers: {
-      GET: async ({ context, request }) => {
+      GET: async ({ context }) => {
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
+        const workspaceId = await resolveWorkspaceId(
+          appContext,
+          session.user.id,
+        )
         if (!workspaceId) return Response.json({ progress: [] })
 
+        const workspaceAccess = await requireWorkspaceAccess(
+          appContext,
+          workspaceId,
+        )
+        if (workspaceAccess instanceof Response) return workspaceAccess
+
+        // Count children per parent in the database rather than loading every
+        // issue in the workspace to tally them in memory.
         const db = await appContext.db()
         const rows = await db
-          .select()
+          .select({
+            parentId: schema.issue.parentId,
+            total: sql<number>`cast(count(*) as int)`,
+            done: sql<number>`cast(count(*) filter (where ${schema.issue.status} = 'done') as int)`,
+          })
           .from(schema.issue)
-          .where(eq(schema.issue.workspaceId, workspaceId))
+          .where(
+            and(
+              eq(schema.issue.workspaceId, workspaceId),
+              isNotNull(schema.issue.parentId),
+              teamIssueVisibilityCondition({
+                viewerId: session.user.id,
+                manager: isWorkspaceManager(workspaceAccess.membership.role),
+              }),
+            ),
+          )
+          .groupBy(schema.issue.parentId)
 
-        const progress = Array.from(
-          rows.reduce((map, issue) => {
-            if (!issue.parentId) return map
-            const entry = map.get(issue.parentId) ?? { total: 0, done: 0 }
-            entry.total += 1
-            if (issue.status === 'done') entry.done += 1
-            map.set(issue.parentId, entry)
-            return map
-          }, new Map<string, { total: number; done: number }>()),
-        ).map(([parent_issue_id, entry]) => ({
-          parent_issue_id,
-          total: entry.total,
-          done: entry.done,
-        }))
+        const progress = rows.flatMap((row) =>
+          row.parentId
+            ? [
+                {
+                  parent_issue_id: row.parentId,
+                  total: row.total,
+                  done: row.done,
+                },
+              ]
+            : [],
+        )
 
         return Response.json({ progress })
       },

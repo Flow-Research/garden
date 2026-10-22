@@ -27,11 +27,9 @@ interface FileTreeContextType {
 }
 
 // Default noop for context default value
-// oxlint-disable-next-line eslint(no-empty-function)
 const noop = () => {}
 
 const FileTreeContext = createContext<FileTreeContextType>({
-  // oxlint-disable-next-line eslint-plugin-unicorn(no-new-builtin)
   expandedPaths: new Set(),
   togglePath: noop,
 })

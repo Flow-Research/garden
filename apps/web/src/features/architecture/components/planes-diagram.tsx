@@ -7,21 +7,18 @@ import { NodeChip } from './primitives'
  * it matches the page palette. Real bindings only — see docs/core/technical.md.
  */
 const accent: Record<string, string> = {
-  control: 'var(--slate)',
-  agent: 'var(--moss)',
-  execution: 'var(--amber)',
+  control: 'var(--text-neutral-tertiary)',
+  agent: 'var(--success)',
+  execution: 'var(--text-warning-tertiary)',
 }
 
 export function PlanesDiagram() {
   return (
     <div className="space-y-3">
-      <div className="mx-auto w-fit rounded-lg border border-[color:var(--hairline)] bg-[color:var(--parchment-deep)] px-4 py-2 text-center font-mono text-[12px] text-muted-foreground">
+      <div className="mx-auto w-fit rounded-lg border border-border bg-muted px-4 py-2 text-center font-mono text-[12px] text-muted-foreground">
         Browser · TanStack Start
       </div>
-      <div
-        className="mx-auto h-5 w-px bg-[color:var(--hairline)]"
-        aria-hidden
-      />
+      <div className="mx-auto h-5 w-px bg-border" aria-hidden />
 
       <div className="space-y-3">
         {planes.map((plane) => (

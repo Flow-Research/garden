@@ -10,7 +10,6 @@ export default defineConfig({
       reportOnFailure: true,
     },
     include: ['**/*.test.{ts,tsx}'],
-    passWithNoTests: true,
     fileParallelism: false,
     testTimeout: 120_000,
   },

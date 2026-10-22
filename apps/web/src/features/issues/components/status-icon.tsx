@@ -1,19 +1,30 @@
+import type { ComponentType } from 'react'
 import {
   Ban,
   Circle,
   CircleCheck,
+  CircleDashed,
   CircleDot,
-  CircleDotDashed,
   CircleX,
-  type LucideIcon,
 } from 'lucide-react'
 import type { IssueStatus } from '@garden/core/types'
 import { STATUS_CONFIG } from '@garden/core/issues/config'
 import { cn } from '@garden/ui/lib/utils'
 
-const STATUS_ICONS: Record<IssueStatus, LucideIcon> = {
+/**
+ * Design glyphs per workflow state. The Penpot set is circle / circle-dashed /
+ * check-circle / prohibit / x-circle; Lucide covers each state so the whole app
+ * shares one icon library.
+ */
+const STATUS_ICONS: Record<
+  IssueStatus,
+  ComponentType<{
+    className?: string
+    'aria-hidden'?: boolean | 'true' | 'false'
+  }>
+> = {
   todo: Circle,
-  in_progress: CircleDotDashed,
+  in_progress: CircleDashed,
   in_review: CircleDot,
   done: CircleCheck,
   blocked: Ban,

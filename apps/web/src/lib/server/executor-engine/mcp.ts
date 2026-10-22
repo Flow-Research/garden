@@ -39,6 +39,7 @@ import { createD1ExecutorDb } from './d1'
 import { makeR2BlobStore } from './r2'
 import { makeExecutorPlugins, type GardenExecutorPlugins } from './plugins'
 import { boundExecutionEngine } from './output-bound'
+import { EXECUTOR_MCP_RPC_TIMEOUT_MS } from './mcp-timeout-config'
 
 type ExecutorMcpEnv = Env & {
   readonly BETTER_AUTH_URL?: string
@@ -152,6 +153,15 @@ export class ExecutorMcpSession extends McpAgentSessionDOBase<
   constructor(ctx: DurableObjectState, env: ExecutorMcpEnv) {
     super(ctx, env)
     this.gardenEnv = env
+  }
+
+  /**
+   * Extends only the internal Executor MCP RPC wait. Decide can take up to
+   * four minutes for a full-file analysis, so the default 60-second transport
+   * timeout would return a false failure while the work is still running.
+   */
+  protected override getRpcTransportOptions() {
+    return { timeout: EXECUTOR_MCP_RPC_TIMEOUT_MS }
   }
 
   protected override openSessionDb(): Promise<GardenSessionDb> {

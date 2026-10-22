@@ -68,11 +68,10 @@ function ReplyInput({
   }, [])
 
   useEffect(() => {
-    if (autoFocus) {
-      // Defer to next tick so the editor has mounted and is ready to focus.
-      const id = requestAnimationFrame(() => editorRef.current?.focus())
-      return () => cancelAnimationFrame(id)
-    }
+    if (!autoFocus) return
+    // Defer to next tick so the editor has mounted and is ready to focus.
+    const id = requestAnimationFrame(() => editorRef.current?.focus())
+    return () => cancelAnimationFrame(id)
   }, [autoFocus])
 
   const handleUpload = async (file: File) => {

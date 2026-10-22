@@ -23,12 +23,18 @@ import {
   resolveEffectiveTrust,
 } from '@garden/connectors/capabilities'
 import {
+  extractExecutorToolFailure,
   extractExecutorToolRefsFromInput,
   mentionsUnparsedExecutorTools,
 } from './executor-codemode'
 import * as schema from '@garden/db/schema'
 import { captureGardenAnalyticsEvent } from '@garden/observability/analytics/client'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
+import {
+  createGardenLogger,
+  errorFields,
+  type GardenLogger,
+} from '@garden/observability/logger'
 import { upsertPermissionRequestInbox } from '@garden/db/inbox'
 import {
   extractThreadIdFromAgentName,
@@ -39,6 +45,11 @@ import { listAvailableConnectorBindings } from '@garden/server/connectors/availa
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 
 export { canonicalJsonString } from '@garden/connectors/capabilities'
+
+const runtimeMcpLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'runtime-mcp-controller',
+})
 
 export const MCP_CONNECTOR_SERVER_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS mcp_connector_server (
@@ -56,6 +67,77 @@ export const MCP_CONNECTOR_SERVER_SCHEMA_SQL = `
 export const PERMISSION_APPROVAL_REUSE_WINDOW_MS = 60 * 1000
 
 const EXECUTOR_MCP_SERVER_ID = 'executor'
+
+/**
+ * Summarizes an Executor call for lifecycle logs without logging code or input
+ * data. The earlier logs showed only the generic MCP method result, so these
+ * fields identify the selected integration and tool call safely.
+ */
+function executorToolCallFields(args: readonly unknown[]) {
+  const input = args[0]
+  const options =
+    args[1] && typeof args[1] === 'object'
+      ? (args[1] as Record<string, unknown>)
+      : null
+  const code =
+    input && typeof input === 'object'
+      ? (input as Record<string, unknown>).code
+      : undefined
+  const refs = extractExecutorToolRefsFromInput(input)
+  return {
+    ...(typeof options?.toolCallId === 'string'
+      ? { toolCallId: options.toolCallId }
+      : {}),
+    executorRefCount: refs.length,
+    executorSlugs: [...new Set(refs.map((ref) => ref.executorSlug))],
+    hasCode: typeof code === 'string',
+    ...(typeof code === 'string' ? { codeLength: code.length } : {}),
+  }
+}
+
+/**
+ * Summarizes an Executor result for lifecycle logs without logging returned
+ * text, file contents, or resource URLs. Counts make delayed or malformed
+ * responses visible while the original result remains unchanged.
+ */
+function executorResultFields(output: unknown) {
+  if (!output || typeof output !== 'object') {
+    return {
+      contentBlockCount: 0,
+      generatedFileUrlCount: 0,
+      hasContinuationId: false,
+    }
+  }
+  const record = output as Record<string, unknown>
+  const content = Array.isArray(record.content) ? record.content : []
+  const structured =
+    record.structuredContent && typeof record.structuredContent === 'object'
+      ? (record.structuredContent as Record<string, unknown>)
+      : null
+  const generatedFileUrlCount = content.filter((block) => {
+    if (!block || typeof block !== 'object') return false
+    const item = block as Record<string, unknown>
+    const resource =
+      item.resource &&
+      typeof item.resource === 'object' &&
+      !Array.isArray(item.resource)
+        ? (item.resource as Record<string, unknown>)
+        : null
+    return (
+      (item.type === 'resource' &&
+        ((typeof item.uri === 'string' && item.uri.length > 0) ||
+          (typeof resource?.uri === 'string' && resource.uri.length > 0))) ||
+      (item.type === 'text' &&
+        typeof item.text === 'string' &&
+        /https?:\/\/\S+/u.test(item.text))
+    )
+  }).length
+  return {
+    contentBlockCount: content.length,
+    generatedFileUrlCount,
+    hasContinuationId: typeof structured?.session_id === 'string',
+  }
+}
 
 export const EXECUTOR_TOOL_KEY_PREFIX = buildMcpAiToolKey(
   EXECUTOR_MCP_SERVER_ID,
@@ -298,8 +380,81 @@ export class RuntimeMcpController {
         wrappedRawToolKeys.add(rawToolKey)
 
         if (!connectorId) {
+          const baseExecute = rawTool.execute
           acc[rawToolKey] = {
             ...rawTool,
+            ...(baseExecute
+              ? {
+                  execute: async (
+                    ...args: Parameters<NonNullable<typeof baseExecute>>
+                  ) => {
+                    const startedAt = Date.now()
+                    const callFields = executorToolCallFields(args)
+                    runtimeMcpLogger.info('mcp.tool_call.started', {
+                      agentName: this.host.name,
+                      serverId: tool.serverId,
+                      toolName: tool.name,
+                      ...callFields,
+                    })
+
+                    const result = await Result.tryPromise({
+                      try: async () => await baseExecute(...args),
+                      catch: (cause) =>
+                        cause instanceof Error
+                          ? cause
+                          : new Error(String(cause)),
+                    })
+
+                    if (result.isErr()) {
+                      const failure = extractExecutorToolFailure({
+                        error: result.error,
+                        toolName: tool.name,
+                        toolInput: args[0],
+                      })
+                      runtimeMcpLogger.error('mcp.tool_call.failed', {
+                        agentName: this.host.name,
+                        serverId: tool.serverId,
+                        toolName: tool.name,
+                        durationMs: Date.now() - startedAt,
+                        failureStage: failure?.stage ?? 'mcp_handoff',
+                        ...callFields,
+                        ...errorFields(result.error),
+                      })
+                      throw result.error
+                    }
+
+                    const failure = extractExecutorToolFailure({
+                      output: result.value,
+                      toolName: tool.name,
+                      toolInput: args[0],
+                    })
+                    if (failure) {
+                      runtimeMcpLogger.error('mcp.tool_call.failed', {
+                        agentName: this.host.name,
+                        serverId: tool.serverId,
+                        toolName: tool.name,
+                        durationMs: Date.now() - startedAt,
+                        failureStage: failure.stage,
+                        failureCode: failure.code,
+                        failureMessage: failure.message,
+                        ...callFields,
+                        ...executorResultFields(result.value),
+                      })
+                    } else {
+                      runtimeMcpLogger.info('mcp.tool_call.completed', {
+                        agentName: this.host.name,
+                        serverId: tool.serverId,
+                        toolName: tool.name,
+                        durationMs: Date.now() - startedAt,
+                        ...callFields,
+                        ...executorResultFields(result.value),
+                      })
+                    }
+
+                    return result.value
+                  },
+                }
+              : {}),
             needsApproval: async (
               input: unknown,
               options: {
@@ -336,10 +491,11 @@ export class RuntimeMcpController {
 
                   if (result.isOk()) return result.value
 
-                  console.warn('[agent-runtime] MCP tool call failed', {
+                  runtimeMcpLogger.warn('mcp.tool_call.failed', {
+                    agentName: this.host.name,
                     connectorId,
                     toolName: tool.name,
-                    error: result.error.message,
+                    ...errorFields(result.error),
                   })
 
                   return {
@@ -440,8 +596,9 @@ export class RuntimeMcpController {
     })
     if (result.isErr()) {
       this.activeGitHubHostedMcpTools = []
-      console.warn('[agent-runtime] GitHub hosted MCP discovery failed', {
-        error: result.error.message,
+      runtimeMcpLogger.warn('mcp.github_hosted.discovery_failed', {
+        agentName: this.host.name,
+        ...errorFields(result.error),
       })
       return
     }
@@ -462,10 +619,10 @@ export class RuntimeMcpController {
       ])
       if (syncResult.isErr()) {
         this.activeGitHubHostedMcpTools = []
-        console.warn(
-          '[agent-runtime] GitHub hosted MCP capability sync failed',
-          { error: syncResult.error.message },
-        )
+        runtimeMcpLogger.warn('mcp.github_hosted.capability_sync_failed', {
+          agentName: this.host.name,
+          ...errorFields(syncResult.error),
+        })
         return
       }
       this.githubHostedCapabilitiesSynced = true
@@ -554,14 +711,12 @@ export class RuntimeMcpController {
 
                   if (outcome.kind === 'success') return outcome.value
 
-                  console.warn(
-                    '[agent-runtime] native connector tool call failed',
-                    {
-                      connectorId: 'discord',
-                      toolName: nativeTool.name,
-                      error: outcome.message,
-                    },
-                  )
+                  runtimeMcpLogger.warn('mcp.native_tool_call.failed', {
+                    agentName: this.host.name,
+                    connectorId: 'discord',
+                    toolName: nativeTool.name,
+                    errorMessage: outcome.message,
+                  })
 
                   return {
                     error: true,
@@ -639,14 +794,12 @@ export class RuntimeMcpController {
 
                   if (outcome.kind === 'success') return outcome.value
 
-                  console.warn(
-                    '[agent-runtime] native connector tool call failed',
-                    {
-                      connectorId: 'github',
-                      toolName: nativeTool.name,
-                      error: outcome.message,
-                    },
-                  )
+                  runtimeMcpLogger.warn('mcp.native_tool_call.failed', {
+                    agentName: this.host.name,
+                    connectorId: 'github',
+                    toolName: nativeTool.name,
+                    errorMessage: outcome.message,
+                  })
 
                   return {
                     error: true,
@@ -702,13 +855,11 @@ export class RuntimeMcpController {
                   )
                   if (outcome.isOk()) return outcome.value
 
-                  console.warn(
-                    '[agent-runtime] GitHub hosted MCP tool call failed',
-                    {
-                      toolName: hostedTool.name,
-                      error: outcome.error.message,
-                    },
-                  )
+                  runtimeMcpLogger.warn('mcp.github_hosted.tool_call_failed', {
+                    agentName: this.host.name,
+                    toolName: hostedTool.name,
+                    ...errorFields(outcome.error),
+                  })
                   return {
                     error: true,
                     message: `github-mcp.${hostedTool.name} failed: ${outcome.error.message}`,
@@ -766,7 +917,8 @@ export class RuntimeMcpController {
   }) {
     const refs = extractExecutorToolRefsFromInput(args.toolArgs)
     if (refs.length === 0 && mentionsUnparsedExecutorTools(args.toolArgs)) {
-      console.warn('[agent-runtime] unparsed executor tool call', {
+      runtimeMcpLogger.warn('mcp.executor_tool_call.unparsed', {
+        agentName: this.host.name,
         toolCallId: args.toolCallId,
       })
     }
@@ -1060,12 +1212,10 @@ export class RuntimeMcpController {
       catch: (cause) => cause,
     }).then((result) => {
       if (result.isErr()) {
-        console.warn('[agent-runtime] failed to capture approval request', {
-          error:
-            result.error instanceof Error
-              ? result.error.message
-              : String(result.error),
+        runtimeMcpLogger.warn('mcp.approval_request.capture_failed', {
+          agentName: this.host.name,
           approvalId: insertResult.value,
+          ...errorFields(result.error),
         })
       }
     })
@@ -1448,9 +1598,8 @@ type RuntimeMcpConnectionPreparerOptions = {
   waitForConnections?: (timeoutMs: number) => Promise<unknown>
   getServerStates?: () => RuntimeMcpServerStates
   connectionWaitTimeoutMs?: number
-  backgroundRefreshFailedMessage: string
-  refreshFailedMessage: string
-  continuingWithoutReadyMessage: string
+  /** The owning runtime's logger, so MCP events carry its component. */
+  logger: GardenLogger
   readinessPolicy?: 'opportunistic' | 'required'
   onSuccessfulRefresh?: (controller: RuntimeMcpController) => void
   onThreadNotFound?: (
@@ -1465,23 +1614,28 @@ export class RuntimeMcpConnectionPreparer {
 
   constructor(private readonly options: RuntimeMcpConnectionPreparerOptions) {}
 
-  async ensureForTurn(reason: string) {
+  async ensureForTurn(
+    reason: string,
+    options?: { waitForReadiness?: boolean },
+  ) {
     const controller = this.options.getController()
     const now = Date.now()
     const warmResult = controller.hasWarmProxyMcpConnections(now)
+    const waitForReadiness = options?.waitForReadiness ?? true
 
     if (
       warmResult.isOk() &&
       warmResult.value &&
       now - this.lastFullSyncAt < this.options.fullSyncIntervalMs
     ) {
-      if (!this.shouldWaitForReadiness()) return controller
+      if (!this.shouldWaitForReadiness(waitForReadiness)) return controller
 
       const readinessResult = await this.waitForConnectionsReady(reason)
       if (readinessResult.isOk()) return controller
 
-      console.warn('[agent-runtime] warm MCP connector state is stale', {
-        error: readinessResult.error.message,
+      this.options.logger.warn('mcp.connectors.stale', {
+        reason,
+        errorMessage: readinessResult.error.message,
         serverIds: readinessResult.error.serverIds,
       })
 
@@ -1491,25 +1645,26 @@ export class RuntimeMcpConnectionPreparer {
           : undefined,
       )
       if (resetResult.isErr()) {
-        console.warn(
-          '[agent-runtime] failed to reset stale MCP connector servers',
-          resetResult.error,
-        )
+        this.options.logger.warn('mcp.connectors.reset_failed', {
+          reason,
+          ...errorFields(resetResult.error),
+        })
       }
     }
 
     if (warmResult.isErr()) {
-      console.warn(
-        '[agent-runtime] failed to inspect warm MCP connector state',
-        warmResult.error,
-      )
+      this.options.logger.warn('mcp.connectors.inspect_failed', {
+        reason,
+        ...errorFields(warmResult.error),
+      })
     }
 
-    const readyResult = await this.ensureLoaded(reason)
+    const readyResult = await this.ensureLoaded(reason, { waitForReadiness })
     if (readyResult.isErr()) {
-      console.warn(this.options.continuingWithoutReadyMessage, {
+      this.options.logger.warn('mcp.connectors.not_ready', {
         reason,
-        error: readyResult.error,
+        readinessPolicy: this.options.readinessPolicy ?? 'opportunistic',
+        errorMessage: readyResult.error,
       })
       if (this.options.readinessPolicy === 'required') {
         throw new RuntimeMcpError({
@@ -1538,9 +1693,9 @@ export class RuntimeMcpConnectionPreparer {
       },
       (cause: unknown) => {
         const message = cause instanceof Error ? cause.message : String(cause)
-        console.warn(this.options.backgroundRefreshFailedMessage, {
+        this.options.logger.warn('mcp.connectors.background_refresh_failed', {
           reason,
-          error: message,
+          errorMessage: message,
         })
         this.refreshInFlight = null
         return Result.err(message)
@@ -1564,9 +1719,9 @@ export class RuntimeMcpConnectionPreparer {
         await this.options.onThreadNotFound?.(reason, controller)
         return Result.ok(undefined)
       }
-      console.warn(this.options.refreshFailedMessage, {
+      this.options.logger.warn('mcp.connectors.refresh_failed', {
         reason,
-        error: connectionResult.error,
+        ...errorFields(connectionResult.error),
       })
       return Result.err(connectionResult.error.message)
     }
@@ -1574,9 +1729,9 @@ export class RuntimeMcpConnectionPreparer {
     if (options?.waitForReadiness !== false && this.shouldWaitForReadiness()) {
       const readinessResult = await this.waitForConnectionsReady(reason)
       if (readinessResult.isErr()) {
-        console.warn('[agent-runtime] MCP connector readiness check failed', {
+        this.options.logger.warn('mcp.connectors.readiness_failed', {
           reason,
-          error: readinessResult.error.message,
+          errorMessage: readinessResult.error.message,
           serverIds: readinessResult.error.serverIds,
         })
 
@@ -1586,10 +1741,10 @@ export class RuntimeMcpConnectionPreparer {
             : undefined,
         )
         if (resetResult.isErr()) {
-          console.warn(
-            '[agent-runtime] failed to reset stale MCP connector servers',
-            resetResult.error,
-          )
+          this.options.logger.warn('mcp.connectors.reset_failed', {
+            reason,
+            ...errorFields(resetResult.error),
+          })
         }
         return Result.err(readinessResult.error.message)
       }
@@ -1600,9 +1755,10 @@ export class RuntimeMcpConnectionPreparer {
     return Result.ok(undefined)
   }
 
-  private shouldWaitForReadiness() {
-    return Boolean(
-      this.options.waitForConnections && this.options.getServerStates,
+  private shouldWaitForReadiness(enabled = true) {
+    return (
+      enabled &&
+      Boolean(this.options.waitForConnections && this.options.getServerStates)
     )
   }
 

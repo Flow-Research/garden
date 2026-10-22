@@ -10,6 +10,7 @@ function issueRecord(
   return {
     id: '00000000-0000-0000-0000-000000000001',
     workspaceId: '00000000-0000-0000-0000-000000000002',
+    teamId: null,
     number: 42,
     title: 'Test issue',
     description: null,

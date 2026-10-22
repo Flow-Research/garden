@@ -1,6 +1,7 @@
 export * from './users.js'
 export * from './auth.js'
 export * from './workspaces.js'
+export * from './teams.js'
 export * from './agents.js'
 export * from './agent-proposals.js'
 export * from './chat.js'

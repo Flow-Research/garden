@@ -161,6 +161,10 @@
   --shadow-5:
     0 4px 4px -4px rgba(12, 12, 13, 0.05),
     0 16px 16px -8px rgba(12, 12, 13, 0.1);
+  --shadow-dark-3:
+    0 4px 4px -1px rgba(12, 12, 13, 0.4), 0 4px 4px -1px rgba(12, 12, 13, 0.6);
+  --shadow-dark-5:
+    0 4px 4px -4px rgba(12, 12, 13, 0.4), 0 16px 16px -8px rgba(12, 12, 13, 0.7);
   --shadow-7:
     0 -6px 5px -2px rgba(12, 12, 13, 0.05),
     0 -4px 6px -4px rgba(12, 12, 13, 0.05);
@@ -334,6 +338,11 @@
   --badge-yellow-text: #bf6a02;
   --badge-gray-background: #e3e3e3;
   --badge-gray-text: #767676;
+  --shadow-float-1:
+    0 4px 4px -1px rgba(12, 12, 13, 0.05), 0 4px 4px -1px rgba(12, 12, 13, 0.1);
+  --shadow-float-2:
+    0 4px 4px -4px rgba(12, 12, 13, 0.05),
+    0 16px 16px -8px rgba(12, 12, 13, 0.1);
   --scrollbar-thumb: var(--black-200);
   --scrollbar-thumb-hover: var(--black-300);
   --scrollbar-track: transparent;
@@ -377,31 +386,6 @@
   --warning: var(--text-warning-secondary);
   --info: var(--blue-500);
   --priority: var(--text-danger-secondary);
-
-  /* Compat — legacy garden vocabulary (TRANSITION ONLY — deleted after sweep) */
-  --parchment: var(--background-main-default);
-  --parchment-deep: var(--background-main-secondary);
-  --vellum: var(--background-main-default);
-  --vellum-heavy: var(--background-main-default);
-  --bone: var(--white-1000);
-  --ink: var(--text-neutral-default);
-  --gravel: var(--text-neutral-secondary);
-  --slate: var(--text-neutral-tertiary);
-  --stone: var(--text-tertiary);
-  --hairline: var(--border-default);
-  --hairline-soft: var(--gray-200);
-  --moss: var(--text-success-secondary);
-  --sage: var(--text-success-tertiary);
-  --amber: var(--text-warning-tertiary);
-  --clay: var(--text-danger-tertiary);
-  --lichen: var(--badge-green-background);
-  --lavender-mist: var(--badge-blue-background);
-  --peach: var(--badge-yellow-background);
-  --dusk-rose: var(--badge-gray-background);
-  --shadow-hairline: var(--shadow-1);
-  --shadow-hairline-soft: var(--shadow-2);
-  --shadow-float-1: var(--shadow-3);
-  --shadow-float-2: var(--shadow-5);
 }
 
 :root.dark {
@@ -543,6 +527,10 @@
   --badge-yellow-text: #ffe8a3;
   --badge-gray-background: #5a5a5a;
   --badge-gray-text: #e3e3e3;
+  --shadow-float-1:
+    0 4px 4px -1px rgba(12, 12, 13, 0.4), 0 4px 4px -1px rgba(12, 12, 13, 0.6);
+  --shadow-float-2:
+    0 4px 4px -4px rgba(12, 12, 13, 0.4), 0 16px 16px -8px rgba(12, 12, 13, 0.7);
   --scrollbar-thumb: var(--white-200);
   --scrollbar-thumb-hover: var(--white-300);
   --scrollbar-track: transparent;
@@ -872,6 +860,8 @@
   --color-badge-yellow-text: var(--badge-yellow-text);
   --color-badge-gray-background: var(--badge-gray-background);
   --color-badge-gray-text: var(--badge-gray-text);
+  --color-shadow-float-1: var(--shadow-float-1);
+  --color-shadow-float-2: var(--shadow-float-2);
 
   /* Compat — shadcn + garden extras */
   --color-background: var(--background);
@@ -911,31 +901,6 @@
   --color-warning: var(--warning);
   --color-info: var(--info);
   --color-priority: var(--priority);
-
-  /* Compat — legacy (transition only) */
-  --color-parchment: var(--parchment);
-  --color-parchment-deep: var(--parchment-deep);
-  --color-vellum: var(--vellum);
-  --color-vellum-heavy: var(--vellum-heavy);
-  --color-bone: var(--bone);
-  --color-ink: var(--ink);
-  --color-gravel: var(--gravel);
-  --color-slate: var(--slate);
-  --color-stone: var(--stone);
-  --color-hairline: var(--hairline);
-  --color-hairline-soft: var(--hairline-soft);
-  --color-moss: var(--moss);
-  --color-sage: var(--sage);
-  --color-amber: var(--amber);
-  --color-clay: var(--clay);
-  --color-lichen: var(--lichen);
-  --color-lavender-mist: var(--lavender-mist);
-  --color-peach: var(--peach);
-  --color-dusk-rose: var(--dusk-rose);
-  --shadow-hairline: var(--shadow-hairline);
-  --shadow-hairline-soft: var(--shadow-hairline-soft);
-  --shadow-float-1: var(--shadow-float-1);
-  --shadow-float-2: var(--shadow-float-2);
 
   /* Type scale — token values override Tailwind defaults (line-heights paired per composite roles) */
   --text-base: var(--font-size-base);
@@ -980,6 +945,8 @@
   --shadow-3: var(--shadow-3);
   --shadow-2: var(--shadow-2);
   --shadow-5: var(--shadow-5);
+  --shadow-dark-3: var(--shadow-dark-3);
+  --shadow-dark-5: var(--shadow-dark-5);
   --shadow-7: var(--shadow-7);
   --shadow-4: var(--shadow-4);
 }

@@ -23,11 +23,20 @@ import { existsSync } from 'node:fs'
 import { setTimeout as delay } from 'node:timers/promises'
 
 const root = fileURLToPath(new URL('../../../', import.meta.url))
+// The run lifecycle (executeWorkflowTurn, completeWorkflowTurn,
+// onSubmissionStatus) lives in run-sub-agent-base.ts and is inherited by
+// IssueRunSubAgent, so the base must be instrumented before the issue facet.
 const candidateProductionFiles = [
   'agent-tools/brain.ts',
   'brain-write-back-sub-agent.ts',
+  'run-sub-agent-base.ts',
   'issue-run-sub-agent.ts',
   'issue-brain-audience.ts',
+]
+const lifecycleMethods = [
+  'executeWorkflowTurn',
+  'completeWorkflowTurn',
+  'onSubmissionStatus',
 ]
 const digest = (text: string) => createHash('sha256').update(text).digest('hex')
 const snapshotSource = `function __g06Snapshot(role, runId) {
@@ -188,6 +197,7 @@ export async function startInstrumentedHarness(
   )
   const templates: CoverageMapData = {}
   const metadata: Snapshot['metadata'] = {}
+  const lifecycleCounters: Record<string, { path: string; key: string }> = {}
   for (const file of productionFiles) {
     const path = join(root, 'packages/agent-runtime/src', file)
     const source = await readFile(path, 'utf8')
@@ -224,14 +234,23 @@ export async function startInstrumentedHarness(
       file === 'issue-run-sub-agent.ts'
         ? 'IssueRunSubAgent'
         : 'BrainWriteBackSubAgent'
-    const methods =
-      file === 'issue-run-sub-agent.ts'
-        ? ['executeWorkflowTurn', 'completeWorkflowTurn', 'onSubmissionStatus']
+    // Counters are located where each method is declared; the wrapper is
+    // installed on the class that owns the scenario boundary.
+    const counterMethods =
+      file === 'run-sub-agent-base.ts'
+        ? lifecycleMethods
         : file === 'brain-write-back-sub-agent.ts'
           ? ['runWriteBack']
           : []
-    const targetCounters: Record<string, { path: string; key: string }> = {}
-    for (const method of methods) {
+    const methods =
+      file === 'issue-run-sub-agent.ts'
+        ? lifecycleMethods
+        : file === 'brain-write-back-sub-agent.ts'
+          ? ['runWriteBack']
+          : []
+    const targetCounters: Record<string, { path: string; key: string }> =
+      file === 'issue-run-sub-agent.ts' ? lifecycleCounters : {}
+    for (const method of counterMethods) {
       const lines = compiled.code.split('\n')
       const matching = lines.flatMap((line, index) =>
         line.trimStart().startsWith(`async ${method}(`) ? [index + 1] : [],
@@ -244,7 +263,14 @@ export async function startInstrumentedHarness(
       if (functions.length !== 1)
         throw new Error(`Missing native target counter: ${method}`)
       targetCounters[method] = { path, key: functions[0]![0] }
+      if (file === 'run-sub-agent-base.ts')
+        lifecycleCounters[method] = { path, key: functions[0]![0] }
     }
+    if (
+      file === 'issue-run-sub-agent.ts' &&
+      lifecycleMethods.some((method) => !lifecycleCounters[method])
+    )
+      throw new Error('Run lifecycle counters must be located before IssueRunSubAgent')
     if (methods.length) code += wrapSource(className, methods, targetCounters)
     code += `\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(JSON.stringify(sourceMap)).toString('base64')}\n`
     await writeFile(join(directory, 'packages/agent-runtime/src', file), code)

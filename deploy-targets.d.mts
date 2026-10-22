@@ -19,6 +19,7 @@ export interface DeploymentTarget {
   readonly executorBlobsId: string
   readonly executorBlobsBucket: string
   readonly agentDoId: string
+  readonly workspaceRealtimeId: string
   readonly automationTriggerId: string
   readonly workflowId: string
   readonly workflowName: string

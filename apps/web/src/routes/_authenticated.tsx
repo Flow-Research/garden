@@ -15,6 +15,7 @@ import { workspaceKeys } from '@/lib/workspace/queries'
 import { sanitizeRedirectTarget } from '@/lib/redirect'
 import { getAuthBootstrap } from '@/lib/server/auth-bootstrap'
 import { synchronizePostHogContext } from '@/lib/posthog-browser'
+import { initRealtime } from '@/lib/realtime/realtime-manager'
 
 function scheduleClientStoreHydration(callback: () => void) {
   if (typeof queueMicrotask === 'function') {
@@ -128,6 +129,7 @@ function AuthenticatedLayout() {
   // Hydrate singleton stores after the render that consumes loader data.
   // Updating them during render trips React's setState-in-render guard.
   if (typeof window !== 'undefined') {
+    initRealtime(qc)
     const nextKey = `${user.id}:${preferredWorkspaceId ?? ''}:${workspaces.map((workspace) => `${workspace.id}:${workspace.updated_at}`).join(',')}`
     if (hydratedKey.current !== nextKey) {
       hydratedKey.current = nextKey

@@ -34,7 +34,7 @@ import { z } from 'zod'
 import {
   attachSourceBindingInTransaction,
   type AttachSourceBindingInput,
-} from '@garden/core/issues/source-binding'
+} from './source-binding'
 import { startIssueRun, type IssueRunEnv } from './run-service'
 
 const MENTION_PATTERN = /@([A-Za-z0-9._-]+)/g
@@ -65,6 +65,7 @@ const createIssueInputSchema = z
     createdBy: issueInsertSchema.shape.createdBy,
     assigneeType: z.enum(['user', 'agent']).optional().nullable(),
     assigneeId: issueInsertSchema.shape.assigneeId.optional().nullable(),
+    teamId: issueInsertSchema.shape.teamId.optional().nullable(),
     parentId: issueInsertSchema.shape.parentId.optional().nullable(),
     projectId: issueInsertSchema.shape.projectId.optional().nullable(),
     dueDate: z.date().optional().nullable(),
@@ -184,18 +185,20 @@ export type IssueSummary = {
  * connection string. Callers pass `env.HYPERDRIVE.connectionString`. Previously
  * called `drizzle(databaseUrl)` from the neon-serverless driver, opening a fresh
  * direct-to-Neon WebSocket pool per call that bypassed Hyperdrive, never closed,
- * and defeated Neon autosuspend. `getPooledDb` memoizes one node-postgres pool
- * per connection string per isolate so Hyperdrive owns origin pooling.
+ * and defeated Neon autosuspend. `getPooledDb` creates a new invocation-local
+ * node-postgres pool on every call (it does not memoize), and Hyperdrive owns
+ * origin pooling behind it.
  */
 export function getIssueDb(databaseUrl: string) {
   return getPooledDb(databaseUrl)
 }
 
+// The driver's message stays on `cause` for logs; `message` reaches API clients
+// and must not carry raw Postgres error text.
 function serviceDbError(operation: string, cause: unknown) {
-  const message = cause instanceof Error ? cause.message : String(cause)
   return new IssueServiceError({
     code: 'db_error',
-    message: `${operation} failed: ${message}`,
+    message: `${operation} failed`,
     cause,
   })
 }
@@ -226,6 +229,7 @@ export function toIssue(
   return {
     id: record.id,
     workspace_id: record.workspaceId,
+    team_id: record.teamId ?? null,
     number: record.number,
     identifier: formatIssueIdentifier(options.issuePrefix, record.number),
     title: record.title,
@@ -245,8 +249,8 @@ export function toIssue(
     active_run_id: record.activeRunId ?? null,
     source_summary: sourceSummary,
     reactions: [],
-    created_at: dateToIso(record.createdAt) ?? new Date().toISOString(),
-    updated_at: dateToIso(record.updatedAt) ?? new Date().toISOString(),
+    created_at: record.createdAt.toISOString(),
+    updated_at: record.updatedAt.toISOString(),
   }
 }
 
@@ -758,6 +762,7 @@ export async function createIssue(
             createdBy: parsed.data.createdBy,
             assigneeType: parsed.data.assigneeType ?? null,
             assigneeId: parsed.data.assigneeId ?? null,
+            teamId: parsed.data.teamId ?? null,
             parentId: parsed.data.parentId ?? null,
             projectId: parsed.data.projectId ?? null,
             dueDate: parsed.data.dueDate ?? null,

@@ -9,16 +9,15 @@ import {
   ChatSubAgent,
   IssueRunSubAgent,
   RunWorkflow,
+  WorkspaceRealtimeDO,
 } from '@garden/agent-runtime'
 import { proxyToSandbox, Sandbox } from '@cloudflare/sandbox'
 import { Result } from 'better-result'
 import { createSessionAuth } from '@/lib/auth'
 import type { AppEnv } from '@/lib/server/env'
 import { bindAppEnv } from '@/lib/server/env'
-import {
-  isAgentRuntimeName,
-  requireAgentAccess,
-} from '@/lib/server/agent-do-router'
+import { requireAgentAccess } from '@/lib/server/agent-do-router'
+import { isAgentRuntimeName } from '@garden/server/runtime-bindings'
 import { reconcile } from '@/lib/server/issue-run-reconciler'
 import {
   createGardenLogger,
@@ -33,6 +32,7 @@ import {
   createAppRequestContext,
   getLoggedAuthSession,
 } from '@/lib/server/context'
+import { handleRealtimeConnect } from '@/lib/server/realtime'
 import { capturePostHogException } from '@/lib/posthog-server'
 import {
   ExecutorMcpExecutionOwnerDirectory,
@@ -52,6 +52,7 @@ export { ChatSubAgent }
 export { IssueRunSubAgent }
 export { RunWorkflow }
 export { Sandbox }
+export { WorkspaceRealtimeDO }
 export { ExecutorMcpExecutionOwnerDirectory, ExecutorMcpSession }
 
 type ServerEnv = AppEnv
@@ -282,20 +283,13 @@ async function logReturnedErrorResponse(input: {
 }) {
   if (input.response.status < 500 || input.response.status > 599) return
 
-  const bodyPreviewResult = await Result.tryPromise({
-    try: async () => await input.response.clone().text(),
-    catch: (cause) => cause,
-  })
-
-  input.logger.error(input.event, {
-    ...requestCompletionFields(input.response, input.startedAt, input.fields),
-    ...(bodyPreviewResult.isOk()
-      ? { responseBodyPreview: bodyPreviewResult.value.slice(0, 1_000) }
-      : {
-          responseBodyPreview: '[unavailable]',
-          ...errorFields(bodyPreviewResult.error),
-        }),
-  })
+  // The response body is deliberately not logged: 5xx bodies can carry
+  // provider payloads or secrets (same policy as api-logging.ts). Routes log
+  // their own failure details where they have them.
+  input.logger.error(
+    input.event,
+    requestCompletionFields(input.response, input.startedAt, input.fields),
+  )
 }
 
 export default {
@@ -345,6 +339,26 @@ export default {
     }
 
     const url = new URL(request.url)
+
+    if (url.pathname === '/api/realtime') {
+      const realtimeResult = await Result.tryPromise({
+        try: async () => await handleRealtimeConnect(request, env),
+        catch: (cause) => cause,
+      })
+      if (realtimeResult.isErr()) {
+        return responseFromCaughtError({
+          event: 'realtime.connect.failed',
+          status: 500,
+          fallback: 'Realtime connection failed',
+          cause: realtimeResult.error,
+          logger: webLogger,
+        })
+      }
+      return withRequestIdHeader(
+        realtimeResult.value,
+        baseRequestFields.requestId,
+      )
+    }
 
     if (url.pathname.startsWith('/agents/')) {
       const agentAuth = await authorizeAgentRequest(request, env, logger)

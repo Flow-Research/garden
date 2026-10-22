@@ -2,17 +2,17 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Database,
-  DotsThreeVertical,
+  EllipsisVertical,
   Download,
   Eye,
   File as FileIcon,
   Folder as FolderIcon,
   Lock,
   Plus,
-  ShareNetwork,
-  Trash,
-  UploadSimple,
-} from '@phosphor-icons/react'
+  Share2,
+  Trash2,
+  Upload,
+} from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -167,18 +167,14 @@ export function BrainFolderDetail({
                   <h2 className="flex min-w-0 items-center gap-2.5 text-2xl font-semibold tracking-[-0.04em] text-text-neutral-default">
                     <FolderIcon
                       className="size-5 shrink-0 text-text-brand-secondary"
-                      weight="fill"
+                      fill="currentColor"
                       aria-hidden="true"
                     />
                     <span className="truncate">{detail.item.name}</span>
                   </h2>
                   <p className="flex items-center gap-2 text-sm text-text-secondary">
                     {detail.item.privacy === 'private' ? (
-                      <Lock
-                        className="size-3.5"
-                        weight="regular"
-                        aria-hidden="true"
-                      />
+                      <Lock className="size-3.5" aria-hidden="true" />
                     ) : null}
                     <span className="capitalize">{detail.item.privacy}</span>
                     <span aria-hidden="true">·</span>
@@ -197,7 +193,7 @@ export function BrainFolderDetail({
                     aria-label={`Delete folder ${detail.item.name}`}
                     onClick={() => onDeleteFolder(detail.item)}
                   >
-                    <Trash className="size-4" weight="regular" />
+                    <Trash2 className="size-4" />
                   </Button>
                   {/* Design frame order: delete, Share, Upload file. Folder
                       sharing has no backend, so Share stays visible but
@@ -208,7 +204,7 @@ export function BrainFolderDetail({
                     disabled
                     title="Sharing is not available yet"
                   >
-                    <ShareNetwork className="size-4" weight="regular" />
+                    <Share2 className="size-4" />
                     Share
                   </Button>
                   <Button
@@ -216,7 +212,7 @@ export function BrainFolderDetail({
                     disabled={uploading}
                     onClick={onUploadFile}
                   >
-                    <UploadSimple className="size-4" weight="regular" />
+                    <Upload className="size-4" />
                     Upload file
                   </Button>
                 </div>
@@ -237,7 +233,7 @@ export function BrainFolderDetail({
                   disabled={detail.files.length === 0}
                   onClick={exportCsv}
                 >
-                  <Database className="size-4" weight="regular" />
+                  <Database className="size-4" />
                   Export Data
                 </Button>
 
@@ -255,7 +251,6 @@ export function BrainFolderDetail({
                   <span className="flex size-12 items-center justify-center">
                     <FileIcon
                       className="size-8 text-icon-neutral-tertiary"
-                      weight="regular"
                       aria-hidden="true"
                     />
                   </span>
@@ -272,7 +267,7 @@ export function BrainFolderDetail({
                     disabled={uploading}
                     onClick={onUploadFile}
                   >
-                    <Plus className="size-4" weight="regular" />
+                    <Plus className="size-4" />
                     Browse file
                   </Button>
                 </div>
@@ -310,7 +305,7 @@ export function BrainFolderDetail({
                         className="h-8"
                         onClick={() => setPendingRemoveFile(file)}
                       >
-                        <Trash className="size-3.5" weight="regular" />
+                        <Trash2 className="size-3.5" />
                         Delete
                       </Button>
                       <Button
@@ -320,7 +315,7 @@ export function BrainFolderDetail({
                         disabled={file.status !== 'ready'}
                         onClick={() => onPreviewFile(file)}
                       >
-                        <Eye className="size-3.5" weight="regular" />
+                        <Eye className="size-3.5" />
                         View
                       </Button>
                     </>
@@ -393,14 +388,14 @@ function FolderFileMenu({
         aria-label={`File actions for ${file.name}`}
         className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-icon-neutral-default transition-colors hover:bg-background-main-secondary-hover"
       >
-        <DotsThreeVertical className="size-4" weight="regular" />
+        <EllipsisVertical className="size-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
         <DropdownMenuItem
           disabled={!canPreview}
           onClick={() => onPreview(file)}
         >
-          <Eye className="size-4" weight="regular" />
+          <Eye className="size-4" />
           View file
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -411,12 +406,12 @@ function FolderFileMenu({
             anchor.click()
           }}
         >
-          <Download className="size-4" weight="regular" />
+          <Download className="size-4" />
           Download
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onClick={() => onDelete(file)}>
-          <Trash className="size-4" weight="regular" />
+          <Trash2 className="size-4" />
           Delete
         </DropdownMenuItem>
       </DropdownMenuContent>

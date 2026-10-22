@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer'
 import type { WorkspaceFsLike } from '@cloudflare/shell'
 import { and, desc, eq, or } from 'drizzle-orm'
+import type ExcelJS from 'exceljs'
 import { getPooledDb } from '@garden/db/runtime'
 import {
   AlignmentType,
@@ -196,6 +197,8 @@ function contentTypeForFileType(fileType: string, filename?: string) {
       return 'application/json'
     case 'csv':
       return 'text/csv'
+    case 'xlsx':
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     default:
       return 'application/octet-stream'
   }
@@ -1218,7 +1221,62 @@ export async function listDocumentVersions(args: {
   }
 }
 
+/**
+ * Converts an ExcelJS cell value to the plain text used by document tools.
+ * Before XLSX extraction, workbook cells had no text representation because
+ * the file type was unsupported. This keeps displayed text, formula results,
+ * errors, and dates readable in the extracted workbook content.
+ */
+function spreadsheetCellText(value: ExcelJS.CellValue): string {
+  if (value === null || value === undefined) return ''
+  if (typeof value !== 'object') return String(value)
+  if (value instanceof Date) return value.toISOString()
+  if ('richText' in value) return value.richText.map((run) => run.text).join('')
+  if ('text' in value) return value.text
+  if ('result' in value) return String(value.result ?? '')
+  if ('error' in value) return value.error
+  return ''
+}
+
+/**
+ * Flattens visible workbook sheets into tab-separated text for model reads.
+ * Before this, XLSX uploads were stored as `unknown` and `readDocument`
+ * returned "Unsupported document type", so Decide never received workbook
+ * data. The extraction mirrors the Brain extractor: one `## Sheet` block per
+ * visible sheet and rows joined with tabs, which keeps column boundaries for
+ * downstream analysis.
+ */
+async function extractXlsxText(bytes: Buffer) {
+  return Result.tryPromise({
+    try: async () => {
+      const { default: ExcelJS } = await import('exceljs')
+      const workbook = new ExcelJS.Workbook()
+      await workbook.xlsx.load(Buffer.from(bytes) as unknown as ArrayBuffer)
+      const sheets: string[] = []
+      workbook.eachSheet((sheet) => {
+        if (sheet.state === 'hidden' || sheet.state === 'veryHidden') return
+        const rows: string[] = []
+        sheet.eachRow({ includeEmpty: false }, (row) => {
+          const cells: string[] = []
+          row.eachCell({ includeEmpty: true }, (cell) => {
+            cells.push(spreadsheetCellText(cell.value))
+          })
+          if (cells.some((value) => value.trim() !== ''))
+            rows.push(cells.join('\t'))
+        })
+        sheets.push(`## ${sheet.name}\n${rows.join('\n')}`)
+      })
+      return sheets.join('\n\n')
+    },
+    catch: (error) =>
+      new DocumentToolError({
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+}
+
 async function extractDocumentText(bytes: Buffer, fileType: string) {
+  if (fileType === 'xlsx') return extractXlsxText(bytes)
   if (fileType === 'docx') {
     return Result.tryPromise({
       try: async () => {
@@ -1277,6 +1335,13 @@ function fileTypeFromFilename(filename: string, mediaType?: string | null) {
   if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'md'
   if (mediaType === 'application/json' || lower.endsWith('.json')) return 'json'
   if (mediaType === 'text/csv' || lower.endsWith('.csv')) return 'csv'
+  if (
+    mediaType ===
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    lower.endsWith('.xlsx')
+  ) {
+    return 'xlsx'
+  }
   return 'unknown'
 }
 

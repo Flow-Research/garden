@@ -14,6 +14,7 @@ export interface CreateIssueRequest {
   priority?: IssuePriority
   assignee_type?: IssueAssigneeType
   assignee_id?: string
+  team_id?: string
   parent_issue_id?: string
   project_id?: string
   due_date?: string
@@ -28,6 +29,8 @@ export interface UpdateIssueRequest {
   priority?: IssuePriority
   assignee_type?: IssueAssigneeType | null
   assignee_id?: string | null
+  /** Omitted preserves the current Team; null removes the issue from its Team. */
+  team_id?: string | null
   position?: number
   due_date?: string | null
   parent_issue_id?: string | null
@@ -38,6 +41,9 @@ export interface ListIssuesParams {
   limit?: number
   offset?: number
   workspace_id?: string
+  team_id?: string
+  /** When true, only issues with a non-null team_id. */
+  has_team?: boolean
   status?: IssueStatus
   priority?: IssuePriority
   assignee_id?: string
@@ -77,29 +83,4 @@ export interface CreateMemberRequest {
 
 export interface UpdateMemberRequest {
   role: MemberRole
-}
-
-// Personal Access Tokens
-export interface PersonalAccessToken {
-  id: string
-  name: string
-  token_prefix: string
-  expires_at: string | null
-  last_used_at: string | null
-  created_at: string
-}
-
-export interface CreatePersonalAccessTokenRequest {
-  name: string
-  expires_in_days?: number
-}
-
-export interface CreatePersonalAccessTokenResponse extends PersonalAccessToken {
-  token: string
-}
-
-// Pagination
-export interface PaginationParams {
-  limit?: number
-  offset?: number
 }

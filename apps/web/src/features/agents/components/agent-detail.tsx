@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Bot, Loader2 } from 'lucide-react'
+import { Bot } from 'lucide-react'
 import type { Agent } from '@garden/core/types'
 import { useAuthStore } from '@garden/app-state/auth'
 import { useWorkspaceId } from '@garden/app-state/hooks'
@@ -19,17 +19,11 @@ import {
 } from '@garden/ui/components/ui/tabs'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { cn } from '@garden/ui/lib/utils'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 
 import { AgentAccessTab } from './agent-access-tab'
 import { AgentSkillsTab } from './agent-skills-tab'
-
-const STATUS_COLOR: Record<Agent['status'], string> = {
-  idle: 'bg-zinc-400',
-  working: 'bg-emerald-500',
-  blocked: 'bg-amber-500',
-  error: 'bg-red-500',
-  offline: 'bg-zinc-300',
-}
+import { AGENT_STATUS_COLOR } from './agent-status'
 
 export function AgentDetail({
   agentId,
@@ -133,7 +127,9 @@ function StatusPill({ status }: { status: Agent['status'] }) {
       variant="outline"
       className="rounded-full border-border/70 bg-muted/40 text-[11px] text-muted-foreground capitalize"
     >
-      <span className={cn('size-1.5 rounded-full', STATUS_COLOR[status])} />
+      <span
+        className={cn('size-1.5 rounded-full', AGENT_STATUS_COLOR[status])}
+      />
       {status}
     </Badge>
   )
@@ -202,7 +198,7 @@ function AgentDetailSkeleton() {
         </div>
       </div>
       <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
-        <Loader2 className="mr-2 size-3.5 animate-spin" />
+        <Spinner className="mr-2 size-3.5" />
         Loading agent…
       </div>
     </div>

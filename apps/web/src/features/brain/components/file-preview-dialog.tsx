@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { PdfFilePreview } from './pdf-file-preview'
 import { XlsxFilePreview } from './xlsx-file-preview'
-import { Download, FileText, Loader2, X } from 'lucide-react'
+import { Download, FileText, X } from 'lucide-react'
 import { Button, buttonVariants } from '@garden/ui/components/ui/button'
 import { Markdown } from '@garden/ui/markdown'
 import {
@@ -11,13 +11,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@garden/ui/components/ui/dialog'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import type { BrainFileSummary } from '../api'
 import {
   brainFileExtractedTextOptions,
   brainFilePdfOptions,
   brainFileTextOptions,
 } from '../queries'
-import { formatRelativeTime, truncateMiddle } from '../format'
+import { timeAgo } from '@garden/core/format'
+import { truncateMiddle } from '../format'
 
 type PreviewKind = 'docx' | 'pdf' | 'text' | 'xlsx' | 'unavailable'
 
@@ -27,7 +29,11 @@ function previewKind(filename: string): PreviewKind {
   if (normalizedName.endsWith('.pdf')) return 'pdf'
   if (normalizedName.endsWith('.docx')) return 'docx'
   if (normalizedName.endsWith('.xlsx')) return 'xlsx'
-  if (normalizedName.endsWith('.md') || normalizedName.endsWith('.txt'))
+  if (
+    normalizedName.endsWith('.csv') ||
+    normalizedName.endsWith('.md') ||
+    normalizedName.endsWith('.txt')
+  )
     return 'text'
 
   return 'unavailable'
@@ -44,7 +50,7 @@ function PreviewLoading() {
       role="status"
       className="flex min-h-[65vh] items-center justify-center gap-2 text-sm text-muted-foreground"
     >
-      <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+      <Spinner aria-hidden="true" />
       Loading preview...
     </div>
   )
@@ -116,7 +122,7 @@ function DocxFilePreview({ fileId }: { fileId: string }) {
 
 /**
  * Shows a workspace file through the authenticated Brain content route.
- * PDF, DOCX, XLSX, TXT, and MD files render inline. Other supported files keep
+ * PDF, DOCX, XLSX, CSV, TXT, and MD files render inline. Other supported files keep
  * a clear download path when Garden cannot render them in the browser.
  *
  * Chrome follows the Penpot "View a File / Doc" modal (1235px): 24px title
@@ -146,7 +152,7 @@ export function BrainFilePreviewDialog({
   const pageCount = pdfQuery.data?.numPages
   const metaLine = [
     file.createdByName ? `Made by ${file.createdByName}` : null,
-    file.uploadedAt ? formatRelativeTime(file.uploadedAt) : null,
+    file.uploadedAt ? timeAgo(file.uploadedAt, { absoluteAfterDays: 7 }) : null,
   ]
     .filter(Boolean)
     .join(' · ')

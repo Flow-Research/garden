@@ -21,50 +21,49 @@ import {
 } from '@/lib/server/validation/issues'
 import {
   badRequest,
+  getWorkspaceIssuePrefix,
   notFound,
-  requireWorkspaceAccess,
   toIssue,
 } from '@/lib/server/control-plane'
 import {
   requireWorkspacePermission,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
+import { publishWorkspaceEvent } from '@/lib/server/realtime'
+import { requireIssueAccess } from '@/lib/server/issue-access'
+import {
+  isWorkspaceManager,
+  requireTeamAccess,
+  teamError,
+} from '@/lib/server/team-access'
+import {
+  isWorkspaceIssue,
+  isWorkspaceParticipant,
+} from '@/lib/server/workspace-refs'
 import {
   cancelIssueRun,
   startIssueRun,
 } from '@garden/server/issues/run-service'
 import { cancelLiveRunsOnIssueChange } from '@garden/core/issues/run-sync'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
+
+const logger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'issues-api',
+})
 
 export const Route = createFileRoute('/api/issues/$id')({
   server: {
     handlers: {
-      GET: async ({ context, request, params }) => {
+      GET: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)
-        const db = await appContext.db()
-        const [existingIssue] = await db
-          .select({ workspaceId: schema.issue.workspaceId })
-          .from(schema.issue)
-          .where(eq(schema.issue.id, params.id))
-        if (!existingIssue) return notFound('Issue not found')
-
-        const access = await requireWorkspaceAccess(
-          request,
-          existingIssue.workspaceId,
-        )
+        const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
-
-        const [issue] = await db
-          .select()
-          .from(schema.issue)
-          .where(
-            and(
-              eq(schema.issue.id, params.id),
-              eq(schema.issue.workspaceId, existingIssue.workspaceId),
-            ),
-          )
-
-        if (!issue) return notFound('Issue not found')
-        return Response.json(toIssue(issue))
+        const issuePrefix = await getWorkspaceIssuePrefix(
+          access.db,
+          access.issue.workspaceId,
+        )
+        return Response.json(toIssue(access.issue, { issuePrefix }))
       },
       PUT: async ({ context, request, params }) => {
         const appContext = requireAppRequestContext(context)
@@ -75,6 +74,118 @@ export const Route = createFileRoute('/api/issues/$id')({
         )
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
+
+        const access = await requireIssueAccess(appContext, params.id)
+        if (access instanceof Response) return access
+        const existingIssue = access.issue
+        const db = access.db
+        const session = access.session
+        const isManager = access.isWorkspaceManager
+        const isTeamOwner = access.isTeamOwner
+
+        // Team issues are editable by the Team owner and Team members; workspace
+        // issues keep the existing issueManage permission.
+        const teamScoped = existingIssue.teamId !== null
+        const privileged = isManager || (teamScoped && isTeamOwner)
+        const canEdit = privileged || (teamScoped && access.teamMembership)
+        if (!canEdit) {
+          const permission = await requireWorkspacePermission({
+            appContext,
+            request,
+            workspaceId: existingIssue.workspaceId,
+            permissions: workspacePermissions.issueManage,
+          })
+          if (permission) return permission
+        }
+
+        const nextTeamId = Object.prototype.hasOwnProperty.call(body, 'team_id')
+          ? (body.team_id ?? null)
+          : existingIssue.teamId
+        const teamChanged = nextTeamId !== existingIssue.teamId
+
+        if (teamChanged) {
+          if (!privileged && !isManager) {
+            return teamError(
+              403,
+              'ISSUE_TEAM_ACCESS_DENIED',
+              'Only workspace managers and Team owners can move issues between Teams',
+            )
+          }
+          if (nextTeamId !== null) {
+            const targetAccess = await requireTeamAccess(appContext, nextTeamId)
+            if (targetAccess instanceof Response) return targetAccess
+            const targetManager = isWorkspaceManager(
+              targetAccess.workspaceMembership.role,
+            )
+            const targetOwner =
+              targetAccess.team.ownerUserId === session.user.id
+            if (!(isManager || targetManager || targetOwner)) {
+              return teamError(
+                403,
+                'ISSUE_TEAM_ACCESS_DENIED',
+                'Team access denied for target Team',
+              )
+            }
+          } else if (!(isManager || isTeamOwner)) {
+            return teamError(
+              403,
+              'ISSUE_TEAM_ACCESS_DENIED',
+              'Only workspace managers and the Team owner can move issues out of a Team',
+            )
+          }
+        }
+
+        if (!privileged) {
+          if (Object.prototype.hasOwnProperty.call(body, 'assignee_id')) {
+            if (
+              body.assignee_type === 'agent' ||
+              body.assignee_id !== session.user.id
+            ) {
+              return teamError(
+                403,
+                'ISSUE_TEAM_ACCESS_DENIED',
+                'Team members can only assign issues to themselves',
+              )
+            }
+          }
+        }
+
+        const assigneeFieldPresent = Object.prototype.hasOwnProperty.call(
+          body,
+          'assignee_id',
+        )
+        const resultingAssigneeId = assigneeFieldPresent
+          ? (body.assignee_id ?? null)
+          : existingIssue.assigneeId
+        if (nextTeamId !== null && (teamChanged || assigneeFieldPresent)) {
+          if (!resultingAssigneeId) {
+            return badRequest('Team issues must be assigned to a Team member')
+          }
+          const resultingAssigneeType =
+            assigneeFieldPresent && typeof body.assignee_id === 'string'
+              ? body.assignee_type === 'agent'
+                ? 'agent'
+                : 'user'
+              : existingIssue.assigneeType
+          const assigneeCondition =
+            resultingAssigneeType === 'agent'
+              ? and(
+                  eq(schema.teamMember.teamId, nextTeamId),
+                  eq(schema.teamMember.agentId, resultingAssigneeId),
+                )
+              : and(
+                  eq(schema.teamMember.teamId, nextTeamId),
+                  eq(schema.teamMember.userId, resultingAssigneeId),
+                )
+          const [assigneeMembership] = await db
+            .select({ id: schema.teamMember.id })
+            .from(schema.teamMember)
+            .where(assigneeCondition)
+          if (!assigneeMembership) {
+            return badRequest('Assignee must be a Team member')
+          }
+        }
+
         const updateValues: Partial<typeof schema.issue.$inferInsert> = {}
 
         if (typeof body.title === 'string') updateValues.title = body.title
@@ -97,6 +208,9 @@ export const Route = createFileRoute('/api/issues/$id')({
                 : 'user'
               : null
         }
+        if (Object.prototype.hasOwnProperty.call(body, 'team_id')) {
+          updateValues.teamId = nextTeamId
+        }
         if (Object.prototype.hasOwnProperty.call(body, 'parent_issue_id')) {
           updateValues.parentId = body.parent_issue_id ?? null
         }
@@ -110,32 +224,34 @@ export const Route = createFileRoute('/api/issues/$id')({
 
         updateValues.updatedAt = new Date()
 
-        const db = await appContext.db()
-        const [existingIssue] = await db
-          .select({
-            workspaceId: schema.issue.workspaceId,
-            status: schema.issue.status,
-            assigneeType: schema.issue.assigneeType,
-            assigneeId: schema.issue.assigneeId,
-            activeRunId: schema.issue.activeRunId,
-          })
-          .from(schema.issue)
-          .where(eq(schema.issue.id, params.id))
-        if (!existingIssue) return notFound('Issue not found')
-
-        const access = await requireWorkspaceAccess(
-          request,
-          existingIssue.workspaceId,
-        )
-        if (access instanceof Response) return access
-
-        const permission = await requireWorkspacePermission({
-          appContext,
-          request,
-          workspaceId: existingIssue.workspaceId,
-          permissions: workspacePermissions.issueManage,
-        })
-        if (permission) return permission
+        // IDs from the body are global: confirm they live in this workspace
+        // before storing them (and before emailing an assignee below).
+        if (updateValues.assigneeId) {
+          const assigneeInWorkspace = await isWorkspaceParticipant(
+            db,
+            existingIssue.workspaceId,
+            {
+              type: updateValues.assigneeType === 'agent' ? 'agent' : 'member',
+              id: updateValues.assigneeId,
+            },
+          )
+          if (!assigneeInWorkspace) {
+            return badRequest('Assignee is not in this workspace')
+          }
+        }
+        if (updateValues.parentId) {
+          if (updateValues.parentId === params.id) {
+            return badRequest('An issue cannot be its own parent')
+          }
+          const parentInWorkspace = await isWorkspaceIssue(
+            db,
+            existingIssue.workspaceId,
+            updateValues.parentId,
+          )
+          if (!parentInWorkspace) {
+            return badRequest('Parent issue is not in this workspace')
+          }
+        }
 
         const [issue] = await db
           .update(schema.issue)
@@ -179,7 +295,10 @@ export const Route = createFileRoute('/api/issues/$id')({
             catch: (cause) => cause,
           })
           if (subscriberResult.isErr())
-            console.error('issue_subscriber_add_failed', subscriberResult.error)
+            logger.error(
+              'issue.subscriber_add_failed',
+              errorFields(subscriberResult.error),
+            )
         }
 
         if (
@@ -193,13 +312,13 @@ export const Route = createFileRoute('/api/issues/$id')({
             workspaceId: existingIssue.workspaceId,
             issueId: issue.id,
             actorType: 'member',
-            actorId: access.session.user.id,
+            actorId: session.user.id,
           })
 
           // Out-of-app nudge for the new assignee. Skip self-assignment (no
           // point emailing yourself) and keep it best-effort so a Resend failure
           // never fails the assignment write.
-          if (issue.assigneeId !== access.session.user.id) {
+          if (issue.assigneeId !== session.user.id) {
             const [assignee] = await db
               .select({ email: schema.user.email })
               .from(schema.user)
@@ -211,7 +330,7 @@ export const Route = createFileRoute('/api/issues/$id')({
 
             if (assignee?.email) {
               const assignerName =
-                access.session.user.name?.trim() || access.session.user.email
+                session.user.name?.trim() || session.user.email
               const emailResult = await Result.tryPromise({
                 try: () =>
                   sendIssueAssignmentEmail({
@@ -231,9 +350,9 @@ export const Route = createFileRoute('/api/issues/$id')({
                 catch: (cause) => cause,
               })
               if (emailResult.isErr())
-                console.error(
-                  'issue_assignment_email_failed',
-                  emailResult.error,
+                logger.error(
+                  'issue.assignment_email_failed',
+                  errorFields(emailResult.error),
                 )
             }
           }
@@ -279,10 +398,15 @@ export const Route = createFileRoute('/api/issues/$id')({
             const cancelResult = await cancelIssueRun(appEnv, {
               workspaceId: existingIssue.workspaceId,
               runId: run.id,
-              actor: { type: 'member', id: access.session.user.id },
+              actor: { type: 'member', id: session.user.id },
               reason: 'issue_changed',
             })
-            if (cancelResult.isErr()) console.error(cancelResult.error.message)
+            if (cancelResult.isErr()) {
+              logger.error(
+                'issue.run_cancel_failed',
+                errorFields(cancelResult.error),
+              )
+            }
           }
         }
 
@@ -292,43 +416,59 @@ export const Route = createFileRoute('/api/issues/$id')({
             issueId: issue.id,
             agentId: issue.assigneeId,
             source: 'assignment',
-            actor: { type: 'member', id: access.session.user.id },
+            actor: { type: 'member', id: session.user.id },
           })
-          if (startResult.isErr()) console.error(startResult.error.message)
+          if (startResult.isErr()) {
+            logger.error(
+              'issue.run_start_failed',
+              errorFields(startResult.error),
+            )
+          }
         }
-        return Response.json(toIssue(issue))
-      },
-      DELETE: async ({ context, request, params }) => {
-        const appContext = requireAppRequestContext(context)
-        const db = await appContext.db()
-        const [existingIssue] = await db
-          .select({ workspaceId: schema.issue.workspaceId })
-          .from(schema.issue)
-          .where(eq(schema.issue.id, params.id))
-        if (!existingIssue) return notFound('Issue not found')
-
-        const access = await requireWorkspaceAccess(
-          request,
+        const issuePrefix = await getWorkspaceIssuePrefix(
+          db,
           existingIssue.workspaceId,
         )
+        const updatedIssue = toIssue(issue, { issuePrefix })
+        appContext.waitUntil(
+          publishWorkspaceEvent(appContext.env, existingIssue.workspaceId, {
+            type: 'issue:updated',
+            payload: { issue: updatedIssue },
+          }),
+        )
+        return Response.json(updatedIssue)
+      },
+      DELETE: async ({ context, params }) => {
+        const appContext = requireAppRequestContext(context)
+        const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
 
         const permission = await requireWorkspacePermission({
           appContext,
-          request,
-          workspaceId: existingIssue.workspaceId,
+          request: appContext.request,
+          workspaceId: access.issue.workspaceId,
           permissions: workspacePermissions.issueManage,
         })
         if (permission) return permission
 
-        await db
+        await access.db
           .delete(schema.issue)
           .where(
             and(
               eq(schema.issue.id, params.id),
-              eq(schema.issue.workspaceId, existingIssue.workspaceId),
+              eq(schema.issue.workspaceId, access.issue.workspaceId),
             ),
           )
+        appContext.waitUntil(
+          publishWorkspaceEvent(appContext.env, access.issue.workspaceId, {
+            type: 'issue:deleted',
+            payload: {
+              issue_id: access.issue.id,
+              team_id: access.issue.teamId,
+              assignee_id: access.issue.assigneeId,
+            },
+          }),
+        )
 
         return new Response(null, { status: 204 })
       },

@@ -7,7 +7,11 @@
  */
 import { getToolInput, getToolPartState } from '@cloudflare/ai-chat/react'
 import { getToolName, isToolUIPart } from 'ai'
-import { canonicalizeJson } from '@garden/connectors/capabilities'
+import {
+  canonicalizeJson,
+  extractExecutorToolRefs,
+} from '@garden/connectors/capabilities'
+import { getConnectorByExecutorSlug } from '@garden/connectors/registry'
 import { isToolStateActive } from './chat-tool-state'
 import {
   normalizeGardenArtifact,
@@ -112,6 +116,7 @@ export function getToolActivityItem(args: {
     state === 'output-error' && typeof record.errorText === 'string'
       ? record.errorText
       : undefined
+  const mcpFailure = extractMcpFailure(output)
   const label = args.debugMode
     ? toolName
     : productToolLabel(toolName, input, output)
@@ -126,8 +131,8 @@ export function getToolActivityItem(args: {
       ]
         .filter(Boolean)
         .join('\n\n')
-    : errorText
-      ? `error — ${errorText}`
+    : errorText || mcpFailure
+      ? `error — ${mcpFailure?.stage ? `${mcpFailure.stage}: ` : ''}${errorText ?? mcpFailure?.message}`
       : toolStateLabel(state)
 
   return {
@@ -138,8 +143,58 @@ export function getToolActivityItem(args: {
     label,
     output,
     state,
-    tone: errorText ? 'error' : active ? 'tool' : 'info',
+    tone: errorText || mcpFailure ? 'error' : active ? 'tool' : 'info',
     toolName,
+  }
+}
+
+/**
+ * Extracts the customer-safe error from an MCP result envelope. Decide returns
+ * domain failures as `isError: true` with `structuredContent`; AI SDK failures
+ * use `errorText`. The UI must show both shapes instead of treating the MCP
+ * envelope as a completed tool call. Only error text is read, never file data.
+ */
+export function extractMcpFailure(output: unknown) {
+  if (!output || typeof output !== 'object') return null
+  const record = output as Record<string, unknown>
+  const structured =
+    record.structuredContent && typeof record.structuredContent === 'object'
+      ? (record.structuredContent as Record<string, unknown>)
+      : null
+  const failed =
+    record.isError === true ||
+    record.ok === false ||
+    structured?.status === 'error'
+  if (!failed) return null
+  const contentText = Array.isArray(record.content)
+    ? record.content
+        .map((block) => {
+          if (!block || typeof block !== 'object') return ''
+          const item = block as Record<string, unknown>
+          return item.type === 'text' && typeof item.text === 'string'
+            ? item.text.trim()
+            : ''
+        })
+        .filter(Boolean)
+        .join('\n')
+    : ''
+  const errorText = (value: unknown) => {
+    if (typeof value === 'string' && value.trim()) return value.trim()
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return ''
+    const error = value as Record<string, unknown>
+    return typeof error.message === 'string' ? error.message.trim() : ''
+  }
+  const message =
+    errorText(structured?.error) ||
+    errorText(record.error) ||
+    contentText ||
+    'The integration returned an error.'
+  return {
+    message,
+    stage:
+      typeof structured?.failureStage === 'string'
+        ? structured.failureStage
+        : undefined,
   }
 }
 
@@ -253,6 +308,23 @@ export function productToolLabel(
         : typeof record.title === 'string'
           ? record.title
           : null
+  const executorRefs =
+    typeof record.code === 'string' ? extractExecutorToolRefs(record.code) : []
+  const executorRef = executorRefs[0]
+  if (toolName.includes('executor') && executorRef) {
+    const integrationLabel =
+      getConnectorByExecutorSlug(executorRef.executorSlug)?.label ??
+      (executorRef.executorSlug === 'decide'
+        ? 'Decide'
+        : executorRef.executorSlug.replaceAll('_', ' '))
+    if (executorRef.tool.toLowerCase().includes('analy')) {
+      return `Running analysis with ${integrationLabel}`
+    }
+    return `Running ${integrationLabel}`
+  }
+  if (toolName.includes('executor') && toolName.endsWith('_skills')) {
+    return 'Preparing integration tools'
+  }
   switch (toolName) {
     case 'listDocuments':
       return 'Checking available documents'

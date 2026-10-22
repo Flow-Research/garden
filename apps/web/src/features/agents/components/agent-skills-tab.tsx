@@ -100,10 +100,15 @@ export function AgentSkillsTab({
   const handleDetach = async (skillId: string) => {
     const next = attached.filter((s) => s.id !== skillId)
     qc.setQueryData<AgentSkill[]>(assignmentKey, next)
-    await commit(next).catch(() => {
-      qc.setQueryData<AgentSkill[]>(assignmentKey, attached)
-    })
-    toast.success('Skill detached')
+    // The mutation's onError already shows the failure toast.
+    const detached = await commit(next).then(
+      () => true,
+      () => {
+        qc.setQueryData<AgentSkill[]>(assignmentKey, attached)
+        return false
+      },
+    )
+    if (detached) toast.success('Skill detached')
   }
 
   const permissionsMutation = useMutation({

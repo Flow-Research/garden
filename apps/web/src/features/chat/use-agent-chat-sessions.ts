@@ -15,6 +15,7 @@ import {
 import { useAuthStore } from '@garden/app-state/auth'
 import { useChatStore } from '@garden/app-state/chat'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
+import { chatThreadKeys } from './queries'
 
 export type { AgentChatSession }
 export { isPendingFirstTurn, NEW_SESSION_TITLE, sortSessions }
@@ -40,7 +41,7 @@ export function useAgentSessions() {
   const workspaceId = workspace?.id ?? null
 
   const queryKey = useMemo(
-    () => ['chat-threads', workspaceId, user?.id ?? null] as const,
+    () => chatThreadKeys.list(workspaceId, user?.id ?? null),
     [workspaceId, user?.id],
   )
 

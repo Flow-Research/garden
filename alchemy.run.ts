@@ -266,6 +266,15 @@ export default Alchemy.Stack(
         },
       ],
     })
+    yield* deployed.bind(deployTarget.workspaceRealtimeId, {
+      bindings: [
+        {
+          type: 'durable_object_namespace',
+          name: 'WORKSPACE_REALTIME',
+          className: 'WorkspaceRealtimeDO',
+        },
+      ],
+    })
     yield* deployed.bind(deployTarget.sandboxId, {
       bindings: [
         {
@@ -292,7 +301,15 @@ export default Alchemy.Stack(
     yield* sandboxApplication.bind('Sandbox', {
       durableObjects: {
         namespaceId: deployed.durableObjectNamespaces.pipe(
-          Output.map((namespaces) => namespaces?.Sandbox),
+          Output.map((namespaces) => {
+            const namespaceId = namespaces?.Sandbox
+            if (!namespaceId) {
+              throw new Error(
+                'The Sandbox Durable Object namespace was not deployed',
+              )
+            }
+            return namespaceId
+          }),
         ),
       },
     })
@@ -381,11 +398,7 @@ function optionalCredentialPairBindings(
   clientId: string,
   clientSecret: string,
 ) {
-  return optionalCredentialPairIsConfigured(
-    process.env,
-    clientId,
-    clientSecret,
-  )
+  return optionalCredentialPairIsConfigured(process.env, clientId, clientSecret)
     ? {
         [clientId]: plainEnv(clientId),
         [clientSecret]: Config.redacted(clientSecret),

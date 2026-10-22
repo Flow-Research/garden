@@ -307,7 +307,7 @@ export type Flow = {
   steps: FlowStep[]
 }
 
-export const flows: Flow[] = [
+export const flows: [Flow, ...Flow[]] = [
   {
     id: 'task',
     label: 'A task run',

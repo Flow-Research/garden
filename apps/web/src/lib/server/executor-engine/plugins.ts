@@ -11,6 +11,36 @@ import {
 } from '@executor-js/plugin-openapi/providers/microsoft'
 import { encryptedSecretsPlugin } from '@executor-js/plugin-encrypted-secrets'
 import { toolkitsPlugin } from '@executor-js/plugin-toolkits/server'
+import { createGardenLogger } from '@garden/observability/logger'
+
+type PublicMcpProgress = {
+  readonly progress?: number
+  readonly total?: number
+  readonly message?: string
+}
+
+const executorMcpLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'executor-mcp-progress',
+})
+
+/**
+ * Records Decide's public MCP progress without logging code, prompts, tokens,
+ * or generated content. The MCP SDK supplies this callback while the remote
+ * server is still running, so the lifecycle log can distinguish active work
+ * from a silent transport timeout.
+ */
+export function logPublicMcpProgress(progress: PublicMcpProgress) {
+  executorMcpLogger.info('mcp.integration.progress', {
+    ...(typeof progress.progress === 'number'
+      ? { progress: progress.progress }
+      : {}),
+    ...(typeof progress.total === 'number' ? { total: progress.total } : {}),
+    ...(typeof progress.message === 'string' && progress.message.trim()
+      ? { progressMessage: progress.message.trim() }
+      : {}),
+  })
+}
 
 export const makeExecutorPlugins = (
   secretKey: string,
@@ -21,7 +51,10 @@ export const makeExecutorPlugins = (
       presets: [...googleCatalog, ...microsoftCatalog],
       specFormats: [googleDiscoveryAdapter, microsoftGraphAdapter],
     }),
-    mcpPlugin({ dangerouslyAllowStdioMCP: false }),
+    mcpPlugin({
+      dangerouslyAllowStdioMCP: false,
+      onProgress: logPublicMcpProgress,
+    }),
     graphqlPlugin(),
     toolkitsPlugin({ activeToolkitSlug: options.activeToolkitSlug }),
     encryptedSecretsPlugin({ key: secretKey }),

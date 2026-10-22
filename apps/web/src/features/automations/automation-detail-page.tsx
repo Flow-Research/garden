@@ -16,8 +16,10 @@ import {
   Zap,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { formatCompactNumber, formatDateTime } from '@garden/core/format'
 import type { Agent } from '@garden/core/types'
 import type { Automation, AutomationRun, AutomationTrigger } from '@/lib/api'
+import type { AutomationRunStatus } from '@/lib/api/automations'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { Button } from '@garden/ui/components/ui/button'
 import {
@@ -52,15 +54,6 @@ import {
   toCronExpression,
   type TriggerConfig,
 } from './trigger-config'
-
-function formatDate(date: string): string {
-  return new Date(date).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
 
 function numberValue(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
@@ -131,23 +124,24 @@ function traceLabel(kind: string) {
   }
 }
 
-function formatTokenCount(value: number) {
-  return Intl.NumberFormat(undefined, { notation: 'compact' }).format(value)
-}
-
 const RUN_STATUS_CONFIG: Record<
-  string,
+  AutomationRunStatus,
   { label: string; color: string; icon: typeof CheckCircle2 }
 > = {
-  queued: {
-    label: 'Queued',
-    color: 'text-blue-500',
+  pending: {
+    label: 'Pending',
+    color: 'text-muted-foreground',
     icon: Clock,
   },
-  running: { label: 'Running', color: 'text-blue-500', icon: Loader2 },
+  queued: {
+    label: 'Queued',
+    color: 'text-info',
+    icon: Clock,
+  },
+  running: { label: 'Running', color: 'text-info', icon: Loader2 },
   completed: {
     label: 'Completed',
-    color: 'text-emerald-500',
+    color: 'text-text-success-tertiary',
     icon: CheckCircle2,
   },
   failed: { label: 'Failed', color: 'text-destructive', icon: XCircle },
@@ -156,7 +150,11 @@ const RUN_STATUS_CONFIG: Record<
     color: 'text-muted-foreground',
     icon: Pause,
   },
-  skipped: { label: 'Skipped', color: 'text-amber-500', icon: Pause },
+  skipped: {
+    label: 'Skipped',
+    color: 'text-text-warning-tertiary',
+    icon: Pause,
+  },
 }
 
 /**
@@ -275,7 +273,7 @@ function RunRow({
           {debugMode && (totalTokens !== null || model) ? (
             <span className="ml-2 text-[11px] text-muted-foreground">
               {totalTokens !== null
-                ? `${formatTokenCount(totalTokens)} tokens`
+                ? `${formatCompactNumber(totalTokens)} tokens`
                 : 'usage'}
               {model ? ` · ${model}` : null}
             </span>
@@ -283,7 +281,7 @@ function RunRow({
         </span>
         <span className="w-32 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
           {run.triggered_at || run.created_at
-            ? formatDate(run.triggered_at ?? run.created_at ?? '')
+            ? formatDateTime(run.triggered_at ?? run.created_at ?? '')
             : '--'}
         </span>
       </div>
@@ -347,11 +345,12 @@ function TriggerRow({
         ) : null}
         {trigger.next_run_at ? (
           <div className="text-xs text-muted-foreground">
-            Next: {formatDate(trigger.next_run_at)}
+            Next: {formatDateTime(trigger.next_run_at)}
           </div>
         ) : null}
       </div>
       <Button
+        aria-label="Delete trigger"
         size="icon"
         variant="ghost"
         className="size-7 shrink-0"
@@ -672,6 +671,7 @@ export function AutomationDetailPage({
       <header className="flex h-12 shrink-0 items-center justify-between border-b px-5">
         <div className="flex min-w-0 items-center gap-2">
           <button
+            aria-label="Back to workflows"
             type="button"
             className="text-muted-foreground transition-colors hover:text-foreground"
             onClick={onBack}
@@ -684,9 +684,9 @@ export function AutomationDetailPage({
             className={cn(
               'ml-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium capitalize',
               automation.status === 'active'
-                ? 'bg-emerald-500/10 text-emerald-500'
+                ? 'bg-background-success-default/10 text-text-success-tertiary'
                 : automation.status === 'paused'
-                  ? 'bg-amber-500/10 text-amber-500'
+                  ? 'bg-background-warning-default/10 text-text-warning-tertiary'
                   : 'bg-muted text-muted-foreground',
             )}
           >

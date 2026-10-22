@@ -14,26 +14,12 @@ import {
   DropdownMenuTrigger,
 } from '@garden/ui/components/ui/dropdown-menu'
 import { cn } from '@garden/ui/lib/utils'
+import { timeAgo } from '@garden/core/format'
 import {
   isPendingFirstTurn,
   useAgentSessions,
   type AgentChatSession,
 } from '../use-agent-chat-sessions'
-
-function formatTimeAgo(dateStr: string) {
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMs / 3600000)
-  const diffDays = Math.floor(diffMs / 86400000)
-
-  if (diffMins < 1) return 'now'
-  if (diffMins < 60) return `${diffMins}m`
-  if (diffHours < 24) return `${diffHours}h`
-  if (diffDays < 7) return `${diffDays}d`
-  return date.toLocaleDateString()
-}
 
 function SessionStatusDot({ session }: { session: AgentChatSession }) {
   // Idle sessions show no dot at all.
@@ -48,13 +34,13 @@ function SessionStatusDot({ session }: { session: AgentChatSession }) {
 
   const dotClass =
     session.status === 'streaming'
-      ? 'bg-blue-400 shadow-[0_0_0_4px_rgba(96,165,250,0.18)]'
+      ? 'bg-info shadow-[0_0_0_4px_color-mix(in_oklab,var(--info)_18%,transparent)]'
       : session.status === 'submitted'
-        ? 'bg-orange-400'
+        ? 'bg-background-warning-default'
         : session.status === 'error'
           ? 'bg-destructive'
           : session.unread
-            ? 'bg-emerald-400'
+            ? 'bg-background-success-default'
             : ''
 
   return <span className={cn('size-1.5 shrink-0 rounded-full', dotClass)} />
@@ -127,7 +113,10 @@ function SessionRow({
               'group-hover:opacity-0 group-focus-within:opacity-0',
             )}
           >
-            {formatTimeAgo(session.updatedAt)}
+            {timeAgo(session.updatedAt, {
+              compact: true,
+              absoluteAfterDays: 7,
+            })}
           </span>
           <DropdownMenu>
             <DropdownMenuTrigger

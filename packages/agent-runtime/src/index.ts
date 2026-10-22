@@ -5,6 +5,7 @@ export { BrainAuditSubAgent } from './brain-audit-sub-agent'
 export { BrainWriteBackSubAgent } from './brain-write-back-sub-agent'
 export type { BrainAuditRunInput } from './brain-audit'
 export { AutomationTriggerDO } from './automation-trigger-do'
+export { WorkspaceRealtimeDO } from './workspace-realtime-do'
 export {
   RunWorkflow,
   RUN_WORKFLOW_CONTROL_EVENT_TYPE,

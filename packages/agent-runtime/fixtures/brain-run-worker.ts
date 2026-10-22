@@ -92,12 +92,11 @@ export default {
       const stamps: unknown[] = []
       // Call the real production guard with a fault host. No SDK code or
       // production instance is patched; this proves the guard's read wiring.
-      const guard = Reflect.get(
-        IssueRunSubAgent.prototype,
-        'ensureBrainAudience',
-      ) as (
+      // The audience guard is IssueRunSubAgent's prepareRun hook, which the
+      // shared RunSubAgentBase lifecycle calls after the run boundary guards.
+      const guard = Reflect.get(IssueRunSubAgent.prototype, 'prepareRun') as (
         this: unknown,
-        workspaceId: string,
+        loaded: { runState: { workspaceId: string } },
         initializeEmpty: boolean,
       ) => Promise<{ isErr(): boolean; error?: { code: string } }>
       const host = {
@@ -126,7 +125,9 @@ export default {
             throw new Error('Injected audience persistence failure')
           stamps.push(config)
         },
+        runError: (fields: { code: string }) => fields,
       }
+      const loaded = { runState: { workspaceId: input.workspaceId } }
       const result = input.beforeTurn
         ? await Result.tryPromise({
             try: () =>
@@ -134,19 +135,19 @@ export default {
                 {
                   ...host,
                   currentRunId: 'fault-run',
-                  loadTurnContext: async () =>
-                    Result.ok({ runState: { workspaceId: input.workspaceId } }),
+                  runConfig: () => ({ agentClass: 'IssueRunSubAgent' }),
+                  loadTurnContext: async () => Result.ok(loaded),
                   applyRunBoundaryGuards: async () => Result.ok('continue'),
-                  ensureBrainAudience: (
-                    workspaceId: string,
+                  prepareRun: (
+                    turnLoaded: typeof loaded,
                     initializeEmpty: boolean,
-                  ) => guard.call(host, workspaceId, initializeEmpty),
+                  ) => guard.call(host, turnLoaded, initializeEmpty),
                 },
                 { body: { run_id: 'fault-run' } },
               ),
             catch: (error) => error as { code: string },
           })
-        : await guard.call(host, input.workspaceId, true)
+        : await guard.call(host, loaded, true)
       return Response.json({
         denied: result.isErr(),
         code: result.error?.code,

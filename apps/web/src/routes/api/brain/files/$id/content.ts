@@ -15,7 +15,6 @@ import {
   notFound,
   requireWorkspaceContext,
 } from '@/lib/server/control-plane'
-import type { AppEnv } from '@/lib/server/env'
 
 const CONTENT_TYPES: Record<FileFormat, string> = {
   markdown: 'text/plain; charset=utf-8',
@@ -23,6 +22,7 @@ const CONTENT_TYPES: Record<FileFormat, string> = {
   pdf: 'application/pdf',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  csv: 'text/csv; charset=utf-8',
 }
 
 /** Returns fixed response metadata from the validated file extension. */
@@ -37,7 +37,11 @@ function responseMetadataFor(filename: string): {
 
   return {
     contentType: CONTENT_TYPES[format],
-    inlineSafe: format === 'text' || format === 'markdown' || format === 'pdf',
+    inlineSafe:
+      format === 'text' ||
+      format === 'markdown' ||
+      format === 'csv' ||
+      format === 'pdf',
   }
 }
 
@@ -64,10 +68,7 @@ export const getBrainFileContent = async ({
   const itemIdResult = BrainFileIdSchema.safeParse(params.id)
   if (!itemIdResult.success) return badRequest('Invalid Brain file id')
 
-  const env = appContext.env as AppEnv & {
-    HELIX_URL?: string
-    HELIX_API_KEY?: string
-  }
+  const env = appContext.env
   const helixUrl = env.HELIX_URL
 
   if (helixUrl === undefined) {

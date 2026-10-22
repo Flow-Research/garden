@@ -77,7 +77,7 @@ export type BrainItemsByIdsResult =
  * rendering a partial folder as authoritative.
  */
 export async function loadBrainItemsByIds(args: {
-  env: AppEnv & { HELIX_URL?: string; HELIX_API_KEY?: string }
+  env: AppEnv
   workspaceId: string
   fileIds: readonly string[]
 }): Promise<BrainItemsByIdsResult> {

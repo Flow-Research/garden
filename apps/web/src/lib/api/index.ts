@@ -21,6 +21,7 @@ export * from './connections'
 export * from './chat-threads'
 export * from './documents'
 export * from './automations'
+export * from './teams'
 export type { AgentChatSession, ChatThreadRow } from '@garden/core/types'
 export type { RiskClass } from '@garden/connectors/capabilities'
 
@@ -36,6 +37,7 @@ import * as connections from './connections'
 import * as chatThreads from './chat-threads'
 import * as documents from './documents'
 import * as automations from './automations'
+import * as teams from './teams'
 import { getBaseUrl, setWorkspaceHeader, setWorkspaceId } from './state'
 
 export type { IntegrationAction } from './connections'
@@ -57,6 +59,7 @@ export const api = {
   ...chatThreads,
   ...documents,
   ...automations,
+  ...teams,
 }
 
 export type Api = typeof api
