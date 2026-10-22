@@ -46,6 +46,14 @@ index a45735cfe7adccf769b734cf0a09aacaeb55ed5a..5b401b162d7b567fb0796f32cf6e14b4
      catch: (cause) => {
        if (Predicate4.isTagged(cause, "McpOAuthReauthorizationRequired")) {
          return new McpOAuthReauthorizationRequired({
+@@ -618,6 +618,6 @@ var useConnection = (connection, toolName, args, elicit, onToolListChanged) => E
+       const status = httpStatusFromCause(cause);
+       const protocolFailure = cause instanceof McpError;
+       return new McpInvocationError({
+         toolName,
+-        message: `MCP tool call failed for ${toolName}`,
++        message: protocolFailure ? cause.message : `MCP tool call failed for ${toolName}`,
+         ...status === void 0 ? {} : { status },
 @@ -634,7 +634,7 @@ var useConnection = (connection, toolName, args, elicit, onToolListChanged) => E
  });
  var invokeMcpTool = (input) => Effect4.gen(function* () {
