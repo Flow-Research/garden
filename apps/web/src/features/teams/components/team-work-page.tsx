@@ -164,9 +164,7 @@ export function TeamWorkPage() {
     )
   }
   if (membersError || !members) {
-    return (
-      <TeamMembersLoadError onRetry={() => void refetchMembers()} />
-    )
+    return <TeamMembersLoadError onRetry={() => void refetchMembers()} />
   }
   if (!isAdmin) {
     return <Navigate to="/teams" replace />
