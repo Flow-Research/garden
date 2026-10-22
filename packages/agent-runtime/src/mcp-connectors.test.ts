@@ -539,15 +539,13 @@ describe('RuntimeMcpController GitHub tools', () => {
     const preparer = new RuntimeMcpConnectionPreparer({
       getController: () => controller,
       fullSyncIntervalMs: 60_000,
+      logger: createGardenLogger({ service: 'test', component: 'test' }),
       waitForConnections: async () => {
         waits += 1
       },
       getServerStates: () => ({
         executor: { state: 'ready' },
       }),
-      backgroundRefreshFailedMessage: 'background failed',
-      refreshFailedMessage: 'refresh failed',
-      continuingWithoutReadyMessage: 'continuing',
     })
     ;(preparer as unknown as { lastFullSyncAt: number }).lastFullSyncAt =
       Date.now()

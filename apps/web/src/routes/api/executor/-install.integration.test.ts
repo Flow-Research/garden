@@ -49,7 +49,13 @@ function getHandler() {
   if (!handlers || typeof handlers === 'function' || !handlers.POST) {
     throw new Error('Expected Executor install POST handler')
   }
-  return handlers.POST
+  return handlers.POST as (args: {
+    context: AppRequestContext
+    request: Request
+    params: Record<string, string>
+    pathname: string
+    next: () => { isNext: boolean; context: undefined }
+  }) => Promise<Response>
 }
 
 function installRequest(owner: 'user' | 'org') {

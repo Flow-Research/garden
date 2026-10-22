@@ -86,6 +86,7 @@ import {
   type McpHost,
   type RuntimeMcpServerStates,
 } from './runtime-mcp-controller'
+import { latestUserText } from './brain-injection'
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { extractExecutorToolRefsFromInput } from './executor-codemode'
 import {
@@ -1615,8 +1616,9 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     const value = result.match({
       ok: (catalog) => catalog,
       err: (error) => {
-        console.warn('[agent-runtime] chat Executor catalog unavailable', {
-          error,
+        agentRuntimeLogger.warn('chat.executor_catalog_unavailable', {
+          agentName: this.name,
+          errorMessage: error,
           workspaceId: input.workspaceId,
           userId: input.userId,
         })
@@ -2054,7 +2056,10 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     const activeMcpController = mcpControllerResult.match({
       ok: (controller) => controller,
       err: (error) => {
-        console.warn('[agent-runtime] chat MCP refresh failed', { error })
+        agentRuntimeLogger.warn('chat.mcp_refresh_failed', {
+          agentName: this.name,
+          errorMessage: error,
+        })
         return this.getMcpController()
       },
     })

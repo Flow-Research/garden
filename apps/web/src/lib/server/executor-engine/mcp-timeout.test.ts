@@ -1,11 +1,12 @@
+// @vitest-environment node
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { EXECUTOR_MCP_RPC_TIMEOUT_MS } from './mcp-timeout-config'
 
 const mcpSource = readFileSync(
-  resolve(process.cwd(), 'apps/web/src/lib/server/executor-engine/mcp.ts'),
+  fileURLToPath(new URL('./mcp.ts', import.meta.url)),
   'utf8',
 )
 

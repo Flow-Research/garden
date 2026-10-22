@@ -7,6 +7,11 @@ import {
   selectIntegrationRoute,
 } from './integration-router'
 
+/** Builds the same document-context shape the chat composer sends. */
+function documentContext(filename: string) {
+  return `The user uploaded these workspace documents for this turn. Internal document handles for this turn follow. Use these handles only in document tool calls. Do not mention handles, ids, or UUIDs to the user; refer to documents by filename:\n- handle: doc_1; filename: ${filename}`
+}
+
 const CATALOG: ExecutorCatalog = {
   integrations: [
     {
@@ -97,6 +102,51 @@ describe('integration router', () => {
 
     expect(decision.status).toBe('selected')
     expect(decision.routes[0]?.slug).toBe('decide')
+    expect(decision.skill?.id).toBe('analyze-structured-data')
+    expect(renderIntegrationRouteDirective(decision)).toContain(
+      'call Garden readDocument',
+    )
+  })
+
+  it('selects structured-data analysis for a CSV document with no analysis prose', () => {
+    const decision = selectIntegrationRoute({
+      userText: 'what is this?',
+      documentContext: documentContext('revenue.csv'),
+      catalog: CATALOG,
+    })
+
+    expect(decision.status).toBe('selected')
+    expect(decision.routes[0]?.slug).toBe('decide')
+    expect(decision.skill?.id).toBe('analyze-structured-data')
+    expect(renderIntegrationRouteDirective(decision)).toContain(
+      'call Garden readDocument',
+    )
+  })
+
+  it('selects structured-data analysis for an XLSX document with no analysis prose', () => {
+    const decision = selectIntegrationRoute({
+      userText: 'what is this?',
+      documentContext: documentContext('revenue.xlsx'),
+      catalog: CATALOG,
+    })
+
+    expect(decision.status).toBe('selected')
+    expect(decision.routes[0]?.slug).toBe('decide')
+    expect(decision.skill?.id).toBe('analyze-structured-data')
+    expect(renderIntegrationRouteDirective(decision)).toContain(
+      'call Garden readDocument',
+    )
+  })
+
+  it('does not route on document-context boilerplate alone', () => {
+    const decision = selectIntegrationRoute({
+      userText: 'what is this?',
+      documentContext: documentContext('notes.pdf'),
+      catalog: CATALOG,
+    })
+
+    expect(decision.status).toBe('none')
+    expect(decision.skill).toBeNull()
   })
 
   it('routes email intent without naming the integration', () => {

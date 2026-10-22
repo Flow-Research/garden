@@ -57,7 +57,7 @@ export const document = pgTable(
     index('document_current_version_idx').on(table.currentVersionId),
     check(
       'document_file_type_check',
-      sql`${table.fileType} in ('pdf', 'doc', 'docx', 'txt', 'md', 'json', 'csv', 'unknown')`,
+      sql`${table.fileType} in ('pdf', 'doc', 'docx', 'txt', 'md', 'json', 'csv', 'xlsx', 'unknown')`,
     ),
     check(
       'document_status_check',

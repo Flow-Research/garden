@@ -85,6 +85,55 @@ function attachmentText(attachments: readonly RouteAttachment[]): string {
     .join(' ')
 }
 
+const STRUCTURED_DATA_FILENAME = /\.(?:csv|xlsx|tsv)$/i
+const STRUCTURED_DATA_MEDIA_TYPE = /(?:text\/csv|spreadsheet|ms-excel)/i
+
+/**
+ * Extracts document filenames from the turn's document context so a selected
+ * or uploaded workspace document can act as routing evidence. Before this,
+ * uploads were persisted as documents rather than message file parts, so the
+ * router only saw the filename inside a paragraph of prompt boilerplate. The
+ * boilerplate terms could accidentally match an integration while the actual
+ * file type never reached skill selection.
+ */
+function documentAttachmentsFromContext(
+  documentContext?: string | null,
+): RouteAttachment[] {
+  if (!documentContext) return []
+  const attachments: RouteAttachment[] = []
+  for (const line of documentContext.split('\n')) {
+    const match = /^\s*-\s*handle:\s*[^;]+;\s*filename:\s*(.+)$/i.exec(line)
+    const raw = match?.[1]?.trim()
+    if (!raw) continue
+    const filename = raw
+      .replace(/;\s*selected_version:.*$/i, '')
+      .replace(/\s+\(V\d+\)$/i, '')
+      .trim()
+    if (filename) attachments.push({ filename })
+  }
+  return attachments
+}
+
+function isStructuredDataAttachment(attachment: RouteAttachment): boolean {
+  const value = `${attachment.filename ?? ''} ${attachment.mediaType ?? ''}`
+  return (
+    STRUCTURED_DATA_FILENAME.test(value) ||
+    STRUCTURED_DATA_MEDIA_TYPE.test(value)
+  )
+}
+
+/**
+ * Resolves the structured-data skill from the shared integration registry.
+ * Before document-context routing, selected XLSX files could not select this
+ * skill because they were not represented as message attachments.
+ */
+function structuredDataSkill(): IntegrationSkill | null {
+  return (
+    integrationSkills.find((skill) => skill.id === 'analyze-structured-data') ??
+    null
+  )
+}
+
 function isInformationalRequest(userText: string, hasAttachments: boolean) {
   if (hasAttachments) return false
   return /^(how (do|can|should|would) i|how to|what is|what's|why|explain|teach me|show me how)\b/i.test(
@@ -201,15 +250,18 @@ export function selectIntegrationRoute(args: {
   attachments?: readonly RouteAttachment[]
   catalog: ExecutorCatalog | null
 }): IntegrationRouteDecision {
-  const attachments = args.attachments ?? []
-  const query = [
-    args.userText,
-    args.documentContext ?? '',
-    attachmentText(attachments),
+  const attachments = [
+    ...(args.attachments ?? []),
+    ...documentAttachmentsFromContext(args.documentContext),
   ]
+  const query = [args.userText, attachmentText(attachments)]
     .filter(Boolean)
     .join(' ')
-  const skill = selectSkill(query, attachments)
+  const skill =
+    selectSkill(query, attachments) ??
+    (attachments.some(isStructuredDataAttachment)
+      ? structuredDataSkill()
+      : null)
 
   if (!args.catalog) {
     return {

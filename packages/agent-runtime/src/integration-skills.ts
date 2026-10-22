@@ -19,7 +19,7 @@ export const integrationSkills = [
       'Find the strongest monthly trend in this spreadsheet.',
       'Test whether two columns are related and create an Excel report.',
     ],
-    mediaTypes: [/csv/i, /spreadsheet/i, /excel/i, /ms-excel/i],
+    mediaTypes: [/csv/i, /xlsx/i, /spreadsheet/i, /excel/i, /ms-excel/i],
     requiredCapabilities: [
       'analyze structured data',
       'identify trends and unusual values',
