@@ -1,9 +1,4 @@
-import {
-  CaretLeft,
-  CaretRight,
-  SidebarSimple,
-  SquaresFour,
-} from '@phosphor-icons/react'
+import { ChevronLeft, ChevronRight, PanelLeft, LayoutGrid } from 'lucide-react'
 import type { ComponentType, ReactNode } from 'react'
 import { cn } from '@garden/ui/lib/utils'
 
@@ -49,20 +44,20 @@ export function AppTopBar({
       )}
     >
       <TopBarButton
-        icon={SidebarSimple}
+        icon={PanelLeft}
         label="Toggle sidebar"
         onClick={onToggleSidebar}
       />
       {showTabArrows ? (
         <>
           <TopBarButton
-            icon={CaretLeft}
+            icon={ChevronLeft}
             label="Previous tab"
             onClick={onPrevious}
             disabled={!canGoPrevious}
           />
           <TopBarButton
-            icon={CaretRight}
+            icon={ChevronRight}
             label="Next tab"
             onClick={onNext}
             disabled={!canGoNext}
@@ -75,7 +70,7 @@ export function AppTopBar({
         title="Mini apps — coming soon"
         className="ml-auto flex w-10 items-center justify-center self-stretch text-text-tertiary"
       >
-        <SquaresFour className="size-4" />
+        <LayoutGrid className="size-4" />
       </span>
     </div>
   )

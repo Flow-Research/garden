@@ -6,10 +6,7 @@ import {
   commentBodySchema,
   parseJsonBody,
 } from '@/lib/server/validation/issues'
-import {
-  badRequest,
-  notFound,
-} from '@/lib/server/control-plane'
+import { badRequest, notFound } from '@/lib/server/control-plane'
 import { requireIssueAccess } from '@/lib/server/issue-access'
 
 function toComment(row: typeof schema.issueComment.$inferSelect) {

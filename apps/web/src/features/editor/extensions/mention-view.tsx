@@ -21,7 +21,10 @@ import type { NodeViewProps } from '@tiptap/react'
 import { useQuery } from '@tanstack/react-query'
 import { issueListOptions, issueDetailOptions } from '@/lib/issues/queries'
 import { useWorkspaceId } from '@garden/app-state/hooks'
-import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigation'
+import {
+  issuePath,
+  useSurfaceNavigation,
+} from '@/features/navigation/use-surface-navigation'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { StatusIcon } from '../../issues/components/status-icon'
 import { MemberMentionTag } from '../../common/member-mention-tag'
@@ -92,7 +95,7 @@ function IssueMention({
     <Badge
       variant="outline"
       className={cardClass}
-      render={<a href={`/issues/${issueId}`} onClick={handleClick} />}
+      render={<a href={issuePath(issueId)} onClick={handleClick} />}
     >
       <StatusIcon status={issue.status} className="h-3.5 w-3.5 shrink-0" />
       <span className="font-medium text-muted-foreground shrink-0">

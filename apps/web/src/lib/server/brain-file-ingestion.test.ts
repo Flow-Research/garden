@@ -3,6 +3,7 @@ import { DateTime, Effect, Layer } from 'effect'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ItemId, Kind, WorkspaceId, type BrainItem } from '@garden/brain/domain'
 import { Brain, type BrainShape } from '@garden/brain/services/brain'
+import { HelixError } from '@garden/brain/errors'
 import type { AppEnv } from '@/lib/server/env'
 import { makeBrainAuditClientLayer } from './brain-audit-runtime'
 import {
@@ -58,7 +59,7 @@ const unused = () => Effect.die('unused Brain operation')
 
 /** Runs the production service layer with only Brain indexing replaced. */
 const runDeferredBrainIndexAndAudit = (
-  indexEffect: Effect.Effect<BrainItem, unknown>,
+  indexEffect: Effect.Effect<BrainItem, HelixError>,
 ) => {
   const brain = Brain.of({
     ensureIndexes: () => Effect.void,
@@ -81,6 +82,7 @@ const runDeferredBrainIndexAndAudit = (
     neighborhood: unused,
     readFileItem: unused,
     readFile: unused,
+    listFiles: unused,
   } satisfies BrainShape)
   const live = makeBrainFileIngestionLayer({
     BRAIN_FILES: brainFiles,
@@ -140,7 +142,9 @@ describe('deferred brain indexing audit trigger', () => {
   })
 
   it('does not call the AgentDO when indexing fails', async () => {
-    await runDeferredBrainIndexAndAudit(Effect.fail(new Error('index failed')))
+    await runDeferredBrainIndexAndAudit(
+      Effect.fail(new HelixError({ message: 'index failed' })),
+    )
 
     expect(mockGetAgentByName).not.toHaveBeenCalled()
     expect(mockLogError).toHaveBeenCalledWith(

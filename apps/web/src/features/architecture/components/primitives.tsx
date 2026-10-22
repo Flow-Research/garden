@@ -30,13 +30,11 @@ export function Section({
   return (
     <section
       id={id}
-      className="scroll-mt-8 border-t border-[color:var(--hairline)] py-14 first:border-t-0"
+      className="scroll-mt-8 border-t border-border py-14 first:border-t-0"
     >
       <div className="mb-7 max-w-2xl">
         <div className="flex items-center gap-3">
-          <span className="font-mono text-xs text-[color:var(--moss)]">
-            {index}
-          </span>
+          <span className="font-mono text-xs text-success">{index}</span>
           <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
             {eyebrow}
           </span>
@@ -70,18 +68,18 @@ export type DefItem = {
 
 export function DefList({ items }: { items: DefItem[] }) {
   return (
-    <dl className="border-t border-[color:var(--hairline)]">
+    <dl className="border-t border-border">
       {items.map((it, i) => (
         <div
           key={it.id ?? i}
-          className="grid gap-x-8 gap-y-1.5 border-b border-[color:var(--hairline-soft)] py-5 sm:grid-cols-[12rem_1fr]"
+          className="grid gap-x-8 gap-y-1.5 border-b border-border/60 py-5 sm:grid-cols-[12rem_1fr]"
         >
           <dt>
             <div className="font-mono text-[13px] text-foreground">
               {it.term}
             </div>
             {it.sub && (
-              <div className="mt-1 text-[11px] font-medium uppercase tracking-wider text-[color:var(--amber)]">
+              <div className="mt-1 text-[11px] font-medium uppercase tracking-wider text-text-warning-tertiary">
                 {it.sub}
               </div>
             )}
@@ -107,13 +105,13 @@ export function NodeChip({
 }) {
   const tones = {
     default: 'text-foreground/90',
-    moss: 'text-[color:var(--moss)]',
-    amber: 'text-[color:var(--amber)]',
+    moss: 'text-success',
+    amber: 'text-text-warning-tertiary',
   }
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-md border border-[color:var(--hairline)] px-2 py-1 font-mono text-[12px]',
+        'inline-flex items-center rounded-md border border-border px-2 py-1 font-mono text-[12px]',
         tones[tone],
         className,
       )}

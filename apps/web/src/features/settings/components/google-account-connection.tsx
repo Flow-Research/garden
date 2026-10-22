@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2Icon, RefreshCwIcon } from 'lucide-react'
+import { RefreshCwIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import { BrandGoogleIcon } from '@/components/icons/brand-google-icon'
 import { authClient } from '@/lib/auth/client'
 import { authClientOperation } from '@/lib/auth/client-result'
@@ -139,7 +140,7 @@ export function GoogleAccountConnection() {
     <LinkedAccountsSection>
       {linkedAccountsPending ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2Icon className="size-4 animate-spin" />
+          <Spinner />
           Checking Google connection...
         </div>
       ) : accountState.error ? (
@@ -185,9 +186,7 @@ export function GoogleAccountConnection() {
                 disabled={unlinking}
                 onClick={() => void handleUnlink()}
               >
-                {unlinking ? (
-                  <Loader2Icon className="size-4 animate-spin" />
-                ) : null}
+                {unlinking ? <Spinner aria-hidden="true" /> : null}
                 {unlinking ? 'Unlinking...' : 'Unlink'}
               </Button>
             ) : null
@@ -199,7 +198,7 @@ export function GoogleAccountConnection() {
               disabled={linking}
               onClick={() => void handleLink()}
             >
-              {linking ? <Loader2Icon className="size-4 animate-spin" /> : null}
+              {linking ? <Spinner aria-hidden="true" /> : null}
               {linking ? 'Opening Google...' : 'Link Google'}
             </Button>
           )}

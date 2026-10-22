@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Result } from 'better-result'
+import { createGardenLogger } from '@garden/observability/logger'
 import type { ToolSet } from 'ai'
 import { buildMcpAiToolKey } from '@garden/connectors/capabilities'
 import {
@@ -492,9 +493,7 @@ describe('RuntimeMcpController GitHub tools', () => {
     const preparer = new RuntimeMcpConnectionPreparer({
       getController: () => controller,
       fullSyncIntervalMs: 60_000,
-      backgroundRefreshFailedMessage: 'background failed',
-      refreshFailedMessage: 'refresh failed',
-      continuingWithoutReadyMessage: 'required failed',
+      logger: createGardenLogger({ service: 'test', component: 'test' }),
       readinessPolicy: 'required',
     })
 

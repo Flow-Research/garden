@@ -24,14 +24,7 @@ import {
 } from '@garden/ui/components/ui/input-group'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { cn } from '@garden/ui/lib/utils'
-
-const STATUS_COLOR: Record<Agent['status'], string> = {
-  idle: 'bg-zinc-400',
-  working: 'bg-emerald-500',
-  blocked: 'bg-amber-500',
-  error: 'bg-red-500',
-  offline: 'bg-zinc-300',
-}
+import { AGENT_STATUS_COLOR } from './agent-status'
 
 export default function AgentsPage({
   onOpenAgent,
@@ -155,7 +148,7 @@ function AgentCard({ agent, onOpen }: { agent: Agent; onOpen: () => void }) {
             <span
               className={cn(
                 'size-1.5 shrink-0 rounded-full',
-                STATUS_COLOR[agent.status],
+                AGENT_STATUS_COLOR[agent.status],
               )}
               aria-hidden="true"
               title={agent.status}

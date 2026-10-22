@@ -38,7 +38,10 @@ export const Route = createFileRoute('/api/debug-stream')({
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
+        const workspaceId = await resolveWorkspaceId(
+          appContext,
+          session.user.id,
+        )
         if (!workspaceId) {
           return Response.json(
             { error: 'Workspace not found' },
@@ -107,7 +110,10 @@ export const Route = createFileRoute('/api/debug-stream')({
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
+        const workspaceId = await resolveWorkspaceId(
+          appContext,
+          session.user.id,
+        )
         if (!workspaceId) {
           return Response.json(
             { error: 'Workspace not found' },

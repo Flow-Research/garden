@@ -9,6 +9,12 @@ import {
 import { syncCapabilities } from '@/lib/server/capability-sync'
 import { mirrorExecutorConnection } from '@/lib/server/executor-engine/connection-mirror'
 import { executorProgram } from '@/lib/server/executor-runtime'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
+
+const logger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'oauth-callback',
+})
 
 const callbackHtml = (result: {
   readonly ok: boolean
@@ -72,10 +78,10 @@ export const settleOAuthCallback = Effect.fn('ExecutorOAuth.settleCallback')(
       )
       if (Result.isFailure(mirrorResult)) {
         yield* Effect.sync(() =>
-          console.warn('[garden] connection mirror failed', {
+          logger.warn('connection.mirror_failed', {
             integration: String(connection.integration),
             workspaceId: input.identity.tenant,
-            error: mirrorResult.failure,
+            ...errorFields(mirrorResult.failure),
           }),
         )
       } else if (Option.isSome(mirrorResult.success)) {
@@ -89,10 +95,10 @@ export const settleOAuthCallback = Effect.fn('ExecutorOAuth.settleCallback')(
         )
         if (Result.isFailure(syncResult)) {
           yield* Effect.sync(() =>
-            console.warn('[garden] capability sync failed', {
+            logger.warn('connection.capability_sync_failed', {
               connectorId,
               workspaceId: input.identity.tenant,
-              error: syncResult.failure,
+              ...errorFields(syncResult.failure),
             }),
           )
         }

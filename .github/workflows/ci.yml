@@ -34,6 +34,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check formatting
+        run: pnpm format
+
       - name: Verify generated design tokens
         run: |
           pnpm --filter @garden/ui tokens:build
@@ -44,6 +47,14 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+
+      # Typecheck regenerates the committed Worker types; drift must be
+      # committed rather than silently overwritten.
+      - name: Verify generated Worker types
+        run: git diff --exit-code -- apps/web/worker-configuration.d.ts
+
+      - name: Verify deploy config
+        run: pnpm verify:deploy-config
 
       - name: Test
         run: pnpm test

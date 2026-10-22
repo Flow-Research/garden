@@ -3,7 +3,11 @@ import { useSortable, defaultAnimateLayoutChanges } from '@dnd-kit/sortable'
 import type { AnimateLayoutChanges } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { toast } from 'sonner'
-import type { Issue, IssuePriority, UpdateIssueRequest } from '@garden/core/types'
+import type {
+  Issue,
+  IssuePriority,
+  UpdateIssueRequest,
+} from '@garden/core/types'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { ActorAvatar } from '../../common/actor-avatar'
 import { useUpdateIssue } from '@/lib/issues/mutations'

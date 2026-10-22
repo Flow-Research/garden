@@ -13,9 +13,7 @@ import {
   commentBodySchema,
   parseJsonBody,
 } from '@/lib/server/validation/issues'
-import {
-  badRequest,
-} from '@/lib/server/control-plane'
+import { badRequest } from '@/lib/server/control-plane'
 import { requireIssueAccess } from '@/lib/server/issue-access'
 
 export const Route = createFileRoute('/api/issues/$id/comments')({
@@ -69,9 +67,9 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
 
-        const db = await appContext.db()
         const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
+        const db = access.db
         const existingIssue = access.issue
 
         const commentResult = await postIssueComment({

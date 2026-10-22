@@ -52,8 +52,7 @@ import {
   derivePermissions,
   type AgentPermissions,
 } from '@garden/core/agents/permissions'
-import { createGardenLogger } from '@garden/observability/logger'
-import { latestUserText, loadBrainInjection } from './brain-injection'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import * as schema from '@garden/db/schema'
 import {
   describeSandboxProbe,
@@ -128,15 +127,13 @@ import {
   BrainWriteBackRunner,
   makeBrainWriteBackRunnerLayer,
 } from './brain-write-back-runner'
-
-const ISSUE_WRITE_BACK_STATUSES = new Set(['succeeded', 'blocked'])
-const AUTOMATION_WRITE_BACK_STATUSES = new Set(['completed'])
 import {
   RunWorkflowCreateError,
   type RunWorkflowBinding,
   type RunWorkflowTurnStartResult,
 } from './run-workflow'
 import { logAgentSocketError } from './websocket-errors'
+import { agentSandboxId } from './runtime-utils'
 
 type AgentRuntimeEnv = Cloudflare.Env &
   AgentModelEnv & {
@@ -393,6 +390,10 @@ const agentRuntimeLogger = createGardenLogger({
   service: 'garden-staging',
   component: 'agent-do',
 })
+
+/** Run statuses whose summary is worth writing into workspace memory. */
+const ISSUE_WRITE_BACK_STATUSES = new Set(['succeeded', 'blocked'])
+const AUTOMATION_WRITE_BACK_STATUSES = new Set(['completed'])
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const documentArtifactEventJson = Schema.fromJsonString(DocumentArtifactEvent)
@@ -846,8 +847,8 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
         agentRuntimeLogger.warn('agent_do.brain_write_back.cleanup_failed', {
           agentId,
           runId,
-          workspaceId,
           message: messageFromUnknown(cause),
+          workspaceId,
         })
       },
     })
@@ -866,9 +867,9 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
           Effect.sync(() => {
             agentRuntimeLogger.error('agent_do.brain_write_back.failed', {
               agentId: failure.agentId,
-              runId: input.runId,
               message: messageFromUnknown(failure.cause),
               operation: failure.operation,
+              runId: input.runId,
               workspaceId: input.workspaceId,
             })
           }),
@@ -948,44 +949,68 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       runId: input.runId,
       submissionId: input.submissionId,
     })
-    const workspaceId = result.workspaceId
-    const summary = result.summary.trim()
+    this.triggerBrainWriteBack({
+      runId: input.runId,
+      workspaceId: result.workspaceId,
+      ownerUserId: result.ownerUserId,
+      summary: result.summary,
+      status: result.status,
+      runKind: 'issue',
+      statuses: ISSUE_WRITE_BACK_STATUSES,
+    })
+    return { status: result.status }
+  }
+
+  /**
+   * Fires an issue/automation Brain write-back once per run without blocking the
+   * Workflow RPC response. Empty summaries and non-product statuses are skipped.
+   */
+  private triggerBrainWriteBack(input: {
+    runId: string
+    workspaceId: string | null
+    ownerUserId: string | null
+    summary: string
+    status: string
+    runKind: 'issue' | 'automation'
+    statuses: ReadonlySet<string>
+  }) {
+    const summary = input.summary.trim()
     agentRuntimeLogger.info('agent_do.brain_write_back.trigger_check', {
       runId: input.runId,
-      status: result.status,
+      status: input.status,
       summaryLength: summary.length,
-      hasWorkspace: workspaceId !== null,
+      hasWorkspace: input.workspaceId !== null,
     })
     if (
-      workspaceId !== null &&
-      summary !== '' &&
-      ISSUE_WRITE_BACK_STATUSES.has(result.status) &&
-      this.claimBrainWriteBackRun(input.runId)
+      input.workspaceId === null ||
+      summary === '' ||
+      !input.statuses.has(input.status) ||
+      !this.claimBrainWriteBackRun(input.runId)
     ) {
-      const bounded = summary.slice(0, 8000)
-      this.ctx.waitUntil(
-        (async () => {
-          const fired = await Result.tryPromise({
-            try: () =>
-              this.startBrainWriteBack({
-                runId: input.runId,
-                workspaceId,
-                runKind: 'issue',
-                ownerUserId: result.ownerUserId,
-                summary: bounded,
-              }),
-            catch: (cause) => messageFromUnknown(cause),
-          })
-          if (fired.isErr()) {
-            agentRuntimeLogger.warn(
-              'agent_do.brain_write_back.trigger_failed',
-              { runId: input.runId, message: fired.error },
-            )
-          }
-        })(),
-      )
+      return
     }
-    return { status: result.status }
+    const bounded = summary.slice(0, 8000)
+    this.ctx.waitUntil(
+      (async () => {
+        const fired = await Result.tryPromise({
+          try: () =>
+            this.startBrainWriteBack({
+              runId: input.runId,
+              workspaceId: input.workspaceId as string,
+              runKind: input.runKind,
+              ownerUserId: input.ownerUserId,
+              summary: bounded,
+            }),
+          catch: (cause) => messageFromUnknown(cause),
+        })
+        if (fired.isErr()) {
+          agentRuntimeLogger.warn('agent_do.brain_write_back.trigger_failed', {
+            runId: input.runId,
+            message: fired.error,
+          })
+        }
+      })(),
+    )
   }
 
   /**
@@ -1022,44 +1047,69 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       input.runId,
     )
     const result = await automationAgent.completeWorkflowTurn(input)
-    const workspaceId = result.workspaceId
-    const summary = result.summary.trim()
-    agentRuntimeLogger.info('agent_do.brain_write_back.trigger_check', {
+    this.triggerBrainWriteBack({
       runId: input.runId,
+      workspaceId: result.workspaceId,
+      ownerUserId: result.ownerUserId,
+      summary: result.summary,
       status: result.status,
-      summaryLength: summary.length,
-      hasWorkspace: workspaceId !== null,
+      runKind: 'automation',
+      statuses: AUTOMATION_WRITE_BACK_STATUSES,
     })
-    if (
-      workspaceId !== null &&
-      summary !== '' &&
-      AUTOMATION_WRITE_BACK_STATUSES.has(result.status) &&
-      this.claimBrainWriteBackRun(input.runId)
-    ) {
-      const bounded = summary.slice(0, 8000)
-      this.ctx.waitUntil(
-        (async () => {
-          const fired = await Result.tryPromise({
-            try: () =>
-              this.startBrainWriteBack({
-                runId: input.runId,
-                workspaceId,
-                runKind: 'automation',
-                ownerUserId: result.ownerUserId,
-                summary: bounded,
-              }),
-            catch: (cause) => messageFromUnknown(cause),
-          })
-          if (fired.isErr()) {
-            agentRuntimeLogger.warn(
-              'agent_do.brain_write_back.trigger_failed',
-              { runId: input.runId, message: fired.error },
-            )
-          }
-        })(),
-      )
-    }
     return { status: result.status }
+  }
+
+  /**
+   * Workflow-facing RPC that reports an issue turn's Think submission status
+   * when its turn-complete event has not arrived.
+   */
+  async readRunTurnStatus(input: {
+    runId: string
+    issueId: string
+    submissionId: string
+  }): Promise<{ status: string | null }> {
+    await this.requireIssueAccess(input.issueId)
+    const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId)
+    return await issueAgent.readWorkflowTurnStatus(input)
+  }
+
+  /** Automation counterpart of `readRunTurnStatus`. */
+  async readAutomationRunTurnStatus(input: {
+    runId: string
+    submissionId: string
+  }): Promise<{ status: string | null }> {
+    await this.requireAutomationRunAccess(input.runId)
+    const automationAgent = await this.subAgent(
+      AutomationRunSubAgent,
+      input.runId,
+    )
+    return await automationAgent.readWorkflowTurnStatus(input)
+  }
+
+  /**
+   * Workflow-facing RPC that fails an issue run whose turn never settled.
+   */
+  async failRunTurn(input: {
+    runId: string
+    issueId: string
+    reason: string
+  }): Promise<{ status: string }> {
+    await this.requireIssueAccess(input.issueId)
+    const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId)
+    return await issueAgent.failWorkflowTurn(input)
+  }
+
+  /** Automation counterpart of `failRunTurn`. */
+  async failAutomationRunTurn(input: {
+    runId: string
+    reason: string
+  }): Promise<{ status: string }> {
+    await this.requireAutomationRunAccess(input.runId)
+    const automationAgent = await this.subAgent(
+      AutomationRunSubAgent,
+      input.runId,
+    )
+    return await automationAgent.failWorkflowTurn(input)
   }
 
   override async onBeforeSubAgent(
@@ -1409,18 +1459,15 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     getServerStates: () =>
       this.getMcpServers().servers as RuntimeMcpServerStates,
     connectionWaitTimeoutMs: mcpRuntimeConfig.connectionWaitTimeoutMs,
-    backgroundRefreshFailedMessage:
-      '[agent-runtime] chat MCP background warm failed',
-    refreshFailedMessage: '[agent-runtime] chat MCP connector warm failed',
-    continuingWithoutReadyMessage:
-      '[agent-runtime] continuing without warmed chat MCP connectors',
+    logger: agentRuntimeLogger,
     onSuccessfulRefresh: (controller) => {
       const captured = controller.captureObservedMcpToolChanges()
       if (captured.isErr()) {
-        console.warn(
-          '[agent-runtime] failed to capture warmed chat MCP tool changes',
-          captured.error,
-        )
+        agentRuntimeLogger.warn('chat.mcp_tool_changes_capture_failed', {
+          agentName: this.name,
+          phase: 'warm',
+          ...errorFields(captured.error),
+        })
       }
     },
     onThreadNotFound: async (reason, controller) =>
@@ -1853,10 +1900,11 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     const mcpController = this.getMcpController()
     const captured = mcpController.captureObservedMcpToolChanges()
     if (captured.isErr()) {
-      console.warn(
-        '[agent-runtime] failed to capture MCP tool changes',
-        captured.error,
-      )
+      agentRuntimeLogger.warn('chat.mcp_tool_changes_capture_failed', {
+        agentName: this.name,
+        phase: 'turn',
+        ...errorFields(captured.error),
+      })
     }
 
     const documentContext =
@@ -1874,55 +1922,15 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     ).match({
       ok: (context) => context,
       err: (error) => {
-        console.warn(
-          '[agent-runtime] failed to activate slash-invoked skills',
-          {
-            error,
-          },
-        )
+        agentRuntimeLogger.warn('chat.slash_skills_activation_failed', {
+          agentName: this.name,
+          errorMessage: error,
+        })
         return ''
       },
     })
 
-    const brainContext = identity
-      ? (
-          await Result.tryPromise({
-            try: () =>
-              loadBrainInjection({
-                env: {
-                  ...(this.env.HELIX_URL === undefined
-                    ? {}
-                    : { HELIX_URL: this.env.HELIX_URL }),
-                  ...(this.env.HELIX_API_KEY === undefined
-                    ? {}
-                    : { HELIX_API_KEY: this.env.HELIX_API_KEY }),
-                },
-                ai: this.env.AI,
-                files: this.env.BRAIN_FILES,
-                workspaceId: identity.workspaceId,
-                viewer: {
-                  teamIds: new Set<string>(),
-                  userId: identity.ownerUserId,
-                },
-                query: latestUserText(ctx.messages),
-                log: (event) => console.info('[brain-injection]', event),
-              }),
-            catch: (cause) => messageFromUnknown(cause),
-          })
-        ).match({
-          ok: (injection) => injection.text,
-          err: (error) => {
-            console.warn('[agent-runtime] brain injection failed', { error })
-            return ''
-          },
-        })
-      : ''
-
-    const systemAdditions = [
-      brainContext,
-      documentContext,
-      explicitSkillContext,
-    ]
+    const systemAdditions = [documentContext, explicitSkillContext]
       .filter((part): part is string => Boolean(part?.trim()))
       .join('\n\n')
 
@@ -2608,20 +2616,11 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   private getSandboxId() {
-    const pathKey = this.selfPath.map((segment) => segment.name).join('-')
-    const candidate = pathKey || this.name
-    if (candidate.length <= 63) {
-      return candidate
-    }
-
-    return [
-      this.compactSandboxSegment(
-        this.parentPath.at(-1)?.name || 'agent-do',
-        20,
-      ),
-      this.compactSandboxSegment(this.name, 20),
-      this.hashSandboxId(candidate),
-    ].join('-')
+    return agentSandboxId({
+      selfPath: this.selfPath,
+      parentPath: this.parentPath,
+      name: this.name,
+    })
   }
 
   private getAgentRuntimeName() {
@@ -2655,17 +2654,14 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   ) {
     const resetResult = await mcpController.resetProxyMcpServers()
     if (resetResult.isErr()) {
-      console.warn(
-        '[agent-runtime] failed to reset MCP connectors for paused chat facet',
-        {
-          reason,
-          agentName: this.name,
-          error: resetResult.error,
-        },
-      )
+      agentRuntimeLogger.warn('chat.mcp_pause_reset_failed', {
+        reason,
+        agentName: this.name,
+        ...errorFields(resetResult.error),
+      })
     }
 
-    console.warn('[agent-runtime] paused MCP connectors for chat facet', {
+    agentRuntimeLogger.warn('chat.mcp_paused', {
       reason,
       agentName: this.name,
     })
@@ -2687,30 +2683,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     await this.session.addContext('agent', promptContexts.agent)
     await this.session.addContext('workspace', promptContexts.workspace)
     await this.session.refreshSystemPrompt()
-  }
-
-  private compactSandboxSegment(value: string, maxLength: number) {
-    const normalized = value
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
-
-    if (!normalized) {
-      return 'sandbox'
-    }
-
-    return normalized.slice(0, maxLength)
-  }
-
-  private hashSandboxId(value: string) {
-    let hash = 2166136261
-    for (let index = 0; index < value.length; index += 1) {
-      hash ^= value.charCodeAt(index)
-      hash = Math.imul(hash, 16777619)
-    }
-
-    return (hash >>> 0).toString(16)
   }
 
   private getAgentSandbox() {

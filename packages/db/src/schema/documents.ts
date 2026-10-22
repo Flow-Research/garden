@@ -22,7 +22,7 @@ export const document = pgTable(
       .default(sql`gen_random_uuid()`),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     ownerUserId: uuid('owner_user_id')
       .notNull()
       .references(() => user.id),
@@ -34,8 +34,19 @@ export const document = pgTable(
     structureTree: jsonb('structure_tree').$type<unknown>(),
     status: text('status').notNull().default('processing'),
     currentVersionId: uuid('current_version_id'),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index('document_workspace_owner_idx').on(
@@ -69,7 +80,12 @@ export const documentVersion = pgTable(
     source: text('source').notNull(),
     versionNumber: integer('version_number').notNull(),
     displayName: text('display_name'),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [
     index('document_version_document_idx').on(table.documentId),

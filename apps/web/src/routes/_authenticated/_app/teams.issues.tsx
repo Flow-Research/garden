@@ -2,10 +2,7 @@ import { Suspense } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { TeamRouteError } from '@/features/teams/components/team-route-error'
 import { TeamWorkPage } from '@/features/teams/components/team-work-page'
-import {
-  allTeamIssuesOptions,
-  teamListOptions,
-} from '@/features/teams/queries'
+import { allTeamIssuesOptions, teamListOptions } from '@/features/teams/queries'
 import { prefetchActiveWorkspace } from '@/lib/navigation/prefetch'
 
 export const Route = createFileRoute('/_authenticated/_app/teams/issues')({

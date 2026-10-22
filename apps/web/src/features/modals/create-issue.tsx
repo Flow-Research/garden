@@ -101,7 +101,9 @@ export function CreateIssueModal({
   // Cross-team surfaces (Teams › Tasks in the All view) pass no team_id and
   // set show_team_picker, so the creator must choose the owning Team.
   const showTeamPicker = data?.show_team_picker === true && !teamId
-  const [pickedTeamId, setPickedTeamId] = useState<string | undefined>(undefined)
+  const [pickedTeamId, setPickedTeamId] = useState<string | undefined>(
+    undefined,
+  )
   // The API rejects team-scoped creates without an assignee ("Team issues
   // must be assigned to a Team member"), so the Team modes require one.
   const requiresAssignee = Boolean(teamId || pickedTeamId)
@@ -213,7 +215,7 @@ export function CreateIssueModal({
           (t) => (
             <div className="bg-popover text-popover-foreground border rounded-lg shadow-lg p-4 w-[360px]">
               <div className="flex items-center gap-2 mb-2">
-                <div className="flex items-center justify-center size-5 rounded-full bg-emerald-500/15 text-emerald-500">
+                <div className="flex items-center justify-center size-5 rounded-full bg-background-success-default/15 text-text-success-tertiary">
                   <Check className="size-3" />
                 </div>
                 <span className="text-sm font-medium">Issue created</span>
@@ -342,6 +344,7 @@ export function CreateIssueModal({
                   <TooltipTrigger
                     render={
                       <button
+                        aria-label="Close"
                         onClick={onClose}
                         className="rounded-sm p-1.5 opacity-70 hover:opacity-100 hover:bg-accent/60 transition-all cursor-pointer"
                       >

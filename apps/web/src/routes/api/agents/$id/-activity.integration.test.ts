@@ -1,6 +1,7 @@
 import type { AppRequestContext } from '@/lib/server/context'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Route } from './activity'
+import { invokeRouteHandler } from '@/test/route-handler'
 
 const mocks = vi.hoisted(() => ({
   requireSession: vi.fn(),
@@ -17,22 +18,6 @@ vi.mock('@/lib/server/control-plane', async (importOriginal) => {
   }
 })
 
-function getGetHandler() {
-  const handlers = Route.options.server?.handlers
-
-  if (!handlers || typeof handlers === 'function') {
-    throw new Error('Expected agent activity route handlers')
-  }
-
-  const getHandler = handlers.GET
-
-  if (typeof getHandler !== 'function') {
-    throw new Error('Expected agent activity GET handler')
-  }
-
-  return getHandler
-}
-
 describe('agent activity route', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -46,12 +31,10 @@ describe('agent activity route', () => {
   it('rejects unauthenticated callers', async () => {
     mocks.requireSession.mockResolvedValueOnce(null)
 
-    const response = await getGetHandler()({
+    const response = await invokeRouteHandler(Route, 'GET', {
       context: {} as AppRequestContext,
       request: new Request('https://garden.test/api/agents/agent-id/activity'),
       params: { id: 'agent-id' },
-      pathname: '/api/agents/$id/activity',
-      next: () => ({ isNext: true, context: undefined }),
     })
 
     expect(response).toBeInstanceOf(Response)
@@ -127,14 +110,12 @@ describe('agent activity route', () => {
       }),
     }
 
-    const response = await getGetHandler()({
+    const response = await invokeRouteHandler(Route, 'GET', {
       context: {
         db: async () => db,
       } as unknown as AppRequestContext,
       request: new Request('https://garden.test/api/agents/agent-id/activity'),
       params: { id: 'agent-id' },
-      pathname: '/api/agents/$id/activity',
-      next: () => ({ isNext: true, context: undefined }),
     })
 
     expect(response).toBeInstanceOf(Response)

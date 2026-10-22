@@ -420,7 +420,7 @@ function MentionAwareAnchor({
   const match = href ? MENTION_URI.exec(href) : null
   if (match) {
     const [, type, id] = match
-    if (type === 'issue') {
+    if (type === 'issue' && id) {
       const fallback =
         typeof children === 'string'
           ? children

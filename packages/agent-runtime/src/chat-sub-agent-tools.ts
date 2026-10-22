@@ -63,6 +63,13 @@ import {
   type WorkspaceMemberCandidate,
 } from './chat-member-resolution'
 import { assignIssueInputSchema } from './chat-assignment-schema'
+import { errorMessage } from './runtime-utils'
+import { createGardenLogger } from '@garden/observability/logger'
+
+const chatToolsLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'chat-sub-agent-tools',
+})
 
 type ChatSubAgentToolsInput = {
   ctx: DurableObjectState
@@ -441,10 +448,6 @@ type IssueWorkProductRow = {
  */
 function getReadRunDb(databaseUrl: string) {
   return getPooledDb(databaseUrl)
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error)
 }
 
 function readRunErr<T>(error: string): ResultValue<T, string> {
@@ -1171,11 +1174,14 @@ async function assignIssueFromChat(
       })
       subscriberStatus = subscriberResult.isErr() ? 'failed' : 'ok'
       if (subscriberResult.isErr()) {
-        console.error('assign_issue_member_subscriber_failed', {
-          issueId: issue.id,
-          memberId: member.userId,
-          error: subscriberResult.error,
-        })
+        chatToolsLogger.error(
+          'chat_tools.assign_issue_member_subscriber_failed',
+          {
+            issueId: issue.id,
+            memberId: member.userId,
+            errorMessage: subscriberResult.error,
+          },
+        )
       }
 
       const inboxResult = await Result.tryPromise<void, string>({
@@ -1192,10 +1198,10 @@ async function assignIssueFromChat(
       })
       inboxStatus = inboxResult.isErr() ? 'failed' : 'ok'
       if (inboxResult.isErr()) {
-        console.error('assign_issue_member_inbox_failed', {
+        chatToolsLogger.error('chat_tools.assign_issue_member_inbox_failed', {
           issueId: issue.id,
           memberId: member.userId,
-          error: inboxResult.error,
+          errorMessage: inboxResult.error,
         })
       }
     }

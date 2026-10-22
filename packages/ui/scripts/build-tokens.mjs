@@ -10,7 +10,7 @@
  * Output architecture (mirrors the previous hand-authored file's proven pattern):
  *   1. `:root`      — primitive tokens (color scales, type atoms, spacing/size/
  *                     stroke spec vars, shadows, radii) + Light semantic set +
- *                     compat aliases (shadcn contract + legacy garden vocabulary).
+ *                     compat aliases (shadcn contract + garden extras).
  *                     Aliases reference semantic vars, so they flip with dark mode
  *                     for free and are NOT repeated in the dark block.
  *   2. `:root.dark` — Dark semantic set + scrollbar overrides only.
@@ -31,9 +31,9 @@
  *   - CamelCase semantic keys (`onSuccess`, `onBrand`) flatten to kebab-case
  *     (`on-success`, `on-brand`).
  *
- * Compat layers (shadcn contract, legacy garden names) keep existing components
- * compiling while the component sweep migrates usages; legacy aliases are deleted
- * at the end of the sweep. See docs/design.md and the phase plan in git history.
+ * The shadcn compat layer is the component contract (`text-muted-foreground`,
+ * `bg-background`, `border-border`, …). The legacy parchment-era aliases
+ * (`--ink`, `--hairline`, `--moss`, …) were removed once nothing used them.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -282,39 +282,6 @@ const SHADCN_COMPAT = {
   priority: 'var(--text-danger-secondary)',
 }
 
-// Legacy parchment-era vocabulary — TRANSITION ONLY, deleted at the end of the
-// component sweep. Role-mapped to the nearest new semantic token.
-const LEGACY_COMPAT = {
-  parchment: 'var(--background-main-default)',
-  'parchment-deep': 'var(--background-main-secondary)',
-  vellum: 'var(--background-main-default)',
-  'vellum-heavy': 'var(--background-main-default)',
-  bone: 'var(--white-1000)',
-  ink: 'var(--text-neutral-default)',
-  gravel: 'var(--text-neutral-secondary)',
-  slate: 'var(--text-neutral-tertiary)',
-  stone: 'var(--text-tertiary)',
-  hairline: 'var(--border-default)',
-  'hairline-soft': 'var(--gray-200)',
-  moss: 'var(--text-success-secondary)',
-  sage: 'var(--text-success-tertiary)',
-  amber: 'var(--text-warning-tertiary)',
-  clay: 'var(--text-danger-tertiary)',
-  lichen: 'var(--badge-green-background)',
-  'lavender-mist': 'var(--badge-blue-background)',
-  peach: 'var(--badge-yellow-background)',
-  'dusk-rose': 'var(--badge-gray-background)',
-}
-
-// Legacy shadow names — kept separate from LEGACY_COMPAT colors so emission
-// doesn't sniff value strings to decide whether to add a --color-* binding.
-// `shadow-float-1` / `shadow-float-2` are real semantic tokens now (they flip
-// in dark mode via the Dark set), so only the hairline aliases remain here.
-const LEGACY_SHADOW_COMPAT = {
-  'shadow-hairline': 'var(--shadow-1)',
-  'shadow-hairline-soft': 'var(--shadow-2)',
-}
-
 // Tailwind namespace mapping for non-color primitives: token name → theme key.
 const textSizeKey = (path) => path.replace(/^font-size-/, '--text-')
 const trackingKey = (path) => path.replace(/^letter-spacing-/, '--tracking-')
@@ -387,13 +354,6 @@ out.push(
 )
 for (const [name, value] of Object.entries(SHADCN_COMPAT))
   out.push(varLine(name, value))
-out.push(
-  `\n  /* Compat — legacy garden vocabulary (TRANSITION ONLY — deleted after sweep) */`,
-)
-for (const [name, value] of Object.entries(LEGACY_COMPAT))
-  out.push(varLine(name, value))
-for (const [name, value] of Object.entries(LEGACY_SHADOW_COMPAT))
-  out.push(varLine(name, value))
 out.push(`}`)
 
 // 2. :root.dark — dark semantics only
@@ -413,21 +373,14 @@ out.push(`\n  /* Primitive colors */`)
 for (const e of primitiveColors)
   out.push(varLine(`color-${e.path}`, `var(--${e.path})`))
 out.push(`\n  /* Semantic colors */`)
-for (const e of lightFlat) {
-  if (e.token.$type !== 'color') continue
+for (const e of lightFlat)
   out.push(varLine(`color-${e.path}`, `var(--${e.path})`))
-}
 out.push(`\n  /* Compat — shadcn + garden extras */`)
 for (const name of Object.keys(SHADCN_COMPAT)) {
   // `radius` is a bare :root var (shadcn base), not a color utility namespace.
   if (name === 'radius') continue
   out.push(varLine(`color-${name}`, `var(--${name})`))
 }
-out.push(`\n  /* Compat — legacy (transition only) */`)
-for (const name of Object.keys(LEGACY_COMPAT))
-  out.push(varLine(`color-${name}`, `var(--${name})`))
-for (const name of Object.keys(LEGACY_SHADOW_COMPAT))
-  out.push(varLine(name, `var(--${name})`))
 out.push(
   `\n  /* Type scale — token values override Tailwind defaults (line-heights paired per composite roles) */`,
 )
@@ -445,11 +398,6 @@ out.push(`\n  /* Radii — token values override Tailwind defaults */`)
 for (const e of radii) out.push(varLine(e.path, `var(--${e.path})`))
 out.push(`\n  /* Shadows */`)
 for (const e of shadows) out.push(varLine(e.path, `var(--${e.path})`))
-out.push(`\n  /* Semantic shadows (flip with the mode) */`)
-for (const e of lightFlat) {
-  if (e.token.$type === 'shadow')
-    out.push(varLine(e.path, `var(--${e.path})`))
-}
 out.push(`}`)
 
 // 4. Composite typography utilities

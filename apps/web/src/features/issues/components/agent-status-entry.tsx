@@ -3,7 +3,7 @@ import { cn } from '@garden/ui/lib/utils'
 import { ActorAvatar } from '../../common/actor-avatar'
 import { ReadonlyContent } from '../../editor'
 import { useActorName } from '@/lib/workspace/hooks'
-import { timeAgo } from '@garden/core/utils'
+import { timeAgo } from '@garden/core/format'
 import type { TimelineEntry } from '@garden/core/types'
 
 /**

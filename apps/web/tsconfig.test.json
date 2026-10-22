@@ -1,0 +1,29 @@
+{
+  "extends": "./tsconfig.options.json",
+  "include": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/test/**/*.ts",
+    "src/test/**/*.tsx",
+    "src/**/*.d.ts",
+    "src/routeTree.gen.ts",
+    "src/router.tsx",
+    "vitest.setup.ts",
+    "worker-configuration.d.ts"
+  ],
+  "exclude": ["node_modules", "dist", ".tanstack", ".output"],
+  "references": [
+    { "path": "./tsconfig.shared.json" },
+    { "path": "./tsconfig.server.json" }
+  ],
+  "compilerOptions": {
+    "types": [
+      "vite/client",
+      "@cloudflare/workers-types",
+      "vitest/globals",
+      "@testing-library/jest-dom"
+    ],
+    "incremental": true,
+    "tsBuildInfoFile": ".turbo/tsconfig.test.tsbuildinfo"
+  }
+}

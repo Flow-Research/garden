@@ -42,7 +42,11 @@ export type TeamErrorCode =
  * Stable Team error envelope. The UI keys off `code`; `error` stays
  * human-readable and never carries database details.
  */
-export function teamError(status: number, code: TeamErrorCode, message: string) {
+export function teamError(
+  status: number,
+  code: TeamErrorCode,
+  message: string,
+) {
   return Response.json({ error: message, code }, { status })
 }
 

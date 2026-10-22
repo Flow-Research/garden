@@ -98,7 +98,10 @@ describe('team issue access (integration)', () => {
       `https://garden.test/api/issues?team_id=${teamId}`,
       { headers: { 'X-Workspace-ID': fixture.workspaceId } },
     )
-    const memberResponse = await handlerFor(IssuesRoute, 'GET')(
+    const memberResponse = await handlerFor(
+      IssuesRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -122,7 +125,10 @@ describe('team issue access (integration)', () => {
       `https://garden.test/api/issues?team_id=${teamId}`,
       { headers: { 'X-Workspace-ID': fixture.workspaceId } },
     )
-    const managerResponse = await handlerFor(IssuesRoute, 'GET')(
+    const managerResponse = await handlerFor(
+      IssuesRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -190,7 +196,10 @@ describe('team issue access (integration)', () => {
     const outsideRequest = new Request('https://garden.test/api/issues', {
       headers: { 'X-Workspace-ID': fixture.workspaceId },
     })
-    const outsideResponse = await handlerFor(IssuesRoute, 'GET')(
+    const outsideResponse = await handlerFor(
+      IssuesRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -213,7 +222,10 @@ describe('team issue access (integration)', () => {
     const teamMemberRequest = new Request('https://garden.test/api/issues', {
       headers: { 'X-Workspace-ID': fixture.workspaceId },
     })
-    const teamMemberResponse = await handlerFor(IssuesRoute, 'GET')(
+    const teamMemberResponse = await handlerFor(
+      IssuesRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -241,7 +253,10 @@ describe('team issue access (integration)', () => {
       `https://garden.test/api/issues/${otherTeamIssueId}`,
       { headers: { 'X-Workspace-ID': fixture.workspaceId } },
     )
-    const response = await handlerFor(IssueRoute, 'GET')(
+    const response = await handlerFor(
+      IssueRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -266,7 +281,10 @@ describe('team issue access (integration)', () => {
       `https://garden.test/api/issues/${otherTeamIssueId}/comments`,
       { headers: { 'X-Workspace-ID': fixture.workspaceId } },
     )
-    const response = await handlerFor(IssueCommentsRoute, 'GET')(
+    const response = await handlerFor(
+      IssueCommentsRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -289,7 +307,10 @@ describe('team issue access (integration)', () => {
       'https://garden.test/api/issues/search?q=Team',
       { headers: { 'X-Workspace-ID': fixture.workspaceId } },
     )
-    const searchResponse = await handlerFor(IssueSearchRoute, 'GET')(
+    const searchResponse = await handlerFor(
+      IssueSearchRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -324,7 +345,10 @@ describe('team issue access (integration)', () => {
         assignee_id: fixture.memberId,
       },
     )
-    const selfResponse = await handlerFor(IssuesRoute, 'POST')(
+    const selfResponse = await handlerFor(
+      IssuesRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -358,7 +382,10 @@ describe('team issue access (integration)', () => {
         assignee_id: fixture.ownerId,
       },
     )
-    const otherResponse = await handlerFor(IssuesRoute, 'POST')(
+    const otherResponse = await handlerFor(
+      IssuesRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -379,7 +406,10 @@ describe('team issue access (integration)', () => {
       'POST',
       { title: 'Unassigned', team_id: teamId },
     )
-    const unassignedResponse = await handlerFor(IssuesRoute, 'POST')(
+    const unassignedResponse = await handlerFor(
+      IssuesRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -409,7 +439,10 @@ describe('team issue access (integration)', () => {
         assignee_id: fixture.otherId,
       },
     )
-    const outsiderResponse = await handlerFor(IssuesRoute, 'POST')(
+    const outsiderResponse = await handlerFor(
+      IssuesRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -435,7 +468,10 @@ describe('team issue access (integration)', () => {
         assignee_id: fixture.otherId,
       },
     )
-    const badAssigneeResponse = await handlerFor(IssuesRoute, 'POST')(
+    const badAssigneeResponse = await handlerFor(
+      IssuesRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -460,7 +496,10 @@ describe('team issue access (integration)', () => {
       'PUT',
       { status: 'in_progress' },
     )
-    const statusResponse = await handlerFor(IssueRoute, 'PUT')(
+    const statusResponse = await handlerFor(
+      IssueRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -481,7 +520,10 @@ describe('team issue access (integration)', () => {
       'PUT',
       { assignee_id: fixture.ownerId },
     )
-    const reassignResponse = await handlerFor(IssueRoute, 'PUT')(
+    const reassignResponse = await handlerFor(
+      IssueRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -502,7 +544,10 @@ describe('team issue access (integration)', () => {
       'PUT',
       { team_id: null },
     )
-    const moveResponse = await handlerFor(IssueRoute, 'PUT')(
+    const moveResponse = await handlerFor(
+      IssueRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -527,7 +572,10 @@ describe('team issue access (integration)', () => {
       'PUT',
       { team_id: teamId },
     )
-    const unassignedMoveResponse = await handlerFor(IssueRoute, 'PUT')(
+    const unassignedMoveResponse = await handlerFor(
+      IssueRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -546,9 +594,16 @@ describe('team issue access (integration)', () => {
       `https://garden.test/api/issues/${workspaceIssueId}`,
       fixture.workspaceId,
       'PUT',
-      { team_id: teamId, assignee_type: 'member', assignee_id: fixture.memberId },
+      {
+        team_id: teamId,
+        assignee_type: 'member',
+        assignee_id: fixture.memberId,
+      },
     )
-    const moveInResponse = await handlerFor(IssueRoute, 'PUT')(
+    const moveInResponse = await handlerFor(
+      IssueRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -575,7 +630,10 @@ describe('team issue access (integration)', () => {
       'PUT',
       { team_id: null },
     )
-    const moveOutResponse = await handlerFor(IssueRoute, 'PUT')(
+    const moveOutResponse = await handlerFor(
+      IssueRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -589,7 +647,9 @@ describe('team issue access (integration)', () => {
       ),
     )
     expect(moveOutResponse.status).toBe(200)
-    const movedOut = (await moveOutResponse.json()) as { team_id: string | null }
+    const movedOut = (await moveOutResponse.json()) as {
+      team_id: string | null
+    }
     expect(movedOut.team_id).toBeNull()
   })
 
@@ -611,7 +671,10 @@ describe('team issue access (integration)', () => {
     const listRequest = new Request('https://garden.test/api/issues', {
       headers: { 'X-Workspace-ID': fixture.workspaceId },
     })
-    const listResponse = await handlerFor(IssuesRoute, 'GET')(
+    const listResponse = await handlerFor(
+      IssuesRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -635,7 +698,10 @@ describe('team issue access (integration)', () => {
       `https://garden.test/api/issues/${issueId}`,
       { headers: { 'X-Workspace-ID': fixture.workspaceId } },
     )
-    const detailResponse = await handlerFor(IssueRoute, 'GET')(
+    const detailResponse = await handlerFor(
+      IssueRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -657,7 +723,10 @@ describe('team issue access (integration)', () => {
       'PUT',
       { title: 'Prefixed issue' },
     )
-    const updateResponse = await handlerFor(IssueRoute, 'PUT')(
+    const updateResponse = await handlerFor(
+      IssueRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,

@@ -13,19 +13,19 @@ describe('TeamRouteError', () => {
   it('explains access failures for 403 and 404', () => {
     render(
       <TeamRouteError
-        error={new ApiError({
-          message: 'Team access denied',
-          status: 403,
-          statusText: 'Forbidden',
-        })}
+        error={
+          new ApiError({
+            message: 'Team access denied',
+            status: 403,
+            statusText: 'Forbidden',
+          })
+        }
         reset={() => {}}
       />,
     )
 
     expect(screen.getByText('Team unavailable')).toBeInTheDocument()
-    expect(
-      screen.getByText(/don't have access to it/),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/don't have access to it/)).toBeInTheDocument()
   })
 
   it('shows a generic failure with a retry path otherwise', () => {

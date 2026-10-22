@@ -16,7 +16,7 @@ export function FeatureGroupSection({
 
   return (
     <section id={group.id} className="scroll-mt-6">
-      <header className="mb-6 border-b border-[color:var(--hairline-soft)] pb-4">
+      <header className="mb-6 border-b border-border/60 pb-4">
         <h2 className="text-lg font-semibold tracking-tight">{group.title}</h2>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           {group.description}
@@ -26,7 +26,7 @@ export function FeatureGroupSection({
       <div className="mb-8 overflow-x-auto">
         <table className="w-full min-w-[28rem] border-collapse text-sm">
           <thead>
-            <tr className="border-b border-[color:var(--hairline-soft)] text-left">
+            <tr className="border-b border-border/60 text-left">
               <th className="pb-2 pr-4 font-medium text-muted-foreground">
                 Feature
               </th>
@@ -42,12 +42,12 @@ export function FeatureGroupSection({
             {features.map((feature) => (
               <tr
                 key={feature.id}
-                className="border-b border-[color:var(--hairline-soft)] last:border-0"
+                className="border-b border-border/60 last:border-0"
               >
                 <td className="py-2.5 pr-4 font-medium">
                   <a
                     href={`#${feature.id}`}
-                    className="hover:text-[color:var(--moss)] hover:underline"
+                    className="hover:text-success hover:underline"
                   >
                     {feature.name}
                   </a>

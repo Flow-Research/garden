@@ -88,6 +88,7 @@ function CommentInput({
           onSelect={(file) => editorRef.current?.uploadFile(file)}
         />
         <Button
+          aria-label={submitting ? 'Submitting comment' : 'Submit comment'}
           size="icon-sm"
           disabled={isEmpty || submitting}
           onClick={handleSubmit}

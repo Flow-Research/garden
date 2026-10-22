@@ -255,7 +255,10 @@ describe('teams API (integration)', () => {
       'POST',
       { name: 'Engineering' },
     )
-    const response = await handlerFor(TeamsRoute, 'POST')(
+    const response = await handlerFor(
+      TeamsRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -279,7 +282,10 @@ describe('teams API (integration)', () => {
       'POST',
       { name: 'Engineering', description: 'Builds things' },
     )
-    const response = await handlerFor(TeamsRoute, 'POST')(
+    const response = await handlerFor(
+      TeamsRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -339,7 +345,10 @@ describe('teams API (integration)', () => {
       'POST',
       { name: 'Counted' },
     )
-    const createResponse = await handlerFor(TeamsRoute, 'POST')(
+    const createResponse = await handlerFor(
+      TeamsRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -361,7 +370,10 @@ describe('teams API (integration)', () => {
       'POST',
       { member_type: 'user', user_id: fixture.memberId },
     )
-    const addResponse = await handlerFor(TeamMembersRoute, 'POST')(
+    const addResponse = await handlerFor(
+      TeamMembersRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -380,7 +392,10 @@ describe('teams API (integration)', () => {
       `https://garden.test/api/teams/${created.id}`,
       { headers: { 'X-Workspace-ID': fixture.workspaceId } },
     )
-    const detailResponse = await handlerFor(TeamRoute, 'GET')(
+    const detailResponse = await handlerFor(
+      TeamRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -411,7 +426,10 @@ describe('teams API (integration)', () => {
       'POST',
       { name: 'engineering' },
     )
-    const response = await handlerFor(TeamsRoute, 'POST')(
+    const response = await handlerFor(
+      TeamsRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -437,12 +455,13 @@ describe('teams API (integration)', () => {
       'POST',
       {
         name: 'Rollback team',
-        initial_members: [
-          { member_type: 'user', user_id: fixture.outsiderId },
-        ],
+        initial_members: [{ member_type: 'user', user_id: fixture.outsiderId }],
       },
     )
-    const response = await handlerFor(TeamsRoute, 'POST')(
+    const response = await handlerFor(
+      TeamsRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -480,12 +499,13 @@ describe('teams API (integration)', () => {
       {
         name: 'Owner missing team',
         owner_user_id: fixture.adminId,
-        initial_members: [
-          { member_type: 'user', user_id: fixture.memberId },
-        ],
+        initial_members: [{ member_type: 'user', user_id: fixture.memberId }],
       },
     )
-    const response = await handlerFor(TeamsRoute, 'POST')(
+    const response = await handlerFor(
+      TeamsRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -514,7 +534,10 @@ describe('teams API (integration)', () => {
         ],
       },
     )
-    const response = await handlerFor(TeamsRoute, 'POST')(
+    const response = await handlerFor(
+      TeamsRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -573,7 +596,10 @@ describe('teams API (integration)', () => {
     const managerRequest = new Request('https://garden.test/api/teams', {
       headers: { 'X-Workspace-ID': fixture.workspaceId },
     })
-    const managerResponse = await handlerFor(TeamsRoute, 'GET')(
+    const managerResponse = await handlerFor(
+      TeamsRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -602,7 +628,10 @@ describe('teams API (integration)', () => {
     const memberRequest = new Request('https://garden.test/api/teams', {
       headers: { 'X-Workspace-ID': fixture.workspaceId },
     })
-    const memberResponse = await handlerFor(TeamsRoute, 'GET')(
+    const memberResponse = await handlerFor(
+      TeamsRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -650,7 +679,10 @@ describe('teams API (integration)', () => {
     const memberRequest = new Request('https://garden.test/api/teams', {
       headers: { 'X-Workspace-ID': fixture.workspaceId },
     })
-    const memberResponse = await handlerFor(TeamsRoute, 'GET')(
+    const memberResponse = await handlerFor(
+      TeamsRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -671,7 +703,10 @@ describe('teams API (integration)', () => {
     const ownerRequest = new Request('https://garden.test/api/teams', {
       headers: { 'X-Workspace-ID': fixture.workspaceId },
     })
-    const ownerResponse = await handlerFor(TeamsRoute, 'GET')(
+    const ownerResponse = await handlerFor(
+      TeamsRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -700,7 +735,10 @@ describe('teams API (integration)', () => {
     const request = new Request(`https://garden.test/api/teams/${teamId}`, {
       headers: { 'X-Workspace-ID': fixture.workspaceId },
     })
-    const response = await handlerFor(TeamRoute, 'GET')(
+    const response = await handlerFor(
+      TeamRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -724,7 +762,10 @@ describe('teams API (integration)', () => {
       `https://garden.test/api/teams/${randomUUID()}`,
       { headers: { 'X-Workspace-ID': fixture.workspaceId } },
     )
-    const response = await handlerFor(TeamRoute, 'GET')(
+    const response = await handlerFor(
+      TeamRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -757,7 +798,10 @@ describe('teams API (integration)', () => {
       'PATCH',
       { name: 'Nope' },
     )
-    const memberResponse = await handlerFor(TeamRoute, 'PATCH')(
+    const memberResponse = await handlerFor(
+      TeamRoute,
+      'PATCH',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -778,7 +822,10 @@ describe('teams API (integration)', () => {
       'PATCH',
       { name: 'Renamed', description: 'Updated' },
     )
-    const ownerResponse = await handlerFor(TeamRoute, 'PATCH')(
+    const ownerResponse = await handlerFor(
+      TeamRoute,
+      'PATCH',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -816,7 +863,10 @@ describe('teams API (integration)', () => {
       'POST',
       { member_type: 'user', user_id: fixture.otherId },
     )
-    const addResponse = await handlerFor(TeamMembersRoute, 'POST')(
+    const addResponse = await handlerFor(
+      TeamMembersRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -845,7 +895,10 @@ describe('teams API (integration)', () => {
       'POST',
       { member_type: 'user', user_id: fixture.otherId },
     )
-    const duplicateResponse = await handlerFor(TeamMembersRoute, 'POST')(
+    const duplicateResponse = await handlerFor(
+      TeamMembersRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -859,9 +912,9 @@ describe('teams API (integration)', () => {
       ),
     )
     expect(duplicateResponse.status).toBe(409)
-    expect(
-      ((await duplicateResponse.json()) as { code: string }).code,
-    ).toBe('TEAM_MEMBER_EXISTS')
+    expect(((await duplicateResponse.json()) as { code: string }).code).toBe(
+      'TEAM_MEMBER_EXISTS',
+    )
 
     const archivedRequest = jsonRequest(
       `https://garden.test/api/teams/${teamId}/members`,
@@ -869,7 +922,10 @@ describe('teams API (integration)', () => {
       'POST',
       { member_type: 'agent', agent_id: fixture.archivedAgentId },
     )
-    const archivedResponse = await handlerFor(TeamMembersRoute, 'POST')(
+    const archivedResponse = await handlerFor(
+      TeamMembersRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -911,7 +967,10 @@ describe('teams API (integration)', () => {
         headers: { 'X-Workspace-ID': fixture.workspaceId },
       },
     )
-    const removeOtherResponse = await handlerFor(TeamMemberRoute, 'DELETE')(
+    const removeOtherResponse = await handlerFor(
+      TeamMemberRoute,
+      'DELETE',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -933,7 +992,10 @@ describe('teams API (integration)', () => {
         headers: { 'X-Workspace-ID': fixture.workspaceId },
       },
     )
-    const removeOwnerResponse = await handlerFor(TeamMemberRoute, 'DELETE')(
+    const removeOwnerResponse = await handlerFor(
+      TeamMemberRoute,
+      'DELETE',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -947,9 +1009,9 @@ describe('teams API (integration)', () => {
       ),
     )
     expect(removeOwnerResponse.status).toBe(409)
-    expect(
-      ((await removeOwnerResponse.json()) as { code: string }).code,
-    ).toBe('TEAM_OWNER_REQUIRES_TRANSFER')
+    expect(((await removeOwnerResponse.json()) as { code: string }).code).toBe(
+      'TEAM_OWNER_REQUIRES_TRANSFER',
+    )
   })
 
   it('only workspace managers transfer ownership and the target must be a member', async () => {
@@ -967,7 +1029,10 @@ describe('teams API (integration)', () => {
       'PUT',
       { owner_user_id: fixture.otherId },
     )
-    const ownerAttemptResponse = await handlerFor(TeamOwnerRoute, 'PUT')(
+    const ownerAttemptResponse = await handlerFor(
+      TeamOwnerRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -988,7 +1053,10 @@ describe('teams API (integration)', () => {
       'PUT',
       { owner_user_id: fixture.adminId },
     )
-    const invalidTargetResponse = await handlerFor(TeamOwnerRoute, 'PUT')(
+    const invalidTargetResponse = await handlerFor(
+      TeamOwnerRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -1009,7 +1077,10 @@ describe('teams API (integration)', () => {
       'PUT',
       { owner_user_id: fixture.otherId },
     )
-    const transferResponse = await handlerFor(TeamOwnerRoute, 'PUT')(
+    const transferResponse = await handlerFor(
+      TeamOwnerRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -1048,7 +1119,10 @@ describe('teams API (integration)', () => {
         headers: { 'X-Workspace-ID': fixture.workspaceId },
       },
     )
-    const blockedResponse = await handlerFor(TeamRoute, 'DELETE')(
+    const blockedResponse = await handlerFor(
+      TeamRoute,
+      'DELETE',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -1078,7 +1152,10 @@ describe('teams API (integration)', () => {
         headers: { 'X-Workspace-ID': fixture.workspaceId },
       },
     )
-    const deleteResponse = await handlerFor(TeamRoute, 'DELETE')(
+    const deleteResponse = await handlerFor(
+      TeamRoute,
+      'DELETE',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -1126,7 +1203,10 @@ describe('teams API (integration)', () => {
       method: 'DELETE',
       headers: { 'X-Workspace-ID': fixture.workspaceId },
     })
-    const response = await handlerFor(TeamRoute, 'DELETE')(
+    const response = await handlerFor(
+      TeamRoute,
+      'DELETE',
+    )(
       invocation(
         makeContext({
           testDb,

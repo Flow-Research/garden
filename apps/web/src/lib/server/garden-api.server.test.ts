@@ -26,6 +26,7 @@ const documentArtifacts = DocumentArtifacts.of({
   get: () => Effect.succeed(snapshot),
   apply: () =>
     Effect.succeed(DocumentOperationOutcome.cases.Unchanged.make({ snapshot })),
+  subscribe: () => Effect.succeed(new ReadableStream<Uint8Array>()),
 })
 /** Supplies shared API services without acquiring external resources. */
 const apiContext = (skills: SkillsService) =>

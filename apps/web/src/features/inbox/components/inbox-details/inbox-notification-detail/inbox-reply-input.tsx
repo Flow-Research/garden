@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Code2,
   Heading,
+  Highlighter,
   Italic,
   Mic,
   Plus,
@@ -19,7 +20,6 @@ import {
   X,
 } from 'lucide-react'
 import { cn } from '@garden/ui/lib/utils'
-import { HighlighterIcon } from '@phosphor-icons/react'
 
 type SpeechRecognitionEvent = Event & {
   resultIndex: number
@@ -82,7 +82,7 @@ type ToolbarItem = {
 
 const toolbarGroups: ToolbarItem[][] = [
   [
-    { command: 'highlight', icon: HighlighterIcon, label: 'Highlight' },
+    { command: 'highlight', icon: Highlighter, label: 'Highlight' },
     { command: 'underline', icon: Underline, label: 'Underline' },
     { command: 'formatBlock', icon: Code2, label: 'Code block', value: 'pre' },
   ],
@@ -123,7 +123,7 @@ function ModelPicker<T extends string>({
   options: readonly ModelOption<T>[]
 }) {
   const [open, setOpen] = useState(false)
-  const current = options.find((m) => m.id === value) ?? options[0]
+  const current = options.find((m) => m.id === value) ?? options[0]!
 
   return (
     <div className="relative">
@@ -348,7 +348,7 @@ export function InboxReplyInput({
       let interim = ''
 
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        const result = event.results[i]
+        const result = event.results[i]!
         const transcript = result[0]?.transcript ?? ''
         if (result.isFinal) {
           appendTranscript(transcript.trim())

@@ -12,6 +12,7 @@
  * `@garden/ui/components/ui/button`.
  */
 
+import type { ReactElement } from 'react'
 import { X } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
 import { cn } from '@garden/ui/lib/utils'
@@ -47,7 +48,7 @@ export interface ComposerSuggestionsProps {
 export function ComposerSuggestions({
   onSelect,
   onDismiss,
-}: ComposerSuggestionsProps): JSX.Element {
+}: ComposerSuggestionsProps): ReactElement {
   return (
     <div className={cn('mx-auto w-full', COMPOSER_WIDTH_CLASS_NAME)}>
       {/* Header row */}

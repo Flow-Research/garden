@@ -16,24 +16,15 @@ export const Route = createFileRoute('/api/documents/$id/docx')({
         if (access instanceof Response) return access
 
         const url = new URL(request.url)
-        const bytesResult = (await readChatThreadDocumentVersionBytes({
+        const bytesResult = await readChatThreadDocumentVersionBytes({
           threadId: access.row.threadId,
           hostName: access.row.hostName,
           documentId: routeParams.id,
           versionId: url.searchParams.get('version_id'),
-        })) as
-          | {
-              ok: true
-              base64: string
-              file_type?: string | null
-              filename?: string | null
-              media_type?: string | null
-              version_id?: string | null
-            }
-          | { ok: false; error?: string }
-        if (!bytesResult?.ok) {
+        })
+        if (!bytesResult.ok) {
           return Response.json(
-            { error: bytesResult?.error ?? 'Document bytes not found' },
+            { error: bytesResult.error ?? 'Document bytes not found' },
             { status: 404 },
           )
         }

@@ -1,6 +1,7 @@
 import type { AppRequestContext } from '@/lib/server/context'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Route } from './grant'
+import { invokeRouteHandler } from '@/test/route-handler'
 
 const mocks = vi.hoisted(() => ({
   requireSession: vi.fn(),
@@ -30,38 +31,6 @@ vi.mock('@/lib/posthog-server', () => ({
   capturePostHogEvent: mocks.capturePostHogEvent,
 }))
 
-function getPatchHandler() {
-  const handlers = Route.options.server?.handlers
-
-  if (!handlers || typeof handlers === 'function') {
-    throw new Error('Expected connection grant route handlers')
-  }
-
-  const patchHandler = handlers.PATCH
-
-  if (typeof patchHandler !== 'function') {
-    throw new Error('Expected connection grant PATCH handler')
-  }
-
-  return patchHandler
-}
-
-function getDeleteHandler() {
-  const handlers = Route.options.server?.handlers
-
-  if (!handlers || typeof handlers === 'function') {
-    throw new Error('Expected connection grant route handlers')
-  }
-
-  const deleteHandler = handlers.DELETE
-
-  if (typeof deleteHandler !== 'function') {
-    throw new Error('Expected connection grant DELETE handler')
-  }
-
-  return deleteHandler
-}
-
 describe('connection grant route authorization', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -85,15 +54,13 @@ describe('connection grant route authorization', () => {
       },
     )
 
-    const response = await getPatchHandler()({
+    const response = await invokeRouteHandler(Route, 'PATCH', {
       context: {} as AppRequestContext,
       request,
       params: {
         connectorId: 'github',
         name: 'create_issue',
       },
-      pathname: '/api/connections/$connectorId/tools/$name/grant',
-      next: () => ({ isNext: true, context: undefined }),
     })
 
     expect(response).toBeInstanceOf(Response)
@@ -160,7 +127,7 @@ describe('connection grant route authorization', () => {
       },
     )
 
-    const response = await getPatchHandler()({
+    const response = await invokeRouteHandler(Route, 'PATCH', {
       context: {
         db: async () => db,
       } as unknown as AppRequestContext,
@@ -169,8 +136,6 @@ describe('connection grant route authorization', () => {
         connectorId: 'github',
         name: 'create_issue',
       },
-      pathname: '/api/connections/$connectorId/tools/$name/grant',
-      next: () => ({ isNext: true, context: undefined }),
     })
 
     expect(response).toBeInstanceOf(Response)
@@ -208,7 +173,7 @@ describe('connection grant route authorization', () => {
 
     mocks.requireWorkspacePermission.mockResolvedValueOnce(null)
 
-    const response = await getDeleteHandler()({
+    const response = await invokeRouteHandler(Route, 'DELETE', {
       context: {
         db: async () => db,
       } as unknown as AppRequestContext,
@@ -226,8 +191,6 @@ describe('connection grant route authorization', () => {
         connectorId: 'github',
         name: 'create_issue',
       },
-      pathname: '/api/connections/$connectorId/tools/$name/grant',
-      next: () => ({ isNext: true, context: undefined }),
     })
 
     expect(response).toBeInstanceOf(Response)
@@ -274,7 +237,7 @@ describe('connection grant route authorization', () => {
 
     mocks.requireWorkspacePermission.mockResolvedValueOnce(null)
 
-    const response = await getDeleteHandler()({
+    const response = await invokeRouteHandler(Route, 'DELETE', {
       context: {
         db: async () => db,
       } as unknown as AppRequestContext,
@@ -290,8 +253,6 @@ describe('connection grant route authorization', () => {
         connectorId: 'github',
         name: 'create_issue',
       },
-      pathname: '/api/connections/$connectorId/tools/$name/grant',
-      next: () => ({ isNext: true, context: undefined }),
     })
 
     expect(response).toBeInstanceOf(Response)
