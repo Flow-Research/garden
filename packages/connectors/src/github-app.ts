@@ -91,12 +91,31 @@ function pkcs1ToPkcs8(pkcs1: Uint8Array) {
   return der(0x30, concatBytes(version, algorithmIdentifier, privateKey))
 }
 
-function parsePrivateKeyPem(privateKey: string) {
-  const trimmed = privateKey.trim()
+/**
+ * Unwraps Worker/JSON-quoted PEMs and literal `\\n` so every mint path shares
+ * one private-key shape (#163 phase 6). Empty input stays undefined.
+ */
+export function normalizeGitHubAppPrivateKey(
+  privateKey: string | undefined,
+): string | undefined {
+  const trimmed = privateKey?.trim()
+  if (!trimmed) return undefined
   const unwrapped = trimmed.startsWith('"')
     ? Result.try(() => JSON.parse(trimmed) as string).unwrapOr(trimmed)
     : trimmed
-  const normalized = unwrapped.replaceAll('\\n', '\n').trim()
+  return unwrapped.replaceAll('\\n', '\n').trim()
+}
+
+function parsePrivateKeyPem(privateKey: string) {
+  const normalized = normalizeGitHubAppPrivateKey(privateKey)
+  if (!normalized) {
+    return Result.err(
+      new GitHubAppAuthError({
+        code: 'invalid_private_key',
+        message: 'GitHub App private key is not a valid PEM block',
+      }),
+    )
+  }
   const match = normalized.match(
     /-----BEGIN ([^-]+)-----\s*([A-Za-z0-9+/=\s]+)\s*-----END \1-----/,
   )
@@ -204,7 +223,8 @@ export type GitHubInstallationAccessToken = {
 
 /**
  * Mints an installation access token for the workspace GitHub App install.
- * Callers must not persist the token; remint per use (cache comes later).
+ * Callers must not persist the token beyond the shared in-memory cache in
+ * `mintGitHubInstallationAccessToken` (expires_at minus skew).
  */
 export async function createGitHubInstallationAccessToken(args: {
   env: GitHubAppEnv

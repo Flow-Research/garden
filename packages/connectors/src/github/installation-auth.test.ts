@@ -7,6 +7,7 @@ import {
   GitHubAppAuthError,
 } from '../github-app.ts'
 import {
+  clearGitHubInstallationTokenCache,
   mintGitHubInstallationAccessToken,
   withGitHubTokenRejectedRemintOnce,
 } from './installation-auth.ts'
@@ -25,6 +26,7 @@ const mint = vi.mocked(createGitHubInstallationAccessToken)
 describe('mintGitHubInstallationAccessToken', () => {
   beforeEach(() => {
     mint.mockReset()
+    clearGitHubInstallationTokenCache()
   })
 
   it('returns the shared credential shape on success', async () => {
@@ -128,9 +130,76 @@ describe('mintGitHubInstallationAccessToken', () => {
     expect(mint).not.toHaveBeenCalled()
     expect(error).toMatchObject({ code: 'github.install_disconnected' })
   })
+
+  it('reuses a cached token until near expiry', async () => {
+    mint.mockResolvedValueOnce(
+      Result.ok({
+        token: 'ghs_cached',
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        installationId: '42',
+      }),
+    )
+
+    const first = await Effect.runPromise(
+      mintGitHubInstallationAccessToken(
+        { installationId: '42', appId: '1', privateKey: 'pem' },
+        'github.writeIssue',
+      ),
+    )
+    const second = await Effect.runPromise(
+      mintGitHubInstallationAccessToken(
+        { installationId: '42', appId: '1', privateKey: 'pem' },
+        'github.writeIssue',
+      ),
+    )
+
+    expect(first.token).toBe('ghs_cached')
+    expect(second.token).toBe('ghs_cached')
+    expect(mint).toHaveBeenCalledTimes(1)
+  })
+
+  it('remints when the cached token is inside the expiry skew window', async () => {
+    mint
+      .mockResolvedValueOnce(
+        Result.ok({
+          token: 'ghs_stale',
+          expiresAt: new Date(Date.now() + 30_000).toISOString(),
+          installationId: '42',
+        }),
+      )
+      .mockResolvedValueOnce(
+        Result.ok({
+          token: 'ghs_fresh',
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+          installationId: '42',
+        }),
+      )
+
+    const first = await Effect.runPromise(
+      mintGitHubInstallationAccessToken(
+        { installationId: '42', appId: '1', privateKey: 'pem' },
+        'github.writeIssue',
+      ),
+    )
+    const second = await Effect.runPromise(
+      mintGitHubInstallationAccessToken(
+        { installationId: '42', appId: '1', privateKey: 'pem' },
+        'github.writeIssue',
+      ),
+    )
+
+    expect(first.token).toBe('ghs_stale')
+    expect(second.token).toBe('ghs_fresh')
+    expect(mint).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('withGitHubTokenRejectedRemintOnce', () => {
+  beforeEach(() => {
+    mint.mockReset()
+    clearGitHubInstallationTokenCache()
+  })
+
   it('retries once on token_rejected then succeeds', async () => {
     let attempts = 0
     const result = await Effect.runPromise(
@@ -148,6 +217,7 @@ describe('withGitHubTokenRejectedRemintOnce', () => {
           }
           return 'ok'
         }),
+        '42',
       ),
     )
     expect(result).toBe('ok')
@@ -168,9 +238,61 @@ describe('withGitHubTokenRejectedRemintOnce', () => {
             status: 401,
           })
         }),
+        '42',
       ).pipe(Effect.flip),
     )
     expect(attempts).toBe(2)
     expect(error).toMatchObject({ code: 'github.token_rejected' })
+  })
+
+  it('invalidates the cached token before reminting', async () => {
+    mint.mockResolvedValueOnce(
+      Result.ok({
+        token: 'ghs_rejected',
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        installationId: '42',
+      }),
+    )
+    await Effect.runPromise(
+      mintGitHubInstallationAccessToken(
+        { installationId: '42', appId: '1', privateKey: 'pem' },
+        'github.writeIssue',
+      ),
+    )
+    expect(mint).toHaveBeenCalledTimes(1)
+
+    mint.mockResolvedValueOnce(
+      Result.ok({
+        token: 'ghs_reminted',
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        installationId: '42',
+      }),
+    )
+
+    let attempts = 0
+    await Effect.runPromise(
+      withGitHubTokenRejectedRemintOnce(
+        Effect.gen(function* () {
+          attempts += 1
+          if (attempts === 1) {
+            return yield* new ConnectorAuthError({
+              connectorId: 'github',
+              operation: 'test',
+              code: githubAuthFailureCode('token_rejected'),
+              message: githubAuthMessage('token_rejected'),
+              status: 401,
+            })
+          }
+          return yield* mintGitHubInstallationAccessToken(
+            { installationId: '42', appId: '1', privateKey: 'pem' },
+            'github.writeIssue',
+          )
+        }),
+        '42',
+      ),
+    )
+
+    expect(attempts).toBe(2)
+    expect(mint).toHaveBeenCalledTimes(2)
   })
 })

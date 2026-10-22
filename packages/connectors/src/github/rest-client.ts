@@ -165,7 +165,10 @@ export const makeGitHubRestClientLayer = (): Layer.Layer<
               )
             },
           )
-          return yield* withGitHubTokenRejectedRemintOnce(attempt())
+          return yield* withGitHubTokenRejectedRemintOnce(
+            attempt(),
+            config.installationId,
+          )
         }),
       }
     }),

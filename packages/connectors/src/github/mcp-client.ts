@@ -323,7 +323,10 @@ export const makeGitHubHostedMcpClientLayer = (): Layer.Layer<
               return tools
             },
           )
-          return yield* withGitHubTokenRejectedRemintOnce(attempt())
+          return yield* withGitHubTokenRejectedRemintOnce(
+            attempt(),
+            config.installationId,
+          )
         }),
         callTool: Effect.fn('GitHubHostedMcp.callTool')(function* (
           name: string,
@@ -353,7 +356,10 @@ export const makeGitHubHostedMcpClientLayer = (): Layer.Layer<
               return response.result
             },
           )
-          return yield* withGitHubTokenRejectedRemintOnce(attempt())
+          return yield* withGitHubTokenRejectedRemintOnce(
+            attempt(),
+            config.installationId,
+          )
         }),
       })
     }),

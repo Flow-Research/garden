@@ -3,7 +3,24 @@ import {
   createGitHubAppJwt,
   createGitHubInstallationAccessToken,
   deleteGitHubAppInstallation,
+  normalizeGitHubAppPrivateKey,
 } from './github-app'
+
+describe('normalizeGitHubAppPrivateKey', () => {
+  it('unwraps JSON-quoted PEMs and literal \\n escapes', () => {
+    expect(
+      normalizeGitHubAppPrivateKey(
+        '"-----BEGIN PRIVATE KEY-----\\nABC\\n-----END PRIVATE KEY-----"',
+      ),
+    ).toBe('-----BEGIN PRIVATE KEY-----\nABC\n-----END PRIVATE KEY-----')
+  })
+
+  it('returns undefined for empty input', () => {
+    expect(normalizeGitHubAppPrivateKey(undefined)).toBeUndefined()
+    expect(normalizeGitHubAppPrivateKey('   ')).toBeUndefined()
+  })
+})
+
 
 function base64UrlJson(segment: string) {
   return JSON.parse(Buffer.from(segment, 'base64url').toString('utf8')) as {

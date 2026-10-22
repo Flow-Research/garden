@@ -1,5 +1,8 @@
 import { Result, TaggedError } from 'better-result'
-import { getGitHubAppInstallation } from '@garden/connectors/github-app'
+import {
+  getGitHubAppInstallation,
+  normalizeGitHubAppPrivateKey,
+} from '@garden/connectors/github-app'
 import { schema, type Db } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
 
@@ -26,15 +29,13 @@ type GitHubAppEnv = Pick<
 
 type GitHubAppDatabase = Db
 
-/** Normalizes private keys stored as JSON-quoted Worker secrets before signing. */
+/** Applies shared GitHub App private-key normalization for Worker/env secrets. */
 export function normalizeGitHubAppEnv(env: GitHubAppEnv) {
-  const privateKey = env.GITHUB_APP_PRIVATE_KEY?.trim()
-
   return {
     ...env,
-    GITHUB_APP_PRIVATE_KEY: privateKey?.startsWith('"')
-      ? Result.try(() => JSON.parse(privateKey) as string).unwrapOr(privateKey)
-      : privateKey,
+    GITHUB_APP_PRIVATE_KEY: normalizeGitHubAppPrivateKey(
+      env.GITHUB_APP_PRIVATE_KEY,
+    ),
   }
 }
 
