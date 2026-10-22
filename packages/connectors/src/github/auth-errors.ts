@@ -14,15 +14,23 @@ import type { GitHubAppAuthError } from '../github-app.ts'
 export type GitHubAuthFailureCode =
   | 'install_missing'
   | 'install_disconnected'
+  | 'install_degraded'
   | 'mint_failed'
   | 'token_rejected'
   | 'insufficient_permission'
+
+export type GitHubInstallationStatus =
+  | 'connected'
+  | 'degraded'
+  | 'disconnected'
 
 const GITHUB_AUTH_HINTS: Record<GitHubAuthFailureCode, string> = {
   install_missing:
     'No GitHub App installation is linked to this workspace. Connect GitHub under Connections, then retry.',
   install_disconnected:
     'The GitHub App installation for this workspace is disconnected. Repair or reconnect it under Connections, then retry.',
+  install_degraded:
+    'The GitHub App installation for this workspace needs repair before tools can run. Repair or reconnect it under Connections, then retry.',
   mint_failed:
     'Could not mint a GitHub App installation token for this workspace. Check App credentials and the installation, or reconnect under Connections.',
   token_rejected:
@@ -135,4 +143,47 @@ export function connectorAuthErrorFromMintFailure(args: {
     message: classified.message,
     status: classified.status,
   })
+}
+
+function connectorAuthErrorForCode(args: {
+  operation: string
+  code: GitHubAuthFailureCode
+}) {
+  return new ConnectorAuthError({
+    connectorId: 'github',
+    operation: args.operation,
+    code: githubAuthFailureCode(args.code),
+    message: githubAuthMessage(args.code),
+  })
+}
+
+/**
+ * Phase 3 health gate: refuse mint/tool use when the workspace install is
+ * missing, disconnected, or degraded. Undefined status means connected
+ * (backward compatible for callers that only pass installationId).
+ */
+export function githubInstallationHealthError(args: {
+  operation: string
+  installationId: string
+  installationStatus?: GitHubInstallationStatus
+}): ConnectorAuthError | null {
+  if (!args.installationId.trim()) {
+    return connectorAuthErrorForCode({
+      operation: args.operation,
+      code: 'install_missing',
+    })
+  }
+  if (args.installationStatus === 'disconnected') {
+    return connectorAuthErrorForCode({
+      operation: args.operation,
+      code: 'install_disconnected',
+    })
+  }
+  if (args.installationStatus === 'degraded') {
+    return connectorAuthErrorForCode({
+      operation: args.operation,
+      code: 'install_degraded',
+    })
+  }
+  return null
 }

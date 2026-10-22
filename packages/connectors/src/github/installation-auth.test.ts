@@ -78,4 +78,50 @@ describe('mintGitHubInstallationAccessToken', () => {
     expect(error.message).toMatch(/\[github\.mint_failed\]/)
     expect(error.message).toContain('Bad credentials')
   })
+
+  it('refuses degraded installs before calling GitHub', async () => {
+    const error = await Effect.runPromise(
+      mintGitHubInstallationAccessToken(
+        {
+          installationId: '42',
+          installationStatus: 'degraded',
+        },
+        'github.writeIssue',
+      ).pipe(Effect.flip),
+    )
+
+    expect(mint).not.toHaveBeenCalled()
+    expect(error).toMatchObject({
+      code: 'github.install_degraded',
+      operation: 'github.writeIssue',
+    })
+    expect(error.message).toMatch(/\[github\.install_degraded\]/)
+  })
+
+  it('refuses empty installation ids before calling GitHub', async () => {
+    const error = await Effect.runPromise(
+      mintGitHubInstallationAccessToken(
+        { installationId: '' },
+        'github.writeIssue',
+      ).pipe(Effect.flip),
+    )
+
+    expect(mint).not.toHaveBeenCalled()
+    expect(error).toMatchObject({ code: 'github.install_missing' })
+  })
+
+  it('refuses disconnected installs before calling GitHub', async () => {
+    const error = await Effect.runPromise(
+      mintGitHubInstallationAccessToken(
+        {
+          installationId: '42',
+          installationStatus: 'disconnected',
+        },
+        'github.writeIssue',
+      ).pipe(Effect.flip),
+    )
+
+    expect(mint).not.toHaveBeenCalled()
+    expect(error).toMatchObject({ code: 'github.install_disconnected' })
+  })
 })

@@ -22,6 +22,7 @@ export type GitHubAppConfigShape = {
   readonly clientId?: string
   readonly privateKey?: string
   readonly installationId: string
+  readonly installationStatus?: 'connected' | 'degraded' | 'disconnected'
 }
 
 export class GitHubAppConfig extends Context.Service<

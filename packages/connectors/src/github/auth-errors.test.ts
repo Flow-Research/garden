@@ -10,6 +10,7 @@ import {
   connectorAuthErrorFromMintFailure,
   connectorErrorFromGitHubHttp,
   githubAuthMessage,
+  githubInstallationHealthError,
 } from './auth-errors.ts'
 
 describe('githubAuthMessage', () => {
@@ -21,6 +22,57 @@ describe('githubAuthMessage', () => {
     expect(githubAuthMessage('token_rejected', 'Bad credentials')).toContain(
       'Upstream: Bad credentials',
     )
+  })
+})
+
+describe('githubInstallationHealthError', () => {
+  it('returns install_missing for an empty installation id', () => {
+    const error = githubInstallationHealthError({
+      operation: 'github.writeIssue',
+      installationId: '  ',
+    })
+    expect(error).toBeInstanceOf(ConnectorAuthError)
+    expect(error).toMatchObject({
+      code: 'github.install_missing',
+      operation: 'github.writeIssue',
+    })
+    expect(error?.message).toMatch(/\[github\.install_missing\]/)
+  })
+
+  it('returns install_disconnected for disconnected status', () => {
+    const error = githubInstallationHealthError({
+      operation: 'github.writeIssue',
+      installationId: '42',
+      installationStatus: 'disconnected',
+    })
+    expect(error?.code).toBe('github.install_disconnected')
+    expect(error?.message).toMatch(/disconnected/i)
+  })
+
+  it('returns install_degraded for degraded status', () => {
+    const error = githubInstallationHealthError({
+      operation: 'github.writeIssue',
+      installationId: '42',
+      installationStatus: 'degraded',
+    })
+    expect(error?.code).toBe('github.install_degraded')
+    expect(error?.message).toMatch(/repair/i)
+  })
+
+  it('returns null for connected or omitted status', () => {
+    expect(
+      githubInstallationHealthError({
+        operation: 'github.writeIssue',
+        installationId: '42',
+      }),
+    ).toBeNull()
+    expect(
+      githubInstallationHealthError({
+        operation: 'github.writeIssue',
+        installationId: '42',
+        installationStatus: 'connected',
+      }),
+    ).toBeNull()
   })
 })
 
