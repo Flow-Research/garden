@@ -379,7 +379,25 @@ const makeBrainToolsService = (
     })
   })
 
-  /** Authorizes target visibility before a mutation can reveal metadata. */
+  /**
+   * Authorizes target visibility before a Brain mutation can reveal or change
+   * an item.
+   *
+   * Before (garden#143): mutation tools acted on any item id in the workspace.
+   * A shared issue run could probe or edit an owner-private item by id, and an
+   * error or success message confirmed that the private item existed.
+   *
+   * After: every mutation first reads the target through the same viewer the
+   * run may read with. For `readAudience: 'org'` that viewer has no user and no
+   * teams, so only org-scoped items are visible. An item the viewer cannot see
+   * returns the same generic "unavailable" error as a missing item, so the
+   * caller learns nothing about private items. No metadata or edge is changed
+   * before this check passes.
+   *
+   * Scope rules come from `canViewScope` in `packages/brain/src/domain/scope.ts`,
+   * which the Brain service read path applies; reusing the service read keeps
+   * this gate identical to search and injection visibility.
+   */
   const requireVisibleTarget = Effect.fn('BrainTools.requireVisibleTarget')(
     function* (
       ctx: BrainToolContext,
