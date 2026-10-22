@@ -16,6 +16,9 @@
 
 # CSRF and transport layer
 /apps/web/src/lib/api/transport.ts                @Flow-Research/security
+/apps/web/src/lib/server/workspace-permissions.ts @Flow-Research/security
+/apps/web/src/lib/server/workspace-refs.ts        @Flow-Research/security
+/apps/web/src/lib/server/stored-object-headers.ts @Flow-Research/security
 
 # Autonomy and policy docs
 /docs/features/codemode-and-permissions-plan.md   @Flow-Research/security
@@ -25,3 +28,11 @@
 /.env*                                            @Flow-Research/security
 /alchemy.run.ts                                   @Flow-Research/security
 /apps/web/wrangler*.jsonc                         @Flow-Research/security
+
+# Supply chain: dependency versions, patched packages, CI and deploy scripts
+/package.json                                     @Flow-Research/security
+/pnpm-workspace.yaml                              @Flow-Research/security
+/patches/                                         @Flow-Research/security
+/.github/workflows/                               @Flow-Research/security
+/deploy-targets.mjs                               @Flow-Research/security
+/scripts/deploy-ci.mjs                            @Flow-Research/security

@@ -10,6 +10,7 @@ import type {
 } from '@garden/core/types/issue-run'
 import * as schema from '@garden/db/schema'
 import type { GardenAnalyticsEventName } from '@garden/observability/analytics/events'
+import { operationFailedMessage } from '../runtime-utils'
 
 export type AgentDoRpcStub = {
   setName?: (name: string) => Promise<void>
@@ -108,10 +109,9 @@ export function getIssueRunDb(connectionString: string) {
 }
 
 export function dbError(operation: string, cause: unknown) {
-  const message = cause instanceof Error ? cause.message : String(cause)
   return new IssueRunToolError({
     code: 'database_failed',
-    message: `${operation} failed: ${message}`,
+    message: operationFailedMessage(operation, cause),
     cause,
   })
 }

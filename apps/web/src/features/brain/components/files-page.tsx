@@ -2,8 +2,15 @@ import { useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Result } from 'better-result'
 import { toast } from 'sonner'
-import { FilePlus, Folder as FolderIcon, Plus, ArrowRight } from 'lucide-react'
-import { FunnelSimple, PlugsConnected, CaretRight } from '@phosphor-icons/react'
+import {
+  ArrowRight,
+  ChevronRight,
+  FilePlus,
+  Folder as FolderIcon,
+  Funnel,
+  PlugZap,
+  Plus,
+} from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -669,13 +676,9 @@ export function BrainFilesPage() {
                   Add files
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled title="Not available yet">
-                  <PlugsConnected className="size-4" weight="regular" />
+                  <PlugZap className="size-4" />
                   Use connector
-                  <CaretRight
-                    className="ml-auto size-4"
-                    weight="regular"
-                    aria-hidden="true"
-                  />
+                  <ChevronRight className="ml-auto size-4" aria-hidden="true" />
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -791,7 +794,7 @@ export function BrainFilesPage() {
                   aria-label="Filter folders"
                   title="Filtering is not available yet"
                 >
-                  <FunnelSimple className="size-4" weight="regular" />
+                  <Funnel className="size-4" />
                 </Button>
 
                 <ViewModePill

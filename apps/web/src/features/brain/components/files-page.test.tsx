@@ -2011,7 +2011,7 @@ describe('BrainFilesPage', () => {
 
   it('exports the full file list as CSV from the all-files view', async () => {
     const user = userEvent.setup()
-    const createObjectURL = vi.fn(() => 'blob:mock')
+    const createObjectURL = vi.fn((_blob: Blob) => 'blob:mock')
     vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL: vi.fn() })
     let downloadName: string | undefined
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(
@@ -2038,7 +2038,8 @@ describe('BrainFilesPage', () => {
     await user.click(screen.getByRole('button', { name: 'Export Data' }))
 
     expect(downloadName).toBe('All files.csv')
-    const blob = createObjectURL.mock.calls[0]?.[0] as Blob
+    const blob = createObjectURL.mock.calls[0]?.[0]
+    if (!blob) throw new Error('Expected the export to create a blob URL')
     const csv = await blob.text()
     expect(csv).toContain('File name,Date uploaded,Time uploaded,Size')
     expect(csv).toContain('"report.pdf",07 July, 2024')

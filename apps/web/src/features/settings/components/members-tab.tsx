@@ -115,7 +115,12 @@ function MemberRow({
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
-              <Button variant="ghost" size="icon-sm" disabled={busy}>
+              <Button
+                aria-label="Member actions"
+                variant="ghost"
+                size="icon-sm"
+                disabled={busy}
+              >
                 <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
               </Button>
             }

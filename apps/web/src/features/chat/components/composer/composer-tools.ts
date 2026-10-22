@@ -1,10 +1,10 @@
 import {
   Brain,
-  Equalizer,
-  FileMagnifyingGlass,
+  FileSearch,
   FileText,
-  GearFine,
-} from '@phosphor-icons/react'
+  Settings2,
+  SlidersHorizontal,
+} from 'lucide-react'
 import {
   BinocularsIcon,
   CalendarCheckIcon,
@@ -40,10 +40,9 @@ export interface ToolPreset {
   id: ToolPresetId
   label: string
   /**
-   * Typed `IconComponent` rather than lucide's `LucideIcon`: the presets draw
-   * from Phosphor (already a dependency, used across the shell and brain
-   * features) plus this repo's own hand-authored set, so the registry has to
-   * hold both.
+   * Typed `IconComponent` rather than lucide's `LucideIcon` because the
+   * presets mix Lucide glyphs with this repo's hand-authored icon set, so the
+   * registry has to hold both.
    */
   icon: IconComponent
   /**
@@ -82,14 +81,14 @@ export const TOOL_PRESETS: readonly ToolPreset[] = [
   {
     id: 'qa-agent',
     label: 'QA Agent',
-    icon: Equalizer,
+    icon: SlidersHorizontal,
     iconClassName: 'text-orange-500 dark:text-orange-400',
     accentClassName: 'bg-orange-500/10 dark:bg-orange-400/15',
   },
   {
     id: 'eng-issue-triage',
     label: 'Engineering Issue Triage',
-    icon: GearFine,
+    icon: Settings2,
     iconClassName: 'text-blue-500 dark:text-blue-400',
     accentClassName: 'bg-blue-500/10 dark:bg-blue-400/15',
   },
@@ -103,7 +102,7 @@ export const TOOL_PRESETS: readonly ToolPreset[] = [
   {
     id: 'research-synthesis',
     label: 'Research Synthesis',
-    icon: FileMagnifyingGlass,
+    icon: FileSearch,
     iconClassName: 'text-fuchsia-500 dark:text-fuchsia-400',
     accentClassName: 'bg-fuchsia-500/10 dark:bg-fuchsia-400/15',
   },

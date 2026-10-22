@@ -21,7 +21,6 @@ import {
   notFound,
   requireWorkspaceContext,
 } from '@/lib/server/control-plane'
-import type { AppEnv } from '@/lib/server/env'
 import {
   addBrainFolderFile,
   brainFolderSummaryOf,
@@ -79,7 +78,7 @@ async function folderDetailResponse({
   if (fullFolder === null) return notFound('Folder not found')
 
   const resolved = await loadBrainItemsByIds({
-    env: appContext.env as AppEnv & { HELIX_URL?: string },
+    env: appContext.env,
     workspaceId: workspaceContext.workspaceId,
     fileIds: memberIds,
   })
@@ -129,10 +128,7 @@ export const postBrainFolderFile = async ({
   )
   if (!inputResult.success) return badRequest('Invalid file id')
 
-  const env = appContext.env as AppEnv & {
-    HELIX_URL?: string
-    HELIX_API_KEY?: string
-  }
+  const env = appContext.env
   const helixUrl = env.HELIX_URL
   if (helixUrl === undefined) {
     return badRequest('Brain is not configured (missing HELIX_URL)')

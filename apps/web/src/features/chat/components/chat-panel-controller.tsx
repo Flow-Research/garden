@@ -38,6 +38,7 @@ import {
   NEW_SESSION_TITLE,
 } from '../use-agent-chat-sessions'
 import { makeSessionTitle, type ChatRuntime } from '../chat-runtime-provider'
+import { chatThreadKeys } from '../queries'
 import { useToolApprovals } from '../use-tool-approvals'
 import { useStructuredInput } from '../use-structured-input'
 import {
@@ -427,7 +428,7 @@ export function ConnectedChatPanelInteraction({
     }
     if (uploadResult.value.length > 0) {
       void queryClient.invalidateQueries({
-        queryKey: ['chat-thread-documents', sessionId],
+        queryKey: chatThreadKeys.documents(sessionId),
       })
     }
 

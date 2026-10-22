@@ -110,6 +110,13 @@ export const updateIssueBodySchema = z
     'No valid issue changes submitted',
   )
 
+export const issueSubscriptionBodySchema = z
+  .object({
+    user_id: z.string().uuid().optional(),
+    user_type: issueApiAssigneeTypeSchema.optional(),
+  })
+  .strict()
+
 export const sourceBindingBodySchema = z
   .object({
     connector_id: issueSourceBindingInsertSchema.shape.connectorId,

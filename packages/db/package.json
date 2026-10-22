@@ -1,11 +1,11 @@
 {
   "name": "@garden/db",
+  "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
   "dependencies": {
     "@garden/env": "workspace:*",
-    "@neondatabase/serverless": "^1.0.1",
     "drizzle-orm": "catalog:",
     "drizzle-zod": "^0.8.3",
     "pg": "^8.20.0",
@@ -20,7 +20,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix .",
     "test": "vitest run",
     "db:check": "node ../../scripts/run-with-root-env.mjs drizzle-kit check",

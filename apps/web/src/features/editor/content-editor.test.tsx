@@ -40,7 +40,24 @@ vi.mock('@tiptap/react', () => ({
   ),
 }))
 
+import { NavigationProvider } from '../navigation'
 import { ContentEditor } from './content-editor'
+
+const navigation = {
+  push: vi.fn(),
+  replace: vi.fn(),
+  back: vi.fn(),
+  pathname: '/',
+  searchParams: new URLSearchParams(),
+}
+
+function renderEditor() {
+  return render(
+    <NavigationProvider value={navigation}>
+      <ContentEditor placeholder="Add description..." />
+    </NavigationProvider>,
+  )
+}
 
 describe('ContentEditor', () => {
   beforeEach(() => {
@@ -48,7 +65,7 @@ describe('ContentEditor', () => {
   })
 
   it('focuses the editor when clicking the empty container area', () => {
-    render(<ContentEditor placeholder="Add description..." />)
+    renderEditor()
 
     const shell = screen.getByTestId('editor-content').parentElement
     expect(shell).not.toBeNull()
@@ -59,7 +76,7 @@ describe('ContentEditor', () => {
   })
 
   it('does not hijack clicks that land inside the ProseMirror node', () => {
-    render(<ContentEditor placeholder="Add description..." />)
+    renderEditor()
 
     fireEvent.mouseDown(screen.getByTestId('prosemirror'))
 

@@ -7,7 +7,10 @@ import { useViewStore } from '@garden/app-state/issues/stores/view-store-context
 import { toast } from 'sonner'
 import { BoardView } from '@/features/issues/components/board-view'
 import { ListView } from '@/features/issues/components/list-view'
-import { filterIssues, matchesIssueSearch } from '@/features/issues/utils/filter'
+import {
+  filterIssues,
+  matchesIssueSearch,
+} from '@/features/issues/utils/filter'
 import { useUpdateIssue } from '@/lib/issues/mutations'
 import { projectListOptions } from '@/lib/projects/queries'
 import { teamIssueViewStore } from '../view-store'

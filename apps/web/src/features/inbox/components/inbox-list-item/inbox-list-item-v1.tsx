@@ -1,19 +1,9 @@
 import { Archive } from 'lucide-react'
 import { useActorName } from '@/lib/workspace/hooks'
 import type { InboxItem } from '@garden/core/types'
+import { timeAgo } from '@garden/core/format'
 import { cn } from '@garden/ui/lib/utils'
 import { InboxDetailLabel, typeLabels } from '../inbox-detail-label'
-
-export function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h`
-  const days = Math.floor(hours / 24)
-  return `${days}d`
-}
 
 export function InboxListItemV1({
   item,
@@ -56,7 +46,7 @@ export function InboxListItemV1({
           {actorName}
         </span>
         <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-          {timeAgo(item.created_at)}
+          {timeAgo(item.created_at, { compact: true })}
         </span>
       </div>
 

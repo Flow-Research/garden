@@ -7,6 +7,8 @@ import { TaggedError } from 'better-result'
 import { disposeRpcResult } from '@garden/app-state/platform/rpc'
 import { createGardenLogger } from '@garden/observability/logger'
 import type { AgentDO } from './agent-do'
+import { waitForTurnToSettle } from './run-workflow-turn-wait'
+import { isTerminalSubmissionStatus } from './runtime-utils'
 
 /**
  * Per-run durable executor.
@@ -70,13 +72,6 @@ const workflowLogger = createGardenLogger({
   component: 'run-workflow',
 })
 
-const TERMINAL_SUBMISSION_STATUSES = new Set([
-  'completed',
-  'aborted',
-  'skipped',
-  'error',
-])
-
 export type RunWorkflowTurnStartResult =
   | { kind: 'run_status'; status: string }
   | { kind: 'submitted'; submissionId: string; submissionStatus: string }
@@ -92,10 +87,6 @@ export const RUN_WORKFLOW_TURN_COMPLETE_EVENT_PREFIX =
 
 export function getRunWorkflowTurnCompleteEventType(submissionId: string) {
   return `${RUN_WORKFLOW_TURN_COMPLETE_EVENT_PREFIX}:${submissionId}`
-}
-
-function isTerminalSubmissionStatus(status: string) {
-  return TERMINAL_SUBMISSION_STATUSES.has(status)
 }
 
 export class RunWorkflow extends AgentWorkflow<
@@ -244,6 +235,8 @@ export class RunWorkflow extends AgentWorkflow<
    * Workflow steps skip the wait when `submitMessages()` reports an already
    * terminal submission. This replaces the former in-memory waiter/timeout path
    * that could fail long-running turns even though the SDK could keep working.
+   * When the event is lost, `waitForTurnToSettle` reconciles from Think's
+   * submission state, and a turn that never settles fails the run.
    */
   private async waitForSubmittedTurnCompletion(input: {
     event: AgentWorkflowEvent<RunWorkflowParams>
@@ -252,13 +245,68 @@ export class RunWorkflow extends AgentWorkflow<
     step: AgentWorkflowStep
     turn: number
   }): Promise<{ status: string }> {
+    const { payload } = input.event
+    const submissionId = input.started.submissionId
+    const logFields = {
+      kind: payload.kind,
+      runId: input.runId,
+      turn: input.turn,
+      submissionId,
+      ...(payload.kind === 'issue' ? { issueId: payload.issueId } : {}),
+    }
+
     if (!isTerminalSubmissionStatus(input.started.submissionStatus)) {
-      await input.step.waitForEvent<RunWorkflowTurnCompleteEvent>(
-        `turn-${input.turn}-complete-event`,
-        {
-          type: getRunWorkflowTurnCompleteEventType(input.started.submissionId),
-        },
-      )
+      const outcome = await waitForTurnToSettle({
+        step: input.step,
+        turn: input.turn,
+        eventType: getRunWorkflowTurnCompleteEventType(submissionId),
+        retries: TURN_RETRIES,
+        readStatus: async () =>
+          payload.kind === 'automation'
+            ? disposeRpcResult(
+                await this.agent.readAutomationRunTurnStatus({
+                  runId: input.runId,
+                  submissionId,
+                }),
+              )
+            : disposeRpcResult(
+                await this.agent.readRunTurnStatus({
+                  runId: input.runId,
+                  issueId: payload.issueId,
+                  submissionId,
+                }),
+              ),
+      })
+
+      if (outcome === 'reconciled') {
+        workflowLogger.warn('run_workflow.turn_event_missed', logFields)
+      }
+      if (outcome === 'timed_out') {
+        workflowLogger.error('run_workflow.turn_timed_out', logFields)
+        return await input.step.do<{ status: string }>(
+          `turn-${input.turn}-timed-out`,
+          { retries: TURN_RETRIES },
+          async () => {
+            const reason = 'turn_timed_out'
+            const failed =
+              payload.kind === 'automation'
+                ? disposeRpcResult(
+                    await this.agent.failAutomationRunTurn({
+                      runId: input.runId,
+                      reason,
+                    }),
+                  )
+                : disposeRpcResult(
+                    await this.agent.failRunTurn({
+                      runId: input.runId,
+                      issueId: payload.issueId,
+                      reason,
+                    }),
+                  )
+            return { status: failed.status }
+          },
+        )
+      }
     }
 
     return await input.step.do<{ status: string }>(

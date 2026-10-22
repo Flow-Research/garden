@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import {
   check,
+  index,
   jsonb,
   pgTable,
   text,
@@ -28,8 +29,19 @@ export const organization = pgTable(
       .notNull()
       .default(sql`'{}'::jsonb`),
     plan: text('plan').default('free'),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     check(
@@ -47,14 +59,20 @@ export const member = pgTable(
       .default(sql`gen_random_uuid()`),
     organizationId: uuid('organization_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     userId: uuid('user_id')
       .notNull()
       .references(() => user.id),
     role: text('role').notNull().default('member'),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [
+    index('member_user_id_idx').on(table.userId),
     uniqueIndex('member_organization_user_unique').on(
       table.organizationId,
       table.userId,
@@ -74,17 +92,26 @@ export const invitation = pgTable(
       .default(sql`gen_random_uuid()`),
     organizationId: uuid('organization_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     email: text('email').notNull(),
     role: text('role').notNull(),
     status: text('status').notNull().default('pending'),
-    expiresAt: timestamp('expires_at', { mode: 'date' }).notNull(),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
+    expiresAt: timestamp('expires_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`),
     inviterId: uuid('inviter_id')
       .notNull()
       .references(() => user.id),
   },
   (table) => [
+    index('invitation_organization_id_idx').on(table.organizationId),
     check(
       'invitation_role_check',
       sql`${table.role} in ('owner', 'admin', 'member')`,

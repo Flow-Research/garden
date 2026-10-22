@@ -15,25 +15,16 @@ import {
   shouldSkipIssueRunStart,
 } from '@garden/core/issues/run-sync'
 import * as schema from '@garden/db/schema'
+import {
+  RUN_WORKFLOW_CONTROL_EVENT_TYPE,
+  isAgentRuntimeName,
+  type AgentDONamespace,
+  type HyperdriveConnection,
+  type RunWorkflowBinding,
+  type RunWorkflowControlEvent,
+} from '../runtime-bindings'
 
 const WORKFLOW_START_FAILURE_RETRY_DELAY_MS = 5_000
-const AGENT_RUNTIME_NAME_PATTERN = /^[A-Za-z0-9._:-]+$/
-const RUN_WORKFLOW_CONTROL_EVENT_TYPE = 'run-control'
-
-type RunWorkflowControlEvent = { kind: 'resume' | 'cancel' }
-
-type RunWorkflowBinding = {
-  get: (id: string) => Promise<{
-    sendEvent: (event: {
-      type: typeof RUN_WORKFLOW_CONTROL_EVENT_TYPE
-      payload: RunWorkflowControlEvent
-    }) => Promise<void>
-  }>
-}
-
-function isIssueRunAgentRuntimeName(value: string) {
-  return AGENT_RUNTIME_NAME_PATTERN.test(value)
-}
 
 export class IssueRunServiceError extends TaggedError('IssueRunServiceError')<{
   code:
@@ -59,31 +50,16 @@ export type StartIssueRunInput = {
   actor: { type: 'member' | 'agent' | 'system'; id: string }
 }
 
-/**
- * Minimal structural shape of the Cloudflare Hyperdrive binding this package
- * consumes. `@garden/server` does not pull in `@cloudflare/workers-types` as an
- * ambient global, and the run service only reads `connectionString`. Workers
- * (web app, agent runtime) pass the full global `Hyperdrive` binding here, which
- * is structurally assignable to this narrower type.
- */
-type HyperdriveConnection = { readonly connectionString: string }
-
 export type IssueRunEnv = {
   HYPERDRIVE: HyperdriveConnection
   RUN_WORKFLOW?: RunWorkflowBinding
-  AgentDO?: {
-    idFromName: (name: string) => any
-    get: (id: any) => {
-      startIssueRunWorkflow: (input: {
-        runId: string
-        issueId: string
-      }) => Promise<void>
-      cancelIssueRun: (input: {
-        runId: string
-        issueId: string
-      }) => Promise<void>
-    }
-  }
+  AgentDO?: AgentDONamespace<{
+    startIssueRunWorkflow: (input: {
+      runId: string
+      issueId: string
+    }) => Promise<void>
+    cancelIssueRun: (input: { runId: string; issueId: string }) => Promise<void>
+  }>
 }
 
 function getIssueRunAgentDoStub(
@@ -93,7 +69,7 @@ function getIssueRunAgentDoStub(
   ReturnType<NonNullable<IssueRunEnv['AgentDO']>['get']>,
   IssueRunServiceError
 > {
-  if (!agentRuntimeName || !isIssueRunAgentRuntimeName(agentRuntimeName)) {
+  if (!agentRuntimeName || !isAgentRuntimeName(agentRuntimeName)) {
     return Result.err(
       new IssueRunServiceError({
         code: 'runtime_error',
@@ -261,11 +237,12 @@ export function toIssueWorkProduct(
   }
 }
 
+// The driver's message stays on `cause` for logs; `message` reaches API clients
+// and must not carry raw Postgres error text.
 function serviceDbError(operation: string, cause: unknown) {
-  const message = cause instanceof Error ? cause.message : String(cause)
   return new IssueRunServiceError({
     code: 'db_error',
-    message: `${operation} failed: ${message}`,
+    message: `${operation} failed`,
     cause,
   })
 }

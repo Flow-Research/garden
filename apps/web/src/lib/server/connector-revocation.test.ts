@@ -12,8 +12,14 @@ describe('decryptStoredOAuthTokens', () => {
       options: { account: { encryptOAuthTokens: true } },
       secretConfig: 'garden-test-secret-at-least-32-bytes',
     } as OAuthDecryptContext
-    const encryptedAccessToken = await setTokenUtil('access-token', context)
-    const encryptedRefreshToken = await setTokenUtil('refresh-token', context)
+    // setTokenUtil only reads these two fields of Better Auth's context, the
+    // same narrowing connector-revocation.ts applies for decryptOAuthToken.
+    const authContext = context as Parameters<typeof setTokenUtil>[1]
+    const encryptedAccessToken = await setTokenUtil('access-token', authContext)
+    const encryptedRefreshToken = await setTokenUtil(
+      'refresh-token',
+      authContext,
+    )
 
     expect(encryptedAccessToken).not.toBe('access-token')
     await expect(

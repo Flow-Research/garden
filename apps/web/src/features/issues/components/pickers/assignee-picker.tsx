@@ -268,7 +268,9 @@ export function AssigneePicker({
               >
                 <ActorAvatar actorType="agent" actorId={agent.id} size={18} />
                 <span
-                  className={agent.allowed ? undefined : 'text-muted-foreground'}
+                  className={
+                    agent.allowed ? undefined : 'text-muted-foreground'
+                  }
                 >
                   {agent.name}
                 </span>

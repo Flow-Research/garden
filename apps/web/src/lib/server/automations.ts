@@ -5,7 +5,7 @@ import {
   cancelAutomationRun,
   startAutomationRun,
 } from '@garden/server/automations/run-service'
-import { getDb, schema } from '@/lib/server/db'
+import { getDb, requireReturnedRow, schema, type Db } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
 
 type AutomationRow = typeof schema.automation.$inferSelect
@@ -373,6 +373,42 @@ export async function installScheduleTrigger({
   return Result.ok(nextRunAtResult.value)
 }
 
+type AutomationTx = Parameters<Parameters<Db['transaction']>[0]>[0]
+
+/** Thrown inside a transaction to roll it back with the sync's error. */
+class ScheduleSyncAbort extends Error {
+  constructor(readonly error: AutomationApiError) {
+    super(error.message)
+  }
+}
+
+/**
+ * Runs a database write and the matching Durable Object schedule change as
+ * one unit: `sync` runs inside the write's transaction, and a failed sync
+ * rolls the write back. Committing first used to leave triggers stored as
+ * active, with no schedule installed, whenever the install failed. If the
+ * commit itself fails after a successful sync, the schedule corrects itself
+ * at its next fire, which reloads the trigger and uninstalls when it is gone.
+ */
+export async function writeWithScheduleSync<T>(
+  db: Db,
+  write: (tx: AutomationTx) => Promise<T>,
+  sync: (written: T) => Promise<ResultValue<unknown, AutomationApiError>>,
+): Promise<ResultValue<T, AutomationApiError>> {
+  try {
+    const written = await db.transaction(async (tx) => {
+      const value = await write(tx)
+      const syncResult = await sync(value)
+      if (syncResult.isErr()) throw new ScheduleSyncAbort(syncResult.error)
+      return value
+    })
+    return Result.ok(written)
+  } catch (cause) {
+    if (cause instanceof ScheduleSyncAbort) return Result.err(cause.error)
+    throw cause
+  }
+}
+
 export async function uninstallScheduleTrigger(
   env: AppEnv,
   triggerId: string,
@@ -525,23 +561,26 @@ async function applyDispatchConcurrency(args: {
   if (policyResult.value === 'skip') {
     const insertResult = await Result.tryPromise({
       try: async () => {
-        const [run] = await db
-          .insert(schema.automationRun)
-          .values({
-            id: crypto.randomUUID(),
-            workspaceId: args.automation.workspaceId,
-            automationId: args.automation.id,
-            source: args.source,
-            status: 'skipped',
-            agentId: args.automation.assigneeAgentId,
-            hostName: args.automation.assigneeAgentId,
-            triggeredAt: now,
-            completedAt: now,
-            failureReason: 'concurrency_policy_skip',
-            triggerPayload: args.payload ?? null,
-            updatedAt: now,
-          })
-          .returning()
+        const run = requireReturnedRow(
+          await db
+            .insert(schema.automationRun)
+            .values({
+              id: crypto.randomUUID(),
+              workspaceId: args.automation.workspaceId,
+              automationId: args.automation.id,
+              source: args.source,
+              status: 'skipped',
+              agentId: args.automation.assigneeAgentId,
+              hostName: args.automation.assigneeAgentId,
+              triggeredAt: now,
+              completedAt: now,
+              failureReason: 'concurrency_policy_skip',
+              triggerPayload: args.payload ?? null,
+              updatedAt: now,
+            })
+            .returning(),
+          'skipped automation run',
+        )
         await db
           .update(schema.automation)
           .set({

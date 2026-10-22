@@ -111,9 +111,7 @@ function MembersToolbar({
             onValueChange={(value) => onRoleChange(value as MemberRoleFilter)}
             value={role}
           >
-            <DropdownMenuRadioItem value="all">
-              All roles
-            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="all">All roles</DropdownMenuRadioItem>
             <DropdownMenuRadioItem value="Owner">Owner</DropdownMenuRadioItem>
             <DropdownMenuRadioItem value="Admin">Admin</DropdownMenuRadioItem>
             <DropdownMenuRadioItem value="Member">Member</DropdownMenuRadioItem>
@@ -249,21 +247,23 @@ export function TeamDetail({
     return map
   }, [issues, team.id, team.name])
 
-  const owner = members.find(
-    (member) => member.user_id === team.owner_user_id,
-  )
+  const owner = members.find((member) => member.user_id === team.owner_user_id)
   const ownerLabel = owner?.name ?? 'Owner'
 
   const statusCounts = {
     todo: issues.filter((issue) => issue.status === 'todo').length,
-    in_progress: issues.filter((issue) => issue.status === 'in_progress').length,
+    in_progress: issues.filter((issue) => issue.status === 'in_progress')
+      .length,
     done: issues.filter((issue) => issue.status === 'done').length,
   }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader className="gap-1.5">
-        <Link to="/teams" className="text-sm text-text-secondary hover:underline">
+        <Link
+          to="/teams"
+          className="text-sm text-text-secondary hover:underline"
+        >
           Teams
         </Link>
         <span className="text-sm text-text-tertiary">/</span>

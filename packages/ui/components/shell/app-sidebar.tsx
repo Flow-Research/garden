@@ -128,7 +128,7 @@ export function AppSidebar({
                     {!collapsed &&
                     typeof item.badge === 'number' &&
                     item.badge > 0 ? (
-                      <span className="flex h-4 min-w-4 items-center justify-center rounded-pill bg-red-500 px-1 text-xs leading-none text-red-100">
+                      <span className="flex h-4 min-w-4 items-center justify-center rounded-pill bg-background-danger-default px-1 text-xs leading-none text-text-danger-on-danger">
                         {item.badge > 99 ? '99+' : item.badge}
                       </span>
                     ) : null}

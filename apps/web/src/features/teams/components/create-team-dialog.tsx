@@ -111,7 +111,9 @@ export function CreateTeamDialog({ onClose }: { onClose: () => void }) {
       return
     }
     toast.custom(
-      () => <TeamCreatedToast title={`${result.team.name} team has been created`} />,
+      () => (
+        <TeamCreatedToast title={`${result.team.name} team has been created`} />
+      ),
       { position: 'top-center' },
     )
     onClose()
@@ -164,9 +166,7 @@ export function CreateTeamDialog({ onClose }: { onClose: () => void }) {
             <>
               <div className="flex items-center justify-between text-xs text-text-secondary">
                 <span>Team members</span>
-                <span>
-                  {selectedEntries.length + 1} selected
-                </span>
+                <span>{selectedEntries.length + 1} selected</span>
               </div>
               <ul className="max-h-72 divide-y overflow-y-auto rounded-md border">
                 {entries.map((entry) => {

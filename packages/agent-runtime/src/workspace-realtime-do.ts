@@ -80,7 +80,9 @@ export class WorkspaceRealtimeDO extends Agent<Cloudflare.Env> {
    * them.
    */
   async publish(envelope: RealtimePublishableEnvelope): Promise<number> {
-    const connections = [...this.getConnections<WorkspaceRealtimeConnectionState>()]
+    const connections = [
+      ...this.getConnections<WorkspaceRealtimeConnectionState>(),
+    ]
     for (const connection of connections) {
       if (!connection.state) continue
       const updated = applyRealtimeProfileUpdate(

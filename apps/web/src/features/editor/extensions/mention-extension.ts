@@ -53,7 +53,7 @@ export const BaseMentionExtension = Mention.extend({
     start: (source: string) => source.search(MENTION_MARKDOWN_START),
     tokenize: tokenizeMention,
   },
-  parseMarkdown: (token: any, helpers: any) =>
+  parseMarkdown: (token, helpers) =>
     helpers.createNode('mention', token.attributes),
   renderHTML({ HTMLAttributes, node }) {
     const type = normalizedMentionType(node.attrs.type)
@@ -69,7 +69,7 @@ export const BaseMentionExtension = Mention.extend({
     )
     return ['span', attributes, `${type === 'issue' ? '' : '@'}${label}`]
   },
-  renderMarkdown: (node: any) => {
+  renderMarkdown: (node) => {
     const { id, label, type } = node.attrs ?? {}
     return serializeMentionMarkdown({
       id,

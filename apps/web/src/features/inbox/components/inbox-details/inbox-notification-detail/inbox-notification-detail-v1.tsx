@@ -31,7 +31,9 @@ export function InboxNotificationDetailV1({
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              {!item.read && <span className="size-1.5 rounded-full bg-brand" />}
+              {!item.read && (
+                <span className="size-1.5 rounded-full bg-brand" />
+              )}
               <span>{typeLabels[item.type]}</span>
               <span>·</span>
               <span>{timeAgo(item.created_at)}</span>

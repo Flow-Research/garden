@@ -1,4 +1,4 @@
-import { Check, Circle, Loader2 } from 'lucide-react'
+import { Check, Circle } from 'lucide-react'
 import {
   Plan,
   PlanAction,
@@ -10,6 +10,7 @@ import {
 } from '@/components/ai-elements/plan'
 import { TaskItem } from '@/components/ai-elements/task'
 import { cn } from '@garden/ui/lib/utils'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 
 export type RunPlanTodo = {
   content: string
@@ -54,7 +55,7 @@ export function RunPlanCard({ todos, streaming = false }: RunPlanCardProps) {
                 {todo.status === 'completed' ? (
                   <Check className="h-3.5 w-3.5 text-success" />
                 ) : todo.status === 'in_progress' && streaming ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-info" />
+                  <Spinner className="size-3.5 text-info" />
                 ) : (
                   <Circle className="h-3 w-3 text-muted-foreground/50" />
                 )}

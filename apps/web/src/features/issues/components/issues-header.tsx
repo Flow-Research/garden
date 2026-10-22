@@ -192,9 +192,7 @@ export function IssuesHeader({
             Issues
             <Check className="size-4" />
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => void navigate({ to: '/workflows' })}
-          >
+          <DropdownMenuItem onClick={() => void navigate({ to: '/workflows' })}>
             Workflows
           </DropdownMenuItem>
           <DropdownMenuItem disabled>System</DropdownMenuItem>

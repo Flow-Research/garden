@@ -98,8 +98,8 @@ function Panel({
 function LiveDot() {
   return (
     <span className="relative inline-flex size-1.5" aria-hidden>
-      <span className="absolute inline-flex size-1.5 animate-ping rounded-full bg-sky-400 opacity-75" />
-      <span className="relative inline-flex size-1.5 rounded-full bg-sky-500" />
+      <span className="absolute inline-flex size-1.5 animate-ping rounded-full bg-info opacity-75" />
+      <span className="relative inline-flex size-1.5 rounded-full bg-info" />
     </span>
   )
 }

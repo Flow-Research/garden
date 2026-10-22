@@ -37,10 +37,20 @@ import {
   teamError,
 } from '@/lib/server/team-access'
 import {
+  isWorkspaceIssue,
+  isWorkspaceParticipant,
+} from '@/lib/server/workspace-refs'
+import {
   cancelIssueRun,
   startIssueRun,
 } from '@garden/server/issues/run-service'
 import { cancelLiveRunsOnIssueChange } from '@garden/core/issues/run-sync'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
+
+const logger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'issues-api',
+})
 
 export const Route = createFileRoute('/api/issues/$id')({
   server: {
@@ -102,10 +112,7 @@ export const Route = createFileRoute('/api/issues/$id')({
             )
           }
           if (nextTeamId !== null) {
-            const targetAccess = await requireTeamAccess(
-              appContext,
-              nextTeamId,
-            )
+            const targetAccess = await requireTeamAccess(appContext, nextTeamId)
             if (targetAccess instanceof Response) return targetAccess
             const targetManager = isWorkspaceManager(
               targetAccess.workspaceMembership.role,
@@ -217,6 +224,35 @@ export const Route = createFileRoute('/api/issues/$id')({
 
         updateValues.updatedAt = new Date()
 
+        // IDs from the body are global: confirm they live in this workspace
+        // before storing them (and before emailing an assignee below).
+        if (updateValues.assigneeId) {
+          const assigneeInWorkspace = await isWorkspaceParticipant(
+            db,
+            existingIssue.workspaceId,
+            {
+              type: updateValues.assigneeType === 'agent' ? 'agent' : 'member',
+              id: updateValues.assigneeId,
+            },
+          )
+          if (!assigneeInWorkspace) {
+            return badRequest('Assignee is not in this workspace')
+          }
+        }
+        if (updateValues.parentId) {
+          if (updateValues.parentId === params.id) {
+            return badRequest('An issue cannot be its own parent')
+          }
+          const parentInWorkspace = await isWorkspaceIssue(
+            db,
+            existingIssue.workspaceId,
+            updateValues.parentId,
+          )
+          if (!parentInWorkspace) {
+            return badRequest('Parent issue is not in this workspace')
+          }
+        }
+
         const [issue] = await db
           .update(schema.issue)
           .set(updateValues)
@@ -259,7 +295,10 @@ export const Route = createFileRoute('/api/issues/$id')({
             catch: (cause) => cause,
           })
           if (subscriberResult.isErr())
-            console.error('issue_subscriber_add_failed', subscriberResult.error)
+            logger.error(
+              'issue.subscriber_add_failed',
+              errorFields(subscriberResult.error),
+            )
         }
 
         if (
@@ -311,9 +350,9 @@ export const Route = createFileRoute('/api/issues/$id')({
                 catch: (cause) => cause,
               })
               if (emailResult.isErr())
-                console.error(
-                  'issue_assignment_email_failed',
-                  emailResult.error,
+                logger.error(
+                  'issue.assignment_email_failed',
+                  errorFields(emailResult.error),
                 )
             }
           }
@@ -362,7 +401,12 @@ export const Route = createFileRoute('/api/issues/$id')({
               actor: { type: 'member', id: session.user.id },
               reason: 'issue_changed',
             })
-            if (cancelResult.isErr()) console.error(cancelResult.error.message)
+            if (cancelResult.isErr()) {
+              logger.error(
+                'issue.run_cancel_failed',
+                errorFields(cancelResult.error),
+              )
+            }
           }
         }
 
@@ -374,7 +418,12 @@ export const Route = createFileRoute('/api/issues/$id')({
             source: 'assignment',
             actor: { type: 'member', id: session.user.id },
           })
-          if (startResult.isErr()) console.error(startResult.error.message)
+          if (startResult.isErr()) {
+            logger.error(
+              'issue.run_start_failed',
+              errorFields(startResult.error),
+            )
+          }
         }
         const issuePrefix = await getWorkspaceIssuePrefix(
           db,
@@ -389,14 +438,14 @@ export const Route = createFileRoute('/api/issues/$id')({
         )
         return Response.json(updatedIssue)
       },
-      DELETE: async ({ context, request, params }) => {
+      DELETE: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)
         const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
 
         const permission = await requireWorkspacePermission({
           appContext,
-          request,
+          request: appContext.request,
           workspaceId: access.issue.workspaceId,
           permissions: workspacePermissions.issueManage,
         })

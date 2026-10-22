@@ -6,10 +6,7 @@ import {
   requireWorkspaceAccess,
   requireWorkspaceContext,
 } from '@/lib/server/control-plane'
-import {
-  createTeam,
-  listTeams,
-} from '@/lib/server/teams'
+import { createTeam, listTeams } from '@/lib/server/teams'
 import {
   requireWorkspacePermission,
   workspacePermissions,
@@ -89,7 +86,8 @@ export const Route = createFileRoute('/api/teams')({
             )
             return json(team, 201)
           },
-          err: (error) => json({ error: error.message, code: error.code }, error.status),
+          err: (error) =>
+            json({ error: error.message, code: error.code }, error.status),
         })
       },
     },

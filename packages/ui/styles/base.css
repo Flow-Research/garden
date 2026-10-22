@@ -42,26 +42,6 @@
   }
 }
 
-/* Chat FAB: gentle color + border tint while a chat task is running.
- * Keeps the ring at the same thickness — only hue shifts towards brand
- * at half-cycle, no outer glow. */
-@keyframes chat-impulse {
-  0%,
-  100% {
-    color: var(--muted-foreground);
-    box-shadow: 0 0 0 1px
-      color-mix(in oklab, var(--foreground) 10%, transparent);
-  }
-  50% {
-    color: var(--brand);
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--brand) 40%, transparent);
-  }
-}
-
-.animate-chat-impulse {
-  animation: chat-impulse 1.6s ease-in-out infinite;
-}
-
 /* Sonner toast: align icon to first line of text, not vertically centered */
 [data-sonner-toast] {
   align-items: flex-start !important;
@@ -110,37 +90,15 @@
  * Cards, rails, popovers all use this. Backdrop blur lets atmosphere through.
  * ============================================================================= */
 .vellum {
-  background-color: var(--vellum);
+  background-color: var(--card);
   backdrop-filter: blur(14px) saturate(1.05);
   -webkit-backdrop-filter: blur(14px) saturate(1.05);
-  box-shadow: var(--shadow-hairline);
+  box-shadow: var(--shadow-1);
 }
 
 .vellum-heavy {
-  background-color: var(--vellum-heavy);
+  background-color: var(--popover);
   backdrop-filter: blur(20px) saturate(1.08);
   -webkit-backdrop-filter: blur(20px) saturate(1.08);
-  box-shadow: var(--shadow-hairline);
-}
-
-.vellum-light {
-  background-color: rgba(255, 252, 247, 0.45);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-}
-
-/* Agent prose surface — var(--font-prose) for markdown content */
-.prose-agent {
-  font-family: var(--font-prose);
-  font-size: 16px;
-  line-height: 1.6;
-  color: var(--ink);
-}
-.prose-agent p {
-  margin: 0.5em 0;
-}
-.prose-agent code,
-.prose-agent pre {
-  font-family: var(--font-mono);
-  font-size: 0.875em;
+  box-shadow: var(--shadow-1);
 }

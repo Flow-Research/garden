@@ -109,6 +109,7 @@ import { Route as ApiIssuesIdEventsRouteImport } from './routes/api/issues/$id/e
 import { Route as ApiIssuesIdCommentsRouteImport } from './routes/api/issues/$id/comments'
 import { Route as ApiIssuesIdCancelRouteImport } from './routes/api/issues/$id/cancel'
 import { Route as ApiIssuesIdActiveRunRouteImport } from './routes/api/issues/$id/active-run'
+import { Route as ApiInternalExecutorCatalogRouteImport } from './routes/api/internal/executor/catalog'
 import { Route as ApiInboxIdReadRouteImport } from './routes/api/inbox/$id/read'
 import { Route as ApiInboxIdArchiveRouteImport } from './routes/api/inbox/$id/archive'
 import { Route as ApiGmailDraftsDraftIdRouteImport } from './routes/api/gmail/drafts/$draftId'
@@ -668,6 +669,12 @@ const ApiIssuesIdActiveRunRoute = ApiIssuesIdActiveRunRouteImport.update({
   path: '/active-run',
   getParentRoute: () => ApiIssuesIdRoute,
 } as any)
+const ApiInternalExecutorCatalogRoute =
+  ApiInternalExecutorCatalogRouteImport.update({
+    id: '/api/internal/executor/catalog',
+    path: '/api/internal/executor/catalog',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiInboxIdReadRoute = ApiInboxIdReadRouteImport.update({
   id: '/$id/read',
   path: '/$id/read',
@@ -995,6 +1002,7 @@ export interface FileRoutesByFullPath {
   '/api/gmail/drafts/$draftId': typeof ApiGmailDraftsDraftIdRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
   '/api/inbox/$id/read': typeof ApiInboxIdReadRoute
+  '/api/internal/executor/catalog': typeof ApiInternalExecutorCatalogRoute
   '/api/issues/$id/active-run': typeof ApiIssuesIdActiveRunRoute
   '/api/issues/$id/cancel': typeof ApiIssuesIdCancelRoute
   '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
@@ -1131,6 +1139,7 @@ export interface FileRoutesByTo {
   '/api/gmail/drafts/$draftId': typeof ApiGmailDraftsDraftIdRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
   '/api/inbox/$id/read': typeof ApiInboxIdReadRoute
+  '/api/internal/executor/catalog': typeof ApiInternalExecutorCatalogRoute
   '/api/issues/$id/active-run': typeof ApiIssuesIdActiveRunRoute
   '/api/issues/$id/cancel': typeof ApiIssuesIdCancelRoute
   '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
@@ -1275,6 +1284,7 @@ export interface FileRoutesById {
   '/api/gmail/drafts/$draftId': typeof ApiGmailDraftsDraftIdRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
   '/api/inbox/$id/read': typeof ApiInboxIdReadRoute
+  '/api/internal/executor/catalog': typeof ApiInternalExecutorCatalogRoute
   '/api/issues/$id/active-run': typeof ApiIssuesIdActiveRunRoute
   '/api/issues/$id/cancel': typeof ApiIssuesIdCancelRoute
   '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
@@ -1418,6 +1428,7 @@ export interface FileRouteTypes {
     | '/api/gmail/drafts/$draftId'
     | '/api/inbox/$id/archive'
     | '/api/inbox/$id/read'
+    | '/api/internal/executor/catalog'
     | '/api/issues/$id/active-run'
     | '/api/issues/$id/cancel'
     | '/api/issues/$id/comments'
@@ -1554,6 +1565,7 @@ export interface FileRouteTypes {
     | '/api/gmail/drafts/$draftId'
     | '/api/inbox/$id/archive'
     | '/api/inbox/$id/read'
+    | '/api/internal/executor/catalog'
     | '/api/issues/$id/active-run'
     | '/api/issues/$id/cancel'
     | '/api/issues/$id/comments'
@@ -1697,6 +1709,7 @@ export interface FileRouteTypes {
     | '/api/gmail/drafts/$draftId'
     | '/api/inbox/$id/archive'
     | '/api/inbox/$id/read'
+    | '/api/internal/executor/catalog'
     | '/api/issues/$id/active-run'
     | '/api/issues/$id/cancel'
     | '/api/issues/$id/comments'
@@ -1789,6 +1802,7 @@ export interface RootRouteChildren {
   ApiDocumentsIdMetadataRoute: typeof ApiDocumentsIdMetadataRoute
   ApiDocumentsIdVersionsRoute: typeof ApiDocumentsIdVersionsRoute
   ApiExecutorOauthStartRoute: typeof ApiExecutorOauthStartRoute
+  ApiInternalExecutorCatalogRoute: typeof ApiInternalExecutorCatalogRoute
   ApiPermissionRequestsIdResolveRoute: typeof ApiPermissionRequestsIdResolveRoute
   ApiWorkProductsIdReviewRoute: typeof ApiWorkProductsIdReviewRoute
   ApiBrainProposalsIdResolveRoute: typeof ApiBrainProposalsIdResolveRoute
@@ -2495,6 +2509,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/issues/$id/active-run'
       preLoaderRoute: typeof ApiIssuesIdActiveRunRouteImport
       parentRoute: typeof ApiIssuesIdRoute
+    }
+    '/api/internal/executor/catalog': {
+      id: '/api/internal/executor/catalog'
+      path: '/api/internal/executor/catalog'
+      fullPath: '/api/internal/executor/catalog'
+      preLoaderRoute: typeof ApiInternalExecutorCatalogRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/inbox/$id/read': {
       id: '/api/inbox/$id/read'
@@ -3376,6 +3397,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDocumentsIdMetadataRoute: ApiDocumentsIdMetadataRoute,
   ApiDocumentsIdVersionsRoute: ApiDocumentsIdVersionsRoute,
   ApiExecutorOauthStartRoute: ApiExecutorOauthStartRoute,
+  ApiInternalExecutorCatalogRoute: ApiInternalExecutorCatalogRoute,
   ApiPermissionRequestsIdResolveRoute: ApiPermissionRequestsIdResolveRoute,
   ApiWorkProductsIdReviewRoute: ApiWorkProductsIdReviewRoute,
   ApiBrainProposalsIdResolveRoute: ApiBrainProposalsIdResolveRoute,

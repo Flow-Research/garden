@@ -18,6 +18,7 @@ import {
   type IssueRunToolContext,
 } from './issue-run-tool-context'
 import { normalizeMcpConnectorId } from '../mcp-connectors'
+import { objectOrNull } from '../runtime-utils'
 
 const readToolByConnectorAndKind: Record<string, Record<string, string>> = {
   github: {
@@ -54,12 +55,6 @@ type ReadSourceResult = {
   tool: string
   content: string | null
   payload: unknown
-}
-
-function objectOrNull(value: unknown) {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null
 }
 
 function numberValue(value: unknown) {

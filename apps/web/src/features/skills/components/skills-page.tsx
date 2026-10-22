@@ -69,6 +69,7 @@ import { Input } from '@garden/ui/components/ui/input'
 import { Label } from '@garden/ui/components/ui/label'
 import { toast } from 'sonner'
 import { cn } from '@garden/ui/lib/utils'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import { api } from '@/lib/api'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
@@ -77,6 +78,7 @@ import {
   useSkillEditorStore,
 } from '@garden/app-state/skills'
 import { skillListOptions, workspaceKeys } from '@/lib/workspace/queries'
+import { skillsShKeys } from '../queries'
 
 import { FileTree } from './file-tree'
 import { FileViewer } from './file-viewer'
@@ -645,7 +647,7 @@ function SkillEditorHeader({
         </span>
         {isDirty ? (
           <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
-            <span className="inline-block size-1.5 rounded-full bg-amber-500" />
+            <span className="inline-block size-1.5 rounded-full bg-background-warning-default" />
             Unsaved
           </span>
         ) : null}
@@ -832,7 +834,7 @@ function BrowseSearchScreen({
   const searchQuery = directTarget ? '' : deferred
 
   const searchResults = useQuery({
-    queryKey: ['skills.sh-search', searchQuery],
+    queryKey: skillsShKeys.search(searchQuery),
     queryFn: ({ signal }) => api.searchSkills(searchQuery, 10, signal),
     enabled: searchQuery.length >= 2,
     staleTime: 60_000,
@@ -879,7 +881,7 @@ function BrowseSearchScreen({
             />
             {isFetching ? (
               <InputGroupAddon align="inline-end">
-                <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+                <Spinner className="size-3.5 text-muted-foreground" />
               </InputGroupAddon>
             ) : null}
           </InputGroup>
@@ -972,7 +974,7 @@ function SkillPreviewPage({
   const [selectedPath, setSelectedPath] = useState<string>(SKILL_MD)
 
   const preview = useQuery({
-    queryKey: ['skills.sh-preview', url],
+    queryKey: skillsShKeys.preview(url),
     queryFn: ({ signal }) => api.previewSkill(url, signal),
     staleTime: 5 * 60_000,
     gcTime: 10 * 60_000,
@@ -1025,7 +1027,7 @@ function SkillPreviewPage({
           className="gap-1.5"
         >
           {isImporting ? (
-            <Loader2 className="size-3.5 animate-spin" />
+            <Spinner className="size-3.5" aria-hidden="true" />
           ) : (
             <Download className="size-3.5" />
           )}
@@ -1037,7 +1039,7 @@ function SkillPreviewPage({
       <div className="flex min-h-0 flex-1">
         {preview.isPending ? (
           <div className="flex flex-1 items-center justify-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="size-3.5 animate-spin" />
+            <Spinner className="size-3.5" />
             Fetching bundle…
           </div>
         ) : preview.isError || !data ? (

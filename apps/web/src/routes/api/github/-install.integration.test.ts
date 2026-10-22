@@ -3,6 +3,7 @@ import { GitHubAppAuthError } from '@garden/connectors/github-app'
 import type { AppRequestContext } from '@/lib/server/context'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Route } from './install'
+import { invokeRouteHandler } from '@/test/route-handler'
 
 const mocks = vi.hoisted(() => ({
   getGitHubAppInstallation: vi.fn(),
@@ -60,14 +61,6 @@ vi.mock('@/lib/server/github-app', () => ({
   resolveGitHubAppSlug: () => 'garden-ai-dev',
 }))
 
-function getHandler() {
-  const handlers = Route.options.server?.handlers
-  if (!handlers || typeof handlers === 'function' || !handlers.GET) {
-    throw new Error('Expected GitHub install GET handler')
-  }
-  return handlers.GET
-}
-
 describe('GitHub install recovery', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -87,12 +80,10 @@ describe('GitHub install recovery', () => {
     const request = new Request(
       'https://garden.test/api/github/install?connector_flow=flow-id',
     )
-    const response = await getHandler()({
+    const response = await invokeRouteHandler(Route, 'GET', {
       context: { db: async () => db } as unknown as AppRequestContext,
       request,
       params: {},
-      pathname: '/api/github/install',
-      next: () => ({ isNext: true, context: undefined }),
     })
 
     expect(response).toBe(forbidden)
@@ -138,12 +129,10 @@ describe('GitHub install recovery', () => {
     const request = new Request(
       'https://garden.test/api/github/install?connector_flow=flow-id',
     )
-    const response = await getHandler()({
+    const response = await invokeRouteHandler(Route, 'GET', {
       context: { db: async () => db } as unknown as AppRequestContext,
       request,
       params: {},
-      pathname: '/api/github/install',
-      next: () => ({ isNext: true, context: undefined }),
     })
 
     expect(response?.status).toBe(302)
@@ -181,12 +170,10 @@ describe('GitHub install recovery', () => {
     const request = new Request(
       'https://garden.test/api/github/install?connector_flow=flow-id',
     )
-    const response = await getHandler()({
+    const response = await invokeRouteHandler(Route, 'GET', {
       context: { db: async () => db } as unknown as AppRequestContext,
       request,
       params: {},
-      pathname: '/api/github/install',
-      next: () => ({ isNext: true, context: undefined }),
     })
 
     expect(response?.status).toBe(502)

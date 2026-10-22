@@ -11,6 +11,7 @@ import {
 } from '../use-agent-chat-sessions'
 import { useChatRuntimeConnection } from '../chat-runtime-provider'
 import { ConnectedChatPanelInteraction } from './chat-panel-controller'
+import { chatThreadKeys } from '../queries'
 
 type ChatHeaderAttachment = {
   href?: string | null
@@ -198,7 +199,7 @@ function ChatPanelInteraction({
   >['updateSessionPreview']
 }) {
   const documentAttachmentsQuery = useQuery({
-    queryKey: ['chat-thread-documents', activeSession.id],
+    queryKey: chatThreadKeys.documents(activeSession.id),
     queryFn: () => fetchThreadDocumentAttachments(activeSession.id),
     staleTime: 10_000,
   })

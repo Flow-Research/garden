@@ -1,4 +1,14 @@
-import { setGardenLogLevel } from '@garden/observability/logger'
+import { parseServerEnv } from '@garden/env'
+import {
+  createGardenLogger,
+  errorFields,
+  setGardenLogLevel,
+} from '@garden/observability/logger'
+
+const logger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'env',
+})
 
 type RequiredEnvBinding<Key extends keyof Env> = NonNullable<Env[Key]>
 
@@ -46,6 +56,9 @@ export type AppEnv = {
   RESEND_API_KEY?: string
   VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
   VITE_PUBLIC_POSTHOG_HOST?: string
+  EXA_API_KEY?: string
+  HELIX_URL?: string
+  HELIX_API_KEY?: string
 }
 
 // The custom Worker entry receives the authoritative Cloudflare bindings as the
@@ -54,8 +67,33 @@ export type AppEnv = {
 // unavailable, and `server.ts` refreshes the live binding at request start.
 export let appEnv = {} as AppEnv
 
+const validatedEnvs = new WeakSet<AppEnv>()
+
+/**
+ * Checks the string bindings against the shared @garden/env schema once per
+ * isolate and logs anything missing or malformed. It reports rather than
+ * throws: a misconfigured optional integration should not take the whole
+ * Worker down, but it must show up in logs instead of failing obscurely later.
+ */
+function reportInvalidEnv(env: AppEnv) {
+  if (validatedEnvs.has(env)) return
+  validatedEnvs.add(env)
+
+  const stringBindings = Object.fromEntries(
+    Object.entries(env).filter(
+      (entry): entry is [string, string] => typeof entry[1] === 'string',
+    ),
+  )
+  try {
+    parseServerEnv(stringBindings)
+  } catch (error) {
+    logger.error('env.invalid_bindings', errorFields(error))
+  }
+}
+
 /** Updates live Worker bindings and applies runtime log-level configuration. */
 export function bindAppEnv(nextEnv: AppEnv) {
   appEnv = nextEnv
   setGardenLogLevel(nextEnv.GARDEN_LOG_LEVEL)
+  reportInvalidEnv(nextEnv)
 }
