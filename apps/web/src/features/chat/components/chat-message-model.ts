@@ -161,10 +161,21 @@ export function extractMcpFailure(output: unknown) {
     record.structuredContent && typeof record.structuredContent === 'object'
       ? (record.structuredContent as Record<string, unknown>)
       : null
+  const executionResult =
+    structured?.result && typeof structured.result === 'object'
+      ? (structured.result as Record<string, unknown>)
+      : record.result && typeof record.result === 'object'
+        ? (record.result as Record<string, unknown>)
+        : null
+  const nestedError =
+    executionResult?.error && typeof executionResult.error === 'object'
+      ? (executionResult.error as Record<string, unknown>)
+      : null
   const failed =
     record.isError === true ||
     record.ok === false ||
-    structured?.status === 'error'
+    structured?.status === 'error' ||
+    executionResult?.ok === false
   if (!failed) return null
   const contentText = Array.isArray(record.content)
     ? record.content
@@ -187,6 +198,7 @@ export function extractMcpFailure(output: unknown) {
   const message =
     errorText(structured?.error) ||
     errorText(record.error) ||
+    errorText(nestedError) ||
     contentText ||
     'The integration returned an error.'
   return {

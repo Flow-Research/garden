@@ -143,14 +143,19 @@ export function extractExecutorToolFailure(input: {
   const refs = extractExecutorToolRefsFromInput(input.toolInput)
   const outputRecord = recordValue(input.output)
   const structured = recordValue(outputRecord?.structuredContent)
+  const executionResult =
+    recordValue(structured?.result) ?? recordValue(outputRecord?.result)
+  const nestedError = recordValue(executionResult?.error)
   const failedEnvelope =
     outputRecord?.isError === true ||
     outputRecord?.ok === false ||
-    structured?.status === 'error'
+    structured?.status === 'error' ||
+    executionResult?.ok === false
   const message =
     errorMessage(input.error) ??
     (failedEnvelope ? errorMessage(structured?.error) : null) ??
     (failedEnvelope ? errorMessage(outputRecord?.error) : null) ??
+    (failedEnvelope ? errorMessage(nestedError) : null) ??
     (failedEnvelope ? textFromContent(outputRecord?.content) : null)
   if (!message) return null
 
@@ -159,7 +164,9 @@ export function extractExecutorToolFailure(input: {
       ? structured.errorCode
       : typeof outputRecord?.code === 'string'
         ? outputRecord.code
-        : undefined
+        : typeof nestedError?.code === 'string'
+          ? nestedError.code
+          : undefined
 
   return {
     ...(code ? { code } : {}),

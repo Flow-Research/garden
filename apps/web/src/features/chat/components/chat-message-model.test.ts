@@ -40,4 +40,24 @@ describe('chat integration tool presentation', () => {
       stage: undefined,
     })
   })
+
+  it('shows a provider error nested in a completed Executor result', () => {
+    expect(
+      extractMcpFailure({
+        structuredContent: {
+          status: 'completed',
+          result: {
+            ok: false,
+            error: {
+              code: 'mcp_tool_error',
+              message: 'Not enough Decide credits to run this request.',
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      message: 'Not enough Decide credits to run this request.',
+      stage: undefined,
+    })
+  })
 })
