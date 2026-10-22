@@ -12,7 +12,10 @@ import {
   ConnectorHttpError,
 } from '../effect/errors.ts'
 import { connectorErrorFromGitHubHttp } from './auth-errors.ts'
-import { mintGitHubInstallationAccessToken } from './installation-auth.ts'
+import {
+  mintGitHubInstallationAccessToken,
+  withGitHubTokenRejectedRemintOnce,
+} from './installation-auth.ts'
 import {
   GitHubAppConfig,
   type GitHubAppConfigShape,
@@ -287,69 +290,90 @@ export const makeGitHubHostedMcpClientLayer = (): Layer.Layer<
       const client = yield* HttpClient.HttpClient
       return GitHubHostedMcpClient.of({
         listTools: Effect.fn('GitHubHostedMcp.listTools')(function* () {
-          const credential = yield* mintGitHubInstallationAccessToken(
-            config,
-            'github.mcp.listTools',
+          const attempt = Effect.fn('GitHubHostedMcp.listTools.attempt')(
+            function* () {
+              const credential = yield* mintGitHubInstallationAccessToken(
+                config,
+                'github.mcp.listTools',
+              )
+              const token = credential.token
+              const sessionId = yield* initializeSession(client, token)
+              const tools: GitHubHostedMcpTool[] = []
+              let cursor: string | undefined
+              do {
+                const response = yield* executeRequest({
+                  client,
+                  token,
+                  sessionId,
+                  operation: 'github.mcp.listTools',
+                  body: {
+                    jsonrpc: '2.0',
+                    id: 2,
+                    method: 'tools/list',
+                    params: cursor === undefined ? {} : { cursor },
+                  },
+                  expectsResult: true,
+                })
+                const page = yield* decodeToolList(response.result)
+                tools.push(...page.tools)
+                cursor = Option.getOrUndefined(
+                  Option.fromNullishOr(page.nextCursor),
+                )
+              } while (cursor !== undefined && cursor.length > 0)
+              return tools
+            },
           )
-          const token = credential.token
-          const sessionId = yield* initializeSession(client, token)
-          const tools: GitHubHostedMcpTool[] = []
-          let cursor: string | undefined
-          do {
-            const response = yield* executeRequest({
-              client,
-              token,
-              sessionId,
-              operation: 'github.mcp.listTools',
-              body: {
-                jsonrpc: '2.0',
-                id: 2,
-                method: 'tools/list',
-                params: cursor === undefined ? {} : { cursor },
-              },
-              expectsResult: true,
-            })
-            const page = yield* decodeToolList(response.result)
-            tools.push(...page.tools)
-            cursor = Option.getOrUndefined(
-              Option.fromNullishOr(page.nextCursor),
-            )
-          } while (cursor !== undefined && cursor.length > 0)
-          return tools
+          return yield* withGitHubTokenRejectedRemintOnce(attempt())
         }),
         callTool: Effect.fn('GitHubHostedMcp.callTool')(function* (
           name: string,
           argumentsValue: unknown,
         ) {
-          const credential = yield* mintGitHubInstallationAccessToken(
-            config,
-            `github.mcp.${name}`,
-          )
-          const token = credential.token
-          const sessionId = yield* initializeSession(client, token)
-          const response = yield* executeRequest({
-            client,
-            token,
-            sessionId,
-            operation: `github.mcp.${name}`,
-            body: {
-              jsonrpc: '2.0',
-              id: 2,
-              method: 'tools/call',
-              params: { name, arguments: argumentsValue },
+          const attempt = Effect.fn('GitHubHostedMcp.callTool.attempt')(
+            function* () {
+              const credential = yield* mintGitHubInstallationAccessToken(
+                config,
+                `github.mcp.${name}`,
+              )
+              const token = credential.token
+              const sessionId = yield* initializeSession(client, token)
+              const response = yield* executeRequest({
+                client,
+                token,
+                sessionId,
+                operation: `github.mcp.${name}`,
+                body: {
+                  jsonrpc: '2.0',
+                  id: 2,
+                  method: 'tools/call',
+                  params: { name, arguments: argumentsValue },
+                },
+                expectsResult: true,
+              })
+              return response.result
             },
-            expectsResult: true,
-          })
-          return response.result
+          )
+          return yield* withGitHubTokenRejectedRemintOnce(attempt())
         }),
       })
     }),
   )
 
+/**
+ * Provides GitHub App config + Effect HttpClient for hosted MCP. Optional
+ * `fetch` swaps the transport for deterministic remint/401 tests.
+ */
 export const makeGitHubHostedMcpBaseLayer = (
   config: GitHubAppConfigShape,
+  options?: { fetch?: typeof globalThis.fetch },
 ): Layer.Layer<GitHubHostedMcpClient> =>
   makeGitHubHostedMcpClientLayer().pipe(
     Layer.provide(Layer.succeed(GitHubAppConfig)(config)),
-    Layer.provide(FetchHttpClient.layer),
+    Layer.provide(
+      options?.fetch
+        ? FetchHttpClient.layer.pipe(
+            Layer.provide(Layer.succeed(FetchHttpClient.Fetch)(options.fetch)),
+          )
+        : FetchHttpClient.layer,
+    ),
   )

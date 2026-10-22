@@ -131,6 +131,20 @@ export function connectorErrorFromGitHubHttp(args: {
   })
 }
 
+/**
+ * True when GitHub rejected a minted installation token (HTTP 401). Used by
+ * remint-once recovery (#163 phase 4) so only auth rejection retries, not
+ * permission or mint failures.
+ */
+export function isGitHubTokenRejectedError(
+  error: unknown,
+): error is ConnectorAuthError {
+  return (
+    error instanceof ConnectorAuthError &&
+    error.code === githubAuthFailureCode('token_rejected')
+  )
+}
+
 export function connectorAuthErrorFromMintFailure(args: {
   operation: string
   error: GitHubAppAuthError

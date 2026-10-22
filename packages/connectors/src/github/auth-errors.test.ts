@@ -11,6 +11,7 @@ import {
   connectorErrorFromGitHubHttp,
   githubAuthMessage,
   githubInstallationHealthError,
+  isGitHubTokenRejectedError,
 } from './auth-errors.ts'
 
 describe('githubAuthMessage', () => {
@@ -122,6 +123,22 @@ describe('connectorAuthErrorFromMintFailure', () => {
       status: 401,
     })
     expect(error.message).toMatch(/\[github\.mint_failed\]/)
+  })
+})
+
+describe('isGitHubTokenRejectedError', () => {
+  it('matches only token_rejected auth errors', () => {
+    const rejected = connectorErrorFromGitHubHttp({
+      operation: 'github.writeIssue',
+      status: 401,
+    })
+    const permission = connectorErrorFromGitHubHttp({
+      operation: 'github.writeIssue',
+      status: 403,
+    })
+    expect(isGitHubTokenRejectedError(rejected)).toBe(true)
+    expect(isGitHubTokenRejectedError(permission)).toBe(false)
+    expect(isGitHubTokenRejectedError(new Error('nope'))).toBe(false)
   })
 })
 

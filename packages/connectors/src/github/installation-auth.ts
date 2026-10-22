@@ -3,9 +3,15 @@ import { createGitHubInstallationAccessToken } from '../github-app.ts'
 import {
   connectorAuthErrorFromMintFailure,
   githubInstallationHealthError,
+  isGitHubTokenRejectedError,
 } from './auth-errors.ts'
 import type { GitHubAppConfigShape } from './rest-client.ts'
 
+/**
+ * Shared Effect mint for native REST and hosted MCP. Refuses missing /
+ * disconnected / degraded installs before calling GitHub (#163 phase 3), then
+ * classifies mint failures (phase 2).
+ */
 export const mintGitHubInstallationAccessToken = Effect.fn(
   'GitHubInstallationAuth.mint',
 )(function* (config: GitHubAppConfigShape, operation: string) {
@@ -34,3 +40,18 @@ export const mintGitHubInstallationAccessToken = Effect.fn(
   }
   return credential.value
 })
+
+/**
+ * On `github.token_rejected` (HTTP 401 after a successful mint), remint and
+ * retry the operation once. A second rejection surfaces as the classified
+ * auth error with no further loops (#163 phase 4). Mint lives inside `effect`
+ * so the retry picks up a fresh installation token.
+ */
+export function withGitHubTokenRejectedRemintOnce<A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> {
+  return Effect.retry(effect, {
+    times: 1,
+    while: (error) => isGitHubTokenRejectedError(error),
+  })
+}

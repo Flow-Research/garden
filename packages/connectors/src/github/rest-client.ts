@@ -13,7 +13,10 @@ import {
   ConnectorHttpError,
 } from '../effect/errors.ts'
 import { connectorErrorFromGitHubHttp } from './auth-errors.ts'
-import { mintGitHubInstallationAccessToken } from './installation-auth.ts'
+import {
+  mintGitHubInstallationAccessToken,
+  withGitHubTokenRejectedRemintOnce,
+} from './installation-auth.ts'
 
 const GITHUB_API_BASE_URL = 'https://api.github.com'
 
@@ -120,50 +123,70 @@ export const makeGitHubRestClientLayer = (): Layer.Layer<
         request: Effect.fn('GitHubRestClient.request')(function* (
           input: GitHubRequest,
         ) {
-          const credential = yield* mintGitHubInstallationAccessToken(
-            config,
-            input.operation,
+          const attempt = Effect.fn('GitHubRestClient.request.attempt')(
+            function* () {
+              const credential = yield* mintGitHubInstallationAccessToken(
+                config,
+                input.operation,
+              )
+              const request = yield* makeRequest(credential.token, input)
+              const response = yield* Effect.mapError(
+                client.execute(request),
+                (cause) =>
+                  new ConnectorHttpError({
+                    connectorId: 'github',
+                    operation: input.operation,
+                    message: 'GitHub API request failed.',
+                    cause,
+                  }),
+              )
+              if (response.status < 200 || response.status >= 300) {
+                const bodyText = yield* readErrorBody(
+                  response,
+                  input.operation,
+                )
+                return yield* connectorErrorFromGitHubHttp({
+                  operation: input.operation,
+                  status: response.status,
+                  bodyText,
+                })
+              }
+              if (response.status === 204) return null
+              return yield* Effect.mapError(
+                response.json,
+                (cause) =>
+                  new ConnectorDecodeError({
+                    connectorId: 'github',
+                    operation: input.operation,
+                    message: 'GitHub API returned invalid JSON.',
+                    cause,
+                    status: response.status,
+                  }),
+              )
+            },
           )
-          const request = yield* makeRequest(credential.token, input)
-          const response = yield* Effect.mapError(
-            client.execute(request),
-            (cause) =>
-              new ConnectorHttpError({
-                connectorId: 'github',
-                operation: input.operation,
-                message: 'GitHub API request failed.',
-                cause,
-              }),
-          )
-          if (response.status < 200 || response.status >= 300) {
-            const bodyText = yield* readErrorBody(response, input.operation)
-            return yield* connectorErrorFromGitHubHttp({
-              operation: input.operation,
-              status: response.status,
-              bodyText,
-            })
-          }
-          if (response.status === 204) return null
-          return yield* Effect.mapError(
-            response.json,
-            (cause) =>
-              new ConnectorDecodeError({
-                connectorId: 'github',
-                operation: input.operation,
-                message: 'GitHub API returned invalid JSON.',
-                cause,
-                status: response.status,
-              }),
-          )
+          return yield* withGitHubTokenRejectedRemintOnce(attempt())
         }),
       }
     }),
   )
 
+/**
+ * Provides GitHub App config + Effect HttpClient for native REST tools.
+ * Optional `fetch` swaps the transport for deterministic remint/401 tests
+ * (same pattern as Discord's `makeDiscordBaseLayer`).
+ */
 export const makeGitHubBaseLayer = (
   config: GitHubAppConfigShape,
+  options?: { fetch?: typeof globalThis.fetch },
 ): Layer.Layer<GitHubRestClient> =>
   makeGitHubRestClientLayer().pipe(
     Layer.provide(Layer.succeed(GitHubAppConfig)(config)),
-    Layer.provide(FetchHttpClient.layer),
+    Layer.provide(
+      options?.fetch
+        ? FetchHttpClient.layer.pipe(
+            Layer.provide(Layer.succeed(FetchHttpClient.Fetch)(options.fetch)),
+          )
+        : FetchHttpClient.layer,
+    ),
   )

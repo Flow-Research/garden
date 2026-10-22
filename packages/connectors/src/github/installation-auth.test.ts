@@ -6,7 +6,11 @@ import {
   createGitHubInstallationAccessToken,
   GitHubAppAuthError,
 } from '../github-app.ts'
-import { mintGitHubInstallationAccessToken } from './installation-auth.ts'
+import {
+  mintGitHubInstallationAccessToken,
+  withGitHubTokenRejectedRemintOnce,
+} from './installation-auth.ts'
+import { githubAuthFailureCode, githubAuthMessage } from './auth-errors.ts'
 
 vi.mock('../github-app.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../github-app.ts')>()
@@ -123,5 +127,50 @@ describe('mintGitHubInstallationAccessToken', () => {
 
     expect(mint).not.toHaveBeenCalled()
     expect(error).toMatchObject({ code: 'github.install_disconnected' })
+  })
+})
+
+describe('withGitHubTokenRejectedRemintOnce', () => {
+  it('retries once on token_rejected then succeeds', async () => {
+    let attempts = 0
+    const result = await Effect.runPromise(
+      withGitHubTokenRejectedRemintOnce(
+        Effect.gen(function* () {
+          attempts += 1
+          if (attempts === 1) {
+            return yield* new ConnectorAuthError({
+              connectorId: 'github',
+              operation: 'test',
+              code: githubAuthFailureCode('token_rejected'),
+              message: githubAuthMessage('token_rejected'),
+              status: 401,
+            })
+          }
+          return 'ok'
+        }),
+      ),
+    )
+    expect(result).toBe('ok')
+    expect(attempts).toBe(2)
+  })
+
+  it('stops after one remint when still rejected', async () => {
+    let attempts = 0
+    const error = await Effect.runPromise(
+      withGitHubTokenRejectedRemintOnce(
+        Effect.gen(function* () {
+          attempts += 1
+          return yield* new ConnectorAuthError({
+            connectorId: 'github',
+            operation: 'test',
+            code: githubAuthFailureCode('token_rejected'),
+            message: githubAuthMessage('token_rejected'),
+            status: 401,
+          })
+        }),
+      ).pipe(Effect.flip),
+    )
+    expect(attempts).toBe(2)
+    expect(error).toMatchObject({ code: 'github.token_rejected' })
   })
 })
