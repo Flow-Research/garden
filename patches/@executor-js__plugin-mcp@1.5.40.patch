@@ -1,5 +1,5 @@
 diff --git a/dist/chunk-IPRQBRDZ.js b/dist/chunk-IPRQBRDZ.js
-index 543cd8944014ec37a765d4827f9ecb32c167676a..016b05383438cee6e5935a2065011b076c174bc5 100644
+index 543cd8944014ec37a765d4827f9ecb32c167676a..d3844b8f8234b19376535d7138aa02a6c7dca25f 100644
 --- a/dist/chunk-IPRQBRDZ.js
 +++ b/dist/chunk-IPRQBRDZ.js
 @@ -1,6 +1,6 @@
@@ -28,3 +28,72 @@ index 543cd8944014ec37a765d4827f9ecb32c167676a..016b05383438cee6e5935a2065011b07
    "McpOAuthError",
    {
      message: Schema.String
+diff --git a/dist/chunk-MMILW7SS.js b/dist/chunk-MMILW7SS.js
+index a45735cfe7adccf769b734cf0a09aacaeb55ed5a..5b401b162d7b567fb0796f32cf6e14b47150c9df 100644
+--- a/dist/chunk-MMILW7SS.js
++++ b/dist/chunk-MMILW7SS.js
+@@ -595,11 +595,11 @@ var installToolListChangedHandler = (client, onToolListChanged) => {
+     onToolListChanged();
+   });
+ };
+-var useConnection = (connection, toolName, args, elicit, onToolListChanged) => Effect4.gen(function* () {
++var useConnection = (connection, toolName, args, elicit, onProgress, onToolListChanged) => Effect4.gen(function* () {
+   installElicitationHandler(connection.client, elicit);
+   installToolListChangedHandler(connection.client, onToolListChanged);
+   return yield* Effect4.tryPromise({
+-    try: () => connection.client.callTool({ name: toolName, arguments: args }),
++    try: () => connection.client.callTool({ name: toolName, arguments: args }, onProgress ? { onprogress: onProgress } : undefined),
+     catch: (cause) => {
+       if (Predicate4.isTagged(cause, "McpOAuthReauthorizationRequired")) {
+         return new McpOAuthReauthorizationRequired({
+@@ -634,7 +634,7 @@ var useConnection = (connection, toolName, args, elicit, onToolListChanged) => E
+ });
+ var invokeMcpTool = (input) => Effect4.gen(function* () {
+   const args = argsRecord(input.args);
+-  const use = (connection2) => useConnection(connection2, input.toolName, args, input.elicit, input.onToolListChanged);
++  const use = (connection2) => useConnection(connection2, input.toolName, args, input.elicit, input.onProgress, input.onToolListChanged);
+   if (input.connectionPool && input.connectionPoolKey) {
+     return yield* input.connectionPool.withConnection(
+       input.connectionPoolKey,
+@@ -1706,6 +1706,7 @@ var mcpPlugin = definePlugin((options) => {
+         connector,
+         ...poolKey === void 0 ? {} : { connectionPool, connectionPoolKey: poolKey },
+         elicit,
++        onProgress: options?.onProgress,
+         onToolListChanged: () => {
+           toolListChanged = true;
+         }
+diff --git a/dist/sdk/invoke.d.ts b/dist/sdk/invoke.d.ts
+index 4152343095ec46f6c8103d45f4baba848748c644..3e8b8e0fdce6320f9cadd8e22ad207528606f2ff 100644
+--- a/dist/sdk/invoke.d.ts
++++ b/dist/sdk/invoke.d.ts
+@@ -17,6 +17,12 @@ export interface InvokeMcpToolInput {
+     readonly connectionPool?: McpConnectionPool;
+     readonly connectionPoolKey?: string;
+     readonly elicit: Elicit;
++    /** Receives public MCP progress notifications from the remote server. */
++    readonly onProgress?: (progress: {
++        readonly progress?: number;
++        readonly total?: number;
++        readonly message?: string;
++    }) => void;
+     /** Fired when the server sends `notifications/tools/list_changed` during
+      *  the call window. Synchronous and non-throwing by contract; the caller
+      *  uses it to mark the persisted catalog stale. */
+diff --git a/dist/sdk/plugin.d.ts b/dist/sdk/plugin.d.ts
+index 18ccddc2c2481b07768dfaf91dc4db2e9cd734aa..49cffc0a126ba2d7ab5aff79add33614f72ef594 100644
+--- a/dist/sdk/plugin.d.ts
++++ b/dist/sdk/plugin.d.ts
+@@ -190,6 +190,12 @@ export interface McpPluginOptions {
+      */
+     readonly dangerouslyAllowStdioMCP?: boolean;
+     readonly httpClientLayer?: Layer.Layer<HttpClient.HttpClient>;
++    /** Receives public MCP progress notifications without exposing tool input. */
++    readonly onProgress?: (progress: {
++        readonly progress?: number;
++        readonly total?: number;
++        readonly message?: string;
++    }) => void;
+ }
+ export declare const mcpPlugin: import("@executor-js/sdk/core").ConfiguredPlugin<"mcp", {
+     probeEndpoint: (input: string | McpProbeEndpointInput) => Effect.Effect<{
