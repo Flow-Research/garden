@@ -22,6 +22,8 @@ const PERMISSION_CHECKS = [
   // Helpers that perform the permission check themselves.
   'setAgentStatus(',
   'updateIssueSubscription(',
+  'requireTeamManage(',
+  'requireTeamOwnerTransfer(',
 ]
 
 const MEMBER_LEVEL_ROUTES: Record<string, string> = {
@@ -62,6 +64,13 @@ const MEMBER_LEVEL_ROUTES: Record<string, string> = {
   'brain/folders/$id.ts': 'folder privacy is enforced per creator in the query',
   'brain/folders/$id/files.ts':
     'folder privacy is enforced per creator in the query',
+  'gmail/send.ts':
+    'members send mail as themselves through the workspace Gmail connection',
+  'gmail/drafts.ts': 'members create and list their own Gmail drafts',
+  'gmail/drafts/$draftId.ts':
+    'members update and delete their own Gmail drafts',
+  'brain/proposals/$id/resolve.ts':
+    'workspace members approve or reject shared brain proposals',
 }
 
 function routeFiles(dir: string): string[] {

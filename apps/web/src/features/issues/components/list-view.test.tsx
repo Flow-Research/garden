@@ -44,6 +44,7 @@ vi.mock('@/lib/issues/mutations', () => ({
 
 vi.mock('@/features/navigation/use-surface-navigation', () => ({
   useSurfaceNavigation: () => ({ openIssue: vi.fn() }),
+  issuePath: (id: string) => `/issues/${id}`,
 }))
 
 vi.mock('../../common/actor-avatar', () => ({
