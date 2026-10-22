@@ -156,18 +156,17 @@ describe('team issue access (integration)', () => {
    * non-team ones client-side.
    */
   it('lists only team issues when has_team=true', async () => {
-    const {
-      fixture,
-      assignedIssueId,
-      otherTeamIssueId,
-      workspaceIssueId,
-    } = await seedScenario()
+    const { fixture, assignedIssueId, otherTeamIssueId, workspaceIssueId } =
+      await seedScenario()
 
     const request = new Request(
       'https://garden.test/api/issues?has_team=true',
       { headers: { 'X-Workspace-ID': fixture.workspaceId } },
     )
-    const response = await handlerFor(IssuesRoute, 'GET')(
+    const response = await handlerFor(
+      IssuesRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,

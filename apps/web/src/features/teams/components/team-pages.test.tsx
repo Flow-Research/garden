@@ -275,9 +275,7 @@ describe('teams UI', () => {
 
     renderWithQuery(<TeamOverview />)
 
-    expect(
-      await screen.findByText("Couldn't load members"),
-    ).toBeInTheDocument()
+    expect(await screen.findByText("Couldn't load members")).toBeInTheDocument()
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
@@ -307,9 +305,7 @@ describe('teams UI', () => {
 
     renderWithQuery(<TeamWorkPage />)
 
-    expect(
-      await screen.findByText("Couldn't load members"),
-    ).toBeInTheDocument()
+    expect(await screen.findByText("Couldn't load members")).toBeInTheDocument()
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
