@@ -142,8 +142,15 @@ function resolveValue(token, seen = new Set()) {
     case 'textCase':
     case 'textDecoration':
       return resolveAlias(value, seen)
-    case 'shadow':
-      return value.map(shadowLayer).join(', ')
+    case 'shadow': {
+      // Semantic shadow tokens alias Global shadows (`{shadow-5}`); the alias
+      // resolver returns the target's already-serialized box-shadow string.
+      const resolved =
+        typeof value === 'string' ? resolveAlias(value, seen) : value
+      return typeof resolved === 'string'
+        ? resolved
+        : resolved.map(shadowLayer).join(', ')
+    }
     case 'typography':
       return value // composites are emitted separately as @utility classes
     default:

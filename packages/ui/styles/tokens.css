@@ -161,6 +161,10 @@
   --shadow-5:
     0 4px 4px -4px rgba(12, 12, 13, 0.05),
     0 16px 16px -8px rgba(12, 12, 13, 0.1);
+  --shadow-dark-3:
+    0 4px 4px -1px rgba(12, 12, 13, 0.4), 0 4px 4px -1px rgba(12, 12, 13, 0.6);
+  --shadow-dark-5:
+    0 4px 4px -4px rgba(12, 12, 13, 0.4), 0 16px 16px -8px rgba(12, 12, 13, 0.7);
   --shadow-7:
     0 -6px 5px -2px rgba(12, 12, 13, 0.05),
     0 -4px 6px -4px rgba(12, 12, 13, 0.05);
@@ -334,6 +338,11 @@
   --badge-yellow-text: #bf6a02;
   --badge-gray-background: #e3e3e3;
   --badge-gray-text: #767676;
+  --shadow-float-1:
+    0 4px 4px -1px rgba(12, 12, 13, 0.05), 0 4px 4px -1px rgba(12, 12, 13, 0.1);
+  --shadow-float-2:
+    0 4px 4px -4px rgba(12, 12, 13, 0.05),
+    0 16px 16px -8px rgba(12, 12, 13, 0.1);
   --scrollbar-thumb: var(--black-200);
   --scrollbar-thumb-hover: var(--black-300);
   --scrollbar-track: transparent;
@@ -518,6 +527,10 @@
   --badge-yellow-text: #ffe8a3;
   --badge-gray-background: #5a5a5a;
   --badge-gray-text: #e3e3e3;
+  --shadow-float-1:
+    0 4px 4px -1px rgba(12, 12, 13, 0.4), 0 4px 4px -1px rgba(12, 12, 13, 0.6);
+  --shadow-float-2:
+    0 4px 4px -4px rgba(12, 12, 13, 0.4), 0 16px 16px -8px rgba(12, 12, 13, 0.7);
   --scrollbar-thumb: var(--white-200);
   --scrollbar-thumb-hover: var(--white-300);
   --scrollbar-track: transparent;
@@ -847,6 +860,8 @@
   --color-badge-yellow-text: var(--badge-yellow-text);
   --color-badge-gray-background: var(--badge-gray-background);
   --color-badge-gray-text: var(--badge-gray-text);
+  --color-shadow-float-1: var(--shadow-float-1);
+  --color-shadow-float-2: var(--shadow-float-2);
 
   /* Compat — shadcn + garden extras */
   --color-background: var(--background);
@@ -930,6 +945,8 @@
   --shadow-3: var(--shadow-3);
   --shadow-2: var(--shadow-2);
   --shadow-5: var(--shadow-5);
+  --shadow-dark-3: var(--shadow-dark-3);
+  --shadow-dark-5: var(--shadow-dark-5);
   --shadow-7: var(--shadow-7);
   --shadow-4: var(--shadow-4);
 }
