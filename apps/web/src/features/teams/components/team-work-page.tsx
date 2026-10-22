@@ -45,10 +45,9 @@ export function TeamWorkPage() {
   const currentUserId = useAuthStore((s) => s.user?.id ?? '')
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
-  const [createData, setCreateData] = useState<Record<
-    string,
-    unknown
-  > | null>(null)
+  const [createData, setCreateData] = useState<Record<string, unknown> | null>(
+    null,
+  )
   const updateIssueMutation = useUpdateIssue()
 
   const {
@@ -165,9 +164,7 @@ export function TeamWorkPage() {
     )
   }
   if (membersError || !members) {
-    return (
-      <TeamMembersLoadError onRetry={() => void refetchMembers()} />
-    )
+    return <TeamMembersLoadError onRetry={() => void refetchMembers()} />
   }
   if (!isAdmin) {
     return <Navigate to="/teams" replace />
@@ -176,7 +173,10 @@ export function TeamWorkPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader className="gap-1.5">
-        <Link to="/teams" className="text-sm text-text-secondary hover:underline">
+        <Link
+          to="/teams"
+          className="text-sm text-text-secondary hover:underline"
+        >
           Teams
         </Link>
         <span className="text-sm text-text-tertiary">/</span>

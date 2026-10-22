@@ -83,9 +83,7 @@ describe('subscribeInboxToasts', () => {
       onOpen: () => {},
     })
 
-    queryClient.setQueryData(key, [
-      inboxItem({ id: 'first', issue_id: null }),
-    ])
+    queryClient.setQueryData(key, [inboxItem({ id: 'first', issue_id: null })])
     expect(toastSpy).not.toHaveBeenCalled()
 
     queryClient.setQueryData(key, [

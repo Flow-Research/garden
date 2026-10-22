@@ -6,11 +6,7 @@ import {
   requireTeamManage,
   teamError,
 } from '@/lib/server/team-access'
-import {
-  deleteTeam,
-  getTeamForViewer,
-  updateTeam,
-} from '@/lib/server/teams'
+import { deleteTeam, getTeamForViewer, updateTeam } from '@/lib/server/teams'
 import { parseJsonBody } from '@/lib/server/validation/common'
 import { updateTeamBodySchema } from '@/lib/server/validation/teams'
 import { publishWorkspaceEvent } from '@/lib/server/realtime'

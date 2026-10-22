@@ -115,9 +115,7 @@ export function TeamMembersTable({
                 colSpan={4}
                 className="px-6 py-8 text-center text-text-secondary"
               >
-                {search
-                  ? `No members match “${search}”.`
-                  : 'No members yet.'}
+                {search ? `No members match “${search}”.` : 'No members yet.'}
               </td>
             </tr>
           ) : null}

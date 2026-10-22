@@ -5,44 +5,34 @@
  * global `.dark` palette is legacy (`tokens.css` notes dark is "out of scope
  * this pass"). The /architecture page is intentionally dark regardless of the
  * user's chosen theme, so instead of relying on the global `.dark` class (which
- * is keyed on `:root.dark` and can't be scoped to a subtree) we redefine the
- * Garden token values on `.arch-root`. CSS custom properties resolve at the use
- * site by cascade, so every Tailwind token utility (`text-foreground`,
- * `text-muted-foreground`, `border-[color:var(--hairline)]`, etc.) inside the
- * page picks up these dark values. Values mirror the dark block in
- * packages/ui/styles/tokens.css so the page stays on-palette.
+ * is keyed on `:root.dark` and can't be scoped to a subtree) we redefine
+ * Garden's semantic token names on `.arch-root`. CSS custom properties resolve
+ * at the use site by cascade, so every Tailwind token utility
+ * (`text-foreground`, `text-muted-foreground`, `border-border`, `text-success`,
+ * etc.) inside the page picks up these dark values. Only the names the page
+ * actually uses are pinned.
  * ========================================================================== */
 .arch-root {
-  --parchment: #14181500;
-  --parchment-solid: #121613;
-  --parchment-deep: #1b211d;
-  --vellum: rgba(40, 48, 42, 0.55);
-  --vellum-heavy: rgba(40, 48, 42, 0.82);
-  --bone: #1e241f;
+  --background: #121613;
+  --muted: #1b211d;
+  --card: #1e241f;
+  --card-foreground: var(--foreground);
 
-  --ink: #f3efe6;
-  --gravel: #b4aea4;
-  --slate: #8a8478;
-  --stone: #6b655c;
+  --foreground: #f3efe6;
+  --muted-foreground: #b4aea4;
+  --text-neutral-tertiary: #8a8478;
 
-  --hairline: rgba(243, 239, 230, 0.12);
-  --hairline-soft: rgba(243, 239, 230, 0.07);
+  --border: rgba(243, 239, 230, 0.12);
 
-  --moss: #8bab7f;
-  --sage: #9bb491;
-  --amber: #e0b46a;
-  --clay: #cf8763;
+  --success: #8bab7f;
+  --text-warning-tertiary: #e0b46a;
+  --border-warning-tertiary: #e0b46a;
 
-  --foreground: var(--ink);
-  --muted-foreground: var(--gravel);
-  --card: var(--bone);
-  --card-foreground: var(--ink);
-  --border: var(--hairline);
-  --ring: var(--moss);
-  --brand: var(--moss);
+  --ring: var(--success);
+  --brand: var(--success);
 
-  color: var(--ink);
-  background-color: var(--parchment-solid);
+  color: var(--foreground);
+  background-color: var(--background);
   /* Same film-grain tooth the app body uses, tuned slightly stronger for dark. */
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.78' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/></svg>");
   background-size: 220px 220px;
@@ -53,7 +43,7 @@
 .arch-hero-glow {
   background: radial-gradient(
     60% 50% at 50% 0%,
-    color-mix(in srgb, var(--moss) 18%, transparent),
+    color-mix(in srgb, var(--success) 18%, transparent),
     transparent 70%
   );
 }
@@ -62,16 +52,16 @@
  * actual visualizations (planes / actor tree / lifecycle / flows) so the page
  * reads like documentation, not a deck of marketing cards. */
 .arch-card {
-  background-color: color-mix(in srgb, var(--bone) 45%, transparent);
-  border: 1px solid var(--hairline);
+  background-color: color-mix(in srgb, var(--card) 45%, transparent);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
 }
 
 /* A single node box inside a diagram. */
 .arch-node {
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background-color: color-mix(in srgb, var(--bone) 60%, transparent);
+  background-color: color-mix(in srgb, var(--card) 60%, transparent);
 }
 
 /* =============================================================================
@@ -80,7 +70,7 @@
  * shallow or read deep. No fixed grid; it breathes.
  * ========================================================================== */
 .arch-disclosure {
-  border-bottom: 1px solid var(--hairline-soft);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
 }
 .arch-disclosure > summary {
   cursor: pointer;
@@ -96,13 +86,13 @@
 /* Rotating caret. */
 .arch-disclosure > summary .arch-caret {
   transition: transform 0.18s ease;
-  color: var(--moss);
+  color: var(--success);
 }
 .arch-disclosure[open] > summary .arch-caret {
   transform: rotate(90deg);
 }
 .arch-disclosure > summary:hover {
-  color: var(--ink);
+  color: var(--foreground);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -121,8 +111,8 @@
   background: linear-gradient(
     to bottom,
     transparent,
-    var(--hairline) 8%,
-    var(--hairline) 92%,
+    var(--border) 8%,
+    var(--border) 92%,
     transparent
   );
 }
@@ -135,8 +125,8 @@
   height: 10px;
   margin-left: -5px;
   border-radius: 9999px;
-  background: var(--moss);
-  box-shadow: 0 0 12px 2px color-mix(in srgb, var(--moss) 70%, transparent);
+  background: var(--success);
+  box-shadow: 0 0 12px 2px color-mix(in srgb, var(--success) 70%, transparent);
   /* Animate `top` as a percentage of the rail so the pulse spans the full list
    * regardless of how many steps a given flow has — no JS height measurement. */
   animation: arch-pulse-travel 3.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
@@ -169,7 +159,7 @@
   position: absolute;
   inset: -6px;
   border-radius: 9999px;
-  border: 1px solid color-mix(in srgb, var(--moss) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--success) 45%, transparent);
   opacity: 0;
   animation: arch-node-ping 3.6s ease-out infinite;
 }

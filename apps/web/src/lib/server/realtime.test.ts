@@ -36,7 +36,9 @@ function makeEnv() {
   } as never
 }
 
-function upgradeRequest(url = 'https://garden.test/api/realtime?workspace_id=ws-1') {
+function upgradeRequest(
+  url = 'https://garden.test/api/realtime?workspace_id=ws-1',
+) {
   return new Request(url, { headers: { upgrade: 'websocket' } })
 }
 
@@ -94,7 +96,7 @@ describe('handleRealtimeConnect', () => {
 
     expect(response.status).toBe(200)
     expect(mocks.close).toHaveBeenCalled()
-    const forwarded = mocks.doFetch.mock.calls[0][0] as Request
+    const forwarded = mocks.doFetch.mock.calls[0]![0] as Request
     expect(forwarded.headers.get('x-garden-user-id')).toBe('user-1')
     expect(forwarded.headers.get('x-garden-role')).toBe('member')
     expect(forwarded.headers.get('x-garden-team-ids')).toBe('team-1,team-2')

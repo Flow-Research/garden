@@ -1,19 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { format, formatDistanceToNowStrict } from 'date-fns'
+import { format } from 'date-fns'
+import { timeAgo } from '@garden/core/format'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  Camera,
-  KeyRound,
-  Loader2,
-  LogOut,
-  RefreshCw,
-  Save,
-} from 'lucide-react'
+import { Camera, KeyRound, LogOut, RefreshCw, Save } from 'lucide-react'
 import { Input } from '@garden/ui/components/ui/input'
 import { Label } from '@garden/ui/components/ui/label'
 import { Button } from '@garden/ui/components/ui/button'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Checkbox } from '@garden/ui/components/ui/checkbox'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import { toast } from 'sonner'
 import { useAuthStore } from '@garden/app-state/auth'
 import { api } from '@/lib/api'
@@ -33,7 +28,7 @@ function formatDateTime(value: string | Date | null | undefined) {
 
 function formatRelativeTime(value: string | Date | null | undefined) {
   if (!value) return 'Unavailable'
-  return formatDistanceToNowStrict(new Date(value), { addSuffix: true })
+  return timeAgo(value)
 }
 
 function describeUserAgent(userAgent: string | null | undefined) {
@@ -265,7 +260,7 @@ export function AccountTab() {
               )}
               <div className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
                 {uploading ? (
-                  <Loader2 className="size-5 animate-spin text-white" />
+                  <Spinner className="size-5 text-white" aria-hidden="true" />
                 ) : (
                   <Camera className="size-5 text-white" />
                 )}
@@ -303,7 +298,7 @@ export function AccountTab() {
                 disabled={profileSaving || !profileName.trim()}
               >
                 {profileSaving ? (
-                  <Loader2 className="size-4 animate-spin" />
+                  <Spinner aria-hidden="true" />
                 ) : (
                   <Save className="size-4" />
                 )}
@@ -399,7 +394,7 @@ export function AccountTab() {
               }
             >
               {passwordSaving ? (
-                <Loader2 className="size-4 animate-spin" />
+                <Spinner aria-hidden="true" />
               ) : (
                 <KeyRound className="size-4" />
               )}
@@ -441,9 +436,7 @@ export function AccountTab() {
               onClick={handleRevokeOtherSessions}
               disabled={revokingOtherSessions || otherSessions.length === 0}
             >
-              {revokingOtherSessions ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : null}
+              {revokingOtherSessions ? <Spinner aria-hidden="true" /> : null}
               Sign out others
             </Button>
           </div>
@@ -499,7 +492,7 @@ export function AccountTab() {
                   disabled={revokingToken === session.token}
                 >
                   {revokingToken === session.token ? (
-                    <Loader2 className="size-4 animate-spin" />
+                    <Spinner aria-hidden="true" />
                   ) : (
                     <LogOut className="size-4" />
                   )}
@@ -518,7 +511,7 @@ export function AccountTab() {
             disabled={signingOut}
           >
             {signingOut ? (
-              <Loader2 className="size-4 animate-spin" />
+              <Spinner aria-hidden="true" />
             ) : (
               <LogOut className="size-4" />
             )}

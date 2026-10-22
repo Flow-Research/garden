@@ -106,7 +106,7 @@ export function GardenDocDownloadBlock({
             </span>
           ) : null}
         </div>
-        <p className="mt-0.5 text-xs text-blue-500">{ext}</p>
+        <p className="mt-0.5 text-xs text-info">{ext}</p>
       </div>
     </div>
   )

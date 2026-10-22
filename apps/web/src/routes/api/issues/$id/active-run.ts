@@ -1,21 +1,12 @@
-
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-
 import { appEnv } from '@/lib/server/env'
-import {
-  badRequest,
-} from '@/lib/server/control-plane'
 import { requireIssueAccess } from '@/lib/server/issue-access'
+import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import {
   getActiveIssueRun,
   listIssueRunEvents,
-  type IssueRunServiceError,
 } from '@garden/server/issues/run-service'
-
-function runError(error: IssueRunServiceError) {
-  return badRequest(error.message)
-}
 
 export const Route = createFileRoute('/api/issues/$id/active-run')({
   server: {
@@ -24,14 +15,14 @@ export const Route = createFileRoute('/api/issues/$id/active-run')({
         const appContext = requireAppRequestContext(context)
         const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
-                const issue = access.issue
+        const issue = access.issue
 
         const runResult = await getActiveIssueRun({
           env: appEnv,
           workspaceId: issue.workspaceId,
           issueId: params.id,
         })
-        if (runResult.isErr()) return runError(runResult.error)
+        if (runResult.isErr()) return serviceErrorResponse(runResult.error)
 
         const eventsResult = runResult.value
           ? await listIssueRunEvents({
@@ -42,7 +33,8 @@ export const Route = createFileRoute('/api/issues/$id/active-run')({
               limit: 50,
             })
           : null
-        if (eventsResult?.isErr()) return runError(eventsResult.error)
+        if (eventsResult?.isErr())
+          return serviceErrorResponse(eventsResult.error)
         const events = eventsResult?.isOk() ? eventsResult.value : []
 
         return Response.json({

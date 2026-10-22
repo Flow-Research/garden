@@ -10,11 +10,14 @@ import {
 export const Route = createFileRoute('/api/inbox/archive-completed')({
   server: {
     handlers: {
-      POST: async ({ context, request }) => {
+      POST: async ({ context }) => {
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
+        const workspaceId = await resolveWorkspaceId(
+          appContext,
+          session.user.id,
+        )
         if (!workspaceId) return Response.json({ count: 0 })
         const count = await archiveAllVisible({
           workspaceId,

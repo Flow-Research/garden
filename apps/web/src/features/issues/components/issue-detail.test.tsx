@@ -1,9 +1,21 @@
-import { forwardRef, useRef, useState, useImperativeHandle } from 'react'
+import {
+  forwardRef,
+  useRef,
+  useState,
+  useImperativeHandle,
+  type ComponentProps,
+} from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { Issue, TimelineEntry } from '@garden/core/types'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
+import type {
+  MockContentEditorHandle,
+  MockEditorProps,
+  MockSelector,
+  MockTitleEditorHandle,
+} from '@/test/mock-props'
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -13,7 +25,7 @@ import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 const mockAuthUser = { id: 'user-1', email: 'test@test.com', name: 'Test User' }
 vi.mock('@garden/app-state/auth', () => ({
   useAuthStore: Object.assign(
-    (selector?: any) => {
+    (selector?: MockSelector) => {
       const state = { user: mockAuthUser, isAuthenticated: true }
       return selector ? selector(state) : state
     },
@@ -24,7 +36,7 @@ vi.mock('@garden/app-state/auth', () => ({
 // Mock @garden/app-state/workspace
 vi.mock('@garden/app-state/workspace', () => ({
   useWorkspaceStore: Object.assign(
-    (selector?: any) => {
+    (selector?: MockSelector) => {
       const state = {
         workspace: { id: 'ws-1', name: 'Test WS', slug: 'test' },
         agents: [],
@@ -84,7 +96,7 @@ vi.mock('@/lib/workspace/queries', () => ({
 
 // Mock navigation
 vi.mock('../../navigation', () => ({
-  AppLink: ({ children, href, ...props }: any) => (
+  AppLink: ({ children, href, ...props }: ComponentProps<'a'>) => (
     <a href={href} {...props}>
       {children}
     </a>
@@ -105,63 +117,70 @@ vi.mock('../../editor', () => ({
   ReadonlyContent: ({ content }: { content: string }) => (
     <div data-testid="readonly-content">{content}</div>
   ),
-  ContentEditor: forwardRef(function MockContentEditor(
-    { defaultValue, onUpdate, placeholder }: any,
-    ref: any,
-  ) {
-    const valueRef = useRef(defaultValue || '')
-    const [value, setValue] = useState(defaultValue || '')
-    useImperativeHandle(ref, () => ({
-      getMarkdown: () => valueRef.current,
-      clearContent: () => {
-        valueRef.current = ''
-        setValue('')
-      },
-      focus: () => {},
-      uploadFile: () => {},
-    }))
-    return (
-      <textarea
-        value={value}
-        onChange={(e) => {
-          valueRef.current = e.target.value
-          setValue(e.target.value)
-          onUpdate?.(e.target.value)
-        }}
-        placeholder={placeholder}
-        data-testid="rich-text-editor"
-      />
-    )
-  }),
-  TitleEditor: forwardRef(function MockTitleEditor(
-    { defaultValue, placeholder, onBlur, onChange }: any,
-    ref: any,
-  ) {
-    const valueRef = useRef(defaultValue || '')
-    const [value, setValue] = useState(defaultValue || '')
-    useImperativeHandle(ref, () => ({
-      getText: () => valueRef.current,
-      focus: () => {},
-    }))
-    return (
-      <input
-        value={value}
-        onChange={(e) => {
-          valueRef.current = e.target.value
-          setValue(e.target.value)
-          onChange?.(e.target.value)
-        }}
-        onBlur={() => onBlur?.(valueRef.current)}
-        placeholder={placeholder}
-        data-testid="title-editor"
-      />
-    )
-  }),
+  ContentEditor: forwardRef<MockContentEditorHandle, MockEditorProps>(
+    function MockContentEditor({ defaultValue, onUpdate, placeholder }, ref) {
+      const valueRef = useRef(defaultValue || '')
+      const [value, setValue] = useState(defaultValue || '')
+      useImperativeHandle(ref, () => ({
+        getMarkdown: () => valueRef.current,
+        clearContent: () => {
+          valueRef.current = ''
+          setValue('')
+        },
+        focus: () => {},
+        uploadFile: () => {},
+      }))
+      return (
+        <textarea
+          value={value}
+          onChange={(e) => {
+            valueRef.current = e.target.value
+            setValue(e.target.value)
+            onUpdate?.(e.target.value)
+          }}
+          placeholder={placeholder}
+          data-testid="rich-text-editor"
+        />
+      )
+    },
+  ),
+  TitleEditor: forwardRef<MockTitleEditorHandle, MockEditorProps>(
+    function MockTitleEditor(
+      { defaultValue, placeholder, onBlur, onChange },
+      ref,
+    ) {
+      const valueRef = useRef(defaultValue || '')
+      const [value, setValue] = useState(defaultValue || '')
+      useImperativeHandle(ref, () => ({
+        getText: () => valueRef.current,
+        focus: () => {},
+      }))
+      return (
+        <input
+          value={value}
+          onChange={(e) => {
+            valueRef.current = e.target.value
+            setValue(e.target.value)
+            onChange?.(e.target.value)
+          }}
+          onBlur={() => onBlur?.(valueRef.current)}
+          placeholder={placeholder}
+          data-testid="title-editor"
+        />
+      )
+    },
+  ),
 }))
 
 // Mock common components
 vi.mock('../../common/actor-avatar', () => ({
-  ActorAvatar: ({ actorType, actorId }: any) => (
+  ActorAvatar: ({
+    actorType,
+    actorId,
+  }: {
+    actorType: string
+    actorId: string
+  }) => (
     <span data-testid="actor-avatar">
       {actorType}:{actorId}
     </span>
@@ -313,7 +332,7 @@ vi.mock('@garden/core/issues/config', () => ({
 const mockRecordVisit = vi.fn()
 vi.mock('@garden/app-state/issues/stores/recent-issues-store', () => ({
   useRecentIssuesStore: Object.assign(
-    (selector?: any) => {
+    (selector?: MockSelector) => {
       const state = { items: [], recordVisit: mockRecordVisit }
       return selector ? selector(state) : state
     },
@@ -321,8 +340,9 @@ vi.mock('@garden/app-state/issues/stores/recent-issues-store', () => ({
   ),
 }))
 
-// Mock core/utils
-vi.mock('@garden/core/utils', () => ({
+// Mock core/format: pin relative times, keep the other formatters real.
+vi.mock('@garden/core/format', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   timeAgo: () => '1d ago',
 }))
 
@@ -338,32 +358,6 @@ vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }))
 
-// Mock react-resizable-panels (used by /ui/components/ui/resizable)
-vi.mock('react-resizable-panels', () => ({
-  Group: ({ children, ...props }: any) => (
-    <div data-testid="panel-group" {...props}>
-      {children}
-    </div>
-  ),
-  Panel: ({ children, ...props }: any) => (
-    <div data-testid="panel" {...props}>
-      {children}
-    </div>
-  ),
-  Separator: ({ children, ...props }: any) => (
-    <div data-testid="panel-handle" {...props}>
-      {children}
-    </div>
-  ),
-  useDefaultLayout: () => ({
-    defaultLayout: undefined,
-    onLayoutChanged: vi.fn(),
-  }),
-  usePanelRef: () => ({
-    current: { isCollapsed: () => false, expand: vi.fn(), collapse: vi.fn() },
-  }),
-}))
-
 // ---------------------------------------------------------------------------
 // Test data
 // ---------------------------------------------------------------------------
@@ -371,6 +365,7 @@ vi.mock('react-resizable-panels', () => ({
 const mockIssue: Issue = {
   id: 'issue-1',
   workspace_id: 'ws-1',
+  team_id: null,
   number: 1,
   identifier: 'TES-1',
   title: 'Implement authentication',

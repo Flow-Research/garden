@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 import type { Team, TeamMember } from '@garden/core/types'
@@ -273,9 +279,7 @@ describe('teams UI', () => {
 
     renderWithQuery(<TeamOverview />)
 
-    expect(
-      await screen.findByText("Couldn't load members"),
-    ).toBeInTheDocument()
+    expect(await screen.findByText("Couldn't load members")).toBeInTheDocument()
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
@@ -305,9 +309,7 @@ describe('teams UI', () => {
 
     renderWithQuery(<TeamWorkPage />)
 
-    expect(
-      await screen.findByText("Couldn't load members"),
-    ).toBeInTheDocument()
+    expect(await screen.findByText("Couldn't load members")).toBeInTheDocument()
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
@@ -382,21 +384,13 @@ describe('teams UI', () => {
 
     renderWithQuery(<TeamOverview />)
 
-    expect(await screen.findByTestId('team-list')).toHaveTextContent(
-      'issue-1',
-    )
+    expect(await screen.findByTestId('team-list')).toHaveTextContent('issue-1')
     fireEvent.click(
       screen.getByRole('button', { name: 'Switch to board view' }),
     )
-    expect(await screen.findByTestId('team-board')).toHaveTextContent(
-      'issue-1',
-    )
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Switch to list view' }),
-    )
-    expect(await screen.findByTestId('team-list')).toHaveTextContent(
-      'issue-1',
-    )
+    expect(await screen.findByTestId('team-board')).toHaveTextContent('issue-1')
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to list view' }))
+    expect(await screen.findByTestId('team-list')).toHaveTextContent('issue-1')
   })
 
   it('switches the member view Team from the selector', async () => {
@@ -584,9 +578,7 @@ describe('teams UI', () => {
 
     const radios = await screen.findAllByRole('radio')
     fireEvent.click(radios[1] as HTMLElement)
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Transfer ownership' }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: 'Transfer ownership' }))
 
     await waitFor(() => {
       expect(apiMocks.transferTeamOwner).toHaveBeenCalledWith('team-1', {
@@ -612,9 +604,7 @@ describe('teams UI', () => {
     expect(
       screen.getByRole('button', { name: 'See members' }),
     ).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: 'Manage Teams' }),
-    ).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Manage Teams' })).toBeDisabled()
     // The card shows the server's distinct member count (4), not the
     // per-Team sum (5).
     const membersCard = screen.getByText('Total Members').closest('div')
@@ -839,9 +829,7 @@ describe('teams UI', () => {
   })
 
   it('shows a static owner display when transfer is not allowed', async () => {
-    apiMocks.getTeam.mockResolvedValue(
-      makeTeam({ can_transfer_owner: false }),
-    )
+    apiMocks.getTeam.mockResolvedValue(makeTeam({ can_transfer_owner: false }))
     apiMocks.listTeamMembers.mockResolvedValue({
       members: [makeMember()],
       total: 1,
@@ -905,9 +893,7 @@ describe('teams UI', () => {
       <TeamDetail teamId="team-1" tab="members" onTabChange={() => {}} />,
     )
 
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Remove Casey' }),
-    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Casey' }))
     await waitFor(() => {
       expect(apiMocks.removeTeamMember).toHaveBeenCalledWith('team-1', 'tm-2')
     })

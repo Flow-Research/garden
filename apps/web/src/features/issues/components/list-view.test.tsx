@@ -44,6 +44,7 @@ vi.mock('@/lib/issues/mutations', () => ({
 
 vi.mock('@/features/navigation/use-surface-navigation', () => ({
   useSurfaceNavigation: () => ({ openIssue: vi.fn() }),
+  issuePath: (id: string) => `/issues/${id}`,
 }))
 
 vi.mock('../../common/actor-avatar', () => ({
@@ -63,22 +64,30 @@ vi.mock('@garden/ui/components/ui/tooltip', () => ({
 }))
 
 vi.mock('@base-ui/react/accordion', () => ({
-  Accordion: Object.assign(({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ), {
-    Root: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-    Item: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-    Header: ({ children }: { children: React.ReactNode }) => (
-      <div>{children}</div>
-    ),
-    Trigger: ({ children }: { children: React.ReactNode }) => (
-      <button>{children}</button>
-    ),
-    Panel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  }),
+  Accordion: Object.assign(
+    ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+    {
+      Root: ({ children }: { children: React.ReactNode }) => (
+        <div>{children}</div>
+      ),
+      Item: ({ children }: { children: React.ReactNode }) => (
+        <div>{children}</div>
+      ),
+      Header: ({ children }: { children: React.ReactNode }) => (
+        <div>{children}</div>
+      ),
+      Trigger: ({ children }: { children: React.ReactNode }) => (
+        <button>{children}</button>
+      ),
+      Panel: ({ children }: { children: React.ReactNode }) => (
+        <div>{children}</div>
+      ),
+    },
+  ),
 }))
 
 const issueDefaults = {
+  team_id: null,
   parent_issue_id: null,
   position: 0,
 }
@@ -132,9 +141,7 @@ describe('ListView variants', () => {
           new Map([['project-1', { title: 'Research', color: 'blue' }]])
         }
         teamChips={
-          new Map([
-            ['issue-1', { name: 'Engineering', color: 'orange' }],
-          ])
+          new Map([['issue-1', { name: 'Engineering', color: 'orange' }]])
         }
         variant="team"
         visibleStatuses={['todo']}

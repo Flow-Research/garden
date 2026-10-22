@@ -1,10 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { badRequest, json } from '@/lib/server/control-plane'
-import {
-  requireTeamAccess,
-  requireTeamManage,
-} from '@/lib/server/team-access'
+import { requireTeamAccess, requireTeamManage } from '@/lib/server/team-access'
 import {
   addTeamMember,
   listTeamMembers,

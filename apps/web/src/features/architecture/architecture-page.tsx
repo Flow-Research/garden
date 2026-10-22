@@ -34,14 +34,14 @@ export function ArchitecturePage() {
       <div className="mx-auto flex max-w-5xl gap-12 px-6 lg:px-10">
         <aside className="sticky top-0 hidden h-dvh w-44 shrink-0 overflow-y-auto py-14 lg:block">
           <Label>On this page</Label>
-          <nav className="mt-4 space-y-1 border-l border-[color:var(--hairline)] pl-3">
+          <nav className="mt-4 space-y-1 border-l border-border pl-3">
             {archToc.map((item, i) => (
               <a
                 key={item.id}
                 href={`#${item.id}`}
                 className="block py-1 text-[13px] leading-snug text-muted-foreground transition-colors hover:text-foreground"
               >
-                <span className="mr-2 font-mono text-[10px] text-[color:var(--moss)]">
+                <span className="mr-2 font-mono text-[10px] text-success">
                   {String(i + 1).padStart(2, '0')}
                 </span>
                 {item.label}
@@ -60,7 +60,7 @@ export function ArchitecturePage() {
             title="The building blocks"
             lede="A handful of Cloudflare pieces do all the heavy lifting. Here's what each one actually is. Open any row for where its state lives and how Garden uses it."
           >
-            <div className="border-t border-[color:var(--hairline)]">
+            <div className="border-t border-border">
               {buildingBlocks.map((b) => (
                 <Disclosure
                   key={b.id}
@@ -173,7 +173,7 @@ export function ArchitecturePage() {
               ]}
             />
 
-            <div className="border-t border-[color:var(--hairline)]">
+            <div className="border-t border-border">
               {workflowsVision.principles.map((p) => (
                 <Disclosure
                   key={p.id}
@@ -190,7 +190,7 @@ export function ArchitecturePage() {
               ))}
             </div>
 
-            <p className="mt-6 max-w-2xl border-l-2 border-[color:var(--amber)] pl-4 text-[13px] leading-6 text-muted-foreground">
+            <p className="mt-6 max-w-2xl border-l-2 border-border-warning-tertiary pl-4 text-[13px] leading-6 text-muted-foreground">
               {workflowsVision.status}
             </p>
           </Section>
@@ -210,7 +210,7 @@ export function ArchitecturePage() {
                 body: l.body,
               }))}
             />
-            <p className="mt-5 max-w-2xl border-l-2 border-[color:var(--amber)] pl-4 text-[13px] leading-6 text-muted-foreground">
+            <p className="mt-5 max-w-2xl border-l-2 border-border-warning-tertiary pl-4 text-[13px] leading-6 text-muted-foreground">
               <span className="text-foreground/80">Worth knowing: </span>
               {execution.seam}
             </p>
@@ -302,7 +302,7 @@ export function ArchitecturePage() {
             </p>
           </Section>
 
-          <footer className="mt-14 border-t border-[color:var(--hairline)] pt-6">
+          <footer className="mt-14 border-t border-border pt-6">
             <Label>Sources</Label>
             <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
               {sources.map((s) => (
@@ -339,7 +339,7 @@ function Hero() {
         <p className="mt-6 max-w-2xl text-[16px] leading-7 text-muted-foreground">
           {architectureCopy.lede}
         </p>
-        <p className="mt-6 max-w-2xl border-l-2 border-[color:var(--moss)] pl-4 text-[15px] leading-7 text-foreground/90">
+        <p className="mt-6 max-w-2xl border-l-2 border-success pl-4 text-[15px] leading-7 text-foreground/90">
           {architectureCopy.thesis}
         </p>
       </div>

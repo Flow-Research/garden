@@ -1,4 +1,12 @@
-import { dirname, resolve } from 'node:path'
+import {
+  cpSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Pool } from 'pg'
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
@@ -11,9 +19,18 @@ import {
 import * as schema from '../schema/index.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const MIGRATIONS_DIR = resolve(here, '../../drizzle')
+export const MIGRATIONS_DIR = resolve(here, '../../drizzle')
 
 const POSTGRES_IMAGE = 'postgres:16-alpine'
+
+export type StartTestDbOptions = {
+  /**
+   * Apply migrations only up to and including this number (the leading
+   * digits of the migration tag), so a test can seed data and then run the
+   * remaining migrations itself from MIGRATIONS_DIR.
+   */
+  migrationsUpTo?: number
+}
 
 export type TestDb = {
   db: NodePgDatabase<typeof schema>
@@ -35,7 +52,9 @@ export type TestDb = {
  *
  * Caller must invoke `cleanup()` (or use `withTestDb`) to tear down.
  */
-export async function startTestDb(): Promise<TestDb> {
+export async function startTestDb(
+  options: StartTestDbOptions = {},
+): Promise<TestDb> {
   const postgres = await new GenericContainer(POSTGRES_IMAGE)
     .withEnvironment({
       POSTGRES_USER: 'test',
@@ -55,7 +74,16 @@ export async function startTestDb(): Promise<TestDb> {
   const pool = new Pool({ connectionString: databaseUrl })
   const db = drizzle(pool, { schema })
 
-  await migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+  if (options.migrationsUpTo === undefined) {
+    await migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+  } else {
+    const folder = migrationsFolderUpTo(options.migrationsUpTo)
+    try {
+      await migrate(db, { migrationsFolder: folder })
+    } finally {
+      rmSync(folder, { recursive: true, force: true })
+    }
+  }
 
   return {
     db,
@@ -63,6 +91,21 @@ export async function startTestDb(): Promise<TestDb> {
     databaseUrl,
     cleanup: () => stopAll(pool, postgres),
   }
+}
+
+/** A temporary copy of the migrations whose journal stops at `upTo`. */
+function migrationsFolderUpTo(upTo: number) {
+  const folder = mkdtempSync(join(tmpdir(), 'garden-migrations-'))
+  cpSync(MIGRATIONS_DIR, folder, { recursive: true })
+  const journalPath = join(folder, 'meta', '_journal.json')
+  const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as {
+    entries: Array<{ tag: string }>
+  }
+  journal.entries = journal.entries.filter(
+    (entry) => Number(entry.tag.slice(0, 4)) <= upTo,
+  )
+  writeFileSync(journalPath, JSON.stringify(journal))
+  return folder
 }
 
 /**

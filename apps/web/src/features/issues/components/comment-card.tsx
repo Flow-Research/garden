@@ -43,7 +43,7 @@ import { ReactionBar } from '@garden/ui/components/common/reaction-bar'
 import { QuickEmojiPicker } from '@garden/ui/components/common/quick-emoji-picker'
 import { cn } from '@garden/ui/lib/utils'
 import { useActorName } from '@/lib/workspace/hooks'
-import { timeAgo } from '@garden/core/utils'
+import { timeAgo } from '@garden/core/format'
 import {
   ContentEditor,
   type ContentEditorRef,
@@ -266,6 +266,7 @@ function CommentRow({
               <DropdownMenuTrigger
                 render={
                   <Button
+                    aria-label="Comment actions"
                     variant="ghost"
                     size="icon-sm"
                     className="text-muted-foreground"
@@ -516,6 +517,7 @@ function CommentCard({
                   <DropdownMenuTrigger
                     render={
                       <Button
+                        aria-label="Comment actions"
                         variant="ghost"
                         size="icon-sm"
                         className="text-muted-foreground"

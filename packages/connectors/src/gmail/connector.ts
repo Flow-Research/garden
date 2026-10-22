@@ -11,6 +11,11 @@ export default defineConnector({
   label: 'Gmail',
   description:
     'Search threads, manage labels, and create drafts through Google Workspace’s Gmail MCP.',
+  capabilities: [
+    'search and read email',
+    'create and send email drafts',
+    'manage email labels',
+  ],
   icon: './icon.svg',
   executorSlug: 'google_gmail',
   upstream: {

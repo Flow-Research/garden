@@ -1,13 +1,13 @@
 import {
-  ArrowsClockwise,
+  RefreshCw,
   Download,
   Eye,
   Folder as FolderIcon,
   Lock,
-  PencilSimple,
-  DotsThreeVertical,
-  Trash,
-} from '@phosphor-icons/react'
+  Pencil,
+  EllipsisVertical,
+  Trash2,
+} from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,10 +49,7 @@ export function BrainFolderCard({
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
         >
           <span className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-background-main-default">
-            <FolderIcon
-              className="size-6 text-icon-neutral-default"
-              weight="regular"
-            />
+            <FolderIcon className="size-6 text-icon-neutral-default" />
           </span>
 
           <span className="flex min-w-0 flex-col">
@@ -61,11 +58,7 @@ export function BrainFolderCard({
             </span>
             <span className="flex items-center gap-1.5 text-sm text-text-secondary">
               {folder.privacy === 'private' ? (
-                <Lock
-                  className="size-3.5"
-                  weight="regular"
-                  aria-hidden="true"
-                />
+                <Lock className="size-3.5" aria-hidden="true" />
               ) : null}
               <span className="capitalize">{folder.privacy}</span>
               <span aria-hidden="true">·</span>
@@ -81,23 +74,23 @@ export function BrainFolderCard({
             aria-label={`Folder actions for ${folder.name}`}
             className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-icon-neutral-default transition-colors hover:bg-background-main-secondary-hover"
           >
-            <DotsThreeVertical className="size-5" weight="regular" />
+            <EllipsisVertical className="size-5" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuItem onClick={() => onOpen(folder)}>
-              <Eye className="size-4" weight="regular" />
+              <Eye className="size-4" />
               View
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onRename(folder)}>
-              <PencilSimple className="size-4" weight="regular" />
+              <Pencil className="size-4" />
               Rename
             </DropdownMenuItem>
             <DropdownMenuItem disabled title="Not available yet">
-              <Download className="size-4" weight="regular" />
+              <Download className="size-4" />
               Download
             </DropdownMenuItem>
             <DropdownMenuItem disabled title="Not available yet">
-              <ArrowsClockwise className="size-4" weight="regular" />
+              <RefreshCw className="size-4" />
               Make a knowledge base
             </DropdownMenuItem>
             <DropdownMenuSeparator />
@@ -105,7 +98,7 @@ export function BrainFolderCard({
               variant="destructive"
               onClick={() => onDelete(folder)}
             >
-              <Trash className="size-4" weight="regular" />
+              <Trash2 className="size-4" />
               Delete folder
             </DropdownMenuItem>
           </DropdownMenuContent>

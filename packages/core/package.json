@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix .",
     "test": "vitest run"
   },
@@ -18,19 +18,19 @@
     "./issues/deep-link": "./src/issues/deep-link.ts",
     "./issues/identifier": "./src/issues/identifier.ts",
     "./issues/run-sync": "./src/issues/run-sync.ts",
-    "./issues/source-binding": "./src/issues/source-binding.ts",
     "./issues/triggers": "./src/issues/triggers.ts",
     "./issues/config": "./src/issues/config/index.ts",
     "./issues/config/status": "./src/issues/config/status.ts",
+    "./executor/catalog": "./src/executor/catalog.ts",
     "./skills": "./src/skills/index.ts",
     "./skills/*": "./src/skills/*.ts",
+    "./format": "./src/format.ts",
     "./utils": "./src/utils.ts",
     "./connectors/errors": "./src/connectors/errors.ts",
     "./constants/*": "./src/constants/*.ts"
   },
   "dependencies": {
     "@garden/db": "workspace:*",
-    "@neondatabase/serverless": "^1.0.1",
     "better-result": "^2.9.2",
     "drizzle-orm": "catalog:",
     "effect": "catalog:",
@@ -38,6 +38,7 @@
   },
   "devDependencies": {
     "@garden/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
     "@typescript/native": "catalog:",
     "vitest": "catalog:"
   }

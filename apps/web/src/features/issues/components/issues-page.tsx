@@ -148,10 +148,7 @@ function TasksEmptyState({
               : 'You don’t have any active issues at the moment.'}
           </p>
         </div>
-        <Button
-          className="h-10 gap-2 rounded-md px-3"
-          onClick={onCreateIssue}
-        >
+        <Button className="h-10 gap-2 rounded-md px-3" onClick={onCreateIssue}>
           <Plus className="size-4" />
           New issue
         </Button>

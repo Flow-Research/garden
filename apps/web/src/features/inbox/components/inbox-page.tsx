@@ -20,7 +20,7 @@ import { useActorName } from '@/lib/workspace/hooks'
 import { useNavigation } from '../../navigation'
 import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigation'
 import { toast } from 'sonner'
-import { ArrowLeft, X } from 'lucide-react'
+import { ArrowLeft, MailOpen, X } from 'lucide-react'
 import type { InboxItem } from '@garden/core/types'
 import { Button } from '@garden/ui/components/ui/button'
 
@@ -34,7 +34,6 @@ import {
 import { InboxFooter } from './inbox-footer'
 import { GmailDetail, GmailErrorState, GmailListItem } from './gmail-views'
 import { InboxNotificationDetailV2 } from './inbox-details/inbox-notification-detail'
-import { EnvelopeOpenIcon } from '@phosphor-icons/react'
 
 /** Subscribes to the viewport media query without leaking a render-time listener. */
 function useIsDesktop(): boolean {
@@ -664,7 +663,7 @@ export function InboxPage() {
           body="Once any new message is sent it'll be documented"
           icon={
             <div className="bg-muted h-20 w-20 flex items-center justify-center rounded-full text-muted-foreground shrink-0">
-              <EnvelopeOpenIcon strokeWidth={0.5} size={35} />
+              <MailOpen strokeWidth={0.5} size={35} />
             </div>
           }
         />

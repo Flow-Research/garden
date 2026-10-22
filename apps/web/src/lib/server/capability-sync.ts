@@ -10,6 +10,12 @@ import {
 import { getDb, schema } from './db'
 import { appEnv } from './env'
 import { loadExecutorCatalog } from './executor-runtime'
+import { createGardenLogger } from '@garden/observability/logger'
+
+const logger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'capability-sync',
+})
 
 export class CapabilitySyncError extends Schema.Error<CapabilitySyncError>(
   'CapabilitySyncError',
@@ -406,12 +412,7 @@ const persistCapabilityRows = Effect.fn('CapabilitySync.persist')(
 
     if (capabilityRows.length === 0 && existingCapabilities.length > 0) {
       yield* Effect.sync(() =>
-        console.warn(
-          '[garden] refusing global capability prune on empty sync',
-          {
-            connectorId,
-          },
-        ),
+        logger.warn('capability_sync.empty_prune_refused', { connectorId }),
       )
       return
     }

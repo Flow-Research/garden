@@ -9,8 +9,17 @@ import {
 } from '@garden/agent-runtime'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
-import { badRequest, requireWorkspaceContext } from '@/lib/server/control-plane'
+import {
+  badRequest,
+  json,
+  requireWorkspaceContext,
+  serviceUnavailable,
+} from '@/lib/server/control-plane'
 import { requireIssueAccess } from '@/lib/server/issue-access'
+import {
+  multipartErrorResponse,
+  readMultipartForm,
+} from '@/lib/server/multipart'
 import { toIssueAttachment } from '@garden/server/issues/server'
 
 class IssueAttachmentUploadError extends TaggedError(
@@ -49,19 +58,14 @@ export const Route = createFileRoute('/api/upload-file')({
         const workspaceContext = await requireWorkspaceContext(appContext)
         if (workspaceContext instanceof Response) return workspaceContext
 
-        const formResult = await Result.tryPromise({
-          try: async () => await request.formData(),
-          catch: (cause) =>
-            new IssueAttachmentUploadError({
-              message: cause instanceof Error ? cause.message : String(cause),
-            }),
-        })
-        if (formResult.isErr()) return badRequest(formResult.error.message)
+        const formResult = await readMultipartForm(request, MAX_FILE_SIZE)
+        if (formResult.isErr()) return multipartErrorResponse(formResult.error)
 
         const file = formResult.value.get('file')
         if (!(file instanceof File)) return badRequest('Missing file')
-        if (file.size > MAX_FILE_SIZE)
-          return badRequest('File exceeds 100 MB limit')
+        if (file.size > MAX_FILE_SIZE) {
+          return json({ error: 'File exceeds 100 MB limit' }, 413)
+        }
 
         const bytesResult = await Result.tryPromise({
           try: async () => Buffer.from(await file.arrayBuffer()),
@@ -144,25 +148,35 @@ export const Route = createFileRoute('/api/upload-file')({
               message: cause instanceof Error ? cause.message : String(cause),
             }),
         })
-        if (putResult.isErr()) return badRequest(putResult.error.message)
+        if (putResult.isErr()) {
+          return serviceUnavailable('Attachment storage is unavailable')
+        }
 
-        const [row] = await db
-          .insert(schema.issueAttachment)
-          .values({
-            id: attachmentId,
-            workspaceId: workspaceContext.workspaceId,
-            issueId: requestedIssueId,
-            commentId: requestedCommentId,
-            uploaderType: 'member',
-            uploaderId: workspaceContext.session.user.id,
-            filename: file.name,
-            r2Key,
-            contentType,
-            sizeBytes: file.size,
-          })
-          .returning()
-
-        if (!row) return badRequest('Attachment insert returned no row')
+        const insertResult = await Result.tryPromise({
+          try: async () =>
+            await db
+              .insert(schema.issueAttachment)
+              .values({
+                id: attachmentId,
+                workspaceId: workspaceContext.workspaceId,
+                issueId: requestedIssueId,
+                commentId: requestedCommentId,
+                uploaderType: 'member',
+                uploaderId: workspaceContext.session.user.id,
+                filename: file.name,
+                r2Key,
+                contentType,
+                sizeBytes: file.size,
+              })
+              .returning(),
+          catch: (cause) => cause,
+        })
+        const row = insertResult.isOk() ? insertResult.value[0] : undefined
+        if (!row) {
+          // Don't leave an object in storage that no attachment row points at.
+          await appContext.env.FILES.delete(r2Key).catch(() => undefined)
+          return serviceUnavailable('Attachment could not be saved')
+        }
         return Response.json(toIssueAttachment(row), { status: 201 })
       },
     },

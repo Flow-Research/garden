@@ -15,7 +15,6 @@ import {
   notFound,
   requireWorkspaceContext,
 } from '@/lib/server/control-plane'
-import type { AppEnv } from '@/lib/server/env'
 
 const CONTENT_TYPES: Record<FileFormat, string> = {
   markdown: 'text/plain; charset=utf-8',
@@ -69,10 +68,7 @@ export const getBrainFileContent = async ({
   const itemIdResult = BrainFileIdSchema.safeParse(params.id)
   if (!itemIdResult.success) return badRequest('Invalid Brain file id')
 
-  const env = appContext.env as AppEnv & {
-    HELIX_URL?: string
-    HELIX_API_KEY?: string
-  }
+  const env = appContext.env
   const helixUrl = env.HELIX_URL
 
   if (helixUrl === undefined) {

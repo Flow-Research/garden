@@ -64,7 +64,9 @@ export function AddTeamMemberDialog({
     existing.filter((member) => member.user_id).map((member) => member.user_id),
   )
   const existingAgentIds = new Set(
-    existing.filter((member) => member.agent_id).map((member) => member.agent_id),
+    existing
+      .filter((member) => member.agent_id)
+      .map((member) => member.agent_id),
   )
 
   const candidates = useMemo<Candidate[]>(() => {

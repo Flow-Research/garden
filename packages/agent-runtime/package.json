@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "measure:tools": "node ../../scripts/run-with-root-env.mjs node --experimental-strip-types scripts/measure-agent-tools.ts",
     "fixture:live-chat": "bash fixtures/run-live-chat-agent.sh",
-    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix ."
   },
   "dependencies": {
@@ -28,7 +28,6 @@
     "@garden/db": "workspace:*",
     "@garden/observability": "workspace:*",
     "@garden/server": "workspace:*",
-    "@neondatabase/serverless": "^1.0.1",
     "@posthog/ai": "8.4.0",
     "agents": "catalog:",
     "ai": "6.0.208",
@@ -39,6 +38,7 @@
     "drizzle-orm": "catalog:",
     "drizzle-zod": "^0.8.3",
     "effect": "catalog:",
+    "exceljs": "catalog:",
     "fast-diff": "^1.3.0",
     "mammoth": "^1.12.0",
     "marked": "17.0.6",

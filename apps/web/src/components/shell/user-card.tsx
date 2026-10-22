@@ -14,16 +14,16 @@ import {
 import { cn } from '@garden/ui/lib/utils'
 import type { Workspace } from '@garden/core/types'
 import {
-  Buildings,
-  CaretRight,
-  CaretUpDown,
+  Building2,
+  ChevronRight,
+  ChevronsUpDown,
   Check,
   Copy,
-  Gear,
-  PaperPlaneTilt,
+  Settings,
+  Send,
   Plus,
-  SignOut,
-} from '@phosphor-icons/react'
+  LogOut,
+} from 'lucide-react'
 import type { MemberRole } from '@garden/core/types'
 
 /**
@@ -121,7 +121,7 @@ export function UserCard({
             </span>
             {/* Role badge lives only in the expanded flyout (User ID row);
                 the collapsed profile strip stays avatar + name. */}
-            <CaretUpDown className="size-3.5 shrink-0 text-icon-neutral-tertiary" />
+            <ChevronsUpDown className="size-3.5 shrink-0 text-icon-neutral-tertiary" />
           </>
         ) : null}
       </DropdownMenuTrigger>
@@ -178,7 +178,7 @@ export function UserCard({
             onClick={runAndClose(onAccount)}
             className="cursor-pointer flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-border-default bg-background-main-default text-sm whitespace-nowrap text-text-neutral-default shadow-1 transition-colors hover:bg-background-main-secondary"
           >
-            <Gear className="size-4 text-icon-neutral-secondary" />
+            <Settings className="size-4 text-icon-neutral-secondary" />
             Settings
           </button>
           <button
@@ -186,7 +186,7 @@ export function UserCard({
             onClick={runAndClose(onInviteMembers)}
             className="cursor-pointer flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-border-default bg-background-main-default text-sm whitespace-nowrap text-text-neutral-default shadow-1 transition-colors hover:bg-background-main-secondary"
           >
-            <PaperPlaneTilt className="size-4 text-icon-neutral-secondary" />
+            <Send className="size-4 text-icon-neutral-secondary" />
             Invite members
           </button>
         </div>
@@ -230,9 +230,9 @@ export function UserCard({
             aria-expanded={workspacesOpen}
             className="cursor-pointer flex h-10 w-full items-center gap-3 px-2 text-sm tracking-wider text-text-neutral-default transition-colors hover:bg-background-main-secondary [&_svg]:size-[18px]"
           >
-            <Buildings className="size-4 text-icon-neutral-secondary" />
+            <Building2 className="size-4 text-icon-neutral-secondary" />
             <span className="flex-1 text-left">Workspaces</span>
-            <CaretRight
+            <ChevronRight
               className={cn(
                 'size-3.5 text-icon-neutral-tertiary transition-transform',
                 workspacesOpen && 'rotate-90',
@@ -252,7 +252,7 @@ export function UserCard({
                       onClick={runAndClose(() => onSwitchWorkspace(workspace))}
                       className="cursor-pointer flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-text-neutral-default transition-colors hover:bg-background-main-secondary disabled:opacity-60"
                     >
-                      <Buildings className="size-4 shrink-0 text-icon-neutral-tertiary" />
+                      <Building2 className="size-4 shrink-0 text-icon-neutral-tertiary" />
                       <span className="min-w-0 flex-1 truncate">
                         {workspace.name}
                       </span>
@@ -281,7 +281,7 @@ export function UserCard({
           onClick={runAndClose(onLogout)}
           className="cursor-pointer flex h-10 w-full items-center gap-3 border-t border-border-default px-2 text-sm tracking-wider text-text-neutral-default transition-colors hover:bg-background-main-secondary [&_svg]:size-[18px]"
         >
-          <SignOut className="size-4 text-icon-neutral-secondary" />
+          <LogOut className="size-4 text-icon-neutral-secondary" />
           Sign out
         </button>
       </DropdownMenuContent>

@@ -126,6 +126,7 @@ describe('createMentionSuggestion types filter', () => {
     is_default: false,
     max_concurrent_tasks: 1,
     owner_id: null,
+    permissions: null,
     skills: [],
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
@@ -136,6 +137,7 @@ describe('createMentionSuggestion types filter', () => {
   const issue: Issue = {
     id: 'issue-1',
     workspace_id: wsId,
+    team_id: null,
     number: 1,
     identifier: 'TST-1',
     title: 'Fix the thing',
@@ -168,9 +170,9 @@ describe('createMentionSuggestion types filter', () => {
     return qc
   }
 
-  it('offers every type by default', () => {
+  it('offers every type by default', async () => {
     const qc = makeQueryClient()
-    const items = createMentionSuggestion(qc).items!({
+    const items = await createMentionSuggestion(qc).items!({
       query: '',
       editor: null as never,
     })
@@ -179,9 +181,10 @@ describe('createMentionSuggestion types filter', () => {
     )
   })
 
-  it('offers only the requested types', () => {
+  it('offers only the requested types', async () => {
     const qc = makeQueryClient()
-    const items = createMentionSuggestion(qc, { types: ['member'] }).items!({
+    const items = await createMentionSuggestion(qc, { types: ['member'] })
+      .items!({
       query: '',
       editor: null as never,
     })

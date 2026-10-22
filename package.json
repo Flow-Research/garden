@@ -30,10 +30,11 @@
     "verify:deploy-config": "node scripts/verify-deploy-config.mjs",
     "typecheck": "turbo run typecheck --concurrency=1",
     "test": "turbo run test",
-    "lint": "turbo run lint",
+    "lint": "turbo run lint && pnpm run lint:root",
+    "lint:root": "oxlint -c ./.oxlintrc.json scripts alchemy.run.ts deploy-targets.mjs",
     "verify:connectors": "pnpm --filter @garden/connectors verify:coverage",
-    "format": "oxfmt -c ./.oxfmtrc.json --check apps packages",
-    "format:write": "oxfmt -c ./.oxfmtrc.json --write apps packages",
+    "format": "oxfmt -c ./.oxfmtrc.json --check apps packages workers scripts alchemy.run.ts deploy-targets.mjs",
+    "format:write": "oxfmt -c ./.oxfmtrc.json --write apps packages workers scripts alchemy.run.ts deploy-targets.mjs",
     "clean": "turbo run clean"
   },
   "devDependencies": {
@@ -104,8 +105,5 @@
       "@executor-js/plugin-mcp@1.5.40": "patches/@executor-js__plugin-mcp@1.5.40.patch",
       "@executor-js/plugin-openapi@1.5.40": "patches/@executor-js__plugin-openapi@1.5.40.patch"
     }
-  },
-  "dependencies": {
-    "better-result": "^2.9.2"
   }
 }

@@ -73,13 +73,10 @@ export function QuestionCard({
   // Focus the free-text input on mount when this is a deep-link arrival,
   // since "from inbox" implies the user wants to answer immediately.
   useEffect(() => {
-    if (pulseOnMount && inputRef.current) {
-      inputRef.current.focus()
-    }
-    if (pulseOnMount) {
-      const id = setTimeout(() => setIsPulsing(false), 1400)
-      return () => clearTimeout(id)
-    }
+    if (!pulseOnMount) return
+    inputRef.current?.focus()
+    const id = setTimeout(() => setIsPulsing(false), 1400)
+    return () => clearTimeout(id)
   }, [pulseOnMount])
 
   const hasOptions = question.options.length > 0

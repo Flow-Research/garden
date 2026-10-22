@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { Result } from 'better-result'
 import { toast } from 'sonner'
-import { ClockCounterClockwise } from '@phosphor-icons/react'
+import { History } from 'lucide-react'
 import {
   Popover,
   PopoverContent,
@@ -84,7 +84,7 @@ export function ChatTabsStrip({ activeId }: { activeId: string | null }) {
             className="ml-auto flex h-6 shrink-0 items-center gap-1.5 rounded-sm px-2 text-xs text-text-secondary transition-colors hover:bg-background-main-secondary hover:text-text-neutral-default"
             aria-label="Browse all chats"
           >
-            <ClockCounterClockwise className="size-3.5" />
+            <History className="size-3.5" />
             Browse
           </PopoverTrigger>
           <PopoverContent align="end" className="w-72 p-1">

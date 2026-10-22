@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
@@ -31,34 +31,39 @@ export const Route = createFileRoute('/api/issues/child-progress')({
         )
         if (workspaceAccess instanceof Response) return workspaceAccess
 
+        // Count children per parent in the database rather than loading every
+        // issue in the workspace to tally them in memory.
         const db = await appContext.db()
         const rows = await db
-          .select()
+          .select({
+            parentId: schema.issue.parentId,
+            total: sql<number>`cast(count(*) as int)`,
+            done: sql<number>`cast(count(*) filter (where ${schema.issue.status} = 'done') as int)`,
+          })
           .from(schema.issue)
           .where(
             and(
               eq(schema.issue.workspaceId, workspaceId),
+              isNotNull(schema.issue.parentId),
               teamIssueVisibilityCondition({
                 viewerId: session.user.id,
                 manager: isWorkspaceManager(workspaceAccess.membership.role),
               }),
             ),
           )
+          .groupBy(schema.issue.parentId)
 
-        const progress = Array.from(
-          rows.reduce((map, issue) => {
-            if (!issue.parentId) return map
-            const entry = map.get(issue.parentId) ?? { total: 0, done: 0 }
-            entry.total += 1
-            if (issue.status === 'done') entry.done += 1
-            map.set(issue.parentId, entry)
-            return map
-          }, new Map<string, { total: number; done: number }>()),
-        ).map(([parent_issue_id, entry]) => ({
-          parent_issue_id,
-          total: entry.total,
-          done: entry.done,
-        }))
+        const progress = rows.flatMap((row) =>
+          row.parentId
+            ? [
+                {
+                  parent_issue_id: row.parentId,
+                  total: row.total,
+                  done: row.done,
+                },
+              ]
+            : [],
+        )
 
         return Response.json({ progress })
       },

@@ -35,6 +35,7 @@ import { useLinkHover, LinkHoverCard } from './link-hover-card'
 import { openLink, isMentionHref } from './utils/link-handler'
 import { preprocessMarkdown } from './utils/preprocess'
 import './content-editor.css'
+import { issuePath } from '@/features/navigation/use-surface-navigation'
 
 // ---------------------------------------------------------------------------
 // Lowlight — same engine + language set as Tiptap's CodeBlockLowlight
@@ -90,7 +91,7 @@ function IssueMentionLink({
   label?: string
 }) {
   const { push, openInNewTab } = useNavigation()
-  const path = `/issues/${issueId}`
+  const path = issuePath(issueId)
   return (
     <span
       className="inline align-middle"
@@ -108,6 +109,27 @@ function IssueMentionLink({
     >
       <IssueMentionCard issueId={issueId} fallbackLabel={label} />
     </span>
+  )
+}
+
+function MarkdownLink({
+  href,
+  children,
+}: {
+  href: string | undefined
+  children: React.ReactNode
+}) {
+  const { push } = useNavigation()
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        e.preventDefault()
+        if (href) openLink(href, push)
+      }}
+    >
+      {children}
+    </a>
   )
 }
 
@@ -150,17 +172,7 @@ const components: Partial<Components> = {
     }
 
     // Regular links — open directly on click
-    return (
-      <a
-        href={href}
-        onClick={(e) => {
-          e.preventDefault()
-          if (href) openLink(href)
-        }}
-      >
-        {children}
-      </a>
-    )
+    return <MarkdownLink href={href}>{children}</MarkdownLink>
   },
 
   // Images — centered with toolbar + lightbox (matches Tiptap ImageView NodeView)

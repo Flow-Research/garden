@@ -1,5 +1,6 @@
 {
   "name": "@garden/env",
+  "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -7,7 +8,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix .",
     "typecheck": "tsc --noEmit"
   },

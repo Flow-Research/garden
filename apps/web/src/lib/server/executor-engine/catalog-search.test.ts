@@ -103,7 +103,10 @@ describe('connector search ranking', () => {
     const names = entryNames(result.entries)
     const at = (name: string): number => {
       const index = names.indexOf(name)
-      expect(index, `expected "${name}" in [${names.join(', ')}]`).toBeGreaterThanOrEqual(0)
+      expect(
+        index,
+        `expected "${name}" in [${names.join(', ')}]`,
+      ).toBeGreaterThanOrEqual(0)
       return index
     }
 

@@ -16,7 +16,7 @@ export function FeaturesPage() {
 
   return (
     <div className="flex h-dvh text-foreground">
-      <aside className="hidden h-dvh w-52 shrink-0 overflow-y-auto border-r border-[color:var(--hairline-soft)] bg-[color:var(--parchment)] lg:block">
+      <aside className="hidden h-dvh w-52 shrink-0 overflow-y-auto border-r border-border/60 bg-background lg:block">
         <div className="space-y-6 px-4 py-6">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <BrandIcon className="size-4" noSpin bordered size="sm" />
@@ -27,11 +27,11 @@ export function FeaturesPage() {
               <div key={group.id}>
                 <a
                   href={`#${group.id}`}
-                  className="mb-1.5 block text-xs font-medium text-foreground hover:text-[color:var(--moss)]"
+                  className="mb-1.5 block text-xs font-medium text-foreground hover:text-success"
                 >
                   {group.title}
                 </a>
-                <ul className="space-y-0.5 border-l border-[color:var(--hairline-soft)] pl-2.5">
+                <ul className="space-y-0.5 border-l border-border/60 pl-2.5">
                   {features.map((feature) => (
                     <li key={feature.id}>
                       <a
@@ -77,7 +77,7 @@ export function FeaturesPage() {
               <a
                 key={group.id}
                 href={`#${group.id}`}
-                className="shrink-0 rounded-full border border-[color:var(--hairline-soft)] px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
+                className="shrink-0 rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
               >
                 {group.title}
               </a>
@@ -94,7 +94,7 @@ export function FeaturesPage() {
             ))}
           </div>
 
-          <p className="mt-16 border-t border-[color:var(--hairline-soft)] pt-6 text-xs text-muted-foreground">
+          <p className="mt-16 border-t border-border/60 pt-6 text-xs text-muted-foreground">
             Sources: docs/core/PRD.md, docs/garden-os/garden-os-overview.typ,
             docs/core/DEFERRED.md, docs/known-gaps/
           </p>

@@ -9,15 +9,15 @@ import {
 import { GardenLogo } from '@garden/ui/components/common/garden-logo'
 import { cn } from '@garden/ui/lib/utils'
 import {
-  ChartBar,
+  ChartColumn,
   CreditCard,
-  CaretDown,
-  CaretRight,
-  Gear,
+  ChevronDown,
+  ChevronRight,
+  Settings,
   Info,
-  PaperPlaneTilt,
+  Send,
   Users,
-} from '@phosphor-icons/react'
+} from 'lucide-react'
 
 /**
  * Menu row metrics from the design file (Enterprise flyout, measured):
@@ -66,7 +66,7 @@ export function WorkspaceMenu({
             <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text-neutral-default">
               Garden
             </span>
-            <CaretDown className="size-3.5 shrink-0 text-icon-neutral-tertiary" />
+            <ChevronDown className="size-3.5 shrink-0 text-icon-neutral-tertiary" />
           </>
         ) : null}
       </DropdownMenuTrigger>
@@ -84,16 +84,16 @@ export function WorkspaceMenu({
         </div>
         <DropdownMenuGroup className="py-1">
           <DropdownMenuItem className={menuItemClass} onClick={onInviteMembers}>
-            <PaperPlaneTilt />
+            <Send />
             Invite members
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem className={menuItemClass} onClick={onOpenSettings}>
-            <Gear />
+            <Settings />
             Workspace settings
           </DropdownMenuItem>
           <DropdownMenuItem disabled className={menuItemClass}>
-            <ChartBar />
+            <ChartColumn />
             <span className="flex-1">Analytics</span>
             <span className="text-xs text-text-tertiary">Soon</span>
           </DropdownMenuItem>
@@ -111,7 +111,7 @@ export function WorkspaceMenu({
             <Info />
             <span className="flex-1">Learn more</span>
             <span className="text-xs text-text-tertiary">Soon</span>
-            <CaretRight className="text-icon-neutral-tertiary" />
+            <ChevronRight className="text-icon-neutral-tertiary" />
           </DropdownMenuItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>

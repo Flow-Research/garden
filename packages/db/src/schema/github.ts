@@ -26,12 +26,13 @@ export const githubAppInstallation = pgTable(
       .default('selected'),
     status: text('status').notNull().default('connected'),
     connectedBy: uuid('connected_by').references(() => user.id),
-    createdAt: timestamp('created_at', { mode: 'date' })
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' })
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
-      .default(sql`now()`),
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex('github_app_installation_workspace_unique').on(
