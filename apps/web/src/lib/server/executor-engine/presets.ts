@@ -49,6 +49,21 @@ const disabledOpenApiPresetIds = new Set(['github-rest'])
 const disabledMcpPresetIds = new Set(['emulate-mcp'])
 const disabledGraphqlPresetIds = new Set(['github-graphql'])
 
+const routingCapabilitiesBySlug = new Map<string, readonly string[]>([
+  [
+    'decide',
+    [
+      'analyze structured data and datasets',
+      'identify trends, correlations, and unusual values',
+      'create charts and Excel reports',
+    ],
+  ],
+])
+
+export function executorRoutingCapabilities(slug: string): readonly string[] {
+  return routingCapabilitiesBySlug.get(slug) ?? []
+}
+
 const isRemoteMcpPreset = (preset: McpPreset): preset is McpRemotePreset =>
   preset.transport !== 'stdio'
 

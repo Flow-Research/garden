@@ -1,4 +1,5 @@
 import type { WorkspaceFsLike } from '@cloudflare/shell'
+import ExcelJS from 'exceljs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ getPooledDb: vi.fn() }))
@@ -87,6 +88,61 @@ function documentAuthority(
 
 beforeEach(() => {
   mocks.getPooledDb.mockReset()
+})
+
+describe('spreadsheet document reads', () => {
+  it('extracts visible XLSX sheets as tab-separated text', async () => {
+    const workbook = new ExcelJS.Workbook()
+    const revenue = workbook.addWorksheet('Revenue')
+    revenue.addRow(['Month', 'Revenue'])
+    revenue.addRow(['Jan', 100])
+    const hidden = workbook.addWorksheet('Hidden')
+    hidden.state = 'hidden'
+    hidden.addRow(['secret'])
+    const bytes = new Uint8Array(await workbook.xlsx.writeBuffer())
+
+    mocks.getPooledDb.mockReturnValue(
+      queryDatabase(
+        [
+          {
+            threadId: 'thread-1',
+            workspaceId: 'workspace-1',
+            ownerUserId: 'user-1',
+          },
+        ],
+        [
+          {
+            id: 'document-1',
+            filename: 'Revenue.xlsx',
+            fileType: 'xlsx',
+            ownerUserId: 'user-1',
+            storagePath: '/documents/revenue.xlsx',
+            versionId: 'version-1',
+            versionNumber: 1,
+          },
+        ],
+      ),
+    )
+
+    const result = await readDocument({
+      context: {
+        databaseUrl: 'postgres://test',
+        documentArtifacts: documentAuthority(),
+        workspace: workspaceReading(bytes),
+        threadId: 'thread-1',
+      },
+      documentId: 'document-1',
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      kind: 'text',
+      media_type:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      text: '## Revenue\nMonth\tRevenue\nJan\t100',
+    })
+    if (result.ok) expect(result.text).not.toContain('secret')
+  })
 })
 
 describe('document image media types', () => {

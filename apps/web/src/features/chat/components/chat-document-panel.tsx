@@ -110,6 +110,7 @@ export type FileKind =
   | 'pdf'
   | 'word'
   | 'csv'
+  | 'spreadsheet'
   | 'json'
   | 'text'
   | 'other'
@@ -132,6 +133,13 @@ export function getFileKind(file: {
     return 'word'
   }
   if (media === 'text/csv' || name.endsWith('.csv')) return 'csv'
+  if (
+    media ===
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    name.endsWith('.xlsx')
+  ) {
+    return 'spreadsheet'
+  }
   if (media === 'application/json' || name.endsWith('.json')) return 'json'
   if (
     media.startsWith('text/') ||
@@ -154,6 +162,8 @@ export function getFileKindLabel(kind: ReturnType<typeof getFileKind>) {
       return 'DOC'
     case 'csv':
       return 'CSV'
+    case 'spreadsheet':
+      return 'XLSX'
     case 'json':
       return 'JSON'
     case 'text':
@@ -182,6 +192,7 @@ export function getFileKindAccentClassName(kind: FileKind) {
     case 'word':
       return 'bg-info text-white'
     case 'csv':
+    case 'spreadsheet':
       return 'bg-success text-white'
     case 'json':
       return 'bg-warning text-white'
@@ -204,6 +215,7 @@ export function FileKindIcon({
     case 'text':
       return <FileText className={common} />
     case 'csv':
+    case 'spreadsheet':
       return <FileSpreadsheet className={common} />
     case 'json':
       return <Braces className={common} />

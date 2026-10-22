@@ -73,6 +73,8 @@ function contentTypeForFileType(fileType: string) {
       return 'application/json'
     case 'csv':
       return 'text/csv'
+    case 'xlsx':
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     default:
       return 'application/octet-stream'
   }

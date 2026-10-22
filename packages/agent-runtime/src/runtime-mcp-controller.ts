@@ -1469,17 +1469,21 @@ export class RuntimeMcpConnectionPreparer {
 
   constructor(private readonly options: RuntimeMcpConnectionPreparerOptions) {}
 
-  async ensureForTurn(reason: string) {
+  async ensureForTurn(
+    reason: string,
+    options?: { waitForReadiness?: boolean },
+  ) {
     const controller = this.options.getController()
     const now = Date.now()
     const warmResult = controller.hasWarmProxyMcpConnections(now)
+    const waitForReadiness = options?.waitForReadiness ?? true
 
     if (
       warmResult.isOk() &&
       warmResult.value &&
       now - this.lastFullSyncAt < this.options.fullSyncIntervalMs
     ) {
-      if (!this.shouldWaitForReadiness()) return controller
+      if (!this.shouldWaitForReadiness(waitForReadiness)) return controller
 
       const readinessResult = await this.waitForConnectionsReady(reason)
       if (readinessResult.isOk()) return controller
@@ -1510,7 +1514,7 @@ export class RuntimeMcpConnectionPreparer {
       })
     }
 
-    const readyResult = await this.ensureLoaded(reason)
+    const readyResult = await this.ensureLoaded(reason, { waitForReadiness })
     if (readyResult.isErr()) {
       this.options.logger.warn('mcp.connectors.not_ready', {
         reason,
@@ -1606,9 +1610,10 @@ export class RuntimeMcpConnectionPreparer {
     return Result.ok(undefined)
   }
 
-  private shouldWaitForReadiness() {
-    return Boolean(
-      this.options.waitForConnections && this.options.getServerStates,
+  private shouldWaitForReadiness(enabled = true) {
+    return (
+      enabled &&
+      Boolean(this.options.waitForConnections && this.options.getServerStates)
     )
   }
 
