@@ -81,33 +81,8 @@ export const Route = createFileRoute('/api/workspaces/$id/members/$memberId')({
             )
           }
 
-          const nextRole = body.role
-          if (nextRole !== undefined) {
-            yield* Result.await(
-              Result.tryPromise({
-                try: async () => {
-                  await auth.api.updateMemberRole({
-                    headers: request.headers,
-                    body: {
-                      memberId: params.memberId,
-                      organizationId: params.id,
-                      role: nextRole,
-                    },
-                  })
-                },
-                catch: (cause) =>
-                  new WorkspaceMemberRoleUpdateError({
-                    message: messageFromCause(
-                      cause,
-                      'Failed to update member role',
-                    ),
-                    status: 400,
-                    cause,
-                  }),
-              }),
-            )
-          }
-
+          // GitHub identity before role: schema rejects combined bodies, and
+          // this order still avoids a role write when identity auth fails.
           if (
             body.github_user_id !== undefined &&
             body.github_login !== undefined
@@ -150,6 +125,33 @@ export const Route = createFileRoute('/api/workspaces/$id/members/$memberId')({
                 existingGithubUserId: existing.githubUserId,
                 githubUserId: body.github_user_id,
                 githubLogin: body.github_login,
+              }),
+            )
+          }
+
+          const nextRole = body.role
+          if (nextRole !== undefined) {
+            yield* Result.await(
+              Result.tryPromise({
+                try: async () => {
+                  await auth.api.updateMemberRole({
+                    headers: request.headers,
+                    body: {
+                      memberId: params.memberId,
+                      organizationId: params.id,
+                      role: nextRole,
+                    },
+                  })
+                },
+                catch: (cause) =>
+                  new WorkspaceMemberRoleUpdateError({
+                    message: messageFromCause(
+                      cause,
+                      'Failed to update member role',
+                    ),
+                    status: 400,
+                    cause,
+                  }),
               }),
             )
           }

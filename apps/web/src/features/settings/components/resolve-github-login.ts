@@ -40,7 +40,7 @@ export async function searchGithubUsers(
   const responseResult = await Result.tryPromise({
     try: () =>
       fetch(
-        `https://api.github.com/search/users?q=${encodeURIComponent(query)}&per_page=8`,
+        `https://api.github.com/search/users?q=${encodeURIComponent(`${query} type:user`)}&per_page=8`,
         { headers: githubApiHeaders },
       ),
     catch: () => ({ message: 'Could not reach GitHub to search users' }),
@@ -64,6 +64,7 @@ export async function searchGithubUsers(
           id?: unknown
           login?: unknown
           avatar_url?: unknown
+          type?: unknown
         }>
       },
     catch: () => ({ message: 'Could not read GitHub search response' }),
@@ -78,6 +79,8 @@ export async function searchGithubUsers(
   const suggestions: GithubUserSuggestion[] = []
   for (const item of items) {
     if (typeof item.id !== 'number' || typeof item.login !== 'string') continue
+    // Issue assignees must be users; drop orgs even if search leaks them.
+    if (item.type !== undefined && item.type !== 'User') continue
     suggestions.push({
       user_id: String(item.id),
       login: item.login,
@@ -121,7 +124,11 @@ export async function resolveGithubLogin(
 
   const bodyResult = await Result.tryPromise({
     try: async () =>
-      (await response.json()) as { id?: unknown; login?: unknown },
+      (await response.json()) as {
+        id?: unknown
+        login?: unknown
+        type?: unknown
+      },
     catch: () => ({ message: 'Could not read GitHub user response' }),
   })
   if (bodyResult.isErr()) return bodyResult
@@ -130,6 +137,12 @@ export async function resolveGithubLogin(
   const resolvedLogin = bodyResult.value.login
   if (typeof id !== 'number' || typeof resolvedLogin !== 'string') {
     return Result.err({ message: 'GitHub returned an unexpected user payload' })
+  }
+  if (
+    bodyResult.value.type !== undefined &&
+    bodyResult.value.type !== 'User'
+  ) {
+    return Result.err({ message: 'That GitHub account is not a user' })
   }
 
   return Result.ok({

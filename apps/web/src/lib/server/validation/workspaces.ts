@@ -56,16 +56,17 @@ export const githubLoginSchema = z
     'Invalid GitHub username',
   )
 
-/** GitHub's numeric user id as a decimal string. */
+/** GitHub's numeric user id as a canonical positive decimal string (no zeros/pad). */
 export const githubUserIdSchema = z
   .string()
   .trim()
-  .regex(/^\d+$/, 'Invalid GitHub user id')
+  .regex(/^[1-9]\d*$/, 'Invalid GitHub user id')
 
 /**
  * Role and/or GitHub identity update. github_* must both be omitted, both null
  * (unlink / not_linked), or both set (link). Role stays optional so self-link
- * does not require admin role permission.
+ * does not require admin role permission. Role and github_* cannot combine in
+ * one PATCH — avoids partial commits across Better Auth + Garden member row.
  */
 export const updateWorkspaceMemberBodySchema = z
   .object({
@@ -81,6 +82,11 @@ export const updateWorkspaceMemberBodySchema = z
       value.github_login !== undefined,
     'No valid member changes submitted',
   )
+  .refine((value) => {
+    const hasGithub =
+      value.github_user_id !== undefined || value.github_login !== undefined
+    return !(value.role !== undefined && hasGithub)
+  }, 'role and github identity cannot be updated in the same request')
   .refine((value) => {
     const hasId = value.github_user_id !== undefined
     const hasLogin = value.github_login !== undefined

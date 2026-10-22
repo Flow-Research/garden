@@ -163,9 +163,9 @@ export function GithubWorkspaceIdentitySection() {
         </div>
       )}
 
-      {membership ? (
+      {membership && dialogOpen ? (
         <GithubIdentityLinkDialog
-          open={dialogOpen}
+          open
           onOpenChange={setDialogOpen}
           workspaceId={workspace.id}
           member={membership}
@@ -241,23 +241,10 @@ export function GithubIdentityLinkDialog({
   const searchPending =
     typedLogin.length >= 2 && typedLogin.toLowerCase() !== searchTerm.toLowerCase()
 
+  /** Callers mount this dialog only while open, so open=true remounts fresh state. */
   const handleOpenChange = (next: boolean) => {
     clearSearchTimer()
-    if (next) {
-      const initialLogin = member.github_login ?? ''
-      setLogin(initialLogin)
-      setDebouncedSearch(normalizeGithubLogin(initialLogin))
-      setSelected(
-        member.github_user_id && member.github_login
-          ? {
-              user_id: member.github_user_id,
-              login: member.github_login,
-            }
-          : null,
-      )
-    } else {
-      setDebouncedSearch('')
-    }
+    if (!next) setDebouncedSearch('')
     onOpenChange(next)
   }
 

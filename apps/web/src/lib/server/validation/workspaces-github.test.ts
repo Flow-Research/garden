@@ -61,5 +61,27 @@ describe('updateWorkspaceMemberBodySchema github identity', () => {
         github_login: '',
       }).success,
     ).toBe(false)
+    expect(
+      updateWorkspaceMemberBodySchema.safeParse({
+        github_user_id: '0123',
+        github_login: 'octocat',
+      }).success,
+    ).toBe(false)
+    expect(
+      updateWorkspaceMemberBodySchema.safeParse({
+        github_user_id: '0',
+        github_login: 'octocat',
+      }).success,
+    ).toBe(false)
+  })
+
+  it('rejects combined role and github identity updates', () => {
+    expect(
+      updateWorkspaceMemberBodySchema.safeParse({
+        role: 'admin',
+        github_user_id: '123',
+        github_login: 'octocat',
+      }).success,
+    ).toBe(false)
   })
 })
