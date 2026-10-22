@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { logPublicMcpProgress } from './plugins'
 
@@ -22,5 +25,19 @@ describe('Executor MCP progress logging', () => {
       progressMessage: 'Running analysis with Decide',
     })
     expect(JSON.stringify(info.mock.calls)).not.toContain('CSV')
+  })
+
+  it('keeps provider JSON-RPC error messages in the patched MCP client', () => {
+    const pluginEntry = fileURLToPath(
+      import.meta.resolve('@executor-js/plugin-mcp/core'),
+    )
+    const mcpClientSource = readFileSync(
+      resolve(dirname(pluginEntry), 'chunk-MMILW7SS.js'),
+      'utf8',
+    )
+
+    expect(mcpClientSource).toContain(
+      'message: protocolFailure ? cause.message : `MCP tool call failed for ${toolName}`',
+    )
   })
 })
