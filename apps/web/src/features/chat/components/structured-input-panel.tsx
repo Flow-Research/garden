@@ -11,6 +11,7 @@ import {
   findFirstUnanswered,
 } from '@garden/app-state/chat'
 import { cn } from '@garden/ui/lib/utils'
+import { useOptionHotkeys } from '@/lib/hooks/use-option-hotkeys'
 
 // ── Panel ────────────────────────────────────────────────────────────────────
 
@@ -93,35 +94,20 @@ export const StructuredInputPanel = memo(function StructuredInputPanel({
     setQuestionIndex((idx) => Math.min(idx + 1, questions.length - 1))
   }, [isLast, allAnswered, questions.length])
 
-  // Keyboard shortcuts: number keys 1-9 select options
-  useEffect(() => {
-    if (!activeQuestion || disabled) return
-    const handler = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return
-      const target = event.target
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement
-      )
-        return
-      if (
-        target instanceof HTMLElement &&
-        target.closest('[contenteditable]:not([contenteditable="false"])')
-      )
-        return
-
-      const digit = Number.parseInt(event.key, 10)
-      if (Number.isNaN(digit) || digit < 1 || digit > 9) return
-      if (digit > activeQuestion.options.length) return
+  // Keyboard shortcuts: number keys 1-9 select options unless typing.
+  const selectOption = useCallback(
+    (index: number) => {
       const option: StructuredQuestionOption | undefined =
-        activeQuestion.options[digit - 1]
-      if (!option) return
-      event.preventDefault()
-      handleToggle(option.label)
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [activeQuestion, disabled, handleToggle])
+        activeQuestion?.options[index]
+      if (option) handleToggle(option.label)
+    },
+    [activeQuestion, handleToggle],
+  )
+  useOptionHotkeys({
+    count: activeQuestion?.options.length ?? 0,
+    enabled: Boolean(activeQuestion) && !disabled,
+    onSelect: selectOption,
+  })
 
   if (!activeQuestion) return null
 

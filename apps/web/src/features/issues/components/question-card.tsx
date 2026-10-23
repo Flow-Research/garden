@@ -17,6 +17,7 @@ import {
 } from '@garden/ui/components/ui/empty'
 import { Kbd } from '@garden/ui/components/ui/kbd'
 import { Textarea } from '@garden/ui/components/ui/textarea'
+import { useOptionHotkeys } from '@/lib/hooks/use-option-hotkeys'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -122,27 +123,19 @@ export function QuestionCard({
     [handleSubmit],
   )
 
-  // Number-key shortcuts (1–9) select chips when no input is focused.
-  useEffect(() => {
-    if (!hasOptions || submitting) return
-    const handler = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return
-      const target = event.target
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement
-      )
-        return
-      const digit = Number.parseInt(event.key, 10)
-      if (Number.isNaN(digit) || digit < 1 || digit > 9) return
-      const option = question.options[digit - 1]
-      if (!option) return
-      event.preventDefault()
-      handleToggle(option.label)
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [hasOptions, question.options, submitting, handleToggle])
+  // Number-key shortcuts (1–9) select chips unless the user is typing.
+  const selectOption = useCallback(
+    (index: number) => {
+      const option = question.options[index]
+      if (option) handleToggle(option.label)
+    },
+    [question.options, handleToggle],
+  )
+  useOptionHotkeys({
+    count: question.options.length,
+    enabled: hasOptions && !submitting,
+    onSelect: selectOption,
+  })
 
   const canSubmit =
     customAnswer.trim().length > 0 ||
