@@ -7,17 +7,49 @@ import {
 export { extractExecutorToolRefs, type ExecutorToolRef }
 
 export type ExecutorFailureStage =
+  | 'configuration'
+  | 'discovery'
+  | 'authentication'
   | 'file_read'
+  | 'data_handoff'
+  | 'transport'
   | 'mcp_handoff'
   | 'decide_analysis'
   | 'transport_timeout'
   | 'result_parsing'
+  | 'generated_file'
+  | 'session'
   | 'unknown'
+
+export type ExecutorFailureKind =
+  | 'authentication'
+  | 'insufficient_credits'
+  | 'transport'
+  | 'transport_timeout'
+  | 'provider_error'
+  | 'result_parsing'
+  | 'unknown'
+
+export type ExecutorFailureAction =
+  | 'none'
+  | 'retry'
+  | 'reconnect'
+  | 'add_credits'
+  | 'select_file'
+  | 'start_new_session'
+  | 'contact_support'
 
 export type ExecutorToolFailure = {
   stage: ExecutorFailureStage
+  kind?: ExecutorFailureKind
   message: string
   code?: string
+  status?: number
+  mcpCode?: number
+  transportKind?: 'timeout' | 'dns' | 'tls' | 'http' | 'connection' | 'unknown'
+  transportMessage?: string
+  retryable?: boolean
+  userAction?: ExecutorFailureAction
 }
 
 function serializedInput(input: unknown): string {
@@ -86,6 +118,58 @@ function textFromContent(value: unknown): string | null {
   return text || null
 }
 
+/**
+ * Maps safe Executor error metadata to one user action. The default is to stop
+ * because a selected MCP tool may already have started work upstream.
+ */
+function failureAction(input: {
+  code?: string
+  status?: number
+  transportKind?: ExecutorToolFailure['transportKind']
+}): ExecutorFailureAction {
+  if (input.code === 'insufficient_credits') return 'add_credits'
+  if (input.status === 401 || input.status === 403) return 'reconnect'
+  if (input.transportKind === 'dns' || input.transportKind === 'tls') {
+    return 'contact_support'
+  }
+  return 'none'
+}
+
+/**
+ * Classifies a failure from structured MCP metadata. Message matching remains
+ * only for older envelopes that predate the structured fields.
+ */
+function failureKind(input: {
+  message: string
+  code?: string
+  status?: number
+  transportKind?: ExecutorToolFailure['transportKind']
+  transportFailure?: boolean
+}): ExecutorFailureKind {
+  if (input.code === 'insufficient_credits') return 'insufficient_credits'
+  if (input.status === 401 || input.status === 403) return 'authentication'
+  if (input.transportFailure || input.transportKind) {
+    return input.transportKind === 'timeout' ? 'transport_timeout' : 'transport'
+  }
+  const lowerMessage = input.message.toLowerCase()
+  if (
+    lowerMessage.includes('timeout') ||
+    lowerMessage.includes('timed out') ||
+    lowerMessage.includes('deadline') ||
+    lowerMessage.includes('abort')
+  ) {
+    return 'transport_timeout'
+  }
+  if (
+    lowerMessage.includes('parse') ||
+    lowerMessage.includes('invalid json') ||
+    lowerMessage.includes('content block')
+  ) {
+    return 'result_parsing'
+  }
+  return 'provider_error'
+}
+
 /** Maps an Executor failure to the stage that best explains its origin. */
 function failureStage(input: {
   toolName?: string
@@ -145,7 +229,14 @@ export function extractExecutorToolFailure(input: {
   const structured = recordValue(outputRecord?.structuredContent)
   const executionResult =
     recordValue(structured?.result) ?? recordValue(outputRecord?.result)
-  const nestedError = recordValue(executionResult?.error)
+  const nestedError =
+    recordValue(executionResult?.error) ??
+    recordValue(structured?.error) ??
+    recordValue(outputRecord?.error)
+  const details =
+    recordValue(nestedError?.details) ??
+    recordValue(structured?.details) ??
+    recordValue(outputRecord?.details)
   const failedEnvelope =
     outputRecord?.isError === true ||
     outputRecord?.ok === false ||
@@ -168,9 +259,54 @@ export function extractExecutorToolFailure(input: {
           ? nestedError.code
           : undefined
 
+  const status =
+    typeof details?.status === 'number'
+      ? details.status
+      : typeof nestedError?.status === 'number'
+        ? nestedError.status
+        : undefined
+  const mcpCode =
+    typeof details?.mcpCode === 'number' ? details.mcpCode : undefined
+  const transportFailure = details?.transportFailure === true
+  const transportKind =
+    details?.transportKind === 'timeout' ||
+    details?.transportKind === 'dns' ||
+    details?.transportKind === 'tls' ||
+    details?.transportKind === 'http' ||
+    details?.transportKind === 'connection' ||
+    details?.transportKind === 'unknown'
+      ? details.transportKind
+      : undefined
+  const transportMessage = errorMessage(details?.transportMessage) ?? undefined
+  const effectiveMessage =
+    transportFailure && transportMessage ? transportMessage : message
+  const kind = failureKind({
+    message: effectiveMessage,
+    code,
+    status,
+    transportKind,
+    transportFailure,
+  })
+
   return {
     ...(code ? { code } : {}),
-    message,
-    stage: failureStage({ message, refs, toolName: input.toolName }),
+    message: effectiveMessage,
+    ...(kind ? { kind } : {}),
+    ...(status === undefined ? {} : { status }),
+    ...(mcpCode === undefined ? {} : { mcpCode }),
+    ...(transportKind ? { transportKind } : {}),
+    ...(transportMessage ? { transportMessage } : {}),
+    retryable: false,
+    userAction: failureAction({ code, status, transportKind }),
+    stage:
+      transportKind === 'timeout'
+        ? 'transport_timeout'
+        : transportFailure || transportKind
+          ? 'transport'
+          : failureStage({
+              message: effectiveMessage,
+              refs,
+              toolName: input.toolName,
+            }),
   }
 }

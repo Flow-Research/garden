@@ -106,6 +106,9 @@ describe('extractExecutorToolRefs', () => {
     ).toEqual({
       code: 'insufficient_credits',
       message: 'Not enough Decide credits to run this request.',
+      kind: 'insufficient_credits',
+      retryable: false,
+      userAction: 'add_credits',
       stage: 'decide_analysis',
     })
   })
@@ -124,6 +127,9 @@ describe('extractExecutorToolRefs', () => {
       }),
     ).toEqual({
       message: 'First failure detail.\nSecond failure detail.',
+      kind: 'provider_error',
+      retryable: false,
+      userAction: 'none',
       stage: 'mcp_handoff',
     })
   })
@@ -151,6 +157,9 @@ describe('extractExecutorToolRefs', () => {
     ).toEqual({
       code: 'mcp_tool_error',
       message: 'Not enough Decide credits to run this request.',
+      kind: 'provider_error',
+      retryable: false,
+      userAction: 'none',
       stage: 'decide_analysis',
     })
   })
@@ -173,6 +182,44 @@ describe('extractExecutorToolRefs', () => {
     ).toMatchObject({
       message: 'Decide analysis timed out after the deadline.',
       stage: 'transport_timeout',
+    })
+  })
+
+  it('preserves safe structured transport details and uses the transport message', () => {
+    expect(
+      extractExecutorToolFailure({
+        output: {
+          isError: true,
+          structuredContent: {
+            status: 'error',
+            error: {
+              code: 'mcp_tool_error',
+              message: 'MCP tool call failed for whoami',
+              details: {
+                status: 502,
+                transportFailure: true,
+                transportKind: 'http',
+                transportMessage: 'MCP transport returned HTTP 502.',
+              },
+            },
+          },
+          content: [{ type: 'text', text: 'MCP tool call failed for whoami' }],
+        },
+        toolName: 'executor_execute',
+        toolInput: {
+          code: 'await tools.decide.user.decide.whoami({})',
+        },
+      }),
+    ).toEqual({
+      code: 'mcp_tool_error',
+      message: 'MCP transport returned HTTP 502.',
+      kind: 'transport',
+      status: 502,
+      transportKind: 'http',
+      transportMessage: 'MCP transport returned HTTP 502.',
+      retryable: false,
+      userAction: 'none',
+      stage: 'transport',
     })
   })
 })

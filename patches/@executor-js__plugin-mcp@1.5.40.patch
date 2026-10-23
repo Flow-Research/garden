@@ -32,7 +32,7 @@ diff --git a/dist/chunk-MMILW7SS.js b/dist/chunk-MMILW7SS.js
 index a45735cfe7adccf769b734cf0a09aacaeb55ed5a..5b401b162d7b567fb0796f32cf6e14b47150c9df 100644
 --- a/dist/chunk-MMILW7SS.js
 +++ b/dist/chunk-MMILW7SS.js
-@@ -595,11 +595,20 @@ var installToolListChangedHandler = (client, onToolListChanged) => {
+@@ -595,11 +595,37 @@ var installToolListChangedHandler = (client, onToolListChanged) => {
      onToolListChanged();
    });
  };
@@ -45,6 +45,23 @@ index a45735cfe7adccf769b734cf0a09aacaeb55ed5a..5b401b162d7b567fb0796f32cf6e14b4
 +  const code = cause.code;
 +  return message.length > 0 && typeof code === "number" && Number.isInteger(code) && code < 0 ? { message, code } : void 0;
 +};
++var mcpTransportKindFromCause = (cause, status) => {
++  const message = Predicate4.isObject(cause) && typeof cause.message === "string" ? cause.message.toLowerCase() : "";
++  if (message.includes("timeout") || message.includes("timed out") || message.includes("deadline") || message.includes("abort")) return "timeout";
++  if (message.includes("enotfound") || message.includes("dns") || message.includes("getaddrinfo")) return "dns";
++  if (message.includes("certificate") || message.includes("tls") || message.includes("ssl")) return "tls";
++  if (status !== void 0) return "http";
++  if (message.includes("fetch failed") || message.includes("connection") || message.includes("econn") || message.includes("socket")) return "connection";
++  return "unknown";
++};
++var safeMcpTransportMessage = (status, transportKind) => {
++  if (status !== void 0) return `MCP transport returned HTTP ${status}.`;
++  if (transportKind === "timeout") return "MCP transport timed out.";
++  if (transportKind === "dns") return "MCP transport could not resolve the server.";
++  if (transportKind === "tls") return "MCP transport TLS negotiation failed.";
++  if (transportKind === "connection") return "MCP transport connection failed.";
++  return "MCP transport failed before a response was received.";
++};
 -var useConnection = (connection, toolName, args, elicit, onToolListChanged) => Effect4.gen(function* () {
 +var useConnection = (connection, toolName, args, elicit, onProgress, onToolListChanged) => Effect4.gen(function* () {
    installElicitationHandler(connection.client, elicit);
@@ -55,17 +72,20 @@ index a45735cfe7adccf769b734cf0a09aacaeb55ed5a..5b401b162d7b567fb0796f32cf6e14b4
      catch: (cause) => {
        if (Predicate4.isTagged(cause, "McpOAuthReauthorizationRequired")) {
          return new McpOAuthReauthorizationRequired({
-@@ -618,6 +627,7 @@ var useConnection = (connection, toolName, args, elicit, onToolListChanged) => E
+@@ -618,6 +644,10 @@ var useConnection = (connection, toolName, args, elicit, onToolListChanged) => E
        const status = httpStatusFromCause(cause);
 -      const protocolFailure = cause instanceof McpError;
 +      const protocolFailure = mcpProtocolFailureFromCause(cause);
++      const transportKind = protocolFailure ? void 0 : mcpTransportKindFromCause(cause, status);
        return new McpInvocationError({
          toolName,
 -        message: `MCP tool call failed for ${toolName}`,
 +        message: protocolFailure?.message ?? `MCP tool call failed for ${toolName}`,
 +        ...protocolFailure ? { mcpCode: protocolFailure.code } : {},
++        ...transportKind ? { transportKind } : {},
++        ...transportKind ? { transportMessage: safeMcpTransportMessage(status, transportKind) } : {},
          ...status === void 0 ? {} : { status },
-@@ -634,7 +644,7 @@ var useConnection = (connection, toolName, args, elicit, onToolListChanged) => E
+@@ -634,7 +664,7 @@ var useConnection = (connection, toolName, args, elicit, onToolListChanged) => E
  });
  var invokeMcpTool = (input) => Effect4.gen(function* () {
    const args = argsRecord(input.args);
@@ -74,7 +94,7 @@ index a45735cfe7adccf769b734cf0a09aacaeb55ed5a..5b401b162d7b567fb0796f32cf6e14b4
    if (input.connectionPool && input.connectionPoolKey) {
      return yield* input.connectionPool.withConnection(
        input.connectionPoolKey,
-@@ -1706,6 +1716,7 @@ var mcpPlugin = definePlugin((options) => {
+@@ -1706,6 +1736,7 @@ var mcpPlugin = definePlugin((options) => {
          connector,
          ...poolKey === void 0 ? {} : { connectionPool, connectionPoolKey: poolKey },
          elicit,
@@ -103,12 +123,16 @@ diff --git a/dist/sdk/errors.d.ts b/dist/sdk/errors.d.ts
 index d4fa44d5f6dbcbebd596811066ed917274181020..9af6ae125e4edb496ae56c33426dc9979944f476 100644
 --- a/dist/sdk/errors.d.ts
 +++ b/dist/sdk/errors.d.ts
-@@ -31,6 +31,8 @@ export declare class McpInvocationError extends McpInvocationError_base<{
+@@ -31,6 +31,12 @@ export declare class McpInvocationError extends McpInvocationError_base<{
      readonly toolName: string;
      readonly message: string;
      readonly status?: number;
 +    /** JSON-RPC error code returned by the MCP server, when present. */
 +    readonly mcpCode?: number;
++    /** Safe classification of a non-protocol MCP transport failure. */
++    readonly transportKind?: "timeout" | "dns" | "tls" | "http" | "connection" | "unknown";
++    /** Safe transport message generated from status and transport kind. */
++    readonly transportMessage?: string;
      /** The SDK failure came from the HTTP/SSE transport rather than a JSON-RPC
       *  protocol response. Used only to decide whether a leased session is safe
       *  to return to the idle pool. */

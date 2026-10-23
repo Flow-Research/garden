@@ -24,6 +24,8 @@ export type DecideDiagnosticCheck = {
   status?: number
   mcpCode?: number
   transportFailure?: boolean
+  transportKind?: 'timeout' | 'dns' | 'tls' | 'http' | 'connection' | 'unknown'
+  transportMessage?: string
   correlationId?: string
 }
 
@@ -85,6 +87,10 @@ const failureFromValue = (
         : typeof nested?.mcpCode === 'number'
           ? nested.mcpCode
           : undefined
+  const transportDetails =
+    asRecord(error?.details) ??
+    asRecord(record.details) ??
+    asRecord(nested?.details)
   const transportFailure =
     typeof error?.transportFailure === 'boolean'
       ? error.transportFailure
@@ -92,16 +98,35 @@ const failureFromValue = (
         ? record.transportFailure
         : typeof nested?.transportFailure === 'boolean'
           ? nested.transportFailure
-          : undefined
+          : typeof transportDetails?.transportFailure === 'boolean'
+            ? transportDetails.transportFailure
+            : undefined
+  const transportKind =
+    transportDetails?.transportKind === 'timeout' ||
+    transportDetails?.transportKind === 'dns' ||
+    transportDetails?.transportKind === 'tls' ||
+    transportDetails?.transportKind === 'http' ||
+    transportDetails?.transportKind === 'connection' ||
+    transportDetails?.transportKind === 'unknown'
+      ? transportDetails.transportKind
+      : undefined
+  const transportMessage =
+    textValue(transportDetails?.transportMessage) ?? undefined
+  const effectiveMessage =
+    transportMessage && (transportFailure || transportKind)
+      ? transportMessage
+      : message
 
   return {
-    message,
+    message: effectiveMessage,
     ...(code ? { code } : {}),
     ...(status === undefined ? {} : { status }),
     ...(mcpCode === undefined ? {} : { mcpCode }),
     ...(transportFailure === undefined ? {} : { transportFailure }),
-    ...(correlationIdFrom(message)
-      ? { correlationId: correlationIdFrom(message) }
+    ...(transportKind ? { transportKind } : {}),
+    ...(transportMessage ? { transportMessage } : {}),
+    ...(correlationIdFrom(effectiveMessage)
+      ? { correlationId: correlationIdFrom(effectiveMessage) }
       : {}),
   }
 }
@@ -144,6 +169,14 @@ const failedCheck = (
     status?: number
     mcpCode?: number
     transportFailure?: boolean
+    transportKind?:
+      | 'timeout'
+      | 'dns'
+      | 'tls'
+      | 'http'
+      | 'connection'
+      | 'unknown'
+    transportMessage?: string
     correlationId?: string
   },
 ): DecideDiagnosticCheck => ({

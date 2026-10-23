@@ -2218,6 +2218,13 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
           failureStage: failure.stage,
           failureCode: failure.code,
           failureMessage: failure.message,
+          failureKind: failure.kind,
+          failureStatus: failure.status,
+          mcpCode: failure.mcpCode,
+          transportKind: failure.transportKind,
+          transportMessage: failure.transportMessage,
+          retryable: failure.retryable,
+          userAction: failure.userAction,
           durationMs: ctx.durationMs,
         })
       }
