@@ -55,6 +55,8 @@ import {
   toCronExpression,
   type TriggerConfig,
 } from './trigger-config'
+import { isMissingError } from '@/lib/api/errors'
+import { LoadError } from '@garden/ui/components/common/load-error'
 
 function numberValue(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
@@ -624,9 +626,8 @@ export function AutomationDetailPage({
   const wsId = useWorkspaceId()
   const debugMode = useDevSettingsStore((state) => state.debugMode)
   const { getActorName } = useActorName()
-  const { data, isLoading } = useQuery(
-    automationDetailOptions(wsId, automationId),
-  )
+  const detailQuery = useQuery(automationDetailOptions(wsId, automationId))
+  const { data, isLoading } = detailQuery
   const { data: runs = [], isLoading: runsLoading } = useQuery(
     automationRunsOptions(wsId, automationId, debugMode),
   )
@@ -643,6 +644,19 @@ export function AutomationDetailPage({
       <div className="space-y-4 p-6">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-40 w-full" />
+      </div>
+    )
+  }
+
+  // Only a 404 or 403 means it is gone; other failures can be retried.
+  if (!data && detailQuery.isError && !isMissingError(detailQuery.error)) {
+    return (
+      <div className="flex h-full items-center justify-center p-8">
+        <LoadError
+          message="Could not load this automation."
+          onRetry={() => void detailQuery.refetch()}
+          retrying={detailQuery.isFetching}
+        />
       </div>
     )
   }

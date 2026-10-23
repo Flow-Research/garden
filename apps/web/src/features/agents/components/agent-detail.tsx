@@ -24,6 +24,8 @@ import { Spinner } from '@garden/ui/components/ui/spinner'
 import { AgentAccessTab } from './agent-access-tab'
 import { AgentSkillsTab } from './agent-skills-tab'
 import { AGENT_STATUS_COLOR } from './agent-status'
+import { isMissingError } from '@/lib/api/errors'
+import { LoadError } from '@garden/ui/components/common/load-error'
 
 export function AgentDetail({
   agentId,
@@ -46,12 +48,24 @@ export function AgentDetail({
     return <AgentDetailSkeleton />
   }
 
+  // Only a 404 or 403 means the agent is gone; other failures can be
+  // retried. Both used to show the raw error message with no retry.
+  if (!agent && detailQuery.isError && !isMissingError(detailQuery.error)) {
+    return (
+      <div className="flex h-full items-center justify-center p-8">
+        <LoadError
+          message="Could not load this agent."
+          onRetry={() => void detailQuery.refetch()}
+          retrying={detailQuery.isFetching}
+        />
+      </div>
+    )
+  }
+
   if (!agent) {
     return (
       <div className="flex h-full items-center justify-center px-6 text-sm text-muted-foreground">
-        {detailQuery.error instanceof Error
-          ? detailQuery.error.message
-          : 'Agent not found.'}
+        Agent not found.
       </div>
     )
   }

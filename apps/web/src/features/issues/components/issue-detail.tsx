@@ -138,6 +138,9 @@ export function IssueDetail({
     uploadWithToast,
     issue,
     issueLoading,
+    issueLoadFailed,
+    retryIssue,
+    retryingIssue,
     timelineState,
     issueReactionState,
     subscriberState,
@@ -903,6 +906,14 @@ export function IssueDetail({
               </SheetContent>
             </Sheet>
           )}
+        </div>
+      ) : issueLoadFailed ? (
+        <div className="flex flex-1 min-h-0 items-center justify-center p-8">
+          <LoadError
+            message="Could not load this issue."
+            onRetry={retryIssue}
+            retrying={retryingIssue}
+          />
         </div>
       ) : !loading ? (
         <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">

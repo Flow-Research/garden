@@ -1,4 +1,4 @@
-export { ApiError } from './errors'
+export { ApiError, isMissingError } from './errors'
 export { ApiTransport } from './transport'
 export type { ApiTransportOptions, ApiRequestInit } from './transport'
 export {

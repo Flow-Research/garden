@@ -18,6 +18,7 @@ import { useIssueSubscribers } from './use-issue-subscribers'
 import { useAttachmentUpload } from '@/lib/hooks/use-attachment-upload'
 import { useDeleteIssue, useUpdateIssue } from '@/lib/issues/mutations'
 import type { Issue, ListIssuesResponse } from '@garden/core/types'
+import { isMissingError } from '@/lib/api/errors'
 
 /**
  * Loads issue-detail dependencies without subscribing the detail panel to the
@@ -51,10 +52,18 @@ export function useIssueDetailData(issueId: string) {
     )
   }
 
-  const { data: issue = null, isLoading: issueLoading } = useQuery({
+  const issueQuery = useQuery({
     ...issueDetailOptions(wsId, issueId),
     initialData: () => getCachedIssue(issueId),
   })
+  const issue = issueQuery.data ?? null
+  const issueLoading = issueQuery.isLoading
+  // Only a 404 or 403 means the issue is gone. Any other failure used to show
+  // "does not exist or has been deleted" too, with no way to retry.
+  const issueLoadFailed =
+    issueQuery.isError && !issue && !isMissingError(issueQuery.error)
+  const retryIssue = () => void issueQuery.refetch()
+  const retryingIssue = issueQuery.isFetching
 
   const recordVisit = useRecentIssuesStore((state) => state.recordVisit)
   useEffect(() => {
@@ -94,6 +103,9 @@ export function useIssueDetailData(issueId: string) {
     uploadWithToast,
     issue,
     issueLoading,
+    issueLoadFailed,
+    retryIssue,
+    retryingIssue,
     timelineState,
     issueReactionState,
     subscriberState,

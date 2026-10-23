@@ -435,7 +435,11 @@ const mockTimeline: TimelineEntry[] = [
 // ---------------------------------------------------------------------------
 
 import { toast } from 'sonner'
+import { ApiError } from '@/lib/api/errors'
 import { IssueDetail } from './issue-detail'
+
+const notFound = () =>
+  new ApiError({ message: 'Not found', status: 404, statusText: 'Not Found' })
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -634,7 +638,7 @@ describe('IssueDetail (shared)', () => {
   })
 
   it("shows 'not found' message when issue does not exist", async () => {
-    mockApiObj.getIssue.mockRejectedValue(new Error('Not found'))
+    mockApiObj.getIssue.mockRejectedValue(notFound())
 
     renderIssueDetail('nonexistent-id')
 
@@ -647,8 +651,32 @@ describe('IssueDetail (shared)', () => {
     })
   })
 
+  it('offers a retry instead of "deleted" when loading the issue fails', async () => {
+    mockApiObj.getIssue
+      .mockRejectedValueOnce(
+        new ApiError({ message: 'Server error', status: 500, statusText: '' }),
+      )
+      .mockResolvedValue(mockIssue)
+
+    renderIssueDetail('issue-1')
+
+    expect(
+      await screen.findByText('Could not load this issue.'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(
+        'This issue does not exist or has been deleted in this workspace.',
+      ),
+    ).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() =>
+      expect(screen.queryByText('Could not load this issue.')).toBeNull(),
+    )
+    expect(await screen.findByDisplayValue(mockIssue.title)).toBeInTheDocument()
+  })
+
   it("shows 'Back to Issues' button when issue is not found and no onDelete prop", async () => {
-    mockApiObj.getIssue.mockRejectedValue(new Error('Not found'))
+    mockApiObj.getIssue.mockRejectedValue(notFound())
 
     renderIssueDetail('nonexistent-id')
 
