@@ -53,9 +53,9 @@ import { Route as ApiInboxArchiveAllRouteImport } from './routes/api/inbox/archi
 import { Route as ApiGmailSendRouteImport } from './routes/api/gmail/send'
 import { Route as ApiGmailMessagesRouteImport } from './routes/api/gmail/messages'
 import { Route as ApiGmailDraftsRouteImport } from './routes/api/gmail/drafts'
+import { Route as ApiGithubWebhookRouteImport } from './routes/api/github/webhook'
 import { Route as ApiGithubSetupRouteImport } from './routes/api/github/setup'
 import { Route as ApiGithubInstallRouteImport } from './routes/api/github/install'
-import { Route as ApiGithubWebhookRouteImport } from './routes/api/github/webhook'
 import { Route as ApiGithubCallbackRouteImport } from './routes/api/github/callback'
 import { Route as ApiExecutorRegistryRouteImport } from './routes/api/executor/registry'
 import { Route as ApiExecutorPreviewRouteImport } from './routes/api/executor/preview'
@@ -376,6 +376,11 @@ const ApiGmailDraftsRoute = ApiGmailDraftsRouteImport.update({
   path: '/api/gmail/drafts',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGithubWebhookRoute = ApiGithubWebhookRouteImport.update({
+  id: '/api/github/webhook',
+  path: '/api/github/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiGithubSetupRoute = ApiGithubSetupRouteImport.update({
   id: '/api/github/setup',
   path: '/api/github/setup',
@@ -384,11 +389,6 @@ const ApiGithubSetupRoute = ApiGithubSetupRouteImport.update({
 const ApiGithubInstallRoute = ApiGithubInstallRouteImport.update({
   id: '/api/github/install',
   path: '/api/github/install',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiGithubWebhookRoute = ApiGithubWebhookRouteImport.update({
-  id: '/api/github/webhook',
-  path: '/api/github/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiGithubCallbackRoute = ApiGithubCallbackRouteImport.update({
@@ -2145,6 +2145,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiGmailDraftsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/github/webhook': {
+      id: '/api/github/webhook'
+      path: '/api/github/webhook'
+      fullPath: '/api/github/webhook'
+      preLoaderRoute: typeof ApiGithubWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/github/setup': {
       id: '/api/github/setup'
       path: '/api/github/setup'
@@ -2157,13 +2164,6 @@ declare module '@tanstack/react-router' {
       path: '/api/github/install'
       fullPath: '/api/github/install'
       preLoaderRoute: typeof ApiGithubInstallRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/github/webhook': {
-      id: '/api/github/webhook'
-      path: '/api/github/webhook'
-      fullPath: '/api/github/webhook'
-      preLoaderRoute: typeof ApiGithubWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/github/callback': {
