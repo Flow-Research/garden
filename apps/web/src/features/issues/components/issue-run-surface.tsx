@@ -17,7 +17,6 @@ import {
   issueKeys,
   issueWorkProductsOptions,
 } from '@/lib/issues/queries'
-import { inboxKeys } from '@/lib/inbox/queries'
 import {
   useResolvePermissionRequest,
   useReviewWorkProduct,
@@ -26,6 +25,7 @@ import { useNavigation } from '../../navigation'
 import { ActiveRunPanel, LastRunSummary } from './active-run-panel'
 import { RunPlanCard, type RunPlanTodo } from './run-plan-card'
 import { WorkProductList } from './work-product-card'
+import { useRunProgressInvalidation } from '../hooks/use-run-progress-invalidation'
 
 function payloadObject(event: IssueRunEvent | undefined) {
   return event?.payload &&
@@ -259,31 +259,13 @@ export function IssueRunSurface({
   const persistedRunEvents = timelineRunEvents(timeline)
   const latestSeq = events.at(-1)?.seq ?? 0
   const latestRunStatus = run?.status ?? 'idle'
-  useEffect(() => {
-    queryClient.invalidateQueries({ queryKey: issueKeys.timeline(issue.id) })
-    queryClient.invalidateQueries({
-      queryKey: issueKeys.detail(issue.workspace_id, issue.id),
-    })
-    queryClient.invalidateQueries({
-      queryKey: issueKeys.workProducts(issue.id),
-    })
-    queryClient.invalidateQueries({
-      queryKey: issueKeys.list(issue.workspace_id),
-    })
-    queryClient.invalidateQueries({
-      queryKey: inboxKeys.list(issue.workspace_id),
-    })
-    queryClient.invalidateQueries({
-      queryKey: issueKeys.pendingApproval(issue.id),
-    })
-  }, [
-    issue.id,
-    issue.workspace_id,
-    latestRunStatus,
+  useRunProgressInvalidation({
+    issueId: issue.id,
+    workspaceId: issue.workspace_id,
+    runId: run?.id ?? null,
+    status: latestRunStatus,
     latestSeq,
-    queryClient,
-    run,
-  ])
+  })
   const pendingQuestion = pendingQuestionFromEvents(events)
   const pendingApprovalQuery = useQuery({
     queryKey: issueKeys.pendingApproval(issue.id),
