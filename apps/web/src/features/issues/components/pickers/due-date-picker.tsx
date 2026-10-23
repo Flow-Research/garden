@@ -9,6 +9,7 @@ import {
   PopoverTrigger,
 } from '@garden/ui/components/ui/popover'
 import { cn } from '@garden/ui/lib/utils'
+import { dueDateForDay } from '@/lib/issues/due-date'
 
 /** Selects or clears a due date while treating the entire current day as not overdue. */
 export function DueDatePicker({
@@ -31,7 +32,7 @@ export function DueDatePicker({
   const overdue = selectedDate ? selectedDate < startOfToday : false
 
   const commitDate = (date: Date | undefined) => {
-    onUpdate({ due_date: date?.toISOString() ?? null })
+    onUpdate({ due_date: date ? dueDateForDay(date) : null })
     setOpen(false)
   }
 

@@ -32,6 +32,7 @@ import type { useIssueDetailData } from '../hooks/use-issue-detail-data'
 import { canAssignAgent } from './pickers'
 import { PriorityIcon } from './priority-icon'
 import { StatusIcon } from './status-icon'
+import { dueDateInDays } from '@/lib/issues/due-date'
 
 type IssueDetailData = ReturnType<typeof useIssueDetailData>
 
@@ -207,29 +208,17 @@ export function IssueActionsMenu({
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent>
             <DropdownMenuItem
-              onClick={() =>
-                onUpdate({
-                  due_date: new Date().toISOString(),
-                })
-              }
+              onClick={() => onUpdate({ due_date: dueDateInDays(0) })}
             >
               Today
             </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={() => {
-                const d = new Date()
-                d.setDate(d.getDate() + 1)
-                onUpdate({ due_date: d.toISOString() })
-              }}
+              onClick={() => onUpdate({ due_date: dueDateInDays(1) })}
             >
               Tomorrow
             </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={() => {
-                const d = new Date()
-                d.setDate(d.getDate() + 7)
-                onUpdate({ due_date: d.toISOString() })
-              }}
+              onClick={() => onUpdate({ due_date: dueDateInDays(7) })}
             >
               Next week
             </DropdownMenuItem>
