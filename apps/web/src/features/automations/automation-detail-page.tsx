@@ -22,6 +22,7 @@ import type { Automation, AutomationRun, AutomationTrigger } from '@/lib/api'
 import type { AutomationRunStatus } from '@/lib/api/automations'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { Button } from '@garden/ui/components/ui/button'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import {
   Dialog,
   DialogContent,
@@ -304,6 +305,7 @@ function TriggerRow({
   automationId: string
 }) {
   const deleteTrigger = useDeleteAutomationTrigger()
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const handleDelete = async () => {
     const result = await Result.tryPromise(() =>
@@ -315,7 +317,8 @@ function TriggerRow({
           ? result.error.message
           : 'Failed to delete trigger',
       )
-      return
+      // Keep the confirm dialog open so the delete can be retried.
+      throw result.error
     }
     toast.success('Trigger deleted')
   }
@@ -354,10 +357,20 @@ function TriggerRow({
         size="icon"
         variant="ghost"
         className="size-7 shrink-0"
-        onClick={handleDelete}
+        onClick={() => setConfirmDelete(true)}
       >
         <Trash2 className="size-3.5 text-muted-foreground" />
       </Button>
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Delete trigger?"
+        description="The automation will no longer run on this schedule. This cannot be undone."
+        confirmLabel="Delete trigger"
+        pendingLabel="Deleting…"
+        tone="destructive"
+        onConfirm={handleDelete}
+      />
     </div>
   )
 }
@@ -610,6 +623,7 @@ export function AutomationDetailPage({
   const triggerAutomation = useTriggerAutomation()
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   if (isLoading) {
     return (
@@ -655,7 +669,8 @@ export function AutomationDetailPage({
           ? result.error.message
           : 'Failed to delete automation',
       )
-      return
+      // Keep the confirm dialog open so the delete can be retried.
+      throw result.error
     }
     toast.success('Automation deleted')
     onDeleted?.()
@@ -823,7 +838,11 @@ export function AutomationDetailPage({
             <h2 className="text-sm font-medium tracking-wider text-destructive uppercase">
               Danger Zone
             </h2>
-            <Button size="sm" variant="destructive" onClick={handleDelete}>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => setConfirmDelete(true)}
+            >
               <Trash2 className="mr-1 size-3.5" />
               Delete automation
             </Button>
@@ -835,6 +854,16 @@ export function AutomationDetailPage({
         open={triggerDialogOpen}
         onOpenChange={setTriggerDialogOpen}
         automationId={automationId}
+      />
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title={`Delete ${automation.title}?`}
+        description="It stops running on all of its triggers and is removed from Workflows. Its run history is kept."
+        confirmLabel="Delete automation"
+        pendingLabel="Deleting…"
+        tone="destructive"
+        onConfirm={handleDelete}
       />
       <EditAutomationDialog
         open={editDialogOpen}
