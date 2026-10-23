@@ -646,7 +646,11 @@ export function InboxPage() {
         </div>
       )
     ) : selected ? (
+      // Keyed by thread: the reply box is an uncontrolled contentEditable, so
+      // reusing the instance carried a draft typed for one thread into the
+      // next, where Send posted it to the wrong issue.
       <InboxNotificationDetailV2
+        key={selectedThread?.id ?? selected.id}
         item={selected}
         items={selectedThread?.items ?? [selected]}
         onArchive={() => {
