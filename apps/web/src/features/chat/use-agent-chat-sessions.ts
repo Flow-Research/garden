@@ -90,6 +90,7 @@ export function useAgentSessions() {
     mutationFn: async (input: { sessionId: string; title: string }) =>
       updateChatThread(input.sessionId, { title: input.title }),
     onMutate: async ({ sessionId, title }) => {
+      const previousSessions = qc.getQueryData<AgentChatSession[]>(queryKey)
       qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>
         current.map((session) =>
           session.id === sessionId
@@ -97,6 +98,14 @@ export function useAgentSessions() {
             : session,
         ),
       )
+      return { previousSessions }
+    },
+    // The new title used to stay on screen after a failed rename.
+    onError: (_err, _input, context) => {
+      if (context?.previousSessions) {
+        qc.setQueryData(queryKey, context.previousSessions)
+      }
+      toast.error('Failed to rename chat')
     },
     onSuccess: (updated) => {
       qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>

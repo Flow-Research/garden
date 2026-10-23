@@ -13,12 +13,14 @@ import {
 const mocks = vi.hoisted(() => ({
   createChatThread: vi.fn(),
   listChatThreads: vi.fn(),
+  updateChatThread: vi.fn(),
 }))
 
 vi.mock('@/lib/api', async (importActual) => ({
   ...(await importActual<Record<string, unknown>>()),
   createChatThread: mocks.createChatThread,
   listChatThreads: mocks.listChatThreads,
+  updateChatThread: mocks.updateChatThread,
 }))
 
 const USER: User = {
@@ -99,5 +101,43 @@ describe('useAgentSessions.claimWarmSession', () => {
     expect(new Set(claimed.map((session) => session.id))).toEqual(
       new Set(['thread-new']),
     )
+  })
+})
+
+describe('useAgentSessions.renameSession', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useAuthStore.setState({ user: USER })
+    useWorkspaceStore.setState({ workspace: WORKSPACE })
+    mocks.listChatThreads.mockResolvedValue([
+      { ...warmThread('thread-1'), title: 'Planning', lastMessage: 'hi' },
+    ])
+  })
+
+  it('puts the old title back when renaming fails', async () => {
+    mocks.updateChatThread.mockRejectedValue(new Error('offline'))
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+    const { result } = renderHook(() => useAgentSessions(), { wrapper })
+    await waitFor(() =>
+      expect(result.current.sessions[0]?.title).toBe('Planning'),
+    )
+
+    act(() => {
+      result.current.renameSession.mutate({
+        sessionId: 'thread-1',
+        title: 'Roadmap',
+      })
+    })
+
+    await waitFor(() => expect(result.current.renameSession.isError).toBe(true))
+    expect(result.current.sessions[0]?.title).toBe('Planning')
   })
 })

@@ -191,19 +191,21 @@ export function ChatSessionExplorer({
     onActivate?.(session)
   }
 
-  const handleRename = async (sessionId: string) => {
+  // `mutate`, not `mutateAsync`: the mutations report their own failures,
+  // and an awaited rejection here went unhandled.
+  const handleRename = (sessionId: string) => {
     const session = activeSessions.find((item) => item.id === sessionId)
     if (!session) return
     const next = window.prompt('Rename chat', session.title)?.trim()
     if (!next || next === session.title) return
-    await renameSession.mutateAsync({ sessionId, title: next })
+    renameSession.mutate({ sessionId, title: next })
   }
 
   const handleArchive = useCallback(
-    async (sessionId: string) => {
+    (sessionId: string) => {
       // Let the parent close the dock panel before the row disappears.
       onArchiveExternal?.(sessionId)
-      await archiveSession.mutateAsync(sessionId)
+      archiveSession.mutate(sessionId)
     },
     [archiveSession, onArchiveExternal],
   )
@@ -217,9 +219,9 @@ export function ChatSessionExplorer({
               key={session.id}
               session={session}
               active={session.id === activeDockSessionId}
-              onArchive={() => void handleArchive(session.id)}
+              onArchive={() => handleArchive(session.id)}
               onSelect={() => handleSelect(session)}
-              onRename={() => void handleRename(session.id)}
+              onRename={() => handleRename(session.id)}
             />
           ))}
         </div>
