@@ -1,4 +1,4 @@
-import { useState, useMemo, useDeferredValue, useRef } from 'react'
+import { useState, useMemo, useDeferredValue } from 'react'
 import {
   Plus,
   Trash2,
@@ -73,10 +73,7 @@ import { Spinner } from '@garden/ui/components/ui/spinner'
 import { api } from '@/lib/api'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
-import {
-  useSkillsBrowseStore,
-  useSkillEditorStore,
-} from '@garden/app-state/skills'
+import { useSkillsBrowseStore } from '@garden/app-state/skills'
 import { skillListOptions, workspaceKeys } from '@/lib/workspace/queries'
 import { skillsShKeys } from '../queries'
 
@@ -138,14 +135,6 @@ function buildFileMap(
 }
 
 type LoadedFile = { path: string; content: string }
-
-function schedulePostRender(callback: () => void) {
-  if (typeof queueMicrotask === 'function') {
-    queueMicrotask(callback)
-    return
-  }
-  void Promise.resolve().then(callback)
-}
 
 // ---------------------------------------------------------------------------
 // Page root
@@ -339,9 +328,12 @@ export default function SkillsPage({
 }
 
 // ---------------------------------------------------------------------------
-// Skill workspace — owns local editor state (content/files/selectedPath) for
-// the currently-selected skill. Remounts when the skill id changes so the
-// state is fresh and we can safely derive further state from props.
+// Skill workspace — loads the full skill (the list endpoint carries no
+// supporting files), then mounts the editor once that bundle is known. The
+// editor is keyed by the bundle hash, so a save or sync that changes the
+// bundle starts it fresh from the saved state. Seeding the editor from the
+// list item used to leave it with no files: the first save then sent
+// `files: []` and the server deleted every supporting file.
 // ---------------------------------------------------------------------------
 
 function SkillWorkspace({
@@ -364,94 +356,137 @@ function SkillWorkspace({
     enabled: Boolean(skill?.id),
     staleTime: Infinity,
   })
+  // Kept here, above the keyed editor, so the open file survives a save.
+  const [selectedPath, setSelectedPath] = useState(SKILL_MD)
 
-  const loaded = fullSkillQuery.data ?? skill
-  const loadedContent = loaded?.content ?? ''
-  const loadedFiles = useMemo<LoadedFile[]>(
-    () =>
-      (loaded?.files ?? []).map((f) => ({ path: f.path, content: f.content })),
-    [loaded],
-  )
+  if (!skill) return null
 
-  // Local editor state. Reset after render whenever the underlying bundle
-  // changes (save / sync / fresh load), avoiding cross-component store writes
-  // during render.
-  const bundleKey = loaded ? `${loaded.id}:${loaded.bundle_hash ?? ''}` : ''
-  const syncedKey = useRef('')
-  const [content, setContent] = useState(loadedContent)
-  const [files, setFiles] = useState<LoadedFile[]>(loadedFiles)
-
-  // Selected path lives in the editor store so the sidebar's file tree
-  // and this editor stay in sync without lifting state through the dock.
-  const selectedPath = useSkillEditorStore((s) => s.selectedPath)
-  const setSelectedPath = useSkillEditorStore((s) => s.setSelectedPath)
-  const setActiveBundle = useSkillEditorStore((s) => s.setActiveBundle)
-  const setStoreFilePaths = useSkillEditorStore((s) => s.setFilePaths)
-  const clearActiveBundle = useSkillEditorStore((s) => s.clear)
-
-  if (bundleKey && syncedKey.current !== bundleKey) {
-    syncedKey.current = bundleKey
-    const initialPaths = [
-      SKILL_MD,
-      ...loadedFiles.map((f) => f.path).filter(Boolean),
-    ]
-    schedulePostRender(() => {
-      setContent(loadedContent)
-      setFiles(loadedFiles)
-      if (loaded) {
-        setActiveBundle(loaded.id, initialPaths)
-      }
-    })
+  const full = fullSkillQuery.data
+  if (!full) {
+    return (
+      <SkillWorkspaceStatus
+        skillName={skill.name}
+        error={fullSkillQuery.isError}
+        onRetry={() => void fullSkillQuery.refetch()}
+      />
+    )
   }
+
+  return (
+    <SkillBundleEditor
+      key={`${full.id}:${full.bundle_hash ?? ''}`}
+      skill={full}
+      selectedPath={selectedPath}
+      onSelectPath={setSelectedPath}
+      onUpdate={onUpdate}
+      onDelete={onDelete}
+      onReinstall={onReinstall}
+      isReinstalling={isReinstalling}
+    />
+  )
+}
+
+function SkillWorkspaceStatus({
+  skillName,
+  error,
+  onRetry,
+}: {
+  skillName: string
+  error: boolean
+  onRetry: () => void
+}) {
+  return (
+    <div className="flex h-full min-h-0 flex-1 flex-col">
+      <header className="flex h-12 shrink-0 items-center border-b px-4">
+        <h1 className="truncate text-sm font-semibold text-foreground">
+          {skillName}
+        </h1>
+      </header>
+      <div className="flex-1 min-h-0">
+        {error ? (
+          <div
+            role="alert"
+            className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground"
+          >
+            <p>This skill's files couldn't be loaded.</p>
+            <Button size="sm" variant="outline" onClick={onRetry}>
+              Try again
+            </Button>
+          </div>
+        ) : (
+          <FileViewerSkeleton />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SkillBundleEditor({
+  skill,
+  selectedPath,
+  onSelectPath,
+  onUpdate,
+  onDelete,
+  onReinstall,
+  isReinstalling,
+}: {
+  skill: Skill
+  selectedPath: string
+  onSelectPath: (path: string) => void
+  onUpdate: (data: UpdateSkillRequest) => Promise<unknown>
+  onDelete: () => Promise<unknown>
+  onReinstall: () => Promise<unknown>
+  isReinstalling: boolean
+}) {
+  // The saved bundle this editor was mounted with; the key above remounts the
+  // editor whenever it changes, so these never go stale.
+  const [savedContent] = useState(() => skill.content ?? '')
+  const [savedFiles] = useState<LoadedFile[]>(() =>
+    (skill.files ?? []).map((f) => ({ path: f.path, content: f.content })),
+  )
+  const [content, setContent] = useState(savedContent)
+  const [files, setFiles] = useState<LoadedFile[]>(savedFiles)
 
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmSync, setConfirmSync] = useState(false)
   const [showAddFile, setShowAddFile] = useState(false)
 
-  const loadingFiles = fullSkillQuery.isPending && !fullSkillQuery.data
-
   const fileMap = useMemo(() => buildFileMap(content, files), [content, files])
   const filePaths = useMemo(() => Array.from(fileMap.keys()), [fileMap])
-  const selectedContent = fileMap.get(selectedPath) ?? ''
+  // A path that no longer exists (deleted, or gone after a sync) falls back
+  // to SKILL.md.
+  const activePath = fileMap.has(selectedPath) ? selectedPath : SKILL_MD
+  const selectedContent = fileMap.get(activePath) ?? ''
 
-  // Keep the store's filePaths in sync with the editor's current bundle,
-  // including unsaved adds/deletes.
-  const syncedPathsKey = useRef('')
-  const filePathsKey = filePaths.join('')
-  if (loaded && filePathsKey !== syncedPathsKey.current) {
-    syncedPathsKey.current = filePathsKey
-    schedulePostRender(() => setStoreFilePaths(filePaths))
-  }
-
-  // If the sidebar selected a path that no longer exists (e.g. deletion),
-  // fall back to SKILL.md.
-  if (selectedPath && !fileMap.has(selectedPath) && fileMap.size > 0) {
-    schedulePostRender(() => setSelectedPath(SKILL_MD))
-  }
-
-  const isDirty =
-    content !== loadedContent ||
-    JSON.stringify(files) !== JSON.stringify(loadedFiles)
-  const canSync =
-    loaded?.source_type === 'skills.sh' && Boolean(loaded?.source_url)
+  const filesChanged = JSON.stringify(files) !== JSON.stringify(savedFiles)
+  const isDirty = content !== savedContent || filesChanged
+  const canSync = skill.source_type === 'skills.sh' && Boolean(skill.source_url)
 
   const handleSave = async () => {
-    if (!isDirty || saving || !skill) return
+    if (!isDirty || saving) return
     setSaving(true)
-    await onUpdate({
-      content,
-      files: files.filter((f) => f.path.trim()),
-    }).finally(() => setSaving(false))
+    try {
+      // Sending `files` replaces the whole bundle, so send it only when the
+      // supporting files actually changed.
+      await onUpdate({
+        content,
+        ...(filesChanged ? { files: files.filter((f) => f.path.trim()) } : {}),
+      })
+    } catch {
+      // The update mutation already reports the failure; the edits stay.
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleFileContentChange = (newContent: string) => {
-    if (selectedPath === SKILL_MD) {
+    if (activePath === SKILL_MD) {
       setContent(newContent)
     } else {
       setFiles((prev) =>
         prev.map((f) =>
-          f.path === selectedPath ? { ...f, content: newContent } : f,
+          f.path === activePath ? { ...f, content: newContent } : f,
         ),
       )
     }
@@ -459,13 +494,13 @@ function SkillWorkspace({
 
   const handleAddFile = (path: string) => {
     setFiles((prev) => [...prev, { path, content: '' }])
-    setSelectedPath(path)
+    onSelectPath(path)
   }
 
   const handleDeleteFile = () => {
-    if (selectedPath === SKILL_MD) return
-    setFiles((prev) => prev.filter((f) => f.path !== selectedPath))
-    setSelectedPath(SKILL_MD)
+    if (activePath === SKILL_MD) return
+    setFiles((prev) => prev.filter((f) => f.path !== activePath))
+    onSelectPath(SKILL_MD)
   }
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -476,36 +511,28 @@ function SkillWorkspace({
     }
   }
 
-  // Clear the store when the workspace unmounts (skill panel closed).
-  // Effect-free cleanup via the unmount path of a small ref-like trick:
-  // we intentionally skip useEffect — the dock will simply remount this
-  // component with a different bundleKey on the next selection.
-  void clearActiveBundle
-
   return (
     <div
       onKeyDown={handleKeyDown}
       className="flex flex-1 min-h-0 flex-col outline-none"
     >
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {skill ? (
-          <SkillEditor
-            skill={skill}
-            selectedPath={selectedPath}
-            selectedContent={selectedContent}
-            onContentChange={handleFileContentChange}
-            isDirty={isDirty}
-            saving={saving}
-            canSync={canSync}
-            canDeleteFile={selectedPath !== SKILL_MD}
-            onAddFile={() => setShowAddFile(true)}
-            onDeleteFile={handleDeleteFile}
-            onSave={handleSave}
-            onDelete={() => setConfirmDelete(true)}
-            onSync={() => setConfirmSync(true)}
-            loading={loadingFiles}
-          />
-        ) : null}
+        <SkillEditor
+          skill={skill}
+          selectedPath={activePath}
+          selectedContent={selectedContent}
+          onContentChange={handleFileContentChange}
+          isDirty={isDirty}
+          saving={saving}
+          canSync={canSync}
+          canDeleteFile={activePath !== SKILL_MD}
+          onAddFile={() => setShowAddFile(true)}
+          onDeleteFile={handleDeleteFile}
+          onSave={handleSave}
+          onDelete={() => setConfirmDelete(true)}
+          onSync={() => setConfirmSync(true)}
+          loading={false}
+        />
       </div>
 
       {showAddFile && (
@@ -516,7 +543,7 @@ function SkillWorkspace({
         />
       )}
 
-      {confirmDelete && skill && (
+      {confirmDelete && (
         <DeleteSkillDialog
           skillName={skill.name}
           onCancel={() => setConfirmDelete(false)}
