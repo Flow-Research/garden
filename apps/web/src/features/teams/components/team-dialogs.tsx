@@ -7,16 +7,7 @@ import type {
   TeamSummary,
 } from '@garden/core/types'
 import { Button } from '@garden/ui/components/ui/button'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@garden/ui/components/ui/alert-dialog'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import {
   Dialog,
   DialogContent,
@@ -341,23 +332,15 @@ export function DeleteTeamDialog({
   }
 
   return (
-    <AlertDialog open onOpenChange={(open) => !open && onClose()}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete {team.name}?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This removes the Team and its membership list. Issues linked to the
-            Team must be moved or reassigned first; issue history is never
-            deleted with a Team.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter className="pb-6">
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={handleDelete}>
-            Delete Team
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <ConfirmDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={`Delete ${team.name}?`}
+      description="This removes the Team and its membership list. Issues linked to the Team must be moved or reassigned first; issue history is never deleted with a Team."
+      confirmLabel="Delete Team"
+      pendingLabel="Deleting…"
+      tone="destructive"
+      onConfirm={handleDelete}
+    />
   )
 }

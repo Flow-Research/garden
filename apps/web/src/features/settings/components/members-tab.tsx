@@ -17,16 +17,7 @@ import type { MemberWithUser, MemberRole, Invitation } from '@garden/core/types'
 import { Input } from '@garden/ui/components/ui/input'
 import { Button } from '@garden/ui/components/ui/button'
 import { Badge } from '@garden/ui/components/ui/badge'
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction,
-} from '@garden/ui/components/ui/alert-dialog'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import {
   Select,
   SelectTrigger,
@@ -265,6 +256,8 @@ export function MembersTab() {
   const [confirmAction, setConfirmAction] = useState<{
     title: string
     description: string
+    confirmLabel: string
+    pendingLabel: string
     variant?: 'destructive'
     onConfirm: () => Promise<void>
   } | null>(null)
@@ -301,6 +294,8 @@ export function MembersTab() {
     setConfirmAction({
       title: 'Revoke invitation',
       description: `Revoke the invitation to ${invitation.email}? They will no longer be able to join this workspace.`,
+      confirmLabel: 'Revoke',
+      pendingLabel: 'Revoking…',
       variant: 'destructive',
       onConfirm: async () => {
         setInvitationActionId(invitation.id)
@@ -359,6 +354,8 @@ export function MembersTab() {
     setConfirmAction({
       title: `Remove ${member.name}`,
       description: `Remove ${member.name} from ${workspace.name}? They will lose access to this workspace.`,
+      confirmLabel: 'Remove',
+      pendingLabel: 'Removing…',
       variant: 'destructive',
       onConfirm: async () => {
         setMemberActionId(member.id)
@@ -472,37 +469,20 @@ export function MembersTab() {
         </section>
       )}
 
-      <AlertDialog
+      <ConfirmDialog
         open={!!confirmAction}
-        onOpenChange={(v) => {
-          if (!v) setConfirmAction(null)
+        onOpenChange={(open) => {
+          if (!open) setConfirmAction(null)
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirmAction?.title}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmAction?.description}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant={
-                confirmAction?.variant === 'destructive'
-                  ? 'destructive'
-                  : 'default'
-              }
-              onClick={async () => {
-                await confirmAction?.onConfirm()
-                setConfirmAction(null)
-              }}
-            >
-              Confirm
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={confirmAction?.title}
+        description={confirmAction?.description}
+        confirmLabel={confirmAction?.confirmLabel ?? 'Confirm'}
+        pendingLabel={confirmAction?.pendingLabel}
+        tone={
+          confirmAction?.variant === 'destructive' ? 'destructive' : 'default'
+        }
+        onConfirm={() => confirmAction?.onConfirm()}
+      />
     </div>
   )
 }

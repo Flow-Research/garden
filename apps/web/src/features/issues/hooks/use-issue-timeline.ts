@@ -84,11 +84,13 @@ export function useIssueTimeline(issueId: string, userId?: string) {
   )
 
   const deleteComment = useCallback(
-    async (commentId: string) => {
+    async (commentId: string): Promise<boolean> => {
       try {
         await deleteCommentMutation.mutateAsync(commentId)
+        return true
       } catch {
         toast.error('Failed to delete comment')
+        return false
       }
     },
     [deleteCommentMutation],

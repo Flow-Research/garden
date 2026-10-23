@@ -23,16 +23,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@garden/ui/components/ui/tooltip'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@garden/ui/components/ui/alert-dialog'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -74,7 +65,8 @@ interface CommentCardProps {
   ) => Promise<boolean>
   /** Resolves true when the edit was saved; edit mode closes only then. */
   onEdit: (commentId: string, content: string) => Promise<boolean>
-  onDelete: (commentId: string) => void
+  /** Resolves true when the comment was deleted. */
+  onDelete: (commentId: string) => Promise<boolean>
   onToggleReaction: (commentId: string, emoji: string) => void
   /** ID of the comment to highlight (flash animation). */
   highlightedCommentId?: string | null
@@ -92,28 +84,27 @@ function DeleteCommentDialog({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onConfirm: () => void
+  onConfirm: () => Promise<boolean>
   hasReplies?: boolean
 }) {
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete comment</AlertDialogTitle>
-          <AlertDialogDescription>
-            {hasReplies
-              ? 'This comment and all its replies will be permanently deleted. This cannot be undone.'
-              : 'This comment will be permanently deleted. This cannot be undone.'}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" onClick={onConfirm}>
-            Delete
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Delete comment"
+      description={
+        hasReplies
+          ? 'This comment and all its replies will be permanently deleted. This cannot be undone.'
+          : 'This comment will be permanently deleted. This cannot be undone.'
+      }
+      confirmLabel="Delete"
+      pendingLabel="Deleting…"
+      tone="destructive"
+      onConfirm={async () => {
+        // Rejecting keeps the dialog open; the failure is already toasted.
+        if (!(await onConfirm())) throw new Error('Comment was not deleted')
+      }}
+    />
   )
 }
 
@@ -181,7 +172,8 @@ function CommentRow({
   entry: TimelineEntry
   currentUserId?: string
   onEdit: (commentId: string, content: string) => Promise<boolean>
-  onDelete: (commentId: string) => void
+  /** Resolves true when the comment was deleted. */
+  onDelete: (commentId: string) => Promise<boolean>
   onToggleReaction: (commentId: string, emoji: string) => void
 }) {
   const { getActorName } = useActorName()

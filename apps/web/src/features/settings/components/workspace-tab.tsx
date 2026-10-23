@@ -5,16 +5,7 @@ import { Input } from '@garden/ui/components/ui/input'
 import { Textarea } from '@garden/ui/components/ui/textarea'
 import { Label } from '@garden/ui/components/ui/label'
 import { Button } from '@garden/ui/components/ui/button'
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction,
-} from '@garden/ui/components/ui/alert-dialog'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import { toast } from 'sonner'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/app-state/auth'
@@ -42,6 +33,8 @@ export function WorkspaceTab() {
   const [confirmAction, setConfirmAction] = useState<{
     title: string
     description: string
+    confirmLabel: string
+    pendingLabel: string
     variant?: 'destructive'
     onConfirm: () => Promise<void>
   } | null>(null)
@@ -86,6 +79,8 @@ export function WorkspaceTab() {
     setConfirmAction({
       title: 'Leave workspace',
       description: `Leave ${workspace.name}? You will lose access until re-invited.`,
+      confirmLabel: 'Leave',
+      pendingLabel: 'Leaving…',
       variant: 'destructive',
       onConfirm: async () => {
         setActionId('leave')
@@ -199,37 +194,20 @@ export function WorkspaceTab() {
         </ul>
       </section>
 
-      <AlertDialog
+      <ConfirmDialog
         open={!!confirmAction}
-        onOpenChange={(v) => {
-          if (!v) setConfirmAction(null)
+        onOpenChange={(open) => {
+          if (!open) setConfirmAction(null)
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirmAction?.title}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmAction?.description}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant={
-                confirmAction?.variant === 'destructive'
-                  ? 'destructive'
-                  : 'default'
-              }
-              onClick={async () => {
-                await confirmAction?.onConfirm()
-                setConfirmAction(null)
-              }}
-            >
-              Confirm
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={confirmAction?.title}
+        description={confirmAction?.description}
+        confirmLabel={confirmAction?.confirmLabel ?? 'Confirm'}
+        pendingLabel={confirmAction?.pendingLabel}
+        tone={
+          confirmAction?.variant === 'destructive' ? 'destructive' : 'default'
+        }
+        onConfirm={() => confirmAction?.onConfirm()}
+      />
     </div>
   )
 }
