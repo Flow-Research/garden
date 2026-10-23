@@ -55,6 +55,7 @@ import { Route as ApiGmailMessagesRouteImport } from './routes/api/gmail/message
 import { Route as ApiGmailDraftsRouteImport } from './routes/api/gmail/drafts'
 import { Route as ApiGithubSetupRouteImport } from './routes/api/github/setup'
 import { Route as ApiGithubInstallRouteImport } from './routes/api/github/install'
+import { Route as ApiGithubWebhookRouteImport } from './routes/api/github/webhook'
 import { Route as ApiGithubCallbackRouteImport } from './routes/api/github/callback'
 import { Route as ApiExecutorRegistryRouteImport } from './routes/api/executor/registry'
 import { Route as ApiExecutorPreviewRouteImport } from './routes/api/executor/preview'
@@ -383,6 +384,11 @@ const ApiGithubSetupRoute = ApiGithubSetupRouteImport.update({
 const ApiGithubInstallRoute = ApiGithubInstallRouteImport.update({
   id: '/api/github/install',
   path: '/api/github/install',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGithubWebhookRoute = ApiGithubWebhookRouteImport.update({
+  id: '/api/github/webhook',
+  path: '/api/github/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiGithubCallbackRoute = ApiGithubCallbackRouteImport.update({
@@ -966,6 +972,7 @@ export interface FileRoutesByFullPath {
   '/api/github/callback': typeof ApiGithubCallbackRoute
   '/api/github/install': typeof ApiGithubInstallRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
+  '/api/github/webhook': typeof ApiGithubWebhookRoute
   '/api/gmail/drafts': typeof ApiGmailDraftsRouteWithChildren
   '/api/gmail/messages': typeof ApiGmailMessagesRoute
   '/api/gmail/send': typeof ApiGmailSendRoute
@@ -1104,6 +1111,7 @@ export interface FileRoutesByTo {
   '/api/github/callback': typeof ApiGithubCallbackRoute
   '/api/github/install': typeof ApiGithubInstallRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
+  '/api/github/webhook': typeof ApiGithubWebhookRoute
   '/api/gmail/drafts': typeof ApiGmailDraftsRouteWithChildren
   '/api/gmail/messages': typeof ApiGmailMessagesRoute
   '/api/gmail/send': typeof ApiGmailSendRoute
@@ -1250,6 +1258,7 @@ export interface FileRoutesById {
   '/api/github/callback': typeof ApiGithubCallbackRoute
   '/api/github/install': typeof ApiGithubInstallRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
+  '/api/github/webhook': typeof ApiGithubWebhookRoute
   '/api/gmail/drafts': typeof ApiGmailDraftsRouteWithChildren
   '/api/gmail/messages': typeof ApiGmailMessagesRoute
   '/api/gmail/send': typeof ApiGmailSendRoute
@@ -1395,6 +1404,7 @@ export interface FileRouteTypes {
     | '/api/github/callback'
     | '/api/github/install'
     | '/api/github/setup'
+    | '/api/github/webhook'
     | '/api/gmail/drafts'
     | '/api/gmail/messages'
     | '/api/gmail/send'
@@ -1533,6 +1543,7 @@ export interface FileRouteTypes {
     | '/api/github/callback'
     | '/api/github/install'
     | '/api/github/setup'
+    | '/api/github/webhook'
     | '/api/gmail/drafts'
     | '/api/gmail/messages'
     | '/api/gmail/send'
@@ -1678,6 +1689,7 @@ export interface FileRouteTypes {
     | '/api/github/callback'
     | '/api/github/install'
     | '/api/github/setup'
+    | '/api/github/webhook'
     | '/api/gmail/drafts'
     | '/api/gmail/messages'
     | '/api/gmail/send'
@@ -1804,6 +1816,7 @@ export interface RootRouteChildren {
   ApiGithubCallbackRoute: typeof ApiGithubCallbackRoute
   ApiGithubInstallRoute: typeof ApiGithubInstallRoute
   ApiGithubSetupRoute: typeof ApiGithubSetupRoute
+  ApiGithubWebhookRoute: typeof ApiGithubWebhookRoute
   ApiGmailDraftsRoute: typeof ApiGmailDraftsRouteWithChildren
   ApiGmailMessagesRoute: typeof ApiGmailMessagesRoute
   ApiGmailSendRoute: typeof ApiGmailSendRoute
@@ -2144,6 +2157,13 @@ declare module '@tanstack/react-router' {
       path: '/api/github/install'
       fullPath: '/api/github/install'
       preLoaderRoute: typeof ApiGithubInstallRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/github/webhook': {
+      id: '/api/github/webhook'
+      path: '/api/github/webhook'
+      fullPath: '/api/github/webhook'
+      preLoaderRoute: typeof ApiGithubWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/github/callback': {
@@ -3407,6 +3427,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGithubCallbackRoute: ApiGithubCallbackRoute,
   ApiGithubInstallRoute: ApiGithubInstallRoute,
   ApiGithubSetupRoute: ApiGithubSetupRoute,
+  ApiGithubWebhookRoute: ApiGithubWebhookRoute,
   ApiGmailDraftsRoute: ApiGmailDraftsRouteWithChildren,
   ApiGmailMessagesRoute: ApiGmailMessagesRoute,
   ApiGmailSendRoute: ApiGmailSendRoute,
