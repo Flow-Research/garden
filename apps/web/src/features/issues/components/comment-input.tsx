@@ -8,8 +8,11 @@ import {
   FileDropOverlay,
 } from '../../editor'
 import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
-import { useFileUpload } from '@garden/app-state/hooks/use-file-upload'
-import { api } from '@/lib/api'
+import { toast } from 'sonner'
+import {
+  UPLOAD_IN_PROGRESS_MESSAGE,
+  useAttachmentUpload,
+} from '@/lib/hooks/use-attachment-upload'
 
 interface CommentInputProps {
   issueId: string
@@ -30,7 +33,7 @@ function CommentInput({
   const [isEmpty, setIsEmpty] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [attachmentIds, setAttachmentIds] = useState<string[]>([])
-  const { uploadWithToast } = useFileUpload(api)
+  const { uploadWithToast } = useAttachmentUpload()
   const { isDragOver, dropZoneProps } = useFileDropZone({
     onDrop: (files) => files.forEach((f) => editorRef.current?.uploadFile(f)),
   })
@@ -49,6 +52,12 @@ function CommentInput({
       ?.replace(/(\n\s*)+$/, '')
       .trim()
     if (!content || submitting) return
+    // Sending now would drop the in-flight file and attach it to the next
+    // message once it lands.
+    if (editorRef.current?.hasActiveUploads()) {
+      toast.info(UPLOAD_IN_PROGRESS_MESSAGE)
+      return
+    }
     setSubmitting(true)
     try {
       const sent = await onSubmit(

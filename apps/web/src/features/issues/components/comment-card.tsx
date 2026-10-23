@@ -53,8 +53,7 @@ import {
   FileDropOverlay,
 } from '../../editor'
 import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
-import { useFileUpload } from '@garden/app-state/hooks/use-file-upload'
-import { api } from '@/lib/api'
+import { useAttachmentUpload } from '@/lib/hooks/use-attachment-upload'
 import { ReplyInput } from './reply-input'
 import type { TimelineEntry, Attachment } from '@garden/core/types'
 
@@ -189,7 +188,7 @@ function CommentRow({
   const [editing, setEditing] = useState(false)
   const editEditorRef = useRef<ContentEditorRef>(null)
   const cancelledRef = useRef(false)
-  const { uploadWithToast } = useFileUpload(api)
+  const { uploadWithToast } = useAttachmentUpload()
   const { isDragOver, dropZoneProps } = useFileDropZone({
     onDrop: (files) =>
       files.forEach((f) => editEditorRef.current?.uploadFile(f)),
@@ -387,7 +386,7 @@ function CommentCard({
   highlightedCommentId,
 }: CommentCardProps) {
   const { getActorName } = useActorName()
-  const { uploadWithToast } = useFileUpload(api)
+  const { uploadWithToast } = useAttachmentUpload()
   const [open, setOpen] = useState(true)
   const [editing, setEditing] = useState(false)
   const [replyOpen, setReplyOpen] = useState(false)

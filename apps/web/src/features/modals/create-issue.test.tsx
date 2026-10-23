@@ -84,6 +84,7 @@ vi.mock('../editor', () => {
       useImperativeHandle(ref, () => ({
         getMarkdown: () => valueRef.current,
         uploadFile: vi.fn(),
+        hasActiveUploads: () => false,
       }))
       return (
         <textarea

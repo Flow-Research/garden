@@ -46,8 +46,10 @@ import { TeamPicker } from '../teams/components/team-picker'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { useIssueDraftStore } from '@garden/app-state/issues/stores/draft-store'
 import { useCreateIssue, useUpdateIssue } from '@/lib/issues/mutations'
-import { useFileUpload } from '@garden/app-state/hooks/use-file-upload'
-import { api } from '@/lib/api'
+import {
+  UPLOAD_IN_PROGRESS_MESSAGE,
+  useAttachmentUpload,
+} from '@/lib/hooks/use-attachment-upload'
 import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
 
 // ---------------------------------------------------------------------------
@@ -143,7 +145,7 @@ export function CreateIssueModal({
 
   // File upload — collect attachment IDs so we can link them after issue creation.
   const [attachmentIds, setAttachmentIds] = useState<string[]>([])
-  const { uploadWithToast } = useFileUpload(api)
+  const { uploadWithToast } = useAttachmentUpload()
   const handleUpload = async (file: File) => {
     const result = await uploadWithToast(file)
     if (result) {
@@ -181,6 +183,10 @@ export function CreateIssueModal({
     if (!title.trim() || submitting) return
     if (showTeamPicker && !pickedTeamId) return
     if (requiresAssignee && !lockedAssigneeUserId && !assigneeId) return
+    if (descEditorRef.current?.hasActiveUploads()) {
+      toast.info(UPLOAD_IN_PROGRESS_MESSAGE)
+      return
+    }
     setSubmitting(true)
     try {
       const issue = await createIssueMutation.mutateAsync({

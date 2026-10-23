@@ -110,6 +110,8 @@ vi.mock('../../navigation', () => ({
   NavigationProvider: ({ children }: { children: React.ReactNode }) => children,
 }))
 
+const editorUploads = vi.hoisted(() => ({ active: false }))
+
 // Mock editor components (Tiptap requires real DOM)
 vi.mock('../../editor', () => ({
   useFileDropZone: () => ({ isDragOver: false, dropZoneProps: {} }),
@@ -129,6 +131,7 @@ vi.mock('../../editor', () => ({
         },
         focus: () => {},
         uploadFile: () => {},
+        hasActiveUploads: () => editorUploads.active,
       }))
       return (
         <textarea
@@ -539,6 +542,19 @@ describe('IssueDetail (shared)', () => {
       ).toBeInTheDocument(),
     )
     expect(commentBox()).toHaveValue('Ship it on Friday')
+  })
+
+  it('does not send a comment while an attachment is still uploading', async () => {
+    editorUploads.active = true
+    renderIssueDetail()
+
+    const box = await findCommentBox()
+    fireEvent.change(box, { target: { value: 'See screenshot' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Submit comment' }))
+
+    expect(mockApiObj.createComment).not.toHaveBeenCalled()
+    expect(commentBox()).toHaveValue('See screenshot')
+    editorUploads.active = false
   })
 
   it('clears the comment box once the comment is sent', async () => {

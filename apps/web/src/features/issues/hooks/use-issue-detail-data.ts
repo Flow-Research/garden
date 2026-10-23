@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
 import { useAuthStore } from '@garden/app-state/auth'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { useActorName } from '@/lib/workspace/hooks'
@@ -16,7 +15,7 @@ import { useRecentIssuesStore } from '@garden/app-state/issues/stores/recent-iss
 import { useIssueTimeline } from './use-issue-timeline'
 import { useIssueReactions } from './use-issue-reactions'
 import { useIssueSubscribers } from './use-issue-subscribers'
-import { useFileUpload } from '@garden/app-state/hooks/use-file-upload'
+import { useAttachmentUpload } from '@/lib/hooks/use-attachment-upload'
 import { useDeleteIssue, useUpdateIssue } from '@/lib/issues/mutations'
 import type { Issue, ListIssuesResponse } from '@garden/core/types'
 
@@ -40,7 +39,7 @@ export function useIssueDetailData(issueId: string) {
     (member) => member.user_id === user?.id,
   )?.role
   const { getActorName } = useActorName()
-  const { uploadWithToast } = useFileUpload(api)
+  const { uploadWithToast } = useAttachmentUpload()
 
   const getCachedIssue = (id: string | null | undefined): Issue | undefined => {
     if (!id) return undefined
