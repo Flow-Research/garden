@@ -1,8 +1,15 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Skill } from '@garden/core/types'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
+import { useSkillsBrowseStore } from '@garden/app-state/skills'
 import SkillsPage from './skills-page'
 
 const mocks = vi.hoisted(() => ({
@@ -48,7 +55,16 @@ function skillFile(path: string, content: string): Skill['files'][number] {
   }
 }
 
-function renderPage() {
+/** The file editor; the skills filter is the other textbox on the page. */
+function editorBox() {
+  const [box] = screen
+    .getAllByRole('textbox')
+    .filter((el) => el.getAttribute('aria-label') !== 'Filter skills')
+  if (!box) throw new Error('no editor textbox')
+  return box
+}
+
+function renderPage(props: Parameters<typeof SkillsPage>[0] = {}) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Infinity },
@@ -58,7 +74,7 @@ function renderPage() {
   return render(
     <QueryClientProvider client={queryClient}>
       <WorkspaceIdProvider wsId={WS_ID}>
-        <SkillsPage />
+        <SkillsPage {...props} />
       </WorkspaceIdProvider>
     </QueryClientProvider>,
   )
@@ -95,7 +111,7 @@ describe('SkillsPage editor', () => {
     renderPage()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
-    fireEvent.change(screen.getByRole('textbox'), {
+    fireEvent.change(editorBox(), {
       target: { value: '# Release notes\n\nUpdated' },
     })
     fireEvent.click(await screen.findByRole('button', { name: /save/i }))
@@ -126,5 +142,88 @@ describe('SkillsPage list states', () => {
       (await screen.findAllByText('Release notes')).length,
     ).toBeGreaterThan(0)
     expect(screen.queryByText('Could not load skills.')).toBeNull()
+  })
+})
+
+describe('SkillsPage library', () => {
+  const second = skill({ id: 'skill-2', name: 'Triage', content: '# Triage' })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useSkillsBrowseStore.getState().reset()
+    mocks.listSkills.mockResolvedValue([skill({}), second])
+    mocks.getSkill.mockImplementation(async (id: string) =>
+      id === 'skill-2'
+        ? second
+        : skill({ files: [skillFile('scripts/run.sh', 'echo hi')] }),
+    )
+  })
+
+  function skillsList() {
+    return within(screen.getByRole('navigation', { name: 'Skills' }))
+  }
+
+  it('lists every skill, opens the one clicked and puts it in the URL', async () => {
+    const onSelectSkill = vi.fn()
+    renderPage({ onSelectSkill })
+
+    await screen.findByRole('navigation', { name: 'Skills' })
+    expect(skillsList().getByText('2 skills')).toBeInTheDocument()
+    fireEvent.click(skillsList().getByRole('button', { name: 'Triage' }))
+
+    expect(onSelectSkill).toHaveBeenCalledWith('skill-2')
+    expect(
+      await screen.findByRole('heading', { name: 'Triage' }),
+    ).toBeInTheDocument()
+  })
+
+  it('opens the skill named in the URL', async () => {
+    renderPage({ focusedSkillId: 'skill-2' })
+    expect(
+      await screen.findByRole('heading', { name: 'Triage' }),
+    ).toBeInTheDocument()
+  })
+
+  it('can add a skill when the library is not empty', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Add skill' }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
+  it("shows the skill's files and opens one", async () => {
+    renderPage()
+    const files = within(
+      await screen.findByRole('navigation', { name: 'Skill files' }),
+    )
+    fireEvent.click(await files.findByText('run.sh'))
+    expect(
+      await screen.findByText('scripts/run.sh', { selector: 'header span' }),
+    ).toBeInTheDocument()
+  })
+
+  it('asks before switching away from unsaved edits', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    fireEvent.change(editorBox(), {
+      target: { value: 'Draft notes' },
+    })
+
+    fireEvent.click(skillsList().getByRole('button', { name: 'Triage' }))
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Keep editing' }),
+    )
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(editorBox()).toHaveValue('Draft notes')
+
+    fireEvent.click(skillsList().getByRole('button', { name: 'Triage' }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Discard changes',
+      }),
+    )
+    expect(
+      await screen.findByRole('heading', { name: 'Triage' }),
+    ).toBeInTheDocument()
   })
 })

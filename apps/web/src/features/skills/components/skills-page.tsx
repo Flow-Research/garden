@@ -1,4 +1,4 @@
-import { useState, useMemo, useDeferredValue } from 'react'
+import { useState, useMemo, useDeferredValue, useEffect, useRef } from 'react'
 import {
   Plus,
   Trash2,
@@ -61,10 +61,12 @@ import {
 import {
   InputGroup,
   InputGroupAddon,
+  InputGroupInput,
 } from '@garden/ui/components/ui/input-group'
 import { Kbd, KbdGroup } from '@garden/ui/components/ui/kbd'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { LoadError } from '@garden/ui/components/common/load-error'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import { Button } from '@garden/ui/components/ui/button'
 import { Input } from '@garden/ui/components/ui/input'
 import { Label } from '@garden/ui/components/ui/label'
@@ -144,8 +146,11 @@ type LoadedFile = { path: string; content: string }
 
 export default function SkillsPage({
   focusedSkillId,
+  onSelectSkill,
 }: {
   focusedSkillId?: string
+  /** Puts the selection in the URL; without it, selection is local. */
+  onSelectSkill?: (skillId: string) => void
 } = {}) {
   const wsId = useWorkspaceId()
   const qc = useQueryClient()
@@ -153,6 +158,15 @@ export default function SkillsPage({
   const skills = skillsQuery.data ?? NO_SKILLS
   const isSkillsLoading = skillsQuery.isLoading
   const [selectedSkillId, setSelectedSkillId] = useState<string>('')
+  const [filter, setFilter] = useState('')
+  // Switching skill remounts the editor, so unsaved edits ask first.
+  const editorDirtyRef = useRef(false)
+  const [pendingSkillId, setPendingSkillId] = useState<string | null>(null)
+  const openSkill = (skillId: string) => {
+    editorDirtyRef.current = false
+    setSelectedSkillId(skillId)
+    onSelectSkill?.(skillId)
+  }
 
   const browseSearch = useSkillsBrowseStore((s) => s.browseSearch)
   const setBrowseSearch = useSkillsBrowseStore((s) => s.setBrowseSearch)
@@ -320,27 +334,179 @@ export default function SkillsPage({
     )
   }
 
+  const visibleSkills = skills.filter((s) => skillMatchesFilter(s, filter))
+
   return (
     <>
-      <SkillWorkspace
-        key={effectiveSkillId}
-        skill={selected}
-        onUpdate={(data) =>
-          selected
-            ? updateMutation.mutateAsync({ id: selected.id, data })
-            : Promise.resolve()
-        }
-        onDelete={() =>
-          selected ? deleteMutation.mutateAsync(selected.id) : Promise.resolve()
-        }
-        onReinstall={() =>
-          selected ? reinstallMutation.mutateAsync(selected) : Promise.resolve()
-        }
-        isReinstalling={reinstallMutation.isPending}
+      <div className="flex flex-1 min-h-0">
+        <SkillsList
+          skills={visibleSkills}
+          totalSkillCount={skills.length}
+          selectedSkillId={effectiveSkillId}
+          onSelectSkill={(skillId) => {
+            if (skillId === effectiveSkillId) return
+            if (editorDirtyRef.current) setPendingSkillId(skillId)
+            else openSkill(skillId)
+          }}
+          filter={filter}
+          onFilterChange={setFilter}
+          onAdd={() => setAddMode('browse')}
+        />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <SkillWorkspace
+            key={effectiveSkillId}
+            skill={selected}
+            onUpdate={(data) =>
+              selected
+                ? updateMutation.mutateAsync({ id: selected.id, data })
+                : Promise.resolve()
+            }
+            onDelete={() =>
+              selected
+                ? deleteMutation.mutateAsync(selected.id)
+                : Promise.resolve()
+            }
+            onReinstall={() =>
+              selected
+                ? reinstallMutation.mutateAsync(selected)
+                : Promise.resolve()
+            }
+            isReinstalling={reinstallMutation.isPending}
+            onDirtyChange={(dirty) => {
+              editorDirtyRef.current = dirty
+            }}
+          />
+        </div>
+      </div>
+
+      <ConfirmDialog
+        open={pendingSkillId !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingSkillId(null)
+        }}
+        title="Discard unsaved changes?"
+        description={`Your edits to ${selected?.name ?? 'this skill'} have not been saved.`}
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        tone="destructive"
+        onConfirm={() => {
+          if (pendingSkillId) openSkill(pendingSkillId)
+        }}
       />
 
       {addDialog}
     </>
+  )
+}
+
+function skillMatchesFilter(skill: Skill, query: string) {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return (
+    skill.name.toLowerCase().includes(q) ||
+    (skill.description?.toLowerCase().includes(q) ?? false)
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Skills list — every skill in the library, with Add and a filter. It went
+// missing in a refactor, which left the page showing only the first skill
+// with no way to open another or add one once the library was non-empty.
+// ---------------------------------------------------------------------------
+
+function SkillsList({
+  skills,
+  totalSkillCount,
+  selectedSkillId,
+  onSelectSkill,
+  filter,
+  onFilterChange,
+  onAdd,
+}: {
+  skills: Skill[]
+  totalSkillCount: number
+  selectedSkillId: string
+  onSelectSkill: (id: string) => void
+  filter: string
+  onFilterChange: (value: string) => void
+  onAdd: () => void
+}) {
+  return (
+    <nav
+      aria-label="Skills"
+      className="flex w-64 shrink-0 flex-col border-r max-md:w-48"
+    >
+      <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-3">
+        <span className="pl-1 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground tabular-nums">
+          {totalSkillCount} {totalSkillCount === 1 ? 'skill' : 'skills'}
+        </span>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={onAdd}
+                aria-label="Add skill"
+              >
+                <Plus className="text-muted-foreground" />
+              </Button>
+            }
+          />
+          <TooltipContent side="bottom">Add skill</TooltipContent>
+        </Tooltip>
+      </div>
+
+      <div className="shrink-0 border-b px-3 py-2">
+        <InputGroup>
+          <InputGroupAddon>
+            <Search className="text-muted-foreground" />
+          </InputGroupAddon>
+          <InputGroupInput
+            value={filter}
+            onChange={(event) => onFilterChange(event.target.value)}
+            placeholder="Filter"
+            aria-label="Filter skills"
+          />
+        </InputGroup>
+      </div>
+
+      <ul className="flex-1 overflow-y-auto py-1">
+        {skills.length === 0 ? (
+          <li className="flex flex-col items-center gap-1 px-4 py-10 text-center">
+            <p className="text-sm text-foreground">No matches</p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onFilterChange('')}
+            >
+              Clear filter
+            </Button>
+          </li>
+        ) : (
+          skills.map((skill) => {
+            const isSelected = skill.id === selectedSkillId
+            return (
+              <li key={skill.id}>
+                <button
+                  type="button"
+                  aria-current={isSelected ? 'page' : undefined}
+                  onClick={() => onSelectSkill(skill.id)}
+                  className={cn(
+                    'mx-1.5 flex w-[calc(100%-0.75rem)] items-center rounded-md px-2 py-1.5 text-left text-[13px] leading-tight transition-colors',
+                    isSelected
+                      ? 'bg-muted font-semibold text-foreground'
+                      : 'font-medium text-foreground/85 hover:bg-muted/50',
+                  )}
+                >
+                  <span className="truncate">{skill.name}</span>
+                </button>
+              </li>
+            )
+          })
+        )}
+      </ul>
+    </nav>
   )
 }
 
@@ -359,12 +525,14 @@ function SkillWorkspace({
   onDelete,
   onReinstall,
   isReinstalling,
+  onDirtyChange,
 }: {
   skill: Skill | null
   onUpdate: (data: UpdateSkillRequest) => Promise<unknown>
   onDelete: () => Promise<unknown>
   onReinstall: () => Promise<unknown>
   isReinstalling: boolean
+  onDirtyChange: (dirty: boolean) => void
 }) {
   const wsId = useWorkspaceId()
   const fullSkillQuery = useQuery({
@@ -399,6 +567,7 @@ function SkillWorkspace({
       onDelete={onDelete}
       onReinstall={onReinstall}
       isReinstalling={isReinstalling}
+      onDirtyChange={onDirtyChange}
     />
   )
 }
@@ -446,6 +615,7 @@ function SkillBundleEditor({
   onDelete,
   onReinstall,
   isReinstalling,
+  onDirtyChange,
 }: {
   skill: Skill
   selectedPath: string
@@ -454,6 +624,7 @@ function SkillBundleEditor({
   onDelete: () => Promise<unknown>
   onReinstall: () => Promise<unknown>
   isReinstalling: boolean
+  onDirtyChange: (dirty: boolean) => void
 }) {
   // The saved bundle this editor was mounted with; the key above remounts the
   // editor whenever it changes, so these never go stale.
@@ -479,6 +650,16 @@ function SkillBundleEditor({
   const filesChanged = JSON.stringify(files) !== JSON.stringify(savedFiles)
   const isDirty = content !== savedContent || filesChanged
   const canSync = skill.source_type === 'skills.sh' && Boolean(skill.source_url)
+
+  // Tells the page whether switching skill would drop edits.
+  const onDirtyChangeRef = useRef(onDirtyChange)
+  useEffect(() => {
+    onDirtyChangeRef.current = onDirtyChange
+  })
+  useEffect(() => {
+    onDirtyChangeRef.current(isDirty)
+  }, [isDirty])
+  useEffect(() => () => onDirtyChangeRef.current(false), [])
 
   const handleSave = async () => {
     if (!isDirty || saving) return
@@ -534,6 +715,16 @@ function SkillBundleEditor({
       className="flex flex-1 min-h-0 flex-col outline-none"
     >
       <div className="flex flex-1 min-h-0 overflow-hidden">
+        <nav
+          aria-label="Skill files"
+          className="w-52 shrink-0 overflow-y-auto border-r py-1 max-md:hidden"
+        >
+          <FileTree
+            filePaths={filePaths}
+            selectedPath={activePath}
+            onSelect={onSelectPath}
+          />
+        </nav>
         <SkillEditor
           skill={skill}
           selectedPath={activePath}
@@ -587,8 +778,8 @@ function SkillBundleEditor({
 }
 
 // ---------------------------------------------------------------------------
-// Skill editor — header + file viewer, nothing else. The file tree lives in
-// the explorer so this pane can stay focused on the content.
+// Skill editor — header + file viewer. The file tree sits beside it in the
+// bundle editor.
 // ---------------------------------------------------------------------------
 
 function SkillEditor({
