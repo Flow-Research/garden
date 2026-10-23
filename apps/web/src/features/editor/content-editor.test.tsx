@@ -1,7 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 
 const mockFocus = vi.hoisted(() => vi.fn())
+type EditorHooks = {
+  onUpdate?: (props: { editor: unknown }) => void
+  onBlur?: () => void
+}
+const editorMock = vi.hoisted(() => ({
+  markdown: '',
+  options: {} as EditorHooks,
+}))
 
 vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({}),
@@ -24,12 +32,15 @@ vi.mock('./bubble-menu', () => ({
 }))
 
 vi.mock('@tiptap/react', () => ({
-  useEditor: (options: { onCreate?: (props: { editor: unknown }) => void }) => {
+  useEditor: (
+    options: EditorHooks & { onCreate?: (props: { editor: unknown }) => void },
+  ) => {
     const editor = {
       commands: { focus: mockFocus, clearContent: vi.fn() },
-      getMarkdown: () => '',
+      getMarkdown: () => editorMock.markdown,
       state: { doc: { content: { size: 0 } }, selection: { empty: true } },
     }
+    editorMock.options = options
     options.onCreate?.({ editor })
     return editor
   },
@@ -81,5 +92,62 @@ describe('ContentEditor', () => {
     fireEvent.mouseDown(screen.getByTestId('prosemirror'))
 
     expect(mockFocus).not.toHaveBeenCalled()
+  })
+
+  describe('debounced onUpdate', () => {
+    function renderWithUpdate(onUpdate: (markdown: string) => void) {
+      return render(
+        <NavigationProvider value={navigation}>
+          <ContentEditor onUpdate={onUpdate} debounceMs={1500} />
+        </NavigationProvider>,
+      )
+    }
+
+    function type(markdown: string) {
+      editorMock.markdown = markdown
+      editorMock.options.onUpdate?.({
+        editor: { getMarkdown: () => editorMock.markdown },
+      })
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('saves an edit still inside the debounce window on unmount', () => {
+      const onUpdate = vi.fn()
+      const { unmount } = renderWithUpdate(onUpdate)
+
+      type('last words')
+      unmount()
+
+      expect(onUpdate).toHaveBeenCalledTimes(1)
+      expect(onUpdate).toHaveBeenCalledWith('last words')
+    })
+
+    it('saves a pending edit as soon as the editor loses focus', () => {
+      const onUpdate = vi.fn()
+      renderWithUpdate(onUpdate)
+
+      type('typed then tabbed away')
+      editorMock.options.onBlur?.()
+
+      expect(onUpdate).toHaveBeenCalledWith('typed then tabbed away')
+    })
+
+    it('saves once after the debounce and not again on unmount', () => {
+      const onUpdate = vi.fn()
+      const { unmount } = renderWithUpdate(onUpdate)
+
+      type('settled')
+      vi.advanceTimersByTime(1500)
+      unmount()
+
+      expect(onUpdate).toHaveBeenCalledTimes(1)
+    })
   })
 })

@@ -107,6 +107,8 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
     ref,
   ) {
     const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+    // Reads the markdown of an edit whose debounced onUpdate has not fired.
+    const pendingReadRef = useRef<(() => string) | null>(null)
     const onUpdateRef = useRef(onUpdate)
     const onSubmitRef = useRef(onSubmit)
     const onBlurRef = useRef(onBlur)
@@ -122,6 +124,15 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
     onSubmitRef.current = onSubmit
     onBlurRef.current = onBlur
     onUploadFileRef.current = onUploadFile
+
+    /** Runs a debounced onUpdate now, if one is pending. */
+    function flushPendingUpdate() {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      debounceRef.current = undefined
+      const read = pendingReadRef.current
+      pendingReadRef.current = null
+      if (read) onUpdateRef.current?.(read())
+    }
 
     const queryClient = useQueryClient()
 
@@ -167,11 +178,11 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
       onUpdate: ({ editor: ed }) => {
         if (!onUpdateRef.current) return
         if (debounceRef.current) clearTimeout(debounceRef.current)
-        debounceRef.current = setTimeout(() => {
-          onUpdateRef.current?.(stripBlobUrls(ed.getMarkdown()))
-        }, debounceMs)
+        pendingReadRef.current = () => stripBlobUrls(ed.getMarkdown())
+        debounceRef.current = setTimeout(flushPendingUpdate, debounceMs)
       },
       onBlur: () => {
+        flushPendingUpdate()
         onBlurRef.current?.()
       },
       editorProps: {
@@ -200,12 +211,11 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
       },
     })
 
-    // Cleanup debounce on unmount
-    useEffect(() => {
-      return () => {
-        if (debounceRef.current) clearTimeout(debounceRef.current)
-      }
-    }, [])
+    // Save a pending edit on unmount instead of dropping it: switching issue
+    // (the editor is keyed by id) or leaving the page inside the debounce
+    // window used to lose the last edits. Tiptap destroys the editor a tick
+    // after unmount, so it can still be read here.
+    useEffect(() => flushPendingUpdate, [])
 
     // Readonly content update: when defaultValue changes and editor is readonly,
     // re-set the content (e.g. after editing a comment, the readonly view updates)
