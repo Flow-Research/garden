@@ -511,8 +511,18 @@ export function IssueDetail({
               description="Search for an issue to set as the parent of this issue"
               excludeIds={[id, ...childIssues.map((c) => c.id)]}
               onSelect={(selected) => {
-                handleUpdateField({ parent_issue_id: selected.id })
-                toast.success(`Set ${selected.identifier} as parent issue`)
+                // The success toast waits for the request; it used to show
+                // before it, even when the update then failed.
+                updateIssueMutation.mutate(
+                  { id, parent_issue_id: selected.id },
+                  {
+                    onSuccess: () =>
+                      toast.success(
+                        `Set ${selected.identifier} as parent issue`,
+                      ),
+                    onError: () => toast.error('Failed to set parent issue'),
+                  },
+                )
               }}
             />
 
@@ -530,9 +540,14 @@ export function IssueDetail({
               onSelect={(selected) => {
                 updateIssueMutation.mutate(
                   { id: selected.id, parent_issue_id: id },
-                  { onError: () => toast.error('Failed to add sub-issue') },
+                  {
+                    onSuccess: () =>
+                      toast.success(
+                        `Added ${selected.identifier} as sub-issue`,
+                      ),
+                    onError: () => toast.error('Failed to add sub-issue'),
+                  },
                 )
-                toast.success(`Added ${selected.identifier} as sub-issue`)
               }}
             />
 

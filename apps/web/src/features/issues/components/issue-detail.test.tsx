@@ -361,6 +361,24 @@ vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }))
 
+// Each picker renders one button per title that picks a fixed issue.
+vi.mock('./issue-picker-dialog', () => ({
+  IssuePickerDialog: ({
+    title,
+    onSelect,
+  }: {
+    title: string
+    onSelect: (issue: { id: string; identifier: string }) => void
+  }) => (
+    <button
+      type="button"
+      onClick={() => onSelect({ id: 'issue-9', identifier: 'GAR-9' })}
+    >
+      pick for {title}
+    </button>
+  ),
+}))
+
 // ---------------------------------------------------------------------------
 // Test data
 // ---------------------------------------------------------------------------
@@ -416,6 +434,7 @@ const mockTimeline: TimelineEntry[] = [
 // Import component under test (after mocks)
 // ---------------------------------------------------------------------------
 
+import { toast } from 'sonner'
 import { IssueDetail } from './issue-detail'
 
 // ---------------------------------------------------------------------------
@@ -718,5 +737,52 @@ describe('IssueDetail (shared)', () => {
     const approve = await screen.findByRole('button', { name: 'Approve' })
     expect(approve).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Deny' })).toBeDisabled()
+  })
+})
+
+describe('IssueDetail parent and sub-issue pickers', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockApiObj.getIssue.mockResolvedValue(mockIssue)
+    mockApiObj.listTimeline.mockResolvedValue(mockTimeline)
+    mockApiObj.listIssueReactions.mockResolvedValue([])
+    mockApiObj.listIssueSubscribers.mockResolvedValue([])
+  })
+
+  it.each([
+    ['Set parent issue', 'Set GAR-9 as parent issue'],
+    ['Add sub-issue', 'Added GAR-9 as sub-issue'],
+  ])('%s says it worked only once it did', async (title, message) => {
+    let finish: () => void = () => {}
+    mockApiObj.updateIssue.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve(mockIssue)
+        }),
+    )
+    renderIssueDetail()
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: `pick for ${title}` }),
+    )
+    await waitFor(() => expect(mockApiObj.updateIssue).toHaveBeenCalled())
+    expect(toast.success).not.toHaveBeenCalled()
+
+    finish()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(message))
+  })
+
+  it('does not report success when setting the parent fails', async () => {
+    mockApiObj.updateIssue.mockRejectedValue(new Error('offline'))
+    renderIssueDetail()
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'pick for Set parent issue' }),
+    )
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('Failed to set parent issue'),
+    )
+    expect(toast.success).not.toHaveBeenCalled()
   })
 })
