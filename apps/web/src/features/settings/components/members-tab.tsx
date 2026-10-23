@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   Crown,
   Shield,
@@ -241,6 +241,7 @@ function InvitationRow({
 }
 
 const NO_MEMBERS: MemberWithUser[] = []
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export function MembersTab() {
   const user = useAuthStore((s) => s.user)
@@ -275,12 +276,21 @@ export function MembersTab() {
     currentMember?.role === 'owner' || currentMember?.role === 'admin'
   const isOwner = currentMember?.role === 'owner'
 
+  // Enter in the email field used to call this directly, past the disabled
+  // button, so a second Enter sent a duplicate invitation.
+  const inviteInFlightRef = useRef(false)
   const handleInviteMember = async () => {
-    if (!workspace) return
+    const email = inviteEmail.trim()
+    if (!workspace || !email || inviteInFlightRef.current) return
+    if (!EMAIL_PATTERN.test(email)) {
+      toast.error('Enter a valid email address')
+      return
+    }
+    inviteInFlightRef.current = true
     setInviteLoading(true)
     try {
       await api.createMember(workspace.id, {
-        email: inviteEmail,
+        email,
         role: inviteRole,
       })
       setInviteEmail('')
@@ -290,6 +300,7 @@ export function MembersTab() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to send invitation')
     } finally {
+      inviteInFlightRef.current = false
       setInviteLoading(false)
     }
   }
@@ -399,16 +410,20 @@ export function MembersTab() {
         </header>
 
         {canManageWorkspace && (
-          <div className="grid gap-2 sm:grid-cols-[1fr_120px_auto]">
+          <form
+            className="grid gap-2 sm:grid-cols-[1fr_120px_auto]"
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault()
+              void handleInviteMember()
+            }}
+          >
             <Input
               type="email"
+              aria-label="Email address to invite"
               value={inviteEmail}
               onChange={(e) => setInviteEmail(e.target.value)}
               placeholder="user@company.com"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && inviteEmail.trim())
-                  handleInviteMember()
-              }}
             />
             <Select
               value={inviteRole}
@@ -423,14 +438,14 @@ export function MembersTab() {
               </SelectContent>
             </Select>
             <Button
+              type="submit"
               size="sm"
-              onClick={handleInviteMember}
               disabled={inviteLoading || !inviteEmail.trim()}
             >
               <Plus className="h-3.5 w-3.5" />
               {inviteLoading ? 'Inviting...' : 'Invite'}
             </Button>
-          </div>
+          </form>
         )}
 
         {membersQuery.isPending ? (
