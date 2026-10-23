@@ -32,6 +32,8 @@ import {
 } from '@garden/ui/components/ui/empty'
 import { cn } from '@garden/ui/lib/utils'
 import { useWorkspaceId } from '@garden/app-state/hooks'
+import { useIssueViewStore } from '@garden/app-state/issues/stores/view-store'
+import { useIssuesScopeStore } from '@garden/app-state/issues/stores/issues-scope-store'
 import { timeAgo } from '@garden/core/format'
 import { STATUS_CONFIG } from '@garden/core/issues/config'
 import { PriorityIcon, StatusIcon } from '@/features/issues/components'
@@ -484,10 +486,14 @@ export function DashboardPageSkeleton() {
 function DashboardOverviewSection({
   wsId,
   openIssues,
+  openBlockedIssues,
+  openAgents,
   openConnections,
 }: {
   wsId: string
   openIssues: () => void
+  openBlockedIssues: () => void
+  openAgents: () => void
   openConnections: () => void
 }) {
   const { data } = useSuspenseQuery(dashboardOverviewOptions(wsId))
@@ -503,7 +509,7 @@ function DashboardOverviewSection({
             <Button
               variant="link"
               size="sm"
-              onClick={openConnections}
+              onClick={openAgents}
               className="h-auto p-0 text-warning underline underline-offset-2 hover:text-warning/80"
             >
               Set one up
@@ -529,7 +535,7 @@ function DashboardOverviewSection({
           icon={ShieldAlert}
           value={data.summary.blockedIssues}
           label="Blocked"
-          onClick={openIssues}
+          onClick={openBlockedIssues}
           description={
             <span>
               {data.summary.blockedIssues === 0
@@ -596,11 +602,13 @@ function DashboardChartsSection({ wsId }: { wsId: string }) {
 function DashboardActivitySection({
   wsId,
   openInbox,
+  openInboxItem,
   openIssues,
   openIssueDetail,
 }: {
   wsId: string
   openInbox: () => void
+  openInboxItem: (itemId: string) => void
   openIssues: () => void
   openIssueDetail: (issue: { id: string; title: string }) => void
 }) {
@@ -640,8 +648,12 @@ function DashboardActivitySection({
               <button
                 key={item.id}
                 type="button"
+                // Items with no issue (connector prompts, run notices) used to
+                // navigate to /tasks/ with an empty id.
                 onClick={() =>
-                  openIssueDetail({ id: item.issue_id, title: item.title })
+                  item.issue_id
+                    ? openIssueDetail({ id: item.issue_id, title: item.title })
+                    : openInboxItem(item.id)
                 }
                 className="block w-full cursor-pointer px-4 py-2 text-left text-sm transition-colors hover:bg-accent/50"
               >
@@ -826,6 +838,24 @@ export function DashboardPage() {
     () => void navigate({ to: '/inbox' }),
     [navigate],
   )
+  const openInboxItem = useCallback(
+    (itemId: string) =>
+      void navigate({ href: `/inbox?item=${encodeURIComponent(itemId)}` }),
+    [navigate],
+  )
+  const openAgents = useCallback(
+    () => void navigate({ to: '/agents' }),
+    [navigate],
+  )
+  // "Blocked" opened the unfiltered list. Its count is workspace-wide, so the
+  // scope and the other filters are reset for the list to match it.
+  const openBlockedIssues = useCallback(() => {
+    useIssuesScopeStore.getState().setScope('all')
+    const view = useIssueViewStore.getState()
+    view.clearFilters()
+    view.toggleStatusFilter('blocked')
+    void navigate({ to: '/tasks' })
+  }, [navigate])
   const openIssueDetail = useCallback(
     (issue: { id: string; title: string }) =>
       openIssue({ id: issue.id, title: issue.title }),
@@ -839,6 +869,8 @@ export function DashboardPage() {
           <DashboardOverviewSection
             wsId={wsId}
             openIssues={openIssues}
+            openBlockedIssues={openBlockedIssues}
+            openAgents={openAgents}
             openConnections={openConnections}
           />
         </DashboardSectionBoundary>
@@ -858,6 +890,7 @@ export function DashboardPage() {
           <DashboardActivitySection
             wsId={wsId}
             openInbox={openInbox}
+            openInboxItem={openInboxItem}
             openIssues={openIssues}
             openIssueDetail={openIssueDetail}
           />
