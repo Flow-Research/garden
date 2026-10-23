@@ -206,6 +206,7 @@ export function ListView({
                           select(statusIssueIds)
                         }
                       }}
+                      aria-label={`Select all ${cfg.label} issues`}
                       className="cursor-pointer accent-primary"
                     />
                   </div>
@@ -234,7 +235,8 @@ export function ListView({
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              className="rounded-full text-muted-foreground opacity-0 group-hover/header:opacity-100 transition-opacity"
+                              aria-label={`Add ${cfg.label} issue`}
+                              className="rounded-full text-muted-foreground opacity-0 group-hover/header:opacity-100 focus-visible:opacity-100 transition-opacity"
                               onClick={() => onCreateIssue({ status })}
                             />
                           }

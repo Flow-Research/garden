@@ -124,6 +124,25 @@ describe('ListView variants', () => {
     expect(screen.getByText('TES-1')).toBeInTheDocument()
   })
 
+  it('keeps selection reachable by keyboard', () => {
+    render(
+      <ListView
+        issues={[makeIssue({})]}
+        visibleStatuses={['todo']}
+        onCreateIssue={vi.fn()}
+      />,
+    )
+
+    // Hidden with opacity, not display:none, so Tab can reach it.
+    expect(screen.getByLabelText('Select issue').className).not.toMatch(
+      /(^|\s)hidden(\s|$)/,
+    )
+    expect(screen.getByLabelText('Select all Todo issues')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Add Todo issue' }).className,
+    ).toContain('focus-visible:opacity-100')
+  })
+
   it('team variant drops checkboxes and renders the design row chips', () => {
     render(
       <ListView
