@@ -609,6 +609,8 @@ export function useToggleCommentReaction(issueId: string) {
       }
       return api.addReaction(commentId, emoji)
     },
+    // The optimistic reaction disappears on failure; say why.
+    onError: () => toast.error('Failed to update the reaction'),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: issueKeys.timeline(issueId) })
     },
@@ -630,6 +632,8 @@ export function useToggleIssueReaction(issueId: string) {
       }
       return api.addIssueReaction(issueId, emoji)
     },
+    // The optimistic reaction disappears on failure; say why.
+    onError: () => toast.error('Failed to update the reaction'),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: issueKeys.reactions(issueId) })
     },
@@ -695,6 +699,8 @@ export function useToggleIssueSubscriber(issueId: string) {
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(issueKeys.subscribers(issueId), ctx.prev)
+      // The rollback alone looked like the click had been ignored.
+      toast.error('Failed to update the subscription')
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: issueKeys.subscribers(issueId) })
