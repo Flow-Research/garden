@@ -9,6 +9,7 @@ import type { Executor } from '@executor-js/sdk/core'
 import {
   DECIDE_ANALYSIS_TIMEOUT_MS,
   DirectDecideMcpSessionManager,
+  DirectDecideMcpError,
   type DirectDecideMcpSession,
   type DirectDecideMcpSessionFactory,
   registerDirectDecideTools,
@@ -26,7 +27,7 @@ type RegisteredTool = {
   ) => Promise<CallToolResult>
 }
 
-const registerHarness = (result: CallToolResult) => {
+const registerHarness = (result: CallToolResult, failure?: unknown) => {
   const tools = new Map<string, RegisteredTool>()
   const calls: Array<{
     name: string
@@ -65,7 +66,9 @@ const registerHarness = (result: CallToolResult) => {
           signal: options.signal,
           onProgress: options.onProgress,
         })
-        return Effect.succeed(result)
+        return failure === undefined
+          ? Effect.succeed(result)
+          : Effect.fail(failure)
       },
     },
   } as unknown as Executor<GardenExecutorPlugins>
@@ -214,6 +217,40 @@ describe('direct Decide MCP tools', () => {
       ?.callback({ question: 'Analyze this.' }, toolExtra().extra)
 
     expect(returned).toEqual(providerError)
+  })
+
+  it('returns direct transport errors with safe status metadata', async () => {
+    const { tools } = registerHarness(
+      { content: [] },
+      new DirectDecideMcpError({
+        stage: 'call',
+        message: 'Not enough Decide credits to run this request.',
+        status: 402,
+        mcpCode: -32603,
+      }),
+    )
+
+    const returned = await tools
+      .get('decide_analyze')
+      ?.callback({ question: 'Analyze this.' }, toolExtra().extra)
+
+    expect(returned).toEqual({
+      isError: true,
+      content: [
+        {
+          type: 'text',
+          text: 'Not enough Decide credits to run this request.',
+        },
+      ],
+      structuredContent: {
+        status: 'error',
+        failureStage: 'decide_analysis',
+        error: {
+          message: 'Not enough Decide credits to run this request.',
+        },
+        details: { status: 402, mcpCode: -32603 },
+      },
+    })
   })
 
   it('forwards public MCP progress with the caller progress token', async () => {

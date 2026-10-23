@@ -15,11 +15,16 @@ import {
   type ConnectionRef,
   type Executor,
 } from '@executor-js/sdk/core'
+import { createGardenLogger } from '@garden/observability/logger'
 import { z } from 'zod'
 import type { GardenExecutorPlugins } from './plugins'
 
 const DECIDE_MCP_ENDPOINT = new URL('https://api.trydecide.ai/mcp')
 const MINUTE_MS = 60_000
+const directDecideLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'direct-decide-mcp',
+})
 
 /**
  * Decide documents a four-minute default analysis timeout. The direct client
@@ -33,6 +38,9 @@ export class DirectDecideMcpError extends Data.TaggedError(
   readonly stage: 'credential' | 'connection' | 'connect' | 'call'
   readonly message: string
   readonly status?: number
+  readonly mcpCode?: number
+  readonly transportFailure?: boolean
+  readonly transportKind?: 'timeout' | 'connection' | 'unknown'
 }> {}
 
 export type DirectDecideCallOptions = {
@@ -97,6 +105,13 @@ const directFailure = (
           .trim()
           .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/giu, 'Bearer [REDACTED]')
       : null
+  const mcpCode =
+    typeof record?.code === 'number' && record.code < 0
+      ? record.code
+      : typeof record?.mcpCode === 'number'
+        ? record.mcpCode
+        : undefined
+  const transportKind = mcpCode === -32001 ? 'timeout' : undefined
   return new DirectDecideMcpError({
     stage,
     message:
@@ -105,6 +120,10 @@ const directFailure = (
         ? `Direct Decide MCP ${stage} failed.`
         : `Direct Decide MCP ${stage} returned HTTP ${status}.`),
     ...(status === undefined ? {} : { status }),
+    ...(mcpCode === undefined ? {} : { mcpCode }),
+    ...(transportKind === undefined
+      ? {}
+      : { transportFailure: true, transportKind }),
   })
 }
 
@@ -378,17 +397,89 @@ const generatedFileInput = {
 
 type DirectToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>
 
+export type PublicMcpProgress = {
+  progress: number
+  total?: number
+  message?: string
+}
+
+/**
+ * Writes only Decide's customer-safe progress fields to the Garden log.
+ * Decide's guide says progress messages contain activity updates, not model
+ * reasoning, shell commands, or hidden execution logs.
+ */
+export const logPublicMcpProgress = (progress: PublicMcpProgress) => {
+  directDecideLogger.info('mcp.integration.progress', {
+    progress: progress.progress,
+    ...(progress.total === undefined ? {} : { total: progress.total }),
+    ...(progress.message === undefined
+      ? {}
+      : { progressMessage: progress.message }),
+  })
+}
+
 /** Forwards Decide's customer-safe progress through Garden's MCP request. */
 const progressForwarder = (extra: DirectToolExtra) => {
   const progressToken = extra._meta?.progressToken
   if (progressToken === undefined) return undefined
   return (progress: Progress) => {
+    logPublicMcpProgress(progress)
     void extra
       .sendNotification({
         method: 'notifications/progress',
         params: { progressToken, ...progress },
       })
       .catch(() => undefined)
+  }
+}
+
+/** Maps a direct Decide failure to the stage shown in Garden's chat UI. */
+const directFailureStage = (
+  name: string,
+  cause: unknown,
+): 'authentication' | 'mcp_handoff' | 'decide_analysis' | 'generated_file' => {
+  const stage = errorRecord(cause)?.stage
+  if (stage === 'credential' || stage === 'connection') {
+    return 'authentication'
+  }
+  if (name === 'analyze') return 'decide_analysis'
+  if (name === 'list_generated_files' || name === 'read_generated_file') {
+    return 'generated_file'
+  }
+  return 'mcp_handoff'
+}
+
+/** Returns only safe direct Decide error metadata to the MCP caller. */
+const directFailureResult = (name: string, cause: unknown): CallToolResult => {
+  const record = errorRecord(cause)
+  const message =
+    typeof record?.message === 'string' && record.message.trim()
+      ? record.message.trim()
+      : 'Direct Decide MCP call failed.'
+  const status = typeof record?.status === 'number' ? record.status : undefined
+  const mcpCode =
+    typeof record?.mcpCode === 'number' ? record.mcpCode : undefined
+  const transportFailure = record?.transportFailure === true ? true : undefined
+  const transportKind =
+    record?.transportKind === 'timeout' ||
+    record?.transportKind === 'connection' ||
+    record?.transportKind === 'unknown'
+      ? record.transportKind
+      : undefined
+  return {
+    isError: true,
+    content: [{ type: 'text', text: message }],
+    structuredContent: {
+      status: 'error',
+      failureStage: directFailureStage(name, cause),
+      error: { message },
+      details: {
+        ...(status === undefined ? {} : { status }),
+        ...(mcpCode === undefined ? {} : { mcpCode }),
+        ...(transportFailure === undefined ? {} : { transportFailure }),
+        ...(transportKind === undefined ? {} : { transportKind }),
+      },
+    },
   }
 }
 
@@ -413,7 +504,9 @@ const invokeDirectDecide = (
           onProgress: progressForwarder(extra),
         },
       )
-    }),
+    }).pipe(
+      Effect.catch((cause) => Effect.succeed(directFailureResult(name, cause))),
+    ),
   ) as Promise<CallToolResult>
 
 /**

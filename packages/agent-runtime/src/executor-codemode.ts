@@ -46,6 +46,7 @@ export type ExecutorToolFailure = {
   code?: string
   status?: number
   mcpCode?: number
+  transportFailure?: boolean
   transportKind?: 'timeout' | 'dns' | 'tls' | 'http' | 'connection' | 'unknown'
   transportMessage?: string
   retryable?: boolean
@@ -212,6 +213,31 @@ function failureStage(input: {
   return 'unknown'
 }
 
+/** Accepts only failure stages that Garden can safely expose to the UI. */
+function explicitFailureStage(
+  value: unknown,
+): ExecutorFailureStage | undefined {
+  const stages: readonly ExecutorFailureStage[] = [
+    'configuration',
+    'discovery',
+    'authentication',
+    'file_read',
+    'data_handoff',
+    'transport',
+    'mcp_handoff',
+    'decide_analysis',
+    'transport_timeout',
+    'result_parsing',
+    'generated_file',
+    'session',
+    'unknown',
+  ]
+  return typeof value === 'string' &&
+    stages.includes(value as ExecutorFailureStage)
+    ? (value as ExecutorFailureStage)
+    : undefined
+}
+
 /**
  * Reads a failed MCP envelope without changing the envelope returned to the
  * model. Executor reports domain failures in the success channel with
@@ -228,27 +254,39 @@ export function extractExecutorToolFailure(input: {
   const refs = extractExecutorToolRefsFromInput(input.toolInput)
   const outputRecord = recordValue(input.output)
   const structured = recordValue(outputRecord?.structuredContent)
+  const thrownError = recordValue(input.error)
+  const thrownCause = recordValue(thrownError?.cause)
+  const thrownData = recordValue(thrownError?.data)
   const executionResult =
     recordValue(structured?.result) ?? recordValue(outputRecord?.result)
   const nestedError =
     recordValue(executionResult?.error) ??
     recordValue(structured?.error) ??
-    recordValue(outputRecord?.error)
+    recordValue(outputRecord?.error) ??
+    recordValue(thrownData?.error) ??
+    recordValue(thrownCause?.error)
   const details =
     recordValue(nestedError?.details) ??
     recordValue(structured?.details) ??
-    recordValue(outputRecord?.details)
+    recordValue(outputRecord?.details) ??
+    recordValue(thrownData?.details) ??
+    recordValue(thrownCause?.details) ??
+    recordValue(thrownError?.details)
   const failedEnvelope =
     outputRecord?.isError === true ||
     outputRecord?.ok === false ||
     structured?.status === 'error' ||
     executionResult?.ok === false
   const message =
-    errorMessage(input.error) ??
     (failedEnvelope ? errorMessage(structured?.error) : null) ??
     (failedEnvelope ? errorMessage(outputRecord?.error) : null) ??
     (failedEnvelope ? errorMessage(nestedError) : null) ??
-    (failedEnvelope ? textFromContent(outputRecord?.content) : null)
+    (failedEnvelope ? textFromContent(outputRecord?.content) : null) ??
+    errorMessage(thrownData?.error) ??
+    errorMessage(thrownCause?.error) ??
+    errorMessage(thrownData) ??
+    errorMessage(thrownCause) ??
+    errorMessage(input.error)
   if (!message) return null
 
   const code =
@@ -265,10 +303,31 @@ export function extractExecutorToolFailure(input: {
       ? details.status
       : typeof nestedError?.status === 'number'
         ? nestedError.status
-        : undefined
+        : typeof thrownData?.status === 'number'
+          ? thrownData.status
+          : typeof thrownCause?.status === 'number'
+            ? thrownCause.status
+            : typeof thrownError?.status === 'number'
+              ? thrownError.status
+              : undefined
   const mcpCode =
-    typeof details?.mcpCode === 'number' ? details.mcpCode : undefined
-  const transportFailure = details?.transportFailure === true
+    typeof details?.mcpCode === 'number'
+      ? details.mcpCode
+      : typeof nestedError?.mcpCode === 'number'
+        ? nestedError.mcpCode
+        : typeof thrownData?.mcpCode === 'number'
+          ? thrownData.mcpCode
+          : typeof thrownCause?.mcpCode === 'number'
+            ? thrownCause.mcpCode
+            : typeof thrownError?.mcpCode === 'number'
+              ? thrownError.mcpCode
+              : undefined
+  const transportFailure =
+    details?.transportFailure === true ||
+    nestedError?.transportFailure === true ||
+    thrownData?.transportFailure === true ||
+    thrownCause?.transportFailure === true ||
+    thrownError?.transportFailure === true
   const transportKind =
     details?.transportKind === 'timeout' ||
     details?.transportKind === 'dns' ||
@@ -277,37 +336,76 @@ export function extractExecutorToolFailure(input: {
     details?.transportKind === 'connection' ||
     details?.transportKind === 'unknown'
       ? details.transportKind
-      : undefined
-  const transportMessage = errorMessage(details?.transportMessage) ?? undefined
+      : thrownData?.transportKind === 'timeout' ||
+          thrownData?.transportKind === 'dns' ||
+          thrownData?.transportKind === 'tls' ||
+          thrownData?.transportKind === 'http' ||
+          thrownData?.transportKind === 'connection' ||
+          thrownData?.transportKind === 'unknown'
+        ? thrownData.transportKind
+        : thrownCause?.transportKind === 'timeout' ||
+            thrownCause?.transportKind === 'dns' ||
+            thrownCause?.transportKind === 'tls' ||
+            thrownCause?.transportKind === 'http' ||
+            thrownCause?.transportKind === 'connection' ||
+            thrownCause?.transportKind === 'unknown'
+          ? thrownCause.transportKind
+          : undefined
+  const transportMessage =
+    errorMessage(details?.transportMessage) ??
+    errorMessage(thrownData?.transportMessage) ??
+    errorMessage(thrownCause?.transportMessage) ??
+    undefined
   const effectiveMessage =
     transportFailure && transportMessage ? transportMessage : message
+  const resolvedMcpCode =
+    mcpCode ??
+    (typeof thrownData?.code === 'number' && thrownData.code < 0
+      ? thrownData.code
+      : typeof thrownCause?.code === 'number' && thrownCause.code < 0
+        ? thrownCause.code
+        : typeof thrownError?.code === 'number' && thrownError.code < 0
+          ? thrownError.code
+          : undefined)
+  const resolvedTransportKind =
+    transportKind ?? (resolvedMcpCode === -32001 ? 'timeout' : undefined)
+  const resolvedTransportFailure =
+    transportFailure || resolvedTransportKind !== undefined
   const kind = failureKind({
     message: effectiveMessage,
     code,
     status,
-    transportKind,
-    transportFailure,
+    transportKind: resolvedTransportKind,
+    transportFailure: resolvedTransportFailure,
   })
+  const stage =
+    resolvedTransportKind === 'timeout'
+      ? 'transport_timeout'
+      : resolvedTransportFailure || resolvedTransportKind
+        ? 'transport'
+        : (explicitFailureStage(structured?.failureStage) ??
+          explicitFailureStage(outputRecord?.failureStage) ??
+          failureStage({
+            message: effectiveMessage,
+            refs,
+            toolName: input.toolName,
+          }))
 
   return {
     ...(code ? { code } : {}),
     message: effectiveMessage,
     ...(kind ? { kind } : {}),
     ...(status === undefined ? {} : { status }),
-    ...(mcpCode === undefined ? {} : { mcpCode }),
-    ...(transportKind ? { transportKind } : {}),
+    ...(resolvedMcpCode === undefined ? {} : { mcpCode: resolvedMcpCode }),
+    ...(resolvedTransportFailure ? { transportFailure: true } : {}),
+    ...(resolvedTransportKind ? { transportKind: resolvedTransportKind } : {}),
     ...(transportMessage ? { transportMessage } : {}),
     retryable: false,
-    userAction: failureAction({ code, status, transportKind }),
-    stage:
-      transportKind === 'timeout'
-        ? 'transport_timeout'
-        : transportFailure || transportKind
-          ? 'transport'
-          : failureStage({
-              message: effectiveMessage,
-              refs,
-              toolName: input.toolName,
-            }),
+    userAction: failureAction({
+      code,
+      status,
+      transportKind: resolvedTransportKind,
+    }),
+    stage,
   }
 }

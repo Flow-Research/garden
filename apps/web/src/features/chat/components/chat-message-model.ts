@@ -117,6 +117,18 @@ export function getToolActivityItem(args: {
       ? record.errorText
       : undefined
   const mcpFailure = extractMcpFailure(output)
+  const mcpFailureDetail = mcpFailure
+    ? [
+        mcpFailure.stage ? `error — ${mcpFailure.stage}` : 'error',
+        mcpFailure.message,
+        mcpFailure.status === undefined ? null : `status ${mcpFailure.status}`,
+        mcpFailure.mcpCode === undefined
+          ? null
+          : `MCP code ${mcpFailure.mcpCode}`,
+      ]
+        .filter(Boolean)
+        .join(' — ')
+    : null
   const label = args.debugMode
     ? toolName
     : productToolLabel(toolName, input, output)
@@ -132,7 +144,7 @@ export function getToolActivityItem(args: {
         .filter(Boolean)
         .join('\n\n')
     : errorText || mcpFailure
-      ? `error — ${mcpFailure?.stage ? `${mcpFailure.stage}: ` : ''}${errorText ?? mcpFailure?.message}`
+      ? (mcpFailureDetail ?? `error — ${errorText}`)
       : toolStateLabel(state)
 
   return {
@@ -161,6 +173,14 @@ export function extractMcpFailure(output: unknown) {
     record.structuredContent && typeof record.structuredContent === 'object'
       ? (record.structuredContent as Record<string, unknown>)
       : null
+  const structuredError =
+    structured?.error && typeof structured.error === 'object'
+      ? (structured.error as Record<string, unknown>)
+      : null
+  const recordError =
+    record.error && typeof record.error === 'object'
+      ? (record.error as Record<string, unknown>)
+      : null
   const executionResult =
     structured?.result && typeof structured.result === 'object'
       ? (structured.result as Record<string, unknown>)
@@ -171,6 +191,16 @@ export function extractMcpFailure(output: unknown) {
     executionResult?.error && typeof executionResult.error === 'object'
       ? (executionResult.error as Record<string, unknown>)
       : null
+  const details =
+    (structuredError?.details && typeof structuredError.details === 'object'
+      ? (structuredError.details as Record<string, unknown>)
+      : null) ??
+    (recordError?.details && typeof recordError.details === 'object'
+      ? (recordError.details as Record<string, unknown>)
+      : null) ??
+    (structured?.details && typeof structured.details === 'object'
+      ? (structured.details as Record<string, unknown>)
+      : null)
   const failed =
     record.isError === true ||
     record.ok === false ||
@@ -201,12 +231,33 @@ export function extractMcpFailure(output: unknown) {
     errorText(nestedError) ||
     contentText ||
     'The integration returned an error.'
+  const status =
+    typeof details?.status === 'number'
+      ? details.status
+      : typeof structuredError?.status === 'number'
+        ? structuredError.status
+        : typeof recordError?.status === 'number'
+          ? recordError.status
+          : undefined
+  const mcpCode =
+    typeof details?.mcpCode === 'number'
+      ? details.mcpCode
+      : typeof structuredError?.mcpCode === 'number'
+        ? structuredError.mcpCode
+        : typeof recordError?.mcpCode === 'number'
+          ? recordError.mcpCode
+          : undefined
+  const stage =
+    typeof structured?.failureStage === 'string'
+      ? structured.failureStage
+      : typeof record.failureStage === 'string'
+        ? record.failureStage
+        : undefined
   return {
     message,
-    stage:
-      typeof structured?.failureStage === 'string'
-        ? structured.failureStage
-        : undefined,
+    stage,
+    ...(status === undefined ? {} : { status }),
+    ...(mcpCode === undefined ? {} : { mcpCode }),
   }
 }
 

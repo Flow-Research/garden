@@ -26,6 +26,7 @@ import {
   extractExecutorToolFailure,
   extractExecutorToolRefsFromInput,
   mentionsUnparsedExecutorTools,
+  type ExecutorToolFailure,
 } from './executor-codemode'
 import * as schema from '@garden/db/schema'
 import { captureGardenAnalyticsEvent } from '@garden/observability/analytics/client'
@@ -153,22 +154,49 @@ function asMcpToolArguments(
 }
 
 /**
- * Preserves the error behavior of Agents SDK-generated MCP tools. The SDK
- * turns an `isError` result into an Error before returning it to the model.
+ * Converts a thrown Executor/MCP error into the same safe result shape used by
+ * provider-reported MCP errors. Returning this envelope preserves the failure
+ * stage and cause for the chat UI while keeping stacks and request data private.
  */
-function mcpToolFailureMessage(output: unknown) {
-  if (!output || typeof output !== 'object') return null
-  const record = output as Record<string, unknown>
-  if (record.isError !== true) return null
-
-  const firstContent = Array.isArray(record.content)
-    ? record.content[0]
-    : undefined
-  if (!firstContent || typeof firstContent !== 'object') {
-    return 'Tool call failed'
+function executorToolFailureResult(
+  error: Error,
+  failure: ExecutorToolFailure | null,
+) {
+  const message = failure?.message || error.message || 'MCP tool call failed.'
+  const details = {
+    ...(failure?.kind === undefined ? {} : { kind: failure.kind }),
+    ...(failure?.status === undefined ? {} : { status: failure.status }),
+    ...(failure?.mcpCode === undefined ? {} : { mcpCode: failure.mcpCode }),
+    ...(failure?.transportFailure === undefined
+      ? {}
+      : { transportFailure: failure.transportFailure }),
+    ...(failure?.transportKind === undefined
+      ? {}
+      : { transportKind: failure.transportKind }),
+    ...(failure?.transportMessage === undefined
+      ? {}
+      : { transportMessage: failure.transportMessage }),
+    ...(failure?.retryable === undefined
+      ? {}
+      : { retryable: failure.retryable }),
+    ...(failure?.userAction === undefined
+      ? {}
+      : { userAction: failure.userAction }),
   }
-  const text = (firstContent as Record<string, unknown>).text
-  return typeof text === 'string' && text ? text : 'Tool call failed'
+  return {
+    isError: true,
+    content: [{ type: 'text' as const, text: message }],
+    structuredContent: {
+      status: 'error' as const,
+      failureStage: failure?.stage ?? 'mcp_handoff',
+      ...(failure?.code === undefined ? {} : { errorCode: failure.code }),
+      error: {
+        message,
+        ...(failure?.code === undefined ? {} : { code: failure.code }),
+      },
+      ...(Object.keys(details).length === 0 ? {} : { details }),
+    },
+  }
 }
 
 export const EXECUTOR_TOOL_KEY_PREFIX = buildMcpAiToolKey(
@@ -454,8 +482,6 @@ export class RuntimeMcpController {
                             resetTimeoutOnProgress: true,
                           },
                         )
-                        const failureMessage = mcpToolFailureMessage(output)
-                        if (failureMessage) throw new Error(failureMessage)
                         return output
                       },
                       catch: (cause) =>
@@ -479,7 +505,7 @@ export class RuntimeMcpController {
                         ...callFields,
                         ...errorFields(result.error),
                       })
-                      throw result.error
+                      return executorToolFailureResult(result.error, failure)
                     }
 
                     const failure = extractExecutorToolFailure({

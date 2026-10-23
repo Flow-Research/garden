@@ -31,6 +31,25 @@ describe('chat integration tool presentation', () => {
     })
   })
 
+  it('preserves status and MCP code for the error detail', () => {
+    expect(
+      extractMcpFailure({
+        isError: true,
+        structuredContent: {
+          status: 'error',
+          failureStage: 'mcp_handoff',
+          error: { message: 'MCP tool call failed for whoami.' },
+          details: { status: 502, mcpCode: -32603 },
+        },
+      }),
+    ).toEqual({
+      message: 'MCP tool call failed for whoami.',
+      stage: 'mcp_handoff',
+      status: 502,
+      mcpCode: -32603,
+    })
+  })
+
   it('preserves multiple text blocks, including generated report links', () => {
     expect(
       extractMcpFailure({

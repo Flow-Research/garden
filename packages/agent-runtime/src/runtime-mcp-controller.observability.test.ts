@@ -128,7 +128,7 @@ describe('executor tool lifecycle logging', () => {
     expect(JSON.stringify(info.mock.calls)).not.toContain('data: csv')
   })
 
-  it('logs the Decide failure stage and rethrows the exact error', async () => {
+  it('logs the Decide failure stage and returns a structured error envelope', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const failure = new Error('Not enough Decide credits to run this request.')
     const { controller, rawToolKey } = makeLoggingController(async () => {
@@ -155,7 +155,15 @@ describe('executor tool lifecycle logging', () => {
         },
         { toolCallId: 'call-failure' },
       ),
-    ).rejects.toBe(failure)
+    ).resolves.toMatchObject({
+      isError: true,
+      content: [{ type: 'text', text: failure.message }],
+      structuredContent: {
+        status: 'error',
+        failureStage: 'decide_analysis',
+        error: { message: failure.message },
+      },
+    })
     expect(error.mock.calls.map(([record]) => record)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

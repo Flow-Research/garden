@@ -11,7 +11,12 @@ import {
 } from '@executor-js/plugin-openapi/providers/microsoft'
 import { encryptedSecretsPlugin } from '@executor-js/plugin-encrypted-secrets'
 import { toolkitsPlugin } from '@executor-js/plugin-toolkits/server'
-import { directDecideMcpPlugin } from './direct-decide-mcp'
+import {
+  directDecideMcpPlugin,
+  logPublicMcpProgress,
+} from './direct-decide-mcp'
+
+export { logPublicMcpProgress }
 
 export const makeExecutorPlugins = (
   secretKey: string,
