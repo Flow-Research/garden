@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useId } from 'react'
 import { Result } from 'better-result'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -425,6 +425,7 @@ function EditAutomationForm({
   agents: Agent[]
   onDone: () => void
 }) {
+  const fieldId = useId()
   const updateAutomation = useUpdateAutomation()
   const [title, setTitle] = useState(automation.title)
   const [description, setDescription] = useState(automation.description ?? '')
@@ -460,10 +461,14 @@ function EditAutomationForm({
   return (
     <div className="space-y-4 pt-2">
       <div>
-        <label className="text-xs font-medium text-muted-foreground">
+        <label
+          htmlFor={`${fieldId}-name`}
+          className="text-xs font-medium text-muted-foreground"
+        >
           Name
         </label>
         <input
+          id={`${fieldId}-name`}
           type="text"
           value={title}
           onChange={(event) => setTitle(event.target.value)}
@@ -472,10 +477,14 @@ function EditAutomationForm({
         />
       </div>
       <div>
-        <label className="text-xs font-medium text-muted-foreground">
+        <label
+          htmlFor={`${fieldId}-prompt`}
+          className="text-xs font-medium text-muted-foreground"
+        >
           Prompt
         </label>
         <textarea
+          id={`${fieldId}-prompt`}
           value={description}
           onChange={(event) => setDescription(event.target.value)}
           rows={6}
@@ -551,6 +560,7 @@ function AddTriggerDialog({
   onOpenChange: (open: boolean) => void
   automationId: string
 }) {
+  const fieldId = useId()
   const createTrigger = useCreateAutomationTrigger()
   const [config, setConfig] = useState<TriggerConfig>(getDefaultTriggerConfig)
   const [label, setLabel] = useState('')
@@ -588,10 +598,14 @@ function AddTriggerDialog({
         <div className="space-y-4 pt-2">
           <TriggerConfigSection config={config} onChange={setConfig} />
           <div>
-            <label className="text-xs font-medium text-muted-foreground">
+            <label
+              htmlFor={`${fieldId}-label`}
+              className="text-xs font-medium text-muted-foreground"
+            >
               Label (optional)
             </label>
             <input
+              id={`${fieldId}-label`}
               type="text"
               value={label}
               onChange={(event) => setLabel(event.target.value)}

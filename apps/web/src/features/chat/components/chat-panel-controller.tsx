@@ -992,7 +992,12 @@ function ShellFrame({
               <EnvironmentDebugDrawer sessionId={sessionId} />
             ) : null}
             {onClose ? (
-              <Button variant="ghost" size="icon-sm" onClick={onClose}>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Close chat"
+                onClick={onClose}
+              >
                 <X className="size-4" />
               </Button>
             ) : null}

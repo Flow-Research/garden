@@ -178,6 +178,7 @@ export function ListView({
                             <Button
                               variant="ghost"
                               size="icon-sm"
+                              aria-label={`Add ${cfg.label} issue`}
                               className="text-icon-default"
                               onClick={() => onCreateIssue({ status })}
                             />

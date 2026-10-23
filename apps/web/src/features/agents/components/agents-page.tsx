@@ -103,6 +103,7 @@ export default function AgentsPage({
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
             placeholder="Filter agents"
+            aria-label="Filter agents"
           />
         </InputGroup>
       </header>

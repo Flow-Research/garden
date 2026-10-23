@@ -153,7 +153,10 @@ describe('AutomationDetailPage deletes', () => {
   it('keeps edits when the automation refetches while the dialog is open', async () => {
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: /edit/i }))
-    const name = await screen.findByDisplayValue('Nightly triage')
+    // Found by its label: the fields used to have no accessible name.
+    const name = await screen.findByLabelText('Name')
+    expect(name).toHaveValue('Nightly triage')
+    expect(screen.getByLabelText('Prompt')).toBeInTheDocument()
     fireEvent.change(name, { target: { value: 'Nightly triage v2' } })
 
     act(() => {

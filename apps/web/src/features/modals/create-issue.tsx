@@ -331,6 +331,8 @@ export function CreateIssueModal({
                   <TooltipTrigger
                     render={
                       <button
+                        type="button"
+                        aria-label={isExpanded ? 'Collapse' : 'Expand'}
                         onClick={() => setIsExpanded(!isExpanded)}
                         className="rounded-sm p-1.5 opacity-70 hover:opacity-100 hover:bg-accent/60 transition-all cursor-pointer"
                       >
