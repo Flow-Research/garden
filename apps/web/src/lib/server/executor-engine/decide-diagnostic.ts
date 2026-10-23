@@ -10,13 +10,14 @@ export type DecideDiagnosticStage =
   | 'catalog'
   | 'connection'
   | 'tool_lookup'
+  | 'direct_mcp'
   | 'mcp_handoff'
   | 'authentication'
   | 'tool_call'
   | 'result_parsing'
 
 export type DecideDiagnosticCheck = {
-  name: 'catalog' | 'connection' | 'tool' | 'call'
+  name: 'catalog' | 'connection' | 'tool' | 'direct_call' | 'call'
   outcome: 'passed' | 'failed'
   stage: DecideDiagnosticStage
   message: string
@@ -251,12 +252,13 @@ export function diagnoseDecideWithExecutor(
     const decideConnections = connections.filter(
       (connection) => String(connection.integration) === 'decide',
     )
+    const decideConnection = decideConnections[0]
     const catalogCheck = passedCheck(
       'catalog',
       'catalog',
       `Executor catalog loaded with ${catalogResult.success.tools.length} tools.`,
     )
-    if (decideConnections.length === 0) {
+    if (decideConnection === undefined) {
       return report({
         diagnosticId,
         startedAt,
@@ -314,6 +316,27 @@ export function diagnoseDecideWithExecutor(
       })
     }
 
+    const directResult = yield* Effect.result(
+      executor.directDecideMcp.whoami({
+        owner: decideConnection.owner,
+        name: decideConnection.name,
+        integration: decideConnection.integration,
+      }),
+    )
+    const directCheck = Result.isFailure(directResult)
+      ? failedCheck(
+          'direct_call',
+          failureFromError(directResult.failure, 'direct_mcp') ?? {
+            stage: 'direct_mcp',
+            message: 'The direct Decide MCP call failed.',
+          },
+        )
+      : passedCheck(
+          'direct_call',
+          'direct_mcp',
+          'Direct Decide whoami returned successfully.',
+        )
+
     const callResult = yield* Effect.result(
       executor.execute(
         addressResult.success,
@@ -333,6 +356,7 @@ export function diagnoseDecideWithExecutor(
           catalogCheck,
           connectionCheck,
           passedCheck('tool', 'tool_lookup', 'Found the Decide whoami tool.'),
+          directCheck,
           failedCheck('call', failure),
         ],
       })
@@ -347,6 +371,7 @@ export function diagnoseDecideWithExecutor(
           catalogCheck,
           connectionCheck,
           passedCheck('tool', 'tool_lookup', 'Found the Decide whoami tool.'),
+          directCheck,
           failedCheck('call', {
             ...returnedFailure,
             stage: 'tool_call',
@@ -362,6 +387,7 @@ export function diagnoseDecideWithExecutor(
         catalogCheck,
         connectionCheck,
         passedCheck('tool', 'tool_lookup', 'Found the Decide whoami tool.'),
+        directCheck,
         passedCheck(
           'call',
           'tool_call',
