@@ -230,6 +230,7 @@ export function BrainFilesPage() {
     mutationFn: (file: File) => uploadBrainFile(file, setUploadProgress),
     onMutate: () => setUploadProgress(0),
     onSuccess: async (uploadedFile) => {
+      setSelectedFile(null)
       await queryClient.cancelQueries({
         queryKey: brainFileKeys.list(wsId),
         exact: true,
@@ -284,9 +285,10 @@ export function BrainFilesPage() {
         })
       }
     },
+    // The review dialog closes only on success. Closing it on failure too
+    // hid the error everywhere but the main view's banner.
     onSettled: () => {
       setUploadProgress(0)
-      setSelectedFile(null)
     },
   })
 
@@ -319,6 +321,9 @@ export function BrainFilesPage() {
         })
       }
     },
+    // A toast, so the failure shows in every view, not only the main one.
+    onError: (error) =>
+      toast.error(errorMessage(error, 'The file could not be retried.')),
   })
 
   const deleteFileMutation = useMutation({
@@ -450,7 +455,13 @@ export function BrainFilesPage() {
   ) => {
     if (file === undefined || uploadMutation.isPending) return
     uploadFolderIdRef.current = folderId
+    uploadMutation.reset()
     setSelectedFile(file)
+  }
+
+  const closeUploadDialog = () => {
+    setSelectedFile(null)
+    uploadMutation.reset()
   }
 
   /**
@@ -498,12 +509,6 @@ export function BrainFilesPage() {
       : uploadMutation.error
         ? 'The file could not be uploaded.'
         : null
-  const retryError =
-    retryMutation.error instanceof Error
-      ? retryMutation.error.message
-      : retryMutation.error
-        ? 'The file could not be retried.'
-        : null
 
   if (activeFolderId !== null) {
     return (
@@ -544,7 +549,8 @@ export function BrainFilesPage() {
           uploading={uploadMutation.isPending}
           progress={uploadProgress}
           onConfirm={confirmUpload}
-          onClose={() => setSelectedFile(null)}
+          error={uploadError}
+          onClose={closeUploadDialog}
         />
 
         {pendingDeleteFolder ? (
@@ -606,7 +612,8 @@ export function BrainFilesPage() {
           uploading={uploadMutation.isPending}
           progress={uploadProgress}
           onConfirm={confirmUpload}
-          onClose={() => setSelectedFile(null)}
+          error={uploadError}
+          onClose={closeUploadDialog}
         />
 
         {pendingDeleteFile ? (
@@ -737,17 +744,6 @@ export function BrainFilesPage() {
                 {filesQuery.isFetching ? 'Trying…' : 'Try again'}
               </Button>
             </div>
-          ) : null}
-
-          {uploadError ? (
-            <p role="alert" className="mt-3 text-sm text-text-danger-secondary">
-              {uploadError}
-            </p>
-          ) : null}
-          {retryError ? (
-            <p role="alert" className="mt-3 text-sm text-text-danger-secondary">
-              {retryError}
-            </p>
           ) : null}
         </section>
 
@@ -905,7 +901,8 @@ export function BrainFilesPage() {
         uploading={uploadMutation.isPending}
         progress={uploadProgress}
         onConfirm={confirmUpload}
-        onClose={() => setSelectedFile(null)}
+        error={uploadError}
+        onClose={closeUploadDialog}
       />
 
       {folderDialog ? (
