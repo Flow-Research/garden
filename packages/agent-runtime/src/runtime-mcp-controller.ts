@@ -1,4 +1,4 @@
-import type { MCPServerFilter } from 'agents/mcp/client'
+import type { MCPClientManager, MCPServerFilter } from 'agents/mcp/client'
 import { jsonSchema, tool, type ModelMessage, type ToolSet } from 'ai'
 import { Effect } from 'effect'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
@@ -139,6 +139,38 @@ function executorResultFields(output: unknown) {
   }
 }
 
+/**
+ * Converts an AI SDK tool input into the object shape required by an MCP tool.
+ * Executor tools use object schemas, but this boundary still guards the
+ * transport from receiving an invalid primitive or array.
+ */
+function asMcpToolArguments(
+  input: unknown,
+): NonNullable<McpCallToolParams['arguments']> {
+  return input && typeof input === 'object' && !Array.isArray(input)
+    ? (input as NonNullable<McpCallToolParams['arguments']>)
+    : {}
+}
+
+/**
+ * Preserves the error behavior of Agents SDK-generated MCP tools. The SDK
+ * turns an `isError` result into an Error before returning it to the model.
+ */
+function mcpToolFailureMessage(output: unknown) {
+  if (!output || typeof output !== 'object') return null
+  const record = output as Record<string, unknown>
+  if (record.isError !== true) return null
+
+  const firstContent = Array.isArray(record.content)
+    ? record.content[0]
+    : undefined
+  if (!firstContent || typeof firstContent !== 'object') {
+    return 'Tool call failed'
+  }
+  const text = (firstContent as Record<string, unknown>).text
+  return typeof text === 'string' && text ? text : 'Tool call failed'
+}
+
 export const EXECUTOR_TOOL_KEY_PREFIX = buildMcpAiToolKey(
   EXECUTOR_MCP_SERVER_ID,
   '',
@@ -214,6 +246,10 @@ export type McpToolRecord = {
   serverId: string
 }
 
+type McpCallToolParams = Parameters<MCPClientManager['callTool']>[0]
+type McpCallToolResultSchema = Parameters<MCPClientManager['callTool']>[1]
+type McpCallToolOptions = Parameters<MCPClientManager['callTool']>[2]
+
 type AiJsonSchemaInput = Parameters<typeof jsonSchema>[0]
 
 function asAiJsonSchema(schemaValue: unknown): AiJsonSchemaInput {
@@ -226,6 +262,11 @@ function asAiJsonSchema(schemaValue: unknown): AiJsonSchemaInput {
 
 export type McpClientFacade = {
   getAITools: (filter?: MCPServerFilter) => ToolSet
+  callTool: (
+    params: McpCallToolParams,
+    resultSchema?: McpCallToolResultSchema,
+    options?: McpCallToolOptions,
+  ) => Promise<unknown>
   listTools: (filter?: MCPServerFilter) => McpToolRecord[]
   listServers: () => Array<{
     id: string
@@ -398,7 +439,25 @@ export class RuntimeMcpController {
                     })
 
                     const result = await Result.tryPromise({
-                      try: async () => await baseExecute(...args),
+                      try: async () => {
+                        const output = await this.host.mcp.callTool(
+                          {
+                            arguments: asMcpToolArguments(args[0]),
+                            name: tool.name,
+                            serverId: tool.serverId,
+                          },
+                          undefined,
+                          {
+                            timeout: mcpRuntimeConfig.executorToolCallTimeoutMs,
+                            maxTotalTimeout:
+                              mcpRuntimeConfig.executorToolCallTimeoutMs,
+                            resetTimeoutOnProgress: true,
+                          },
+                        )
+                        const failureMessage = mcpToolFailureMessage(output)
+                        if (failureMessage) throw new Error(failureMessage)
+                        return output
+                      },
                       catch: (cause) =>
                         cause instanceof Error
                           ? cause

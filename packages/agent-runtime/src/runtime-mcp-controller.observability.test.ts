@@ -2,11 +2,15 @@ import type { ToolSet } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { buildMcpAiToolKey } from '@garden/connectors/capabilities'
+import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { RuntimeMcpController, type McpHost } from './runtime-mcp-controller'
 
 const EXECUTOR_TOOL = 'execute'
 
-function makeLoggingController(execute: () => Promise<unknown>) {
+function makeLoggingController(
+  execute: () => Promise<unknown>,
+  callTool: McpHost['mcp']['callTool'] = async () => await execute(),
+) {
   const rawToolKey = buildMcpAiToolKey('executor', EXECUTOR_TOOL)
   const rawTools = {
     [rawToolKey]: {
@@ -32,6 +36,7 @@ function makeLoggingController(execute: () => Promise<unknown>) {
       ],
       listServers: () => [{ id: 'executor' }],
       discoverIfConnected: async () => ({ success: true }),
+      callTool,
     },
     removeMcpServer: async () => {},
   } as unknown as McpHost
@@ -55,7 +60,10 @@ describe('executor tool lifecycle logging', () => {
       ],
       structuredContent: { session_id: 'session-123' },
     }))
-    const { controller, rawToolKey } = makeLoggingController(execute)
+    const callTool = vi.fn<McpHost['mcp']['callTool']>(
+      async () => await execute(),
+    )
+    const { controller, rawToolKey } = makeLoggingController(execute, callTool)
     const wrapped = controller.wrapGetAITools(() => ({
       [rawToolKey]: {
         name: EXECUTOR_TOOL,
@@ -86,6 +94,21 @@ describe('executor tool lifecycle logging', () => {
       structuredContent: { session_id: 'session-123' },
     })
     expect(execute).toHaveBeenCalledOnce()
+    expect(callTool).toHaveBeenCalledWith(
+      {
+        arguments: {
+          code: 'await tools.decide.user.decide.analyze({ data: csv })',
+        },
+        name: EXECUTOR_TOOL,
+        serverId: 'executor',
+      },
+      undefined,
+      {
+        timeout: mcpRuntimeConfig.executorToolCallTimeoutMs,
+        maxTotalTimeout: mcpRuntimeConfig.executorToolCallTimeoutMs,
+        resetTimeoutOnProgress: true,
+      },
+    )
     expect(info.mock.calls.map(([record]) => record)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
