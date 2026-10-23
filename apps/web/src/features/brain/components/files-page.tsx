@@ -22,6 +22,7 @@ import {
   AlertDialogTitle,
 } from '@garden/ui/components/ui/alert-dialog'
 import { Button } from '@garden/ui/components/ui/button'
+import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -814,7 +815,16 @@ export function BrainFilesPage() {
             </div>
           </div>
 
-          {foldersQuery.isError ? (
+          {foldersQuery.isPending ? (
+            <div
+              className="flex flex-wrap gap-4"
+              aria-busy="true"
+              aria-label="Loading folders"
+            >
+              <Skeleton className="h-[4.5rem] w-full rounded-xl sm:w-[26rem]" />
+              <Skeleton className="h-[4.5rem] w-full rounded-xl sm:w-[26rem]" />
+            </div>
+          ) : foldersQuery.isError ? (
             <div className="flex items-center gap-3 text-sm">
               <p role="alert" className="text-text-danger-secondary">
                 Could not load folders.

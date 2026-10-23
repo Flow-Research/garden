@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Result } from 'better-result'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/app-state/auth'
@@ -12,6 +12,8 @@ import {
 import { useChatRuntimeConnection } from '../chat-runtime-provider'
 import { ConnectedChatPanelInteraction } from './chat-panel-controller'
 import { chatThreadKeys } from '../queries'
+import { LoadError } from '@garden/ui/components/common/load-error'
+import { cn } from '@garden/ui/lib/utils'
 
 type ChatHeaderAttachment = {
   href?: string | null
@@ -150,8 +152,17 @@ export function AgentInteractionScreen({
     })
   }, [activeSession?.id, activeSession?.title, activeIsWarmDraft])
 
+  // A failed claim used to leave the screen blank; it now says so, and
+  // Try again clears the flag, which runs the claim again.
+  const [claimFailed, setClaimFailed] = useState(false)
+
   useEffect(() => {
-    if (sessionId || activeSession || sessionsQuery.status !== 'success') {
+    if (
+      sessionId ||
+      activeSession ||
+      claimFailed ||
+      sessionsQuery.status !== 'success'
+    ) {
       return
     }
 
@@ -159,19 +170,52 @@ export function AgentInteractionScreen({
     void Result.tryPromise(() => claimWarmSession()).then((result) => {
       if (Result.isError(result)) {
         console.warn('[chat.screen] failed to claim warm chat', result.error)
+        setClaimFailed(true)
       }
     })
-  }, [activeSession, claimWarmSession, sessionId, sessionsQuery.status])
+  }, [
+    activeSession,
+    claimFailed,
+    claimWarmSession,
+    sessionId,
+    sessionsQuery.status,
+  ])
 
-  if (!user?.id || !workspace?.id) {
-    if (sessionId && sessionsQuery.isPending) {
-      return null
-    }
+  if (!user?.id || !workspace?.id) return null
 
-    return null
+  if (!activeSession) {
+    const retryList = () => void sessionsQuery.refetch()
+    return (
+      <div
+        className={cn(
+          'flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground',
+          className,
+        )}
+      >
+        {sessionsQuery.isError && sessions.length === 0 ? (
+          <LoadError
+            message="Could not load your chats."
+            onRetry={retryList}
+            retrying={sessionsQuery.isFetching}
+          />
+        ) : sessionId &&
+          sessionsQuery.isSuccess &&
+          !sessionsQuery.isFetching ? (
+          <LoadError
+            message="This chat could not be found. It may have been deleted."
+            onRetry={retryList}
+          />
+        ) : claimFailed ? (
+          <LoadError
+            message="Could not start a new chat."
+            onRetry={() => setClaimFailed(false)}
+          />
+        ) : (
+          <p aria-busy="true">Loading chat…</p>
+        )}
+      </div>
+    )
   }
-
-  if (!activeSession) return null
 
   return (
     <ChatPanelInteraction

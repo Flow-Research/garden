@@ -16,6 +16,8 @@ import { ActorAvatar } from '../../common/actor-avatar'
 import type { MemberWithUser, MemberRole, Invitation } from '@garden/core/types'
 import { Input } from '@garden/ui/components/ui/input'
 import { Button } from '@garden/ui/components/ui/button'
+import { Skeleton } from '@garden/ui/components/ui/skeleton'
+import { LoadError } from '@garden/ui/components/common/load-error'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import {
@@ -238,12 +240,15 @@ function InvitationRow({
   )
 }
 
+const NO_MEMBERS: MemberWithUser[] = []
+
 export function MembersTab() {
   const user = useAuthStore((s) => s.user)
   const workspace = useWorkspaceStore((s) => s.workspace)
   const qc = useQueryClient()
   const wsId = useWorkspaceId()
-  const { data: members = [] } = useQuery(memberListOptions(wsId))
+  const membersQuery = useQuery(memberListOptions(wsId))
+  const members = membersQuery.data ?? NO_MEMBERS
   const { data: invitations = [] } = useQuery(invitationListOptions(wsId))
 
   const [inviteEmail, setInviteEmail] = useState('')
@@ -382,9 +387,11 @@ export function MembersTab() {
         <header>
           <h2 className="text-base font-semibold">
             Members{' '}
-            <span className="font-normal text-muted-foreground">
-              ({members.length})
-            </span>
+            {membersQuery.data ? (
+              <span className="font-normal text-muted-foreground">
+                ({members.length})
+              </span>
+            ) : null}
           </h2>
           <p className="text-sm text-muted-foreground">
             People with access to this workspace.
@@ -426,7 +433,22 @@ export function MembersTab() {
           </div>
         )}
 
-        {members.length > 0 ? (
+        {membersQuery.isPending ? (
+          <div
+            className="space-y-2 border-t pt-3"
+            aria-busy="true"
+            aria-label="Loading members"
+          >
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : membersQuery.isError && members.length === 0 ? (
+          <LoadError
+            message="Could not load members."
+            onRetry={() => void membersQuery.refetch()}
+            retrying={membersQuery.isFetching}
+          />
+        ) : members.length > 0 ? (
           <ul className="divide-y border-t">
             {members.map((m) => (
               <MemberRow

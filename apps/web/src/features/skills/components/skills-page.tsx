@@ -64,6 +64,7 @@ import {
 } from '@garden/ui/components/ui/input-group'
 import { Kbd, KbdGroup } from '@garden/ui/components/ui/kbd'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
+import { LoadError } from '@garden/ui/components/common/load-error'
 import { Button } from '@garden/ui/components/ui/button'
 import { Input } from '@garden/ui/components/ui/input'
 import { Label } from '@garden/ui/components/ui/label'
@@ -85,6 +86,7 @@ import { FileViewer } from './file-viewer'
 // ---------------------------------------------------------------------------
 
 const SKILL_MD = 'SKILL.md'
+const NO_SKILLS: Skill[] = []
 const SKILLS_SH_HOST = 'skills.sh'
 
 function isSkillsShImportTarget(value: string) {
@@ -147,9 +149,9 @@ export default function SkillsPage({
 } = {}) {
   const wsId = useWorkspaceId()
   const qc = useQueryClient()
-  const { data: skills = [], isLoading: isSkillsLoading } = useQuery(
-    skillListOptions(wsId),
-  )
+  const skillsQuery = useQuery(skillListOptions(wsId))
+  const skills = skillsQuery.data ?? NO_SKILLS
+  const isSkillsLoading = skillsQuery.isLoading
   const [selectedSkillId, setSelectedSkillId] = useState<string>('')
 
   const browseSearch = useSkillsBrowseStore((s) => s.browseSearch)
@@ -284,6 +286,21 @@ export default function SkillsPage({
     return (
       <>
         <SkillsPageSkeleton />
+        {addDialog}
+      </>
+    )
+  }
+
+  if (skillsQuery.isError && skills.length === 0) {
+    return (
+      <>
+        <div className="flex flex-1 min-h-0 items-center justify-center p-8">
+          <LoadError
+            message="Could not load skills."
+            onRetry={() => void skillsQuery.refetch()}
+            retrying={skillsQuery.isFetching}
+          />
+        </div>
         {addDialog}
       </>
     )

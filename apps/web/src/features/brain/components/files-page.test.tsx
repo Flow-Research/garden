@@ -773,6 +773,14 @@ describe('BrainFilesPage', () => {
     expect(previewButton).toHaveClass('cursor-pointer')
   })
 
+  it('shows folders loading instead of an empty folder list', async () => {
+    mockListBrainFolders.mockReturnValue(new Promise(() => {}))
+    renderFilesPage([])
+
+    expect(await screen.findByLabelText('Loading folders')).toBeInTheDocument()
+    expect(screen.queryByText('No folders yet')).toBeNull()
+  })
+
   it('switches the Folders section between grid and list view', async () => {
     const user = userEvent.setup()
 

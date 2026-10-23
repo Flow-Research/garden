@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { InboxItem } from '@garden/core/types'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
+import { api } from '@/lib/api'
 import { inboxKeys } from '@/lib/inbox/queries'
 import { InboxPage } from './inbox-page'
 
@@ -113,5 +114,34 @@ describe('InboxPage reply box', () => {
 
     expect(screen.getByText('Issue B', { selector: 'h1, h2, h3' })).toBeTruthy()
     expect(replyBox().textContent).toBe('')
+  })
+})
+
+describe('InboxPage list states', () => {
+  it('says the inbox failed to load, and loads it on retry', async () => {
+    vi.mocked(api.listInbox)
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce([THREAD_A])
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <WorkspaceIdProvider wsId={WS_ID}>
+          <InboxPage />
+        </WorkspaceIdProvider>
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByText('Loading inbox...')).toBeInTheDocument()
+    expect(
+      await screen.findByText('Could not load your inbox.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('No messages')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+    expect((await screen.findAllByText('Issue A')).length).toBeGreaterThan(0)
   })
 })

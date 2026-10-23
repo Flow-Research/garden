@@ -23,6 +23,7 @@ import {
   InputGroupInput,
 } from '@garden/ui/components/ui/input-group'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
+import { LoadError } from '@garden/ui/components/common/load-error'
 import { cn } from '@garden/ui/lib/utils'
 import { AGENT_STATUS_COLOR } from './agent-status'
 
@@ -51,6 +52,18 @@ export default function AgentsPage({
 
   if (agentsQuery.isPending) {
     return <AgentsPageSkeleton />
+  }
+
+  if (agentsQuery.isError && agents.length === 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-8">
+        <LoadError
+          message="Could not load agents."
+          onRetry={() => void agentsQuery.refetch()}
+          retrying={agentsQuery.isFetching}
+        />
+      </div>
+    )
   }
 
   if (agents.length === 0) {

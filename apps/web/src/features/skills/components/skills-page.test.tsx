@@ -106,3 +106,25 @@ describe('SkillsPage editor', () => {
     expect(data).not.toHaveProperty('files')
   })
 })
+
+describe('SkillsPage list states', () => {
+  it('says the skills failed to load instead of showing an empty library', async () => {
+    vi.clearAllMocks()
+    mocks.listSkills
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce([skill({})])
+    mocks.getSkill.mockResolvedValue(skill({}))
+    renderPage()
+
+    expect(
+      await screen.findByText('Could not load skills.'),
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+    expect(
+      (await screen.findAllByText('Release notes')).length,
+    ).toBeGreaterThan(0)
+    expect(screen.queryByText('Could not load skills.')).toBeNull()
+  })
+})

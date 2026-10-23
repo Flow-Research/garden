@@ -47,6 +47,7 @@ import {
   SelectValue,
 } from '@garden/ui/components/ui/select'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
+import { LoadError } from '@garden/ui/components/common/load-error'
 import { ActorAvatar as ActorAvatarBase } from '@garden/ui/components/common/actor-avatar'
 import { cn } from '@garden/ui/lib/utils'
 import {
@@ -1063,7 +1064,8 @@ export function AutomationsPage({
   onOpenAutomation?: (automation: AutomationOpenTarget) => void
 }) {
   const wsId = useWorkspaceId()
-  const { data, isLoading } = useQuery(automationListOptions(wsId))
+  const automationsQuery = useQuery(automationListOptions(wsId))
+  const { data, isLoading } = automationsQuery
   const automations = data?.automations ?? []
   const [createOpen, setCreateOpen] = useState(false)
   const [selectedTemplate, setSelectedTemplate] =
@@ -1103,6 +1105,13 @@ export function AutomationsPage({
               <Skeleton key={index} className="h-11 w-full" />
             ))}
           </div>
+        ) : automationsQuery.isError && !data ? (
+          <LoadError
+            className="justify-center px-5 py-16"
+            message="Could not load automations."
+            onRetry={() => void automationsQuery.refetch()}
+            retrying={automationsQuery.isFetching}
+          />
         ) : automations.length === 0 ? (
           <div className="flex flex-col items-center px-5 py-16">
             <Zap className="mb-3 size-10 text-muted-foreground opacity-30" />

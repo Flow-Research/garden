@@ -22,6 +22,7 @@ import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigati
 import { toast } from 'sonner'
 import { ArrowLeft, MailOpen, X } from 'lucide-react'
 import type { InboxItem } from '@garden/core/types'
+import { LoadError } from '@garden/ui/components/common/load-error'
 import { Button } from '@garden/ui/components/ui/button'
 
 import { useIsMobile } from '@garden/ui/hooks/use-mobile'
@@ -36,6 +37,8 @@ import { GmailDetail, GmailErrorState, GmailListItem } from './gmail-views'
 import { InboxNotificationDetailV2 } from './inbox-details/inbox-notification-detail'
 
 /** Subscribes to the viewport media query without leaking a render-time listener. */
+const NO_INBOX_ITEMS: InboxItem[] = []
+
 function useIsDesktop(): boolean {
   const query = '(min-width: 1024px)'
   return useSyncExternalStore(
@@ -349,7 +352,8 @@ export function InboxPage() {
   )
 
   const wsId = useWorkspaceId()
-  const { data: queryItems = [] } = useQuery(inboxListOptions(wsId))
+  const inboxQuery = useQuery(inboxListOptions(wsId))
+  const queryItems = inboxQuery.data ?? NO_INBOX_ITEMS
   const gmailQuery = useQuery(gmailListOptions(wsId, gmailView))
   const allThreads = useMemo(() => groupInboxItems(queryItems), [queryItems])
 
@@ -599,6 +603,17 @@ export function InboxPage() {
   const listBody =
     gmailView !== null ? (
       gmailListBody
+    ) : inboxQuery.isPending ? (
+      <div className="flex items-center justify-center px-6 py-16 text-sm text-muted-foreground">
+        Loading inbox...
+      </div>
+    ) : inboxQuery.isError && allThreads.length === 0 ? (
+      <LoadError
+        className="justify-center px-6 py-16"
+        message="Could not load your inbox."
+        onRetry={() => void inboxQuery.refetch()}
+        retrying={inboxQuery.isFetching}
+      />
     ) : items.length === 0 ? (
       allThreads.length === 0 ? (
         <InboxEmptyState
