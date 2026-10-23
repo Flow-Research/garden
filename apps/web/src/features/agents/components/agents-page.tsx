@@ -11,7 +11,6 @@ import {
 } from '@garden/ui/components/ui/avatar'
 import {
   Empty,
-  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -81,11 +80,6 @@ export default function AgentsPage({
               run skills, and report back.
             </EmptyDescription>
           </EmptyHeader>
-          <EmptyContent>
-            <p className="text-xs text-muted-foreground">
-              Create flow lands next.
-            </p>
-          </EmptyContent>
         </Empty>
       </div>
     )

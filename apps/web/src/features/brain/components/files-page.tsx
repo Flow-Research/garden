@@ -670,7 +670,7 @@ export function BrainFilesPage() {
                     Add your documents or drag &amp; drop it here
                   </span>
                   <span className="text-sm text-text-secondary">
-                    Sample docs include: docx, xlx, pdf, etc.
+                    Sample docs include: docx, xlsx, pdf, etc.
                   </span>
                 </span>
               </DropdownMenuTrigger>

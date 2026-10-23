@@ -203,10 +203,7 @@ function PlaceholderPane({ title }: { title: string }) {
   return (
     <div className="flex max-w-md flex-col gap-2 rounded-md border border-dashed px-4 py-6 text-center">
       <p className="text-sm font-medium text-foreground">{title}</p>
-      <p className="text-xs text-muted-foreground">
-        Coming soon. This surface will land alongside the rest of the agent
-        operations toolkit.
-      </p>
+      <p className="text-xs text-muted-foreground">Not available yet.</p>
     </div>
   )
 }
