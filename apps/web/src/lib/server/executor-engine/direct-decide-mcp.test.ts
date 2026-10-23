@@ -4,7 +4,7 @@ import type {
   Progress,
 } from '@modelcontextprotocol/sdk/types.js'
 import { Effect } from 'effect'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Executor } from '@executor-js/sdk/core'
 import {
   DECIDE_ANALYSIS_TIMEOUT_MS,
@@ -138,6 +138,8 @@ const makeSessionFactory = (
 }
 
 describe('direct Decide MCP tools', () => {
+  afterEach(() => vi.restoreAllMocks())
+
   it('hands the complete CSV to Decide analyze', async () => {
     const csv = 'region,revenue\nNorth,120\nSouth,95\n'
     const { calls, tools } = registerHarness({
@@ -201,6 +203,7 @@ describe('direct Decide MCP tools', () => {
   })
 
   it('preserves Decide tool errors exactly', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
     const providerError = {
       isError: true,
       content: [
@@ -217,6 +220,87 @@ describe('direct Decide MCP tools', () => {
       ?.callback({ question: 'Analyze this.' }, toolExtra().extra)
 
     expect(returned).toEqual(providerError)
+    expect(errorLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'decide.tool_call.failed',
+        toolName: 'analyze',
+        failureStage: 'provider_result',
+        failureMessage: 'Not enough Decide credits to run this request.',
+      }),
+    )
+  })
+
+  it('returns and logs the exact typed direct-call failure', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { tools } = registerHarness(
+      { content: [] },
+      new DirectDecideMcpError({
+        stage: 'call',
+        status: 401,
+        message: 'Unauthorized Decide credential.',
+      }),
+    )
+
+    const returned = await tools
+      .get('decide_analyze')
+      ?.callback({ question: 'Analyze this.' }, toolExtra().extra)
+
+    expect(returned).toEqual({
+      isError: true,
+      content: [{ type: 'text', text: 'Unauthorized Decide credential.' }],
+      structuredContent: {
+        status: 'error',
+        failureStage: 'decide_analysis',
+        error: { message: 'Unauthorized Decide credential.' },
+        details: { status: 401 },
+      },
+    })
+    expect(errorLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'decide.tool_call.failed',
+        toolName: 'analyze',
+        failureStage: 'call',
+        failureMessage: 'Unauthorized Decide credential.',
+        status: 401,
+      }),
+    )
+  })
+
+  it('logs successful direct calls without request contents', async () => {
+    const infoLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const { tools } = registerHarness({
+      content: [{ type: 'text', text: 'Sensitive generated result.' }],
+      structuredContent: { session_id: 'sess_123' },
+    })
+
+    await tools
+      .get('decide_analyze')
+      ?.callback(
+        { question: 'Sensitive question.', data: 'secret,csv\n1,2' },
+        toolExtra().extra,
+      )
+
+    expect(infoLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'decide.tool_call.started',
+        toolName: 'analyze',
+      }),
+    )
+    expect(infoLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'decide.tool_call.completed',
+        toolName: 'analyze',
+        contentBlockCount: 1,
+        hasStructuredContent: true,
+      }),
+    )
+    expect(JSON.stringify(infoLog.mock.calls)).not.toContain('secret,csv')
+    expect(JSON.stringify(infoLog.mock.calls)).not.toContain(
+      'Sensitive question.',
+    )
+    expect(JSON.stringify(infoLog.mock.calls)).not.toContain(
+      'Sensitive generated result.',
+    )
   })
 
   it('returns direct transport errors with safe status metadata', async () => {
