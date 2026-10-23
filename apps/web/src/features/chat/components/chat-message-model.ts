@@ -323,6 +323,12 @@ export function productToolLabel(
   const executorRefs =
     typeof record.code === 'string' ? extractExecutorToolRefs(record.code) : []
   const executorRef = executorRefs[0]
+  if (toolName.includes('executor') && toolName.endsWith('_decide_analyze')) {
+    return 'Running analysis with Decide'
+  }
+  if (toolName.includes('executor') && toolName.includes('_decide_')) {
+    return 'Running Decide'
+  }
   if (toolName.includes('executor') && executorRef) {
     const integrationLabel =
       getConnectorByExecutorSlug(executorRef.executorSlug)?.label ??

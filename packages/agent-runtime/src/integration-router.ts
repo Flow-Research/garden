@@ -327,19 +327,26 @@ export function renderIntegrationRouteDirective(
     return `${route.name} matches this request but is not connected. Ask the user to connect it.`
   }
 
-  const lines = [
-    `Use ${route.name} through Executor for this turn.`,
-    `Executor integration slug: ${route.slug}.`,
-    `Reason: ${decision.reason}`,
-  ]
+  const lines =
+    route.slug === 'decide'
+      ? [
+          'Use the direct Decide tools for this turn.',
+          'Do not use Executor execute for Decide.',
+          `Reason: ${decision.reason}`,
+        ]
+      : [
+          `Use ${route.name} through Executor for this turn.`,
+          `Executor integration slug: ${route.slug}.`,
+          `Reason: ${decision.reason}`,
+        ]
   if (decision.skill) lines.push(...decision.skill.instructions)
   if (
     route.slug === 'decide' &&
     decision.skill?.id === 'analyze-structured-data'
   ) {
     lines.push(
-      'Call tool_executor_execute for Decide. Do not use the sandbox execute tool for integration work; it has no integrations namespace.',
-      'Inside tool_executor_execute, use only the `tools` object with the exact tool path from the catalog. `require`, Node built-ins, and an `integrations` object are not available in Executor code mode.',
+      'Call decide_analyze for the initial analysis and follow-up questions.',
+      'Use decide_list_generated_files and decide_read_generated_file when the user requests a generated report.',
       'For an uploaded file, call Garden readDocument with the document handle from the document context before calling Decide.',
       'Pass the complete text returned by readDocument as Decide analyze data. Do not pass a summary, sample, or truncated content.',
       'For a follow-up analysis, reuse the session_id returned by Decide and omit data unless the user provides a different file.',
@@ -347,11 +354,15 @@ export function renderIntegrationRouteDirective(
       'If Decide reports an incomplete analysis or the call times out, show that status and the exact error. Do not retry automatically. Ask for a narrower request or a smaller file.',
     )
   }
-  if (route.allowedToolNames.length > 0) {
+  if (route.slug !== 'decide' && route.allowedToolNames.length > 0) {
     lines.push(`Allowed tools: ${route.allowedToolNames.join(', ')}.`)
   }
+  if (route.slug !== 'decide') {
+    lines.push(
+      'Load the Executor execute guide if needed, then search and call only this integration.',
+    )
+  }
   lines.push(
-    'Load the Executor execute guide if needed, then search and call only this integration.',
     `If ${route.name} fails, report the exact error. Do not silently replace it with local analysis.`,
   )
   return lines.join('\n')

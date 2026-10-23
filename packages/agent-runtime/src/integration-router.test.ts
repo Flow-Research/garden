@@ -105,11 +105,8 @@ describe('integration router', () => {
     expect(decision.skill?.id).toBe('analyze-structured-data')
     const directive = renderIntegrationRouteDirective(decision)
     expect(directive).toContain('call Garden readDocument')
-    expect(directive).toContain('Call tool_executor_execute for Decide')
-    expect(directive).toContain('no integrations namespace')
-    expect(directive).toContain(
-      '`require`, Node built-ins, and an `integrations` object are not available',
-    )
+    expect(directive).toContain('Call decide_analyze')
+    expect(directive).toContain('Do not use Executor execute for Decide')
   })
 
   it('selects structured-data analysis for a CSV document with no analysis prose', () => {
@@ -249,8 +246,10 @@ describe('integration router', () => {
     })
     const directive = renderIntegrationRouteDirective(decision)
 
-    expect(directive).toContain('Use Decide through Executor')
-    expect(directive).toContain('Allowed tools: analyze_dataset')
+    expect(directive).toContain('Use the direct Decide tools')
+    expect(directive).toContain('Do not use Executor execute for Decide')
+    expect(directive).toContain('Call decide_analyze')
+    expect(directive).not.toContain('Allowed tools: analyze_dataset')
     expect(directive).toContain(
       'Pass the complete text returned by readDocument',
     )

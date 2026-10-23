@@ -8,6 +8,11 @@ describe('chat integration tool presentation', () => {
         code: 'await tools.decide.user.decide.analyze({ data })',
       }),
     ).toBe('Running analysis with Decide')
+    expect(
+      productToolLabel('tool_executor_decide_analyze', {
+        question: 'Analyze this file.',
+      }),
+    ).toBe('Running analysis with Decide')
   })
 
   it('shows the exact MCP error and failure stage', () => {

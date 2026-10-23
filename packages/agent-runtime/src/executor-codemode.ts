@@ -205,6 +205,7 @@ function failureStage(input: {
   ) {
     return 'decide_analysis'
   }
+  if (lowerToolName.includes('decide_analy')) return 'decide_analysis'
   if (input.refs.length > 0 || lowerToolName.includes('executor')) {
     return 'mcp_handoff'
   }
