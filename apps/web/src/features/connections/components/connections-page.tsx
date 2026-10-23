@@ -243,9 +243,21 @@ export function ConnectionsPage({
   }, [registryQuery.data?.pages])
   const registryTotal = registryQuery.data?.pages[0]?.total ?? 0
 
+  // Observed again after each page (an observer reports only visibility
+  // changes, so a short page left the sentinel visible and loading stopped).
+  // Not while a page is loading, or after one failed: re-observing would
+  // retry in a loop.
   useEffect(() => {
     const target = loadMoreRef.current
-    if (!target || !searching || !registryQuery.hasNextPage) return
+    if (
+      !target ||
+      !searching ||
+      !registryQuery.hasNextPage ||
+      registryQuery.isFetchingNextPage ||
+      registryQuery.isFetchNextPageError
+    ) {
+      return
+    }
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
@@ -256,7 +268,13 @@ export function ConnectionsPage({
     )
     observer.observe(target)
     return () => observer.disconnect()
-  }, [registryQuery.fetchNextPage, registryQuery.hasNextPage, searching])
+  }, [
+    registryQuery.fetchNextPage,
+    registryQuery.hasNextPage,
+    registryQuery.isFetchingNextPage,
+    registryQuery.isFetchNextPageError,
+    searching,
+  ])
   // Open the drawer for `?connector_id=` once per value (it is set by the
   // OAuth callback). Gated on the drawer being closed, this effect reopened
   // it every time the user closed it while the param stayed in the URL, and

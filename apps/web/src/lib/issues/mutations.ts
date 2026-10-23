@@ -95,6 +95,8 @@ export function useLoadMoreDoneIssues() {
   const qc = useQueryClient()
   const wsId = useWorkspaceId()
   const [isLoading, setIsLoading] = useState(false)
+  // A failed page used to throw out of loadMore, which nothing caught.
+  const [failed, setFailed] = useState(false)
 
   const queryKey = issueKeys.list(wsId)
   const cache = qc.getQueryData<ListIssuesResponse>(queryKey)
@@ -107,6 +109,7 @@ export function useLoadMoreDoneIssues() {
   const loadMore = useCallback(async () => {
     if (isLoading || !hasMore) return
     setIsLoading(true)
+    setFailed(false)
     const result = await Result.tryPromise(() =>
       api.listIssues({
         status: 'done',
@@ -116,7 +119,8 @@ export function useLoadMoreDoneIssues() {
     )
     setIsLoading(false)
     if (Result.isError(result)) {
-      throw result.error
+      setFailed(true)
+      return
     }
 
     const res = result.value
@@ -132,7 +136,7 @@ export function useLoadMoreDoneIssues() {
     })
   }, [qc, queryKey, doneLoaded, hasMore, isLoading])
 
-  return { loadMore, hasMore, isLoading, doneTotal }
+  return { loadMore, hasMore, isLoading, failed, doneTotal }
 }
 
 // ---------------------------------------------------------------------------

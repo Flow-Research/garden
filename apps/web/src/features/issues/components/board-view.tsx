@@ -141,6 +141,7 @@ export function BoardView({
     loadMore,
     hasMore,
     isLoading: loadingMore,
+    failed: loadMoreFailed,
     doneTotal: hookDoneTotal,
   } = useLoadMoreDoneIssues()
   const displayDoneTotal = doneTotalOverride ?? hookDoneTotal
@@ -340,6 +341,7 @@ export function BoardView({
                 <InfiniteScrollSentinel
                   onVisible={loadMore}
                   loading={loadingMore}
+                  failed={loadMoreFailed}
                 />
               ) : undefined
             }

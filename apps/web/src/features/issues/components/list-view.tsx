@@ -68,6 +68,7 @@ export function ListView({
     loadMore,
     hasMore,
     isLoading: loadingMore,
+    failed: loadMoreFailed,
     doneTotal: hookDoneTotal,
   } = useLoadMoreDoneIssues()
   const displayDoneTotal = doneTotalOverride ?? hookDoneTotal
@@ -137,6 +138,7 @@ export function ListView({
                   <InfiniteScrollSentinel
                     onVisible={loadMore}
                     loading={loadingMore}
+                    failed={loadMoreFailed}
                   />
                 )}
               </>
