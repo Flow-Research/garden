@@ -19,7 +19,10 @@ function intervalFor(statuses: AutomationRun['status'][]) {
   )
   const query = queryClient.getQueryCache().find({ queryKey: options.queryKey })
   const interval = options.refetchInterval
-  return typeof interval === 'function' && query ? interval(query) : interval
+  return typeof interval === 'function' && query
+    ? // The cache's query is untyped; it is this options' query.
+      interval(query as unknown as Parameters<typeof interval>[0])
+    : interval
 }
 
 describe('automation run history', () => {
