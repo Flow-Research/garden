@@ -190,6 +190,7 @@ function CanonicalDocxArtifact({ documentId }: { documentId: string }) {
 
   return (
     <WorkspaceDocsEditor
+      key={documentId}
       documentId={documentId}
       initialSnapshot={artifactQuery.data}
     />
