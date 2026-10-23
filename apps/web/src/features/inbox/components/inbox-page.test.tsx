@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { InboxItem } from '@garden/core/types'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
@@ -143,5 +143,48 @@ describe('InboxPage list states', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
 
     expect((await screen.findAllByText('Issue A')).length).toBeGreaterThan(0)
+  })
+})
+
+describe('InboxPage Gmail paging', () => {
+  function email(id: string, subject: string) {
+    return {
+      id,
+      threadId: null,
+      subject,
+      snippet: '',
+      from: 'ada@example.com',
+      to: 'grace@example.com',
+      date: null,
+    }
+  }
+
+  it('drops a page that arrives after switching to another view', async () => {
+    let resolveMore: (page: unknown) => void = () => {}
+    vi.mocked(api.listGmail).mockImplementation(
+      async (view: string, cursor?: string | null) => {
+        if (cursor) {
+          return new Promise((resolve) => {
+            resolveMore = resolve
+          }) as never
+        }
+        return view === 'drafts'
+          ? { items: [email('d1', 'Draft one')], nextCursor: 'next' }
+          : { items: [email('s1', 'Sent one')], nextCursor: null }
+      },
+    )
+    renderInbox()
+
+    fireEvent.click(screen.getByRole('button', { name: 'In draft' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Load more' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sent' }))
+    expect(await screen.findByText('Sent one')).toBeInTheDocument()
+
+    await act(async () => {
+      resolveMore({ items: [email('d2', 'Draft two')], nextCursor: null })
+    })
+
+    expect(screen.queryByText('Draft two')).toBeNull()
+    expect(screen.getByText('Sent one')).toBeInTheDocument()
   })
 })

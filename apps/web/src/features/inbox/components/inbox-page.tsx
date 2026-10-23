@@ -1,4 +1,10 @@
-import { useState, useCallback, useMemo, useSyncExternalStore } from 'react'
+import {
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import {
@@ -330,6 +336,9 @@ export function InboxPage() {
   >([])
   const [moreCursor, setMoreCursor] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
+  // Bumped on every view switch. A page that comes back for an older request
+  // is dropped; it used to be appended to whichever view was showing by then.
+  const loadMoreRequestRef = useRef(0)
   const unreadsOnly = mode === 'Unread'
   const gmailView = gmailViewForMode(mode)
 
@@ -424,6 +433,7 @@ export function InboxPage() {
   const hasSelection = selected !== null || selectedGmail !== null
 
   const handleModeChange = (next: InboxFilter) => {
+    loadMoreRequestRef.current += 1
     setMode(next)
     setMoreItems([])
     setMoreCursor(null)
@@ -433,15 +443,18 @@ export function InboxPage() {
 
   const handleLoadMore = () => {
     if (!gmailView || loadingMore || !activeCursor) return
+    const request = ++loadMoreRequestRef.current
     setLoadingMore(true)
     api
       .listGmail(gmailView, activeCursor)
       .then((page) => {
+        if (request !== loadMoreRequestRef.current) return
         setMoreItems((current) => [...current, ...page.items])
         setMoreCursor(page.nextCursor)
         setLoadingMore(false)
       })
       .catch((error: unknown) => {
+        if (request !== loadMoreRequestRef.current) return
         setLoadingMore(false)
         toast.error(
           error instanceof Error ? error.message : 'Could not load more email.',
