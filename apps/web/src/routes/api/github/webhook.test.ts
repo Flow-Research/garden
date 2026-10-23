@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   },
   requireAppRequestContext: vi.fn(),
   resolveGitHubWebhookBinding: vi.fn(),
+  applyGitHubWebhookIssueUpdate: vi.fn(),
   db: vi.fn(async () => ({})),
 }))
 
@@ -27,6 +28,15 @@ vi.mock('@/lib/server/github-webhook-resolve', async (importOriginal) => {
   return {
     ...actual,
     resolveGitHubWebhookBinding: mocks.resolveGitHubWebhookBinding,
+  }
+})
+
+vi.mock('@/lib/server/github-webhook-apply', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/lib/server/github-webhook-apply')>()
+  return {
+    ...actual,
+    applyGitHubWebhookIssueUpdate: mocks.applyGitHubWebhookIssueUpdate,
   }
 })
 
@@ -102,7 +112,15 @@ describe('POST /api/github/webhook', () => {
       db: mocks.db,
     })
     mocks.resolveGitHubWebhookBinding.mockReset()
+    mocks.applyGitHubWebhookIssueUpdate.mockReset()
     mocks.resolveGitHubWebhookBinding.mockResolvedValue(Result.ok(null))
+    mocks.applyGitHubWebhookIssueUpdate.mockResolvedValue(
+      Result.ok({
+        applied: true,
+        skippedReason: null,
+        fields: ['title', 'description'],
+      }),
+    )
   })
 
   it('returns 200 for a verified ping without an issue', async () => {
@@ -110,6 +128,7 @@ describe('POST /api/github/webhook', () => {
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ ok: true, status: 'ignored' })
     expect(mocks.resolveGitHubWebhookBinding).not.toHaveBeenCalled()
+    expect(mocks.applyGitHubWebhookIssueUpdate).not.toHaveBeenCalled()
   })
 
   it('returns unbound when no install/binding matches', async () => {
@@ -117,9 +136,10 @@ describe('POST /api/github/webhook', () => {
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ ok: true, status: 'unbound' })
     expect(mocks.resolveGitHubWebhookBinding).toHaveBeenCalled()
+    expect(mocks.applyGitHubWebhookIssueUpdate).not.toHaveBeenCalled()
   })
 
-  it('returns matched when a binding is found', async () => {
+  it('applies updates when a binding is found', async () => {
     mocks.resolveGitHubWebhookBinding.mockResolvedValue(
       Result.ok({
         workspaceId: 'ws-1',
@@ -132,10 +152,38 @@ describe('POST /api/github/webhook', () => {
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({
       ok: true,
-      status: 'matched',
+      status: 'applied',
+      skipped_reason: null,
+      fields: ['title', 'description'],
       workspace_id: 'ws-1',
       issue_id: 'issue-1',
       binding_id: 'bind-1',
+    })
+    expect(mocks.applyGitHubWebhookIssueUpdate).toHaveBeenCalled()
+  })
+
+  it('reports skipped when apply decides not to write', async () => {
+    mocks.resolveGitHubWebhookBinding.mockResolvedValue(
+      Result.ok({
+        workspaceId: 'ws-1',
+        issueId: 'issue-1',
+        bindingId: 'bind-1',
+        externalId: 'Flow-Research/garden/issues/42',
+      }),
+    )
+    mocks.applyGitHubWebhookIssueUpdate.mockResolvedValue(
+      Result.ok({
+        applied: false,
+        skippedReason: 'bot_sender',
+        fields: [],
+      }),
+    )
+    const response = await postWebhook({ body: issueEditedBody })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      status: 'skipped',
+      skipped_reason: 'bot_sender',
     })
   })
 

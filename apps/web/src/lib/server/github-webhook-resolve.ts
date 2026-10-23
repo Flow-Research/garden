@@ -19,6 +19,8 @@ export type GitHubWebhookIssueTarget = {
   title: string | null
   body: string | null
   state: 'open' | 'closed' | null
+  /** GitHub `sender.type` — Bot deliveries are skipped on apply to avoid echoes. */
+  senderType: string | null
 }
 
 export type GitHubWebhookBindingMatch = {
@@ -108,6 +110,8 @@ export function parseGitHubWebhookIssueTarget(
     )
   }
 
+  const sender = asRecord(root.sender)
+
   return Result.ok({
     installationId: String(installationId),
     owner,
@@ -118,6 +122,7 @@ export function parseGitHubWebhookIssueTarget(
     title: asString(issue.title),
     body: typeof issue.body === 'string' ? issue.body : null,
     state,
+    senderType: asString(sender?.type),
   })
 }
 

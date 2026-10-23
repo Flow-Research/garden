@@ -8,6 +8,7 @@ import {
 } from '@/lib/server/control-plane'
 import { appEnv } from '@/lib/server/env'
 import { verifyGitHubWebhookSignature } from '@/lib/server/github-webhook'
+import { applyGitHubWebhookIssueUpdate } from '@/lib/server/github-webhook-apply'
 import {
   parseGitHubWebhookIssueTarget,
   resolveGitHubWebhookBinding,
@@ -16,10 +17,8 @@ import {
 /**
  * GitHub App webhook ingress (#161).
  *
- * Step 2: verify `X-Hub-Signature-256`.
- * Step 3: map installation → workspace and look up `issue_source_binding`.
- * Unmatched deliveries still return 200 so GitHub does not retry forever.
- * Issue apply (title/body/status) lands in a later step.
+ * Verify signature → resolve install/binding → apply edited/closed/reopened.
+ * Unmatched or skipped deliveries still return 200 so GitHub stops retrying.
  */
 export const Route = createFileRoute('/api/github/webhook')({
   server: {
@@ -70,10 +69,24 @@ export const Route = createFileRoute('/api/github/webhook')({
           return json({ ok: true, status: 'unbound' }, 200)
         }
 
+        const applyResult = await applyGitHubWebhookIssueUpdate({
+          db,
+          binding,
+          target: targetResult.value,
+        })
+        if (applyResult.isErr()) {
+          if (applyResult.error.code === 'issue_not_found') {
+            return json({ ok: true, status: 'unbound' }, 200)
+          }
+          return serviceUnavailable(applyResult.error.message)
+        }
+
         return json(
           {
             ok: true,
-            status: 'matched',
+            status: applyResult.value.applied ? 'applied' : 'skipped',
+            skipped_reason: applyResult.value.skippedReason,
+            fields: applyResult.value.fields,
             workspace_id: binding.workspaceId,
             issue_id: binding.issueId,
             binding_id: binding.bindingId,

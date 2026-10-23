@@ -60,6 +60,7 @@ describe('parseGitHubWebhookIssueTarget', () => {
       title: 'Webhook sync',
       body: 'hello',
       state: 'open',
+      senderType: null,
     })
   })
 
