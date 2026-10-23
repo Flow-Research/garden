@@ -9,6 +9,7 @@ import { Button } from '@garden/ui/components/ui/button'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Checkbox } from '@garden/ui/components/ui/checkbox'
 import { Spinner } from '@garden/ui/components/ui/spinner'
+import { cn } from '@garden/ui/lib/utils'
 import { toast } from 'sonner'
 import { useAuthStore } from '@garden/app-state/auth'
 import { api } from '@/lib/api'
@@ -246,6 +247,8 @@ export function AccountTab() {
               className="group relative flex size-20 items-center justify-center overflow-hidden rounded-full bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
+              aria-label={uploading ? 'Uploading avatar' : 'Change avatar'}
+              aria-busy={uploading || undefined}
             >
               {user?.avatar_url ? (
                 <img
@@ -258,7 +261,14 @@ export function AccountTab() {
                   {initials}
                 </span>
               )}
-              <div className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
+              {/* Shown while uploading and on keyboard focus, not on hover
+                  only, so the upload in progress is visible. */}
+              <div
+                className={cn(
+                  'absolute inset-0 flex items-center justify-center bg-black/45 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100',
+                  uploading ? 'opacity-100' : 'opacity-0',
+                )}
+              >
                 {uploading ? (
                   <Spinner className="size-5 text-white" aria-hidden="true" />
                 ) : (

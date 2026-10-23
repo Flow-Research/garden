@@ -86,6 +86,13 @@ describe('settings forms keep typed input', () => {
     expect(screen.getByPlaceholderText('Your name')).toHaveValue('Ada Lovelace')
   })
 
+  it('names the avatar button', () => {
+    renderWithClient(<AccountTab />)
+    expect(
+      screen.getByRole('button', { name: 'Change avatar' }),
+    ).toBeInTheDocument()
+  })
+
   it('keeps unsaved workspace edits on a store update, and resets on a switch', () => {
     renderWithClient(<WorkspaceTab />)
 
