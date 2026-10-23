@@ -262,6 +262,9 @@ export function ConnectedChatPanelInteraction({
   // controller just threads the results into the timeline/composer.
   const {
     approvalError,
+    canRetryApprovalContinuation,
+    isContinuingApproval,
+    retryApprovalContinuation,
     resolvingToolCallIds,
     resolvedApprovalIds,
     resolvedAgentProposalRequestIds,
@@ -764,6 +767,17 @@ export function ConnectedChatPanelInteraction({
               <Alert variant="destructive">
                 <AlertTitle>Approval error</AlertTitle>
                 <AlertDescription>{approvalError}</AlertDescription>
+                {canRetryApprovalContinuation ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-2 w-fit"
+                    disabled={isContinuingApproval}
+                    onClick={retryApprovalContinuation}
+                  >
+                    Resume agent
+                  </Button>
+                ) : null}
               </Alert>
             </div>
           ) : null}

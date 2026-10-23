@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getToolName, isToolUIPart } from 'ai'
 import {
@@ -17,6 +17,10 @@ import type { ChatRuntime, ChatUiMessage } from './chat-runtime-provider'
  * 950-line component). Per-session state resets at render time via the prev-id
  * pattern, not a useEffect.
  */
+type ContinuationInput = Parameters<
+  ChatRuntime['continueAfterGardenApproval']
+>[0]
+
 export function useToolApprovals({
   sessionId,
   messages,
@@ -32,13 +36,28 @@ export function useToolApprovals({
   const [approvalError, setApprovalError] = useState<string | null>(null)
   const [resolvingToolCallIds, setResolvingToolCallIds] = useState<string[]>([])
   const [resolvedApprovalIds, setResolvedApprovalIds] = useState<string[]>([])
+  // A recorded approval whose agent resume failed, kept so it can be retried.
+  const [failedContinuation, setFailedContinuation] =
+    useState<ContinuationInput | null>(null)
+  const [isContinuing, setIsContinuing] = useState(false)
   const [prevSessionId, setPrevSessionId] = useState(sessionId)
   if (prevSessionId !== sessionId) {
     setPrevSessionId(sessionId)
     setApprovalError(null)
     setResolvingToolCallIds([])
     setResolvedApprovalIds([])
+    setFailedContinuation(null)
+    setIsContinuing(false)
   }
+  // Async results land after their awaits; one that belongs to a session the
+  // user has since left must not write into the new session's state.
+  const currentSessionRef = useRef(sessionId)
+  useEffect(() => {
+    currentSessionRef.current = sessionId
+  }, [sessionId])
+  // Tool calls with a response in flight. State updates only after the
+  // await, so a double click inside the request window used to send two.
+  const inFlightToolCallIdsRef = useRef(new Set<string>())
 
   // B2: server-authoritative resolution for propose_agent approvals. Only fetch
   // when the thread actually has a proposal; refetches on reconnect/focus so a
@@ -66,6 +85,48 @@ export function useToolApprovals({
     return ids
   }, [agentProposalRequestsQuery.data])
 
+  /**
+   * Tells the agent to resume after a recorded approval. `agent.call` rejects
+   * on a dropped socket or timeout; that used to escape as an unhandled
+   * rejection, leaving the card resolved, its spinner on and the chat
+   * "thinking" with no way to retry.
+   */
+  const runContinuation = useCallback(
+    async (input: ContinuationInput) => {
+      const requestSessionId = sessionId
+      setIsContinuing(true)
+      const continuation = await continueAfterGardenApproval(input).then(
+        (result) => result,
+        (cause: unknown) => ({
+          ok: false as const,
+          error: cause instanceof Error ? cause.message : String(cause),
+        }),
+      )
+      // Refresh durable status so the card reflects approved/denied even if
+      // this client's optimistic state is later dropped (B2).
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.agentProposalRequests(requestSessionId),
+      })
+      if (currentSessionRef.current !== requestSessionId) return
+      setIsContinuing(false)
+      if (continuation.ok) {
+        setFailedContinuation(null)
+        return
+      }
+      setFailedContinuation(input)
+      setApprovalError(
+        `The approval was recorded, but the agent could not resume: ${continuation.error}`,
+      )
+    },
+    [continueAfterGardenApproval, queryClient, sessionId],
+  )
+
+  const retryApprovalContinuation = useCallback(() => {
+    if (!failedContinuation || isContinuing) return
+    setApprovalError(null)
+    void runContinuation(failedContinuation)
+  }, [failedContinuation, isContinuing, runContinuation])
+
   const handleResolveToolApproval = useCallback(
     async (group: ApprovalGroup, approved: boolean) => {
       // B3: idempotency — never respond to an approval that's already resolved
@@ -74,6 +135,13 @@ export function useToolApprovals({
       if (group.approvalIds.every((id) => resolvedApprovalIds.includes(id))) {
         return
       }
+      const inFlight = inFlightToolCallIdsRef.current
+      if (group.toolCallIds.some((id) => inFlight.has(id))) return
+      for (const id of group.toolCallIds) inFlight.add(id)
+      const releaseInFlight = () => {
+        for (const id of group.toolCallIds) inFlight.delete(id)
+      }
+      const requestSessionId = sessionId
       setApprovalError(null)
       setResolvingToolCallIds((current) => [
         ...new Set([...current, ...group.toolCallIds]),
@@ -98,7 +166,12 @@ export function useToolApprovals({
         )
 
       if (!result) {
+        releaseInFlight()
         clearResolving()
+        return
+      }
+      if (currentSessionRef.current !== requestSessionId) {
+        releaseInFlight()
         return
       }
 
@@ -110,18 +183,10 @@ export function useToolApprovals({
         // B1: REST recorded the approval, but the durable Think turn only
         // resumes when we tell the agent — otherwise the approved sub-agent
         // never spawns and the chat hangs "thinking".
-        const continuation = await continueAfterGardenApproval({
+        await runContinuation({
           approved,
           permissionRequestId: group.permissionRequestId,
           pendingAgentId: group.pendingAgentId ?? null,
-        })
-        if (!continuation.ok) {
-          setApprovalError(continuation.error)
-        }
-        // Refresh durable status so the card reflects approved/denied even if
-        // this client's optimistic state is later dropped (B2).
-        void queryClient.invalidateQueries({
-          queryKey: chatKeys.agentProposalRequests(sessionId),
         })
       } else {
         // B4: respond per (toolCallId → approvalId), keyed by the toolCallIds the
@@ -144,19 +209,18 @@ export function useToolApprovals({
         }
       }
 
+      releaseInFlight()
       clearResolving()
     },
-    [
-      addToolApprovalResponse,
-      continueAfterGardenApproval,
-      queryClient,
-      resolvedApprovalIds,
-      sessionId,
-    ],
+    [addToolApprovalResponse, resolvedApprovalIds, runContinuation, sessionId],
   )
 
   return {
     approvalError,
+    /** True when a recorded approval's agent resume failed and can be retried. */
+    canRetryApprovalContinuation: failedContinuation !== null,
+    isContinuingApproval: isContinuing,
+    retryApprovalContinuation,
     resolvingToolCallIds,
     resolvedApprovalIds,
     resolvedAgentProposalRequestIds,
