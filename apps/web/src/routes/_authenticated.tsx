@@ -66,7 +66,7 @@ function AuthenticatedRouteError({ error, reset }: ErrorComponentProps) {
           This view hit a local error
         </h1>
         <p className="mt-3 text-sm text-muted-foreground">
-          The app shell stayed alive. Retry the route, or refresh if the session
+          Garden could not load your workspace. Retry, or refresh if the session
           changed underneath it.
         </p>
         {import.meta.env.DEV ? (
