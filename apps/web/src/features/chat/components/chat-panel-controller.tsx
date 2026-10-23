@@ -166,7 +166,13 @@ export function ConnectedChatPanelInteraction({
   const [documentPanelView, setDocumentPanelView] =
     useState<DocumentPanelView | null>(null)
   const [optimisticPendingTurn, setOptimisticPendingTurn] = useState(false)
-  const lastSentTextRef = useRef<string | null>(null)
+  // What Retry resends. It used to keep only the text, so a retried turn
+  // lost its attachments and selected documents.
+  const lastTurnRef = useRef<{
+    text: string
+    files: File[]
+    selectedDocuments: SelectedThreadDocument[]
+  } | null>(null)
   const pendingMessageCountRef = useRef<number | null>(null)
   /**
    * Messages written while a turn was already running (2026-09-16 queue
@@ -324,7 +330,7 @@ export function ConnectedChatPanelInteraction({
      */
     const wasWarm = isPendingFirstTurn(liveSession)
 
-    lastSentTextRef.current = text
+    lastTurnRef.current = { text, files, selectedDocuments }
     pendingMessageCountRef.current = liveMessages.length
     setOptimisticPendingTurn(true)
     const documentFiles = files.filter(shouldPersistAsDocument)
@@ -443,6 +449,23 @@ export function ConnectedChatPanelInteraction({
       void queryClient.invalidateQueries({
         queryKey: chatThreadKeys.documents(sessionId),
       })
+    }
+    // The documents are in the thread now, so a retry refers to them
+    // instead of uploading them a second time.
+    lastTurnRef.current = {
+      text,
+      files: passthroughFiles,
+      selectedDocuments: [
+        ...selectedDocuments,
+        ...uploadResult.value.map(
+          (document): SelectedThreadDocument => ({
+            documentId: document.document_id,
+            filename: document.filename,
+            versionId: null,
+            versionNumber: document.version_number ?? null,
+          }),
+        ),
+      ],
     }
 
     const selectedDocsContext = buildSelectedDocumentsContext(selectedDocuments)
@@ -630,10 +653,10 @@ export function ConnectedChatPanelInteraction({
   )
 
   const handleRetry = useCallback(async () => {
-    const text = lastSentTextRef.current
-    if (!text) return
+    const lastTurn = lastTurnRef.current
+    if (!lastTurn) return
     setIsRetrying(true)
-    await handleSendRef.current({ text, files: [], selectedDocuments: [] })
+    await handleSendRef.current(lastTurn)
     setIsRetrying(false)
   }, [])
 

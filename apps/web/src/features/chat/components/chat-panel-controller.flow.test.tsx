@@ -64,7 +64,13 @@ vi.mock('./composer', async (importActual) => {
     }),
   }
 })
-vi.mock('./chat-timeline', () => ({ ChatTimeline: () => null }))
+vi.mock('./chat-timeline', () => ({
+  ChatTimeline: ({ onRetry }: { onRetry?: () => void }) => (
+    <button type="button" onClick={onRetry}>
+      Retry
+    </button>
+  ),
+}))
 vi.mock('@/features/settings/components/environment-debug-drawer', () => ({
   EnvironmentDebugDrawer: () => null,
 }))
@@ -205,5 +211,42 @@ describe('ConnectedChatPanelInteraction document upload failure', () => {
       lastMessage: '',
       persist: true,
     })
+  })
+})
+
+describe('ConnectedChatPanelInteraction retry', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.sendPayload = {
+      text: 'Summarise this',
+      files: [new File(['%PDF'], 'report.pdf', { type: 'application/pdf' })],
+    }
+    mocks.uploadAgentDocuments.mockResolvedValue(
+      Result.ok([
+        { document_id: 'doc-1', filename: 'report.pdf', version_number: 1 },
+      ]),
+    )
+  })
+
+  it('resends the uploaded document without uploading it again', async () => {
+    const chatRuntime = runtime()
+    renderController(chatRuntime)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() =>
+      expect(chatRuntime.sendMessage).toHaveBeenCalledTimes(1),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() =>
+      expect(chatRuntime.sendMessage).toHaveBeenCalledTimes(2),
+    )
+
+    expect(mocks.uploadAgentDocuments).toHaveBeenCalledTimes(1)
+    const retried = JSON.stringify(
+      vi.mocked(chatRuntime.sendMessage).mock.calls[1],
+    )
+    expect(retried).toContain('Summarise this')
+    expect(retried).toContain('doc-1')
   })
 })
