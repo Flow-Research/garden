@@ -107,6 +107,9 @@ describe('integration router', () => {
     expect(directive).toContain('call Garden readDocument')
     expect(directive).toContain('Call tool_executor_execute for Decide')
     expect(directive).toContain('no integrations namespace')
+    expect(directive).toContain(
+      '`require`, Node built-ins, and an `integrations` object are not available',
+    )
   })
 
   it('selects structured-data analysis for a CSV document with no analysis prose', () => {

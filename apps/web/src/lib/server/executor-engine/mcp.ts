@@ -101,6 +101,7 @@ const buildGardenExecutionStack = (
 ) =>
   Effect.gen(function* () {
     const hostedHttpOptions = { allowLocalNetwork: false }
+    const hostedFetch = makeHostedFetch(hostedHttpOptions)
     const webBaseUrl = session.webOrigin ?? env.BETTER_AUTH_URL
     const executor = yield* createExecutor({
       tenant: Tenant.make(session.organizationId),
@@ -112,9 +113,10 @@ const buildGardenExecutionStack = (
           session.resource.kind === 'toolkit'
             ? session.resource.slug
             : undefined,
+        fetch: hostedFetch,
       }),
       httpClientLayer: makeHostedHttpClientLayer(hostedHttpOptions),
-      fetch: makeHostedFetch(hostedHttpOptions),
+      fetch: hostedFetch,
       onElicitation: 'accept-all',
       ...(webBaseUrl === undefined
         ? {}
