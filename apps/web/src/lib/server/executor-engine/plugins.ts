@@ -12,6 +12,7 @@ import {
 import { encryptedSecretsPlugin } from '@executor-js/plugin-encrypted-secrets'
 import { toolkitsPlugin } from '@executor-js/plugin-toolkits/server'
 import { createGardenLogger } from '@garden/observability/logger'
+import { directDecideMcpPlugin } from './direct-decide-mcp'
 
 type PublicMcpProgress = {
   readonly progress?: number
@@ -55,6 +56,7 @@ export const makeExecutorPlugins = (
       dangerouslyAllowStdioMCP: false,
       onProgress: logPublicMcpProgress,
     }),
+    directDecideMcpPlugin(),
     graphqlPlugin(),
     toolkitsPlugin({ activeToolkitSlug: options.activeToolkitSlug }),
     encryptedSecretsPlugin({ key: secretKey }),
