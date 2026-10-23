@@ -65,12 +65,13 @@ export function useIssueDetailData(issueId: string) {
   const retryIssue = () => void issueQuery.refetch()
   const retryingIssue = issueQuery.isFetching
 
+  // Once per issue opened. Depending on the issue object as well rewrote the
+  // persisted recent-visits list on every update to the issue.
   const recordVisit = useRecentIssuesStore((state) => state.recordVisit)
+  const visitedIssueId = issue?.id
   useEffect(() => {
-    if (issue) {
-      recordVisit(issue.id)
-    }
-  }, [issue?.id, recordVisit, issue])
+    if (visitedIssueId) recordVisit(visitedIssueId)
+  }, [visitedIssueId, recordVisit])
 
   const timelineState = useIssueTimeline(issueId, user?.id)
   const issueReactionState = useIssueReactions(issueId, user?.id)

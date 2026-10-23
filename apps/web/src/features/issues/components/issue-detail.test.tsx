@@ -533,6 +533,26 @@ describe('IssueDetail (shared)', () => {
     ).toBeInTheDocument()
   })
 
+  it('records a visit once per issue, not on every update', async () => {
+    mockApiObj.updateIssue.mockResolvedValue({
+      ...mockIssue,
+      description: 'Changed',
+    })
+    renderIssueDetail()
+
+    const description = await screen.findByDisplayValue(
+      'Add JWT auth to the backend',
+    )
+    expect(mockRecordVisit).toHaveBeenCalledTimes(1)
+    fireEvent.change(description, { target: { value: 'Changed' } })
+    await waitFor(() => expect(mockApiObj.updateIssue).toHaveBeenCalled())
+    await waitFor(() =>
+      expect(screen.getByDisplayValue('Changed')).toBeTruthy(),
+    )
+
+    expect(mockRecordVisit).toHaveBeenCalledTimes(1)
+  })
+
   it('saves an emptied description instead of dropping the field', async () => {
     mockApiObj.updateIssue.mockResolvedValue({ ...mockIssue, description: '' })
     renderIssueDetail()
