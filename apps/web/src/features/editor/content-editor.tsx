@@ -255,9 +255,10 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
       },
     }))
 
-    // Link hover card — disabled when BubbleMenu is active (has selection)
-    const hoverDisabled = !editor?.state.selection.empty
-    const hover = useLinkHover(hoverDisabled)
+    // Link hover card — disabled while the BubbleMenu is up (a selection)
+    const hover = useLinkHover(() =>
+      Boolean(editor && !editor.state.selection.empty),
+    )
 
     const handleContainerMouseDown = (
       event: ReactMouseEvent<HTMLDivElement>,
