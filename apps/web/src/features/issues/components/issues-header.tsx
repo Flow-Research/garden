@@ -160,7 +160,7 @@ export function IssuesHeader({
             className={cn(
               'h-[27px] rounded-sm border-0 px-2.5 text-sm font-normal shadow-none',
               view.scope === option.value
-                ? 'bg-background-brand-default text-text-brand-onBrand'
+                ? 'bg-background-brand-default text-text-brand-on-brand'
                 : 'bg-transparent text-text-default hover:bg-background-main-secondary-hover',
             )}
             key={option.value}
