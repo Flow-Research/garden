@@ -147,7 +147,7 @@ export function IssuesHeader({
   const filterCount = numberOfActiveFilters(view)
 
   return (
-    <header className="flex min-h-12 shrink-0 items-center gap-2 border-b px-4 py-2">
+    <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
       <div
         aria-label="Issue scope"
         className="flex h-[35px] items-center rounded-sm bg-background-main-secondary p-1"

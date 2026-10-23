@@ -1,4 +1,10 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import {
   Outlet,
   useNavigate,
@@ -12,6 +18,8 @@ import { AppSidebar } from '@garden/ui/components/shell/app-sidebar'
 import { AppTopBar } from '@garden/ui/components/shell/app-topbar'
 import { Button } from '@garden/ui/components/ui/button'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
+import { useIsMobile } from '@garden/ui/hooks/use-mobile'
+import { cn } from '@garden/ui/lib/utils'
 import { useAuthStore } from '@garden/app-state/auth'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { deduplicateInboxItems, inboxListOptions } from '@/lib/inbox/queries'
@@ -125,6 +133,20 @@ export function AppShell() {
 
   const { openIssue, openChatSession } = useSurfaceNavigation()
   const [collapsed, setCollapsed] = useState(false)
+  // Below md the sidebar is a drawer over the content: a fixed 240px column
+  // left a phone almost no room for the page.
+  const isMobile = useIsMobile()
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const sidebarCollapsed = isMobile ? false : collapsed
+  const drawerOpen = isMobile && mobileNavOpen
+  useEffect(() => {
+    if (!drawerOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileNavOpen(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [drawerOpen])
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false)
   const [expandedNavIds, setExpandedNavIds] = useState<string[]>(() =>
     pathname.startsWith('/teams/') ? ['teams'] : [],
@@ -225,6 +247,7 @@ export function AppShell() {
 
   const handleSelectNav = useCallback(
     (id: string) => {
+      setMobileNavOpen(false)
       const child = TEAM_NAV_CHILDREN.find((entry) => entry.id === id)
       if (child) {
         void navigate({ to: child.to })
@@ -300,45 +323,69 @@ export function AppShell() {
         <>
           <WorkspaceWarmCaches wsId={activeWorkspaceId} />
           <ChatRuntimeProvider>
-            <AppSidebar
-              header={
-                <WorkspaceMenu
-                  collapsed={collapsed}
-                  onInviteMembers={() => openSettingsDialog('members')}
-                  onOpenSettings={() => openSettingsDialog()}
-                  onOpenMembers={() => openSettingsDialog('members')}
-                />
+            <div
+              className={
+                isMobile
+                  ? cn(
+                      'fixed inset-y-0 left-0 z-40 shadow-lg transition-transform duration-150',
+                      mobileNavOpen ? 'translate-x-0' : '-translate-x-full',
+                    )
+                  : 'contents'
               }
-              items={navItems}
-              activeId={activeNavId}
-              activeChildId={activeTeamChildId}
-              expandedIds={expandedNavIds}
-              onToggleExpand={handleToggleNav}
-              onSelect={handleSelectNav}
-              collapsed={collapsed}
-              userCard={
-                <UserCard
-                  user={{
-                    id: user?.id ?? '',
-                    name: user?.name ?? 'Account',
-                    email: user?.email ?? 'Signed out',
-                    avatar: user?.avatar_url ?? null,
-                  }}
-                  role={currentMemberRole}
-                  workspaces={workspaceListQuery.data ?? []}
-                  currentWorkspaceId={workspace?.id ?? null}
-                  collapsed={collapsed}
-                  onAccount={() => openSettingsDialog()}
-                  onInviteMembers={() => openSettingsDialog('members')}
-                  onLogout={() => void handleLogout()}
-                  onSwitchWorkspace={handleSwitchWorkspace}
-                  onCreateWorkspace={() => setCreateWorkspaceOpen(true)}
-                />
-              }
-            />
+              inert={isMobile && !mobileNavOpen ? true : undefined}
+            >
+              <AppSidebar
+                header={
+                  <WorkspaceMenu
+                    collapsed={sidebarCollapsed}
+                    onInviteMembers={() => openSettingsDialog('members')}
+                    onOpenSettings={() => openSettingsDialog()}
+                    onOpenMembers={() => openSettingsDialog('members')}
+                  />
+                }
+                items={navItems}
+                activeId={activeNavId}
+                activeChildId={activeTeamChildId}
+                expandedIds={expandedNavIds}
+                onToggleExpand={handleToggleNav}
+                onSelect={handleSelectNav}
+                collapsed={sidebarCollapsed}
+                userCard={
+                  <UserCard
+                    user={{
+                      id: user?.id ?? '',
+                      name: user?.name ?? 'Account',
+                      email: user?.email ?? 'Signed out',
+                      avatar: user?.avatar_url ?? null,
+                    }}
+                    role={currentMemberRole}
+                    workspaces={workspaceListQuery.data ?? []}
+                    currentWorkspaceId={workspace?.id ?? null}
+                    collapsed={sidebarCollapsed}
+                    onAccount={() => openSettingsDialog()}
+                    onInviteMembers={() => openSettingsDialog('members')}
+                    onLogout={() => void handleLogout()}
+                    onSwitchWorkspace={handleSwitchWorkspace}
+                    onCreateWorkspace={() => setCreateWorkspaceOpen(true)}
+                  />
+                }
+              />
+            </div>
+            {isMobile && mobileNavOpen ? (
+              <button
+                type="button"
+                aria-label="Close navigation"
+                className="fixed inset-0 z-30 bg-black/40"
+                onClick={() => setMobileNavOpen(false)}
+              />
+            ) : null}
             <div className="flex min-w-0 flex-1 flex-col">
               <AppTopBar
-                onToggleSidebar={() => setCollapsed((value) => !value)}
+                onToggleSidebar={() =>
+                  isMobile
+                    ? setMobileNavOpen((value) => !value)
+                    : setCollapsed((value) => !value)
+                }
                 onPrevious={() => stepTab(-1)}
                 onNext={() => stepTab(1)}
                 canGoPrevious={tabStep.current > 0}

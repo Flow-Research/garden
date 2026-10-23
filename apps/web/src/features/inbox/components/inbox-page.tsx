@@ -36,9 +36,9 @@ import { InboxFooter } from './inbox-footer'
 import { GmailDetail, GmailErrorState, GmailListItem } from './gmail-views'
 import { InboxNotificationDetailV2 } from './inbox-details/inbox-notification-detail'
 
-/** Subscribes to the viewport media query without leaking a render-time listener. */
 const NO_INBOX_ITEMS: InboxItem[] = []
 
+/** Subscribes to the viewport media query without leaking a render-time listener. */
 function useIsDesktop(): boolean {
   const query = '(min-width: 1024px)'
   return useSyncExternalStore(
