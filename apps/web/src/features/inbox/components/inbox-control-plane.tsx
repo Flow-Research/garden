@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { Option } from 'effect'
@@ -11,6 +11,7 @@ import type {
 import { getConnectorById } from '@garden/connectors'
 import { api } from '@/lib/api'
 import { executorOAuthStartUrl } from '@/lib/api/executor'
+import type { ExecutorIntegrationItem } from '@/lib/executor-contract'
 import { connectionListOptions } from '@/lib/workspace/queries'
 import { Button } from '@garden/ui/components/ui/button'
 import {
@@ -152,6 +153,21 @@ function BrainProposalInboxAction({ item }: { item: InboxItem }) {
   )
 }
 
+const AUTHORIZATION_TIMEOUT_MS = 10 * 60_000
+
+function isConnectorConnected(
+  connections: { integrations: readonly ExecutorIntegrationItem[] } | undefined,
+  connectorId: string,
+) {
+  return Boolean(
+    connections?.integrations.some(
+      (integration) =>
+        Option.getOrNull(integration.gardenConnectorId) === connectorId &&
+        integration.status === 'connected',
+    ),
+  )
+}
+
 function ConnectorNeededInboxAction({ item }: { item: InboxItem }) {
   const wsId = useWorkspaceId()
   const navigate = useNavigate()
@@ -160,24 +176,43 @@ function ConnectorNeededInboxAction({ item }: { item: InboxItem }) {
   const connectorLabel = item.details?.connector_label ?? connectorId
   const connector = getConnectorById(connectorId)
   const [awaiting, setAwaiting] = useState(false)
-  const { data: connections } = useQuery({
+  const popupRef = useRef<Window | null>(null)
+  const { data: connections, refetch: refetchConnections } = useQuery({
     ...connectionListOptions(wsId),
     enabled: awaiting,
-    refetchInterval: awaiting ? 1500 : false,
+    refetchInterval: (query) =>
+      awaiting && !isConnectorConnected(query.state.data, connectorId)
+        ? 1500
+        : false,
   })
-  const connected = Boolean(
-    connections?.integrations.some(
-      (integration) =>
-        Option.getOrNull(integration.gardenConnectorId) === connectorId &&
-        integration.status === 'connected',
-    ),
-  )
+  const connected = isConnectorConnected(connections, connectorId)
+
+  // Stop waiting once the popup is closed (or after ten minutes) without an
+  // authorization. `awaiting` used to stay true for good: the Connect button
+  // stayed disabled and the connection list was polled every 1.5 s forever.
+  useEffect(() => {
+    if (!awaiting || connected) return
+    const startedAt = Date.now()
+    const timer = setInterval(() => {
+      const popup = popupRef.current
+      const timedOut = Date.now() - startedAt > AUTHORIZATION_TIMEOUT_MS
+      if (!timedOut && popup && !popup.closed) return
+      clearInterval(timer)
+      // One last look, in case the authorization landed as the popup closed.
+      void refetchConnections().finally(() => setAwaiting(false))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [awaiting, connected, refetchConnections])
 
   const resumeMutation = useMutation({
     mutationFn: async () => {
       if (!item.issue_id) return
       await api.startIssueRun(item.issue_id)
-      await api.archiveInbox(item.id)
+      // The run has started. Failing to clear the inbox item must not report
+      // the resume as failed, or a retry would start a second run.
+      await api.archiveInbox(item.id).catch(() => {
+        toast.info("Run started, but this item couldn't be cleared")
+      })
     },
     onSuccess: invalidate,
     onError: () => toast.error('Failed to resume issue'),
@@ -204,6 +239,7 @@ function ConnectorNeededInboxAction({ item }: { item: InboxItem }) {
       toast.error('Allow popups to connect this connector')
       return
     }
+    popupRef.current = popup
     setAwaiting(true)
   }
 
