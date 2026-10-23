@@ -42,19 +42,20 @@ export function useIssueDetailData(issueId: string) {
   const { getActorName } = useActorName()
   const { uploadWithToast } = useAttachmentUpload()
 
-  const getCachedIssue = (id: string | null | undefined): Issue | undefined => {
+  // The list's copy of an issue, shown while its detail loads. It is
+  // placeholder data, not initial data: as initial data it counted as fresh
+  // under the infinite staleTime, so the detail was never fetched and the
+  // page showed the list's (partial, possibly old) copy indefinitely.
+  const listCopyOf = (id: string | null | undefined): Issue | undefined => {
     if (!id) return undefined
-    return (
-      queryClient.getQueryData<Issue>(issueKeys.detail(wsId, id)) ??
-      queryClient
-        .getQueryData<ListIssuesResponse>(issueKeys.list(wsId))
-        ?.issues.find((candidate) => candidate.id === id)
-    )
+    return queryClient
+      .getQueryData<ListIssuesResponse>(issueKeys.list(wsId))
+      ?.issues.find((candidate) => candidate.id === id)
   }
 
   const issueQuery = useQuery({
     ...issueDetailOptions(wsId, issueId),
-    initialData: () => getCachedIssue(issueId),
+    placeholderData: () => listCopyOf(issueId),
   })
   const issue = issueQuery.data ?? null
   const issueLoading = issueQuery.isLoading
@@ -81,7 +82,7 @@ export function useIssueDetailData(issueId: string) {
   const { data: parentIssue = null } = useQuery({
     ...issueDetailOptions(wsId, parentIssueId ?? ''),
     enabled: !!parentIssueId,
-    initialData: () => getCachedIssue(parentIssueId),
+    placeholderData: () => listCopyOf(parentIssueId),
   })
   const { data: childIssues = [] } = useQuery({
     ...childIssuesOptions(wsId, issueId),

@@ -358,7 +358,7 @@ vi.mock('@garden/app-state/hooks/use-file-upload', () => ({
 
 // Mock sonner
 vi.mock('sonner', () => ({
-  toast: { error: vi.fn(), success: vi.fn() },
+  toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
 }))
 
 // Each picker renders one button per title that picks a fixed issue.
@@ -436,6 +436,7 @@ const mockTimeline: TimelineEntry[] = [
 
 import { toast } from 'sonner'
 import { ApiError } from '@/lib/api/errors'
+import { issueKeys } from '@/lib/issues/queries'
 import { IssueDetail } from './issue-detail'
 
 const notFound = () =>
@@ -468,8 +469,12 @@ async function findCommentBox() {
   return commentBox()
 }
 
-function renderIssueDetail(issueId = 'issue-1') {
+function renderIssueDetail(
+  issueId = 'issue-1',
+  seed?: (queryClient: QueryClient) => void,
+) {
   const queryClient = createTestQueryClient()
+  seed?.(queryClient)
   return render(
     <QueryClientProvider client={queryClient}>
       <WorkspaceIdProvider wsId="ws-1">
@@ -531,6 +536,28 @@ describe('IssueDetail (shared)', () => {
     expect(
       screen.getByDisplayValue('Add JWT auth to the backend'),
     ).toBeInTheDocument()
+  })
+
+  it('fetches the issue even when the list already has a copy of it', async () => {
+    mockApiObj.getIssue.mockResolvedValue({ ...mockIssue, status: 'blocked' })
+    renderIssueDetail('issue-1', (queryClient) => {
+      // As in the app, where queries default to staleTime: Infinity.
+      queryClient.setDefaultOptions({
+        queries: {
+          ...queryClient.getDefaultOptions().queries,
+          staleTime: Infinity,
+        },
+      })
+      queryClient.setQueryData(issueKeys.list('ws-1'), {
+        issues: [{ ...mockIssue, status: 'todo' }],
+        total: 1,
+        doneTotal: 0,
+      })
+    })
+
+    // The list's copy shows first; the detail request still runs and wins.
+    await waitFor(() => expect(mockApiObj.getIssue).toHaveBeenCalled())
+    expect((await screen.findAllByText('Blocked')).length).toBeGreaterThan(0)
   })
 
   it('records a visit once per issue, not on every update', async () => {
