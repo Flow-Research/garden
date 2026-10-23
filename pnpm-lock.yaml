@@ -134,13 +134,13 @@ patchedDependencies:
     hash: 618e4317d9316b35ced28db8a67be3c3969acd07bd5d81c39b8473002f00b89e
     path: patches/@executor-js__config@1.5.40.patch
   '@executor-js/execution@1.5.40':
-    hash: d7c76daa2c57c2208969e418b099ce9a42e472dfe5045fcc6071589c3283476e
+    hash: a56fd913b71899d83771c8cfdae257d22f625fae0a4e0930e419474994b05ee5
     path: patches/@executor-js__execution@1.5.40.patch
   '@executor-js/plugin-graphql@1.5.40':
     hash: 2fa86b24885b897d9a3f1308179ba31e12802b19c97695029e0584ba26c36407
     path: patches/@executor-js__plugin-graphql@1.5.40.patch
   '@executor-js/plugin-mcp@1.5.40':
-    hash: 0fc0da56162025c3ab2e54a6ff90c5f445e197575a0964cac6093863927beb95
+    hash: e66a4c409ea605665482c6a1b3b1dc2e11196d10b0084af7293d94e50f67ab75
     path: patches/@executor-js__plugin-mcp@1.5.40.patch
   '@executor-js/plugin-openapi@1.5.40':
     hash: e54b7925c496798767b94f447fd1bb9e014d05c8a5d281df719f13c033e8851d
@@ -230,7 +230,7 @@ importers:
         version: 1.5.40(effect@4.0.0-rc.111)
       '@executor-js/execution':
         specifier: 1.5.40
-        version: 1.5.40(patch_hash=d7c76daa2c57c2208969e418b099ce9a42e472dfe5045fcc6071589c3283476e)(@effect/platform-node@4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1(@opentelemetry/api@1.9.1)))(drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260808.1)(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.4)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.28.17)(sql.js@1.14.1))(effect@4.0.0-rc.111)(react@19.2.3)(typeorm@0.3.31(ioredis@5.11.1)(redis@6.2.1(@opentelemetry/api@1.9.1))(sql.js@1.14.1))
+        version: 1.5.40(patch_hash=a56fd913b71899d83771c8cfdae257d22f625fae0a4e0930e419474994b05ee5)(@effect/platform-node@4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1(@opentelemetry/api@1.9.1)))(drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260808.1)(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.4)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.28.17)(sql.js@1.14.1))(effect@4.0.0-rc.111)(react@19.2.3)(typeorm@0.3.31(ioredis@5.11.1)(redis@6.2.1(@opentelemetry/api@1.9.1))(sql.js@1.14.1))
       '@executor-js/fumadb':
         specifier: 1.5.7
         version: 1.5.7(drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260808.1)(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.4)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.28.17)(sql.js@1.14.1))(typeorm@0.3.31(ioredis@5.11.1)(redis@6.2.1(@opentelemetry/api@1.9.1))(sql.js@1.14.1))
@@ -239,7 +239,7 @@ importers:
         version: 1.5.40(patch_hash=2fa86b24885b897d9a3f1308179ba31e12802b19c97695029e0584ba26c36407)(@tanstack/react-router@1.168.23(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260808.1)(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.4)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.28.17)(sql.js@1.14.1))(effect@4.0.0-rc.111)(react@19.2.3)(redis@6.2.1(@opentelemetry/api@1.9.1))(typeorm@0.3.31(ioredis@5.11.1)(redis@6.2.1(@opentelemetry/api@1.9.1))(sql.js@1.14.1))
       '@executor-js/plugin-mcp':
         specifier: 1.5.40
-        version: 1.5.40(patch_hash=0fc0da56162025c3ab2e54a6ff90c5f445e197575a0964cac6093863927beb95)(@tanstack/react-router@1.168.23(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260808.1)(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.4)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.28.17)(sql.js@1.14.1))(effect@4.0.0-rc.111)(react@19.2.3)(redis@6.2.1(@opentelemetry/api@1.9.1))(typeorm@0.3.31(ioredis@5.11.1)(redis@6.2.1(@opentelemetry/api@1.9.1))(sql.js@1.14.1))
+        version: 1.5.40(patch_hash=e66a4c409ea605665482c6a1b3b1dc2e11196d10b0084af7293d94e50f67ab75)(@tanstack/react-router@1.168.23(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260808.1)(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.4)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.28.17)(sql.js@1.14.1))(effect@4.0.0-rc.111)(react@19.2.3)(redis@6.2.1(@opentelemetry/api@1.9.1))(typeorm@0.3.31(ioredis@5.11.1)(redis@6.2.1(@opentelemetry/api@1.9.1))(sql.js@1.14.1))
       '@executor-js/plugin-openapi':
         specifier: 1.5.40
         version: 1.5.40(patch_hash=e54b7925c496798767b94f447fd1bb9e014d05c8a5d281df719f13c033e8851d)(@tanstack/react-router@1.168.23(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260808.1)(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.4)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.28.17)(sql.js@1.14.1))(effect@4.0.0-rc.111)(react@19.2.3)(redis@6.2.1(@opentelemetry/api@1.9.1))(typeorm@0.3.31(ioredis@5.11.1)(redis@6.2.1(@opentelemetry/api@1.9.1))(sql.js@1.14.1))
@@ -11230,7 +11230,7 @@ snapshots:
       - react
       - typeorm
 
-  '@executor-js/execution@1.5.40(patch_hash=d7c76daa2c57c2208969e418b099ce9a42e472dfe5045fcc6071589c3283476e)(@effect/platform-node@4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1(@opentelemetry/api@1.9.1)))(drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260808.1)(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.4)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.28.17)(sql.js@1.14.1))(effect@4.0.0-rc.111)(react@19.2.3)(typeorm@0.3.31(ioredis@5.11.1)(redis@6.2.1(@opentelemetry/api@1.9.1))(sql.js@1.14.1))':
+  '@executor-js/execution@1.5.40(patch_hash=a56fd913b71899d83771c8cfdae257d22f625fae0a4e0930e419474994b05ee5)(@effect/platform-node@4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1(@opentelemetry/api@1.9.1)))(drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260808.1)(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.4)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.28.17)(sql.js@1.14.1))(effect@4.0.0-rc.111)(react@19.2.3)(typeorm@0.3.31(ioredis@5.11.1)(redis@6.2.1(@opentelemetry/api@1.9.1))(sql.js@1.14.1))':
     dependencies:
       '@executor-js/codemode-core': 1.5.40(effect@4.0.0-rc.111)
       '@executor-js/sdk': 1.5.40(patch_hash=02613630215a05d60a717064c67121f2a13ef797caf82d3db7323a5580619d53)(@effect/platform-node@4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1(@opentelemetry/api@1.9.1)))(drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260808.1)(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.4)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.28.17)(sql.js@1.14.1))(effect@4.0.0-rc.111)(react@19.2.3)(typeorm@0.3.31(ioredis@5.11.1)(redis@6.2.1(@opentelemetry/api@1.9.1))(sql.js@1.14.1))
@@ -11274,7 +11274,7 @@ snapshots:
       - typeorm
       - utf-8-validate
 
-  '@executor-js/plugin-mcp@1.5.40(patch_hash=0fc0da56162025c3ab2e54a6ff90c5f445e197575a0964cac6093863927beb95)(@tanstack/react-router@1.168.23(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260808.1)(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.4)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.28.17)(sql.js@1.14.1))(effect@4.0.0-rc.111)(react@19.2.3)(redis@6.2.1(@opentelemetry/api@1.9.1))(typeorm@0.3.31(ioredis@5.11.1)(redis@6.2.1(@opentelemetry/api@1.9.1))(sql.js@1.14.1))':
+  '@executor-js/plugin-mcp@1.5.40(patch_hash=e66a4c409ea605665482c6a1b3b1dc2e11196d10b0084af7293d94e50f67ab75)(@tanstack/react-router@1.168.23(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260808.1)(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.4)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.28.17)(sql.js@1.14.1))(effect@4.0.0-rc.111)(react@19.2.3)(redis@6.2.1(@opentelemetry/api@1.9.1))(typeorm@0.3.31(ioredis@5.11.1)(redis@6.2.1(@opentelemetry/api@1.9.1))(sql.js@1.14.1))':
     dependencies:
       '@cfworker/json-schema': 4.1.1
       '@effect/platform-node': 4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1(@opentelemetry/api@1.9.1))

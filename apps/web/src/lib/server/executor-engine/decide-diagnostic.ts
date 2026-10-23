@@ -22,6 +22,8 @@ export type DecideDiagnosticCheck = {
   message: string
   code?: string
   status?: number
+  mcpCode?: number
+  transportFailure?: boolean
   correlationId?: string
 }
 
@@ -75,11 +77,29 @@ const failureFromValue = (
         : typeof nested?.status === 'number'
           ? nested.status
           : undefined
+  const mcpCode =
+    typeof error?.mcpCode === 'number'
+      ? error.mcpCode
+      : typeof record.mcpCode === 'number'
+        ? record.mcpCode
+        : typeof nested?.mcpCode === 'number'
+          ? nested.mcpCode
+          : undefined
+  const transportFailure =
+    typeof error?.transportFailure === 'boolean'
+      ? error.transportFailure
+      : typeof record.transportFailure === 'boolean'
+        ? record.transportFailure
+        : typeof nested?.transportFailure === 'boolean'
+          ? nested.transportFailure
+          : undefined
 
   return {
     message,
     ...(code ? { code } : {}),
     ...(status === undefined ? {} : { status }),
+    ...(mcpCode === undefined ? {} : { mcpCode }),
+    ...(transportFailure === undefined ? {} : { transportFailure }),
     ...(correlationIdFrom(message)
       ? { correlationId: correlationIdFrom(message) }
       : {}),
@@ -122,6 +142,8 @@ const failedCheck = (
     message: string
     code?: string
     status?: number
+    mcpCode?: number
+    transportFailure?: boolean
     correlationId?: string
   },
 ): DecideDiagnosticCheck => ({

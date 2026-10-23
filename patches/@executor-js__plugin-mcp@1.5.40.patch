@@ -32,10 +32,19 @@ diff --git a/dist/chunk-MMILW7SS.js b/dist/chunk-MMILW7SS.js
 index a45735cfe7adccf769b734cf0a09aacaeb55ed5a..5b401b162d7b567fb0796f32cf6e14b47150c9df 100644
 --- a/dist/chunk-MMILW7SS.js
 +++ b/dist/chunk-MMILW7SS.js
-@@ -595,11 +595,11 @@ var installToolListChangedHandler = (client, onToolListChanged) => {
+@@ -595,11 +595,20 @@ var installToolListChangedHandler = (client, onToolListChanged) => {
      onToolListChanged();
    });
  };
++var mcpProtocolFailureFromCause = (cause) => {
++  if (cause instanceof McpError) {
++    return { message: cause.message, code: cause.code };
++  }
++  if (!Predicate4.isObject(cause)) return void 0;
++  const message = typeof cause.message === "string" ? cause.message.trim() : "";
++  const code = cause.code;
++  return message.length > 0 && typeof code === "number" && Number.isInteger(code) && code < 0 ? { message, code } : void 0;
++};
 -var useConnection = (connection, toolName, args, elicit, onToolListChanged) => Effect4.gen(function* () {
 +var useConnection = (connection, toolName, args, elicit, onProgress, onToolListChanged) => Effect4.gen(function* () {
    installElicitationHandler(connection.client, elicit);
@@ -46,15 +55,17 @@ index a45735cfe7adccf769b734cf0a09aacaeb55ed5a..5b401b162d7b567fb0796f32cf6e14b4
      catch: (cause) => {
        if (Predicate4.isTagged(cause, "McpOAuthReauthorizationRequired")) {
          return new McpOAuthReauthorizationRequired({
-@@ -618,6 +618,6 @@ var useConnection = (connection, toolName, args, elicit, onToolListChanged) => E
+@@ -618,6 +627,7 @@ var useConnection = (connection, toolName, args, elicit, onToolListChanged) => E
        const status = httpStatusFromCause(cause);
-       const protocolFailure = cause instanceof McpError;
+-      const protocolFailure = cause instanceof McpError;
++      const protocolFailure = mcpProtocolFailureFromCause(cause);
        return new McpInvocationError({
          toolName,
 -        message: `MCP tool call failed for ${toolName}`,
-+        message: protocolFailure ? cause.message : `MCP tool call failed for ${toolName}`,
++        message: protocolFailure?.message ?? `MCP tool call failed for ${toolName}`,
++        ...protocolFailure ? { mcpCode: protocolFailure.code } : {},
          ...status === void 0 ? {} : { status },
-@@ -634,7 +634,7 @@ var useConnection = (connection, toolName, args, elicit, onToolListChanged) => E
+@@ -634,7 +644,7 @@ var useConnection = (connection, toolName, args, elicit, onToolListChanged) => E
  });
  var invokeMcpTool = (input) => Effect4.gen(function* () {
    const args = argsRecord(input.args);
@@ -63,7 +74,7 @@ index a45735cfe7adccf769b734cf0a09aacaeb55ed5a..5b401b162d7b567fb0796f32cf6e14b4
    if (input.connectionPool && input.connectionPoolKey) {
      return yield* input.connectionPool.withConnection(
        input.connectionPoolKey,
-@@ -1706,6 +1706,7 @@ var mcpPlugin = definePlugin((options) => {
+@@ -1706,6 +1716,7 @@ var mcpPlugin = definePlugin((options) => {
          connector,
          ...poolKey === void 0 ? {} : { connectionPool, connectionPoolKey: poolKey },
          elicit,
@@ -88,6 +99,19 @@ index 4152343095ec46f6c8103d45f4baba848748c644..3e8b8e0fdce6320f9cadd8e22ad20752
      /** Fired when the server sends `notifications/tools/list_changed` during
       *  the call window. Synchronous and non-throwing by contract; the caller
       *  uses it to mark the persisted catalog stale. */
+diff --git a/dist/sdk/errors.d.ts b/dist/sdk/errors.d.ts
+index d4fa44d5f6dbcbebd596811066ed917274181020..9af6ae125e4edb496ae56c33426dc9979944f476 100644
+--- a/dist/sdk/errors.d.ts
++++ b/dist/sdk/errors.d.ts
+@@ -31,6 +31,8 @@ export declare class McpInvocationError extends McpInvocationError_base<{
+     readonly toolName: string;
+     readonly message: string;
+     readonly status?: number;
++    /** JSON-RPC error code returned by the MCP server, when present. */
++    readonly mcpCode?: number;
+     /** The SDK failure came from the HTTP/SSE transport rather than a JSON-RPC
+      *  protocol response. Used only to decide whether a leased session is safe
+      *  to return to the idle pool. */
 diff --git a/dist/sdk/plugin.d.ts b/dist/sdk/plugin.d.ts
 index 18ccddc2c2481b07768dfaf91dc4db2e9cd734aa..49cffc0a126ba2d7ab5aff79add33614f72ef594 100644
 --- a/dist/sdk/plugin.d.ts

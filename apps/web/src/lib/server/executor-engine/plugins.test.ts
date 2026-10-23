@@ -37,7 +37,16 @@ describe('Executor MCP progress logging', () => {
     )
 
     expect(mcpClientSource).toContain(
-      'message: protocolFailure ? cause.message : `MCP tool call failed for ${toolName}`',
+      'const protocolFailure = mcpProtocolFailureFromCause(cause)',
+    )
+    expect(mcpClientSource).toContain(
+      'typeof code === "number" && Number.isInteger(code) && code < 0',
+    )
+    expect(mcpClientSource).toContain(
+      'message: protocolFailure?.message ?? `MCP tool call failed for ${toolName}`',
+    )
+    expect(mcpClientSource).toContain(
+      '...protocolFailure ? { mcpCode: protocolFailure.code } : {}',
     )
   })
 })
