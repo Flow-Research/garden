@@ -50,13 +50,24 @@ vi.mock('@/lib/issues/queries', () => ({
     queryKey: ['issues', 'ws-test', 'list'],
     enabled: false,
   }),
+  issueKeys: { searches: (wsId: string) => ['issues', wsId, 'search'] },
 }))
 
 const queryOptionsSeen = vi.hoisted(() => ({
   last: null as null | { enabled?: boolean; subscribed?: boolean },
 }))
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: (options: { enabled?: boolean; subscribed?: boolean }) => {
+  keepPreviousData: (previous: unknown) => previous,
+  useQuery: (options: {
+    queryKey: readonly unknown[]
+    enabled?: boolean
+    subscribed?: boolean
+  }) => {
+    // The palette's issue search has its own query; this harness answers
+    // only the issue list.
+    if (options.queryKey.includes('search')) {
+      return { data: undefined, isFetching: false }
+    }
     queryOptionsSeen.last = options
     return { data: mockAllIssues.current }
   },
