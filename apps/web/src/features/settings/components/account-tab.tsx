@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { timeAgo } from '@garden/core/format'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -42,7 +42,11 @@ export function AccountTab() {
   const setUser = useAuthStore((s) => s.setUser)
   const authLogout = useAuthStore((s) => s.logout)
 
-  const [profileName, setProfileName] = useState(user?.name ?? '')
+  // Unsaved edits only. Copying `user.name` into state with an effect reset
+  // the field whenever the user object changed, e.g. on an avatar upload,
+  // wiping a name being typed.
+  const [nameDraft, setNameDraft] = useState<string | null>(null)
+  const profileName = nameDraft ?? user?.name ?? ''
   const [profileSaving, setProfileSaving] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -75,10 +79,6 @@ export function AccountTab() {
       return result.data ?? []
     },
   })
-
-  useEffect(() => {
-    setProfileName(user?.name ?? '')
-  }, [user])
 
   const initials = (user?.name ?? user?.email ?? '')
     .split(' ')
@@ -123,6 +123,7 @@ export function AccountTab() {
     try {
       const updated = await api.updateMe({ name: profileName.trim() })
       setUser(updated)
+      setNameDraft(null)
       toast.success('Account updated')
     } catch (error) {
       toast.error(
@@ -280,7 +281,7 @@ export function AccountTab() {
                 <Label>Name</Label>
                 <Input
                   value={profileName}
-                  onChange={(event) => setProfileName(event.target.value)}
+                  onChange={(event) => setNameDraft(event.target.value)}
                   placeholder="Your name"
                 />
               </div>
@@ -306,7 +307,7 @@ export function AccountTab() {
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => setProfileName(user?.name ?? '')}
+                onClick={() => setNameDraft(null)}
                 disabled={profileSaving || profileName === (user?.name ?? '')}
               >
                 Reset

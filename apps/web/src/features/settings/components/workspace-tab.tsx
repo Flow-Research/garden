@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Result } from 'better-result'
 import { Save } from 'lucide-react'
 import { Input } from '@garden/ui/components/ui/input'
@@ -25,9 +25,24 @@ export function WorkspaceTab() {
   const updateWorkspace = useWorkspaceStore((s) => s.updateWorkspace)
   const leaveWorkspace = useLeaveWorkspace()
 
-  const [name, setName] = useState(workspace?.name ?? '')
-  const [description, setDescription] = useState(workspace?.description ?? '')
-  const [context, setContext] = useState(workspace?.context ?? '')
+  // Unsaved edits, tied to the workspace they were made in. Copying the
+  // workspace into state with an effect reset the fields on every workspace
+  // store update, wiping what was being typed.
+  type Drafts = Partial<Record<'name' | 'description' | 'context', string>>
+  const [draftState, setDraftState] = useState<{
+    workspaceId: string | null
+    drafts: Drafts
+  }>({ workspaceId: null, drafts: {} })
+  const drafts =
+    draftState.workspaceId === (workspace?.id ?? null) ? draftState.drafts : {}
+  const setDraft = (field: keyof Drafts, value: string) =>
+    setDraftState({
+      workspaceId: workspace?.id ?? null,
+      drafts: { ...drafts, [field]: value },
+    })
+  const name = drafts.name ?? workspace?.name ?? ''
+  const description = drafts.description ?? workspace?.description ?? ''
+  const context = drafts.context ?? workspace?.context ?? ''
   const [saving, setSaving] = useState(false)
   const [actionId, setActionId] = useState<string | null>(null)
   const [confirmAction, setConfirmAction] = useState<{
@@ -42,12 +57,6 @@ export function WorkspaceTab() {
   const currentMember = members.find((m) => m.user_id === user?.id) ?? null
   const canManageWorkspace =
     currentMember?.role === 'owner' || currentMember?.role === 'admin'
-  useEffect(() => {
-    setName(workspace?.name ?? '')
-    setDescription(workspace?.description ?? '')
-    setContext(workspace?.context ?? '')
-  }, [workspace])
-
   const handleSave = async () => {
     if (!workspace) return
     setSaving(true)
@@ -67,6 +76,7 @@ export function WorkspaceTab() {
       qc.setQueryData(workspaceKeys.list(), (old: Workspace[] | undefined) =>
         old?.map((ws) => (ws.id === updated.id ? updated : ws)),
       )
+      setDraftState({ workspaceId: null, drafts: {} })
       toast.success('Workspace settings saved')
     } else {
       toast.error(result.error.message)
@@ -116,7 +126,7 @@ export function WorkspaceTab() {
             <Input
               type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => setDraft('name', e.target.value)}
               disabled={!canManageWorkspace}
             />
           </div>
@@ -124,7 +134,7 @@ export function WorkspaceTab() {
             <Label>Description</Label>
             <Textarea
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => setDraft('description', e.target.value)}
               rows={3}
               disabled={!canManageWorkspace}
               className="resize-none"
@@ -135,7 +145,7 @@ export function WorkspaceTab() {
             <Label>Context</Label>
             <Textarea
               value={context}
-              onChange={(e) => setContext(e.target.value)}
+              onChange={(e) => setDraft('context', e.target.value)}
               rows={4}
               disabled={!canManageWorkspace}
               className="resize-none"

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Result } from 'better-result'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -394,18 +394,40 @@ function EditAutomationDialog({
   automation: Automation
   agents: Agent[]
 }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogTitle>Edit Automation</DialogTitle>
+        {/* Mounted per opening, so the form starts from the saved automation
+            and a refetch while it is open no longer overwrites what is being
+            typed; a cancelled edit is gone the next time. */}
+        {open ? (
+          <EditAutomationForm
+            key={automation.id}
+            automation={automation}
+            agents={agents}
+            onDone={() => onOpenChange(false)}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function EditAutomationForm({
+  automation,
+  agents,
+  onDone,
+}: {
+  automation: Automation
+  agents: Agent[]
+  onDone: () => void
+}) {
   const updateAutomation = useUpdateAutomation()
   const [title, setTitle] = useState(automation.title)
   const [description, setDescription] = useState(automation.description ?? '')
   const [assigneeId, setAssigneeId] = useState(automation.assignee_agent_id)
   const [priority, setPriority] = useState(automation.priority)
-
-  useEffect(() => {
-    setTitle(automation.title)
-    setDescription(automation.description ?? '')
-    setAssigneeId(automation.assignee_agent_id)
-    setPriority(automation.priority)
-  }, [automation])
 
   const activeAgents = agents.filter((agent) => !agent.archived_at)
   const submitting = updateAutomation.isPending
@@ -429,101 +451,92 @@ function EditAutomationDialog({
       )
       return
     }
-    onOpenChange(false)
+    onDone()
     toast.success('Automation updated')
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogTitle>Edit Automation</DialogTitle>
-        <div className="space-y-4 pt-2">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Name
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
-              autoFocus
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Prompt
-            </label>
-            <textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              rows={6}
-              className="mt-1 w-full resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground">
-                Agent
-              </label>
-              <Select
-                value={assigneeId}
-                onValueChange={(value) => value && setAssigneeId(value)}
-              >
-                <SelectTrigger className="mt-1 w-full">
-                  <SelectValue placeholder="Select agent..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeAgents.map((agent) => (
-                    <SelectItem key={agent.id} value={agent.id}>
-                      {agent.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground">
-                Priority
-              </label>
-              <Select
-                value={priority}
-                onValueChange={(value) =>
-                  value && setPriority(value as Automation['priority'])
-                }
-              >
-                <SelectTrigger className="mt-1 w-full">
-                  <SelectValue placeholder="Medium" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRIORITY_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-1">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleSubmit}
-              disabled={!title.trim() || !assigneeId || submitting}
-            >
-              {submitting ? 'Saving...' : 'Save'}
-            </Button>
-          </div>
+    <div className="space-y-4 pt-2">
+      <div>
+        <label className="text-xs font-medium text-muted-foreground">
+          Name
+        </label>
+        <input
+          type="text"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+          autoFocus
+        />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground">
+          Prompt
+        </label>
+        <textarea
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          rows={6}
+          className="mt-1 w-full resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            Agent
+          </label>
+          <Select
+            value={assigneeId}
+            onValueChange={(value) => value && setAssigneeId(value)}
+          >
+            <SelectTrigger className="mt-1 w-full">
+              <SelectValue placeholder="Select agent..." />
+            </SelectTrigger>
+            <SelectContent>
+              {activeAgents.map((agent) => (
+                <SelectItem key={agent.id} value={agent.id}>
+                  {agent.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-      </DialogContent>
-    </Dialog>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            Priority
+          </label>
+          <Select
+            value={priority}
+            onValueChange={(value) =>
+              value && setPriority(value as Automation['priority'])
+            }
+          >
+            <SelectTrigger className="mt-1 w-full">
+              <SelectValue placeholder="Medium" />
+            </SelectTrigger>
+            <SelectContent>
+              {PRIORITY_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 pt-1">
+        <Button size="sm" variant="outline" onClick={onDone}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          onClick={handleSubmit}
+          disabled={!title.trim() || !assigneeId || submitting}
+        >
+          {submitting ? 'Saving...' : 'Save'}
+        </Button>
+      </div>
+    </div>
   )
 }
 

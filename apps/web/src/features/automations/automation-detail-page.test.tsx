@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 import type {
@@ -84,8 +84,10 @@ const TRIGGER = {
   updated_at: null,
 } satisfies AutomationTrigger
 
+let queryClient: QueryClient
+
 function renderPage(onDeleted = vi.fn()) {
-  const queryClient = new QueryClient({
+  queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Infinity },
       mutations: { retry: false },
@@ -143,5 +145,24 @@ describe('AutomationDetailPage deletes', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
 
     expect(mocks.deleteAutomationTrigger).not.toHaveBeenCalled()
+  })
+
+  it('keeps edits when the automation refetches while the dialog is open', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: /edit/i }))
+    const name = await screen.findByDisplayValue('Nightly triage')
+    fireEvent.change(name, { target: { value: 'Nightly triage v2' } })
+
+    act(() => {
+      queryClient.setQueryData(automationKeys.detail(WS_ID, 'auto-1'), {
+        automation: { ...AUTOMATION, status: 'paused' },
+        triggers: [TRIGGER],
+        runs: [],
+      } satisfies AutomationDetailResponse)
+    })
+
+    // Wait for the refetched automation to reach the page before checking.
+    await screen.findByText('paused')
+    expect(screen.getByDisplayValue('Nightly triage v2')).toBeTruthy()
   })
 })
