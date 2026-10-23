@@ -104,7 +104,10 @@ export function AddTeamMemberDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog
+      open
+      onOpenChange={(open) => !open && !addMember.isPending && onClose()}
+    >
       <DialogContent className="!w-[min(94vw,32rem)] gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>Add a team member</DialogTitle>
@@ -147,11 +150,18 @@ export function AddTeamMemberDialog({
           )}
         </div>
         <DialogFooter className="border-t px-6 pt-4 pb-6">
-          <Button variant="outline" onClick={onClose}>
+          <Button
+            variant="outline"
+            onClick={onClose}
+            disabled={addMember.isPending}
+          >
             Cancel
           </Button>
-          <Button disabled={!selectedKey} onClick={handleAdd}>
-            Add member
+          <Button
+            disabled={!selectedKey || addMember.isPending}
+            onClick={handleAdd}
+          >
+            {addMember.isPending ? 'Adding…' : 'Add member'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -186,7 +196,10 @@ export function EditTeamDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog
+      open
+      onOpenChange={(open) => !open && !updateTeam.isPending && onClose()}
+    >
       <DialogContent className="!w-[min(94vw,32rem)]">
         <DialogHeader>
           <DialogTitle>Edit Team</DialogTitle>
@@ -214,11 +227,18 @@ export function EditTeamDialog({
           </label>
         </div>
         <DialogFooter className="pb-6">
-          <Button variant="outline" onClick={onClose}>
+          <Button
+            variant="outline"
+            onClick={onClose}
+            disabled={updateTeam.isPending}
+          >
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={!name.trim()}>
-            Save changes
+          <Button
+            onClick={handleSave}
+            disabled={!name.trim() || updateTeam.isPending}
+          >
+            {updateTeam.isPending ? 'Saving…' : 'Save changes'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -255,7 +275,10 @@ export function TransferOwnerDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog
+      open
+      onOpenChange={(open) => !open && !transfer.isPending && onClose()}
+    >
       <DialogContent className="!w-[min(94vw,32rem)] gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>Transfer Team ownership</DialogTitle>
@@ -293,11 +316,18 @@ export function TransferOwnerDialog({
           ))}
         </ul>
         <DialogFooter className="border-t px-6 pt-4 pb-6">
-          <Button variant="outline" onClick={onClose}>
+          <Button
+            variant="outline"
+            onClick={onClose}
+            disabled={transfer.isPending}
+          >
             Cancel
           </Button>
-          <Button onClick={handleTransfer} disabled={!selectedId}>
-            Transfer ownership
+          <Button
+            onClick={handleTransfer}
+            disabled={!selectedId || transfer.isPending}
+          >
+            {transfer.isPending ? 'Transferring…' : 'Transfer ownership'}
           </Button>
         </DialogFooter>
       </DialogContent>
