@@ -343,7 +343,8 @@ export function AppShell() {
                   <WorkspaceMenu
                     collapsed={sidebarCollapsed}
                     onInviteMembers={() => openSettingsDialog('members')}
-                    onOpenSettings={() => openSettingsDialog()}
+                    // "Workspace settings" used to land on the Profile tab.
+                    onOpenSettings={() => openSettingsDialog('workspace')}
                     onOpenMembers={() => openSettingsDialog('members')}
                   />
                 }
