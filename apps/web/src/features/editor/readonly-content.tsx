@@ -243,13 +243,16 @@ const components: Partial<Components> = {
             <p className="truncate text-sm">{filename}</p>
           </div>
           {href && (
-            <button
-              type="button"
+            <a
+              href={href}
+              download={filename || true}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={filename ? `Download ${filename}` : 'Download file'}
               className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              onClick={() => window.open(href, '_blank', 'noopener,noreferrer')}
             >
-              <Download className="size-3.5" />
-            </button>
+              <Download className="size-3.5" aria-hidden />
+            </a>
           )}
         </div>
       )

@@ -238,9 +238,13 @@ export function AppShell() {
     () =>
       NAV_ITEMS.map((item) => ({
         ...item,
+        // Real links, so a nav item can be opened in a new tab.
+        href: item.to,
         badge: item.id === 'inbox' && unreadCount > 0 ? unreadCount : undefined,
         children:
-          item.id === 'teams' && canManageTeams ? TEAM_NAV_CHILDREN : undefined,
+          item.id === 'teams' && canManageTeams
+            ? TEAM_NAV_CHILDREN.map((child) => ({ ...child, href: child.to }))
+            : undefined,
       })),
     [unreadCount, canManageTeams],
   )

@@ -56,6 +56,7 @@ import {
   skillListOptions,
 } from '@/lib/workspace/queries'
 import { automationListOptions } from './queries'
+import { isPlainLeftClick } from '@/features/navigation/is-plain-left-click'
 import { useCreateAutomation } from './mutations'
 import {
   TriggerConfigSection,
@@ -207,11 +208,17 @@ function AutomationRow({
   const StatusIcon = statusConfig.icon
   const agentName = automation.assignee_agent_name ?? 'Unknown Agent'
 
+  // A link, so an automation can be opened in a new tab; plain clicks stay
+  // in-app.
   return (
-    <button
-      type="button"
+    <a
+      href={`/workflows/${encodeURIComponent(automation.id)}`}
       className="group/row flex h-11 w-full items-center gap-2 px-5 text-left text-sm transition-colors hover:bg-accent/40"
-      onClick={() => onOpenAutomation?.(automation)}
+      onClick={(event) => {
+        if (!onOpenAutomation || !isPlainLeftClick(event)) return
+        event.preventDefault()
+        onOpenAutomation(automation)
+      }}
     >
       <Zap className="size-4 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate font-medium">
@@ -246,7 +253,7 @@ function AutomationRow({
       <span className="w-20 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
         {automation.last_run_at ? timeAgo(automation.last_run_at) : '--'}
       </span>
-    </button>
+    </a>
   )
 }
 

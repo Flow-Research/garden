@@ -98,10 +98,34 @@ describe('AppShell sidebar', () => {
     expect(drawer()).toHaveClass('-translate-x-full')
 
     fireEvent.click(screen.getByRole('button', { name: 'Toggle sidebar' }))
-    const [inbox] = screen.getAllByRole('button', { name: /inbox/i })
+    const [inbox] = screen.getAllByRole('link', { name: /inbox/i })
     if (!inbox) throw new Error('no Inbox nav item')
     fireEvent.click(inbox)
     expect(viewport.navigate).toHaveBeenCalled()
     expect(drawer()).toHaveClass('-translate-x-full')
+  })
+})
+
+describe('AppShell nav links', () => {
+  beforeEach(() => {
+    viewport.mobile = false
+    viewport.navigate.mockClear()
+    useAuthStore.setState({ user: { id: 'user-1', name: 'Ada' } as User })
+    useWorkspaceStore.setState({
+      workspace: { id: 'ws-1', name: 'Garden' } as Workspace,
+    })
+  })
+
+  it('renders nav items as links that open in a new tab', () => {
+    renderShell()
+    const inbox = screen.getByRole('link', { name: /inbox/i })
+    expect(inbox).toHaveAttribute('href', '/inbox')
+
+    // A modified click is left to the browser (new tab), not routed in-app.
+    fireEvent.click(inbox, { metaKey: true })
+    expect(viewport.navigate).not.toHaveBeenCalled()
+
+    fireEvent.click(inbox)
+    expect(viewport.navigate).toHaveBeenCalledWith({ to: '/inbox' })
   })
 })

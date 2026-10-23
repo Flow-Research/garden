@@ -140,15 +140,18 @@ function AttachmentList({
             <p className="truncate text-sm">{a.filename}</p>
           </div>
           {a.download_url && (
-            <button
-              type="button"
+            // A labelled link rather than an unnamed button calling
+            // window.open, so it can be read out and opened in a new tab.
+            <a
+              href={a.download_url}
+              download={a.filename}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Download ${a.filename}`}
               className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              onClick={() =>
-                window.open(a.download_url, '_blank', 'noopener,noreferrer')
-              }
             >
-              <Download className="size-3.5" />
-            </button>
+              <Download className="size-3.5" aria-hidden />
+            </a>
           )}
         </div>
       ))}
