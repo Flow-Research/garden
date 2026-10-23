@@ -656,6 +656,21 @@ describe('IssueDetail (shared)', () => {
     expect(screen.getByText('I can help with this')).toBeInTheDocument()
   })
 
+  it('says the activity failed to load, and loads it on retry', async () => {
+    mockApiObj.listTimeline.mockRejectedValueOnce(new Error('offline'))
+    renderIssueDetail()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not load activity.',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+    expect(
+      await screen.findByText('Started working on this'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Could not load activity.')).toBeNull()
+  })
+
   it('disables approval actions when the preview has no request id', async () => {
     mockApiObj.getActiveRun.mockResolvedValue({
       run: {

@@ -29,6 +29,10 @@ export const issueKeys = {
     ['issue-pending-approval', issueId] as const,
 }
 
+// Query functions throw on failure. Returning `[]` instead cached the failure
+// as real data: with the default `staleTime: Infinity` a network blip showed
+// "no comments" until reload, and a failed refetch replaced loaded data.
+
 export function issueActiveRunOptions(issueId: string) {
   return queryOptions({
     queryKey: issueKeys.activeRun(issueId),
@@ -57,7 +61,8 @@ export function issueRunEventsOptions(issueId: string, runId?: string | null) {
           }),
         catch: (e) => (e instanceof Error ? e : new Error(String(e))),
       })
-      return realCall.isOk() ? realCall.value : []
+      if (realCall.isOk()) return realCall.value
+      throw realCall.error
     },
     refetchInterval: runId ? 2000 : false,
     refetchOnWindowFocus: true,
@@ -259,7 +264,8 @@ export function childIssuesOptions(wsId: string, id: string) {
         try: async () => (await api.listChildIssues(id)).issues,
         catch: (e) => (e instanceof Error ? e : new Error(String(e))),
       })
-      return realCall.isOk() ? realCall.value : []
+      if (realCall.isOk()) return realCall.value
+      throw realCall.error
     },
   })
 }
@@ -272,7 +278,8 @@ export function issueTimelineOptions(issueId: string) {
         try: async () => api.listTimeline(issueId),
         catch: (e) => (e instanceof Error ? e : new Error(String(e))),
       })
-      return realCall.isOk() ? realCall.value : []
+      if (realCall.isOk()) return realCall.value
+      throw realCall.error
     },
   })
 }
@@ -288,7 +295,8 @@ export function issueReactionsOptions(issueId: string) {
         },
         catch: (e) => (e instanceof Error ? e : new Error(String(e))),
       })
-      return realCall.isOk() ? realCall.value : []
+      if (realCall.isOk()) return realCall.value
+      throw realCall.error
     },
   })
 }
@@ -301,7 +309,8 @@ export function issueSubscribersOptions(issueId: string) {
         try: async () => api.listIssueSubscribers(issueId),
         catch: (e) => (e instanceof Error ? e : new Error(String(e))),
       })
-      return realCall.isOk() ? realCall.value : []
+      if (realCall.isOk()) return realCall.value
+      throw realCall.error
     },
   })
 }
@@ -315,13 +324,7 @@ export function issueUsageOptions(issueId: string) {
         catch: (e) => (e instanceof Error ? e : new Error(String(e))),
       })
       if (realCall.isOk()) return realCall.value
-      return {
-        total_input_tokens: 0,
-        total_output_tokens: 0,
-        total_cache_read_tokens: 0,
-        total_cache_write_tokens: 0,
-        task_count: 0,
-      }
+      throw realCall.error
     },
   })
 }

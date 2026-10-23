@@ -36,6 +36,7 @@ import {
   FileDropOverlay,
 } from '../../editor'
 import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
+import { LoadError } from '@garden/ui/components/common/load-error'
 import {
   Tooltip,
   TooltipTrigger,
@@ -205,6 +206,9 @@ export function IssueDetail({
   const {
     timeline,
     loading: timelineLoading,
+    loadFailed: timelineLoadFailed,
+    retrying: timelineRetrying,
+    retryLoad: retryTimeline,
     submitting: commentSubmitting,
     submitComment,
     submitReply,
@@ -819,7 +823,13 @@ export function IssueDetail({
                       loading={timelineLoading}
                       className="w-full"
                     >
-                      {!timelineLoading ? (
+                      {timelineLoadFailed ? (
+                        <LoadError
+                          message="Could not load activity."
+                          onRetry={retryTimeline}
+                          retrying={timelineRetrying}
+                        />
+                      ) : !timelineLoading ? (
                         <IssueActivityTimeline
                           timeline={timeline}
                           debugMode={debugMode}

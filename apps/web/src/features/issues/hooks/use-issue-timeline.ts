@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useQuery, useMutationState } from '@tanstack/react-query'
-import type { Reaction } from '@garden/core/types'
+import type { Reaction, TimelineEntry } from '@garden/core/types'
 import { issueTimelineOptions } from '@/lib/issues/queries'
 import {
   useCreateComment,
@@ -11,10 +11,17 @@ import {
 } from '@/lib/issues/mutations'
 import { toast } from 'sonner'
 
+const NO_ENTRIES: TimelineEntry[] = []
+
 export function useIssueTimeline(issueId: string, userId?: string) {
-  const { data: timeline = [], isLoading: loading } = useQuery(
-    issueTimelineOptions(issueId),
-  )
+  const timelineQuery = useQuery(issueTimelineOptions(issueId))
+  const timeline = timelineQuery.data ?? NO_ENTRIES
+  const loading = timelineQuery.isLoading
+  // Only a failed first load replaces the timeline; a failed refetch keeps
+  // the entries already shown.
+  const loadFailed = timelineQuery.isError && timelineQuery.data === undefined
+  const { refetch } = timelineQuery
+  const retryLoad = useCallback(() => void refetch(), [refetch])
   const [submitting, setSubmitting] = useState(false)
 
   const createCommentMutation = useCreateComment(issueId)
@@ -169,6 +176,9 @@ export function useIssueTimeline(issueId: string, userId?: string) {
   return {
     timeline: optimisticTimeline,
     loading,
+    loadFailed,
+    retrying: timelineQuery.isFetching,
+    retryLoad,
     submitting,
     submitComment,
     submitReply,
