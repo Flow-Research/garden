@@ -160,7 +160,7 @@ export function ListView({
                     expanded ? 'rounded-t-xl' : 'rounded-xl',
                   )}
                 >
-                  <Accordion.Trigger className="group/trigger flex h-full flex-1 items-center gap-2 px-4 text-left outline-none">
+                  <Accordion.Trigger className="group/trigger flex h-full flex-1 items-center gap-2 px-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
                     <ChevronRight className="size-3.5 shrink-0 text-icon-secondary transition-transform group-aria-expanded/trigger:rotate-90" />
                     <StatusIcon status={status} className="size-4.5" />
                     <span className="text-sm text-text-default">
@@ -211,7 +211,7 @@ export function ListView({
                       className="cursor-pointer accent-primary"
                     />
                   </div>
-                  <Accordion.Trigger className="group/trigger flex flex-1 items-center gap-2 px-2 h-full text-left outline-none">
+                  <Accordion.Trigger className="group/trigger flex flex-1 items-center gap-2 px-2 h-full text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
                     <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-aria-expanded/trigger:rotate-90" />
                     <span
                       className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-semibold ${STATUS_PILL_TEXT}`}

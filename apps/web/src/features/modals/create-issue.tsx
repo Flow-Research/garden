@@ -271,8 +271,9 @@ export function CreateIssueModal({
         }
       }}
     >
+      {/* Focus returns to whatever opened the dialog when it closes
+          (finalFocus was turned off, leaving keyboard users at the top). */}
       <DialogContent
-        finalFocus={false}
         showCloseButton={false}
         className={cn(
           'p-0 gap-0 flex flex-col overflow-hidden',
