@@ -98,6 +98,7 @@ vi.mock('@/lib/api', () => ({
 
 // Mock issue config
 vi.mock('@garden/core/issues/config', () => ({
+  STATUS_PILL_TEXT: 'text-gray-900',
   ALL_STATUSES: [
     'todo',
     'in_progress',

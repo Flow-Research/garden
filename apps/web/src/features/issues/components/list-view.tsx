@@ -10,7 +10,7 @@ import { Button } from '@garden/ui/components/ui/button'
 import { cn } from '@garden/ui/lib/utils'
 import type { Issue, IssueStatus } from '@garden/core/types'
 import { useLoadMoreDoneIssues } from '@/lib/issues/mutations'
-import { STATUS_CONFIG } from '@garden/core/issues/config'
+import { STATUS_CONFIG, STATUS_PILL_TEXT } from '@garden/core/issues/config'
 import { useViewStore } from '@garden/app-state/issues/stores/view-store-context'
 import { useIssueSelectionStore } from '@garden/app-state/issues/stores/selection-store'
 import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigation'
@@ -210,7 +210,8 @@ export function ListView({
                   <Accordion.Trigger className="group/trigger flex flex-1 items-center gap-2 px-2 h-full text-left outline-none">
                     <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-aria-expanded/trigger:rotate-90" />
                     <span
-                      className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-semibold ${cfg.badgeBg} ${cfg.badgeText}`}
+                      className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-semibold ${STATUS_PILL_TEXT}`}
+                      style={{ backgroundColor: cfg.pillFill }}
                     >
                       <StatusIcon
                         status={status}

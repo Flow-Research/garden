@@ -7,6 +7,7 @@ import { sortIssuesByUpdatedAt } from '@/lib/server/inbox-surface'
 import { listAvailableConnectorBindings } from '@garden/server/connectors/availability'
 import { buildConnectionSurface } from '@/lib/server/connection-surface'
 import type { IssuePriority, IssueStatus } from '@garden/core/types'
+import { STATUS_CONFIG } from '@garden/core/issues/config'
 
 export type DashboardIssue = {
   id: string
@@ -80,13 +81,12 @@ export type DashboardResourcesSnapshot = {
  * Distribution colors reference token vars (not literals) so charts follow the
  * design system in both modes. Resolved client-side by CSS.
  */
-const statusColors: Record<string, string> = {
-  todo: 'var(--blue-500)',
-  in_progress: 'var(--green-500)',
-  in_review: 'var(--yellow-500)',
-  blocked: 'var(--red-500)',
-  done: 'var(--green-600)',
-}
+const statusColors: Record<string, string> = Object.fromEntries(
+  Object.entries(STATUS_CONFIG).map(([status, config]) => [
+    status,
+    config.pillFill,
+  ]),
+)
 
 const priorityColors: Record<string, string> = {
   urgent: 'var(--red-600)',
