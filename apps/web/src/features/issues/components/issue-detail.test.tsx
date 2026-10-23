@@ -685,6 +685,21 @@ describe('IssueDetail (shared)', () => {
     })
   })
 
+  it('takes the collapsed properties sidebar out of the tab order', async () => {
+    renderIssueDetail()
+    const toggle = await screen.findByRole('button', {
+      name: 'Toggle properties',
+    })
+    const sidebar = screen.getByTestId('issue-detail-sidebar')
+    const wasOpen = toggle.getAttribute('aria-expanded') === 'true'
+    expect(sidebar.hasAttribute('inert')).toBe(!wasOpen)
+
+    fireEvent.click(toggle)
+
+    expect(toggle).toHaveAttribute('aria-expanded', String(!wasOpen))
+    expect(sidebar.hasAttribute('inert')).toBe(wasOpen)
+  })
+
   it('renders Activity section header', async () => {
     renderIssueDetail()
 

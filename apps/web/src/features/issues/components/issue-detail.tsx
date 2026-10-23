@@ -448,6 +448,7 @@ export function IssueDetail({
                       render={
                         <Button
                           aria-label="Toggle properties"
+                          aria-expanded={sidebarOpen}
                           variant={sidebarOpen ? 'secondary' : 'ghost'}
                           size="icon-sm"
                           className={sidebarOpen ? '' : 'text-muted-foreground'}
@@ -889,6 +890,10 @@ export function IssueDetail({
                 transition: 'width 200ms ease-linear',
               }}
               className="shrink-0 overflow-hidden border-l"
+              // Collapsed to zero width but still focusable, Tab used to walk
+              // into the invisible pickers.
+              inert={sidebarOpen ? undefined : true}
+              data-testid="issue-detail-sidebar"
             >
               <div className="h-full w-[320px] overflow-y-auto p-4">
                 {sidebarContent}
