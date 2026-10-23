@@ -8,6 +8,8 @@ import type {
   ServerNotification,
   ServerRequest,
 } from '@modelcontextprotocol/sdk/types.js'
+import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import { Data, Effect } from 'effect'
 import {
   definePlugin,
@@ -19,6 +21,11 @@ import type { GardenExecutorPlugins } from './plugins'
 
 const DECIDE_MCP_ENDPOINT = new URL('https://api.trydecide.ai/mcp')
 const MINUTE_MS = 60_000
+
+const directDecideLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'direct-decide-mcp',
+})
 
 /**
  * Decide documents a four-minute default analysis timeout. The direct client
@@ -92,7 +99,7 @@ const callDecideTool = (
     readonly arguments: Record<string, unknown>
   },
   options: DirectDecideCallOptions,
-) =>
+): Effect.Effect<CallToolResult, DirectDecideMcpError> =>
   Effect.acquireUseRelease(
     Effect.sync(() => {
       const client = new Client({
@@ -113,20 +120,22 @@ const callDecideTool = (
           catch: (cause) => directFailure('connect', cause),
         })
         return yield* Effect.tryPromise({
-          try: () =>
-            client.callTool(request, undefined, {
-              ...(options.signal === undefined
-                ? {}
-                : { signal: options.signal }),
-              ...(options.onProgress === undefined
-                ? {}
-                : {
-                    onprogress: options.onProgress,
-                    resetTimeoutOnProgress: true,
-                  }),
-              timeout: DECIDE_ANALYSIS_TIMEOUT_MS,
-              maxTotalTimeout: DECIDE_ANALYSIS_TIMEOUT_MS,
-            }),
+          try: async () =>
+            CallToolResultSchema.parse(
+              await client.callTool(request, undefined, {
+                ...(options.signal === undefined
+                  ? {}
+                  : { signal: options.signal }),
+                ...(options.onProgress === undefined
+                  ? {}
+                  : {
+                      onprogress: options.onProgress,
+                      resetTimeoutOnProgress: true,
+                    }),
+                timeout: DECIDE_ANALYSIS_TIMEOUT_MS,
+                maxTotalTimeout: DECIDE_ANALYSIS_TIMEOUT_MS,
+              }),
+            ),
           catch: (cause) => directFailure('call', cause),
         })
       }),
@@ -220,6 +229,31 @@ const generatedFileInput = {
 
 type DirectToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>
 
+/** Reads Decide's first text error without inspecting successful output. */
+const providerErrorMessage = (result: CallToolResult) => {
+  const message = result.content.find(
+    (
+      block,
+    ): block is Extract<(typeof result.content)[number], { type: 'text' }> =>
+      block.type === 'text' && block.text.trim().length > 0,
+  )?.text
+  return message?.trim() ?? 'Decide returned a tool error without a message.'
+}
+
+/** Converts a typed direct-call failure into an MCP error the model can read. */
+const directToolErrorResult = (
+  toolName: string,
+  error: DirectDecideMcpError,
+): CallToolResult => ({
+  isError: true,
+  content: [
+    {
+      type: 'text',
+      text: `Decide ${toolName} failed during ${error.stage}: ${error.message}`,
+    },
+  ],
+})
+
 /** Forwards Decide's customer-safe progress through Garden's MCP request. */
 const progressForwarder = (extra: DirectToolExtra) => {
   const progressToken = extra._meta?.progressToken
@@ -243,11 +277,14 @@ const invokeDirectDecide = (
   name: string,
   args: Record<string, unknown>,
   extra: DirectToolExtra,
-): Promise<CallToolResult> =>
-  Effect.runPromise(
+): Promise<CallToolResult> => {
+  const startedAt = Date.now()
+  directDecideLogger.info('decide.tool_call.started', { toolName: name })
+
+  return Effect.runPromise(
     Effect.gen(function* () {
       const connection = yield* resolveDecideConnection(executor)
-      return yield* executor.directDecideMcp.call(
+      const result = yield* executor.directDecideMcp.call(
         connection,
         { name, arguments: args },
         {
@@ -255,8 +292,41 @@ const invokeDirectDecide = (
           onProgress: progressForwarder(extra),
         },
       )
-    }),
-  ) as Promise<CallToolResult>
+
+      if (result.isError === true) {
+        directDecideLogger.error('decide.tool_call.failed', {
+          toolName: name,
+          durationMs: Date.now() - startedAt,
+          failureStage: 'provider_result',
+          failureMessage: providerErrorMessage(result),
+        })
+      } else {
+        directDecideLogger.info('decide.tool_call.completed', {
+          toolName: name,
+          durationMs: Date.now() - startedAt,
+          contentBlockCount: result.content.length,
+          hasStructuredContent: result.structuredContent !== undefined,
+        })
+      }
+
+      return result
+    }).pipe(
+      Effect.catchTag('DirectDecideMcpError', (failure) =>
+        Effect.sync(() => {
+          directDecideLogger.error('decide.tool_call.failed', {
+            toolName: name,
+            durationMs: Date.now() - startedAt,
+            failureStage: failure.stage,
+            failureMessage: failure.message,
+            ...(failure.status === undefined ? {} : { status: failure.status }),
+            ...errorFields(failure),
+          })
+          return directToolErrorResult(name, failure)
+        }),
+      ),
+    ),
+  )
+}
 
 /**
  * Adds the tools from Decide's MCP guide to Garden's Executor MCP server.
