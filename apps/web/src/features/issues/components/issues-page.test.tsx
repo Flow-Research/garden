@@ -495,7 +495,9 @@ describe('IssuesPage (shared)', () => {
 
     renderWithQuery(<IssuesPage />)
 
-    await screen.findByText('Implement auth')
+    // The first render in this file also pays for loading the board's
+    // modules, which can pass 1s when the whole suite runs at once.
+    await screen.findByText('Implement auth', undefined, { timeout: 5000 })
     expect(screen.getByText('Design landing page')).toBeInTheDocument()
     expect(screen.getByText('Write tests')).toBeInTheDocument()
   })
