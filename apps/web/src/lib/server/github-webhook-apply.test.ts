@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { planGitHubWebhookIssueApply } from './github-webhook-apply'
+import { connectorCommentActorLabel } from '@garden/server/issues/server'
 import type { GitHubWebhookIssueTarget } from './github-webhook-resolve'
 
 function target(
@@ -45,5 +46,18 @@ describe('planGitHubWebhookIssueApply', () => {
     expect(
       planGitHubWebhookIssueApply(target({ action: 'assigned' })),
     ).toBeNull()
+  })
+})
+
+describe('connectorCommentActorLabel', () => {
+  it('formats GitHub login when present', () => {
+    expect(
+      connectorCommentActorLabel({ github_login: 'octocat' }),
+    ).toBe('GitHub · @octocat')
+  })
+
+  it('falls back to GitHub without login', () => {
+    expect(connectorCommentActorLabel(null)).toBe('GitHub')
+    expect(connectorCommentActorLabel({})).toBe('GitHub')
   })
 })

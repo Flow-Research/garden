@@ -140,6 +140,17 @@ export const issue = pgTable(
   ],
 )
 
+/**
+ * Issue timeline comments.
+ *
+ * Why connector + nullable authorId + metadata: inbound GitHub
+ * `issue_comment` webhooks (#161) must land on the linked Garden issue without
+ * inventing fake user/agent UUIDs. Before this, author_type was only
+ * user|agent and author_id was required — inbound sync had nowhere to store
+ * external identity. After: `connector` comments keep author_id null, stamp
+ * `external_comment_id` for created/edited dedupe, and put display fields
+ * (github_login, html_url, …) in metadata. user/agent rows stay unchanged.
+ */
 export const issueComment = pgTable(
   'issue_comment',
   {
@@ -148,9 +159,16 @@ export const issueComment = pgTable(
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
     authorType: text('author_type').notNull(),
-    authorId: uuid('author_id').notNull(),
+    authorId: uuid('author_id'),
     body: text('body').notNull(),
     mentions: jsonb('mentions'),
+    /**
+     * Stable external id for connector-sourced comments (e.g. GitHub comment
+     * id). Null for native Garden comments. Unique per issue when set so
+     * webhook created/edited upserts do not double-insert.
+     */
+    externalCommentId: text('external_comment_id'),
+    metadata: jsonb('metadata'),
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
@@ -161,9 +179,16 @@ export const issueComment = pgTable(
   (table) => [
     index('issue_comment_issue_created_idx').on(table.issueId, table.createdAt),
     index('issue_comment_mentions_gin').using('gin', table.mentions),
+    uniqueIndex('issue_comment_external_comment_unique')
+      .on(table.issueId, table.externalCommentId)
+      .where(sql`${table.externalCommentId} is not null`),
     check(
       'issue_comment_author_type_check',
       sql`${table.authorType} in (${sqlValueList(issueCommentAuthorTypeValues)})`,
+    ),
+    check(
+      'issue_comment_author_id_check',
+      sql`(${table.authorType} = 'connector' and ${table.authorId} is null) or (${table.authorType} in ('user', 'agent') and ${table.authorId} is not null)`,
     ),
   ],
 )

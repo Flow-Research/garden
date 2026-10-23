@@ -3,6 +3,7 @@ import { Result, TaggedError } from 'better-result'
 import { schema, type Db } from '@/lib/server/db'
 import type {
   GitHubWebhookBindingMatch,
+  GitHubWebhookCommentTarget,
   GitHubWebhookIssueTarget,
 } from './github-webhook-resolve'
 
@@ -20,6 +21,12 @@ export type GitHubWebhookApplyResult = {
   applied: boolean
   skippedReason: 'bot_sender' | 'unsupported_action' | 'noop' | null
   fields: GitHubWebhookApplyField[]
+}
+
+export type GitHubWebhookCommentApplyResult = {
+  applied: boolean
+  skippedReason: 'bot_sender' | 'unsupported_action' | 'noop' | null
+  action: 'created' | 'updated' | 'deleted' | null
 }
 
 /**
@@ -192,5 +199,200 @@ export async function applyGitHubWebhookIssueUpdate(args: {
     applied: true,
     skippedReason: null,
     fields: changedFields,
+  })
+}
+
+function connectorCommentMetadata(target: GitHubWebhookCommentTarget) {
+  return {
+    connector_id: 'github',
+    github_login: target.githubLogin,
+    github_user_id: target.githubUserId,
+    html_url: target.commentHtmlUrl,
+  }
+}
+
+/**
+ * Upserts or deletes a connector-sourced Garden comment from a GitHub
+ * `issue_comment` webhook (#161). Dedupes on `(issue_id, external_comment_id)`.
+ * Bot senders are skipped to avoid Garden→GitHub→Garden echo loops.
+ */
+export async function applyGitHubWebhookComment(args: {
+  db: Db
+  binding: GitHubWebhookBindingMatch
+  target: GitHubWebhookCommentTarget
+}): Promise<Result<GitHubWebhookCommentApplyResult, GitHubWebhookApplyError>> {
+  if (args.target.senderType === 'Bot') {
+    return Result.ok({
+      applied: false,
+      skippedReason: 'bot_sender',
+      action: null,
+    })
+  }
+
+  const action = args.target.action
+  if (action !== 'created' && action !== 'edited' && action !== 'deleted') {
+    return Result.ok({
+      applied: false,
+      skippedReason: 'unsupported_action',
+      action: null,
+    })
+  }
+
+  const [existingIssue] = await args.db
+    .select({ id: schema.issue.id })
+    .from(schema.issue)
+    .where(
+      and(
+        eq(schema.issue.id, args.binding.issueId),
+        eq(schema.issue.workspaceId, args.binding.workspaceId),
+      ),
+    )
+    .limit(1)
+
+  if (!existingIssue) {
+    return Result.err(
+      new GitHubWebhookApplyError({
+        code: 'issue_not_found',
+        message: 'Linked Garden issue was not found for this binding',
+      }),
+    )
+  }
+
+  const [existingComment] = await args.db
+    .select({
+      id: schema.issueComment.id,
+      body: schema.issueComment.body,
+    })
+    .from(schema.issueComment)
+    .where(
+      and(
+        eq(schema.issueComment.issueId, args.binding.issueId),
+        eq(schema.issueComment.externalCommentId, args.target.commentId),
+      ),
+    )
+    .limit(1)
+
+  if (action === 'deleted') {
+    if (!existingComment) {
+      await args.db
+        .update(schema.issueSourceBinding)
+        .set({ lastSyncedAt: new Date() })
+        .where(eq(schema.issueSourceBinding.id, args.binding.bindingId))
+      return Result.ok({
+        applied: false,
+        skippedReason: 'noop',
+        action: null,
+      })
+    }
+
+    const deleteResult = await Result.tryPromise({
+      try: async () => {
+        await args.db.transaction(async (tx) => {
+          await tx
+            .delete(schema.issueComment)
+            .where(eq(schema.issueComment.id, existingComment.id))
+          await tx
+            .update(schema.issueSourceBinding)
+            .set({ lastSyncedAt: new Date() })
+            .where(eq(schema.issueSourceBinding.id, args.binding.bindingId))
+        })
+      },
+      catch: (cause) =>
+        new GitHubWebhookApplyError({
+          code: 'db_error',
+          message: 'Failed to delete GitHub webhook comment',
+          cause,
+        }),
+    })
+    if (deleteResult.isErr()) return deleteResult
+
+    return Result.ok({
+      applied: true,
+      skippedReason: null,
+      action: 'deleted',
+    })
+  }
+
+  const metadata = connectorCommentMetadata(args.target)
+
+  if (existingComment) {
+    if (existingComment.body === args.target.body) {
+      await args.db
+        .update(schema.issueSourceBinding)
+        .set({ lastSyncedAt: new Date() })
+        .where(eq(schema.issueSourceBinding.id, args.binding.bindingId))
+      return Result.ok({
+        applied: false,
+        skippedReason: 'noop',
+        action: null,
+      })
+    }
+
+    const updateResult = await Result.tryPromise({
+      try: async () => {
+        await args.db.transaction(async (tx) => {
+          await tx
+            .update(schema.issueComment)
+            .set({
+              body: args.target.body,
+              metadata,
+            })
+            .where(eq(schema.issueComment.id, existingComment.id))
+          await tx
+            .update(schema.issueSourceBinding)
+            .set({ lastSyncedAt: new Date() })
+            .where(eq(schema.issueSourceBinding.id, args.binding.bindingId))
+        })
+      },
+      catch: (cause) =>
+        new GitHubWebhookApplyError({
+          code: 'db_error',
+          message: 'Failed to update GitHub webhook comment',
+          cause,
+        }),
+    })
+    if (updateResult.isErr()) return updateResult
+
+    return Result.ok({
+      applied: true,
+      skippedReason: null,
+      action: 'updated',
+    })
+  }
+
+  const insertResult = await Result.tryPromise({
+    try: async () => {
+      await args.db.transaction(async (tx) => {
+        await tx.insert(schema.issueComment).values({
+          id: crypto.randomUUID(),
+          issueId: args.binding.issueId,
+          authorType: 'connector',
+          authorId: null,
+          body: args.target.body,
+          externalCommentId: args.target.commentId,
+          metadata,
+          ...(args.target.createdAt
+            ? { createdAt: args.target.createdAt }
+            : {}),
+        })
+        await tx
+          .update(schema.issueSourceBinding)
+          .set({ lastSyncedAt: new Date() })
+          .where(eq(schema.issueSourceBinding.id, args.binding.bindingId))
+      })
+    },
+    catch: (cause) =>
+      new GitHubWebhookApplyError({
+        code: 'db_error',
+        message: 'Failed to insert GitHub webhook comment',
+        cause,
+      }),
+  })
+  if (insertResult.isErr()) return insertResult
+
+  return Result.ok({
+    applied: true,
+    skippedReason: null,
+    action: 'created',
   })
 }

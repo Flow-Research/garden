@@ -4,7 +4,7 @@ export type CommentType =
   | 'progress_update'
   | 'system'
 
-export type CommentAuthorType = 'member' | 'agent'
+export type CommentAuthorType = 'member' | 'agent' | 'connector'
 
 export interface Reaction {
   id: string
@@ -19,7 +19,9 @@ export interface Comment {
   id: string
   issue_id: string
   author_type: CommentAuthorType
-  author_id: string
+  author_id: string | null
+  /** Display label for connector authors (e.g. `GitHub · @login`). */
+  author_display?: string | null
   content: string
   type: CommentType
   parent_id: string | null

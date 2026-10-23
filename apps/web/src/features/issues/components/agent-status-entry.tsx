@@ -44,7 +44,7 @@ export function AgentStatusEntry({
         />
         <div className="min-w-0 flex-1 text-sm leading-snug text-foreground/85">
           <span className="font-medium">
-            {getActorName(entry.actor_type, entry.actor_id)}
+            {getActorName(entry.actor_type, entry.actor_id ?? '')}
           </span>{' '}
           <span className="text-foreground/85">{entry.content?.trim()}</span>
         </div>
@@ -66,7 +66,7 @@ export function AgentStatusEntry({
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Sparkles className="h-3 w-3" />
         <span className="font-medium text-foreground/85">
-          {getActorName(entry.actor_type, entry.actor_id)}
+          {getActorName(entry.actor_type, entry.actor_id ?? '')}
         </span>
         <span>·</span>
         <span>{timeAgo(entry.created_at)}</span>

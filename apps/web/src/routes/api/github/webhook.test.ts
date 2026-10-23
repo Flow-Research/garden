@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   requireAppRequestContext: vi.fn(),
   resolveGitHubWebhookBinding: vi.fn(),
   applyGitHubWebhookIssueUpdate: vi.fn(),
+  applyGitHubWebhookComment: vi.fn(),
   db: vi.fn(async () => ({})),
 }))
 
@@ -37,6 +38,7 @@ vi.mock('@/lib/server/github-webhook-apply', async (importOriginal) => {
   return {
     ...actual,
     applyGitHubWebhookIssueUpdate: mocks.applyGitHubWebhookIssueUpdate,
+    applyGitHubWebhookComment: mocks.applyGitHubWebhookComment,
   }
 })
 
@@ -113,12 +115,20 @@ describe('POST /api/github/webhook', () => {
     })
     mocks.resolveGitHubWebhookBinding.mockReset()
     mocks.applyGitHubWebhookIssueUpdate.mockReset()
+    mocks.applyGitHubWebhookComment.mockReset()
     mocks.resolveGitHubWebhookBinding.mockResolvedValue(Result.ok(null))
     mocks.applyGitHubWebhookIssueUpdate.mockResolvedValue(
       Result.ok({
         applied: true,
         skippedReason: null,
         fields: ['title', 'description'],
+      }),
+    )
+    mocks.applyGitHubWebhookComment.mockResolvedValue(
+      Result.ok({
+        applied: true,
+        skippedReason: null,
+        action: 'created',
       }),
     )
   })
@@ -210,5 +220,48 @@ describe('POST /api/github/webhook', () => {
       signature: 'sha256=00',
     })
     expect(response.status).toBe(503)
+  })
+
+  it('applies issue_comment deliveries via comment apply', async () => {
+    mocks.resolveGitHubWebhookBinding.mockResolvedValue(
+      Result.ok({
+        workspaceId: 'ws-1',
+        issueId: 'issue-1',
+        bindingId: 'bind-1',
+        externalId: 'Flow-Research/garden/issues/42',
+      }),
+    )
+    const body = JSON.stringify({
+      action: 'created',
+      installation: { id: 99 },
+      repository: {
+        name: 'garden',
+        full_name: 'Flow-Research/garden',
+        owner: { login: 'Flow-Research' },
+      },
+      issue: {
+        number: 42,
+        html_url: 'https://github.com/Flow-Research/garden/issues/42',
+      },
+      comment: {
+        id: 55,
+        body: 'hello from gh',
+        user: { id: 1, login: 'octocat', type: 'User' },
+      },
+      sender: { type: 'User' },
+    })
+    const response = await postWebhook({ body })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      ok: true,
+      status: 'applied',
+      skipped_reason: null,
+      comment_action: 'created',
+      workspace_id: 'ws-1',
+      issue_id: 'issue-1',
+      binding_id: 'bind-1',
+    })
+    expect(mocks.applyGitHubWebhookComment).toHaveBeenCalled()
+    expect(mocks.applyGitHubWebhookIssueUpdate).not.toHaveBeenCalled()
   })
 })

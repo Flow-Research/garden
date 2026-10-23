@@ -8,8 +8,12 @@ import {
 } from '@/lib/server/control-plane'
 import { appEnv } from '@/lib/server/env'
 import { verifyGitHubWebhookSignature } from '@/lib/server/github-webhook'
-import { applyGitHubWebhookIssueUpdate } from '@/lib/server/github-webhook-apply'
 import {
+  applyGitHubWebhookComment,
+  applyGitHubWebhookIssueUpdate,
+} from '@/lib/server/github-webhook-apply'
+import {
+  parseGitHubWebhookCommentTarget,
   parseGitHubWebhookIssueTarget,
   resolveGitHubWebhookBinding,
 } from '@/lib/server/github-webhook-resolve'
@@ -17,8 +21,9 @@ import {
 /**
  * GitHub App webhook ingress (#161).
  *
- * Verify signature → resolve install/binding → apply edited/closed/reopened.
- * Unmatched or skipped deliveries still return 200 so GitHub stops retrying.
+ * Verify signature → parse issues.* or issue_comment.* → resolve
+ * install/binding → apply. Unmatched or skipped deliveries still return 200
+ * so GitHub stops retrying.
  */
 export const Route = createFileRoute('/api/github/webhook')({
   server: {
@@ -49,6 +54,48 @@ export const Route = createFileRoute('/api/github/webhook')({
           payload = JSON.parse(text) as unknown
         } catch {
           return badRequest('Webhook body must be valid JSON')
+        }
+
+        const commentTargetResult = parseGitHubWebhookCommentTarget(payload)
+        if (commentTargetResult.isErr()) {
+          return badRequest(commentTargetResult.error.message)
+        }
+
+        if (commentTargetResult.value !== null) {
+          const db = await appContext.db()
+          const bindingResult = await resolveGitHubWebhookBinding({
+            db,
+            target: commentTargetResult.value,
+          })
+          const binding = bindingResult.value
+          if (!binding) {
+            return json({ ok: true, status: 'unbound' }, 200)
+          }
+
+          const applyResult = await applyGitHubWebhookComment({
+            db,
+            binding,
+            target: commentTargetResult.value,
+          })
+          if (applyResult.isErr()) {
+            if (applyResult.error.code === 'issue_not_found') {
+              return json({ ok: true, status: 'unbound' }, 200)
+            }
+            return serviceUnavailable(applyResult.error.message)
+          }
+
+          return json(
+            {
+              ok: true,
+              status: applyResult.value.applied ? 'applied' : 'skipped',
+              skipped_reason: applyResult.value.skippedReason,
+              comment_action: applyResult.value.action,
+              workspace_id: binding.workspaceId,
+              issue_id: binding.issueId,
+              binding_id: binding.bindingId,
+            },
+            200,
+          )
         }
 
         const targetResult = parseGitHubWebhookIssueTarget(payload)

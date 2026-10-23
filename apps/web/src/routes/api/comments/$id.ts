@@ -11,11 +11,17 @@ import { requireIssueAccess } from '@/lib/server/issue-access'
 
 function toComment(row: typeof schema.issueComment.$inferSelect) {
   const createdAt = (row.createdAt ?? new Date()).toISOString()
+  const authorType =
+    row.authorType === 'user'
+      ? 'member'
+      : row.authorType === 'connector'
+        ? 'connector'
+        : row.authorType
 
   return {
     id: row.id,
     issue_id: row.issueId,
-    author_type: row.authorType === 'user' ? 'member' : row.authorType,
+    author_type: authorType,
     author_id: row.authorId,
     content: row.body,
     type: 'comment',

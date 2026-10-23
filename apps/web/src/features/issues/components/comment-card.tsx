@@ -238,10 +238,12 @@ function CommentRow({
         <ActorAvatar
           actorType={entry.actor_type}
           actorId={entry.actor_id}
+          label={entry.actor_label}
           size={24}
         />
         <span className="text-sm font-medium">
-          {getActorName(entry.actor_type, entry.actor_id)}
+          {entry.actor_label ??
+            getActorName(entry.actor_type, entry.actor_id ?? '')}
         </span>
         <Tooltip>
           <TooltipTrigger
@@ -478,10 +480,12 @@ function CommentCard({
             <ActorAvatar
               actorType={entry.actor_type}
               actorId={entry.actor_id}
+              label={entry.actor_label}
               size={24}
             />
             <span className="shrink-0 text-sm font-medium">
-              {getActorName(entry.actor_type, entry.actor_id)}
+              {entry.actor_label ??
+                getActorName(entry.actor_type, entry.actor_id ?? '')}
             </span>
             <Tooltip>
               <TooltipTrigger
