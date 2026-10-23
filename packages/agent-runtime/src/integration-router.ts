@@ -339,6 +339,7 @@ export function renderIntegrationRouteDirective(
   ) {
     lines.push(
       'Call tool_executor_execute for Decide. Do not use the sandbox execute tool for integration work; it has no integrations namespace.',
+      'Inside tool_executor_execute, use only the `tools` object with the exact tool path from the catalog. `require`, Node built-ins, and an `integrations` object are not available in Executor code mode.',
       'For an uploaded file, call Garden readDocument with the document handle from the document context before calling Decide.',
       'Pass the complete text returned by readDocument as Decide analyze data. Do not pass a summary, sample, or truncated content.',
       'For a follow-up analysis, reuse the session_id returned by Decide and omit data unless the user provides a different file.',

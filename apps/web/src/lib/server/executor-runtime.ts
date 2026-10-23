@@ -6,6 +6,7 @@ import {
   createExecutor,
   type Executor,
 } from '@executor-js/sdk/core'
+import { makeHostedFetch } from '@executor-js/sdk/host-internal'
 import { appEnv } from './env'
 import { createD1ExecutorDb } from './executor-engine/d1'
 import { makeR2BlobStore } from './executor-engine/r2'
@@ -96,7 +97,9 @@ export const executorProgram = <A, E>(
           appEnv.EXECUTOR_BLOBS,
         ).pipe(Effect.map((database) => ({ db: database.db }))),
       blobs: makeR2BlobStore(appEnv.EXECUTOR_BLOBS),
-      plugins: makeExecutorPlugins(appEnv.EXECUTOR_SECRET_KEY),
+      plugins: makeExecutorPlugins(appEnv.EXECUTOR_SECRET_KEY, {
+        fetch: makeHostedFetch({ allowLocalNetwork: false }),
+      }),
       onElicitation: () => Effect.succeed({ action: 'decline' as const }),
       oauthCallbackStateOrgSlug: identity.tenant,
     }),

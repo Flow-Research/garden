@@ -45,7 +45,10 @@ export function logPublicMcpProgress(progress: PublicMcpProgress) {
 
 export const makeExecutorPlugins = (
   secretKey: string,
-  options: { readonly activeToolkitSlug?: string } = {},
+  options: {
+    readonly activeToolkitSlug?: string
+    readonly fetch?: typeof globalThis.fetch
+  } = {},
 ) =>
   [
     openApiPlugin({
@@ -55,6 +58,7 @@ export const makeExecutorPlugins = (
     mcpPlugin({
       dangerouslyAllowStdioMCP: false,
       onProgress: logPublicMcpProgress,
+      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     }),
     directDecideMcpPlugin(),
     graphqlPlugin(),
