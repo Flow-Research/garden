@@ -203,9 +203,12 @@ export function TriggerConfigSection({
                       0,
                       Math.min(59, parseInt(event.target.value) || 0),
                     )
+                    // Keep the hour: it is unused while hourly, but it was
+                    // reset to 00, losing the daily time on switching back.
+                    const hour = config.time.split(':')[0] ?? '00'
                     onChange({
                       ...config,
-                      time: `00:${minute.toString().padStart(2, '0')}`,
+                      time: `${hour}:${minute.toString().padStart(2, '0')}`,
                     })
                   }}
                   className="mt-1 w-full rounded-md border bg-background px-3 py-2 font-mono text-sm outline-none focus:ring-1 focus:ring-ring"
