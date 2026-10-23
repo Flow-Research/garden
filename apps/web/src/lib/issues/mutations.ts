@@ -350,13 +350,22 @@ export function useDeleteIssue() {
           doneTotal: (old.doneTotal ?? 0) - (d?.status === 'done' ? 1 : 0),
         }
       })
-      qc.removeQueries({ queryKey: issueKeys.detail(wsId, id) })
+      // The detail entry is not removed here. The issue page is still
+      // mounted and observing it, so removing it fired a GET for the issue
+      // being deleted, and on failure left nothing to roll back to.
       return { prevList, parentIssueId: deleted?.parent_issue_id }
     },
     onError: (_err, _id, ctx) => {
       if (ctx?.prevList) qc.setQueryData(listKey, ctx.prevList)
     },
     onSuccess: (_data, deletedId, ctx) => {
+      // Stale without a refetch: the caller navigates away, and a later
+      // visit to this issue fetches it again (and finds it gone).
+      qc.invalidateQueries({
+        queryKey: issueKeys.detail(wsId, deletedId),
+        exact: true,
+        refetchType: 'none',
+      })
       removeFromFilteredIssueCaches(qc, wsId, new Set([deletedId]))
       invalidateFilteredIssueCaches(qc, wsId)
       qc.invalidateQueries({
