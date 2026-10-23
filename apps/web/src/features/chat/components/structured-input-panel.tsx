@@ -54,36 +54,35 @@ export const StructuredInputPanel = memo(function StructuredInputPanel({
     (optionLabel: string) => {
       if (!activeQuestion || disabled) return
 
-      setDrafts((prev) => {
-        const next = {
-          ...prev,
-          [activeQuestion.id]: toggleOptionSelection(
-            activeQuestion,
-            prev[activeQuestion.id],
-            optionLabel,
-          ),
-        }
+      // Computed here, not in a setState updater: React may run updaters
+      // twice, and this one scheduled the timer and submitted the answers.
+      const next = {
+        ...drafts,
+        [activeQuestion.id]: toggleOptionSelection(
+          activeQuestion,
+          drafts[activeQuestion.id],
+          optionLabel,
+        ),
+      }
+      setDrafts(next)
 
-        // Auto-advance for single-select after a short delay
-        if (!activeQuestion.multiSelect) {
-          if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current)
-          autoAdvanceTimer.current = setTimeout(() => {
-            autoAdvanceTimer.current = null
-            setQuestionIndex((idx: number) => {
-              if (idx >= questions.length - 1) return idx
-              return idx + 1
-            })
+      // Auto-advance for single-select after a short delay
+      if (!activeQuestion.multiSelect) {
+        if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current)
+        autoAdvanceTimer.current = setTimeout(() => {
+          autoAdvanceTimer.current = null
+          setQuestionIndex((idx: number) => {
+            if (idx >= questions.length - 1) return idx
+            return idx + 1
+          })
 
-            // Check if all answered and auto-submit
-            const resolved = buildAnswers(questions, next)
-            if (resolved) onSubmitRef.current(resolved)
-          }, 200)
-        }
-
-        return next
-      })
+          // Check if all answered and auto-submit
+          const resolved = buildAnswers(questions, next)
+          if (resolved) onSubmitRef.current(resolved)
+        }, 200)
+      }
     },
-    [activeQuestion, disabled, questions],
+    [activeQuestion, disabled, drafts, questions],
   )
 
   const handleAdvance = useCallback(() => {

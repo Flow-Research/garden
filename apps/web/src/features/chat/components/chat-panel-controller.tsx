@@ -863,6 +863,7 @@ export function ConnectedChatPanelInteraction({
               onStop={stop}
               onWarmRuntime={warmRuntime}
               pendingQuestions={pendingStructuredInput?.questions}
+              pendingQuestionsKey={pendingStructuredInput?.toolCallId}
               onSubmitAnswers={handleSubmitAnswers}
               queue={
                 <ChatMessageQueue

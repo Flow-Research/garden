@@ -160,6 +160,8 @@ export interface ComposerProps {
   onStop: () => void
   onWarmRuntime?: () => void
   pendingQuestions?: StructuredQuestion[]
+  /** Identifies the tool call asking; a new one starts with fresh answers. */
+  pendingQuestionsKey?: string
   onSubmitAnswers?: (answers: StructuredQuestionAnswers) => void
   /**
    * Slot rendered directly above the pill, inside its width wrapper — the
@@ -312,6 +314,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
       onStop,
       onWarmRuntime,
       pendingQuestions,
+      pendingQuestionsKey,
       onSubmitAnswers,
       queue,
     },
@@ -1009,6 +1012,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
                */
               <div data-composer-keep-focus>
                 <StructuredInputPanel
+                  key={pendingQuestionsKey}
                   questions={pendingQuestions}
                   onSubmit={onSubmitAnswers}
                   disabled={isStreaming}
