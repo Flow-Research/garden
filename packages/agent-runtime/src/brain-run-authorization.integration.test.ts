@@ -56,7 +56,7 @@ function assertOrgInjection(
     .join('\n')
   const blocks = [
     ...text.matchAll(
-      /Org Brain memory for this turn\.[\s\S]*?Call brain_search or brain_neighborhood with an id above for more\./g,
+      /Org Brain memory for this turn\.[\s\S]*?Call brain_search, brain_read_file, or brain_neighborhood with an id above for more\./g,
     ),
   ].map((match) => match[0])
   expect(
