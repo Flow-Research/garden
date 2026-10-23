@@ -91,6 +91,39 @@ describe('Decide diagnostic', () => {
     })
   })
 
+  it('reports safe transport details from an Executor error envelope', async () => {
+    const result = await Effect.runPromise(
+      diagnoseDecideWithExecutor(
+        makeExecutor(() =>
+          Effect.fail({
+            _tag: 'ToolInvocationError',
+            message: 'MCP tool call failed for whoami',
+            cause: {
+              _tag: 'McpInvocationError',
+              toolName: 'whoami',
+              message: 'MCP tool call failed for whoami',
+              details: {
+                transportFailure: true,
+                transportKind: 'http',
+                transportMessage: 'MCP transport returned HTTP 502.',
+              },
+            },
+          }),
+        ),
+      ),
+    )
+
+    expect(result.checks.at(-1)).toMatchObject({
+      name: 'call',
+      outcome: 'failed',
+      stage: 'mcp_handoff',
+      message: 'MCP transport returned HTTP 502.',
+      transportFailure: true,
+      transportKind: 'http',
+      transportMessage: 'MCP transport returned HTTP 502.',
+    })
+  })
+
   it('keeps catalog failures at the catalog stage', async () => {
     const executor = makeExecutor(() => Effect.succeed({ ok: true })) as {
       integrations: {

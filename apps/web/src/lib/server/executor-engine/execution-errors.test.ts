@@ -42,7 +42,55 @@ describe('Executor MCP provider failures', () => {
       error: {
         code: 'mcp_tool_error',
         message: 'Not enough Decide credits to run this request.',
-        details: { toolName: 'analyze', status: 402, mcpCode: -32603 },
+        details: {
+          toolName: 'analyze',
+          status: 402,
+          mcpCode: -32603,
+        },
+      },
+    })
+  })
+
+  it('returns safe transport details without exposing the original cause', async () => {
+    const executor = {
+      execute: () =>
+        Effect.fail(
+          new ToolInvocationError({
+            address: 'tools.decide.user.decide.whoami' as never,
+            message: 'MCP tool call failed for whoami',
+            cause: {
+              _tag: 'McpInvocationError',
+              toolName: 'whoami',
+              message: 'MCP tool call failed for whoami',
+              transportFailure: true,
+              transportKind: 'http',
+              transportMessage: 'MCP transport returned HTTP 502.',
+            },
+          }),
+        ),
+    } as never
+
+    const invoker = makeExecutorToolInvoker(executor, {
+      invokeOptions: {},
+    })
+    const result = await Effect.runPromise(
+      invoker.invoke({
+        path: 'decide.user.decide.whoami',
+        args: {},
+      }),
+    )
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'mcp_tool_error',
+        message: 'MCP tool call failed for whoami',
+        details: {
+          toolName: 'whoami',
+          transportFailure: true,
+          transportKind: 'http',
+          transportMessage: 'MCP transport returned HTTP 502.',
+        },
       },
     })
   })

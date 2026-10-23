@@ -48,5 +48,11 @@ describe('Executor MCP progress logging', () => {
     expect(mcpClientSource).toContain(
       '...protocolFailure ? { mcpCode: protocolFailure.code } : {}',
     )
+    expect(mcpClientSource).toContain(
+      'const transportKind = protocolFailure ? void 0 : mcpTransportKindFromCause(cause, status)',
+    )
+    expect(mcpClientSource).toContain(
+      'safeMcpTransportMessage(status, transportKind)',
+    )
   })
 })
