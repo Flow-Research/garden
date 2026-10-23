@@ -43,9 +43,12 @@ export function SurfaceTabs({
   end,
   className,
 }: SurfaceTabsProps) {
+  // A nav of open documents, like browser tabs. It used role="tablist" with
+  // role="tab" on a non-focusable wrapper around two buttons, which screen
+  // readers announced as tabs that could not be focused or selected.
   return (
-    <div
-      role="tablist"
+    <nav
+      aria-label="Open tabs"
       className={cn('flex h-full min-w-0 flex-1 items-stretch', className)}
     >
       {tabs.map((tab) => {
@@ -53,8 +56,6 @@ export function SurfaceTabs({
         return (
           <div
             key={tab.id}
-            role="tab"
-            aria-selected={active}
             className={cn(
               'group relative flex w-36 min-w-0 items-stretch text-sm',
               active
@@ -65,7 +66,8 @@ export function SurfaceTabs({
             <button
               type="button"
               onClick={() => onSelect(tab.id)}
-              className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 px-2.5 outline-none"
+              aria-current={active ? 'page' : undefined}
+              className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 px-2.5 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
             >
               {tab.icon ? (
                 <tab.icon className="size-3.5 shrink-0 text-icon-neutral-tertiary" />
@@ -101,6 +103,6 @@ export function SurfaceTabs({
       {end ? (
         <div className="ml-auto flex items-center px-1.5">{end}</div>
       ) : null}
-    </div>
+    </nav>
   )
 }
