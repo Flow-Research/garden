@@ -8,6 +8,9 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Executor } from '@executor-js/sdk/core'
 import {
   DECIDE_ANALYSIS_TIMEOUT_MS,
+  DirectDecideMcpSessionManager,
+  type DirectDecideMcpSession,
+  type DirectDecideMcpSessionFactory,
   registerDirectDecideTools,
 } from './direct-decide-mcp'
 import type { GardenExecutorPlugins } from './plugins'
@@ -84,6 +87,51 @@ const toolExtra = (progressToken?: string | number) => {
     },
     notifications,
   }
+}
+
+const makeSessionFactory = (
+  behavior: (
+    sessionIndex: number,
+    requestId: number,
+  ) => Promise<CallToolResult> = async () => ({ content: [] }),
+) => {
+  const sessions: Array<{
+    requestIds: number[]
+    pendingIds: number[]
+    close: ReturnType<typeof vi.fn>
+    disconnect: () => void
+  }> = []
+  const factory: DirectDecideMcpSessionFactory = ({ onDisconnect }) => {
+    const sessionIndex = sessions.length
+    let nextRequestId = 0
+    const pendingIds: number[] = []
+    const close = vi.fn(async () => {
+      pendingIds.length = 0
+    })
+    const record = {
+      requestIds: [] as number[],
+      pendingIds,
+      close,
+      disconnect: onDisconnect,
+    }
+    const session: DirectDecideMcpSession = {
+      connect: vi.fn(async () => undefined),
+      call: vi.fn(async () => {
+        const requestId = nextRequestId
+        nextRequestId += 1
+        record.requestIds.push(requestId)
+        record.pendingIds.push(requestId)
+        return behavior(sessionIndex, requestId).finally(() => {
+          const pendingIndex = record.pendingIds.indexOf(requestId)
+          if (pendingIndex >= 0) record.pendingIds.splice(pendingIndex, 1)
+        })
+      }),
+      close,
+    }
+    sessions.push(record)
+    return session
+  }
+  return { factory, sessions }
 }
 
 describe('direct Decide MCP tools', () => {
@@ -197,5 +245,226 @@ describe('direct Decide MCP tools', () => {
 
   it('uses a timeout longer than Decide documented four-minute default', () => {
     expect(DECIDE_ANALYSIS_TIMEOUT_MS).toBeGreaterThan(4 * 60_000)
+  })
+
+  it('keeps request IDs unique across repeated calls on one connection', async () => {
+    const { factory, sessions } = makeSessionFactory()
+    const manager = new DirectDecideMcpSessionManager(factory)
+
+    await manager.call(
+      'user:decide:default',
+      'token',
+      {
+        name: 'whoami',
+        arguments: {},
+      },
+      {},
+    )
+    await manager.call(
+      'user:decide:default',
+      'token',
+      {
+        name: 'whoami',
+        arguments: {},
+      },
+      {},
+    )
+
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0]?.requestIds).toEqual([0, 1])
+    expect(sessions[0]?.pendingIds).toEqual([])
+  })
+
+  it('assigns unique request IDs to concurrent calls', async () => {
+    const { factory, sessions } = makeSessionFactory(async () => {
+      await Promise.resolve()
+      return { content: [] }
+    })
+    const manager = new DirectDecideMcpSessionManager(factory)
+
+    await Promise.all([
+      manager.call(
+        'user:decide:default',
+        'token',
+        {
+          name: 'whoami',
+          arguments: {},
+        },
+        {},
+      ),
+      manager.call(
+        'user:decide:default',
+        'token',
+        {
+          name: 'whoami',
+          arguments: {},
+        },
+        {},
+      ),
+    ])
+
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0]?.requestIds).toEqual([0, 1])
+    expect(sessions[0]?.pendingIds).toEqual([])
+  })
+
+  it('closes a failed session before reconnecting', async () => {
+    const { factory, sessions } = makeSessionFactory(async (sessionIndex) => {
+      if (sessionIndex === 0) {
+        return Promise.reject(new Error('transport disconnected'))
+      }
+      return { content: [] }
+    })
+    const manager = new DirectDecideMcpSessionManager(factory)
+
+    await expect(
+      manager.call(
+        'user:decide:default',
+        'token',
+        {
+          name: 'whoami',
+          arguments: {},
+        },
+        {},
+      ),
+    ).rejects.toThrow('transport disconnected')
+    await Promise.resolve()
+    expect(sessions[0]?.pendingIds).toEqual([])
+    await manager.call(
+      'user:decide:default',
+      'token',
+      {
+        name: 'whoami',
+        arguments: {},
+      },
+      {},
+    )
+
+    expect(sessions[0]?.close).toHaveBeenCalledOnce()
+    expect(sessions[1]?.requestIds).toEqual([0])
+  })
+
+  it('clears the session after a timeout so the next call has fresh state', async () => {
+    const { factory, sessions } = makeSessionFactory(async (sessionIndex) => {
+      if (sessionIndex === 0) {
+        return Promise.reject(new Error('Request timed out'))
+      }
+      return { content: [] }
+    })
+    const manager = new DirectDecideMcpSessionManager(factory)
+
+    await expect(
+      manager.call(
+        'user:decide:default',
+        'token',
+        {
+          name: 'analyze',
+          arguments: { question: 'test' },
+        },
+        {},
+      ),
+    ).rejects.toThrow('Request timed out')
+    await Promise.resolve()
+    expect(sessions[0]?.pendingIds).toEqual([])
+    await manager.call(
+      'user:decide:default',
+      'token',
+      {
+        name: 'analyze',
+        arguments: { question: 'test' },
+      },
+      {},
+    )
+
+    expect(sessions[0]?.close).toHaveBeenCalledOnce()
+    expect(sessions[1]?.requestIds).toEqual([0])
+  })
+
+  it('drops a disconnected session and clears pending requests', async () => {
+    let releaseFirstCall: (() => void) | undefined
+    const { factory, sessions } = makeSessionFactory(async (sessionIndex) => {
+      if (sessionIndex === 0) {
+        return new Promise<CallToolResult>((resolve) => {
+          releaseFirstCall = () => resolve({ content: [] })
+        })
+      }
+      return { content: [] }
+    })
+    const manager = new DirectDecideMcpSessionManager(factory)
+
+    const firstCall = manager.call(
+      'user:decide:default',
+      'token',
+      {
+        name: 'whoami',
+        arguments: {},
+      },
+      {},
+    )
+    await vi.waitFor(() => {
+      expect(sessions[0]?.pendingIds).toEqual([0])
+    })
+    sessions[0]?.disconnect()
+    await vi.waitFor(() => {
+      expect(sessions[0]?.pendingIds).toEqual([])
+    })
+    await manager.call(
+      'user:decide:default',
+      'token',
+      {
+        name: 'whoami',
+        arguments: {},
+      },
+      {},
+    )
+
+    expect(sessions).toHaveLength(2)
+    expect(sessions[0]?.close).toHaveBeenCalledOnce()
+    expect(sessions[1]?.requestIds).toEqual([0])
+    releaseFirstCall?.()
+    await firstCall
+  })
+
+  it('drops a session when its MCP handshake fails', async () => {
+    const sessions: Array<{ close: ReturnType<typeof vi.fn> }> = []
+    const factory: DirectDecideMcpSessionFactory = () => {
+      const sessionIndex = sessions.length
+      const close = vi.fn(async () => undefined)
+      sessions.push({ close })
+      return {
+        connect: vi.fn(async () => {
+          if (sessionIndex === 0) {
+            return Promise.reject(new Error('handshake failed'))
+          }
+        }),
+        call: vi.fn(async () => ({ content: [] })),
+        close,
+      }
+    }
+    const manager = new DirectDecideMcpSessionManager(factory)
+
+    await expect(
+      manager.call(
+        'user:decide:default',
+        'token',
+        {
+          name: 'whoami',
+          arguments: {},
+        },
+        {},
+      ),
+    ).rejects.toThrow('handshake failed')
+    await manager.call(
+      'user:decide:default',
+      'token',
+      {
+        name: 'whoami',
+        arguments: {},
+      },
+      {},
+    )
+
+    expect(sessions).toHaveLength(2)
+    expect(sessions[0]?.close).toHaveBeenCalledOnce()
   })
 })
