@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   listSkills: vi.fn(),
   getSkill: vi.fn(),
   updateSkill: vi.fn(),
+  deleteSkill: vi.fn(),
 }))
 
 vi.mock('@/lib/api', () => ({
@@ -23,6 +24,7 @@ vi.mock('@/lib/api', () => ({
     listSkills: mocks.listSkills,
     getSkill: mocks.getSkill,
     updateSkill: mocks.updateSkill,
+    deleteSkill: mocks.deleteSkill,
   },
 }))
 vi.mock('../../common/markdown', () => ({
@@ -225,5 +227,36 @@ describe('SkillsPage library', () => {
     expect(
       await screen.findByRole('heading', { name: 'Triage' }),
     ).toBeInTheDocument()
+  })
+})
+
+describe('SkillsPage delete', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useSkillsBrowseStore.getState().reset()
+    mocks.listSkills.mockResolvedValue([skill({})])
+    mocks.getSkill.mockResolvedValue(skill({}))
+  })
+
+  it('keeps the confirmation open when deleting fails', async () => {
+    mocks.deleteSkill.mockRejectedValue(new Error('Skill is in use'))
+    renderPage()
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Skill actions' }),
+    )
+    fireEvent.click(await screen.findByRole('menuitem', { name: /delete/i }))
+    const confirm = await screen.findByRole('alertdialog')
+    fireEvent.click(
+      within(confirm).getByRole('button', { name: 'Delete skill' }),
+    )
+
+    await waitFor(() => expect(mocks.deleteSkill).toHaveBeenCalled())
+    await waitFor(() =>
+      expect(
+        within(confirm).getByRole('button', { name: 'Delete skill' }),
+      ).not.toBeDisabled(),
+    )
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
   })
 })

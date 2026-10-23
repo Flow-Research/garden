@@ -28,17 +28,6 @@ import {
   DialogFooter,
 } from '@garden/ui/components/ui/dialog'
 import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogMedia,
-  AlertDialogTitle,
-  AlertDialogCancel,
-  AlertDialogAction,
-} from '@garden/ui/components/ui/alert-dialog'
-import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
@@ -371,7 +360,6 @@ export default function SkillsPage({
                 ? reinstallMutation.mutateAsync(selected)
                 : Promise.resolve()
             }
-            isReinstalling={reinstallMutation.isPending}
             onDirtyChange={(dirty) => {
               editorDirtyRef.current = dirty
             }}
@@ -524,14 +512,12 @@ function SkillWorkspace({
   onUpdate,
   onDelete,
   onReinstall,
-  isReinstalling,
   onDirtyChange,
 }: {
   skill: Skill | null
   onUpdate: (data: UpdateSkillRequest) => Promise<unknown>
   onDelete: () => Promise<unknown>
   onReinstall: () => Promise<unknown>
-  isReinstalling: boolean
   onDirtyChange: (dirty: boolean) => void
 }) {
   const wsId = useWorkspaceId()
@@ -566,7 +552,6 @@ function SkillWorkspace({
       onUpdate={onUpdate}
       onDelete={onDelete}
       onReinstall={onReinstall}
-      isReinstalling={isReinstalling}
       onDirtyChange={onDirtyChange}
     />
   )
@@ -614,7 +599,6 @@ function SkillBundleEditor({
   onUpdate,
   onDelete,
   onReinstall,
-  isReinstalling,
   onDirtyChange,
 }: {
   skill: Skill
@@ -623,7 +607,6 @@ function SkillBundleEditor({
   onUpdate: (data: UpdateSkillRequest) => Promise<unknown>
   onDelete: () => Promise<unknown>
   onReinstall: () => Promise<unknown>
-  isReinstalling: boolean
   onDirtyChange: (dirty: boolean) => void
 }) {
   // The saved bundle this editor was mounted with; the key above remounts the
@@ -751,28 +734,35 @@ function SkillBundleEditor({
         />
       )}
 
-      {confirmDelete && (
-        <DeleteSkillDialog
-          skillName={skill.name}
-          onCancel={() => setConfirmDelete(false)}
-          onConfirm={async () => {
-            setConfirmDelete(false)
-            await onDelete()
-          }}
-        />
-      )}
+      {/* ConfirmDialog keeps a failed delete or sync open (the mutation has
+          already toasted why); the hand-built dialogs let the rejection
+          escape unhandled. */}
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        media={<Trash2 className="text-destructive" />}
+        title={`Delete “${skill.name}”?`}
+        description="This removes the skill from every agent in this workspace and deletes all bundle files. This cannot be undone."
+        confirmLabel="Delete skill"
+        pendingLabel="Deleting…"
+        tone="destructive"
+        onConfirm={onDelete}
+      />
 
-      {confirmSync && canSync ? (
-        <SyncSkillDialog
-          isDirty={isDirty}
-          isSyncing={isReinstalling}
-          onCancel={() => setConfirmSync(false)}
-          onConfirm={async () => {
-            await onReinstall()
-            setConfirmSync(false)
-          }}
-        />
-      ) : null}
+      <ConfirmDialog
+        open={confirmSync && canSync}
+        onOpenChange={setConfirmSync}
+        media={<RefreshCw />}
+        title="Sync from source?"
+        description={
+          isDirty
+            ? 'You have unsaved edits. Syncing discards them and replaces the bundle with the latest version from the source.'
+            : 'Replaces the bundle with the latest version from the source.'
+        }
+        confirmLabel="Sync"
+        pendingLabel="Syncing…"
+        onConfirm={onReinstall}
+      />
     </div>
   )
 }
@@ -1225,7 +1215,8 @@ function SkillPreviewPage({
 
   const handleImport = () => {
     if (isImporting) return
-    void onImport(url)
+    // The import mutation toasts its own failure.
+    onImport(url).catch(() => {})
   }
 
   const headerTitle = data?.name ?? 'Loading skill…'
@@ -1400,10 +1391,16 @@ function AuthorSkillPanel({
   const handleSubmit = async () => {
     if (!name.trim() || !description.trim() || submitting) return
     setSubmitting(true)
-    await onCreate({
-      name: name.trim(),
-      description: description.trim(),
-    }).finally(() => setSubmitting(false))
+    try {
+      await onCreate({
+        name: name.trim(),
+        description: description.trim(),
+      })
+    } catch {
+      // The create mutation toasts the failure; the form stays filled in.
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -1553,102 +1550,6 @@ function AddFileDialog({
 // ---------------------------------------------------------------------------
 // Destructive confirmation dialogs
 // ---------------------------------------------------------------------------
-
-function DeleteSkillDialog({
-  skillName,
-  onCancel,
-  onConfirm,
-}: {
-  skillName: string
-  onCancel: () => void
-  onConfirm: () => Promise<void>
-}) {
-  const [pending, setPending] = useState(false)
-  return (
-    <AlertDialog
-      open
-      onOpenChange={(value) => {
-        if (!value) onCancel()
-      }}
-    >
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogMedia>
-            <Trash2 className="text-destructive" />
-          </AlertDialogMedia>
-          <AlertDialogTitle>Delete &ldquo;{skillName}&rdquo;?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This removes the skill from every agent in this workspace and
-            deletes all bundle files. This cannot be undone.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            variant="destructive"
-            disabled={pending}
-            onClick={async (event) => {
-              event.preventDefault()
-              setPending(true)
-              await onConfirm().finally(() => setPending(false))
-            }}
-          >
-            {pending ? <Loader2 className="animate-spin" /> : <Trash2 />}
-            {pending ? 'Deleting' : 'Delete skill'}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  )
-}
-
-function SyncSkillDialog({
-  isDirty,
-  isSyncing,
-  onCancel,
-  onConfirm,
-}: {
-  isDirty: boolean
-  isSyncing: boolean
-  onCancel: () => void
-  onConfirm: () => Promise<void>
-}) {
-  return (
-    <AlertDialog
-      open
-      onOpenChange={(value) => {
-        if (!value) onCancel()
-      }}
-    >
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogMedia>
-            <RefreshCw />
-          </AlertDialogMedia>
-          <AlertDialogTitle>Sync from source?</AlertDialogTitle>
-          <AlertDialogDescription>
-            {isDirty
-              ? 'You have unsaved edits. Syncing discards them and replaces the bundle with the latest version from the source.'
-              : 'Replaces the bundle with the latest version from the source.'}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={isSyncing}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            disabled={isSyncing}
-            onClick={async (event) => {
-              event.preventDefault()
-              await onConfirm()
-            }}
-          >
-            {isSyncing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-            {isSyncing ? 'Syncing' : 'Sync'}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Empty state
