@@ -8,12 +8,14 @@ import type {
   AutomationTrigger,
 } from '@/lib/api'
 import { workspaceKeys } from '@/lib/workspace/queries'
+import { toast } from 'sonner'
 import { AutomationDetailPage } from './automation-detail-page'
 import { automationKeys } from './queries'
 
 const mocks = vi.hoisted(() => ({
   deleteAutomation: vi.fn(),
   deleteAutomationTrigger: vi.fn(),
+  updateAutomation: vi.fn(),
 }))
 
 vi.mock('@/lib/api', async (importActual) => ({
@@ -24,6 +26,7 @@ vi.mock('@/lib/api', async (importActual) => ({
     listAgents: vi.fn(async () => []),
     deleteAutomation: mocks.deleteAutomation,
     deleteAutomationTrigger: mocks.deleteAutomationTrigger,
+    updateAutomation: mocks.updateAutomation,
   },
 }))
 vi.mock('@/lib/workspace/hooks', () => ({
@@ -164,5 +167,45 @@ describe('AutomationDetailPage deletes', () => {
     // Wait for the refetched automation to reach the page before checking.
     await screen.findByText('paused')
     expect(screen.getByDisplayValue('Nightly triage v2')).toBeTruthy()
+  })
+})
+
+describe('AutomationDetailPage pause', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('locks the button while pausing and says when it worked', async () => {
+    let finish: () => void = () => {}
+    mocks.updateAutomation.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ ...AUTOMATION, status: 'paused' })
+        }),
+    )
+    const success = vi.spyOn(toast, 'success')
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }))
+    const pausing = await screen.findByRole('button', { name: 'Pausing…' })
+    expect(pausing).toBeDisabled()
+    fireEvent.click(pausing)
+    expect(mocks.updateAutomation).toHaveBeenCalledTimes(1)
+
+    finish()
+    await waitFor(() =>
+      expect(success).toHaveBeenCalledWith('Automation paused'),
+    )
+  })
+
+  it('says when pausing failed', async () => {
+    mocks.updateAutomation.mockRejectedValue(new Error('Server unavailable'))
+    const error = vi.spyOn(toast, 'error')
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }))
+
+    await waitFor(() =>
+      expect(error).toHaveBeenCalledWith('Server unavailable'),
+    )
+    expect(screen.getByRole('button', { name: 'Pause' })).not.toBeDisabled()
   })
 })

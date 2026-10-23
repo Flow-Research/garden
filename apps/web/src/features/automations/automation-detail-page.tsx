@@ -689,10 +689,31 @@ export function AutomationDetailPage({
     onDeleted?.()
   }
 
+  // Pausing used to give no feedback, and a failed request left the
+  // automation running with nothing said.
   const handleToggleStatus = () => {
     const nextStatus = automation.status === 'active' ? 'paused' : 'active'
-    updateAutomation.mutate({ id: automationId, status: nextStatus })
+    updateAutomation.mutate(
+      { id: automationId, status: nextStatus },
+      {
+        onSuccess: () =>
+          toast.success(
+            nextStatus === 'paused'
+              ? 'Automation paused'
+              : 'Automation activated',
+          ),
+        onError: (error) =>
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : nextStatus === 'paused'
+                ? 'Could not pause the automation'
+                : 'Could not activate the automation',
+          ),
+      },
+    )
   }
+  const togglingStatus = updateAutomation.isPending
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -730,14 +751,21 @@ export function AutomationDetailPage({
             <Pencil className="mr-1 size-3.5" />
             Edit
           </Button>
-          <Button size="sm" variant="outline" onClick={handleToggleStatus}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleToggleStatus}
+            disabled={togglingStatus}
+          >
             {automation.status === 'active' ? (
               <>
-                <Pause className="mr-1 size-3.5" /> Pause
+                <Pause className="mr-1 size-3.5" />{' '}
+                {togglingStatus ? 'Pausing…' : 'Pause'}
               </>
             ) : (
               <>
-                <Play className="mr-1 size-3.5" /> Activate
+                <Play className="mr-1 size-3.5" />{' '}
+                {togglingStatus ? 'Activating…' : 'Activate'}
               </>
             )}
           </Button>
