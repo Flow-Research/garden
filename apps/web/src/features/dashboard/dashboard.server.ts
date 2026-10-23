@@ -240,7 +240,8 @@ export async function getDashboardOverviewSnapshot(
       blockedIssues: issues.filter((issue) => issue.status === 'blocked')
         .length,
       completedIssues: issues.filter((issue) => issue.status === 'done').length,
-      agentCount: agents.length,
+      // Archived agents no longer work, so they are not counted.
+      agentCount: agents.filter((agent) => agent.status !== 'archived').length,
       skillCount: skills.length,
       connectedCount: connectionSurface.filter(
         (connector) => connector.status === 'connected',
@@ -355,13 +356,16 @@ export async function getDashboardResourcesSnapshot(
   }, new Map<string, number>())
 
   return {
-    agents: agents.slice(0, 5).map((agent) => ({
-      id: agent.id,
-      name: agent.name,
-      status: agent.status ?? 'idle',
-      roleTitle: agent.roleTitle ?? null,
-      activeIssueCount: activeIssueCountByAgentId.get(agent.id) ?? 0,
-    })),
+    agents: agents
+      .filter((agent) => agent.status !== 'archived')
+      .slice(0, 5)
+      .map((agent) => ({
+        id: agent.id,
+        name: agent.name,
+        status: agent.status ?? 'idle',
+        roleTitle: agent.roleTitle ?? null,
+        activeIssueCount: activeIssueCountByAgentId.get(agent.id) ?? 0,
+      })),
     connections: connectionSurface.map((connector) => ({
       id: connector.id,
       label: connector.label,
