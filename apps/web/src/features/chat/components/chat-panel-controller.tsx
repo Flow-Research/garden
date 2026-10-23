@@ -7,14 +7,7 @@
  * focused on the bare AgentInteractionScreen scaffold + ShellFrame chrome.
  */
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Result } from 'better-result'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/app-state/auth'
@@ -205,11 +198,10 @@ export function ConnectedChatPanelInteraction({
   /** Restoring a queued message and focusing after a suggestion-pill prefill. */
   const composerRef = useRef<ComposerHandle>(null)
   /**
-   * Which session the user dismissed the suggestion pills for. Keyed by
-   * session id rather than a boolean because this component is NOT
-   * `key`-remounted per session (the `<Composer>` is), so a boolean would
-   * never reset and the pills would stay gone for every later chat. A new
-   * empty chat has a new `sessionId`, so the pills return. No effect needed.
+   * Which session the user dismissed the suggestion pills for. The screen
+   * keys this component by session, so a plain boolean would also reset;
+   * keeping the session id makes the rule explicit: a new empty chat (a new
+   * `sessionId`) shows the pills again.
    */
   const [dismissedForSession, setDismissedForSession] = useState<string | null>(
     null,
@@ -280,19 +272,6 @@ export function ConnectedChatPanelInteraction({
     messages,
     addToolOutput,
   })
-
-  useLayoutEffect(() => {
-    setDocumentPanelView(null)
-    setIsRetrying(false)
-    setOptimisticPendingTurn(false)
-    lastSentTextRef.current = null
-    pendingMessageCountRef.current = null
-    // The queue belongs to the conversation it was typed into, so switching
-    // sessions drops it rather than replaying it at whoever is next.
-    queuedMessagesRef.current = []
-    setQueuedMessages([])
-    isTurnInFlightRef.current = false
-  }, [sessionId])
 
   useEffect(() => {
     if (normalizeStatus(status) !== 'idle') {

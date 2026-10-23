@@ -209,7 +209,12 @@ function ChatPanelInteraction({
   })
 
   return (
+    // Keyed by session so each conversation gets its own queue, in-flight
+    // flag and panel state. Sharing one instance let a drain loop still
+    // running for the previous thread clear the new thread's in-flight flag
+    // (so a send skipped the queue) or pull its queued messages.
     <ConnectedChatPanelInteraction
+      key={activeSession.id}
       {...props}
       activeSession={activeSession}
       documentAttachments={
