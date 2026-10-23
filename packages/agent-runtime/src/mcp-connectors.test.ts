@@ -261,6 +261,7 @@ describe('RuntimeMcpController native installations', () => {
         getAITools: () => ({}),
         listTools: () => [],
         listServers: () => [],
+        callTool: async () => ({}),
         discoverIfConnected: async () => ({ success: true }),
       },
       addExecutorMcpServer: async ({ id }) => {
@@ -317,6 +318,7 @@ describe('RuntimeMcpController GitHub tools', () => {
         getAITools: () => ({}),
         listTools: () => [],
         listServers: () => [],
+        callTool: async () => ({}),
         discoverIfConnected: async () => ({ success: true }),
       },
       githubHostedMcp: {
@@ -407,6 +409,7 @@ describe('RuntimeMcpController GitHub tools', () => {
           },
         ],
         listServers: () => [],
+        callTool: async () => ({}),
         waitForConnections: async () => undefined,
         discoverIfConnected: async () => ({ success: true }),
       },
@@ -461,6 +464,7 @@ describe('RuntimeMcpController GitHub tools', () => {
         getAITools: () => ({}),
         listTools: () => [],
         listServers: () => [],
+        callTool: async () => ({}),
         waitForConnections: async () => undefined,
         discoverIfConnected: async () => ({ success: false }),
       },
@@ -519,6 +523,7 @@ describe('RuntimeMcpController GitHub tools', () => {
         getAITools: () => ({}),
         listTools: () => [],
         listServers: () => [{ id: 'executor', name: 'executor' }],
+        callTool: async () => ({}),
         waitForConnections: async () => {
           waits += 1
         },

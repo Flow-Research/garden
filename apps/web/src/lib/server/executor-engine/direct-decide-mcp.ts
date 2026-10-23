@@ -21,7 +21,6 @@ import type { GardenExecutorPlugins } from './plugins'
 
 const DECIDE_MCP_ENDPOINT = new URL('https://api.trydecide.ai/mcp')
 const MINUTE_MS = 60_000
-
 const directDecideLogger = createGardenLogger({
   service: 'garden-staging',
   component: 'direct-decide-mcp',
@@ -39,12 +38,42 @@ export class DirectDecideMcpError extends Data.TaggedError(
   readonly stage: 'credential' | 'connection' | 'connect' | 'call'
   readonly message: string
   readonly status?: number
+  readonly mcpCode?: number
+  readonly transportFailure?: boolean
+  readonly transportKind?: 'timeout' | 'connection' | 'unknown'
 }> {}
 
 export type DirectDecideCallOptions = {
   readonly signal?: AbortSignal
   readonly onProgress?: (progress: Progress) => void
 }
+
+type DirectDecideToolRequest = {
+  readonly name: string
+  readonly arguments: Record<string, unknown>
+}
+
+/**
+ * Represents one connected Decide MCP session.
+ *
+ * The official MCP client owns the JSON-RPC request counter and pending
+ * response map. Keeping this client for the lifetime of one connection makes
+ * request IDs unique across repeated and concurrent calls. Closing the
+ * session lets the SDK reject and clear its pending requests.
+ */
+export type DirectDecideMcpSession = {
+  readonly connect: () => Promise<void>
+  readonly call: (
+    request: DirectDecideToolRequest,
+    options: DirectDecideCallOptions,
+  ) => Promise<CallToolResult>
+  readonly close: () => Promise<void>
+}
+
+export type DirectDecideMcpSessionFactory = (input: {
+  readonly accessToken: string
+  readonly onDisconnect: () => void
+}) => DirectDecideMcpSession
 
 const errorRecord = (cause: unknown): Record<string, unknown> | null =>
   cause !== null && typeof cause === 'object' && !Array.isArray(cause)
@@ -76,6 +105,13 @@ const directFailure = (
           .trim()
           .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/giu, 'Bearer [REDACTED]')
       : null
+  const mcpCode =
+    typeof record?.code === 'number' && record.code < 0
+      ? record.code
+      : typeof record?.mcpCode === 'number'
+        ? record.mcpCode
+        : undefined
+  const transportKind = mcpCode === -32001 ? 'timeout' : undefined
   return new DirectDecideMcpError({
     stage,
     message:
@@ -84,63 +120,185 @@ const directFailure = (
         ? `Direct Decide MCP ${stage} failed.`
         : `Direct Decide MCP ${stage} returned HTTP ${status}.`),
     ...(status === undefined ? {} : { status }),
+    ...(mcpCode === undefined ? {} : { mcpCode }),
+    ...(transportKind === undefined
+      ? {}
+      : { transportFailure: true, transportKind }),
   })
 }
 
 /**
- * Calls one Decide tool with the official Streamable HTTP MCP client. Public
- * progress uses the SDK callback. The five-minute boundary applies only to
- * provider work; connection setup still uses the SDK default.
+ * Creates the official Decide MCP client and keeps transport shutdown in the
+ * same boundary as the client. The disconnect callback lets the session
+ * manager discard a client whose SDK response state is no longer usable.
+ */
+const createDirectDecideMcpSession: DirectDecideMcpSessionFactory = ({
+  accessToken,
+  onDisconnect,
+}) => {
+  const client = new Client({
+    name: 'garden-decide',
+    version: '1.0.0',
+  })
+  const transport = new StreamableHTTPClientTransport(DECIDE_MCP_ENDPOINT, {
+    requestInit: {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  })
+  transport.onclose = onDisconnect
+
+  return {
+    connect: () => client.connect(transport),
+    call: (request, options) =>
+      client
+        .callTool(request, CallToolResultSchema, {
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+          ...(options.onProgress === undefined
+            ? {}
+            : {
+                onprogress: options.onProgress,
+                resetTimeoutOnProgress: true,
+              }),
+          timeout: DECIDE_ANALYSIS_TIMEOUT_MS,
+          maxTotalTimeout: DECIDE_ANALYSIS_TIMEOUT_MS,
+        })
+        // The installed SDK keeps a legacy `toolResult` union in its return
+        // type even when CallToolResultSchema validates the response.
+        .then((result) => result as CallToolResult),
+    close: () =>
+      transport
+        .terminateSession()
+        .catch(() => undefined)
+        .then(() => client.close()),
+  }
+}
+
+type DirectDecideMcpSessionEntry = {
+  readonly accessToken: string
+  readonly session: DirectDecideMcpSession
+  readonly ready: Promise<DirectDecideMcpSession>
+  closePromise?: Promise<void>
+}
+
+/**
+ * Owns direct Decide MCP sessions for one Executor instance.
+ *
+ * The previous implementation created a new MCP client for every tool call.
+ * Each client restarted JSON-RPC request IDs at zero, while the remote
+ * session could still have pending requests from the previous call. This
+ * manager reuses a client per connection, removes it on every failed call or
+ * disconnect, and creates a fresh client after cleanup.
+ */
+export class DirectDecideMcpSessionManager {
+  private readonly sessions = new Map<string, DirectDecideMcpSessionEntry>()
+
+  constructor(
+    private readonly createSession: DirectDecideMcpSessionFactory = createDirectDecideMcpSession,
+  ) {}
+
+  /**
+   * Calls Decide through the connection's current MCP session. A rejected
+   * call invalidates that session because its pending RPC state may be stale.
+   */
+  async call(
+    connectionKey: string,
+    accessToken: string,
+    request: DirectDecideToolRequest,
+    options: DirectDecideCallOptions,
+  ): Promise<CallToolResult> {
+    const entry = this.getOrCreate(connectionKey, accessToken)
+    const session = await entry.ready.catch((cause: unknown) => {
+      this.evict(connectionKey, entry)
+      return Promise.reject(directFailure('connect', cause))
+    })
+    return session.call(request, options).catch((cause: unknown) => {
+      this.evict(connectionKey, entry)
+      return Promise.reject(cause)
+    })
+  }
+
+  /** Closes every session owned by this Executor plugin instance. */
+  async close(): Promise<void> {
+    const entries = [...this.sessions.values()]
+    this.sessions.clear()
+    await Promise.all(entries.map((entry) => this.closeEntry(entry)))
+  }
+
+  private getOrCreate(
+    connectionKey: string,
+    accessToken: string,
+  ): DirectDecideMcpSessionEntry {
+    const existing = this.sessions.get(connectionKey)
+    if (existing?.accessToken === accessToken) return existing
+    if (existing !== undefined) this.evict(connectionKey, existing)
+
+    const entryRef: { entry?: DirectDecideMcpSessionEntry } = {}
+    const session = this.createSession({
+      accessToken,
+      onDisconnect: () => {
+        if (entryRef.entry !== undefined) {
+          this.evict(connectionKey, entryRef.entry)
+        }
+      },
+    })
+    const ready = session.connect().then(
+      () => session,
+      (cause: unknown) =>
+        session
+          .close()
+          .catch(() => undefined)
+          .then(() => Promise.reject(cause)),
+    )
+    const entry = { accessToken, session, ready }
+    entryRef.entry = entry
+    this.sessions.set(connectionKey, entry)
+    return entry
+  }
+
+  private evict(
+    connectionKey: string,
+    entry: DirectDecideMcpSessionEntry,
+  ): void {
+    if (this.sessions.get(connectionKey) !== entry) return
+    this.sessions.delete(connectionKey)
+    void this.closeEntry(entry)
+  }
+
+  private closeEntry(entry: DirectDecideMcpSessionEntry): Promise<void> {
+    if (entry.closePromise !== undefined) return entry.closePromise
+    entry.closePromise = entry.ready
+      .then((session) => session.close())
+      .catch(() => undefined)
+    return entry.closePromise
+  }
+}
+
+const connectionKey = (connection: ConnectionRef) =>
+  [connection.integration, connection.owner, connection.name]
+    .map(String)
+    .join(':')
+
+/**
+ * Calls one Decide tool through the session manager. Public progress uses the
+ * SDK callback. The five-minute boundary applies only to provider work;
+ * connection setup still uses the SDK default.
  */
 const callDecideTool = (
+  sessions: DirectDecideMcpSessionManager,
+  connection: ConnectionRef,
   accessToken: string,
-  request: {
-    readonly name: string
-    readonly arguments: Record<string, unknown>
-  },
+  request: DirectDecideToolRequest,
   options: DirectDecideCallOptions,
-): Effect.Effect<CallToolResult, DirectDecideMcpError> =>
-  Effect.acquireUseRelease(
-    Effect.sync(() => {
-      const client = new Client({
-        name: 'garden-decide',
-        version: '1.0.0',
-      })
-      const transport = new StreamableHTTPClientTransport(DECIDE_MCP_ENDPOINT, {
-        requestInit: {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        },
-      })
-      return { client, transport }
-    }),
-    ({ client, transport }) =>
-      Effect.gen(function* () {
-        yield* Effect.tryPromise({
-          try: () => client.connect(transport),
-          catch: (cause) => directFailure('connect', cause),
-        })
-        return yield* Effect.tryPromise({
-          try: async () =>
-            CallToolResultSchema.parse(
-              await client.callTool(request, undefined, {
-                ...(options.signal === undefined
-                  ? {}
-                  : { signal: options.signal }),
-                ...(options.onProgress === undefined
-                  ? {}
-                  : {
-                      onprogress: options.onProgress,
-                      resetTimeoutOnProgress: true,
-                    }),
-                timeout: DECIDE_ANALYSIS_TIMEOUT_MS,
-                maxTotalTimeout: DECIDE_ANALYSIS_TIMEOUT_MS,
-              }),
-            ),
-          catch: (cause) => directFailure('call', cause),
-        })
-      }),
-    ({ client }) => Effect.promise(() => client.close()).pipe(Effect.ignore),
-  )
+) =>
+  Effect.tryPromise({
+    try: () =>
+      sessions.call(connectionKey(connection), accessToken, request, options),
+    catch: (cause) =>
+      directFailure(
+        errorRecord(cause)?.stage === 'connect' ? 'connect' : 'call',
+        cause,
+      ),
+  })
 
 /** Resolves Garden's saved Decide OAuth connection for the current user. */
 const resolveDecideConnection = (executor: Executor<GardenExecutorPlugins>) =>
@@ -168,51 +326,61 @@ const resolveDecideConnection = (executor: Executor<GardenExecutorPlugins>) =>
  * Resolves the saved OAuth token inside Executor, then calls Decide without
  * using Executor's MCP transport. The OAuth token stays inside the Worker.
  */
-export const directDecideMcpPlugin = definePlugin(() => ({
-  id: 'directDecideMcp',
-  storage: () => ({}),
-  extension: (ctx) => ({
-    call: (
-      connection: ConnectionRef,
-      request: {
-        readonly name: string
-        readonly arguments: Record<string, unknown>
-      },
-      options: DirectDecideCallOptions = {},
-    ) =>
-      Effect.gen(function* () {
-        const accessToken = yield* ctx.connections.resolveValue(connection)
-        if (accessToken === null || accessToken.length === 0) {
-          return yield* new DirectDecideMcpError({
-            stage: 'credential',
-            message: 'Garden could not resolve the saved Decide OAuth token.',
-          })
-        }
-        return yield* callDecideTool(accessToken, request, options)
-      }),
-    whoami: (connection: ConnectionRef) =>
-      Effect.gen(function* () {
-        const accessToken = yield* ctx.connections.resolveValue(connection)
-        if (accessToken === null || accessToken.length === 0) {
-          return yield* new DirectDecideMcpError({
-            stage: 'credential',
-            message: 'Garden could not resolve the saved Decide OAuth token.',
-          })
-        }
-        const result = yield* callDecideTool(
-          accessToken,
-          { name: 'whoami', arguments: {} },
-          {},
-        )
-        const content = Array.isArray(result.content) ? result.content : []
-        return {
-          contentBlockCount: content.length,
-          textBlockCount: content.filter((block) => block.type === 'text')
-            .length,
-        }
-      }),
-  }),
-}))
+export const directDecideMcpPlugin = definePlugin(() => {
+  const sessions = new DirectDecideMcpSessionManager()
+
+  return {
+    id: 'directDecideMcp',
+    storage: () => ({}),
+    extension: (ctx) => ({
+      call: (
+        connection: ConnectionRef,
+        request: DirectDecideToolRequest,
+        options: DirectDecideCallOptions = {},
+      ) =>
+        Effect.gen(function* () {
+          const accessToken = yield* ctx.connections.resolveValue(connection)
+          if (accessToken === null || accessToken.length === 0) {
+            return yield* new DirectDecideMcpError({
+              stage: 'credential',
+              message: 'Garden could not resolve the saved Decide OAuth token.',
+            })
+          }
+          return yield* callDecideTool(
+            sessions,
+            connection,
+            accessToken,
+            request,
+            options,
+          )
+        }),
+      whoami: (connection: ConnectionRef) =>
+        Effect.gen(function* () {
+          const accessToken = yield* ctx.connections.resolveValue(connection)
+          if (accessToken === null || accessToken.length === 0) {
+            return yield* new DirectDecideMcpError({
+              stage: 'credential',
+              message: 'Garden could not resolve the saved Decide OAuth token.',
+            })
+          }
+          const result = yield* callDecideTool(
+            sessions,
+            connection,
+            accessToken,
+            { name: 'whoami', arguments: {} },
+            {},
+          )
+          const content = Array.isArray(result.content) ? result.content : []
+          return {
+            contentBlockCount: content.length,
+            textBlockCount: content.filter((block) => block.type === 'text')
+              .length,
+          }
+        }),
+    }),
+    close: () => Effect.promise(() => sessions.close()),
+  }
+})
 
 const analyzeInput = {
   question: z.string().min(1),
@@ -229,6 +397,27 @@ const generatedFileInput = {
 
 type DirectToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>
 
+export type PublicMcpProgress = {
+  progress: number
+  total?: number
+  message?: string
+}
+
+/**
+ * Writes only Decide's customer-safe progress fields to the Garden log.
+ * Decide's guide says progress messages contain activity updates, not model
+ * reasoning, shell commands, or hidden execution logs.
+ */
+export const logPublicMcpProgress = (progress: PublicMcpProgress) => {
+  directDecideLogger.info('mcp.integration.progress', {
+    progress: progress.progress,
+    ...(progress.total === undefined ? {} : { total: progress.total }),
+    ...(progress.message === undefined
+      ? {}
+      : { progressMessage: progress.message }),
+  })
+}
+
 /** Reads Decide's first text error without inspecting successful output. */
 const providerErrorMessage = (result: CallToolResult) => {
   const message = result.content.find(
@@ -240,31 +429,68 @@ const providerErrorMessage = (result: CallToolResult) => {
   return message?.trim() ?? 'Decide returned a tool error without a message.'
 }
 
-/** Converts a typed direct-call failure into an MCP error the model can read. */
-const directToolErrorResult = (
-  toolName: string,
-  error: DirectDecideMcpError,
-): CallToolResult => ({
-  isError: true,
-  content: [
-    {
-      type: 'text',
-      text: `Decide ${toolName} failed during ${error.stage}: ${error.message}`,
-    },
-  ],
-})
-
 /** Forwards Decide's customer-safe progress through Garden's MCP request. */
 const progressForwarder = (extra: DirectToolExtra) => {
   const progressToken = extra._meta?.progressToken
   if (progressToken === undefined) return undefined
   return (progress: Progress) => {
+    logPublicMcpProgress(progress)
     void extra
       .sendNotification({
         method: 'notifications/progress',
         params: { progressToken, ...progress },
       })
       .catch(() => undefined)
+  }
+}
+
+/** Maps a direct Decide failure to the stage shown in Garden's chat UI. */
+const directFailureStage = (
+  name: string,
+  cause: unknown,
+): 'authentication' | 'mcp_handoff' | 'decide_analysis' | 'generated_file' => {
+  const stage = errorRecord(cause)?.stage
+  if (stage === 'credential' || stage === 'connection') {
+    return 'authentication'
+  }
+  if (name === 'analyze') return 'decide_analysis'
+  if (name === 'list_generated_files' || name === 'read_generated_file') {
+    return 'generated_file'
+  }
+  return 'mcp_handoff'
+}
+
+/** Returns only safe direct Decide error metadata to the MCP caller. */
+const directFailureResult = (name: string, cause: unknown): CallToolResult => {
+  const record = errorRecord(cause)
+  const message =
+    typeof record?.message === 'string' && record.message.trim()
+      ? record.message.trim()
+      : 'Direct Decide MCP call failed.'
+  const status = typeof record?.status === 'number' ? record.status : undefined
+  const mcpCode =
+    typeof record?.mcpCode === 'number' ? record.mcpCode : undefined
+  const transportFailure = record?.transportFailure === true ? true : undefined
+  const transportKind =
+    record?.transportKind === 'timeout' ||
+    record?.transportKind === 'connection' ||
+    record?.transportKind === 'unknown'
+      ? record.transportKind
+      : undefined
+  return {
+    isError: true,
+    content: [{ type: 'text', text: message }],
+    structuredContent: {
+      status: 'error',
+      failureStage: directFailureStage(name, cause),
+      error: { message },
+      details: {
+        ...(status === undefined ? {} : { status }),
+        ...(mcpCode === undefined ? {} : { mcpCode }),
+        ...(transportFailure === undefined ? {} : { transportFailure }),
+        ...(transportKind === undefined ? {} : { transportKind }),
+      },
+    },
   }
 }
 
@@ -311,17 +537,27 @@ const invokeDirectDecide = (
 
       return result
     }).pipe(
-      Effect.catchTag('DirectDecideMcpError', (failure) =>
+      Effect.catch((cause) =>
         Effect.sync(() => {
+          const record = errorRecord(cause)
+          const failureMessage =
+            typeof record?.message === 'string' && record.message.trim()
+              ? record.message.trim()
+              : 'Direct Decide MCP call failed.'
           directDecideLogger.error('decide.tool_call.failed', {
             toolName: name,
             durationMs: Date.now() - startedAt,
-            failureStage: failure.stage,
-            failureMessage: failure.message,
-            ...(failure.status === undefined ? {} : { status: failure.status }),
-            ...errorFields(failure),
+            failureStage:
+              typeof record?.stage === 'string'
+                ? record.stage
+                : directFailureStage(name, cause),
+            failureMessage,
+            ...(typeof record?.status === 'number'
+              ? { status: record.status }
+              : {}),
+            ...errorFields(cause),
           })
-          return directToolErrorResult(name, failure)
+          return directFailureResult(name, cause)
         }),
       ),
     ),

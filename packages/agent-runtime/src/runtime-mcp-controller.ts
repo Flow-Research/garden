@@ -1,4 +1,4 @@
-import type { MCPServerFilter } from 'agents/mcp/client'
+import type { MCPClientManager, MCPServerFilter } from 'agents/mcp/client'
 import { jsonSchema, tool, type ModelMessage, type ToolSet } from 'ai'
 import { Effect } from 'effect'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
@@ -26,6 +26,7 @@ import {
   extractExecutorToolFailure,
   extractExecutorToolRefsFromInput,
   mentionsUnparsedExecutorTools,
+  type ExecutorToolFailure,
 } from './executor-codemode'
 import * as schema from '@garden/db/schema'
 import { captureGardenAnalyticsEvent } from '@garden/observability/analytics/client'
@@ -139,6 +140,65 @@ function executorResultFields(output: unknown) {
   }
 }
 
+/**
+ * Converts an AI SDK tool input into the object shape required by an MCP tool.
+ * Executor tools use object schemas, but this boundary still guards the
+ * transport from receiving an invalid primitive or array.
+ */
+function asMcpToolArguments(
+  input: unknown,
+): NonNullable<McpCallToolParams['arguments']> {
+  return input && typeof input === 'object' && !Array.isArray(input)
+    ? (input as NonNullable<McpCallToolParams['arguments']>)
+    : {}
+}
+
+/**
+ * Converts a thrown Executor/MCP error into the same safe result shape used by
+ * provider-reported MCP errors. Returning this envelope preserves the failure
+ * stage and cause for the chat UI while keeping stacks and request data private.
+ */
+function executorToolFailureResult(
+  error: Error,
+  failure: ExecutorToolFailure | null,
+) {
+  const message = failure?.message || error.message || 'MCP tool call failed.'
+  const details = {
+    ...(failure?.kind === undefined ? {} : { kind: failure.kind }),
+    ...(failure?.status === undefined ? {} : { status: failure.status }),
+    ...(failure?.mcpCode === undefined ? {} : { mcpCode: failure.mcpCode }),
+    ...(failure?.transportFailure === undefined
+      ? {}
+      : { transportFailure: failure.transportFailure }),
+    ...(failure?.transportKind === undefined
+      ? {}
+      : { transportKind: failure.transportKind }),
+    ...(failure?.transportMessage === undefined
+      ? {}
+      : { transportMessage: failure.transportMessage }),
+    ...(failure?.retryable === undefined
+      ? {}
+      : { retryable: failure.retryable }),
+    ...(failure?.userAction === undefined
+      ? {}
+      : { userAction: failure.userAction }),
+  }
+  return {
+    isError: true,
+    content: [{ type: 'text' as const, text: message }],
+    structuredContent: {
+      status: 'error' as const,
+      failureStage: failure?.stage ?? 'mcp_handoff',
+      ...(failure?.code === undefined ? {} : { errorCode: failure.code }),
+      error: {
+        message,
+        ...(failure?.code === undefined ? {} : { code: failure.code }),
+      },
+      ...(Object.keys(details).length === 0 ? {} : { details }),
+    },
+  }
+}
+
 export const EXECUTOR_TOOL_KEY_PREFIX = buildMcpAiToolKey(
   EXECUTOR_MCP_SERVER_ID,
   '',
@@ -214,6 +274,10 @@ export type McpToolRecord = {
   serverId: string
 }
 
+type McpCallToolParams = Parameters<MCPClientManager['callTool']>[0]
+type McpCallToolResultSchema = Parameters<MCPClientManager['callTool']>[1]
+type McpCallToolOptions = Parameters<MCPClientManager['callTool']>[2]
+
 type AiJsonSchemaInput = Parameters<typeof jsonSchema>[0]
 
 function asAiJsonSchema(schemaValue: unknown): AiJsonSchemaInput {
@@ -226,6 +290,11 @@ function asAiJsonSchema(schemaValue: unknown): AiJsonSchemaInput {
 
 export type McpClientFacade = {
   getAITools: (filter?: MCPServerFilter) => ToolSet
+  callTool: (
+    params: McpCallToolParams,
+    resultSchema?: McpCallToolResultSchema,
+    options?: McpCallToolOptions,
+  ) => Promise<unknown>
   listTools: (filter?: MCPServerFilter) => McpToolRecord[]
   listServers: () => Array<{
     id: string
@@ -398,7 +467,23 @@ export class RuntimeMcpController {
                     })
 
                     const result = await Result.tryPromise({
-                      try: async () => await baseExecute(...args),
+                      try: async () => {
+                        const output = await this.host.mcp.callTool(
+                          {
+                            arguments: asMcpToolArguments(args[0]),
+                            name: tool.name,
+                            serverId: tool.serverId,
+                          },
+                          undefined,
+                          {
+                            timeout: mcpRuntimeConfig.executorToolCallTimeoutMs,
+                            maxTotalTimeout:
+                              mcpRuntimeConfig.executorToolCallTimeoutMs,
+                            resetTimeoutOnProgress: true,
+                          },
+                        )
+                        return output
+                      },
                       catch: (cause) =>
                         cause instanceof Error
                           ? cause
@@ -420,7 +505,7 @@ export class RuntimeMcpController {
                         ...callFields,
                         ...errorFields(result.error),
                       })
-                      throw result.error
+                      return executorToolFailureResult(result.error, failure)
                     }
 
                     const failure = extractExecutorToolFailure({

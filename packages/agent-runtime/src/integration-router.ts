@@ -349,6 +349,8 @@ export function renderIntegrationRouteDirective(
       'Use decide_list_generated_files and decide_read_generated_file when the user requests a generated report.',
       'For an uploaded file, call Garden readDocument with the document handle from the document context before calling Decide.',
       'Pass the complete text returned by readDocument as Decide analyze data. Do not pass a summary, sample, or truncated content.',
+      'For a file stored in Files & Folders, call brain_search to find the file, then brain_read_file with the returned id before calling Decide.',
+      'Pass the complete text returned by brain_read_file as Decide analyze data. Do not pass the brain_search snippet.',
       'For a follow-up analysis, reuse the session_id returned by Decide and omit data unless the user provides a different file.',
       'Render every text block from Decide in order and return generated report links when present.',
       'If Decide reports an incomplete analysis or the call times out, show that status and the exact error. Do not retry automatically. Ask for a narrower request or a smaller file.',

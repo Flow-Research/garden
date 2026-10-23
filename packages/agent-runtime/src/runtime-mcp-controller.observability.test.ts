@@ -2,11 +2,15 @@ import type { ToolSet } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { buildMcpAiToolKey } from '@garden/connectors/capabilities'
+import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { RuntimeMcpController, type McpHost } from './runtime-mcp-controller'
 
 const EXECUTOR_TOOL = 'execute'
 
-function makeLoggingController(execute: () => Promise<unknown>) {
+function makeLoggingController(
+  execute: () => Promise<unknown>,
+  callTool: McpHost['mcp']['callTool'] = async () => await execute(),
+) {
   const rawToolKey = buildMcpAiToolKey('executor', EXECUTOR_TOOL)
   const rawTools = {
     [rawToolKey]: {
@@ -32,6 +36,7 @@ function makeLoggingController(execute: () => Promise<unknown>) {
       ],
       listServers: () => [{ id: 'executor' }],
       discoverIfConnected: async () => ({ success: true }),
+      callTool,
     },
     removeMcpServer: async () => {},
   } as unknown as McpHost
@@ -55,7 +60,10 @@ describe('executor tool lifecycle logging', () => {
       ],
       structuredContent: { session_id: 'session-123' },
     }))
-    const { controller, rawToolKey } = makeLoggingController(execute)
+    const callTool = vi.fn<McpHost['mcp']['callTool']>(
+      async () => await execute(),
+    )
+    const { controller, rawToolKey } = makeLoggingController(execute, callTool)
     const wrapped = controller.wrapGetAITools(() => ({
       [rawToolKey]: {
         name: EXECUTOR_TOOL,
@@ -86,6 +94,21 @@ describe('executor tool lifecycle logging', () => {
       structuredContent: { session_id: 'session-123' },
     })
     expect(execute).toHaveBeenCalledOnce()
+    expect(callTool).toHaveBeenCalledWith(
+      {
+        arguments: {
+          code: 'await tools.decide.user.decide.analyze({ data: csv })',
+        },
+        name: EXECUTOR_TOOL,
+        serverId: 'executor',
+      },
+      undefined,
+      {
+        timeout: mcpRuntimeConfig.executorToolCallTimeoutMs,
+        maxTotalTimeout: mcpRuntimeConfig.executorToolCallTimeoutMs,
+        resetTimeoutOnProgress: true,
+      },
+    )
     expect(info.mock.calls.map(([record]) => record)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -105,7 +128,7 @@ describe('executor tool lifecycle logging', () => {
     expect(JSON.stringify(info.mock.calls)).not.toContain('data: csv')
   })
 
-  it('logs the Decide failure stage and rethrows the exact error', async () => {
+  it('logs the Decide failure stage and returns a structured error envelope', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const failure = new Error('Not enough Decide credits to run this request.')
     const { controller, rawToolKey } = makeLoggingController(async () => {
@@ -132,7 +155,15 @@ describe('executor tool lifecycle logging', () => {
         },
         { toolCallId: 'call-failure' },
       ),
-    ).rejects.toBe(failure)
+    ).resolves.toMatchObject({
+      isError: true,
+      content: [{ type: 'text', text: failure.message }],
+      structuredContent: {
+        status: 'error',
+        failureStage: 'decide_analysis',
+        error: { message: failure.message },
+      },
+    })
     expect(error.mock.calls.map(([record]) => record)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
