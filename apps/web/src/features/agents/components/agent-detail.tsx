@@ -30,11 +30,21 @@ import { LoadError } from '@garden/ui/components/common/load-error'
 export function AgentDetail({
   agentId,
   onOpenSkill,
+  tab: routeTab,
+  onTabChange,
 }: {
   agentId: string
   onOpenSkill: (skillId: string, name: string) => void
+  /** The open tab, from the URL; without it the tab is local state. */
+  tab?: string
+  onTabChange?: (tab: string) => void
 }) {
-  const [tab, setTab] = useState('overview')
+  const [localTab, setLocalTab] = useState('overview')
+  const tab = routeTab ?? localTab
+  const setTab = (next: string) => {
+    setLocalTab(next)
+    onTabChange?.(next)
+  }
   const detailQuery = useQuery(agentDetailOptions(agentId))
   const agent = detailQuery.data ?? null
   const wsId = useWorkspaceId()

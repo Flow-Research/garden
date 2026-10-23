@@ -7,20 +7,44 @@ import { api } from '@/lib/api'
 import { inboxKeys } from '@/lib/inbox/queries'
 import { InboxPage } from './inbox-page'
 
-const nav = vi.hoisted(() => ({
-  searchParams: new URLSearchParams(),
-  replace: vi.fn(),
-}))
+// A small URL store standing in for the router: the page reads its search
+// params and writes them back with replace/push, re-rendering on change.
+const nav = vi.hoisted(() => {
+  const listeners = new Set<() => void>()
+  const state = {
+    search: '',
+    setSearch(search: string) {
+      state.search = search
+      for (const listener of listeners) listener()
+    },
+    subscribe(listener: () => void) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    navigate(path: string) {
+      state.setSearch(path.split('?')[1] ?? '')
+    },
+  }
+  return state
+})
 const mocks = vi.hoisted(() => ({
   createComment: vi.fn(),
 }))
 
-vi.mock('../../navigation', () => ({
-  useNavigation: () => ({
-    searchParams: nav.searchParams,
-    replace: nav.replace,
-  }),
-}))
+vi.mock('../../navigation', async () => {
+  const { useSyncExternalStore } = await import('react')
+  return {
+    useNavigation: () => {
+      const search = useSyncExternalStore(nav.subscribe, () => nav.search)
+      return {
+        searchParams: new URLSearchParams(search),
+        replace: nav.navigate,
+        push: nav.navigate,
+        back: () => {},
+      }
+    },
+  }
+})
 vi.mock('@/features/navigation/use-surface-navigation', () => ({
   useSurfaceNavigation: () => ({ openIssue: vi.fn() }),
 }))
@@ -88,7 +112,7 @@ function renderInbox() {
   const result = render(ui())
   return {
     select(threadId: string) {
-      nav.searchParams = new URLSearchParams({ item: threadId })
+      nav.setSearch(new URLSearchParams({ item: threadId }).toString())
       result.rerender(ui())
     },
   }
@@ -101,7 +125,7 @@ function replyBox() {
 describe('InboxPage reply box', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    nav.searchParams = new URLSearchParams({ item: 'issue:issue-a' })
+    nav.setSearch(new URLSearchParams({ item: 'issue:issue-a' }).toString())
   })
 
   it('starts empty when another thread is selected', () => {
@@ -186,5 +210,28 @@ describe('InboxPage Gmail paging', () => {
 
     expect(screen.queryByText('Draft two')).toBeNull()
     expect(screen.getByText('Sent one')).toBeInTheDocument()
+  })
+})
+
+describe('InboxPage filter in the URL', () => {
+  beforeEach(() => {
+    vi.mocked(api.listGmail).mockResolvedValue({ items: [], nextCursor: null })
+  })
+
+  it('opens on the filter named in the URL', async () => {
+    nav.setSearch('filter=sent')
+    renderInbox()
+    expect(await screen.findByText('No sent messages')).toBeInTheDocument()
+    expect(api.listGmail).toHaveBeenCalledWith('sent')
+  })
+
+  it('writes the chosen filter to the URL', () => {
+    nav.setSearch('')
+    renderInbox()
+    fireEvent.click(screen.getByRole('button', { name: 'Unread' }))
+    expect(new URLSearchParams(nav.search).get('filter')).toBe('unread')
+
+    fireEvent.click(screen.getByRole('button', { name: 'All' }))
+    expect(new URLSearchParams(nav.search).has('filter')).toBe(false)
   })
 })

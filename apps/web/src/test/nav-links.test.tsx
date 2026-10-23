@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Agent } from '@garden/core/types'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 import AgentsPage from '@/features/agents/components/agents-page'
+import { AgentDetail } from '@/features/agents/components/agent-detail'
 import { AutomationsPage } from '@/features/automations/automations-page'
 import { automationKeys } from '@/features/automations/queries'
 import { workspaceKeys } from '@/lib/workspace/queries'
@@ -73,5 +74,34 @@ describe('navigating rows are links', () => {
     expect(onOpenAutomation).not.toHaveBeenCalled()
     fireEvent.click(link)
     expect(onOpenAutomation).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('view state in the URL', () => {
+  it('agent detail shows the tab it is given and reports tab changes', () => {
+    const onTabChange = vi.fn()
+    renderWith(
+      (qc) => {
+        qc.setQueryData(workspaceKeys.agent('agent-1'), {
+          id: 'agent-1',
+          name: 'Garden',
+          status: 'idle',
+        })
+        qc.setQueryData(workspaceKeys.members('ws-1'), [])
+      },
+      <AgentDetail
+        agentId="agent-1"
+        onOpenSkill={vi.fn()}
+        tab="overview"
+        onTabChange={onTabChange}
+      />,
+    )
+
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    fireEvent.click(screen.getByRole('tab', { name: 'Skills' }))
+    expect(onTabChange).toHaveBeenCalledWith('skills')
   })
 })

@@ -280,6 +280,20 @@ function InboxEmptyState({
   )
 }
 
+const INBOX_FILTER_PARAMS: Record<InboxFilter, string | null> = {
+  All: null,
+  Unread: 'unread',
+  'In draft': 'drafts',
+  Sent: 'sent',
+}
+
+function inboxFilterFromParam(param: string | null): InboxFilter {
+  const match = (Object.keys(INBOX_FILTER_PARAMS) as InboxFilter[]).find(
+    (filter) => INBOX_FILTER_PARAMS[filter] === param,
+  )
+  return match ?? 'All'
+}
+
 function gmailViewForMode(mode: InboxFilter): GmailView | null {
   if (mode === 'In draft') return 'drafts'
   if (mode === 'Sent') return 'sent'
@@ -323,12 +337,18 @@ function focusForInboxItem(item: InboxItem): string | null {
 // ------------------------
 
 export function InboxPage() {
-  const { searchParams, replace } = useNavigation()
+  const { searchParams, replace, push, back } = useNavigation()
   const { openIssue } = useSurfaceNavigation()
   const selectedKey = searchParams.get('item') ?? ''
+  // The filter lives in the URL (?filter=), so it can be linked and survives
+  // a reload; it used to reset to All.
+  const mode = inboxFilterFromParam(searchParams.get('filter'))
+  const isMobile = useIsMobile()
+  // On mobile, opening an item pushes a history entry, so Back returns to
+  // the list instead of leaving the inbox.
+  const pushedSelectionRef = useRef(false)
 
   const [search, setSearch] = useState('')
-  const [mode, setMode] = useState<InboxFilter>('All')
   const [composeOpen, setComposeOpen] = useState(false)
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null)
   const [moreItems, setMoreItems] = useState<
@@ -343,11 +363,21 @@ export function InboxPage() {
   const gmailView = gmailViewForMode(mode)
 
   const setSelectedKey = useCallback(
-    (key: string, item?: InboxItem | null) => {
+    (
+      key: string,
+      item?: InboxItem | null,
+      options?: { filter?: InboxFilter },
+    ) => {
       if (typeof window === 'undefined') return
       const url = new URL(window.location.href)
       if (key) url.searchParams.set('item', key)
       else url.searchParams.delete('item')
+
+      if (options?.filter !== undefined) {
+        const param = INBOX_FILTER_PARAMS[options.filter]
+        if (param) url.searchParams.set('filter', param)
+        else url.searchParams.delete('filter')
+      }
 
       if (item?.issue_id) url.searchParams.set('issue', item.issue_id)
       else url.searchParams.delete('issue')
@@ -355,9 +385,12 @@ export function InboxPage() {
       const focus = item ? focusForInboxItem(item) : null
       if (focus) url.searchParams.set('focus', focus)
       else url.searchParams.delete('focus')
-      replace(`${url.pathname}${url.search}`)
+      const path = `${url.pathname}${url.search}`
+      pushedSelectionRef.current = Boolean(key) && isMobile
+      if (pushedSelectionRef.current) push(path)
+      else replace(path)
     },
-    [replace],
+    [isMobile, push, replace],
   )
 
   const wsId = useWorkspaceId()
@@ -389,7 +422,6 @@ export function InboxPage() {
     })
   }, [allThreads, search, unreadsOnly, getActorName])
 
-  const isMobile = useIsMobile()
   const isDesktop = useIsDesktop()
 
   const showDetailAsOverlay = !isDesktop
@@ -434,11 +466,10 @@ export function InboxPage() {
 
   const handleModeChange = (next: InboxFilter) => {
     loadMoreRequestRef.current += 1
-    setMode(next)
     setMoreItems([])
     setMoreCursor(null)
     setLoadingMore(false)
-    setSelectedKey('')
+    setSelectedKey('', null, { filter: next })
   }
 
   const handleLoadMore = () => {
@@ -711,7 +742,10 @@ export function InboxPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setSelectedKey('')}
+            onClick={() => {
+              if (pushedSelectionRef.current) back()
+              else setSelectedKey('')
+            }}
             className="gap-1.5 text-muted-foreground"
           >
             <ArrowLeft className="h-4 w-4" />
