@@ -5,6 +5,7 @@ import type { Issue } from '@garden/core/types'
 import { api, sortSessions, type AgentChatSession } from '@/lib/api'
 import { chatThreadKeys } from '@/features/chat/queries'
 import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigation'
+import { useSurfaceTabsStore } from '@garden/app-state/surface-tabs'
 
 /**
  * "Open in chat" for an agent-assigned issue. Optimistically inserts the
@@ -21,7 +22,7 @@ export function useOpenIssueChat({
   userId: string | undefined
 }) {
   const queryClient = useQueryClient()
-  const { openChatSession } = useSurfaceNavigation()
+  const { openChatSession, openIssue } = useSurfaceNavigation()
 
   const mutation = useMutation({
     mutationFn: async (input: {
@@ -111,6 +112,13 @@ export function useOpenIssueChat({
     onError: (err, _input, context) => {
       if (context) {
         queryClient.setQueryData(context.queryKey, context.previousSessions)
+        // The chat was opened optimistically. Leaving its tab and route in
+        // place pointed at a thread that was never created; go back to the
+        // issue instead.
+        useSurfaceTabsStore
+          .getState()
+          .closeTab('chats', context.optimisticThreadId)
+        if (issue) openIssue({ id: issue.id, title: issue.title })
       }
       toast.error(err instanceof Error ? err.message : 'Failed to open chat')
     },
