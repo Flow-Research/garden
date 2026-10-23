@@ -22,7 +22,8 @@ interface ReplyInputProps {
   placeholder?: string
   avatarType: string
   avatarId: string
-  onSubmit: (content: string, attachmentIds?: string[]) => Promise<void>
+  /** Resolves true when the reply was sent; the editor clears only then. */
+  onSubmit: (content: string, attachmentIds?: string[]) => Promise<boolean>
   onCancel?: () => void
   size?: 'sm' | 'default'
   /** When true, bare Enter submits the reply (chat-style). Default true for replies. */
@@ -90,10 +91,11 @@ function ReplyInput({
     if (!content || submitting) return
     setSubmitting(true)
     try {
-      await onSubmit(
+      const sent = await onSubmit(
         content,
         attachmentIds.length > 0 ? attachmentIds : undefined,
       )
+      if (!sent) return
       editorRef.current?.clearContent()
       setIsEmpty(true)
       setAttachmentIds([])

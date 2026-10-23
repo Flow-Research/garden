@@ -13,7 +13,8 @@ import { api } from '@/lib/api'
 
 interface CommentInputProps {
   issueId: string
-  onSubmit: (content: string, attachmentIds?: string[]) => Promise<void>
+  /** Resolves true when the comment was sent; the editor clears only then. */
+  onSubmit: (content: string, attachmentIds?: string[]) => Promise<boolean>
   placeholder?: string
   /** Adds a brand-tinted ring; used by the redirect mode of ContextualComposer. */
   accent?: 'default' | 'redirect'
@@ -50,10 +51,11 @@ function CommentInput({
     if (!content || submitting) return
     setSubmitting(true)
     try {
-      await onSubmit(
+      const sent = await onSubmit(
         content,
         attachmentIds.length > 0 ? attachmentIds : undefined,
       )
+      if (!sent) return
       editorRef.current?.clearContent()
       setIsEmpty(true)
       setAttachmentIds([])

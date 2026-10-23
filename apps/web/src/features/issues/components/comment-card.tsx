@@ -67,12 +67,14 @@ interface CommentCardProps {
   entry: TimelineEntry
   allReplies: Map<string, TimelineEntry[]>
   currentUserId?: string
+  /** Resolves true when the reply was sent. */
   onReply: (
     parentId: string,
     content: string,
     attachmentIds?: string[],
-  ) => Promise<void>
-  onEdit: (commentId: string, content: string) => Promise<void>
+  ) => Promise<boolean>
+  /** Resolves true when the edit was saved; edit mode closes only then. */
+  onEdit: (commentId: string, content: string) => Promise<boolean>
   onDelete: (commentId: string) => void
   onToggleReaction: (commentId: string, emoji: string) => void
   /** ID of the comment to highlight (flash animation). */
@@ -179,7 +181,7 @@ function CommentRow({
   issueId: string
   entry: TimelineEntry
   currentUserId?: string
-  onEdit: (commentId: string, content: string) => Promise<void>
+  onEdit: (commentId: string, content: string) => Promise<boolean>
   onDelete: (commentId: string) => void
   onToggleReaction: (commentId: string, emoji: string) => void
 }) {
@@ -219,12 +221,8 @@ function CommentRow({
       setEditing(false)
       return
     }
-    try {
-      await onEdit(entry.id, trimmed)
-      setEditing(false)
-    } catch {
-      toast.error('Failed to update comment')
-    }
+    // onEdit reports failure itself; keep the editor open with the text.
+    if (await onEdit(entry.id, trimmed)) setEditing(false)
   }
 
   const reactions = entry.reactions ?? []
@@ -427,12 +425,8 @@ function CommentCard({
       setEditing(false)
       return
     }
-    try {
-      await onEdit(entry.id, trimmed)
-      setEditing(false)
-    } catch {
-      toast.error('Failed to update comment')
-    }
+    // onEdit reports failure itself; keep the editor open with the text.
+    if (await onEdit(entry.id, trimmed)) setEditing(false)
   }
 
   // Collect all nested replies recursively into a flat list
@@ -678,8 +672,9 @@ function CommentCard({
                     : undefined
                 }
                 onSubmit={async (content, attachmentIds) => {
-                  await onReply(entry.id, content, attachmentIds)
-                  setReplyOpen(false)
+                  const sent = await onReply(entry.id, content, attachmentIds)
+                  if (sent) setReplyOpen(false)
+                  return sent
                 }}
               />
             </div>

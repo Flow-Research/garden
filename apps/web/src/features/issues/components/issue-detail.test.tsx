@@ -428,6 +428,20 @@ function createTestQueryClient() {
   })
 }
 
+/** The comment composer's (mocked) editor, as opposed to the description. */
+function commentBox() {
+  const box = screen
+    .getAllByTestId('rich-text-editor')
+    .find((el) => el.getAttribute('placeholder') !== 'Add description...')
+  if (!box) throw new Error('comment box not rendered')
+  return box
+}
+
+async function findCommentBox() {
+  await screen.findByRole('button', { name: 'Submit comment' })
+  return commentBox()
+}
+
 function renderIssueDetail(issueId = 'issue-1') {
   const queryClient = createTestQueryClient()
   return render(
@@ -508,6 +522,37 @@ describe('IssueDetail (shared)', () => {
         expect.objectContaining({ description: '' }),
       ),
     )
+  })
+
+  it('keeps the comment text when sending it fails', async () => {
+    mockApiObj.createComment.mockRejectedValue(new Error('network down'))
+    renderIssueDetail()
+
+    const box = await findCommentBox()
+    fireEvent.change(box, { target: { value: 'Ship it on Friday' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Submit comment' }))
+
+    await waitFor(() => expect(mockApiObj.createComment).toHaveBeenCalled())
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Submit comment' }),
+      ).toBeInTheDocument(),
+    )
+    expect(commentBox()).toHaveValue('Ship it on Friday')
+  })
+
+  it('clears the comment box once the comment is sent', async () => {
+    mockApiObj.createComment.mockResolvedValue({
+      id: 'comment-new',
+      content: 'Ship it on Friday',
+    })
+    renderIssueDetail()
+
+    const box = await findCommentBox()
+    fireEvent.change(box, { target: { value: 'Ship it on Friday' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Submit comment' }))
+
+    await waitFor(() => expect(commentBox()).toHaveValue(''))
   })
 
   it('renders issue identifier in the breadcrumb', async () => {

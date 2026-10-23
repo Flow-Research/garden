@@ -49,7 +49,7 @@ export function ContextualComposer({
   openChatPending = false,
 }: {
   issueId: string
-  onSubmit: (content: string, attachmentIds?: string[]) => Promise<void>
+  onSubmit: (content: string, attachmentIds?: string[]) => Promise<boolean>
   /** When provided, renders an inline "Open chat" CTA next to the composer. */
   onOpenChat?: () => void
   openChatPending?: boolean
