@@ -65,6 +65,8 @@ export interface ActiveRunPanelProps {
     targetLabel?: string
   } | null
   approvalDisabled?: boolean
+  /** True while an approve/deny is being sent; disables both buttons. */
+  approvalPending?: boolean
   /** Pulse the question/approval card on mount — for inbox deep-link arrivals. */
   pulseFocus?: boolean
   /**
@@ -279,6 +281,7 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
     pendingQuestion,
     pendingApprovalPreview,
     approvalDisabled = false,
+    approvalPending = false,
     pulseFocus = false,
     presence,
     onStop,
@@ -298,8 +301,22 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
     (run.status === 'blocked' && run.error) ||
     run.status === 'failed',
   )
-  const [open, setOpen] = useState(hasBody || debugMode)
-  const [showStopConfirm, setShowStopConfirm] = useState(false)
+  // The user's expand/collapse choice is remembered for the status it was
+  // made in. Seeding `open` once at mount left a panel that mounted while
+  // the run was queued or running collapsed when the run then asked a
+  // question or needed approval, hiding the card that needs an answer.
+  const [toggle, setToggle] = useState<{
+    status: string
+    open: boolean
+  } | null>(null)
+  const open =
+    toggle && toggle.status === run.status ? toggle.open : hasBody || debugMode
+  // Likewise scoped, so a Stop confirmation does not reappear on a later
+  // live phase of the run.
+  const [stopConfirmStatus, setStopConfirmStatus] = useState<string | null>(
+    null,
+  )
+  const showStopConfirm = stopConfirmStatus === run.status
   const [elapsedLabel, setElapsedLabel] = useState('')
 
   const isLive = run.status === 'queued' || run.status === 'running'
@@ -362,7 +379,7 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
               size="sm"
               variant="ghost"
               className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
-              onClick={() => setShowStopConfirm(true)}
+              onClick={() => setStopConfirmStatus(run.status)}
             >
               <Square className="h-3 w-3 mr-1" />
               Stop
@@ -371,10 +388,10 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
           {isLive && showStopConfirm && (
             <StopConfirm
               onConfirm={() => {
-                setShowStopConfirm(false)
+                setStopConfirmStatus(null)
                 onStop?.()
               }}
-              onCancel={() => setShowStopConfirm(false)}
+              onCancel={() => setStopConfirmStatus(null)}
             />
           )}
           {(hasBody || debugMode) && (
@@ -382,7 +399,7 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
               size="sm"
               variant="ghost"
               className="h-7 w-7 p-0 text-muted-foreground"
-              onClick={() => setOpen((v) => !v)}
+              onClick={() => setToggle({ status: run.status, open: !open })}
               aria-expanded={open}
               aria-label={open ? 'Collapse details' : 'Expand details'}
             >
@@ -431,6 +448,7 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
               body={<ConnectorWriteBody text={pendingApprovalPreview.body} />}
               pulseOnMount={pulseFocus}
               disabled={approvalDisabled}
+              pending={approvalPending}
               onApprove={() => onApprove?.()}
               onDeny={() => onDeny?.()}
               onEditApprove={onEditApprove ? () => onEditApprove() : undefined}

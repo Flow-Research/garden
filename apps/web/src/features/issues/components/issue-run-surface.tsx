@@ -345,6 +345,7 @@ export function IssueRunSurface({
           pendingQuestion={pendingQuestion}
           pendingApprovalPreview={pendingApprovalPreview}
           approvalDisabled={approvalRequestId === null}
+          approvalPending={resolveApprovalMutation.isPending}
           pulseFocus={pulseFocus}
           debugMode={debugMode}
           onStop={() => cancelMutation.mutate()}
@@ -364,7 +365,6 @@ export function IssueRunSurface({
               })
             }
           }}
-          onEditApprove={() => {}}
           onAnswerQuestion={onAnswerQuestion}
           answering={answeringQuestion}
         />
