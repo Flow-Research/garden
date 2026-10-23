@@ -236,14 +236,29 @@ export function BoardView({
     [visibleStatuses],
   )
 
+  // Rebuild from the latest issues. Needed after any drag that does not
+  // move a card: the sync effect skipped updates that landed mid-drag and
+  // will not run again until the issues change once more.
+  const resetColumns = useCallback(
+    () =>
+      setColumns(buildColumns(issues, visibleStatuses, sortBy, sortDirection)),
+    [issues, visibleStatuses, sortBy, sortDirection],
+  )
+
+  // Esc, a hidden tab or a resize cancels a drag without firing onDragEnd.
+  // Unhandled, the board stayed in drag mode (frozen to query updates) with
+  // the card shown in whatever column it was over.
+  const handleDragCancel = useCallback(() => {
+    isDraggingRef.current = false
+    setActiveIssue(null)
+    resetColumns()
+  }, [resetColumns])
+
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event
       isDraggingRef.current = false
       setActiveIssue(null)
-
-      const resetColumns = () =>
-        setColumns(buildColumns(issues, visibleStatuses, sortBy, sortDirection))
 
       if (!over) {
         resetColumns()
@@ -290,12 +305,13 @@ export function BoardView({
         currentIssue.status === finalCol &&
         currentIssue.position === newPosition
       ) {
+        resetColumns()
         return
       }
 
       onMoveIssue(activeId, finalCol, newPosition)
     },
-    [issues, visibleStatuses, sortBy, sortDirection, onMoveIssue],
+    [visibleStatuses, resetColumns, onMoveIssue],
   )
 
   return (
@@ -305,6 +321,7 @@ export function BoardView({
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
       <div className="flex flex-1 min-h-0 gap-4 overflow-x-auto p-4">
         {visibleStatuses.map((status) => (
