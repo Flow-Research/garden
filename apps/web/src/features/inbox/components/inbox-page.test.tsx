@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { InboxItem } from '@garden/core/types'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
@@ -184,6 +184,7 @@ describe('InboxPage Gmail paging', () => {
   }
 
   it('drops a page that arrives after switching to another view', async () => {
+    nav.setSearch('')
     let resolveMore: (page: unknown) => void = () => {}
     vi.mocked(api.listGmail).mockImplementation(
       async (view: string, cursor?: string | null) => {
@@ -233,5 +234,22 @@ describe('InboxPage filter in the URL', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'All' }))
     expect(new URLSearchParams(nav.search).has('filter')).toBe(false)
+  })
+})
+
+describe('InboxPage detail overlay', () => {
+  it('closes on Escape and clears the open item', async () => {
+    nav.setSearch('')
+    const page = renderInbox()
+    page.select(THREAD_A.id)
+
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Notification detail',
+    })
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+
+    await waitFor(() =>
+      expect(new URLSearchParams(nav.search).has('item')).toBe(false),
+    )
   })
 })

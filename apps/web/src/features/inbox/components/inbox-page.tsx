@@ -29,6 +29,7 @@ import { toast } from 'sonner'
 import { ArrowLeft, MailOpen, X } from 'lucide-react'
 import type { InboxItem } from '@garden/core/types'
 import { LoadError } from '@garden/ui/components/common/load-error'
+import { Sheet, SheetContent, SheetTitle } from '@garden/ui/components/ui/sheet'
 import { Button } from '@garden/ui/components/ui/button'
 
 import { useIsMobile } from '@garden/ui/hooks/use-mobile'
@@ -774,37 +775,36 @@ export function InboxPage() {
           <div className="bg-background/30 px-3 py-2">{footer}</div>
         </div>
 
-        {hasSelection && (
-          <>
-            <button
-              type="button"
-              aria-label="Close detail"
-              onClick={() => setSelectedKey('')}
-              className="fixed inset-0 z-40 bg-black/30 animate-in fade-in-0"
-            />
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label="Notification detail"
-              className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col border-l bg-background shadow-xl animate-in slide-in-from-right duration-200"
-            >
-              <div className="flex h-12 shrink-0 items-center justify-end border-b px-2">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => setSelectedKey('')}
-                  aria-label="Close"
-                  className="text-muted-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                {detailContent}
-              </div>
+        {/* Sheet, not a hand-built overlay: it traps focus, closes on
+            Escape and locks page scroll, which the overlay did not. */}
+        <Sheet
+          open={hasSelection}
+          onOpenChange={(open) => {
+            if (!open) setSelectedKey('')
+          }}
+        >
+          <SheetContent
+            side="right"
+            showCloseButton={false}
+            className="w-full gap-0 p-0 data-[side=right]:sm:max-w-xl"
+          >
+            <SheetTitle className="sr-only">Notification detail</SheetTitle>
+            <div className="flex h-12 shrink-0 items-center justify-end border-b px-2">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setSelectedKey('')}
+                aria-label="Close"
+                className="text-muted-foreground"
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
-          </>
-        )}
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {detailContent}
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
     )
   }
