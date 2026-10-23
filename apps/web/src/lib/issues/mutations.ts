@@ -204,6 +204,12 @@ export function useUpdateIssue() {
       qc.cancelQueries({ queryKey: listKey })
       const prevList = qc.getQueryData<ListIssuesResponse>(listKey)
       const prevDetail = qc.getQueryData<Issue>(issueKeys.detail(wsId, id))
+      // Team boards read their own caches. Without these, a card dragged on a
+      // Team board snapped back until the refetch, and after a failure it
+      // stayed in the wrong column.
+      const teamCaches = { queryKey: teamIssueCachePrefix(wsId) }
+      qc.cancelQueries(teamCaches)
+      const prevTeamIssues = qc.getQueriesData<Issue[]>(teamCaches)
 
       // Resolve parent_issue_id from the freshest source so we can keep the
       // parent's children cache in sync (used by the parent issue's
@@ -234,9 +240,22 @@ export function useUpdateIssue() {
           old?.map((c) => (c.id === id ? { ...c, ...data } : c)),
         )
       }
-      return { prevList, prevDetail, prevChildren, parentId, id }
+      qc.setQueriesData<Issue[]>(teamCaches, (old) =>
+        old?.map((issue) => (issue.id === id ? { ...issue, ...data } : issue)),
+      )
+      return {
+        prevList,
+        prevDetail,
+        prevChildren,
+        prevTeamIssues,
+        parentId,
+        id,
+      }
     },
     onError: (_err, _vars, ctx) => {
+      for (const [queryKey, issues] of ctx?.prevTeamIssues ?? []) {
+        qc.setQueryData(queryKey, issues)
+      }
       if (ctx?.prevList) qc.setQueryData(listKey, ctx.prevList)
       if (ctx?.prevDetail)
         qc.setQueryData(issueKeys.detail(wsId, ctx.id), ctx.prevDetail)
