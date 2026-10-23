@@ -114,6 +114,7 @@ import { Route as ApiInboxIdReadRouteImport } from './routes/api/inbox/$id/read'
 import { Route as ApiInboxIdArchiveRouteImport } from './routes/api/inbox/$id/archive'
 import { Route as ApiGmailDraftsDraftIdRouteImport } from './routes/api/gmail/drafts/$draftId'
 import { Route as ApiExecutorOauthStartRouteImport } from './routes/api/executor/oauth/start'
+import { Route as ApiExecutorDecideDiagnoseRouteImport } from './routes/api/executor/decide/diagnose'
 import { Route as ApiDocumentsIdVersionsRouteImport } from './routes/api/documents/$id/versions'
 import { Route as ApiDocumentsIdMetadataRouteImport } from './routes/api/documents/$id/metadata'
 import { Route as ApiDocumentsIdDocxRouteImport } from './routes/api/documents/$id/docx'
@@ -695,6 +696,12 @@ const ApiExecutorOauthStartRoute = ApiExecutorOauthStartRouteImport.update({
   path: '/api/executor/oauth/start',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiExecutorDecideDiagnoseRoute =
+  ApiExecutorDecideDiagnoseRouteImport.update({
+    id: '/api/executor/decide/diagnose',
+    path: '/api/executor/decide/diagnose',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiDocumentsIdVersionsRoute = ApiDocumentsIdVersionsRouteImport.update({
   id: '/api/documents/$id/versions',
   path: '/api/documents/$id/versions',
@@ -998,6 +1005,7 @@ export interface FileRoutesByFullPath {
   '/api/documents/$id/docx': typeof ApiDocumentsIdDocxRoute
   '/api/documents/$id/metadata': typeof ApiDocumentsIdMetadataRoute
   '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
+  '/api/executor/decide/diagnose': typeof ApiExecutorDecideDiagnoseRoute
   '/api/executor/oauth/start': typeof ApiExecutorOauthStartRoute
   '/api/gmail/drafts/$draftId': typeof ApiGmailDraftsDraftIdRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
@@ -1135,6 +1143,7 @@ export interface FileRoutesByTo {
   '/api/documents/$id/docx': typeof ApiDocumentsIdDocxRoute
   '/api/documents/$id/metadata': typeof ApiDocumentsIdMetadataRoute
   '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
+  '/api/executor/decide/diagnose': typeof ApiExecutorDecideDiagnoseRoute
   '/api/executor/oauth/start': typeof ApiExecutorOauthStartRoute
   '/api/gmail/drafts/$draftId': typeof ApiGmailDraftsDraftIdRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
@@ -1280,6 +1289,7 @@ export interface FileRoutesById {
   '/api/documents/$id/docx': typeof ApiDocumentsIdDocxRoute
   '/api/documents/$id/metadata': typeof ApiDocumentsIdMetadataRoute
   '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
+  '/api/executor/decide/diagnose': typeof ApiExecutorDecideDiagnoseRoute
   '/api/executor/oauth/start': typeof ApiExecutorOauthStartRoute
   '/api/gmail/drafts/$draftId': typeof ApiGmailDraftsDraftIdRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
@@ -1424,6 +1434,7 @@ export interface FileRouteTypes {
     | '/api/documents/$id/docx'
     | '/api/documents/$id/metadata'
     | '/api/documents/$id/versions'
+    | '/api/executor/decide/diagnose'
     | '/api/executor/oauth/start'
     | '/api/gmail/drafts/$draftId'
     | '/api/inbox/$id/archive'
@@ -1561,6 +1572,7 @@ export interface FileRouteTypes {
     | '/api/documents/$id/docx'
     | '/api/documents/$id/metadata'
     | '/api/documents/$id/versions'
+    | '/api/executor/decide/diagnose'
     | '/api/executor/oauth/start'
     | '/api/gmail/drafts/$draftId'
     | '/api/inbox/$id/archive'
@@ -1705,6 +1717,7 @@ export interface FileRouteTypes {
     | '/api/documents/$id/docx'
     | '/api/documents/$id/metadata'
     | '/api/documents/$id/versions'
+    | '/api/executor/decide/diagnose'
     | '/api/executor/oauth/start'
     | '/api/gmail/drafts/$draftId'
     | '/api/inbox/$id/archive'
@@ -1801,6 +1814,7 @@ export interface RootRouteChildren {
   ApiDocumentsIdDocxRoute: typeof ApiDocumentsIdDocxRoute
   ApiDocumentsIdMetadataRoute: typeof ApiDocumentsIdMetadataRoute
   ApiDocumentsIdVersionsRoute: typeof ApiDocumentsIdVersionsRoute
+  ApiExecutorDecideDiagnoseRoute: typeof ApiExecutorDecideDiagnoseRoute
   ApiExecutorOauthStartRoute: typeof ApiExecutorOauthStartRoute
   ApiInternalExecutorCatalogRoute: typeof ApiInternalExecutorCatalogRoute
   ApiPermissionRequestsIdResolveRoute: typeof ApiPermissionRequestsIdResolveRoute
@@ -2543,6 +2557,13 @@ declare module '@tanstack/react-router' {
       path: '/api/executor/oauth/start'
       fullPath: '/api/executor/oauth/start'
       preLoaderRoute: typeof ApiExecutorOauthStartRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/executor/decide/diagnose': {
+      id: '/api/executor/decide/diagnose'
+      path: '/api/executor/decide/diagnose'
+      fullPath: '/api/executor/decide/diagnose'
+      preLoaderRoute: typeof ApiExecutorDecideDiagnoseRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/documents/$id/versions': {
@@ -3396,6 +3417,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDocumentsIdDocxRoute: ApiDocumentsIdDocxRoute,
   ApiDocumentsIdMetadataRoute: ApiDocumentsIdMetadataRoute,
   ApiDocumentsIdVersionsRoute: ApiDocumentsIdVersionsRoute,
+  ApiExecutorDecideDiagnoseRoute: ApiExecutorDecideDiagnoseRoute,
   ApiExecutorOauthStartRoute: ApiExecutorOauthStartRoute,
   ApiInternalExecutorCatalogRoute: ApiInternalExecutorCatalogRoute,
   ApiPermissionRequestsIdResolveRoute: ApiPermissionRequestsIdResolveRoute,

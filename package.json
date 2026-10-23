@@ -101,6 +101,7 @@
       "@helix-db/helix-db@3.0.2": "patches/@helix-db__helix-db@3.0.2.patch",
       "@executor-js/sdk@1.5.40": "patches/@executor-js__sdk@1.5.40.patch",
       "@executor-js/config@1.5.40": "patches/@executor-js__config@1.5.40.patch",
+      "@executor-js/execution@1.5.40": "patches/@executor-js__execution@1.5.40.patch",
       "@executor-js/plugin-graphql@1.5.40": "patches/@executor-js__plugin-graphql@1.5.40.patch",
       "@executor-js/plugin-mcp@1.5.40": "patches/@executor-js__plugin-mcp@1.5.40.patch",
       "@executor-js/plugin-openapi@1.5.40": "patches/@executor-js__plugin-openapi@1.5.40.patch"

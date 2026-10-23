@@ -128,6 +128,33 @@ describe('extractExecutorToolRefs', () => {
     })
   })
 
+  it('extracts a provider error nested in a completed execution result', () => {
+    expect(
+      extractExecutorToolFailure({
+        output: {
+          structuredContent: {
+            status: 'completed',
+            result: {
+              ok: false,
+              error: {
+                code: 'mcp_tool_error',
+                message: 'Not enough Decide credits to run this request.',
+              },
+            },
+          },
+        },
+        toolName: 'executor_execute',
+        toolInput: {
+          code: 'await tools.decide.user.decide.analyze({ data: csv })',
+        },
+      }),
+    ).toEqual({
+      code: 'mcp_tool_error',
+      message: 'Not enough Decide credits to run this request.',
+      stage: 'decide_analysis',
+    })
+  })
+
   it('classifies file-read and transport timeout failures', () => {
     expect(
       extractExecutorToolFailure({
