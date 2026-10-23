@@ -12,6 +12,12 @@ import { cn } from '@garden/ui/lib/utils'
  * (hover lifts them); the active tab is a white block punching into the
  * content below. No horizontal scroll — the top-bar arrows step the selection
  * when tabs overflow.
+ *
+ * Inactive hover cannot use secondary-hover. That token is #1e1e1e in dark
+ * mode, the same as the page and the active tab, so a hovered tab looked
+ * selected (issue #221). Dark hover uses default-hover (#383838), lighter
+ * than the #2c2c2c band. Light default-hover equals the band, so light hover
+ * uses default (#ffffff). The dark utility wins on specificity.
  */
 
 export type SurfaceTab = {
@@ -59,7 +65,7 @@ export function SurfaceTabs({
               'group relative flex w-36 min-w-0 items-stretch text-sm',
               active
                 ? 'z-10 border-x border-t border-border-default bg-background-main-default font-medium text-text-neutral-default'
-                : 'text-text-secondary hover:bg-background-main-secondary-hover hover:text-text-neutral-default',
+                : 'text-text-secondary transition-colors hover:bg-background-main-default hover:text-text-neutral-default dark:hover:bg-background-main-default-hover',
             )}
           >
             <button
@@ -94,7 +100,7 @@ export function SurfaceTabs({
         onClick={onNew}
         aria-label={newLabel}
         title={newLabel}
-        className="flex w-10 shrink-0 cursor-pointer items-center justify-center self-stretch text-text-tertiary transition-colors hover:bg-background-main-secondary-hover hover:text-icon-neutral-default"
+        className="flex w-10 shrink-0 cursor-pointer items-center justify-center self-stretch text-text-tertiary transition-colors hover:bg-background-main-default hover:text-icon-neutral-default dark:hover:bg-background-main-default-hover"
       >
         <Plus className="size-3.5" />
       </button>
