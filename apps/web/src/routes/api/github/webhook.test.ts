@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Result } from 'better-result'
 import { Route } from './webhook'
 import { invokeRouteHandler } from '@/test/route-handler'
 import type { AppRequestContext } from '@/lib/server/context'
@@ -7,11 +8,27 @@ const mocks = vi.hoisted(() => ({
   appEnv: {
     GITHUB_WEBHOOK_SECRET: 'garden-webhook-test-secret',
   },
+  requireAppRequestContext: vi.fn(),
+  resolveGitHubWebhookBinding: vi.fn(),
+  db: vi.fn(async () => ({})),
 }))
 
 vi.mock('@/lib/server/env', () => ({
   appEnv: mocks.appEnv,
 }))
+
+vi.mock('@/lib/server/context', () => ({
+  requireAppRequestContext: mocks.requireAppRequestContext,
+}))
+
+vi.mock('@/lib/server/github-webhook-resolve', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/lib/server/github-webhook-resolve')>()
+  return {
+    ...actual,
+    resolveGitHubWebhookBinding: mocks.resolveGitHubWebhookBinding,
+  }
+})
 
 const textEncoder = new TextEncoder()
 
@@ -61,15 +78,65 @@ async function postWebhook(args: {
   })
 }
 
+const issueEditedBody = JSON.stringify({
+  action: 'edited',
+  installation: { id: 99 },
+  repository: {
+    name: 'garden',
+    full_name: 'Flow-Research/garden',
+    owner: { login: 'Flow-Research' },
+  },
+  issue: {
+    number: 42,
+    title: 'Webhook sync',
+    body: 'hello',
+    state: 'open',
+    html_url: 'https://github.com/Flow-Research/garden/issues/42',
+  },
+})
+
 describe('POST /api/github/webhook', () => {
   beforeEach(() => {
     mocks.appEnv.GITHUB_WEBHOOK_SECRET = 'garden-webhook-test-secret'
+    mocks.requireAppRequestContext.mockReturnValue({
+      db: mocks.db,
+    })
+    mocks.resolveGitHubWebhookBinding.mockReset()
+    mocks.resolveGitHubWebhookBinding.mockResolvedValue(Result.ok(null))
   })
 
-  it('returns 200 for a verified delivery', async () => {
+  it('returns 200 for a verified ping without an issue', async () => {
     const response = await postWebhook({ body: '{"zen":"keep it simple"}' })
     expect(response.status).toBe(200)
-    expect(await response.json()).toEqual({ ok: true })
+    expect(await response.json()).toEqual({ ok: true, status: 'ignored' })
+    expect(mocks.resolveGitHubWebhookBinding).not.toHaveBeenCalled()
+  })
+
+  it('returns unbound when no install/binding matches', async () => {
+    const response = await postWebhook({ body: issueEditedBody })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true, status: 'unbound' })
+    expect(mocks.resolveGitHubWebhookBinding).toHaveBeenCalled()
+  })
+
+  it('returns matched when a binding is found', async () => {
+    mocks.resolveGitHubWebhookBinding.mockResolvedValue(
+      Result.ok({
+        workspaceId: 'ws-1',
+        issueId: 'issue-1',
+        bindingId: 'bind-1',
+        externalId: 'Flow-Research/garden/issues/42',
+      }),
+    )
+    const response = await postWebhook({ body: issueEditedBody })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      ok: true,
+      status: 'matched',
+      workspace_id: 'ws-1',
+      issue_id: 'issue-1',
+      binding_id: 'bind-1',
+    })
   })
 
   it('returns 400 when the signature header is missing', async () => {
