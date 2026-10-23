@@ -67,6 +67,8 @@ export type SpeechInputProps = ComponentProps<typeof Button> & {
    */
   onAudioRecorded?: (audioBlob: Blob) => Promise<string>
   lang?: string
+  /** Called when listening starts or stops, so a parent can keep the mic mounted. */
+  onListeningChange?: (listening: boolean) => void
 }
 
 const detectSpeechInputMode = (): SpeechInputMode => {
@@ -90,9 +92,17 @@ export const SpeechInput = ({
   onTranscriptionChange,
   onAudioRecorded,
   lang = 'en-US',
+  onListeningChange,
   ...props
 }: SpeechInputProps) => {
   const [isListening, setIsListening] = useState(false)
+  const onListeningChangeRef = useRef(onListeningChange)
+  useEffect(() => {
+    onListeningChangeRef.current = onListeningChange
+  })
+  useEffect(() => {
+    onListeningChangeRef.current?.(isListening)
+  }, [isListening])
   const [isProcessing, setIsProcessing] = useState(false)
   const [mode] = useState<SpeechInputMode>(detectSpeechInputMode)
   const [isRecognitionReady, setIsRecognitionReady] = useState(false)

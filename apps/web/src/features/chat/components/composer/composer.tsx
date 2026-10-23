@@ -213,6 +213,10 @@ function ComposerFooter(props: {
     onSend,
     onStop,
   } = props
+  // The mic shows only while the editor is empty, but the first transcribed
+  // phrase fills the editor; unmounting the mic then stopped dictation. It
+  // stays while listening.
+  const [micListening, setMicListening] = useState(false)
 
   return (
     <div className="flex items-center justify-between gap-2">
@@ -235,12 +239,13 @@ function ComposerFooter(props: {
           clickable-but-inert on Safari/Firefox and unsupported browsers.
           Let SpeechInput gate itself.
         */}
-        {!isStreaming && !hasContent ? (
+        {!isStreaming && (!hasContent || micListening) ? (
           <SpeechInput
             variant="ghost"
             size="icon"
             className="size-8 rounded-sm text-icon-default"
             onTranscriptionChange={onMicTranscription}
+            onListeningChange={setMicListening}
           >
             <Mic className="size-4" />
           </SpeechInput>
