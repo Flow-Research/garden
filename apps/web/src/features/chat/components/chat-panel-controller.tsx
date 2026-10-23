@@ -19,6 +19,7 @@ import { Result } from 'better-result'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/app-state/auth'
 import { useChatStore } from '@garden/app-state/chat'
+import { toast } from 'sonner'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { motion, AnimatePresence } from 'motion/react'
 import {
@@ -423,7 +424,37 @@ export function ConnectedChatPanelInteraction({
     if (uploadResult.isErr()) {
       setOptimisticPendingTurn(false)
       pendingMessageCountRef.current = null
+      runtime.setPendingTurn(null)
+      if (wasWarm) {
+        // Nothing reached the agent, so the thread is still unused: undo the
+        // first-turn title and preview seeded above, or it would read as a
+        // conversation and /chats would stop offering it as the next chat.
+        updateSessionPreview({
+          sessionId,
+          title: liveTitle,
+          lastMessage: liveSession.lastMessage ?? '',
+          persist: true,
+        })
+      }
       markTurnError(uploadResult.error)
+      // The composer cleared when this was sent. Hand the message back so it
+      // can be resent, unless the person has already started a new draft.
+      const draft = useChatStore.getState().inputDrafts[sessionId] ?? ''
+      const restorable = isActiveSession && draft.trim() === ''
+      if (restorable) {
+        composerRef.current?.restoreDraft({
+          text,
+          files,
+          selectedDocumentIds: selectedDocuments.map(
+            (document) => document.documentId,
+          ),
+        })
+      }
+      toast.error(
+        restorable
+          ? "Your files couldn't be uploaded. Your message is back in the composer."
+          : "Your files couldn't be uploaded, so the message wasn't sent.",
+      )
       return false
     }
     if (uploadResult.value.length > 0) {
