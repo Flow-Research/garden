@@ -96,7 +96,7 @@ export function SurfaceTabs({
         onClick={onNew}
         aria-label={newLabel}
         title={newLabel}
-        className="flex w-10 shrink-0 cursor-pointer items-center justify-center self-stretch text-text-tertiary transition-colors hover:bg-background-main-secondary-hover hover:text-icon-neutral-default"
+        className="flex w-10 shrink-0 cursor-pointer items-center justify-center self-stretch text-icon-neutral-tertiary transition-colors hover:bg-background-main-secondary-hover hover:text-icon-neutral-default"
       >
         <Plus className="size-3.5" />
       </button>
