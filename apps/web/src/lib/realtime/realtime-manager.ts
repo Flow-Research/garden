@@ -107,6 +107,7 @@ function handleMessage(workspaceId: string, data: unknown) {
         type?: unknown
         workspace_id?: unknown
         published_at?: unknown
+        payload?: unknown
       },
   )
   if (parsed.isErr()) return
