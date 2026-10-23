@@ -1,7 +1,9 @@
 import {
+  useEffect,
   useRef,
   useState,
   type FormEvent,
+  type RefObject,
   type KeyboardEvent,
   type ReactNode,
 } from 'react'
@@ -22,6 +24,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@garden/ui/components/ui/dialog'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import { Input } from '@garden/ui/components/ui/input'
 import { Label } from '@garden/ui/components/ui/label'
 import {
@@ -74,27 +77,48 @@ export function InboxComposeDialog({
   draftId,
 }: InboxComposeDialogProps) {
   const editingId = open && draftId ? draftId : null
+  // Escape or an outside click used to close the dialog and drop whatever
+  // was typed. The open form registers a guard that can hold the close and
+  // ask first.
+  const closeGuardRef = useRef<CloseGuard | null>(null)
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && closeGuardRef.current && !closeGuardRef.current()) return
+        onOpenChange(next)
+      }}
+    >
       {editingId ? (
         <DraftLoader
           key={editingId}
           draftId={editingId}
           onOpenChange={onOpenChange}
+          closeGuardRef={closeGuardRef}
         />
       ) : open ? (
-        <ComposeForm key="new" initial={null} onOpenChange={onOpenChange} />
+        <ComposeForm
+          key="new"
+          initial={null}
+          onOpenChange={onOpenChange}
+          closeGuardRef={closeGuardRef}
+        />
       ) : null}
     </Dialog>
   )
 }
 
+/** Returns true when the dialog may close now. */
+type CloseGuard = () => boolean
+
 function DraftLoader({
   draftId,
   onOpenChange,
+  closeGuardRef,
 }: {
   draftId: string
   onOpenChange: (open: boolean) => void
+  closeGuardRef: RefObject<CloseGuard | null>
 }) {
   const draftQuery = useQuery({
     queryKey: ['gmail', 'draft', draftId],
@@ -161,6 +185,7 @@ function DraftLoader({
       key={draftQuery.data.draftId}
       initial={draftQuery.data}
       onOpenChange={onOpenChange}
+      closeGuardRef={closeGuardRef}
     />
   )
 }
@@ -181,9 +206,11 @@ function ConnectGmailButton({ label }: { label: string }) {
 function ComposeForm({
   initial,
   onOpenChange,
+  closeGuardRef,
 }: {
   initial: GmailDraftDetail | null
   onOpenChange: (open: boolean) => void
+  closeGuardRef: RefObject<CloseGuard | null>
 }) {
   const queryClient = useQueryClient()
   const bodyRef = useRef<ComposeMessageBodyRef>(null)
@@ -198,6 +225,20 @@ function ComposeForm({
     initial?.draftId ?? null,
   )
   const [needsConnect, setNeedsConnect] = useState(false)
+  // What is saved in Gmail (or nothing, for a new email), to tell whether
+  // closing would lose anything.
+  const [savedSnapshot, setSavedSnapshot] = useState(() =>
+    composeSnapshot({
+      to: initial?.to ?? [],
+      cc: initial?.cc ?? [],
+      bcc: initial?.bcc ?? [],
+      subject: initial?.subject ?? '',
+      body: initial?.bodyText ?? '',
+    }),
+  )
+  const isDirty =
+    composeSnapshot({ to, cc, bcc, subject, body }) !== savedSnapshot
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
 
   const invalidateGmail = () => {
     queryClient.invalidateQueries({ queryKey: ['gmail'] })
@@ -213,8 +254,9 @@ function ComposeForm({
 
   const saveMutation = useMutation({
     mutationFn: saveGmailDraft,
-    onSuccess: (draft) => {
+    onSuccess: (draft, input) => {
       setSavedDraftId(draft.draftId)
+      setSavedSnapshot(composeSnapshot(input))
       setNeedsConnect(false)
       invalidateGmail()
       toast.success('Draft saved to Gmail.')
@@ -277,14 +319,28 @@ function ComposeForm({
     })
   }
 
+  // Trash deletes a saved draft, or drops unsaved text, so it asks first.
   const handleDiscard = () => {
     if (pending) return
-    if (draftId) {
-      discardMutation.mutate(draftId)
+    if (draftId || isDirty) {
+      setConfirmDiscard(true)
       return
     }
     onOpenChange(false)
   }
+
+  const closeGuard: CloseGuard = () => {
+    if (pending) return false
+    if (!isDirty) return true
+    setConfirmDiscard(true)
+    return false
+  }
+  useEffect(() => {
+    closeGuardRef.current = closeGuard
+    return () => {
+      closeGuardRef.current = null
+    }
+  })
 
   const canSend = to.length > 0 && body.trim().length > 0 && !pending
 
@@ -424,6 +480,26 @@ function ComposeForm({
           Attachments are not supported yet.
         </p>
       </form>
+      <ConfirmDialog
+        open={confirmDiscard}
+        onOpenChange={setConfirmDiscard}
+        title={draftId ? 'Delete this draft?' : 'Discard this email?'}
+        description={
+          draftId
+            ? isDirty
+              ? 'The draft is deleted from Gmail, along with your unsaved changes.'
+              : 'The draft is deleted from Gmail.'
+            : 'What you have written will be lost.'
+        }
+        confirmLabel={draftId ? 'Delete draft' : 'Discard'}
+        pendingLabel="Deleting…"
+        cancelLabel="Keep editing"
+        tone="destructive"
+        onConfirm={async () => {
+          if (draftId) await discardMutation.mutateAsync(draftId)
+          else onOpenChange(false)
+        }}
+      />
     </DialogContent>
   )
 
@@ -724,3 +800,19 @@ function ComposeFileButton({
 }
 
 export type { InboxComposeDialogProps }
+
+function composeSnapshot(fields: {
+  to: readonly string[]
+  cc: readonly string[]
+  bcc: readonly string[]
+  subject: string
+  body: string
+}) {
+  return JSON.stringify([
+    fields.to,
+    fields.cc,
+    fields.bcc,
+    fields.subject.trim(),
+    fields.body.trim(),
+  ])
+}
