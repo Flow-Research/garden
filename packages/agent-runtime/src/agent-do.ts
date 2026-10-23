@@ -20,7 +20,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
-  Session,
+  type Session,
   Think,
   type ChatResponseResult,
   type MessageConcurrency,
@@ -2178,6 +2178,19 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
           this.currentIntegrationFailure.message,
           'Do not retry the integration or replace it with local analysis. Report the failure to the user and ask for a narrower request or a smaller file.',
         ].join(' '),
+      } as const
+    }
+    if (
+      ctx.toolName === `${EXECUTOR_TOOL_KEY_PREFIX}execute` &&
+      (selectedRoute?.slug === 'decide' ||
+        extractExecutorToolRefsFromInput(ctx.input).some(
+          (ref) => ref.executorSlug === 'decide',
+        ))
+    ) {
+      return {
+        action: 'block',
+        reason:
+          'Use the direct Decide tools. Do not call Executor execute for Decide.',
       } as const
     }
     if (selectedRoute && ctx.toolName.startsWith(EXECUTOR_TOOL_KEY_PREFIX)) {

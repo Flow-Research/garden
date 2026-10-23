@@ -36,6 +36,7 @@ import { mcpSessionStub } from '@executor-js/cloudflare/mcp/session-stub'
 import { makeDynamicWorkerExecutor } from '@executor-js/runtime-dynamic-worker'
 
 import { createD1ExecutorDb } from './d1'
+import { registerDirectDecideTools } from './direct-decide-mcp'
 import { makeR2BlobStore } from './r2'
 import { makeExecutorPlugins, type GardenExecutorPlugins } from './plugins'
 import { boundExecutionEngine } from './output-bound'
@@ -203,7 +204,12 @@ export class ExecutorMcpSession extends McpAgentSessionDOBase<
           resumeFallback: this.modelResumeFallback,
           parentSpan: () => this.currentParentSpan(),
           elicitationMode: { mode: 'model' as const },
-        }).pipe(Effect.map((mcpServer) => ({ mcpServer, engine }))),
+        }).pipe(
+          Effect.tap((mcpServer) =>
+            Effect.sync(() => registerDirectDecideTools(mcpServer, executor)),
+          ),
+          Effect.map((mcpServer) => ({ mcpServer, engine })),
+        ),
       ),
       Effect.catchCause((cause) =>
         Effect.promise(() => database.end()).pipe(

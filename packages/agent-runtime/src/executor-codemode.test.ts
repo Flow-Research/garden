@@ -113,6 +113,29 @@ describe('extractExecutorToolRefs', () => {
     })
   })
 
+  it('identifies an error from the direct Decide analysis tool', () => {
+    expect(
+      extractExecutorToolFailure({
+        output: {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: 'Not enough Decide credits to run this request.',
+            },
+          ],
+        },
+        toolName: 'tool_executor_decide_analyze',
+      }),
+    ).toEqual({
+      message: 'Not enough Decide credits to run this request.',
+      kind: 'provider_error',
+      retryable: false,
+      userAction: 'none',
+      stage: 'decide_analysis',
+    })
+  })
+
   it('keeps text blocks in order when the MCP envelope has no error field', () => {
     expect(
       extractExecutorToolFailure({
