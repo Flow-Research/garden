@@ -2202,7 +2202,10 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
 
   override async afterToolCall(ctx: ToolCallResultContext) {
     const selectedRoute = this.currentIntegrationRoute?.routes[0]
-    if (selectedRoute && !this.currentIntegrationFailure) {
+    const isRouteTool =
+      ctx.toolName.startsWith(EXECUTOR_TOOL_KEY_PREFIX) ||
+      ctx.toolName === 'readDocument'
+    if (selectedRoute && isRouteTool && !this.currentIntegrationFailure) {
       const failure = extractExecutorToolFailure({
         error: ctx.success ? undefined : ctx.error,
         output: ctx.success ? ctx.output : undefined,

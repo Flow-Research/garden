@@ -411,6 +411,8 @@ type ChatIssueToolContext = {
 const COMPACT_EXECUTE_DESCRIPTION =
   'Run JavaScript in the sandbox for multi-step filesystem work. ' +
   'Use state.readFile(path), state.writeFile(path, content), state.glob(pattern), state.readDir(path), state.mkdir(path), state.rm(path), state.cp(from, to), and state.mv(from, to). ' +
+  'Only state.* is available; this sandbox has no integrations or tools namespace. ' +
+  'Use the Executor MCP tools for connected services instead. ' +
   'Input is an async arrow function body as JavaScript, not TypeScript. Return the useful result.'
 
 type ChatIssueIdentity = {

@@ -103,9 +103,10 @@ describe('integration router', () => {
     expect(decision.status).toBe('selected')
     expect(decision.routes[0]?.slug).toBe('decide')
     expect(decision.skill?.id).toBe('analyze-structured-data')
-    expect(renderIntegrationRouteDirective(decision)).toContain(
-      'call Garden readDocument',
-    )
+    const directive = renderIntegrationRouteDirective(decision)
+    expect(directive).toContain('call Garden readDocument')
+    expect(directive).toContain('Call tool_executor_execute for Decide')
+    expect(directive).toContain('no integrations namespace')
   })
 
   it('selects structured-data analysis for a CSV document with no analysis prose', () => {
