@@ -88,36 +88,37 @@ function SessionRow({
   return (
     <ContextMenu>
       <ContextMenuTrigger render={<div className="w-full" />}>
+        {/* The row and its actions menu are siblings: a menu button nested
+            in a role="button" row is not valid, and needed stopPropagation
+            on both events to avoid opening the chat. */}
         <div
-          role="button"
-          tabIndex={0}
-          onClick={onSelect}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault()
-              onSelect()
-            }
-          }}
           className={cn(
-            'group relative flex h-7 w-full items-center gap-1.5 rounded-md px-2 text-left text-xs transition-colors',
+            'group relative flex h-7 w-full items-center rounded-md text-xs transition-colors',
             active
               ? 'bg-accent text-accent-foreground'
               : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
           )}
         >
-          <SessionStatusDot session={session} />
-          <span className="min-w-0 flex-1 truncate">{session.title}</span>
-          <span
-            className={cn(
-              'shrink-0 text-[10px] tabular-nums text-muted-foreground/70 transition-opacity',
-              'group-hover:opacity-0 group-focus-within:opacity-0',
-            )}
+          <button
+            type="button"
+            onClick={onSelect}
+            aria-current={active ? 'page' : undefined}
+            className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-left"
           >
-            {timeAgo(session.updatedAt, {
-              compact: true,
-              absoluteAfterDays: 7,
-            })}
-          </span>
+            <SessionStatusDot session={session} />
+            <span className="min-w-0 flex-1 truncate">{session.title}</span>
+            <span
+              className={cn(
+                'shrink-0 text-[10px] tabular-nums text-muted-foreground/70 transition-opacity',
+                'group-hover:opacity-0 group-focus-within:opacity-0',
+              )}
+            >
+              {timeAgo(session.updatedAt, {
+                compact: true,
+                absoluteAfterDays: 7,
+              })}
+            </span>
+          </button>
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -125,8 +126,6 @@ function SessionRow({
                   variant="ghost"
                   size="icon-sm"
                   aria-label="Chat actions"
-                  onClick={(event) => event.stopPropagation()}
-                  onKeyDown={(event) => event.stopPropagation()}
                   className={cn(
                     'absolute right-0.5 size-5 opacity-0 transition-opacity',
                     'group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100',
