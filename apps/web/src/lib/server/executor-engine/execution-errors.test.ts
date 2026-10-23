@@ -20,6 +20,7 @@ describe('Executor MCP provider failures', () => {
               _tag: 'McpInvocationError',
               toolName: 'analyze',
               status: 402,
+              mcpCode: -32603,
               message: 'Not enough Decide credits to run this request.',
             },
           }),
@@ -41,7 +42,7 @@ describe('Executor MCP provider failures', () => {
       error: {
         code: 'mcp_tool_error',
         message: 'Not enough Decide credits to run this request.',
-        details: { toolName: 'analyze', status: 402 },
+        details: { toolName: 'analyze', status: 402, mcpCode: -32603 },
       },
     })
   })

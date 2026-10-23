@@ -55,8 +55,8 @@ describe('Decide diagnostic', () => {
             cause: {
               _tag: 'McpInvocationError',
               toolName: 'whoami',
-              status: 502,
-              message: 'Decide whoami is temporarily unavailable.',
+              mcpCode: -32603,
+              message: 'Internal tool error [f0c1bf7b]',
             },
           }),
         ),
@@ -68,8 +68,9 @@ describe('Decide diagnostic', () => {
       name: 'call',
       outcome: 'failed',
       stage: 'mcp_handoff',
-      message: 'Decide whoami is temporarily unavailable.',
-      status: 502,
+      message: 'Internal tool error [f0c1bf7b]',
+      mcpCode: -32603,
+      correlationId: 'f0c1bf7b',
     })
   })
 

@@ -1,13 +1,15 @@
 diff --git a/dist/chunk-WOUJU2ZK.js b/dist/chunk-WOUJU2ZK.js
 --- a/dist/chunk-WOUJU2ZK.js
 +++ b/dist/chunk-WOUJU2ZK.js
-@@ -146,7 +146,17 @@
+@@ -146,7 +146,19 @@
    if (Predicate.isTagged(value, "ToolInvocationError")) {
      const cause = value.cause;
 +    if (Predicate.isTagged(cause, "McpInvocationError")) {
 +      const details = {};
 +      if (typeof cause.toolName === "string") details.toolName = cause.toolName;
 +      if (typeof cause.status === "number") details.status = cause.status;
++      if (typeof cause.mcpCode === "number") details.mcpCode = cause.mcpCode;
++      if (typeof cause.transportFailure === "boolean") details.transportFailure = cause.transportFailure;
 +      return {
 +        code: typeof cause.code === "string" ? cause.code : "mcp_tool_error",
 +        message: typeof cause.message === "string" && cause.message.length > 0 ? cause.message : value.message,
