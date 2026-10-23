@@ -18,6 +18,10 @@ import {
   issueWorkProductsOptions,
 } from '@/lib/issues/queries'
 import { inboxKeys } from '@/lib/inbox/queries'
+import {
+  useResolvePermissionRequest,
+  useReviewWorkProduct,
+} from '@/lib/issues/mutations'
 import { useNavigation } from '../../navigation'
 import { ActiveRunPanel, LastRunSummary } from './active-run-panel'
 import { RunPlanCard, type RunPlanTodo } from './run-plan-card'
@@ -204,7 +208,6 @@ export function IssueRunSurfaceFallback() {
 }
 
 export function IssueOutputSurface({ issue }: { issue: Issue }) {
-  const queryClient = useQueryClient()
   const { searchParams } = useNavigation()
   const focus = searchParams.get('focus') ?? ''
   const [focusKind, focusId] = focus.split(':')
@@ -213,24 +216,7 @@ export function IssueOutputSurface({ issue }: { issue: Issue }) {
   const { data: workProducts } = useSuspenseQuery(
     issueWorkProductsOptions(issue.id),
   )
-  const reviewMutation = useMutation({
-    mutationFn: (vars: {
-      id: string
-      action: 'approve' | 'request_changes' | 'apply'
-    }) => api.reviewWorkProduct(vars.id, { action: vars.action }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: issueWorkProductsOptions(issue.id).queryKey,
-      })
-      queryClient.invalidateQueries({
-        queryKey: issueKeys.activeRun(issue.id),
-      })
-      queryClient.invalidateQueries({
-        queryKey: issueKeys.detail(issue.workspace_id, issue.id),
-      })
-      queryClient.invalidateQueries({ queryKey: issueKeys.timeline(issue.id) })
-    },
-  })
+  const reviewMutation = useReviewWorkProduct(issue.id)
 
   if (workProducts.length === 0) return null
 
@@ -240,11 +226,12 @@ export function IssueOutputSurface({ issue }: { issue: Issue }) {
         workProducts={workProducts}
         connectorId={issue.source_summary?.connector_id ?? null}
         pulseId={pulseWorkProductId}
+        pending={reviewMutation.isPending ? reviewMutation.variables : null}
         onApprove={(id) => reviewMutation.mutate({ id, action: 'approve' })}
         onRequestChanges={(id) =>
           reviewMutation.mutate({ id, action: 'request_changes' })
         }
-        onApply={(id) => reviewMutation.mutate({ id, action: 'apply' })}
+        onApply={(id) => reviewMutation.mutateAsync({ id, action: 'apply' })}
       />
     </OutputSection>
   )
@@ -287,7 +274,7 @@ export function IssueRunSurface({
       queryKey: inboxKeys.list(issue.workspace_id),
     })
     queryClient.invalidateQueries({
-      queryKey: ['issue-pending-approval', issue.id],
+      queryKey: issueKeys.pendingApproval(issue.id),
     })
   }, [
     issue.id,
@@ -299,7 +286,7 @@ export function IssueRunSurface({
   ])
   const pendingQuestion = pendingQuestionFromEvents(events)
   const pendingApprovalQuery = useQuery({
-    queryKey: ['issue-pending-approval', issue.id],
+    queryKey: issueKeys.pendingApproval(issue.id),
     queryFn: () => api.getIssuePendingApproval(issue.id),
     enabled: run?.status === 'waiting_for_approval',
   })
@@ -323,22 +310,7 @@ export function IssueRunSurface({
     },
     onError: () => toast.error('Failed to stop run'),
   })
-  const resolveApprovalMutation = useMutation({
-    mutationFn: (vars: { id: string; approved: boolean }) =>
-      api.resolvePermissionRequest(vars),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['issue-pending-approval', issue.id],
-      })
-      queryClient.invalidateQueries({
-        queryKey: issueKeys.activeRun(issue.id),
-      })
-      queryClient.invalidateQueries({
-        queryKey: inboxKeys.list(issue.workspace_id),
-      })
-    },
-    onError: () => toast.error('Failed to resolve approval'),
-  })
+  const resolveApprovalMutation = useResolvePermissionRequest(issue.id)
 
   const pulseFocus =
     Boolean(run) &&

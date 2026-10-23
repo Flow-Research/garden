@@ -25,6 +25,8 @@ export const issueKeys = {
   reactions: (issueId: string) => ['issues', 'reactions', issueId] as const,
   subscribers: (issueId: string) => ['issues', 'subscribers', issueId] as const,
   usage: (issueId: string) => ['issues', 'usage', issueId] as const,
+  pendingApproval: (issueId: string) =>
+    ['issue-pending-approval', issueId] as const,
 }
 
 export function issueActiveRunOptions(issueId: string) {

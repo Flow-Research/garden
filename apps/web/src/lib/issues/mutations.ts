@@ -5,7 +5,9 @@ import {
   type QueryClient,
 } from '@tanstack/react-query'
 import { Result } from 'better-result'
+import { toast } from 'sonner'
 import { api } from '@/lib/api'
+import { inboxKeys } from '@/lib/inbox/queries'
 import { issueKeys, CLOSED_PAGE_SIZE } from './queries'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import type { Issue, IssueReaction } from '@garden/core/types'
@@ -674,5 +676,61 @@ export function useToggleIssueSubscriber(issueId: string) {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: issueKeys.subscribers(issueId) })
     },
+  })
+}
+
+/**
+ * Refreshes everything an action on an issue's run can change: its work
+ * products, active run, pending approval, detail and timeline, plus the
+ * inbox. The issue page and the inbox used to keep separate copies with
+ * different sets, so acting from one left the other stale.
+ */
+export function useIssueActionInvalidation(issueId: string | null) {
+  const queryClient = useQueryClient()
+  const wsId = useWorkspaceId()
+  return useCallback(() => {
+    void queryClient.invalidateQueries({
+      queryKey: inboxKeys.list(wsId),
+      exact: true,
+    })
+    void queryClient.invalidateQueries({
+      queryKey: issueKeys.list(wsId),
+      exact: true,
+      refetchType: 'none',
+    })
+    if (!issueId) return
+    for (const queryKey of [
+      issueKeys.activeRun(issueId),
+      issueKeys.detail(wsId, issueId),
+      issueKeys.timeline(issueId),
+      issueKeys.workProducts(issueId),
+      issueKeys.pendingApproval(issueId),
+    ]) {
+      void queryClient.invalidateQueries({ queryKey, exact: true })
+    }
+  }, [issueId, queryClient, wsId])
+}
+
+export type WorkProductReviewAction = 'approve' | 'request_changes' | 'apply'
+
+/** Approve, request changes on, or apply a work product. */
+export function useReviewWorkProduct(issueId: string | null) {
+  const invalidate = useIssueActionInvalidation(issueId)
+  return useMutation({
+    mutationFn: (vars: { id: string; action: WorkProductReviewAction }) =>
+      api.reviewWorkProduct(vars.id, { action: vars.action }),
+    onSuccess: invalidate,
+    onError: () => toast.error('Failed to update work product'),
+  })
+}
+
+/** Approve or deny a run's pending permission request. */
+export function useResolvePermissionRequest(issueId: string | null) {
+  const invalidate = useIssueActionInvalidation(issueId)
+  return useMutation({
+    mutationFn: (vars: { id: string; approved: boolean }) =>
+      api.resolvePermissionRequest(vars),
+    onSuccess: invalidate,
+    onError: () => toast.error('Failed to resolve approval'),
   })
 }

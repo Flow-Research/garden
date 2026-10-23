@@ -15,6 +15,8 @@ import {
 import { cn } from '@garden/ui/lib/utils'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
+import type { WorkProductReviewAction } from '@/lib/issues/mutations'
 import {
   Empty,
   EmptyDescription,
@@ -64,10 +66,24 @@ export interface WorkProductCardProps {
   connectorId?: string | null
   /** When true, the card briefly pulses on mount — used by ?focus=wp_review deep links. */
   pulseOnMount?: boolean
+  /** The review action in flight for this card; disables its actions. */
+  pendingAction?: WorkProductReviewAction | null
   onApprove?: () => void
   onRequestChanges?: () => void
-  onApply?: () => void
+  /**
+   * Posts the work product to the connector. Confirmed first; return the
+   * request's promise so the confirmation stays open until it settles (and
+   * stays open on failure, for a retry).
+   */
+  onApply?: () => Promise<unknown> | void
   onShowDiff?: () => void
+}
+
+const CONNECTOR_NAME: Record<string, string> = {
+  github: 'GitHub',
+  slack: 'Slack',
+  linear: 'Linear',
+  gmail: 'Gmail',
 }
 
 const TYPE_ICON: Record<
@@ -132,12 +148,18 @@ export function WorkProductCard({
   workProduct,
   connectorId,
   pulseOnMount = false,
+  pendingAction = null,
   onApprove,
   onRequestChanges,
   onApply,
   onShowDiff,
 }: WorkProductCardProps) {
   const [expanded, setExpanded] = useState(false)
+  const [confirmApply, setConfirmApply] = useState(false)
+  const busy = pendingAction !== null
+  const connectorName = connectorId
+    ? (CONNECTOR_NAME[connectorId] ?? 'the connector')
+    : 'the connector'
   const [pulse, setPulse] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
   const TypeIcon = TYPE_ICON[workProduct.type]
@@ -232,24 +254,32 @@ export function WorkProductCard({
       {/* Footer / actions */}
       {showReviewActions && (
         <div className="flex items-center gap-2 border-t border-warning/15 px-4 py-2.5">
-          <Button size="sm" className="h-7" onClick={onApprove}>
+          <Button size="sm" className="h-7" disabled={busy} onClick={onApprove}>
             <Check className="h-3.5 w-3.5 mr-1" />
-            Approve
+            {pendingAction === 'approve' ? 'Approving…' : 'Approve'}
           </Button>
           <Button
             size="sm"
             variant="outline"
             className="h-7"
+            disabled={busy}
             onClick={onRequestChanges}
           >
-            Request changes
+            {pendingAction === 'request_changes'
+              ? 'Requesting…'
+              : 'Request changes'}
           </Button>
         </div>
       )}
 
       {showApply && (
         <div className="flex items-center gap-2 border-t border-info/15 px-4 py-2.5">
-          <Button size="sm" className="h-7" onClick={onApply}>
+          <Button
+            size="sm"
+            className="h-7"
+            disabled={busy}
+            onClick={() => setConfirmApply(true)}
+          >
             <Send className="h-3.5 w-3.5 mr-1" />
             Apply{connectorId === 'github' ? ' to GitHub' : ''}
           </Button>
@@ -258,6 +288,16 @@ export function WorkProductCard({
           </span>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmApply}
+        onOpenChange={setConfirmApply}
+        title={`Post to ${connectorName}?`}
+        description={`“${workProduct.title}” will be posted to ${connectorName} under your account. Garden can't take it back once it's posted.`}
+        confirmLabel="Post"
+        pendingLabel="Posting…"
+        onConfirm={() => onApply?.()}
+      />
 
       {workProduct.status === 'applied' && workProduct.applied_external_url && (
         <div className="flex items-center gap-2 border-t border-success/15 px-4 py-2.5">
@@ -292,15 +332,18 @@ interface WorkProductListProps {
   connectorId?: string | null
   /** ID of the card to pulse on mount (e.g. from `?focus=wp_review:<id>`). */
   pulseId?: string | null
+  /** The review in flight, if any; only the matching card is disabled. */
+  pending?: { id: string; action: WorkProductReviewAction } | null
   onApprove?: (id: string) => void
   onRequestChanges?: (id: string) => void
-  onApply?: (id: string) => void
+  onApply?: (id: string) => Promise<unknown> | void
 }
 
 export function WorkProductList({
   workProducts,
   connectorId,
   pulseId,
+  pending = null,
   onApprove,
   onRequestChanges,
   onApply,
@@ -315,6 +358,7 @@ export function WorkProductList({
           workProduct={wp}
           connectorId={connectorId}
           pulseOnMount={pulseId === wp.id}
+          pendingAction={pending?.id === wp.id ? pending.action : null}
           onApprove={() => onApprove?.(wp.id)}
           onRequestChanges={() => onRequestChanges?.(wp.id)}
           onApply={() => onApply?.(wp.id)}

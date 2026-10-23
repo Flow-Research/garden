@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { Option } from 'effect'
 import type { StructuredQuestion } from '@garden/app-state/chat'
@@ -16,10 +16,13 @@ import { Button } from '@garden/ui/components/ui/button'
 import {
   issueActiveRunOptions,
   issueDetailOptions,
-  issueKeys,
   issueWorkProductsOptions,
 } from '@/lib/issues/queries'
-import { inboxKeys } from '@/lib/inbox/queries'
+import {
+  useIssueActionInvalidation,
+  useReviewWorkProduct,
+  type WorkProductReviewAction,
+} from '@/lib/issues/mutations'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import {
   ApprovalCard,
@@ -113,58 +116,8 @@ function workProductForItem(item: InboxItem, workProducts: IssueWorkProduct[]) {
   )
 }
 
-function useInboxActionInvalidation(issueId: string | null) {
-  const queryClient = useQueryClient()
-  const wsId = useWorkspaceId()
-  return () => {
-    queryClient.invalidateQueries({
-      queryKey: inboxKeys.list(wsId),
-      exact: true,
-    })
-    queryClient.invalidateQueries({
-      queryKey: issueKeys.list(wsId),
-      exact: true,
-      refetchType: 'none',
-    })
-    if (issueId) {
-      queryClient.invalidateQueries({
-        queryKey: issueKeys.activeRun(issueId),
-        exact: true,
-      })
-      queryClient.invalidateQueries({
-        queryKey: issueKeys.detail(wsId, issueId),
-        exact: true,
-      })
-      queryClient.invalidateQueries({
-        queryKey: issueKeys.timeline(issueId),
-        exact: true,
-      })
-      queryClient.invalidateQueries({
-        queryKey: issueKeys.workProducts(issueId),
-        exact: true,
-      })
-      queryClient.invalidateQueries({
-        queryKey: ['issue-pending-approval', issueId],
-        exact: true,
-      })
-    }
-  }
-}
-
-type WorkProductReviewAction = 'approve' | 'request_changes' | 'apply'
-
-function useWorkProductReviewMutation(issueId: string | null) {
-  const invalidate = useInboxActionInvalidation(issueId)
-  return useMutation({
-    mutationFn: (vars: { id: string; action: WorkProductReviewAction }) =>
-      api.reviewWorkProduct(vars.id, { action: vars.action }),
-    onSuccess: invalidate,
-    onError: () => toast.error('Failed to update work product'),
-  })
-}
-
 function BrainProposalInboxAction({ item }: { item: InboxItem }) {
-  const invalidate = useInboxActionInvalidation(item.issue_id)
+  const invalidate = useIssueActionInvalidation(item.issue_id)
   const proposalId = item.details?.proposal_id
   const resolveMutation = useMutation({
     mutationFn: (action: 'approve' | 'reject') =>
@@ -202,7 +155,7 @@ function BrainProposalInboxAction({ item }: { item: InboxItem }) {
 function ConnectorNeededInboxAction({ item }: { item: InboxItem }) {
   const wsId = useWorkspaceId()
   const navigate = useNavigate()
-  const invalidate = useInboxActionInvalidation(item.issue_id)
+  const invalidate = useIssueActionInvalidation(item.issue_id)
   const connectorId = item.details?.connector_id ?? ''
   const connectorLabel = item.details?.connector_label ?? connectorId
   const connector = getConnectorById(connectorId)
@@ -301,18 +254,25 @@ function WorkProductInboxAction({
 }: {
   workProduct: IssueWorkProduct
   connectorId?: string | null
-  reviewMutation: ReturnType<typeof useWorkProductReviewMutation>
+  reviewMutation: ReturnType<typeof useReviewWorkProduct>
 }) {
   const review = (action: WorkProductReviewAction) =>
     reviewMutation.mutate({ id: workProduct.id, action })
+  const pending =
+    reviewMutation.isPending && reviewMutation.variables?.id === workProduct.id
+      ? reviewMutation.variables.action
+      : null
 
   return (
     <WorkProductCard
       workProduct={workProduct}
       connectorId={connectorId}
+      pendingAction={pending}
       onApprove={() => review('approve')}
       onRequestChanges={() => review('request_changes')}
-      onApply={() => review('apply')}
+      onApply={() =>
+        reviewMutation.mutateAsync({ id: workProduct.id, action: 'apply' })
+      }
     />
   )
 }
@@ -324,7 +284,7 @@ function QuestionInboxAction({
   item: InboxItem
   question: StructuredQuestion
 }) {
-  const invalidate = useInboxActionInvalidation(item.issue_id)
+  const invalidate = useIssueActionInvalidation(item.issue_id)
   const answerMutation = useMutation({
     mutationFn: (answer: string | string[]) => {
       const content = Array.isArray(answer) ? answer.join('\n') : answer
@@ -354,7 +314,7 @@ function ApprovalInboxAction({
   item: InboxItem
   fallback: { title: string; body: string; targetLabel?: string } | null
 }) {
-  const invalidate = useInboxActionInvalidation(item.issue_id)
+  const invalidate = useIssueActionInvalidation(item.issue_id)
   const requestId = item.details?.request_id ?? item.details?.approval_id
   const resolveMutation = useMutation({
     mutationFn: (approved: boolean) =>
@@ -402,7 +362,7 @@ export function InboxControlPlane({ item }: { item: InboxItem }) {
   const approval = useMemo(() => pendingApprovalFromEvents(events), [events])
   const selectedWorkProduct = workProductForItem(item, workProducts)
   const connectorId = issue?.source_summary?.connector_id ?? null
-  const reviewMutation = useWorkProductReviewMutation(issueId)
+  const reviewMutation = useReviewWorkProduct(issueId)
   const remainingWorkProducts = selectedWorkProduct
     ? workProducts.filter((wp) => wp.id !== selectedWorkProduct.id)
     : workProducts
@@ -459,11 +419,14 @@ export function InboxControlPlane({ item }: { item: InboxItem }) {
           <WorkProductList
             workProducts={remainingWorkProducts}
             connectorId={connectorId}
+            pending={reviewMutation.isPending ? reviewMutation.variables : null}
             onApprove={(id) => reviewMutation.mutate({ id, action: 'approve' })}
             onRequestChanges={(id) =>
               reviewMutation.mutate({ id, action: 'request_changes' })
             }
-            onApply={(id) => reviewMutation.mutate({ id, action: 'apply' })}
+            onApply={(id) =>
+              reviewMutation.mutateAsync({ id, action: 'apply' })
+            }
           />
         </div>
       )}
