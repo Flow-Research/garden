@@ -118,6 +118,47 @@ export function toCronExpression(config: TriggerConfig): string {
   }
 }
 
+/**
+ * Reads back a cron expression made by toCronExpression, so a saved trigger
+ * can be described in words ("Runs daily at 9:00 AM") instead of shown as raw
+ * cron. Anything else is a custom schedule.
+ */
+export function parseCronExpression(
+  cronExpression: string,
+  timezone: string,
+): TriggerConfig {
+  const custom: TriggerConfig = {
+    frequency: 'custom',
+    time: '09:00',
+    dayOfWeek: 1,
+    cronExpression,
+    timezone,
+  }
+  const fields = cronExpression.trim().split(/\s+/)
+  if (fields.length !== 5) return custom
+  const [min, hour, dom, month, dow] = fields as [
+    string,
+    string,
+    string,
+    string,
+    string,
+  ]
+  if (!/^\d{1,2}$/.test(min) || Number(min) > 59) return custom
+  if (dom !== '*' || month !== '*') return custom
+  const minute = min.padStart(2, '0')
+  if (hour === '*' && dow === '*') {
+    return { ...custom, frequency: 'hourly', time: `00:${minute}` }
+  }
+  if (!/^\d{1,2}$/.test(hour) || Number(hour) > 23) return custom
+  const time = `${hour.padStart(2, '0')}:${minute}`
+  if (dow === '*') return { ...custom, frequency: 'daily', time }
+  if (dow === '1-5') return { ...custom, frequency: 'weekdays', time }
+  if (/^[0-6]$/.test(dow)) {
+    return { ...custom, frequency: 'weekly', time, dayOfWeek: Number(dow) }
+  }
+  return custom
+}
+
 export function describeTrigger(config: TriggerConfig): string {
   const offset = getTimezoneOffset(config.timezone)
   switch (config.frequency) {

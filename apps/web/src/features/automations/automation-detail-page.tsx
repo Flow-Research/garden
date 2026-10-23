@@ -53,6 +53,8 @@ import {
   TriggerConfigSection,
   getDefaultTriggerConfig,
   toCronExpression,
+  describeTrigger,
+  parseCronExpression,
   type TriggerConfig,
 } from './trigger-config'
 import { isMissingError } from '@/lib/api/errors'
@@ -343,9 +345,18 @@ function TriggerRow({
           ) : null}
         </div>
         {trigger.cron_expression ? (
+          // In words, with the raw cron kept as a hint; it used to be raw
+          // cron only.
           <div className="mt-0.5 text-xs text-muted-foreground">
-            {trigger.cron_expression}
-            {trigger.timezone ? ` (${trigger.timezone})` : null}
+            {describeTrigger(
+              parseCronExpression(
+                trigger.cron_expression,
+                trigger.timezone ?? 'UTC',
+              ),
+            )}
+            <span className="ml-1.5 font-mono text-[11px] opacity-70">
+              {trigger.cron_expression}
+            </span>
           </div>
         ) : null}
         {trigger.next_run_at ? (
