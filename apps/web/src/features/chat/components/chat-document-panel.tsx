@@ -15,8 +15,7 @@
  *      `DocumentCitationAnnotation` and the `DocumentPanelView` union).
  */
 
-import { useEffect, useRef, useState } from 'react'
-import { Result } from 'better-result'
+import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Braces,
@@ -412,40 +411,38 @@ function DocumentTextPreview({
   file: FileMessagePart
   kind: 'text' | 'json' | 'csv'
 }) {
-  const [content, setContent] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    void Result.tryPromise(() =>
-      fetch(file.url).then((response) => {
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`)
-        }
-        return response.text()
-      }),
-    ).then((result) => {
-      if (cancelled) return
-      if (Result.isError(result)) {
-        setError(
-          result.error instanceof Error
-            ? result.error.message
-            : 'Failed to load document',
-        )
-        return
-      }
-      setContent(result.value)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [file.url])
+  // A query rather than a fetch in an effect: the old content no longer
+  // shows after the URL changes, an error clears on retry, and the text is
+  // cached when the same document is reopened.
+  const textQuery = useQuery({
+    queryKey: chatDocumentKeys.text(file.url),
+    queryFn: async ({ signal }) => {
+      const response = await fetch(file.url, { signal })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      return response.text()
+    },
+    staleTime: 60_000,
+  })
+  const content = textQuery.data ?? null
+  const error = textQuery.isError
+    ? textQuery.error instanceof Error
+      ? textQuery.error.message
+      : 'Failed to load document'
+    : null
 
   if (error) {
     return (
       <div className="flex min-h-[30vh] flex-col items-center justify-center gap-2 p-8 text-center text-sm">
         <p className="text-destructive">Failed to load document</p>
         <p className="text-xs text-muted-foreground">{error}</p>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={textQuery.isFetching}
+          onClick={() => void textQuery.refetch()}
+        >
+          {textQuery.isFetching ? 'Trying…' : 'Try again'}
+        </Button>
       </div>
     )
   }
@@ -542,9 +539,13 @@ export function DocumentSidePanel({
       ? Math.round((window.innerWidth - DOCUMENT_PANEL_MAX_OFFSET) / 2)
       : 600,
   )
-  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(
-    null,
-  )
+  // The chosen version belongs to the view it was chosen in, so switching
+  // documents shows the new one's latest version without an effect to reset
+  // it (which rendered the old selection against the new view first).
+  const [versionChoice, setVersionChoice] = useState<{
+    viewKey: string
+    versionId: string | null
+  } | null>(null)
   const dragStartX = useRef(0)
   const dragStartWidth = useRef(0)
   const viewKey =
@@ -554,9 +555,10 @@ export function DocumentSidePanel({
         ? `${view.kind}:${view.artifact.id ?? view.artifact.filename}`
         : 'none'
 
-  useEffect(() => {
-    setSelectedVersionId(null)
-  }, [viewKey])
+  const selectedVersionId =
+    versionChoice?.viewKey === viewKey ? versionChoice.versionId : null
+  const setSelectedVersionId = (versionId: string | null) =>
+    setVersionChoice({ viewKey, versionId })
 
   const versionsQuery = useQuery({
     queryKey: chatDocumentKeys.versions(view?.artifact.id),
