@@ -10,6 +10,17 @@ import {
 } from '@/lib/api/documents'
 import { WorkspaceDocsEditor } from './workspace-docs-editor'
 import type { GardenCitationQuote } from './artifact-renderer'
+import type {
+  PDFDocumentLoadingTask,
+  PDFDocumentProxy,
+  RenderTask,
+} from 'pdfjs-dist'
+import type * as PdfJs from 'pdfjs-dist'
+
+type LoadedPdf = {
+  pdfjs: typeof PdfJs
+  pdf: PDFDocumentProxy
+}
 
 const PDF_ZOOM_MIN = 0.5
 const PDF_ZOOM_MAX = 3.0
@@ -213,14 +224,23 @@ function PdfArtifactPreview({
   const [currentPage, setCurrentPage] = useState(1)
   const [numPages, setNumPages] = useState(0)
 
+  const [pdfDocument, setPdfDocument] = useState<LoadedPdf | null>(null)
+
+  // Loading and rendering are separate so a zoom re-renders the loaded
+  // document instead of downloading it again. Each owns its cleanup: the
+  // document is destroyed when the URL changes or the preview unmounts (it
+  // used to leak one per zoom step), and a superseded render stops after its
+  // next await (it used to keep appending pages, duplicating them).
   useEffect(() => {
+    setPdfDocument(null)
     if (!url) {
       setStatus('error')
       return
     }
     let cancelled = false
+    let loadingTask: PDFDocumentLoadingTask | null = null
     setStatus('loading')
-    const render = async () => {
+    const load = async () => {
       const result = await Result.tryPromise({
         try: async () => {
           const response = await fetch(withRefreshKey(url, refreshKey) ?? url)
@@ -231,11 +251,42 @@ function PdfArtifactPreview({
             'pdfjs-dist/build/pdf.worker.min.mjs',
             import.meta.url,
           ).toString()
-          const pdf = await pdfjs.getDocument({ data: bytes }).promise
+          if (cancelled) return null
+          const task = pdfjs.getDocument({ data: bytes })
+          loadingTask = task
+          return { pdfjs, pdf: await task.promise }
+        },
+        catch: () => new Error('PDF preview failed.'),
+      })
+      if (cancelled) return
+      if (result.isErr() || !result.value) {
+        setStatus('error')
+        return
+      }
+      setPdfDocument(result.value)
+    }
+    void load()
+    return () => {
+      cancelled = true
+      // Destroys the document too once it has loaded.
+      void loadingTask?.destroy()
+    }
+  }, [url, refreshKey])
+
+  useEffect(() => {
+    if (!pdfDocument) return
+    const { pdfjs, pdf } = pdfDocument
+    let cancelled = false
+    const renderTasks: RenderTask[] = []
+    setStatus('loading')
+    const render = async () => {
+      const result = await Result.tryPromise({
+        try: async () => {
           const container = containerRef.current
-          if (!container || cancelled) return
-          container.innerHTML = ''
+          if (!container) return
           const firstPage = await pdf.getPage(1)
+          if (cancelled) return
+          container.innerHTML = ''
           const naturalWidth = firstPage.getViewport({ scale: 1 }).width
           const availableWidth = Math.max(320, container.clientWidth - 20)
           const fitScale = Math.max(
@@ -248,6 +299,7 @@ function PdfArtifactPreview({
 
           for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
             const page = await pdf.getPage(pageNumber)
+            if (cancelled) return
             const viewport = page.getViewport({ scale })
             const wrapper = document.createElement('div')
             wrapper.className = 'relative mx-auto mb-2 w-fit bg-white shadow-md'
@@ -260,14 +312,20 @@ function PdfArtifactPreview({
 
             const context = canvas.getContext('2d')
             if (!context) continue
+            const renderTask = page.render({
+              canvas,
+              canvasContext: context,
+              viewport,
+            })
+            renderTasks.push(renderTask)
             const renderResult = await Result.tryPromise({
               try: async () => {
-                await page.render({ canvas, canvasContext: context, viewport })
-                  .promise
+                await renderTask.promise
               },
               catch: (error) =>
                 error instanceof Error ? error : new Error(String(error)),
             })
+            if (cancelled) return
             if (renderResult.isErr()) continue
 
             const textLayer = document.createElement('div')
@@ -284,6 +342,7 @@ function PdfArtifactPreview({
               viewport,
             })
             await layer.render()
+            if (cancelled) return
             rendered.push(
               Array.from(textLayer.querySelectorAll<HTMLElement>('span')),
             )
@@ -301,13 +360,14 @@ function PdfArtifactPreview({
     void render()
     return () => {
       cancelled = true
+      for (const task of renderTasks) task.cancel()
     }
     // We intentionally exclude `quotes` from the deps — quote-only changes
     // are handled by the cheaper highlight-only effect below so a citation
-    // hop doesn't re-fetch the entire PDF. `zoom` IS a dep because changing
+    // hop doesn't re-render every page. `zoom` IS a dep because changing
     // the zoom requires a full re-render at the new scale.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, refreshKey, zoom])
+  }, [pdfDocument, zoom])
 
   useEffect(() => {
     if (status !== 'ready') return
