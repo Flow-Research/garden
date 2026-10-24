@@ -7,6 +7,11 @@ export type ConnectorErrorFields = {
   readonly cause?: unknown
   readonly status?: number
   readonly retryAfterMs?: number
+  /**
+   * Optional machine-readable reason (e.g. `github.token_rejected`). Agents
+   * still read `message`; callers can branch on `code` for remint/repair.
+   */
+  readonly code?: string
 }
 
 /**

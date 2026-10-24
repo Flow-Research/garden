@@ -23,7 +23,10 @@ Garden keeps the product-specific layer:
 Executor owns the reusable integration engine and remote MCP/OpenAPI/GraphQL
 execution. Native GitHub and Discord tools execute through typed Effect
 services in Garden; the remaining installed integration tools arrive through
-the single Executor MCP session.
+the single Executor MCP session. Executor's `github-rest` and
+`github-graphql` presets stay disabled so GitHub runs only through the Garden
+App install (native tools + Garden-hosted MCP), not sandbox HTTP or PAT
+presets.
 
 ## Storage and authorization
 

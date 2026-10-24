@@ -1,10 +1,26 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   createGitHubAppJwt,
+  createGitHubInstallationAccessToken,
   deleteGitHubAppInstallation,
-  getCachedGitHubInstallationAccessToken,
-  invalidateCachedGitHubInstallationAccessToken,
+  normalizeGitHubAppPrivateKey,
 } from './github-app'
+
+describe('normalizeGitHubAppPrivateKey', () => {
+  it('unwraps JSON-quoted PEMs and literal \\n escapes', () => {
+    expect(
+      normalizeGitHubAppPrivateKey(
+        '"-----BEGIN PRIVATE KEY-----\\nABC\\n-----END PRIVATE KEY-----"',
+      ),
+    ).toBe('-----BEGIN PRIVATE KEY-----\nABC\n-----END PRIVATE KEY-----')
+  })
+
+  it('returns undefined for empty input', () => {
+    expect(normalizeGitHubAppPrivateKey(undefined)).toBeUndefined()
+    expect(normalizeGitHubAppPrivateKey('   ')).toBeUndefined()
+  })
+})
+
 
 function base64UrlJson(segment: string) {
   return JSON.parse(Buffer.from(segment, 'base64url').toString('utf8')) as {
@@ -62,6 +78,84 @@ describe('createGitHubAppJwt', () => {
   })
 })
 
+describe('createGitHubInstallationAccessToken', () => {
+  it('returns token, expiresAt, and installationId from GitHub', async () => {
+    const request = vi.fn(
+      async () =>
+        Response.json({
+          token: 'ghs_test_token',
+          expires_at: '2026-10-22T12:00:00Z',
+        }),
+    )
+    const result = await createGitHubInstallationAccessToken({
+      env: {
+        GITHUB_APP_ID: '12345',
+        GITHUB_APP_PRIVATE_KEY: await createPrivateKeyPem(),
+      },
+      installationId: '98765',
+      fetch: request,
+    })
+
+    expect(result.isOk()).toBe(true)
+    if (result.isErr()) throw result.error
+    expect(result.value).toEqual({
+      token: 'ghs_test_token',
+      expiresAt: '2026-10-22T12:00:00Z',
+      installationId: '98765',
+    })
+    expect(request).toHaveBeenCalledWith(
+      'https://api.github.com/app/installations/98765/access_tokens',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          authorization: expect.stringMatching(/^Bearer /),
+        }),
+      }),
+    )
+  })
+
+  it('fails when installation id is missing', async () => {
+    const result = await createGitHubInstallationAccessToken({
+      env: {
+        GITHUB_APP_ID: '12345',
+        GITHUB_APP_PRIVATE_KEY: await createPrivateKeyPem(),
+      },
+      installationId: '   ',
+      fetch: vi.fn(),
+    })
+
+    expect(result.isErr()).toBe(true)
+    if (result.isOk()) throw new Error('expected missing installation id')
+    expect(result.error).toMatchObject({
+      code: 'missing_config',
+      message: 'GitHub installation id is required',
+    })
+  })
+
+  it('maps GitHub token mint failures', async () => {
+    const request = vi.fn(
+      async () =>
+        Response.json({ message: 'Bad credentials' }, { status: 401 }),
+    )
+    const result = await createGitHubInstallationAccessToken({
+      env: {
+        GITHUB_APP_ID: '12345',
+        GITHUB_APP_PRIVATE_KEY: await createPrivateKeyPem(),
+      },
+      installationId: '98765',
+      fetch: request,
+    })
+
+    expect(result.isErr()).toBe(true)
+    if (result.isOk()) throw new Error('expected mint failure')
+    expect(result.error).toMatchObject({
+      code: 'token_request_failed',
+      status: 401,
+      message: 'Bad credentials',
+    })
+  })
+})
+
 describe('deleteGitHubAppInstallation', () => {
   it('uninstalls through the authenticated app endpoint', async () => {
     const request = vi.fn(async () => new Response(null, { status: 204 }))
@@ -98,100 +192,5 @@ describe('deleteGitHubAppInstallation', () => {
     })
 
     expect(result.isOk()).toBe(true)
-  })
-})
-
-describe('getCachedGitHubInstallationAccessToken', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
-
-  function stubTokenEndpoint(expiresAt: () => string | undefined) {
-    let minted = 0
-    const fetchMock = vi.fn(async () => {
-      minted += 1
-      const expires = expiresAt()
-      return Response.json(
-        {
-          token: `token-${minted}`,
-          ...(expires ? { expires_at: expires } : {}),
-        },
-        { status: 201 },
-      )
-    })
-    vi.stubGlobal('fetch', fetchMock)
-    return fetchMock
-  }
-
-  it('reuses a token until shortly before it expires', async () => {
-    const fetchMock = stubTokenEndpoint(() => '2026-05-14T02:00:00.000Z')
-    const args = {
-      env: {
-        GITHUB_APP_ID: 'cache-app-1',
-        GITHUB_APP_PRIVATE_KEY: await createPrivateKeyPem(),
-      },
-      installationId: '111',
-    }
-    let now = Date.parse('2026-05-14T01:00:00.000Z')
-    const clock = () => now
-
-    const first = await getCachedGitHubInstallationAccessToken({
-      ...args,
-      now: clock,
-    })
-    const second = await getCachedGitHubInstallationAccessToken({
-      ...args,
-      now: clock,
-    })
-    expect(first.isOk() && first.value).toBe('token-1')
-    expect(second.isOk() && second.value).toBe('token-1')
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-
-    // Within the refresh margin of expiry a new token is minted.
-    now = Date.parse('2026-05-14T01:56:00.000Z')
-    const refreshed = await getCachedGitHubInstallationAccessToken({
-      ...args,
-      now: clock,
-    })
-    expect(refreshed.isOk() && refreshed.value).toBe('token-2')
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-  })
-
-  it('shares one request between concurrent callers', async () => {
-    const fetchMock = stubTokenEndpoint(() => '2999-01-01T00:00:00.000Z')
-    const args = {
-      env: {
-        GITHUB_APP_ID: 'cache-app-2',
-        GITHUB_APP_PRIVATE_KEY: await createPrivateKeyPem(),
-      },
-      installationId: '222',
-    }
-
-    const [first, second] = await Promise.all([
-      getCachedGitHubInstallationAccessToken(args),
-      getCachedGitHubInstallationAccessToken(args),
-    ])
-    expect(first.isOk() && first.value).toBe('token-1')
-    expect(second.isOk() && second.value).toBe('token-1')
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-  })
-
-  it('mints again after invalidation or without an expiry', async () => {
-    const fetchMock = stubTokenEndpoint(() => undefined)
-    const args = {
-      env: {
-        GITHUB_APP_ID: 'cache-app-3',
-        GITHUB_APP_PRIVATE_KEY: await createPrivateKeyPem(),
-      },
-      installationId: '333',
-    }
-
-    await getCachedGitHubInstallationAccessToken(args)
-    await getCachedGitHubInstallationAccessToken(args)
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-
-    invalidateCachedGitHubInstallationAccessToken(args)
-    await getCachedGitHubInstallationAccessToken(args)
-    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 })

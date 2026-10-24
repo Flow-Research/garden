@@ -4,19 +4,19 @@ import {
   HttpBody,
   HttpClient,
   HttpClientRequest,
+  HttpClientResponse,
   HttpMethod,
 } from 'effect/unstable/http'
 import {
-  ConnectorAuthError,
   ConnectorDecodeError,
   type ConnectorError,
   ConnectorHttpError,
 } from '../effect/errors.ts'
-import { withConnectorTimeout } from '../effect/http.ts'
+import { connectorErrorFromGitHubHttp } from './auth-errors.ts'
 import {
-  getCachedGitHubInstallationAccessToken,
-  invalidateCachedGitHubInstallationAccessToken,
-} from '../github-app.ts'
+  mintGitHubInstallationAccessToken,
+  withGitHubTokenRejectedRemintOnce,
+} from './installation-auth.ts'
 
 const GITHUB_API_BASE_URL = 'https://api.github.com'
 
@@ -25,6 +25,7 @@ export type GitHubAppConfigShape = {
   readonly clientId?: string
   readonly privateKey?: string
   readonly installationId: string
+  readonly installationStatus?: 'connected' | 'degraded' | 'disconnected'
 }
 
 export class GitHubAppConfig extends Context.Service<
@@ -61,33 +62,6 @@ const githubUrl = (input: GitHubRequest): string => {
   return url.toString()
 }
 
-/** Token cache arguments for a GitHub App installation. */
-export const githubAppTokenArgs = (config: GitHubAppConfigShape) => ({
-  env: {
-    GITHUB_APP_ID: config.appId,
-    GITHUB_CLIENT_ID: config.clientId,
-    GITHUB_APP_PRIVATE_KEY: config.privateKey,
-  },
-  installationId: config.installationId,
-})
-
-const installationToken = Effect.fn('GitHubRestClient.installationToken')(
-  function* (config: GitHubAppConfigShape, operation: string) {
-    const token = yield* Effect.promise(() =>
-      getCachedGitHubInstallationAccessToken(githubAppTokenArgs(config)),
-    )
-    if (token.isErr()) {
-      return yield* new ConnectorAuthError({
-        connectorId: 'github',
-        operation,
-        message: token.error.message,
-        status: token.error.status,
-      })
-    }
-    return token.value
-  },
-)
-
 const makeRequest = Effect.fn('GitHubRestClient.makeRequest')(function* (
   token: string,
   input: GitHubRequest,
@@ -119,6 +93,22 @@ const makeRequest = Effect.fn('GitHubRestClient.makeRequest')(function* (
   return request
 })
 
+/**
+ * Reads a truncated error body so 401/403 can carry GitHub's message into
+ * classified auth errors instead of a bare status code.
+ */
+const readErrorBody = (
+  response: HttpClientResponse.HttpClientResponse,
+  operation: string,
+) =>
+  response.text.pipe(
+    Effect.map((body) => body.trim().slice(0, 1_000)),
+    Effect.catch(() => Effect.succeed('')),
+    Effect.withSpan('connector.github.read_error_body', {
+      attributes: { 'connector.operation': operation },
+    }),
+  )
+
 export const makeGitHubRestClientLayer = (): Layer.Layer<
   GitHubRestClient,
   never,
@@ -133,11 +123,15 @@ export const makeGitHubRestClientLayer = (): Layer.Layer<
         request: Effect.fn('GitHubRestClient.request')(function* (
           input: GitHubRequest,
         ) {
-          const send = Effect.fn('GitHubRestClient.send')(function* () {
-            const token = yield* installationToken(config, input.operation)
-            const request = yield* makeRequest(token, input)
-            return yield* client.execute(request).pipe(
-              Effect.mapError(
+          const attempt = Effect.fn('GitHubRestClient.request.attempt')(
+            function* () {
+              const credential = yield* mintGitHubInstallationAccessToken(
+                config,
+                input.operation,
+              )
+              const request = yield* makeRequest(credential.token, input)
+              const response = yield* Effect.mapError(
+                client.execute(request),
                 (cause) =>
                   new ConnectorHttpError({
                     connectorId: 'github',
@@ -145,51 +139,57 @@ export const makeGitHubRestClientLayer = (): Layer.Layer<
                     message: 'GitHub API request failed.',
                     cause,
                   }),
-              ),
-              withConnectorTimeout({
-                connectorId: 'github',
-                operation: input.operation,
-              }),
-            )
-          })
-          let response = yield* send()
-          if (response.status === 401) {
-            // The cached installation token was revoked (suspended
-            // installation, changed permissions): mint a new one and retry.
-            invalidateCachedGitHubInstallationAccessToken(
-              githubAppTokenArgs(config),
-            )
-            response = yield* send()
-          }
-          if (response.status < 200 || response.status >= 300) {
-            return yield* new ConnectorHttpError({
-              connectorId: 'github',
-              operation: input.operation,
-              message: `GitHub API rejected the request (${response.status}).`,
-              status: response.status,
-            })
-          }
-          if (response.status === 204) return null
-          return yield* Effect.mapError(
-            response.json,
-            (cause) =>
-              new ConnectorDecodeError({
-                connectorId: 'github',
-                operation: input.operation,
-                message: 'GitHub API returned invalid JSON.',
-                cause,
-                status: response.status,
-              }),
+              )
+              if (response.status < 200 || response.status >= 300) {
+                const bodyText = yield* readErrorBody(
+                  response,
+                  input.operation,
+                )
+                return yield* connectorErrorFromGitHubHttp({
+                  operation: input.operation,
+                  status: response.status,
+                  bodyText,
+                })
+              }
+              if (response.status === 204) return null
+              return yield* Effect.mapError(
+                response.json,
+                (cause) =>
+                  new ConnectorDecodeError({
+                    connectorId: 'github',
+                    operation: input.operation,
+                    message: 'GitHub API returned invalid JSON.',
+                    cause,
+                    status: response.status,
+                  }),
+              )
+            },
+          )
+          return yield* withGitHubTokenRejectedRemintOnce(
+            attempt(),
+            config.installationId,
           )
         }),
       }
     }),
   )
 
+/**
+ * Provides GitHub App config + Effect HttpClient for native REST tools.
+ * Optional `fetch` swaps the transport for deterministic remint/401 tests
+ * (same pattern as Discord's `makeDiscordBaseLayer`).
+ */
 export const makeGitHubBaseLayer = (
   config: GitHubAppConfigShape,
+  options?: { fetch?: typeof globalThis.fetch },
 ): Layer.Layer<GitHubRestClient> =>
   makeGitHubRestClientLayer().pipe(
     Layer.provide(Layer.succeed(GitHubAppConfig)(config)),
-    Layer.provide(FetchHttpClient.layer),
+    Layer.provide(
+      options?.fetch
+        ? FetchHttpClient.layer.pipe(
+            Layer.provide(Layer.succeed(FetchHttpClient.Fetch)(options.fetch)),
+          )
+        : FetchHttpClient.layer,
+    ),
   )
