@@ -108,7 +108,7 @@ export function AddTeamMemberDialog({
       open
       onOpenChange={(open) => !open && !addMember.isPending && onClose()}
     >
-      <DialogContent className="!w-[min(94vw,32rem)] gap-0 overflow-hidden p-0">
+      <DialogContent size="md" className="gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>Add a team member</DialogTitle>
           <DialogDescription>
@@ -200,7 +200,7 @@ export function EditTeamDialog({
       open
       onOpenChange={(open) => !open && !updateTeam.isPending && onClose()}
     >
-      <DialogContent className="!w-[min(94vw,32rem)]">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>Edit Team</DialogTitle>
           <DialogDescription>
@@ -279,7 +279,7 @@ export function TransferOwnerDialog({
       open
       onOpenChange={(open) => !open && !transfer.isPending && onClose()}
     >
-      <DialogContent className="!w-[min(94vw,32rem)] gap-0 overflow-hidden p-0">
+      <DialogContent size="md" className="gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>Transfer Team ownership</DialogTitle>
           <DialogDescription>
