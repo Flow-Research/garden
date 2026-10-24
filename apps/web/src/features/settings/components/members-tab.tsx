@@ -247,6 +247,8 @@ export function MembersTab() {
   const user = useAuthStore((s) => s.user)
   const workspace = useWorkspaceStore((s) => s.workspace)
   const qc = useQueryClient()
+  // The one workspace id for reads, writes and invalidation alike; writes
+  // used the store's copy while invalidation used this one.
   const wsId = useWorkspaceId()
   const membersQuery = useQuery(memberListOptions(wsId))
   const members = membersQuery.data ?? NO_MEMBERS
@@ -289,7 +291,7 @@ export function MembersTab() {
     inviteInFlightRef.current = true
     setInviteLoading(true)
     try {
-      await api.createMember(workspace.id, {
+      await api.createMember(wsId, {
         email,
         role: inviteRole,
       })
@@ -316,7 +318,7 @@ export function MembersTab() {
       onConfirm: async () => {
         setInvitationActionId(invitation.id)
         try {
-          await api.revokeInvitation(workspace.id, invitation.id)
+          await api.revokeInvitation(wsId, invitation.id)
           qc.invalidateQueries({ queryKey: workspaceKeys.invitations(wsId) })
           toast.success('Invitation revoked')
         } catch (e) {
@@ -334,7 +336,7 @@ export function MembersTab() {
     if (!workspace) return
     setInvitationActionId(invitation.id)
     void api
-      .createMember(workspace.id, {
+      .createMember(wsId, {
         email: invitation.email,
         role: invitation.role,
         resend: true,
@@ -355,7 +357,7 @@ export function MembersTab() {
     if (!workspace) return
     setMemberActionId(memberId)
     try {
-      await api.updateMember(workspace.id, memberId, { role })
+      await api.updateMember(wsId, memberId, { role })
       qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
       toast.success('Role updated')
     } catch (e) {
@@ -376,7 +378,7 @@ export function MembersTab() {
       onConfirm: async () => {
         setMemberActionId(member.id)
         try {
-          await api.deleteMember(workspace.id, member.id)
+          await api.deleteMember(wsId, member.id)
           qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
           toast.success('Member removed')
         } catch (e) {
