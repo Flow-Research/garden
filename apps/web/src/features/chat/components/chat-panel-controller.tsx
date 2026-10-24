@@ -7,7 +7,15 @@
  * focused on the bare AgentInteractionScreen scaffold + ShellFrame chrome.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { Result } from 'better-result'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/app-state/auth'
@@ -22,7 +30,6 @@ import {
 } from '@garden/ui/components/ui/alert'
 import { Button } from '@garden/ui/components/ui/button'
 import { cn } from '@garden/ui/lib/utils'
-import { EnvironmentDebugDrawer } from '@/features/settings/components/environment-debug-drawer'
 import { usePrefetchDebugStream } from '@/features/settings/components/use-debug-stream'
 import { useDevSettingsStore } from '@/features/settings/dev-settings-store'
 import {
@@ -67,6 +74,14 @@ import { ChatTimeline } from './chat-timeline'
 import { X } from 'lucide-react'
 import { HeaderAttachmentsMenu } from './chat-message-files'
 import { IssueMentionCard } from '@/features/issues/components/issue-mention-card'
+
+// Debug mode only, and about 1,200 lines: loaded when first shown instead of
+// with every chat.
+const EnvironmentDebugDrawer = lazy(() =>
+  import('@/features/settings/components/environment-debug-drawer').then(
+    (module) => ({ default: module.EnvironmentDebugDrawer }),
+  ),
+)
 
 // `EMPTY_INTRO_EASE` is imported from `./composer` rather than redeclared
 // here: the suggestion pills and this panel's lift animation have to move on
@@ -990,7 +1005,9 @@ function ShellFrame({
           </div>
           <div className="flex items-center gap-1">
             {debugMode ? (
-              <EnvironmentDebugDrawer sessionId={sessionId} />
+              <Suspense fallback={null}>
+                <EnvironmentDebugDrawer sessionId={sessionId} />
+              </Suspense>
             ) : null}
             {onClose ? (
               <Button
