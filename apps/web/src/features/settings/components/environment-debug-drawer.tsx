@@ -33,6 +33,7 @@ import {
   DrawerTitle,
 } from '@garden/ui/components/ui/drawer'
 import { cn } from '@garden/ui/lib/utils'
+import { useCopyToClipboard } from '@garden/ui/hooks/use-copy-to-clipboard'
 import {
   DEBUG_SDK_STACK,
   VIRTUAL_FS_BACKING_STORES,
@@ -125,22 +126,14 @@ function CopyValue({
   value: string
   label?: string
 }) {
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopyToClipboard(900)
   return (
     <button
       type="button"
       className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-colors group-hover/copy:opacity-100 hover:bg-muted hover:text-foreground focus:opacity-100"
       aria-label={label}
       title={label}
-      onClick={() => {
-        void navigator.clipboard.writeText(value).then(
-          () => {
-            setCopied(true)
-            window.setTimeout(() => setCopied(false), 900)
-          },
-          () => setCopied(false),
-        )
-      }}
+      onClick={() => void copy(value)}
     >
       {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
     </button>

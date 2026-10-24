@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { Check, Copy } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
 import {
@@ -7,6 +6,7 @@ import {
   TooltipTrigger,
 } from '@garden/ui/components/ui/tooltip'
 import { cn } from '@garden/ui/lib/utils'
+import { useCopyToClipboard } from '@garden/ui/hooks/use-copy-to-clipboard'
 
 export interface CodeBlockProps {
   code: string
@@ -25,17 +25,8 @@ export function CodeBlock({
   className,
   mode = 'full',
 }: CodeBlockProps): React.JSX.Element {
-  const [copied, setCopied] = useState(false)
-
-  const copyCode = () => {
-    void navigator.clipboard.writeText(code).then(
-      () => {
-        setCopied(true)
-        window.setTimeout(() => setCopied(false), 2_000)
-      },
-      () => setCopied(false),
-    )
-  }
+  const { copied, copy } = useCopyToClipboard()
+  const copyCode = () => void copy(code)
 
   if (mode !== 'full') {
     return (
