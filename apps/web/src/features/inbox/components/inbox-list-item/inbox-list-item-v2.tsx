@@ -88,7 +88,7 @@ export function InboxListItemV2({
               <span>{formatInboxDate(item.created_at)}</span>
             </span>
             {!item.read && (
-              <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium leading-4 text-emerald-700">
+              <span className="ml-auto rounded-full bg-background-success-secondary px-2 py-0.5 text-[11px] font-medium leading-4 text-text-success-on-success-secondary">
                 New
               </span>
             )}

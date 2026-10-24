@@ -833,8 +833,8 @@ export function ConnectedChatPanelInteraction({
                 : 0,
               scale: showEmptyChatState ? 1.08 : 1,
               filter: showEmptyChatState
-                ? 'drop-shadow(0 1px 1px rgba(91, 85, 77, 0.05)) drop-shadow(0 10px 22px rgba(91, 85, 77, 0.05)) drop-shadow(0 36px 64px rgba(91, 85, 77, 0.04))'
-                : 'drop-shadow(0 0 0 rgba(91, 85, 77, 0))',
+                ? 'drop-shadow(0 1px 1px rgba(0, 0, 0, 0.05)) drop-shadow(0 10px 22px rgba(0, 0, 0, 0.05)) drop-shadow(0 36px 64px rgba(0, 0, 0, 0.04))'
+                : 'drop-shadow(0 0 0 rgba(0, 0, 0, 0))',
             }}
             transition={{ duration: 0.72, ease: EMPTY_INTRO_EASE }}
             style={{

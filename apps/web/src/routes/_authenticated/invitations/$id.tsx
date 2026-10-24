@@ -158,7 +158,7 @@ function InvitationShell({
   children?: ReactNode
 }) {
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,hsl(var(--muted))_0,transparent_32rem)] px-6 py-12 text-foreground">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,var(--muted)_0,transparent_32rem)] px-6 py-12 text-foreground">
       <section className="mx-auto flex min-h-[calc(100vh-6rem)] w-full max-w-3xl flex-col justify-center border-l pl-8 sm:pl-12">
         <Badge variant="outline" className="mb-6 w-fit gap-1.5 rounded-full">
           <MailQuestion className="h-3.5 w-3.5" />

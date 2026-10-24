@@ -432,16 +432,16 @@ function PdfArtifactPreview({
       {status === 'ready' && numPages > 0 ? (
         <>
           <div className="pointer-events-none absolute bottom-4 left-4">
-            <span className="flex items-center rounded-full border border-white/30 bg-white/25 px-3 py-1.5 text-xs font-medium tabular-nums text-foreground shadow-md backdrop-blur-md">
+            <span className="flex items-center rounded-full border border-border bg-background-main-default/80 px-3 py-1.5 text-xs font-medium tabular-nums text-foreground shadow-md backdrop-blur-md">
               {currentPage}/{numPages}
             </span>
           </div>
-          <div className="absolute bottom-4 right-4 flex items-center gap-px rounded-full border border-white/30 bg-white/25 px-1 py-1 shadow-md backdrop-blur-md">
+          <div className="absolute bottom-4 right-4 flex items-center gap-px rounded-full border border-border bg-background-main-default/80 px-1 py-1 shadow-md backdrop-blur-md">
             <button
               type="button"
               onClick={handleZoomOut}
               disabled={zoom <= PDF_ZOOM_MIN}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-white/80 disabled:opacity-30"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-background-main-default disabled:opacity-30"
               aria-label="Zoom out"
             >
               <ZoomOut className="h-3.5 w-3.5" />
@@ -453,7 +453,7 @@ function PdfArtifactPreview({
               type="button"
               onClick={handleZoomIn}
               disabled={zoom >= PDF_ZOOM_MAX}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-white/80 disabled:opacity-30"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-background-main-default disabled:opacity-30"
               aria-label="Zoom in"
             >
               <ZoomIn className="h-3.5 w-3.5" />
