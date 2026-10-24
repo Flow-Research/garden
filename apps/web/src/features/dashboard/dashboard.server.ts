@@ -3,6 +3,7 @@ import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import type { AppRequestContext } from '@/lib/server/context'
 import { computeInboxItems } from '@/lib/server/inbox-compute'
+import { deduplicateInboxItems } from '@/lib/inbox/threads'
 import { sortIssuesByUpdatedAt } from '@/lib/server/inbox-surface'
 import { listAvailableConnectorBindings } from '@garden/server/connectors/availability'
 import { buildConnectionSurface } from '@/lib/server/connection-surface'
@@ -317,10 +318,14 @@ export async function getDashboardActivitySnapshot(
         issue.assigneeType === 'user' ? 'member' : issue.assigneeType,
     }))
 
+  // One row per issue thread, as the sidebar badge and the inbox page count
+  // them. Counting raw events showed a higher number here than in the badge.
+  const threads = deduplicateInboxItems(inbox)
+
   return {
-    unreadCount: inbox.filter((item) => !item.read).length,
+    unreadCount: threads.filter((item) => !item.read).length,
     recentIssues,
-    inbox: inbox.slice(0, 6).map((item) => ({
+    inbox: threads.slice(0, 6).map((item) => ({
       id: item.id,
       title: item.title,
       issue_id: item.issue_id ?? '',
