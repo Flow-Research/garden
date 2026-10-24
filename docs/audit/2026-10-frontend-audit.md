@@ -2,6 +2,9 @@
 
 *October 22, 2026. Audited at upstream `dev` commit `edb7510`.*
 
+> [!NOTE]
+> Fix status for every finding, the new bugs found while fixing, and what was left and why are in [2026-10-frontend-fix-report.md](2026-10-frontend-fix-report.md).
+
 ## Summary
 
 The frontend works on its main paths, but it has confirmed defects that lose user data or leave actions stuck, plus a large consistency debt. Seven independent passes found 184 issues. About 25 were found by more than one pass, which leaves roughly 160 distinct issues. 29 of them are user-facing defects to fix first (Fix first, below).
