@@ -27,7 +27,7 @@ import { toHtml } from 'hast-util-to-html'
 import { Maximize2, Download, Link as LinkIcon, FileText } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@garden/ui/lib/utils'
-import { useNavigation } from '../navigation'
+import { useNavigationActions } from '../navigation'
 import { IssueMentionCard } from '../issues/components/issue-mention-card'
 import { MemberMentionTag } from '../common/member-mention-tag'
 import { ImageLightbox } from './extensions/image-view'
@@ -90,7 +90,7 @@ function IssueMentionLink({
   issueId: string
   label?: string
 }) {
-  const { push, openInNewTab } = useNavigation()
+  const { push, openInNewTab } = useNavigationActions()
   const path = issuePath(issueId)
   return (
     <span
@@ -119,7 +119,7 @@ function MarkdownLink({
   href: string | undefined
   children: React.ReactNode
 }) {
-  const { push } = useNavigation()
+  const { push } = useNavigationActions()
   return (
     <a
       href={href}

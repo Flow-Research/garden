@@ -107,6 +107,7 @@ vi.mock('../../navigation', () => ({
     searchParams: new URLSearchParams(),
     getShareableUrl: undefined,
   }),
+  useNavigationActions: () => ({ push: vi.fn() }),
   NavigationProvider: ({ children }: { children: React.ReactNode }) => children,
 }))
 

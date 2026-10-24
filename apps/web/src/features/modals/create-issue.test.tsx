@@ -32,6 +32,7 @@ const mockDraftStore = {
 
 vi.mock('../navigation', () => ({
   useNavigation: () => ({ push: mockPush }),
+  useNavigationActions: () => ({ push: mockPush }),
 }))
 
 vi.mock('@garden/app-state/workspace', () => ({

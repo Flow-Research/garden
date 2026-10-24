@@ -39,7 +39,7 @@ import { createEditorExtensions } from './extensions'
 import { uploadAndInsertFile } from './extensions/file-upload'
 import { preprocessMarkdown } from './utils/preprocess'
 import { openLink, isMentionHref } from './utils/link-handler'
-import { useNavigation } from '../navigation'
+import { useNavigationActions } from '../navigation'
 import { EditorBubbleMenu } from './bubble-menu'
 import { useLinkHover, LinkHoverCard } from './link-hover-card'
 import './content-editor.css'
@@ -115,7 +115,7 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
     const onUploadFileRef = useRef(onUploadFile)
     const prevContentRef = useRef(defaultValue)
 
-    const { push } = useNavigation()
+    const { push } = useNavigationActions()
     const pushRef = useRef(push)
 
     // Keep refs in sync without recreating editor

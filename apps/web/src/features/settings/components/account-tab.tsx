@@ -15,7 +15,7 @@ import { useAuthStore } from '@garden/app-state/auth'
 import { api } from '@/lib/api'
 import { useFileUpload } from '@garden/app-state/hooks/use-file-upload'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
-import { useNavigation } from '@/features/navigation'
+import { useNavigationActions } from '@/features/navigation'
 import { authClient } from '@/lib/auth/client'
 import { GoogleAccountConnection } from './google-account-connection'
 
@@ -38,7 +38,7 @@ function describeUserAgent(userAgent: string | null | undefined) {
 
 export function AccountTab() {
   const queryClient = useQueryClient()
-  const { replace } = useNavigation()
+  const { replace } = useNavigationActions()
   const user = useAuthStore((s) => s.user)
   const setUser = useAuthStore((s) => s.setUser)
   const authLogout = useAuthStore((s) => s.logout)

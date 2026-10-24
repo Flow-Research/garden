@@ -43,6 +43,11 @@ vi.mock('../../navigation', async () => {
         back: () => {},
       }
     },
+    useNavigationActions: () => ({
+      replace: nav.navigate,
+      push: nav.navigate,
+      back: () => {},
+    }),
   }
 })
 vi.mock('@/features/navigation/use-surface-navigation', () => ({

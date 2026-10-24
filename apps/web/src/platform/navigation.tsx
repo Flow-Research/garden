@@ -2,6 +2,7 @@ import { Suspense, useMemo } from 'react'
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import {
   NavigationProvider,
+  type NavigationActions,
   type NavigationAdapter,
 } from '@/features/navigation'
 
@@ -9,7 +10,9 @@ function NavigationProviderInner({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const adapter = useMemo<NavigationAdapter>(
+  // The actions depend only on navigate, so they keep their identity across
+  // URL changes (see useNavigationActions).
+  const actions = useMemo<NavigationActions>(
     () => ({
       push: (path) => {
         void navigate({ to: path })
@@ -22,8 +25,6 @@ function NavigationProviderInner({ children }: { children: React.ReactNode }) {
           window.history.back()
         }
       },
-      pathname: location.pathname,
-      searchParams: new URLSearchParams(location.searchStr),
       openInNewTab: (path) => {
         if (typeof window !== 'undefined') {
           window.open(path, '_blank', 'noopener,noreferrer')
@@ -37,7 +38,16 @@ function NavigationProviderInner({ children }: { children: React.ReactNode }) {
         return new URL(path, window.location.origin).toString()
       },
     }),
-    [location.pathname, location.searchStr, navigate],
+    [navigate],
+  )
+
+  const adapter = useMemo<NavigationAdapter>(
+    () => ({
+      ...actions,
+      pathname: location.pathname,
+      searchParams: new URLSearchParams(location.searchStr),
+    }),
+    [actions, location.pathname, location.searchStr],
   )
 
   return <NavigationProvider value={adapter}>{children}</NavigationProvider>

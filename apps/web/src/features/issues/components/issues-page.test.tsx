@@ -60,6 +60,7 @@ vi.mock('../../navigation', () => ({
     pathname: '/issues',
     searchParams: new URLSearchParams(),
   }),
+  useNavigationActions: () => ({ push: vi.fn() }),
   NavigationProvider: ({ children }: { children: React.ReactNode }) => children,
 }))
 

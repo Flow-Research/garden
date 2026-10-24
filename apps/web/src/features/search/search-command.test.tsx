@@ -77,6 +77,9 @@ vi.mock('../navigation', () => ({
   useNavigation: () => ({
     push: vi.fn(),
   }),
+  useNavigationActions: () => ({
+    push: vi.fn(),
+  }),
 }))
 
 vi.mock('@/features/navigation/use-surface-navigation', () => ({

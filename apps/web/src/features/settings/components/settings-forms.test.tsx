@@ -11,6 +11,7 @@ import { WorkspaceTab } from './workspace-tab'
 
 vi.mock('@/features/navigation', () => ({
   useNavigation: () => ({ replace: vi.fn() }),
+  useNavigationActions: () => ({ replace: vi.fn() }),
 }))
 vi.mock('@/lib/auth/client', () => ({
   authClient: {
