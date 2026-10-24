@@ -39,7 +39,6 @@ describe('realtimeInvalidationRoots', () => {
     ).toEqual([
       ['issues', 'ws-1'],
       ['issues', 'timeline', 'issue-1'],
-      ['issues', 'reactions', 'issue-1'],
       ['issues', 'subscribers', 'issue-1'],
       ['issue-pending-approval', 'issue-1'],
     ])

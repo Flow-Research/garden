@@ -45,7 +45,6 @@ export function realtimeInvalidationRoots(
 function issueResourceRoots(issueId: string): (readonly unknown[])[] {
   return [
     issueKeys.timeline(issueId),
-    issueKeys.reactions(issueId),
     issueKeys.subscribers(issueId),
     issueKeys.pendingApproval(issueId),
   ]

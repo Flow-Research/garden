@@ -632,6 +632,7 @@ export function useToggleCommentReaction(issueId: string) {
 
 export function useToggleIssueReaction(issueId: string) {
   const qc = useQueryClient()
+  const wsId = useWorkspaceId()
   return useMutation({
     mutationKey: ['toggleIssueReaction', issueId] as const,
     mutationFn: async ({ emoji, existing }: ToggleIssueReactionVars) => {
@@ -644,7 +645,10 @@ export function useToggleIssueReaction(issueId: string) {
     // The optimistic reaction disappears on failure; say why.
     onError: () => toast.error('Failed to update the reaction'),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: issueKeys.reactions(issueId) })
+      qc.invalidateQueries({
+        queryKey: issueKeys.detail(wsId, issueId),
+        exact: true,
+      })
     },
   })
 }

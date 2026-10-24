@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
+import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useToggleIssueReaction, useToggleIssueSubscriber } from './mutations'
 
@@ -21,7 +22,7 @@ const wrapper = ({ children }: { children: ReactNode }) => (
       new QueryClient({ defaultOptions: { mutations: { retry: false } } })
     }
   >
-    {children}
+    <WorkspaceIdProvider wsId="ws-1">{children}</WorkspaceIdProvider>
   </QueryClientProvider>
 )
 

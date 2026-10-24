@@ -560,6 +560,29 @@ describe('IssueDetail (shared)', () => {
     expect((await screen.findAllByText('Blocked')).length).toBeGreaterThan(0)
   })
 
+  it('fetches the issue once, reactions included', async () => {
+    mockApiObj.getIssue.mockResolvedValue({
+      ...mockIssue,
+      reactions: [
+        {
+          id: 'r1',
+          issue_id: 'issue-1',
+          actor_type: 'member',
+          actor_id: 'user-2',
+          emoji: '🎉',
+          created_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    })
+    renderIssueDetail()
+
+    expect(
+      await screen.findByDisplayValue('Implement authentication'),
+    ).toBeInTheDocument()
+    expect(await screen.findByText('🎉')).toBeInTheDocument()
+    expect(mockApiObj.getIssue).toHaveBeenCalledTimes(1)
+  })
+
   it('records a visit once per issue, not on every update', async () => {
     mockApiObj.updateIssue.mockResolvedValue({
       ...mockIssue,

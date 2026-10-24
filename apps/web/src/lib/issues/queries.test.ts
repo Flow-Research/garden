@@ -6,7 +6,6 @@ import {
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   childIssuesOptions,
-  issueReactionsOptions,
   issueRunEventsOptions,
   issueSubscribersOptions,
   issueTimelineOptions,
@@ -35,7 +34,6 @@ describe('issue sub-resource queries', () => {
     ['run events', (qc) => run(qc, issueRunEventsOptions('issue-1'))],
     ['children', (qc) => run(qc, childIssuesOptions('ws-1', 'issue-1'))],
     ['timeline', (qc) => run(qc, issueTimelineOptions('issue-1'))],
-    ['reactions', (qc) => run(qc, issueReactionsOptions('issue-1'))],
     ['subscribers', (qc) => run(qc, issueSubscribersOptions('issue-1'))],
     ['usage', (qc) => run(qc, issueUsageOptions('issue-1'))],
   ]

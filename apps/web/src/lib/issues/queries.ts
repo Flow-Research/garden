@@ -22,7 +22,6 @@ export const issueKeys = {
     ['issues', 'work-products', issueId] as const,
   runEvents: (issueId: string, runId?: string | null) =>
     ['issues', 'run-events', issueId, runId ?? 'active'] as const,
-  reactions: (issueId: string) => ['issues', 'reactions', issueId] as const,
   subscribers: (issueId: string) => ['issues', 'subscribers', issueId] as const,
   usage: (issueId: string) => ['issues', 'usage', issueId] as const,
   pendingApproval: (issueId: string) =>
@@ -276,23 +275,6 @@ export function issueTimelineOptions(issueId: string) {
     queryFn: async () => {
       const realCall = await Result.tryPromise({
         try: async () => api.listTimeline(issueId),
-        catch: (e) => (e instanceof Error ? e : new Error(String(e))),
-      })
-      if (realCall.isOk()) return realCall.value
-      throw realCall.error
-    },
-  })
-}
-
-export function issueReactionsOptions(issueId: string) {
-  return queryOptions({
-    queryKey: issueKeys.reactions(issueId),
-    queryFn: async () => {
-      const realCall = await Result.tryPromise({
-        try: async () => {
-          const issue = await api.getIssue(issueId)
-          return issue.reactions ?? []
-        },
         catch: (e) => (e instanceof Error ? e : new Error(String(e))),
       })
       if (realCall.isOk()) return realCall.value
