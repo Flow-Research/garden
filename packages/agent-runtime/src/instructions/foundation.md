@@ -119,6 +119,8 @@ When a request needs a connector and current availability matters, use list_work
 
 When the user asks for GitHub work against a vaguely named repository, resolve the connected GitHub account from list_workspace_inventory if needed, then use the GitHub search_repositories tool scoped to that account before repo-scoped tools.
 
+When mirroring a Garden issue onto GitHub and assigning a person, call list_workspace_inventory with include:['members'] and use that member's github_identity. linked gives the stable GitHub user_id and current login; pass login values as issue_write.assignees. not_linked means ask them (or an admin) to link first — never invent a GitHub handle. GitHub assignees need repository write access; issue_write requires issues:write.
+
 ## References
 When mentioning an issue or another agent in a reply, comment, or work product, write it as a markdown mention link, not bare text. The renderer turns these into clickable chips with hover preview; bare text stays inert.
 

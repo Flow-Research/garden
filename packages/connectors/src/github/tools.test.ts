@@ -1,3 +1,4 @@
+import { Option, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 import githubConnector from './connector.ts'
 import { githubHostedMcpExtraClassifications } from './mcp-tools.ts'
@@ -19,8 +20,38 @@ describe('GitHub App tool surface', () => {
         'update_pull_request',
         'update_pull_request_branch',
         'sub_issue_write',
+        'issue_write',
       ]),
     )
+  })
+
+  it('accepts assignees on issue_write for create and update', () => {
+    const issueWrite = githubNativeTools.find(
+      (tool) => tool.name === 'issue_write',
+    )
+    expect(issueWrite).toBeDefined()
+    if (!issueWrite) return
+
+    expect(
+      Option.isSome(
+        Schema.decodeUnknownOption(issueWrite.input)({
+          owner: 'acme',
+          repo: 'garden',
+          title: 'Assign me',
+          assignees: ['octocat'],
+        }),
+      ),
+    ).toBe(true)
+    expect(
+      Option.isSome(
+        Schema.decodeUnknownOption(issueWrite.input)({
+          owner: 'acme',
+          repo: 'garden',
+          issueNumber: 12,
+          assignees: ['octocat'],
+        }),
+      ),
+    ).toBe(true)
   })
 
   it('classifies the live hosted-MCP-only operations', () => {

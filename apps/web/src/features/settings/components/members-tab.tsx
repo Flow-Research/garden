@@ -11,7 +11,9 @@ import {
   Mail,
   MailWarning,
   SendHorizontal,
+  Unlink,
 } from 'lucide-react'
+import { BrandGithubIcon } from '@/components/icons/brand-github-icon'
 import { ActorAvatar } from '../../common/actor-avatar'
 import type { MemberWithUser, MemberRole, Invitation } from '@garden/core/types'
 import { Input } from '@garden/ui/components/ui/input'
@@ -55,6 +57,10 @@ import {
   workspaceKeys,
 } from '@/lib/workspace/queries'
 import { api } from '@/lib/api'
+import {
+  GithubIdentityLinkDialog,
+  githubIdentityStatusLabel,
+} from './github-workspace-identity'
 
 const roleConfig: Record<
   MemberRole,
@@ -85,6 +91,8 @@ function MemberRow({
   busy,
   onRoleChange,
   onRemove,
+  onLinkGithub,
+  onUnlinkGithub,
 }: {
   member: MemberWithUser
   canManage: boolean
@@ -93,6 +101,8 @@ function MemberRow({
   busy: boolean
   onRoleChange: (role: MemberRole) => void
   onRemove: () => void
+  onLinkGithub: () => void
+  onUnlinkGithub: () => void
 }) {
   const rc = roleConfig[member.role]
   const RoleIcon = rc.icon
@@ -100,7 +110,10 @@ function MemberRow({
     canManage && !isSelf && (member.role !== 'owner' || canManageOwners)
   const canRemove =
     canManage && !isSelf && (member.role !== 'owner' || canManageOwners)
-  const showMenu = canEditRole || canRemove
+  /** Self or workspace admin/owner may edit GitHub identity (matches API). */
+  const canEditGithub = isSelf || canManage
+  const showMenu = canEditRole || canRemove || canEditGithub
+  const githubLabel = githubIdentityStatusLabel(member)
 
   return (
     <li className="flex items-center gap-3 py-3">
@@ -109,6 +122,9 @@ function MemberRow({
         <div className="truncate text-sm font-medium">{member.name}</div>
         <div className="truncate text-xs text-muted-foreground">
           {member.email}
+        </div>
+        <div className="truncate text-xs text-muted-foreground">
+          {githubLabel}
         </div>
       </div>
       {showMenu && (
@@ -164,7 +180,21 @@ function MemberRow({
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
             )}
-            {canEditRole && canRemove && <DropdownMenuSeparator />}
+            {canEditGithub && (
+              <DropdownMenuItem onClick={onLinkGithub}>
+                <BrandGithubIcon className="h-3.5 w-3.5" />
+                {member.github_login ? 'Edit GitHub identity' : 'Link GitHub'}
+              </DropdownMenuItem>
+            )}
+            {canEditGithub && member.github_login ? (
+              <DropdownMenuItem onClick={onUnlinkGithub}>
+                <Unlink className="h-3.5 w-3.5" />
+                Unlink GitHub
+              </DropdownMenuItem>
+            ) : null}
+            {canRemove && (canEditRole || canEditGithub) ? (
+              <DropdownMenuSeparator />
+            ) : null}
             {canRemove && (
               <DropdownMenuItem variant="destructive" onClick={onRemove}>
                 <UserMinus className="h-3.5 w-3.5" />
@@ -268,6 +298,7 @@ export function MembersTab() {
     variant?: 'destructive'
     onConfirm: () => Promise<void>
   } | null>(null)
+  const [githubTarget, setGithubTarget] = useState<MemberWithUser | null>(null)
 
   const currentMember = members.find((m) => m.user_id === user?.id) ?? null
   const pendingInvitations = invitations.filter(
@@ -377,6 +408,32 @@ export function MembersTab() {
     })
   }
 
+  const handleUnlinkGithub = (member: MemberWithUser) => {
+    if (!workspace) return
+    setConfirmAction({
+      title: `Unlink GitHub for ${member.name}`,
+      description: `Remove the GitHub identity for ${member.name}? Mirrored GitHub issue assignment will show not linked until they link again.`,
+      variant: 'destructive',
+      onConfirm: async () => {
+        setMemberActionId(member.id)
+        try {
+          await api.updateMember(workspace.id, member.id, {
+            github_user_id: null,
+            github_login: null,
+          })
+          qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
+          toast.success('GitHub identity unlinked')
+        } catch (e) {
+          toast.error(
+            e instanceof Error ? e.message : 'Failed to unlink GitHub identity',
+          )
+        } finally {
+          setMemberActionId(null)
+        }
+      },
+    })
+  }
+
   if (!workspace) return null
 
   return (
@@ -441,6 +498,8 @@ export function MembersTab() {
                 busy={memberActionId === m.id}
                 onRoleChange={(role) => handleRoleChange(m.id, role)}
                 onRemove={() => handleRemoveMember(m)}
+                onLinkGithub={() => setGithubTarget(m)}
+                onUnlinkGithub={() => handleUnlinkGithub(m)}
               />
             ))}
           </ul>
@@ -448,6 +507,20 @@ export function MembersTab() {
           <p className="text-sm text-muted-foreground">No members found.</p>
         )}
       </section>
+
+      {githubTarget ? (
+        <GithubIdentityLinkDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setGithubTarget(null)
+          }}
+          workspaceId={workspace.id}
+          member={githubTarget}
+          onSaved={() =>
+            qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
+          }
+        />
+      ) : null}
 
       {pendingInvitations.length > 0 && (
         <section className="space-y-5">
