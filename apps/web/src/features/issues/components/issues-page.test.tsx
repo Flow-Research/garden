@@ -363,7 +363,7 @@ const issueDefaults = {
   team_id: null,
   parent_issue_id: null,
   project_id: null,
-  position: 0,
+  position: 'a0',
 }
 
 const mockIssues: Issue[] = [

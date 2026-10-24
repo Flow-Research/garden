@@ -407,6 +407,13 @@
       "when": 1792677333794,
       "tag": "0057_simple_wallflower",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1792810540830,
+      "tag": "0058_issue_position_fractional_index",
+      "breakpoints": true
     }
   ]
 }

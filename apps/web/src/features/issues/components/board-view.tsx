@@ -16,6 +16,7 @@ import {
 import { arrayMove } from '@dnd-kit/sortable'
 import { Eye, MoreHorizontal } from 'lucide-react'
 import type { Issue, IssueStatus } from '@garden/core/types'
+import { FIRST_ORDER_KEY, orderKeyBetween } from '@garden/core/issues/order-key'
 import { Button } from '@garden/ui/components/ui/button'
 import { useLoadMoreDoneIssues } from '@/lib/issues/mutations'
 import { useWorkspaceId } from '@garden/app-state/hooks'
@@ -82,14 +83,26 @@ function computePosition(
   ids: string[],
   activeId: string,
   issueMap: Map<string, Issue>,
-): number {
+): string {
+  const keyOf = (id: string | undefined) =>
+    id === undefined ? null : (issueMap.get(id)?.position ?? null)
   const idx = ids.indexOf(activeId)
-  if (idx === -1) return 0
-  const getPos = (id: string) => issueMap.get(id)?.position ?? 0
-  if (ids.length === 1) return issueMap.get(activeId)?.position ?? 0
-  if (idx === 0) return getPos(ids[1]!) - 1
-  if (idx === ids.length - 1) return getPos(ids[idx - 1]!) + 1
-  return (getPos(ids[idx - 1]!) + getPos(ids[idx + 1]!)) / 2
+  if (idx === -1) return keyOf(activeId) ?? FIRST_ORDER_KEY
+  // An order key between the card's new neighbours. This used to average two
+  // integer positions, and the API rejected the fraction (3.5) whenever the
+  // neighbours were adjacent, so the drop failed and the card snapped back.
+  const before = idx > 0 ? keyOf(ids[idx - 1]) : null
+  // Skip neighbours that tie with `before` (two clients raced into the same
+  // gap): no key fits between equal keys, so the card goes after the tie.
+  let after: string | null = null
+  for (let next = idx + 1; next < ids.length; next++) {
+    const key = keyOf(ids[next])
+    if (key !== null && (before === null || key > before)) {
+      after = key
+      break
+    }
+  }
+  return orderKeyBetween(before, after)
 }
 
 /** Find which column (status) contains a given ID (issue or column droppable). */
@@ -125,7 +138,7 @@ export function BoardView({
   onMoveIssue: (
     issueId: string,
     newStatus: IssueStatus,
-    newPosition?: number,
+    newPosition?: string,
   ) => void
   childProgressMap?: Map<string, ChildProgress>
   /** Override the done-column count (e.g. with a server-filtered total). */

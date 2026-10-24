@@ -56,7 +56,14 @@ export const issue = pgTable(
     priority: text('priority').default('medium'),
     assigneeType: text('assignee_type'),
     assigneeId: uuid('assignee_id'),
-    position: integer('position').notNull().default(0),
+    // A fractional-indexing order key ("a0", "a0V", "a1", ...): there is
+    // always a key between any two, so a card can be dropped anywhere with a
+    // single write. Integer positions could not hold the midpoint between
+    // neighbours, so such drops were rejected. Keys compare by code unit, so
+    // the column uses COLLATE "C" (set in migration 0058; drizzle does not
+    // model collations). New issues get a key at the end of their column in
+    // createIssue; the default only covers direct inserts.
+    position: text('position').notNull().default('a0'),
     dueDate: timestamp('due_date', {
       mode: 'date',
       withTimezone: true,

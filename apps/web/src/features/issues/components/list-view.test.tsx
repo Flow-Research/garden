@@ -89,7 +89,7 @@ vi.mock('@base-ui/react/accordion', () => ({
 const issueDefaults = {
   team_id: null,
   parent_issue_id: null,
-  position: 0,
+  position: 'a0',
 }
 
 function makeIssue(overrides: Partial<Issue>): Issue {

@@ -812,6 +812,9 @@ importers:
       effect:
         specifier: 4.0.0-rc.111
         version: 4.0.0-rc.111
+      fractional-indexing:
+        specifier: 3.2.0
+        version: 3.2.0
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -856,6 +859,9 @@ importers:
       drizzle-kit:
         specifier: ^0.31.7
         version: 0.31.10
+      fractional-indexing:
+        specifier: 3.2.0
+        version: 3.2.0
       testcontainers:
         specifier: ^12.1.0
         version: 12.1.0

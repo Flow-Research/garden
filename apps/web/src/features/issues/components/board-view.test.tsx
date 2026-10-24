@@ -13,6 +13,10 @@ type DndHandlers = {
     over: { id: string } | null
   }) => void
   onDragCancel?: () => void
+  onDragEnd?: (event: {
+    active: { id: string }
+    over: { id: string } | null
+  }) => void
 }
 const dnd = vi.hoisted(() => ({ handlers: {} as DndHandlers }))
 
@@ -46,7 +50,7 @@ vi.mock('@/lib/issues/mutations', () => ({
   }),
 }))
 
-function issue(id: string, status: Issue['status']): Issue {
+function issue(id: string, status: Issue['status'], position = 'a0'): Issue {
   return {
     id,
     workspace_id: 'ws-1',
@@ -59,7 +63,7 @@ function issue(id: string, status: Issue['status']): Issue {
     project_id: null,
     team_id: null,
     parent_issue_id: null,
-    position: 0,
+    position,
     assignee_type: null,
     assignee_id: null,
     creator_type: 'member',
@@ -101,5 +105,45 @@ describe('BoardView drag cancel', () => {
     expect(
       screen.getByRole('region', { name: 'in_progress' }),
     ).toHaveTextContent('B')
+  })
+})
+
+describe('BoardView reordering', () => {
+  it('drops a card between two adjacent cards', () => {
+    // Positions 0 and 1 used to give 0.5, which the API rejected.
+    const issues = [
+      issue('A', 'todo', 'a0'),
+      issue('B', 'todo', 'a1'),
+      issue('C', 'todo', 'a2'),
+    ]
+    const onMoveIssue = vi.fn()
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <WorkspaceIdProvider wsId="ws-1">
+          <BoardView
+            issues={issues}
+            allIssues={issues}
+            visibleStatuses={['todo']}
+            hiddenStatuses={[]}
+            onMoveIssue={onMoveIssue}
+          />
+        </WorkspaceIdProvider>
+      </QueryClientProvider>,
+    )
+
+    // Move C onto B: C lands between A and B.
+    act(() => {
+      dnd.handlers.onDragStart?.({ active: { id: 'C' } })
+      dnd.handlers.onDragEnd?.({ active: { id: 'C' }, over: { id: 'B' } })
+    })
+
+    expect(onMoveIssue).toHaveBeenCalledTimes(1)
+    const [id, status, key] = onMoveIssue.mock.calls[0] as [
+      string,
+      string,
+      string,
+    ]
+    expect([id, status]).toEqual(['C', 'todo'])
+    expect(key > 'a0' && key < 'a1').toBe(true)
   })
 })

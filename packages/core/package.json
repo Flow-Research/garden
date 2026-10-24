@@ -17,6 +17,7 @@
     "./automations/templates": "./src/automations/templates.ts",
     "./issues/deep-link": "./src/issues/deep-link.ts",
     "./issues/identifier": "./src/issues/identifier.ts",
+    "./issues/order-key": "./src/issues/order-key.ts",
     "./issues/run-sync": "./src/issues/run-sync.ts",
     "./issues/triggers": "./src/issues/triggers.ts",
     "./issues/config": "./src/issues/config/index.ts",
@@ -34,6 +35,7 @@
     "better-result": "^2.9.2",
     "drizzle-orm": "catalog:",
     "effect": "catalog:",
+    "fractional-indexing": "3.2.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

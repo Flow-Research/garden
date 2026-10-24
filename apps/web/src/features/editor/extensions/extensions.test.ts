@@ -148,7 +148,7 @@ describe('createMentionSuggestion types filter', () => {
     creator_id: 'user-1',
     parent_issue_id: null,
     project_id: null,
-    position: 0,
+    position: 'a0',
     due_date: null,
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',

@@ -316,7 +316,7 @@ function IssuesPageContent() {
 
   const updateIssueMutation = useUpdateIssue()
   const handleMoveIssue = useCallback(
-    (issueId: string, newStatus: IssueStatus, newPosition?: number) => {
+    (issueId: string, newStatus: IssueStatus, newPosition?: string) => {
       // Auto-switch to manual sort so drag ordering is preserved
       const viewState = useIssueViewStore.getState()
       if (viewState.sortBy !== 'position') {
@@ -324,7 +324,7 @@ function IssuesPageContent() {
         viewState.setSortDirection('asc')
       }
 
-      const updates: Partial<{ status: IssueStatus; position: number }> = {
+      const updates: Partial<{ status: IssueStatus; position: string }> = {
         status: newStatus,
       }
       if (newPosition !== undefined) updates.position = newPosition
