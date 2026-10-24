@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
 import { useAuthStore } from '@garden/app-state/auth'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { useActorName } from '@/lib/workspace/hooks'
@@ -16,9 +15,10 @@ import { useRecentIssuesStore } from '@garden/app-state/issues/stores/recent-iss
 import { useIssueTimeline } from './use-issue-timeline'
 import { useIssueReactions } from './use-issue-reactions'
 import { useIssueSubscribers } from './use-issue-subscribers'
-import { useFileUpload } from '@garden/app-state/hooks/use-file-upload'
+import { useAttachmentUpload } from '@/lib/hooks/use-attachment-upload'
 import { useDeleteIssue, useUpdateIssue } from '@/lib/issues/mutations'
 import type { Issue, ListIssuesResponse } from '@garden/core/types'
+import { isMissingError } from '@/lib/api/errors'
 
 /**
  * Loads issue-detail dependencies without subscribing the detail panel to the
@@ -40,29 +40,39 @@ export function useIssueDetailData(issueId: string) {
     (member) => member.user_id === user?.id,
   )?.role
   const { getActorName } = useActorName()
-  const { uploadWithToast } = useFileUpload(api)
+  const { uploadWithToast } = useAttachmentUpload()
 
-  const getCachedIssue = (id: string | null | undefined): Issue | undefined => {
+  // The list's copy of an issue, shown while its detail loads. It is
+  // placeholder data, not initial data: as initial data it counted as fresh
+  // under the infinite staleTime, so the detail was never fetched and the
+  // page showed the list's (partial, possibly old) copy indefinitely.
+  const listCopyOf = (id: string | null | undefined): Issue | undefined => {
     if (!id) return undefined
-    return (
-      queryClient.getQueryData<Issue>(issueKeys.detail(wsId, id)) ??
-      queryClient
-        .getQueryData<ListIssuesResponse>(issueKeys.list(wsId))
-        ?.issues.find((candidate) => candidate.id === id)
-    )
+    return queryClient
+      .getQueryData<ListIssuesResponse>(issueKeys.list(wsId))
+      ?.issues.find((candidate) => candidate.id === id)
   }
 
-  const { data: issue = null, isLoading: issueLoading } = useQuery({
+  const issueQuery = useQuery({
     ...issueDetailOptions(wsId, issueId),
-    initialData: () => getCachedIssue(issueId),
+    placeholderData: () => listCopyOf(issueId),
   })
+  const issue = issueQuery.data ?? null
+  const issueLoading = issueQuery.isLoading
+  // Only a 404 or 403 means the issue is gone. Any other failure used to show
+  // "does not exist or has been deleted" too, with no way to retry.
+  const issueLoadFailed =
+    issueQuery.isError && !issue && !isMissingError(issueQuery.error)
+  const retryIssue = () => void issueQuery.refetch()
+  const retryingIssue = issueQuery.isFetching
 
+  // Once per issue opened. Depending on the issue object as well rewrote the
+  // persisted recent-visits list on every update to the issue.
   const recordVisit = useRecentIssuesStore((state) => state.recordVisit)
+  const visitedIssueId = issue?.id
   useEffect(() => {
-    if (issue) {
-      recordVisit(issue.id)
-    }
-  }, [issue?.id, recordVisit, issue])
+    if (visitedIssueId) recordVisit(visitedIssueId)
+  }, [visitedIssueId, recordVisit])
 
   const timelineState = useIssueTimeline(issueId, user?.id)
   const issueReactionState = useIssueReactions(issueId, user?.id)
@@ -72,7 +82,7 @@ export function useIssueDetailData(issueId: string) {
   const { data: parentIssue = null } = useQuery({
     ...issueDetailOptions(wsId, parentIssueId ?? ''),
     enabled: !!parentIssueId,
-    initialData: () => getCachedIssue(parentIssueId),
+    placeholderData: () => listCopyOf(parentIssueId),
   })
   const { data: childIssues = [] } = useQuery({
     ...childIssuesOptions(wsId, issueId),
@@ -95,6 +105,9 @@ export function useIssueDetailData(issueId: string) {
     uploadWithToast,
     issue,
     issueLoading,
+    issueLoadFailed,
+    retryIssue,
+    retryingIssue,
     timelineState,
     issueReactionState,
     subscriberState,

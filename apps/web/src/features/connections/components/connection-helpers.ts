@@ -1,5 +1,4 @@
 /** Shared constants, types and formatting helpers for the connectors page. */
-import { useEffect, useState } from 'react'
 import type { Option } from 'effect'
 import type {
   ExecutorIntegrationItem,
@@ -30,14 +29,7 @@ export type ManagedProvider = {
   readonly preferredIntegrationSlug: string | null
 }
 
-export function useDebouncedValue(value: string, delayMs: number) {
-  const [debounced, setDebounced] = useState(value)
-  useEffect(() => {
-    const timeout = setTimeout(() => setDebounced(value), delayMs)
-    return () => clearTimeout(timeout)
-  }, [value, delayMs])
-  return debounced
-}
+export { useDebouncedValue } from '@/lib/hooks/use-debounced-value'
 
 export function statusDotColor(status: ExecutorIntegrationStatus) {
   if (status === 'connected') return 'bg-success'

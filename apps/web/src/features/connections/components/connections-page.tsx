@@ -119,7 +119,18 @@ export function ConnectionsPage({
   const connectionMutation = useMutation({
     mutationFn: (input: { slug: string; action: IntegrationAction }) =>
       mutateConnection(input.slug, input.action),
-    onSuccess: refreshConnections,
+    onSuccess: (_result, input) => {
+      void refreshConnections()
+      // Deleting the provider's last integration left the drawer open with
+      // nothing to manage.
+      if (input.action !== 'delete' || managedProvider === null) return
+      const remaining = integrations.filter(
+        (integration) =>
+          integration.providerId === managedProvider.providerId &&
+          integration.slug !== input.slug,
+      )
+      if (remaining.length === 0) setManagedProvider(null)
+    },
     onError: (error) =>
       toast.error(
         error instanceof Error ? error.message : 'Integration action failed',
@@ -232,9 +243,21 @@ export function ConnectionsPage({
   }, [registryQuery.data?.pages])
   const registryTotal = registryQuery.data?.pages[0]?.total ?? 0
 
+  // Observed again after each page (an observer reports only visibility
+  // changes, so a short page left the sentinel visible and loading stopped).
+  // Not while a page is loading, or after one failed: re-observing would
+  // retry in a loop.
   useEffect(() => {
     const target = loadMoreRef.current
-    if (!target || !searching || !registryQuery.hasNextPage) return
+    if (
+      !target ||
+      !searching ||
+      !registryQuery.hasNextPage ||
+      registryQuery.isFetchingNextPage ||
+      registryQuery.isFetchNextPageError
+    ) {
+      return
+    }
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
@@ -245,20 +268,33 @@ export function ConnectionsPage({
     )
     observer.observe(target)
     return () => observer.disconnect()
-  }, [registryQuery.fetchNextPage, registryQuery.hasNextPage, searching])
+  }, [
+    registryQuery.fetchNextPage,
+    registryQuery.hasNextPage,
+    registryQuery.isFetchingNextPage,
+    registryQuery.isFetchNextPageError,
+    searching,
+  ])
+  // Open the drawer for `?connector_id=` once per value (it is set by the
+  // OAuth callback). Gated on the drawer being closed, this effect reopened
+  // it every time the user closed it while the param stayed in the URL, and
+  // re-populated it behind an inspected card.
+  const appliedFocusRef = useRef<string | null>(null)
   useEffect(() => {
-    if (focusedConnectorId === undefined || managedProvider !== null) return
+    if (focusedConnectorId === undefined) return
+    if (appliedFocusRef.current === focusedConnectorId) return
     const focusedIntegration = integrations.find(
       (integration) =>
         integration.slug === focusedConnectorId ||
         integration.providerId === focusedConnectorId,
     )
     if (focusedIntegration === undefined) return
+    appliedFocusRef.current = focusedConnectorId
     setManagedProvider({
       providerId: focusedIntegration.providerId,
       preferredIntegrationSlug: focusedIntegration.slug,
     })
-  }, [focusedConnectorId, integrations, managedProvider])
+  }, [focusedConnectorId, integrations])
 
   const managedProviderIntegrations =
     managedProvider === null

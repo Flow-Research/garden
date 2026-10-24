@@ -518,6 +518,44 @@ describe('teams UI', () => {
     })
   })
 
+  it('locks the add-member dialog while the request runs', async () => {
+    let finish: () => void = () => {}
+    apiMocks.addTeamMember.mockImplementation(
+      () => new Promise((resolve) => (finish = () => resolve(makeMember()))),
+    )
+    apiMocks.listMembers.mockResolvedValue([
+      {
+        id: 'm-2',
+        workspace_id: 'ws-1',
+        user_id: 'user-2',
+        role: 'member',
+        name: 'Casey',
+        email: 'casey@test.com',
+        avatar_url: null,
+      },
+    ])
+    const onClose = vi.fn()
+    renderWithQuery(
+      <AddTeamMemberDialog
+        teamId="team-1"
+        existing={[makeMember()]}
+        onClose={onClose}
+      />,
+    )
+
+    fireEvent.click(await screen.findByRole('radio'))
+    fireEvent.click(screen.getByRole('button', { name: 'Add member' }))
+
+    const adding = await screen.findByRole('button', { name: 'Adding…' })
+    expect(adding).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    fireEvent.click(adding)
+    expect(apiMocks.addTeamMember).toHaveBeenCalledTimes(1)
+
+    finish()
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+  })
+
   it('surfaces the linked-issue error when deleting a Team', async () => {
     apiMocks.deleteTeam.mockRejectedValue(new Error('Team has linked issues'))
     const onDeleted = vi.fn()
@@ -878,10 +916,38 @@ describe('teams UI', () => {
     )
 
     fireEvent.click(await screen.findByRole('button', { name: 'Remove Casey' }))
+    // Nothing is removed until the confirmation.
+    const confirm = await screen.findByRole('alertdialog')
+    expect(confirm).toHaveTextContent('Remove Casey from')
+    expect(apiMocks.removeTeamMember).not.toHaveBeenCalled()
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Remove' }))
+
     await waitFor(() => {
       expect(apiMocks.removeTeamMember).toHaveBeenCalledWith('team-1', 'tm-2')
     })
     expect(toast.success).toHaveBeenCalledWith('Casey removed from the Team')
+  })
+
+  it('keeps the member when removal is cancelled', async () => {
+    apiMocks.getTeam.mockResolvedValue(makeTeam())
+    apiMocks.listTeamMembers.mockResolvedValue({
+      members: [makeMember(), caseyMember],
+      total: 2,
+    })
+
+    renderWithQuery(
+      <TeamDetail teamId="team-1" tab="members" onTabChange={() => {}} />,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Casey' }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Cancel',
+      }),
+    )
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(apiMocks.removeTeamMember).not.toHaveBeenCalled()
   })
 
   it('removes an agent member from its row action', async () => {
@@ -909,6 +975,11 @@ describe('teams UI', () => {
 
     fireEvent.click(
       await screen.findByRole('button', { name: 'Remove Garden' }),
+    )
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Remove',
+      }),
     )
     await waitFor(() => {
       expect(apiMocks.removeTeamMember).toHaveBeenCalledWith('team-1', 'tm-3')

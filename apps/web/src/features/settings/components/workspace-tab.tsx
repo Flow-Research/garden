@@ -1,20 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Result } from 'better-result'
 import { Save } from 'lucide-react'
 import { Input } from '@garden/ui/components/ui/input'
 import { Textarea } from '@garden/ui/components/ui/textarea'
 import { Label } from '@garden/ui/components/ui/label'
 import { Button } from '@garden/ui/components/ui/button'
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction,
-} from '@garden/ui/components/ui/alert-dialog'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import { toast } from 'sonner'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/app-state/auth'
@@ -34,14 +25,31 @@ export function WorkspaceTab() {
   const updateWorkspace = useWorkspaceStore((s) => s.updateWorkspace)
   const leaveWorkspace = useLeaveWorkspace()
 
-  const [name, setName] = useState(workspace?.name ?? '')
-  const [description, setDescription] = useState(workspace?.description ?? '')
-  const [context, setContext] = useState(workspace?.context ?? '')
+  // Unsaved edits, tied to the workspace they were made in. Copying the
+  // workspace into state with an effect reset the fields on every workspace
+  // store update, wiping what was being typed.
+  type Drafts = Partial<Record<'name' | 'description' | 'context', string>>
+  const [draftState, setDraftState] = useState<{
+    workspaceId: string | null
+    drafts: Drafts
+  }>({ workspaceId: null, drafts: {} })
+  const drafts =
+    draftState.workspaceId === (workspace?.id ?? null) ? draftState.drafts : {}
+  const setDraft = (field: keyof Drafts, value: string) =>
+    setDraftState({
+      workspaceId: workspace?.id ?? null,
+      drafts: { ...drafts, [field]: value },
+    })
+  const name = drafts.name ?? workspace?.name ?? ''
+  const description = drafts.description ?? workspace?.description ?? ''
+  const context = drafts.context ?? workspace?.context ?? ''
   const [saving, setSaving] = useState(false)
   const [actionId, setActionId] = useState<string | null>(null)
   const [confirmAction, setConfirmAction] = useState<{
     title: string
     description: string
+    confirmLabel: string
+    pendingLabel: string
     variant?: 'destructive'
     onConfirm: () => Promise<void>
   } | null>(null)
@@ -49,12 +57,6 @@ export function WorkspaceTab() {
   const currentMember = members.find((m) => m.user_id === user?.id) ?? null
   const canManageWorkspace =
     currentMember?.role === 'owner' || currentMember?.role === 'admin'
-  useEffect(() => {
-    setName(workspace?.name ?? '')
-    setDescription(workspace?.description ?? '')
-    setContext(workspace?.context ?? '')
-  }, [workspace])
-
   const handleSave = async () => {
     if (!workspace) return
     setSaving(true)
@@ -74,6 +76,7 @@ export function WorkspaceTab() {
       qc.setQueryData(workspaceKeys.list(), (old: Workspace[] | undefined) =>
         old?.map((ws) => (ws.id === updated.id ? updated : ws)),
       )
+      setDraftState({ workspaceId: null, drafts: {} })
       toast.success('Workspace settings saved')
     } else {
       toast.error(result.error.message)
@@ -86,6 +89,8 @@ export function WorkspaceTab() {
     setConfirmAction({
       title: 'Leave workspace',
       description: `Leave ${workspace.name}? You will lose access until re-invited.`,
+      confirmLabel: 'Leave',
+      pendingLabel: 'Leaving…',
       variant: 'destructive',
       onConfirm: async () => {
         setActionId('leave')
@@ -121,7 +126,7 @@ export function WorkspaceTab() {
             <Input
               type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => setDraft('name', e.target.value)}
               disabled={!canManageWorkspace}
             />
           </div>
@@ -129,7 +134,7 @@ export function WorkspaceTab() {
             <Label>Description</Label>
             <Textarea
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => setDraft('description', e.target.value)}
               rows={3}
               disabled={!canManageWorkspace}
               className="resize-none"
@@ -140,7 +145,7 @@ export function WorkspaceTab() {
             <Label>Context</Label>
             <Textarea
               value={context}
-              onChange={(e) => setContext(e.target.value)}
+              onChange={(e) => setDraft('context', e.target.value)}
               rows={4}
               disabled={!canManageWorkspace}
               className="resize-none"
@@ -159,7 +164,7 @@ export function WorkspaceTab() {
               onClick={handleSave}
               disabled={saving || !name.trim() || !canManageWorkspace}
             >
-              <Save className="h-3 w-3" />
+              <Save className="size-3" />
               {saving ? 'Saving...' : 'Save changes'}
             </Button>
             {!canManageWorkspace && (
@@ -199,37 +204,20 @@ export function WorkspaceTab() {
         </ul>
       </section>
 
-      <AlertDialog
+      <ConfirmDialog
         open={!!confirmAction}
-        onOpenChange={(v) => {
-          if (!v) setConfirmAction(null)
+        onOpenChange={(open) => {
+          if (!open) setConfirmAction(null)
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirmAction?.title}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmAction?.description}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant={
-                confirmAction?.variant === 'destructive'
-                  ? 'destructive'
-                  : 'default'
-              }
-              onClick={async () => {
-                await confirmAction?.onConfirm()
-                setConfirmAction(null)
-              }}
-            >
-              Confirm
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={confirmAction?.title}
+        description={confirmAction?.description}
+        confirmLabel={confirmAction?.confirmLabel ?? 'Confirm'}
+        pendingLabel={confirmAction?.pendingLabel}
+        tone={
+          confirmAction?.variant === 'destructive' ? 'destructive' : 'default'
+        }
+        onConfirm={() => confirmAction?.onConfirm()}
+      />
     </div>
   )
 }

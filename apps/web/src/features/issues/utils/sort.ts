@@ -1,5 +1,6 @@
 import type { Issue } from '@garden/core/types'
 import { PRIORITY_ORDER } from '@garden/core/issues/config'
+import { compareOrderKeys } from '@garden/core/issues/order-key'
 import type {
   SortField,
   SortDirection,
@@ -34,7 +35,12 @@ export function sortIssues(
         return a.title.localeCompare(b.title)
       case 'position':
       default:
-        return a.position - b.position
+        // Code-unit order, as the database stores it; id breaks the rare
+        // tie (two clients dropping into the same gap at once).
+        return (
+          compareOrderKeys(a.position, b.position) ||
+          compareOrderKeys(a.id, b.id)
+        )
     }
   })
   return direction === 'desc' ? sorted.reverse() : sorted

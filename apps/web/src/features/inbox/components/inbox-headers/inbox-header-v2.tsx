@@ -44,8 +44,9 @@ export const InboxListHeaderV2 = ({
           value={search}
           onChange={handleSearchChange}
           placeholder="Search"
+          aria-label="Search inbox"
           className="h-10 bg-background shadow-none"
-          leftIcon={<Search className="w-4 h-4 text-muted-foreground" />}
+          leftIcon={<Search className="size-4 text-muted-foreground" />}
         />
       </div>
 
@@ -63,7 +64,7 @@ export const InboxListHeaderV2 = ({
                 'cursor-pointer whitespace-nowrap rounded-sm px-4 text-sm font-medium transition-all',
                 isActive
                   ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'text-foreground hover:bg-gray-200/50 hover:text-gray-900',
+                  : 'text-foreground hover:bg-accent hover:text-accent-foreground',
               )}
             >
               {filter}

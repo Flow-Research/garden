@@ -22,12 +22,15 @@ export type AppSidebarNavChild = {
   id: string
   label: string
   icon: ComponentType<{ className?: string }>
+  /** Where the row goes; with it, the row is a link that opens in a new tab. */
+  href?: string
 }
 
 export type AppSidebarNavItem = {
   id: string
   label: string
   icon: ComponentType<{ className?: string }>
+  href?: string
   badge?: number
   children?: AppSidebarNavChild[]
 }
@@ -99,9 +102,9 @@ export function AppSidebar({
                       : 'hover:bg-background-main-secondary-hover',
                   )}
                 >
-                  <button
-                    type="button"
-                    onClick={() => onSelect(item.id)}
+                  <NavTarget
+                    href={item.href}
+                    onActivate={() => onSelect(item.id)}
                     aria-current={active ? 'page' : undefined}
                     title={collapsed ? item.label : undefined}
                     className={cn(
@@ -132,7 +135,7 @@ export function AppSidebar({
                         {item.badge > 99 ? '99+' : item.badge}
                       </span>
                     ) : null}
-                  </button>
+                  </NavTarget>
                   {hasChildren ? (
                     <button
                       type="button"
@@ -161,9 +164,9 @@ export function AppSidebar({
                       const childActive = child.id === activeChildId
                       return (
                         <li key={child.id}>
-                          <button
-                            type="button"
-                            onClick={() => onSelect(child.id)}
+                          <NavTarget
+                            href={child.href}
+                            onActivate={() => onSelect(child.id)}
                             aria-current={childActive ? 'page' : undefined}
                             className={cn(
                               'group flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-sm pl-8 pr-2 text-sm transition-colors',
@@ -183,7 +186,7 @@ export function AppSidebar({
                             <span className="flex-1 truncate text-left">
                               {child.label}
                             </span>
-                          </button>
+                          </NavTarget>
                         </li>
                       )
                     })}
@@ -204,5 +207,53 @@ export function AppSidebar({
         {userCard}
       </div>
     </aside>
+  )
+}
+
+/**
+ * A nav row: a link when it has an href, so it can be middle-clicked or
+ * opened in a new tab, with plain left clicks handled in-app; a button
+ * otherwise.
+ */
+function NavTarget({
+  href,
+  onActivate,
+  children,
+  ...props
+}: {
+  href?: string
+  onActivate: () => void
+  children: ReactNode
+  className?: string
+  title?: string
+  'aria-current'?: 'page'
+}) {
+  if (!href) {
+    return (
+      <button type="button" onClick={onActivate} {...props}>
+        {children}
+      </button>
+    )
+  }
+  return (
+    <a
+      href={href}
+      onClick={(event) => {
+        if (
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey
+        ) {
+          return
+        }
+        event.preventDefault()
+        onActivate()
+      }}
+      {...props}
+    >
+      {children}
+    </a>
   )
 }

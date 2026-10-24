@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState, useId } from 'react'
 import { Result } from 'better-result'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -22,6 +22,7 @@ import type { Automation, AutomationRun, AutomationTrigger } from '@/lib/api'
 import type { AutomationRunStatus } from '@/lib/api/automations'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { Button } from '@garden/ui/components/ui/button'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import {
   Dialog,
   DialogContent,
@@ -52,8 +53,12 @@ import {
   TriggerConfigSection,
   getDefaultTriggerConfig,
   toCronExpression,
+  describeTrigger,
+  parseCronExpression,
   type TriggerConfig,
 } from './trigger-config'
+import { isMissingError } from '@/lib/api/errors'
+import { LoadError } from '@garden/ui/components/common/load-error'
 
 function numberValue(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
@@ -304,6 +309,7 @@ function TriggerRow({
   automationId: string
 }) {
   const deleteTrigger = useDeleteAutomationTrigger()
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const handleDelete = async () => {
     const result = await Result.tryPromise(() =>
@@ -315,7 +321,8 @@ function TriggerRow({
           ? result.error.message
           : 'Failed to delete trigger',
       )
-      return
+      // Keep the confirm dialog open so the delete can be retried.
+      throw result.error
     }
     toast.success('Trigger deleted')
   }
@@ -338,9 +345,18 @@ function TriggerRow({
           ) : null}
         </div>
         {trigger.cron_expression ? (
+          // In words, with the raw cron kept as a hint; it used to be raw
+          // cron only.
           <div className="mt-0.5 text-xs text-muted-foreground">
-            {trigger.cron_expression}
-            {trigger.timezone ? ` (${trigger.timezone})` : null}
+            {describeTrigger(
+              parseCronExpression(
+                trigger.cron_expression,
+                trigger.timezone ?? 'UTC',
+              ),
+            )}
+            <span className="ml-1.5 font-mono text-[11px] opacity-70">
+              {trigger.cron_expression}
+            </span>
           </div>
         ) : null}
         {trigger.next_run_at ? (
@@ -354,10 +370,20 @@ function TriggerRow({
         size="icon"
         variant="ghost"
         className="size-7 shrink-0"
-        onClick={handleDelete}
+        onClick={() => setConfirmDelete(true)}
       >
         <Trash2 className="size-3.5 text-muted-foreground" />
       </Button>
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Delete trigger?"
+        description="The automation will no longer run on this schedule. This cannot be undone."
+        confirmLabel="Delete trigger"
+        pendingLabel="Deleting…"
+        tone="destructive"
+        onConfirm={handleDelete}
+      />
     </div>
   )
 }
@@ -381,18 +407,41 @@ function EditAutomationDialog({
   automation: Automation
   agents: Agent[]
 }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogTitle>Edit Automation</DialogTitle>
+        {/* Mounted per opening, so the form starts from the saved automation
+            and a refetch while it is open no longer overwrites what is being
+            typed; a cancelled edit is gone the next time. */}
+        {open ? (
+          <EditAutomationForm
+            key={automation.id}
+            automation={automation}
+            agents={agents}
+            onDone={() => onOpenChange(false)}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function EditAutomationForm({
+  automation,
+  agents,
+  onDone,
+}: {
+  automation: Automation
+  agents: Agent[]
+  onDone: () => void
+}) {
+  const fieldId = useId()
   const updateAutomation = useUpdateAutomation()
   const [title, setTitle] = useState(automation.title)
   const [description, setDescription] = useState(automation.description ?? '')
   const [assigneeId, setAssigneeId] = useState(automation.assignee_agent_id)
   const [priority, setPriority] = useState(automation.priority)
-
-  useEffect(() => {
-    setTitle(automation.title)
-    setDescription(automation.description ?? '')
-    setAssigneeId(automation.assignee_agent_id)
-    setPriority(automation.priority)
-  }, [automation])
 
   const activeAgents = agents.filter((agent) => !agent.archived_at)
   const submitting = updateAutomation.isPending
@@ -416,101 +465,100 @@ function EditAutomationDialog({
       )
       return
     }
-    onOpenChange(false)
+    onDone()
     toast.success('Automation updated')
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogTitle>Edit Automation</DialogTitle>
-        <div className="space-y-4 pt-2">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Name
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
-              autoFocus
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Prompt
-            </label>
-            <textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              rows={6}
-              className="mt-1 w-full resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground">
-                Agent
-              </label>
-              <Select
-                value={assigneeId}
-                onValueChange={(value) => value && setAssigneeId(value)}
-              >
-                <SelectTrigger className="mt-1 w-full">
-                  <SelectValue placeholder="Select agent..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeAgents.map((agent) => (
-                    <SelectItem key={agent.id} value={agent.id}>
-                      {agent.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground">
-                Priority
-              </label>
-              <Select
-                value={priority}
-                onValueChange={(value) =>
-                  value && setPriority(value as Automation['priority'])
-                }
-              >
-                <SelectTrigger className="mt-1 w-full">
-                  <SelectValue placeholder="Medium" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRIORITY_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-1">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleSubmit}
-              disabled={!title.trim() || !assigneeId || submitting}
-            >
-              {submitting ? 'Saving...' : 'Save'}
-            </Button>
-          </div>
+    <div className="space-y-4 pt-2">
+      <div>
+        <label
+          htmlFor={`${fieldId}-name`}
+          className="text-xs font-medium text-muted-foreground"
+        >
+          Name
+        </label>
+        <input
+          id={`${fieldId}-name`}
+          type="text"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+          autoFocus
+        />
+      </div>
+      <div>
+        <label
+          htmlFor={`${fieldId}-prompt`}
+          className="text-xs font-medium text-muted-foreground"
+        >
+          Prompt
+        </label>
+        <textarea
+          id={`${fieldId}-prompt`}
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          rows={6}
+          className="mt-1 w-full resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            Agent
+          </label>
+          <Select
+            value={assigneeId}
+            onValueChange={(value) => value && setAssigneeId(value)}
+          >
+            <SelectTrigger className="mt-1 w-full">
+              <SelectValue placeholder="Select agent..." />
+            </SelectTrigger>
+            <SelectContent>
+              {activeAgents.map((agent) => (
+                <SelectItem key={agent.id} value={agent.id}>
+                  {agent.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-      </DialogContent>
-    </Dialog>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            Priority
+          </label>
+          <Select
+            value={priority}
+            onValueChange={(value) =>
+              value && setPriority(value as Automation['priority'])
+            }
+          >
+            <SelectTrigger className="mt-1 w-full">
+              <SelectValue placeholder="Medium" />
+            </SelectTrigger>
+            <SelectContent>
+              {PRIORITY_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 pt-1">
+        <Button size="sm" variant="outline" onClick={onDone}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          onClick={handleSubmit}
+          disabled={!title.trim() || !assigneeId || submitting}
+        >
+          {submitting ? 'Saving...' : 'Save'}
+        </Button>
+      </div>
+    </div>
   )
 }
 
@@ -523,6 +571,7 @@ function AddTriggerDialog({
   onOpenChange: (open: boolean) => void
   automationId: string
 }) {
+  const fieldId = useId()
   const createTrigger = useCreateAutomationTrigger()
   const [config, setConfig] = useState<TriggerConfig>(getDefaultTriggerConfig)
   const [label, setLabel] = useState('')
@@ -560,10 +609,14 @@ function AddTriggerDialog({
         <div className="space-y-4 pt-2">
           <TriggerConfigSection config={config} onChange={setConfig} />
           <div>
-            <label className="text-xs font-medium text-muted-foreground">
+            <label
+              htmlFor={`${fieldId}-label`}
+              className="text-xs font-medium text-muted-foreground"
+            >
               Label (optional)
             </label>
             <input
+              id={`${fieldId}-label`}
               type="text"
               value={label}
               onChange={(event) => setLabel(event.target.value)}
@@ -598,9 +651,8 @@ export function AutomationDetailPage({
   const wsId = useWorkspaceId()
   const debugMode = useDevSettingsStore((state) => state.debugMode)
   const { getActorName } = useActorName()
-  const { data, isLoading } = useQuery(
-    automationDetailOptions(wsId, automationId),
-  )
+  const detailQuery = useQuery(automationDetailOptions(wsId, automationId))
+  const { data, isLoading } = detailQuery
   const { data: runs = [], isLoading: runsLoading } = useQuery(
     automationRunsOptions(wsId, automationId, debugMode),
   )
@@ -610,12 +662,26 @@ export function AutomationDetailPage({
   const triggerAutomation = useTriggerAutomation()
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   if (isLoading) {
     return (
       <div className="space-y-4 p-6">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-40 w-full" />
+      </div>
+    )
+  }
+
+  // Only a 404 or 403 means it is gone; other failures can be retried.
+  if (!data && detailQuery.isError && !isMissingError(detailQuery.error)) {
+    return (
+      <div className="flex h-full items-center justify-center p-8">
+        <LoadError
+          message="Could not load this automation."
+          onRetry={() => void detailQuery.refetch()}
+          retrying={detailQuery.isFetching}
+        />
       </div>
     )
   }
@@ -655,16 +721,38 @@ export function AutomationDetailPage({
           ? result.error.message
           : 'Failed to delete automation',
       )
-      return
+      // Keep the confirm dialog open so the delete can be retried.
+      throw result.error
     }
     toast.success('Automation deleted')
     onDeleted?.()
   }
 
+  // Pausing used to give no feedback, and a failed request left the
+  // automation running with nothing said.
   const handleToggleStatus = () => {
     const nextStatus = automation.status === 'active' ? 'paused' : 'active'
-    updateAutomation.mutate({ id: automationId, status: nextStatus })
+    updateAutomation.mutate(
+      { id: automationId, status: nextStatus },
+      {
+        onSuccess: () =>
+          toast.success(
+            nextStatus === 'paused'
+              ? 'Automation paused'
+              : 'Automation activated',
+          ),
+        onError: (error) =>
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : nextStatus === 'paused'
+                ? 'Could not pause the automation'
+                : 'Could not activate the automation',
+          ),
+      },
+    )
   }
+  const togglingStatus = updateAutomation.isPending
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -702,14 +790,21 @@ export function AutomationDetailPage({
             <Pencil className="mr-1 size-3.5" />
             Edit
           </Button>
-          <Button size="sm" variant="outline" onClick={handleToggleStatus}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleToggleStatus}
+            disabled={togglingStatus}
+          >
             {automation.status === 'active' ? (
               <>
-                <Pause className="mr-1 size-3.5" /> Pause
+                <Pause className="mr-1 size-3.5" />{' '}
+                {togglingStatus ? 'Pausing…' : 'Pause'}
               </>
             ) : (
               <>
-                <Play className="mr-1 size-3.5" /> Activate
+                <Play className="mr-1 size-3.5" />{' '}
+                {togglingStatus ? 'Activating…' : 'Activate'}
               </>
             )}
           </Button>
@@ -823,7 +918,11 @@ export function AutomationDetailPage({
             <h2 className="text-sm font-medium tracking-wider text-destructive uppercase">
               Danger Zone
             </h2>
-            <Button size="sm" variant="destructive" onClick={handleDelete}>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => setConfirmDelete(true)}
+            >
               <Trash2 className="mr-1 size-3.5" />
               Delete automation
             </Button>
@@ -835,6 +934,16 @@ export function AutomationDetailPage({
         open={triggerDialogOpen}
         onOpenChange={setTriggerDialogOpen}
         automationId={automationId}
+      />
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title={`Delete ${automation.title}?`}
+        description="It stops running on all of its triggers and is removed from Workflows. Its run history is kept."
+        confirmLabel="Delete automation"
+        pendingLabel="Deleting…"
+        tone="destructive"
+        onConfirm={handleDelete}
       />
       <EditAutomationDialog
         open={editDialogOpen}

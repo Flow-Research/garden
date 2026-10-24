@@ -10,7 +10,7 @@ import { Button } from '@garden/ui/components/ui/button'
 import { cn } from '@garden/ui/lib/utils'
 import type { Issue, IssueStatus } from '@garden/core/types'
 import { useLoadMoreDoneIssues } from '@/lib/issues/mutations'
-import { STATUS_CONFIG } from '@garden/core/issues/config'
+import { STATUS_CONFIG, STATUS_PILL_TEXT } from '@garden/core/issues/config'
 import { useViewStore } from '@garden/app-state/issues/stores/view-store-context'
 import { useIssueSelectionStore } from '@garden/app-state/issues/stores/selection-store'
 import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigation'
@@ -68,6 +68,7 @@ export function ListView({
     loadMore,
     hasMore,
     isLoading: loadingMore,
+    failed: loadMoreFailed,
     doneTotal: hookDoneTotal,
   } = useLoadMoreDoneIssues()
   const displayDoneTotal = doneTotalOverride ?? hookDoneTotal
@@ -137,6 +138,7 @@ export function ListView({
                   <InfiniteScrollSentinel
                     onVisible={loadMore}
                     loading={loadingMore}
+                    failed={loadMoreFailed}
                   />
                 )}
               </>
@@ -158,7 +160,7 @@ export function ListView({
                     expanded ? 'rounded-t-xl' : 'rounded-xl',
                   )}
                 >
-                  <Accordion.Trigger className="group/trigger flex h-full flex-1 items-center gap-2 px-4 text-left outline-none">
+                  <Accordion.Trigger className="group/trigger flex h-full flex-1 items-center gap-2 px-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
                     <ChevronRight className="size-3.5 shrink-0 text-icon-secondary transition-transform group-aria-expanded/trigger:rotate-90" />
                     <StatusIcon status={status} className="size-4.5" />
                     <span className="text-sm text-text-default">
@@ -176,6 +178,7 @@ export function ListView({
                             <Button
                               variant="ghost"
                               size="icon-sm"
+                              aria-label={`Add ${cfg.label} issue`}
                               className="text-icon-default"
                               onClick={() => onCreateIssue({ status })}
                             />
@@ -204,17 +207,19 @@ export function ListView({
                           select(statusIssueIds)
                         }
                       }}
+                      aria-label={`Select all ${cfg.label} issues`}
                       className="cursor-pointer accent-primary"
                     />
                   </div>
-                  <Accordion.Trigger className="group/trigger flex flex-1 items-center gap-2 px-2 h-full text-left outline-none">
+                  <Accordion.Trigger className="group/trigger flex flex-1 items-center gap-2 px-2 h-full text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
                     <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-aria-expanded/trigger:rotate-90" />
                     <span
-                      className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-semibold ${cfg.badgeBg} ${cfg.badgeText}`}
+                      className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-semibold ${STATUS_PILL_TEXT}`}
+                      style={{ backgroundColor: cfg.pillFill }}
                     >
                       <StatusIcon
                         status={status}
-                        className="h-3 w-3"
+                        className="size-3"
                         inheritColor
                       />
                       {cfg.label}
@@ -231,7 +236,8 @@ export function ListView({
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              className="rounded-full text-muted-foreground opacity-0 group-hover/header:opacity-100 transition-opacity"
+                              aria-label={`Add ${cfg.label} issue`}
+                              className="rounded-full text-muted-foreground opacity-0 group-hover/header:opacity-100 focus-visible:opacity-100 transition-opacity"
                               onClick={() => onCreateIssue({ status })}
                             />
                           }

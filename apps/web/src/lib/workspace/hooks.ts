@@ -1,51 +1,57 @@
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { memberListOptions, agentListOptions } from './queries'
 
+/**
+ * Actor name, initials and avatar lookups for the workspace. The functions
+ * are memoized on the member and agent lists, so they keep their identity
+ * between renders (they were new every render, re-rendering every memoized
+ * consumer), and look up by id in maps instead of scanning the lists.
+ */
 export function useActorName() {
   const wsId = useWorkspaceId()
-  const { data: members = [] } = useQuery(memberListOptions(wsId))
-  const { data: agents = [] } = useQuery(agentListOptions(wsId))
+  const { data: members } = useQuery(memberListOptions(wsId))
+  const { data: agents } = useQuery(agentListOptions(wsId))
 
-  const getMemberName = (userId: string) => {
-    const m = members.find((m) => m.user_id === userId)
-    return m?.name ?? 'Unknown'
-  }
+  return useMemo(() => {
+    const membersById = new Map(
+      (members ?? []).map((member) => [member.user_id, member]),
+    )
+    const agentsById = new Map((agents ?? []).map((agent) => [agent.id, agent]))
 
-  const getAgentName = (agentId: string) => {
-    const a = agents.find((a) => a.id === agentId)
-    return a?.name ?? 'Unknown Agent'
-  }
+    const getMemberName = (userId: string) =>
+      membersById.get(userId)?.name ?? 'Unknown'
 
-  const getActorName = (type: string, id: string) => {
-    if (type === 'member') return getMemberName(id)
-    if (type === 'agent') return getAgentName(id)
-    return 'System'
-  }
+    const getAgentName = (agentId: string) =>
+      agentsById.get(agentId)?.name ?? 'Unknown Agent'
 
-  const getActorInitials = (type: string, id: string) => {
-    const name = getActorName(type, id)
-    return name
-      .split(' ')
-      .map((w) => w[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2)
-  }
+    const getActorName = (type: string, id: string) => {
+      if (type === 'member') return getMemberName(id)
+      if (type === 'agent') return getAgentName(id)
+      return 'System'
+    }
 
-  const getActorAvatarUrl = (type: string, id: string): string | null => {
-    if (type === 'member')
-      return members.find((m) => m.user_id === id)?.avatar_url ?? null
-    if (type === 'agent')
-      return agents.find((a) => a.id === id)?.avatar_url ?? null
-    return null
-  }
+    const getActorInitials = (type: string, id: string) =>
+      getActorName(type, id)
+        .split(' ')
+        .map((w) => w[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2)
 
-  return {
-    getMemberName,
-    getAgentName,
-    getActorName,
-    getActorInitials,
-    getActorAvatarUrl,
-  }
+    const getActorAvatarUrl = (type: string, id: string): string | null => {
+      if (type === 'member') return membersById.get(id)?.avatar_url ?? null
+      if (type === 'agent') return agentsById.get(id)?.avatar_url ?? null
+      return null
+    }
+
+    return {
+      getMemberName,
+      getAgentName,
+      getActorName,
+      getActorInitials,
+      getActorAvatarUrl,
+    }
+  }, [members, agents])
 }

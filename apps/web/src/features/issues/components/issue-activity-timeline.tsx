@@ -285,25 +285,25 @@ export function IssueActivityTimeline({
           let leadIcon: React.ReactNode
           if (isRunFailure) {
             leadIcon = (
-              <CircleAlert className="h-4 w-4 shrink-0 text-destructive" />
+              <CircleAlert className="size-4 shrink-0 text-destructive" />
             )
           } else if (isStatusChange && details.to) {
             leadIcon = (
               <StatusIcon
                 status={details.to as IssueStatus}
-                className="h-4 w-4 shrink-0"
+                className="size-4 shrink-0"
               />
             )
           } else if (isPriorityChange && details.to) {
             leadIcon = (
               <PriorityIcon
                 priority={details.to as IssuePriority}
-                className="h-4 w-4 shrink-0"
+                className="size-4 shrink-0"
               />
             )
           } else if (isDueDateChange) {
             leadIcon = (
-              <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <Calendar className="size-4 shrink-0 text-muted-foreground" />
             )
           } else {
             leadIcon = (

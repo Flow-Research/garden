@@ -104,6 +104,9 @@ export type RealtimePublishableEvent =
   | { type: 'issue:created'; payload: IssueCreatedPayload }
   | { type: 'issue:updated'; payload: IssueUpdatedPayload }
   | { type: 'issue:deleted'; payload: IssueDeletedPayload }
+  | { type: 'comment:created'; payload: CommentChangedPayload }
+  | { type: 'comment:updated'; payload: CommentChangedPayload }
+  | { type: 'comment:deleted'; payload: CommentChangedPayload }
 
 /** Envelope union with `type` and `payload` kept correlated for gating. */
 export type RealtimePublishableEnvelope = {
@@ -129,6 +132,17 @@ export interface IssueDeletedPayload {
    * normal member only hears about issues they could see.
    */
   assignee_id?: string | null
+}
+
+/**
+ * A comment on an issue was added, edited, removed or reacted to. Carries the
+ * issue's Team and assignee so the hub gates it like the issue itself.
+ */
+export interface CommentChangedPayload {
+  issue_id: string
+  comment_id: string
+  team_id: string | null
+  assignee_id: string | null
 }
 
 export interface AgentStatusPayload {

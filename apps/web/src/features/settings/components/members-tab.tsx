@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   Crown,
   Shield,
@@ -16,17 +16,10 @@ import { ActorAvatar } from '../../common/actor-avatar'
 import type { MemberWithUser, MemberRole, Invitation } from '@garden/core/types'
 import { Input } from '@garden/ui/components/ui/input'
 import { Button } from '@garden/ui/components/ui/button'
+import { Skeleton } from '@garden/ui/components/ui/skeleton'
+import { LoadError } from '@garden/ui/components/common/load-error'
 import { Badge } from '@garden/ui/components/ui/badge'
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction,
-} from '@garden/ui/components/ui/alert-dialog'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import {
   Select,
   SelectTrigger,
@@ -121,7 +114,7 @@ function MemberRow({
                 size="icon-sm"
                 disabled={busy}
               >
-                <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                <MoreHorizontal className="size-4 text-muted-foreground" />
               </Button>
             }
           />
@@ -129,7 +122,7 @@ function MemberRow({
             {canEditRole && (
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
-                  <Shield className="h-3.5 w-3.5" />
+                  <Shield className="size-3.5" />
                   Change role
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="w-auto">
@@ -146,7 +139,7 @@ function MemberRow({
                         key={role}
                         onClick={() => onRoleChange(role)}
                       >
-                        <Icon className="h-3.5 w-3.5" />
+                        <Icon className="size-3.5" />
                         <div className="flex flex-col">
                           <span>{config.label}</span>
                           <span className="text-xs font-normal text-muted-foreground">
@@ -167,7 +160,7 @@ function MemberRow({
             {canEditRole && canRemove && <DropdownMenuSeparator />}
             {canRemove && (
               <DropdownMenuItem variant="destructive" onClick={onRemove}>
-                <UserMinus className="h-3.5 w-3.5" />
+                <UserMinus className="size-3.5" />
                 Remove from workspace
               </DropdownMenuItem>
             )}
@@ -175,7 +168,7 @@ function MemberRow({
         </DropdownMenu>
       )}
       <Badge variant="secondary">
-        <RoleIcon className="h-3 w-3" />
+        <RoleIcon className="size-3" />
         {rc.label}
       </Badge>
     </li>
@@ -206,17 +199,17 @@ function InvitationRow({
 
   return (
     <li className="flex items-center gap-3 py-3">
-      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
+      <div className="flex size-8 items-center justify-center rounded-full bg-muted">
         {expired ? (
-          <MailWarning className="h-4 w-4 text-muted-foreground" />
+          <MailWarning className="size-4 text-muted-foreground" />
         ) : (
-          <Mail className="h-4 w-4 text-muted-foreground" />
+          <Mail className="size-4 text-muted-foreground" />
         )}
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{invitation.email}</div>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Clock className="h-3 w-3" />
+          <Clock className="size-3" />
           <span>{expired ? 'Expired — resend to reactivate' : 'Pending'}</span>
         </div>
       </div>
@@ -229,7 +222,7 @@ function InvitationRow({
             onClick={onResend}
             title={expired ? 'Resend (extends expiry)' : 'Resend invitation'}
           >
-            <SendHorizontal className="h-4 w-4 text-muted-foreground" />
+            <SendHorizontal className="size-4 text-muted-foreground" />
           </Button>
           <Button
             variant="ghost"
@@ -238,7 +231,7 @@ function InvitationRow({
             onClick={onRevoke}
             title="Revoke invitation"
           >
-            <X className="h-4 w-4 text-muted-foreground" />
+            <X className="size-4 text-muted-foreground" />
           </Button>
         </>
       )}
@@ -247,12 +240,18 @@ function InvitationRow({
   )
 }
 
+const NO_MEMBERS: MemberWithUser[] = []
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 export function MembersTab() {
   const user = useAuthStore((s) => s.user)
   const workspace = useWorkspaceStore((s) => s.workspace)
   const qc = useQueryClient()
+  // The one workspace id for reads, writes and invalidation alike; writes
+  // used the store's copy while invalidation used this one.
   const wsId = useWorkspaceId()
-  const { data: members = [] } = useQuery(memberListOptions(wsId))
+  const membersQuery = useQuery(memberListOptions(wsId))
+  const members = membersQuery.data ?? NO_MEMBERS
   const { data: invitations = [] } = useQuery(invitationListOptions(wsId))
 
   const [inviteEmail, setInviteEmail] = useState('')
@@ -265,6 +264,8 @@ export function MembersTab() {
   const [confirmAction, setConfirmAction] = useState<{
     title: string
     description: string
+    confirmLabel: string
+    pendingLabel: string
     variant?: 'destructive'
     onConfirm: () => Promise<void>
   } | null>(null)
@@ -277,12 +278,21 @@ export function MembersTab() {
     currentMember?.role === 'owner' || currentMember?.role === 'admin'
   const isOwner = currentMember?.role === 'owner'
 
+  // Enter in the email field used to call this directly, past the disabled
+  // button, so a second Enter sent a duplicate invitation.
+  const inviteInFlightRef = useRef(false)
   const handleInviteMember = async () => {
-    if (!workspace) return
+    const email = inviteEmail.trim()
+    if (!workspace || !email || inviteInFlightRef.current) return
+    if (!EMAIL_PATTERN.test(email)) {
+      toast.error('Enter a valid email address')
+      return
+    }
+    inviteInFlightRef.current = true
     setInviteLoading(true)
     try {
-      await api.createMember(workspace.id, {
-        email: inviteEmail,
+      await api.createMember(wsId, {
+        email,
         role: inviteRole,
       })
       setInviteEmail('')
@@ -292,6 +302,7 @@ export function MembersTab() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to send invitation')
     } finally {
+      inviteInFlightRef.current = false
       setInviteLoading(false)
     }
   }
@@ -301,11 +312,13 @@ export function MembersTab() {
     setConfirmAction({
       title: 'Revoke invitation',
       description: `Revoke the invitation to ${invitation.email}? They will no longer be able to join this workspace.`,
+      confirmLabel: 'Revoke',
+      pendingLabel: 'Revoking…',
       variant: 'destructive',
       onConfirm: async () => {
         setInvitationActionId(invitation.id)
         try {
-          await api.revokeInvitation(workspace.id, invitation.id)
+          await api.revokeInvitation(wsId, invitation.id)
           qc.invalidateQueries({ queryKey: workspaceKeys.invitations(wsId) })
           toast.success('Invitation revoked')
         } catch (e) {
@@ -323,7 +336,7 @@ export function MembersTab() {
     if (!workspace) return
     setInvitationActionId(invitation.id)
     void api
-      .createMember(workspace.id, {
+      .createMember(wsId, {
         email: invitation.email,
         role: invitation.role,
         resend: true,
@@ -344,7 +357,7 @@ export function MembersTab() {
     if (!workspace) return
     setMemberActionId(memberId)
     try {
-      await api.updateMember(workspace.id, memberId, { role })
+      await api.updateMember(wsId, memberId, { role })
       qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
       toast.success('Role updated')
     } catch (e) {
@@ -359,11 +372,13 @@ export function MembersTab() {
     setConfirmAction({
       title: `Remove ${member.name}`,
       description: `Remove ${member.name} from ${workspace.name}? They will lose access to this workspace.`,
+      confirmLabel: 'Remove',
+      pendingLabel: 'Removing…',
       variant: 'destructive',
       onConfirm: async () => {
         setMemberActionId(member.id)
         try {
-          await api.deleteMember(workspace.id, member.id)
+          await api.deleteMember(wsId, member.id)
           qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
           toast.success('Member removed')
         } catch (e) {
@@ -385,9 +400,11 @@ export function MembersTab() {
         <header>
           <h2 className="text-base font-semibold">
             Members{' '}
-            <span className="font-normal text-muted-foreground">
-              ({members.length})
-            </span>
+            {membersQuery.data ? (
+              <span className="font-normal text-muted-foreground">
+                ({members.length})
+              </span>
+            ) : null}
           </h2>
           <p className="text-sm text-muted-foreground">
             People with access to this workspace.
@@ -395,16 +412,20 @@ export function MembersTab() {
         </header>
 
         {canManageWorkspace && (
-          <div className="grid gap-2 sm:grid-cols-[1fr_120px_auto]">
+          <form
+            className="grid gap-2 sm:grid-cols-[1fr_120px_auto]"
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault()
+              void handleInviteMember()
+            }}
+          >
             <Input
               type="email"
+              aria-label="Email address to invite"
               value={inviteEmail}
               onChange={(e) => setInviteEmail(e.target.value)}
               placeholder="user@company.com"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && inviteEmail.trim())
-                  handleInviteMember()
-              }}
             />
             <Select
               value={inviteRole}
@@ -419,17 +440,32 @@ export function MembersTab() {
               </SelectContent>
             </Select>
             <Button
+              type="submit"
               size="sm"
-              onClick={handleInviteMember}
               disabled={inviteLoading || !inviteEmail.trim()}
             >
-              <Plus className="h-3.5 w-3.5" />
+              <Plus className="size-3.5" />
               {inviteLoading ? 'Inviting...' : 'Invite'}
             </Button>
-          </div>
+          </form>
         )}
 
-        {members.length > 0 ? (
+        {membersQuery.isPending ? (
+          <div
+            className="space-y-2 border-t pt-3"
+            aria-busy="true"
+            aria-label="Loading members"
+          >
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : membersQuery.isError && members.length === 0 ? (
+          <LoadError
+            message="Could not load members."
+            onRetry={() => void membersQuery.refetch()}
+            retrying={membersQuery.isFetching}
+          />
+        ) : members.length > 0 ? (
           <ul className="divide-y border-t">
             {members.map((m) => (
               <MemberRow
@@ -472,37 +508,20 @@ export function MembersTab() {
         </section>
       )}
 
-      <AlertDialog
+      <ConfirmDialog
         open={!!confirmAction}
-        onOpenChange={(v) => {
-          if (!v) setConfirmAction(null)
+        onOpenChange={(open) => {
+          if (!open) setConfirmAction(null)
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirmAction?.title}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmAction?.description}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant={
-                confirmAction?.variant === 'destructive'
-                  ? 'destructive'
-                  : 'default'
-              }
-              onClick={async () => {
-                await confirmAction?.onConfirm()
-                setConfirmAction(null)
-              }}
-            >
-              Confirm
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={confirmAction?.title}
+        description={confirmAction?.description}
+        confirmLabel={confirmAction?.confirmLabel ?? 'Confirm'}
+        pendingLabel={confirmAction?.pendingLabel}
+        tone={
+          confirmAction?.variant === 'destructive' ? 'destructive' : 'default'
+        }
+        onConfirm={() => confirmAction?.onConfirm()}
+      />
     </div>
   )
 }

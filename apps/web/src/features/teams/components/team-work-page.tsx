@@ -140,7 +140,7 @@ export function TeamWorkPage() {
   )
 
   const handleMoveIssue = useCallback(
-    (issueId: string, newStatus: IssueStatus, newPosition?: number) => {
+    (issueId: string, newStatus: IssueStatus, newPosition?: string) => {
       const viewState = teamIssueViewStore.getState()
       if (viewState.sortBy !== 'position') {
         viewState.setSortBy('position')
@@ -310,7 +310,7 @@ function TeamWorkPanel({
   onMoveIssue: (
     issueId: string,
     newStatus: IssueStatus,
-    newPosition?: number,
+    newPosition?: string,
   ) => void
   projects: Map<string, { title: string; color: string }>
   teamChips: Map<string, { name: string; color: string }>

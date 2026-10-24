@@ -47,6 +47,7 @@ import {
   SelectValue,
 } from '@garden/ui/components/ui/select'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
+import { LoadError } from '@garden/ui/components/common/load-error'
 import { ActorAvatar as ActorAvatarBase } from '@garden/ui/components/common/actor-avatar'
 import { cn } from '@garden/ui/lib/utils'
 import {
@@ -55,6 +56,7 @@ import {
   skillListOptions,
 } from '@/lib/workspace/queries'
 import { automationListOptions } from './queries'
+import { isPlainLeftClick } from '@/features/navigation/is-plain-left-click'
 import { useCreateAutomation } from './mutations'
 import {
   TriggerConfigSection,
@@ -206,11 +208,17 @@ function AutomationRow({
   const StatusIcon = statusConfig.icon
   const agentName = automation.assignee_agent_name ?? 'Unknown Agent'
 
+  // A link, so an automation can be opened in a new tab; plain clicks stay
+  // in-app.
   return (
-    <button
-      type="button"
+    <a
+      href={`/workflows/${encodeURIComponent(automation.id)}`}
       className="group/row flex h-11 w-full items-center gap-2 px-5 text-left text-sm transition-colors hover:bg-accent/40"
-      onClick={() => onOpenAutomation?.(automation)}
+      onClick={(event) => {
+        if (!onOpenAutomation || !isPlainLeftClick(event)) return
+        event.preventDefault()
+        onOpenAutomation(automation)
+      }}
     >
       <Zap className="size-4 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate font-medium">
@@ -245,7 +253,7 @@ function AutomationRow({
       <span className="w-20 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
         {automation.last_run_at ? timeAgo(automation.last_run_at) : '--'}
       </span>
-    </button>
+    </a>
   )
 }
 
@@ -1063,7 +1071,8 @@ export function AutomationsPage({
   onOpenAutomation?: (automation: AutomationOpenTarget) => void
 }) {
   const wsId = useWorkspaceId()
-  const { data, isLoading } = useQuery(automationListOptions(wsId))
+  const automationsQuery = useQuery(automationListOptions(wsId))
+  const { data, isLoading } = automationsQuery
   const automations = data?.automations ?? []
   const [createOpen, setCreateOpen] = useState(false)
   const [selectedTemplate, setSelectedTemplate] =
@@ -1103,6 +1112,13 @@ export function AutomationsPage({
               <Skeleton key={index} className="h-11 w-full" />
             ))}
           </div>
+        ) : automationsQuery.isError && !data ? (
+          <LoadError
+            className="justify-center px-5 py-16"
+            message="Could not load automations."
+            onRetry={() => void automationsQuery.refetch()}
+            retrying={automationsQuery.isFetching}
+          />
         ) : automations.length === 0 ? (
           <div className="flex flex-col items-center px-5 py-16">
             <Zap className="mb-3 size-10 text-muted-foreground opacity-30" />

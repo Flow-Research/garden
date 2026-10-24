@@ -9,21 +9,11 @@ import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { Issue, IssueStatus } from '@garden/core/types'
 import { Button } from '@garden/ui/components/ui/button'
-import { STATUS_CONFIG } from '@garden/core/issues/config'
+import { STATUS_CONFIG, STATUS_PILL_TEXT } from '@garden/core/issues/config'
 import { useViewStoreApi } from '@garden/app-state/issues/stores/view-store-context'
 import { StatusIcon } from './status-icon'
 import { DraggableBoardCard } from './board-card'
 import type { ChildProgress } from './list-row'
-
-/** Design's pastel status pill fills (Global util colors — constant in both themes). */
-const STATUS_PILL_FILL: Record<IssueStatus, string> = {
-  todo: 'var(--util-color-9)',
-  in_progress: 'var(--util-color-2)',
-  in_review: 'var(--util-color-7)',
-  done: 'var(--util-color-8)',
-  blocked: 'var(--util-color-10)',
-  cancelled: 'var(--util-color-5)',
-}
 
 export function BoardColumn({
   status,
@@ -69,8 +59,8 @@ export function BoardColumn({
         {/* Left: pastel status pill + plain count (design) */}
         <div className="flex items-center gap-2">
           <span
-            className="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-xs text-gray-900"
-            style={{ backgroundColor: STATUS_PILL_FILL[status] }}
+            className={`inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-xs ${STATUS_PILL_TEXT}`}
+            style={{ backgroundColor: cfg.pillFill }}
           >
             <StatusIcon status={status} className="size-3.5" inheritColor />
             {cfg.label}
@@ -105,6 +95,7 @@ export function BoardColumn({
                   <Button
                     variant="ghost"
                     size="icon-sm"
+                    aria-label={`Add ${cfg.label} issue`}
                     className="text-icon-secondary"
                     onClick={() => onCreateIssue({ status })}
                   />

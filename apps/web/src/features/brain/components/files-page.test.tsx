@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   act,
@@ -391,6 +392,8 @@ describe('BrainFilesPage', () => {
     const user = userEvent.setup()
 
     mockRetryBrainFile.mockRejectedValue(new Error('Retry unavailable'))
+    // A toast, so the failure also shows in the folder and All-files views.
+    const toastError = vi.spyOn(toast, 'error')
 
     renderFilesPage([
       {
@@ -406,10 +409,40 @@ describe('BrainFilesPage', () => {
 
     await user.click(retryButton)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Retry unavailable',
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith('Retry unavailable'),
     )
     expect(retryButton).toBeEnabled()
+  })
+
+  it('keeps the upload dialog open with the error when an upload fails', async () => {
+    const user = userEvent.setup()
+    mockUploadBrainFile
+      .mockRejectedValueOnce(new Error('Storage is full'))
+      .mockResolvedValueOnce({
+        id: 'file-2',
+        name: 'notes.txt',
+        status: 'ready',
+      })
+    renderFilesPage([])
+
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')
+    if (!input) throw new Error('no file input')
+    await user.upload(input, new File(['hello'], 'notes.txt'))
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Add to knowledge base',
+      }),
+    )
+
+    const dialog = await screen.findByRole('dialog')
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Storage is full',
+    )
+    await user.click(within(dialog).getByRole('button', { name: 'Try again' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(mockUploadBrainFile).toHaveBeenCalledTimes(2)
   })
 
   it('opens and closes a ready file preview', async () => {
@@ -771,6 +804,14 @@ describe('BrainFilesPage', () => {
     })
     expect(fileTile).toHaveClass('sm:w-[15.5rem]')
     expect(previewButton).toHaveClass('cursor-pointer')
+  })
+
+  it('shows folders loading instead of an empty folder list', async () => {
+    mockListBrainFolders.mockReturnValue(new Promise(() => {}))
+    renderFilesPage([])
+
+    expect(await screen.findByLabelText('Loading folders')).toBeInTheDocument()
+    expect(screen.queryByText('No folders yet')).toBeNull()
   })
 
   it('switches the Folders section between grid and list view', async () => {

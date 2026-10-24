@@ -80,8 +80,8 @@ export function IssueSubscribersControl({
               )}
             </AvatarGroup>
           ) : (
-            <span className="flex items-center justify-center h-6 w-6 rounded-full border border-dashed border-muted-foreground/30 text-muted-foreground">
-              <Users className="h-3 w-3" />
+            <span className="flex items-center justify-center size-6 rounded-full border border-dashed border-muted-foreground/30 text-muted-foreground">
+              <Users className="size-3" />
             </span>
           )}
         </PopoverTrigger>
