@@ -55,9 +55,16 @@ function IssueMention({
   fallbackLabel?: string
 }) {
   const wsId = useWorkspaceId()
-  const { data: issues = [] } = useQuery(issueListOptions(wsId))
+  // Only this issue from the list cache, and only if the list is already
+  // loaded: subscribing to the whole list re-rendered every mention on any
+  // issue change, and could fetch the full list just to show one title.
+  // The detail query below covers an issue the cache does not have.
+  const { data: listIssue } = useQuery({
+    ...issueListOptions(wsId),
+    enabled: false,
+    select: (data) => data.issues.find((i) => i.id === issueId),
+  })
   const { openIssue } = useSurfaceNavigation()
-  const listIssue = issues.find((i) => i.id === issueId)
 
   const { data: detailIssue } = useQuery({
     ...issueDetailOptions(wsId, issueId),
