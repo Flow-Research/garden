@@ -96,7 +96,7 @@ function MetricCard({
             </div>
           ) : null}
         </div>
-        <Icon className="mt-1 h-4 w-4 shrink-0 text-text-neutral-tertiary" />
+        <Icon className="mt-1 size-4 shrink-0 text-text-neutral-tertiary" />
       </div>
     </div>
   )
@@ -159,7 +159,7 @@ function DistributionBars({
             <div className="flex items-center justify-between gap-2 text-xs">
               <span className="flex items-center gap-1.5 truncate text-foreground">
                 <span
-                  className="h-1.5 w-1.5 shrink-0 rounded-full"
+                  className="size-1.5 shrink-0 rounded-full"
                   style={{ backgroundColor: entry.color }}
                 />
                 <span className="truncate capitalize">{entry.name}</span>
@@ -271,7 +271,7 @@ function DashboardResourceSectionFallback({ title }: { title: string }) {
             key={`${title}-resource-${index}`}
             className="flex items-center gap-3 px-4 py-3"
           >
-            <SectionPlaceholder className="h-4 w-4 rounded-full" />
+            <SectionPlaceholder className="size-4 rounded-full" />
             <div className="min-w-0 flex-1">
               <SectionPlaceholder className="h-4 w-28" />
               <SectionPlaceholder className="mt-2 h-3 w-20" />
@@ -396,7 +396,7 @@ function DashboardPageFixture() {
                     {label}
                   </p>
                 </div>
-                <div className="mt-1.5 h-4 w-4 rounded-full bg-muted-foreground/30" />
+                <div className="mt-1.5 size-4 rounded-full bg-muted-foreground/30" />
               </div>
             </div>
           ))}
@@ -443,7 +443,7 @@ function DashboardPageFixture() {
                     Updated a moment ago
                   </p>
                 </div>
-                <div className="h-2 w-2 rounded-full bg-background-success-default" />
+                <div className="size-2 rounded-full bg-background-success-default" />
               </div>
             ))}
           </div>
@@ -705,10 +705,10 @@ function DashboardActivitySection({
                 className="block w-full cursor-pointer px-4 py-3 text-left text-sm transition-colors hover:bg-accent/50"
               >
                 <div className="flex items-center gap-3">
-                  <StatusIcon status={issue.status} className="h-3.5 w-3.5" />
+                  <StatusIcon status={issue.status} className="size-3.5" />
                   <PriorityIcon
                     priority={issue.priority}
-                    className="h-3.5 w-3.5"
+                    className="size-3.5"
                   />
                   <span className="min-w-0 flex-1 truncate">{issue.title}</span>
                   <span className="shrink-0 text-xs capitalize text-muted-foreground">
@@ -753,7 +753,7 @@ function DashboardResourcesSection({
                 key={agent.id}
                 className="flex items-center gap-3 px-4 py-2 text-sm"
               >
-                <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <Bot className="size-4 shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{agent.name}</div>
                   <div className="truncate text-xs text-muted-foreground">
@@ -797,7 +797,7 @@ function DashboardResourcesSection({
                   onClick={openConnections}
                   className="flex w-full cursor-pointer items-center gap-3 px-4 py-2 text-left text-sm transition-colors hover:bg-accent/50"
                 >
-                  <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <Icon className="size-4 shrink-0 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">
                       {connection.label}

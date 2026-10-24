@@ -416,7 +416,7 @@ export function IssueDetail({
                     >
                       {workspace.name}
                     </button>
-                    <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                    <ChevronRight className="size-3 text-muted-foreground/50 shrink-0" />
                   </>
                 ) : null}
                 <span className="shrink-0">{issue.identifier}</span>
@@ -581,7 +581,7 @@ export function IssueDetail({
                     <span className="font-medium shrink-0">Sub-issue of</span>
                     <StatusIcon
                       status={parentIssue.status}
-                      className="h-3.5 w-3.5 shrink-0"
+                      className="size-3.5 shrink-0"
                     />
                     <span className="tabular-nums shrink-0">
                       {parentIssue.identifier}
@@ -654,7 +654,7 @@ export function IssueDetail({
                         disabled={openChatPending}
                         className="ml-auto h-7 gap-1.5 border-info/30 bg-info/5 text-info hover:bg-info/10 hover:text-info"
                       >
-                        <MessageSquare className="h-3.5 w-3.5" />
+                        <MessageSquare className="size-3.5" />
                         {openChatPending ? 'Opening in chat…' : 'Open in chat'}
                       </Button>
                     ) : null}
@@ -694,7 +694,7 @@ export function IssueDetail({
                         })
                       }
                     >
-                      <Plus className="h-3.5 w-3.5" />
+                      <Plus className="size-3.5" />
                       <span>Add sub-issues</span>
                     </button>
                   </div>
@@ -715,7 +715,7 @@ export function IssueDetail({
                           >
                             <ChevronDown
                               className={cn(
-                                'h-3.5 w-3.5 text-muted-foreground transition-transform',
+                                'size-3.5 text-muted-foreground transition-transform',
                                 subIssuesCollapsed && '-rotate-90',
                               )}
                             />
@@ -736,7 +736,7 @@ export function IssueDetail({
                               render={
                                 <button
                                   type="button"
-                                  className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                                  className="ml-auto inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                                   onClick={() =>
                                     openCreateIssue({
                                       parent_issue_id: issue.id,
@@ -745,7 +745,7 @@ export function IssueDetail({
                                   }
                                   aria-label="Add sub-issue"
                                 >
-                                  <Plus className="h-4 w-4" />
+                                  <Plus className="size-4" />
                                 </button>
                               }
                             />
@@ -795,7 +795,7 @@ export function IssueDetail({
                                   ) : (
                                     <span
                                       aria-hidden
-                                      className="h-5 w-5 rounded-full border border-dashed border-muted-foreground/30 shrink-0"
+                                      className="size-5 rounded-full border border-dashed border-muted-foreground/30 shrink-0"
                                     />
                                   )}
                                 </AppLink>
@@ -927,7 +927,7 @@ export function IssueDetail({
           </p>
           {!onDelete && (
             <Button variant="outline" size="sm" onClick={handleOpenIssues}>
-              <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+              <ChevronLeft className="mr-1 size-3.5" />
               Back to Issues
             </Button>
           )}

@@ -42,9 +42,9 @@ function IssuesPageSkeleton({ viewMode }: { viewMode: 'board' | 'list' }) {
   return (
     <div className="flex flex-1 min-h-0 flex-col">
       <PageHeader className="gap-1.5">
-        <Skeleton className="h-6 w-6 rounded-md" />
+        <Skeleton className="size-6 rounded-md" />
         <Skeleton className="h-4 w-24" />
-        <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
+        <ChevronRight className="size-3 text-muted-foreground/50" />
         <Skeleton className="h-4 w-12" />
       </PageHeader>
 
@@ -83,7 +83,7 @@ function IssuesPageSkeleton({ viewMode }: { viewMode: 'board' | 'list' }) {
                     <Skeleton className="mt-1.5 h-3 w-2/3" />
                     <div className="mt-4 flex items-center justify-between">
                       <Skeleton className="h-5 w-16 rounded" />
-                      <Skeleton className="h-6 w-6 rounded-full" />
+                      <Skeleton className="size-6 rounded-full" />
                     </div>
                   </div>
                 ),
@@ -96,7 +96,7 @@ function IssuesPageSkeleton({ viewMode }: { viewMode: 'board' | 'list' }) {
           {Array.from({ length: 5 }).map((_, groupIndex) => (
             <div key={groupIndex} className="rounded-lg">
               <div className="flex h-10 items-center gap-3 rounded-lg bg-muted/40 px-3">
-                <Skeleton className="h-4 w-4 rounded" />
+                <Skeleton className="size-4 rounded" />
                 <Skeleton className="h-5 w-28 rounded" />
                 <Skeleton className="h-4 w-6 rounded" />
               </div>
@@ -106,10 +106,10 @@ function IssuesPageSkeleton({ viewMode }: { viewMode: 'board' | 'list' }) {
                     key={rowIndex}
                     className="mt-1 flex h-12 items-center gap-3 rounded-md border bg-card px-3"
                   >
-                    <Skeleton className="h-4 w-4 rounded" />
+                    <Skeleton className="size-4 rounded" />
                     <Skeleton className="h-4 flex-1" />
                     <Skeleton className="h-5 w-16 rounded" />
-                    <Skeleton className="h-6 w-6 rounded-full" />
+                    <Skeleton className="size-6 rounded-full" />
                   </div>
                 ),
               )}
@@ -345,7 +345,7 @@ function IssuesPageContent() {
         <span className="text-sm text-muted-foreground">
           {workspace?.name ?? 'Workspace'}
         </span>
-        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+        <ChevronRight className="size-3 text-muted-foreground" />
         <span className="text-sm font-medium">Issues</span>
       </PageHeader>
 

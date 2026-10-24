@@ -46,7 +46,7 @@ export const InboxListHeaderV2 = ({
           placeholder="Search"
           aria-label="Search inbox"
           className="h-10 bg-background shadow-none"
-          leftIcon={<Search className="w-4 h-4 text-muted-foreground" />}
+          leftIcon={<Search className="size-4 text-muted-foreground" />}
         />
       </div>
 

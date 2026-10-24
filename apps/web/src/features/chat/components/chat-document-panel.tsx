@@ -640,7 +640,7 @@ export function DocumentSidePanel({
         className="absolute right-2 top-2 z-20 shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
         title="Close panel"
       >
-        <X className="h-4 w-4" />
+        <X className="size-4" />
       </button>
 
       <div className="relative min-h-0 flex-1">
@@ -817,7 +817,7 @@ function DocumentVersionMenu({
     <DropdownMenu>
       <DropdownMenuTrigger className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground">
         {label}
-        <ChevronDown className="h-3.5 w-3.5" />
+        <ChevronDown className="size-3.5" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>Versions</DropdownMenuLabel>

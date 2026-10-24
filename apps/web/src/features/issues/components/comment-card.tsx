@@ -263,7 +263,7 @@ function CommentRow({
                     size="icon-sm"
                     className="text-muted-foreground"
                   >
-                    <MoreHorizontal className="h-4 w-4" />
+                    <MoreHorizontal className="size-4" />
                   </Button>
                 }
               />
@@ -274,14 +274,14 @@ function CommentRow({
                     toast.success('Copied')
                   }}
                 >
-                  <Copy className="h-3.5 w-3.5" />
+                  <Copy className="size-3.5" />
                   Copy
                 </DropdownMenuItem>
                 {isOwn && (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={startEdit}>
-                      <Pencil className="h-3.5 w-3.5" />
+                      <Pencil className="size-3.5" />
                       Edit
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
@@ -289,7 +289,7 @@ function CommentRow({
                       onClick={() => setConfirmDelete(true)}
                       variant="destructive"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="size-3.5" />
                       Delete
                     </DropdownMenuItem>
                   </>
@@ -458,7 +458,7 @@ function CommentCard({
             <CollapsibleTrigger className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
               <ChevronRight
                 className={cn(
-                  'h-3.5 w-3.5 transition-transform',
+                  'size-3.5 transition-transform',
                   open && 'rotate-90',
                 )}
               />
@@ -510,7 +510,7 @@ function CommentCard({
                         size="icon-sm"
                         className="text-muted-foreground"
                       >
-                        <MoreHorizontal className="h-4 w-4" />
+                        <MoreHorizontal className="size-4" />
                       </Button>
                     }
                   />
@@ -521,14 +521,14 @@ function CommentCard({
                         toast.success('Copied')
                       }}
                     >
-                      <Copy className="h-3.5 w-3.5" />
+                      <Copy className="size-3.5" />
                       Copy
                     </DropdownMenuItem>
                     {isOwn && (
                       <>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={startEdit}>
-                          <Pencil className="h-3.5 w-3.5" />
+                          <Pencil className="size-3.5" />
                           Edit
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
@@ -536,7 +536,7 @@ function CommentCard({
                           onClick={() => setConfirmDelete(true)}
                           variant="destructive"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 className="size-3.5" />
                           Delete
                         </DropdownMenuItem>
                       </>

@@ -104,7 +104,7 @@ function IssueMention({
       className={cardClass}
       render={<a href={issuePath(issueId)} onClick={handleClick} />}
     >
-      <StatusIcon status={issue.status} className="h-3.5 w-3.5 shrink-0" />
+      <StatusIcon status={issue.status} className="size-3.5 shrink-0" />
       <span className="font-medium text-muted-foreground shrink-0">
         {issue.identifier}
       </span>

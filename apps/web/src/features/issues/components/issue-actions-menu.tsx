@@ -84,13 +84,13 @@ export function IssueActionsMenu({
         {/* Status */}
         <DropdownMenuSub>
           <DropdownMenuSubTrigger>
-            <StatusIcon status={issue.status} className="h-3.5 w-3.5" />
+            <StatusIcon status={issue.status} className="size-3.5" />
             Status
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent>
             {ALL_STATUSES.map((s) => (
               <DropdownMenuItem key={s} onClick={() => onUpdate({ status: s })}>
-                <StatusIcon status={s} className="h-3.5 w-3.5" />
+                <StatusIcon status={s} className="size-3.5" />
                 {STATUS_CONFIG[s].label}
                 {issue.status === s && (
                   <span className="ml-auto text-xs text-muted-foreground">
@@ -117,7 +117,7 @@ export function IssueActionsMenu({
                 <span
                   className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${PRIORITY_CONFIG[p].badgeBg} ${PRIORITY_CONFIG[p].badgeText}`}
                 >
-                  <PriorityIcon priority={p} className="h-3 w-3" inheritColor />
+                  <PriorityIcon priority={p} className="size-3" inheritColor />
                   {PRIORITY_CONFIG[p].label}
                 </span>
                 {issue.priority === p && (
@@ -133,7 +133,7 @@ export function IssueActionsMenu({
         {/* Assignee */}
         <DropdownMenuSub>
           <DropdownMenuSubTrigger>
-            <UserMinus className="h-3.5 w-3.5" />
+            <UserMinus className="size-3.5" />
             Assignee
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent>
@@ -145,7 +145,7 @@ export function IssueActionsMenu({
                 })
               }
             >
-              <UserMinus className="h-3.5 w-3.5 text-muted-foreground" />
+              <UserMinus className="size-3.5 text-muted-foreground" />
               Unassigned
               {!issue.assignee_type && (
                 <span className="ml-auto text-xs text-muted-foreground">✓</span>
@@ -203,7 +203,7 @@ export function IssueActionsMenu({
         {/* Due date */}
         <DropdownMenuSub>
           <DropdownMenuSubTrigger>
-            <Calendar className="h-3.5 w-3.5" />
+            <Calendar className="size-3.5" />
             Due date
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent>
@@ -240,32 +240,32 @@ export function IssueActionsMenu({
             agent. Only available when the assignee is an agent. */}
         {issue.assignee_type === 'agent' && issue.assignee_id ? (
           <DropdownMenuItem onClick={onOpenChat} disabled={openChatPending}>
-            <MessageSquare className="h-3.5 w-3.5" />
+            <MessageSquare className="size-3.5" />
             {openChatPending ? 'Opening in chat…' : 'Open in chat'}
           </DropdownMenuItem>
         ) : null}
 
         {/* Create sub-issue */}
         <DropdownMenuItem onClick={onCreateSubIssue}>
-          <Plus className="h-3.5 w-3.5" />
+          <Plus className="size-3.5" />
           Create sub-issue
         </DropdownMenuItem>
 
         {/* Add as sub-issue of another issue */}
         <DropdownMenuItem onClick={onSetParent}>
-          <ArrowUp className="h-3.5 w-3.5" />
+          <ArrowUp className="size-3.5" />
           Set parent issue...
         </DropdownMenuItem>
 
         {/* Add another issue as sub-issue */}
         <DropdownMenuItem onClick={onAddSubIssue}>
-          <ArrowDown className="h-3.5 w-3.5" />
+          <ArrowDown className="size-3.5" />
           Add sub-issue...
         </DropdownMenuItem>
 
         {/* Copy link */}
         <DropdownMenuItem onClick={onCopyLink}>
-          <Link2 className="h-3.5 w-3.5" />
+          <Link2 className="size-3.5" />
           Copy link
         </DropdownMenuItem>
 
@@ -273,7 +273,7 @@ export function IssueActionsMenu({
 
         {/* Delete */}
         <DropdownMenuItem variant="destructive" onClick={onDelete}>
-          <Trash2 className="h-3.5 w-3.5" />
+          <Trash2 className="size-3.5" />
           Delete issue
         </DropdownMenuItem>
       </DropdownMenuContent>

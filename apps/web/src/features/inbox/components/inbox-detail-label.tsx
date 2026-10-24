@@ -51,7 +51,7 @@ export function InboxDetailLabel({ item }: { item: InboxItem }) {
       return (
         <span className="inline-flex items-center gap-1">
           Set status to
-          <StatusIcon status={details.to as IssueStatus} className="h-3 w-3" />
+          <StatusIcon status={details.to as IssueStatus} className="size-3" />
           {label}
         </span>
       )
@@ -65,7 +65,7 @@ export function InboxDetailLabel({ item }: { item: InboxItem }) {
           Set priority to
           <PriorityIcon
             priority={details.to as IssuePriority}
-            className="h-3 w-3"
+            className="size-3"
           />
           {label}
         </span>

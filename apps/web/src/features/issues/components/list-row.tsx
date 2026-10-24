@@ -111,7 +111,7 @@ export const ListRow = memo(function ListRow({
         selected ? 'bg-accent/30' : ''
       }`}
     >
-      <div className="relative flex shrink-0 items-center justify-center w-4 h-4">
+      <div className="relative flex shrink-0 items-center justify-center size-4">
         <PriorityIcon
           priority={issue.priority}
           className={selected ? 'hidden' : 'group-hover/row:hidden'}

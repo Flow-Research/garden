@@ -263,7 +263,7 @@ function InboxEmptyState({
     <div className="flex h-full w-full items-center justify-center px-6">
       <div className="flex max-w-sm flex-col items-center text-center">
         {icon ? (
-          <div className="flex h-14 w-14 items-center justify-center">
+          <div className="flex size-14 items-center justify-center">
             {icon}
           </div>
         ) : (
@@ -726,7 +726,7 @@ export function InboxPage() {
           title="No messages"
           body="Once any new message is sent it'll be documented"
           icon={
-            <div className="bg-muted h-20 w-20 flex items-center justify-center rounded-full text-muted-foreground shrink-0">
+            <div className="bg-muted size-20 flex items-center justify-center rounded-full text-muted-foreground shrink-0">
               <MailOpen strokeWidth={0.5} size={35} />
             </div>
           }
@@ -749,7 +749,7 @@ export function InboxPage() {
             }}
             className="gap-1.5 text-muted-foreground"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="size-4" />
             Inbox
           </Button>
         </div>
@@ -797,7 +797,7 @@ export function InboxPage() {
                 aria-label="Close"
                 className="text-muted-foreground"
               >
-                <X className="h-4 w-4" />
+                <X className="size-4" />
               </Button>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto">

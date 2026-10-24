@@ -99,7 +99,7 @@ export function DocumentArtifact({
               download={data.filename}
               className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download className="size-3.5" />
               {canonicalDocx ? 'Original DOCX' : 'Download'}
             </a>
           ) : null}
@@ -441,10 +441,10 @@ function PdfArtifactPreview({
               type="button"
               onClick={handleZoomOut}
               disabled={zoom <= PDF_ZOOM_MIN}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-background-main-default disabled:opacity-30"
+              className="flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-background-main-default disabled:opacity-30"
               aria-label="Zoom out"
             >
-              <ZoomOut className="h-3.5 w-3.5" />
+              <ZoomOut className="size-3.5" />
             </button>
             <span className="w-9 select-none text-center text-xs font-medium tabular-nums text-muted-foreground">
               {Math.round(zoom * 100)}%
@@ -453,10 +453,10 @@ function PdfArtifactPreview({
               type="button"
               onClick={handleZoomIn}
               disabled={zoom >= PDF_ZOOM_MAX}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-background-main-default disabled:opacity-30"
+              className="flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-background-main-default disabled:opacity-30"
               aria-label="Zoom in"
             >
-              <ZoomIn className="h-3.5 w-3.5" />
+              <ZoomIn className="size-3.5" />
             </button>
           </div>
         </>

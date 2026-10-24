@@ -203,7 +203,7 @@ export function WorkProductCard({
       <div className="flex items-start gap-3 px-4 pt-3.5 pb-2">
         <TypeIcon
           aria-label={TYPE_LABEL[workProduct.type]}
-          className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
+          className="mt-0.5 size-4 shrink-0 text-muted-foreground"
         />
         <div className="flex-1 min-w-0">
           <div className="flex items-start gap-2">
@@ -255,7 +255,7 @@ export function WorkProductCard({
       {showReviewActions && (
         <div className="flex items-center gap-2 border-t border-warning/15 px-4 py-2.5">
           <Button size="sm" className="h-7" disabled={busy} onClick={onApprove}>
-            <Check className="h-3.5 w-3.5 mr-1" />
+            <Check className="size-3.5 mr-1" />
             {pendingAction === 'approve' ? 'Approving…' : 'Approve'}
           </Button>
           <Button
@@ -280,7 +280,7 @@ export function WorkProductCard({
             disabled={busy}
             onClick={() => setConfirmApply(true)}
           >
-            <Send className="h-3.5 w-3.5 mr-1" />
+            <Send className="size-3.5 mr-1" />
             Apply{connectorId === 'github' ? ' to GitHub' : ''}
           </Button>
           <span className="text-xs text-muted-foreground">
@@ -301,7 +301,7 @@ export function WorkProductCard({
 
       {workProduct.status === 'applied' && workProduct.applied_external_url && (
         <div className="flex items-center gap-2 border-t border-success/15 px-4 py-2.5">
-          <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+          <CheckCircle2 className="size-3.5 text-success" />
           <a
             href={workProduct.applied_external_url}
             target="_blank"
@@ -309,7 +309,7 @@ export function WorkProductCard({
             className="text-xs text-success hover:underline inline-flex items-center gap-1"
           >
             View on connector
-            <ExternalLink className="h-3 w-3" />
+            <ExternalLink className="size-3" />
           </a>
         </div>
       )}
@@ -317,7 +317,7 @@ export function WorkProductCard({
       {workProduct.review_state === 'changes_requested' &&
         workProduct.status !== 'superseded' && (
           <div className="flex items-center gap-2 border-t border-warning/15 px-4 py-2 text-xs text-warning">
-            <X className="h-3.5 w-3.5" />
+            <X className="size-3.5" />
             Changes requested. Bot will revise on next run.
           </div>
         )}

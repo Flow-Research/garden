@@ -91,7 +91,7 @@ export function IssueMentionCard({
     >
       <StatusIcon
         status={normalizeIssueStatus(issue.status)}
-        className="h-3.5 w-3.5 shrink-0"
+        className="size-3.5 shrink-0"
       />
       <span className="font-medium text-muted-foreground shrink-0">
         {issue.identifier}

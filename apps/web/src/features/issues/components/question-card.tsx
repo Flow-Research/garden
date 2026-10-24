@@ -153,7 +153,7 @@ export function QuestionCard({
       {/* Header — hidden in compact mode (panel already provides context) */}
       {!compact && (
         <div className="flex items-start gap-2.5 px-3.5 pt-3 pb-2">
-          <MessageCircleQuestion className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+          <MessageCircleQuestion className="mt-0.5 size-4 shrink-0 text-warning" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-warning/80">
@@ -272,7 +272,7 @@ export function QuestionCard({
             onClick={handleSubmit}
             className="h-9 shrink-0 gap-1 px-2.5"
           >
-            <ArrowUp className="h-3.5 w-3.5" />
+            <ArrowUp className="size-3.5" />
             <span className="text-xs">
               {question.multiSelect && selected.length > 0 && !customAnswer
                 ? `Submit ${selected.length}`

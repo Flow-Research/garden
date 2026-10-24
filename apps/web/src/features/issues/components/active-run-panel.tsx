@@ -229,42 +229,42 @@ function getStateConfig(
     case 'waiting_for_input':
       return {
         containerClass: 'border-warning/30 bg-warning/5',
-        iconNode: <CircleHelp className="h-3.5 w-3.5 text-warning" />,
+        iconNode: <CircleHelp className="size-3.5 text-warning" />,
         headline: `${agentName} is waiting on you`,
         liveVariant: 'waiting',
       }
     case 'waiting_for_approval':
       return {
         containerClass: 'border-warning/30 bg-warning/5',
-        iconNode: <ShieldCheck className="h-3.5 w-3.5 text-warning" />,
+        iconNode: <ShieldCheck className="size-3.5 text-warning" />,
         headline: `${agentName} wants your approval`,
         liveVariant: 'waiting',
       }
     case 'succeeded':
       return {
         containerClass: 'border-success/20 bg-success/5',
-        iconNode: <Check className="h-3.5 w-3.5 text-success" />,
+        iconNode: <Check className="size-3.5 text-success" />,
         headline: `${agentName} finished`,
         liveVariant: 'succeeded',
       }
     case 'failed':
       return {
         containerClass: 'border-destructive/30 bg-destructive/5',
-        iconNode: <XCircle className="h-3.5 w-3.5 text-destructive" />,
+        iconNode: <XCircle className="size-3.5 text-destructive" />,
         headline: `${agentName} hit an error`,
         liveVariant: 'failed',
       }
     case 'cancelled':
       return {
         containerClass: 'border-border bg-muted/30',
-        iconNode: <Square className="h-3.5 w-3.5 text-muted-foreground" />,
+        iconNode: <Square className="size-3.5 text-muted-foreground" />,
         headline: `${agentName} was stopped`,
         liveVariant: 'failed',
       }
     case 'blocked':
       return {
         containerClass: 'border-destructive/30 bg-destructive/5',
-        iconNode: <AlertCircle className="h-3.5 w-3.5 text-destructive" />,
+        iconNode: <AlertCircle className="size-3.5 text-destructive" />,
         headline: `${agentName} is blocked`,
         liveVariant: 'blocked',
       }
@@ -381,7 +381,7 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
               className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
               onClick={() => setStopConfirmStatus(run.status)}
             >
-              <Square className="h-3 w-3 mr-1" />
+              <Square className="size-3 mr-1" />
               Stop
             </Button>
           )}
@@ -398,15 +398,15 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
             <Button
               size="sm"
               variant="ghost"
-              className="h-7 w-7 p-0 text-muted-foreground"
+              className="size-7 p-0 text-muted-foreground"
               onClick={() => setToggle({ status: run.status, open: !open })}
               aria-expanded={open}
               aria-label={open ? 'Collapse details' : 'Expand details'}
             >
               {open ? (
-                <ChevronUp className="h-3.5 w-3.5" />
+                <ChevronUp className="size-3.5" />
               ) : (
-                <ChevronDown className="h-3.5 w-3.5" />
+                <ChevronDown className="size-3.5" />
               )}
             </Button>
           )}

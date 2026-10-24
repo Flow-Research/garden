@@ -219,7 +219,7 @@ export function ListView({
                     >
                       <StatusIcon
                         status={status}
-                        className="h-3 w-3"
+                        className="size-3"
                         inheritColor
                       />
                       {cfg.label}

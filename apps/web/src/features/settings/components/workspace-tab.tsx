@@ -164,7 +164,7 @@ export function WorkspaceTab() {
               onClick={handleSave}
               disabled={saving || !name.trim() || !canManageWorkspace}
             >
-              <Save className="h-3 w-3" />
+              <Save className="size-3" />
               {saving ? 'Saving...' : 'Save changes'}
             </Button>
             {!canManageWorkspace && (

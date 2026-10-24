@@ -114,7 +114,7 @@ function MemberRow({
                 size="icon-sm"
                 disabled={busy}
               >
-                <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                <MoreHorizontal className="size-4 text-muted-foreground" />
               </Button>
             }
           />
@@ -122,7 +122,7 @@ function MemberRow({
             {canEditRole && (
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
-                  <Shield className="h-3.5 w-3.5" />
+                  <Shield className="size-3.5" />
                   Change role
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="w-auto">
@@ -139,7 +139,7 @@ function MemberRow({
                         key={role}
                         onClick={() => onRoleChange(role)}
                       >
-                        <Icon className="h-3.5 w-3.5" />
+                        <Icon className="size-3.5" />
                         <div className="flex flex-col">
                           <span>{config.label}</span>
                           <span className="text-xs font-normal text-muted-foreground">
@@ -160,7 +160,7 @@ function MemberRow({
             {canEditRole && canRemove && <DropdownMenuSeparator />}
             {canRemove && (
               <DropdownMenuItem variant="destructive" onClick={onRemove}>
-                <UserMinus className="h-3.5 w-3.5" />
+                <UserMinus className="size-3.5" />
                 Remove from workspace
               </DropdownMenuItem>
             )}
@@ -168,7 +168,7 @@ function MemberRow({
         </DropdownMenu>
       )}
       <Badge variant="secondary">
-        <RoleIcon className="h-3 w-3" />
+        <RoleIcon className="size-3" />
         {rc.label}
       </Badge>
     </li>
@@ -199,17 +199,17 @@ function InvitationRow({
 
   return (
     <li className="flex items-center gap-3 py-3">
-      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
+      <div className="flex size-8 items-center justify-center rounded-full bg-muted">
         {expired ? (
-          <MailWarning className="h-4 w-4 text-muted-foreground" />
+          <MailWarning className="size-4 text-muted-foreground" />
         ) : (
-          <Mail className="h-4 w-4 text-muted-foreground" />
+          <Mail className="size-4 text-muted-foreground" />
         )}
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{invitation.email}</div>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Clock className="h-3 w-3" />
+          <Clock className="size-3" />
           <span>{expired ? 'Expired — resend to reactivate' : 'Pending'}</span>
         </div>
       </div>
@@ -222,7 +222,7 @@ function InvitationRow({
             onClick={onResend}
             title={expired ? 'Resend (extends expiry)' : 'Resend invitation'}
           >
-            <SendHorizontal className="h-4 w-4 text-muted-foreground" />
+            <SendHorizontal className="size-4 text-muted-foreground" />
           </Button>
           <Button
             variant="ghost"
@@ -231,7 +231,7 @@ function InvitationRow({
             onClick={onRevoke}
             title="Revoke invitation"
           >
-            <X className="h-4 w-4 text-muted-foreground" />
+            <X className="size-4 text-muted-foreground" />
           </Button>
         </>
       )}
@@ -444,7 +444,7 @@ export function MembersTab() {
               size="sm"
               disabled={inviteLoading || !inviteEmail.trim()}
             >
-              <Plus className="h-3.5 w-3.5" />
+              <Plus className="size-3.5" />
               {inviteLoading ? 'Inviting...' : 'Invite'}
             </Button>
           </form>

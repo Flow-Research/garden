@@ -95,7 +95,7 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           onClick={onClose}
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="size-4" />
           Back
         </Button>
 

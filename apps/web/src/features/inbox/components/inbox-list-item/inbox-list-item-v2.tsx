@@ -103,7 +103,7 @@ export function InboxListItemV2({
         onClick={onArchive}
         className="absolute top-3 right-3 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
       >
-        <Archive className="h-3.5 w-3.5" />
+        <Archive className="size-3.5" />
       </button>
     </div>
   )
