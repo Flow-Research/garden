@@ -264,7 +264,7 @@ const config = defineConfig({
   customLogger: logger,
   server: {
     port: Number(process.env.PORT ?? 3000),
-    allowedHosts: ['.ngrok-free.app'],
+    allowedHosts: ['.ngrok-free.app', '.ngrok-free.dev'],
   },
   resolve: {
     alias: executorSourceAliases,

@@ -29,6 +29,7 @@ import {
   issuePrioritySchema,
   issueSourceBindingInsertSchema,
   issueStatusSchema,
+  uuidSchema,
 } from '@garden/db/validation'
 import { z } from 'zod'
 import {
@@ -102,7 +103,9 @@ const postIssueCommentInputSchema = z
     databaseUrl: z.string().trim().min(1),
     workspaceId: issueInsertSchema.shape.workspaceId,
     issueIdOrIdentifier: z.string().trim().min(1),
-    authorUserId: issueCommentInsertSchema.shape.authorId,
+    // Native Garden comments are always member-authored; connector comments
+    // use nullable authorId and arrive via webhook apply, not this path.
+    authorUserId: uuidSchema,
     body: issueCommentInsertSchema.shape.body,
     parentId: issueCommentInsertSchema.shape.id.optional().nullable(),
     attachmentIds: z.array(z.string().uuid()).optional(),
@@ -278,19 +281,45 @@ export function toIssueAttachment(
   }
 }
 
+/**
+ * Timeline label for connector-sourced comments. Metadata shape comes from
+ * inbound GitHub webhooks (#161): `{ github_login, ... }`.
+ */
+export function connectorCommentActorLabel(metadata: unknown): string {
+  if (
+    metadata !== null &&
+    typeof metadata === 'object' &&
+    !Array.isArray(metadata)
+  ) {
+    const login = (metadata as Record<string, unknown>).github_login
+    if (typeof login === 'string' && login.trim().length > 0) {
+      return `GitHub · @${login.trim()}`
+    }
+  }
+  return 'GitHub'
+}
+
 export function toIssueComment(
   row: typeof schema.issueComment.$inferSelect,
   attachments: Attachment[] = [],
 ): Comment {
   const createdAt = (row.createdAt ?? new Date()).toISOString()
+  const authorType: Comment['author_type'] =
+    row.authorType === 'agent'
+      ? 'agent'
+      : row.authorType === 'connector'
+        ? 'connector'
+        : 'member'
 
   return {
     id: row.id,
     issue_id: row.issueId,
-    author_type: (row.authorType === 'agent'
-      ? 'agent'
-      : 'member') as Comment['author_type'],
+    author_type: authorType,
     author_id: row.authorId,
+    author_display:
+      authorType === 'connector'
+        ? connectorCommentActorLabel(row.metadata)
+        : null,
     content: row.body,
     type: 'comment',
     parent_id: null,
@@ -1101,8 +1130,8 @@ export async function postIssueComment(
     issueId: result.value.issueId,
     comment: {
       id: result.value.dbComment.id,
-      authorType: result.value.dbComment.authorType as 'user' | 'agent',
-      authorId: result.value.dbComment.authorId,
+      authorType: 'user',
+      authorId: parsed.data.authorUserId,
       body: result.value.dbComment.body,
       parentId: parsed.data.parentId ?? null,
     },
@@ -1203,13 +1232,16 @@ export async function wakeAgentsForIssueComment(
           body: input.comment.body,
           parentId: input.comment.parentId ?? null,
         },
-        parentComment: parentComment
-          ? {
-              authorType:
-                parentComment.authorType === 'agent' ? 'agent' : 'user',
-              authorId: parentComment.authorId,
-            }
-          : null,
+        parentComment:
+          parentComment &&
+          parentComment.authorId &&
+          parentComment.authorType !== 'connector'
+            ? {
+                authorType:
+                  parentComment.authorType === 'agent' ? 'agent' : 'user',
+                authorId: parentComment.authorId,
+              }
+            : null,
         runningRuns,
         mentionedAgentIds: input.mentionedAgentIds ?? [],
       })

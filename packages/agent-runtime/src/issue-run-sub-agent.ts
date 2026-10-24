@@ -793,7 +793,11 @@ export class IssueRunSubAgent extends RunSubAgentBase<
         ])
 
         const authorIds = [
-          ...new Set(comments.map((comment) => comment.authorId)),
+          ...new Set(
+            comments
+              .map((comment) => comment.authorId)
+              .filter((id): id is string => typeof id === 'string'),
+          ),
         ]
         const [commentUsers, commentAgents] =
           authorIds.length > 0
@@ -1059,10 +1063,13 @@ export class IssueRunSubAgent extends RunSubAgentBase<
 
   private authorName(input: {
     authorType: string
-    authorId: string
+    authorId: string | null
     users: Array<{ id: string; name: string | null }>
     agents: Array<{ id: string; name: string }>
   }) {
+    if (input.authorType === 'connector') {
+      return 'GitHub'
+    }
     if (input.authorType === 'agent') {
       return (
         input.agents.find((agent) => agent.id === input.authorId)?.name ??

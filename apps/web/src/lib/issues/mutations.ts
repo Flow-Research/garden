@@ -482,6 +482,7 @@ export function useCreateComment(issueId: string) {
           id: comment.id,
           actor_type: comment.author_type,
           actor_id: comment.author_id,
+          actor_label: comment.author_display ?? null,
           content: comment.content,
           parent_id: comment.parent_id,
           comment_type: comment.type,

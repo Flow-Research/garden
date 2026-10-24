@@ -12,7 +12,9 @@ export interface TimelineEntry {
   type: 'activity' | 'comment' | 'run_event'
   id: string
   actor_type: string
-  actor_id: string
+  actor_id: string | null
+  /** Override actor name for connector-sourced comments (`GitHub · @login`). */
+  actor_label?: string | null
   created_at: string
   event?: IssueRunEvent
   // Activity fields
