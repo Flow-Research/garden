@@ -575,7 +575,8 @@ describe('teams UI', () => {
       expect(toast.error).toHaveBeenCalledWith('Team has linked issues')
     })
     expect(onDeleted).not.toHaveBeenCalled()
-    expect(onClose).toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
   })
 
   it('transfers ownership to another human member', async () => {
