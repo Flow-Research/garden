@@ -263,9 +263,7 @@ function InboxEmptyState({
     <div className="flex h-full w-full items-center justify-center px-6">
       <div className="flex max-w-sm flex-col items-center text-center">
         {icon ? (
-          <div className="flex size-14 items-center justify-center">
-            {icon}
-          </div>
+          <div className="flex size-14 items-center justify-center">{icon}</div>
         ) : (
           <InboxEmptyIcon />
         )}
