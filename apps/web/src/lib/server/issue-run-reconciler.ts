@@ -154,8 +154,8 @@ async function sweepStaleApprovals(
 
     const updateRunResult = await Result.tryPromise({
       try: async () => {
-        await db.transaction(async (tx) => {
-          await tx
+        return await db.transaction(async (tx) => {
+          const [failedRun] = await tx
             .update(schema.issueRun)
             .set({
               status: 'failed',
@@ -163,7 +163,14 @@ async function sweepStaleApprovals(
               finishedAt: now,
               updatedAt: now,
             })
-            .where(eq(schema.issueRun.id, run.id))
+            .where(
+              and(
+                eq(schema.issueRun.id, run.id),
+                eq(schema.issueRun.status, 'waiting_for_approval'),
+              ),
+            )
+            .returning({ id: schema.issueRun.id })
+          if (!failedRun) return false
           if (run.issueId) {
             await tx
               .update(schema.issue)
@@ -175,35 +182,42 @@ async function sweepStaleApprovals(
                 ),
               )
           }
+          return true
         })
       },
       catch: (cause) => dbError('fail stale approval run', cause),
     })
     if (updateRunResult.isErr()) return Result.err(updateRunResult.error)
+    if (!updateRunResult.value) continue
 
     const runIssueId = run.issueId
     if (!runIssueId) continue
 
     const eventResult = await Result.tryPromise({
       try: async () => {
-        await db.insert(schema.issueRunEvent).values({
-          id: crypto.randomUUID(),
-          workspaceId: run.workspaceId,
-          issueId: runIssueId,
-          runId: run.id,
-          seq: sql<number>`(
-            select cast(coalesce(max(${schema.issueRunEvent.seq}), 0) + 1 as int)
-            from ${schema.issueRunEvent}
-            where ${schema.issueRunEvent.runId} = ${run.id}::uuid
-          )`,
-          eventType: 'issue_run:reconciler_action',
-          stream: 'system',
-          level: 'warn',
-          message: 'Approval request expired',
-          payload: {
-            permission_request_id: row.id,
-            reason: 'stale_approval',
-          },
+        await db.transaction(async (tx) => {
+          await tx.execute(sql`
+            select pg_advisory_xact_lock(hashtextextended(${run.id}::text, 0))
+          `)
+          await tx.insert(schema.issueRunEvent).values({
+            id: crypto.randomUUID(),
+            workspaceId: run.workspaceId,
+            issueId: runIssueId,
+            runId: run.id,
+            seq: sql<number>`(
+              select cast(coalesce(max(${schema.issueRunEvent.seq}), 0) + 1 as int)
+              from ${schema.issueRunEvent}
+              where ${schema.issueRunEvent.runId} = ${run.id}::uuid
+            )`,
+            eventType: 'issue_run:reconciler_action',
+            stream: 'system',
+            level: 'warn',
+            message: 'Approval request expired',
+            payload: {
+              permission_request_id: row.id,
+              reason: 'stale_approval',
+            },
+          })
         })
       },
       catch: (cause) => dbError('append stale approval event', cause),

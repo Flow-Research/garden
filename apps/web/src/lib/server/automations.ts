@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { CronExpressionParser } from 'cron-parser'
 import {
@@ -625,7 +625,12 @@ async function applyDispatchConcurrency(args: {
           error: 'replaced_by_automation',
           updatedAt: now,
         })
-        .where(eq(schema.automationRun.id, active.automation_run_id))
+        .where(
+          and(
+            eq(schema.automationRun.id, active.automation_run_id),
+            inArray(schema.automationRun.status, LIVE_AUTOMATION_RUN_STATUSES),
+          ),
+        )
     },
     catch: (cause) => dbError('mark replaced automation run', cause),
   })
@@ -737,7 +742,12 @@ async function markAutomationRunFailed(args: {
           error: args.message,
           updatedAt: now,
         })
-        .where(eq(schema.automationRun.id, args.runId))
+        .where(
+          and(
+            eq(schema.automationRun.id, args.runId),
+            inArray(schema.automationRun.status, LIVE_AUTOMATION_RUN_STATUSES),
+          ),
+        )
     },
     catch: (cause) => dbError('mark automation run failed', cause),
   })

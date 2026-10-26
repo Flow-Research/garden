@@ -2,17 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { extractMcpFailure, productToolLabel } from './chat-message-model'
 
 describe('chat integration tool presentation', () => {
-  it('uses a human label for Decide analysis', () => {
+  it('uses a connector-neutral label for analysis', () => {
     expect(
       productToolLabel('tool_executor_execute', {
         code: 'await tools.decide.user.decide.analyze({ data })',
       }),
-    ).toBe('Running analysis with Decide')
+    ).toBe('Analyzing the data')
     expect(
       productToolLabel('tool_executor_decide_analyze', {
         question: 'Analyze this file.',
       }),
-    ).toBe('Running analysis with Decide')
+    ).toBe('Analyzing the data')
   })
 
   it('shows the exact MCP error and failure stage', () => {

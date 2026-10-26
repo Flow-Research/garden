@@ -11,7 +11,6 @@ import {
   canonicalizeJson,
   extractExecutorToolRefs,
 } from '@garden/connectors/capabilities'
-import { getConnectorByExecutorSlug } from '@garden/connectors/registry'
 import { isToolStateActive } from './chat-tool-state'
 import {
   normalizeGardenArtifact,
@@ -352,6 +351,12 @@ export function toolStateLabel(state: string) {
   }
 }
 
+/**
+ * Maps internal tool names to stable user-facing activity labels.
+ * Before this mapping, analysis rows exposed the selected connector name,
+ * which made a capability-based workflow look connector-specific. The public
+ * row now describes the user task while technical details keep the connector.
+ */
 export function productToolLabel(
   toolName: string,
   input: unknown,
@@ -375,21 +380,16 @@ export function productToolLabel(
     typeof record.code === 'string' ? extractExecutorToolRefs(record.code) : []
   const executorRef = executorRefs[0]
   if (toolName.includes('executor') && toolName.endsWith('_decide_analyze')) {
-    return 'Running analysis with Decide'
+    return 'Analyzing the data'
   }
   if (toolName.includes('executor') && toolName.includes('_decide_')) {
-    return 'Running Decide'
+    return 'Working with your data'
   }
   if (toolName.includes('executor') && executorRef) {
-    const integrationLabel =
-      getConnectorByExecutorSlug(executorRef.executorSlug)?.label ??
-      (executorRef.executorSlug === 'decide'
-        ? 'Decide'
-        : executorRef.executorSlug.replaceAll('_', ' '))
     if (executorRef.tool.toLowerCase().includes('analy')) {
-      return `Running analysis with ${integrationLabel}`
+      return 'Analyzing the data'
     }
-    return `Running ${integrationLabel}`
+    return 'Working with your connected tools'
   }
   if (toolName.includes('executor') && toolName.endsWith('_skills')) {
     return 'Preparing integration tools'
