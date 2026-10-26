@@ -92,18 +92,21 @@ export function WorkspaceTab() {
       confirmLabel: 'Leave',
       pendingLabel: 'Leaving…',
       variant: 'destructive',
-      onConfirm: async () => {
+      onConfirm: () => {
         setActionId('leave')
-        const result = await Result.tryPromise({
+        return Result.tryPromise({
           try: async () =>
             await leaveWorkspace.mutateAsync({ workspaceId: workspace.id }),
           catch: (error) =>
             error instanceof Error ? error : new Error(String(error)),
         })
-        if (result.isErr()) {
-          toast.error(result.error.message)
-        }
-        setActionId(null)
+          .then((result) => {
+            if (result.isErr()) {
+              toast.error(result.error.message)
+              throw result.error
+            }
+          })
+          .finally(() => setActionId(null))
       },
     })
   }
@@ -216,7 +219,9 @@ export function WorkspaceTab() {
         tone={
           confirmAction?.variant === 'destructive' ? 'destructive' : 'default'
         }
-        onConfirm={() => confirmAction?.onConfirm()}
+        onConfirm={() =>
+          confirmAction ? confirmAction.onConfirm() : Promise.resolve()
+        }
       />
     </div>
   )

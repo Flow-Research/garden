@@ -379,6 +379,7 @@ export default function SkillsPage({
         tone="destructive"
         onConfirm={() => {
           if (pendingSkillId) openSkill(pendingSkillId)
+          return Promise.resolve()
         }}
       />
 

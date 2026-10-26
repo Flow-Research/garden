@@ -75,7 +75,7 @@ export interface WorkProductCardProps {
    * request's promise so the confirmation stays open until it settles (and
    * stays open on failure, for a retry).
    */
-  onApply?: () => Promise<unknown> | void
+  onApply?: () => Promise<unknown>
   onShowDiff?: () => void
 }
 
@@ -296,7 +296,7 @@ export function WorkProductCard({
         description={`“${workProduct.title}” will be posted to ${connectorName} under your account. Garden can't take it back once it's posted.`}
         confirmLabel="Post"
         pendingLabel="Posting…"
-        onConfirm={() => onApply?.()}
+        onConfirm={() => (onApply ? onApply() : Promise.resolve())}
       />
 
       {workProduct.status === 'applied' && workProduct.applied_external_url && (
@@ -336,7 +336,7 @@ interface WorkProductListProps {
   pending?: { id: string; action: WorkProductReviewAction } | null
   onApprove?: (id: string) => void
   onRequestChanges?: (id: string) => void
-  onApply?: (id: string) => Promise<unknown> | void
+  onApply?: (id: string) => Promise<unknown>
 }
 
 export function WorkProductList({
@@ -361,7 +361,7 @@ export function WorkProductList({
           pendingAction={pending?.id === wp.id ? pending.action : null}
           onApprove={() => onApprove?.(wp.id)}
           onRequestChanges={() => onRequestChanges?.(wp.id)}
-          onApply={() => onApply?.(wp.id)}
+          onApply={() => (onApply ? onApply(wp.id) : Promise.resolve())}
         />
       ))}
     </div>

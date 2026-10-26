@@ -315,19 +315,21 @@ export function MembersTab() {
       confirmLabel: 'Revoke',
       pendingLabel: 'Revoking…',
       variant: 'destructive',
-      onConfirm: async () => {
+      onConfirm: () => {
         setInvitationActionId(invitation.id)
-        try {
-          await api.revokeInvitation(wsId, invitation.id)
-          qc.invalidateQueries({ queryKey: workspaceKeys.invitations(wsId) })
-          toast.success('Invitation revoked')
-        } catch (e) {
-          toast.error(
-            e instanceof Error ? e.message : 'Failed to revoke invitation',
-          )
-        } finally {
-          setInvitationActionId(null)
-        }
+        return api
+          .revokeInvitation(wsId, invitation.id)
+          .then(() => {
+            qc.invalidateQueries({ queryKey: workspaceKeys.invitations(wsId) })
+            toast.success('Invitation revoked')
+          })
+          .catch((e: unknown) => {
+            toast.error(
+              e instanceof Error ? e.message : 'Failed to revoke invitation',
+            )
+            throw e
+          })
+          .finally(() => setInvitationActionId(null))
       },
     })
   }
@@ -375,19 +377,21 @@ export function MembersTab() {
       confirmLabel: 'Remove',
       pendingLabel: 'Removing…',
       variant: 'destructive',
-      onConfirm: async () => {
+      onConfirm: () => {
         setMemberActionId(member.id)
-        try {
-          await api.deleteMember(wsId, member.id)
-          qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
-          toast.success('Member removed')
-        } catch (e) {
-          toast.error(
-            e instanceof Error ? e.message : 'Failed to remove member',
-          )
-        } finally {
-          setMemberActionId(null)
-        }
+        return api
+          .deleteMember(wsId, member.id)
+          .then(() => {
+            qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
+            toast.success('Member removed')
+          })
+          .catch((e: unknown) => {
+            toast.error(
+              e instanceof Error ? e.message : 'Failed to remove member',
+            )
+            throw e
+          })
+          .finally(() => setMemberActionId(null))
       },
     })
   }
@@ -520,7 +524,9 @@ export function MembersTab() {
         tone={
           confirmAction?.variant === 'destructive' ? 'destructive' : 'default'
         }
-        onConfirm={() => confirmAction?.onConfirm()}
+        onConfirm={() =>
+          confirmAction ? confirmAction.onConfirm() : Promise.resolve()
+        }
       />
     </div>
   )

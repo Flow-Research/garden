@@ -8,8 +8,7 @@ import {
 import { describe, expect, it, vi } from 'vitest'
 import { IntegrationActionsMenu } from './manage-drawer-body'
 
-function renderMenu() {
-  const onAction = vi.fn()
+function renderMenu(onAction = vi.fn(() => Promise.resolve())) {
   render(
     <IntegrationActionsMenu
       label="GitHub"
@@ -65,5 +64,19 @@ describe('IntegrationActionsMenu', () => {
     )
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
     expect(onAction).not.toHaveBeenCalled()
+  })
+
+  it('keeps destructive confirmation open when the action fails', async () => {
+    const onAction = vi.fn(() => Promise.reject(new Error('failed')))
+    renderMenu(onAction)
+    await choose('Delete integration')
+
+    const confirm = await screen.findByRole('alertdialog')
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument(),
+    )
+    expect(onAction).toHaveBeenCalledWith('delete')
   })
 })

@@ -73,7 +73,7 @@ export function ManageDrawerBody({
   onConnected: () => Promise<void>
   onManageSource: (slug: string) => void
   onInstall: (source: ExecutorIntegrationSource) => void
-  onAction: (slug: string, action: IntegrationAction) => void
+  onAction: (slug: string, action: IntegrationAction) => Promise<unknown>
   onClose: () => void
 }) {
   const initialMethod = integration.authMethods[0]
@@ -500,7 +500,7 @@ export function IntegrationActionsMenu({
   hasConnections: boolean
   canRemove: boolean
   pending: boolean
-  onAction: (action: IntegrationAction) => void
+  onAction: (action: IntegrationAction) => Promise<unknown>
 }) {
   // Disconnect and Delete used to run on the first click of the menu item.
   const [confirmAction, setConfirmAction] = useState<
@@ -526,7 +526,9 @@ export function IntegrationActionsMenu({
           {hasConnections && (
             <>
               <DropdownMenuItem
-                onClick={() => onAction('resync')}
+                onClick={() => {
+                  void onAction('resync').catch(() => undefined)
+                }}
                 disabled={pending}
               >
                 Resync tools
@@ -571,9 +573,9 @@ export function IntegrationActionsMenu({
         }
         confirmLabel={confirmAction === 'delete' ? 'Delete' : 'Disconnect'}
         tone="destructive"
-        onConfirm={() => {
-          if (confirmAction) onAction(confirmAction)
-        }}
+        onConfirm={() =>
+          confirmAction ? onAction(confirmAction) : Promise.resolve()
+        }
       />
     </>
   )

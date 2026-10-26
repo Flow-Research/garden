@@ -461,7 +461,9 @@ export function TeamDetail({
         pendingLabel="Removing…"
         tone="destructive"
         onConfirm={() =>
-          memberToRemove ? handleRemoveMember(memberToRemove) : undefined
+          memberToRemove
+            ? handleRemoveMember(memberToRemove)
+            : Promise.resolve()
         }
       />
     </div>

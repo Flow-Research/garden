@@ -30,7 +30,7 @@ export interface ConfirmDialogProps {
    * dialog closes when it resolves and stays open when it rejects, leaving
    * the caller's error message visible and the action retryable.
    */
-  onConfirm: () => Promise<unknown> | void
+  onConfirm: () => Promise<unknown>
 }
 
 /**

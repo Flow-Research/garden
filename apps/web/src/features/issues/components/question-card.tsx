@@ -131,7 +131,7 @@ export function QuestionCard({
     },
     [question.options, handleToggle],
   )
-  useOptionHotkeys({
+  const handleOptionKeyDown = useOptionHotkeys({
     count: question.options.length,
     enabled: hasOptions && !submitting,
     onSelect: selectOption,
@@ -143,6 +143,8 @@ export function QuestionCard({
 
   return (
     <div
+      onKeyDown={handleOptionKeyDown}
+      role="group"
       data-question-id={question.id}
       className={cn(
         !compact && 'rounded-lg border border-warning/30 bg-warning/[0.04]',

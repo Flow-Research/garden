@@ -102,7 +102,7 @@ export const StructuredInputPanel = memo(function StructuredInputPanel({
     },
     [activeQuestion, handleToggle],
   )
-  useOptionHotkeys({
+  const handleOptionKeyDown = useOptionHotkeys({
     count: activeQuestion?.options.length ?? 0,
     enabled: Boolean(activeQuestion) && !disabled,
     onSelect: selectOption,
@@ -116,7 +116,11 @@ export const StructuredInputPanel = memo(function StructuredInputPanel({
   )
 
   return (
-    <div className="px-4 py-3 sm:px-5">
+    <div
+      className="px-4 py-3 sm:px-5"
+      onKeyDown={handleOptionKeyDown}
+      role="group"
+    >
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
           {questions.length > 1 ? (

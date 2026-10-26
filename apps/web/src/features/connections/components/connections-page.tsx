@@ -590,7 +590,7 @@ export function ConnectionsPage({
                 })
               }
               onAction={(slug, action) =>
-                connectionMutation.mutate({ slug, action })
+                connectionMutation.mutateAsync({ slug, action })
               }
             />
           ) : null}

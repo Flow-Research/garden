@@ -25,9 +25,17 @@ describe('QuestionCard number shortcuts', () => {
   it('answers with the matching option when nothing editable is focused', () => {
     const onSubmit = renderWithEditor()
 
-    fireEvent.keyDown(document.body, { key: '2' })
+    fireEvent.keyDown(screen.getByText('Which environment?'), { key: '2' })
 
     expect(onSubmit).toHaveBeenCalledWith('Production')
+  })
+
+  it('ignores digits typed outside the question card', () => {
+    const onSubmit = renderWithEditor()
+
+    fireEvent.keyDown(document.body, { key: '2' })
+
+    expect(onSubmit).not.toHaveBeenCalled()
   })
 
   it('ignores digits typed into a contentEditable editor', () => {

@@ -346,20 +346,22 @@ export function DeleteTeamDialog({
 }) {
   const deleteTeam = useDeleteTeam()
 
-  const handleDelete = async () => {
-    try {
-      await deleteTeam.mutateAsync(team.id)
-      toast.success(`${team.name} deleted`)
-      onDeleted()
-    } catch (error) {
-      // A Team with linked issues cannot be deleted; the API returns a stable
-      // TEAM_HAS_ISSUES code and the message is safe to surface.
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to delete Team',
-      )
-      onClose()
-    }
-  }
+  /** Keeps the delete confirmation open when the API rejects the deletion. */
+  const handleDelete = () =>
+    deleteTeam.mutateAsync(team.id).then(
+      () => {
+        toast.success(`${team.name} deleted`)
+        onDeleted()
+      },
+      (error: unknown) => {
+        // A Team with linked issues cannot be deleted; the API returns a stable
+        // TEAM_HAS_ISSUES code and the message is safe to surface.
+        toast.error(
+          error instanceof Error ? error.message : 'Failed to delete Team',
+        )
+        throw error
+      },
+    )
 
   return (
     <ConfirmDialog
