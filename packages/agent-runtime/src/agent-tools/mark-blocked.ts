@@ -1,8 +1,9 @@
 import { Result } from 'better-result'
 import { tool } from 'ai'
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { connectorRegistry, getConnectorById } from '@garden/connectors'
+import { LIVE_RUN_STATUSES } from '@garden/core/issues/run-sync'
 import { upsertConnectorNeededInbox } from '@garden/db/inbox'
 import * as schema from '@garden/db/schema'
 import {
@@ -50,16 +51,8 @@ export function createMarkBlockedTool(context: IssueRunToolContext) {
 
       const writeResult = await Result.tryPromise({
         try: async () => {
-          await db.transaction(async (tx) => {
-            await tx
-              .update(schema.issue)
-              .set({
-                status: 'blocked',
-                activeRunId: null,
-                updatedAt: now,
-              })
-              .where(eq(schema.issue.id, run.issueId))
-            await tx
+          return await db.transaction(async (tx) => {
+            const [blockedRun] = await tx
               .update(schema.issueRun)
               .set({
                 status: 'blocked',
@@ -72,7 +65,28 @@ export function createMarkBlockedTool(context: IssueRunToolContext) {
                 finishedAt: now,
                 updatedAt: now,
               })
-              .where(eq(schema.issueRun.id, run.runId))
+              .where(
+                and(
+                  eq(schema.issueRun.id, run.runId),
+                  inArray(schema.issueRun.status, LIVE_RUN_STATUSES),
+                ),
+              )
+              .returning({ id: schema.issueRun.id })
+            if (!blockedRun) return false
+
+            await tx
+              .update(schema.issue)
+              .set({
+                status: 'blocked',
+                activeRunId: null,
+                updatedAt: now,
+              })
+              .where(
+                and(
+                  eq(schema.issue.id, run.issueId),
+                  eq(schema.issue.activeRunId, run.runId),
+                ),
+              )
             await tx.insert(schema.issueComment).values({
               id: commentId,
               issueId: run.issueId,
@@ -81,11 +95,20 @@ export function createMarkBlockedTool(context: IssueRunToolContext) {
               body: `Blocked: ${reason}`,
               mentions: null,
             })
+            return true
           })
         },
         catch: (cause) => dbError('mark issue blocked', cause),
       })
       if (writeResult.isErr()) return toolErrorResult(writeResult.error)
+      if (!writeResult.value) {
+        return toolErrorResult(
+          new IssueRunToolError({
+            code: 'invalid_state',
+            message: 'Issue run is no longer active.',
+          }),
+        )
+      }
 
       const eventResult = await appendIssueRunEvent({
         db,

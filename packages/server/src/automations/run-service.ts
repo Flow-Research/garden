@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { getPooledDb } from '@garden/db/runtime'
 import * as schema from '@garden/db/schema'
@@ -10,6 +10,8 @@ import {
   type RunWorkflowBinding,
   type RunWorkflowControlEvent,
 } from '../runtime-bindings'
+
+const LIVE_AUTOMATION_RUN_STATUSES = ['queued', 'running'] as const
 
 export type AutomationRunEnv = {
   HYPERDRIVE: HyperdriveConnection
@@ -193,7 +195,7 @@ async function markAutomationStartFailed(args: {
   const now = new Date()
   const writeResult = await Result.tryPromise({
     try: async () => {
-      await db
+      const [failedRun] = await db
         .update(schema.automationRun)
         .set({
           status: 'failed',
@@ -202,7 +204,15 @@ async function markAutomationStartFailed(args: {
           failureReason: args.error.message,
           updatedAt: now,
         })
-        .where(eq(schema.automationRun.id, args.runId))
+        .where(
+          and(
+            eq(schema.automationRun.id, args.runId),
+            inArray(schema.automationRun.status, LIVE_AUTOMATION_RUN_STATUSES),
+          ),
+        )
+        .returning({ id: schema.automationRun.id })
+      if (!failedRun) return false
+      return true
     },
     catch: (cause) =>
       serviceDbError('mark automation workflow start failure', cause),
@@ -337,13 +347,20 @@ export async function cancelAutomationRun(
       if (!run) return { kind: 'missing' as const }
 
       const previousStatus = run.status
-      await db
+      const [updatedRun] = await db
         .update(schema.automationRun)
         .set({
           cancelRequestedAt: new Date(),
           updatedAt: new Date(),
         })
-        .where(eq(schema.automationRun.id, input.runId))
+        .where(
+          and(
+            eq(schema.automationRun.id, input.runId),
+            inArray(schema.automationRun.status, LIVE_AUTOMATION_RUN_STATUSES),
+          ),
+        )
+        .returning({ id: schema.automationRun.id })
+      if (!updatedRun) return { kind: 'ignored' as const }
       return {
         kind: 'cancelled' as const,
         agentRuntimeName: run.hostName,
@@ -362,6 +379,7 @@ export async function cancelAutomationRun(
       }),
     )
   }
+  if (result.value.kind === 'ignored') return Result.ok()
 
   const workflowResult = await sendAutomationWorkflowControlEvent({
     env,
