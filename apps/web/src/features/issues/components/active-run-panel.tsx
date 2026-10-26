@@ -65,6 +65,8 @@ export interface ActiveRunPanelProps {
     targetLabel?: string
   } | null
   approvalDisabled?: boolean
+  /** True while an approve/deny is being sent; disables both buttons. */
+  approvalPending?: boolean
   /** Pulse the question/approval card on mount — for inbox deep-link arrivals. */
   pulseFocus?: boolean
   /**
@@ -227,42 +229,42 @@ function getStateConfig(
     case 'waiting_for_input':
       return {
         containerClass: 'border-warning/30 bg-warning/5',
-        iconNode: <CircleHelp className="h-3.5 w-3.5 text-warning" />,
+        iconNode: <CircleHelp className="size-3.5 text-warning" />,
         headline: `${agentName} is waiting on you`,
         liveVariant: 'waiting',
       }
     case 'waiting_for_approval':
       return {
         containerClass: 'border-warning/30 bg-warning/5',
-        iconNode: <ShieldCheck className="h-3.5 w-3.5 text-warning" />,
+        iconNode: <ShieldCheck className="size-3.5 text-warning" />,
         headline: `${agentName} wants your approval`,
         liveVariant: 'waiting',
       }
     case 'succeeded':
       return {
         containerClass: 'border-success/20 bg-success/5',
-        iconNode: <Check className="h-3.5 w-3.5 text-success" />,
+        iconNode: <Check className="size-3.5 text-success" />,
         headline: `${agentName} finished`,
         liveVariant: 'succeeded',
       }
     case 'failed':
       return {
         containerClass: 'border-destructive/30 bg-destructive/5',
-        iconNode: <XCircle className="h-3.5 w-3.5 text-destructive" />,
+        iconNode: <XCircle className="size-3.5 text-destructive" />,
         headline: `${agentName} hit an error`,
         liveVariant: 'failed',
       }
     case 'cancelled':
       return {
         containerClass: 'border-border bg-muted/30',
-        iconNode: <Square className="h-3.5 w-3.5 text-muted-foreground" />,
+        iconNode: <Square className="size-3.5 text-muted-foreground" />,
         headline: `${agentName} was stopped`,
         liveVariant: 'failed',
       }
     case 'blocked':
       return {
         containerClass: 'border-destructive/30 bg-destructive/5',
-        iconNode: <AlertCircle className="h-3.5 w-3.5 text-destructive" />,
+        iconNode: <AlertCircle className="size-3.5 text-destructive" />,
         headline: `${agentName} is blocked`,
         liveVariant: 'blocked',
       }
@@ -279,6 +281,7 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
     pendingQuestion,
     pendingApprovalPreview,
     approvalDisabled = false,
+    approvalPending = false,
     pulseFocus = false,
     presence,
     onStop,
@@ -298,8 +301,22 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
     (run.status === 'blocked' && run.error) ||
     run.status === 'failed',
   )
-  const [open, setOpen] = useState(hasBody || debugMode)
-  const [showStopConfirm, setShowStopConfirm] = useState(false)
+  // The user's expand/collapse choice is remembered for the status it was
+  // made in. Seeding `open` once at mount left a panel that mounted while
+  // the run was queued or running collapsed when the run then asked a
+  // question or needed approval, hiding the card that needs an answer.
+  const [toggle, setToggle] = useState<{
+    status: string
+    open: boolean
+  } | null>(null)
+  const open =
+    toggle && toggle.status === run.status ? toggle.open : hasBody || debugMode
+  // Likewise scoped, so a Stop confirmation does not reappear on a later
+  // live phase of the run.
+  const [stopConfirmStatus, setStopConfirmStatus] = useState<string | null>(
+    null,
+  )
+  const showStopConfirm = stopConfirmStatus === run.status
   const [elapsedLabel, setElapsedLabel] = useState('')
 
   const isLive = run.status === 'queued' || run.status === 'running'
@@ -362,34 +379,34 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
               size="sm"
               variant="ghost"
               className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
-              onClick={() => setShowStopConfirm(true)}
+              onClick={() => setStopConfirmStatus(run.status)}
             >
-              <Square className="h-3 w-3 mr-1" />
+              <Square className="size-3 mr-1" />
               Stop
             </Button>
           )}
           {isLive && showStopConfirm && (
             <StopConfirm
               onConfirm={() => {
-                setShowStopConfirm(false)
+                setStopConfirmStatus(null)
                 onStop?.()
               }}
-              onCancel={() => setShowStopConfirm(false)}
+              onCancel={() => setStopConfirmStatus(null)}
             />
           )}
           {(hasBody || debugMode) && (
             <Button
               size="sm"
               variant="ghost"
-              className="h-7 w-7 p-0 text-muted-foreground"
-              onClick={() => setOpen((v) => !v)}
+              className="size-7 p-0 text-muted-foreground"
+              onClick={() => setToggle({ status: run.status, open: !open })}
               aria-expanded={open}
               aria-label={open ? 'Collapse details' : 'Expand details'}
             >
               {open ? (
-                <ChevronUp className="h-3.5 w-3.5" />
+                <ChevronUp className="size-3.5" />
               ) : (
-                <ChevronDown className="h-3.5 w-3.5" />
+                <ChevronDown className="size-3.5" />
               )}
             </Button>
           )}
@@ -431,6 +448,7 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
               body={<ConnectorWriteBody text={pendingApprovalPreview.body} />}
               pulseOnMount={pulseFocus}
               disabled={approvalDisabled}
+              pending={approvalPending}
               onApprove={() => onApprove?.()}
               onDeny={() => onDeny?.()}
               onEditApprove={onEditApprove ? () => onEditApprove() : undefined}

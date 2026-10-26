@@ -36,6 +36,7 @@ import {
   FileDropOverlay,
 } from '../../editor'
 import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
+import { LoadError } from '@garden/ui/components/common/load-error'
 import {
   Tooltip,
   TooltipTrigger,
@@ -137,6 +138,9 @@ export function IssueDetail({
     uploadWithToast,
     issue,
     issueLoading,
+    issueLoadFailed,
+    retryIssue,
+    retryingIssue,
     timelineState,
     issueReactionState,
     subscriberState,
@@ -205,6 +209,9 @@ export function IssueDetail({
   const {
     timeline,
     loading: timelineLoading,
+    loadFailed: timelineLoadFailed,
+    retrying: timelineRetrying,
+    retryLoad: retryTimeline,
     submitting: commentSubmitting,
     submitComment,
     submitReply,
@@ -409,7 +416,7 @@ export function IssueDetail({
                     >
                       {workspace.name}
                     </button>
-                    <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                    <ChevronRight className="size-3 text-muted-foreground/50 shrink-0" />
                   </>
                 ) : null}
                 <span className="shrink-0">{issue.identifier}</span>
@@ -441,6 +448,7 @@ export function IssueDetail({
                       render={
                         <Button
                           aria-label="Toggle properties"
+                          aria-expanded={sidebarOpen}
                           variant={sidebarOpen ? 'secondary' : 'ghost'}
                           size="icon-sm"
                           className={sidebarOpen ? '' : 'text-muted-foreground'}
@@ -507,8 +515,18 @@ export function IssueDetail({
               description="Search for an issue to set as the parent of this issue"
               excludeIds={[id, ...childIssues.map((c) => c.id)]}
               onSelect={(selected) => {
-                handleUpdateField({ parent_issue_id: selected.id })
-                toast.success(`Set ${selected.identifier} as parent issue`)
+                // The success toast waits for the request; it used to show
+                // before it, even when the update then failed.
+                updateIssueMutation.mutate(
+                  { id, parent_issue_id: selected.id },
+                  {
+                    onSuccess: () =>
+                      toast.success(
+                        `Set ${selected.identifier} as parent issue`,
+                      ),
+                    onError: () => toast.error('Failed to set parent issue'),
+                  },
+                )
               }}
             />
 
@@ -526,9 +544,14 @@ export function IssueDetail({
               onSelect={(selected) => {
                 updateIssueMutation.mutate(
                   { id: selected.id, parent_issue_id: id },
-                  { onError: () => toast.error('Failed to add sub-issue') },
+                  {
+                    onSuccess: () =>
+                      toast.success(
+                        `Added ${selected.identifier} as sub-issue`,
+                      ),
+                    onError: () => toast.error('Failed to add sub-issue'),
+                  },
                 )
-                toast.success(`Added ${selected.identifier} as sub-issue`)
               }}
             />
 
@@ -558,7 +581,7 @@ export function IssueDetail({
                     <span className="font-medium shrink-0">Sub-issue of</span>
                     <StatusIcon
                       status={parentIssue.status}
-                      className="h-3.5 w-3.5 shrink-0"
+                      className="size-3.5 shrink-0"
                     />
                     <span className="tabular-nums shrink-0">
                       {parentIssue.identifier}
@@ -596,9 +619,7 @@ export function IssueDetail({
                     key={id}
                     defaultValue={issue.description || ''}
                     placeholder="Add description..."
-                    onUpdate={(md) =>
-                      handleUpdateField({ description: md || undefined })
-                    }
+                    onUpdate={(md) => handleUpdateField({ description: md })}
                     onUploadFile={handleDescriptionUpload}
                     debounceMs={1500}
                   />
@@ -633,7 +654,7 @@ export function IssueDetail({
                         disabled={openChatPending}
                         className="ml-auto h-7 gap-1.5 border-info/30 bg-info/5 text-info hover:bg-info/10 hover:text-info"
                       >
-                        <MessageSquare className="h-3.5 w-3.5" />
+                        <MessageSquare className="size-3.5" />
                         {openChatPending ? 'Opening in chat…' : 'Open in chat'}
                       </Button>
                     ) : null}
@@ -673,7 +694,7 @@ export function IssueDetail({
                         })
                       }
                     >
-                      <Plus className="h-3.5 w-3.5" />
+                      <Plus className="size-3.5" />
                       <span>Add sub-issues</span>
                     </button>
                   </div>
@@ -694,7 +715,7 @@ export function IssueDetail({
                           >
                             <ChevronDown
                               className={cn(
-                                'h-3.5 w-3.5 text-muted-foreground transition-transform',
+                                'size-3.5 text-muted-foreground transition-transform',
                                 subIssuesCollapsed && '-rotate-90',
                               )}
                             />
@@ -715,7 +736,7 @@ export function IssueDetail({
                               render={
                                 <button
                                   type="button"
-                                  className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                                  className="ml-auto inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                                   onClick={() =>
                                     openCreateIssue({
                                       parent_issue_id: issue.id,
@@ -724,7 +745,7 @@ export function IssueDetail({
                                   }
                                   aria-label="Add sub-issue"
                                 >
-                                  <Plus className="h-4 w-4" />
+                                  <Plus className="size-4" />
                                 </button>
                               }
                             />
@@ -774,7 +795,7 @@ export function IssueDetail({
                                   ) : (
                                     <span
                                       aria-hidden
-                                      className="h-5 w-5 rounded-full border border-dashed border-muted-foreground/30 shrink-0"
+                                      className="size-5 rounded-full border border-dashed border-muted-foreground/30 shrink-0"
                                     />
                                   )}
                                 </AppLink>
@@ -821,7 +842,13 @@ export function IssueDetail({
                       loading={timelineLoading}
                       className="w-full"
                     >
-                      {!timelineLoading ? (
+                      {timelineLoadFailed ? (
+                        <LoadError
+                          message="Could not load activity."
+                          onRetry={retryTimeline}
+                          retrying={timelineRetrying}
+                        />
+                      ) : !timelineLoading ? (
                         <IssueActivityTimeline
                           timeline={timeline}
                           debugMode={debugMode}
@@ -863,6 +890,10 @@ export function IssueDetail({
                 transition: 'width 200ms ease-linear',
               }}
               className="shrink-0 overflow-hidden border-l"
+              // Collapsed to zero width but still focusable, Tab used to walk
+              // into the invisible pickers.
+              inert={sidebarOpen ? undefined : true}
+              data-testid="issue-detail-sidebar"
             >
               <div className="h-full w-[320px] overflow-y-auto p-4">
                 {sidebarContent}
@@ -881,6 +912,14 @@ export function IssueDetail({
             </Sheet>
           )}
         </div>
+      ) : issueLoadFailed ? (
+        <div className="flex flex-1 min-h-0 items-center justify-center p-8">
+          <LoadError
+            message="Could not load this issue."
+            onRetry={retryIssue}
+            retrying={retryingIssue}
+          />
+        </div>
       ) : !loading ? (
         <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
           <p>
@@ -888,7 +927,7 @@ export function IssueDetail({
           </p>
           {!onDelete && (
             <Button variant="outline" size="sm" onClick={handleOpenIssues}>
-              <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+              <ChevronLeft className="mr-1 size-3.5" />
               Back to Issues
             </Button>
           )}

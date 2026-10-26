@@ -23,6 +23,7 @@ export type MockEditorProps = {
 export type MockContentEditorHandle = {
   getMarkdown: () => string
   uploadFile: () => void
+  hasActiveUploads: () => boolean
   clearContent?: () => void
   focus?: () => void
 }

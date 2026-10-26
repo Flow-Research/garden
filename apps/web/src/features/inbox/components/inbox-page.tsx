@@ -1,4 +1,10 @@
-import { useState, useCallback, useMemo, useSyncExternalStore } from 'react'
+import {
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import {
@@ -22,6 +28,8 @@ import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigati
 import { toast } from 'sonner'
 import { ArrowLeft, MailOpen, X } from 'lucide-react'
 import type { InboxItem } from '@garden/core/types'
+import { LoadError } from '@garden/ui/components/common/load-error'
+import { Sheet, SheetContent, SheetTitle } from '@garden/ui/components/ui/sheet'
 import { Button } from '@garden/ui/components/ui/button'
 
 import { useIsMobile } from '@garden/ui/hooks/use-mobile'
@@ -34,6 +42,8 @@ import {
 import { InboxFooter } from './inbox-footer'
 import { GmailDetail, GmailErrorState, GmailListItem } from './gmail-views'
 import { InboxNotificationDetailV2 } from './inbox-details/inbox-notification-detail'
+
+const NO_INBOX_ITEMS: InboxItem[] = []
 
 /** Subscribes to the viewport media query without leaking a render-time listener. */
 function useIsDesktop(): boolean {
@@ -253,7 +263,7 @@ function InboxEmptyState({
     <div className="flex h-full w-full items-center justify-center px-6">
       <div className="flex max-w-sm flex-col items-center text-center">
         {icon ? (
-          <div className="flex h-14 w-14 items-center justify-center">
+          <div className="flex size-14 items-center justify-center">
             {icon}
           </div>
         ) : (
@@ -269,6 +279,20 @@ function InboxEmptyState({
       </div>
     </div>
   )
+}
+
+const INBOX_FILTER_PARAMS: Record<InboxFilter, string | null> = {
+  All: null,
+  Unread: 'unread',
+  'In draft': 'drafts',
+  Sent: 'sent',
+}
+
+function inboxFilterFromParam(param: string | null): InboxFilter {
+  const match = (Object.keys(INBOX_FILTER_PARAMS) as InboxFilter[]).find(
+    (filter) => INBOX_FILTER_PARAMS[filter] === param,
+  )
+  return match ?? 'All'
 }
 
 function gmailViewForMode(mode: InboxFilter): GmailView | null {
@@ -314,12 +338,18 @@ function focusForInboxItem(item: InboxItem): string | null {
 // ------------------------
 
 export function InboxPage() {
-  const { searchParams, replace } = useNavigation()
+  const { searchParams, replace, push, back } = useNavigation()
   const { openIssue } = useSurfaceNavigation()
   const selectedKey = searchParams.get('item') ?? ''
+  // The filter lives in the URL (?filter=), so it can be linked and survives
+  // a reload; it used to reset to All.
+  const mode = inboxFilterFromParam(searchParams.get('filter'))
+  const isMobile = useIsMobile()
+  // On mobile, opening an item pushes a history entry, so Back returns to
+  // the list instead of leaving the inbox.
+  const pushedSelectionRef = useRef(false)
 
   const [search, setSearch] = useState('')
-  const [mode, setMode] = useState<InboxFilter>('All')
   const [composeOpen, setComposeOpen] = useState(false)
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null)
   const [moreItems, setMoreItems] = useState<
@@ -327,15 +357,28 @@ export function InboxPage() {
   >([])
   const [moreCursor, setMoreCursor] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
+  // Bumped on every view switch. A page that comes back for an older request
+  // is dropped; it used to be appended to whichever view was showing by then.
+  const loadMoreRequestRef = useRef(0)
   const unreadsOnly = mode === 'Unread'
   const gmailView = gmailViewForMode(mode)
 
   const setSelectedKey = useCallback(
-    (key: string, item?: InboxItem | null) => {
+    (
+      key: string,
+      item?: InboxItem | null,
+      options?: { filter?: InboxFilter },
+    ) => {
       if (typeof window === 'undefined') return
       const url = new URL(window.location.href)
       if (key) url.searchParams.set('item', key)
       else url.searchParams.delete('item')
+
+      if (options?.filter !== undefined) {
+        const param = INBOX_FILTER_PARAMS[options.filter]
+        if (param) url.searchParams.set('filter', param)
+        else url.searchParams.delete('filter')
+      }
 
       if (item?.issue_id) url.searchParams.set('issue', item.issue_id)
       else url.searchParams.delete('issue')
@@ -343,13 +386,17 @@ export function InboxPage() {
       const focus = item ? focusForInboxItem(item) : null
       if (focus) url.searchParams.set('focus', focus)
       else url.searchParams.delete('focus')
-      replace(`${url.pathname}${url.search}`)
+      const path = `${url.pathname}${url.search}`
+      pushedSelectionRef.current = Boolean(key) && isMobile
+      if (pushedSelectionRef.current) push(path)
+      else replace(path)
     },
-    [replace],
+    [isMobile, push, replace],
   )
 
   const wsId = useWorkspaceId()
-  const { data: queryItems = [] } = useQuery(inboxListOptions(wsId))
+  const inboxQuery = useQuery(inboxListOptions(wsId))
+  const queryItems = inboxQuery.data ?? NO_INBOX_ITEMS
   const gmailQuery = useQuery(gmailListOptions(wsId, gmailView))
   const allThreads = useMemo(() => groupInboxItems(queryItems), [queryItems])
 
@@ -376,7 +423,6 @@ export function InboxPage() {
     })
   }, [allThreads, search, unreadsOnly, getActorName])
 
-  const isMobile = useIsMobile()
   const isDesktop = useIsDesktop()
 
   const showDetailAsOverlay = !isDesktop
@@ -420,24 +466,27 @@ export function InboxPage() {
   const hasSelection = selected !== null || selectedGmail !== null
 
   const handleModeChange = (next: InboxFilter) => {
-    setMode(next)
+    loadMoreRequestRef.current += 1
     setMoreItems([])
     setMoreCursor(null)
     setLoadingMore(false)
-    setSelectedKey('')
+    setSelectedKey('', null, { filter: next })
   }
 
   const handleLoadMore = () => {
     if (!gmailView || loadingMore || !activeCursor) return
+    const request = ++loadMoreRequestRef.current
     setLoadingMore(true)
     api
       .listGmail(gmailView, activeCursor)
       .then((page) => {
+        if (request !== loadMoreRequestRef.current) return
         setMoreItems((current) => [...current, ...page.items])
         setMoreCursor(page.nextCursor)
         setLoadingMore(false)
       })
       .catch((error: unknown) => {
+        if (request !== loadMoreRequestRef.current) return
         setLoadingMore(false)
         toast.error(
           error instanceof Error ? error.message : 'Could not load more email.',
@@ -599,6 +648,17 @@ export function InboxPage() {
   const listBody =
     gmailView !== null ? (
       gmailListBody
+    ) : inboxQuery.isPending ? (
+      <div className="flex items-center justify-center px-6 py-16 text-sm text-muted-foreground">
+        Loading inbox...
+      </div>
+    ) : inboxQuery.isError && allThreads.length === 0 ? (
+      <LoadError
+        className="justify-center px-6 py-16"
+        message="Could not load your inbox."
+        onRetry={() => void inboxQuery.refetch()}
+        retrying={inboxQuery.isFetching}
+      />
     ) : items.length === 0 ? (
       allThreads.length === 0 ? (
         <InboxEmptyState
@@ -646,7 +706,11 @@ export function InboxPage() {
         </div>
       )
     ) : selected ? (
+      // Keyed by thread: the reply box is an uncontrolled contentEditable, so
+      // reusing the instance carried a draft typed for one thread into the
+      // next, where Send posted it to the wrong issue.
       <InboxNotificationDetailV2
+        key={selectedThread?.id ?? selected.id}
         item={selected}
         items={selectedThread?.items ?? [selected]}
         onArchive={() => {
@@ -662,7 +726,7 @@ export function InboxPage() {
           title="No messages"
           body="Once any new message is sent it'll be documented"
           icon={
-            <div className="bg-muted h-20 w-20 flex items-center justify-center rounded-full text-muted-foreground shrink-0">
+            <div className="bg-muted size-20 flex items-center justify-center rounded-full text-muted-foreground shrink-0">
               <MailOpen strokeWidth={0.5} size={35} />
             </div>
           }
@@ -679,10 +743,13 @@ export function InboxPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setSelectedKey('')}
+            onClick={() => {
+              if (pushedSelectionRef.current) back()
+              else setSelectedKey('')
+            }}
             className="gap-1.5 text-muted-foreground"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="size-4" />
             Inbox
           </Button>
         </div>
@@ -708,37 +775,36 @@ export function InboxPage() {
           <div className="bg-background/30 px-3 py-2">{footer}</div>
         </div>
 
-        {hasSelection && (
-          <>
-            <button
-              type="button"
-              aria-label="Close detail"
-              onClick={() => setSelectedKey('')}
-              className="fixed inset-0 z-40 bg-black/30 animate-in fade-in-0"
-            />
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label="Notification detail"
-              className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col border-l bg-background shadow-xl animate-in slide-in-from-right duration-200"
-            >
-              <div className="flex h-12 shrink-0 items-center justify-end border-b px-2">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => setSelectedKey('')}
-                  aria-label="Close"
-                  className="text-muted-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                {detailContent}
-              </div>
+        {/* Sheet, not a hand-built overlay: it traps focus, closes on
+            Escape and locks page scroll, which the overlay did not. */}
+        <Sheet
+          open={hasSelection}
+          onOpenChange={(open) => {
+            if (!open) setSelectedKey('')
+          }}
+        >
+          <SheetContent
+            side="right"
+            showCloseButton={false}
+            className="w-full gap-0 p-0 data-[side=right]:sm:max-w-xl"
+          >
+            <SheetTitle className="sr-only">Notification detail</SheetTitle>
+            <div className="flex h-12 shrink-0 items-center justify-end border-b px-2">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setSelectedKey('')}
+                aria-label="Close"
+                className="text-muted-foreground"
+              >
+                <X className="size-4" />
+              </Button>
             </div>
-          </>
-        )}
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {detailContent}
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
     )
   }

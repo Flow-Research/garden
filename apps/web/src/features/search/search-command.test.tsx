@@ -50,14 +50,34 @@ vi.mock('@/lib/issues/queries', () => ({
     queryKey: ['issues', 'ws-test', 'list'],
     enabled: false,
   }),
+  issueKeys: { searches: (wsId: string) => ['issues', wsId, 'search'] },
 }))
 
+const queryOptionsSeen = vi.hoisted(() => ({
+  last: null as null | { enabled?: boolean; subscribed?: boolean },
+}))
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: () => ({ data: mockAllIssues.current }),
+  keepPreviousData: (previous: unknown) => previous,
+  useQuery: (options: {
+    queryKey: readonly unknown[]
+    enabled?: boolean
+    subscribed?: boolean
+  }) => {
+    // The palette's issue search has its own query; this harness answers
+    // only the issue list.
+    if (options.queryKey.includes('search')) {
+      return { data: undefined, isFetching: false }
+    }
+    queryOptionsSeen.last = options
+    return { data: mockAllIssues.current }
+  },
 }))
 
 vi.mock('../navigation', () => ({
   useNavigation: () => ({
+    push: vi.fn(),
+  }),
+  useNavigationActions: () => ({
     push: vi.fn(),
   }),
 }))
@@ -231,5 +251,28 @@ describe('SearchCommand', () => {
     expect(screen.getByText('Recent Issues')).toBeInTheDocument()
     expect(screen.getByText('Existing issue')).toBeInTheDocument()
     expect(screen.queryByText('deleted-issue')).not.toBeInTheDocument()
+  })
+})
+
+describe('SearchCommand while closed', () => {
+  it('does not subscribe to the issue list until it opens', () => {
+    Element.prototype.scrollIntoView = vi.fn()
+    act(() => {
+      useSearchStore.setState({ open: false })
+    })
+    const { rerender } = render(<SearchCommand />)
+    expect(queryOptionsSeen.last).toMatchObject({
+      enabled: false,
+      subscribed: false,
+    })
+
+    act(() => {
+      useSearchStore.setState({ open: true })
+    })
+    rerender(<SearchCommand />)
+    expect(queryOptionsSeen.last).toMatchObject({
+      enabled: true,
+      subscribed: true,
+    })
   })
 })

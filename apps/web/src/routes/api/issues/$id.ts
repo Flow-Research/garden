@@ -194,7 +194,7 @@ export const Route = createFileRoute('/api/issues/$id')({
         }
         if (body.status) updateValues.status = body.status
         if (body.priority) updateValues.priority = body.priority
-        if (typeof body.position === 'number')
+        if (typeof body.position === 'string')
           updateValues.position = body.position
         if (Object.prototype.hasOwnProperty.call(body, 'due_date')) {
           updateValues.dueDate = body.due_date ? new Date(body.due_date) : null

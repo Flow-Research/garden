@@ -111,7 +111,7 @@ export const ListRow = memo(function ListRow({
         selected ? 'bg-accent/30' : ''
       }`}
     >
-      <div className="relative flex shrink-0 items-center justify-center w-4 h-4">
+      <div className="relative flex shrink-0 items-center justify-center size-4">
         <PriorityIcon
           priority={issue.priority}
           className={selected ? 'hidden' : 'group-hover/row:hidden'}
@@ -119,7 +119,9 @@ export const ListRow = memo(function ListRow({
         <Checkbox
           checked={selected}
           onCheckedChange={() => toggle(issue.id)}
-          className={`absolute inset-0 size-4 ${selected ? '' : 'hidden group-hover/row:flex'}`}
+          // Opacity, not display:none, so the checkbox stays reachable by
+          // keyboard and shows when it has focus. It covers the priority icon.
+          className={`absolute inset-0 size-4 ${selected ? '' : 'opacity-0 group-hover/row:opacity-100 focus-visible:bg-background focus-visible:opacity-100'}`}
           aria-label={selected ? 'Deselect issue' : 'Select issue'}
         />
       </div>

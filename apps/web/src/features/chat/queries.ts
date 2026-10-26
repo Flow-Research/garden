@@ -18,4 +18,5 @@ export const chatDocumentKeys = {
     ['document-versions', documentId] as const,
   metadata: (documentId: string | null | undefined) =>
     ['document-metadata', documentId] as const,
+  text: (url: string) => ['document-text', url] as const,
 }

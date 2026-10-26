@@ -1,11 +1,14 @@
 import { useMemo } from 'react'
 import { useMutationState, useQuery } from '@tanstack/react-query'
 import type { IssueReaction } from '@garden/core/types'
-import { issueReactionsOptions } from '@/lib/issues/queries'
+import { issueDetailOptions } from '@/lib/issues/queries'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import {
   useToggleIssueReaction,
   type ToggleIssueReactionVars,
 } from '@/lib/issues/mutations'
+
+const NO_REACTIONS: IssueReaction[] = []
 
 /** Applies pending toggles over server state without mutating the query cache. */
 function projectPendingReactions(
@@ -44,8 +47,15 @@ function projectPendingReactions(
 
 /** Combines server reactions with pending mutation intent for instant feedback. */
 export function useIssueReactions(issueId: string, userId?: string) {
-  const { data: serverReactions = [], isLoading: loading } = useQuery(
-    issueReactionsOptions(issueId),
+  // Read from the issue detail: the separate reactions query fetched the
+  // whole issue again under another key and kept a second copy that could
+  // drift from the first.
+  const wsId = useWorkspaceId()
+  const { data: serverReactions = NO_REACTIONS, isLoading: loading } = useQuery(
+    {
+      ...issueDetailOptions(wsId, issueId),
+      select: (issue) => issue.reactions ?? NO_REACTIONS,
+    },
   )
   const mutation = useToggleIssueReaction(issueId)
   const pending = useMutationState({

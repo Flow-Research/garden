@@ -23,16 +23,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@garden/ui/components/ui/tooltip'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@garden/ui/components/ui/alert-dialog'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -53,8 +44,7 @@ import {
   FileDropOverlay,
 } from '../../editor'
 import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
-import { useFileUpload } from '@garden/app-state/hooks/use-file-upload'
-import { api } from '@/lib/api'
+import { useAttachmentUpload } from '@/lib/hooks/use-attachment-upload'
 import { ReplyInput } from './reply-input'
 import type { TimelineEntry, Attachment } from '@garden/core/types'
 
@@ -67,13 +57,16 @@ interface CommentCardProps {
   entry: TimelineEntry
   allReplies: Map<string, TimelineEntry[]>
   currentUserId?: string
+  /** Resolves true when the reply was sent. */
   onReply: (
     parentId: string,
     content: string,
     attachmentIds?: string[],
-  ) => Promise<void>
-  onEdit: (commentId: string, content: string) => Promise<void>
-  onDelete: (commentId: string) => void
+  ) => Promise<boolean>
+  /** Resolves true when the edit was saved; edit mode closes only then. */
+  onEdit: (commentId: string, content: string) => Promise<boolean>
+  /** Resolves true when the comment was deleted. */
+  onDelete: (commentId: string) => Promise<boolean>
   onToggleReaction: (commentId: string, emoji: string) => void
   /** ID of the comment to highlight (flash animation). */
   highlightedCommentId?: string | null
@@ -91,28 +84,27 @@ function DeleteCommentDialog({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onConfirm: () => void
+  onConfirm: () => Promise<boolean>
   hasReplies?: boolean
 }) {
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete comment</AlertDialogTitle>
-          <AlertDialogDescription>
-            {hasReplies
-              ? 'This comment and all its replies will be permanently deleted. This cannot be undone.'
-              : 'This comment will be permanently deleted. This cannot be undone.'}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" onClick={onConfirm}>
-            Delete
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Delete comment"
+      description={
+        hasReplies
+          ? 'This comment and all its replies will be permanently deleted. This cannot be undone.'
+          : 'This comment will be permanently deleted. This cannot be undone.'
+      }
+      confirmLabel="Delete"
+      pendingLabel="Deleting…"
+      tone="destructive"
+      onConfirm={async () => {
+        // Rejecting keeps the dialog open; the failure is already toasted.
+        if (!(await onConfirm())) throw new Error('Comment was not deleted')
+      }}
+    />
   )
 }
 
@@ -148,15 +140,18 @@ function AttachmentList({
             <p className="truncate text-sm">{a.filename}</p>
           </div>
           {a.download_url && (
-            <button
-              type="button"
+            // A labelled link rather than an unnamed button calling
+            // window.open, so it can be read out and opened in a new tab.
+            <a
+              href={a.download_url}
+              download={a.filename}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Download ${a.filename}`}
               className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              onClick={() =>
-                window.open(a.download_url, '_blank', 'noopener,noreferrer')
-              }
             >
-              <Download className="size-3.5" />
-            </button>
+              <Download className="size-3.5" aria-hidden />
+            </a>
           )}
         </div>
       ))}
@@ -179,15 +174,16 @@ function CommentRow({
   issueId: string
   entry: TimelineEntry
   currentUserId?: string
-  onEdit: (commentId: string, content: string) => Promise<void>
-  onDelete: (commentId: string) => void
+  onEdit: (commentId: string, content: string) => Promise<boolean>
+  /** Resolves true when the comment was deleted. */
+  onDelete: (commentId: string) => Promise<boolean>
   onToggleReaction: (commentId: string, emoji: string) => void
 }) {
   const { getActorName } = useActorName()
   const [editing, setEditing] = useState(false)
   const editEditorRef = useRef<ContentEditorRef>(null)
   const cancelledRef = useRef(false)
-  const { uploadWithToast } = useFileUpload(api)
+  const { uploadWithToast } = useAttachmentUpload()
   const { isDragOver, dropZoneProps } = useFileDropZone({
     onDrop: (files) =>
       files.forEach((f) => editEditorRef.current?.uploadFile(f)),
@@ -219,12 +215,8 @@ function CommentRow({
       setEditing(false)
       return
     }
-    try {
-      await onEdit(entry.id, trimmed)
-      setEditing(false)
-    } catch {
-      toast.error('Failed to update comment')
-    }
+    // onEdit reports failure itself; keep the editor open with the text.
+    if (await onEdit(entry.id, trimmed)) setEditing(false)
   }
 
   const reactions = entry.reactions ?? []
@@ -271,7 +263,7 @@ function CommentRow({
                     size="icon-sm"
                     className="text-muted-foreground"
                   >
-                    <MoreHorizontal className="h-4 w-4" />
+                    <MoreHorizontal className="size-4" />
                   </Button>
                 }
               />
@@ -282,14 +274,14 @@ function CommentRow({
                     toast.success('Copied')
                   }}
                 >
-                  <Copy className="h-3.5 w-3.5" />
+                  <Copy className="size-3.5" />
                   Copy
                 </DropdownMenuItem>
                 {isOwn && (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={startEdit}>
-                      <Pencil className="h-3.5 w-3.5" />
+                      <Pencil className="size-3.5" />
                       Edit
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
@@ -297,7 +289,7 @@ function CommentRow({
                       onClick={() => setConfirmDelete(true)}
                       variant="destructive"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="size-3.5" />
                       Delete
                     </DropdownMenuItem>
                   </>
@@ -389,7 +381,7 @@ function CommentCard({
   highlightedCommentId,
 }: CommentCardProps) {
   const { getActorName } = useActorName()
-  const { uploadWithToast } = useFileUpload(api)
+  const { uploadWithToast } = useAttachmentUpload()
   const [open, setOpen] = useState(true)
   const [editing, setEditing] = useState(false)
   const [replyOpen, setReplyOpen] = useState(false)
@@ -427,12 +419,8 @@ function CommentCard({
       setEditing(false)
       return
     }
-    try {
-      await onEdit(entry.id, trimmed)
-      setEditing(false)
-    } catch {
-      toast.error('Failed to update comment')
-    }
+    // onEdit reports failure itself; keep the editor open with the text.
+    if (await onEdit(entry.id, trimmed)) setEditing(false)
   }
 
   // Collect all nested replies recursively into a flat list
@@ -470,7 +458,7 @@ function CommentCard({
             <CollapsibleTrigger className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
               <ChevronRight
                 className={cn(
-                  'h-3.5 w-3.5 transition-transform',
+                  'size-3.5 transition-transform',
                   open && 'rotate-90',
                 )}
               />
@@ -522,7 +510,7 @@ function CommentCard({
                         size="icon-sm"
                         className="text-muted-foreground"
                       >
-                        <MoreHorizontal className="h-4 w-4" />
+                        <MoreHorizontal className="size-4" />
                       </Button>
                     }
                   />
@@ -533,14 +521,14 @@ function CommentCard({
                         toast.success('Copied')
                       }}
                     >
-                      <Copy className="h-3.5 w-3.5" />
+                      <Copy className="size-3.5" />
                       Copy
                     </DropdownMenuItem>
                     {isOwn && (
                       <>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={startEdit}>
-                          <Pencil className="h-3.5 w-3.5" />
+                          <Pencil className="size-3.5" />
                           Edit
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
@@ -548,7 +536,7 @@ function CommentCard({
                           onClick={() => setConfirmDelete(true)}
                           variant="destructive"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 className="size-3.5" />
                           Delete
                         </DropdownMenuItem>
                       </>
@@ -678,8 +666,9 @@ function CommentCard({
                     : undefined
                 }
                 onSubmit={async (content, attachmentIds) => {
-                  await onReply(entry.id, content, attachmentIds)
-                  setReplyOpen(false)
+                  const sent = await onReply(entry.id, content, attachmentIds)
+                  if (sent) setReplyOpen(false)
+                  return sent
                 }}
               />
             </div>

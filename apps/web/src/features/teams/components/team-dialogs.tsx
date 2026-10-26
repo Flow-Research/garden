@@ -7,16 +7,7 @@ import type {
   TeamSummary,
 } from '@garden/core/types'
 import { Button } from '@garden/ui/components/ui/button'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@garden/ui/components/ui/alert-dialog'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import {
   Dialog,
   DialogContent,
@@ -113,8 +104,11 @@ export function AddTeamMemberDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="!w-[min(94vw,32rem)] gap-0 overflow-hidden p-0">
+    <Dialog
+      open
+      onOpenChange={(open) => !open && !addMember.isPending && onClose()}
+    >
+      <DialogContent size="md" className="gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>Add a team member</DialogTitle>
           <DialogDescription>
@@ -156,11 +150,18 @@ export function AddTeamMemberDialog({
           )}
         </div>
         <DialogFooter className="border-t px-6 pt-4 pb-6">
-          <Button variant="outline" onClick={onClose}>
+          <Button
+            variant="outline"
+            onClick={onClose}
+            disabled={addMember.isPending}
+          >
             Cancel
           </Button>
-          <Button disabled={!selectedKey} onClick={handleAdd}>
-            Add member
+          <Button
+            disabled={!selectedKey || addMember.isPending}
+            onClick={handleAdd}
+          >
+            {addMember.isPending ? 'Adding…' : 'Add member'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -195,8 +196,11 @@ export function EditTeamDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="!w-[min(94vw,32rem)]">
+    <Dialog
+      open
+      onOpenChange={(open) => !open && !updateTeam.isPending && onClose()}
+    >
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>Edit Team</DialogTitle>
           <DialogDescription>
@@ -223,11 +227,18 @@ export function EditTeamDialog({
           </label>
         </div>
         <DialogFooter className="pb-6">
-          <Button variant="outline" onClick={onClose}>
+          <Button
+            variant="outline"
+            onClick={onClose}
+            disabled={updateTeam.isPending}
+          >
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={!name.trim()}>
-            Save changes
+          <Button
+            onClick={handleSave}
+            disabled={!name.trim() || updateTeam.isPending}
+          >
+            {updateTeam.isPending ? 'Saving…' : 'Save changes'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -264,8 +275,11 @@ export function TransferOwnerDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="!w-[min(94vw,32rem)] gap-0 overflow-hidden p-0">
+    <Dialog
+      open
+      onOpenChange={(open) => !open && !transfer.isPending && onClose()}
+    >
+      <DialogContent size="md" className="gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>Transfer Team ownership</DialogTitle>
           <DialogDescription>
@@ -302,11 +316,18 @@ export function TransferOwnerDialog({
           ))}
         </ul>
         <DialogFooter className="border-t px-6 pt-4 pb-6">
-          <Button variant="outline" onClick={onClose}>
+          <Button
+            variant="outline"
+            onClick={onClose}
+            disabled={transfer.isPending}
+          >
             Cancel
           </Button>
-          <Button onClick={handleTransfer} disabled={!selectedId}>
-            Transfer ownership
+          <Button
+            onClick={handleTransfer}
+            disabled={!selectedId || transfer.isPending}
+          >
+            {transfer.isPending ? 'Transferring…' : 'Transfer ownership'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -325,39 +346,33 @@ export function DeleteTeamDialog({
 }) {
   const deleteTeam = useDeleteTeam()
 
-  const handleDelete = async () => {
-    try {
-      await deleteTeam.mutateAsync(team.id)
-      toast.success(`${team.name} deleted`)
-      onDeleted()
-    } catch (error) {
-      // A Team with linked issues cannot be deleted; the API returns a stable
-      // TEAM_HAS_ISSUES code and the message is safe to surface.
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to delete Team',
-      )
-      onClose()
-    }
-  }
+  /** Keeps the delete confirmation open when the API rejects the deletion. */
+  const handleDelete = () =>
+    deleteTeam.mutateAsync(team.id).then(
+      () => {
+        toast.success(`${team.name} deleted`)
+        onDeleted()
+      },
+      (error: unknown) => {
+        // A Team with linked issues cannot be deleted; the API returns a stable
+        // TEAM_HAS_ISSUES code and the message is safe to surface.
+        toast.error(
+          error instanceof Error ? error.message : 'Failed to delete Team',
+        )
+        throw error
+      },
+    )
 
   return (
-    <AlertDialog open onOpenChange={(open) => !open && onClose()}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete {team.name}?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This removes the Team and its membership list. Issues linked to the
-            Team must be moved or reassigned first; issue history is never
-            deleted with a Team.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter className="pb-6">
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={handleDelete}>
-            Delete Team
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <ConfirmDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={`Delete ${team.name}?`}
+      description="This removes the Team and its membership list. Issues linked to the Team must be moved or reassigned first; issue history is never deleted with a Team."
+      confirmLabel="Delete Team"
+      pendingLabel="Deleting…"
+      tone="destructive"
+      onConfirm={handleDelete}
+    />
   )
 }

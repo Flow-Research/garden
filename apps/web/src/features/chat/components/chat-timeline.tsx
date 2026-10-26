@@ -16,6 +16,7 @@ import { Check, Copy, RefreshCw, ThumbsDown, ThumbsUp, X } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
 import { Spinner } from '@garden/ui/components/ui/spinner'
 import { cn } from '@garden/ui/lib/utils'
+import { useCopyToClipboard } from '@garden/ui/hooks/use-copy-to-clipboard'
 import {
   Message,
   MessageContent,
@@ -100,13 +101,8 @@ function MessageActionButton({
 }
 
 export function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = () => {
-    void navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
+  const { copied, copy } = useCopyToClipboard()
+  const handleCopy = () => void copy(text)
 
   return (
     <MessageActionButton

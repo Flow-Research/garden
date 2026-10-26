@@ -93,7 +93,7 @@ function TopBarButton({
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      className="flex w-10 cursor-pointer items-center justify-center self-stretch text-text-tertiary transition-colors hover:bg-background-main-secondary-hover hover:text-icon-neutral-default disabled:pointer-events-none disabled:opacity-40"
+      className="flex w-10 cursor-pointer items-center justify-center self-stretch text-icon-neutral-tertiary transition-colors hover:bg-background-main-secondary-hover hover:text-icon-neutral-default disabled:pointer-events-none disabled:opacity-40"
     >
       <Icon className="size-4" />
     </button>

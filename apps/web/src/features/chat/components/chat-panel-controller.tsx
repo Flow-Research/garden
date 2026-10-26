@@ -8,9 +8,10 @@
  */
 
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -19,6 +20,7 @@ import { Result } from 'better-result'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/app-state/auth'
 import { useChatStore } from '@garden/app-state/chat'
+import { toast } from 'sonner'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { motion, AnimatePresence } from 'motion/react'
 import {
@@ -28,7 +30,6 @@ import {
 } from '@garden/ui/components/ui/alert'
 import { Button } from '@garden/ui/components/ui/button'
 import { cn } from '@garden/ui/lib/utils'
-import { EnvironmentDebugDrawer } from '@/features/settings/components/environment-debug-drawer'
 import { usePrefetchDebugStream } from '@/features/settings/components/use-debug-stream'
 import { useDevSettingsStore } from '@/features/settings/dev-settings-store'
 import {
@@ -73,6 +74,14 @@ import { ChatTimeline } from './chat-timeline'
 import { X } from 'lucide-react'
 import { HeaderAttachmentsMenu } from './chat-message-files'
 import { IssueMentionCard } from '@/features/issues/components/issue-mention-card'
+
+// Debug mode only, and about 1,200 lines: loaded when first shown instead of
+// with every chat.
+const EnvironmentDebugDrawer = lazy(() =>
+  import('@/features/settings/components/environment-debug-drawer').then(
+    (module) => ({ default: module.EnvironmentDebugDrawer }),
+  ),
+)
 
 // `EMPTY_INTRO_EASE` is imported from `./composer` rather than redeclared
 // here: the suggestion pills and this panel's lift animation have to move on
@@ -172,7 +181,13 @@ export function ConnectedChatPanelInteraction({
   const [documentPanelView, setDocumentPanelView] =
     useState<DocumentPanelView | null>(null)
   const [optimisticPendingTurn, setOptimisticPendingTurn] = useState(false)
-  const lastSentTextRef = useRef<string | null>(null)
+  // What Retry resends. It used to keep only the text, so a retried turn
+  // lost its attachments and selected documents.
+  const lastTurnRef = useRef<{
+    text: string
+    files: File[]
+    selectedDocuments: SelectedThreadDocument[]
+  } | null>(null)
   const pendingMessageCountRef = useRef<number | null>(null)
   /**
    * Messages written while a turn was already running (2026-09-16 queue
@@ -204,11 +219,10 @@ export function ConnectedChatPanelInteraction({
   /** Restoring a queued message and focusing after a suggestion-pill prefill. */
   const composerRef = useRef<ComposerHandle>(null)
   /**
-   * Which session the user dismissed the suggestion pills for. Keyed by
-   * session id rather than a boolean because this component is NOT
-   * `key`-remounted per session (the `<Composer>` is), so a boolean would
-   * never reset and the pills would stay gone for every later chat. A new
-   * empty chat has a new `sessionId`, so the pills return. No effect needed.
+   * Which session the user dismissed the suggestion pills for. The screen
+   * keys this component by session, so a plain boolean would also reset;
+   * keeping the session id makes the rule explicit: a new empty chat (a new
+   * `sessionId`) shows the pills again.
    */
   const [dismissedForSession, setDismissedForSession] = useState<string | null>(
     null,
@@ -261,6 +275,9 @@ export function ConnectedChatPanelInteraction({
   // controller just threads the results into the timeline/composer.
   const {
     approvalError,
+    canRetryApprovalContinuation,
+    isContinuingApproval,
+    retryApprovalContinuation,
     resolvingToolCallIds,
     resolvedApprovalIds,
     resolvedAgentProposalRequestIds,
@@ -276,19 +293,6 @@ export function ConnectedChatPanelInteraction({
     messages,
     addToolOutput,
   })
-
-  useLayoutEffect(() => {
-    setDocumentPanelView(null)
-    setIsRetrying(false)
-    setOptimisticPendingTurn(false)
-    lastSentTextRef.current = null
-    pendingMessageCountRef.current = null
-    // The queue belongs to the conversation it was typed into, so switching
-    // sessions drops it rather than replaying it at whoever is next.
-    queuedMessagesRef.current = []
-    setQueuedMessages([])
-    isTurnInFlightRef.current = false
-  }, [sessionId])
 
   useEffect(() => {
     if (normalizeStatus(status) !== 'idle') {
@@ -341,7 +345,7 @@ export function ConnectedChatPanelInteraction({
      */
     const wasWarm = isPendingFirstTurn(liveSession)
 
-    lastSentTextRef.current = text
+    lastTurnRef.current = { text, files, selectedDocuments }
     pendingMessageCountRef.current = liveMessages.length
     setOptimisticPendingTurn(true)
     const documentFiles = files.filter(shouldPersistAsDocument)
@@ -423,13 +427,60 @@ export function ConnectedChatPanelInteraction({
     if (uploadResult.isErr()) {
       setOptimisticPendingTurn(false)
       pendingMessageCountRef.current = null
+      runtime.setPendingTurn(null)
+      if (wasWarm) {
+        // Nothing reached the agent, so the thread is still unused: undo the
+        // first-turn title and preview seeded above, or it would read as a
+        // conversation and /chats would stop offering it as the next chat.
+        updateSessionPreview({
+          sessionId,
+          title: liveTitle,
+          lastMessage: liveSession.lastMessage ?? '',
+          persist: true,
+        })
+      }
       markTurnError(uploadResult.error)
+      // The composer cleared when this was sent. Hand the message back so it
+      // can be resent, unless the person has already started a new draft.
+      const draft = useChatStore.getState().inputDrafts[sessionId] ?? ''
+      const restorable = isActiveSession && draft.trim() === ''
+      if (restorable) {
+        composerRef.current?.restoreDraft({
+          text,
+          files,
+          selectedDocumentIds: selectedDocuments.map(
+            (document) => document.documentId,
+          ),
+        })
+      }
+      toast.error(
+        restorable
+          ? "Your files couldn't be uploaded. Your message is back in the composer."
+          : "Your files couldn't be uploaded, so the message wasn't sent.",
+      )
       return false
     }
     if (uploadResult.value.length > 0) {
       void queryClient.invalidateQueries({
         queryKey: chatThreadKeys.documents(sessionId),
       })
+    }
+    // The documents are in the thread now, so a retry refers to them
+    // instead of uploading them a second time.
+    lastTurnRef.current = {
+      text,
+      files: passthroughFiles,
+      selectedDocuments: [
+        ...selectedDocuments,
+        ...uploadResult.value.map(
+          (document): SelectedThreadDocument => ({
+            documentId: document.document_id,
+            filename: document.filename,
+            versionId: null,
+            versionNumber: document.version_number ?? null,
+          }),
+        ),
+      ],
     }
 
     const selectedDocsContext = buildSelectedDocumentsContext(selectedDocuments)
@@ -617,10 +668,10 @@ export function ConnectedChatPanelInteraction({
   )
 
   const handleRetry = useCallback(async () => {
-    const text = lastSentTextRef.current
-    if (!text) return
+    const lastTurn = lastTurnRef.current
+    if (!lastTurn) return
     setIsRetrying(true)
-    await handleSendRef.current({ text, files: [], selectedDocuments: [] })
+    await handleSendRef.current(lastTurn)
     setIsRetrying(false)
   }, [])
 
@@ -733,6 +784,17 @@ export function ConnectedChatPanelInteraction({
               <Alert variant="destructive">
                 <AlertTitle>Approval error</AlertTitle>
                 <AlertDescription>{approvalError}</AlertDescription>
+                {canRetryApprovalContinuation ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-2 w-fit"
+                    disabled={isContinuingApproval}
+                    onClick={retryApprovalContinuation}
+                  >
+                    Resume agent
+                  </Button>
+                ) : null}
               </Alert>
             </div>
           ) : null}
@@ -771,8 +833,8 @@ export function ConnectedChatPanelInteraction({
                 : 0,
               scale: showEmptyChatState ? 1.08 : 1,
               filter: showEmptyChatState
-                ? 'drop-shadow(0 1px 1px rgba(91, 85, 77, 0.05)) drop-shadow(0 10px 22px rgba(91, 85, 77, 0.05)) drop-shadow(0 36px 64px rgba(91, 85, 77, 0.04))'
-                : 'drop-shadow(0 0 0 rgba(91, 85, 77, 0))',
+                ? 'drop-shadow(0 1px 1px rgba(0, 0, 0, 0.05)) drop-shadow(0 10px 22px rgba(0, 0, 0, 0.05)) drop-shadow(0 36px 64px rgba(0, 0, 0, 0.04))'
+                : 'drop-shadow(0 0 0 rgba(0, 0, 0, 0))',
             }}
             transition={{ duration: 0.72, ease: EMPTY_INTRO_EASE }}
             style={{
@@ -816,6 +878,7 @@ export function ConnectedChatPanelInteraction({
               onStop={stop}
               onWarmRuntime={warmRuntime}
               pendingQuestions={pendingStructuredInput?.questions}
+              pendingQuestionsKey={pendingStructuredInput?.toolCallId}
               onSubmitAnswers={handleSubmitAnswers}
               queue={
                 <ChatMessageQueue
@@ -942,10 +1005,17 @@ function ShellFrame({
           </div>
           <div className="flex items-center gap-1">
             {debugMode ? (
-              <EnvironmentDebugDrawer sessionId={sessionId} />
+              <Suspense fallback={null}>
+                <EnvironmentDebugDrawer sessionId={sessionId} />
+              </Suspense>
             ) : null}
             {onClose ? (
-              <Button variant="ghost" size="icon-sm" onClick={onClose}>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Close chat"
+                onClick={onClose}
+              >
                 <X className="size-4" />
               </Button>
             ) : null}
