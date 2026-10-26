@@ -226,6 +226,28 @@ export type ThreadRuntimeIdentity = {
   runId?: string
 }
 
+/**
+ * Builds the remote Executor MCP name for one Garden runtime scope.
+ *
+ * Before this scope was explicit, every runtime used `rpc:executor`. Agents
+ * maps that name to one Durable Object, so the first initialized Executor
+ * runtime could serve later workspaces or users. The installed agents@0.17.3
+ * `addMcpServer()` and PartyServer `getServerByName()` implementations use the
+ * remote name for Durable Object addressing. This name therefore includes the
+ * opaque Garden workspace, member, agent, thread, and run identifiers.
+ */
+export function buildExecutorMcpServerName(identity: ThreadRuntimeIdentity) {
+  return [
+    'executor',
+    identity.workspaceId,
+    identity.userId,
+    identity.agentId,
+    identity.threadId,
+    identity.issueId ?? 'chat',
+    identity.runId ?? 'session',
+  ].join(':')
+}
+
 type StoredConnectorServerRowRecord = {
   connector_id: string
   server_id: string
@@ -324,6 +346,7 @@ export type McpHost = {
   }) => Promise<McpRegistration & { id?: string }>
   addExecutorMcpServer?: (input: {
     id: string
+    remoteName: string
     props: {
       session: {
         organizationId: string
@@ -1505,6 +1528,15 @@ export class RuntimeMcpController {
     return Result.ok(connectorIdsToSync)
   }
 
+  /**
+   * Ensures the current runtime has one correctly scoped Executor MCP server.
+   *
+   * Previously this method registered every runtime as `executor`, which
+   * addressed the shared `rpc:executor` Durable Object. The remote name now
+   * includes the resolved runtime identity while the local server id remains
+   * `executor` for stable Garden tool keys. An old global registration is
+   * removed before the scoped registration is created.
+   */
   async ensureProxyMcpConnections(_options?: {
     allowReplacingRegisteredServers?: boolean
   }) {
@@ -1530,18 +1562,23 @@ export class RuntimeMcpController {
     this.activateNativeConnectorBindings(bindingsResult.value)
     await this.refreshGitHubHostedMcpTools()
     const executorServerId = EXECUTOR_MCP_SERVER_ID
+    const executorRemoteName = buildExecutorMcpServerName(identityResult.value)
+    let executorServer = this.host.mcp
+      .listServers()
+      .find((server) => server.id === executorServerId)
+    if (executorServer && executorServer.name !== executorRemoteName) {
+      await this.host.removeMcpServer(executorServerId)
+      executorServer = undefined
+    }
     for (const server of this.host.mcp.listServers()) {
       if (server.id !== executorServerId && getConnectorById(server.id)) {
         await this.host.removeMcpServer(server.id)
       }
     }
-    if (
-      !this.host.mcp
-        .listServers()
-        .some((server) => server.id === executorServerId)
-    ) {
+    if (!executorServer) {
       const registration = await addExecutorMcpServer({
         id: executorServerId,
+        remoteName: executorRemoteName,
         props: {
           session: {
             organizationId: identityResult.value.workspaceId,
