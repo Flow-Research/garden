@@ -13,6 +13,7 @@ import {
   type DirectDecideMcpSession,
   type DirectDecideMcpSessionFactory,
   registerDirectDecideTools,
+  type DirectDecideAnalysisStarter,
 } from './direct-decide-mcp'
 import type { GardenExecutorPlugins } from './plugins'
 
@@ -27,7 +28,11 @@ type RegisteredTool = {
   ) => Promise<CallToolResult>
 }
 
-const registerHarness = (result: CallToolResult, failure?: unknown) => {
+const registerHarness = (
+  result: CallToolResult,
+  failure?: unknown,
+  startAnalysis?: DirectDecideAnalysisStarter,
+) => {
   const tools = new Map<string, RegisteredTool>()
   const calls: Array<{
     name: string
@@ -73,7 +78,7 @@ const registerHarness = (result: CallToolResult, failure?: unknown) => {
     },
   } as unknown as Executor<GardenExecutorPlugins>
 
-  registerDirectDecideTools(server, executor)
+  registerDirectDecideTools(server, executor, { startAnalysis })
   return { calls, tools }
 }
 
@@ -139,6 +144,30 @@ const makeSessionFactory = (
 
 describe('direct Decide MCP tools', () => {
   afterEach(() => vi.restoreAllMocks())
+
+  it('returns a durable job response before running chat-scoped analysis', async () => {
+    const started = {
+      content: [{ type: 'text' as const, text: 'Run queued.' }],
+      structuredContent: { status: 'queued', run_id: 'run_123', attempt: 1 },
+    }
+    const startAnalysis = vi.fn(async () => started)
+    const { calls, tools } = registerHarness(
+      { content: [{ type: 'text', text: 'Provider result.' }] },
+      undefined,
+      startAnalysis,
+    )
+
+    const returned = await tools
+      .get('decide_analyze')
+      ?.callback(
+        { question: 'Analyze this.', data: 'a,b\n1,2' },
+        toolExtra().extra,
+      )
+
+    expect(returned).toEqual(started)
+    expect(startAnalysis).toHaveBeenCalledOnce()
+    expect(calls).toEqual([])
+  })
 
   it('hands the complete CSV to Decide analyze', async () => {
     const csv = 'region,revenue\nNorth,120\nSouth,95\n'

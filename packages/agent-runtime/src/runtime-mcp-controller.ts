@@ -489,6 +489,26 @@ export class RuntimeMcpController {
                       ...callFields,
                     })
 
+                    const executeOptions = args[1]
+                    const toolCallId =
+                      executeOptions &&
+                      typeof executeOptions === 'object' &&
+                      'toolCallId' in executeOptions &&
+                      typeof executeOptions.toolCallId === 'string'
+                        ? executeOptions.toolCallId
+                        : null
+                    const gardenMeta =
+                      tool.serverId === EXECUTOR_MCP_SERVER_ID &&
+                      tool.name === 'decide_analyze'
+                        ? {
+                            garden: {
+                              kind: 'chat',
+                              threadId: this.host.name,
+                              ...(toolCallId === null ? {} : { toolCallId }),
+                            },
+                          }
+                        : undefined
+
                     const result = await Result.tryPromise({
                       try: async () => {
                         const output = await this.host.mcp.callTool(
@@ -496,6 +516,9 @@ export class RuntimeMcpController {
                             arguments: asMcpToolArguments(args[0]),
                             name: tool.name,
                             serverId: tool.serverId,
+                            ...(gardenMeta === undefined
+                              ? {}
+                              : { _meta: gardenMeta }),
                           },
                           undefined,
                           {

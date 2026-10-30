@@ -382,11 +382,18 @@ export const directDecideMcpPlugin = definePlugin(() => {
   }
 })
 
-const analyzeInput = {
+export const directDecideAnalyzeInputSchema = {
   question: z.string().min(1),
   data: z.string().optional(),
   context: z.string().optional(),
   session_id: z.string().optional(),
+}
+
+export type DirectDecideAnalyzeInput = {
+  question: string
+  data?: string
+  context?: string
+  session_id?: string
 }
 
 const sessionInput = { session_id: z.string().min(1) }
@@ -395,7 +402,15 @@ const generatedFileInput = {
   filename: z.string().min(1),
 }
 
-type DirectToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>
+export type DirectDecideToolExtra = RequestHandlerExtra<
+  ServerRequest,
+  ServerNotification
+>
+
+export type DirectDecideAnalysisStarter = (input: {
+  args: DirectDecideAnalyzeInput
+  extra: DirectDecideToolExtra
+}) => Promise<CallToolResult | null>
 
 export type PublicMcpProgress = {
   progress: number
@@ -430,7 +445,7 @@ const providerErrorMessage = (result: CallToolResult) => {
 }
 
 /** Forwards Decide's customer-safe progress through Garden's MCP request. */
-const progressForwarder = (extra: DirectToolExtra) => {
+const progressForwarder = (extra: DirectDecideToolExtra) => {
   const progressToken = extra._meta?.progressToken
   if (progressToken === undefined) return undefined
   return (progress: Progress) => {
@@ -498,11 +513,11 @@ const directFailureResult = (name: string, cause: unknown): CallToolResult => {
  * Invokes one direct Decide tool and preserves ordered content blocks,
  * structured session data, and generated-file URLs.
  */
-const invokeDirectDecide = (
+export const callDirectDecideTool = (
   executor: Executor<GardenExecutorPlugins>,
   name: string,
   args: Record<string, unknown>,
-  extra: DirectToolExtra,
+  options: DirectDecideCallOptions = {},
 ): Promise<CallToolResult> => {
   const startedAt = Date.now()
   directDecideLogger.info('decide.tool_call.started', { toolName: name })
@@ -514,8 +529,8 @@ const invokeDirectDecide = (
         connection,
         { name, arguments: args },
         {
-          signal: extra.signal,
-          onProgress: progressForwarder(extra),
+          signal: options.signal,
+          onProgress: options.onProgress,
         },
       )
 
@@ -571,6 +586,9 @@ const invokeDirectDecide = (
 export const registerDirectDecideTools = (
   server: McpServer,
   executor: Executor<GardenExecutorPlugins>,
+  options?: {
+    startAnalysis?: DirectDecideAnalysisStarter
+  },
 ) => {
   server.registerTool(
     'decide_analyze',
@@ -578,10 +596,19 @@ export const registerDirectDecideTools = (
       title: 'Run analysis with Decide',
       description:
         'Analyze complete raw CSV, TSV, JSON, or text data with Decide. Reuse session_id for follow-up analysis and omit data.',
-      inputSchema: analyzeInput,
+      inputSchema: directDecideAnalyzeInputSchema,
       annotations: { readOnlyHint: true },
     },
-    (args, extra) => invokeDirectDecide(executor, 'analyze', args, extra),
+    async (args, extra) => {
+      const started = await options?.startAnalysis?.({ args, extra })
+      return (
+        started ??
+        callDirectDecideTool(executor, 'analyze', args, {
+          signal: extra.signal,
+          onProgress: progressForwarder(extra),
+        })
+      )
+    },
   )
   server.registerTool(
     'decide_list_generated_files',
@@ -592,7 +619,10 @@ export const registerDirectDecideTools = (
       annotations: { readOnlyHint: true },
     },
     (args, extra) =>
-      invokeDirectDecide(executor, 'list_generated_files', args, extra),
+      callDirectDecideTool(executor, 'list_generated_files', args, {
+        signal: extra.signal,
+        onProgress: progressForwarder(extra),
+      }),
   )
   server.registerTool(
     'decide_read_generated_file',
@@ -604,7 +634,10 @@ export const registerDirectDecideTools = (
       annotations: { readOnlyHint: true },
     },
     (args, extra) =>
-      invokeDirectDecide(executor, 'read_generated_file', args, extra),
+      callDirectDecideTool(executor, 'read_generated_file', args, {
+        signal: extra.signal,
+        onProgress: progressForwarder(extra),
+      }),
   )
   server.registerTool(
     'decide_whoami',
@@ -614,6 +647,15 @@ export const registerDirectDecideTools = (
       inputSchema: {},
       annotations: { readOnlyHint: true },
     },
-    (_args, extra) => invokeDirectDecide(executor, 'whoami', {}, extra),
+    (_args, extra) =>
+      callDirectDecideTool(
+        executor,
+        'whoami',
+        {},
+        {
+          signal: extra.signal,
+          onProgress: progressForwarder(extra),
+        },
+      ),
   )
 }

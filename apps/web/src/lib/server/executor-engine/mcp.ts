@@ -34,9 +34,19 @@ import {
 } from '@executor-js/cloudflare/mcp/execution-owner-directory'
 import { mcpSessionStub } from '@executor-js/cloudflare/mcp/session-stub'
 import { makeDynamicWorkerExecutor } from '@executor-js/runtime-dynamic-worker'
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import { z } from 'zod'
+import type { DecideAnalysisWorkflowBinding } from '@garden/agent-runtime'
 
 import { createD1ExecutorDb } from './d1'
-import { registerDirectDecideTools } from './direct-decide-mcp'
+import {
+  registerDirectDecideTools,
+  type DirectDecideAnalysisStarter,
+} from './direct-decide-mcp'
+import {
+  decideAnalysisErrorResult,
+  startDecideAnalysis,
+} from '../decide-analysis/service'
 import { makeR2BlobStore } from './r2'
 import { makeExecutorPlugins, type GardenExecutorPlugins } from './plugins'
 import { boundExecutionEngine } from './output-bound'
@@ -50,9 +60,71 @@ type ExecutorMcpEnv = Env & {
   readonly EXECUTOR_BLOBS: R2Bucket
   readonly EXECUTOR_DB: D1Database
   readonly LOADER: WorkerLoader
+  readonly DECIDE_ANALYSIS_WORKFLOW: DecideAnalysisWorkflowBinding
 }
 
 type GardenExecutor = Executor<GardenExecutorPlugins>
+
+const gardenDecideMetaSchema = z.object({
+  kind: z.literal('chat'),
+  threadId: z.string().min(1),
+  toolCallId: z.string().min(1).optional(),
+})
+
+/**
+ * Starts a durable analysis only for metadata injected by Garden's runtime
+ * wrapper. Direct MCP callers keep the synchronous tool behavior because they
+ * do not have a trusted chat thread to receive the final result.
+ */
+const makeDecideAnalysisStarter =
+  (input: {
+    env: ExecutorMcpEnv
+    session: SessionMeta
+  }): DirectDecideAnalysisStarter =>
+  async ({ args, extra }): Promise<CallToolResult | null> => {
+    const parsedMeta = gardenDecideMetaSchema.safeParse(extra._meta?.garden)
+    if (!parsedMeta.success) return null
+
+    const result = await startDecideAnalysis({
+      env: input.env,
+      workspaceId: input.session.organizationId,
+      ownerUserId: input.session.userId,
+      threadId: parsedMeta.data.threadId,
+      idempotencyKey: parsedMeta.data.toolCallId ?? crypto.randomUUID(),
+      question: args.question,
+      data: args.data,
+      context: args.context,
+      providerSessionId: args.session_id,
+    })
+
+    if (result.isErr()) {
+      const error = result.error
+      return {
+        isError: true,
+        content: [{ type: 'text' as const, text: error.message }],
+        structuredContent: {
+          status: 'error',
+          failureStage: 'decide_analysis',
+          error: decideAnalysisErrorResult(error),
+        },
+      }
+    }
+
+    const snapshot = result.value
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `Decide analysis started. Run ID: ${snapshot.runId}`,
+        },
+      ],
+      structuredContent: {
+        status: snapshot.status,
+        run_id: snapshot.runId,
+        attempt: snapshot.attempt,
+      },
+    }
+  }
 
 interface GardenSessionDb {
   readonly db: ExecutorDb['db']
@@ -206,7 +278,14 @@ export class ExecutorMcpSession extends McpAgentSessionDOBase<
           elicitationMode: { mode: 'model' as const },
         }).pipe(
           Effect.tap((mcpServer) =>
-            Effect.sync(() => registerDirectDecideTools(mcpServer, executor)),
+            Effect.sync(() =>
+              registerDirectDecideTools(mcpServer, executor, {
+                startAnalysis: makeDecideAnalysisStarter({
+                  env: this.gardenEnv,
+                  session,
+                }),
+              }),
+            ),
           ),
           Effect.map((mcpServer) => ({ mcpServer, engine })),
         ),
