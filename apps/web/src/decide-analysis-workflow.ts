@@ -102,6 +102,49 @@ export class DecideAnalysisWorkflow extends WorkflowEntrypoint<
       attempt,
     })
 
+    const execution = await Result.tryPromise({
+      try: () => this.runSteps(event, step),
+      catch: (cause) => cause,
+    })
+    if (execution.isOk()) return execution.value
+
+    const failure = workflowFailure(
+      'workflow_failure',
+      `Decide analysis workflow failed: ${errorMessage(execution.error)}`,
+    )
+    const finished = await step.do<{ status: string }>(
+      `fail-${attempt}`,
+      { retries: { limit: 3, delay: '5 seconds', backoff: 'exponential' } },
+      async () => {
+        const snapshot = throwOnServiceError(
+          await finishDecideAnalysis(this.env, {
+            runId,
+            attempt,
+            error: failure,
+          }),
+        )
+        return { status: snapshot?.status ?? 'stale' }
+      },
+    )
+    workflowLogger.error('decide_analysis_workflow.failed', {
+      runId,
+      attempt,
+      message: failure.message,
+      status: finished.status,
+    })
+    return { runId, status: finished.status }
+  }
+
+  /**
+   * Executes the durable analysis steps. The public `run` method wraps this
+   * sequence so failures from any step become a persisted terminal failure
+   * instead of leaving a claimed run in `running` state.
+   */
+  private async runSteps(
+    event: WorkflowEvent<DecideAnalysisWorkflowParams>,
+    step: WorkflowStep,
+  ) {
+    const { runId, attempt } = event.payload
     const claimed = await step.do<{ status: string }>(
       `claim-${attempt}`,
       { retries: { limit: 3, delay: '5 seconds', backoff: 'exponential' } },

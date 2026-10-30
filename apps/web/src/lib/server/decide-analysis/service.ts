@@ -81,7 +81,7 @@ const isDuplicateWorkflowError = (cause: unknown) => {
 }
 
 const workflowInstanceId = (runId: string, attempt: number) =>
-  `decide-analysis:${runId}:attempt:${attempt}`
+  `decide-analysis-${runId}-attempt-${attempt}`
 
 const runLock = (runId: string) =>
   sql`select pg_advisory_xact_lock(hashtext(${`decide-analysis:${runId}`}))`
@@ -463,7 +463,6 @@ export async function retryDecideAnalysis(
             status: 'queued',
             attempt,
             workflowInstanceId: workflowInstanceId(row.id, attempt),
-            idempotencyKey: `${row.id}:${retryKey}`,
             retryKey,
             progressSequence: 0,
             progressJson: null,

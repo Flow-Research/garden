@@ -137,6 +137,8 @@ const uniqueFields = [
   'agentDoId',
   'workflowId',
   'workflowName',
+  'decideAnalysisWorkflowId',
+  'decideAnalysisWorkflowName',
   'sandboxId',
   'sandboxName',
 ]
@@ -220,6 +222,22 @@ assert.match(
   alchemySource,
   /name:\s*'RUN_WORKFLOW',\s*workflowName:\s*deployedRunWorkflow\.workflowName,\s*className:\s*'RunWorkflow'/s,
 )
+assert.match(
+  alchemySource,
+  /Cloudflare\.WorkflowResource\(\s*deployTarget\.decideAnalysisWorkflowId,/s,
+)
+assert.match(
+  alchemySource,
+  /workflowName:\s*deployTarget\.decideAnalysisWorkflowName,\s*className:\s*'DecideAnalysisWorkflow',\s*scriptName:\s*deployTarget\.workerName/s,
+)
+assert.match(
+  alchemySource,
+  /deployed\.bind\(deployTarget\.decideAnalysisWorkflowId,\s*\{/s,
+)
+assert.match(
+  alchemySource,
+  /name:\s*'DECIDE_ANALYSIS_WORKFLOW',\s*workflowName:\s*deployedDecideAnalysisWorkflow\.workflowName,\s*className:\s*'DecideAnalysisWorkflow'/s,
+)
 assert.match(alchemySource, /name:\s*'AgentDO',\s*className:\s*'AgentDO'/s)
 assert.match(alchemySource, /name:\s*'Sandbox',\s*className:\s*'Sandbox'/s)
 assert.match(
@@ -287,6 +305,7 @@ for (const field of [
   'executorDatabaseName',
   'executorBlobsBucket',
   'workflowName',
+  'decideAnalysisWorkflowName',
   'sandboxName',
 ]) {
   assert.match(
