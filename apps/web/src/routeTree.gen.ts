@@ -142,6 +142,7 @@ import { Route as ApiWorkspacesIdMembersMemberIdRouteImport } from './routes/api
 import { Route as ApiWorkspacesIdInvitationsInvitationIdRouteImport } from './routes/api/workspaces/$id/invitations/$invitationId'
 import { Route as ApiTeamsTeamIdMembersMembershipIdRouteImport } from './routes/api/teams/$teamId/members/$membershipId'
 import { Route as ApiIssuesIdSourceBindingsBindingIdRouteImport } from './routes/api/issues/$id/source-bindings/$bindingId'
+import { Route as ApiChatThreadsThreadIdDecideAnalysesRouteImport } from './routes/api/chat/threads/$threadId/decide-analyses'
 import { Route as ApiChatThreadsIdToolApprovalRouteImport } from './routes/api/chat/threads/$id/tool-approval'
 import { Route as ApiChatThreadsIdPrimaryIssueRouteImport } from './routes/api/chat/threads/$id/primary-issue'
 import { Route as ApiChatThreadsIdPermissionRequestsRouteImport } from './routes/api/chat/threads/$id/permission-requests'
@@ -152,6 +153,7 @@ import { Route as ApiBrainFilesIdTextRouteImport } from './routes/api/brain/file
 import { Route as ApiBrainFilesIdContentRouteImport } from './routes/api/brain/files/$id/content'
 import { Route as ApiAutomationsIdTriggersTriggerIdRouteImport } from './routes/api/automations/$id/triggers/$triggerId'
 import { Route as ApiConnectionsConnectorIdToolsNameGrantRouteImport } from './routes/api/connections/$connectorId/tools/$name/grant'
+import { Route as ApiChatThreadsThreadIdDecideAnalysesRunIdRouteImport } from './routes/api/chat/threads/$threadId/decide-analyses/$runId'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -850,6 +852,12 @@ const ApiIssuesIdSourceBindingsBindingIdRoute =
     path: '/$bindingId',
     getParentRoute: () => ApiIssuesIdSourceBindingsRoute,
   } as any)
+const ApiChatThreadsThreadIdDecideAnalysesRoute =
+  ApiChatThreadsThreadIdDecideAnalysesRouteImport.update({
+    id: '/$threadId/decide-analyses',
+    path: '/$threadId/decide-analyses',
+    getParentRoute: () => ApiChatThreadsRoute,
+  } as any)
 const ApiChatThreadsIdToolApprovalRoute =
   ApiChatThreadsIdToolApprovalRouteImport.update({
     id: '/tool-approval',
@@ -906,6 +914,12 @@ const ApiConnectionsConnectorIdToolsNameGrantRoute =
     id: '/tools/$name/grant',
     path: '/tools/$name/grant',
     getParentRoute: () => ApiConnectionsConnectorIdRoute,
+  } as any)
+const ApiChatThreadsThreadIdDecideAnalysesRunIdRoute =
+  ApiChatThreadsThreadIdDecideAnalysesRunIdRouteImport.update({
+    id: '/$runId',
+    path: '/$runId',
+    getParentRoute: () => ApiChatThreadsThreadIdDecideAnalysesRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -1045,10 +1059,12 @@ export interface FileRoutesByFullPath {
   '/api/chat/threads/$id/permission-requests': typeof ApiChatThreadsIdPermissionRequestsRoute
   '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
+  '/api/chat/threads/$threadId/decide-analyses': typeof ApiChatThreadsThreadIdDecideAnalysesRouteWithChildren
   '/api/issues/$id/source-bindings/$bindingId': typeof ApiIssuesIdSourceBindingsBindingIdRoute
   '/api/teams/$teamId/members/$membershipId': typeof ApiTeamsTeamIdMembersMembershipIdRoute
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
+  '/api/chat/threads/$threadId/decide-analyses/$runId': typeof ApiChatThreadsThreadIdDecideAnalysesRunIdRoute
   '/api/connections/$connectorId/tools/$name/grant': typeof ApiConnectionsConnectorIdToolsNameGrantRoute
 }
 export interface FileRoutesByTo {
@@ -1183,10 +1199,12 @@ export interface FileRoutesByTo {
   '/api/chat/threads/$id/permission-requests': typeof ApiChatThreadsIdPermissionRequestsRoute
   '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
+  '/api/chat/threads/$threadId/decide-analyses': typeof ApiChatThreadsThreadIdDecideAnalysesRouteWithChildren
   '/api/issues/$id/source-bindings/$bindingId': typeof ApiIssuesIdSourceBindingsBindingIdRoute
   '/api/teams/$teamId/members/$membershipId': typeof ApiTeamsTeamIdMembersMembershipIdRoute
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
+  '/api/chat/threads/$threadId/decide-analyses/$runId': typeof ApiChatThreadsThreadIdDecideAnalysesRunIdRoute
   '/api/connections/$connectorId/tools/$name/grant': typeof ApiConnectionsConnectorIdToolsNameGrantRoute
 }
 export interface FileRoutesById {
@@ -1329,10 +1347,12 @@ export interface FileRoutesById {
   '/api/chat/threads/$id/permission-requests': typeof ApiChatThreadsIdPermissionRequestsRoute
   '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
+  '/api/chat/threads/$threadId/decide-analyses': typeof ApiChatThreadsThreadIdDecideAnalysesRouteWithChildren
   '/api/issues/$id/source-bindings/$bindingId': typeof ApiIssuesIdSourceBindingsBindingIdRoute
   '/api/teams/$teamId/members/$membershipId': typeof ApiTeamsTeamIdMembersMembershipIdRoute
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
+  '/api/chat/threads/$threadId/decide-analyses/$runId': typeof ApiChatThreadsThreadIdDecideAnalysesRunIdRoute
   '/api/connections/$connectorId/tools/$name/grant': typeof ApiConnectionsConnectorIdToolsNameGrantRoute
 }
 export interface FileRouteTypes {
@@ -1474,10 +1494,12 @@ export interface FileRouteTypes {
     | '/api/chat/threads/$id/permission-requests'
     | '/api/chat/threads/$id/primary-issue'
     | '/api/chat/threads/$id/tool-approval'
+    | '/api/chat/threads/$threadId/decide-analyses'
     | '/api/issues/$id/source-bindings/$bindingId'
     | '/api/teams/$teamId/members/$membershipId'
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
+    | '/api/chat/threads/$threadId/decide-analyses/$runId'
     | '/api/connections/$connectorId/tools/$name/grant'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -1612,10 +1634,12 @@ export interface FileRouteTypes {
     | '/api/chat/threads/$id/permission-requests'
     | '/api/chat/threads/$id/primary-issue'
     | '/api/chat/threads/$id/tool-approval'
+    | '/api/chat/threads/$threadId/decide-analyses'
     | '/api/issues/$id/source-bindings/$bindingId'
     | '/api/teams/$teamId/members/$membershipId'
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
+    | '/api/chat/threads/$threadId/decide-analyses/$runId'
     | '/api/connections/$connectorId/tools/$name/grant'
   id:
     | '__root__'
@@ -1757,10 +1781,12 @@ export interface FileRouteTypes {
     | '/api/chat/threads/$id/permission-requests'
     | '/api/chat/threads/$id/primary-issue'
     | '/api/chat/threads/$id/tool-approval'
+    | '/api/chat/threads/$threadId/decide-analyses'
     | '/api/issues/$id/source-bindings/$bindingId'
     | '/api/teams/$teamId/members/$membershipId'
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
+    | '/api/chat/threads/$threadId/decide-analyses/$runId'
     | '/api/connections/$connectorId/tools/$name/grant'
   fileRoutesById: FileRoutesById
 }
@@ -2755,6 +2781,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiIssuesIdSourceBindingsBindingIdRouteImport
       parentRoute: typeof ApiIssuesIdSourceBindingsRoute
     }
+    '/api/chat/threads/$threadId/decide-analyses': {
+      id: '/api/chat/threads/$threadId/decide-analyses'
+      path: '/$threadId/decide-analyses'
+      fullPath: '/api/chat/threads/$threadId/decide-analyses'
+      preLoaderRoute: typeof ApiChatThreadsThreadIdDecideAnalysesRouteImport
+      parentRoute: typeof ApiChatThreadsRoute
+    }
     '/api/chat/threads/$id/tool-approval': {
       id: '/api/chat/threads/$id/tool-approval'
       path: '/tool-approval'
@@ -2824,6 +2857,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/connections/$connectorId/tools/$name/grant'
       preLoaderRoute: typeof ApiConnectionsConnectorIdToolsNameGrantRouteImport
       parentRoute: typeof ApiConnectionsConnectorIdRoute
+    }
+    '/api/chat/threads/$threadId/decide-analyses/$runId': {
+      id: '/api/chat/threads/$threadId/decide-analyses/$runId'
+      path: '/$runId'
+      fullPath: '/api/chat/threads/$threadId/decide-analyses/$runId'
+      preLoaderRoute: typeof ApiChatThreadsThreadIdDecideAnalysesRunIdRouteImport
+      parentRoute: typeof ApiChatThreadsThreadIdDecideAnalysesRoute
     }
   }
 }
@@ -3331,12 +3371,30 @@ const ApiChatThreadsIdRouteChildren: ApiChatThreadsIdRouteChildren = {
 const ApiChatThreadsIdRouteWithChildren =
   ApiChatThreadsIdRoute._addFileChildren(ApiChatThreadsIdRouteChildren)
 
+interface ApiChatThreadsThreadIdDecideAnalysesRouteChildren {
+  ApiChatThreadsThreadIdDecideAnalysesRunIdRoute: typeof ApiChatThreadsThreadIdDecideAnalysesRunIdRoute
+}
+
+const ApiChatThreadsThreadIdDecideAnalysesRouteChildren: ApiChatThreadsThreadIdDecideAnalysesRouteChildren =
+  {
+    ApiChatThreadsThreadIdDecideAnalysesRunIdRoute:
+      ApiChatThreadsThreadIdDecideAnalysesRunIdRoute,
+  }
+
+const ApiChatThreadsThreadIdDecideAnalysesRouteWithChildren =
+  ApiChatThreadsThreadIdDecideAnalysesRoute._addFileChildren(
+    ApiChatThreadsThreadIdDecideAnalysesRouteChildren,
+  )
+
 interface ApiChatThreadsRouteChildren {
   ApiChatThreadsIdRoute: typeof ApiChatThreadsIdRouteWithChildren
+  ApiChatThreadsThreadIdDecideAnalysesRoute: typeof ApiChatThreadsThreadIdDecideAnalysesRouteWithChildren
 }
 
 const ApiChatThreadsRouteChildren: ApiChatThreadsRouteChildren = {
   ApiChatThreadsIdRoute: ApiChatThreadsIdRouteWithChildren,
+  ApiChatThreadsThreadIdDecideAnalysesRoute:
+    ApiChatThreadsThreadIdDecideAnalysesRouteWithChildren,
 }
 
 const ApiChatThreadsRouteWithChildren = ApiChatThreadsRoute._addFileChildren(

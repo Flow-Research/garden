@@ -35,6 +35,7 @@ export type AppEnv = {
   WORKSPACE_REALTIME: RequiredEnvBinding<'WORKSPACE_REALTIME'>
   Sandbox: RequiredEnvBinding<'Sandbox'>
   RUN_WORKFLOW: RequiredEnvBinding<'RUN_WORKFLOW'>
+  DECIDE_ANALYSIS_WORKFLOW: RequiredEnvBinding<'DECIDE_ANALYSIS_WORKFLOW'>
   ENVIRONMENT?: 'development' | 'test' | 'staging' | 'production'
   GITHUB_CLIENT_ID?: string
   GITHUB_CLIENT_SECRET?: string

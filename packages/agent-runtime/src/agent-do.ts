@@ -419,6 +419,56 @@ const documentArtifactEventJson = Schema.fromJsonString(DocumentArtifactEvent)
 const documentArtifactEventEncoder = new TextEncoder()
 
 /**
+ * Converts the persisted Decide MCP envelope into one readable chat message.
+ * The raw envelope remains in Postgres so the UI can render structured files;
+ * this message gives a reconnecting chat a stable text result without rerunning
+ * the provider call.
+ */
+function decideAnalysisResultText(row: {
+  status: string
+  resultJson: unknown
+  errorJson: unknown
+}) {
+  if (row.status === 'cancelled') return 'Decide analysis cancelled.'
+  if (row.status === 'failed') {
+    const error = row.errorJson
+    if (error !== null && typeof error === 'object' && 'message' in error) {
+      const message = (error as { message?: unknown }).message
+      if (typeof message === 'string' && message.trim()) {
+        return `Decide analysis failed: ${message.trim()}`
+      }
+    }
+    return 'Decide analysis failed.'
+  }
+
+  const result = row.resultJson
+  if (result !== null && typeof result === 'object' && 'content' in result) {
+    const content = (result as { content?: unknown }).content
+    if (Array.isArray(content)) {
+      const text = content.flatMap((block) => {
+        if (
+          block !== null &&
+          typeof block === 'object' &&
+          'type' in block &&
+          'text' in block &&
+          (block as { type?: unknown }).type === 'text'
+        ) {
+          const value = (block as { text?: unknown }).text
+          return typeof value === 'string' && value.trim() ? [value.trim()] : []
+        }
+        return []
+      })
+      if (text.length > 0) return text.join('\n\n')
+    }
+  }
+
+  const serialized = JSON.stringify(result)
+  return serialized === undefined
+    ? 'Decide analysis completed.'
+    : `Decide analysis completed.\n\n${serialized}`
+}
+
+/**
  * Extracts filenames and media types from the latest user message so the
  * integration router can use attachment shape (for example CSV) as routing
  * evidence even when the prose only says "analyze this".
@@ -626,6 +676,60 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
     return thread.readDocumentBytes(documentId)
+  }
+
+  /**
+   * Publishes one durable Decide result after a Workflow finishes. The stable
+   * message ID makes Workflow replay idempotent, while the thread and run
+   * lookup prevents a stale Workflow from writing into another chat thread.
+   */
+  async appendDecideAnalysisResult(input: {
+    threadId: string
+    runId: string
+    attempt: number
+  }): Promise<RuntimeOkPayload> {
+    const [run] = await this.getDb()
+      .select({
+        id: schema.decideAnalysisRun.id,
+        threadId: schema.decideAnalysisRun.threadId,
+        attempt: schema.decideAnalysisRun.attempt,
+        status: schema.decideAnalysisRun.status,
+        resultJson: schema.decideAnalysisRun.resultJson,
+        errorJson: schema.decideAnalysisRun.errorJson,
+      })
+      .from(schema.decideAnalysisRun)
+      .where(
+        and(
+          eq(schema.decideAnalysisRun.id, input.runId),
+          eq(schema.decideAnalysisRun.threadId, input.threadId),
+          eq(schema.decideAnalysisRun.attempt, input.attempt),
+        ),
+      )
+      .limit(1)
+
+    if (!run) throw new Error('Decide analysis run not found')
+    if (
+      run.status !== 'completed' &&
+      run.status !== 'failed' &&
+      run.status !== 'cancelled'
+    ) {
+      throw new Error('Decide analysis run is not terminal')
+    }
+
+    const thread = await this.subAgent(ChatSubAgent, input.threadId)
+    await thread.addMessages([
+      {
+        id: `decide-analysis:${input.runId}:attempt:${input.attempt}`,
+        role: 'assistant',
+        parts: [
+          {
+            type: 'text',
+            text: decideAnalysisResultText(run),
+          },
+        ],
+      },
+    ])
+    return { ok: true }
   }
 
   @callable()

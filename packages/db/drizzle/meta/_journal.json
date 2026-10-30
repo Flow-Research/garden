@@ -414,6 +414,20 @@
       "when": 1792810540830,
       "tag": "0058_issue_position_fractional_index",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1793343675064,
+      "tag": "0059_breezy_king_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1793344648111,
+      "tag": "0060_nebulous_firedrake",
+      "breakpoints": true
     }
   ]
 }
