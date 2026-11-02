@@ -1689,41 +1689,43 @@ export class RuntimeMcpController {
       this.host.env.BETTER_AUTH_URL,
     ).toString()
 
-    for (const connectorId of uniqueConnectorIds) {
-      const syncResult = await Result.tryPromise({
-        try: async () => {
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-garden-internal-secret': this.host.env.BETTER_AUTH_SECRET,
-            },
-            body: JSON.stringify({
-              connectorId,
-              userId: identityResult.value.userId,
-              workspaceId: identityResult.value.workspaceId,
-            }),
-          })
+    // Each connector syncs independently, so request them all at once.
+    const syncResults = await Promise.all(
+      uniqueConnectorIds.map((connectorId) =>
+        Result.tryPromise({
+          try: async () => {
+            const response = await fetch(endpoint, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-garden-internal-secret': this.host.env.BETTER_AUTH_SECRET,
+              },
+              body: JSON.stringify({
+                connectorId,
+                userId: identityResult.value.userId,
+                workspaceId: identityResult.value.workspaceId,
+              }),
+            })
 
-          if (!response.ok) {
-            throw new Error(
-              `Capability sync failed for ${connectorId} with ${response.status}`,
-            )
-          }
-        },
-        catch: (cause) =>
-          new RuntimeMcpError({
-            code: 'database_failed',
-            message:
-              cause instanceof Error
-                ? cause.message
-                : `Failed to request capability sync for ${connectorId}`,
-          }),
-      })
-      if (syncResult.isErr()) {
-        return syncResult
-      }
-    }
+            if (!response.ok) {
+              throw new Error(
+                `Capability sync failed for ${connectorId} with ${response.status}`,
+              )
+            }
+          },
+          catch: (cause) =>
+            new RuntimeMcpError({
+              code: 'database_failed',
+              message:
+                cause instanceof Error
+                  ? cause.message
+                  : `Failed to request capability sync for ${connectorId}`,
+            }),
+        }),
+      ),
+    )
+    const failed = syncResults.find((syncResult) => syncResult.isErr())
+    if (failed) return failed
 
     return Result.ok(undefined)
   }

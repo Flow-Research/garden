@@ -227,9 +227,12 @@ async function buildResolutionAuditRows(args: {
   workspaceId: string
   approved: boolean
 }) {
+  const argsHashResults = await Promise.all(
+    args.requests.map((request) => hashToolArgs(request.argsJson)),
+  )
   const auditRows: Array<typeof schema.toolCallAudit.$inferInsert> = []
-  for (const request of args.requests) {
-    const argsHashResult = await hashToolArgs(request.argsJson)
+  for (const [index, request] of args.requests.entries()) {
+    const argsHashResult = argsHashResults[index]!
     if (argsHashResult.isErr()) return Result.err(argsHashResult.error)
 
     auditRows.push({
