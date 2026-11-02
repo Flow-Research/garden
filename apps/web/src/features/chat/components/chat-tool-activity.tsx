@@ -111,7 +111,7 @@ export function StreamingWorkEntryRow({
 export function PendingAssistantActivity({ label }: { label: string }) {
   return (
     <div className="relative flex items-center text-sm text-muted-foreground">
-      <div className="size-1.5 shrink-0 animate-spin rounded-full border border-muted-foreground border-t-transparent" />
+      <Spinner className="shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="ml-2">{label}</span>
     </div>
   )
