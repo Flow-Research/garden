@@ -17,6 +17,7 @@ import {
   type GardenArtifactData,
 } from '@/features/artifacts/artifact-renderer'
 import type { ChatUiMessage } from '../chat-runtime-provider'
+import type { ChatDecideAnalysisStatus } from '@/lib/api/chat-threads'
 
 export { canonicalJsonString } from '@garden/connectors/capabilities'
 
@@ -49,10 +50,98 @@ export type ChatWorkEntry = {
 }
 
 export type ToolActivityItem = ChatWorkEntry & {
+  /** Set when this step started a background Decide run the UI can poll. */
+  decideRunId: string | null
   input: unknown
   output: unknown
   state: string
   toolName: string
+}
+
+const DECIDE_ANALYSIS_RESULT_KIND = 'decide_analysis_result'
+
+/**
+ * True for Garden's internal Decide result hand-off. The runtime sends it as a
+ * user message so the model can write the answer; the user never typed it,
+ * so the timeline must not show it.
+ */
+export function isInternalChatMessage(message: ChatUiMessage) {
+  const metadata = message.metadata
+  if (!metadata || typeof metadata !== 'object') return false
+  const garden = (metadata as Record<string, unknown>).garden
+  return (
+    !!garden &&
+    typeof garden === 'object' &&
+    (garden as Record<string, unknown>).kind === DECIDE_ANALYSIS_RESULT_KIND
+  )
+}
+
+export type DecideAnalysisStepView = {
+  label: string
+  detail: string | null
+  active: boolean
+  canCancel: boolean
+}
+
+/**
+ * What the Decide chat step shows for a run status. Only Decide's progress
+ * note is passed through; run and session IDs never reach the step.
+ */
+export function decideAnalysisStepView(
+  status: ChatDecideAnalysisStatus | null,
+  progressMessage: string | null,
+): DecideAnalysisStepView {
+  switch (status) {
+    case 'completed':
+      return {
+        label: 'Analysis complete',
+        detail: null,
+        active: false,
+        canCancel: false,
+      }
+    case 'failed':
+      return {
+        label: 'Analysis failed',
+        detail: null,
+        active: false,
+        canCancel: false,
+      }
+    case 'cancelled':
+      return {
+        label: 'Analysis cancelled',
+        detail: null,
+        active: false,
+        canCancel: false,
+      }
+    case 'cancel_requested':
+      return {
+        label: 'Cancelling analysis',
+        detail: null,
+        active: true,
+        canCancel: false,
+      }
+    default:
+      return {
+        label: 'Analyzing your data',
+        detail: progressMessage?.trim() || null,
+        active: true,
+        canCancel: true,
+      }
+  }
+}
+
+const isDecideAnalyzeTool = (toolName: string) =>
+  toolName.includes('executor') && toolName.endsWith('_decide_analyze')
+
+/** Reads the background run ID from a Decide analyze start result. */
+export function decideAnalysisRunId(toolName: string, output: unknown) {
+  if (!isDecideAnalyzeTool(toolName) || !output || typeof output !== 'object') {
+    return null
+  }
+  const structured = (output as Record<string, unknown>).structuredContent
+  if (!structured || typeof structured !== 'object') return null
+  const runId = (structured as Record<string, unknown>).run_id
+  return typeof runId === 'string' && runId ? runId : null
 }
 
 const EXT_TO_LANG: Record<string, string> = {
@@ -148,6 +237,7 @@ export function getToolActivityItem(args: {
 
   return {
     active,
+    decideRunId: mcpFailure ? null : decideAnalysisRunId(toolName, output),
     detail,
     id: `${args.messageId}:tool:${args.index}`,
     input,
@@ -379,8 +469,8 @@ export function productToolLabel(
   const executorRefs =
     typeof record.code === 'string' ? extractExecutorToolRefs(record.code) : []
   const executorRef = executorRefs[0]
-  if (toolName.includes('executor') && toolName.endsWith('_decide_analyze')) {
-    return 'Analyzing the data'
+  if (isDecideAnalyzeTool(toolName)) {
+    return 'Analyzing your data'
   }
   if (toolName.includes('executor') && toolName.includes('_decide_')) {
     return 'Working with your data'
