@@ -18,6 +18,7 @@ import {
 } from '@/features/artifacts/artifact-renderer'
 import type { ChatUiMessage } from '../chat-runtime-provider'
 import type { ChatDecideAnalysisStatus } from '@/lib/api/chat-threads'
+import { isMissingError } from '@/lib/api/errors'
 
 export { canonicalJsonString } from '@garden/connectors/capabilities'
 
@@ -86,9 +87,11 @@ export type DecideAnalysisStepView = {
 /**
  * What the Decide chat step shows for a run status. Only Decide's progress
  * note is passed through; run and session IDs never reach the step.
+ * `unavailable` means the status request itself failed, so the step settles
+ * as failed instead of spinning.
  */
 export function decideAnalysisStepView(
-  status: ChatDecideAnalysisStatus | null,
+  status: ChatDecideAnalysisStatus | 'unavailable' | null,
   progressMessage: string | null,
 ): DecideAnalysisStepView {
   switch (status) {
@@ -103,6 +106,14 @@ export function decideAnalysisStepView(
       return {
         label: 'Analysis failed',
         detail: null,
+        active: false,
+        canCancel: false,
+      }
+    case 'unavailable':
+      return {
+        label: 'Analysis failed',
+        detail:
+          'Garden could not load this analysis. Ask again to start a new one.',
         active: false,
         canCancel: false,
       }
@@ -128,6 +139,28 @@ export function decideAnalysisStepView(
         canCancel: true,
       }
   }
+}
+
+/**
+ * The card's step once failed requests are counted. Before, a failed status
+ * read kept the spinner going and a failed Cancel was silently ignored, so a
+ * card pointing at a run the thread does not own spun forever. Now a failed
+ * read, or a Cancel that finds no run (404/403), settles the card as failed;
+ * any other Cancel failure keeps the run live and says Cancel did not work.
+ */
+export function decideAnalysisCardView(input: {
+  status: ChatDecideAnalysisStatus | null
+  progressMessage: string | null
+  loadFailed: boolean
+  cancelError: unknown
+}): DecideAnalysisStepView {
+  if (input.loadFailed || isMissingError(input.cancelError)) {
+    return decideAnalysisStepView('unavailable', null)
+  }
+  const view = decideAnalysisStepView(input.status, input.progressMessage)
+  return input.cancelError && view.canCancel
+    ? { ...view, detail: 'Garden could not cancel this analysis. Try again.' }
+    : view
 }
 
 /** Elapsed run time as a person reads it: "42s", then "1m 05s". */

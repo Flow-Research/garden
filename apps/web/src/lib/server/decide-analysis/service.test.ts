@@ -69,10 +69,23 @@ async function seedThread(options: { primaryIssue?: boolean } = {}) {
     runtimeKey,
     title: 'Revenue',
   })
-  return { workspaceId, ownerUserId, threadId, runtimeKey }
+  return { workspaceId, ownerUserId, agentId, threadId, runtimeKey }
 }
 
 type Thread = Awaited<ReturnType<typeof seedThread>>
+
+async function seedSiblingThread(thread: Thread): Promise<Thread> {
+  const threadId = randomUUID()
+  await testDb.db.insert(schema.chatThread).values({
+    id: threadId,
+    workspaceId: thread.workspaceId,
+    ownerUserId: thread.ownerUserId,
+    agentId: thread.agentId,
+    runtimeKey: threadId,
+    title: 'Churn',
+  })
+  return { ...thread, threadId, runtimeKey: threadId }
+}
 
 const start = (
   thread: Thread,
@@ -124,6 +137,36 @@ describe('startDecideAnalysis', () => {
     expect(second.snapshot.runId).toBe(first.snapshot.runId)
     expect(await runsFor(thread.threadId)).toHaveLength(1)
     expect(workflowStarts.length).toBe(startsBefore)
+  })
+
+  it('starts a fresh run when another thread reused the tool-call key', async () => {
+    const other = await seedThread()
+    const otherRunId = await startAndFinish(
+      other,
+      { sessionId: 'sess-other', failed: true },
+      'a\n1',
+    )
+    const otherKey = (await runsFor(other.threadId))[0]!.idempotencyKey
+    const thread = await seedSiblingThread(other)
+
+    const started = (
+      await start(thread, { data: 'a\n1', key: otherKey })
+    ).unwrap()
+
+    expect(started.kind).toBe('started')
+    expect(started.snapshot.runId).not.toBe(otherRunId)
+    expect(await runsFor(thread.threadId)).toHaveLength(1)
+  })
+
+  it('starts a fresh run when a finished run in the thread reused the key', async () => {
+    const thread = await seedThread()
+    await startAndFinish(thread, { sessionId: 'sess-1' }, 'a\n1')
+    const key = (await runsFor(thread.threadId))[0]!.idempotencyKey
+
+    const started = (await start(thread, { data: 'a\n2', key })).unwrap()
+
+    expect(started.kind).toBe('started')
+    expect(await runsFor(thread.threadId)).toHaveLength(2)
   })
 
   it('collapses concurrent starts in one thread to one run', async () => {

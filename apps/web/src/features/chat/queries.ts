@@ -41,13 +41,16 @@ export const isDecideAnalysisTerminal = (status: ChatDecideAnalysisStatus) =>
  * Reads one Decide run for the chat step. It polls until the run settles so
  * the step can show Decide's latest progress note, then stops; the answer
  * itself arrives as a chat turn, so nothing here waits on the result.
+ * A failed status request (a 404 for a run this thread does not own, say)
+ * also stops polling; before, the step spun forever on it.
  */
 export function decideAnalysisOptions(threadId: string, runId: string) {
   return queryOptions({
     queryKey: chatKeys.decideAnalysis(threadId, runId),
     queryFn: () => getChatDecideAnalysis(threadId, runId),
     refetchInterval: (query) =>
-      query.state.data && isDecideAnalysisTerminal(query.state.data.status)
+      query.state.status === 'error' ||
+      (query.state.data && isDecideAnalysisTerminal(query.state.data.status))
         ? false
         : 3000,
   })
