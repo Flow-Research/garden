@@ -920,6 +920,9 @@ importers:
 
   packages/evals:
     dependencies:
+      better-result:
+        specifier: ^2.9.2
+        version: 2.9.2
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -927,6 +930,9 @@ importers:
       '@garden/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.6.0
       '@typescript/native':
         specifier: 'catalog:'
         version: typescript@7.0.2

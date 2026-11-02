@@ -16,6 +16,51 @@ const taskSuiteSchema = z.enum([
 ])
 
 /**
+ * Limits authenticated eval traffic to local Garden or the dev deployment.
+ * The CLI checked this before, but direct runner callers did not. This shared
+ * schema now checks both paths. Reference: `runner/garden-api.ts`.
+ */
+const evalTargetUrlSchema = z.url().refine((value) => {
+  const url = new URL(value)
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+  const gardenDevHost = url.hostname === 'garden-dev.flow-research.workers.dev'
+  return (
+    ((gardenDevHost && url.protocol === 'https:') ||
+      (loopback && url.protocol === 'http:')) &&
+    url.pathname === '/' &&
+    !url.search &&
+    !url.hash &&
+    !url.username &&
+    !url.password
+  )
+})
+
+/**
+ * Records the safe settings that affect one issue-run trial. Before this
+ * schema, reports could not explain which Garden target or budget produced a
+ * result. It excludes the session cookie. Reference:
+ * `docs/features/evaluation-system-design.md`.
+ */
+export const evalConfigurationSchema = z
+  .object({
+    baseUrl: evalTargetUrlSchema,
+    workspaceId: z.string().uuid(),
+    agentId: z.string().uuid(),
+    deadlineMs: z.number().int().positive().max(2_147_483_647),
+    pollIntervalMs: z.number().int().positive().max(2_147_483_647),
+  })
+  .strict()
+  .superRefine((configuration, ctx) => {
+    if (configuration.pollIntervalMs > configuration.deadlineMs) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['pollIntervalMs'],
+        message: 'Poll interval must not exceed the eval deadline.',
+      })
+    }
+  })
+
+/**
  * Defines serializable task data. Grader code stays in the eval implementation
  * layer, and unique criterion IDs keep report checks tied to one task rule.
  */
@@ -112,12 +157,26 @@ export const issueRunStatusSchema = z.enum([
 
 const evidenceReferenceSchema = z.string().regex(/^[A-Za-z0-9:_-]{1,128}$/)
 
+const issueRunUsageEvidenceSchema = z
+  .object({
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+    cachedInputTokens: z.number().int().nonnegative(),
+    totalTokens: z.number().int().nonnegative(),
+    model: z.string().min(1),
+    modelProvider: z.string().min(1),
+    stepCount: z.number().int().nonnegative(),
+    recordedAtMs: z.number().int().nonnegative(),
+  })
+  .strict()
+
 const issueRunEvidenceSchema = z
   .object({
     id: z.string().uuid(),
     issueId: z.string().uuid(),
     workspaceId: z.string().uuid(),
     status: issueRunStatusSchema,
+    usage: issueRunUsageEvidenceSchema.nullable(),
     resultDigest: z
       .string()
       .regex(/^sha256:[a-f0-9]{64}$/)
@@ -198,6 +257,7 @@ const evidenceBundleBaseSchema = z
     trialId: z.string().uuid(),
     isolationId: z.string().uuid(),
     runId: z.string().uuid(),
+    requiredSources: z.array(taskEvidenceSourceSchema).min(1),
     events: z.array(issueRunEventEvidenceSchema),
     workProducts: z.array(issueWorkProductEvidenceSchema),
     connectorReceipts: z.array(connectorReceiptEvidenceSchema),
@@ -228,6 +288,15 @@ export const issueRunEvidenceBundleSchema = z
     incompleteIssueRunEvidenceBundleSchema,
   ])
   .superRefine((bundle, ctx) => {
+    if (
+      new Set(bundle.requiredSources).size !== bundle.requiredSources.length
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['requiredSources'],
+        message: 'Required evidence sources must be unique.',
+      })
+    }
     if ('run' in bundle && bundle.run && bundle.run.id !== bundle.runId) {
       ctx.addIssue({
         code: 'custom',
@@ -300,6 +369,9 @@ const trialReportBaseSchema = z
   .object({
     reportId: z.string().uuid(),
     trial: trialIdentitySchema,
+    configuration: evalConfigurationSchema,
+    issueId: z.string().uuid().optional(),
+    runId: z.string().uuid().optional(),
     recordedAt: z.iso.datetime(),
   })
   .strict()
@@ -310,9 +382,11 @@ export const trialReportSchema = z
     trialReportBaseSchema
       .extend({
         outcome: z.literal('passed'),
-      checks: z
-        .array(trialCheckSchema.extend({ passed: z.literal(true) }))
-        .min(1),
+        issueId: z.string().uuid(),
+        runId: z.string().uuid(),
+        checks: z
+          .array(trialCheckSchema.extend({ passed: z.literal(true) }))
+          .min(1),
         evidence: issueRunEvidenceBundleSchema.refine(
           (bundle) => bundle.collection.status === 'complete',
         ),
@@ -321,10 +395,12 @@ export const trialReportSchema = z
     trialReportBaseSchema
       .extend({
         outcome: z.literal('failed'),
-      checks: z
-        .array(trialCheckSchema)
-        .min(1)
-        .refine((checks) => checks.some((check) => !check.passed)),
+        issueId: z.string().uuid(),
+        runId: z.string().uuid(),
+        checks: z
+          .array(trialCheckSchema)
+          .min(1)
+          .refine((checks) => checks.some((check) => !check.passed)),
         evidence: issueRunEvidenceBundleSchema.refine(
           (bundle) => bundle.collection.status === 'complete',
         ),
@@ -333,9 +409,21 @@ export const trialReportSchema = z
     trialReportBaseSchema
       .extend({
         outcome: z.literal('invalid'),
-      checks: z.array(trialCheckSchema),
+        checks: z.array(trialCheckSchema),
         evidence: issueRunEvidenceBundleSchema.optional(),
         invalidReason: trialInvalidReasonSchema,
+        diagnostic: z
+          .object({
+            stage: z.enum([
+              'fixture_setup',
+              'garden_execution',
+              'evidence_collection',
+              'grading',
+            ]),
+            code: z.string().min(1),
+            message: z.string().min(1).max(300),
+          })
+          .strict(),
       })
       .strict(),
   ])
@@ -356,11 +444,28 @@ export const trialReportSchema = z
         message: 'Evidence isolationId must match the report isolationId.',
       })
     }
+    if (report.runId && report.evidence.runId !== report.runId) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['runId'],
+        message: 'Report runId must match the evidence runId.',
+      })
+    }
+    if (report.issueId && 'run' in report.evidence && report.evidence.run) {
+      if (report.evidence.run.issueId !== report.issueId) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['issueId'],
+          message: 'Report issueId must match the evidence issueId.',
+        })
+      }
+    }
   })
 
 export type TaskDefinition = z.infer<typeof taskDefinitionSchema>
 export type TaskEvidenceSource = z.infer<typeof taskEvidenceSourceSchema>
 export type TaskSuite = z.infer<typeof taskSuiteSchema>
+export type EvalConfiguration = z.infer<typeof evalConfigurationSchema>
 export type TrialIdentity = z.infer<typeof trialIdentitySchema>
 export type IssueRunStatus = z.infer<typeof issueRunStatusSchema>
 export type IssueRunEvidenceBundle = z.infer<

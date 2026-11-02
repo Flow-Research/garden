@@ -1,13 +1,13 @@
-import { taskDefinitionSchema } from '../index.js'
+import { taskDefinitionSchema } from '../index.ts'
 
 export const issueRunTaskExample = taskDefinitionSchema.parse({
-  taskId: 'durability.issue-run-reaches-succeeded',
+  taskId: 'durability.issue-run-status-succeeds',
   version: 1,
   suite: 'durability',
   surface: 'issue_run',
-  fixture: { fixtureId: 'basic-issue-run-v1', version: 1 },
-  title: 'An issue run reaches its requested terminal state',
-  prompt: 'Complete the work described in this issue.',
+  fixture: { fixtureId: 'issue-run-status-v1', version: 1 },
+  title: 'Complete a short issue-run task',
+  prompt: 'Write a short completion summary for this evaluation issue.',
   input: {},
   capabilities: {
     connectors: [],

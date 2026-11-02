@@ -2,7 +2,7 @@
 
 | Field          | Value                                                                                    |
 | -------------- | ---------------------------------------------------------------------------------------- |
-| Status         | In progress                                                                               |
+| Status         | In progress                                                                              |
 | Last reviewed  | 2026-11-02                                                                               |
 | Decision owner | Garden engineering                                                                       |
 | Scope          | Agent behavior, tool use, durable runs, permissions, artifacts, and user-visible results |
@@ -19,8 +19,8 @@ The implementation is a Garden-native TypeScript package. It runs outside the
 product runtime and calls the same product boundaries that users call. It
 reuses Garden's run ledgers and safe simulator receipts. It does not add a
 second agent runtime. The first code slice defines task, trial, evidence, and
-report contracts. The first runnable surface will be issue runs because they
-already have a durable run ID and ordered event ledger.
+report contracts. The first runner uses the public issue-run API because each
+run has a durable ID and a stored terminal status.
 
 ## Decision
 
@@ -139,29 +139,27 @@ guess that the product passed or failed.
 
 ## One trial from start to verdict
 
-The eval runner uses the same public or service boundary as the product. It
-does not call an internal model function and pretend that the rest of Garden
-worked.
+The eval runner uses the same public API that Garden users call. It does not
+call an internal model function and pretend that the rest of Garden worked.
+The first runner targets a configured local or dev Garden deployment. It uses
+a dedicated eval workspace and agent. It does not connect to Postgres directly.
 
 ```mermaid
 sequenceDiagram
   autonumber
   participant R as Eval runner
-  participant F as Fixture builder
-  participant G as Garden
-  participant C as Connector simulator
-  participant D as Postgres and storage
+  participant A as Garden API
+  participant G as Garden runtime
   participant X as Graders
 
-  R->>F: Create a unique workspace and starting state
-  F->>D: Seed users, agents, permissions, files, and records
-  F->>C: Seed deterministic connector state
-  R->>G: Submit the user task through the real entry point
-  G->>C: Make tool calls when the task requires them
-  G->>D: Write run, audit, message, and artifact records
-  R->>G: Wait for a terminal product state
-  R->>D: Read final state and audit evidence
-  R->>C: Read external-action receipts
+  R->>R: Allocate evaluation, isolation, and trial IDs
+  R->>A: Create one assigned issue in the eval workspace
+  R->>A: Start the issue through the public API
+  A->>G: Start the normal issue-run workflow
+  G->>G: Write normal run, event, and work-product records
+  R->>A: Poll the run until terminal or the configured deadline
+  A-->>R: Return the run, events, and run-scoped work products
+  R->>R: Keep run identity, status, timestamps, and safe usage fields
   R->>R: Check whether required evidence is complete
   alt Required evidence is complete
     R->>X: Grade the evidence bundle
@@ -169,13 +167,42 @@ sequenceDiagram
   else Required evidence is missing
     R->>R: Record an invalid trial and the missing evidence
   end
-  R->>R: Save the report and remove the fixture
+  R->>R: Save JSON and Markdown reports outside Garden
 ```
 
-The product reaches its own terminal state. The eval runner does not decide
-that a run is complete because a browser request ended or a model stopped
-writing tokens. Missing required evidence means `invalid`; a complete trace
-that proves the wrong product behavior means `failed`.
+The first runner creates one new issue for each trial. It uses a dedicated
+workspace and agent. It leaves the issue in that workspace so a person can
+inspect a failure. The runner does not delete Garden records. One CLI command
+runs one trial. It does not lock against another CLI process. Until Garden
+proves that concurrent runs on one agent are isolated, serialize commands for
+that agent. CI must add a concurrency group before it runs trials in parallel.
+The runner does not change an agent's connector or permission settings. Use an
+eval agent with no external connectors for the status task. It rejects task
+definitions that request connectors or extra permissions, but it cannot read
+the agent's effective tool configuration through this API.
+
+The runner reads its base URL, workspace ID, agent ID, session cookie,
+deadline, and poll interval from environment variables. It sends the cookie
+only to `garden-dev.flow-research.workers.dev` or to a localhost URL. Reports
+record the target, workspace, agent, deadline, and poll interval. They never
+record the cookie or raw API responses.
+
+The deadline is the total trial budget. Each API request uses the remaining
+budget. When the budget expires while the run is still live, the runner grades
+the observed status against the task's expected status. This does not change
+Garden's model or MCP timeout.
+
+The first evidence adapter stores the run ID, issue ID, workspace ID, status,
+timestamps, and safe usage fields. Garden returns events and work products
+from the same API route, but the status task does not need them. The adapter
+discards their payloads and text. Usage records model, provider, step count,
+token counts, and the time Garden recorded them when the API includes usage.
+
+Garden owns the run status. The eval runner reads that status instead of
+treating a closed browser request or stopped model stream as completion. If
+the deadline expires first, it grades the last status it observed. Missing
+required evidence means `invalid`; complete evidence that proves the wrong
+behavior means `failed`.
 
 ## Use three outcome classes
 
@@ -363,7 +390,7 @@ these records into one normalized `EvidenceBundle`.
 
 | Evidence             | Current Garden source                                        | Eval use                                                                   |
 | -------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| Tool outcome         | `tool_call_audit` and `invocation_log`                       | Diagnostics only until Garden adds run correlation.                       |
+| Tool outcome         | `tool_call_audit` and `invocation_log`                       | Diagnostics only until Garden adds run correlation.                        |
 | Issue lifecycle      | `issue_run` and `issue_run_event`                            | Start, wait, approval, tool use, completion, failure, and cancellation     |
 | Automation lifecycle | `automation_run` and its Workflow identity                   | Trigger attribution, terminal state, duplicate-start prevention, and usage |
 | Work result          | `issue_work_product`, document records, and artifact storage | File existence, content checks, source links, and apply state              |
@@ -383,12 +410,12 @@ OAuth token.
 
 ### What each source can prove
 
-| Source | What it can prove | Limit |
-| --- | --- | --- |
-| `issue_run` | The run's stored status and result fields. | It cannot prove every tool call or external side effect. |
-| `issue_run_event` | Which ordered events Garden stored for this run. | A missing event is inconclusive because event writes can fail. |
-| `tool_call_audit` and `invocation_log` | That a diagnostic row exists. | The row cannot be assigned safely to one run. |
-| Trial-scoped simulator receipt | Whether a simulated external action happened and how many times. | It proves only actions sent through that simulator. |
+| Source                                 | What it can prove                                                | Limit                                                          |
+| -------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------- |
+| `issue_run`                            | The run's stored status and result fields.                       | It cannot prove every tool call or external side effect.       |
+| `issue_run_event`                      | Which ordered events Garden stored for this run.                 | A missing event is inconclusive because event writes can fail. |
+| `tool_call_audit` and `invocation_log` | That a diagnostic row exists.                                    | The row cannot be assigned safely to one run.                  |
+| Trial-scoped simulator receipt         | Whether a simulated external action happened and how many times. | It proves only actions sent through that simulator.            |
 
 `issue_work_product.run_id` is nullable. The evidence adapter must exclude a
 work product with no run ID from a run-scoped bundle. If a task needs that
@@ -409,41 +436,42 @@ missing receipt is also inconclusive.
 ```text
 packages/evals/
   src/
-    index.ts          task, trial, issue-run evidence, and report schemas
-    examples/         one data-only issue-run task
-    runner/           planned trial orchestration and concurrency control
-    environments/     planned local Garden adapter
-    fixtures/         planned workspace builders and connector simulators
-    evidence/          planned Garden record readers and simulator receipts
-    graders/           planned deterministic graders
-    reporting/         planned JSON and Markdown reports
+    index.ts                     task, trial, evidence, and report schemas
+    cli.ts                       environment parsing and process exit code
+    examples/                    one issue-run status task
+    runner/garden-api.ts         authenticated Garden API client
+    runner/issue-run.ts          issue creation, run start, and polling
+    evidence/issue-run.ts        safe run evidence
+    graders/issue-run-status.ts  deterministic status grader
+    reporting/markdown.ts        JSON and Markdown report files
+    fixtures/                    planned connector and workspace fixtures
   package.json
 ```
 
-The current package contains the schemas and one task example. It does not
-contain a fixture registry, runner, database reader, grader, or report writer.
-Those modules stay outside `packages/agent-runtime` and will be added after the
-task and evidence contracts are stable. A task names the user goal and
-observable checks. It does not name router functions, SQL queries, or
-Workflow steps.
+The first runner creates one issue for each trial through Garden's public API.
+It starts the issue run, reads the run status, and stores the run identity,
+status, timestamps, and safe usage fields as evidence. It drops event payloads
+and work-product text. The report also stores the target and safe runner
+configuration. The task names the user goal and observable checks. It does not
+name router functions, SQL queries, or Workflow steps.
 
 ### Task data
 
 Task files contain data. The grader registry owns executable checks. This task
-shows the fields in the current schema. Its fixture and grader are examples;
-Phase 2 must register them before a runner can use the task.
+shows the fields in the current schema. The first runner supports its
+issue-run status fixture and grader.
 
 ```ts
-import type { TaskDefinition } from "@garden/evals";
+import type { TaskDefinition } from '@garden/evals'
 
 const issueRunTask = {
-  taskId: "durability.issue-run-reaches-succeeded",
+  taskId: 'durability.issue-run-status-succeeds',
   version: 1,
-  suite: "durability",
-  surface: "issue_run",
-  fixture: { fixtureId: "basic-issue-run-v1", version: 1 },
-  title: "An issue run reaches its requested terminal state",
-  prompt: "Complete the work described in this issue.",
+  suite: 'durability',
+  surface: 'issue_run',
+  fixture: { fixtureId: 'issue-run-status-v1', version: 1 },
+  title: 'Complete a short issue-run task',
+  prompt: 'Write a short completion summary for this evaluation issue.',
   input: {},
   capabilities: {
     connectors: [],
@@ -451,24 +479,24 @@ const issueRunTask = {
   },
   successCriteria: [
     {
-      criterionId: "run-succeeded",
-      graderId: "issue-run-status-equals",
-      description: "The issue run ends with status succeeded.",
-      expected: { status: "succeeded" },
-      requiredEvidence: ["issue_run"],
+      criterionId: 'run-succeeded',
+      graderId: 'issue-run-status-equals',
+      description: 'The issue run ends with status succeeded.',
+      expected: { status: 'succeeded' },
+      requiredEvidence: ['issue_run'],
     },
   ],
-} satisfies TaskDefinition;
+} satisfies TaskDefinition
 ```
 
 ### Trial and evidence fields
 
-| Contract | Fields | Guarantee |
-| --- | --- | --- |
-| Trial identity | Evaluation ID, isolation ID, trial ID, task version, repetition, seed, and allocation time | Each attempt gets a fresh namespace before fixture setup. |
-| Issue-run evidence | Run ID, safe run fields, ordered events, work-product references, simulator receipts, and collection state | Evidence rows and receipts must match the same run and isolation IDs. |
-| Collection state | `complete`, or `incomplete` with missing sources and a reason code | Missing evidence cannot become a product verdict. |
-| Trial report | `passed`, `failed`, or `invalid` | Passed and failed reports require complete evidence. Invalid reports can include partial evidence or none. |
+| Contract           | Fields                                                                                                     | Guarantee                                                                                                  |
+| ------------------ | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Trial identity     | Evaluation ID, isolation ID, trial ID, task version, repetition, seed, and allocation time                 | Each attempt gets a fresh namespace before fixture setup.                                                  |
+| Issue-run evidence | Run ID, safe run fields, ordered events, work-product references, simulator receipts, and collection state | Evidence rows and receipts must match the same run and isolation IDs.                                      |
+| Collection state   | `complete`, or `incomplete` with missing sources and a reason code                                         | Missing evidence cannot become a product verdict.                                                          |
+| Trial report       | `passed`, `failed`, or `invalid`                                                                           | Passed and failed reports require complete evidence. Invalid reports can include partial evidence or none. |
 
 The schemas in `packages/evals/src/index.ts` define the exact field names and
 validation rules. Evidence stores IDs, statuses, timestamps, digests, and opaque
@@ -476,7 +504,11 @@ references. It does not store raw event payloads or work-product text.
 
 ## Isolation and concurrency
 
-Every trial gets a unique identity and isolated product state.
+Every trial gets a unique identity. The Phase 2 runner uses one dedicated
+workspace and agent, then creates a unique issue and run for each trial. This
+supports the status task. It does not isolate connector or simulator state.
+The diagram shows the target for later suites after Garden can create those
+fixtures per trial.
 
 ```mermaid
 flowchart TB
@@ -493,9 +525,10 @@ flowchart TB
   T3 --> C3[Connector state C3]
 ```
 
-Trials must not share a workspace, thread, agent, issue, Workflow instance,
-connector account, or simulator state. The runner may execute trials in
-parallel only after the environment adapter proves that isolation.
+Later suites must not share a workspace, thread, agent, issue, Workflow
+instance, connector account, or simulator state. The Phase 2 CLI does not
+enforce this full isolation or prevent another process from using its agent.
+Run one command at a time for each eval agent.
 
 Each `EvidenceBundle` stores the identifiers created for that trial. Evidence
 readers query by those identifiers. They do not use time windows or "latest
@@ -507,7 +540,7 @@ diagnosis.
 
 ## Reproducibility record
 
-Every report must record enough configuration to explain a change in result:
+The full eval system needs enough configuration to explain a change in result:
 
 | Area    | Recorded value                                                                  |
 | ------- | ------------------------------------------------------------------------------- |
@@ -520,14 +553,25 @@ Every report must record enough configuration to explain a change in result:
 The runner must never store secrets, OAuth tokens, raw authorization headers,
 or production user data in the report.
 
+The first runner records the target URL, workspace ID, agent ID, deadline,
+poll interval, task version, seed, run status, and the model, provider, step,
+and token fields that the API returns. The current API does not provide the
+Garden deployment commit, database migration version, prompt version, skill
+set, tool catalog digest, provider cost, or retry count. Those values are not
+present in the first report, so results cannot yet support comparisons that
+depend on them. The report also does not store a task-content digest or grader
+version. Task authors must increase the task version when they change a task.
+
 ## Limits and timeouts
 
 An eval needs limits so a broken run cannot consume unbounded resources. It
 must not invent one global timeout for every task.
 
-Each task declares the limits that apply to its behavior. A limit records its
-source, such as a platform limit, an observed provider cadence, or an accepted
-product service-level objective. The runner can enforce limits for:
+The Phase 2 runner uses a configured trial deadline and poll interval. The
+task schema does not yet declare per-task limits. Add per-task limits before
+the task bank grows. Each limit must name its source, such as a platform limit,
+an observed provider cadence, or an accepted product service-level objective.
+The runner can then enforce limits for:
 
 - elapsed time;
 - model turns;
@@ -704,14 +748,52 @@ boundaries. The types keep product failure separate from incomplete evidence.
 
 ### Phase 2: prove one vertical slice
 
-Add one isolated local issue-run environment, a runner, and JSON and Markdown
-reports. Start with one task that exercises a real issue-run entry point. Add
-the remaining task cases only after the evidence adapter can prove isolation,
-terminal state, and required side effects.
+Add a runner for one configured local or dev Garden deployment. Use a
+dedicated eval workspace and agent. Create one unique issue per trial, start
+it through the public issue-run API, poll the run, sanitize the returned
+evidence, grade its terminal status, and save JSON and Markdown reports. Do
+not delete the issue because it is the evidence a person needs to inspect a
+failure. Run one trial at a time against the same agent.
 
-Exit condition: a known product defect appears as `failed`. Missing required
-evidence appears as `invalid`. Concurrent trials cannot read one another's
-records.
+The first task checks only that an issue run reaches the expected status. It
+does not grade tool routing or external side effects. Add those checks only
+when Garden can return evidence that proves them.
+The status grader accepts terminal statuses only. The runner rejects task
+definitions that request connectors or extra permissions.
+
+The CLI does not lock the eval agent. Serialize CLI invocations for that
+agent until a later runner adds a concurrency group or a proven isolation
+boundary.
+
+Exit condition: the expected run status appears as `passed`. A different
+status appears as `failed`. Setup, API, or evidence errors appear as `invalid`
+with the trial ID. One command runs one trial. The runner does not claim to
+serialize separate CLI processes.
+
+#### Run the first task
+
+Use a dedicated Garden workspace and agent. The CLI creates a normal Garden
+issue and run. It keeps the issue after the trial so you can inspect failures.
+The trial UUID appears in the issue title and description. The runner does not
+retry issue creation because Garden's issue API has no idempotency key. A
+network failure after issue creation may leave an issue without an issue or
+run ID in the report. Search the eval workspace by the trial UUID in the title.
+
+Set these environment variables before you run the CLI:
+
+| Variable                       | Value                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------- |
+| `GARDEN_EVAL_BASE_URL`         | `https://garden-dev.flow-research.workers.dev`, or a localhost URL.       |
+| `GARDEN_EVAL_WORKSPACE_ID`     | The dedicated eval workspace UUID.                                        |
+| `GARDEN_EVAL_AGENT_ID`         | The dedicated eval agent UUID.                                            |
+| `GARDEN_EVAL_SESSION_COOKIE`   | The full Garden session cookie header. The CLI does not print or save it. |
+| `GARDEN_EVAL_DEADLINE_MS`      | The maximum time for issue creation, run start, and polling.              |
+| `GARDEN_EVAL_POLL_INTERVAL_MS` | The delay between run status requests.                                    |
+| `GARDEN_EVAL_OUTPUT_DIRECTORY` | Optional report directory. Defaults to `.artifacts/evals`.                |
+
+Run `pnpm --filter @garden/evals eval:issue-run`. The CLI writes one JSON
+report and one Markdown report under `.artifacts/evals/<evaluation-id>/`.
+It exits with code `0` for `passed`, `1` for `failed`, and `2` for `invalid`.
 
 ### Phase 3: build the first task bank
 
