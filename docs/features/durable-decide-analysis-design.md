@@ -99,7 +99,9 @@ spinner and "Analyzing your data…", Decide's latest progress message, the
 elapsed time, and a Cancel action. It settles on "Analysis complete",
 "Analysis failed", or "Analysis cancelled". The user never sees a run ID or
 session ID. A cancelled run needs no chat message because the card shows the
-outcome.
+outcome. A failed card shows the reason the run stored. A silence timeout
+(MCP `-32001`) reads "Decide sent no update for 60 seconds, so Garden stopped
+waiting. Ask again to retry."; any other reason shows as Decide wrote it.
 
 ### Generated files render as file cards
 
@@ -153,6 +155,12 @@ so the request timeout only measures silence between progress events.
 Decide publishes no progress cadence, so Garden keeps the MCP SDK default
 request timeout of 60 seconds. The Workflow step timeout, 10 minutes per
 attempt by default, remains the outer bound.
+
+Known gap: on dev, a run failed with `MCP error -32001: Request timed out`
+after Decide went more than 60 seconds without a progress event. The timeout
+is raised by Garden's MCP client, not by Decide, so Decide may have finished
+and charged for an analysis Garden no longer waited for. The fix needs either
+Decide's progress cadence or a way to fetch a finished result by session.
 
 ### Database connections
 
