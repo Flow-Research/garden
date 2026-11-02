@@ -706,13 +706,15 @@ async function toIssueSummary(
   issue: typeof schema.issue.$inferSelect,
   options: { issuePrefix: string },
 ): Promise<IssueSummary> {
-  const assignee = await issueAssigneeSummary(db, issue)
-  const activeRun = await activeRunSummary(db, issue)
-  const [lastEvent, products, reason] = await Promise.all([
-    latestIssueEvent(db, issue, activeRun),
-    workProductsSummary(db, issue.id),
-    blockedReason(db, issue),
-  ])
+  const [assignee, [activeRun, lastEvent], products, reason] =
+    await Promise.all([
+      issueAssigneeSummary(db, issue),
+      activeRunSummary(db, issue).then(
+        async (run) => [run, await latestIssueEvent(db, issue, run)] as const,
+      ),
+      workProductsSummary(db, issue.id),
+      blockedReason(db, issue),
+    ])
 
   return {
     issue_id: issue.id,
