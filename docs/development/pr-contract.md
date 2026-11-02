@@ -14,6 +14,11 @@ The check rejects other target branches. The branch rule in GitHub must also
 allow only maintainers to merge into `dev` and keep maintainer approval
 required for `main`.
 
+The workflow also runs on pushes to `dev` and `main`. A push does not contain a
+pull request body, so the job records a passing not-applicable status. This
+makes `PR contract` available in GitHub's branch-rule check list. Pull request
+events still run the full contract.
+
 ## Write the required pull request sections
 
 A non-draft pull request must include these sections:
