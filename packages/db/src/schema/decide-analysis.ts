@@ -82,10 +82,6 @@ export const decideAnalysisRun = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    uniqueIndex('decide_analysis_run_workspace_idempotency_idx').on(
-      table.workspaceId,
-      table.idempotencyKey,
-    ),
     uniqueIndex('decide_analysis_run_workflow_instance_idx').on(
       table.workflowInstanceId,
     ),
