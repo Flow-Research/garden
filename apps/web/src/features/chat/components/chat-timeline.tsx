@@ -46,7 +46,6 @@ import { useDevSettingsStore } from '@/features/settings/dev-settings-store'
 import type { RealtimeStatus } from '../chat-runtime-provider'
 import {
   isInternalChatMessage,
-  latestMessageStartedDecideRun,
   stripGardenInternalDocumentContext,
 } from './chat-message-parts'
 import { normalizeStatus } from './composer'
@@ -306,13 +305,11 @@ const ChatTimelineComponent = ({
   // Show the placeholder during latency gaps too — when the SDK is still
   // streaming but every part on screen has settled and no new chunk has
   // arrived, keeping feedback visible between tool boundaries.
-  const decideCardShowsProgress = latestMessageStartedDecideRun(messages)
   const showPendingActivity =
-    !decideCardShowsProgress &&
-    (forcePendingActivity ||
-      isRecovering ||
-      normalizedStatus === 'submitted' ||
-      (isStreaming && (!latestHasVisibleActivity || !latestHasMovingActivity)))
+    forcePendingActivity ||
+    isRecovering ||
+    normalizedStatus === 'submitted' ||
+    (isStreaming && (!latestHasVisibleActivity || !latestHasMovingActivity))
   const rows = useMemo<ChatTimelineRow[]>(() => {
     const nextRows: ChatTimelineRow[] = messages
       .filter((message) => !isInternalChatMessage(message))

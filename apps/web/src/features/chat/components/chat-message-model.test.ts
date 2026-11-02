@@ -4,7 +4,6 @@ import type { ChatUiMessage } from '../chat-runtime-provider'
 import {
   buildMessageRenderModel,
   decideAnalysisRunId,
-  latestMessageStartedDecideRun,
   decideAnalysisCardView,
   decideAnalysisStepView,
   decideFileKind,
@@ -261,43 +260,5 @@ describe('Decide analysis card after a failed request', () => {
       active: true,
       canCancel: true,
     })
-  })
-})
-
-describe('latestMessageStartedDecideRun', () => {
-  const decideStart = {
-    id: 'a1',
-    role: 'assistant',
-    parts: [
-      {
-        type: 'tool-tool_executor_decide_analyze',
-        toolCallId: 't1',
-        state: 'output-available',
-        input: {},
-        output: { structuredContent: { run_id: 'run-1' } },
-      },
-    ],
-  } as unknown as ChatUiMessage
-
-  it('is true while the Decide start turn is the newest message', () => {
-    expect(latestMessageStartedDecideRun([decideStart])).toBe(true)
-  })
-
-  it('turns off once the answer turn arrives', () => {
-    const answer = {
-      id: 'a2',
-      role: 'assistant',
-      parts: [{ type: 'text', text: 'North grew fastest.' }],
-    } as unknown as ChatUiMessage
-    expect(latestMessageStartedDecideRun([decideStart, answer])).toBe(false)
-  })
-
-  it('is false for a turn without a Decide run', () => {
-    const plain = {
-      id: 'a3',
-      role: 'assistant',
-      parts: [{ type: 'text', text: 'hi' }],
-    } as unknown as ChatUiMessage
-    expect(latestMessageStartedDecideRun([plain])).toBe(false)
   })
 })
