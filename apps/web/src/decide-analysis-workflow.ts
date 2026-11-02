@@ -9,9 +9,10 @@ import type {
   CallToolResult,
   Progress,
 } from '@modelcontextprotocol/sdk/types.js'
-import type {
-  DecideAnalysisWorkflowParams,
-  AgentDO,
+import {
+  decideSessionIdFromResult,
+  type DecideAnalysisWorkflowParams,
+  type AgentDO,
 } from '@garden/agent-runtime'
 import { createGardenLogger } from '@garden/observability/logger'
 import type { AppEnv } from '@/lib/server/env'
@@ -65,13 +66,6 @@ const providerErrorMessage = (result: CallToolResult) =>
         block.type === 'text' && block.text.trim().length > 0,
     )
     ?.text.trim() ?? 'Decide returned a tool error without a message.'
-
-const providerSessionIdFromResult = (result: CallToolResult) => {
-  const structured = result.structuredContent
-  if (structured === null || typeof structured !== 'object') return null
-  const value = (structured as Record<string, unknown>).session_id
-  return typeof value === 'string' && value.length > 0 ? value : null
-}
 
 const workflowFailure = (code: string, message: string): WorkflowFailure => ({
   code,
@@ -281,7 +275,7 @@ export class DecideAnalysisWorkflow extends WorkflowEntrypoint<
         return {
           kind: 'result',
           resultJson: JSON.stringify(result) ?? '{}',
-          providerSessionId: providerSessionIdFromResult(result),
+          providerSessionId: decideSessionIdFromResult(result),
         }
       },
     )

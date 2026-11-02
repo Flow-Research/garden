@@ -10,6 +10,7 @@ import type {
   DecideAnalysisWorkflowParams,
 } from '@garden/agent-runtime/src/decide-analysis-types'
 import { DECIDE_ANALYSIS_STATUSES } from '@garden/agent-runtime/src/decide-analysis-types'
+import { decideGeneratedFiles } from '@garden/agent-runtime/src/decide-analysis-result'
 import { createRuntimeDbClient, type Db } from '@garden/db/runtime'
 import * as schema from '@garden/db/schema'
 import type { HyperdriveConnection } from '@garden/server/runtime-bindings'
@@ -188,10 +189,15 @@ export function toDecideAnalysisSnapshot(
  * The run fields the browser may read. The status routes returned the whole
  * snapshot, which sent Decide's raw result blocks and the provider session ID
  * to the client. The answer reaches the user as a chat turn, so the API keeps
- * only lifecycle state.
+ * lifecycle state plus the generated files, parsed here once so the chat
+ * renders them as file cards instead of trusting model-written links.
  */
 export function toPublicDecideAnalysis(snapshot: DecideAnalysisSnapshot) {
   return {
+    files:
+      snapshot.status === 'completed'
+        ? decideGeneratedFiles(snapshot.result)
+        : [],
     runId: snapshot.runId,
     status: snapshot.status,
     attempt: snapshot.attempt,
@@ -364,6 +370,14 @@ async function startWorkflow(env: DecideAnalysisEnvironment, row: RunRow) {
  * Garden owns the Decide session. A call without `data` continues the
  * thread's latest completed session; a call with `data` starts a new one.
  */
+/**
+ * Tool error for a Decide start that has no data and no earlier completed
+ * session in the thread. The chat model relays it, so it asks the user for
+ * the file in plain words.
+ */
+export const DECIDE_ANALYSIS_NEEDS_DATA_MESSAGE =
+  'There is no data to analyze yet. Ask the user to attach the file or paste the data they want Decide to analyze. No earlier Decide analysis in this chat can be continued.'
+
 export async function startDecideAnalysis(
   input: StartDecideAnalysisInput,
 ): Promise<
@@ -407,6 +421,17 @@ export async function startDecideAnalysis(
       const active = await readActiveRun(tx, thread.threadId)
       if (active) return { kind: 'already_running' as const, row: active }
 
+      // A follow-up without data continues the thread's last completed
+      // Decide session. With no such session, Decide has nothing to analyze
+      // and answers with a paid greeting, so the start is refused instead.
+      const providerSessionId =
+        data === undefined
+          ? await latestCompletedSession(tx, thread.threadId)
+          : null
+      if (data === undefined && providerSessionId === null) {
+        return { kind: 'needs_data' as const }
+      }
+
       const runId = crypto.randomUUID()
       const attempt = 1
       const [row] = await tx
@@ -423,10 +448,7 @@ export async function startDecideAnalysis(
           question,
           inputData: data ?? null,
           context: input.context ?? null,
-          providerSessionId:
-            data === undefined
-              ? await latestCompletedSession(tx, thread.threadId)
-              : null,
+          providerSessionId,
           status: 'queued',
           attempt,
         })
@@ -454,6 +476,14 @@ export async function startDecideAnalysis(
     : created
   if (outcome.isErr()) return Result.err(outcome.error)
   if (!outcome.value) return Result.err(notFound('Chat thread not found.'))
+  if (outcome.value.kind === 'needs_data') {
+    return Result.err(
+      new DecideAnalysisServiceError({
+        code: 'invalid_input',
+        message: DECIDE_ANALYSIS_NEEDS_DATA_MESSAGE,
+      }),
+    )
+  }
 
   const { kind, row } = outcome.value
   if (kind === 'started') {

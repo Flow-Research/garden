@@ -122,12 +122,44 @@ export function decideAnalysisStepView(
       }
     default:
       return {
-        label: 'Analyzing your data',
+        label: 'Analyzing your data…',
         detail: progressMessage?.trim() || null,
         active: true,
         canCancel: true,
       }
   }
+}
+
+/** Elapsed run time as a person reads it: "42s", then "1m 05s". */
+export function formatElapsed(ms: number) {
+  const seconds = Math.max(0, Math.floor(ms / 1000))
+  if (seconds < 60) return `${seconds}s`
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
+}
+
+export type DecideFileKind = 'image' | 'spreadsheet' | 'document' | 'file'
+
+const DECIDE_FILE_KINDS: Record<string, DecideFileKind> = {
+  png: 'image',
+  jpg: 'image',
+  jpeg: 'image',
+  gif: 'image',
+  webp: 'image',
+  xlsx: 'spreadsheet',
+  xls: 'spreadsheet',
+  csv: 'spreadsheet',
+  pdf: 'document',
+  docx: 'document',
+  pptx: 'document',
+  md: 'document',
+  txt: 'document',
+  html: 'document',
+}
+
+/** Picks a Decide file card's icon; images also get an inline preview. */
+export function decideFileKind(filename: string): DecideFileKind {
+  const extension = filename.split('.').at(-1)?.toLowerCase() ?? ''
+  return DECIDE_FILE_KINDS[extension] ?? 'file'
 }
 
 const isDecideAnalyzeTool = (toolName: string) =>
@@ -522,6 +554,7 @@ type MessageRenderNode =
       stepCount: number
     }
   | { kind: 'artifact'; key: string; artifact: GardenArtifactData }
+  | { kind: 'decide'; key: string; runId: string }
   | {
       kind: 'raw'
       key: string
@@ -625,6 +658,18 @@ export function buildMessageRenderModel(
         messageId: message.id,
         part,
       })
+      // A Decide run outlives its tool call, so it renders as its own status
+      // card. Inside the work group it hid under a collapsed header that
+      // read "Completed" while Decide was still running.
+      if (activity?.decideRunId && !debugMode) {
+        flushWork()
+        nodes.push({
+          kind: 'decide',
+          key: `${message.id}:decide:${index}`,
+          runId: activity.decideRunId,
+        })
+        return
+      }
       if (activity) {
         if (work.length === 0) workFirstIndex = index
         work.push(activity)

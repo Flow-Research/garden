@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatUiMessage } from '../chat-runtime-provider'
 import {
+  buildMessageRenderModel,
   decideAnalysisRunId,
   decideAnalysisStepView,
+  decideFileKind,
+  formatElapsed,
   extractMcpFailure,
   isInternalChatMessage,
   productToolLabel,
@@ -127,7 +130,7 @@ describe('background Decide analysis', () => {
 
   it('shows live progress and a cancel action until the run settles', () => {
     expect(decideAnalysisStepView('running', 'Reviewing revenue.')).toEqual({
-      label: 'Analyzing your data',
+      label: 'Analyzing your data…',
       detail: 'Reviewing revenue.',
       active: true,
       canCancel: true,
@@ -141,5 +144,61 @@ describe('background Decide analysis', () => {
       active: false,
       canCancel: false,
     })
+  })
+})
+
+describe('Decide run in the message render model', () => {
+  const RUN_ID = '2f9d1c66-9b5e-4c8e-9a51-0c7a3c3d7e10'
+  const message = {
+    id: 'a1',
+    role: 'assistant',
+    parts: [
+      {
+        type: 'tool-readDocument',
+        toolCallId: 'call_read',
+        state: 'output-available',
+        input: { document_id: 'doc-1' },
+        output: { ok: true },
+      },
+      {
+        type: 'tool-tool_executor_decide_analyze',
+        toolCallId: 'call_decide',
+        state: 'output-available',
+        input: { question: 'What drove revenue?' },
+        output: {
+          content: [{ type: 'text', text: 'The analysis is running.' }],
+          structuredContent: { status: 'queued', run_id: RUN_ID },
+        },
+      },
+    ],
+  } as unknown as ChatUiMessage
+
+  it('renders the run as its own card outside the collapsed work group', () => {
+    const nodes = buildMessageRenderModel(message, { debugMode: false })
+
+    expect(nodes.map((node) => node.kind)).toEqual(['work', 'decide'])
+    const [work, decide] = nodes
+    expect(work?.kind === 'work' && work.stepCount).toBe(1)
+    expect(
+      work?.kind === 'work' && work.entries.some((entry) => entry.decideRunId),
+    ).toBe(false)
+    expect(decide?.kind === 'decide' && decide.runId).toBe(RUN_ID)
+  })
+})
+
+describe('Decide card helpers', () => {
+  it('formats elapsed time the way a person reads it', () => {
+    expect(formatElapsed(4_200)).toBe('4s')
+    expect(formatElapsed(65_000)).toBe('1m 05s')
+    expect(formatElapsed(-10)).toBe('0s')
+  })
+
+  it('previews images and labels other files by type', () => {
+    expect(decideFileKind('chart.PNG')).toBe('image')
+    expect(decideFileKind('photo.jpeg')).toBe('image')
+    expect(decideFileKind('revenue.xlsx')).toBe('spreadsheet')
+    expect(decideFileKind('rows.csv')).toBe('spreadsheet')
+    expect(decideFileKind('report.pdf')).toBe('document')
+    expect(decideFileKind('bundle.zip')).toBe('file')
   })
 })
