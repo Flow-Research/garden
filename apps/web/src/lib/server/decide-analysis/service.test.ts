@@ -6,6 +6,7 @@ import * as schema from '@garden/db/schema'
 import { startTestDb, type TestDb } from '@garden/db/testing'
 import type { DecideAnalysisWorkflowParams } from '@garden/agent-runtime/src/decide-analysis-types'
 import {
+  describeDatabaseError,
   finishDecideAnalysis,
   markDecideAnalysisDelivered,
   retryDecideAnalysis,
@@ -348,5 +349,24 @@ describe('toPublicDecideAnalysis files', () => {
     const started = (await start(thread, { data: 'a\n1' })).unwrap()
 
     expect(toPublicDecideAnalysis(started.snapshot).files).toEqual([])
+  })
+})
+
+describe('describeDatabaseError', () => {
+  it('names the Postgres code and constraint behind a Drizzle query error', () => {
+    const pg = Object.assign(new Error('duplicate key value'), {
+      code: '23505',
+      constraint: 'decide_analysis_run_workspace_idempotency_idx',
+    })
+    const drizzle = new Error('Failed query: insert into ... params: secret', {
+      cause: pg,
+    })
+    expect(describeDatabaseError(drizzle)).toBe(
+      'Postgres 23505 on decide_analysis_run_workspace_idempotency_idx: duplicate key value',
+    )
+  })
+
+  it('falls back to the message when no Postgres error is present', () => {
+    expect(describeDatabaseError(new Error('boom'))).toBe('boom')
   })
 })

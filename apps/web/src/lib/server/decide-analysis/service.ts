@@ -108,10 +108,41 @@ function isActiveRunConflict(cause: unknown): boolean {
   return isActiveRunConflict(record.cause)
 }
 
+/**
+ * Drizzle wraps driver errors as "Failed query: <sql> params: <values>", which
+ * hid the Postgres reason when a Decide run insert failed on dev. This keeps
+ * the Postgres code, constraint and message from the cause chain instead, and
+ * drops the SQL and params, which also kept user data out of the error.
+ */
+export function describeDatabaseError(cause: unknown): string {
+  const seen = new Set<unknown>()
+  let current: unknown = cause
+  while (
+    current !== null &&
+    typeof current === 'object' &&
+    !seen.has(current)
+  ) {
+    seen.add(current)
+    const record = current as {
+      code?: unknown
+      constraint?: unknown
+      message?: unknown
+      cause?: unknown
+    }
+    if (typeof record.code === 'string' && /^[0-9A-Z]{5}$/.test(record.code)) {
+      const constraint =
+        typeof record.constraint === 'string' ? ` on ${record.constraint}` : ''
+      return `Postgres ${record.code}${constraint}: ${String(record.message)}`
+    }
+    current = record.cause
+  }
+  return errorMessage(cause)
+}
+
 const databaseError = (operation: string) => (cause: unknown) =>
   new DecideAnalysisServiceError({
     code: 'database_error',
-    message: `Could not ${operation}: ${errorMessage(cause)}`,
+    message: `Could not ${operation}: ${describeDatabaseError(cause)}`,
     cause,
   })
 
