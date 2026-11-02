@@ -152,6 +152,7 @@ export function decideAnalysisCardView(input: {
   status: ChatDecideAnalysisStatus | null
   progressMessage: string | null
   failureMessage: string | null
+  isLongRun: boolean
   loadFailed: boolean
   cancelError: unknown
 }): DecideAnalysisStepView {
@@ -159,8 +160,13 @@ export function decideAnalysisCardView(input: {
     return decideAnalysisStepView('unavailable', null)
   }
   const view = decideAnalysisStepView(input.status, input.progressMessage)
+  // The run stores a plain reason (Decide's error, or Garden's time-limit
+  // message). Before, the card dropped it and said only "Analysis failed".
   if (input.status === 'failed') {
-    return { ...view, detail: decideFailureReason(input.failureMessage) }
+    return { ...view, detail: input.failureMessage?.trim() || null }
+  }
+  if (view.canCancel && !view.detail && input.isLongRun) {
+    return { ...view, detail: LONG_RUN_NOTE }
   }
   return input.cancelError && view.canCancel
     ? { ...view, detail: 'Garden could not cancel this analysis. Try again.' }
@@ -168,20 +174,14 @@ export function decideAnalysisCardView(input: {
 }
 
 /**
- * The reason a failed run shows on its card. Before, the card said only
- * "Analysis failed" although the run stored why. `-32001` is the MCP SDK's
- * own RequestTimeout, raised in Garden when Decide sends no progress for the
- * SDK default 60s (DEFAULT_REQUEST_TIMEOUT_MSEC with resetTimeoutOnProgress),
- * so it gets plain words; other reasons come from Decide and show as is.
+ * A run longer than this tells the user it is still working and that they can
+ * leave. Dev runs finished in one to two minutes, so past two minutes a run is
+ * unusually long and a silent spinner starts to look stuck.
  */
-function decideFailureReason(message: string | null) {
-  const reason = message?.trim()
-  if (!reason) return null
-  if (/-32001\b/.test(reason)) {
-    return 'Decide sent no update for 60 seconds, so Garden stopped waiting. Ask again to retry.'
-  }
-  return reason
-}
+export const DECIDE_LONG_RUN_MS = 2 * 60 * 1000
+
+const LONG_RUN_NOTE =
+  "Still working in the background. You can leave this chat; the answer will appear here when it's ready."
 
 /** Elapsed run time as a person reads it: "42s", then "1m 05s". */
 export function formatElapsed(ms: number) {

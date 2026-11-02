@@ -217,6 +217,7 @@ describe('Decide analysis card after a failed request', () => {
     status: 'running',
     progressMessage: null,
     failureMessage: null,
+    isLongRun: false,
   } as const
 
   it('settles as failed when the run cannot be loaded', () => {
@@ -271,33 +272,64 @@ describe('Decide analysis card when the run failed', () => {
   const failed = {
     status: 'failed',
     progressMessage: null,
+    isLongRun: false,
     loadFailed: false,
     cancelError: null,
   } as const
 
-  it('explains an MCP request timeout in plain words', () => {
+  it('shows the reason the run stored', () => {
     expect(
       decideAnalysisCardView({
         ...failed,
-        failureMessage: 'MCP error -32001: Request timed out',
+        failureMessage:
+          'Decide did not finish within 1 hour, so Garden stopped waiting. Ask a narrower question to retry.',
       }).detail,
     ).toBe(
-      'Decide sent no update for 60 seconds, so Garden stopped waiting. Ask again to retry.',
+      'Decide did not finish within 1 hour, so Garden stopped waiting. Ask a narrower question to retry.',
     )
-  })
-
-  it('shows any other stored reason as is', () => {
-    expect(
-      decideAnalysisCardView({
-        ...failed,
-        failureMessage: 'Insufficient credits.',
-      }).detail,
-    ).toBe('Insufficient credits.')
   })
 
   it('shows no detail when the run stored no reason', () => {
     expect(
       decideAnalysisCardView({ ...failed, failureMessage: null }).detail,
     ).toBeNull()
+  })
+})
+
+describe('Decide analysis card on a long run', () => {
+  const running = {
+    status: 'running',
+    progressMessage: null,
+    failureMessage: null,
+    loadFailed: false,
+    cancelError: null,
+  } as const
+
+  it('says the work continues in the background past the long-run mark', () => {
+    expect(
+      decideAnalysisCardView({ ...running, isLongRun: true }),
+    ).toMatchObject({
+      label: 'Analyzing your data…',
+      detail:
+        "Still working in the background. You can leave this chat; the answer will appear here when it's ready.",
+      active: true,
+      canCancel: true,
+    })
+  })
+
+  it('keeps a quiet spinner before the mark', () => {
+    expect(
+      decideAnalysisCardView({ ...running, isLongRun: false }).detail,
+    ).toBeNull()
+  })
+
+  it('prefers Decide progress over the background note', () => {
+    expect(
+      decideAnalysisCardView({
+        ...running,
+        isLongRun: true,
+        progressMessage: 'Building the report.',
+      }).detail,
+    ).toBe('Building the report.')
   })
 })

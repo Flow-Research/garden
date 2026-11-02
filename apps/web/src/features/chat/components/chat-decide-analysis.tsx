@@ -27,6 +27,7 @@ import {
 } from '@/lib/api/chat-threads'
 import { decideAnalysisOptions } from '../queries'
 import {
+  DECIDE_LONG_RUN_MS,
   decideAnalysisCardView,
   decideFileKind,
   formatElapsed,
@@ -52,6 +53,19 @@ function useNowSeconds() {
     subscribeToSeconds,
     () => Math.floor(Date.now() / 1000),
     () => 0,
+  )
+}
+
+/**
+ * Whether a run has passed the long-run mark. The snapshot is a boolean, so
+ * the card re-renders once when it flips instead of every second the way the
+ * elapsed timer does.
+ */
+function useIsLongRun(since: string | null) {
+  return useSyncExternalStore(
+    subscribeToSeconds,
+    () => since !== null && Date.now() - Date.parse(since) > DECIDE_LONG_RUN_MS,
+    () => false,
   )
 }
 
@@ -134,10 +148,14 @@ export function DecideAnalysisCard({
     mutationFn: () => cancelChatDecideAnalysis(threadId, runId),
     onSuccess: (run) => queryClient.setQueryData(options.queryKey, run),
   })
+  const isLongRun = useIsLongRun(
+    data ? (data.startedAt ?? data.createdAt) : null,
+  )
   const view = decideAnalysisCardView({
     status: data?.status ?? null,
     progressMessage: data?.progress?.message ?? null,
     failureMessage: data?.error?.message ?? null,
+    isLongRun,
     loadFailed: isError,
     cancelError: cancel.error,
   })
