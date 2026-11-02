@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    branches: [dev, main]
   pull_request:
-    branches: [main]
+    branches: [dev, main]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -41,6 +41,9 @@ jobs:
         run: |
           pnpm --filter @garden/ui tokens:build
           git diff --exit-code -- packages/ui/styles/tokens.css
+
+      - name: Verify connector coverage
+        run: pnpm verify:connectors
 
       - name: Lint
         run: pnpm lint
