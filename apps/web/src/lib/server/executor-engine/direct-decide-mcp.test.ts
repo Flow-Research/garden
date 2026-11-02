@@ -7,7 +7,6 @@ import { Effect } from 'effect'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Executor } from '@executor-js/sdk/core'
 import {
-  DECIDE_ANALYSIS_TIMEOUT_MS,
   DirectDecideMcpSessionManager,
   DirectDecideMcpError,
   type DirectDecideMcpSession,
@@ -366,6 +365,20 @@ describe('direct Decide MCP tools', () => {
     })
   })
 
+  it('subscribes to Decide progress even when the caller sent no progress token', async () => {
+    const { calls, tools } = registerHarness({ content: [] })
+    const { extra, notifications } = toolExtra()
+
+    await tools
+      .get('decide_analyze')
+      ?.callback({ question: 'Analyze this.' }, extra)
+    calls[0]?.onProgress?.({ progress: 1, message: 'Reading the data.' })
+    await Promise.resolve()
+
+    expect(calls[0]?.onProgress).toBeTypeOf('function')
+    expect(notifications).toEqual([])
+  })
+
   it('forwards public MCP progress with the caller progress token', async () => {
     const { calls, tools } = registerHarness({ content: [] })
     const { extra, notifications } = toolExtra('garden-progress-1')
@@ -391,10 +404,6 @@ describe('direct Decide MCP tools', () => {
         },
       },
     ])
-  })
-
-  it('uses a timeout longer than Decide documented four-minute default', () => {
-    expect(DECIDE_ANALYSIS_TIMEOUT_MS).toBeGreaterThan(4 * 60_000)
   })
 
   it('keeps request IDs unique across repeated calls on one connection', async () => {

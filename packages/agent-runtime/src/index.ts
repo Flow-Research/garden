@@ -18,6 +18,7 @@ export {
 export type {
   DecideAnalysisProgress,
   DecideAnalysisSnapshot,
+  DecideAnalysisStartOutcome,
   DecideAnalysisStatus,
   DecideAnalysisWorkflowBinding,
   DecideAnalysisWorkflowParams,

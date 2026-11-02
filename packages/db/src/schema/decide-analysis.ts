@@ -63,6 +63,10 @@ export const decideAnalysisRun = pgTable(
       withTimezone: true,
       mode: 'date',
     }),
+    deliveredAt: timestamp('delivered_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
@@ -85,6 +89,9 @@ export const decideAnalysisRun = pgTable(
     uniqueIndex('decide_analysis_run_workflow_instance_idx').on(
       table.workflowInstanceId,
     ),
+    uniqueIndex('decide_analysis_run_thread_active_idx')
+      .on(table.threadId)
+      .where(sql`${table.status} in ('queued', 'running', 'cancel_requested')`),
     index('decide_analysis_run_thread_updated_idx').on(
       table.threadId,
       table.updatedAt,

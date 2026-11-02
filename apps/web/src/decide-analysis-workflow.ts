@@ -24,6 +24,7 @@ import {
   claimDecideAnalysisRun,
   finishDecideAnalysis,
   markDecideAnalysisProviderStarted,
+  markDecideAnalysisDelivered,
   readDecideAnalysisForWorker,
   writeDecideAnalysisProgress,
 } from '@/lib/server/decide-analysis/service'
@@ -310,21 +311,9 @@ export class DecideAnalysisWorkflow extends WorkflowEntrypoint<
     )
 
     if (finished.status === 'stale') return { runId, status: 'stale' }
-
-    await step.do(
-      `publish-${attempt}`,
-      { retries: { limit: 3, delay: '5 seconds', backoff: 'exponential' } },
-      async () => {
-        const agent = this.env.AgentDO.get(
-          this.env.AgentDO.idFromName(event.payload.agentRuntimeName),
-        )
-        await agent.appendDecideAnalysisResult({
-          threadId: event.payload.threadId,
-          runId,
-          attempt,
-        })
-      },
-    )
+    if (finished.status === 'completed' || finished.status === 'failed') {
+      await this.publish(event, step)
+    }
 
     workflowLogger.info('decide_analysis_workflow.completed', {
       runId,
@@ -332,5 +321,48 @@ export class DecideAnalysisWorkflow extends WorkflowEntrypoint<
       status: finished.status,
     })
     return { runId, status: finished.status }
+  }
+
+  /**
+   * Hands a completed or failed run to its chat, then records `delivered_at`.
+   * The step uses the Workflow default retry policy; a replay is safe because
+   * the chat submission is keyed by run and attempt. The run is already
+   * terminal here, so a delivery that still fails after retries is logged as
+   * its own event instead of escaping to `run`, which would otherwise rewrite
+   * a finished analysis as a Workflow failure. Cancelled runs never reach
+   * this step: the chat step already shows that outcome.
+   */
+  private async publish(
+    event: WorkflowEvent<DecideAnalysisWorkflowParams>,
+    step: WorkflowStep,
+  ) {
+    const { runId, attempt, threadId, agentRuntimeName } = event.payload
+    const published = await Result.tryPromise({
+      try: () =>
+        step.do<{ delivered: boolean }>(`publish-${attempt}`, async () => {
+          const agent = this.env.AgentDO.get(
+            this.env.AgentDO.idFromName(agentRuntimeName),
+          )
+          const { delivered } = await agent.deliverDecideAnalysisResult({
+            threadId,
+            runId,
+            attempt,
+          })
+          if (delivered) {
+            throwOnServiceError(
+              await markDecideAnalysisDelivered(this.env, { runId, attempt }),
+            )
+          }
+          return { delivered }
+        }),
+      catch: (cause) => cause,
+    })
+    if (published.isErr()) {
+      workflowLogger.error('decide_analysis_workflow.delivery_failed', {
+        runId,
+        attempt,
+        message: errorMessage(published.error),
+      })
+    }
   }
 }

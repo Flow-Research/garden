@@ -24,6 +24,10 @@ const devSource = readFileSync(
   resolve(root, 'apps/web/scripts/dev.mjs'),
   'utf8',
 )
+const ciWorkflowSource = readFileSync(
+  resolve(root, '.github/workflows/ci.yml'),
+  'utf8',
+)
 const publicWranglerSources = [
   'apps/web/wrangler.jsonc',
   'apps/web/wrangler.containers.jsonc',
@@ -351,6 +355,11 @@ assert.equal(
   packageJson.scripts['deploy:migrate'],
   'pnpm --filter @garden/db db:migrate',
 )
+// CI must gate migrations through the production runner. The db tests apply
+// migrations with drizzle-orm's migrator, so only this step proves a migration
+// survives drizzle-kit before it reaches the `main` deploy.
+assert.match(ciWorkflowSource, /^\s+run: pnpm --filter @garden\/db db:check$/m)
+assert.match(ciWorkflowSource, /^\s+run: pnpm run deploy:migrate$/m)
 assert.match(
   packageJson.scripts['deploy:alchemy'],
   /GARDEN_DEPLOY_TARGET=staging.*alchemy deploy --stage production --yes/,
