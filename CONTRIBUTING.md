@@ -28,6 +28,12 @@ Keep pull requests focused. Include tests for behavior changes, update shared
 schemas before their consumers, and never commit credentials or local resource
 overlays.
 
+## Review standard
+
+Maintainers use the [Garden review standard](docs/development/review-standard.md)
+for pull request reviews. It defines the expected structure for respectful,
+evidence-based comments and clear next actions.
+
 ## Code conventions
 
 The October 2026 audit ([docs/audit](docs/audit/2026-10-codebase-audit.md))
