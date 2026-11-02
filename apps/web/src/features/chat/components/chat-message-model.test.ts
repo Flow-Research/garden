@@ -1,8 +1,10 @@
+import { ApiError } from '@/lib/api/errors'
 import { describe, expect, it } from 'vitest'
 import type { ChatUiMessage } from '../chat-runtime-provider'
 import {
   buildMessageRenderModel,
   decideAnalysisRunId,
+  decideAnalysisCardView,
   decideAnalysisStepView,
   decideFileKind,
   formatElapsed,
@@ -139,6 +141,13 @@ describe('background Decide analysis', () => {
       'Analysis complete',
     )
     expect(decideAnalysisStepView('failed', null).label).toBe('Analysis failed')
+    expect(decideAnalysisStepView('unavailable', null)).toEqual({
+      label: 'Analysis failed',
+      detail:
+        'Garden could not load this analysis. Ask again to start a new one.',
+      active: false,
+      canCancel: false,
+    })
     expect(decideAnalysisStepView('cancelled', null)).toMatchObject({
       label: 'Analysis cancelled',
       active: false,
@@ -200,5 +209,56 @@ describe('Decide card helpers', () => {
     expect(decideFileKind('rows.csv')).toBe('spreadsheet')
     expect(decideFileKind('report.pdf')).toBe('document')
     expect(decideFileKind('bundle.zip')).toBe('file')
+  })
+})
+
+describe('Decide analysis card after a failed request', () => {
+  const running = { status: 'running', progressMessage: null } as const
+
+  it('settles as failed when the run cannot be loaded', () => {
+    expect(
+      decideAnalysisCardView({
+        ...running,
+        loadFailed: true,
+        cancelError: null,
+      }),
+    ).toMatchObject({ label: 'Analysis failed', active: false })
+  })
+
+  it('stops the spinner when Cancel finds no run', () => {
+    expect(
+      decideAnalysisCardView({
+        ...running,
+        loadFailed: false,
+        cancelError: new ApiError({
+          message: 'Not found',
+          status: 404,
+          statusText: 'Not Found',
+        }),
+      }),
+    ).toMatchObject({
+      label: 'Analysis failed',
+      active: false,
+      canCancel: false,
+    })
+  })
+
+  it('keeps the run live and says Cancel failed on any other error', () => {
+    expect(
+      decideAnalysisCardView({
+        ...running,
+        loadFailed: false,
+        cancelError: new ApiError({
+          message: 'Boom',
+          status: 500,
+          statusText: 'Server Error',
+        }),
+      }),
+    ).toMatchObject({
+      label: 'Analyzing your data…',
+      detail: 'Garden could not cancel this analysis. Try again.',
+      active: true,
+      canCancel: true,
+    })
   })
 })
