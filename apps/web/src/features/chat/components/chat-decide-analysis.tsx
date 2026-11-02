@@ -137,6 +137,7 @@ export function DecideAnalysisCard({
   const view = decideAnalysisCardView({
     status: data?.status ?? null,
     progressMessage: data?.progress?.message ?? null,
+    failureMessage: data?.error?.message ?? null,
     loadFailed: isError,
     cancelError: cancel.error,
   })

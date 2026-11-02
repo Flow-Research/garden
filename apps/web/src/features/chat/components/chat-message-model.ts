@@ -151,6 +151,7 @@ export function decideAnalysisStepView(
 export function decideAnalysisCardView(input: {
   status: ChatDecideAnalysisStatus | null
   progressMessage: string | null
+  failureMessage: string | null
   loadFailed: boolean
   cancelError: unknown
 }): DecideAnalysisStepView {
@@ -158,9 +159,28 @@ export function decideAnalysisCardView(input: {
     return decideAnalysisStepView('unavailable', null)
   }
   const view = decideAnalysisStepView(input.status, input.progressMessage)
+  if (input.status === 'failed') {
+    return { ...view, detail: decideFailureReason(input.failureMessage) }
+  }
   return input.cancelError && view.canCancel
     ? { ...view, detail: 'Garden could not cancel this analysis. Try again.' }
     : view
+}
+
+/**
+ * The reason a failed run shows on its card. Before, the card said only
+ * "Analysis failed" although the run stored why. `-32001` is the MCP SDK's
+ * own RequestTimeout, raised in Garden when Decide sends no progress for the
+ * SDK default 60s (DEFAULT_REQUEST_TIMEOUT_MSEC with resetTimeoutOnProgress),
+ * so it gets plain words; other reasons come from Decide and show as is.
+ */
+function decideFailureReason(message: string | null) {
+  const reason = message?.trim()
+  if (!reason) return null
+  if (/-32001\b/.test(reason)) {
+    return 'Decide sent no update for 60 seconds, so Garden stopped waiting. Ask again to retry.'
+  }
+  return reason
 }
 
 /** Elapsed run time as a person reads it: "42s", then "1m 05s". */

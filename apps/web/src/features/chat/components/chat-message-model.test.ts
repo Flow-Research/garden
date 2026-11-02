@@ -213,7 +213,11 @@ describe('Decide card helpers', () => {
 })
 
 describe('Decide analysis card after a failed request', () => {
-  const running = { status: 'running', progressMessage: null } as const
+  const running = {
+    status: 'running',
+    progressMessage: null,
+    failureMessage: null,
+  } as const
 
   it('settles as failed when the run cannot be loaded', () => {
     expect(
@@ -260,5 +264,40 @@ describe('Decide analysis card after a failed request', () => {
       active: true,
       canCancel: true,
     })
+  })
+})
+
+describe('Decide analysis card when the run failed', () => {
+  const failed = {
+    status: 'failed',
+    progressMessage: null,
+    loadFailed: false,
+    cancelError: null,
+  } as const
+
+  it('explains an MCP request timeout in plain words', () => {
+    expect(
+      decideAnalysisCardView({
+        ...failed,
+        failureMessage: 'MCP error -32001: Request timed out',
+      }).detail,
+    ).toBe(
+      'Decide sent no update for 60 seconds, so Garden stopped waiting. Ask again to retry.',
+    )
+  })
+
+  it('shows any other stored reason as is', () => {
+    expect(
+      decideAnalysisCardView({
+        ...failed,
+        failureMessage: 'Insufficient credits.',
+      }).detail,
+    ).toBe('Insufficient credits.')
+  })
+
+  it('shows no detail when the run stored no reason', () => {
+    expect(
+      decideAnalysisCardView({ ...failed, failureMessage: null }).detail,
+    ).toBeNull()
   })
 })
