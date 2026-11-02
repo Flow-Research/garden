@@ -487,3 +487,37 @@ describe('canonical DOCX document tools', () => {
     DOCX_TEST_TIMEOUT_MS,
   )
 })
+
+describe('document read failures', () => {
+  it('keeps the Postgres cause and code that drizzle wraps', async () => {
+    const pgError = Object.assign(
+      new Error('relation "chat_thread" does not exist'),
+      { code: '42P01' },
+    )
+    const query = {} as QueryChain
+    query.from = () => query
+    query.innerJoin = () => query
+    query.where = () => query
+    query.limit = async () => {
+      throw new Error('Failed query: select "id" from "chat_thread"', {
+        cause: pgError,
+      })
+    }
+    mocks.getPooledDb.mockReturnValue({ select: () => query })
+
+    const result = await readDocument({
+      context: {
+        databaseUrl: 'postgres://test',
+        documentArtifacts: documentAuthority(),
+        workspace: workspaceReading(new Uint8Array()),
+        threadId: 'thread-1',
+      },
+      documentId: 'document-1',
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('Failed query')
+    expect(result.error).toContain('relation "chat_thread" does not exist')
+    expect(result.error).toContain('42P01')
+  })
+})

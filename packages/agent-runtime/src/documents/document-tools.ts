@@ -236,6 +236,26 @@ function buildArtifact(args: {
   }
 }
 
+/**
+ * Maps a failed document query to a tool error that keeps the database's own
+ * reason. Before, only `error.message` survived, and drizzle's message is
+ * just "Failed query: <sql>", so a deployed failure told the model and the
+ * logs nothing. The Postgres message and SQLSTATE `code` live on `cause`
+ * (drizzle-orm `DrizzleQueryError`), so both are appended.
+ */
+function queryFailure(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  const cause =
+    error instanceof Error && error.cause instanceof Error ? error.cause : null
+  const code =
+    cause && 'code' in cause && typeof cause.code === 'string'
+      ? ` (code ${cause.code})`
+      : ''
+  return new DocumentToolError({
+    message: cause ? `${message}: ${cause.message}${code}` : message,
+  })
+}
+
 async function loadThreadContext(context: DocumentToolContext) {
   const db = getDb(context.databaseUrl)
   const rowResult = await Result.tryPromise({
@@ -256,10 +276,7 @@ async function loadThreadContext(context: DocumentToolContext) {
         .limit(1)
       return row ?? null
     },
-    catch: (error) =>
-      new DocumentToolError({
-        message: error instanceof Error ? error.message : String(error),
-      }),
+    catch: queryFailure,
   })
   if (rowResult.isErr()) return rowResult
   if (!rowResult.value) {
@@ -694,10 +711,7 @@ async function loadActiveDocument(
         .limit(1)
       return row ? { ...row, threadId } : null
     },
-    catch: (error) =>
-      new DocumentToolError({
-        message: error instanceof Error ? error.message : String(error),
-      }),
+    catch: queryFailure,
   })
   return rowResult
 }
