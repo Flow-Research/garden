@@ -18,6 +18,42 @@ export const chatKeys = {
   taskMessages: (taskId: string) => ['task-messages', taskId] as const,
   agentProposalRequests: (threadId: string) =>
     ['chat', 'agent-proposal-requests', threadId] as const,
+  decideAnalysis: (threadId: string, runId: string) =>
+    ['chat', 'decide-analysis', threadId, runId] as const,
+}
+
+export type ChatDecideAnalysisStatus =
+  | 'queued'
+  | 'running'
+  | 'cancel_requested'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+
+/** The fields of a Decide run snapshot the chat step reads. */
+export type ChatDecideAnalysis = {
+  runId: string
+  status: ChatDecideAnalysisStatus
+  progress: { message?: string } | null
+}
+
+export function getChatDecideAnalysis(
+  threadId: string,
+  runId: string,
+): Promise<ChatDecideAnalysis> {
+  return getApiTransport().request(
+    `/api/chat/threads/${threadId}/decide-analyses/${runId}`,
+  )
+}
+
+export function cancelChatDecideAnalysis(
+  threadId: string,
+  runId: string,
+): Promise<ChatDecideAnalysis> {
+  return getApiTransport().request(
+    `/api/chat/threads/${threadId}/decide-analyses/${runId}`,
+    { method: 'POST', body: JSON.stringify({ action: 'cancel' }) },
+  )
 }
 
 export type ThreadAgentProposalRequest = {

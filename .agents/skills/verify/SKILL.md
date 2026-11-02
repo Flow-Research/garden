@@ -57,7 +57,7 @@ database is new. Send one chat message to confirm that the model responds.
 Run this before driving a feature:
 
 ```bash
-pnpm doctor
+pnpm run doctor
 ```
 
 The command checks Node.js, pnpm, Docker, Postgres, HelixDB, and the Garden

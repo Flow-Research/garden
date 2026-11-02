@@ -1,14 +1,16 @@
 import { createFileRoute } from '@tanstack/react-router'
+import type { DecideAnalysisSnapshot } from '@garden/agent-runtime'
 import type { Result as ResultValue } from 'better-result'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { getThreadAccess } from '@/lib/server/chat-threads'
 import {
   listDecideAnalyses,
+  toPublicDecideAnalysis,
   type DecideAnalysisServiceError,
 } from '@/lib/server/decide-analysis/service'
 
-const serviceResponse = <T>(
-  result: ResultValue<T, DecideAnalysisServiceError>,
+const serviceResponse = (
+  result: ResultValue<DecideAnalysisSnapshot[], DecideAnalysisServiceError>,
 ) => {
   if (result.isErr()) {
     return Response.json(
@@ -23,7 +25,7 @@ const serviceResponse = <T>(
       },
     )
   }
-  return Response.json({ runs: result.value })
+  return Response.json({ runs: result.value.map(toPublicDecideAnalysis) })
 }
 
 export const Route = createFileRoute(

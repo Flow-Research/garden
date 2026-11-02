@@ -101,6 +101,14 @@ import {
   type IntegrationRouteDecision,
   type RouteAttachment,
 } from './integration-router'
+import {
+  DECIDE_ANALYSIS_DELIVERY_INSTRUCTIONS,
+  DECIDE_ANALYZE_TOOL_KEY,
+  decideAnalysisDeliveryMessage,
+  isDecideAnalysisDeliveryTurn,
+  isDecideToolKey,
+  stopAfterDecideAnalysisStarts,
+} from './decide-analysis-chat'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
 import { isChatToolAllowed } from './chat-permissions'
 import {
@@ -419,56 +427,6 @@ const documentArtifactEventJson = Schema.fromJsonString(DocumentArtifactEvent)
 const documentArtifactEventEncoder = new TextEncoder()
 
 /**
- * Converts the persisted Decide MCP envelope into one readable chat message.
- * The raw envelope remains in Postgres so the UI can render structured files;
- * this message gives a reconnecting chat a stable text result without rerunning
- * the provider call.
- */
-function decideAnalysisResultText(row: {
-  status: string
-  resultJson: unknown
-  errorJson: unknown
-}) {
-  if (row.status === 'cancelled') return 'Decide analysis cancelled.'
-  if (row.status === 'failed') {
-    const error = row.errorJson
-    if (error !== null && typeof error === 'object' && 'message' in error) {
-      const message = (error as { message?: unknown }).message
-      if (typeof message === 'string' && message.trim()) {
-        return `Decide analysis failed: ${message.trim()}`
-      }
-    }
-    return 'Decide analysis failed.'
-  }
-
-  const result = row.resultJson
-  if (result !== null && typeof result === 'object' && 'content' in result) {
-    const content = (result as { content?: unknown }).content
-    if (Array.isArray(content)) {
-      const text = content.flatMap((block) => {
-        if (
-          block !== null &&
-          typeof block === 'object' &&
-          'type' in block &&
-          'text' in block &&
-          (block as { type?: unknown }).type === 'text'
-        ) {
-          const value = (block as { text?: unknown }).text
-          return typeof value === 'string' && value.trim() ? [value.trim()] : []
-        }
-        return []
-      })
-      if (text.length > 0) return text.join('\n\n')
-    }
-  }
-
-  const serialized = JSON.stringify(result)
-  return serialized === undefined
-    ? 'Decide analysis completed.'
-    : `Decide analysis completed.\n\n${serialized}`
-}
-
-/**
  * Extracts filenames and media types from the latest user message so the
  * integration router can use attachment shape (for example CSV) as routing
  * evidence even when the prose only says "analyze this".
@@ -679,25 +637,33 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   }
 
   /**
-   * Publishes one durable Decide result after a Workflow finishes. The stable
-   * message ID makes Workflow replay idempotent, while the thread and run
-   * lookup prevents a stale Workflow from writing into another chat thread.
+   * Hands one finished Decide run to its chat as a model turn. Before, the
+   * Workflow appended Decide's raw blocks as an assistant message, which
+   * landed mid-turn with session IDs and progress logs, and it addressed the
+   * facet by `chat_thread.id` although facets are named by `runtime_key`.
+   * Now the run is joined to its thread to find the facet, and the facet
+   * submits an internal user message that the model turns into the answer.
+   * Returns `delivered: false` for runs that need no message (cancelled).
    */
-  async appendDecideAnalysisResult(input: {
+  async deliverDecideAnalysisResult(input: {
     threadId: string
     runId: string
     attempt: number
-  }): Promise<RuntimeOkPayload> {
+  }): Promise<{ delivered: boolean }> {
     const [run] = await this.getDb()
       .select({
-        id: schema.decideAnalysisRun.id,
-        threadId: schema.decideAnalysisRun.threadId,
+        runId: schema.decideAnalysisRun.id,
         attempt: schema.decideAnalysisRun.attempt,
         status: schema.decideAnalysisRun.status,
         resultJson: schema.decideAnalysisRun.resultJson,
         errorJson: schema.decideAnalysisRun.errorJson,
+        runtimeKey: schema.chatThread.runtimeKey,
       })
       .from(schema.decideAnalysisRun)
+      .innerJoin(
+        schema.chatThread,
+        eq(schema.chatThread.id, schema.decideAnalysisRun.threadId),
+      )
       .where(
         and(
           eq(schema.decideAnalysisRun.id, input.runId),
@@ -716,20 +682,11 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       throw new Error('Decide analysis run is not terminal')
     }
 
-    const thread = await this.subAgent(ChatSubAgent, input.threadId)
-    await thread.addMessages([
-      {
-        id: `decide-analysis:${input.runId}:attempt:${input.attempt}`,
-        role: 'assistant',
-        parts: [
-          {
-            type: 'text',
-            text: decideAnalysisResultText(run),
-          },
-        ],
-      },
-    ])
-    return { ok: true }
+    const message = decideAnalysisDeliveryMessage(run)
+    if (!message) return { delivered: false }
+    const thread = await this.subAgent(ChatSubAgent, run.runtimeKey)
+    await thread.deliverDecideAnalysisResult(message)
+    return { delivered: true }
   }
 
   @callable()
@@ -2014,6 +1971,25 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     return { ok: true }
   }
 
+  /**
+   * Queues the Decide result hand-off as a durable Think submission keyed by
+   * the message ID. A replayed Workflow step finds the existing submission
+   * and starts no second turn, and the turn queue runs it after any active
+   * turn so it never splices into one. `submitMessages` is used instead of
+   * `saveMessages` because it persists the turn in the facet and returns at
+   * once; `saveMessages` would hold the Workflow step's RPC open for the
+   * whole model turn, and its `shouldApplyMessages` option is not part of
+   * the published `SaveMessagesOptions` type (agents 0.17.3). Reference:
+   * `Think.submitMessages` in @cloudflare/think 0.10.0.
+   */
+  async deliverDecideAnalysisResult(message: UIMessage) {
+    const submission = await this.submitMessages([message], {
+      submissionId: message.id,
+      idempotencyKey: message.id,
+    })
+    return { accepted: submission.accepted, status: submission.status }
+  }
+
   async continueAfterGardenApproval(input: {
     approved: boolean
     permissionRequestId: string
@@ -2138,22 +2114,37 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         : null
     const userAttachments = latestUserAttachments(ctx.messages)
     const userText = latestUserText(ctx.messages)
+    // `ctx.messages` are model messages without UI metadata, so the hand-off
+    // marker is read from the persisted UI history.
+    const isDecideDelivery = isDecideAnalysisDeliveryTurn(this.messages)
 
-    const executorCatalog = identity
-      ? await this.loadChatExecutorCatalog({
-          workspaceId: identity.workspaceId,
-          userId: identity.ownerUserId,
+    const executorCatalog =
+      identity && !isDecideDelivery
+        ? await this.loadChatExecutorCatalog({
+            workspaceId: identity.workspaceId,
+            userId: identity.ownerUserId,
+          })
+        : null
+    // A delivery turn presents a finished result, so the hand-off text must
+    // not route the turn back to Decide.
+    const routeDecision: IntegrationRouteDecision = isDecideDelivery
+      ? {
+          status: 'none',
+          skill: null,
+          routes: [],
+          reason: 'Presenting a finished Decide analysis.',
+        }
+      : selectIntegrationRoute({
+          userText,
+          documentContext,
+          attachments: userAttachments,
+          catalog: executorCatalog,
         })
-      : null
-    const routeDecision: IntegrationRouteDecision = selectIntegrationRoute({
-      userText,
-      documentContext,
-      attachments: userAttachments,
-      catalog: executorCatalog,
-    })
     this.currentIntegrationRoute = routeDecision
     const needsConnectedTools = requestNeedsConnectedTools(routeDecision)
-    const integrationDirective = renderIntegrationRouteDirective(routeDecision)
+    const integrationDirective = isDecideDelivery
+      ? DECIDE_ANALYSIS_DELIVERY_INSTRUCTIONS
+      : renderIntegrationRouteDirective(routeDecision)
     // A selected Decide call is the requested source of truth for this turn.
     // Stop the AI SDK loop after a failed tool result so the model cannot
     // continue with a local analysis. The failed tool output remains in the
@@ -2233,7 +2224,18 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     const visibleTools = Object.fromEntries(
       Object.entries(stableMcpTools).filter(([key]) => isToolVisible(key)),
     ) as ToolSet
-    const visibleActiveTools = activeTools.filter((key) => isToolVisible(key))
+    const visibleActiveTools = activeTools.filter(
+      (key) =>
+        isToolVisible(key) && !(isDecideDelivery && isDecideToolKey(key)),
+    )
+    const stopWhen = [
+      ...(visibleActiveTools.includes(DECIDE_ANALYZE_TOOL_KEY)
+        ? [stopAfterDecideAnalysisStarts]
+        : []),
+      ...(stopAfterSelectedDecideFailure
+        ? [stopAfterSelectedDecideFailure]
+        : []),
+    ]
 
     return {
       model: createAgentModel({
@@ -2259,9 +2261,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       ...(systemAdditions
         ? { system: `${ctx.system}\n\n${systemAdditions}` }
         : {}),
-      ...(stopAfterSelectedDecideFailure
-        ? { stopWhen: stopAfterSelectedDecideFailure }
-        : {}),
+      ...(stopWhen.length > 0 ? { stopWhen } : {}),
       tools: visibleTools,
       activeTools: visibleActiveTools,
     } satisfies TurnConfig

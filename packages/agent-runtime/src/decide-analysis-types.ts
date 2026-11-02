@@ -48,4 +48,15 @@ export type DecideAnalysisSnapshot = {
   createdAt: string
   startedAt: string | null
   completedAt: string | null
+  deliveredAt: string | null
+}
+
+/**
+ * What a chat start did. `already_running` is a normal product outcome: the
+ * thread already has an active run, so Garden returns that run instead of
+ * charging Decide for a second analysis.
+ */
+export type DecideAnalysisStartOutcome = {
+  kind: 'started' | 'already_running'
+  snapshot: DecideAnalysisSnapshot
 }

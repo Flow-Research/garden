@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { DecideAnalysisSnapshot } from '@garden/agent-runtime'
 import { createFileRoute } from '@tanstack/react-router'
 import type { Result as ResultValue } from 'better-result'
 import { requireAppRequestContext } from '@/lib/server/context'
@@ -8,6 +9,7 @@ import {
   cancelDecideAnalysis,
   getDecideAnalysis,
   retryDecideAnalysis,
+  toPublicDecideAnalysis,
   type DecideAnalysisServiceError,
 } from '@/lib/server/decide-analysis/service'
 
@@ -16,8 +18,8 @@ const actionSchema = z.object({
   retry_key: z.string().min(1).optional(),
 })
 
-const serviceResponse = <T>(
-  result: ResultValue<T, DecideAnalysisServiceError>,
+const serviceResponse = (
+  result: ResultValue<DecideAnalysisSnapshot, DecideAnalysisServiceError>,
 ) => {
   if (result.isErr()) {
     return Response.json(
@@ -34,7 +36,7 @@ const serviceResponse = <T>(
       },
     )
   }
-  return Response.json(result.value)
+  return Response.json(toPublicDecideAnalysis(result.value))
 }
 
 export const Route = createFileRoute(
