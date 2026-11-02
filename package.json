@@ -17,6 +17,7 @@
     "dev:containers": "turbo run dev --ui=tui --filter=@garden/web",
     "dev:reset": "pkill -f '[t]urbo run dev|[t]urbo run dev:local|[v]ite dev|[w]orkerd serve|[e]sbuild --service' || true",
     "dev:web": "turbo run dev:local --ui=tui --filter=@garden/web",
+    "verify:pr": "node scripts/verify-pr-contract.mjs",
     "build": "turbo run build",
     "deploy": "pnpm typecheck && pnpm run deploy:migrate && pnpm run deploy:alchemy",
     "deploy:ci": "node scripts/deploy-ci.mjs",
