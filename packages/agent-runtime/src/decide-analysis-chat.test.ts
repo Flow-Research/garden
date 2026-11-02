@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { StepResult, ToolSet, UIMessage } from 'ai'
 import {
   DECIDE_ANALYZE_TOOL_KEY,
+  chatTurnActiveTools,
   decideAnalysisDeliveryMessage,
   isDecideAnalysisDeliveryTurn,
-  isDecideToolKey,
   stopAfterDecideAnalysisStarts,
 } from './decide-analysis-chat'
 
@@ -53,7 +53,7 @@ describe('stopAfterDecideAnalysisStarts', () => {
 })
 
 describe('decideAnalysisDeliveryMessage', () => {
-  it('carries the findings in order and the generated file links', () => {
+  it('carries the findings in order and names the generated files', () => {
     const message = decideAnalysisDeliveryMessage(completedRun)
     const text = message?.parts
       .map((part) => (part.type === 'text' ? part.text : ''))
@@ -64,9 +64,7 @@ describe('decideAnalysisDeliveryMessage', () => {
     expect(text?.indexOf('Revenue grew')).toBeLessThan(
       text?.indexOf('Churn fell') ?? -1,
     )
-    expect(text).toContain(
-      'revenue.xlsx: https://api.trydecide.ai/uploads/revenue.xlsx',
-    )
+    expect(text).toContain('download cards:\n- revenue.xlsx')
     expect(text).not.toContain('sess_secret')
   })
 
@@ -116,18 +114,30 @@ describe('delivery turn', () => {
     expect(isDecideAnalysisDeliveryTurn([userAsk, handoff])).toBe(true)
     expect(isDecideAnalysisDeliveryTurn([handoff, userAsk])).toBe(false)
   })
+})
 
-  it('removes every Decide tool and keeps the rest', () => {
-    const active = [
-      DECIDE_ANALYZE_TOOL_KEY,
-      'tool_executor_decide_list_generated_files',
-      'tool_executor_execute',
-      'readDocument',
-    ]
+describe('chatTurnActiveTools', () => {
+  const tools = [
+    'readDocument',
+    'tool_executor_execute',
+    DECIDE_ANALYZE_TOOL_KEY,
+  ]
 
-    expect(active.filter((key) => !isDecideToolKey(key))).toEqual([
-      'tool_executor_execute',
-      'readDocument',
-    ])
+  it('gives a delivery turn no tools, so the model can only write', () => {
+    expect(
+      chatTurnActiveTools(tools, {
+        isDecideDelivery: true,
+        isVisible: () => true,
+      }),
+    ).toEqual([])
+  })
+
+  it('keeps the visible tools on a normal turn', () => {
+    expect(
+      chatTurnActiveTools(tools, {
+        isDecideDelivery: false,
+        isVisible: (key) => key !== 'readDocument',
+      }),
+    ).toEqual(['tool_executor_execute', DECIDE_ANALYZE_TOOL_KEY])
   })
 })

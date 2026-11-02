@@ -55,8 +55,17 @@ tool-call idempotency key still deduplicates MCP retries of the same call.
 The model no longer passes `session_id` in chat. When a chat call omits
 `data`, the service reuses the provider session of the thread's latest
 `completed` run. A call with new `data` starts a new Decide session. A failed
-run never seeds a follow-up, so an empty session cannot produce a paid
-greeting. Direct non-chat callers keep the explicit `session_id` argument.
+run never seeds a follow-up. A call with no `data` and no completed session
+in the thread does not reach Decide: the tool returns an `invalid_input`
+error that asks the user to attach the file, because Decide would otherwise
+charge for a greeting. Direct non-chat callers keep the explicit `session_id`
+argument.
+
+Decide returns plain `content` text blocks and no `structuredContent`. The
+Workflow reads the session ID from that text with
+`decideSessionIdFromResult` (`packages/agent-runtime/src/decide-analysis-result.ts`).
+Decide prints it as `Session ID: sess_…`, as `(session_id: sess_…)`, and
+inside output URLs under `/agent-sessions/sess_…/`.
 
 ### The turn ends when the run starts
 
@@ -67,13 +76,32 @@ substitute a local analysis while Decide works. The tool text tells the model
 that the answer will appear in the chat. The structured content keeps
 `run_id` for the UI only.
 
-### The chat step shows live run status
+### The chat shows a Decide status card
 
-The Decide tool step reads `run_id` from the tool output and polls the status
-API while the run is not terminal. It shows Decide's latest progress message
-and a Cancel action. It shows "Analysis complete", "Analysis failed", or
-"Analysis cancelled" at the end. The user never sees a run ID or session ID.
-A cancelled run needs no chat message because the step shows the outcome.
+The Decide analyze call renders as its own card in the timeline, outside the
+collapsible work group. Inside the group it sat under a header that read
+"Completed" while Decide was still working. The card reads `run_id` from the
+tool output and polls the status API while the run is not terminal.
+
+The card opens with a fixed line: "I'm running this through Decide. The
+answer will appear here shortly." The start turn ends in code right after the
+tool call, so the model writes nothing, and fixed copy is deterministic,
+costs no tokens, and survives a reload. Below it, a live status shows a
+spinner and "Analyzing your data…", Decide's latest progress message, the
+elapsed time, and a Cancel action. It settles on "Analysis complete",
+"Analysis failed", or "Analysis cancelled". The user never sees a run ID or
+session ID. A cancelled run needs no chat message because the card shows the
+outcome.
+
+### Generated files render as file cards
+
+The status API returns `files: { name, url }[]` for a completed run. The
+service parses them once from the stored result with `decideGeneratedFiles`:
+any URL in Decide's text whose last path segment has a file extension, plus
+MCP `resource_link` blocks. The card lists each file with its name, a type
+icon, and an Open action that opens the file in a new tab, since Decide hosts
+outputs on its own origin where `download` is ignored. Images get an inline
+preview. Links never depend on model markdown.
 
 ### The answer arrives through a model turn
 
@@ -91,10 +119,12 @@ type. The turn queue runs the submission after any active turn, so it never
 splices into a running turn. The chat UI hides internal messages of that
 kind.
 
-In the delivery turn, Garden removes the Decide tools from the active tools
-and adds instructions to the system prompt. The model presents Decide's
-findings with Decide's numbers unchanged, links each generated file, and
-leaves out Decide's own narration, progress notes, session IDs, and run IDs.
+In the delivery turn, Garden gives the model no active tools and adds
+instructions to the system prompt. A live test showed why: with only the
+Decide tools removed, the model answered a failed run with its own local
+analysis. The model presents Decide's findings with Decide's numbers
+unchanged, refers to generated files by name without pasting their URLs
+because the card already shows them, and leaves out Decide's own narration, progress notes, session IDs, and run IDs.
 A failed run produces a short explanation of the error in plain language, such
 as an exhausted Decide credit balance, with no automatic retry. The Workflow
 records `delivered_at` once the chat accepts the submission.

@@ -18,15 +18,9 @@ import {
   getToolPartState,
 } from '@cloudflare/ai-chat/react'
 import { getToolName, isToolUIPart } from 'ai'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { cn } from '@garden/ui/lib/utils'
-import { Button } from '@garden/ui/components/ui/button'
 import { Spinner } from '@garden/ui/components/ui/spinner'
-import {
-  cancelChatDecideAnalysis,
-  resolveToolApproval as resolveToolApprovalRequest,
-} from '@/lib/api'
-import { decideAnalysisOptions } from '../queries'
+import { resolveToolApproval as resolveToolApprovalRequest } from '@/lib/api'
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -51,7 +45,6 @@ import { extractExecutorToolRefs } from '@garden/connectors/capabilities'
 import { getConnectorByExecutorSlug } from '@garden/connectors/registry'
 import {
   canonicalJsonString,
-  decideAnalysisStepView,
   formatApprovalInput,
   type ApprovalGroup,
   type ChatWorkEntry,
@@ -112,55 +105,6 @@ export function StreamingWorkEntryRow({
         </pre>
       ) : null}
     </ChainOfThoughtStep>
-  )
-}
-
-/**
- * The chat step for a background Decide run. The tool call returns as soon as
- * the run starts, so the generic row read "done" while Decide was still
- * working. This row polls the run status instead, shows Decide's latest
- * progress note, offers Cancel, and settles on the run's outcome. The answer
- * itself arrives later as an assistant message.
- */
-export function DecideAnalysisStepRow({
-  runId,
-  threadId,
-}: {
-  runId: string
-  threadId: string
-}) {
-  const queryClient = useQueryClient()
-  const options = decideAnalysisOptions(threadId, runId)
-  const { data } = useQuery(options)
-  const cancel = useMutation({
-    mutationFn: () => cancelChatDecideAnalysis(threadId, runId),
-    onSuccess: (run) => queryClient.setQueryData(options.queryKey, run),
-  })
-  const view = decideAnalysisStepView(
-    data?.status ?? null,
-    data?.progress?.message ?? null,
-  )
-  return (
-    <ChainOfThoughtStep
-      label={
-        <span className="flex items-center gap-2">
-          <span className="font-medium text-foreground/80">{view.label}</span>
-          {view.canCancel ? (
-            <Button
-              type="button"
-              size="xs"
-              variant="ghost"
-              disabled={cancel.isPending}
-              onClick={() => cancel.mutate()}
-            >
-              Cancel
-            </Button>
-          ) : null}
-        </span>
-      }
-      description={view.detail ?? undefined}
-      status={view.active ? 'active' : 'complete'}
-    />
   )
 }
 

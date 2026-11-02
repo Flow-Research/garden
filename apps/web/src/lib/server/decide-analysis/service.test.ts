@@ -166,9 +166,22 @@ describe('startDecideAnalysis', () => {
       'a\n1',
     )
 
-    const followUp = (await start(thread)).unwrap()
+    const followUp = await start(thread)
 
-    expect(followUp.snapshot.providerSessionId).toBeNull()
+    expect(followUp.isErr() && followUp.error.code).toBe('invalid_input')
+    expect(await runsFor(thread.threadId)).toHaveLength(1)
+  })
+
+  it('asks for data instead of paying Decide for a run with nothing to analyze', async () => {
+    const thread = await seedThread()
+    const startsBefore = workflowStarts.length
+
+    const result = await start(thread)
+
+    expect(result.isErr() && result.error.code).toBe('invalid_input')
+    expect(result.isErr() && result.error.message).toMatch(/attach|data/i)
+    expect(await runsFor(thread.threadId)).toHaveLength(0)
+    expect(workflowStarts.length).toBe(startsBefore)
   })
 
   it('starts a fresh session when new data arrives', async () => {
@@ -262,5 +275,35 @@ describe('toPublicDecideAnalysis', () => {
       status: 'completed',
     })
     expect(JSON.stringify(shape)).not.toContain('sess_1')
+  })
+})
+
+describe('toPublicDecideAnalysis files', () => {
+  it('lists the files Decide linked in its text', async () => {
+    const thread = await seedThread()
+    const started = (await start(thread, { data: 'a\n1' })).unwrap()
+    const url =
+      'https://api.trydecide.co/uploads/agent-sessions/sess_1_ab/outputs/revenue.xlsx'
+    const finished = (
+      await finishDecideAnalysis(env, {
+        runId: started.snapshot.runId,
+        attempt: started.snapshot.attempt,
+        result: {
+          content: [{ type: 'text', text: `Workbook: ${url}` }],
+        },
+        providerSessionId: null,
+      })
+    ).unwrap()
+
+    expect(toPublicDecideAnalysis(finished!).files).toEqual([
+      { name: 'revenue.xlsx', url },
+    ])
+  })
+
+  it('lists no files while the run is active', async () => {
+    const thread = await seedThread()
+    const started = (await start(thread, { data: 'a\n1' })).unwrap()
+
+    expect(toPublicDecideAnalysis(started.snapshot).files).toEqual([])
   })
 })

@@ -10,6 +10,7 @@
  */
 
 import { buildMessageRenderModel } from './chat-message-model'
+import { DecideAnalysisCard } from './chat-decide-analysis'
 // Re-export the pure model surface so existing importers (chat-timeline,
 // chat-panel-controller, chat-tool-activity, lib/server) keep resolving these
 // from chat-message-parts after the model layer was split out.
@@ -40,11 +41,7 @@ import {
 import type { GardenArtifactData } from '@/features/artifacts/artifact-renderer'
 import type { ChatUiMessage } from '../chat-runtime-provider'
 import type { DocumentCitationAnnotation } from './chat-document-panel'
-import {
-  DecideAnalysisStepRow,
-  PreResponseWrapper,
-  StreamingWorkEntryRow,
-} from './chat-tool-activity'
+import { PreResponseWrapper, StreamingWorkEntryRow } from './chat-tool-activity'
 import { GardenDocDownloadBlock, renderArtifactPart } from './chat-artifacts'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -156,22 +153,22 @@ export function MessageOrderedParts({
                 shouldMinimize={false}
                 stepCount={node.stepCount}
               >
-                {node.entries.map((entry) =>
-                  entry.decideRunId && !debugMode ? (
-                    <DecideAnalysisStepRow
-                      key={entry.id}
-                      runId={entry.decideRunId}
-                      threadId={threadId}
-                    />
-                  ) : (
-                    <StreamingWorkEntryRow
-                      key={entry.id}
-                      entry={entry}
-                      showConnector={false}
-                    />
-                  ),
-                )}
+                {node.entries.map((entry) => (
+                  <StreamingWorkEntryRow
+                    key={entry.id}
+                    entry={entry}
+                    showConnector={false}
+                  />
+                ))}
               </PreResponseWrapper>
+            )
+          case 'decide':
+            return (
+              <DecideAnalysisCard
+                key={node.key}
+                runId={node.runId}
+                threadId={threadId}
+              />
             )
           case 'artifact':
             return (
