@@ -277,3 +277,33 @@ describe('toPublicDecideAnalysis', () => {
     expect(JSON.stringify(shape)).not.toContain('sess_1')
   })
 })
+
+describe('toPublicDecideAnalysis files', () => {
+  it('lists the files Decide linked in its text', async () => {
+    const thread = await seedThread()
+    const started = (await start(thread, { data: 'a\n1' })).unwrap()
+    const url =
+      'https://api.trydecide.co/uploads/agent-sessions/sess_1_ab/outputs/revenue.xlsx'
+    const finished = (
+      await finishDecideAnalysis(env, {
+        runId: started.snapshot.runId,
+        attempt: started.snapshot.attempt,
+        result: {
+          content: [{ type: 'text', text: `Workbook: ${url}` }],
+        },
+        providerSessionId: null,
+      })
+    ).unwrap()
+
+    expect(toPublicDecideAnalysis(finished!).files).toEqual([
+      { name: 'revenue.xlsx', url },
+    ])
+  })
+
+  it('lists no files while the run is active', async () => {
+    const thread = await seedThread()
+    const started = (await start(thread, { data: 'a\n1' })).unwrap()
+
+    expect(toPublicDecideAnalysis(started.snapshot).files).toEqual([])
+  })
+})

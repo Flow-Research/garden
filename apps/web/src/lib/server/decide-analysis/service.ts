@@ -10,6 +10,7 @@ import type {
   DecideAnalysisWorkflowParams,
 } from '@garden/agent-runtime/src/decide-analysis-types'
 import { DECIDE_ANALYSIS_STATUSES } from '@garden/agent-runtime/src/decide-analysis-types'
+import { decideGeneratedFiles } from '@garden/agent-runtime/src/decide-analysis-result'
 import { createRuntimeDbClient, type Db } from '@garden/db/runtime'
 import * as schema from '@garden/db/schema'
 import type { HyperdriveConnection } from '@garden/server/runtime-bindings'
@@ -188,10 +189,15 @@ export function toDecideAnalysisSnapshot(
  * The run fields the browser may read. The status routes returned the whole
  * snapshot, which sent Decide's raw result blocks and the provider session ID
  * to the client. The answer reaches the user as a chat turn, so the API keeps
- * only lifecycle state.
+ * lifecycle state plus the generated files, parsed here once so the chat
+ * renders them as file cards instead of trusting model-written links.
  */
 export function toPublicDecideAnalysis(snapshot: DecideAnalysisSnapshot) {
   return {
+    files:
+      snapshot.status === 'completed'
+        ? decideGeneratedFiles(snapshot.result)
+        : [],
     runId: snapshot.runId,
     status: snapshot.status,
     attempt: snapshot.attempt,
