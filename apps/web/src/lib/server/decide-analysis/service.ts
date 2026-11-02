@@ -87,9 +87,6 @@ const workflowInstanceId = (runId: string, attempt: number) =>
 const runLock = (runId: string) =>
   sql`select pg_advisory_xact_lock(hashtext(${`decide-analysis:${runId}`}))`
 
-const idempotencyLock = (workspaceId: string, idempotencyKey: string) =>
-  sql`select pg_advisory_xact_lock(hashtext(${`decide-analysis:${workspaceId}:${idempotencyKey}`}))`
-
 const ACTIVE_STATUSES = ['queued', 'running', 'cancel_requested'] as const
 const ACTIVE_RUN_INDEX = 'decide_analysis_run_thread_active_idx'
 
@@ -364,8 +361,14 @@ async function startWorkflow(env: DecideAnalysisEnvironment, row: RunRow) {
  * while it waited paid Decide twice. Now a thread has at most one active run:
  * the transaction returns the active row, and the partial unique index
  * `decide_analysis_run_thread_active_idx` catches the race where two calls
- * pass that check together. The advisory lock still collapses MCP retries
- * that share a tool-call ID.
+ * pass that check together. A retried MCP call lands on that same active
+ * row, so it needs no key lookup.
+ *
+ * The tool-call ID is stored for tracing only. Before, a workspace-wide
+ * lookup by that ID returned any earlier run with the same ID, and model
+ * tool-call IDs repeat (`functions.tool_executor_decide_analyze:1` restarts in
+ * every thread), so a new chat got another chat's finished run and nothing
+ * ran. Now only the thread's active run is ever returned.
  *
  * Garden owns the Decide session. A call without `data` continues the
  * thread's latest completed session; a call with `data` starts a new one.
@@ -402,19 +405,6 @@ export async function startDecideAnalysis(
 
   const created = await withDb(input.env, 'create Decide analysis run', (db) =>
     db.transaction(async (tx) => {
-      await tx.execute(idempotencyLock(input.workspaceId, idempotencyKey))
-      const [existing] = await tx
-        .select()
-        .from(schema.decideAnalysisRun)
-        .where(
-          and(
-            eq(schema.decideAnalysisRun.workspaceId, input.workspaceId),
-            eq(schema.decideAnalysisRun.idempotencyKey, idempotencyKey),
-          ),
-        )
-        .limit(1)
-      if (existing) return { kind: 'started' as const, row: existing }
-
       const thread = await resolveThread(tx, threadScope)
       if (!thread) return null
 
