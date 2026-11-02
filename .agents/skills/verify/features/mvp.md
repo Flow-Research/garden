@@ -21,7 +21,7 @@
 ## Driving it with the Garden verification workflow
 
 The local stack and manual browser commands are in the parent `SKILL.md`.
-Use `pnpm doctor` before the run. Capture the action and the resulting state in
+Use `pnpm run doctor` before the run. Capture the action and the resulting state in
 one evidence folder.
 
 The driver is pending because Garden does not yet have stable seeded auth and

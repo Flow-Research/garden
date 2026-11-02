@@ -10,7 +10,7 @@ const helpRequested =
   process.argv.includes('--help') || process.argv.includes('-h')
 
 if (helpRequested) {
-  print('Usage: pnpm doctor [--json]')
+  print('Usage: pnpm run doctor [-- --json]')
   print()
   print('Checks local tools, Docker services, and the Garden app.')
   process.exit(0)
