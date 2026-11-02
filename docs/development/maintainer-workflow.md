@@ -57,6 +57,10 @@ checks Node.js, pnpm, Docker, the required local services, and the Garden app.
 
 ## Run repository checks
 
+CI runs once for a pull request that targets `dev` or `main`. It also runs on
+direct pushes to `dev` and `main`. It does not run on every push to a feature
+branch because the pull request run already checks that branch.
+
 Run the checks that match the changed files. Run the full set before a broad
 merge or release:
 
