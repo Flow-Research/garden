@@ -135,6 +135,12 @@ function main() {
   const event = JSON.parse(readFileSync(eventPath, 'utf8'))
   const pullRequest = event.pull_request
   if (!pullRequest) {
+    if (event.ref) {
+      process.stdout.write(
+        'PR contract is not applicable to a push event; branch status recorded.\n',
+      )
+      return
+    }
     fail('the GitHub event is not a pull_request event')
     return
   }
