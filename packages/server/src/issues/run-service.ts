@@ -468,35 +468,37 @@ export async function startIssueRun(
   const db = getDb(env)
   const lookupResult = await Result.tryPromise({
     try: async () => {
-      const [issue] = await db
-        .select({
-          id: schema.issue.id,
-          workspaceId: schema.issue.workspaceId,
-          status: schema.issue.status,
-        })
-        .from(schema.issue)
-        .where(
-          and(
-            eq(schema.issue.id, input.issueId),
-            eq(schema.issue.workspaceId, input.workspaceId),
-          ),
-        )
-        .limit(1)
-      const [agent] = await db
-        .select({
-          id: schema.agent.id,
-          workspaceId: schema.agent.workspaceId,
-          hostName: schema.agent.hostName,
-          status: schema.agent.status,
-        })
-        .from(schema.agent)
-        .where(
-          and(
-            eq(schema.agent.id, input.agentId),
-            eq(schema.agent.workspaceId, input.workspaceId),
-          ),
-        )
-        .limit(1)
+      const [[issue], [agent]] = await Promise.all([
+        db
+          .select({
+            id: schema.issue.id,
+            workspaceId: schema.issue.workspaceId,
+            status: schema.issue.status,
+          })
+          .from(schema.issue)
+          .where(
+            and(
+              eq(schema.issue.id, input.issueId),
+              eq(schema.issue.workspaceId, input.workspaceId),
+            ),
+          )
+          .limit(1),
+        db
+          .select({
+            id: schema.agent.id,
+            workspaceId: schema.agent.workspaceId,
+            hostName: schema.agent.hostName,
+            status: schema.agent.status,
+          })
+          .from(schema.agent)
+          .where(
+            and(
+              eq(schema.agent.id, input.agentId),
+              eq(schema.agent.workspaceId, input.workspaceId),
+            ),
+          )
+          .limit(1),
+      ])
       return { issue: issue ?? null, agent: agent ?? null }
     },
     catch: (cause) => serviceDbError('load issue run inputs', cause),

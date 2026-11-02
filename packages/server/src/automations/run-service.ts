@@ -228,31 +228,33 @@ export async function startAutomationRun(
   const db = getDb(env)
   const lookupResult = await Result.tryPromise({
     try: async () => {
-      const [automation] = await db
-        .select({ id: schema.automation.id })
-        .from(schema.automation)
-        .where(
-          and(
-            eq(schema.automation.id, input.automationId),
-            eq(schema.automation.workspaceId, input.workspaceId),
-          ),
-        )
-        .limit(1)
-      const [agent] = await db
-        .select({
-          id: schema.agent.id,
-          workspaceId: schema.agent.workspaceId,
-          hostName: schema.agent.hostName,
-          status: schema.agent.status,
-        })
-        .from(schema.agent)
-        .where(
-          and(
-            eq(schema.agent.id, input.agentId),
-            eq(schema.agent.workspaceId, input.workspaceId),
-          ),
-        )
-        .limit(1)
+      const [[automation], [agent]] = await Promise.all([
+        db
+          .select({ id: schema.automation.id })
+          .from(schema.automation)
+          .where(
+            and(
+              eq(schema.automation.id, input.automationId),
+              eq(schema.automation.workspaceId, input.workspaceId),
+            ),
+          )
+          .limit(1),
+        db
+          .select({
+            id: schema.agent.id,
+            workspaceId: schema.agent.workspaceId,
+            hostName: schema.agent.hostName,
+            status: schema.agent.status,
+          })
+          .from(schema.agent)
+          .where(
+            and(
+              eq(schema.agent.id, input.agentId),
+              eq(schema.agent.workspaceId, input.workspaceId),
+            ),
+          )
+          .limit(1),
+      ])
       return { automation: automation ?? null, agent: agent ?? null }
     },
     catch: (cause) => serviceDbError('load automation run inputs', cause),

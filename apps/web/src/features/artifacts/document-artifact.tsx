@@ -244,10 +244,13 @@ function PdfArtifactPreview({
     const load = async () => {
       const result = await Result.tryPromise({
         try: async () => {
-          const response = await fetch(withRefreshKey(url, refreshKey) ?? url)
+          // Load the pdf.js chunk while the document downloads.
+          const [response, pdfjs] = await Promise.all([
+            fetch(withRefreshKey(url, refreshKey) ?? url),
+            import('pdfjs-dist'),
+          ])
           if (!response.ok) throw new Error(`HTTP ${response.status}`)
           const bytes = await response.arrayBuffer()
-          const pdfjs = await import('pdfjs-dist')
           pdfjs.GlobalWorkerOptions.workerSrc = new URL(
             'pdfjs-dist/build/pdf.worker.min.mjs',
             import.meta.url,
