@@ -52,7 +52,7 @@ Use this order for a pull request that is still needed:
 7. Record the result in the pull request and choose whether to merge, request a
    change, or defer the pull request.
 
-Use `pnpm doctor` before a local verification run. The command is read-only. It
+Use `pnpm run doctor` before a local verification run. The command is read-only. It
 checks Node.js, pnpm, Docker, the required local services, and the Garden app.
 
 ## Run repository checks
@@ -98,7 +98,7 @@ pnpm dev:offline
 Then run:
 
 ```bash
-pnpm doctor
+pnpm run doctor
 ```
 
 The first verification map covers the beta path from the roadmap and the
