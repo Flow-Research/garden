@@ -365,6 +365,20 @@ describe('direct Decide MCP tools', () => {
     })
   })
 
+  it('subscribes to Decide progress even when the caller sent no progress token', async () => {
+    const { calls, tools } = registerHarness({ content: [] })
+    const { extra, notifications } = toolExtra()
+
+    await tools
+      .get('decide_analyze')
+      ?.callback({ question: 'Analyze this.' }, extra)
+    calls[0]?.onProgress?.({ progress: 1, message: 'Reading the data.' })
+    await Promise.resolve()
+
+    expect(calls[0]?.onProgress).toBeTypeOf('function')
+    expect(notifications).toEqual([])
+  })
+
   it('forwards public MCP progress with the caller progress token', async () => {
     const { calls, tools } = registerHarness({ content: [] })
     const { extra, notifications } = toolExtra('garden-progress-1')

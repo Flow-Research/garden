@@ -10,6 +10,7 @@ import {
   markDecideAnalysisDelivered,
   retryDecideAnalysis,
   startDecideAnalysis,
+  toPublicDecideAnalysis,
   type DecideAnalysisEnvironment,
 } from './service'
 
@@ -238,5 +239,28 @@ describe('markDecideAnalysisDelivered', () => {
 
     expect(first?.deliveredAt).toBeInstanceOf(Date)
     expect(second?.deliveredAt?.getTime()).toBe(first?.deliveredAt?.getTime())
+  })
+})
+
+describe('toPublicDecideAnalysis', () => {
+  it('keeps the provider session and raw Decide result out of the browser shape', async () => {
+    const thread = await seedThread()
+    const started = (await start(thread, { data: 'a\n1' })).unwrap()
+    const finished = (
+      await finishDecideAnalysis(env, {
+        runId: started.snapshot.runId,
+        attempt: started.snapshot.attempt,
+        result: { content: [{ type: 'text', text: 'Session ID: sess_1' }] },
+        providerSessionId: 'sess_1',
+      })
+    ).unwrap()
+
+    const shape = toPublicDecideAnalysis(finished!)
+
+    expect(shape).toMatchObject({
+      runId: started.snapshot.runId,
+      status: 'completed',
+    })
+    expect(JSON.stringify(shape)).not.toContain('sess_1')
   })
 })

@@ -445,7 +445,10 @@ const providerErrorMessage = (result: CallToolResult) => {
 /** Forwards Decide's customer-safe progress through Garden's MCP request. */
 const progressForwarder = (extra: DirectDecideToolExtra) => {
   const progressToken = extra._meta?.progressToken
-  if (progressToken === undefined) return undefined
+  // Always subscribe: the Decide request only resets its silence timeout on
+  // progress when a callback is registered, so a caller without a progress
+  // token would otherwise get a flat 60s SDK timeout.
+  if (progressToken === undefined) return logPublicMcpProgress
   return (progress: Progress) => {
     logPublicMcpProgress(progress)
     void extra

@@ -140,7 +140,10 @@ async function withDb<T>(
     try: () => run(client.db),
     catch: databaseError(operation),
   })
-  await Result.tryPromise({ try: () => client.close(), catch: () => undefined })
+  await Result.tryPromise({
+    try: () => client.close(),
+    catch: () => undefined,
+  })
   return result
 }
 
@@ -178,6 +181,25 @@ export function toDecideAnalysisSnapshot(
     startedAt: row.startedAt?.toISOString() ?? null,
     completedAt: row.completedAt?.toISOString() ?? null,
     deliveredAt: row.deliveredAt?.toISOString() ?? null,
+  }
+}
+
+/**
+ * The run fields the browser may read. The status routes returned the whole
+ * snapshot, which sent Decide's raw result blocks and the provider session ID
+ * to the client. The answer reaches the user as a chat turn, so the API keeps
+ * only lifecycle state.
+ */
+export function toPublicDecideAnalysis(snapshot: DecideAnalysisSnapshot) {
+  return {
+    runId: snapshot.runId,
+    status: snapshot.status,
+    attempt: snapshot.attempt,
+    progress: snapshot.progress,
+    error: snapshot.error,
+    createdAt: snapshot.createdAt,
+    startedAt: snapshot.startedAt,
+    completedAt: snapshot.completedAt,
   }
 }
 
