@@ -143,7 +143,7 @@ export function parseGitHubWebhookIssueTarget(
 
   const identityResult = parseIssueIdentity(root)
   if (identityResult === null) return Result.ok(null)
-  if (identityResult.isErr()) return identityResult
+  if (identityResult.isErr()) return Result.err(identityResult.error)
 
   const issue = asRecord(root.issue)
   if (!issue) return Result.ok(null)
@@ -192,7 +192,7 @@ export function parseGitHubWebhookCommentTarget(
       }),
     )
   }
-  if (identityResult.isErr()) return identityResult
+  if (identityResult.isErr()) return Result.err(identityResult.error)
 
   const commentIdNum = asNumber(comment.id)
   const commentId =
