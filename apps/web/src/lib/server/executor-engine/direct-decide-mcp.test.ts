@@ -655,15 +655,15 @@ describe('Decide request time limit', () => {
   })
 
   it('recognises Garden ending the call, not a Decide error', () => {
-    const timedOut = {
+    const timedOut: CallToolResult = {
       isError: true,
       content: [{ type: 'text', text: 'MCP error -32001: Request timed out' }],
       structuredContent: { details: { transportKind: 'timeout' } },
-    } as const
-    const decideError = {
+    }
+    const decideError: CallToolResult = {
       isError: true,
       content: [{ type: 'text', text: 'Insufficient credits.' }],
-    } as const
+    }
     expect(isDecideTimeLimitResult(timedOut)).toBe(true)
     expect(isDecideTimeLimitResult(decideError)).toBe(false)
   })
