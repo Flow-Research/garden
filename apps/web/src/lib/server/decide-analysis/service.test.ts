@@ -166,9 +166,22 @@ describe('startDecideAnalysis', () => {
       'a\n1',
     )
 
-    const followUp = (await start(thread)).unwrap()
+    const followUp = await start(thread)
 
-    expect(followUp.snapshot.providerSessionId).toBeNull()
+    expect(followUp.isErr() && followUp.error.code).toBe('invalid_input')
+    expect(await runsFor(thread.threadId)).toHaveLength(1)
+  })
+
+  it('asks for data instead of paying Decide for a run with nothing to analyze', async () => {
+    const thread = await seedThread()
+    const startsBefore = workflowStarts.length
+
+    const result = await start(thread)
+
+    expect(result.isErr() && result.error.code).toBe('invalid_input')
+    expect(result.isErr() && result.error.message).toMatch(/attach|data/i)
+    expect(await runsFor(thread.threadId)).toHaveLength(0)
+    expect(workflowStarts.length).toBe(startsBefore)
   })
 
   it('starts a fresh session when new data arrives', async () => {

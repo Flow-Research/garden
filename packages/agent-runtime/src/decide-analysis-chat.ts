@@ -1,5 +1,9 @@
 import { hasToolCall, type UIMessage } from 'ai'
 import { z } from 'zod'
+import {
+  decideGeneratedFiles,
+  decideResultTexts,
+} from './decide-analysis-result'
 import { EXECUTOR_TOOL_KEY_PREFIX } from './runtime-mcp-controller'
 
 /** AI SDK tool key for the chat-facing Decide analyze tool. */
@@ -45,35 +49,11 @@ export const DECIDE_ANALYSIS_DELIVERY_INSTRUCTIONS = [
   'The latest user message is an internal hand-off from Garden. It carries the result of the Decide analysis the user asked for earlier in this chat.',
   "Write the answer to the user's analysis question from Decide's findings. Lead with the answer.",
   "Keep Decide's numbers exactly as given. Do not recompute, round, or add figures Decide did not report.",
-  'Link each generated file by its name and URL.',
+  'Garden shows each generated file to the user as a download card. Refer to a file by its name when it helps, and do not paste file URLs.',
   "Leave out Decide's own narration, progress notes, session IDs, and run IDs. Do not mention that an internal message arrived.",
   'If the analysis failed, explain the error in plain language and what the user can do about it. For example, if Decide credits are exhausted, tell the user to top up their Decide account. Do not retry the analysis.',
 ].join('\n')
 
-const textBlockSchema = z.object({ type: z.literal('text'), text: z.string() })
-const resourceLinkSchema = z.object({
-  type: z.literal('resource_link'),
-  name: z.string(),
-  uri: z.string(),
-})
-const structuredFileSchema = z.object({
-  name: z.string().optional(),
-  filename: z.string().optional(),
-  url: z.string().optional(),
-  uri: z.string().optional(),
-  download_url: z.string().optional(),
-})
-const resultSchema = z.object({
-  content: z.array(z.unknown()).catch([]),
-  structuredContent: z
-    .object({
-      files: z.array(z.unknown()).optional(),
-      generated_files: z.array(z.unknown()).optional(),
-    })
-    .passthrough()
-    .optional()
-    .catch(undefined),
-})
 const errorSchema = z.object({ message: z.string() })
 
 export type DecideAnalysisDeliveryRun = {
@@ -84,50 +64,16 @@ export type DecideAnalysisDeliveryRun = {
   errorJson: unknown
 }
 
-type GeneratedFile = { name: string; url: string }
-
-function generatedFiles(
-  content: unknown[],
-  structured: unknown[],
-): GeneratedFile[] {
-  const fromContent = content.flatMap((block) => {
-    const link = resourceLinkSchema.safeParse(block)
-    return link.success ? [{ name: link.data.name, url: link.data.uri }] : []
-  })
-  const fromStructured = structured.flatMap((entry) => {
-    const file = structuredFileSchema.safeParse(entry)
-    if (!file.success) return []
-    const name = file.data.name ?? file.data.filename
-    const url = file.data.url ?? file.data.download_url ?? file.data.uri
-    return name && url ? [{ name, url }] : []
-  })
-  const seen = new Set<string>()
-  return [...fromContent, ...fromStructured].filter((file) => {
-    if (seen.has(file.url)) return false
-    seen.add(file.url)
-    return true
-  })
-}
-
 function completedText(resultJson: unknown) {
-  const parsed = resultSchema.safeParse(resultJson)
-  const content = parsed.success ? parsed.data.content : []
-  const structured = parsed.success ? parsed.data.structuredContent : undefined
-  const findings = content.flatMap((block) => {
-    const text = textBlockSchema.safeParse(block)
-    return text.success && text.data.text.trim() ? [text.data.text.trim()] : []
-  })
-  const files = generatedFiles(content, [
-    ...(structured?.files ?? []),
-    ...(structured?.generated_files ?? []),
-  ])
+  const findings = decideResultTexts(resultJson)
+  const files = decideGeneratedFiles(resultJson)
   return [
     'Decide finished the analysis. Its output follows, in order.',
     findings.length > 0
       ? `<decide_output>\n${findings.join('\n\n')}\n</decide_output>`
       : 'Decide returned no text findings.',
     files.length > 0
-      ? `Generated files:\n${files.map((file) => `- ${file.name}: ${file.url}`).join('\n')}`
+      ? `Generated files, already shown to the user as download cards:\n${files.map((file) => `- ${file.name}`).join('\n')}`
       : null,
   ]
     .filter((part): part is string => part !== null)

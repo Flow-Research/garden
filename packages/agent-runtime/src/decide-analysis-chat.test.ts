@@ -53,7 +53,7 @@ describe('stopAfterDecideAnalysisStarts', () => {
 })
 
 describe('decideAnalysisDeliveryMessage', () => {
-  it('carries the findings in order and the generated file links', () => {
+  it('carries the findings in order and names the generated files', () => {
     const message = decideAnalysisDeliveryMessage(completedRun)
     const text = message?.parts
       .map((part) => (part.type === 'text' ? part.text : ''))
@@ -64,9 +64,7 @@ describe('decideAnalysisDeliveryMessage', () => {
     expect(text?.indexOf('Revenue grew')).toBeLessThan(
       text?.indexOf('Churn fell') ?? -1,
     )
-    expect(text).toContain(
-      'revenue.xlsx: https://api.trydecide.ai/uploads/revenue.xlsx',
-    )
+    expect(text).toContain('download cards:\n- revenue.xlsx')
     expect(text).not.toContain('sess_secret')
   })
 
