@@ -79,12 +79,17 @@ A cancelled run needs no chat message because the step shows the outcome.
 
 After the terminal commit, the Workflow calls
 `ChatSubAgent.deliverDecideAnalysisResult`. That method calls
-`Think.saveMessages` with one internal user message. The message carries
+`Think.submitMessages` with one internal user message. The message carries
 `metadata.garden.kind = "decide_analysis_result"` and a stable ID derived from
-the run ID and attempt. `shouldApplyMessages` skips the turn when that ID
-already exists, so a Workflow retry cannot run a second delivery turn. The
-turn queue runs it after any active turn, so it never splices into a running
-turn. The chat UI hides internal messages of that kind.
+the run ID and attempt, which is also the submission's idempotency key. A
+Workflow retry finds the existing submission and runs no second delivery
+turn. The submission is durable in the facet and returns at once, so the
+Workflow step does not hold an RPC open for the whole model turn.
+`saveMessages` was rejected for that reason, and because its
+`shouldApplyMessages` option is not in the published `SaveMessagesOptions`
+type. The turn queue runs the submission after any active turn, so it never
+splices into a running turn. The chat UI hides internal messages of that
+kind.
 
 In the delivery turn, Garden removes the Decide tools from the active tools
 and adds instructions to the system prompt. The model presents Decide's
@@ -92,7 +97,7 @@ findings with Decide's numbers unchanged, links each generated file, and
 leaves out Decide's own narration, progress notes, session IDs, and run IDs.
 A failed run produces a short explanation of the error in plain language, such
 as an exhausted Decide credit balance, with no automatic retry. The Workflow
-records `delivered_at` after the turn applies its message.
+records `delivered_at` once the chat accepts the submission.
 
 ### Thread identity
 
@@ -106,9 +111,10 @@ address the facet.
 
 Decide no longer enforces its own analysis timeout, and Garden drops its
 five-minute `maxTotalTimeout`. The MCP call keeps `resetTimeoutOnProgress`,
-so the request timeout only measures silence between progress events. The
-value comes from Decide's observed progress cadence, not a guess. The
-Workflow step timeout remains the outer bound.
+so the request timeout only measures silence between progress events.
+Decide publishes no progress cadence, so Garden keeps the MCP SDK default
+request timeout of 60 seconds. The Workflow step timeout, 10 minutes per
+attempt by default, remains the outer bound.
 
 ### Database connections
 
