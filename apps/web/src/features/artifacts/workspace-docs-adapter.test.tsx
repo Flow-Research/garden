@@ -59,6 +59,29 @@ describe('Workspace Docs source host', () => {
   })
 })
 
+describe('WorkspaceDocsEditor', () => {
+  it('keeps the editor when the snapshot query refetches', () => {
+    const dispose = vi.spyOn(WorkspaceDocsAdapter.prototype, 'dispose')
+    const { rerender } = render(
+      <WorkspaceDocsEditor
+        documentId="document-1"
+        initialSnapshot={snapshot}
+      />,
+    )
+
+    // A refetch hands over a new snapshot object for the same document.
+    rerender(
+      <WorkspaceDocsEditor
+        documentId="document-1"
+        initialSnapshot={{ ...snapshot, revision: 4 }}
+      />,
+    )
+
+    expect(dispose).not.toHaveBeenCalled()
+    dispose.mockRestore()
+  })
+})
+
 describe('WorkspaceDocsAdapter', () => {
   it('maps operations to Garden POST input and upstream save results', async () => {
     const outcome: DocumentOperationOutcome = {

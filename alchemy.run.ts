@@ -81,6 +81,15 @@ const runWorkflow = Cloudflare.WorkflowResource(deployTarget.workflowId, {
   scriptName: deployTarget.workerName,
 })
 
+const decideAnalysisWorkflow = Cloudflare.WorkflowResource(
+  deployTarget.decideAnalysisWorkflowId,
+  {
+    workflowName: deployTarget.decideAnalysisWorkflowName,
+    className: 'DecideAnalysisWorkflow',
+    scriptName: deployTarget.workerName,
+  },
+)
+
 /**
  * Owns the gateway named by the deployment target so every environment has a
  * real Workers AI routing/logging boundary. Previously preview referenced a
@@ -295,6 +304,19 @@ export default Alchemy.Stack(
           name: 'RUN_WORKFLOW',
           workflowName: deployedRunWorkflow.workflowName,
           className: 'RunWorkflow',
+        },
+      ],
+    })
+    const deployedDecideAnalysisWorkflow = yield* decideAnalysisWorkflow.pipe(
+      Effect.provide(Cloudflare.Workflows.WorkflowProvider()),
+    )
+    yield* deployed.bind(deployTarget.decideAnalysisWorkflowId, {
+      bindings: [
+        {
+          type: 'workflow',
+          name: 'DECIDE_ANALYSIS_WORKFLOW',
+          workflowName: deployedDecideAnalysisWorkflow.workflowName,
+          className: 'DecideAnalysisWorkflow',
         },
       ],
     })

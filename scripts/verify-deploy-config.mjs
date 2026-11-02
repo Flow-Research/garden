@@ -24,6 +24,10 @@ const devSource = readFileSync(
   resolve(root, 'apps/web/scripts/dev.mjs'),
   'utf8',
 )
+const ciWorkflowSource = readFileSync(
+  resolve(root, '.github/workflows/ci.yml'),
+  'utf8',
+)
 const publicWranglerSources = [
   'apps/web/wrangler.jsonc',
   'apps/web/wrangler.containers.jsonc',
@@ -137,6 +141,8 @@ const uniqueFields = [
   'agentDoId',
   'workflowId',
   'workflowName',
+  'decideAnalysisWorkflowId',
+  'decideAnalysisWorkflowName',
   'sandboxId',
   'sandboxName',
 ]
@@ -220,6 +226,22 @@ assert.match(
   alchemySource,
   /name:\s*'RUN_WORKFLOW',\s*workflowName:\s*deployedRunWorkflow\.workflowName,\s*className:\s*'RunWorkflow'/s,
 )
+assert.match(
+  alchemySource,
+  /Cloudflare\.WorkflowResource\(\s*deployTarget\.decideAnalysisWorkflowId,/s,
+)
+assert.match(
+  alchemySource,
+  /workflowName:\s*deployTarget\.decideAnalysisWorkflowName,\s*className:\s*'DecideAnalysisWorkflow',\s*scriptName:\s*deployTarget\.workerName/s,
+)
+assert.match(
+  alchemySource,
+  /deployed\.bind\(deployTarget\.decideAnalysisWorkflowId,\s*\{/s,
+)
+assert.match(
+  alchemySource,
+  /name:\s*'DECIDE_ANALYSIS_WORKFLOW',\s*workflowName:\s*deployedDecideAnalysisWorkflow\.workflowName,\s*className:\s*'DecideAnalysisWorkflow'/s,
+)
 assert.match(alchemySource, /name:\s*'AgentDO',\s*className:\s*'AgentDO'/s)
 assert.match(alchemySource, /name:\s*'Sandbox',\s*className:\s*'Sandbox'/s)
 assert.match(
@@ -287,6 +309,7 @@ for (const field of [
   'executorDatabaseName',
   'executorBlobsBucket',
   'workflowName',
+  'decideAnalysisWorkflowName',
   'sandboxName',
 ]) {
   assert.match(
@@ -332,6 +355,11 @@ assert.equal(
   packageJson.scripts['deploy:migrate'],
   'pnpm --filter @garden/db db:migrate',
 )
+// CI must gate migrations through the production runner. The db tests apply
+// migrations with drizzle-orm's migrator, so only this step proves a migration
+// survives drizzle-kit before it reaches the `main` deploy.
+assert.match(ciWorkflowSource, /^\s+run: pnpm --filter @garden\/db db:check$/m)
+assert.match(ciWorkflowSource, /^\s+run: pnpm run deploy:migrate$/m)
 assert.match(
   packageJson.scripts['deploy:alchemy'],
   /GARDEN_DEPLOY_TARGET=staging.*alchemy deploy --stage production --yes/,

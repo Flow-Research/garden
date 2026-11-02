@@ -17,6 +17,7 @@ import {
 } from '@/lib/executor-contract'
 import { executorRegistryKeys } from '../queries'
 import { Button } from '@garden/ui/components/ui/button'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import { Input } from '@garden/ui/components/ui/input'
 import {
   DrawerDescription,
@@ -72,7 +73,7 @@ export function ManageDrawerBody({
   onConnected: () => Promise<void>
   onManageSource: (slug: string) => void
   onInstall: (source: ExecutorIntegrationSource) => void
-  onAction: (slug: string, action: IntegrationAction) => void
+  onAction: (slug: string, action: IntegrationAction) => Promise<unknown>
   onClose: () => void
 }) {
   const initialMethod = integration.authMethods[0]
@@ -246,6 +247,7 @@ export function ManageDrawerBody({
                 hasConnections={hasConnections}
                 canRemove={activeIntegration.canRemove}
                 pending={pending || saving}
+                label={activeIntegration.label}
                 onAction={(action) => onAction(activeIntegration.slug, action)}
               />
             ) : null}
@@ -488,61 +490,93 @@ export function ManageDrawerBody({
 }
 
 export function IntegrationActionsMenu({
+  label,
   hasConnections,
   canRemove,
   pending,
   onAction,
 }: {
+  label: string
   hasConnections: boolean
   canRemove: boolean
   pending: boolean
-  onAction: (action: IntegrationAction) => void
+  onAction: (action: IntegrationAction) => Promise<unknown>
 }) {
+  // Disconnect and Delete used to run on the first click of the menu item.
+  const [confirmAction, setConfirmAction] = useState<
+    'disconnect' | 'delete' | null
+  >(null)
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            size="sm"
-            variant="ghost"
-            className="size-7 p-0 text-muted-foreground"
-            aria-label="More actions"
-          >
-            <MoreHorizontal className="size-4" />
-          </Button>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              size="sm"
+              variant="ghost"
+              className="size-7 p-0 text-muted-foreground"
+              aria-label="More actions"
+            >
+              <MoreHorizontal className="size-4" />
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end" className="w-44">
+          {hasConnections && (
+            <>
+              <DropdownMenuItem
+                onClick={() => {
+                  void onAction('resync').catch(() => undefined)
+                }}
+                disabled={pending}
+              >
+                Resync tools
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => setConfirmAction('disconnect')}
+                disabled={pending}
+              >
+                Disconnect
+              </DropdownMenuItem>
+            </>
+          )}
+          {canRemove && (
+            <>
+              {hasConnections && <DropdownMenuSeparator />}
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => setConfirmAction('delete')}
+                disabled={pending}
+              >
+                Delete integration
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ConfirmDialog
+        open={confirmAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmAction(null)
+        }}
+        title={
+          confirmAction === 'delete'
+            ? `Delete the ${label} integration?`
+            : `Disconnect ${label}?`
+        }
+        description={
+          confirmAction === 'delete'
+            ? 'This removes the integration and its connections from the workspace.'
+            : 'Garden stops using these credentials. You can connect again later.'
+        }
+        confirmLabel={confirmAction === 'delete' ? 'Delete' : 'Disconnect'}
+        tone="destructive"
+        onConfirm={() =>
+          confirmAction ? onAction(confirmAction) : Promise.resolve()
         }
       />
-      <DropdownMenuContent align="end" className="w-44">
-        {hasConnections && (
-          <>
-            <DropdownMenuItem
-              onClick={() => onAction('resync')}
-              disabled={pending}
-            >
-              Resync tools
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => onAction('disconnect')}
-              disabled={pending}
-            >
-              Disconnect
-            </DropdownMenuItem>
-          </>
-        )}
-        {canRemove && (
-          <>
-            {hasConnections && <DropdownMenuSeparator />}
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onClick={() => onAction('delete')}
-              disabled={pending}
-            >
-              Delete integration
-            </DropdownMenuItem>
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    </>
   )
 }

@@ -1,18 +1,15 @@
-import { useState } from 'react'
 import { NodeViewWrapper, NodeViewContent } from '@tiptap/react'
 import type { NodeViewProps } from '@tiptap/react'
 import { Copy, Check } from 'lucide-react'
+import { useCopyToClipboard } from '@garden/ui/hooks/use-copy-to-clipboard'
 
 function CodeBlockView({ node }: NodeViewProps) {
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopyToClipboard()
   const language = node.attrs.language || ''
 
-  const handleCopy = async () => {
+  const handleCopy = () => {
     const text = node.textContent
-    if (!text) return
-    await navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    if (text) void copy(text)
   }
 
   return (
@@ -29,13 +26,14 @@ function CodeBlockView({ node }: NodeViewProps) {
         <button
           type="button"
           onClick={handleCopy}
-          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           title="Copy code"
+          aria-label={copied ? 'Copied' : 'Copy code'}
         >
           {copied ? (
-            <Check className="h-3.5 w-3.5" />
+            <Check className="size-3.5" />
           ) : (
-            <Copy className="h-3.5 w-3.5" />
+            <Copy className="size-3.5" />
           )}
         </button>
       </div>

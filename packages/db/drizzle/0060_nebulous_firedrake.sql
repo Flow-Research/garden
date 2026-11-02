@@ -1,0 +1,1 @@
+ALTER TABLE "decide_analysis_run" ADD COLUMN "retry_key" text;

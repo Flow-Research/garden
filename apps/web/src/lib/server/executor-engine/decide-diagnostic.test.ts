@@ -22,6 +22,9 @@ const makeExecutor = (
     tools: {
       list: () => Effect.succeed([decideTool]),
     },
+    directDecideMcp: {
+      whoami: () => Effect.succeed({ contentBlockCount: 1, textBlockCount: 1 }),
+    },
     execute,
   }) as never
 
@@ -71,6 +74,42 @@ describe('Decide diagnostic', () => {
       message: 'Internal tool error [f0c1bf7b]',
       mcpCode: -32603,
       correlationId: 'f0c1bf7b',
+    })
+    expect(result.checks.at(-2)).toMatchObject({
+      name: 'direct_call',
+      outcome: 'passed',
+      stage: 'direct_mcp',
+    })
+  })
+
+  it('shows when the direct MCP path fails before Executor invokes whoami', async () => {
+    const executor = makeExecutor(() => Effect.succeed({ ok: true })) as {
+      directDecideMcp: {
+        whoami: () => Effect.Effect<never, unknown>
+      }
+    }
+    executor.directDecideMcp.whoami = () =>
+      Effect.fail({
+        _tag: 'DirectDecideMcpError',
+        stage: 'connect',
+        message: 'Direct Decide MCP connect returned HTTP 401.',
+        status: 401,
+      })
+
+    const result = await Effect.runPromise(
+      diagnoseDecideWithExecutor(executor as never),
+    )
+
+    expect(result.checks.at(-2)).toMatchObject({
+      name: 'direct_call',
+      outcome: 'failed',
+      stage: 'direct_mcp',
+      message: 'Direct Decide MCP connect returned HTTP 401.',
+      status: 401,
+    })
+    expect(result.checks.at(-1)).toMatchObject({
+      name: 'call',
+      outcome: 'passed',
     })
   })
 

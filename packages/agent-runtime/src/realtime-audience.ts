@@ -41,7 +41,10 @@ export function canReceiveRealtimeEvent(
           event.payload.issue.assignee_id === profile.userId)
       )
     }
-    case 'issue:deleted': {
+    case 'issue:deleted':
+    case 'comment:created':
+    case 'comment:updated':
+    case 'comment:deleted': {
       const teamId = event.payload.team_id ?? null
       if (!teamId) return true
       return (

@@ -1,5 +1,5 @@
 {
-  "id": "a98aae6c-274b-400f-a9ab-0ac9b28ddc84",
+  "id": "1cca1cbf-7ab5-4f6f-a3ee-a7f9b72e98b8",
   "prevId": "1925195d-5ea5-4dcb-a4b0-adcfb520c43a",
   "version": "7",
   "dialect": "postgresql",
@@ -3127,10 +3127,10 @@
         },
         "position": {
           "name": "position",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": 0
+          "default": "'a0'"
         },
         "due_date": {
           "name": "due_date",
@@ -3649,7 +3649,7 @@
           "name": "author_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "body": {
           "name": "body",
@@ -3659,18 +3659,6 @@
         },
         "mentions": {
           "name": "mentions",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "external_comment_id": {
-          "name": "external_comment_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "metadata": {
-          "name": "metadata",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
@@ -3719,28 +3707,6 @@
           "concurrently": false,
           "method": "gin",
           "with": {}
-        },
-        "issue_comment_external_comment_unique": {
-          "name": "issue_comment_external_comment_unique",
-          "columns": [
-            {
-              "expression": "issue_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "external_comment_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"issue_comment\".\"external_comment_id\" is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -3764,11 +3730,7 @@
       "checkConstraints": {
         "issue_comment_author_type_check": {
           "name": "issue_comment_author_type_check",
-          "value": "\"issue_comment\".\"author_type\" in ('user', 'agent', 'connector')"
-        },
-        "issue_comment_author_id_check": {
-          "name": "issue_comment_author_id_check",
-          "value": "(\"issue_comment\".\"author_type\" = 'connector' and \"issue_comment\".\"author_id\" is null) or (\"issue_comment\".\"author_type\" in ('user', 'agent') and \"issue_comment\".\"author_id\" is not null)"
+          "value": "\"issue_comment\".\"author_type\" in ('user', 'agent')"
         }
       },
       "isRLSEnabled": false

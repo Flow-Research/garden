@@ -28,7 +28,10 @@ export type BrainToolOperations = Pick<
   | 'observeMention'
   | 'linkItems'
   | 'neighborhood'
->
+> & {
+  /** Optional for lightweight Brain test doubles; live Brain always provides it. */
+  readonly readFileItem?: BrainShape['readFileItem']
+}
 
 const MAX_SEARCH_K = 8
 const MAX_HIT_BODY_CHARS = 4_000
@@ -176,6 +179,16 @@ const brainNeighborhoodInputSchema = z
   })
   .strict()
 
+const brainReadFileInputSchema = z
+  .object({
+    itemId: z
+      .string()
+      .trim()
+      .min(1)
+      .describe('Brain file id returned by brain_search.'),
+  })
+  .strict()
+
 const toHit = (raw: {
   item: {
     id: string
@@ -250,6 +263,7 @@ export type BrainToolDependencies = {
 
 type BrainToolOutput = Record<string, unknown>
 type SearchInput = { readonly query: string; readonly k: number }
+type ReadFileInput = z.infer<typeof brainReadFileInputSchema>
 type AddInput = z.infer<typeof addToBrainInputSchema>
 type ObserveMentionInput = z.infer<typeof brainObserveMentionInputSchema>
 type LinkInput = z.infer<typeof brainLinkInputSchema>
@@ -275,6 +289,7 @@ class BrainToolInputError extends Schema.TaggedError<BrainToolInputError>()(
 
 interface BrainToolsServiceShape {
   readonly search: (input: SearchInput) => Effect.Effect<BrainToolOutput>
+  readonly readFile: (input: ReadFileInput) => Effect.Effect<BrainToolOutput>
   readonly add: (input: AddInput) => Effect.Effect<BrainToolOutput>
   readonly observeMention: (
     input: ObserveMentionInput,
@@ -377,6 +392,43 @@ const makeBrainToolsService = (
         userId: ctx.readAudience === 'org' ? undefined : ctx.userId,
       },
     })
+  })
+
+  /**
+   * Reads the complete extracted body for one visible Brain file. The chat
+   * preview route already proved that Brain stores XLSX as text, but the agent
+   * had no tool to retrieve that body. Returning the full body lets a selected
+   * Decide analysis receive the workbook rows instead of a search snippet.
+   */
+  const readFile = Effect.fn('BrainTools.readFile')(function* (
+    input: ReadFileInput,
+  ) {
+    const ctx = yield* resolveContext()
+    const service = yield* requireBrain()
+    if (service.readFileItem === undefined) {
+      return yield* new BrainToolsUnavailableError({
+        message: 'Full Brain file reads are not available in this runtime.',
+      })
+    }
+    const item = yield* service.readFileItem(
+      ItemId.make(input.itemId),
+      WorkspaceId.make(ctx.workspaceId),
+      {
+        teamIds: new Set<string>(),
+        userId: ctx.readAudience === 'org' ? undefined : ctx.userId,
+      },
+    )
+    if (item === null) {
+      return yield* new BrainToolInputError({
+        message: 'The Brain file is unavailable for this run.',
+      })
+    }
+    if (item.body === undefined) {
+      return yield* new BrainToolInputError({
+        message: 'The Brain file has no extracted text yet.',
+      })
+    }
+    return item
   })
 
   /**
@@ -518,6 +570,13 @@ const makeBrainToolsService = (
         ok: true,
         hits: hits.map(toHit),
       })),
+    readFile: (input) =>
+      toolOutcome('brain_read_file_failed', readFile(input), (item) => ({
+        ok: true,
+        id: item.id,
+        label: item.label,
+        text: item.body,
+      })),
     add: (input) =>
       toolOutcome('add_to_brain_failed', add(input), (item) => ({
         ok: true,
@@ -581,7 +640,7 @@ const makeBrainToolsLayer = (
 }
 
 /**
- * Exposes Brain as five Effect-backed structured operations. Agents receive
+ * Exposes Brain as six Effect-backed structured operations. Agents receive
  * product outcomes only; Helix DSL and infrastructure failures remain behind
  * the service layer, with Promise conversion limited to AI SDK callbacks.
  */
@@ -605,6 +664,13 @@ export function createBrainTools(deps: BrainToolDependencies): ToolSet {
         runService((service) =>
           service.search({ query: input.query, k: input.k ?? 5 }),
         ),
+    }),
+
+    brain_read_file: tool({
+      description:
+        'Read the complete extracted text of one workspace Brain file. Use the id returned by brain_search. XLSX files are returned as tab-separated sheet text. Use this before sending a Brain file to a data-analysis integration. Do not use the search result body as the analysis input because it may be truncated.',
+      inputSchema: brainReadFileInputSchema,
+      execute: (input) => runService((service) => service.readFile(input)),
     }),
 
     add_to_brain: tool({

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { Result } from 'better-result'
+import { toast } from 'sonner'
 import type { Workspace } from '@garden/core/types'
 import { api } from '@/lib/api'
 import { workspaceKeys, workspaceListOptions } from './queries'
@@ -21,9 +22,16 @@ export function useCreateWorkspace() {
       // Land on /home first — the old workspace's entity route would fire
       // detail queries with ids the new workspace doesn't own.
       void navigate({ to: '/home' })
-      void Result.tryPromise(() =>
+      // The workspace exists even when switching to it fails; that failure
+      // used to be dropped, leaving the user in the old workspace unawares.
+      const switched = await Result.tryPromise(() =>
         useWorkspaceStore.getState().switchWorkspace(newWs),
       )
+      if (Result.isError(switched)) {
+        toast.error(
+          `${newWs.name} was created, but switching to it failed. Open it from the workspace menu.`,
+        )
+      }
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: workspaceKeys.list() })

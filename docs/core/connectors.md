@@ -23,7 +23,9 @@ Garden keeps the product-specific layer:
 Executor owns the reusable integration engine and remote MCP/OpenAPI/GraphQL
 execution. Native GitHub and Discord tools execute through typed Effect
 services in Garden; the remaining installed integration tools arrive through
-the single Executor MCP session.
+one scoped Executor MCP session per runtime. See
+[`scoped-executor-mcp-runtime-design.md`](../features/scoped-executor-mcp-runtime-design.md)
+for the runtime scope and migration plan.
 
 ## Storage and authorization
 

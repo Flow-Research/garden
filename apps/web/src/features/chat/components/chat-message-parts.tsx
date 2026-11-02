@@ -40,7 +40,11 @@ import {
 import type { GardenArtifactData } from '@/features/artifacts/artifact-renderer'
 import type { ChatUiMessage } from '../chat-runtime-provider'
 import type { DocumentCitationAnnotation } from './chat-document-panel'
-import { PreResponseWrapper, StreamingWorkEntryRow } from './chat-tool-activity'
+import {
+  DecideAnalysisStepRow,
+  PreResponseWrapper,
+  StreamingWorkEntryRow,
+} from './chat-tool-activity'
 import { GardenDocDownloadBlock, renderArtifactPart } from './chat-artifacts'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -104,11 +108,14 @@ export function MessageOrderedParts({
   isLatestStreaming,
   message,
   onOpenDocument,
+  threadId,
 }: {
   debugMode: boolean
   isLatestStreaming?: boolean
   message: ChatUiMessage
   onOpenDocument?: (artifact: GardenArtifactData) => void
+  /** `chat_thread.id`, which the Decide run status route is keyed by. */
+  threadId: string
 }) {
   const nodes = buildMessageRenderModel(message, {
     debugMode,
@@ -149,13 +156,21 @@ export function MessageOrderedParts({
                 shouldMinimize={false}
                 stepCount={node.stepCount}
               >
-                {node.entries.map((entry) => (
-                  <StreamingWorkEntryRow
-                    key={entry.id}
-                    entry={entry}
-                    showConnector={false}
-                  />
-                ))}
+                {node.entries.map((entry) =>
+                  entry.decideRunId && !debugMode ? (
+                    <DecideAnalysisStepRow
+                      key={entry.id}
+                      runId={entry.decideRunId}
+                      threadId={threadId}
+                    />
+                  ) : (
+                    <StreamingWorkEntryRow
+                      key={entry.id}
+                      entry={entry}
+                      showConnector={false}
+                    />
+                  ),
+                )}
               </PreResponseWrapper>
             )
           case 'artifact':

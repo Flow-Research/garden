@@ -58,6 +58,8 @@ const MEMBER_LEVEL_ROUTES: Record<string, string> = {
   'chat/threads/$id/documents.ts': 'chat threads are private to their owner',
   'chat/threads/$id/primary-issue.ts':
     'chat threads are private to their owner',
+  'chat/threads/$threadId/decide-analyses/$runId.ts':
+    'chat threads are private to their owner',
   'debug-stream.ts': "refreshes debug data for the caller's own session",
   'executor/preview.ts': 'read-only preview of a catalog integration',
   'executor/decide/diagnose.ts':

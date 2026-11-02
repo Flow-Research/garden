@@ -94,7 +94,9 @@ export function FeaturedCard({
 export function FeaturedSkeleton() {
   return (
     <div
-      className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-2"
+      // Same columns as the grids it stands in for (260px), so the page does
+      // not reflow when they load.
+      className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2"
       aria-hidden="true"
     >
       {Array.from({ length: 6 }, (_, index) => (

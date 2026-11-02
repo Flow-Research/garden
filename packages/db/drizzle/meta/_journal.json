@@ -411,8 +411,36 @@
     {
       "idx": 58,
       "version": "7",
-      "when": 1792746749873,
-      "tag": "0058_right_wendell_vaughn",
+      "when": 1792810540830,
+      "tag": "0058_issue_position_fractional_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1793343675064,
+      "tag": "0059_breezy_king_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1793344648111,
+      "tag": "0060_nebulous_firedrake",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1793603861825,
+      "tag": "0061_glamorous_giant_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1793624845380,
+      "tag": "0062_rich_krista_starr",
       "breakpoints": true
     }
   ]

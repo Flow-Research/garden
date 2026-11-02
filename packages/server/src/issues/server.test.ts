@@ -18,7 +18,7 @@ function issueRecord(
     priority: 'medium',
     assigneeType: null,
     assigneeId: null,
-    position: 0,
+    position: 'a0',
     dueDate: null,
     activeRunId: null,
     sourceSummary: null,

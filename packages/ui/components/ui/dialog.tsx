@@ -39,14 +39,28 @@ function DialogOverlay({
   )
 }
 
+/**
+ * Width from `sm` up. Dialogs that needed more room used `!w-…` overrides,
+ * which the default `sm:max-w-sm` still capped at 384px.
+ */
+const DIALOG_SIZE = {
+  sm: 'sm:max-w-sm',
+  md: 'sm:max-w-lg',
+  lg: 'sm:max-w-xl',
+  xl: 'sm:max-w-2xl',
+} as const
+
 function DialogContent({
   className,
   children,
   showCloseButton = true,
   overlayClassName,
+  size = 'sm',
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
+  /** sm 24rem (default), md 32rem, lg 36rem, xl 42rem. */
+  size?: keyof typeof DIALOG_SIZE
   /** Extra classes for the backdrop (e.g. a darker scrim for media viewers). */
   overlayClassName?: string
 }) {
@@ -59,7 +73,8 @@ function DialogContent({
           // [&>*]:min-w-0: grid items default to min-width:auto, so a child
           // with long nowrap content (e.g. a truncated file name) would size
           // the item to min-content and spill past the dialog's max width.
-          'fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 [&>*]:min-w-0',
+          'fixed top-1/2 left-1/2 z-50 grid max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 [&>*]:min-w-0',
+          DIALOG_SIZE[size],
           className,
         )}
         {...props}

@@ -1319,6 +1319,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
         }),
       )
     }
+    if (!statusResult.value) return Result.ok()
 
     const eventResult = await appendIssueRunEvent({
       db,
@@ -1497,7 +1498,12 @@ export class IssueRunSubAgent extends RunSubAgentBase<
           await tx
             .update(schema.issue)
             .set({ activeRunId: null, updatedAt: now })
-            .where(eq(schema.issue.id, run.issueId))
+            .where(
+              and(
+                eq(schema.issue.id, run.issueId),
+                eq(schema.issue.activeRunId, run.runId),
+              ),
+            )
           return true
         }),
       catch: (cause) => this.dbError('cancel issue run', cause),
@@ -1564,7 +1570,12 @@ export class IssueRunSubAgent extends RunSubAgentBase<
           await tx
             .update(schema.issue)
             .set({ activeRunId: null, updatedAt: now })
-            .where(eq(schema.issue.id, run.issueId))
+            .where(
+              and(
+                eq(schema.issue.id, run.issueId),
+                eq(schema.issue.activeRunId, run.runId),
+              ),
+            )
           return true
         }),
       catch: (cause) => this.dbError('force close failed issue run', cause),

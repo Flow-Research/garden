@@ -72,6 +72,7 @@ describe('createBrainTools', () => {
       'brain_link',
       'brain_neighborhood',
       'brain_observe_mention',
+      'brain_read_file',
       'brain_search',
     ])
     const result = await execute(tools.add_to_brain, {
@@ -86,6 +87,53 @@ describe('createBrainTools', () => {
       ok: true,
       id: ItemId.make('42'),
       kind: Kind.make('relationship-steward'),
+    })
+  })
+
+  it('returns the complete extracted body for a Brain file', async () => {
+    const brain: BrainToolOperations = {
+      read: () => Effect.succeed(null),
+      readFileItem: (id, tenantId) =>
+        Effect.succeed({
+          id,
+          tenantId,
+          kind: Kind.make('file'),
+          label: 'Revenue.xlsx',
+          indexed: true,
+          origin: {
+            actor: { _tag: 'Human', userId: 'user-1' },
+            at: DateTime.makeUnsafe(new Date('2026-01-01T00:00:00Z')),
+          },
+          body: '## Revenue\nMonth\tRevenue\nJan\t100',
+        }),
+      ensureIndexes: () => Effect.void,
+      search: () => Effect.succeed([]),
+      addText: () => Effect.die('unused addText'),
+      updateItemMetadata: () => Effect.die('unused updateItemMetadata'),
+      observeMention: () => Effect.die('unused observeMention'),
+      linkItems: () => Effect.die('unused linkItems'),
+      neighborhood: () => Effect.die('unused neighborhood'),
+    }
+    const tools = createBrainTools({
+      env: {},
+      ai: { run: async () => ({ data: [] }) },
+      files: { get: async () => null },
+      getContext: () => ({
+        workspaceId: 'workspace-1',
+        agentId: 'agent-1',
+        runId: 'run-1',
+        userId: 'user-1',
+      }),
+      brain,
+    })
+
+    const result = await execute(tools.brain_read_file, { itemId: '42' })
+
+    expect(result).toEqual({
+      ok: true,
+      id: ItemId.make('42'),
+      label: 'Revenue.xlsx',
+      text: '## Revenue\nMonth\tRevenue\nJan\t100',
     })
   })
 

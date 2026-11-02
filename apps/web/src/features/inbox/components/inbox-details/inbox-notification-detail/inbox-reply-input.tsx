@@ -3,7 +3,6 @@ import type { ComponentType } from 'react'
 import {
   ArrowUp,
   Bold,
-  Check,
   ChevronDown,
   Code2,
   Heading,
@@ -20,6 +19,13 @@ import {
   X,
 } from 'lucide-react'
 import { cn } from '@garden/ui/lib/utils'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@garden/ui/components/ui/dropdown-menu'
 
 type SpeechRecognitionEvent = Event & {
   resultIndex: number
@@ -113,6 +119,11 @@ type ModelOption<T extends string> = {
   Icon: ComponentType<{ className?: string }>
 }
 
+/**
+ * Built on DropdownMenu so it works from the keyboard (arrow keys, Escape,
+ * focus returned to the trigger). The hand-built listbox it replaces could
+ * only be used with a mouse.
+ */
 function ModelPicker<T extends string>({
   value,
   onChange,
@@ -122,17 +133,13 @@ function ModelPicker<T extends string>({
   onChange: (id: T) => void
   options: readonly ModelOption<T>[]
 }) {
-  const [open, setOpen] = useState(false)
   const current = options.find((m) => m.id === value) ?? options[0]!
 
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-full bg-muted px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={`Model: ${current.label}`}
+        className="group inline-flex h-8 cursor-pointer items-center gap-2 rounded-full bg-muted px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent"
       >
         <current.Icon className="h-4 w-auto" />
         {/* Hide the label on very narrow screens; the icon alone identifies
@@ -140,47 +147,22 @@ function ModelPicker<T extends string>({
         <span className="hidden max-w-24 truncate sm:inline">
           {current.label}
         </span>
-        <ChevronDown
-          className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
-        />
-      </button>
-
-      {open && (
-        <>
-          <div
-            className="fixed inset-0 z-10"
-            onClick={() => setOpen(false)}
-            aria-hidden="true"
-          />
-          <ul
-            role="listbox"
-            className="absolute right-0 bottom-full z-20 mb-2 min-w-45 overflow-hidden rounded-xl border border-border bg-popover p-1 shadow-lg"
-          >
-            {options.map(({ id, label, Icon }) => {
-              const selected = id === value
-              return (
-                <li key={id}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    onClick={() => {
-                      onChange(id)
-                      setOpen(false)
-                    }}
-                    className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:bg-accent"
-                  >
-                    <Icon className="h-4 w-auto" />
-                    <span className="flex-1">{label}</span>
-                    {selected && <Check className="size-3.5 text-brand" />}
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        </>
-      )}
-    </div>
+        <ChevronDown className="size-3.5 transition-transform group-data-[popup-open]:rotate-180" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="end" className="min-w-45">
+        <DropdownMenuRadioGroup
+          value={value}
+          onValueChange={(next) => onChange(next as T)}
+        >
+          {options.map(({ id, label, Icon }) => (
+            <DropdownMenuRadioItem key={id} value={id} className="text-xs">
+              <Icon className="h-4 w-auto" />
+              {label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

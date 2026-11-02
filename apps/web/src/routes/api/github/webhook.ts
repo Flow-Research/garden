@@ -67,7 +67,10 @@ export const Route = createFileRoute('/api/github/webhook')({
             db,
             target: commentTargetResult.value,
           })
-          const binding = bindingResult.value
+          const binding = bindingResult.match({
+            ok: (value) => value,
+            err: () => null,
+          })
           if (!binding) {
             return json({ ok: true, status: 'unbound' }, 200)
           }
@@ -111,7 +114,10 @@ export const Route = createFileRoute('/api/github/webhook')({
           db,
           target: targetResult.value,
         })
-        const binding = bindingResult.value
+        const binding = bindingResult.match({
+          ok: (value) => value,
+          err: () => null,
+        })
         if (!binding) {
           return json({ ok: true, status: 'unbound' }, 200)
         }

@@ -101,6 +101,11 @@
       "binding": "RUN_WORKFLOW",
       "class_name": "RunWorkflow",
     },
+    {
+      "name": "garden-decide-analysis-workflow-local",
+      "binding": "DECIDE_ANALYSIS_WORKFLOW",
+      "class_name": "DecideAnalysisWorkflow",
+    },
   ],
   "r2_buckets": [
     {

@@ -29,11 +29,14 @@ function timingSafeEqualHex(expected: string, provided: string) {
   return difference === 0
 }
 
-function asBodyBytes(source: BufferSource): Uint8Array {
+function asBodyBytes(source: BufferSource): ArrayBuffer {
+  let bytes: Uint8Array
   if (ArrayBuffer.isView(source)) {
-    return new Uint8Array(source.buffer, source.byteOffset, source.byteLength)
+    bytes = new Uint8Array(source.buffer, source.byteOffset, source.byteLength)
+  } else {
+    bytes = new Uint8Array(source)
   }
-  return new Uint8Array(source)
+  return bytes.slice().buffer
 }
 
 /**

@@ -27,70 +27,59 @@ export const BOARD_STATUSES: IssueStatus[] = [
   'done',
 ]
 
+/**
+ * One status vocabulary for every view. `iconColor` and `hoverBg` follow the
+ * semantic tokens. `pillFill` is the design's pastel fill, the same in light
+ * and dark themes, so `pillText` (dark text) stays readable on it in both.
+ * Status pills, the board columns and the dashboard chart all use it, so a
+ * status reads as the same colour everywhere.
+ */
 export const STATUS_CONFIG: Record<
   IssueStatus,
   {
     label: string
     iconColor: string
     hoverBg: string
-    dividerColor: string
-    badgeBg: string
-    badgeText: string
-    columnBg: string
+    pillFill: string
   }
 > = {
   todo: {
     label: 'Todo',
     iconColor: 'text-muted-foreground',
     hoverBg: 'hover:bg-accent',
-    dividerColor: 'bg-muted-foreground/40',
-    badgeBg: 'bg-muted',
-    badgeText: 'text-muted-foreground',
-    columnBg: 'bg-muted/40',
+    pillFill: 'var(--util-color-9)',
   },
   in_progress: {
     label: 'In Progress',
     iconColor: 'text-warning',
     hoverBg: 'hover:bg-warning/10',
-    dividerColor: 'bg-warning',
-    badgeBg: 'bg-warning',
-    badgeText: 'text-white',
-    columnBg: 'bg-warning/5',
+    pillFill: 'var(--util-color-2)',
   },
   in_review: {
     label: 'In Review',
     iconColor: 'text-info',
-    hoverBg: 'hover:bg-success/10',
-    dividerColor: 'bg-success',
-    badgeBg: 'bg-success',
-    badgeText: 'text-white',
-    columnBg: 'bg-success/5',
+    hoverBg: 'hover:bg-info/10',
+    pillFill: 'var(--util-color-7)',
   },
   done: {
     label: 'Done',
     iconColor: 'text-success',
-    hoverBg: 'hover:bg-info/10',
-    dividerColor: 'bg-info',
-    badgeBg: 'bg-info',
-    badgeText: 'text-white',
-    columnBg: 'bg-info/5',
+    hoverBg: 'hover:bg-success/10',
+    pillFill: 'var(--util-color-8)',
   },
   blocked: {
     label: 'Blocked',
     iconColor: 'text-destructive',
     hoverBg: 'hover:bg-destructive/10',
-    dividerColor: 'bg-destructive',
-    badgeBg: 'bg-destructive',
-    badgeText: 'text-white',
-    columnBg: 'bg-destructive/5',
+    pillFill: 'var(--util-color-10)',
   },
   cancelled: {
     label: 'Cancelled',
     iconColor: 'text-muted-foreground',
     hoverBg: 'hover:bg-accent',
-    dividerColor: 'bg-muted-foreground/40',
-    badgeBg: 'bg-muted',
-    badgeText: 'text-muted-foreground',
-    columnBg: 'bg-muted/40',
+    pillFill: 'var(--util-color-5)',
   },
 }
+
+/** Text class for a status pill on `pillFill`. */
+export const STATUS_PILL_TEXT = 'text-gray-900'

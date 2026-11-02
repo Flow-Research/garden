@@ -6,7 +6,7 @@ import {
   type ComponentProps,
 } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { Issue, TimelineEntry } from '@garden/core/types'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
@@ -107,8 +107,11 @@ vi.mock('../../navigation', () => ({
     searchParams: new URLSearchParams(),
     getShareableUrl: undefined,
   }),
+  useNavigationActions: () => ({ push: vi.fn() }),
   NavigationProvider: ({ children }: { children: React.ReactNode }) => children,
 }))
+
+const editorUploads = vi.hoisted(() => ({ active: false }))
 
 // Mock editor components (Tiptap requires real DOM)
 vi.mock('../../editor', () => ({
@@ -129,6 +132,7 @@ vi.mock('../../editor', () => ({
         },
         focus: () => {},
         uploadFile: () => {},
+        hasActiveUploads: () => editorUploads.active,
       }))
       return (
         <textarea
@@ -355,7 +359,25 @@ vi.mock('@garden/app-state/hooks/use-file-upload', () => ({
 
 // Mock sonner
 vi.mock('sonner', () => ({
-  toast: { error: vi.fn(), success: vi.fn() },
+  toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
+}))
+
+// Each picker renders one button per title that picks a fixed issue.
+vi.mock('./issue-picker-dialog', () => ({
+  IssuePickerDialog: ({
+    title,
+    onSelect,
+  }: {
+    title: string
+    onSelect: (issue: { id: string; identifier: string }) => void
+  }) => (
+    <button
+      type="button"
+      onClick={() => onSelect({ id: 'issue-9', identifier: 'GAR-9' })}
+    >
+      pick for {title}
+    </button>
+  ),
 }))
 
 // ---------------------------------------------------------------------------
@@ -378,7 +400,7 @@ const mockIssue: Issue = {
   creator_id: 'user-1',
   parent_issue_id: null,
   project_id: null,
-  position: 0,
+  position: 'a0',
   due_date: '2026-06-01T00:00:00Z',
   created_at: '2026-01-15T00:00:00Z',
   updated_at: '2026-01-20T00:00:00Z',
@@ -413,7 +435,13 @@ const mockTimeline: TimelineEntry[] = [
 // Import component under test (after mocks)
 // ---------------------------------------------------------------------------
 
+import { toast } from 'sonner'
+import { ApiError } from '@/lib/api/errors'
+import { issueKeys } from '@/lib/issues/queries'
 import { IssueDetail } from './issue-detail'
+
+const notFound = () =>
+  new ApiError({ message: 'Not found', status: 404, statusText: 'Not Found' })
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -428,8 +456,26 @@ function createTestQueryClient() {
   })
 }
 
-function renderIssueDetail(issueId = 'issue-1') {
+/** The comment composer's (mocked) editor, as opposed to the description. */
+function commentBox() {
+  const box = screen
+    .getAllByTestId('rich-text-editor')
+    .find((el) => el.getAttribute('placeholder') !== 'Add description...')
+  if (!box) throw new Error('comment box not rendered')
+  return box
+}
+
+async function findCommentBox() {
+  await screen.findByRole('button', { name: 'Submit comment' })
+  return commentBox()
+}
+
+function renderIssueDetail(
+  issueId = 'issue-1',
+  seed?: (queryClient: QueryClient) => void,
+) {
   const queryClient = createTestQueryClient()
+  seed?.(queryClient)
   return render(
     <QueryClientProvider client={queryClient}>
       <WorkspaceIdProvider wsId="ws-1">
@@ -493,6 +539,132 @@ describe('IssueDetail (shared)', () => {
     ).toBeInTheDocument()
   })
 
+  it('fetches the issue even when the list already has a copy of it', async () => {
+    mockApiObj.getIssue.mockResolvedValue({ ...mockIssue, status: 'blocked' })
+    renderIssueDetail('issue-1', (queryClient) => {
+      // As in the app, where queries default to staleTime: Infinity.
+      queryClient.setDefaultOptions({
+        queries: {
+          ...queryClient.getDefaultOptions().queries,
+          staleTime: Infinity,
+        },
+      })
+      queryClient.setQueryData(issueKeys.list('ws-1'), {
+        issues: [{ ...mockIssue, status: 'todo' }],
+        total: 1,
+        doneTotal: 0,
+      })
+    })
+
+    // The list's copy shows first; the detail request still runs and wins.
+    await waitFor(() => expect(mockApiObj.getIssue).toHaveBeenCalled())
+    expect((await screen.findAllByText('Blocked')).length).toBeGreaterThan(0)
+  })
+
+  it('fetches the issue once, reactions included', async () => {
+    mockApiObj.getIssue.mockResolvedValue({
+      ...mockIssue,
+      reactions: [
+        {
+          id: 'r1',
+          issue_id: 'issue-1',
+          actor_type: 'member',
+          actor_id: 'user-2',
+          emoji: '🎉',
+          created_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    })
+    renderIssueDetail()
+
+    expect(
+      await screen.findByDisplayValue('Implement authentication'),
+    ).toBeInTheDocument()
+    expect(await screen.findByText('🎉')).toBeInTheDocument()
+    expect(mockApiObj.getIssue).toHaveBeenCalledTimes(1)
+  })
+
+  it('records a visit once per issue, not on every update', async () => {
+    mockApiObj.updateIssue.mockResolvedValue({
+      ...mockIssue,
+      description: 'Changed',
+    })
+    renderIssueDetail()
+
+    const description = await screen.findByDisplayValue(
+      'Add JWT auth to the backend',
+    )
+    expect(mockRecordVisit).toHaveBeenCalledTimes(1)
+    fireEvent.change(description, { target: { value: 'Changed' } })
+    await waitFor(() => expect(mockApiObj.updateIssue).toHaveBeenCalled())
+    await waitFor(() =>
+      expect(screen.getByDisplayValue('Changed')).toBeTruthy(),
+    )
+
+    expect(mockRecordVisit).toHaveBeenCalledTimes(1)
+  })
+
+  it('saves an emptied description instead of dropping the field', async () => {
+    mockApiObj.updateIssue.mockResolvedValue({ ...mockIssue, description: '' })
+    renderIssueDetail()
+
+    const description = await screen.findByDisplayValue(
+      'Add JWT auth to the backend',
+    )
+    fireEvent.change(description, { target: { value: '' } })
+
+    await waitFor(() =>
+      expect(mockApiObj.updateIssue).toHaveBeenCalledWith(
+        'issue-1',
+        expect.objectContaining({ description: '' }),
+      ),
+    )
+  })
+
+  it('keeps the comment text when sending it fails', async () => {
+    mockApiObj.createComment.mockRejectedValue(new Error('network down'))
+    renderIssueDetail()
+
+    const box = await findCommentBox()
+    fireEvent.change(box, { target: { value: 'Ship it on Friday' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Submit comment' }))
+
+    await waitFor(() => expect(mockApiObj.createComment).toHaveBeenCalled())
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Submit comment' }),
+      ).toBeInTheDocument(),
+    )
+    expect(commentBox()).toHaveValue('Ship it on Friday')
+  })
+
+  it('does not send a comment while an attachment is still uploading', async () => {
+    editorUploads.active = true
+    renderIssueDetail()
+
+    const box = await findCommentBox()
+    fireEvent.change(box, { target: { value: 'See screenshot' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Submit comment' }))
+
+    expect(mockApiObj.createComment).not.toHaveBeenCalled()
+    expect(commentBox()).toHaveValue('See screenshot')
+    editorUploads.active = false
+  })
+
+  it('clears the comment box once the comment is sent', async () => {
+    mockApiObj.createComment.mockResolvedValue({
+      id: 'comment-new',
+      content: 'Ship it on Friday',
+    })
+    renderIssueDetail()
+
+    const box = await findCommentBox()
+    fireEvent.change(box, { target: { value: 'Ship it on Friday' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Submit comment' }))
+
+    await waitFor(() => expect(commentBox()).toHaveValue(''))
+  })
+
   it('renders issue identifier in the breadcrumb', async () => {
     renderIssueDetail()
 
@@ -537,7 +709,7 @@ describe('IssueDetail (shared)', () => {
   })
 
   it("shows 'not found' message when issue does not exist", async () => {
-    mockApiObj.getIssue.mockRejectedValue(new Error('Not found'))
+    mockApiObj.getIssue.mockRejectedValue(notFound())
 
     renderIssueDetail('nonexistent-id')
 
@@ -550,14 +722,53 @@ describe('IssueDetail (shared)', () => {
     })
   })
 
+  it('offers a retry instead of "deleted" when loading the issue fails', async () => {
+    mockApiObj.getIssue
+      .mockRejectedValueOnce(
+        new ApiError({ message: 'Server error', status: 500, statusText: '' }),
+      )
+      .mockResolvedValue(mockIssue)
+
+    renderIssueDetail('issue-1')
+
+    expect(
+      await screen.findByText('Could not load this issue.'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(
+        'This issue does not exist or has been deleted in this workspace.',
+      ),
+    ).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() =>
+      expect(screen.queryByText('Could not load this issue.')).toBeNull(),
+    )
+    expect(await screen.findByDisplayValue(mockIssue.title)).toBeInTheDocument()
+  })
+
   it("shows 'Back to Issues' button when issue is not found and no onDelete prop", async () => {
-    mockApiObj.getIssue.mockRejectedValue(new Error('Not found'))
+    mockApiObj.getIssue.mockRejectedValue(notFound())
 
     renderIssueDetail('nonexistent-id')
 
     await waitFor(() => {
       expect(screen.getByText('Back to Issues')).toBeInTheDocument()
     })
+  })
+
+  it('takes the collapsed properties sidebar out of the tab order', async () => {
+    renderIssueDetail()
+    const toggle = await screen.findByRole('button', {
+      name: 'Toggle properties',
+    })
+    const sidebar = screen.getByTestId('issue-detail-sidebar')
+    const wasOpen = toggle.getAttribute('aria-expanded') === 'true'
+    expect(sidebar.hasAttribute('inert')).toBe(!wasOpen)
+
+    fireEvent.click(toggle)
+
+    expect(toggle).toHaveAttribute('aria-expanded', String(!wasOpen))
+    expect(sidebar.hasAttribute('inert')).toBe(wasOpen)
   })
 
   it('renders Activity section header', async () => {
@@ -576,6 +787,21 @@ describe('IssueDetail (shared)', () => {
     })
 
     expect(screen.getByText('I can help with this')).toBeInTheDocument()
+  })
+
+  it('says the activity failed to load, and loads it on retry', async () => {
+    mockApiObj.listTimeline.mockRejectedValueOnce(new Error('offline'))
+    renderIssueDetail()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not load activity.',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+    expect(
+      await screen.findByText('Started working on this'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Could not load activity.')).toBeNull()
   })
 
   it('disables approval actions when the preview has no request id', async () => {
@@ -625,5 +851,52 @@ describe('IssueDetail (shared)', () => {
     const approve = await screen.findByRole('button', { name: 'Approve' })
     expect(approve).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Deny' })).toBeDisabled()
+  })
+})
+
+describe('IssueDetail parent and sub-issue pickers', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockApiObj.getIssue.mockResolvedValue(mockIssue)
+    mockApiObj.listTimeline.mockResolvedValue(mockTimeline)
+    mockApiObj.listIssueReactions.mockResolvedValue([])
+    mockApiObj.listIssueSubscribers.mockResolvedValue([])
+  })
+
+  it.each([
+    ['Set parent issue', 'Set GAR-9 as parent issue'],
+    ['Add sub-issue', 'Added GAR-9 as sub-issue'],
+  ])('%s says it worked only once it did', async (title, message) => {
+    let finish: () => void = () => {}
+    mockApiObj.updateIssue.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve(mockIssue)
+        }),
+    )
+    renderIssueDetail()
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: `pick for ${title}` }),
+    )
+    await waitFor(() => expect(mockApiObj.updateIssue).toHaveBeenCalled())
+    expect(toast.success).not.toHaveBeenCalled()
+
+    finish()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(message))
+  })
+
+  it('does not report success when setting the parent fails', async () => {
+    mockApiObj.updateIssue.mockRejectedValue(new Error('offline'))
+    renderIssueDetail()
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'pick for Set parent issue' }),
+    )
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('Failed to set parent issue'),
+    )
+    expect(toast.success).not.toHaveBeenCalled()
   })
 })

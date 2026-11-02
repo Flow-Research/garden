@@ -13,9 +13,10 @@
   },
   "devDependencies": {
     "@types/pg": "^8.15.5",
-    "drizzle-kit": "^0.31.7",
-    "testcontainers": "^12.1.0",
     "@typescript/native": "catalog:",
+    "drizzle-kit": "^0.31.7",
+    "fractional-indexing": "3.2.0",
+    "testcontainers": "^12.1.0",
     "vitest": "catalog:"
   },
   "scripts": {

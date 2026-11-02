@@ -55,4 +55,21 @@ describe('Executor MCP progress logging', () => {
       'safeMcpTransportMessage(status, transportKind)',
     )
   })
+
+  it('lets the host provide the guarded native fetch used by MCP transports', () => {
+    const pluginEntry = fileURLToPath(
+      import.meta.resolve('@executor-js/plugin-mcp/core'),
+    )
+    const mcpClientSource = readFileSync(
+      resolve(dirname(pluginEntry), 'chunk-MMILW7SS.js'),
+      'utf8',
+    )
+
+    expect(mcpClientSource).toContain(
+      'const fetch = input.fetch ?? (input.httpClientLayer ? fetchFromHttpClientLayer(input.httpClientLayer) : void 0)',
+    )
+    expect(
+      mcpClientSource.match(/fetch: options\?\.fetch/gu)?.length ?? 0,
+    ).toBeGreaterThanOrEqual(5)
+  })
 })

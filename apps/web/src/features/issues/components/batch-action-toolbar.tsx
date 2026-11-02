@@ -5,16 +5,7 @@ import type { UpdateIssueRequest } from '@garden/core/types'
 import { useIssueSelectionStore } from '@garden/app-state/issues/stores/selection-store'
 import { useSurfaceTabsStore } from '@garden/app-state/surface-tabs'
 import { Button } from '@garden/ui/components/ui/button'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@garden/ui/components/ui/alert-dialog'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import {
   useBatchDeleteIssues,
   useBatchUpdateIssues,
@@ -46,18 +37,18 @@ export function BatchActionToolbar() {
       },
     )
   }
-  const remove = () => {
-    deleteIssues.mutate(ids, {
-      onSuccess: () => {
-        // Close their tabs — persisted tabs would route to 404ing detail queries.
-        const { closeTab } = useSurfaceTabsStore.getState()
-        for (const id of ids) closeTab('tasks', id)
-        clearSelection()
-        toast.success(`Deleted ${count} issue${count === 1 ? '' : 's'}`)
-      },
-      onError: () => toast.error('Failed to delete issues'),
-      onSettled: () => setOpenControl(null),
-    })
+  const remove = async () => {
+    try {
+      await deleteIssues.mutateAsync(ids)
+    } catch (error) {
+      toast.error('Failed to delete issues')
+      throw error
+    }
+    // Close their tabs — persisted tabs would route to 404ing detail queries.
+    const { closeTab } = useSurfaceTabsStore.getState()
+    for (const id of ids) closeTab('tasks', id)
+    clearSelection()
+    toast.success(`Deleted ${count} issue${count === 1 ? '' : 's'}`)
   }
 
   const pickerButton = <Button variant="ghost" size="sm" disabled={pending} />
@@ -116,31 +107,16 @@ export function BatchActionToolbar() {
         </Button>
       </div>
 
-      <AlertDialog
+      <ConfirmDialog
         open={openControl === 'delete'}
         onOpenChange={(open) => setOpenControl(open ? 'delete' : null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete {count} issue{count === 1 ? '' : 's'}?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This permanently deletes the selected issue
-              {count === 1 ? '' : 's'} and associated data.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={remove}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={`Delete ${count} issue${count === 1 ? '' : 's'}?`}
+        description={`This permanently deletes the selected issue${count === 1 ? '' : 's'} and associated data.`}
+        confirmLabel="Delete"
+        pendingLabel="Deleting…"
+        tone="destructive"
+        onConfirm={remove}
+      />
     </>
   )
 }

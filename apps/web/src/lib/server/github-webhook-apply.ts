@@ -193,7 +193,7 @@ export async function applyGitHubWebhookIssueUpdate(args: {
         cause,
       }),
   })
-  if (writeResult.isErr()) return writeResult
+  if (writeResult.isErr()) return Result.err(writeResult.error)
 
   return Result.ok({
     applied: true,
@@ -304,7 +304,7 @@ export async function applyGitHubWebhookComment(args: {
           cause,
         }),
     })
-    if (deleteResult.isErr()) return deleteResult
+    if (deleteResult.isErr()) return Result.err(deleteResult.error)
 
     return Result.ok({
       applied: true,
@@ -351,7 +351,7 @@ export async function applyGitHubWebhookComment(args: {
           cause,
         }),
     })
-    if (updateResult.isErr()) return updateResult
+    if (updateResult.isErr()) return Result.err(updateResult.error)
 
     return Result.ok({
       applied: true,
@@ -388,7 +388,7 @@ export async function applyGitHubWebhookComment(args: {
         cause,
       }),
   })
-  if (insertResult.isErr()) return insertResult
+  if (insertResult.isErr()) return Result.err(insertResult.error)
 
   return Result.ok({
     applied: true,

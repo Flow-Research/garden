@@ -11,7 +11,6 @@ import {
 } from '@garden/ui/components/ui/avatar'
 import {
   Empty,
-  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -23,8 +22,10 @@ import {
   InputGroupInput,
 } from '@garden/ui/components/ui/input-group'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
+import { LoadError } from '@garden/ui/components/common/load-error'
 import { cn } from '@garden/ui/lib/utils'
 import { AGENT_STATUS_COLOR } from './agent-status'
+import { isPlainLeftClick } from '@/features/navigation/is-plain-left-click'
 
 export default function AgentsPage({
   onOpenAgent,
@@ -53,6 +54,18 @@ export default function AgentsPage({
     return <AgentsPageSkeleton />
   }
 
+  if (agentsQuery.isError && agents.length === 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-8">
+        <LoadError
+          message="Could not load agents."
+          onRetry={() => void agentsQuery.refetch()}
+          retrying={agentsQuery.isFetching}
+        />
+      </div>
+    )
+  }
+
   if (agents.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center p-8">
@@ -67,11 +80,6 @@ export default function AgentsPage({
               run skills, and report back.
             </EmptyDescription>
           </EmptyHeader>
-          <EmptyContent>
-            <p className="text-xs text-muted-foreground">
-              Create flow lands next.
-            </p>
-          </EmptyContent>
         </Empty>
       </div>
     )
@@ -95,6 +103,7 @@ export default function AgentsPage({
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
             placeholder="Filter agents"
+            aria-label="Filter agents"
           />
         </InputGroup>
       </header>
@@ -123,11 +132,16 @@ export default function AgentsPage({
   )
 }
 
+// A link, so an agent can be opened in a new tab; plain clicks stay in-app.
 function AgentCard({ agent, onOpen }: { agent: Agent; onOpen: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onOpen}
+    <a
+      href={`/agents/${encodeURIComponent(agent.id)}`}
+      onClick={(event) => {
+        if (!isPlainLeftClick(event)) return
+        event.preventDefault()
+        onOpen()
+      }}
       className={cn(
         'flex flex-col items-start gap-3 rounded-xl border border-border bg-card p-4 text-left transition-colors',
         'hover:border-foreground/20 hover:bg-accent/30',
@@ -153,6 +167,8 @@ function AgentCard({ agent, onOpen }: { agent: Agent; onOpen: () => void }) {
               aria-hidden="true"
               title={agent.status}
             />
+            {/* The dot alone conveyed status by colour only. */}
+            <span className="sr-only">{agent.status}</span>
           </div>
           <p className="mt-0.5 truncate text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
             {agent.runtime_mode} · {agent.visibility}
@@ -171,7 +187,7 @@ function AgentCard({ agent, onOpen }: { agent: Agent; onOpen: () => void }) {
         </span>
         <span>Max {agent.max_concurrent_tasks}</span>
       </div>
-    </button>
+    </a>
   )
 }
 
