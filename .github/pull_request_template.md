@@ -15,9 +15,18 @@
 ## Contribution standard
 
 - [ ] I stated the outcome and non-goals.
-- [ ] I read the relevant code, tests, and documentation before editing.
+- [ ] I read `docs/README.md` and the relevant code, tests, and documentation
+      before editing.
 - [ ] I reviewed the final diff and considered its wider effects.
 - [ ] I recorded decisions for long-running or multi-contributor work.
+
+## Documentation
+
+- [ ] I added or updated the matching feature document for behavior changes.
+- [ ] I updated the architecture or design document for infrastructure or
+      system-boundary changes.
+- [ ] I updated the verification map for a new user path.
+- [ ] I documented missing proof and known gaps.
 
 ## Checks
 

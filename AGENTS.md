@@ -3,6 +3,10 @@
 Every Garden change follows `.agents/skills/contribute/SKILL.md`. This is the
 repository's pstack-based work sequence for people and agents.
 
+Before editing, read `docs/README.md` and the documents that define the
+affected feature, architecture, UI rules, and known gaps. Add or update the
+matching feature document in the same change as new behavior.
+
 Pstack is the default workflow for agents that have it. Contributors without
 pstack follow the same scope, design, implementation, proof, review, and
 handoff steps. Do not treat pstack as a runtime dependency of Garden.

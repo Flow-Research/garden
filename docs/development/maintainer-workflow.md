@@ -42,12 +42,14 @@ already contains.
 Use this order for a pull request that is still needed:
 
 1. Read the title, issue, and changed-file list.
-2. Check the behavior at the changed boundary. Check permissions, migrations,
+2. Read the relevant feature and architecture documents.
+3. Check the behavior at the changed boundary. Check permissions, migrations,
    external calls, and error handling when they are in scope.
-3. Run the smallest package checks first.
-4. Run the real user flow for UI, connector, agent, workflow, or deployment
+4. Check that the documentation matches the implementation and the proof path.
+5. Run the smallest package checks first.
+6. Run the real user flow for UI, connector, agent, workflow, or deployment
    changes.
-5. Record the result in the pull request and choose whether to merge, request a
+7. Record the result in the pull request and choose whether to merge, request a
    change, or defer the pull request.
 
 Use `pnpm doctor` before a local verification run. The command is read-only. It

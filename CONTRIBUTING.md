@@ -23,6 +23,10 @@ Every pull request must state its outcome, checks, user-flow evidence when
 needed, known risk, and missing proof. Use `INCONCLUSIVE` when a user flow has
 not been proved.
 
+When a pull request adds or changes behavior, update the matching document in
+[`docs/features/`](docs/features/README.md) in the same pull request. For an
+architecture or infrastructure change, update the relevant design document.
+
 Run the checks relevant to your change. The full test suite starts Postgres 16
 through Testcontainers, so Docker must be running. Before opening a pull
 request, run the same main checks as CI:
