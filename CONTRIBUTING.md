@@ -8,6 +8,9 @@ Follow the [developer onboarding guide](docs/development/onboarding.md) for a
 complete local setup and system walkthrough. The shorter setup path remains in
 [README.md](README.md#run-garden-locally).
 
+Maintainers should also follow the [maintainer workflow](docs/development/maintainer-workflow.md)
+for pull request triage, repository checks, and product verification.
+
 Run the checks relevant to your change. The full test suite starts Postgres 16
 through Testcontainers, so Docker must be running. Before opening a pull
 request, run the same main checks as CI:
