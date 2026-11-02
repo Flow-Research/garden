@@ -106,7 +106,7 @@ import {
   DECIDE_ANALYZE_TOOL_KEY,
   decideAnalysisDeliveryMessage,
   isDecideAnalysisDeliveryTurn,
-  isDecideToolKey,
+  chatTurnActiveTools,
   stopAfterDecideAnalysisStarts,
 } from './decide-analysis-chat'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
@@ -2224,10 +2224,10 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     const visibleTools = Object.fromEntries(
       Object.entries(stableMcpTools).filter(([key]) => isToolVisible(key)),
     ) as ToolSet
-    const visibleActiveTools = activeTools.filter(
-      (key) =>
-        isToolVisible(key) && !(isDecideDelivery && isDecideToolKey(key)),
-    )
+    const visibleActiveTools = chatTurnActiveTools(activeTools, {
+      isDecideDelivery,
+      isVisible: isToolVisible,
+    })
     const stopWhen = [
       ...(visibleActiveTools.includes(DECIDE_ANALYZE_TOOL_KEY)
         ? [stopAfterDecideAnalysisStarts]

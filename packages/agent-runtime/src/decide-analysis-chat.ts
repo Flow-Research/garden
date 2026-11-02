@@ -8,7 +8,6 @@ import { EXECUTOR_TOOL_KEY_PREFIX } from './runtime-mcp-controller'
 
 /** AI SDK tool key for the chat-facing Decide analyze tool. */
 export const DECIDE_ANALYZE_TOOL_KEY = `${EXECUTOR_TOOL_KEY_PREFIX}decide_analyze`
-const DECIDE_TOOL_KEY_PREFIX = `${EXECUTOR_TOOL_KEY_PREFIX}decide_`
 
 export const DECIDE_ANALYSIS_RESULT_KIND = 'decide_analysis_result'
 
@@ -22,8 +21,19 @@ export const stopAfterDecideAnalysisStarts = hasToolCall(
   DECIDE_ANALYZE_TOOL_KEY,
 )
 
-export const isDecideToolKey = (key: string) =>
-  key.startsWith(DECIDE_TOOL_KEY_PREFIX)
+/**
+ * The tools a chat turn may call. Before, a delivery turn only lost the
+ * Decide tools, so after a failed run the model ran its own local analysis
+ * with the sandbox and document tools. A delivery turn now gets none: its
+ * one job is to write Decide's answer or error. Other turns keep every
+ * visible tool.
+ */
+export function chatTurnActiveTools(
+  activeTools: readonly string[],
+  turn: { isDecideDelivery: boolean; isVisible: (key: string) => boolean },
+): string[] {
+  return turn.isDecideDelivery ? [] : activeTools.filter(turn.isVisible)
+}
 
 const deliveryMetadataSchema = z.object({
   garden: z.object({
