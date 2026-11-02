@@ -10,8 +10,7 @@
 
 | Item                             | Evidence                                                                            |
 | -------------------------------- | ----------------------------------------------------------------------------------- |
-| CI/GitHub Actions pipeline       | `.github/workflows/ci.yml` runs lint, typecheck, tests, and build.                  |
-| Connector CI workflow            | `.github/workflows/connectors.yml` provides connector-specific validation.          |
+| CI/GitHub Actions pipeline       | `.github/workflows/ci.yml` runs repository checks, connector coverage, and migrations. |
 | Client and Worker error tracking | PostHog client capture and Worker exception reporting are wired in the web runtime. |
 | Staging resources                | `alchemy.run.ts` defines deployed Cloudflare and Neon staging resources.            |
 
