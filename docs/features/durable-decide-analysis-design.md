@@ -30,9 +30,91 @@ GET /api/chat/threads/{threadId}/decide-analyses/{runId}
   -> { run_id, status, progress, result, error }
 ```
 
-The Workflow appends the final result to the chat with `Think.addMessages`.
-The message ID is derived from the run ID, so a retry cannot add the result
-twice.
+The Workflow delivers the final result through a model turn. See
+[Chat contract](#chat-contract) for how the user sees the run and its answer.
+
+## Chat contract
+
+The first release of this design returned a bare run ID to the model and
+appended Decide's raw output with `Think.addMessages`. A live test showed the
+cost. The model had no status tool, so it called `sleep`, started a second
+paid run, and then redid the analysis in the sandbox. Decide's raw blocks,
+including session IDs and progress logs, then landed in the middle of that
+turn. The rules below replace that behavior.
+
+### One active run per thread
+
+A partial unique index allows one `queued`, `running`, or `cancel_requested`
+run per chat thread. `startDecideAnalysis` returns
+`{ kind: "started" | "already_running", snapshot }`. A second call while a run
+is active returns the existing run and never charges Decide again. The
+tool-call idempotency key still deduplicates MCP retries of the same call.
+
+### Garden owns the Decide session
+
+The model no longer passes `session_id` in chat. When a chat call omits
+`data`, the service reuses the provider session of the thread's latest
+`completed` run. A call with new `data` starts a new Decide session. A failed
+run never seeds a follow-up, so an empty session cannot produce a paid
+greeting. Direct non-chat callers keep the explicit `session_id` argument.
+
+### The turn ends when the run starts
+
+`ChatSubAgent.beforeTurn` adds a stop condition for the Decide analyze tool,
+next to the existing stop condition for a selected Decide failure. The turn
+ends in the step that started the run. The model cannot sleep, retry, or
+substitute a local analysis while Decide works. The tool text tells the model
+that the answer will appear in the chat. The structured content keeps
+`run_id` for the UI only.
+
+### The chat step shows live run status
+
+The Decide tool step reads `run_id` from the tool output and polls the status
+API while the run is not terminal. It shows Decide's latest progress message
+and a Cancel action. It shows "Analysis complete", "Analysis failed", or
+"Analysis cancelled" at the end. The user never sees a run ID or session ID.
+A cancelled run needs no chat message because the step shows the outcome.
+
+### The answer arrives through a model turn
+
+After the terminal commit, the Workflow calls
+`ChatSubAgent.deliverDecideAnalysisResult`. That method calls
+`Think.saveMessages` with one internal user message. The message carries
+`metadata.garden.kind = "decide_analysis_result"` and a stable ID derived from
+the run ID and attempt. `shouldApplyMessages` skips the turn when that ID
+already exists, so a Workflow retry cannot run a second delivery turn. The
+turn queue runs it after any active turn, so it never splices into a running
+turn. The chat UI hides internal messages of that kind.
+
+In the delivery turn, Garden removes the Decide tools from the active tools
+and adds instructions to the system prompt. The model presents Decide's
+findings with Decide's numbers unchanged, links each generated file, and
+leaves out Decide's own narration, progress notes, session IDs, and run IDs.
+A failed run produces a short explanation of the error in plain language, such
+as an exhausted Decide credit balance, with no automatic retry. The Workflow
+records `delivered_at` after the turn applies its message.
+
+### Thread identity
+
+The chat facet is named by `chat_thread.runtime_key`, which equals the issue
+ID for issue-linked threads. The service resolves the trusted thread key
+against `id` or `runtime_key` inside the caller's workspace and owner scope.
+It stores `chat_thread.id` on the run. Delivery looks up `runtime_key` to
+address the facet.
+
+### Timeouts
+
+Decide no longer enforces its own analysis timeout, and Garden drops its
+five-minute `maxTotalTimeout`. The MCP call keeps `resetTimeoutOnProgress`,
+so the request timeout only measures silence between progress events. The
+value comes from Decide's observed progress cadence, not a guess. The
+Workflow step timeout remains the outer bound.
+
+### Database connections
+
+The service and Workflow open one closable client per operation instead of
+calling `getPooledDb`, which builds an unclosed `pg` Pool on every call. A
+long analysis previously opened a new pool for every progress event.
 
 ## Shape
 
@@ -81,8 +163,7 @@ instead of silently running a second paid analysis. Decide does not yet expose
 a Garden idempotency key.
 
 Live progress is an optimization. The database snapshot is the source of
-truth after reconnect. The final chat message is idempotent and contains the
-ordered text result and generated-file links returned by Decide.
+truth after reconnect. The delivery turn is idempotent by message ID.
 
 ## Synthesis decision
 
