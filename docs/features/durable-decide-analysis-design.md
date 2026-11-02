@@ -47,8 +47,16 @@ turn. The rules below replace that behavior.
 A partial unique index allows one `queued`, `running`, or `cancel_requested`
 run per chat thread. `startDecideAnalysis` returns
 `{ kind: "started" | "already_running", snapshot }`. A second call while a run
-is active returns the existing run and never charges Decide again. The
-tool-call idempotency key still deduplicates MCP retries of the same call.
+is active returns the existing run and never charges Decide again. An MCP
+retry of the same call lands on that active run too.
+
+The active run is the only run a start ever returns. A finished run, or a run
+in another thread, is never returned, even when its stored tool-call ID
+matches. Model tool-call IDs are not unique: they look like
+`functions.tool_executor_decide_analyze:1` and the counter restarts in each
+thread. An earlier workspace-wide lookup by that ID handed a new chat another
+chat's failed run, so no analysis ran. The ID is now stored for tracing only
+and has no unique index.
 
 ### Garden owns the Decide session
 
