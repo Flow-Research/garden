@@ -36,9 +36,7 @@ export type GitHubWebhookCommentApplyResult = {
  * - reopened → status todo
  * Bot senders are skipped to avoid Garden→GitHub→Garden echo loops.
  */
-export function planGitHubWebhookIssueApply(
-  target: GitHubWebhookIssueTarget,
-): {
+export function planGitHubWebhookIssueApply(target: GitHubWebhookIssueTarget): {
   fields: Partial<{
     title: string
     description: string | null
@@ -133,10 +131,7 @@ export async function applyGitHubWebhookIssueUpdate(args: {
     updatedAt: Date
   } = { updatedAt: new Date() }
 
-  if (
-    plan.fields.title !== undefined &&
-    plan.fields.title !== existing.title
-  ) {
+  if (plan.fields.title !== undefined && plan.fields.title !== existing.title) {
     patch.title = plan.fields.title
     changedFields.push('title')
   }

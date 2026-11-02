@@ -51,9 +51,9 @@ describe('planGitHubWebhookIssueApply', () => {
 
 describe('connectorCommentActorLabel', () => {
   it('formats GitHub login when present', () => {
-    expect(
-      connectorCommentActorLabel({ github_login: 'octocat' }),
-    ).toBe('GitHub · @octocat')
+    expect(connectorCommentActorLabel({ github_login: 'octocat' })).toBe(
+      'GitHub · @octocat',
+    )
   })
 
   it('falls back to GitHub without login', () => {

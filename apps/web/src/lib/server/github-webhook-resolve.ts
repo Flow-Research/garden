@@ -150,8 +150,7 @@ export function parseGitHubWebhookIssueTarget(
 
   const action = asString(root.action) ?? ''
   const stateRaw = asString(issue.state)
-  const state =
-    stateRaw === 'open' || stateRaw === 'closed' ? stateRaw : null
+  const state = stateRaw === 'open' || stateRaw === 'closed' ? stateRaw : null
   const sender = asRecord(root.sender)
 
   return Result.ok({

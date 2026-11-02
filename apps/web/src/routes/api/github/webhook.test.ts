@@ -67,10 +67,7 @@ async function sign(secret: string, body: ArrayBuffer) {
   return `sha256=${hex}`
 }
 
-async function postWebhook(args: {
-  body: string
-  signature?: string | null
-}) {
+async function postWebhook(args: { body: string; signature?: string | null }) {
   const rawBody = rawBodyFrom(args.body)
   const headers = new Headers({ 'content-type': 'application/json' })
   if (args.signature !== null) {
