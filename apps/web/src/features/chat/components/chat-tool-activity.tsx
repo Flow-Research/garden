@@ -20,6 +20,7 @@ import {
 import { getToolName, isToolUIPart } from 'ai'
 import { cn } from '@garden/ui/lib/utils'
 import { Spinner } from '@garden/ui/components/ui/spinner'
+import { Shimmer } from '@/components/ai-elements/shimmer'
 import { resolveToolApproval as resolveToolApprovalRequest } from '@/lib/api'
 import {
   ChainOfThought,
@@ -108,11 +109,23 @@ export function StreamingWorkEntryRow({
   )
 }
 
+/**
+ * The "Thinking…" row between steps. Before, it drew a dot-sized custom
+ * spinner next to plain text, which read as weaker than the Decide card's
+ * running state. It now uses the same `Spinner` and shimmering label as that
+ * card, so every loading state in chat looks alike.
+ */
 export function PendingAssistantActivity({ label }: { label: string }) {
   return (
-    <div className="relative flex items-center text-sm text-muted-foreground">
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex items-center gap-3 font-sans text-sm"
+    >
       <Spinner className="shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="ml-2">{label}</span>
+      <Shimmer as="span" className="font-medium">
+        {label}
+      </Shimmer>
     </div>
   )
 }
