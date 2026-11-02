@@ -1,0 +1,73 @@
+---
+title: Garden in 60 seconds
+description: Three planes, one job each. Start here.
+---
+
+Garden has **three planes**. Each one has one job.
+
+| Plane         | Job                  | Think of it as     |
+| ------------- | -------------------- | ------------------ |
+| **Control**   | Remembers everything | The filing cabinet |
+| **Agent**     | Thinks and talks     | The brain          |
+| **Execution** | Does the work        | The hands          |
+
+<Callout title="Rule of thumb">
+  Before you write code, ask: which plane owns this state?
+</Callout>
+
+## Control plane: the filing cabinet
+
+**Postgres + Drizzle**
+
+- Holds what the product must **list, search, permission-check, or audit**.
+- Users, workspaces, issues, runs, automations, permissions, documents, audit log.
+- File bytes live in **R2**. Postgres keeps only the metadata.
+
+<Callout type="warn">
+  If Postgres and anything else disagree, Postgres wins.
+</Callout>
+
+## Agent plane: the brain
+
+**Durable Objects + Agents SDK + Think**
+
+- Each agent gets one `AgentDO`.
+- The `AgentDO` opens a **child conversation** for each job:
+  - `ChatSubAgent`: one per chat thread
+  - `IssueRunSubAgent`: one per issue
+  - `AutomationRunSubAgent`: one per automation run
+- Each child keeps live memory in **local SQLite**. Fast, but the product can't query it.
+- `WorkspaceRealtimeDO` pushes live updates to browsers, only to people allowed to see them.
+
+<Callout>
+  The conversation lives here. The permanent record goes back to Postgres.
+</Callout>
+
+## Execution plane: the hands
+
+Four tools, from the lightest to the heaviest:
+
+| Tool             | Use it for                          | Example                     |
+| ---------------- | ----------------------------------- | --------------------------- |
+| **Codemode**     | Quick scripts that chain tool calls | "Fetch 3 things, combine"   |
+| **MCP sessions** | Talking to outside apps             | GitHub, Decide              |
+| **Sandbox**      | Real code in a container            | Running a Python analysis   |
+| **Workflows**    | Long jobs that must survive crashes | Issue runs, Decide analyses |
+
+<Callout type="warn">
+  Workflows are the only retry layer. Don't build another one.
+</Callout>
+
+## One issue run, start to finish
+
+1. **Control**: the API saves the run in Postgres.
+2. **Agent**: `AgentDO` starts a Workflow. Workflow ID = run ID.
+3. **Execution**: the Workflow wakes `IssueRunSubAgent`.
+4. **Agent**: the agent thinks and calls tools. Each call passes a permission check and lands in the audit log.
+5. **Control**: results save to Postgres and stream live to browsers.
+6. **Execution**: the Workflow marks the run done.
+
+## Go deeper
+
+- Full architecture map: `docs/core/technical.md`
+- How we work: [Engineering process](/handbook/engineering-process)

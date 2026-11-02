@@ -1,0 +1,37 @@
+/*
+ * Loaded only on /handbook. Fumadocs' preset restyles `body` and the default
+ * border color of every element, so it must not join the global stylesheet.
+ */
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@source './**/*.{ts,tsx}';
+@source '../../routes/_authenticated/handbook.$.tsx';
+
+/* Map Fumadocs colors onto Garden tokens so light and dark follow the app theme. */
+:root,
+:root.dark {
+  --color-fd-background: var(--background);
+  --color-fd-foreground: var(--foreground);
+  --color-fd-muted: var(--muted);
+  --color-fd-muted-foreground: var(--muted-foreground);
+  --color-fd-popover: var(--popover);
+  --color-fd-popover-foreground: var(--popover-foreground);
+  --color-fd-card: var(--card);
+  --color-fd-card-foreground: var(--card-foreground);
+  --color-fd-border: var(--border);
+  --color-fd-primary: var(--primary);
+  --color-fd-primary-foreground: var(--primary-foreground);
+  --color-fd-secondary: var(--secondary);
+  --color-fd-secondary-foreground: var(--secondary-foreground);
+  --color-fd-accent: var(--accent);
+  --color-fd-accent-foreground: var(--accent-foreground);
+  --color-fd-ring: var(--ring);
+}
+
+body {
+  font-family: var(--font-sans);
+}
