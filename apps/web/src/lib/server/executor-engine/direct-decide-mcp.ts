@@ -20,17 +20,10 @@ import { z } from 'zod'
 import type { GardenExecutorPlugins } from './plugins'
 
 const DECIDE_MCP_ENDPOINT = new URL('https://api.trydecide.ai/mcp')
-const MINUTE_MS = 60_000
 const directDecideLogger = createGardenLogger({
   service: 'garden-staging',
   component: 'direct-decide-mcp',
 })
-
-/**
- * Decide documents a four-minute default analysis timeout. The direct client
- * allows one extra minute for the MCP response and generated-file metadata.
- */
-export const DECIDE_ANALYSIS_TIMEOUT_MS = 5 * MINUTE_MS
 
 export class DirectDecideMcpError extends Data.TaggedError(
   'DirectDecideMcpError',
@@ -136,6 +129,13 @@ const createDirectDecideMcpSession: DirectDecideMcpSessionFactory = ({
   accessToken,
   onDisconnect,
 }) => {
+  // Decide no longer enforces its own analysis timeout, so Garden sets no
+  // total cap. The request uses the MCP SDK default timeout
+  // (DEFAULT_REQUEST_TIMEOUT_MSEC, 60s in @modelcontextprotocol/sdk 1.31.0
+  // shared/protocol.js), and `resetTimeoutOnProgress` turns it into a limit on
+  // silence between progress events. Decide publishes no progress cadence that
+  // would justify a different value. The Workflow step timeout is the outer
+  // bound for chat analyses.
   const client = new Client({
     name: 'garden-decide',
     version: '1.0.0',
@@ -159,8 +159,6 @@ const createDirectDecideMcpSession: DirectDecideMcpSessionFactory = ({
                 onprogress: options.onProgress,
                 resetTimeoutOnProgress: true,
               }),
-          timeout: DECIDE_ANALYSIS_TIMEOUT_MS,
-          maxTotalTimeout: DECIDE_ANALYSIS_TIMEOUT_MS,
         })
         // The installed SDK keeps a legacy `toolResult` union in its return
         // type even when CallToolResultSchema validates the response.
@@ -595,7 +593,7 @@ export const registerDirectDecideTools = (
     {
       title: 'Run analysis with Decide',
       description:
-        'Analyze complete raw CSV, TSV, JSON, or text data with Decide. Reuse session_id for follow-up analysis and omit data.',
+        'Analyze complete raw CSV, TSV, JSON, or text data with Decide. In chat the analysis runs in the background and its answer arrives later in the chat: do not poll, retry, or substitute a local analysis, and never mention run or session IDs. Omit data for a follow-up on the same data.',
       inputSchema: directDecideAnalyzeInputSchema,
       annotations: { readOnlyHint: true },
     },

@@ -7,7 +7,6 @@ import { Effect } from 'effect'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Executor } from '@executor-js/sdk/core'
 import {
-  DECIDE_ANALYSIS_TIMEOUT_MS,
   DirectDecideMcpSessionManager,
   DirectDecideMcpError,
   type DirectDecideMcpSession,
@@ -391,10 +390,6 @@ describe('direct Decide MCP tools', () => {
         },
       },
     ])
-  })
-
-  it('uses a timeout longer than Decide documented four-minute default', () => {
-    expect(DECIDE_ANALYSIS_TIMEOUT_MS).toBeGreaterThan(4 * 60_000)
   })
 
   it('keeps request IDs unique across repeated calls on one connection', async () => {
