@@ -3,6 +3,25 @@
 This guide gives maintainers one path for issues, pull requests, verification,
 and release checks.
 
+## Use the contribution standard
+
+Every Garden change follows
+[`.agents/skills/contribute/SKILL.md`](../../.agents/skills/contribute/SKILL.md).
+The standard follows the pstack work sequence:
+
+1. Scope the outcome and non-goals.
+2. Understand the current code and boundary.
+3. Design the smallest verifiable unit.
+4. Implement a focused change.
+5. Prove the behavior.
+6. Review the diff and its wider effects.
+7. Hand off a complete pull request.
+
+Pstack is the default workflow for agents that have it. The required outputs
+also apply to human contributors and agents without pstack. Do not require a
+tool that a contributor cannot access. Require the same evidence and review
+standard instead.
+
 ## Keep the queue clear
 
 Start with the current `dev` branch. Check every pull request in this order:

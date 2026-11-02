@@ -12,6 +12,13 @@
 - [ ] The diff contains one focused change.
 - [ ] Unrelated work is in a separate pull request.
 
+## Contribution standard
+
+- [ ] I stated the outcome and non-goals.
+- [ ] I read the relevant code, tests, and documentation before editing.
+- [ ] I reviewed the final diff and considered its wider effects.
+- [ ] I recorded decisions for long-running or multi-contributor work.
+
 ## Checks
 
 - [ ] I ran the checks that cover the changed files.
@@ -24,7 +31,8 @@
 ## Verification
 
 <!-- Include commands and the evidence path. Use INCONCLUSIVE when proof is
-     missing. Do not claim that a typecheck proves a user flow. -->
+     missing. Do not claim that a typecheck proves a user flow. For long or
+     unattended work, include the decision log location. -->
 
 ## Risk and follow-up
 
