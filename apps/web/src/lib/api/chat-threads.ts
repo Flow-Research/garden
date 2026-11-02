@@ -30,11 +30,16 @@ export type ChatDecideAnalysisStatus =
   | 'failed'
   | 'cancelled'
 
-/** The fields of a Decide run snapshot the chat step reads. */
+export type ChatDecideAnalysisFile = { name: string; url: string }
+
+/** The fields of a Decide run snapshot the chat card reads. */
 export type ChatDecideAnalysis = {
   runId: string
   status: ChatDecideAnalysisStatus
   progress: { message?: string } | null
+  files: ChatDecideAnalysisFile[]
+  createdAt: string
+  startedAt: string | null
 }
 
 export function getChatDecideAnalysis(
