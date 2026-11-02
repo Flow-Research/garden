@@ -1,0 +1,21 @@
+{
+  "name": "@garden/evals",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives ."
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@garden/tsconfig": "workspace:*",
+    "@typescript/native": "catalog:"
+  }
+}
