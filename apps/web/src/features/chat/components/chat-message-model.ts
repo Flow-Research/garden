@@ -209,6 +209,28 @@ export function decideAnalysisRunId(toolName: string, output: unknown) {
   return typeof runId === 'string' && runId ? runId : null
 }
 
+/**
+ * True when the newest visible message is the assistant turn that started a
+ * Decide run. During a run the chat showed both the Decide card's spinner and
+ * a "Thinking…" row, two progress indicators for one piece of work. The
+ * timeline uses this to let the card be the only one until the answer turn
+ * arrives, which adds a newer message and turns this off.
+ */
+export function latestMessageStartedDecideRun(messages: ChatUiMessage[]) {
+  const latest = messages
+    .filter((message) => !isInternalChatMessage(message))
+    .at(-1)
+  if (latest?.role !== 'assistant') return false
+  return latest.parts.some((part) => {
+    if (!isToolUIPart(part)) return false
+    const record = part as unknown as Record<string, unknown>
+    return (
+      decideAnalysisRunId(getToolName(part), record.output ?? record.result) !==
+      null
+    )
+  })
+}
+
 const EXT_TO_LANG: Record<string, string> = {
   ts: 'typescript',
   tsx: 'tsx',
