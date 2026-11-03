@@ -171,6 +171,43 @@ describe('direct Decide MCP tools', () => {
     expect(calls).toEqual([])
   })
 
+  it('rejects data and source together before any start or provider call', async () => {
+    const startAnalysis = vi.fn(async () => null)
+    const { calls, tools } = registerHarness(
+      { content: [] },
+      undefined,
+      startAnalysis,
+    )
+
+    const returned = await tools.get('decide_analyze')?.callback(
+      {
+        question: 'Analyze this.',
+        data: 'a\n1',
+        source: { kind: 'brain_file', fileId: 'file_1' },
+      },
+      toolExtra().extra,
+    )
+
+    expect(returned?.isError).toBe(true)
+    expect(startAnalysis).not.toHaveBeenCalled()
+    expect(calls).toEqual([])
+  })
+
+  it('refuses a source on the direct path, where Garden cannot read the file', async () => {
+    const { calls, tools } = registerHarness({ content: [] })
+
+    const returned = await tools.get('decide_analyze')?.callback(
+      {
+        question: 'Analyze this.',
+        source: { kind: 'brain_file', fileId: 'file_1' },
+      },
+      toolExtra().extra,
+    )
+
+    expect(returned?.isError).toBe(true)
+    expect(calls).toEqual([])
+  })
+
   it('hands the complete CSV to Decide analyze', async () => {
     const csv = 'region,revenue\nNorth,120\nSouth,95\n'
     const { calls, tools } = registerHarness({

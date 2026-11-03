@@ -55,7 +55,7 @@ export const Route = createFileRoute(
             {
               workspaceId: access.thread.workspaceId,
               ownerUserId: access.session.user.id,
-              threadId: access.thread.id,
+              owner: { kind: 'chat', threadId: access.thread.id },
             },
             params.runId,
           ),
@@ -79,7 +79,7 @@ export const Route = createFileRoute(
         const actor = {
           workspaceId: access.thread.workspaceId,
           ownerUserId: access.session.user.id,
-          threadId: access.thread.id,
+          owner: { kind: 'chat' as const, threadId: access.thread.id },
         }
         const result =
           bodyResult.value.action === 'cancel'

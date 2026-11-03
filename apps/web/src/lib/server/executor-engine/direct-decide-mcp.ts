@@ -17,6 +17,7 @@ import {
   type Executor,
 } from '@executor-js/sdk/core'
 import { z } from 'zod'
+import { decideAnalysisSourceSchema } from '@garden/agent-runtime/src/decide-analysis-types'
 import type { GardenExecutorPlugins } from './plugins'
 
 const DECIDE_MCP_ENDPOINT = new URL('https://api.trydecide.ai/mcp')
@@ -421,17 +422,36 @@ export const directDecideMcpPlugin = definePlugin(() => {
 
 export const directDecideAnalyzeInputSchema = {
   question: z.string().min(1),
-  data: z.string().optional(),
+  data: z
+    .string()
+    .optional()
+    .describe(
+      'Complete raw CSV, TSV, JSON, or text data to analyze. Do not send with source.',
+    ),
+  source: decideAnalysisSourceSchema
+    .optional()
+    .describe(
+      'A file Garden reads in full for Decide, such as { "kind": "brain_file", "fileId": "<id from brain_search>" }. Prefer this over data for a stored file, and do not read or paste the file yourself. Do not send with data.',
+    ),
   context: z.string().optional(),
   session_id: z.string().optional(),
 }
 
-export type DirectDecideAnalyzeInput = {
-  question: string
-  data?: string
-  context?: string
-  session_id?: string
-}
+/**
+ * The full analyze argument contract. MCP registers a raw shape, which cannot
+ * say that `data` and `source` are exclusive, so the handler parses with this
+ * object before it starts anything.
+ */
+const directDecideAnalyzeArgsSchema = z
+  .object(directDecideAnalyzeInputSchema)
+  .refine((args) => args.data === undefined || args.source === undefined, {
+    message: 'Send either data or source, not both.',
+    path: ['source'],
+  })
+
+export type DirectDecideAnalyzeInput = z.infer<
+  typeof directDecideAnalyzeArgsSchema
+>
 
 const sessionInput = { session_id: z.string().min(1) }
 const generatedFileInput = {
@@ -616,6 +636,17 @@ export const callDirectDecideTool = (
   )
 }
 
+/** A tool error for analyze arguments Garden refuses before any Decide call. */
+const invalidAnalyzeArgs = (message: string): CallToolResult => ({
+  isError: true,
+  content: [{ type: 'text', text: message }],
+  structuredContent: {
+    status: 'error',
+    failureStage: 'decide_analysis',
+    error: { code: 'invalid_input', message },
+  },
+})
+
 /**
  * Adds the tools from Decide's MCP guide to Garden's Executor MCP server.
  * These tools bypass Executor's failing nested MCP transport.
@@ -632,19 +663,31 @@ export const registerDirectDecideTools = (
     {
       title: 'Run analysis with Decide',
       description:
-        'Analyze complete raw CSV, TSV, JSON, or text data with Decide. In chat the analysis runs in the background and its answer arrives later in the chat: do not poll, retry, or substitute a local analysis, and never mention run or session IDs. Omit data for a follow-up on the same data.',
+        'Analyze data with Decide. For a file stored in Brain, pass source with its file id and Garden reads the whole file, including XLSX sheets; otherwise pass complete raw CSV, TSV, JSON, or text as data. Inputs over 100 MB are refused. In chat the analysis runs in the background and its answer arrives later in the chat: do not poll, retry, or substitute a local analysis, and never mention run or session IDs. Omit data and source for a follow-up on the same data.',
       inputSchema: directDecideAnalyzeInputSchema,
       annotations: { readOnlyHint: true },
     },
-    async (args, extra) => {
+    async (rawArgs, extra) => {
+      const parsed = directDecideAnalyzeArgsSchema.safeParse(rawArgs)
+      if (!parsed.success) {
+        return invalidAnalyzeArgs(
+          parsed.error.issues[0]?.message ?? 'Invalid analyze arguments.',
+        )
+      }
+      const args = parsed.data
       const started = await options?.startAnalysis?.({ args, extra })
-      return (
-        started ??
-        callDirectDecideTool(executor, 'analyze', args, {
-          signal: extra.signal,
-          onProgress: progressForwarder(extra),
-        })
-      )
+      if (started) return started
+      // Only the chat starter can read a source; the direct call would send
+      // Decide no data.
+      if (args.source !== undefined) {
+        return invalidAnalyzeArgs(
+          'A source can only be analyzed from a Garden chat. Send the data instead.',
+        )
+      }
+      return callDirectDecideTool(executor, 'analyze', args, {
+        signal: extra.signal,
+        onProgress: progressForwarder(extra),
+      })
     },
   )
   server.registerTool(

@@ -79,6 +79,27 @@ describe('makeDecideAnalysisStarter', () => {
     )
   })
 
+  it('hands a Brain source to the service for Garden to read', async () => {
+    startDecideAnalysis.mockResolvedValue(
+      Result.ok({ kind: 'started', snapshot }),
+    )
+
+    await starter({
+      args: {
+        question: 'Which region grew?',
+        source: { kind: 'brain_file', fileId: 'file_1' },
+      },
+      extra: chatExtra,
+    })
+
+    expect(startDecideAnalysis.mock.calls[0]?.[0]).toMatchObject({
+      input: {
+        kind: 'source',
+        source: { kind: 'brain_file', fileId: 'file_1' },
+      },
+    })
+  })
+
   it('leaves calls without trusted chat metadata to the direct path', async () => {
     const result = await starter({
       args: { question: 'Direct' },
