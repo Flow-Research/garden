@@ -1,0 +1,53 @@
+---
+title: Pull request contract
+description: What the PR contract check enforces, and what it cannot prove.
+---
+
+The `PR contract` GitHub Actions job runs `scripts/verify-pr-contract.mjs` on every pull request to `dev` or `main`. It is a required check on both branches. The full rules are in `docs/development/pr-contract.md`.
+
+## Target branch
+
+| Target | Allowed source            |
+| ------ | ------------------------- |
+| `dev`  | Any feature branch        |
+| `main` | `dev` only, for a release |
+
+The check rejects any other target.
+
+## Required sections
+
+A pull request that is ready for review must contain these headings:
+
+1. What changed
+2. Why
+3. Scope
+4. Contribution standard
+5. Documentation
+6. Checks
+7. Verification
+8. Risk and follow-up
+
+A draft pull request needs only a valid target branch and a title. The full check runs when the pull request is marked ready for review.
+
+## Section rules
+
+The check applies these rules inside the sections:
+
+| Section               | Rule                                                                             |
+| --------------------- | -------------------------------------------------------------------------------- |
+| Contribution standard | The boxes for outcome and non-goals, reading, and final-diff review are checked. |
+| Documentation         | Names the documents that changed, or states why none changed.                    |
+| Checks                | Lists the commands that ran.                                                     |
+| Verification          | States `PASS`, `FAIL`, or `INCONCLUSIVE` and names the evidence.                 |
+
+A behavior change with no document and no stated reason fails the check.
+
+## Run the check locally
+
+```bash
+pnpm verify:pr --event path/to/pull-request-event.json
+```
+
+## Limits
+
+The check confirms that sections exist and that evidence is named. It cannot confirm that the author read a document or that the evidence is true. A maintainer reviews the design, the evidence, and the user flow.

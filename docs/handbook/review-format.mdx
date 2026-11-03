@@ -1,0 +1,60 @@
+---
+title: Review format
+description: The structure of a Garden pull request review, and the merge rules behind it.
+---
+
+Garden reviews use one structure so that both people and agents can act on them. The full standard is in `docs/development/review-standard.md`.
+
+## Merge rules
+
+| Branch | Required checks         | Approvals required |
+| ------ | ----------------------- | ------------------ |
+| `dev`  | `Verify`, `PR contract` | 0                  |
+| `main` | `Verify`, `PR contract` | 1                  |
+
+Only users on the `dev` push list can merge into `dev`. Admins follow the same rules.
+
+Agents can inspect, implement, review, and recommend. A maintainer makes the merge decision.
+
+## Pull request status
+
+A maintainer gives each open pull request one status:
+
+| Status        | Meaning                                                              |
+| ------------- | -------------------------------------------------------------------- |
+| Merge now     | The change is understood, verified, and ready.                       |
+| Needs changes | The author must fix a specific problem.                              |
+| Blocked       | The change waits on an outside decision, dependency, or environment. |
+| Superseded    | Another change replaces it.                                          |
+
+## Review structure
+
+A review has these parts, in this order:
+
+1. A thank-you that names the specific change.
+2. **What passed**: the behavior, checks, or evidence that works.
+3. **Before merge**: blocking findings only.
+4. **Follow-up**: non-blocking improvements.
+5. **Review status**: `APPROVE`, `REQUEST_CHANGES`, or `COMMENT`.
+6. **Next action**: the one thing the author does next.
+
+## Finding format
+
+Each finding uses four labels:
+
+```text
+Finding:  [specific problem]
+Impact:   [what can break or become difficult]
+Evidence: [file, line, test, command, log, or reproduction]
+Request:  [exact change or check needed]
+```
+
+## Status rules
+
+| Status            | Use when                                         |
+| ----------------- | ------------------------------------------------ |
+| `REQUEST_CHANGES` | At least one blocking finding remains.           |
+| `APPROVE`         | No blocking finding remains.                     |
+| `COMMENT`         | The review asks a question or adds context only. |
+
+A follow-up is never a blocking finding.

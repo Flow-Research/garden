@@ -58,19 +58,25 @@ export const Route = createFileRoute('/_authenticated/handbook/$')({
 function HandbookPage() {
   const { path, pageTree } = useFumadocsLoader(Route.useLoaderData())
 
+  // Garden's root layout keeps <body> at `overflow-hidden` because app pages
+  // scroll inside their own panels. The handbook owns a full-height scroll
+  // container instead of changing <body>, because the router keeps this
+  // route's stylesheet after client navigation away from the handbook.
   return (
-    <RootProvider theme={{ enabled: false }} search={{ enabled: false }}>
-      <DocsLayout
-        tree={pageTree}
-        nav={{ title: 'Garden Handbook', url: '/handbook' }}
-        themeSwitch={{ enabled: false }}
-        searchToggle={{ enabled: false }}
-      >
-        <Suspense>
-          <HandbookContent path={path} />
-        </Suspense>
-      </DocsLayout>
-    </RootProvider>
+    <div className="h-svh overflow-y-auto font-sans">
+      <RootProvider theme={{ enabled: false }} search={{ enabled: false }}>
+        <DocsLayout
+          tree={pageTree}
+          nav={{ title: 'Garden Handbook', url: '/handbook' }}
+          themeSwitch={{ enabled: false }}
+          searchToggle={{ enabled: false }}
+        >
+          <Suspense>
+            <HandbookContent path={path} />
+          </Suspense>
+        </DocsLayout>
+      </RootProvider>
+    </div>
   )
 }
 

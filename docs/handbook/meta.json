@@ -1,4 +1,13 @@
 {
-  "title": "Garden Handbook",
-  "pages": ["index", "engineering-process"]
+  "title": "Garden handbook",
+  "pages": [
+    "index",
+    "---Explanation---",
+    "architecture",
+    "---How-to---",
+    "ship-a-change",
+    "---Reference---",
+    "pr-contract",
+    "review-format"
+  ]
 }

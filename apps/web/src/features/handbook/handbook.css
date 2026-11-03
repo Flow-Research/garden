@@ -31,7 +31,3 @@
   --color-fd-accent-foreground: var(--accent-foreground);
   --color-fd-ring: var(--ring);
 }
-
-body {
-  font-family: var(--font-sans);
-}
