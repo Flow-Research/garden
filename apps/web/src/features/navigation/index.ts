@@ -1,3 +1,7 @@
-export { NavigationProvider, useNavigation } from './context'
+export {
+  NavigationProvider,
+  useNavigation,
+  useNavigationActions,
+} from './context'
 export { AppLink } from './app-link'
-export type { NavigationAdapter } from './types'
+export type { NavigationActions, NavigationAdapter } from './types'

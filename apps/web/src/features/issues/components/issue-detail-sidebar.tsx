@@ -139,7 +139,7 @@ export function IssueDetailSidebar({
               >
                 <StatusIcon
                   status={parentIssue.status}
-                  className="h-3.5 w-3.5 shrink-0"
+                  className="size-3.5 shrink-0"
                 />
                 <span className="text-muted-foreground shrink-0">
                   {parentIssue.identifier}

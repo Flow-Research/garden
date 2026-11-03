@@ -11,6 +11,7 @@ import {
   findFirstUnanswered,
 } from '@garden/app-state/chat'
 import { cn } from '@garden/ui/lib/utils'
+import { useOptionHotkeys } from '@/lib/hooks/use-option-hotkeys'
 
 // ── Panel ────────────────────────────────────────────────────────────────────
 
@@ -53,36 +54,35 @@ export const StructuredInputPanel = memo(function StructuredInputPanel({
     (optionLabel: string) => {
       if (!activeQuestion || disabled) return
 
-      setDrafts((prev) => {
-        const next = {
-          ...prev,
-          [activeQuestion.id]: toggleOptionSelection(
-            activeQuestion,
-            prev[activeQuestion.id],
-            optionLabel,
-          ),
-        }
+      // Computed here, not in a setState updater: React may run updaters
+      // twice, and this one scheduled the timer and submitted the answers.
+      const next = {
+        ...drafts,
+        [activeQuestion.id]: toggleOptionSelection(
+          activeQuestion,
+          drafts[activeQuestion.id],
+          optionLabel,
+        ),
+      }
+      setDrafts(next)
 
-        // Auto-advance for single-select after a short delay
-        if (!activeQuestion.multiSelect) {
-          if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current)
-          autoAdvanceTimer.current = setTimeout(() => {
-            autoAdvanceTimer.current = null
-            setQuestionIndex((idx: number) => {
-              if (idx >= questions.length - 1) return idx
-              return idx + 1
-            })
+      // Auto-advance for single-select after a short delay
+      if (!activeQuestion.multiSelect) {
+        if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current)
+        autoAdvanceTimer.current = setTimeout(() => {
+          autoAdvanceTimer.current = null
+          setQuestionIndex((idx: number) => {
+            if (idx >= questions.length - 1) return idx
+            return idx + 1
+          })
 
-            // Check if all answered and auto-submit
-            const resolved = buildAnswers(questions, next)
-            if (resolved) onSubmitRef.current(resolved)
-          }, 200)
-        }
-
-        return next
-      })
+          // Check if all answered and auto-submit
+          const resolved = buildAnswers(questions, next)
+          if (resolved) onSubmitRef.current(resolved)
+        }, 200)
+      }
     },
-    [activeQuestion, disabled, questions],
+    [activeQuestion, disabled, drafts, questions],
   )
 
   const handleAdvance = useCallback(() => {
@@ -93,35 +93,20 @@ export const StructuredInputPanel = memo(function StructuredInputPanel({
     setQuestionIndex((idx) => Math.min(idx + 1, questions.length - 1))
   }, [isLast, allAnswered, questions.length])
 
-  // Keyboard shortcuts: number keys 1-9 select options
-  useEffect(() => {
-    if (!activeQuestion || disabled) return
-    const handler = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return
-      const target = event.target
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement
-      )
-        return
-      if (
-        target instanceof HTMLElement &&
-        target.closest('[contenteditable]:not([contenteditable="false"])')
-      )
-        return
-
-      const digit = Number.parseInt(event.key, 10)
-      if (Number.isNaN(digit) || digit < 1 || digit > 9) return
-      if (digit > activeQuestion.options.length) return
+  // Keyboard shortcuts: number keys 1-9 select options unless typing.
+  const selectOption = useCallback(
+    (index: number) => {
       const option: StructuredQuestionOption | undefined =
-        activeQuestion.options[digit - 1]
-      if (!option) return
-      event.preventDefault()
-      handleToggle(option.label)
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [activeQuestion, disabled, handleToggle])
+        activeQuestion?.options[index]
+      if (option) handleToggle(option.label)
+    },
+    [activeQuestion, handleToggle],
+  )
+  const handleOptionKeyDown = useOptionHotkeys({
+    count: activeQuestion?.options.length ?? 0,
+    enabled: Boolean(activeQuestion) && !disabled,
+    onSelect: selectOption,
+  })
 
   if (!activeQuestion) return null
 
@@ -131,7 +116,11 @@ export const StructuredInputPanel = memo(function StructuredInputPanel({
   )
 
   return (
-    <div className="px-4 py-3 sm:px-5">
+    <div
+      className="px-4 py-3 sm:px-5"
+      onKeyDown={handleOptionKeyDown}
+      role="group"
+    >
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
           {questions.length > 1 ? (

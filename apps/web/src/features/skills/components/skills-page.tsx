@@ -1,4 +1,4 @@
-import { useState, useMemo, useDeferredValue, useRef } from 'react'
+import { useState, useMemo, useDeferredValue, useEffect, useRef } from 'react'
 import {
   Plus,
   Trash2,
@@ -28,17 +28,6 @@ import {
   DialogFooter,
 } from '@garden/ui/components/ui/dialog'
 import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogMedia,
-  AlertDialogTitle,
-  AlertDialogCancel,
-  AlertDialogAction,
-} from '@garden/ui/components/ui/alert-dialog'
-import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
@@ -61,9 +50,12 @@ import {
 import {
   InputGroup,
   InputGroupAddon,
+  InputGroupInput,
 } from '@garden/ui/components/ui/input-group'
 import { Kbd, KbdGroup } from '@garden/ui/components/ui/kbd'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
+import { LoadError } from '@garden/ui/components/common/load-error'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import { Button } from '@garden/ui/components/ui/button'
 import { Input } from '@garden/ui/components/ui/input'
 import { Label } from '@garden/ui/components/ui/label'
@@ -73,10 +65,7 @@ import { Spinner } from '@garden/ui/components/ui/spinner'
 import { api } from '@/lib/api'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
-import {
-  useSkillsBrowseStore,
-  useSkillEditorStore,
-} from '@garden/app-state/skills'
+import { useSkillsBrowseStore } from '@garden/app-state/skills'
 import { skillListOptions, workspaceKeys } from '@/lib/workspace/queries'
 import { skillsShKeys } from '../queries'
 
@@ -88,6 +77,7 @@ import { FileViewer } from './file-viewer'
 // ---------------------------------------------------------------------------
 
 const SKILL_MD = 'SKILL.md'
+const NO_SKILLS: Skill[] = []
 const SKILLS_SH_HOST = 'skills.sh'
 
 function isSkillsShImportTarget(value: string) {
@@ -139,29 +129,33 @@ function buildFileMap(
 
 type LoadedFile = { path: string; content: string }
 
-function schedulePostRender(callback: () => void) {
-  if (typeof queueMicrotask === 'function') {
-    queueMicrotask(callback)
-    return
-  }
-  void Promise.resolve().then(callback)
-}
-
 // ---------------------------------------------------------------------------
 // Page root
 // ---------------------------------------------------------------------------
 
 export default function SkillsPage({
   focusedSkillId,
+  onSelectSkill,
 }: {
   focusedSkillId?: string
+  /** Puts the selection in the URL; without it, selection is local. */
+  onSelectSkill?: (skillId: string) => void
 } = {}) {
   const wsId = useWorkspaceId()
   const qc = useQueryClient()
-  const { data: skills = [], isLoading: isSkillsLoading } = useQuery(
-    skillListOptions(wsId),
-  )
+  const skillsQuery = useQuery(skillListOptions(wsId))
+  const skills = skillsQuery.data ?? NO_SKILLS
+  const isSkillsLoading = skillsQuery.isLoading
   const [selectedSkillId, setSelectedSkillId] = useState<string>('')
+  const [filter, setFilter] = useState('')
+  // Switching skill remounts the editor, so unsaved edits ask first.
+  const editorDirtyRef = useRef(false)
+  const [pendingSkillId, setPendingSkillId] = useState<string | null>(null)
+  const openSkill = (skillId: string) => {
+    editorDirtyRef.current = false
+    setSelectedSkillId(skillId)
+    onSelectSkill?.(skillId)
+  }
 
   const browseSearch = useSkillsBrowseStore((s) => s.browseSearch)
   const setBrowseSearch = useSkillsBrowseStore((s) => s.setBrowseSearch)
@@ -300,6 +294,21 @@ export default function SkillsPage({
     )
   }
 
+  if (skillsQuery.isError && skills.length === 0) {
+    return (
+      <>
+        <div className="flex flex-1 min-h-0 items-center justify-center p-8">
+          <LoadError
+            message="Could not load skills."
+            onRetry={() => void skillsQuery.refetch()}
+            retrying={skillsQuery.isFetching}
+          />
+        </div>
+        {addDialog}
+      </>
+    )
+  }
+
   if (isEmpty) {
     return (
       <>
@@ -314,23 +323,64 @@ export default function SkillsPage({
     )
   }
 
+  const visibleSkills = skills.filter((s) => skillMatchesFilter(s, filter))
+
   return (
     <>
-      <SkillWorkspace
-        key={effectiveSkillId}
-        skill={selected}
-        onUpdate={(data) =>
-          selected
-            ? updateMutation.mutateAsync({ id: selected.id, data })
-            : Promise.resolve()
-        }
-        onDelete={() =>
-          selected ? deleteMutation.mutateAsync(selected.id) : Promise.resolve()
-        }
-        onReinstall={() =>
-          selected ? reinstallMutation.mutateAsync(selected) : Promise.resolve()
-        }
-        isReinstalling={reinstallMutation.isPending}
+      <div className="flex flex-1 min-h-0">
+        <SkillsList
+          skills={visibleSkills}
+          totalSkillCount={skills.length}
+          selectedSkillId={effectiveSkillId}
+          onSelectSkill={(skillId) => {
+            if (skillId === effectiveSkillId) return
+            if (editorDirtyRef.current) setPendingSkillId(skillId)
+            else openSkill(skillId)
+          }}
+          filter={filter}
+          onFilterChange={setFilter}
+          onAdd={() => setAddMode('browse')}
+        />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <SkillWorkspace
+            key={effectiveSkillId}
+            skill={selected}
+            onUpdate={(data) =>
+              selected
+                ? updateMutation.mutateAsync({ id: selected.id, data })
+                : Promise.resolve()
+            }
+            onDelete={() =>
+              selected
+                ? deleteMutation.mutateAsync(selected.id)
+                : Promise.resolve()
+            }
+            onReinstall={() =>
+              selected
+                ? reinstallMutation.mutateAsync(selected)
+                : Promise.resolve()
+            }
+            onDirtyChange={(dirty) => {
+              editorDirtyRef.current = dirty
+            }}
+          />
+        </div>
+      </div>
+
+      <ConfirmDialog
+        open={pendingSkillId !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingSkillId(null)
+        }}
+        title="Discard unsaved changes?"
+        description={`Your edits to ${selected?.name ?? 'this skill'} have not been saved.`}
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        tone="destructive"
+        onConfirm={() => {
+          if (pendingSkillId) openSkill(pendingSkillId)
+          return Promise.resolve()
+        }}
       />
 
       {addDialog}
@@ -338,10 +388,124 @@ export default function SkillsPage({
   )
 }
 
+function skillMatchesFilter(skill: Skill, query: string) {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return (
+    skill.name.toLowerCase().includes(q) ||
+    (skill.description?.toLowerCase().includes(q) ?? false)
+  )
+}
+
 // ---------------------------------------------------------------------------
-// Skill workspace — owns local editor state (content/files/selectedPath) for
-// the currently-selected skill. Remounts when the skill id changes so the
-// state is fresh and we can safely derive further state from props.
+// Skills list — every skill in the library, with Add and a filter. It went
+// missing in a refactor, which left the page showing only the first skill
+// with no way to open another or add one once the library was non-empty.
+// ---------------------------------------------------------------------------
+
+function SkillsList({
+  skills,
+  totalSkillCount,
+  selectedSkillId,
+  onSelectSkill,
+  filter,
+  onFilterChange,
+  onAdd,
+}: {
+  skills: Skill[]
+  totalSkillCount: number
+  selectedSkillId: string
+  onSelectSkill: (id: string) => void
+  filter: string
+  onFilterChange: (value: string) => void
+  onAdd: () => void
+}) {
+  return (
+    <nav
+      aria-label="Skills"
+      className="flex w-64 shrink-0 flex-col border-r max-md:w-48"
+    >
+      <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-3">
+        <span className="pl-1 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground tabular-nums">
+          {totalSkillCount} {totalSkillCount === 1 ? 'skill' : 'skills'}
+        </span>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={onAdd}
+                aria-label="Add skill"
+              >
+                <Plus className="text-muted-foreground" />
+              </Button>
+            }
+          />
+          <TooltipContent side="bottom">Add skill</TooltipContent>
+        </Tooltip>
+      </div>
+
+      <div className="shrink-0 border-b px-3 py-2">
+        <InputGroup>
+          <InputGroupAddon>
+            <Search className="text-muted-foreground" />
+          </InputGroupAddon>
+          <InputGroupInput
+            value={filter}
+            onChange={(event) => onFilterChange(event.target.value)}
+            placeholder="Filter"
+            aria-label="Filter skills"
+          />
+        </InputGroup>
+      </div>
+
+      <ul className="flex-1 overflow-y-auto py-1">
+        {skills.length === 0 ? (
+          <li className="flex flex-col items-center gap-1 px-4 py-10 text-center">
+            <p className="text-sm text-foreground">No matches</p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onFilterChange('')}
+            >
+              Clear filter
+            </Button>
+          </li>
+        ) : (
+          skills.map((skill) => {
+            const isSelected = skill.id === selectedSkillId
+            return (
+              <li key={skill.id}>
+                <button
+                  type="button"
+                  aria-current={isSelected ? 'page' : undefined}
+                  onClick={() => onSelectSkill(skill.id)}
+                  className={cn(
+                    'mx-1.5 flex w-[calc(100%-0.75rem)] items-center rounded-md px-2 py-1.5 text-left text-[13px] leading-tight transition-colors',
+                    isSelected
+                      ? 'bg-muted font-semibold text-foreground'
+                      : 'font-medium text-foreground/85 hover:bg-muted/50',
+                  )}
+                >
+                  <span className="truncate">{skill.name}</span>
+                </button>
+              </li>
+            )
+          })
+        )}
+      </ul>
+    </nav>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Skill workspace — loads the full skill (the list endpoint carries no
+// supporting files), then mounts the editor once that bundle is known. The
+// editor is keyed by the bundle hash, so a save or sync that changes the
+// bundle starts it fresh from the saved state. Seeding the editor from the
+// list item used to leave it with no files: the first save then sent
+// `files: []` and the server deleted every supporting file.
 // ---------------------------------------------------------------------------
 
 function SkillWorkspace({
@@ -349,13 +513,13 @@ function SkillWorkspace({
   onUpdate,
   onDelete,
   onReinstall,
-  isReinstalling,
+  onDirtyChange,
 }: {
   skill: Skill | null
   onUpdate: (data: UpdateSkillRequest) => Promise<unknown>
   onDelete: () => Promise<unknown>
   onReinstall: () => Promise<unknown>
-  isReinstalling: boolean
+  onDirtyChange: (dirty: boolean) => void
 }) {
   const wsId = useWorkspaceId()
   const fullSkillQuery = useQuery({
@@ -364,94 +528,147 @@ function SkillWorkspace({
     enabled: Boolean(skill?.id),
     staleTime: Infinity,
   })
+  // Kept here, above the keyed editor, so the open file survives a save.
+  const [selectedPath, setSelectedPath] = useState(SKILL_MD)
 
-  const loaded = fullSkillQuery.data ?? skill
-  const loadedContent = loaded?.content ?? ''
-  const loadedFiles = useMemo<LoadedFile[]>(
-    () =>
-      (loaded?.files ?? []).map((f) => ({ path: f.path, content: f.content })),
-    [loaded],
-  )
+  if (!skill) return null
 
-  // Local editor state. Reset after render whenever the underlying bundle
-  // changes (save / sync / fresh load), avoiding cross-component store writes
-  // during render.
-  const bundleKey = loaded ? `${loaded.id}:${loaded.bundle_hash ?? ''}` : ''
-  const syncedKey = useRef('')
-  const [content, setContent] = useState(loadedContent)
-  const [files, setFiles] = useState<LoadedFile[]>(loadedFiles)
-
-  // Selected path lives in the editor store so the sidebar's file tree
-  // and this editor stay in sync without lifting state through the dock.
-  const selectedPath = useSkillEditorStore((s) => s.selectedPath)
-  const setSelectedPath = useSkillEditorStore((s) => s.setSelectedPath)
-  const setActiveBundle = useSkillEditorStore((s) => s.setActiveBundle)
-  const setStoreFilePaths = useSkillEditorStore((s) => s.setFilePaths)
-  const clearActiveBundle = useSkillEditorStore((s) => s.clear)
-
-  if (bundleKey && syncedKey.current !== bundleKey) {
-    syncedKey.current = bundleKey
-    const initialPaths = [
-      SKILL_MD,
-      ...loadedFiles.map((f) => f.path).filter(Boolean),
-    ]
-    schedulePostRender(() => {
-      setContent(loadedContent)
-      setFiles(loadedFiles)
-      if (loaded) {
-        setActiveBundle(loaded.id, initialPaths)
-      }
-    })
+  const full = fullSkillQuery.data
+  if (!full) {
+    return (
+      <SkillWorkspaceStatus
+        skillName={skill.name}
+        error={fullSkillQuery.isError}
+        onRetry={() => void fullSkillQuery.refetch()}
+      />
+    )
   }
+
+  return (
+    <SkillBundleEditor
+      key={`${full.id}:${full.bundle_hash ?? ''}`}
+      skill={full}
+      selectedPath={selectedPath}
+      onSelectPath={setSelectedPath}
+      onUpdate={onUpdate}
+      onDelete={onDelete}
+      onReinstall={onReinstall}
+      onDirtyChange={onDirtyChange}
+    />
+  )
+}
+
+function SkillWorkspaceStatus({
+  skillName,
+  error,
+  onRetry,
+}: {
+  skillName: string
+  error: boolean
+  onRetry: () => void
+}) {
+  return (
+    <div className="flex h-full min-h-0 flex-1 flex-col">
+      <header className="flex h-12 shrink-0 items-center border-b px-4">
+        <h1 className="truncate text-sm font-semibold text-foreground">
+          {skillName}
+        </h1>
+      </header>
+      <div className="flex-1 min-h-0">
+        {error ? (
+          <div
+            role="alert"
+            className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground"
+          >
+            <p>This skill's files couldn't be loaded.</p>
+            <Button size="sm" variant="outline" onClick={onRetry}>
+              Try again
+            </Button>
+          </div>
+        ) : (
+          <FileViewerSkeleton />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SkillBundleEditor({
+  skill,
+  selectedPath,
+  onSelectPath,
+  onUpdate,
+  onDelete,
+  onReinstall,
+  onDirtyChange,
+}: {
+  skill: Skill
+  selectedPath: string
+  onSelectPath: (path: string) => void
+  onUpdate: (data: UpdateSkillRequest) => Promise<unknown>
+  onDelete: () => Promise<unknown>
+  onReinstall: () => Promise<unknown>
+  onDirtyChange: (dirty: boolean) => void
+}) {
+  // The saved bundle this editor was mounted with; the key above remounts the
+  // editor whenever it changes, so these never go stale.
+  const [savedContent] = useState(() => skill.content ?? '')
+  const [savedFiles] = useState<LoadedFile[]>(() =>
+    (skill.files ?? []).map((f) => ({ path: f.path, content: f.content })),
+  )
+  const [content, setContent] = useState(savedContent)
+  const [files, setFiles] = useState<LoadedFile[]>(savedFiles)
 
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmSync, setConfirmSync] = useState(false)
   const [showAddFile, setShowAddFile] = useState(false)
 
-  const loadingFiles = fullSkillQuery.isPending && !fullSkillQuery.data
-
   const fileMap = useMemo(() => buildFileMap(content, files), [content, files])
   const filePaths = useMemo(() => Array.from(fileMap.keys()), [fileMap])
-  const selectedContent = fileMap.get(selectedPath) ?? ''
+  // A path that no longer exists (deleted, or gone after a sync) falls back
+  // to SKILL.md.
+  const activePath = fileMap.has(selectedPath) ? selectedPath : SKILL_MD
+  const selectedContent = fileMap.get(activePath) ?? ''
 
-  // Keep the store's filePaths in sync with the editor's current bundle,
-  // including unsaved adds/deletes.
-  const syncedPathsKey = useRef('')
-  const filePathsKey = filePaths.join('')
-  if (loaded && filePathsKey !== syncedPathsKey.current) {
-    syncedPathsKey.current = filePathsKey
-    schedulePostRender(() => setStoreFilePaths(filePaths))
-  }
+  const filesChanged = JSON.stringify(files) !== JSON.stringify(savedFiles)
+  const isDirty = content !== savedContent || filesChanged
+  const canSync = skill.source_type === 'skills.sh' && Boolean(skill.source_url)
 
-  // If the sidebar selected a path that no longer exists (e.g. deletion),
-  // fall back to SKILL.md.
-  if (selectedPath && !fileMap.has(selectedPath) && fileMap.size > 0) {
-    schedulePostRender(() => setSelectedPath(SKILL_MD))
-  }
-
-  const isDirty =
-    content !== loadedContent ||
-    JSON.stringify(files) !== JSON.stringify(loadedFiles)
-  const canSync =
-    loaded?.source_type === 'skills.sh' && Boolean(loaded?.source_url)
+  // Tells the page whether switching skill would drop edits.
+  const onDirtyChangeRef = useRef(onDirtyChange)
+  useEffect(() => {
+    onDirtyChangeRef.current = onDirtyChange
+  })
+  useEffect(() => {
+    onDirtyChangeRef.current(isDirty)
+  }, [isDirty])
+  useEffect(() => () => onDirtyChangeRef.current(false), [])
 
   const handleSave = async () => {
-    if (!isDirty || saving || !skill) return
+    if (!isDirty || saving) return
     setSaving(true)
-    await onUpdate({
-      content,
-      files: files.filter((f) => f.path.trim()),
-    }).finally(() => setSaving(false))
+    try {
+      // Sending `files` replaces the whole bundle, so send it only when the
+      // supporting files actually changed.
+      await onUpdate({
+        content,
+        ...(filesChanged ? { files: files.filter((f) => f.path.trim()) } : {}),
+      })
+    } catch {
+      // The update mutation already reports the failure; the edits stay.
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleFileContentChange = (newContent: string) => {
-    if (selectedPath === SKILL_MD) {
+    if (activePath === SKILL_MD) {
       setContent(newContent)
     } else {
       setFiles((prev) =>
         prev.map((f) =>
-          f.path === selectedPath ? { ...f, content: newContent } : f,
+          f.path === activePath ? { ...f, content: newContent } : f,
         ),
       )
     }
@@ -459,13 +676,13 @@ function SkillWorkspace({
 
   const handleAddFile = (path: string) => {
     setFiles((prev) => [...prev, { path, content: '' }])
-    setSelectedPath(path)
+    onSelectPath(path)
   }
 
   const handleDeleteFile = () => {
-    if (selectedPath === SKILL_MD) return
-    setFiles((prev) => prev.filter((f) => f.path !== selectedPath))
-    setSelectedPath(SKILL_MD)
+    if (activePath === SKILL_MD) return
+    setFiles((prev) => prev.filter((f) => f.path !== activePath))
+    onSelectPath(SKILL_MD)
   }
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -476,36 +693,38 @@ function SkillWorkspace({
     }
   }
 
-  // Clear the store when the workspace unmounts (skill panel closed).
-  // Effect-free cleanup via the unmount path of a small ref-like trick:
-  // we intentionally skip useEffect — the dock will simply remount this
-  // component with a different bundleKey on the next selection.
-  void clearActiveBundle
-
   return (
     <div
       onKeyDown={handleKeyDown}
       className="flex flex-1 min-h-0 flex-col outline-none"
     >
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {skill ? (
-          <SkillEditor
-            skill={skill}
-            selectedPath={selectedPath}
-            selectedContent={selectedContent}
-            onContentChange={handleFileContentChange}
-            isDirty={isDirty}
-            saving={saving}
-            canSync={canSync}
-            canDeleteFile={selectedPath !== SKILL_MD}
-            onAddFile={() => setShowAddFile(true)}
-            onDeleteFile={handleDeleteFile}
-            onSave={handleSave}
-            onDelete={() => setConfirmDelete(true)}
-            onSync={() => setConfirmSync(true)}
-            loading={loadingFiles}
+        <nav
+          aria-label="Skill files"
+          className="w-52 shrink-0 overflow-y-auto border-r py-1 max-md:hidden"
+        >
+          <FileTree
+            filePaths={filePaths}
+            selectedPath={activePath}
+            onSelect={onSelectPath}
           />
-        ) : null}
+        </nav>
+        <SkillEditor
+          skill={skill}
+          selectedPath={activePath}
+          selectedContent={selectedContent}
+          onContentChange={handleFileContentChange}
+          isDirty={isDirty}
+          saving={saving}
+          canSync={canSync}
+          canDeleteFile={activePath !== SKILL_MD}
+          onAddFile={() => setShowAddFile(true)}
+          onDeleteFile={handleDeleteFile}
+          onSave={handleSave}
+          onDelete={() => setConfirmDelete(true)}
+          onSync={() => setConfirmSync(true)}
+          loading={false}
+        />
       </div>
 
       {showAddFile && (
@@ -516,35 +735,42 @@ function SkillWorkspace({
         />
       )}
 
-      {confirmDelete && skill && (
-        <DeleteSkillDialog
-          skillName={skill.name}
-          onCancel={() => setConfirmDelete(false)}
-          onConfirm={async () => {
-            setConfirmDelete(false)
-            await onDelete()
-          }}
-        />
-      )}
+      {/* ConfirmDialog keeps a failed delete or sync open (the mutation has
+          already toasted why); the hand-built dialogs let the rejection
+          escape unhandled. */}
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        media={<Trash2 className="text-destructive" />}
+        title={`Delete “${skill.name}”?`}
+        description="This removes the skill from every agent in this workspace and deletes all bundle files. This cannot be undone."
+        confirmLabel="Delete skill"
+        pendingLabel="Deleting…"
+        tone="destructive"
+        onConfirm={onDelete}
+      />
 
-      {confirmSync && canSync ? (
-        <SyncSkillDialog
-          isDirty={isDirty}
-          isSyncing={isReinstalling}
-          onCancel={() => setConfirmSync(false)}
-          onConfirm={async () => {
-            await onReinstall()
-            setConfirmSync(false)
-          }}
-        />
-      ) : null}
+      <ConfirmDialog
+        open={confirmSync && canSync}
+        onOpenChange={setConfirmSync}
+        media={<RefreshCw />}
+        title="Sync from source?"
+        description={
+          isDirty
+            ? 'You have unsaved edits. Syncing discards them and replaces the bundle with the latest version from the source.'
+            : 'Replaces the bundle with the latest version from the source.'
+        }
+        confirmLabel="Sync"
+        pendingLabel="Syncing…"
+        onConfirm={onReinstall}
+      />
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Skill editor — header + file viewer, nothing else. The file tree lives in
-// the explorer so this pane can stay focused on the content.
+// Skill editor — header + file viewer. The file tree sits beside it in the
+// bundle editor.
 // ---------------------------------------------------------------------------
 
 function SkillEditor({
@@ -990,7 +1216,8 @@ function SkillPreviewPage({
 
   const handleImport = () => {
     if (isImporting) return
-    void onImport(url)
+    // The import mutation toasts its own failure.
+    onImport(url).catch(() => {})
   }
 
   const headerTitle = data?.name ?? 'Loading skill…'
@@ -1165,10 +1392,16 @@ function AuthorSkillPanel({
   const handleSubmit = async () => {
     if (!name.trim() || !description.trim() || submitting) return
     setSubmitting(true)
-    await onCreate({
-      name: name.trim(),
-      description: description.trim(),
-    }).finally(() => setSubmitting(false))
+    try {
+      await onCreate({
+        name: name.trim(),
+        description: description.trim(),
+      })
+    } catch {
+      // The create mutation toasts the failure; the form stays filled in.
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -1318,102 +1551,6 @@ function AddFileDialog({
 // ---------------------------------------------------------------------------
 // Destructive confirmation dialogs
 // ---------------------------------------------------------------------------
-
-function DeleteSkillDialog({
-  skillName,
-  onCancel,
-  onConfirm,
-}: {
-  skillName: string
-  onCancel: () => void
-  onConfirm: () => Promise<void>
-}) {
-  const [pending, setPending] = useState(false)
-  return (
-    <AlertDialog
-      open
-      onOpenChange={(value) => {
-        if (!value) onCancel()
-      }}
-    >
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogMedia>
-            <Trash2 className="text-destructive" />
-          </AlertDialogMedia>
-          <AlertDialogTitle>Delete &ldquo;{skillName}&rdquo;?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This removes the skill from every agent in this workspace and
-            deletes all bundle files. This cannot be undone.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            variant="destructive"
-            disabled={pending}
-            onClick={async (event) => {
-              event.preventDefault()
-              setPending(true)
-              await onConfirm().finally(() => setPending(false))
-            }}
-          >
-            {pending ? <Loader2 className="animate-spin" /> : <Trash2 />}
-            {pending ? 'Deleting' : 'Delete skill'}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  )
-}
-
-function SyncSkillDialog({
-  isDirty,
-  isSyncing,
-  onCancel,
-  onConfirm,
-}: {
-  isDirty: boolean
-  isSyncing: boolean
-  onCancel: () => void
-  onConfirm: () => Promise<void>
-}) {
-  return (
-    <AlertDialog
-      open
-      onOpenChange={(value) => {
-        if (!value) onCancel()
-      }}
-    >
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogMedia>
-            <RefreshCw />
-          </AlertDialogMedia>
-          <AlertDialogTitle>Sync from source?</AlertDialogTitle>
-          <AlertDialogDescription>
-            {isDirty
-              ? 'You have unsaved edits. Syncing discards them and replaces the bundle with the latest version from the source.'
-              : 'Replaces the bundle with the latest version from the source.'}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={isSyncing}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            disabled={isSyncing}
-            onClick={async (event) => {
-              event.preventDefault()
-              await onConfirm()
-            }}
-          >
-            {isSyncing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-            {isSyncing ? 'Syncing' : 'Sync'}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Empty state

@@ -11,7 +11,7 @@ function IssueDetailPageFixture() {
     <div className="flex flex-1 min-h-0 flex-col">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
         <span className="text-sm text-muted-foreground">Issues</span>
-        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+        <ChevronRight className="size-3 text-muted-foreground" />
         <span className="text-sm font-medium">GDN-14</span>
       </div>
       <div className="flex flex-1 min-h-0">
@@ -92,7 +92,7 @@ function IssueDetailSubscribersFixture() {
         {['A', 'M'].map((label) => (
           <div
             key={label}
-            className="flex h-6 w-6 items-center justify-center rounded-full border bg-accent text-[10px] font-medium text-foreground"
+            className="flex size-6 items-center justify-center rounded-full border bg-accent text-[10px] font-medium text-foreground"
           >
             {label}
           </div>
@@ -111,7 +111,7 @@ function IssueDetailTimelineFixture() {
         ['KG', 'Queued the remaining page swaps.'],
       ].map(([actor, body]) => (
         <div key={body} className="flex items-start gap-3 px-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-xs font-medium text-foreground">
+          <div className="flex size-8 items-center justify-center rounded-full bg-accent text-xs font-medium text-foreground">
             {actor}
           </div>
           <div className="flex-1 rounded-lg border border-border/70 bg-card px-3 py-3">

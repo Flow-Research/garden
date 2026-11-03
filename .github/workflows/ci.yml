@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    branches: [dev, main]
   pull_request:
-    branches: [main]
+    branches: [dev, main]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -42,6 +42,9 @@ jobs:
           pnpm --filter @garden/ui tokens:build
           git diff --exit-code -- packages/ui/styles/tokens.css
 
+      - name: Verify connector coverage
+        run: pnpm verify:connectors
+
       - name: Lint
         run: pnpm lint
 
@@ -61,3 +64,51 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  migrations:
+    name: Verify migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    # Applies the checked-in migrations with the same runner the `main` deploy
+    # uses, so a migration that tests accept but drizzle-kit cannot parse fails
+    # here rather than during the staging deploy. Only DATABASE_URL matters; the
+    # auth values are throwaways that satisfy the shared server env schema.
+    env:
+      DATABASE_URL: postgres://test:test@localhost:5432/test
+      BETTER_AUTH_SECRET: ci-throwaway-not-a-real-secret
+      BETTER_AUTH_URL: http://localhost:3000
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check migration metadata
+        run: pnpm --filter @garden/db db:check
+
+      - name: Apply migrations
+        run: pnpm run deploy:migrate

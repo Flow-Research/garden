@@ -32,6 +32,7 @@ const mockDraftStore = {
 
 vi.mock('../navigation', () => ({
   useNavigation: () => ({ push: mockPush }),
+  useNavigationActions: () => ({ push: mockPush }),
 }))
 
 vi.mock('@garden/app-state/workspace', () => ({
@@ -84,6 +85,7 @@ vi.mock('../editor', () => {
       useImperativeHandle(ref, () => ({
         getMarkdown: () => valueRef.current,
         uploadFile: vi.fn(),
+        hasActiveUploads: () => false,
       }))
       return (
         <textarea

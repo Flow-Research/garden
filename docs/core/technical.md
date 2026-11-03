@@ -212,4 +212,4 @@ No `BROADCAST_DO`, `RUN_QUEUE`, `SUB_AGENT_DO`, or `PrimaryAgent` binding exists
 
 Code-backed status is tracked in `docs/known-gaps/infrastructure.md`.
 
-Current known gaps include pre-commit hooks, Playwright E2E, Sentry, staging environment, `/api/health`, and richer observability dashboards. CI exists in `.github/workflows/ci.yml`; connector CI exists in `.github/workflows/connectors.yml`.
+Current known gaps include pre-commit hooks, Playwright E2E, Sentry, staging environment, `/api/health`, and richer observability dashboards. CI exists in `.github/workflows/ci.yml`; its verification job also runs connector coverage checks.

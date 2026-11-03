@@ -35,7 +35,7 @@ export function AgentStatusEntry({
           highlighted && 'bg-brand/5 ring-1 ring-brand/30',
         )}
       >
-        <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <Sparkles className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
         <ActorAvatar
           actorType={entry.actor_type}
           actorId={entry.actor_id}
@@ -64,7 +64,7 @@ export function AgentStatusEntry({
       )}
     >
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Sparkles className="h-3 w-3" />
+        <Sparkles className="size-3" />
         <span className="font-medium text-foreground/85">
           {getActorName(entry.actor_type, entry.actor_id)}
         </span>

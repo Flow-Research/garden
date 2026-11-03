@@ -10,6 +10,7 @@
  */
 
 import { buildMessageRenderModel } from './chat-message-model'
+import { DecideAnalysisCard } from './chat-decide-analysis'
 // Re-export the pure model surface so existing importers (chat-timeline,
 // chat-panel-controller, chat-tool-activity, lib/server) keep resolving these
 // from chat-message-parts after the model layer was split out.
@@ -104,11 +105,14 @@ export function MessageOrderedParts({
   isLatestStreaming,
   message,
   onOpenDocument,
+  threadId,
 }: {
   debugMode: boolean
   isLatestStreaming?: boolean
   message: ChatUiMessage
   onOpenDocument?: (artifact: GardenArtifactData) => void
+  /** `chat_thread.id`, which the Decide run status route is keyed by. */
+  threadId: string
 }) {
   const nodes = buildMessageRenderModel(message, {
     debugMode,
@@ -157,6 +161,14 @@ export function MessageOrderedParts({
                   />
                 ))}
               </PreResponseWrapper>
+            )
+          case 'decide':
+            return (
+              <DecideAnalysisCard
+                key={node.key}
+                runId={node.runId}
+                threadId={threadId}
+              />
             )
           case 'artifact':
             return (

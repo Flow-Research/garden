@@ -147,7 +147,7 @@ export function IssuesHeader({
   const filterCount = numberOfActiveFilters(view)
 
   return (
-    <header className="flex min-h-12 shrink-0 items-center gap-2 border-b px-4 py-2">
+    <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
       <div
         aria-label="Issue scope"
         className="flex h-[35px] items-center rounded-sm bg-background-main-secondary p-1"
@@ -160,7 +160,7 @@ export function IssuesHeader({
             className={cn(
               'h-[27px] rounded-sm border-0 px-2.5 text-sm font-normal shadow-none',
               view.scope === option.value
-                ? 'bg-background-brand-default text-text-brand-onBrand'
+                ? 'bg-background-brand-default text-text-brand-on-brand'
                 : 'bg-transparent text-text-default hover:bg-background-main-secondary-hover',
             )}
             key={option.value}

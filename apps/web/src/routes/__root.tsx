@@ -5,7 +5,6 @@ import {
   createRootRouteWithContext,
 } from '@tanstack/react-router'
 import type { QueryClient } from '@tanstack/react-query'
-import { NuqsAdapter } from 'nuqs/adapters/tanstack-router'
 import { Suspense, lazy } from 'react'
 import { PostHogErrorBoundary, PostHogProvider } from '@posthog/react'
 import { WebProviders } from '@/components/web-providers'
@@ -140,11 +139,9 @@ function RootErrorFallback() {
 
 function RootAppShell() {
   return (
-    <NuqsAdapter>
-      <WebProviders>
-        <Outlet />
-      </WebProviders>
-    </NuqsAdapter>
+    <WebProviders>
+      <Outlet />
+    </WebProviders>
   )
 }
 

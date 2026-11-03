@@ -407,8 +407,8 @@ async function markStartFailed(args: {
   const now = new Date()
   const writeResult = await Result.tryPromise({
     try: async () => {
-      await db.transaction(async (tx) => {
-        await tx
+      return await db.transaction(async (tx) => {
+        const [failedRun] = await tx
           .update(schema.issueRun)
           .set({
             status: 'failed',
@@ -416,7 +416,14 @@ async function markStartFailed(args: {
             finishedAt: now,
             updatedAt: now,
           })
-          .where(eq(schema.issueRun.id, args.runId))
+          .where(
+            and(
+              eq(schema.issueRun.id, args.runId),
+              inArray(schema.issueRun.status, LIVE_RUN_STATUSES),
+            ),
+          )
+          .returning({ id: schema.issueRun.id })
+        if (!failedRun) return false
         await tx
           .update(schema.issue)
           .set({ activeRunId: null, updatedAt: now })
@@ -426,11 +433,13 @@ async function markStartFailed(args: {
               eq(schema.issue.activeRunId, args.runId),
             ),
           )
+        return true
       })
     },
     catch: (cause) => serviceDbError('mark workflow start failure', cause),
   })
   if (writeResult.isErr()) return Result.err(writeResult.error)
+  if (!writeResult.value) return Result.ok()
 
   const eventResult = await appendIssueRunEvent({
     env: args.env,
@@ -459,35 +468,37 @@ export async function startIssueRun(
   const db = getDb(env)
   const lookupResult = await Result.tryPromise({
     try: async () => {
-      const [issue] = await db
-        .select({
-          id: schema.issue.id,
-          workspaceId: schema.issue.workspaceId,
-          status: schema.issue.status,
-        })
-        .from(schema.issue)
-        .where(
-          and(
-            eq(schema.issue.id, input.issueId),
-            eq(schema.issue.workspaceId, input.workspaceId),
-          ),
-        )
-        .limit(1)
-      const [agent] = await db
-        .select({
-          id: schema.agent.id,
-          workspaceId: schema.agent.workspaceId,
-          hostName: schema.agent.hostName,
-          status: schema.agent.status,
-        })
-        .from(schema.agent)
-        .where(
-          and(
-            eq(schema.agent.id, input.agentId),
-            eq(schema.agent.workspaceId, input.workspaceId),
-          ),
-        )
-        .limit(1)
+      const [[issue], [agent]] = await Promise.all([
+        db
+          .select({
+            id: schema.issue.id,
+            workspaceId: schema.issue.workspaceId,
+            status: schema.issue.status,
+          })
+          .from(schema.issue)
+          .where(
+            and(
+              eq(schema.issue.id, input.issueId),
+              eq(schema.issue.workspaceId, input.workspaceId),
+            ),
+          )
+          .limit(1),
+        db
+          .select({
+            id: schema.agent.id,
+            workspaceId: schema.agent.workspaceId,
+            hostName: schema.agent.hostName,
+            status: schema.agent.status,
+          })
+          .from(schema.agent)
+          .where(
+            and(
+              eq(schema.agent.id, input.agentId),
+              eq(schema.agent.workspaceId, input.workspaceId),
+            ),
+          )
+          .limit(1),
+      ])
       return { issue: issue ?? null, agent: agent ?? null }
     },
     catch: (cause) => serviceDbError('load issue run inputs', cause),
@@ -555,6 +566,9 @@ export async function startIssueRun(
               source: input.source,
             })
           ) {
+            await tx.execute(sql`
+              select pg_advisory_xact_lock(hashtextextended(${activeRun.id}::text, 0))
+            `)
             await tx.insert(schema.issueRunEvent).values({
               id: crypto.randomUUID(),
               workspaceId: input.workspaceId,
@@ -676,13 +690,20 @@ export async function cancelIssueRun(
       if (!run) return { kind: 'missing' as const }
 
       const previousStatus = run.status
-      await db
+      const [updatedRun] = await db
         .update(schema.issueRun)
         .set({
           cancelRequestedAt: new Date(),
           updatedAt: new Date(),
         })
-        .where(eq(schema.issueRun.id, input.runId))
+        .where(
+          and(
+            eq(schema.issueRun.id, input.runId),
+            inArray(schema.issueRun.status, LIVE_RUN_STATUSES),
+          ),
+        )
+        .returning({ id: schema.issueRun.id })
+      if (!updatedRun) return { kind: 'ignored' as const }
       return {
         kind: 'cancelled' as const,
         agentRuntimeName: run.hostName,
@@ -702,6 +723,7 @@ export async function cancelIssueRun(
       }),
     )
   }
+  if (result.value.kind === 'ignored') return Result.ok()
   const issueId = result.value.issueId
   const eventResult = await appendIssueRunEvent({
     env,

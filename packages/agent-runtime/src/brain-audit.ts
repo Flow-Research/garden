@@ -53,7 +53,19 @@ export function createBrainAuditMessage(input: {
 export function createBrainAuditTools(
   dependencies: BrainAuditToolDependencies,
 ): ToolSet {
-  return createBrainTools(dependencies)
+  type BrainAuditToolSet = {
+    [Name in (typeof BRAIN_AUDIT_TOOL_NAMES)[number]]: NonNullable<
+      ToolSet[Name]
+    >
+  }
+  const tools = createBrainTools(dependencies) as BrainAuditToolSet
+  return {
+    brain_search: tools.brain_search,
+    add_to_brain: tools.add_to_brain,
+    brain_observe_mention: tools.brain_observe_mention,
+    brain_link: tools.brain_link,
+    brain_neighborhood: tools.brain_neighborhood,
+  }
 }
 
 /** Returns the persisted actor context consumed lazily by Brain tool calls. */

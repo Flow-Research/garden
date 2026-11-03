@@ -51,13 +51,13 @@ export function RunPlanCard({ todos, streaming = false }: RunPlanCardProps) {
               key={`${idx}-${todo.content}`}
               className="flex items-start gap-2"
             >
-              <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center">
+              <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center">
                 {todo.status === 'completed' ? (
-                  <Check className="h-3.5 w-3.5 text-success" />
+                  <Check className="size-3.5 text-success" />
                 ) : todo.status === 'in_progress' && streaming ? (
                   <Spinner className="size-3.5 text-info" />
                 ) : (
-                  <Circle className="h-3 w-3 text-muted-foreground/50" />
+                  <Circle className="size-3 text-muted-foreground/50" />
                 )}
               </span>
               <TaskItem

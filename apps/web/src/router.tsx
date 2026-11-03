@@ -4,6 +4,7 @@ import {
 } from '@tanstack/react-router'
 import { createQueryClient } from '@garden/app-state/platform/query-client'
 import { routeTree } from './routeTree.gen'
+import { RouteError } from './components/route-error'
 
 /**
  * Router-level 404 renderer for unmatched app routes. TanStack was warning that
@@ -49,6 +50,7 @@ export function getRouter() {
     defaultPreloadStaleTime: 30_000,
     defaultPendingComponent: RouterPendingComponent,
     defaultNotFoundComponent: DefaultNotFoundComponent,
+    defaultErrorComponent: RouteError,
   })
 
   return router

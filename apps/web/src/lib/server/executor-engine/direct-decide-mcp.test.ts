@@ -7,9 +7,15 @@ import { Effect } from 'effect'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Executor } from '@executor-js/sdk/core'
 import {
-  DECIDE_ANALYSIS_TIMEOUT_MS,
+  DECIDE_ANALYSIS_TIME_LIMIT_MS,
+  decideRequestOptions,
+  isDecideTimeLimitResult,
+  DirectDecideMcpSessionManager,
   DirectDecideMcpError,
+  type DirectDecideMcpSession,
+  type DirectDecideMcpSessionFactory,
   registerDirectDecideTools,
+  type DirectDecideAnalysisStarter,
 } from './direct-decide-mcp'
 import type { GardenExecutorPlugins } from './plugins'
 
@@ -24,7 +30,11 @@ type RegisteredTool = {
   ) => Promise<CallToolResult>
 }
 
-const registerHarness = (result: CallToolResult | DirectDecideMcpError) => {
+const registerHarness = (
+  result: CallToolResult,
+  failure?: unknown,
+  startAnalysis?: DirectDecideAnalysisStarter,
+) => {
   const tools = new Map<string, RegisteredTool>()
   const calls: Array<{
     name: string
@@ -63,14 +73,14 @@ const registerHarness = (result: CallToolResult | DirectDecideMcpError) => {
           signal: options.signal,
           onProgress: options.onProgress,
         })
-        return result instanceof DirectDecideMcpError
-          ? Effect.fail(result)
-          : Effect.succeed(result)
+        return failure === undefined
+          ? Effect.succeed(result)
+          : Effect.fail(failure)
       },
     },
   } as unknown as Executor<GardenExecutorPlugins>
 
-  registerDirectDecideTools(server, executor)
+  registerDirectDecideTools(server, executor, { startAnalysis })
   return { calls, tools }
 }
 
@@ -89,8 +99,114 @@ const toolExtra = (progressToken?: string | number) => {
   }
 }
 
+const makeSessionFactory = (
+  behavior: (
+    sessionIndex: number,
+    requestId: number,
+  ) => Promise<CallToolResult> = async () => ({ content: [] }),
+) => {
+  const sessions: Array<{
+    requestIds: number[]
+    pendingIds: number[]
+    close: ReturnType<typeof vi.fn>
+    disconnect: () => void
+  }> = []
+  const factory: DirectDecideMcpSessionFactory = ({ onDisconnect }) => {
+    const sessionIndex = sessions.length
+    let nextRequestId = 0
+    const pendingIds: number[] = []
+    const close = vi.fn(async () => {
+      pendingIds.length = 0
+    })
+    const record = {
+      requestIds: [] as number[],
+      pendingIds,
+      close,
+      disconnect: onDisconnect,
+    }
+    const session: DirectDecideMcpSession = {
+      connect: vi.fn(async () => undefined),
+      call: vi.fn(async () => {
+        const requestId = nextRequestId
+        nextRequestId += 1
+        record.requestIds.push(requestId)
+        record.pendingIds.push(requestId)
+        return behavior(sessionIndex, requestId).finally(() => {
+          const pendingIndex = record.pendingIds.indexOf(requestId)
+          if (pendingIndex >= 0) record.pendingIds.splice(pendingIndex, 1)
+        })
+      }),
+      close,
+    }
+    sessions.push(record)
+    return session
+  }
+  return { factory, sessions }
+}
+
 describe('direct Decide MCP tools', () => {
   afterEach(() => vi.restoreAllMocks())
+
+  it('returns a durable job response before running chat-scoped analysis', async () => {
+    const started = {
+      content: [{ type: 'text' as const, text: 'Run queued.' }],
+      structuredContent: { status: 'queued', run_id: 'run_123', attempt: 1 },
+    }
+    const startAnalysis = vi.fn(async () => started)
+    const { calls, tools } = registerHarness(
+      { content: [{ type: 'text', text: 'Provider result.' }] },
+      undefined,
+      startAnalysis,
+    )
+
+    const returned = await tools
+      .get('decide_analyze')
+      ?.callback(
+        { question: 'Analyze this.', data: 'a,b\n1,2' },
+        toolExtra().extra,
+      )
+
+    expect(returned).toEqual(started)
+    expect(startAnalysis).toHaveBeenCalledOnce()
+    expect(calls).toEqual([])
+  })
+
+  it('rejects data and source together before any start or provider call', async () => {
+    const startAnalysis = vi.fn(async () => null)
+    const { calls, tools } = registerHarness(
+      { content: [] },
+      undefined,
+      startAnalysis,
+    )
+
+    const returned = await tools.get('decide_analyze')?.callback(
+      {
+        question: 'Analyze this.',
+        data: 'a\n1',
+        source: { kind: 'brain_file', fileId: 'file_1' },
+      },
+      toolExtra().extra,
+    )
+
+    expect(returned?.isError).toBe(true)
+    expect(startAnalysis).not.toHaveBeenCalled()
+    expect(calls).toEqual([])
+  })
+
+  it('refuses a source on the direct path, where Garden cannot read the file', async () => {
+    const { calls, tools } = registerHarness({ content: [] })
+
+    const returned = await tools.get('decide_analyze')?.callback(
+      {
+        question: 'Analyze this.',
+        source: { kind: 'brain_file', fileId: 'file_1' },
+      },
+      toolExtra().extra,
+    )
+
+    expect(returned?.isError).toBe(true)
+    expect(calls).toEqual([])
+  })
 
   it('hands the complete CSV to Decide analyze', async () => {
     const csv = 'region,revenue\nNorth,120\nSouth,95\n'
@@ -185,6 +301,7 @@ describe('direct Decide MCP tools', () => {
   it('returns and logs the exact typed direct-call failure', async () => {
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { tools } = registerHarness(
+      { content: [] },
       new DirectDecideMcpError({
         stage: 'call',
         status: 401,
@@ -198,12 +315,13 @@ describe('direct Decide MCP tools', () => {
 
     expect(returned).toEqual({
       isError: true,
-      content: [
-        {
-          type: 'text',
-          text: 'Decide analyze failed during call: Unauthorized Decide credential.',
-        },
-      ],
+      content: [{ type: 'text', text: 'Unauthorized Decide credential.' }],
+      structuredContent: {
+        status: 'error',
+        failureStage: 'decide_analysis',
+        error: { message: 'Unauthorized Decide credential.' },
+        details: { status: 401 },
+      },
     })
     expect(errorLog).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -253,6 +371,54 @@ describe('direct Decide MCP tools', () => {
     )
   })
 
+  it('returns direct transport errors with safe status metadata', async () => {
+    const { tools } = registerHarness(
+      { content: [] },
+      new DirectDecideMcpError({
+        stage: 'call',
+        message: 'Not enough Decide credits to run this request.',
+        status: 402,
+        mcpCode: -32603,
+      }),
+    )
+
+    const returned = await tools
+      .get('decide_analyze')
+      ?.callback({ question: 'Analyze this.' }, toolExtra().extra)
+
+    expect(returned).toEqual({
+      isError: true,
+      content: [
+        {
+          type: 'text',
+          text: 'Not enough Decide credits to run this request.',
+        },
+      ],
+      structuredContent: {
+        status: 'error',
+        failureStage: 'decide_analysis',
+        error: {
+          message: 'Not enough Decide credits to run this request.',
+        },
+        details: { status: 402, mcpCode: -32603 },
+      },
+    })
+  })
+
+  it('subscribes to Decide progress even when the caller sent no progress token', async () => {
+    const { calls, tools } = registerHarness({ content: [] })
+    const { extra, notifications } = toolExtra()
+
+    await tools
+      .get('decide_analyze')
+      ?.callback({ question: 'Analyze this.' }, extra)
+    calls[0]?.onProgress?.({ progress: 1, message: 'Reading the data.' })
+    await Promise.resolve()
+
+    expect(calls[0]?.onProgress).toBeTypeOf('function')
+    expect(notifications).toEqual([])
+  })
+
   it('forwards public MCP progress with the caller progress token', async () => {
     const { calls, tools } = registerHarness({ content: [] })
     const { extra, notifications } = toolExtra('garden-progress-1')
@@ -280,7 +446,262 @@ describe('direct Decide MCP tools', () => {
     ])
   })
 
-  it('uses a timeout longer than Decide documented four-minute default', () => {
-    expect(DECIDE_ANALYSIS_TIMEOUT_MS).toBeGreaterThan(4 * 60_000)
+  it('keeps request IDs unique across repeated calls on one connection', async () => {
+    const { factory, sessions } = makeSessionFactory()
+    const manager = new DirectDecideMcpSessionManager(factory)
+
+    await manager.call(
+      'user:decide:default',
+      'token',
+      {
+        name: 'whoami',
+        arguments: {},
+      },
+      {},
+    )
+    await manager.call(
+      'user:decide:default',
+      'token',
+      {
+        name: 'whoami',
+        arguments: {},
+      },
+      {},
+    )
+
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0]?.requestIds).toEqual([0, 1])
+    expect(sessions[0]?.pendingIds).toEqual([])
+  })
+
+  it('assigns unique request IDs to concurrent calls', async () => {
+    const { factory, sessions } = makeSessionFactory(async () => {
+      await Promise.resolve()
+      return { content: [] }
+    })
+    const manager = new DirectDecideMcpSessionManager(factory)
+
+    await Promise.all([
+      manager.call(
+        'user:decide:default',
+        'token',
+        {
+          name: 'whoami',
+          arguments: {},
+        },
+        {},
+      ),
+      manager.call(
+        'user:decide:default',
+        'token',
+        {
+          name: 'whoami',
+          arguments: {},
+        },
+        {},
+      ),
+    ])
+
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0]?.requestIds).toEqual([0, 1])
+    expect(sessions[0]?.pendingIds).toEqual([])
+  })
+
+  it('closes a failed session before reconnecting', async () => {
+    const { factory, sessions } = makeSessionFactory(async (sessionIndex) => {
+      if (sessionIndex === 0) {
+        return Promise.reject(new Error('transport disconnected'))
+      }
+      return { content: [] }
+    })
+    const manager = new DirectDecideMcpSessionManager(factory)
+
+    await expect(
+      manager.call(
+        'user:decide:default',
+        'token',
+        {
+          name: 'whoami',
+          arguments: {},
+        },
+        {},
+      ),
+    ).rejects.toThrow('transport disconnected')
+    await Promise.resolve()
+    expect(sessions[0]?.pendingIds).toEqual([])
+    await manager.call(
+      'user:decide:default',
+      'token',
+      {
+        name: 'whoami',
+        arguments: {},
+      },
+      {},
+    )
+
+    expect(sessions[0]?.close).toHaveBeenCalledOnce()
+    expect(sessions[1]?.requestIds).toEqual([0])
+  })
+
+  it('clears the session after a timeout so the next call has fresh state', async () => {
+    const { factory, sessions } = makeSessionFactory(async (sessionIndex) => {
+      if (sessionIndex === 0) {
+        return Promise.reject(new Error('Request timed out'))
+      }
+      return { content: [] }
+    })
+    const manager = new DirectDecideMcpSessionManager(factory)
+
+    await expect(
+      manager.call(
+        'user:decide:default',
+        'token',
+        {
+          name: 'analyze',
+          arguments: { question: 'test' },
+        },
+        {},
+      ),
+    ).rejects.toThrow('Request timed out')
+    await Promise.resolve()
+    expect(sessions[0]?.pendingIds).toEqual([])
+    await manager.call(
+      'user:decide:default',
+      'token',
+      {
+        name: 'analyze',
+        arguments: { question: 'test' },
+      },
+      {},
+    )
+
+    expect(sessions[0]?.close).toHaveBeenCalledOnce()
+    expect(sessions[1]?.requestIds).toEqual([0])
+  })
+
+  it('drops a disconnected session and clears pending requests', async () => {
+    let releaseFirstCall: (() => void) | undefined
+    const { factory, sessions } = makeSessionFactory(async (sessionIndex) => {
+      if (sessionIndex === 0) {
+        return new Promise<CallToolResult>((resolve) => {
+          releaseFirstCall = () => resolve({ content: [] })
+        })
+      }
+      return { content: [] }
+    })
+    const manager = new DirectDecideMcpSessionManager(factory)
+
+    const firstCall = manager.call(
+      'user:decide:default',
+      'token',
+      {
+        name: 'whoami',
+        arguments: {},
+      },
+      {},
+    )
+    await vi.waitFor(() => {
+      expect(sessions[0]?.pendingIds).toEqual([0])
+    })
+    sessions[0]?.disconnect()
+    await vi.waitFor(() => {
+      expect(sessions[0]?.pendingIds).toEqual([])
+    })
+    await manager.call(
+      'user:decide:default',
+      'token',
+      {
+        name: 'whoami',
+        arguments: {},
+      },
+      {},
+    )
+
+    expect(sessions).toHaveLength(2)
+    expect(sessions[0]?.close).toHaveBeenCalledOnce()
+    expect(sessions[1]?.requestIds).toEqual([0])
+    releaseFirstCall?.()
+    await firstCall
+  })
+
+  it('drops a session when its MCP handshake fails', async () => {
+    const sessions: Array<{ close: ReturnType<typeof vi.fn> }> = []
+    const factory: DirectDecideMcpSessionFactory = () => {
+      const sessionIndex = sessions.length
+      const close = vi.fn(async () => undefined)
+      sessions.push({ close })
+      return {
+        connect: vi.fn(async () => {
+          if (sessionIndex === 0) {
+            return Promise.reject(new Error('handshake failed'))
+          }
+        }),
+        call: vi.fn(async () => ({ content: [] })),
+        close,
+      }
+    }
+    const manager = new DirectDecideMcpSessionManager(factory)
+
+    await expect(
+      manager.call(
+        'user:decide:default',
+        'token',
+        {
+          name: 'whoami',
+          arguments: {},
+        },
+        {},
+      ),
+    ).rejects.toThrow('handshake failed')
+    await manager.call(
+      'user:decide:default',
+      'token',
+      {
+        name: 'whoami',
+        arguments: {},
+      },
+      {},
+    )
+
+    expect(sessions).toHaveLength(2)
+    expect(sessions[0]?.close).toHaveBeenCalledOnce()
+  })
+})
+
+describe('Decide request time limit', () => {
+  const onProgress = () => undefined
+
+  it('gives a background analysis one total limit that progress does not reset', () => {
+    expect(
+      decideRequestOptions({
+        onProgress,
+        timeoutMs: DECIDE_ANALYSIS_TIME_LIMIT_MS,
+      }),
+    ).toEqual({
+      onprogress: onProgress,
+      timeout: DECIDE_ANALYSIS_TIME_LIMIT_MS,
+    })
+  })
+
+  it('keeps the SDK silence timeout for calls without a limit', () => {
+    expect(decideRequestOptions({ onProgress })).toEqual({
+      onprogress: onProgress,
+      resetTimeoutOnProgress: true,
+    })
+    expect(decideRequestOptions({})).toEqual({})
+  })
+
+  it('recognises Garden ending the call, not a Decide error', () => {
+    const timedOut: CallToolResult = {
+      isError: true,
+      content: [{ type: 'text', text: 'MCP error -32001: Request timed out' }],
+      structuredContent: { details: { transportKind: 'timeout' } },
+    }
+    const decideError: CallToolResult = {
+      isError: true,
+      content: [{ type: 'text', text: 'Insufficient credits.' }],
+    }
+    expect(isDecideTimeLimitResult(timedOut)).toBe(true)
+    expect(isDecideTimeLimitResult(decideError)).toBe(false)
   })
 })

@@ -4,13 +4,9 @@
  * consumed by MessageOrderedParts via GardenDocDownloadBlock (artifact node) and
  * renderArtifactPart (raw data-artifact/data-graph node).
  */
-import type {
-  Edge as FlowEdge,
-  Node as FlowNode,
-  NodeProps,
-} from '@xyflow/react'
+import { lazy, Suspense } from 'react'
+import type { Edge as FlowEdge, Node as FlowNode } from '@xyflow/react'
 import { Download, File as FileIcon } from 'lucide-react'
-import { Badge } from '@garden/ui/components/ui/badge'
 import {
   Artifact,
   ArtifactContent,
@@ -18,19 +14,6 @@ import {
   ArtifactHeader,
   ArtifactTitle,
 } from '@/components/ai-elements/artifact'
-import { Canvas } from '@/components/ai-elements/canvas'
-import { Connection } from '@/components/ai-elements/connection'
-import { Controls } from '@/components/ai-elements/controls'
-import { Edge as GraphEdge } from '@/components/ai-elements/edge'
-import {
-  Node as GraphNode,
-  NodeContent,
-  NodeDescription,
-  NodeHeader,
-  NodeTitle,
-} from '@/components/ai-elements/node'
-import { Panel } from '@/components/ai-elements/panel'
-import { Toolbar } from '@/components/ai-elements/toolbar'
 import {
   CodeBlock,
   CodeBlockActions,
@@ -49,28 +32,8 @@ import {
   type ArtifactMessagePart,
 } from './chat-message-model'
 
-function ArtifactGraphNode({
-  data,
-}: NodeProps<FlowNode<{ description?: string; title: string }>>) {
-  return (
-    <GraphNode handles={{ source: true, target: true }}>
-      <NodeHeader>
-        <NodeTitle>{data.title}</NodeTitle>
-        {data.description ? (
-          <NodeDescription>{data.description}</NodeDescription>
-        ) : null}
-      </NodeHeader>
-      <NodeContent className="text-xs text-muted-foreground">
-        Drag to rearrange
-      </NodeContent>
-      <Toolbar>
-        <Badge variant="secondary" className="rounded-sm px-1.5 py-0">
-          Node
-        </Badge>
-      </Toolbar>
-    </GraphNode>
-  )
-}
+// Loaded on first use: graphs are rare, and @xyflow/react is large.
+const ChatGraphCanvas = lazy(() => import('./chat-graph-canvas'))
 
 export function GardenDocDownloadBlock({
   artifact,
@@ -240,20 +203,17 @@ export function renderArtifactPart(args: {
         </ArtifactHeader>
         <ArtifactContent className="p-0">
           <div className="h-[360px] w-full">
-            <Canvas
-              nodes={nodes}
-              edges={edges}
-              edgeTypes={{ animatedEdge: GraphEdge.Animated }}
-              nodeTypes={{ artifactNode: ArtifactGraphNode }}
-              connectionLineComponent={Connection}
+            <Suspense
+              fallback={
+                <div
+                  aria-busy="true"
+                  aria-label="Loading graph"
+                  className="h-full w-full animate-pulse bg-muted/30"
+                />
+              }
             >
-              <Controls />
-              <Panel position="top-left">
-                <Badge variant="secondary" className="rounded-md">
-                  Canvas
-                </Badge>
-              </Panel>
-            </Canvas>
+              <ChatGraphCanvas nodes={nodes} edges={edges} />
+            </Suspense>
           </div>
         </ArtifactContent>
       </Artifact>

@@ -67,6 +67,8 @@ export type SpeechInputProps = ComponentProps<typeof Button> & {
    */
   onAudioRecorded?: (audioBlob: Blob) => Promise<string>
   lang?: string
+  /** Called when listening starts or stops, so a parent can keep the mic mounted. */
+  onListeningChange?: (listening: boolean) => void
 }
 
 const detectSpeechInputMode = (): SpeechInputMode => {
@@ -90,9 +92,17 @@ export const SpeechInput = ({
   onTranscriptionChange,
   onAudioRecorded,
   lang = 'en-US',
+  onListeningChange,
   ...props
 }: SpeechInputProps) => {
   const [isListening, setIsListening] = useState(false)
+  const onListeningChangeRef = useRef(onListeningChange)
+  useEffect(() => {
+    onListeningChangeRef.current = onListeningChange
+  })
+  useEffect(() => {
+    onListeningChangeRef.current?.(isListening)
+  }, [isListening])
   const [isProcessing, setIsProcessing] = useState(false)
   const [mode] = useState<SpeechInputMode>(detectSpeechInputMode)
   const [isRecognitionReady, setIsRecognitionReady] = useState(false)
@@ -176,8 +186,12 @@ export const SpeechInput = ({
   }, [mode, lang])
 
   // Cleanup MediaRecorder and stream on unmount
-  useEffect(
-    () => () => {
+  const unmountedRef = useRef(false)
+  useEffect(() => {
+    // Reset on (re)mount: StrictMode runs this cleanup and setup again.
+    unmountedRef.current = false
+    return () => {
+      unmountedRef.current = true
       if (mediaRecorderRef.current?.state === 'recording') {
         mediaRecorderRef.current.stop()
       }
@@ -186,9 +200,8 @@ export const SpeechInput = ({
           track.stop()
         }
       }
-    },
-    [],
-  )
+    }
+  }, [])
 
   // Start MediaRecorder recording
   const startMediaRecorder = useCallback(async () => {
@@ -198,6 +211,12 @@ export const SpeechInput = ({
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Unmounted while the permission prompt was open: the cleanup above
+      // already ran, so release the microphone here or it stays on.
+      if (unmountedRef.current) {
+        for (const track of stream.getTracks()) track.stop()
+        return
+      }
       streamRef.current = stream
       const mediaRecorder = new MediaRecorder(stream)
       audioChunksRef.current = []

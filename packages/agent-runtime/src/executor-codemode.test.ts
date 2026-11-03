@@ -238,11 +238,54 @@ describe('extractExecutorToolRefs', () => {
       message: 'MCP transport returned HTTP 502.',
       kind: 'transport',
       status: 502,
+      transportFailure: true,
       transportKind: 'http',
       transportMessage: 'MCP transport returned HTTP 502.',
       retryable: false,
       userAction: 'none',
       stage: 'transport',
+    })
+  })
+
+  it('preserves an MCP error code and explicit stage from a thrown error', () => {
+    expect(
+      extractExecutorToolFailure({
+        error: Object.assign(new Error('Internal tool error [abc12345]'), {
+          cause: {
+            message: 'Not enough Decide credits to run this request.',
+            status: 402,
+            mcpCode: -32603,
+          },
+        }),
+        toolName: 'executor_execute',
+        toolInput: {
+          code: 'await tools.decide.user.decide.analyze({ data: csv })',
+        },
+      }),
+    ).toMatchObject({
+      message: 'Not enough Decide credits to run this request.',
+      status: 402,
+      mcpCode: -32603,
+      stage: 'decide_analysis',
+    })
+  })
+
+  it('uses the explicit failure stage from a structured MCP envelope', () => {
+    expect(
+      extractExecutorToolFailure({
+        output: {
+          isError: true,
+          structuredContent: {
+            status: 'error',
+            failureStage: 'transport_timeout',
+            error: { message: 'MCP request timed out.' },
+          },
+        },
+        toolName: 'executor_execute',
+      }),
+    ).toMatchObject({
+      message: 'MCP request timed out.',
+      stage: 'transport_timeout',
     })
   })
 })

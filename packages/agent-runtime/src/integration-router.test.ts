@@ -256,11 +256,14 @@ describe('integration router', () => {
     expect(directive).toContain(
       'Do not pass a summary, sample, or truncated content',
     )
-    expect(directive).toContain('reuse the session_id returned by Decide')
-    expect(directive).toContain(
-      'Render every text block from Decide in order and return generated report links when present',
-    )
-    expect(directive).toContain('Do not retry automatically')
+    expect(directive).toContain('source { "kind": "brain_file"')
+    expect(directive).not.toContain('text returned by brain_read_file')
+    expect(directive).toContain('its answer arrives later in this chat')
+    expect(directive).toContain('Never poll, retry, or wait')
+    expect(directive).toContain('never substitute a local analysis')
+    expect(directive).toContain('Never mention run IDs or session IDs')
+    expect(directive).not.toContain('session_id')
+    expect(directive).not.toContain('Render every text block')
     expect(directive).toContain('Do not silently replace it')
   })
 

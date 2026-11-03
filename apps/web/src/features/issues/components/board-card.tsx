@@ -18,7 +18,11 @@ import { ProgressRing } from './progress-ring'
 import type { ChildProgress } from './list-row'
 import { LiveDot } from './live-dot'
 import { ConnectorIcon } from './connector-icon'
-import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigation'
+import {
+  issuePath,
+  useSurfaceNavigation,
+} from '@/features/navigation/use-surface-navigation'
+import { isPlainLeftClick } from '@/features/navigation/is-plain-left-click'
 
 /**
  * Hook variant of `useUpdateIssue` for editable cards. Centralized here so the
@@ -282,8 +286,13 @@ export const DraggableBoardCard = memo(function DraggableBoardCard({
 
   const handleOpen = useCallback(
     (e: React.MouseEvent) => {
+      if (isDragging) {
+        e.preventDefault()
+        return
+      }
+      // Leave modified and middle clicks to the browser (new tab, etc.).
+      if (!isPlainLeftClick(e)) return
       e.preventDefault()
-      if (isDragging) return
       openIssue({ id: issue.id, title: issue.title })
     },
     [openIssue, issue.id, issue.title, isDragging],
@@ -298,7 +307,7 @@ export const DraggableBoardCard = memo(function DraggableBoardCard({
       className={isDragging ? 'opacity-30' : ''}
     >
       <a
-        href={`/issues/${issue.id}`}
+        href={issuePath(issue.id)}
         onClick={handleOpen}
         className={`group block transition-colors cursor-pointer ${isDragging ? 'pointer-events-none' : ''}`}
       >

@@ -9,3 +9,8 @@ export interface NavigationAdapter {
   /** Return a shareable URL for a path. Web: origin + path. Desktop: public web URL. */
   getShareableUrl?: (path: string) => string
 }
+
+export type NavigationActions = Omit<
+  NavigationAdapter,
+  'pathname' | 'searchParams'
+>

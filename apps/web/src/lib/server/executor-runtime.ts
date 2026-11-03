@@ -7,7 +7,7 @@ import {
   type Executor,
 } from '@executor-js/sdk/core'
 import { makeHostedFetch } from '@executor-js/sdk/host-internal'
-import { appEnv } from './env'
+import { appEnv, type AppEnv } from './env'
 import { createD1ExecutorDb } from './executor-engine/d1'
 import { makeR2BlobStore } from './executor-engine/r2'
 import {
@@ -21,6 +21,11 @@ export interface ExecutorIdentity {
 }
 
 export type GardenExecutor = Executor<GardenExecutorPlugins>
+
+export type ExecutorRuntimeEnv = Pick<
+  AppEnv,
+  'EXECUTOR_DB' | 'EXECUTOR_BLOBS' | 'EXECUTOR_SECRET_KEY'
+>
 
 export interface ExecutorCatalog {
   readonly integrations: readonly {
@@ -82,7 +87,13 @@ export interface ExecutorCatalog {
  * Effect SDK. Garden owns HTTP/auth; Executor owns connector state and OAuth.
  * The SDK handle is request-scoped while D1/R2 bindings remain isolate-safe.
  */
-export const executorProgram = <A, E>(
+/**
+ * Acquires an Executor program from explicit Worker bindings. Workflows use
+ * this form because module-level `appEnv` is request-bound and is not a safe
+ * source inside a durable step.
+ */
+export const executorProgramForEnv = <A, E>(
+  env: ExecutorRuntimeEnv,
   identity: ExecutorIdentity,
   use: (executor: GardenExecutor) => Effect.Effect<A, E>,
 ): Effect.Effect<A, E | StorageFailure> =>
@@ -91,13 +102,11 @@ export const executorProgram = <A, E>(
       tenant: Tenant.make(identity.tenant),
       subject: Subject.make(identity.subject),
       db: ({ tables }) =>
-        createD1ExecutorDb(
-          appEnv.EXECUTOR_DB,
-          tables,
-          appEnv.EXECUTOR_BLOBS,
-        ).pipe(Effect.map((database) => ({ db: database.db }))),
-      blobs: makeR2BlobStore(appEnv.EXECUTOR_BLOBS),
-      plugins: makeExecutorPlugins(appEnv.EXECUTOR_SECRET_KEY, {
+        createD1ExecutorDb(env.EXECUTOR_DB, tables, env.EXECUTOR_BLOBS).pipe(
+          Effect.map((database) => ({ db: database.db })),
+        ),
+      blobs: makeR2BlobStore(env.EXECUTOR_BLOBS),
+      plugins: makeExecutorPlugins(env.EXECUTOR_SECRET_KEY, {
         fetch: makeHostedFetch({ allowLocalNetwork: false }),
       }),
       onElicitation: () => Effect.succeed({ action: 'decline' as const }),
@@ -106,6 +115,20 @@ export const executorProgram = <A, E>(
     use,
     (executor) => executor.close().pipe(Effect.ignore),
   )
+
+/** Acquires an Executor program from the current request-bound Worker env. */
+export const executorProgram = <A, E>(
+  identity: ExecutorIdentity,
+  use: (executor: GardenExecutor) => Effect.Effect<A, E>,
+): Effect.Effect<A, E | StorageFailure> =>
+  executorProgramForEnv(appEnv, identity, use)
+
+/** Runs an Executor program with explicit bindings at a Workflow boundary. */
+export const runExecutorForEnv = <A, E>(
+  env: ExecutorRuntimeEnv,
+  identity: ExecutorIdentity,
+  use: (executor: GardenExecutor) => Effect.Effect<A, E>,
+): Promise<A> => Effect.runPromise(executorProgramForEnv(env, identity, use))
 
 /** Runs one direct Executor SDK program at the Promise API-route boundary. */
 export const runExecutor = <A, E>(
