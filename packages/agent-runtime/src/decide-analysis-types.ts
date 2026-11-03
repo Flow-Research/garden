@@ -1,3 +1,12 @@
+/**
+ * Who a Decide run belongs to. Before, every run belonged to a chat thread,
+ * so an automation could not own one. The owner decides dedupe (one active
+ * run per owner), session reuse, access checks, and where the result goes.
+ */
+export type DecideAnalysisOwner =
+  | { kind: 'chat'; threadId: string }
+  | { kind: 'automation_run'; automationRunId: string }
+
 export const DECIDE_ANALYSIS_STATUSES = [
   'queued',
   'running',
@@ -22,7 +31,7 @@ export type DecideAnalysisWorkflowParams = {
   attempt: number
   workspaceId: string
   ownerUserId: string
-  threadId: string
+  owner: DecideAnalysisOwner
   agentRuntimeName: string
 }
 
@@ -37,7 +46,7 @@ export type DecideAnalysisSnapshot = {
   runId: string
   workspaceId: string
   ownerUserId: string
-  threadId: string
+  owner: DecideAnalysisOwner
   status: DecideAnalysisStatus
   attempt: number
   progress: DecideAnalysisProgress | null

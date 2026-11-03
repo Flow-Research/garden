@@ -2,6 +2,7 @@ import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type {
+  DecideAnalysisOwner,
   DecideAnalysisProgress,
   DecideAnalysisSnapshot,
   DecideAnalysisStartOutcome,
@@ -33,30 +34,37 @@ export type DecideAnalysisEnvironment = {
   DECIDE_ANALYSIS_WORKFLOW: DecideAnalysisWorkflowBinding
 }
 
+/**
+ * The data a start sends to Decide. Omitted means a follow-up that continues
+ * the owner's latest completed Decide session.
+ */
+export type DecideAnalysisInputData = { kind: 'text'; text: string }
+
+/**
+ * A chat owner's `threadId` is the trusted thread key from the runtime
+ * (`chat_thread.id` or its `runtime_key`); the service resolves it to the row.
+ */
 export type StartDecideAnalysisInput = {
   env: DecideAnalysisEnvironment
   workspaceId: string
   ownerUserId: string
-  threadId: string
+  owner: DecideAnalysisOwner
   idempotencyKey: string
   question: string
-  data?: string
+  input?: DecideAnalysisInputData
   context?: string
-}
-
-export type RetryDecideAnalysisInput = {
-  env: DecideAnalysisEnvironment
-  workspaceId: string
-  ownerUserId: string
-  threadId: string
-  runId: string
-  retryKey: string
 }
 
 export type DecideAnalysisActor = {
   workspaceId: string
   ownerUserId: string
-  threadId: string
+  owner: DecideAnalysisOwner
+}
+
+export type RetryDecideAnalysisInput = DecideAnalysisActor & {
+  env: DecideAnalysisEnvironment
+  runId: string
+  retryKey: string
 }
 
 const progressSchema = z.object({
@@ -88,10 +96,13 @@ const runLock = (runId: string) =>
   sql`select pg_advisory_xact_lock(hashtext(${`decide-analysis:${runId}`}))`
 
 const ACTIVE_STATUSES = ['queued', 'running', 'cancel_requested'] as const
-const ACTIVE_RUN_INDEX = 'decide_analysis_run_thread_active_idx'
+const ACTIVE_RUN_INDEXES: readonly unknown[] = [
+  'decide_analysis_run_chat_active_idx',
+  'decide_analysis_run_automation_run_active_idx',
+]
 
 /**
- * True when Postgres rejected a write because the thread already has an
+ * True when Postgres rejected a write because the owner already has an
  * active run. Drizzle wraps driver errors, so the pg fields can sit on the
  * error itself or on its `cause`.
  */
@@ -102,7 +113,10 @@ function isActiveRunConflict(cause: unknown): boolean {
     constraint?: unknown
     cause?: unknown
   }
-  if (record.code === '23505' && record.constraint === ACTIVE_RUN_INDEX) {
+  if (
+    record.code === '23505' &&
+    ACTIVE_RUN_INDEXES.includes(record.constraint)
+  ) {
     return true
   }
   return isActiveRunConflict(record.cause)
@@ -187,6 +201,42 @@ function toProgress(value: unknown): DecideAnalysisProgress | null {
 }
 
 /**
+ * Reads the typed owner back from the row. `decide_analysis_run_owner_check`
+ * guarantees a row without `automation_run_id` is a chat run with a thread.
+ */
+function ownerOf(row: {
+  threadId: string | null
+  automationRunId: string | null
+}): DecideAnalysisOwner {
+  return row.automationRunId !== null
+    ? { kind: 'automation_run', automationRunId: row.automationRunId }
+    : { kind: 'chat', threadId: row.threadId as string }
+}
+
+/** The run columns that store one owner, for inserts. */
+function ownerColumns(owner: DecideAnalysisOwner) {
+  return owner.kind === 'chat'
+    ? { ownerKind: owner.kind, threadId: owner.threadId, automationRunId: null }
+    : {
+        ownerKind: owner.kind,
+        threadId: null,
+        automationRunId: owner.automationRunId,
+      }
+}
+
+/** Matches the runs of one owner. */
+function ownedBy(owner: DecideAnalysisOwner) {
+  return owner.kind === 'chat'
+    ? eq(schema.decideAnalysisRun.threadId, owner.threadId)
+    : eq(schema.decideAnalysisRun.automationRunId, owner.automationRunId)
+}
+
+const sameOwner = (a: DecideAnalysisOwner, b: DecideAnalysisOwner) =>
+  a.kind === 'chat'
+    ? b.kind === 'chat' && a.threadId === b.threadId
+    : b.kind === 'automation_run' && a.automationRunId === b.automationRunId
+
+/**
  * Converts the database aggregate into the stable API and chat shape.
  * Storage keeps JSON values opaque so provider result blocks can evolve without
  * coupling the database package to the MCP SDK.
@@ -198,7 +248,7 @@ export function toDecideAnalysisSnapshot(
     runId: row.id,
     workspaceId: row.workspaceId,
     ownerUserId: row.ownerUserId,
-    threadId: row.threadId,
+    owner: ownerOf(row),
     status: toStatus(row.status),
     attempt: row.attempt,
     progress: toProgress(row.progressJson),
@@ -252,9 +302,9 @@ const runNotFound = () => notFound('Decide analysis run not found.')
 const ownsRun = (row: RunRow, actor: DecideAnalysisActor) =>
   row.workspaceId === actor.workspaceId &&
   row.ownerUserId === actor.ownerUserId &&
-  row.threadId === actor.threadId
+  sameOwner(ownerOf(row), actor.owner)
 
-const threadKeySchema = z.uuid()
+const ownerIdSchema = z.uuid()
 
 async function readRun(db: Db, input: { runId: string; attempt?: number }) {
   const [row] = await db
@@ -283,7 +333,7 @@ async function resolveThread(
   db: Db,
   input: { workspaceId: string; ownerUserId: string; threadKey: string },
 ) {
-  if (!threadKeySchema.safeParse(input.threadKey).success) return null
+  if (!ownerIdSchema.safeParse(input.threadKey).success) return null
   const [thread] = await db
     .select({
       threadId: schema.chatThread.id,
@@ -310,13 +360,77 @@ async function resolveThread(
   return thread ?? null
 }
 
-async function readActiveRun(db: Db, threadId: string) {
+/**
+ * Resolves an automation run inside the caller's workspace to the agent that
+ * runs it, so its Decide run is attributed to the same AgentDO runtime.
+ */
+async function resolveAutomationRun(
+  db: Db,
+  input: { workspaceId: string; automationRunId: string },
+) {
+  if (!ownerIdSchema.safeParse(input.automationRunId).success) return null
+  const [run] = await db
+    .select({
+      agentId: schema.automationRun.agentId,
+      agentRuntimeName: schema.automationRun.hostName,
+    })
+    .from(schema.automationRun)
+    .where(
+      and(
+        eq(schema.automationRun.id, input.automationRunId),
+        eq(schema.automationRun.workspaceId, input.workspaceId),
+      ),
+    )
+    .limit(1)
+  return run ?? null
+}
+
+/**
+ * Resolves a start's owner to a stored owner plus the agent runtime that
+ * receives the result. Before, only chat threads could own a run; now an
+ * automation run in the same workspace can too. Returns null when the owner
+ * is not visible to the caller.
+ */
+async function resolveOwner(
+  db: Db,
+  input: {
+    workspaceId: string
+    ownerUserId: string
+    owner: DecideAnalysisOwner
+  },
+): Promise<{
+  owner: DecideAnalysisOwner
+  agentId: string
+  agentRuntimeName: string
+} | null> {
+  if (input.owner.kind === 'automation_run') {
+    const run = await resolveAutomationRun(db, {
+      workspaceId: input.workspaceId,
+      automationRunId: input.owner.automationRunId,
+    })
+    return run ? { owner: input.owner, ...run } : null
+  }
+  const thread = await resolveThread(db, {
+    workspaceId: input.workspaceId,
+    ownerUserId: input.ownerUserId,
+    threadKey: input.owner.threadId,
+  })
+  return thread
+    ? {
+        owner: { kind: 'chat', threadId: thread.threadId },
+        agentId: thread.agentId,
+        agentRuntimeName: thread.agentRuntimeName ?? thread.agentId,
+      }
+    : null
+}
+
+async function readActiveRun(db: Db, owner: DecideAnalysisOwner) {
   const [row] = await db
     .select()
     .from(schema.decideAnalysisRun)
     .where(
       and(
-        eq(schema.decideAnalysisRun.threadId, threadId),
+        ownedBy(owner),
         inArray(schema.decideAnalysisRun.status, [...ACTIVE_STATUSES]),
       ),
     )
@@ -329,15 +443,12 @@ async function readActiveRun(db: Db, threadId: string) {
  * seeds it: a failed run can leave an empty session, and continuing one made
  * Decide answer with a paid greeting instead of an analysis.
  */
-async function latestCompletedSession(db: Db, threadId: string) {
+async function latestCompletedSession(db: Db, owner: DecideAnalysisOwner) {
   const [row] = await db
     .select({ sessionId: schema.decideAnalysisRun.providerSessionId })
     .from(schema.decideAnalysisRun)
     .where(
-      and(
-        eq(schema.decideAnalysisRun.threadId, threadId),
-        eq(schema.decideAnalysisRun.status, 'completed'),
-      ),
+      and(ownedBy(owner), eq(schema.decideAnalysisRun.status, 'completed')),
     )
     .orderBy(desc(schema.decideAnalysisRun.completedAt))
     .limit(1)
@@ -350,7 +461,7 @@ async function startWorkflow(env: DecideAnalysisEnvironment, row: RunRow) {
     attempt: row.attempt,
     workspaceId: row.workspaceId,
     ownerUserId: row.ownerUserId,
-    threadId: row.threadId,
+    owner: ownerOf(row),
     agentRuntimeName: row.agentRuntimeName,
   }
   const result = await Result.tryPromise({
@@ -387,22 +498,24 @@ async function startWorkflow(env: DecideAnalysisEnvironment, row: RunRow) {
 }
 
 /**
- * Starts one analysis for a chat thread, or returns the run that is already
- * active there. Before, every call created a run, so a model that retried
- * while it waited paid Decide twice. Now a thread has at most one active run:
- * the transaction returns the active row, and the partial unique index
- * `decide_analysis_run_thread_active_idx` catches the race where two calls
- * pass that check together. A retried MCP call lands on that same active
- * row, so it needs no key lookup.
+ * Starts one analysis for an owner (a chat thread or an automation run), or
+ * returns the run that is already active for that owner. Before, every call
+ * created a run, so a model that retried while it waited paid Decide twice.
+ * Now an owner has at most one active run: the transaction returns the active
+ * row, and the per-owner partial unique indexes
+ * (`decide_analysis_run_chat_active_idx`,
+ * `decide_analysis_run_automation_run_active_idx`) catch the race where two
+ * calls pass that check together. A retried MCP call lands on that same
+ * active row, so it needs no key lookup.
  *
  * The tool-call ID is stored for tracing only. Before, a workspace-wide
  * lookup by that ID returned any earlier run with the same ID, and model
  * tool-call IDs repeat (`functions.tool_executor_decide_analyze:1` restarts in
  * every thread), so a new chat got another chat's finished run and nothing
- * ran. Now only the thread's active run is ever returned.
+ * ran. Now only the owner's active run is ever returned.
  *
- * Garden owns the Decide session. A call without `data` continues the
- * thread's latest completed session; a call with `data` starts a new one.
+ * Garden owns the Decide session. A call without input continues the
+ * owner's latest completed session; a call with input starts a new one.
  */
 /**
  * Tool error for a Decide start that has no data and no earlier completed
@@ -427,27 +540,27 @@ export async function startDecideAnalysis(
       }),
     )
   }
-  const data = input.data?.trim() ? input.data : undefined
-  const threadScope = {
+  const data = input.input?.text.trim() ? input.input.text : undefined
+  const ownerScope = {
     workspaceId: input.workspaceId,
     ownerUserId: input.ownerUserId,
-    threadKey: input.threadId,
+    owner: input.owner,
   }
 
   const created = await withDb(input.env, 'create Decide analysis run', (db) =>
     db.transaction(async (tx) => {
-      const thread = await resolveThread(tx, threadScope)
-      if (!thread) return null
+      const resolved = await resolveOwner(tx, ownerScope)
+      if (!resolved) return null
 
-      const active = await readActiveRun(tx, thread.threadId)
+      const active = await readActiveRun(tx, resolved.owner)
       if (active) return { kind: 'already_running' as const, row: active }
 
-      // A follow-up without data continues the thread's last completed
+      // A follow-up without data continues the owner's last completed
       // Decide session. With no such session, Decide has nothing to analyze
       // and answers with a paid greeting, so the start is refused instead.
       const providerSessionId =
         data === undefined
-          ? await latestCompletedSession(tx, thread.threadId)
+          ? await latestCompletedSession(tx, resolved.owner)
           : null
       if (data === undefined && providerSessionId === null) {
         return { kind: 'needs_data' as const }
@@ -461,9 +574,9 @@ export async function startDecideAnalysis(
           id: runId,
           workspaceId: input.workspaceId,
           ownerUserId: input.ownerUserId,
-          threadId: thread.threadId,
-          agentId: thread.agentId,
-          agentRuntimeName: thread.agentRuntimeName ?? thread.agentId,
+          ...ownerColumns(resolved.owner),
+          agentId: resolved.agentId,
+          agentRuntimeName: resolved.agentRuntimeName,
           idempotencyKey,
           workflowInstanceId: workflowInstanceId(runId, attempt),
           question,
@@ -484,9 +597,9 @@ export async function startDecideAnalysis(
           input.env,
           'read active Decide analysis run',
           async (db) => {
-            const thread = await resolveThread(db, threadScope)
-            const active = thread
-              ? await readActiveRun(db, thread.threadId)
+            const resolved = await resolveOwner(db, ownerScope)
+            const active = resolved
+              ? await readActiveRun(db, resolved.owner)
               : null
             return active
               ? { kind: 'already_running' as const, row: active }
@@ -496,7 +609,15 @@ export async function startDecideAnalysis(
       : Result.err(created.error)
     : created
   if (outcome.isErr()) return Result.err(outcome.error)
-  if (!outcome.value) return Result.err(notFound('Chat thread not found.'))
+  if (!outcome.value) {
+    return Result.err(
+      notFound(
+        input.owner.kind === 'chat'
+          ? 'Chat thread not found.'
+          : 'Automation run not found.',
+      ),
+    )
+  }
   if (outcome.value.kind === 'needs_data') {
     return Result.err(
       new DecideAnalysisServiceError({
@@ -541,7 +662,7 @@ export async function listDecideAnalyses(
         and(
           eq(schema.decideAnalysisRun.workspaceId, actor.workspaceId),
           eq(schema.decideAnalysisRun.ownerUserId, actor.ownerUserId),
-          eq(schema.decideAnalysisRun.threadId, actor.threadId),
+          ownedBy(actor.owner),
         ),
       )
       .orderBy(desc(schema.decideAnalysisRun.createdAt)),
@@ -586,7 +707,7 @@ export async function cancelDecideAnalysis(
 
 /**
  * Creates a new attempt while keeping the public run ID stable. A retry while
- * another run is active in the thread hits the active-run index and returns a
+ * another run is active for the owner hits the active-run index and returns a
  * conflict instead of starting a second paid analysis.
  */
 export async function retryDecideAnalysis(
@@ -639,7 +760,11 @@ export async function retryDecideAnalysis(
   if (result.isErr()) {
     return Result.err(
       isActiveRunConflict(result.error)
-        ? conflict('Another Decide analysis is already running in this chat.')
+        ? conflict(
+            input.owner.kind === 'chat'
+              ? 'Another Decide analysis is already running in this chat.'
+              : 'Another Decide analysis is already running for this automation run.',
+          )
         : result.error,
     )
   }

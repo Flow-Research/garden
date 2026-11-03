@@ -45,10 +45,12 @@ export const makeDecideAnalysisStarter =
       env: input.env,
       workspaceId: input.session.organizationId,
       ownerUserId: input.session.userId,
-      threadId: parsedMeta.data.threadId,
+      owner: { kind: 'chat', threadId: parsedMeta.data.threadId },
       idempotencyKey: parsedMeta.data.toolCallId ?? crypto.randomUUID(),
       question: args.question,
-      data: args.data,
+      ...(args.data === undefined
+        ? {}
+        : { input: { kind: 'text' as const, text: args.data } }),
       context: args.context,
     })
 

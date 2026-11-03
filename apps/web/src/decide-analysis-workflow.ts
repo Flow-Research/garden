@@ -335,12 +335,26 @@ export class DecideAnalysisWorkflow extends WorkflowEntrypoint<
    * its own event instead of escaping to `run`, which would otherwise rewrite
    * a finished analysis as a Workflow failure. Cancelled runs never reach
    * this step: the chat step already shows that outcome.
+   *
+   * Only chat owners have a delivery target today. Automation-run delivery
+   * (resuming `RunWorkflow` through a Workflow event) is the next step of
+   * `docs/features/decide-automations-spec.md`; until then nothing creates an
+   * automation-owned run, and one that exists is logged and left undelivered.
    */
   private async publish(
     event: WorkflowEvent<DecideAnalysisWorkflowParams>,
     step: WorkflowStep,
   ) {
-    const { runId, attempt, threadId, agentRuntimeName } = event.payload
+    const { runId, attempt, owner, agentRuntimeName } = event.payload
+    if (owner.kind !== 'chat') {
+      workflowLogger.info('decide_analysis_workflow.delivery_skipped', {
+        runId,
+        attempt,
+        ownerKind: owner.kind,
+      })
+      return
+    }
+    const { threadId } = owner
     const published = await Result.tryPromise({
       try: () =>
         step.do<{ delivered: boolean }>(`publish-${attempt}`, async () => {
