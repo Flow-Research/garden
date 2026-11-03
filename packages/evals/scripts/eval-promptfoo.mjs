@@ -15,6 +15,8 @@ const result = spawnSync(
     'promptfooconfig.yaml',
     '--output',
     `${outputDirectory}promptfoo.json`,
+    '--output',
+    `${outputDirectory}promptfoo.html`,
   ],
   {
     env: { ...process.env, PROMPTFOO_DISABLE_TELEMETRY: '1' },

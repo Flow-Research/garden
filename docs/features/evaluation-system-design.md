@@ -865,7 +865,10 @@ Set the same `GARDEN_EVAL_*` values above in the root `.env` file or export them
 in the shell. Keep `GARDEN_EVAL_SESSION_COOKIE` out of committed files and
 command history. Promptfoo reads the root `.env`, runs cases one at a time,
 disables result caching and latest-result storage, and writes
-`.artifacts/evals/promptfoo.json`.
+`.artifacts/evals/promptfoo.json` and `.artifacts/evals/promptfoo.html`. Open
+the HTML file in a browser to review the cases and their results. The JSON
+file keeps the structured results for scripts and later analysis. Neither
+report is a Garden page or uploads results to a hosted service.
 
 ```sh
 pnpm --filter @garden/evals eval:promptfoo
