@@ -1,5 +1,5 @@
 {
-  "id": "c05a24f9-9d70-4ba2-819e-888c676a0d30",
+  "id": "3e4dfc3a-d10a-4654-8cac-9492fae1ade2",
   "prevId": "24a72387-313b-4b78-abe0-f09773e2c939",
   "version": "7",
   "dialect": "postgresql",
@@ -1890,27 +1890,6 @@
         }
       },
       "indexes": {
-        "decide_analysis_run_workspace_idempotency_idx": {
-          "name": "decide_analysis_run_workspace_idempotency_idx",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "idempotency_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "decide_analysis_run_workflow_instance_idx": {
           "name": "decide_analysis_run_workflow_instance_idx",
           "columns": [
@@ -3985,7 +3964,7 @@
           "name": "author_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "body": {
           "name": "body",
@@ -3995,18 +3974,6 @@
         },
         "mentions": {
           "name": "mentions",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "external_comment_id": {
-          "name": "external_comment_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "metadata": {
-          "name": "metadata",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
@@ -4055,28 +4022,6 @@
           "concurrently": false,
           "method": "gin",
           "with": {}
-        },
-        "issue_comment_external_comment_unique": {
-          "name": "issue_comment_external_comment_unique",
-          "columns": [
-            {
-              "expression": "issue_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "external_comment_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"issue_comment\".\"external_comment_id\" is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -4100,11 +4045,7 @@
       "checkConstraints": {
         "issue_comment_author_type_check": {
           "name": "issue_comment_author_type_check",
-          "value": "\"issue_comment\".\"author_type\" in ('user', 'agent', 'connector')"
-        },
-        "issue_comment_author_id_check": {
-          "name": "issue_comment_author_id_check",
-          "value": "(\"issue_comment\".\"author_type\" = 'connector' and \"issue_comment\".\"author_id\" is null) or (\"issue_comment\".\"author_type\" in ('user', 'agent') and \"issue_comment\".\"author_id\" is not null)"
+          "value": "\"issue_comment\".\"author_type\" in ('user', 'agent')"
         }
       },
       "isRLSEnabled": false

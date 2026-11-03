@@ -18,6 +18,7 @@ import {
 } from '@/features/artifacts/artifact-renderer'
 import type { ChatUiMessage } from '../chat-runtime-provider'
 import type { ChatDecideAnalysisStatus } from '@/lib/api/chat-threads'
+import { isMissingError } from '@/lib/api/errors'
 
 export { canonicalJsonString } from '@garden/connectors/capabilities'
 
@@ -86,9 +87,11 @@ export type DecideAnalysisStepView = {
 /**
  * What the Decide chat step shows for a run status. Only Decide's progress
  * note is passed through; run and session IDs never reach the step.
+ * `unavailable` means the status request itself failed, so the step settles
+ * as failed instead of spinning.
  */
 export function decideAnalysisStepView(
-  status: ChatDecideAnalysisStatus | null,
+  status: ChatDecideAnalysisStatus | 'unavailable' | null,
   progressMessage: string | null,
 ): DecideAnalysisStepView {
   switch (status) {
@@ -103,6 +106,14 @@ export function decideAnalysisStepView(
       return {
         label: 'Analysis failed',
         detail: null,
+        active: false,
+        canCancel: false,
+      }
+    case 'unavailable':
+      return {
+        label: 'Analysis failed',
+        detail:
+          'Garden could not load this analysis. Ask again to start a new one.',
         active: false,
         canCancel: false,
       }
@@ -129,6 +140,48 @@ export function decideAnalysisStepView(
       }
   }
 }
+
+/**
+ * The card's step once failed requests are counted. Before, a failed status
+ * read kept the spinner going and a failed Cancel was silently ignored, so a
+ * card pointing at a run the thread does not own spun forever. Now a failed
+ * read, or a Cancel that finds no run (404/403), settles the card as failed;
+ * any other Cancel failure keeps the run live and says Cancel did not work.
+ */
+export function decideAnalysisCardView(input: {
+  status: ChatDecideAnalysisStatus | null
+  progressMessage: string | null
+  failureMessage: string | null
+  isLongRun: boolean
+  loadFailed: boolean
+  cancelError: unknown
+}): DecideAnalysisStepView {
+  if (input.loadFailed || isMissingError(input.cancelError)) {
+    return decideAnalysisStepView('unavailable', null)
+  }
+  const view = decideAnalysisStepView(input.status, input.progressMessage)
+  // The run stores a plain reason (Decide's error, or Garden's time-limit
+  // message). Before, the card dropped it and said only "Analysis failed".
+  if (input.status === 'failed') {
+    return { ...view, detail: input.failureMessage?.trim() || null }
+  }
+  if (view.canCancel && !view.detail && input.isLongRun) {
+    return { ...view, detail: LONG_RUN_NOTE }
+  }
+  return input.cancelError && view.canCancel
+    ? { ...view, detail: 'Garden could not cancel this analysis. Try again.' }
+    : view
+}
+
+/**
+ * A run longer than this tells the user it is still working and that they can
+ * leave. Dev runs finished in one to two minutes, so past two minutes a run is
+ * unusually long and a silent spinner starts to look stuck.
+ */
+export const DECIDE_LONG_RUN_MS = 2 * 60 * 1000
+
+const LONG_RUN_NOTE =
+  "Still working in the background. You can leave this chat; the answer will appear here when it's ready."
 
 /** Elapsed run time as a person reads it: "42s", then "1m 05s". */
 export function formatElapsed(ms: number) {

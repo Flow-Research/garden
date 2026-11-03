@@ -42,6 +42,9 @@ jobs:
           pnpm --filter @garden/ui tokens:build
           git diff --exit-code -- packages/ui/styles/tokens.css
 
+      - name: Verify connector coverage
+        run: pnpm verify:connectors
+
       - name: Lint
         run: pnpm lint
 

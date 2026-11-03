@@ -2,9 +2,14 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import type { DirectDecideAnalysisStarter } from './direct-decide-mcp'
 import {
+  makeBrainSourceReader,
+  type BrainSourceEnvironment,
+} from '../decide-analysis/brain-source'
+import {
   decideAnalysisErrorResult,
   startDecideAnalysis,
   type DecideAnalysisEnvironment,
+  type DecideAnalysisInputData,
 } from '../decide-analysis/service'
 
 const gardenDecideMetaSchema = z.object({
@@ -31,24 +36,39 @@ export const DECIDE_ANALYSIS_ALREADY_RUNNING_TEXT =
  * do not have a trusted chat thread to receive the final result. Chat starts
  * never forward a model-supplied `session_id`: the service picks the session
  * from the thread's completed runs.
+ *
+ * A `source` reaches the service with the Brain reader, so Garden reads the
+ * file and the model never pastes its contents. The tool boundary has already
+ * rejected a call that sends both `data` and `source`.
  */
 export const makeDecideAnalysisStarter =
   (input: {
-    env: DecideAnalysisEnvironment
+    env: DecideAnalysisEnvironment & BrainSourceEnvironment
     session: { organizationId: string; userId: string }
   }): DirectDecideAnalysisStarter =>
   async ({ args, extra }): Promise<CallToolResult | null> => {
     const parsedMeta = gardenDecideMetaSchema.safeParse(extra._meta?.garden)
     if (!parsedMeta.success) return null
 
+    const analysisInput: DecideAnalysisInputData | undefined =
+      args.source !== undefined
+        ? {
+            kind: 'source',
+            source: args.source,
+            read: makeBrainSourceReader(input.env),
+          }
+        : args.data !== undefined
+          ? { kind: 'text', text: args.data }
+          : undefined
+
     const result = await startDecideAnalysis({
       env: input.env,
       workspaceId: input.session.organizationId,
       ownerUserId: input.session.userId,
-      threadId: parsedMeta.data.threadId,
+      owner: { kind: 'chat', threadId: parsedMeta.data.threadId },
       idempotencyKey: parsedMeta.data.toolCallId ?? crypto.randomUUID(),
       question: args.question,
-      data: args.data,
+      ...(analysisInput === undefined ? {} : { input: analysisInput }),
       context: args.context,
     })
 

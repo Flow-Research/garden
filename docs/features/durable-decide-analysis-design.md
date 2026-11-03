@@ -17,8 +17,11 @@ The chat-facing MCP tool starts a job:
 
 ```text
 decide_analyze({ question, data })
+decide_analyze({ question, source: { kind: "brain_file", fileId } })
   -> { run_id, status: "queued" }
 ```
+
+`data` and `source` are exclusive. See [Garden reads the file](#garden-reads-the-file).
 
 The tool call does not pass the chat request signal to Decide. The browser can
 disconnect after it receives the run ID.
@@ -42,21 +45,61 @@ paid run, and then redid the analysis in the sandbox. Decide's raw blocks,
 including session IDs and progress logs, then landed in the middle of that
 turn. The rules below replace that behavior.
 
-### One active run per thread
+### Run owner
 
-A partial unique index allows one `queued`, `running`, or `cancel_requested`
-run per chat thread. `startDecideAnalysis` returns
+A run has a typed owner:
+
+```ts
+type DecideAnalysisOwner =
+  | { kind: 'chat'; threadId: string }
+  | { kind: 'automation_run'; automationRunId: string }
+```
+
+The table stores it as `owner_kind`, a nullable `thread_id`, and a nullable
+`automation_run_id` foreign key. The check constraint
+`decide_analysis_run_owner_check` requires exactly the ID that matches the
+kind. Migration `0063` added the columns. Rows from before it became chat
+owners through the `owner_kind` default, and they already had a thread ID.
+
+The owner decides dedupe, session reuse, and access. Status, list, cancel,
+and retry match the run's owner against the caller's. A chat run is invisible
+from another thread, even for the same user. The snapshot and the Workflow
+payload carry the owner instead of a thread ID.
+
+The service can create a run for an automation run in the caller's
+workspace, attributed to that run's agent. Nothing calls it yet. The Workflow
+delivers results only to chat owners and logs
+`decide_analysis_workflow.delivery_skipped` for any other owner. Automation
+delivery is the next step of
+[Decide in Automations](./decide-automations-spec.md).
+
+### One active run per owner
+
+Two partial unique indexes allow one `queued`, `running`, or
+`cancel_requested` run per owner:
+`decide_analysis_run_chat_active_idx` on `thread_id` and
+`decide_analysis_run_automation_run_active_idx` on `automation_run_id`. The
+rest of this section describes chat, and the same rules hold per automation
+run. `startDecideAnalysis` returns
 `{ kind: "started" | "already_running", snapshot }`. A second call while a run
-is active returns the existing run and never charges Decide again. The
-tool-call idempotency key still deduplicates MCP retries of the same call.
+is active returns the existing run and never charges Decide again. An MCP
+retry of the same call lands on that active run too.
+
+The active run is the only run a start ever returns. A finished run, or a run
+in another thread, is never returned, even when its stored tool-call ID
+matches. Model tool-call IDs are not unique: they look like
+`functions.tool_executor_decide_analyze:1` and the counter restarts in each
+thread. An earlier workspace-wide lookup by that ID handed a new chat another
+chat's failed run, so no analysis ran. The ID is now stored for tracing only
+and has no unique index.
 
 ### Garden owns the Decide session
 
-The model no longer passes `session_id` in chat. When a chat call omits
-`data`, the service reuses the provider session of the thread's latest
-`completed` run. A call with new `data` starts a new Decide session. A failed
-run never seeds a follow-up. A call with no `data` and no completed session
-in the thread does not reach Decide: the tool returns an `invalid_input`
+The model no longer passes `session_id` in chat. When a call omits both
+`data` and `source`, the service reuses the provider session of the owner's
+latest `completed` run. A call with new `data` or a `source` starts a new
+Decide session. A failed run never seeds a follow-up. A call with no input
+and no completed session for the owner does not reach Decide: the tool returns an `invalid_input`
 error that asks the user to attach the file, because Decide would otherwise
 charge for a greeting. Direct non-chat callers keep the explicit `session_id`
 argument.
@@ -66,6 +109,40 @@ Workflow reads the session ID from that text with
 `decideSessionIdFromResult` (`packages/agent-runtime/src/decide-analysis-result.ts`).
 Decide prints it as `Session ID: sess_…`, as `(session_id: sess_…)`, and
 inside output URLs under `/agent-sessions/sess_…/`.
+
+### Garden reads the file
+
+Before, the model read a Brain file with `brain_read_file` and pasted the
+text into `data`. A large sheet cost model tokens twice and could be cut or
+summarised on the way. Now `decide_analyze` takes a typed `source`:
+
+```ts
+type DecideAnalysisSource = { kind: 'brain_file'; fileId: string }
+```
+
+The schema is `decideAnalysisSourceSchema` in
+`packages/agent-runtime/src/decide-analysis-types.ts`. Google Drive will be a
+second variant. The handler parses the arguments with one Zod object and
+refuses a call that sends both `data` and `source`. A direct call without
+chat metadata cannot read a source, so it is refused too.
+
+The service reads the source before it opens the run transaction.
+`readBrainFileSource` (`apps/web/src/lib/server/decide-analysis/brain-source.ts`)
+calls `Brain.readFileItem`, the read behind `brain_read_file`, with the run's
+user as viewer. It returns the full extracted body, and Brain stores an XLSX
+as tab-separated sheet text. The text goes into `input_data`. A missing,
+hidden, empty, or unextracted file returns `source_unavailable` and creates no
+run. An empty file never falls through to a follow-up on an earlier session.
+The Decide routing directive tells the model to pass `source` for a Files &
+Folders file and not to call `brain_read_file`.
+
+### Input limit
+
+Decide accepts inputs up to 100 MB (confirmed with Decide, 2026-11-03).
+Before the run is created, the service measures the input in UTF-8 bytes
+against `DECIDE_ANALYSIS_INPUT_LIMIT_BYTES` (100,000,000). Pasted `data` and
+a read source get the same check. An input over the limit returns
+`input_too_large`, so no run row exists and no paid analysis starts.
 
 ### The turn ends when the run starts
 
@@ -91,7 +168,10 @@ spinner and "Analyzing your data…", Decide's latest progress message, the
 elapsed time, and a Cancel action. It settles on "Analysis complete",
 "Analysis failed", or "Analysis cancelled". The user never sees a run ID or
 session ID. A cancelled run needs no chat message because the card shows the
-outcome.
+outcome. A failed card shows the reason the run stored, as written. Past two minutes,
+a running card without a Decide progress message says "Still working in the
+background. You can leave this chat; the answer will appear here when it's
+ready."
 
 ### Generated files render as file cards
 
@@ -139,12 +219,24 @@ address the facet.
 
 ### Timeouts
 
-Decide no longer enforces its own analysis timeout, and Garden drops its
-five-minute `maxTotalTimeout`. The MCP call keeps `resetTimeoutOnProgress`,
-so the request timeout only measures silence between progress events.
-Decide publishes no progress cadence, so Garden keeps the MCP SDK default
-request timeout of 60 seconds. The Workflow step timeout, 10 minutes per
-attempt by default, remains the outer bound.
+Decide no longer limits analysis time, its progress events are optional, and
+it has no tool to fetch a finished result later (the integration guide lists
+`analyze`, `list_generated_files`, `read_generated_file`, and `whoami`). So
+Garden holds the `analyze` request open instead of judging it by silence.
+
+The background call passes one total MCP request timeout,
+`DECIDE_ANALYSIS_TIME_LIMIT_MS` (one hour), and progress no longer resets it.
+Before, the call used the MCP SDK's 60-second silence timeout, and a dev run
+failed with `MCP error -32001: Request timed out` while Decide was likely
+still working and charging. Workflows give a step unlimited wall-clock time
+while it waits on I/O, so the hour is a product choice: long reports finish,
+and a request that will never answer still ends. The provider step's timeout
+is that limit plus one minute, so the request's own timeout fires first and
+commits the plain failure "Decide did not finish within 1 hour, so Garden
+stopped waiting." The provider step never retries, so a timeout cannot charge
+twice.
+
+Other Decide tools keep the SDK default timeout reset by progress.
 
 ### Database connections
 
@@ -162,7 +254,7 @@ and a different result shape.
 The `decide_analysis_run` table stores:
 
 - the stable public run ID;
-- the chat thread and AgentDO runtime;
+- the owner (chat thread or automation run) and AgentDO runtime;
 - the validated question and input data;
 - the current attempt and deterministic Workflow instance ID;
 - the latest customer-safe progress;

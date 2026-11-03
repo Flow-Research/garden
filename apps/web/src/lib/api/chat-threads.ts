@@ -37,6 +37,7 @@ export type ChatDecideAnalysis = {
   runId: string
   status: ChatDecideAnalysisStatus
   progress: { message?: string } | null
+  error: { code: string; message: string } | null
   files: ChatDecideAnalysisFile[]
   createdAt: string
   startedAt: string | null

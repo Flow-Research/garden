@@ -11,6 +11,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core'
 import { agent } from './agents.js'
+import { automationRun } from './automations.js'
 import { chatThread } from './chat.js'
 import { user } from './users.js'
 import { organization } from './workspaces.js'
@@ -27,9 +28,14 @@ export const decideAnalysisRun = pgTable(
     ownerUserId: uuid('owner_user_id')
       .notNull()
       .references(() => user.id),
-    threadId: uuid('thread_id')
-      .notNull()
-      .references(() => chatThread.id, { onDelete: 'cascade' }),
+    ownerKind: text('owner_kind').notNull().default('chat'),
+    threadId: uuid('thread_id').references(() => chatThread.id, {
+      onDelete: 'cascade',
+    }),
+    automationRunId: uuid('automation_run_id').references(
+      () => automationRun.id,
+      { onDelete: 'cascade' },
+    ),
     agentId: uuid('agent_id')
       .notNull()
       .references(() => agent.id),
@@ -82,16 +88,23 @@ export const decideAnalysisRun = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    uniqueIndex('decide_analysis_run_workspace_idempotency_idx').on(
-      table.workspaceId,
-      table.idempotencyKey,
-    ),
     uniqueIndex('decide_analysis_run_workflow_instance_idx').on(
       table.workflowInstanceId,
     ),
-    uniqueIndex('decide_analysis_run_thread_active_idx')
+    uniqueIndex('decide_analysis_run_chat_active_idx')
       .on(table.threadId)
-      .where(sql`${table.status} in ('queued', 'running', 'cancel_requested')`),
+      .where(
+        sql`${table.threadId} is not null and ${table.status} in ('queued', 'running', 'cancel_requested')`,
+      ),
+    uniqueIndex('decide_analysis_run_automation_run_active_idx')
+      .on(table.automationRunId)
+      .where(
+        sql`${table.automationRunId} is not null and ${table.status} in ('queued', 'running', 'cancel_requested')`,
+      ),
+    index('decide_analysis_run_automation_run_updated_idx').on(
+      table.automationRunId,
+      table.updatedAt,
+    ),
     index('decide_analysis_run_thread_updated_idx').on(
       table.threadId,
       table.updatedAt,
@@ -103,6 +116,10 @@ export const decideAnalysisRun = pgTable(
     check(
       'decide_analysis_run_status_check',
       sql`${table.status} in ('queued', 'running', 'cancel_requested', 'completed', 'failed', 'cancelled')`,
+    ),
+    check(
+      'decide_analysis_run_owner_check',
+      sql`(${table.ownerKind} = 'chat' and ${table.threadId} is not null and ${table.automationRunId} is null) or (${table.ownerKind} = 'automation_run' and ${table.automationRunId} is not null and ${table.threadId} is null)`,
     ),
     check(
       'decide_analysis_run_attempt_positive_check',

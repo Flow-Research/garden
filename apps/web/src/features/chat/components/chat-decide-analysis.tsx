@@ -27,7 +27,8 @@ import {
 } from '@/lib/api/chat-threads'
 import { decideAnalysisOptions } from '../queries'
 import {
-  decideAnalysisStepView,
+  DECIDE_LONG_RUN_MS,
+  decideAnalysisCardView,
   decideFileKind,
   formatElapsed,
   type DecideFileKind,
@@ -52,6 +53,19 @@ function useNowSeconds() {
     subscribeToSeconds,
     () => Math.floor(Date.now() / 1000),
     () => 0,
+  )
+}
+
+/**
+ * Whether a run has passed the long-run mark. The snapshot is a boolean, so
+ * the card re-renders once when it flips instead of every second the way the
+ * elapsed timer does.
+ */
+function useIsLongRun(since: string | null) {
+  return useSyncExternalStore(
+    subscribeToSeconds,
+    () => since !== null && Date.now() - Date.parse(since) > DECIDE_LONG_RUN_MS,
+    () => false,
   )
 }
 
@@ -129,19 +143,29 @@ export function DecideAnalysisCard({
 }) {
   const queryClient = useQueryClient()
   const options = decideAnalysisOptions(threadId, runId)
-  const { data } = useQuery(options)
+  const { data, isError } = useQuery(options)
   const cancel = useMutation({
     mutationFn: () => cancelChatDecideAnalysis(threadId, runId),
     onSuccess: (run) => queryClient.setQueryData(options.queryKey, run),
   })
-  const view = decideAnalysisStepView(
-    data?.status ?? null,
-    data?.progress?.message ?? null,
+  const isLongRun = useIsLongRun(
+    data ? (data.startedAt ?? data.createdAt) : null,
   )
-  const StatusIcon =
-    data && data.status in STATUS_ICONS
-      ? STATUS_ICONS[data.status as keyof typeof STATUS_ICONS]
-      : null
+  const view = decideAnalysisCardView({
+    status: data?.status ?? null,
+    progressMessage: data?.progress?.message ?? null,
+    failureMessage: data?.error?.message ?? null,
+    isLongRun,
+    loadFailed: isError,
+    cancelError: cancel.error,
+  })
+  const StatusIcon = view.active
+    ? null
+    : view.label === 'Analysis failed'
+      ? TriangleAlert
+      : data && data.status in STATUS_ICONS
+        ? STATUS_ICONS[data.status as keyof typeof STATUS_ICONS]
+        : null
   const files = data?.files ?? []
 
   return (

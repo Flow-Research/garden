@@ -26,7 +26,7 @@
 | `permissionGrant` table (auto/allow/ask)                    | `packages/db/src/schema/capabilities.ts`                                                                                                                                                                       |
 | `permissionRequest` table                                   | `packages/db/src/schema/capabilities.ts`                                                                                                                                                                       |
 | Connector registry                                          | `packages/connectors/src/registry.ts` — 5 connectors with OAuth/API-key support                                                                                                                                |
-| Connector CI workflow                                       | `.github/workflows/connectors.yml`                                                                                                                                                                             |
+| Connector coverage verification                            | `package.json` (`pnpm verify:connectors`), included in `.github/workflows/ci.yml`                                                                                                                               |
 | Stable MCP server ids for connectors                        | `agents@0.14.5` adds `id` to `addMcpServer()` / `addRpcMcpServer()`; Garden now passes `id: connector.id` and treats MCP server ids as connector ids.                                                          |
 
 ## Accepted Costs
