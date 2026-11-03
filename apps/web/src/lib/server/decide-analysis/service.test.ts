@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { randomUUID } from 'node:crypto'
+import { Result } from 'better-result'
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import * as schema from '@garden/db/schema'
@@ -7,6 +8,8 @@ import { startTestDb, type TestDb } from '@garden/db/testing'
 import type { DecideAnalysisWorkflowParams } from '@garden/agent-runtime/src/decide-analysis-types'
 import {
   cancelDecideAnalysis,
+  DECIDE_ANALYSIS_INPUT_LIMIT_BYTES,
+  DecideAnalysisServiceError,
   describeDatabaseError,
   getDecideAnalysis,
   finishDecideAnalysis,
@@ -15,6 +18,7 @@ import {
   startDecideAnalysis,
   toPublicDecideAnalysis,
   type DecideAnalysisEnvironment,
+  type DecideAnalysisInputData,
 } from './service'
 
 let testDb: TestDb
@@ -309,6 +313,114 @@ describe('startDecideAnalysis', () => {
     )
 
     expect(result.isErr() && result.error.code).toBe('not_found')
+  })
+})
+
+describe('startDecideAnalysis input', () => {
+  const brainFile = { kind: 'brain_file' as const, fileId: 'file_1' }
+  const startWith = (thread: Thread, input: DecideAnalysisInputData) =>
+    startDecideAnalysis({
+      env,
+      workspaceId: thread.workspaceId,
+      ownerUserId: thread.ownerUserId,
+      owner: chat(thread.threadId),
+      idempotencyKey: randomUUID(),
+      question: 'Which region grew fastest?',
+      input,
+    })
+
+  it('stores the full text Garden read from a Brain source', async () => {
+    const thread = await seedThread()
+    const sheet = 'region\trevenue\nNorth\t120\nSouth\t95\n'
+    const reads: unknown[] = []
+
+    const started = await startWith(thread, {
+      kind: 'source',
+      source: brainFile,
+      read: async (request) => {
+        reads.push(request)
+        return Result.ok(sheet)
+      },
+    })
+
+    expect(started.isOk()).toBe(true)
+    expect(reads).toEqual([
+      {
+        workspaceId: thread.workspaceId,
+        ownerUserId: thread.ownerUserId,
+        source: brainFile,
+      },
+    ])
+    const [row] = await runsFor(thread.threadId)
+    expect(row?.inputData).toBe(sheet)
+    expect(row?.providerSessionId).toBeNull()
+  })
+
+  it('creates no run when the source cannot be read', async () => {
+    const thread = await seedThread()
+    const startsBefore = workflowStarts.length
+
+    const result = await startWith(thread, {
+      kind: 'source',
+      source: brainFile,
+      read: async () =>
+        Result.err(
+          new DecideAnalysisServiceError({
+            code: 'source_unavailable',
+            message: 'The Brain file is unavailable.',
+          }),
+        ),
+    })
+
+    expect(result.isErr() && result.error.code).toBe('source_unavailable')
+    expect(await runsFor(thread.threadId)).toHaveLength(0)
+    expect(workflowStarts.length).toBe(startsBefore)
+  })
+
+  it('refuses an empty source instead of continuing an earlier session', async () => {
+    const thread = await seedThread()
+    await startAndFinish(thread, { sessionId: 'sess_done' }, 'a\n1')
+
+    const result = await startWith(thread, {
+      kind: 'source',
+      source: brainFile,
+      read: async () => Result.ok('  \n'),
+    })
+
+    expect(result.isErr() && result.error.code).toBe('source_unavailable')
+    expect(await runsFor(thread.threadId)).toHaveLength(1)
+  })
+
+  it('rejects input over 100 MB of UTF-8 before a paid run starts', async () => {
+    const thread = await seedThread()
+    const startsBefore = workflowStarts.length
+    // Two UTF-8 bytes per character: under the limit in characters, over it
+    // in bytes.
+    const oversized = 'é'.repeat(DECIDE_ANALYSIS_INPUT_LIMIT_BYTES / 2 + 1)
+
+    const pasted = await startWith(thread, { kind: 'text', text: oversized })
+    const sourced = await startWith(thread, {
+      kind: 'source',
+      source: brainFile,
+      read: async () => Result.ok(oversized),
+    })
+
+    expect(pasted.isErr() && pasted.error.code).toBe('input_too_large')
+    expect(sourced.isErr() && sourced.error.code).toBe('input_too_large')
+    expect(pasted.isErr() && pasted.error.message).toMatch(/100 MB/)
+    expect(await runsFor(thread.threadId)).toHaveLength(0)
+    expect(workflowStarts.length).toBe(startsBefore)
+  })
+
+  it('accepts input exactly at the limit', async () => {
+    const thread = await seedThread()
+
+    const result = await startWith(thread, {
+      kind: 'text',
+      text: 'x'.repeat(DECIDE_ANALYSIS_INPUT_LIMIT_BYTES),
+    })
+
+    expect(result.isOk()).toBe(true)
   })
 })
 

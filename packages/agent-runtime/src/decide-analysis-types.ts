@@ -1,3 +1,20 @@
+import { z } from 'zod'
+
+/**
+ * A file Garden reads for Decide, so the model never pastes its contents.
+ * Adding Google Drive is one more variant here.
+ */
+export const decideAnalysisSourceSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('brain_file'),
+      fileId: z.string().trim().min(1).describe('Brain file id.'),
+    })
+    .strict(),
+])
+
+export type DecideAnalysisSource = z.infer<typeof decideAnalysisSourceSchema>
+
 /**
  * Who a Decide run belongs to. Before, every run belonged to a chat thread,
  * so an automation could not own one. The owner decides dedupe (one active

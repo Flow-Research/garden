@@ -5,6 +5,7 @@ import type {
   DecideAnalysisOwner,
   DecideAnalysisProgress,
   DecideAnalysisSnapshot,
+  DecideAnalysisSource,
   DecideAnalysisStartOutcome,
   DecideAnalysisStatus,
   DecideAnalysisWorkflowBinding,
@@ -25,6 +26,8 @@ export class DecideAnalysisServiceError extends TaggedError(
     | 'conflict'
     | 'database_error'
     | 'workflow_start_failed'
+    | 'source_unavailable'
+    | 'input_too_large'
   message: string
   cause?: unknown
 }>() {}
@@ -35,10 +38,32 @@ export type DecideAnalysisEnvironment = {
 }
 
 /**
- * The data a start sends to Decide. Omitted means a follow-up that continues
- * the owner's latest completed Decide session.
+ * Decide accepts inputs up to 100 MB (confirmed with Decide, 2026-11-03).
+ * Counted in UTF-8 bytes, decimal megabytes, so Garden never sends more than
+ * Decide documents.
  */
-export type DecideAnalysisInputData = { kind: 'text'; text: string }
+export const DECIDE_ANALYSIS_INPUT_LIMIT_BYTES = 100 * 1000 * 1000
+
+/** Reads a typed source to the full text Decide analyzes. */
+export type DecideAnalysisSourceReader = (request: {
+  workspaceId: string
+  ownerUserId: string
+  source: DecideAnalysisSource
+}) => Promise<ResultValue<string, DecideAnalysisServiceError>>
+
+/**
+ * The data a start sends to Decide. `text` is pasted data. `source` names a
+ * file Garden reads itself, so the model never copies file contents into the
+ * call. Omitted means a follow-up that continues the owner's latest
+ * completed Decide session.
+ */
+export type DecideAnalysisInputData =
+  | { kind: 'text'; text: string }
+  | {
+      kind: 'source'
+      source: DecideAnalysisSource
+      read: DecideAnalysisSourceReader
+    }
 
 /**
  * A chat owner's `threadId` is the trusted thread key from the runtime
@@ -498,6 +523,71 @@ async function startWorkflow(env: DecideAnalysisEnvironment, row: RunRow) {
 }
 
 /**
+ * Tool error for a Decide start that has no data and no earlier completed
+ * session in the thread. The chat model relays it, so it asks the user for
+ * the file in plain words.
+ */
+export const DECIDE_ANALYSIS_NEEDS_DATA_MESSAGE =
+  'There is no data to analyze yet. Ask the user to attach the file or paste the data they want Decide to analyze. No earlier Decide analysis in this chat can be continued.'
+
+/**
+ * Counts UTF-8 bytes without encoding when the answer is already known: a
+ * UTF-16 code unit encodes to between one and three UTF-8 bytes.
+ */
+function exceedsInputLimit(text: string) {
+  if (text.length > DECIDE_ANALYSIS_INPUT_LIMIT_BYTES) return true
+  if (text.length * 3 <= DECIDE_ANALYSIS_INPUT_LIMIT_BYTES) return false
+  return (
+    new TextEncoder().encode(text).byteLength >
+    DECIDE_ANALYSIS_INPUT_LIMIT_BYTES
+  )
+}
+
+/**
+ * Turns a start's input into the text stored in `input_data`. Before, the
+ * only input was text the model pasted, so a large sheet passed through the
+ * model and could be cut or summarised. A `source` is now read by Garden.
+ * Pasted and read text both get the 100 MB check here, so neither path can
+ * start an analysis Decide would refuse.
+ */
+async function resolveInputText(
+  input: StartDecideAnalysisInput,
+): Promise<ResultValue<string | undefined, DecideAnalysisServiceError>> {
+  const read: ResultValue<string | undefined, DecideAnalysisServiceError> =
+    input.input === undefined
+      ? Result.ok(undefined)
+      : input.input.kind === 'text'
+        ? Result.ok(input.input.text)
+        : await input.input.read({
+            workspaceId: input.workspaceId,
+            ownerUserId: input.ownerUserId,
+            source: input.input.source,
+          })
+  return read.andThen((text) => {
+    if (text !== undefined && exceedsInputLimit(text)) {
+      return Result.err(
+        new DecideAnalysisServiceError({
+          code: 'input_too_large',
+          message:
+            'The data is larger than the 100 MB Decide accepts. Ask the user for a smaller file or a filtered export.',
+        }),
+      )
+    }
+    if (text?.trim()) return Result.ok(text)
+    // An empty file must not fall through to a follow-up that silently
+    // continues an earlier session.
+    return input.input?.kind === 'source'
+      ? Result.err(
+          new DecideAnalysisServiceError({
+            code: 'source_unavailable',
+            message: 'The selected file has no text to analyze.',
+          }),
+        )
+      : Result.ok(undefined)
+  })
+}
+
+/**
  * Starts one analysis for an owner (a chat thread or an automation run), or
  * returns the run that is already active for that owner. Before, every call
  * created a run, so a model that retried while it waited paid Decide twice.
@@ -516,15 +606,11 @@ async function startWorkflow(env: DecideAnalysisEnvironment, row: RunRow) {
  *
  * Garden owns the Decide session. A call without input continues the
  * owner's latest completed session; a call with input starts a new one.
+ *
+ * A `source` is read and every input is size-checked before the transaction
+ * opens, so a file read never holds a database transaction and an oversized
+ * input never creates a run or starts a paid analysis.
  */
-/**
- * Tool error for a Decide start that has no data and no earlier completed
- * session in the thread. The chat model relays it, so it asks the user for
- * the file in plain words.
- */
-export const DECIDE_ANALYSIS_NEEDS_DATA_MESSAGE =
-  'There is no data to analyze yet. Ask the user to attach the file or paste the data they want Decide to analyze. No earlier Decide analysis in this chat can be continued.'
-
 export async function startDecideAnalysis(
   input: StartDecideAnalysisInput,
 ): Promise<
@@ -540,7 +626,9 @@ export async function startDecideAnalysis(
       }),
     )
   }
-  const data = input.input?.text.trim() ? input.input.text : undefined
+  const resolvedText = await resolveInputText(input)
+  if (resolvedText.isErr()) return Result.err(resolvedText.error)
+  const data = resolvedText.value
   const ownerScope = {
     workspaceId: input.workspaceId,
     ownerUserId: input.ownerUserId,
