@@ -1,6 +1,6 @@
 # Decide in Automations
 
-**Status:** spec, not built
+**Status:** delivery steps 1 and 2 built; step 3 (Drive `source`, template) not built
 **Last reviewed:** 2026-11-03
 
 ## The problem
@@ -114,7 +114,7 @@ thread.
   Slack depending on the delivery choice. That needs `decide` added to the
   `requiredConnectors` enum.
 - The run input contract is typed: `{ source: DecideAnalysisSource; question:
-  string; deliverTo: { channel: 'gmail' | 'slack'; target: string } }`.
+string; deliverTo: { channel: 'gmail' | 'slack'; target: string } }`.
 - The prompt tells the agent to call `decide_analyze` with `source`, never to
   paste file contents, and to send the report only from Decide's findings.
 
@@ -123,9 +123,10 @@ blobs.
 
 ## Delivery order
 
-1. Owner type, migration, Brain `source`, and the size check.
+1. Owner type, migration, Brain `source`, and the size check. Built.
 2. Automation pause and resume through `RunWorkflow`, and the run-page card.
-3. Drive `source` and the Weekly data report template.
+   Built; see [Automation owners](./durable-decide-analysis-design.md#automation-owners).
+3. Drive `source` and the Weekly data report template. Not built.
 
 ## Out of scope
 
