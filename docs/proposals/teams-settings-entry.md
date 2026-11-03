@@ -1,8 +1,14 @@
-# Teams admin profile implementation spec
+---
+title: Add a Teams entry to the Settings dialog
+description: Proposal to give workspace owners and admins a Settings entry that opens the existing /teams admin surface, with the API, authorization, and test contract it must keep.
+status: proposal
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
 
-**Status:** implementation proposal for `dev`
-**Date:** 2026-10-16
-**Audience:** frontend, backend, infrastructure, and QA engineers
+**Date:** 2026-10-16. **Audience:** frontend, backend, infrastructure, and QA engineers.
+
+> **Not built.** As of 2026-11-03 the Settings dialog (`apps/web/src/features/settings/components/settings-page.tsx`) has no Teams entry. Teams is reachable from the sidebar (`/teams`, with an admin-only Issues child at `/teams/issues`), and the `Manage Teams` button in `team-overview.tsx` is still disabled.
 
 ## 1. Purpose
 
@@ -12,8 +18,8 @@ Team surface or a second authorization model. The existing `/teams` routes on
 ownership transfer, and Team-scoped issues. This work should finish the admin
 entry point and make the current behavior explicit, testable, and deployable.
 
-This spec is code-backed against `origin/dev` at `6977ce58`. The current
-implementation map in `docs/core/technical.md` remains authoritative when this
+This spec was written against `origin/dev` at `6977ce58`. The
+[architecture map](../reference/architecture-map.md) is authoritative when this
 document conflicts with an implementation detail.
 
 ## 2. Scope
@@ -25,9 +31,9 @@ document conflicts with an implementation detail.
 - Deep-link that entry to the canonical `/teams` admin surface rather than
   duplicating Team CRUD inside Settings.
 - Preserve the existing admin overview and detail designs:
-  - workspace summary cards;
-  - Team cards with create, edit, delete, and ownership actions;
-  - Members and Issues tabs on a Team detail page;
+  - workspace summary cards
+  - Team cards with create, edit, delete, and ownership actions
+  - Members and Issues tabs on a Team detail page
   - member search, role/type filtering, issue search, and issue list/kanban
     switching.
 - Keep Team membership, ownership, issue visibility, and workspace role rules
@@ -47,8 +53,8 @@ document conflicts with an implementation detail.
 
 ## 3. Product decisions
 
-- Database and API terminology is `Team`; UI copy may use “Teams” or
-  “Departments” where the design requires it.
+- Database and API terminology is `Team`; UI copy may use "Teams" or
+  "Departments" where the design requires it.
 - A Team belongs to one workspace and can contain users and agents.
 - A Team has one human owner. Agents cannot own Teams.
 - Workspace owners and admins can manage every Team.
@@ -132,9 +138,9 @@ Invalid tab values must resolve to `members`.
 - Route loaders prefetch workspace-scoped Team queries through
   `prefetchActiveWorkspace`.
 - Query keys remain workspace-scoped:
-  - `['teams', workspaceId, 'list']`;
-  - `['teams', workspaceId, 'detail', teamId]`;
-  - `['teams', workspaceId, 'members', teamId]`;
+  - `['teams', workspaceId, 'list']`
+  - `['teams', workspaceId, 'detail', teamId]`
+  - `['teams', workspaceId, 'members', teamId]`
   - `['issues', workspaceId, 'team', teamId]`.
 - Preserve previous data during refetches so navigation and mutations do not
   flash empty states.
@@ -174,9 +180,9 @@ realtime payloads.
 Every handler must authenticate first and resolve the workspace from the
 request context. Use the existing access helpers:
 
-- `requireTeamAccess` for reads;
-- `requireTeamManage` for Team/member writes;
-- `requireTeamOwnerTransfer` for ownership transfer;
+- `requireTeamAccess` for reads
+- `requireTeamManage` for Team/member writes
+- `requireTeamOwnerTransfer` for ownership transfer
 - `requireWorkspacePermission` for workspace-level create/delete policy.
 
 Do not rely on client role checks, route visibility, or `can_*` DTO fields for
@@ -187,10 +193,10 @@ database predicate. Composite workspace-safe foreign keys remain required.
 
 Keep the current Drizzle model:
 
-- `team`: workspace, name, description, human owner, creator, timestamps;
+- `team`: workspace, name, description, human owner, creator, timestamps
 - `team_member`: exactly one `user_id` or `agent_id`, Team/workspace scope,
   creator, timestamp;
-- `issue.team_id`: nullable, with a composite Team/workspace foreign key;
+- `issue.team_id`: nullable, with a composite Team/workspace foreign key
 - indexes for workspace/name, Team membership, and Team/status issue reads.
 
 If a schema change becomes necessary, edit the Drizzle schema first, then run:
@@ -270,16 +276,16 @@ focused Settings tests rather than coupling tests to implementation details.
 
 ### Backend and integration
 
-- unauthenticated requests return `401`;
-- non-members cannot read another Team;
-- workspace managers can read/manage every Team;
-- Team owners can manage their Team but cannot transfer ownership or delete;
-- agents cannot become owners;
-- cross-workspace users and agents cannot be added;
-- duplicate names and memberships return stable `409` codes;
-- deleting a Team with issues returns the stable `TEAM_HAS_ISSUES` error;
-- issue counts obey caller visibility;
-- realtime events are emitted only after successful writes;
+- unauthenticated requests return `401`
+- non-members cannot read another Team
+- workspace managers can read/manage every Team
+- Team owners can manage their Team but cannot transfer ownership or delete
+- agents cannot become owners
+- cross-workspace users and agents cannot be added
+- duplicate names and memberships return stable `409` codes
+- deleting a Team with issues returns the stable `TEAM_HAS_ISSUES` error
+- issue counts obey caller visibility
+- realtime events are emitted only after successful writes
 - realtime payloads do not expose viewer-relative fields.
 
 Use the existing Teams integration fixtures and route tests under

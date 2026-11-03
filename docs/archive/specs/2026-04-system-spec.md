@@ -1,4 +1,12 @@
-# Garden — system spec
+---
+title: "Garden — system spec"
+description: Snapshot of the April 2026 draft system spec that predates the current architecture.
+status: archived
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
+
+> **Historical snapshot.** This page records the state at the time it was written. It is not current truth.
 
 **Status:** draft  
 **Last updated:** 2026-04-23

@@ -1,4 +1,12 @@
-# Prompt formatting: XML vs markdown vs plain text
+---
+title: "Prompt formatting: XML vs markdown vs plain text"
+description: Snapshot of an untested experiment comparing XML, Markdown, and plain-text prompt formatting.
+status: archived
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
+
+> **Historical snapshot.** This page records the state at the time it was written. It is not current truth.
 
 Status: **untested** — needs A/B eval across target models.
 

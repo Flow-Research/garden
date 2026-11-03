@@ -1,88 +1,41 @@
-# Internal handbook
+---
+title: The handbook serves the repository's docs folder inside Garden
+description: How /handbook renders docs/ with Fumadocs, why it lives in the Garden Worker, and the limits a writer needs to know.
+status: current
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
 
-**Status:** implemented
+The handbook is Garden's engineering documentation, served at `/handbook` inside the Garden web app. It renders the `docs/` folder of the repository. A merged pull request that changes a doc changes the handbook, with no second copy to keep in sync.
 
-**Last updated:** 2026-11-02
+## Any signed-in user can read it
 
-## Outcome
+`apps/web/src/routes/_authenticated/handbook.$.tsx` sits under the `_authenticated` layout, which owns the sign-in redirect. A signed-out visitor who opens `/handbook` goes to `/login` and comes back after signing in. The route sits outside `_app`, so the handbook uses its own layout instead of the app shell. An unknown handbook path throws `notFound()`.
 
-A signed-in Garden user opens `/handbook` and reads Garden's engineering
-docs as a site with a sidebar, instead of hunting through Google
-Docs and raw markdown.
+No role or workspace check applies. The handbook uses no database, Durable Object, or external service.
 
-## Scope and non-goals
+## Only the Diátaxis folders become pages
 
-### In scope
+`apps/web/src/features/handbook/source.ts` loads `docs/` through the `fumadocs-mdx` Vite plugin. It includes `index.mdx` and the `tutorials`, `guides`, `concepts`, `reference`, `decisions`, `proposals`, and `archive` folders. Each folder's `meta.json` sets the sidebar order.
 
-- A Fumadocs site mounted at `/handbook` inside the Garden web app.
-- Pages written as MDX in `docs/handbook/`, so docs change through pull
-  requests next to the code.
-- First pages: the architecture overview and the engineering process.
+Other files in `docs/` are not pages. `docs/README.md` stays a reading guide for GitHub and agents. `assets/`, `templates/`, and `garden-os/` are left out.
 
-### Out of scope
+## Relative links work on GitHub and in the handbook
 
-- Role or workspace restrictions. Any signed-in user can read the handbook.
-- Moving the rest of `docs/` into the site. That follows in later pull
-  requests, once each file is checked against the MDX parser.
-- Public, end-user documentation.
-- Architecture decision records (ADRs).
+Docs link to each other with relative paths, so they read correctly on GitHub. `remarkHandbookLinks` in `apps/web/src/features/handbook/remark-handbook-links.ts` rewrites those links at build time. A link to another page in `docs/` becomes its `/handbook/...` URL. A link to any other repository file becomes a GitHub URL on the `dev` branch. Absolute URLs and in-page anchors stay unchanged.
 
-## User behavior
+## Why the handbook lives in the app
 
-1. A signed-in user opens `/handbook` and sees the overview page with a
-   sidebar of handbook pages.
-2. A signed-out user who opens `/handbook` is redirected to `/login` and
-   returned to the handbook after signing in.
-3. An unknown handbook path shows the not-found page.
+- **Fumadocs, not a separate docs site.** Fumadocs supports TanStack Router, so the handbook runs in the same Worker, reuses Garden's sign-in, and deploys with the code it describes.
+- **`/handbook`, not `/docs`.** The name describes the content, works the same in every environment, and leaves a `docs.` subdomain free for public docs later.
+- **The repository is the source of truth.** Google Docs are for drafts only.
 
-## System boundary
+## Limits a writer needs to know
 
-- Route: `apps/web/src/routes/_authenticated/handbook.$.tsx`. It sits under
-  the `_authenticated` layout, which owns the sign-in redirect, and outside
-  `_app`, so the handbook uses its own layout instead of the app shell.
-- Content source: `apps/web/src/features/handbook/source.ts`, which loads
-  `docs/handbook/` through the `fumadocs-mdx` Vite plugin.
-- No database, Durable Object, or external service is involved.
+- The sign-in check protects the page, not the files behind it. The compiled MDX ships in the app's static JavaScript chunks. Keep secrets and credentials out of the handbook.
+- Search is off. `RootProvider` disables it until a search route exists.
+- The handbook follows the app's light or dark setting. Fumadocs' own theme toggle is off.
+- `fumadocs-mdx` is pinned to 15.4.0, the newest release that accepts Garden's `zod` 4.4.3. Later releases need a newer `zod` that breaks Executor's nested `zod` at runtime.
+- In dev only, React can log a hydration attribute warning on handbook pages. Vite's dependency pre-bundler collapses Fumadocs' nested `lucide-react` and `@base-ui/react` onto Garden's older copies. Production bundles keep both copies.
 
-## Data and permissions
-
-The handbook reads only the MDX files that ship with the build. The sign-in
-check is the only gate.
-
-## Design decisions
-
-- **Fumadocs, not a separate docs site.** Fumadocs supports TanStack Router,
-  so the handbook runs in the same Worker, reuses Garden's sign-in, and
-  deploys with the code it describes.
-- **`/handbook`, not `/docs` or `/dev/docs`.** The name describes the content,
-  works the same in every environment, and leaves a `docs.` subdomain free
-  for public docs later.
-- **The repo is the source of truth.** Google Docs are for drafts only.
-
-## Verification
-
-- `pnpm --filter @garden/web build` compiles the handbook.
-- Signed in: `/handbook` and `/handbook/engineering-process` render with the
-  sidebar.
-- Signed out: `/handbook` redirects to `/login`.
-- Unknown path: `/handbook/does-not-exist` shows the not-found page.
-
-Local verification on 2026-11-02: PASS. Evidence in
-`~/.garden/evidence/20261102T201606Z-internal-handbook/`.
-
-## Gaps and follow-up
-
-- The sign-in check protects the page, not the files behind it. The
-  compiled MDX ships in the app's static JavaScript chunks. Keep
-  secrets and credentials out of the handbook.
-- Search is not wired yet.
-- In dev only, React logs a hydration attribute warning on handbook pages.
-  Vite's dependency pre-bundler collapses Fumadocs' nested `lucide-react`
-  1.66 and `@base-ui/react` 1.9 onto Garden's 1.8 and 1.4 in the browser.
-  Production bundles keep both copies, so server and client match there.
-  Aligning Garden's versions removes the warning.
-- `fumadocs-mdx` is pinned to 15.4.0, the newest release that accepts
-  Garden's `zod` 4.4.3. Later releases require `zod` 4.6.7, which breaks
-  Executor's nested `zod` 4.3.6 at runtime.
-- Move `docs/core`, `docs/features`, and `docs/known-gaps` into the site.
-- Add ADRs and a freshness check (`owner`, `last_reviewed`) in CI.
+To write or move a page, follow [write a feature doc](../../guides/develop/write-a-feature-doc.md).

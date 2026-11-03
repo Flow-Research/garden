@@ -1,4 +1,12 @@
-# Garden Frontend Fixes (October 2026)
+---
+title: "Garden Frontend Fixes (October 2026)"
+description: Snapshot of the October 2026 report on fixing the frontend audit findings, and what was left for later.
+status: archived
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
+
+> **Historical snapshot.** This page records the state at the time it was written. It is not current truth.
 
 *October 24, 2026. Branch `frontend-audit`, from the audit commit `112e9193` to `d5cd2bcd`. Not pushed.*
 
@@ -21,7 +29,7 @@ All 29 Fix-first defects and all 13 action findings (A1–A13) are fixed. Most o
 - **Typecheck and lint:** all seven `typecheck` steps pass, and the changed files add no lint warnings.
 - **Browser:** nothing was run in a browser. Visual changes (dark mode, icon sizes, the drag overlay) and drag-and-drop behaviour should be checked by hand before merging.
 
-> [!CAUTION]
+> **Caution.**
 > **Decision: issue order is stored as fractional-indexing keys (`7d0131ba`). This needs a database migration.**
 >
 > **Problem (N7):**
@@ -210,7 +218,7 @@ Commits are on `frontend-audit`. "Partly" means the user-facing defect is fixed 
 | N8 | The dashboard's inbox count and preview counted raw events, so they disagreed with the sidebar badge, which counts threads. | Fixed (`0b12d674`) |
 | N9 | `/api/inbox/unread-count` counts events, not threads. | Left: blocks the D2 badge change, see amber section |
 
-> [!WARNING]
+> **Warning.**
 > **Left for later, and why.**
 >
 > These items were not done in this pass. Most are app-wide refactors or design decisions. Done without design agreement and browser testing, they are likely to cause new bugs, and the audit's user-facing defects are already fixed without them. Each group says what it needs before it starts.

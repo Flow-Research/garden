@@ -1,62 +1,64 @@
-# Issue Flow
+---
+title: Issues are the shared ledger of work for people and agents
+description: How an issue becomes an agent run, where that run's events and outputs live, and how issues connect to chat and the Inbox.
+status: current
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
 
-Core issue-run runtime has shipped. This file tracks remaining gaps against the current codebase, not the old slice plan.
+An issue is a unit of work that a person or an agent owns. The UI calls issues Tasks and shows them at `/tasks`. Assigning an issue to an agent turns it into a run: the agent works on the issue in the background, records what it did, and returns reviewable outputs to the same issue.
 
-## Current implementation
+## An issue and its run are separate records
 
-| Item                             | Evidence                                                                                                                                              |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Issue schema and run ledger      | `packages/db/src/schema/issues.ts` (`issue`, `issue_run`, `issue_run_event`, `issue_work_product`, `issue_source_binding`)                            |
-| Run statuses and trigger sources | `packages/db/src/schema/issue-values.ts`                                                                                                              |
-| Start/cancel/list run services   | `packages/server/src/issues/run-service.ts`                                                                                                           |
-| Run orchestration                | `AgentDO.startIssueRunWorkflow`, `AgentDO.executeRunTurn`, `RunWorkflow` in `packages/agent-runtime/src`                                              |
-| Issue Think facet                | `packages/agent-runtime/src/issue-run-sub-agent.ts`                                                                                                   |
-| Issue tools                      | `packages/agent-runtime/src/agent-tools/`, `createChatSubAgentTools()`                                                                                |
-| Chat issue tools                 | `packages/agent-runtime/src/chat-sub-agent-tools.ts` (`create_issue`, `read_issue`, `list_issues`, `post_issue_comment`, `read_run`, `propose_agent`) |
-| Work products and apply flow     | `apps/web/src/lib/server/work-products.ts`, `packages/db/src/schema/issues.ts`                                                                        |
-| Active run/event polling         | `apps/web/src/lib/issues/queries.ts` (`refetchInterval: 2000` while active)                                                                           |
-| Issue UI                         | `apps/web/src/features/issues/components`                                                                                                             |
-| Inbox computation                | `apps/web/src/lib/server/inbox-compute.ts`                                                                                                            |
+`packages/db/src/schema/issues.ts` holds the issue model. These tables matter most:
 
-## Done: do not rebuild
+- `issue` stores the work item. Its `status` is one of `todo`, `in_progress`, `in_review`, `done`, `blocked`, or `cancelled`. Its assignee is a user or an agent.
+- `issue_run` stores one attempt by an agent to do the work. Its status is one of `queued`, `running`, `waiting_for_input`, `waiting_for_approval`, `succeeded`, `failed`, `cancelled`, or `blocked`.
+- `issue_run_event` stores the timeline of a run.
+- `issue_work_product` stores the outputs a run produces for review.
+- `issue_source_binding` links an issue to the external item it came from, such as a GitHub pull request or a Slack thread.
 
-| Item                                                | Evidence                                                                                                                                      |
-| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Per-agent Durable Object topology with issue facets | `packages/agent-runtime/src/agent-do.ts`, `IssueRunSubAgent` keyed by issue id                                                                |
-| Workflow-backed issue runs                          | `packages/server/src/issues/run-service.ts`, `packages/agent-runtime/src/run-workflow.ts`                                                     |
-| Run-level timeout and cancellation                  | `agent.run_timeout_sec`, `issue_run.cancel_requested_at`, `IssueRunSubAgent` watchdog logic                                                   |
-| Source binding and source reads                     | `packages/core/issues/source-binding.ts`, `packages/agent-runtime/src/agent-tools/read-source.ts`                                             |
-| Work product system                                 | `issue_work_product` schema + `apps/web/src/lib/server/work-products.ts`                                                                      |
-| Cost/usage attribution                              | `issue_run.usage_json`, runtime usage accumulation in `IssueRunSubAgent`                                                                      |
-| Computed inbox                                      | `apps/web/src/lib/server/inbox-compute.ts`, `inbox_dismissal` schema                                                                          |
-| Chat-primary issue link                             | `chat_thread.primary_issue_id`, `/api/chat/threads/:id/primary-issue`, chat title bar issue pill                                              |
-| Open chat from issue                                | issue detail header action creates/opens an agent chat for that issue                                                                         |
-| Issue mention links in chat                         | `MentionAwareAnchor`, issue mention card, base prompt reference instructions                                                                  |
-| Contextual composer/status-style agent entries      | issue detail components under `apps/web/src/features/issues/components`                                                                       |
-| Inbox self-comment exclusion                        | `apps/web/src/lib/server/inbox-compute.ts` includes agent comments and non-self user comments, then filters to relevant mentions/owned issues |
-| Permission request inbox workspace scoping          | `apps/web/src/lib/server/inbox-compute.ts` joins `permission_request` through `agent.workspace_id` before surfacing approvals                 |
-| SQL mention matching                                | `commentMentionsUserSql()` uses JSON containment against `issue_comment.mentions`; `issue_comment_mentions_gin` supports the query            |
+The value lists live in `packages/db/src/schema/issue-values.ts`.
 
-## Active gaps
+Keeping the issue apart from its runs lets one issue carry several attempts. A failed run does not erase the issue, and a person can retry or reassign without losing history.
 
-| Issue  | Gap                                                       | Priority | Notes / evidence                                                                                                                          |
-| ------ | --------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| FLO-31 | Prove issue and automation run lifecycle in staging.      | High     | Exercise start, wait, resume, cancel, failure, recovery, duplicate-start prevention, and visible terminal states through `RunWorkflow`.   |
-| FLO-36 | Add reverse issue-chat breadcrumbs and multi-issue links. | Medium   | `chat_thread.primary_issue_id` supports chat → one issue, but not a canonical issue → source-chat breadcrumb or additional linked issues. |
+## A run flows from the service to a Think facet through a Workflow
 
-The runtime-bundled Issue Interaction skill, bulk operations, recurrence UI, saved filters, and workspace-wide realtime are deferred rather than active issue-flow gaps.
+When you assign an issue to an agent and start it, the work passes through four layers:
 
-## Deferred product work
+1. `startIssueRun` in `packages/server/src/issues/run-service.ts` writes the `issue_run` row and asks the agent's runtime to begin.
+2. `AgentDO.startIssueRunWorkflow` starts a `RunWorkflow` instance for that run.
+3. `RunWorkflow` in `packages/agent-runtime/src/run-workflow.ts` drives the turns. It owns retry, wait, resume, and cancel.
+4. Each turn runs in `IssueRunSubAgent` (`packages/agent-runtime/src/issue-run-sub-agent.ts`), a Think facet keyed by the issue ID.
 
-| Feature                                    | Why deferred                                                                                         |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| Recurrence picker UI                       | Runtime has automations now; issue recurrence should be product-driven, not inherited from old plan. |
-| Bulk operations toolbar                    | Single-issue ops cover current workflow.                                                             |
-| Saved filter views                         | Useful once workspaces have larger issue volume.                                                     |
-| Rich editable agent-proposal approval form | Static approval card covers current flow.                                                            |
-| Agent inbox/workload view                  | Needs stronger multi-agent product demand.                                                           |
-| Capacity/backpressure controls             | Do when measured contention appears.                                                                 |
-| Sub-agent / `reports_to` cascade semantics | Schema exists, runtime semantics not needed for MVP.                                                 |
-| Bulk external import                       | Agent-driven source binding handles one issue at a time.                                             |
+`cancelIssueRun` sets `issue_run.cancel_requested_at`. The facet also enforces the agent's `run_timeout_sec`. Token and cost usage accumulates in `issue_run.usage_json`. The [run engine](../architecture/run-engine.md) page explains the Workflow loop in full.
 
-Current orchestration rules live in `docs/core/workflows-engine.md`.
+## Agents read the source and return work products
+
+An issue can carry source bindings. `packages/server/src/issues/source-binding.ts` attaches and lists them. During a run the agent reads the bound item with the `read_source` tool from `packages/agent-runtime/src/agent-tools/read-source.ts`, so it works from the original pull request, message, or email thread instead of a pasted summary.
+
+The run returns its results as work products. The `create_work_product` and `revise_work_product` tools write `issue_work_product` rows. A work product is a reviewable deliverable such as a report, checklist, plan, or proposed change. `apps/web/src/lib/server/work-products.ts` handles review and apply.
+
+## Chat and issues link in both directions
+
+Chat agents can work with issues directly. `createChatSubAgentTools` in `packages/agent-runtime/src/chat-sub-agent-tools.ts` gives a chat agent `create_issue`, `read_issue`, `list_issues`, `post_issue_comment`, `read_run`, and `propose_agent`.
+
+A chat thread can also point at one issue. `chat_thread.primary_issue_id` stores the link, `/api/chat/threads/:id/primary-issue` sets it, and the chat title bar shows the issue as a pill. From an issue's detail header you can open an agent chat about that issue. Issue mentions in chat messages render as links through `MentionAwareAnchor` in `apps/web/src/components/ai-elements/message.tsx`.
+
+## The Inbox is computed, not stored
+
+The Inbox has no table of items. `apps/web/src/lib/server/inbox-compute.ts` computes it on each request from approvals, mentions, blockers, and failed runs. It includes agent comments and comments by other users, and leaves out your own. Permission requests join through `agent.workspace_id`, so each workspace sees only its own approvals. Mentions match with `commentMentionsUserSql()`, a JSON containment query on `issue_comment.mentions` backed by the `issue_comment_mentions_gin` index. Dismissing an item writes an `inbox_dismissal` row.
+
+Computing the Inbox keeps it consistent with the data it summarizes. An item disappears when its cause is resolved, with no second record to clean up.
+
+## The UI polls active runs and listens for issue events
+
+While a run is active, the issue queries in `apps/web/src/lib/issues/queries.ts` refetch every two seconds (`refetchInterval: 2000`). Issue and comment changes outside a run reach the client through the workspace realtime hub. `apps/web/src/lib/realtime/invalidation.ts` turns `issue:*` and `comment:*` events into query invalidations. The [realtime](../architecture/realtime.md) page explains why the hub only tells clients to refetch.
+
+The issue UI lives in `apps/web/src/features/issues/components`.
+
+## Automations do not create issues
+
+Automations have their own ledger, `automation_run`. They never create issues as a way to run. See [automations](./automations.md).
+
+Open issue-flow gaps are tracked in [known gaps](../../reference/known-gaps.md).

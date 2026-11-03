@@ -1,80 +1,53 @@
-# Chat Switching Architecture
+---
+title: Chat opens one live connection per visible thread
+description: How a chat thread maps to a Think facet, how the web app connects to it, and why only the visible thread and one prewarmed thread hold sockets.
+status: current
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
 
-**Status:** current implementation note
-**Last reviewed:** 2026-05-24
+A chat thread is a conversation between you and one agent. Its metadata lives in the Postgres `chat_thread` table. Its messages live in a Think facet, `ChatSubAgent`, under the agent's `AgentDO`. The facet is named by `chat_thread.runtime_key`. For a thread linked to an issue, `runtime_key` equals the issue ID.
 
-This note documents the low-latency chat switching path after the runtime registry was simplified. Chat data is durable in Think/Postgres; the active panel opens the websocket it needs. There is no global warm runtime provider today.
+## The router decides which chat is visible
 
-## Ownership
+Chats are routes. `/chats` shows the composer for a new chat. `/chats/$threadId` renders `AgentInteractionScreen` for one thread, from `apps/web/src/routes/_authenticated/_app/chats.$threadId.tsx`. The router is the source of truth for the visible thread. No store or dock state competes with it.
 
-| Concern | Owner | Evidence |
-| --- | --- | --- |
-| Active dock panel and tab/panel persistence | `WorkspaceDockProvider` / FlexLayout | `apps/web/src/components/shell/workspace-dock.tsx` |
-| Active chat selection signal | `useChatStore.activeSessionId` | `packages/app-state/src/chat/store.ts`, `workspace-dock.tsx` commits panel state into store |
-| Chat session list and warm first-turn bookkeeping | `useAgentSessions` + React Query/cache/store | `apps/web/src/features/chat/use-agent-chat-sessions.ts` |
-| Live chat websocket | Mounted `AgentInteractionScreen` via `useChatRuntimeConnection()` | `apps/web/src/features/chat/components/agent-interaction-screen.tsx`, `chat-runtime-provider.tsx` |
-| Runtime connection | `useAgent({ agent: 'AgentDO', name, sub: [{ agent: 'ChatSubAgent', name: runtime_key }] })` + `useAgentChat` | `apps/web/src/features/chat/chat-runtime-provider.tsx:102-144` |
-| Transient panel UI | `ConnectedChatPanelInteraction` / controller-local state | `apps/web/src/features/chat/components/chat-panel-controller.tsx` |
-| Timeline rendering | `Conversation` / chat timeline components | `apps/web/src/features/chat/components` |
+Open chats appear as tabs above the content. `useSurfaceTabsStore` in `packages/app-state/src/surface-tabs/store.ts` keeps an ordered list of open tabs per surface and persists it per workspace, so a reload restores the strip. The store holds no routing logic. Selecting or closing a tab navigates the router.
 
-`ChatRuntimeProvider` remains mounted in `WorkspaceLayout`, but it currently renders `children` only. Do not rely on it as a runtime registry unless code is added for that purpose.
+## The visible screen owns the live connection
 
-## Click-to-render path
+`useChatRuntimeConnection` in `apps/web/src/features/chat/chat-runtime-provider.tsx` opens the socket where the screen uses it. It connects in two parts:
 
-For a normal existing chat row click:
+- `useAgent({ agent: 'AgentDO', name: session.hostName })` reaches the agent's parent runtime.
+- `useAgent` with `sub: [{ agent: 'ChatSubAgent', name: session.runtime_key }]`, passed to `useAgentChat`, reaches the thread's Think facet and its message stream.
 
-1. Sidebar calls `openPanel({ kind: 'chat', entityId: session.id, ... })`.
-2. `WorkspaceDockProvider.openPanel` activates or retargets a chat panel.
-3. Panel state writes the selected chat id into `useChatStore`.
-4. `AgentInteractionScreen` resolves the active session from store/panel params.
-5. The mounted panel calls `useChatRuntimeConnection({ session })`.
-6. `useAgent` connects to `AgentDO` and `ChatSubAgent(runtime_key)`.
-7. `useAgentChat` receives durable Think messages/stream state.
+Hidden and unopened threads hold no socket. Think keeps their messages durable, and they reattach when you open them. This keeps idle socket, facet, and MCP load low.
 
-Switching to a chat that already has cached metadata should update shell/sidebar selection immediately. The live websocket still belongs to the mounted panel.
+## Sends wait for the first history sync
 
-## URL sync
+Think sends the thread history as a `cf_agent_chat_messages` frame when a socket connects, and `useAgentChat` applies that frame by replacing its messages. A message sent on a new thread before that frame arrived used to be replaced by the empty history and lost. `createHistorySyncGate` now holds sends until the first `cf_agent_chat_messages` or `cf_agent_stream_resuming` frame arrives. Later sends pass straight through.
 
-The URL is still persistence/shareability, not the fast-path render source. In-app chat selection should route through FlexLayout/open-panel state, then query state. Avoid adding a second URL/store bridge that races FlexLayout.
+## One unopened thread is prewarmed
 
-## Remount rules
+`ChatRuntimeProvider` mounts once in `AppShell`. It claims a warm session through `useAgentSessions` (`apps/web/src/features/chat/use-agent-chat-sessions.ts`) and renders `ChatRuntimeWarmConnection` for it. That component opens the parent and facet sockets and calls `AgentDO.warmThreadRuntime`, so the next new chat starts without a cold facet.
 
-Avoid React `key` as a general reset tool in the chat switch path.
+The provider skips prewarming when the warm thread is already visible, or when you are on the `/chats` composer, which mounts the warm session itself. Without that guard, an idle new chat held two parent sockets and two facet sockets.
 
-Known expensive remounts to avoid:
+## Switching threads keeps the shell mounted
 
-- keying `AgentInteractionScreen` by session id;
-- keying `ChatPanelInteraction` by session id;
-- keying the inner virtualized timeline by a synthetic activation counter.
+Switching chats changes the route and the session passed to `useChatRuntimeConnection`. The shell and the timeline component stay mounted. Avoid React `key` resets on `AgentInteractionScreen`, `ChatPanelInteraction`, or the virtualized timeline. Each one forces an expensive remount.
 
-The acceptable boundary is the mounted panel's own connection changing when the selected session changes.
+Some state belongs to one thread and resets when `sessionId` changes: approval errors, resolving and resolved approval IDs, retry flags, the document panel view, document edit statuses, and optimistic pending turns. That state stays local to `chat-panel-controller.tsx`. Moving it into a global store only to avoid remounts would leak it across threads.
 
-## Session-scoped UI reset
+## The server routes by facet, never by session swap
 
-Local controller UI state may reset on `sessionId` before paint when needed:
+On the server, each thread is its own `ChatSubAgent` facet. Garden never switches one Think instance between threads by mutating `this.session`. The [agent runtime](../architecture/agent-runtime.md) page explains the facet model.
 
-- approval errors;
-- resolving/resolved approval ids;
-- retry flags;
-- document panel view;
-- resolved document edit status map;
-- optimistic pending turn refs/state.
+## Chat hosts several feature surfaces
 
-Do not move this transient state into global stores only to avoid remounts.
+The chat timeline renders more than messages. Each of these has its own page:
 
-## Runtime implications
-
-- Only mounted chat panels maintain live websocket connections.
-- Hidden/unopened chats rely on Think durability and are reattached when opened.
-- If product requires one always-warm workspace-level chat registry, implement it explicitly and update `ChatRuntimeProvider` from pass-through to real owner.
-- Do not emulate warmth by switching `this.session` inside one `Think` instance; use `AgentDO` + `ChatSubAgent` routing.
-
-## Checkpoints
-
-When changing this area, verify:
-
-- clicking a cached chat updates highlighted row and panel chrome immediately;
-- the runtime connection uses `AgentDO` with `ChatSubAgent(runtime_key)`;
-- existing chat switches do not require remounting the whole workspace shell;
-- document-panel and approval local state reset only for the selected session;
-- `pnpm --filter @garden/web typecheck` passes.
+- Document artifacts open in the chat document panel. See [artifacts](./artifacts.md).
+- Decide analyses render as a status card. See [Decide](./decide.md).
+- Tool approvals render inline through `use-tool-approvals.ts`. See [permissions](./permissions.md).
+- Skills load on demand during a turn. See [skills](./skills.md).

@@ -1,4 +1,12 @@
-# Garden Codebase Audit (October 2026)
+---
+title: "Garden Codebase Audit (October 2026)"
+description: Snapshot of the October 2026 whole-monorepo audit: findings across apps, packages, tooling, schema, design system, and docs.
+status: archived
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
+
+> **Historical snapshot.** This page records the state at the time it was written. It is not current truth.
 
 **Scope:** the whole monorepo: `apps/web`, the 11 packages under `packages/*`, `workers/tail-observer`, the build and CI tooling, dependencies, the DB schema and migrations, the design system, and the docs.
 **Size:** 904 TypeScript files, about 161k lines, with generated files excluded.
@@ -787,7 +795,7 @@ Each phase can be split into small, independently reviewable PRs.
 |---|---|
 | TS/TSX files (excluding generated) | 904 |
 | Lines of code | ~161,000 |
-| Files > 1,000 lines | 18 |
+| Files → 1,000 lines | 18 |
 | Explicit `any`: production / tests / generated | 15 / 46 / 127 |
 | `as unknown as` | 77 |
 | Lint suppressions (most target disabled rules) | 24 |

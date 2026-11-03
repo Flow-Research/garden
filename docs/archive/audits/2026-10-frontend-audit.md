@@ -1,8 +1,16 @@
-# Garden Frontend Audit (October 2026)
+---
+title: "Garden Frontend Audit (October 2026)"
+description: Snapshot of the October 2026 frontend audit of apps/web: defects, effects, UX, and accessibility findings.
+status: archived
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
+
+> **Historical snapshot.** This page records the state at the time it was written. It is not current truth.
 
 *October 22, 2026. Audited at upstream `dev` commit `edb7510`.*
 
-> [!NOTE]
+> **Note.**
 > Fix status for every finding, the new bugs found while fixing, and what was left and why are in [2026-10-frontend-fix-report.md](2026-10-frontend-fix-report.md).
 
 ## Summary

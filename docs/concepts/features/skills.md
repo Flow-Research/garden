@@ -1,264 +1,52 @@
-# Think-Native Skills Architecture
+---
+title: Skills load on demand from R2 through Think skill sources
+description: Where skills are stored, how an agent sees only its assigned skills, and why a skill write never touches existing chat threads.
+status: current
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
 
-## Overview
+A skill is a `SKILL.md` bundle of instructions and supporting files that teaches an agent a task. Skills belong to a workspace and are assigned to agents. An agent sees a catalog of its assigned skills and loads one only when a task calls for it.
 
-Garden used to treat skills as a runtime context refresh problem: a skill import/update persisted catalog data, bound agents, then asked every chat thread in the workspace to refresh its prompt/workspace skill inventory. That made a catalog write depend on historical thread runtime state.
+The reasons for this design, and the eager design it replaced, are in the decision record [Think-native skills](../../decisions/2026-06-think-native-skills.md).
 
-Garden now treats R2 `SKILL.md` bundles as the runtime source of truth and Postgres as catalog/index/assignment state. Runtime agents expose those bundles through Think-native `SkillSource`s created by `createGardenSkillSources`, so Think can show the catalog and lazily call `activate_skill` / `read_skill_resource` when needed.
+## R2 holds the bundles and Postgres holds the catalog
 
-This document records the design decision and the old failure mode it replaced.
+The bundle files are the runtime source of truth. Skill writes store each workspace skill in the R2 `FILES` bucket under `agent-skills/workspaces/<workspaceId>/<slug>/`. `packages/agent-runtime/src/skill-storage-paths.ts` builds those keys. Built-in skills live under `builtin-skills/`.
 
-## Previous Behavior
+Postgres holds the catalog, index, and assignments in `packages/db/src/schema/skills.ts`:
 
-The old import/update path was roughly:
+- `skill` stores the catalog entry and parsed frontmatter as JSON.
+- `skill_version` stores versions of a skill.
+- `skill_file` indexes the files in a bundle.
+- `skill_assignment` records which agents may use which skills.
 
-```txt
-/api/skills/import or /api/skills
-  -> download or parse skill bundle
-  -> write skill + skill_file rows
-  -> write R2 files
-  -> bind skill to workspace agents
-  -> refresh every historical workspace thread runtime
-      -> select all chat_thread rows in workspace
-      -> for each thread with hostName:
-           AgentDO asks the ChatSubAgent to refresh skills
-             -> remove old custom skills context
-             -> add old custom skills context provider
-             -> refresh system prompt
-             -> materialize every assigned skill into the thread workspace
-```
+Imports and updates go through `apps/web/src/lib/server/skills-service.ts`. Imports from skills.sh go through `apps/web/src/lib/server/skills-sh.ts`.
 
-This couples a successful skill write to every existing thread in the workspace.
+## Agents read skills through `getSkills()`
 
-## Problems
+Every Think agent in Garden overrides `getSkills()` and returns `loadRuntimeSkillSources(...)` from `packages/agent-runtime/src/skills.ts`. `ChatSubAgent` in `agent-do.ts` does this for chat. `RunSubAgentBase` in `run-sub-agent-base.ts` does it for issue and automation runs.
 
-### 1. Import/update fans out to old runtime state
+`loadRuntimeSkillSources` returns two Think `SkillSource`s, both built on the `r2` source from `agents/skills`:
 
-A skill import should be a catalog write. The old flow woke every historical chat thread so their prompts and workspaces could be updated immediately. That was slow and brittle.
+1. A workspace source over the workspace prefix. It loads the agent's `skill_assignment` rows and filters `list`, `load`, and `readResource` to assigned skill names. Its fingerprint includes the assignment list, so Think notices when assignments change.
+2. A built-in source over `builtin-skills/`. `filterBuiltinSkillSource` in `skills-filter.ts` limits it to the agent's `allowed_skills` unless the agent has `full_access`.
 
-### 2. One stale thread can fail the whole write
+## The model activates a skill only when it needs it
 
-If one `AgentDO` RPC, sub-agent wake, workspace write, or prompt refresh failed, the user saw the import as failed even though DB/R2 writes may already have succeeded.
+Think shows the model the catalog of skill names and descriptions. When a task matches, the model calls `activate_skill` to load the instructions and `read_skill_resource` to read a supporting file. Nothing is written into the thread's workspace ahead of time, and skills are not part of the always-on system prompt.
 
-### 3. Work is repeated per thread
+## A skill write is a catalog write
 
-The agent skill inventory is agent/workspace-level data, but the old flow recomputed and materialized it per thread. In the observed workspace, one skill import tried to refresh 27 thread runtimes.
+Importing, updating, or assigning a skill writes Postgres and R2 and returns. It does not wake or refresh existing chat threads. The next turn in any thread reads the current assignments through its skill source. A change never alters a turn that is already running.
 
-### 4. Context and files are too eager
+This splits errors cleanly:
 
-The old path wrote all assigned skills into each thread workspace. Think’s shipped model is different: show a catalog first, then activate/read only the skill the task needs.
+- **Write errors fail the API response.** An invalid skills.sh reference, a failed download, an invalid bundle, or a failed database or R2 write each return an error to the caller.
+- **Runtime errors stay with the turn.** A failed skill-source call raises `RuntimeSkillSourceError` inside the turn or run that used it. It never makes a successful catalog write look failed.
 
-### 5. Runtime cache is treated as source of truth
+## Questions still open
 
-The durable source of truth is Postgres/R2. Thread prompt/workspace state should be disposable cache. The old flow made cache updates part of the write transaction from the user’s point of view.
-
-## What Think Ships
-
-Installed `@cloudflare/think` now has first-class Agent Skills support:
-
-- `Think.getSkills()`
-- `skills.r2(bucket, { prefix })`
-- `skills.fromManifest(...)`
-- bundled `agents:skills` via the Agents Vite plugin
-- model tools:
-  - `activate_skill`
-  - `read_skill_resource`
-  - optional `run_skill_script`
-
-Think docs state that skills are on-demand instructions, not always-on system prompt text. The model sees a catalog, then calls `activate_skill` when a user task matches a skill description.
-
-That maps better to Garden than eager per-thread `load_context` refresh.
-
-## Target Architecture
-
-### Principle
-
-Skill writes update catalog state. Runtime sessions observe catalog state lazily.
-
-```txt
-skill import/update
-  -> persist catalog + files
-  -> update agent assignment/version metadata
-  -> return response
-
-next agent turn / active runtime use
-  -> read current assigned skills source
-  -> Think exposes catalog
-  -> model activates needed skill on demand
-```
-
-No skill write should need to wake every old chat thread.
-
-## Proposed Components
-
-### Workspace skill library
-
-Represents skills available in a workspace.
-
-Current tables can remain conceptually valid:
-
-- `skill`
-- `skill_file`
-
-The library owns import metadata, frontmatter, description, bundle hash, source URL, and R2 object keys.
-
-### Agent skill assignment
-
-Represents which workspace skills a specific agent may use.
-
-Current table:
-
-- `agent_skill`
-
-Long term, assignment changes should update a cheap version/hash for that agent, not refresh thread runtimes.
-
-### Think SkillSource adapter
-
-Garden needs a Think-compatible skill source backed by Postgres/R2 or by generated R2 manifests.
-
-Two possible shapes:
-
-#### Option A: DB/R2-backed `SkillSource`
-
-Create a source that lists assigned skills for the current agent and reads resource bytes from R2.
-
-Pros:
-- direct source of truth
-- no extra manifest generation path
-- assignment filters naturally by agent
-
-Cons:
-- depends on `SkillSource` API stability
-- runtime calls DB when listing/loading skills
-
-#### Option B: generated R2 manifest per agent
-
-On skill/assignment writes, generate a compact manifest under an agent-specific prefix, then use `skills.r2(...)` or `skills.fromManifest(...)`.
-
-Pros:
-- closer to shipped Think source types
-- fast runtime reads
-- avoids runtime DB queries for catalog list/load
-
-Cons:
-- manifest generation becomes another write artifact
-- must keep manifest and DB in sync
-
-Recommended starting point: Option A if `agents/skills` exports a stable source interface that Garden can implement. Otherwise use Option B.
-
-### Runtime session behavior
-
-Chat/issue/automation Think agents should expose skills via `getSkills()` instead of `Session.withContext("skills")`.
-
-Sketch:
-
-```ts
-class ChatSubAgent extends Think<AgentRuntimeEnv> {
-  getSkills() {
-    return [
-      gardenAgentSkillSource({
-        databaseUrl: this.env.DATABASE_URL,
-        files: this.env.FILES,
-        agentRuntimeName: this.getAgentRuntimeName(),
-      }),
-    ]
-  }
-}
-```
-
-The model sees the skill catalog and calls `activate_skill` when needed. Supporting files are read through `read_skill_resource` instead of being prewritten into every thread workspace.
-
-## Versioning and Cache Invalidation
-
-If Garden keeps any runtime-side cache, it should be versioned.
-
-Potential fields:
-
-```txt
-agent.skill_inventory_version
-chat_thread.skill_inventory_version_seen
-```
-
-On skill import/update/assignment change:
-
-```txt
-update DB/R2
-bump affected agent.skill_inventory_version
-return
-```
-
-On next runtime use:
-
-```txt
-if thread.skill_inventory_version_seen !== agent.skill_inventory_version:
-  refresh in-memory catalog/cache before turn
-  update thread.skill_inventory_version_seen
-```
-
-This is optional if Think skill sources always read fresh enough state, but it is useful if Garden caches manifests or catalog summaries.
-
-## Active Chats
-
-Active chats should not require global fanout.
-
-Acceptable UX:
-
-- after import: UI updates skill library immediately
-- active chat may show “New skills available. Next message will use them.”
-- next message/turn observes new skills
-
-Do not mutate a currently running turn’s skill set. Skill changes apply to the next turn.
-
-## Error Boundaries
-
-### Skill write errors
-
-These should fail the API response:
-
-- invalid skills.sh reference
-- skills.sh download failure
-- invalid bundle shape
-- DB write failure
-- R2 write/delete failure
-- assignment/version write failure
-
-### Runtime sync errors
-
-These should not happen during import/update. They happen when a runtime tries to use skills.
-
-Runtime errors should log:
-
-- workspaceId
-- agentId / hostName
-- threadId or runId
-- skill inventory version/hash
-- skill name/resource path if applicable
-- original cause/stack
-
-If a user sends a message and skill sync fails, block that turn with a clear runtime error. Do not silently continue with stale skill state unless the product explicitly says stale skills are acceptable.
-
-## Implementation Status
-
-Completed current shape:
-
-- routes log opaque API failures instead of surfacing only generic `HTTPError`
-- skill writers persist canonical `SKILL.md` bundles to R2
-- Postgres stores catalog/index/assignment state and parsed JSON frontmatter, not raw YAML
-- `createGardenSkillSources` returns Think-native R2 `SkillSource`s
-- `ChatSubAgent`, `IssueRunSubAgent`, and `AutomationRunSubAgent` expose skills through `getSkills()`
-- import/update paths no longer depend on refreshing historical thread prompts or materializing skills into every thread workspace
-
-Runtime errors should now be isolated to the turn/run trying to use a skill source. They should not make catalog writes fail after DB/R2 persistence succeeds.
-
-## Open Questions
-
-1. Should built-in document skills remain always available, or become assigned skills like everything else?
-2. Do skill changes apply to all existing chats, or only new turns after the change?
-3. Should inactive historical chats ever show the old skill catalog for reproducibility, or always use the latest agent assignment?
-4. How should skill script execution be gated if Garden enables `run_skill_script` later?
-
-## Recommendation
-
-Garden has adopted Think-native Agent Skills as the long-term architecture. Garden’s DB/R2 skill library is the catalog source, not per-thread prompt context. Skill import/update persists catalog data and assignment metadata only. Runtime sessions list and activate skills on demand through Think’s `getSkills()` flow.
-
-This removes the refresh bottleneck, aligns Garden with upstream Think, and keeps runtime skill state as lazy cache instead of a write-path dependency.
+- Should built-in document skills stay always available, or become assigned skills like the rest?
+- Should an old chat show the skill catalog it had at the time, for reproducibility, or always the latest assignment?
+- How should Garden gate skill scripts if it enables Think's `run_skill_script` later?
