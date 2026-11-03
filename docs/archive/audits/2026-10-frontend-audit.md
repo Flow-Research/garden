@@ -1,6 +1,6 @@
 ---
 title: "Garden Frontend Audit (October 2026)"
-description: Snapshot of the October 2026 frontend audit of apps/web: defects, effects, UX, and accessibility findings.
+description: "Snapshot of the October 2026 frontend audit of apps/web: defects, effects, UX, and accessibility findings."
 status: archived
 owner: "@Umoren"
 last_reviewed: 2026-11-03

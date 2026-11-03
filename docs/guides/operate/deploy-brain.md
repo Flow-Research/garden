@@ -35,7 +35,7 @@ To run on another Docker Compose host, provide your own domain routing, TLS, and
 
 Set these server variables for the Garden Worker. Both are declared in `apps/web/wrangler.jsonc` and validated in `packages/env/src/index.ts`.
 
-```env
+```dotenv
 HELIX_URL=https://brain-api.flowresearch.tech
 HELIX_API_KEY=<same value as BRAIN_API_SECRET>
 ```

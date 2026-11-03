@@ -1,6 +1,6 @@
 ---
 title: "Garden Codebase Audit (October 2026)"
-description: Snapshot of the October 2026 whole-monorepo audit: findings across apps, packages, tooling, schema, design system, and docs.
+description: "Snapshot of the October 2026 whole-monorepo audit: findings across apps, packages, tooling, schema, design system, and docs."
 status: archived
 owner: "@Umoren"
 last_reviewed: 2026-11-03

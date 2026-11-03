@@ -11,7 +11,9 @@ import path from 'node:path'
  * - a `current` page was last reviewed more than 90 days ago;
  * - a relative link points at a file that does not exist;
  * - a backticked repository path (`apps/...`, `packages/...`) does not exist;
- * - a `meta.json` sidebar entry names a page or folder that does not exist.
+ * - a `meta.json` sidebar entry names a page or folder that does not exist;
+ * - an unquoted frontmatter value contains `: `, which YAML rejects;
+ * - a code fence names a language the handbook's highlighter does not load.
  *
  * `archive/` pages are historical snapshots, so their links and paths are not
  * checked. Run with `pnpm verify:docs`.
@@ -24,6 +26,10 @@ const requiredFields = ['title', 'description', 'status', 'owner', 'last_reviewe
 const maxReviewAgeDays = 90
 const repoPathPattern = /`((?:apps|packages|scripts|docs|\.github|\.agents|workers)\/[^`\s]*)`/g
 const linkPattern = /\]\(([^)\s]+)\)/g
+const fencePattern = /^```([A-Za-z0-9_+-]+)/gm
+// Shiki languages used across docs/. Add one here only after checking that
+// Shiki bundles it; an unknown language fails the handbook build.
+const fenceLanguages = new Set(['bash', 'sh', 'shell', 'ts', 'tsx', 'js', 'json', 'jsonc', 'yaml', 'sql', 'text', 'txt', 'dotenv', 'mermaid', 'diff', 'md', 'mdx', 'toml', 'html', 'css'])
 
 const errors = []
 
@@ -71,6 +77,15 @@ for (const file of pages) {
   }
   for (const field of requiredFields) {
     if (!frontmatter[field]) errors.push(`${rel}: frontmatter is missing \`${field}\``)
+  }
+  for (const line of text.match(/^---\n([\s\S]*?)\n---\n/)[1].split('\n')) {
+    const value = line.match(/^[a-z_]+:\s+(.*)$/)?.[1] ?? ''
+    if (value.includes(': ') && !/^["']/.test(value)) {
+      errors.push(`${rel}: quote the frontmatter value in \`${line.slice(0, 40)}\``)
+    }
+  }
+  for (const [, language] of text.matchAll(fencePattern)) {
+    if (!fenceLanguages.has(language)) errors.push(`${rel}: code fence language \`${language}\` is not loaded`)
   }
   if (frontmatter.status && !statuses.has(frontmatter.status)) {
     errors.push(`${rel}: unknown status \`${frontmatter.status}\``)
