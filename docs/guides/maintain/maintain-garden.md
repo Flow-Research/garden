@@ -1,12 +1,17 @@
-# Maintain Garden changes
+---
+title: Maintain the Garden queue
+description: Triage, review, verify, and release Garden pull requests as a maintainer.
+status: current
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
 
-This guide gives maintainers one path for issues, pull requests, verification,
-and release checks.
+Use these steps to move issues and pull requests from triage to release.
 
 ## Use the contribution standard
 
 Every Garden change follows
-[`.agents/skills/contribute/SKILL.md`](../../.agents/skills/contribute/SKILL.md).
+[`.agents/skills/contribute/SKILL.md`](../../../.agents/skills/contribute/SKILL.md).
 The standard follows the pstack work sequence:
 
 1. Scope the outcome and non-goals.
@@ -31,7 +36,7 @@ Start with the current `dev` branch. Check every pull request in this order:
 3. Read the changed files and the linked issue.
 4. Check conflicts and status checks.
 5. Classify the pull request as `merge now`, `needs changes`, `blocked`, or
-   `superseded`.
+   `superseded`. [Review format](../../reference/review-format.mdx) defines each status.
 
 Close a superseded pull request with a comment that links to the implementation
 that replaces it. Do not ask an author to rebase a change that the current code
@@ -49,8 +54,7 @@ Use this order for a pull request that is still needed:
 5. Run the smallest package checks first.
 6. Run the real user flow for UI, connector, agent, workflow, or deployment
    changes.
-7. Record the result in the pull request and choose whether to merge, request a
-   change, or defer the pull request.
+7. Record the result in the pull request in the [review format](../../reference/review-format.mdx). Then merge, request a change, or defer the pull request.
 
 Use `pnpm run doctor` before a local verification run. The command is read-only. It
 checks Node.js, pnpm, Docker, the required local services, and the Garden app.
@@ -70,6 +74,7 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm verify:docs
 pnpm verify:deploy-config
 ```
 
@@ -87,11 +92,8 @@ The verification skill lives at `.agents/skills/verify/SKILL.md`. It describes
 the local stack, the health check, user-facing feature paths, evidence, and
 cleanup.
 
-Start the local stack with:
-
-Choose the Docker or native Ollama setup in
-[the onboarding guide](onboarding.md#start-garden-with-a-local-model), then
-run:
+To start the local stack, choose the Docker or native Ollama setup in
+[Run Garden locally](../../tutorials/get-started.md), then run:
 
 ```bash
 pnpm offline:up
@@ -116,8 +118,8 @@ Merge accepted work into `dev`. Check the `dev` deployment after changes that
 touch runtime behavior. Open a separate pull request from `dev` to `main` when
 the release set is ready.
 
-Do not deploy from a feature branch. Use the deployment instructions in
-`.agents/skills/deploy/SKILL.md` for preview, dev, and staging work.
+Do not deploy from a feature branch. To deploy preview, dev, or staging, see
+[Deploy Garden](../operate/deploy.md) and `.agents/skills/deploy/SKILL.md`.
 
 ## Work with agents
 
@@ -140,5 +142,6 @@ prevent it:
 - Add a verification step or feature note under `.agents/skills/verify/` when
   the rule proves product behavior.
 - Add a maintainer step here when the rule changes the queue or review process.
+- Add or close a row in [Known gaps](../../reference/known-gaps.md) when a gap opens or closes.
 
 Keep product changes and workflow changes in separate pull requests.

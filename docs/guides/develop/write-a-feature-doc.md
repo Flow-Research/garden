@@ -1,41 +1,54 @@
-# Feature documentation
+---
+title: Write a feature doc
+description: Create or update the feature document that describes what a Garden feature does and how to prove it.
+status: current
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
 
-Feature documents describe what Garden should do, why it does it, and how a
-maintainer can prove it. Read the matching document before changing a feature.
+Feature documents live in `docs/concepts/features/`. Each one explains what a feature does, why, and how a maintainer proves it. Read the matching document before you change a feature.
 
-## Start a feature
+## Create a feature doc
 
-1. Find the existing document in this directory.
-2. If no document exists, copy [`_template.md`](./_template.md) to a name that
-   describes the feature.
-3. Set the status to `proposed` while the design is under discussion.
-4. Update the same document when the implementation changes the design.
-5. Set the status to `current` only when the code and verification path match
-   the document.
+1. Look for an existing document in `docs/concepts/features/`. If one exists, update it instead.
+2. Copy the template:
 
-Keep feature documents focused. Link to architecture references instead of
-copying their full content.
+   ```bash
+   cp docs/templates/feature.md docs/concepts/features/feature-name.md
+   ```
 
-## Required sections
+3. Fill in the frontmatter. Set `status` to `proposal` while the design is under discussion.
+4. Fill in each section. Delete a section only if it does not apply, such as **Data and permissions** for a feature with no writes.
+5. Add the file name, without `.md`, to `pages` in `docs/concepts/features/meta.json` so that it appears in the handbook sidebar.
+6. Commit the document in the same pull request as the code.
 
-Every feature document must define:
+For a small feature, write a short document. A one-line bug fix needs no feature document.
 
-- the user or maintainer outcome;
-- the scope and non-goals;
-- the visible behavior and important states;
-- the system boundary, data, permissions, and external calls;
-- the decisions that future contributors must not break;
-- the verification path and its evidence;
-- open gaps, risks, and follow-up work.
+## Keep the doc current
 
-Use a smaller document for a small feature. Do not create a large design paper
-for a one-line bug fix.
+When the implementation changes the design, update the document in the same pull request. Update `last_reviewed` to the date you checked the document against the code.
 
-## Document status
+Link to architecture pages in `docs/concepts/architecture/` instead of copying them.
 
-- `proposed`: the design is agreed enough to implement, but the feature is not
-  current code.
-- `current`: the document matches the shipped behavior and its proof path.
-- `known-gap`: the behavior or proof is incomplete and the limitation is
-  intentional.
-- `superseded`: another document or implementation replaces this design.
+## Set the status
+
+The `status` frontmatter field takes one of four values:
+
+| `status`   | Use when                                                                    |
+| ---------- | --------------------------------------------------------------------------- |
+| `proposal` | The design is agreed enough to build, but the feature is not in the code.   |
+| `current`  | The document matches the shipped behavior and its proof path.               |
+| `decision` | The page records a dated decision. Feature docs rarely use it.             |
+| `archived` | Another document or implementation replaces this one. Move it to `docs/archive/`. |
+
+Do not put status lines in the body. Record a known limitation under **Gaps and follow-up** and add a row to [Known gaps](../../reference/known-gaps.md).
+
+## Check the doc before you open the pull request
+
+Run:
+
+```bash
+pnpm verify:docs
+```
+
+The `PR contract` check also requires the Documentation section of your pull request to name the doc you changed. See [Pull request contract](../../reference/pr-contract.mdx).

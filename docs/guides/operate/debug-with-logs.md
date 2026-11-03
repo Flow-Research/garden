@@ -1,40 +1,18 @@
-# Observability
+---
+title: Find a problem in the Worker logs
+description: Query Cloudflare Workers Logs to find errors, failed requests, and Garden log events in a deployed Garden Worker.
+status: current
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
 
-Garden uses Cloudflare Workers Logs as the primary debugging surface. Use the Garden app Worker logs first (`garden-staging`); connector APIs and Executor MCP Durable Objects run in that deployment. The Tail Worker (`garden-staging-tail`) is only an optional summary stream.
+Garden logs to Cloudflare Workers Logs. Start with the app Worker for the target: `garden-staging`, `garden-dev`, or `garden-preview`. Connector APIs and Executor MCP Durable Objects run inside that Worker, so their logs are there too. For build and deploy logs, see [Deploy targets](../../reference/deploy-targets.md).
 
-## Git build trigger
+## Query the app Worker
 
-Cloudflare Workers Builds uses production (`main`) and non-production triggers
-in `Flow-Research/garden`. Both attach to `garden-staging`, so both branches' build logs appear
-there. Both use root directory `/apps/web`. Production runs
-`cd ../.. && pnpm run deploy`; non-production runs
-`cd ../.. && pnpm run deploy:ci`. The dispatcher uses Cloudflare's `WORKERS_CI_BRANCH`:
-
-| Branch | Alchemy target | Worker | Migrations |
-| --- | --- | --- | --- |
-| `main` | `staging` | `garden-staging` | Yes |
-| `dev` | `dev` | `garden-dev` | No |
-| Manual only | `preview` | `garden-preview` | No |
-
-Dev and preview share staging's PostgreSQL origin. Their Cloudflare resources
-are independently owned. Preview stays manual through `pnpm run deploy:preview`;
-other branches exit the dispatcher without deploying. Cloudflare may still
-create a build job for those branches. Configure build secrets separately on
-both triggers: enabling non-production builds copies plain variables only.
-
-Staging retains the existing `garden-production` Alchemy stack and `production`
-state stage to preserve resource ownership. The product target is `staging`.
-
-Cloudflare documents branch selection and build-time variables in its
-[Workers Builds configuration](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/).
-
-Cloudflare stores the GitHub repository ID, not only its
-owner and name. After a repository transfer or replacement, reconnect the
-Workers Builds trigger even when the GitHub URL remains unchanged.
-
-## Primary dashboard filters
-
-Open Workers & Pages → Observability, then query the producer Worker. Useful filters:
+1. In the Cloudflare dashboard, open **Workers & Pages**, then **Observability**.
+2. Select the app Worker, such as `garden-staging`.
+3. Add one of these filters:
 
 ```text
 $metadata.service = "garden-staging"
@@ -47,18 +25,19 @@ event = "auth.session.lookup_failed"
 $workers.event.request.path = "/api/inbox"
 ```
 
-Use **Invocations** when you want request-grouped context. Use **Events** when you want chronological console/error rows. Add columns for `event`, `message`, `component`, `requestId`, `$workers.event.request.path`, `$workers.event.response.status`, and `$metadata.error` when debugging app errors.
+4. To see one request with its logs, open **Invocations**. To see rows in time order, open **Events**.
+5. Add columns for `event`, `message`, `component`, `requestId`, `$workers.event.request.path`, `$workers.event.response.status`, and `$metadata.error` when you debug app errors.
 
-## Tail Worker policy
+## Skip the tail Worker for normal debugging
 
-`garden-staging-tail` consumes producer trace events after a producer invocation finishes. Cloudflare's Tail handler invocation message is always `tail`, so tail-worker invocation rows are noise in the dashboard. Its Wrangler config disables invocation logs and keeps only custom summary logs emitted by the observer.
+Each target also deploys a tail Worker, such as `garden-staging-tail`, from `workers/tail-observer/src/index.ts`. It receives the app Worker's trace events after each invocation and writes short summary rows. Query the app Worker for errors. Use the tail Worker only for those summaries.
 
-The tail observer should not flatten producer errors into an alternate schema for normal debugging. Cloudflare already indexes producer metadata and structured app logs. Tail summaries are for compact alert-like rows only.
+Its invocation rows always carry the message `tail`. `workers/tail-observer/wrangler.jsonc` turns invocation logs off, but `alchemy.run.ts` deploys the tail Worker with `invocationLogs: true`, so filter those rows out.
 
-## Log levels
+## See debug and info logs
 
-Staging sets `GARDEN_LOG_LEVEL=warn`. Garden structured `debug` and `info` records are intentionally suppressed there. Warnings and errors still emit. Local development can set a lower level when noisy debugging is needed.
+Deployed Workers default `GARDEN_LOG_LEVEL` to `warn`, so Garden drops `debug` and `info` records and keeps warnings and errors. `apps/web/wrangler.jsonc` sets the same default for local development. To see more locally, set `GARDEN_LOG_LEVEL` to `info` or `debug` in your environment and restart Garden.
 
-## Structured app logs
+## Search by event name
 
-`createGardenLogger` emits structured JSON with both `event` and `message` set to the Garden event name. `event` is the stable programmatic field; `message` makes Cloudflare's row/search UI usable without expanding every row.
+`createGardenLogger` in `packages/observability/src/observability/logger.ts` emits structured JSON with both `event` and `message` set to the Garden event name. Filter on `event` in queries. The app Worker logs with `service: 'garden-staging'` on every target, so `$metadata.service = "garden-staging"` also matches dev and preview logs. `message` shows the event name in the row list without expanding each row.

@@ -1,53 +1,51 @@
-# [Feature name]
+---
+title: Feature name in sentence case
+description: One sentence. What the reader learns about this feature.
+status: proposal        # proposal | current | decision | archived
+owner: "@Umoren"
+last_reviewed: YYYY-MM-DD
+---
 
-**Status:** proposed
+Copy this file to `docs/concepts/features/feature-name.md`. Delete this paragraph and every placeholder line. See `docs/guides/develop/write-a-feature-doc.md`.
 
-**Last updated:** YYYY-MM-DD
+Related issue: [#000](https://github.com/Flow-Research/garden/issues/000)
 
-**Related issue:** [#000](https://github.com/Flow-Research/garden/issues/000)
+## What the feature does
 
-## Outcome
+State what a user or maintainer can do once this feature exists. One short paragraph.
 
-State what a user or maintainer can do after this feature exists.
+## Why it works this way
 
-## Scope and non-goals
+Explain the design decisions that future changes must keep, and the reason for each. Name the alternatives you rejected. Link the source or discussion when one exists.
 
-### In scope
+## Scope
+
+In scope:
 
 -
 
-### Out of scope
+Out of scope:
 
 -
 
-## User behavior
+## What the user sees
 
-1. Describe the first action.
-2. Describe the visible result.
-3. Describe the important success, waiting, refusal, and failure states.
+1. The first action.
+2. The visible result.
+3. The success, waiting, refusal, and failure states.
 
-## System boundary
+## Where it lives
 
-Name the routes, packages, workers, Durable Objects, workflows, databases,
-connectors, and external services that own this behavior. Link to the current
-architecture document instead of copying it.
+Name the routes, packages, Durable Objects, Workflows, tables, connectors, and external services that own this behavior. Use real paths and symbols, such as `packages/server/src/issues/run-service.ts` and `startIssueRun`. Link to the architecture page in `docs/concepts/architecture/` instead of copying it.
 
 ## Data and permissions
 
-State the data that the feature reads or writes. State the workspace and user
-permissions that control each write or external action.
+State the data that the feature reads and writes. State the workspace and user permissions that control each write or external action.
 
-## Design decisions
+## How to verify it
 
-Record the decisions that future changes must preserve. Explain the reason and
-link the source or discussion when one exists.
-
-## Verification
-
-State the checks and the real user flow that prove this feature. Link to the
-matching file under `.agents/skills/verify/features/`.
+List the checks and the real user flow that prove the feature. Link to the matching file in `.agents/skills/verify/features/`.
 
 ## Gaps and follow-up
 
-State missing proof, known risks, rollout limits, and follow-up work. Use
-`INCONCLUSIVE` when the user flow has not been proved.
+List missing proof, known risks, rollout limits, and follow-up work. Add each open gap to `docs/reference/known-gaps.md`.

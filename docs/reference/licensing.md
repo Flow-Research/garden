@@ -1,7 +1,12 @@
-# Open-source provenance audit
+---
+title: Open-source provenance audit
+description: A dated record of Garden's license, the third-party source it ships, and the release gates checked on 2026-08-08.
+status: current
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
 
-**Snapshot:** 2026-08-08. This is engineering release evidence, not legal
-advice.
+This page is a snapshot taken on 2026-08-08. It is engineering release evidence, not legal advice. Later changes to third-party source are recorded in `THIRD_PARTY_NOTICES.md`.
 
 ## Release state
 

@@ -1,6 +1,9 @@
 ---
 title: Ship a change to dev
 description: Take one focused change from a new branch to a merged pull request.
+status: current
+owner: "@Umoren"
+last_reviewed: 2026-11-03
 ---
 
 Every change reaches `dev` through a pull request. GitHub blocks the merge until the `Verify` and `PR contract` checks pass. These steps get a change through both checks and through review. They apply to people and agents alike.
@@ -10,7 +13,7 @@ Every change reaches `dev` through a pull request. GitHub blocks the merge until
 ```bash
 git switch dev
 git pull --ff-only origin dev
-git switch -c feat/<short-name>
+git switch -c feat/short-name
 ```
 
 Keep one user or maintainer outcome per branch. Put unrelated cleanup on its own branch.
@@ -19,23 +22,23 @@ Keep one user or maintainer outcome per branch. Put unrelated cleanup on its own
 
 Before you edit code, read these files:
 
-1. `AGENTS.md`
-2. `.agents/skills/contribute/SKILL.md`
-3. `docs/README.md`
-4. The feature document in `docs/features/`
-5. The architecture document in `docs/core/`
-6. `docs/design.md` and `docs/vibe.md`, if you change UI
-7. The verification map in `.agents/skills/verify/features/`, if your change touches a user flow
+1. [`AGENTS.md`](../../../AGENTS.md)
+2. [`.agents/skills/contribute/SKILL.md`](../../../.agents/skills/contribute/SKILL.md)
+3. [`docs/README.md`](../../README.md), the reading guide
+4. The feature document in [`docs/concepts/features/`](../../concepts/features/issues.md)
+5. The architecture document in [`docs/concepts/architecture/`](../../concepts/architecture/how-garden-is-built.mdx)
+6. [Design direction](../../concepts/design/design-direction.md) and [Design tokens](../../reference/design-tokens.md), if you change UI
+7. The verification map in [`.agents/skills/verify/features/`](../../../.agents/skills/verify/features/README.md), if your change touches a user flow
 
 ## Write the feature document first
 
 To add a feature, copy the template:
 
 ```bash
-cp docs/features/_template.md docs/features/<feature-name>.md
+cp docs/templates/feature.md docs/concepts/features/feature-name.md
 ```
 
-Fill in the outcome, scope, user-visible states, permissions, external services, and verification steps. Update the document in the same pull request as the code. A bug fix that changes no behavior needs no feature document.
+Fill in the outcome, scope, user-visible states, permissions, external services, and verification steps. Update the document in the same pull request as the code. A bug fix that changes no behavior needs no feature document. For the full steps, see [Write a feature doc](./write-a-feature-doc.md).
 
 ## Run the checks that cover your change
 
@@ -47,19 +50,20 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm verify:docs
 pnpm verify:deploy-config
 ```
 
 `pnpm format` only checks formatting. To fix formatting, run `pnpm format:write`.
 
-If you change a connector, also run:
+If you change a connector, also run the following. For more ways to run tests, see [Run the tests](./run-tests.md).
 
 ```bash
 pnpm verify:connectors
 pnpm --filter @garden/connectors test
 ```
 
-CI runs the `Verify` job once for each pull request to `dev` or `main`. CI does not run on a push to a feature branch. To get CI results before the work is done, open a draft pull request.
+CI runs on each pull request to `dev` or `main` and on each push to `dev` or `main`. CI does not run on a push to a feature branch. To get CI results before the work is done, open a draft pull request.
 
 ## Prove the user flow
 
@@ -80,12 +84,12 @@ Passing tests do not prove that a user can complete a flow. If you change UI, a 
    ```
 
 3. Open `http://localhost:3000` and run the flow.
-4. Save the evidence in `~/.garden/evidence/<UTC timestamp>-<scenario>/`. Include `report.md`, `report.json`, and a `screenshots/` folder.
+4. Save the evidence in `~/.garden/evidence/TIMESTAMP-SCENARIO/`, where `TIMESTAMP` is a UTC timestamp. Include `report.md`, `report.json`, and a `screenshots/` folder.
 
 Each report states the action, the expected result, the observed result, and a status of `PASS`, `FAIL`, or `INCONCLUSIVE`. If you could not prove the flow, the status is `INCONCLUSIVE`.
 
 <Callout title="Prompt and tool changes">
-  Garden has no automated evals yet (FLO-37). If you change a prompt, a skill,
+  Garden has no automated evals yet. See FLO-37 in [Known gaps](../../reference/known-gaps.md). If you change a prompt, a skill,
   or a tool definition, record an agent run that shows the new behavior.
 </Callout>
 
@@ -104,12 +108,12 @@ Confirm that the diff holds only the intended change, that the documents match t
 Stage only the files for this change:
 
 ```bash
-git add <files>
-git commit -m "<type>: <short description>"
-git push -u origin <branch-name>
+git add path/to/changed-file.ts
+git commit -m "feat: short description"
+git push -u origin feat/short-name
 ```
 
-Open the pull request against `dev`. Fill in every section of the template. The `PR contract` check fails the pull request if a required section or checklist item is missing. For the full list, see [Pull request contract](/handbook/pr-contract).
+Open the pull request against `dev`. Fill in every section of the template. The `PR contract` check fails the pull request if a required section or checklist item is missing. For the full list, see [Pull request contract](../../reference/pr-contract.mdx).
 
 ## Stop what you started
 
@@ -119,4 +123,4 @@ When verification is done, stop the local services:
 pnpm offline:down
 ```
 
-Don't reset the local database unless the team agrees.
+Do not reset the local database unless the team agrees.

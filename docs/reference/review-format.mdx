@@ -1,9 +1,12 @@
 ---
 title: Review format
-description: The structure of a Garden pull request review, and the merge rules behind it.
+description: The structure of a Garden pull request review, the finding format, and the merge rules behind it.
+status: current
+owner: "@Umoren"
+last_reviewed: 2026-11-03
 ---
 
-Garden reviews use one structure so that both people and agents can act on them. The full standard is in `docs/development/review-standard.md`.
+Garden reviews use one structure so that both people and agents can act on them.
 
 ## Merge rules
 
@@ -12,7 +15,7 @@ Garden reviews use one structure so that both people and agents can act on them.
 | `dev`  | `Verify`, `PR contract` | 0                  |
 | `main` | `Verify`, `PR contract` | 1                  |
 
-Only users on the `dev` push list can merge into `dev`. Admins follow the same rules.
+Only users on the `dev` push list can merge into `dev`. Admins follow the same rules. These values come from the GitHub branch protection settings, not from the repository.
 
 Agents can inspect, implement, review, and recommend. A maintainer makes the merge decision.
 
@@ -31,12 +34,14 @@ A maintainer gives each open pull request one status:
 
 A review has these parts, in this order:
 
-1. A thank-you that names the specific change.
+1. A thank-you that names the specific change: `Thank you @username for the work on [change].`
 2. **What passed**: the behavior, checks, or evidence that works.
 3. **Before merge**: blocking findings only.
 4. **Follow-up**: non-blocking improvements.
 5. **Review status**: `APPROVE`, `REQUEST_CHANGES`, or `COMMENT`.
 6. **Next action**: the one thing the author does next.
+
+A general compliment does not replace evidence.
 
 ## Finding format
 
@@ -45,8 +50,41 @@ Each finding uses four labels:
 ```text
 Finding:  [specific problem]
 Impact:   [what can break or become difficult]
-Evidence: [file, line, test, command, log, or reproduction]
+Evidence: [file, test, command, log, or reproduction]
 Request:  [exact change or check needed]
+```
+
+Use file paths, test names, command names, and links when they reduce doubt. Use a short reproduction when the problem is easier to show than to describe. The stable labels let an agent parse a review without JSON.
+
+## Review template
+
+```text
+Thank you @username for the work on [change].
+
+I verified [behavior or checks]. These checks passed:
+- [check]
+
+Before merge, please address:
+
+1. Finding: [specific problem]
+   Impact: [what can break]
+   Evidence: [file, test, command, log, or reproduction]
+   Request: [exact change or check needed]
+
+Follow-up:
+- [non-blocking improvement]
+
+Review status: REQUEST_CHANGES
+
+Please update [specific area], then rerun [specific check].
+```
+
+An approval replaces the blocking section with a statement that no blocking issues remain:
+
+```text
+Review status: APPROVE
+
+The stated behavior works. I found no remaining blocking issues.
 ```
 
 ## Status rules
@@ -57,4 +95,8 @@ Request:  [exact change or check needed]
 | `APPROVE`         | No blocking finding remains.                     |
 | `COMMENT`         | The review asks a question or adds context only. |
 
-A follow-up is never a blocking finding.
+The review status matches the body. A follow-up is never a blocking finding.
+
+## What CI enforces
+
+CI enforces evidence, not tone. The [pull request contract](./pr-contract.mdx) checks that a pull request explains the change, names its checks, and includes documentation or a reason none is needed. It does not check reviewer wording.
