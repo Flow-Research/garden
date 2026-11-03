@@ -100,6 +100,38 @@ describe('makeDecideAnalysisStarter', () => {
     })
   })
 
+  it('starts an automation-owned run that resumes the automation', async () => {
+    startDecideAnalysis.mockResolvedValue(
+      Result.ok({ kind: 'started', snapshot }),
+    )
+
+    const result = await starter({
+      args: { question: 'Which region grew fastest?' },
+      extra: {
+        _meta: {
+          garden: {
+            kind: 'automation_run',
+            automationRunId: 'automation-run-1',
+            toolCallId: 'call_1',
+          },
+        },
+      } as unknown as DirectDecideToolExtra,
+    })
+
+    expect(startDecideAnalysis.mock.calls[0]?.[0]).toMatchObject({
+      owner: { kind: 'automation_run', automationRunId: 'automation-run-1' },
+      idempotencyKey: 'call_1',
+    })
+    const text = textOf(result)
+    expect(text).toContain('automation')
+    expect(text).not.toContain('chat')
+    expect(text).not.toContain(RUN_ID)
+    expect(result?.structuredContent).toEqual({
+      status: 'queued',
+      run_id: RUN_ID,
+    })
+  })
+
   it('leaves calls without trusted chat metadata to the direct path', async () => {
     const result = await starter({
       args: { question: 'Direct' },

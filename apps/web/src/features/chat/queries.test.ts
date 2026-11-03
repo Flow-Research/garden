@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import type { ChatDecideAnalysis } from '@/lib/api'
+import type { DecideAnalysis } from '@/lib/api'
 import { decideAnalysisOptions } from './queries'
 
 function intervalFor(
-  status: ChatDecideAnalysis['status'] | null,
+  status: DecideAnalysis['status'] | null,
   queryStatus: 'pending' | 'success' | 'error' = 'success',
 ) {
-  const interval = decideAnalysisOptions('thread-1', 'run-1').refetchInterval
+  const interval = decideAnalysisOptions('run-1').refetchInterval
   const data = status ? { runId: 'run-1', status, progress: null } : undefined
   return typeof interval === 'function'
     ? // Only `state.data` and `state.status` are read by the interval function.

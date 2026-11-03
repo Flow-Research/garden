@@ -49,6 +49,7 @@ import {
   useUpdateAutomation,
 } from './mutations'
 import { automationDetailOptions, automationRunsOptions } from './queries'
+import { DecideAnalysisStatusCard } from '../chat/components/chat-decide-analysis'
 import {
   TriggerConfigSection,
   getDefaultTriggerConfig,
@@ -294,6 +295,13 @@ function RunRow({
         <p className="mt-1 line-clamp-2 pl-[7.75rem] text-xs leading-5 text-muted-foreground">
           {output}
         </p>
+      ) : null}
+      {run.decide_analysis_run_ids.length > 0 ? (
+        <div className="mt-2 flex flex-col gap-2 pl-[7.75rem]">
+          {run.decide_analysis_run_ids.map((decideRunId) => (
+            <DecideAnalysisStatusCard key={decideRunId} runId={decideRunId} />
+          ))}
+        </div>
       ) : null}
       {debugMode && trace.length > 0 ? (
         <AutomationTraceTimeline trace={trace} />

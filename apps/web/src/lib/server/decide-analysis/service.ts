@@ -13,6 +13,10 @@ import type {
 } from '@garden/agent-runtime/src/decide-analysis-types'
 import { DECIDE_ANALYSIS_STATUSES } from '@garden/agent-runtime/src/decide-analysis-types'
 import { decideGeneratedFiles } from '@garden/agent-runtime/src/decide-analysis-result'
+import {
+  decideAnalysisRunLock as runLock,
+  requestDecideAnalysisCancel,
+} from '@garden/agent-runtime/src/decide-analysis-run-state'
 import { createRuntimeDbClient, type Db } from '@garden/db/runtime'
 import * as schema from '@garden/db/schema'
 import type { HyperdriveConnection } from '@garden/server/runtime-bindings'
@@ -116,9 +120,6 @@ const isDuplicateWorkflowError = (cause: unknown) => {
 
 const workflowInstanceId = (runId: string, attempt: number) =>
   `decide-analysis-${runId}-attempt-${attempt}`
-
-const runLock = (runId: string) =>
-  sql`select pg_advisory_xact_lock(hashtext(${`decide-analysis:${runId}`}))`
 
 const ACTIVE_STATUSES = ['queued', 'running', 'cancel_requested'] as const
 const ACTIVE_RUN_INDEXES: readonly unknown[] = [
@@ -738,6 +739,28 @@ export async function getDecideAnalysis(
   )
 }
 
+/**
+ * Reads a run by ID alone, for the owner-agnostic status route. The route
+ * authorizes the caller against the run's workspace and owner before it
+ * returns anything, then acts with the actor this run implies.
+ */
+export async function readDecideAnalysis(
+  env: DecideAnalysisEnvironment,
+  runId: string,
+): Promise<ResultValue<DecideAnalysisSnapshot, DecideAnalysisServiceError>> {
+  if (!ownerIdSchema.safeParse(runId).success) {
+    return Result.err(runNotFound())
+  }
+  const result = await withDb(env, 'read Decide analysis run', (db) =>
+    readRun(db, { runId }),
+  )
+  return result.andThen((row) =>
+    row === null
+      ? Result.err(runNotFound())
+      : Result.ok(toDecideAnalysisSnapshot(row)),
+  )
+}
+
 export async function listDecideAnalyses(
   env: DecideAnalysisEnvironment,
   actor: DecideAnalysisActor,
@@ -769,23 +792,7 @@ export async function cancelDecideAnalysis(
       await tx.execute(runLock(runId))
       const row = await readRun(tx, { runId })
       if (!row || !ownsRun(row, actor)) return null
-      if (row.status === 'queued') {
-        const [cancelled] = await tx
-          .update(schema.decideAnalysisRun)
-          .set({ status: 'cancelled', completedAt: new Date() })
-          .where(eq(schema.decideAnalysisRun.id, row.id))
-          .returning()
-        return cancelled ?? row
-      }
-      if (row.status === 'running') {
-        const [requested] = await tx
-          .update(schema.decideAnalysisRun)
-          .set({ status: 'cancel_requested', cancelRequestedAt: new Date() })
-          .where(eq(schema.decideAnalysisRun.id, row.id))
-          .returning()
-        return requested ?? row
-      }
-      return row
+      return await requestDecideAnalysisCancel(tx, row)
     }),
   )
   return result.andThen((row) =>

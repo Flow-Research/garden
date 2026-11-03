@@ -28,6 +28,10 @@ import {
   mentionsUnparsedExecutorTools,
   type ExecutorToolFailure,
 } from './executor-codemode'
+import type {
+  DecideAnalysisOwner,
+  GardenDecideMeta,
+} from './decide-analysis-types'
 import * as schema from '@garden/db/schema'
 import { captureGardenAnalyticsEvent } from '@garden/observability/analytics/client'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
@@ -371,6 +375,12 @@ export type McpHost = {
   resolveRuntimeIdentity?: () => Promise<
     ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
   >
+  /**
+   * The Decide owner this host's `decide_analyze` calls belong to. Omitted
+   * means a chat facet, whose name is the thread key. Run facets supply it
+   * so an automation's analysis is owned by its run, never by a chat.
+   */
+  decideAnalysisOwner?: () => DecideAnalysisOwner
 }
 
 export function isMcpDiscoveryCancellation(message: string | undefined) {
@@ -497,13 +507,20 @@ export class RuntimeMcpController {
                       typeof executeOptions.toolCallId === 'string'
                         ? executeOptions.toolCallId
                         : null
-                    const gardenMeta =
+                    // Trusted owner metadata comes from the host, never from
+                    // model arguments, so a start cannot be attributed to
+                    // another thread or run.
+                    const decideOwner: DecideAnalysisOwner =
+                      this.host.decideAnalysisOwner?.() ?? {
+                        kind: 'chat',
+                        threadId: this.host.name,
+                      }
+                    const gardenMeta: { garden: GardenDecideMeta } | undefined =
                       tool.serverId === EXECUTOR_MCP_SERVER_ID &&
                       tool.name === 'decide_analyze'
                         ? {
                             garden: {
-                              kind: 'chat',
-                              threadId: this.host.name,
+                              ...decideOwner,
                               ...(toolCallId === null ? {} : { toolCallId }),
                             },
                           }
