@@ -121,6 +121,12 @@ thread.
 UI, API writes, and the runtime read this one definition. No ad hoc config
 blobs.
 
+## Delivery order
+
+1. Owner type, migration, Brain `source`, and the size check.
+2. Automation pause and resume through `RunWorkflow`, and the run-page card.
+3. Drive `source` and the Weekly data report template.
+
 ## Out of scope
 
 - A run-finished notification in Garden's UI. That is a separate follow-up for
@@ -131,19 +137,19 @@ blobs.
   it (integration guide: `analyze`, `list_generated_files`,
   `read_generated_file`, `whoami`).
 
-## Open questions
+## Input limits and formats
 
-- **XLSX from Drive.** Decide's guide documents CSV, TSV, JSON, or text in
-  `data`. Brain already converts XLSX to tab-separated text. Drive must do the
-  same for uploaded XLSX files unless Decide confirms it accepts a file URL or
-  binary input.
-- **Input size.** The guide gives no size limit for `data`. A very large sheet
-  needs a known bound, or Garden should reject it before paying for a run.
+Decide accepts XLSX and inputs up to 100 MB (confirmed with Decide,
+2026-11-03). Brain's Files & Folders accepts XLSX uploads, and
+`brain_read_file` already returns them as tab-separated sheet text, so Brain
+sources work with no new conversion. Drive XLSX files use the same
+sheet-to-text step. The service rejects a resolved source larger than 100 MB
+before creating the run, so an oversized file never starts a paid analysis.
 
 ## Verification
 
-- Unit: owner check constraint, one-active-run-per-owner, and source resolution
-  for Brain and Drive, including XLSX to text.
+- Unit: owner check constraint, one-active-run-per-owner, source resolution
+  for Brain and Drive including XLSX to text, and the 100 MB rejection.
 - Workflow: Decide completion sends the event, `RunWorkflow` resumes the agent,
   a Decide failure reaches the agent and the run page, and Cancel stops both.
 - Live on dev: create a Weekly data report from a Brain XLSX, run it manually,
