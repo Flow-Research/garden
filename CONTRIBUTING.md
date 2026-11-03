@@ -4,11 +4,11 @@ Thanks for helping improve Garden.
 
 ## Development
 
-Follow the [developer onboarding guide](docs/development/onboarding.md) for a
+Follow the [developer onboarding guide](docs/tutorials/get-started.md) for a
 complete local setup and system walkthrough. The shorter setup path remains in
 [README.md](README.md#run-garden-locally).
 
-Maintainers should also follow the [maintainer workflow](docs/development/maintainer-workflow.md)
+Maintainers should also follow the [maintainer workflow](docs/guides/maintain/maintain-garden.md)
 for pull request triage, repository checks, and product verification.
 
 ## Contribution standard
@@ -24,7 +24,7 @@ needed, known risk, and missing proof. Use `INCONCLUSIVE` when a user flow has
 not been proved.
 
 When a pull request adds or changes behavior, update the matching document in
-[`docs/features/`](docs/features/README.md) in the same pull request. For an
+[`docs/concepts/features/`](docs/guides/develop/write-a-feature-doc.md) in the same pull request. For an
 architecture or infrastructure change, update the relevant design document.
 
 Run the checks relevant to your change. The full test suite starts Postgres 16
@@ -49,7 +49,7 @@ overlays.
 
 ## Review standard
 
-Maintainers use the [Garden review standard](docs/development/review-standard.md)
+Maintainers use the [Garden review standard](docs/reference/review-format.mdx)
 for pull request reviews. It defines the expected structure for respectful,
 evidence-based comments and clear next actions.
 
@@ -96,7 +96,7 @@ third-party code.
 
 ## Connectors
 
-Connector changes follow the policy in [docs/core/connectors.md](docs/core/connectors.md).
+Connector changes follow the policy in [docs/concepts/architecture/connectors.md](docs/concepts/architecture/connectors.md).
 
 Before opening a PR:
 
@@ -105,7 +105,7 @@ Before opening a PR:
 - Run `pnpm --filter @garden/connectors test`.
 - Follow the documented Executor-hosted or Garden-native contribution path;
   there is no connector scaffolding command.
-- Check the review checklist in [docs/core/connectors.md](docs/core/connectors.md#review-checklist).
+- Check the review checklist in [docs/concepts/architecture/connectors.md](docs/guides/develop/add-a-connector.md).
 
 ## Security
 

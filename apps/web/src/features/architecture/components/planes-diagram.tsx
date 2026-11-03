@@ -4,7 +4,7 @@ import { NodeChip } from './primitives'
 /**
  * Three-planes diagram: Control / Agent / Execution stacked as bands. The
  * browser sits above; the planes connect top→bottom. Hand-built (no mermaid) so
- * it matches the page palette. Real bindings only — see docs/core/technical.md.
+ * it matches the page palette. Real bindings only — see docs/reference/architecture-map.md.
  */
 const accent: Record<string, string> = {
   control: 'var(--text-neutral-tertiary)',
