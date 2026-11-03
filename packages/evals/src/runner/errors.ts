@@ -19,6 +19,7 @@ export class GardenEvalError extends TaggedError('GardenEvalError')<{
   message: string
   invalidReason: TrialInvalidReason
   issueId?: string
+  threadId?: string
   runId?: string
   cause?: unknown
 }>() {}

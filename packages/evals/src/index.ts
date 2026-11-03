@@ -5,6 +5,10 @@ const taskEvidenceSourceSchema = z.enum([
   'issue_run_events',
   'issue_work_products',
   'connector_receipts',
+  'chat_thread',
+  'assistant_response',
+  'decide_analysis',
+  'decide_workbook',
 ])
 
 const taskSuiteSchema = z.enum([
@@ -69,7 +73,7 @@ export const taskDefinitionSchema = z
     taskId: z.string().min(1),
     version: z.number().int().positive(),
     suite: taskSuiteSchema,
-    surface: z.literal('issue_run'),
+    surface: z.enum(['issue_run', 'chat']),
     fixture: z
       .object({
         fixtureId: z.string().min(1),
@@ -462,6 +466,134 @@ export const trialReportSchema = z
     }
   })
 
+const chatWorkbookEvidenceSchema = z
+  .object({
+    name: z.string().min(1),
+    digest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+    sheetNames: z.array(z.string().min(1)),
+    opened: z.boolean(),
+    rawDataPreserved: z.boolean(),
+    verificationMatches: z.boolean(),
+    analysisKeepsCorrectionSeparate: z.boolean(),
+  })
+  .strict()
+
+const decideAnalysisEvidenceSchema = z
+  .object({
+    observedRunCount: z.number().int().nonnegative(),
+    runId: z.string().uuid().nullable(),
+    status: z
+      .enum([
+        'queued',
+        'running',
+        'cancel_requested',
+        'completed',
+        'failed',
+        'cancelled',
+      ])
+      .nullable(),
+    fileNames: z.array(z.string().min(1)),
+    workbook: chatWorkbookEvidenceSchema.nullable(),
+  })
+  .strict()
+
+/**
+ * Keeps chat evidence small and safe. It stores hashes and public lifecycle
+ * fields, not the uploaded document, workbook bytes, or Decide URLs.
+ */
+export const chatTaskEvidenceSchema = z
+  .object({
+    threadId: z.string().uuid(),
+    assistantResponseDigest: z
+      .string()
+      .regex(/^sha256:[a-f0-9]{64}$/),
+    decideAnalysis: decideAnalysisEvidenceSchema.nullable(),
+  })
+  .strict()
+
+const chatTrialReportBaseSchema = z
+  .object({
+    reportId: z.string().uuid(),
+    trial: trialIdentitySchema,
+    configuration: evalConfigurationSchema,
+    task: z
+      .object({ taskId: z.string().min(1), version: z.number().int().positive() })
+      .strict(),
+    threadId: z.string().uuid().optional(),
+    recordedAt: z.iso.datetime(),
+  })
+  .strict()
+
+/** Records one chat task result without storing raw chat or file contents. */
+export const chatTrialReportSchema = z
+  .discriminatedUnion('outcome', [
+    chatTrialReportBaseSchema
+      .extend({
+        outcome: z.literal('passed'),
+        threadId: z.string().uuid(),
+        checks: z
+          .array(trialCheckSchema.extend({ passed: z.literal(true) }))
+          .min(1),
+        evidence: chatTaskEvidenceSchema,
+      })
+      .strict(),
+    chatTrialReportBaseSchema
+      .extend({
+        outcome: z.literal('failed'),
+        threadId: z.string().uuid(),
+        checks: z
+          .array(trialCheckSchema)
+          .min(1)
+          .refine((checks) => checks.some((check) => !check.passed)),
+        evidence: chatTaskEvidenceSchema,
+      })
+      .strict(),
+    chatTrialReportBaseSchema
+      .extend({
+        outcome: z.literal('invalid'),
+        checks: z.array(trialCheckSchema),
+        invalidReason: trialInvalidReasonSchema,
+        diagnostic: z
+          .object({
+            stage: z.enum([
+              'fixture_setup',
+              'garden_execution',
+              'evidence_collection',
+              'grading',
+            ]),
+            code: z.string().min(1),
+            message: z.string().min(1).max(300),
+          })
+          .strict(),
+      })
+      .strict(),
+  ])
+  .superRefine((report, ctx) => {
+    if (!('evidence' in report)) return
+    if (report.threadId !== report.evidence.threadId) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['evidence', 'threadId'],
+        message: 'Chat evidence threadId must match the report threadId.',
+      })
+    }
+    const decide = report.evidence.decideAnalysis
+    if (decide && decide.observedRunCount === 1 && !decide.runId) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['evidence', 'decideAnalysis', 'runId'],
+        message: 'One observed Decide run must have its run ID.',
+      })
+    }
+    if (decide && decide.observedRunCount !== 1 && decide.runId) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['evidence', 'decideAnalysis', 'runId'],
+        message: 'A run ID is only valid when exactly one Decide run exists.',
+      })
+    }
+  })
+
 export type TaskDefinition = z.infer<typeof taskDefinitionSchema>
 export type TaskEvidenceSource = z.infer<typeof taskEvidenceSourceSchema>
 export type TaskSuite = z.infer<typeof taskSuiteSchema>
@@ -472,4 +604,6 @@ export type IssueRunEvidenceBundle = z.infer<
   typeof issueRunEvidenceBundleSchema
 >
 export type TrialReport = z.infer<typeof trialReportSchema>
+export type ChatTaskEvidence = z.infer<typeof chatTaskEvidenceSchema>
+export type ChatTrialReport = z.infer<typeof chatTrialReportSchema>
 export type TrialInvalidReason = z.infer<typeof trialInvalidReasonSchema>

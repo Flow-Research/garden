@@ -1,0 +1,40 @@
+description: Garden chat and Decide agent behavior
+
+prompts:
+  - '{{taskId}}'
+
+providers:
+  - id: file://./src/promptfoo/garden-provider.ts
+
+tests:
+  - description: Analyze a CSV and return a faithful workbook
+    vars:
+      taskId: artifacts.decide-csv-workbook
+
+  - description: Answer a question from an uploaded project brief
+    vars:
+      taskId: answers.uploaded-brief-facts
+
+defaultTest:
+  assert:
+    - type: javascript
+      value: |
+        const report = context.providerResponse?.metadata?.garden;
+        return {
+          pass: report?.outcome === 'passed',
+          score: report?.outcome === 'passed' ? 1 : 0,
+          reason: report?.checks?.map((check) => `${check.criterionId}: ${check.passed}`).join('; ') ?? 'Garden did not return a trial report',
+        };
+
+evaluateOptions:
+  cache: false
+  maxConcurrency: 1
+  repeat: 1
+  timeoutMs: 0
+  maxEvalTimeMs: 0
+
+commandLineOptions:
+  envPath:
+    - ../../.env
+
+writeLatestResults: false

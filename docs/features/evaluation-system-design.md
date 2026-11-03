@@ -3,36 +3,45 @@
 | Field          | Value                                                                                    |
 | -------------- | ---------------------------------------------------------------------------------------- |
 | Status         | In progress                                                                              |
-| Last reviewed  | 2026-11-02                                                                               |
+| Last reviewed  | 2026-11-03                                                                               |
 | Decision owner | Garden engineering                                                                       |
 | Scope          | Agent behavior, tool use, durable runs, permissions, artifacts, and user-visible results |
 
 ## Overview
 
 Garden needs repeatable evidence that an agent can complete a real workspace
-task. The evaluation system runs Garden from a controlled starting state,
-records the complete execution, inspects the final state, and grades the result.
-It measures the combined product: the model, prompts, routing, tools,
-connectors, permissions, Workflows, storage, and user-visible output.
+task. Each eval starts from a controlled state, records the evidence available
+for that task, and grades the result. The system measures the combined
+product: the model, prompts, routing, tools, connectors, permissions,
+Workflows, storage, and user-visible output. The current suite collects
+issue-run status, chat response, thread-scoped Decide records, and workbook
+contents. It does not collect a complete model and tool trace yet.
 
-The implementation is a Garden-native TypeScript package. It runs outside the
-product runtime and calls the same product boundaries that users call. It
-reuses Garden's run ledgers and safe simulator receipts. It does not add a
-second agent runtime. The first code slice defines task, trial, evidence, and
-report contracts. The first runner uses the public issue-run API because each
-run has a durable ID and a stored terminal status.
+Promptfoo is the open-source evaluation runner. It schedules cases and writes
+the result report. Garden's TypeScript package owns versioned task data,
+synthetic fixtures, execution through Garden's user-facing APIs, evidence, and
+deterministic graders. The custom Promptfoo provider connects the two. It does
+not create a second agent runtime or move Garden's task rules into YAML.
+
+The current suite checks one issue-run status task, one Decide CSV-to-workbook
+task, and one general chat task that answers from an uploaded brief. The chat
+tasks use synthetic files and run against a configured Garden deployment.
 
 ## Decision
 
-Build `packages/evals` as a consumer of the real Garden runtime.
+Use Promptfoo as the case runner and report format. Keep Garden behavior and
+task contracts in `packages/evals`.
 
-The package owns five things:
+Garden's eval package owns four things:
 
 1. Versioned task definitions.
-2. Isolated workspace and connector fixtures.
-3. Trial execution and evidence collection.
-4. Deterministic and model-based graders.
-5. Local and continuous integration (CI) reports.
+2. Synthetic fixtures and trial identities.
+3. Calls into Garden and evidence collection.
+4. Deterministic graders and safe Garden trial reports.
+
+Promptfoo owns case scheduling, serialization, and the outer report. YAML
+contains task IDs only. The task registry remains the single source for each
+prompt, fixture, capability, and success criterion.
 
 Do not put evaluation policy inside `packages/agent-runtime`. The runtime must
 continue to serve the product. The evaluation package prepares a controlled
@@ -40,18 +49,26 @@ environment, starts a normal Garden operation, and then reads the evidence.
 
 ```mermaid
 flowchart LR
-  Task[Eval task] --> Fixture[Create isolated workspace fixture]
-  Fixture --> Garden[Run the real Garden system]
-  Garden --> Evidence[Collect evidence bundle]
+  Cases[Promptfoo case list] --> Provider[Garden custom provider]
+  Provider --> Registry[Versioned Garden task registry]
+  Registry --> Fixture[Upload synthetic fixture]
+  Fixture --> Garden[Run the real Garden chat]
+  Garden --> Evidence[Read thread and artifact evidence]
   Evidence --> Complete{Required evidence complete?}
   Complete -->|No| Invalid[Invalid trial]
   Complete -->|Yes| Graders[Run graders]
   Graders --> Verdict{Required checks pass?}
   Verdict -->|Yes| Pass[Pass]
   Verdict -->|No| Fail[Fail with exact evidence]
-  Graders --> Report[Write JSON and Markdown report]
+  Pass --> Report[Promptfoo JSON report]
+  Fail --> Report
   Invalid --> Report
 ```
+
+Promptfoo does not decide whether Garden completed the task. The Garden
+provider returns Garden's `passed`, `failed`, or `invalid` report as provider
+metadata. A Promptfoo assertion maps `passed` to a passing case and preserves
+the criterion results for review.
 
 ## What an eval means in Garden
 
@@ -141,8 +158,8 @@ guess that the product passed or failed.
 
 The eval runner uses the same public API that Garden users call. It does not
 call an internal model function and pretend that the rest of Garden worked.
-The first runner targets a configured local or dev Garden deployment. It uses
-a dedicated eval workspace and agent. It does not connect to Postgres directly.
+The runners target a configured local or dev Garden deployment. They use a
+dedicated eval workspace and agent. They do not connect to Postgres directly.
 
 ```mermaid
 sequenceDiagram
@@ -168,6 +185,41 @@ sequenceDiagram
     R->>R: Record an invalid trial and the missing evidence
   end
   R->>R: Save JSON and Markdown reports outside Garden
+```
+
+### Chat and Decide trial
+
+The chat runner uses Garden's public thread and document APIs, then sends the
+same chat request frame as the Garden web client. It reads Decide status from
+the new thread. For the Decide task, it downloads and inspects the workbook.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant P as Promptfoo
+  participant R as Garden provider
+  participant T as Task registry
+  participant A as Garden API
+  participant C as ChatSubAgent
+  participant D as Decide
+  participant G as Graders
+
+  P->>R: Run static task ID
+  R->>T: Read prompt, fixture, and checks
+  R->>A: Create thread with trial ID
+  R->>A: Upload synthetic fixture
+  R->>C: Send normal Garden chat request
+  opt Decide task
+    C->>D: Analyze fixture and create workbook
+  end
+  C-->>R: Assistant response completes
+  R->>A: Read thread-scoped Decide status
+  opt Decide task
+    R->>D: Download workbook from allowed output host
+  end
+  R->>G: Check response and task evidence
+  G-->>R: passed, failed, or invalid report
+  R-->>P: Response and safe report metadata
 ```
 
 The first runner creates one new issue for each trial. It uses a dedicated
@@ -410,56 +462,65 @@ OAuth token.
 
 ### What each source can prove
 
-| Source                                 | What it can prove                                                | Limit                                                          |
-| -------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------- |
-| `issue_run`                            | The run's stored status and result fields.                       | It cannot prove every tool call or external side effect.       |
-| `issue_run_event`                      | Which ordered events Garden stored for this run.                 | A missing event is inconclusive because event writes can fail. |
-| `tool_call_audit` and `invocation_log` | That a diagnostic row exists.                                    | The row cannot be assigned safely to one run.                  |
-| Trial-scoped simulator receipt         | Whether a simulated external action happened and how many times. | It proves only actions sent through that simulator.            |
+| Source                                 | What it can prove                                                          | Limit                                                                  |
+| -------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `issue_run`                            | The run's stored status and result fields.                                  | It cannot prove every tool call or external side effect.               |
+| `issue_run_event`                      | Which ordered events Garden stored for this run.                            | A missing event is inconclusive because event writes can fail.         |
+| `chat_thread` and `decide_analysis`    | A Decide run and its status belong to one specific chat thread.              | It proves the Decide path ran, not every tool call in that thread.     |
+| `decide_workbook`                      | The generated workbook opens and matches the synthetic fixture checks.       | It does not prove that a workbook was downloaded or used by the user.  |
+| `tool_call_audit` and `invocation_log` | That a diagnostic row exists.                                                | The row cannot be assigned safely to one issue run.                    |
+| Trial-scoped simulator receipt         | Whether a simulated external action happened and how many times.            | It proves only actions sent through that simulator.                    |
 
 `issue_work_product.run_id` is nullable. The evidence adapter must exclude a
 work product with no run ID from a run-scoped bundle. If a task needs that
 work product, the adapter reports incomplete evidence.
 
-This sets a limit for the first task bank. A task that grades tool selection,
-call count, approval order, or the absence of a side effect needs a correlated
-source that can prove that fact. If Garden cannot provide one, the trial is
-`invalid`. It must not pass or fail based only on missing log rows. The first
-issue-run adapter can grade fields that `issue_run` proves directly. The team
-must close the correlation gap before it uses evals to gate routing behavior.
-To grade that an action did not happen, a simulator must record every action
-and confirm that the receipt query returned the full trial log. Otherwise, a
-missing receipt is also inconclusive.
+This sets a limit for the task bank. The chat eval can grade whether Decide
+ran because Garden stores Decide analyses by thread. It cannot grade unrelated
+tool calls or approval order from that record. A task that needs those checks
+requires another correlated evidence source. To grade that an external action
+did not happen, a simulator must record every action and confirm that the
+receipt query returned the full trial log. Otherwise, a missing receipt is
+inconclusive.
 
 ## Package shape
 
 ```text
 packages/evals/
   src/
-    index.ts                     task, trial, evidence, and report schemas
-    cli.ts                       environment parsing and process exit code
-    examples/                    one issue-run status task
-    runner/garden-api.ts         authenticated Garden API client
-    runner/issue-run.ts          issue creation, run start, and polling
-    evidence/issue-run.ts        safe run evidence
-    graders/issue-run-status.ts  deterministic status grader
-    reporting/markdown.ts        JSON and Markdown report files
-    fixtures/                    planned connector and workspace fixtures
+    index.ts                      task, trial, evidence, and report schemas
+    examples/                     issue-run and synthetic chat tasks
+    promptfoo/garden-provider.ts  Promptfoo adapter for Garden chat
+    runner/garden-api.ts          authenticated Garden API client
+    runner/issue-run.ts           issue creation, run start, and polling
+    runner/chat-task.ts           thread, upload, chat, and Decide evidence
+    runner/chat-socket.ts         Agents SDK WebSocket request adapter
+    graders/                      issue-run, chat, and workbook graders
+    promptfooconfig.yaml          static task IDs and serial eval settings
+    scripts/eval-promptfoo.mjs    JSON report output
   package.json
 ```
 
-The first runner creates one issue for each trial through Garden's public API.
-It starts the issue run, reads the run status, and stores the run identity,
-status, timestamps, and safe usage fields as evidence. It drops event payloads
-and work-product text. The report also stores the target and safe runner
-configuration. The task names the user goal and observable checks. It does not
-name router functions, SQL queries, or Workflow steps.
+The issue-run CLI creates an issue for each trial through Garden's public API.
+The Promptfoo provider creates a thread for each chat trial, uploads a
+synthetic fixture, and sends the chat request used by Garden's UI. For the
+Decide task, it reads the thread's Decide status and generated workbook. The
+workbook download accepts only the Decide output host and `.xlsx` output path.
+The report stores IDs, status, sheet names, and hashes. It drops file bytes,
+document text, assistant text, and Decide URLs from the Garden trial report.
+Promptfoo's JSON result also stores the assistant response as the case output.
+The current suite uses synthetic data only, and Promptfoo latest-result storage
+is disabled.
+
+Promptfoo YAML contains static task IDs and evaluation settings. The
+TypeScript task registry owns each prompt, fixture, capability, and grader
+criterion. This avoids two copies of each task definition.
 
 ### Task data
 
 Task files contain data. The grader registry owns executable checks. This task
-shows the fields in the current schema. The first runner supports its
-issue-run status fixture and grader.
+shows the fields in the current schema. The issue-run runner supports its
+status fixture. The chat runner supports the two chat tasks in the registry.
 
 ```ts
 import type { TaskDefinition } from '@garden/evals'
@@ -504,11 +565,10 @@ references. It does not store raw event payloads or work-product text.
 
 ## Isolation and concurrency
 
-Every trial gets a unique identity. The Phase 2 runner uses one dedicated
-workspace and agent, then creates a unique issue and run for each trial. This
-supports the status task. It does not isolate connector or simulator state.
-The diagram shows the target for later suites after Garden can create those
-fixtures per trial.
+Every trial gets a unique identity. The issue-run task creates a unique issue.
+Each chat task creates a unique thread and uploads its fixture to that thread.
+The current runners use one configured workspace and agent. They do not create
+a separate workspace or Decide account for every trial.
 
 ```mermaid
 flowchart TB
@@ -525,10 +585,14 @@ flowchart TB
   T3 --> C3[Connector state C3]
 ```
 
-Later suites must not share a workspace, thread, agent, issue, Workflow
-instance, connector account, or simulator state. The Phase 2 CLI does not
-enforce this full isolation or prevent another process from using its agent.
-Run one command at a time for each eval agent.
+The Promptfoo configuration runs one case at a time. This protects the shared
+agent from concurrent cases inside one evaluation process. It does not lock
+the agent across separate Promptfoo or CLI processes. Run one command at a
+time for each eval agent until a cross-process lock exists.
+
+The diagram below shows the isolation target for later stateful suites. The
+current chat tasks isolate each trial by thread. They share the configured
+workspace and agent.
 
 Each `EvidenceBundle` stores the identifiers created for that trial. Evidence
 readers query by those identifiers. They do not use time windows or "latest
@@ -654,7 +718,7 @@ flowchart LR
   Security[Security] --> Safety[Permission, isolation, and adversarial cases]
   Design[Design and research] --> Rubrics[Usefulness rubrics and human labels]
 
-  Runner --> EvalSystem[Garden eval system]
+  Runner[Promptfoo and Garden provider] --> EvalSystem[Garden eval system]
   Tasks --> EvalSystem
   Safety --> EvalSystem
   Rubrics --> EvalSystem
@@ -669,14 +733,16 @@ release gate.
 
 The design considered two main shapes.
 
-1. A Garden-native package runs the product and reads its existing evidence.
+1. Promptfoo runs cases through a Garden provider. Garden's TypeScript package
+   owns task contracts, fixtures, execution, evidence, and graders.
 2. An eval service lives inside Garden with its own product tables, API, and
    dashboard.
 
-The package design is selected. A caller submits a versioned task and receives
-a complete report through one runner operation. The package hides fixture
-setup, product execution, evidence normalization, grading, and cleanup. It
-also keeps evaluation failures outside the product database.
+The Promptfoo and Garden package design is selected. Promptfoo supplies case
+scheduling and result output. A caller passes a static task ID to the Garden
+provider. The package resolves the task, prepares its fixture, runs Garden,
+collects evidence, and grades the result. It keeps evaluation failures outside
+the product database.
 
 The in-product service exposes more concepts to the runtime and creates split
 ownership of run state. Garden does not need that complexity before the task
@@ -685,13 +751,12 @@ without moving the runner into the product.
 
 The task contract uses typed TypeScript data validated by Zod. Each task names
 a fixture, available capabilities, success criteria, grader IDs, and required
-evidence. Grader code stays in the registry. This keeps the first task bank
-reviewable and avoids a second parser and scenario language before the runner
-exists. Each trial gets fresh evaluation, isolation, and trial IDs before
-fixture setup. An incomplete evidence collection produces `invalid`, not a
-product failure. The design review considered YAML task files and a generic
-scenario-action registry, then deferred both to keep this first boundary
-small.
+evidence. Grader code stays in the registry. Promptfoo YAML contains task IDs
+and execution settings only. Each trial gets fresh evaluation, isolation, and
+trial IDs before fixture setup. An incomplete evidence collection produces
+`invalid`, not a product failure. The design review rejected full YAML task
+files and a generic scenario-action registry because they would duplicate the
+typed task contract or add a second task language.
 
 ## Alternatives considered
 
@@ -748,27 +813,13 @@ boundaries. The types keep product failure separate from incomplete evidence.
 
 ### Phase 2: prove one vertical slice
 
-Add a runner for one configured local or dev Garden deployment. Use a
-dedicated eval workspace and agent. Create one unique issue per trial, start
-it through the public issue-run API, poll the run, sanitize the returned
-evidence, grade its terminal status, and save JSON and Markdown reports. Do
-not delete the issue because it is the evidence a person needs to inspect a
-failure. Run one trial at a time against the same agent.
+Implemented: the issue-run CLI creates a unique issue, starts the normal run,
+reads its terminal status, and writes a JSON and Markdown report. The task
+checks run status only. It does not grade tool routing or external side
+effects. The status grader accepts terminal statuses only. The runner rejects
+tasks that request connectors or extra permissions.
 
-The first task checks only that an issue run reaches the expected status. It
-does not grade tool routing or external side effects. Add those checks only
-when Garden can return evidence that proves them.
-The status grader accepts terminal statuses only. The runner rejects task
-definitions that request connectors or extra permissions.
-
-The CLI does not lock the eval agent. Serialize CLI invocations for that
-agent until a later runner adds a concurrency group or a proven isolation
-boundary.
-
-Exit condition: the expected run status appears as `passed`. A different
-status appears as `failed`. Setup, API, or evidence errors appear as `invalid`
-with the trial ID. One command runs one trial. The runner does not claim to
-serialize separate CLI processes.
+The CLI does not lock the eval agent. Run one command at a time for that agent.
 
 #### Run the first task
 
@@ -795,11 +846,44 @@ Run `pnpm --filter @garden/evals eval:issue-run`. The CLI writes one JSON
 report and one Markdown report under `.artifacts/evals/<evaluation-id>/`.
 It exits with code `0` for `passed`, `1` for `failed`, and `2` for `invalid`.
 
+#### Run chat and Decide tasks
+
+Promptfoo runs two chat cases in series. The first asks Garden to analyze a
+small synthetic CSV through Decide and create a workbook. The eval checks the
+Decide run, opens the workbook, checks all source rows, checks the target row
+and region list, and checks that `ast` and its proposed correction remain
+separate. The second asks Garden to answer from a synthetic project brief. It
+checks the owner and date and confirms that the chat did not start a Decide
+run.
+
+Use the dev deployment and a dedicated eval workspace and agent. Each Promptfoo
+run creates two threads and uploads two synthetic files. The Decide case also
+starts one Decide analysis and creates its workbook. Do not use a user's CSV:
+Decide may retain input and usage data in its own systems.
+
+Set the same `GARDEN_EVAL_*` values above in the root `.env` file or export them
+in the shell. Keep `GARDEN_EVAL_SESSION_COOKIE` out of committed files and
+command history. Promptfoo reads the root `.env`, runs cases one at a time,
+disables result caching and latest-result storage, and writes
+`.artifacts/evals/promptfoo.json`.
+
+```sh
+pnpm --filter @garden/evals eval:promptfoo
+```
+
+Promptfoo marks a case as passed only when Garden's report says `passed`. The
+JSON result includes Garden's criterion IDs and pass/fail values. A task that
+fails on Garden evidence is a product failure. Missing credentials cause a
+provider error before a Garden trial starts. API or evidence errors after trial
+setup produce an `invalid` Garden report. This starter suite is a development
+check. It is not a release gate or a broad measure of agent quality.
+
 ### Phase 3: build the first task bank
 
-Expand to 20 tasks and add deterministic connector simulators. Run three
-trials for variable agent tasks. Add a calibrated model grader only for
-groundedness, coverage, and response quality.
+The starter suite has one issue-run status task and two chat tasks. Expand it
+to cover more Garden agent tasks and add deterministic connector simulators.
+Run three trials for tasks with variable outcomes. Add a calibrated model
+grader only for groundedness, coverage, and response quality.
 
 Exit condition: repeated local runs produce stable hard-gate results and a
 useful variance report.
@@ -826,15 +910,15 @@ task before the fix merges.
 
 - a Garden eval dashboard;
 - eval runs against private production workspaces;
-- a vendor-specific hosted eval dependency;
+- Promptfoo Cloud or another hosted eval service;
 - one combined Garden quality score; or
 - model graders for authorization, side effects, or isolation.
 
 ## Open questions
 
 1. Which model and prompt configurations form the supported release matrix?
-2. Which local entry point can run chat, issue, and automation tasks with the
-   least eval-only code?
+2. Should chat and issue-run evals use one local entry point as automation
+   evals are added?
 3. Which artifact formats need exact validators in the first task bank?
 4. Should Garden add safe run-correlation fields or stronger event persistence
    before routing evals need to grade tool calls?
@@ -857,6 +941,10 @@ Garden's stateful, tool-using runtime:
 - [τ-bench](https://arxiv.org/abs/2406.12045) evaluates tool-using agents against application state, policies, and realistic user interaction.
 - [AgentDojo](https://arxiv.org/abs/2406.13352) adds realistic tool tasks, prompt-injection attacks, and security defenses.
 - [METR, Measuring AI ability to complete long tasks](https://metr.org/time-horizons/) motivates repeated trials and task-difficulty groups instead of one aggregate success number.
+- [Promptfoo JavaScript providers](https://www.promptfoo.dev/docs/providers/custom-api/) documents the custom provider contract used to call Garden.
+- [Promptfoo assertions](https://www.promptfoo.dev/docs/configuration/expected-outputs/) documents JavaScript graders and access to provider metadata.
+- [Promptfoo configuration reference](https://www.promptfoo.dev/docs/configuration/reference/) documents serial execution, cache control, timeouts, and result storage.
+- [Promptfoo package metadata](https://github.com/promptfoo/promptfoo/blob/main/package.json) lists its MIT license and Node.js version requirement.
 
 ## Related Garden documents
 
