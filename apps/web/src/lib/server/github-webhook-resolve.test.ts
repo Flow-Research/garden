@@ -51,7 +51,7 @@ describe('parseGitHubWebhookIssueTarget', () => {
 
     expect(result.isOk()).toBe(true)
     if (result.isErr()) throw result.error
-    expect(result.value).toEqual({
+    expect(result.value).toMatchObject({
       installationId: '155955068',
       owner: 'Flow-Research',
       repo: 'garden',
@@ -63,6 +63,7 @@ describe('parseGitHubWebhookIssueTarget', () => {
       state: 'open',
       senderType: null,
     })
+    expect(result.value?.updatedAtMs).toEqual(expect.any(Number))
   })
 
   it('rejects issue events missing installation or number', () => {
@@ -128,7 +129,7 @@ describe('parseGitHubWebhookCommentTarget', () => {
 
     expect(result.isOk()).toBe(true)
     if (result.isErr()) throw result.error
-    expect(result.value).toEqual({
+    expect(result.value).toMatchObject({
       installationId: '155955068',
       owner: 'Flow-Research',
       repo: 'garden',
@@ -143,6 +144,7 @@ describe('parseGitHubWebhookCommentTarget', () => {
       githubUserId: '42',
       senderType: 'User',
       createdAt: new Date('2026-04-01T12:00:00Z'),
+      updatedAtMs: Date.parse('2026-04-01T12:00:00Z'),
     })
   })
 })

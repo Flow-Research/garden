@@ -29,14 +29,16 @@ function timingSafeEqualHex(expected: string, provided: string) {
   return difference === 0
 }
 
-function asBodyBytes(source: BufferSource): ArrayBuffer {
-  let bytes: Uint8Array
+/** Copy into a standalone Uint8Array — SubtleCrypto rejects some ArrayBuffer views. */
+function asBodyBytes(source: BufferSource): Uint8Array {
   if (ArrayBuffer.isView(source)) {
-    bytes = new Uint8Array(source.buffer, source.byteOffset, source.byteLength)
-  } else {
-    bytes = new Uint8Array(source)
+    return new Uint8Array(
+      source.buffer,
+      source.byteOffset,
+      source.byteLength,
+    ).slice()
   }
-  return bytes.slice().buffer
+  return new Uint8Array(source).slice()
 }
 
 /**

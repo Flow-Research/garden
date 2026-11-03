@@ -17,6 +17,7 @@ function target(
     body: 'Body',
     state: 'open',
     senderType: 'User',
+    updatedAtMs: Date.parse('2026-04-01T12:00:00Z'),
     ...overrides,
   }
 }

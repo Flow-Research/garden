@@ -21,12 +21,18 @@ export type GitHubWebhookApplyResult = {
   applied: boolean
   skippedReason: 'bot_sender' | 'unsupported_action' | 'noop' | null
   fields: GitHubWebhookApplyField[]
+  /** Present when a linked issue row was loaded (including noop). */
+  previousStatus: string | null
+  previousAssigneeType: string | null
+  previousAssigneeId: string | null
+  statusChanged: boolean
 }
 
 export type GitHubWebhookCommentApplyResult = {
   applied: boolean
   skippedReason: 'bot_sender' | 'unsupported_action' | 'noop' | null
   action: 'created' | 'updated' | 'deleted' | null
+  commentId: string | null
 }
 
 /**
@@ -86,6 +92,10 @@ export async function applyGitHubWebhookIssueUpdate(args: {
       applied: false,
       skippedReason: 'bot_sender',
       fields: [],
+      previousStatus: null,
+      previousAssigneeType: null,
+      previousAssigneeId: null,
+      statusChanged: false,
     })
   }
 
@@ -95,6 +105,10 @@ export async function applyGitHubWebhookIssueUpdate(args: {
       applied: false,
       skippedReason: 'unsupported_action',
       fields: [],
+      previousStatus: null,
+      previousAssigneeType: null,
+      previousAssigneeId: null,
+      statusChanged: false,
     })
   }
 
@@ -104,6 +118,8 @@ export async function applyGitHubWebhookIssueUpdate(args: {
       title: schema.issue.title,
       description: schema.issue.description,
       status: schema.issue.status,
+      assigneeType: schema.issue.assigneeType,
+      assigneeId: schema.issue.assigneeId,
     })
     .from(schema.issue)
     .where(
@@ -121,6 +137,12 @@ export async function applyGitHubWebhookIssueUpdate(args: {
         message: 'Linked Garden issue was not found for this binding',
       }),
     )
+  }
+
+  const previous = {
+    previousStatus: existing.status,
+    previousAssigneeType: existing.assigneeType,
+    previousAssigneeId: existing.assigneeId,
   }
 
   const changedFields: GitHubWebhookApplyField[] = []
@@ -160,6 +182,8 @@ export async function applyGitHubWebhookIssueUpdate(args: {
       applied: false,
       skippedReason: 'noop',
       fields: [],
+      ...previous,
+      statusChanged: false,
     })
   }
 
@@ -194,6 +218,8 @@ export async function applyGitHubWebhookIssueUpdate(args: {
     applied: true,
     skippedReason: null,
     fields: changedFields,
+    ...previous,
+    statusChanged: changedFields.includes('status'),
   })
 }
 
@@ -221,6 +247,7 @@ export async function applyGitHubWebhookComment(args: {
       applied: false,
       skippedReason: 'bot_sender',
       action: null,
+      commentId: null,
     })
   }
 
@@ -230,6 +257,7 @@ export async function applyGitHubWebhookComment(args: {
       applied: false,
       skippedReason: 'unsupported_action',
       action: null,
+      commentId: null,
     })
   }
 
@@ -277,6 +305,7 @@ export async function applyGitHubWebhookComment(args: {
         applied: false,
         skippedReason: 'noop',
         action: null,
+        commentId: null,
       })
     }
 
@@ -305,6 +334,7 @@ export async function applyGitHubWebhookComment(args: {
       applied: true,
       skippedReason: null,
       action: 'deleted',
+      commentId: existingComment.id,
     })
   }
 
@@ -320,6 +350,7 @@ export async function applyGitHubWebhookComment(args: {
         applied: false,
         skippedReason: 'noop',
         action: null,
+        commentId: existingComment.id,
       })
     }
 
@@ -352,14 +383,16 @@ export async function applyGitHubWebhookComment(args: {
       applied: true,
       skippedReason: null,
       action: 'updated',
+      commentId: existingComment.id,
     })
   }
 
+  const commentId = crypto.randomUUID()
   const insertResult = await Result.tryPromise({
     try: async () => {
       await args.db.transaction(async (tx) => {
         await tx.insert(schema.issueComment).values({
-          id: crypto.randomUUID(),
+          id: commentId,
           issueId: args.binding.issueId,
           authorType: 'connector',
           authorId: null,
@@ -389,5 +422,6 @@ export async function applyGitHubWebhookComment(args: {
     applied: true,
     skippedReason: null,
     action: 'created',
+    commentId,
   })
 }

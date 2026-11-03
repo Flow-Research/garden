@@ -24,6 +24,8 @@ export type GitHubWebhookIssueTarget = GitHubWebhookIssueIdentity & {
   state: 'open' | 'closed' | null
   /** GitHub `sender.type` — Bot deliveries are skipped on apply to avoid echoes. */
   senderType: string | null
+  /** `issue.updated_at` ms for delivery order enforcement. */
+  updatedAtMs: number
 }
 
 /**
@@ -39,6 +41,8 @@ export type GitHubWebhookCommentTarget = GitHubWebhookIssueIdentity & {
   githubUserId: string | null
   senderType: string | null
   createdAt: Date | null
+  /** Prefer `comment.updated_at`, else `created_at`, else now — for order. */
+  updatedAtMs: number
 }
 
 export type GitHubWebhookBindingMatch = {
@@ -62,6 +66,14 @@ function asString(value: unknown): string | null {
 
 function asNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function asTimestampMs(value: unknown, fallback = Date.now()): number {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Date.parse(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return fallback
 }
 
 /**
@@ -160,6 +172,7 @@ export function parseGitHubWebhookIssueTarget(
     body: typeof issue.body === 'string' ? issue.body : null,
     state,
     senderType: asString(sender?.type),
+    updatedAtMs: asTimestampMs(issue.updated_at),
   })
 }
 
@@ -211,6 +224,10 @@ export function parseGitHubWebhookCommentTarget(
   const createdAtRaw = asString(comment.created_at)
   const createdAtMs = createdAtRaw ? Date.parse(createdAtRaw) : Number.NaN
   const githubUserIdNum = asNumber(user?.id)
+  const updatedAtMs = asTimestampMs(
+    comment.updated_at,
+    Number.isFinite(createdAtMs) ? createdAtMs : Date.now(),
+  )
 
   return Result.ok({
     ...identityResult.value,
@@ -223,6 +240,7 @@ export function parseGitHubWebhookCommentTarget(
       githubUserIdNum !== null ? String(githubUserIdNum) : asString(user?.id),
     senderType: asString(sender?.type) ?? asString(user?.type),
     createdAt: Number.isFinite(createdAtMs) ? new Date(createdAtMs) : null,
+    updatedAtMs,
   })
 }
 
