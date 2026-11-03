@@ -1,7 +1,7 @@
 # Workflows engine (Think + Cloudflare Workflows)
 
 **Status:** current, canonical
-**Last reviewed:** 2026-07-24
+**Last reviewed:** 2026-11-03
 
 This is the canonical design doc for Garden's durable run engine — the thing that turns an `issue_run` or `automation_run` row into an executing, resumable, cancellable Think agent loop. Surface-specific product docs point here for engine detail.
 
@@ -56,6 +56,7 @@ flowchart LR
 8. **Branch on status.**
    - Terminal (`succeeded | completed | failed | cancelled | blocked | skipped`): `step.reportComplete(...)`, Workflow returns.
    - Awaiting (`waiting_for_input | waiting_for_approval` — issue runs only today): Workflow calls `step.waitForEvent('resume-N', { type: 'run-control' })`. No event within the wait, or a `cancel` payload, drives the cancel branch (`AgentDO.cancelIssueRun` / `cancelAutomationRun`, then `reportComplete({ status: 'cancelled' })`). A `resume` payload sets `mode = 'resume'` and loops to step 3.
+   - Waiting on Decide (automation runs): when the completion carries `waitingOn: { kind: 'decide_analysis', decideRunId }`, the Workflow calls `step.waitForEvent('turn-N-decide-analysis', { type: 'decide-analysis-finished:<decideRunId>', timeout: DECIDE_ANALYSIS_OWNER_WAIT_MS })`, then runs the next turn with `mode = 'resume'` and that `decideRunId`. See [Automation owners](../features/durable-decide-analysis-design.md#automation-owners).
    - Anything else (a run-status result that isn't terminal and isn't an awaiting status): treated as complete as-is.
 9. **Turn cap.** After 200 turns without reaching a terminal/awaiting resolution, the Workflow reports `max_turns_exceeded` and returns.
 

@@ -388,7 +388,6 @@ const ChatTimelineComponent = ({
                 isLatestStreaming={isLatestStreaming}
                 message={item.message}
                 onOpenDocument={onOpenDocument}
-                threadId={sessionId}
               />
               <MessageSources message={item.message} />
               <MessageCitations
@@ -427,7 +426,6 @@ const ChatTimelineComponent = ({
       resolvedApprovalIds,
       resolvedPermissionRequestIds,
       resolvingToolCallIds,
-      sessionId,
     ],
   )
 

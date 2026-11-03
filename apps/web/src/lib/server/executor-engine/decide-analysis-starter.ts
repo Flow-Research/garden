@@ -1,5 +1,9 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
-import { z } from 'zod'
+import {
+  gardenDecideMetaSchema,
+  type DecideAnalysisOwner,
+  type GardenDecideMeta,
+} from '@garden/agent-runtime/src/decide-analysis-types'
 import type { DirectDecideAnalysisStarter } from './direct-decide-mcp'
 import {
   makeBrainSourceReader,
@@ -11,12 +15,6 @@ import {
   type DecideAnalysisEnvironment,
   type DecideAnalysisInputData,
 } from '../decide-analysis/service'
-
-const gardenDecideMetaSchema = z.object({
-  kind: z.literal('chat'),
-  threadId: z.string().min(1),
-  toolCallId: z.string().min(1).optional(),
-})
 
 /**
  * Tool text the chat model reads after a chat start. The first release said
@@ -31,11 +29,39 @@ export const DECIDE_ANALYSIS_ALREADY_RUNNING_TEXT =
   'An analysis is already running in this chat. Its answer will appear here when it finishes.'
 
 /**
+ * Tool text an automation agent reads after a start. Its turn ends in this
+ * step, and Garden resumes the run with the outcome, so the text says that
+ * instead of pointing at a chat the automation does not have.
+ */
+export const DECIDE_ANALYSIS_AUTOMATION_STARTED_TEXT =
+  'The analysis is running in the background. This automation run pauses now and resumes with the findings when the analysis finishes.'
+export const DECIDE_ANALYSIS_AUTOMATION_ALREADY_RUNNING_TEXT =
+  'An analysis is already running for this automation run. The run resumes with its findings when it finishes.'
+
+const STARTED_TEXT = {
+  chat: {
+    started: DECIDE_ANALYSIS_STARTED_TEXT,
+    already_running: DECIDE_ANALYSIS_ALREADY_RUNNING_TEXT,
+  },
+  automation_run: {
+    started: DECIDE_ANALYSIS_AUTOMATION_STARTED_TEXT,
+    already_running: DECIDE_ANALYSIS_AUTOMATION_ALREADY_RUNNING_TEXT,
+  },
+} as const
+
+const ownerFromMeta = (meta: GardenDecideMeta): DecideAnalysisOwner =>
+  meta.kind === 'chat'
+    ? { kind: 'chat', threadId: meta.threadId }
+    : { kind: 'automation_run', automationRunId: meta.automationRunId }
+
+/**
  * Starts a durable analysis only for metadata injected by Garden's runtime
  * wrapper. Direct MCP callers keep the synchronous tool behavior because they
- * do not have a trusted chat thread to receive the final result. Chat starts
- * never forward a model-supplied `session_id`: the service picks the session
- * from the thread's completed runs.
+ * have no trusted owner to receive the final result. The owner is a chat
+ * thread or, since automations can pause on Decide, an automation run; the
+ * service checks either against the caller's workspace. Starts never forward
+ * a model-supplied `session_id`: the service picks the session from the
+ * owner's completed runs.
  *
  * A `source` reaches the service with the Brain reader, so Garden reads the
  * file and the model never pastes its contents. The tool boundary has already
@@ -65,7 +91,7 @@ export const makeDecideAnalysisStarter =
       env: input.env,
       workspaceId: input.session.organizationId,
       ownerUserId: input.session.userId,
-      owner: { kind: 'chat', threadId: parsedMeta.data.threadId },
+      owner: ownerFromMeta(parsedMeta.data),
       idempotencyKey: parsedMeta.data.toolCallId ?? crypto.randomUUID(),
       question: args.question,
       ...(analysisInput === undefined ? {} : { input: analysisInput }),
@@ -77,10 +103,7 @@ export const makeDecideAnalysisStarter =
         content: [
           {
             type: 'text' as const,
-            text:
-              kind === 'started'
-                ? DECIDE_ANALYSIS_STARTED_TEXT
-                : DECIDE_ANALYSIS_ALREADY_RUNNING_TEXT,
+            text: STARTED_TEXT[parsedMeta.data.kind][kind],
           },
         ],
         structuredContent: {

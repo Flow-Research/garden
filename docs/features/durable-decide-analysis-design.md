@@ -26,12 +26,21 @@ decide_analyze({ question, source: { kind: "brain_file", fileId } })
 The tool call does not pass the chat request signal to Decide. The browser can
 disconnect after it receives the run ID.
 
-The status API reads the durable snapshot:
+The status API reads the durable snapshot. It does not depend on the owner:
 
 ```text
-GET /api/chat/threads/{threadId}/decide-analyses/{runId}
-  -> { run_id, status, progress, result, error }
+GET  /api/decide-analyses/{runId}
+  -> { runId, status, progress, error, files, createdAt, startedAt, completedAt }
+POST /api/decide-analyses/{runId}  { action: "cancel" | "retry", retry_key? }
 ```
+
+The route reads the run, then requires workspace membership. A chat run is
+visible only to the user who owns its thread. An automation run's analysis is
+visible to every workspace member, and cancel or retry needs
+`automationManage`, the permission that runs automations. A run the caller
+may not see returns 404. The thread-scoped route
+`/api/chat/threads/{threadId}/decide-analyses/{runId}` was removed; the chat
+card uses this route too.
 
 The Workflow delivers the final result through a model turn. See
 [Chat contract](#chat-contract) for how the user sees the run and its answer.
@@ -67,11 +76,8 @@ from another thread, even for the same user. The snapshot and the Workflow
 payload carry the owner instead of a thread ID.
 
 The service can create a run for an automation run in the caller's
-workspace, attributed to that run's agent. Nothing calls it yet. The Workflow
-delivers results only to chat owners and logs
-`decide_analysis_workflow.delivery_skipped` for any other owner. Automation
-delivery is the next step of
-[Decide in Automations](./decide-automations-spec.md).
+workspace, attributed to that run's agent. An automation agent's
+`decide_analyze` call does so; see [Automation owners](#automation-owners).
 
 ### One active run per owner
 
@@ -243,6 +249,68 @@ Other Decide tools keep the SDK default timeout reset by progress.
 The service and Workflow open one closable client per operation instead of
 calling `getPooledDb`, which builds an unclosed `pg` Pool on every call. A
 long analysis previously opened a new pool for every progress event.
+
+### Automation owners
+
+An automation run pauses on Decide instead of blocking on it.
+
+1. **Trusted owner.** The MCP wrapper attaches `_meta.garden` to every
+   `decide_analyze` call. A chat facet sends `{ kind: "chat", threadId }`. The
+   automation facet sends `{ kind: "automation_run", automationRunId }`, where
+   the ID is the facet name, which is the run ID. Model arguments never set
+   it. `gardenDecideMetaSchema` in
+   `packages/agent-runtime/src/decide-analysis-types.ts` is the one schema
+   for both the wrapper and the starter.
+2. **The turn ends.** The starter creates the run for the automation owner
+   and returns text that says the run will resume.
+   `stopAfterAutomationDecideAnalysisStarts` ends the turn in the step where
+   Decide accepted the run. A refused start does not end the turn, so the
+   agent can still report the error.
+3. **The run waits in `RunWorkflow`.** The run stays `running`.
+   `completeAutomationRunTurn` returns
+   `waitingOn: { kind: "decide_analysis", decideRunId, settled }` for the
+   latest analysis whose `delivered_at` is null. `RunWorkflow` then calls
+   `step.waitForEvent("turn-N-decide-analysis", { type:
+"decide-analysis-finished:<decideRunId>", timeout })`. This is the same
+   event bridge the turn-complete wait uses, with no second wait or recovery
+   layer. When `settled` is true, Decide already finished and there is no
+   wait.
+4. **Decide wakes the run.** For an automation owner, the Decide Workflow's
+   publish step sends that event to the `RunWorkflow` instance whose ID is
+   the automation run ID. It does so for every terminal outcome, cancelled
+   included, and also when a cancel landed before the claim or the Workflow
+   failed. A chat owner is unchanged.
+5. **The agent resumes.** The next turn runs with `mode: "resume"` and the
+   Decide run ID. The facet reads that run from the database, not from the
+   event, and hands the agent one internal message built by
+   `decideAnalysisAutomationResumeText`
+   (`packages/agent-runtime/src/decide-analysis-automation.ts`): the findings
+   and the file names with their URLs, the failure reason, or a cancelled
+   note. It records `delivered_at` in the same transaction. The agent writes
+   the output and calls `complete_automation`.
+
+The wait is bounded by `DECIDE_ANALYSIS_OWNER_WAIT_MS`, the one-hour
+`DECIDE_ANALYSIS_TIME_LIMIT_MS` plus ten minutes. The provider step can run
+for the limit plus one minute, the commit step retries for at most 35 seconds,
+and the notify step's default retries take at most about five minutes. A wait
+that times out still resumes the agent. The facet then finds the Decide run
+still active, requests its cancel, and tells the agent that Garden stopped
+waiting.
+
+The agent's `runTimeoutSec` guard does not count the pause. It subtracts the
+time each of the run's analyses ran (`created_at` to `completed_at`, or to
+now) from the run's elapsed time (`runExceededTimeout` in
+`packages/agent-runtime/src/run-timeout.ts`).
+
+Cancelling the automation run calls `AutomationRunSubAgent.requestCancel`.
+That requests cancel on the run's active analysis and sends the analysis's
+finished event, so a paused run wakes, sees the cancel request, and closes as
+`cancelled` without waiting for Decide.
+
+The automation run page shows a Decide card for each analysis the run
+started. The runs list returns `decide_analysis_run_ids`, and the card
+(`DecideAnalysisStatusCard`) reads the owner-agnostic status route. Chat
+renders the same card under its fixed opening line.
 
 ## Shape
 
