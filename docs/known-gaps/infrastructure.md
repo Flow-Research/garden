@@ -6,6 +6,11 @@
 | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | -------- |
 | FLO-32 | Garden lacks a stable `/api/health` contract and beta-critical smoke suite covering login/workspace, chat, issue run, automation run, and document artifacts against staging. | `apps/web/src/server.ts`, `.github/workflows/ci.yml`, `alchemy.run.ts` | High     |
 
+The [Garden evaluation system design](../features/evaluation-system-design.md)
+defines how repeatable agent tasks can extend this smoke coverage. The design
+does not close FLO-32. Garden still needs the implemented staging checks and
+their recorded results.
+
 ## Done
 
 | Item                             | Evidence                                                                            |
