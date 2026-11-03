@@ -519,6 +519,12 @@ importers:
       tw-animate-css:
         specifier: ^1.4.0
         version: 1.4.0
+      unist-util-visit:
+        specifier: 5.1.0
+        version: 5.1.0
+      vfile:
+        specifier: 6.0.3
+        version: 6.0.3
       workers-ai-provider:
         specifier: 3.1.13
         version: 3.1.13(@ai-sdk/provider@3.0.10)(ai@6.0.208(zod@4.4.3))
@@ -562,6 +568,9 @@ importers:
       '@types/linkify-it':
         specifier: ^5.0.0
         version: 5.0.0
+      '@types/mdast':
+        specifier: 4.0.4
+        version: 4.0.4
       '@types/mdx':
         specifier: ^2.0.14
         version: 2.0.14
