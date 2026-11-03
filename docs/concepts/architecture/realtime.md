@@ -1,82 +1,110 @@
-# Realtime foundation
+---
+title: Realtime keeps three live channels apart
+description: How Garden splits durable data, AI streaming, and the workspace realtime hub, and why the hub only tells clients to refetch.
+status: current
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
 
-**Status:** foundation note, code-reviewed 2026-05-24
+Garden has three kinds of live behavior, and each has its own channel:
 
-Garden separates three kinds of live behavior:
+1. Durable product data lives in Postgres. The browser reads it through TanStack Query.
+2. AI and chat output streams over Agents and Think WebSocket connections.
+3. Workspace changes, such as an issue edit, fan out through one realtime hub per workspace.
 
-1. durable product data in Postgres, rendered through TanStack Query;
-2. live AI/chat streaming through Agents/Think websocket connections;
-3. future workspace-wide cache/presence fanout through a dedicated realtime coordinator.
+Keeping the three apart is the main design choice. Chat traffic never rides the workspace hub, and the hub never becomes a second database.
 
-Only the first two are active today.
+## Each layer owns one thing
 
-## Current implementation
+The table lists what each layer owns.
+
+| Layer | Owns |
+| --- | --- |
+| Postgres | Durable records: workspaces, agents, chat thread metadata, issues, runs, automations, connectors, documents, and audit |
+| TanStack Start routes and server services | Auth checks, CRUD, run start and cancel, and query responses |
+| TanStack Query | The browser cache, refetch, and polling |
+| `AgentDO` and its Think facets | Agent identity, chat streams, and live run turns |
+| `RunWorkflow` | Durable retry, wait, resume, and cancel between Think turns |
+| `WorkspaceRealtimeDO` | Live workspace sockets and event fan-out |
 
 ```mermaid
 flowchart LR
   Browser --> Query[TanStack Query]
   Query --> Routes[TanStack Start routes]
   Routes --> DB[(Postgres)]
-  Browser --> ChatWS[Agents/Think websocket]
+  Routes -->|publishWorkspaceEvent| Hub[WorkspaceRealtimeDO]
+  Hub -->|envelope| Browser
+  Browser --> ChatWS[Agents and Think WebSocket]
   ChatWS --> AgentDO[AgentDO]
-  AgentDO --> ChatSubAgent[ChatSubAgent]
-  AgentDO --> IssueRunSubAgent[IssueRunSubAgent]
-  AgentDO --> AutomationRunSubAgent[AutomationRunSubAgent]
   Routes --> Workflow[RunWorkflow]
   Workflow --> AgentDO
 ```
 
-Code evidence:
+## Chat streams on its own socket
 
-- `apps/web/src/components/web-providers.tsx` does not pass `wsUrl` into `CoreProvider`.
-- `packages/app-state/src/realtime/provider.tsx` only opens `WSClient` when `wsUrl`, user, and workspace are all present.
-- `apps/web/wrangler.jsonc` has no workspace realtime Durable Object binding.
-- `apps/web/src/lib/issues/queries.ts` polls active run and run event endpoints every 2s while a run is active.
-- `apps/web/src/features/chat/chat-runtime-provider.tsx` opens the chat websocket through `useAgent` / `useAgentChat` for the mounted chat panel.
+`apps/web/src/features/chat/chat-runtime-provider.tsx` opens the chat WebSocket through `useAgent` and `useAgentChat` for the mounted chat panel. That socket carries Think messages for one `ChatSubAgent`. See [agent runtime](./agent-runtime.md).
 
-## Ownership boundaries
+Issue run progress does not use the hub yet. `apps/web/src/lib/issues/queries.ts` polls the active run and its events every 2 seconds while a run is active.
 
-| Layer | Owns today |
+## The workspace hub signals, clients refetch
+
+`WorkspaceRealtimeDO` in `packages/agent-runtime/src/workspace-realtime-do.ts` is one Durable Object per workspace, bound as `WORKSPACE_REALTIME` in `apps/web/wrangler.jsonc`. It holds hibernating WebSockets.
+
+The pieces fit together like this:
+
+| Piece | Where |
 | --- | --- |
-| Postgres | Durable business records: workspaces, agents, chat thread metadata, issues, runs, automations, connectors, documents, audit |
-| TanStack Start routes/server services | Auth checks, CRUD, run start/cancel orchestration, query responses |
-| TanStack Query | Browser cache and refetch/polling behavior |
-| `AgentDO` | Agent identity, runtime RPC, child facet routing, Workflow creation |
-| `ChatSubAgent` | Chat stream, Think messages, thread-local workspace/files/tools |
-| `IssueRunSubAgent` / `AutomationRunSubAgent` | Live run turns and tools |
-| `RunWorkflow` | Durable retry/wait/resume/cancel between Think turns |
+| Hub | `packages/agent-runtime/src/workspace-realtime-do.ts` |
+| Audience rules, as pure functions | `packages/agent-runtime/src/realtime-audience.ts` |
+| Connect route `/api/realtime`, with session and membership auth | `apps/web/src/lib/server/realtime.ts`, wired in `apps/web/src/server.ts` |
+| Publish helper `publishWorkspaceEvent` | `apps/web/src/lib/server/realtime.ts` |
+| Client channel | `apps/web/src/lib/realtime/realtime-manager.ts` |
+| Event contract | `RealtimeEventEnvelope` and `RealtimePublishableEvent` in `packages/core/src/types/events.ts` |
 
-## Future workspace realtime shape
+A write follows these steps:
 
-When needed, add a workspace-scoped coordinator:
+1. The route authenticates and authorizes the request.
+2. The route writes to Postgres.
+3. The route calls `publishWorkspaceEvent`, which sends an envelope to the hub. The envelope has `event_id`, `type`, `workspace_id`, `published_at`, and `payload`.
+4. The hub applies audience rules per connection and sends the envelope only to eligible sockets.
+5. The client invalidates TanStack Query roots such as `['teams', workspaceId]` and `['issues', workspaceId]`.
+6. The client refetches through the normal access-checked APIs.
 
-```md
-WorkspaceRealtimeAgent
-  name: workspaceId
-  owns: live client sockets, presence, ephemeral fanout, normalized query invalidation signals
-  does not own: durable records, chat history, run ledgers, or business decisions
-```
+Clients never render the payload. That keeps the hub out of the business of deciding what a user may see. The access-checked API decides that on every refetch.
 
-Server write path:
+The hub publishes team, team member, issue, and comment events today. The routes that publish are the Teams routes under `apps/web/src/routes/api/teams/`, `apps/web/src/routes/api/issues.ts`, `apps/web/src/routes/api/issues/$id.ts`, and the comment routes. Inbox and run events can use the same hub once they are wired.
 
-1. authenticate and authorize;
-2. write Postgres;
-3. emit a normalized event to the workspace realtime coordinator;
-4. clients invalidate or patch TanStack Query caches;
-5. clients refetch authoritative data when needed.
+## Audience rules decide who hears what
 
-Suggested event vocabulary should stay small:
+`canReceiveRealtimeEvent` in `realtime-audience.ts` applies these rules:
 
-```ts
-type RealtimeEvent =
-  | { type: 'query.invalidate'; workspaceId: string; keys: string[][] }
-  | { type: 'entity.patch'; workspaceId: string; entity: string; id: string; patch: Record<string, unknown> }
-  | { type: 'presence.update'; workspaceId: string; userId: string; state: 'online' | 'idle' | 'offline' }
-```
+- Workspace owners and admins receive every event.
+- `team:*` and `team_member:*` events reach members of that Team.
+- An `issue:*` event with a `team_id` reaches the Team owner, and reaches a member only when the issue is assigned to them.
+- An `issue:*` event without a `team_id` reaches every workspace member.
+
+Each connection keeps a profile of its Teams. Team events refresh that profile, so a long-lived socket stays correct without a database read on every delivery.
+
+## Reconnects and latency are measured
+
+The client reconnects with capped exponential backoff. After a reconnect it invalidates the Teams and issues roots so the open view refetches. An unauthorized close (code 1008, 4001, or 4003) stops the loop until the session changes.
+
+Three signals carry the event id and measure the path from publish to cache update:
+
+- The route logs `realtime.published`.
+- The hub logs `realtime.delivered` with `publishToDeliverMs`.
+- The client sends `realtime_event_applied` to PostHog with `publish_to_invalidate_ms`.
+
+The target is a p95 below 500 ms from publish to cache update.
+
+## Not built
+
+The hub does not carry presence or cache patches. An earlier design proposed `presence.update` and `entity.patch` events. Neither exists. Add them only when a product surface needs them.
 
 ## Constraints
 
-- App-wide realtime must not share the AI chat transport.
-- The bus should not become a second business database.
-- Do not add fake websocket plumbing; leave `wsUrl` unset until a real server endpoint exists.
-- Skill assignment and prompt invalidation should use explicit write-path signals or versioning, not broad client-side DB polling.
+These rules keep the channels apart:
+
+- App-wide realtime does not share the AI chat transport.
+- The hub does not store business data.
+- Skill assignment and prompt changes use explicit write-path signals or versioning, not client-side polling of the database.

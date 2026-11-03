@@ -1,115 +1,108 @@
-# Workflows engine (Think + Cloudflare Workflows)
+---
+title: The run engine pairs Think submissions with Cloudflare Workflows
+description: How Garden turns an issue_run or automation_run row into a durable, resumable, cancellable Think agent loop, and which work does not belong there.
+status: current
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
 
-**Status:** current, canonical
-**Last reviewed:** 2026-07-24
+Garden runs two product surfaces, issues and automations, through one durable executor. The engine turns an `issue_run` or `automation_run` row into a Think agent loop that survives Durable Object eviction, waits for people, and stops when cancelled.
 
-This is the canonical design doc for Garden's durable run engine — the thing that turns an `issue_run` or `automation_run` row into an executing, resumable, cancellable Think agent loop. Surface-specific product docs point here for engine detail.
+## Three pieces, two owners
 
-## What the engine is
+The engine has three parts:
 
-Garden runs two product surfaces — **issues** and **automations** — through one shared durable executor:
+- **Think** (`@cloudflare/think`) is the agent loop. It owns messages, tool calls, streaming, and a durable submission ledger: `submitMessages()`, `inspectSubmission()`, `onSubmissionStatus()`, and `cancelSubmission()`.
+- **`RunWorkflow`** in `packages/agent-runtime/src/run-workflow.ts` extends `AgentWorkflow` from `agents/workflows`. There is one Workflow instance per run, and the instance id is the run id.
+- **`AgentDO`** in `packages/agent-runtime/src/agent-do.ts` is the parent Durable Object. It hosts one Think facet per run (`IssueRunSubAgent` or `AutomationRunSubAgent`) and exposes the RPC methods the Workflow calls.
 
-- **Think** (`@cloudflare/think`) is the agent loop. It owns messages, tool calls, streaming, and a durable submission ledger (`submitMessages()`, `inspectSubmission()`, `onSubmissionStatus()`, `cancelSubmission()`).
-- **`AgentWorkflow`** (`agents/workflows`) is Cloudflare Workflows wired to an originating Agent. Garden's `RunWorkflow` extends it. One Workflow instance per run, instance id = run id.
-- **`AgentDO`** is the parent Durable Object and RPC surface. It hosts per-run Think facets as sub-agents (`IssueRunSubAgent`, `AutomationRunSubAgent`) and exposes the Workflow-facing RPC methods the Workflow calls back into.
+The Workflow owns durability: retries, durable waits, resume, cancel, and terminal bookkeeping. The facet owns live state: tools, MCP connections, and streaming. Neither owns both. That split is the main design choice, and every rule on this page protects it.
 
-The Workflow owns durability (retries, durable waits, resume/cancel, terminal bookkeeping). The DO/facet owns live runtime state, tools, MCP connections, and streaming. Neither owns both.
-
-## Code map
-
-| Concern                     | Owner                                                  | Evidence                                                                                      |
-| --------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| Durable executor            | `RunWorkflow extends AgentWorkflow`                    | `packages/agent-runtime/src/run-workflow.ts`                                                  |
-| Agent identity / RPC parent | `AgentDO extends Agent`                                | `packages/agent-runtime/src/agent-do.ts`                                                      |
-| Issue run facet             | `IssueRunSubAgent extends Think`, keyed by issue id    | `packages/agent-runtime/src/issue-run-sub-agent.ts`                                           |
-| Automation run facet        | `AutomationRunSubAgent extends Think`, keyed by run id | `packages/agent-runtime/src/automation-run-sub-agent.ts`                                      |
-| Issue ledger                | `issue_run`, `issue_run_event`                         | `packages/db/src/schema/issues.ts`, `packages/db/src/schema/issue-values.ts`                  |
-| Automation ledger           | `automation`, `automation_trigger`, `automation_run`   | `packages/db/src/schema/automations.ts`, `packages/db/src/schema/automation-values.ts`        |
-| Run start services          | `startIssueRun`, `startAutomationRun`                  | `packages/server/src/issues/run-service.ts`, `packages/server/src/automations/run-service.ts` |
-| Schedule trigger state      | `AutomationTriggerDO`                                  | `packages/agent-runtime/src/automation-trigger-do.ts`                                         |
-| Wrangler bindings           | `AgentDO`, `RUN_WORKFLOW`, `AUTOMATION_TRIGGER`        | `apps/web/wrangler.jsonc`                                                                     |
-
-## Architecture
+Run rows start in `startIssueRun` (`packages/server/src/issues/run-service.ts`) and `startAutomationRun` (`packages/server/src/automations/run-service.ts`). For the full code map, see the [architecture map](../../reference/architecture-map.md).
 
 ```mermaid
 flowchart LR
-  Route[Server route/service] --> Ledger[(issue_run / automation_run)]
+  Route[Server route or service] --> Ledger[(issue_run / automation_run)]
   Route --> AgentDO[AgentDO RPC: start*RunWorkflow]
   AgentDO --> Workflow[RUN_WORKFLOW id = runId]
   Workflow -->|executeRunTurn / executeAutomationRunTurn| AgentDO
   AgentDO --> IssueFacet[IssueRunSubAgent]
   AgentDO --> AutomationFacet[AutomationRunSubAgent]
-  IssueFacet -->|onSubmissionStatus → sendEvent| Workflow
-  AutomationFacet -->|onSubmissionStatus → sendEvent| Workflow
+  IssueFacet -->|onSubmissionStatus then sendEvent| Workflow
+  AutomationFacet -->|onSubmissionStatus then sendEvent| Workflow
   Workflow -->|completeRunTurn / completeAutomationRunTurn| AgentDO
 ```
 
-## Lifecycle, turn by turn
+## A run, turn by turn
 
-1. **Start.** A server route/service inserts the run row (`issue_run` or `automation_run`, status `queued`/`pending`), then calls `AgentDO.startIssueRunWorkflow` / `startAutomationRunWorkflow`.
-2. **Workflow creation.** The DO calls `this.runWorkflow('RUN_WORKFLOW', { kind, runId, ... }, { id: runId, agentBinding: 'AgentDO', metadata })`. Instance id = run id is the idempotency boundary — a duplicate create (`isDuplicateWorkflowInstanceError`) is treated as success, not an error.
-3. **Turn submit.** `RunWorkflow.run()` loops (`MAX_TURNS = 200`). Each turn calls `step.do('turn-N-submit', { retries: 3, exponential, 5s } , ...)` → `AgentDO.executeRunTurn` / `executeAutomationRunTurn` → the owning facet's `executeWorkflowTurn(mode, input)`.
-4. **Facet submits to Think.** The facet calls `this.submitMessages([message], { submissionId, idempotencyKey: submissionId, metadata: { runId, ... } })` and returns immediately — it does not block on completion. This returns either `{ kind: 'stopped' }` (e.g. cancel already requested) or `{ kind: 'submitted', submissionId, status }`.
-5. **Durable wait.** If the submission isn't already terminal, the Workflow calls `step.waitForEvent(...)` on a per-submission event type (`run-turn-complete:<submissionId>`). No DO-local timer, no in-memory waiter map — the wait is fully durable Workflow state.
-6. **Wake.** Think calls the facet's `onSubmissionStatus(submission)` override when a submission reaches a terminal status (`completed | aborted | skipped | error`). The facet looks up `runId` from submission metadata and does `env.RUN_WORKFLOW.get(runId).sendEvent({ type: 'run-turn-complete:<submissionId>', payload })`.
-7. **Turn complete.** The Workflow's `step.do('turn-N-complete-status', ...)` calls `AgentDO.completeRunTurn` / `completeAutomationRunTurn` → the facet's `completeWorkflowTurn`, which inspects the submission and resolves Garden's product-ledger status (handles `error` → force-close failed, `aborted` → cancel-if-requested else force-close failed, `skipped` → force-close failed as `turn_skipped`).
-8. **Branch on status.**
-   - Terminal (`succeeded | completed | failed | cancelled | blocked | skipped`): `step.reportComplete(...)`, Workflow returns.
-   - Awaiting (`waiting_for_input | waiting_for_approval` — issue runs only today): Workflow calls `step.waitForEvent('resume-N', { type: 'run-control' })`. No event within the wait, or a `cancel` payload, drives the cancel branch (`AgentDO.cancelIssueRun` / `cancelAutomationRun`, then `reportComplete({ status: 'cancelled' })`). A `resume` payload sets `mode = 'resume'` and loops to step 3.
-   - Anything else (a run-status result that isn't terminal and isn't an awaiting status): treated as complete as-is.
-9. **Turn cap.** After 200 turns without reaching a terminal/awaiting resolution, the Workflow reports `max_turns_exceeded` and returns.
+A run moves through these steps:
 
-## Two ledgers, one engine
+1. **Start.** A server service inserts the run row, then calls `AgentDO.startIssueRunWorkflow` or `AgentDO.startAutomationRunWorkflow`.
+2. **Create the Workflow.** The DO calls `this.runWorkflow('RUN_WORKFLOW', ...)` with the run id as the instance id. The instance id is the idempotency boundary. A duplicate create counts as success.
+3. **Submit a turn.** `RunWorkflow.run()` loops up to `MAX_TURNS` (200). Each turn runs a `step.do` with `TURN_RETRIES` (3 tries, 5 second exponential backoff). The step calls `AgentDO.executeRunTurn` or `executeAutomationRunTurn`, which calls the facet.
+4. **Hand the turn to Think.** The facet calls `this.submitMessages([message], ...)` with the submission id as the idempotency key and the run id in metadata. It returns at once instead of blocking until the turn ends.
+5. **Wait durably.** If the submission is not already terminal, the Workflow calls `step.waitForEvent` on the event type `run-turn-complete:<submissionId>`. No timer or in-memory waiter exists in the DO.
+6. **Wake.** When a submission ends, Think calls the facet's `onSubmissionStatus` override. The facet reads the run id from metadata and sends the event to the Workflow instance.
+7. **Close the turn.** The Workflow calls `AgentDO.completeRunTurn` or `completeAutomationRunTurn`. The facet inspects the submission and writes the product status. An `error` or `skipped` submission fails the run. An `aborted` submission cancels the run if cancel was requested and fails it otherwise.
+8. **Branch on the status.** A terminal status (`succeeded`, `completed`, `failed`, `cancelled`, `blocked`, or `skipped`) ends the Workflow. An awaiting status (`waiting_for_input` or `waiting_for_approval`) makes the Workflow wait for a `run-control` event. Any other status ends the Workflow as is.
+9. **Hit the cap.** After 200 turns with no end, the Workflow reports `max_turns_exceeded`.
 
-| Surface     | Ledger                                 | Status vocabulary                                                                                 | Awaiting/HITL states                                                                                                                                                                   |
-| ----------- | -------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Issues      | `issue_run` (`issue-run-status` check) | `queued, running, waiting_for_input, waiting_for_approval, succeeded, failed, cancelled, blocked` | Yes — issue runs can pause on `mark_blocked`, questions, or approval gates and resume via `run-control` events.                                                                        |
-| Automations | `automation_run`                       | `pending, queued, running, completed, failed, cancelled, skipped`                                 | None today — automation runs currently resolve to a terminal status in one pass; the Workflow's generic `AWAITING_RUN_STATUSES` set is issue-shaped, not exercised by automations yet. |
+## Two ledgers share one engine
 
-`RunWorkflow`'s `TERMINAL_RUN_STATUSES` and `AWAITING_RUN_STATUSES` (in `run-workflow.ts`) are the union across both ledgers, not per-surface enums — that's intentional (one generic loop), but it means the Workflow doesn't itself enforce which statuses are valid for which `kind`. Ledger-shape correctness is enforced by each facet's DB check constraints and by `completeWorkflowTurn`.
+The two surfaces keep separate ledgers and status words:
 
-An automation run must never create an issue, appear on the kanban, or route through `issue_run` — if an automation's domain task needs to touch issues, that's explicit tool work inside the automation's prompt, not orchestration.
+| Surface | Ledger | Statuses | Pauses for people |
+| --- | --- | --- | --- |
+| Issues | `issue_run` | `queued`, `running`, `waiting_for_input`, `waiting_for_approval`, `succeeded`, `failed`, `cancelled`, `blocked` | Yes. A run can pause on a question, `mark_blocked`, or an approval gate. |
+| Automations | `automation_run` | `pending`, `queued`, `running`, `completed`, `failed`, `cancelled`, `skipped` | No. An automation run ends in one pass. |
 
-## Resume and cancel
+`TERMINAL_RUN_STATUSES` and `AWAITING_RUN_STATUSES` in `run-workflow.ts` are the union of both ledgers. One generic loop is simpler, but it means the Workflow does not check which statuses fit which run kind. Database check constraints and each facet's `completeWorkflowTurn` enforce that.
 
-Both are Workflow control events, sent to the instance keyed by `runId`:
+An automation run never creates an issue, never appears on the kanban, and never routes through `issue_run`. If an automation's task needs to touch issues, the automation does that through its own tools.
+
+## Resume and cancel are Workflow events
+
+Both controls go to the Workflow instance keyed by the run id:
 
 ```ts
 const instance = await env.RUN_WORKFLOW.get(runId)
 await instance.sendEvent({
-  type: 'run-control',
-  payload: { kind: 'resume' | 'cancel' },
+	type: 'run-control',
+	payload: { kind: 'resume' },
 })
 ```
 
-`AgentDO.cancelIssueRun` / `cancelAutomationRun` additionally call `requestCancel` on the live facet and `abortSubAgent(...)` to stop in-flight tool/model work immediately, rather than waiting for the next Workflow step.
+A `resume` payload starts the next turn in resume mode. A `cancel` payload, or a wait that ends with no event, runs the cancel branch. `AgentDO.cancelIssueRun` and `AgentDO.cancelAutomationRun` also call `abortSubAgent` so that in-flight model and tool work stops at once instead of at the next Workflow step.
 
-## Automation scheduling
+## Schedules start runs but are not the engine
 
-`AutomationTriggerDO` is a separate Durable Object that owns schedule-trigger state — it is not part of the run engine's turn loop, it's what _starts_ a scheduled run. It computes the next fire time from `cronExpression` + `timezone`, creates a one-time Agents SDK schedule (`scheduleAutomationTrigger`), and on fire applies the automation's `concurrencyPolicy` (`skip` is the implemented/safe default; `replace` marks the in-flight run replaced; `queue` is schema-only, not implemented — do not expose it in product UI) before inserting the `automation_run` row and calling `AgentDO.startAutomationRunWorkflow`. Manual/webhook/API-triggered runs skip this DO and converge on the same `automation_run` + `AgentDO` + `RunWorkflow` path.
+`AutomationTriggerDO` in `packages/agent-runtime/src/automation-trigger-do.ts` owns schedule state. It computes the next fire time from the cron expression and time zone, and it sets a one-time Agents SDK schedule. When the schedule fires, it applies the automation's concurrency policy, inserts the `automation_run` row, and calls `AgentDO.startAutomationRunWorkflow`.
 
-## `Think` durable submissions vs the old model
+Two policies work: `skip` and `replace`. The schema also lists `queue`, but `parseConcurrencyPolicy` rejects it as not implemented. Manual, webhook, and API runs skip this DO and join the same path at the `automation_run` row.
 
-Before durable submissions, the DO waited in-process for a turn to finish (arbitrary timers, an in-memory callback map) — long tool calls could blow past that window even though Think was still working correctly. The current model removes that layer entirely: Think's submission ledger is the source of truth for "is this turn done," `onSubmissionStatus` is the only wake path, and the Workflow's `waitForEvent` is the only wait path. There is no DO-local waiter, no polling loop, and no second recovery layer — if you're tempted to add one, that's a sign something upstream (Think or Workflows) has a gap that should be named and linked, not routed around.
+## Why Garden dropped its own waiters
+
+Before Think had durable submissions, the DO waited in-process for a turn to finish, with timers and an in-memory callback map. Long tool calls could outlast that window while Think was still working. The current model removes that layer. Think's submission ledger decides whether a turn is done, `onSubmissionStatus` is the only wake path, and `waitForEvent` is the only wait. If a second recovery layer looks necessary, the cause is likely a gap in Think or Workflows that should be named and linked, not worked around.
+
+## Pick the primitive by the job
+
+Cloudflare offers several durable primitives. Garden uses each for one shape of job and does not merge them into one abstraction.
+
+- **Workflows for product runs.** Issue and automation runs have run ids, database status, audit events, user-visible cancel, and durable waits on Think submissions. That is the job Workflows does.
+- **Managed fibers for agent-local background work.** Work that belongs to one agent, must survive eviction, and is not a product run fits the Agents SDK fiber API: `startFiber`, `runFiber`, `inspectFiber`, `listFibers`, `cancelFiber`, `FiberContext.signal`, and `stash()`. Candidates include connector capability refreshes, cache builds, sandbox cleanup, and agent maintenance. Garden does not use fibers yet.
+- **Sandbox preview tunnels for live previews only.** A sandbox quick tunnel shows a generated web artifact while the sandbox runs. It is not storage. Garden stores accepted artifacts separately.
+
+Do not move issue or automation runs to fibers unless Workflows cannot meet a proven requirement.
 
 ## Design rules
 
-- Do not add `RUN_QUEUE`, a dispatcher, or queue consumers between `AgentDO` and `RunWorkflow`. Workflow instance id = `runId` is the idempotency boundary.
-- Do not monkey-patch SDK lifecycle methods (`restoreConnectionsFromStorage`, `submitMessages`, etc.) or destructure/reassign methods off `this` — that silently breaks `this` binding.
-- Do not rebuild a DO-local waiter/timeout layer. Use `submitMessages()` + `onSubmissionStatus()` + `Workflow.waitForEvent()`.
-- Do not route automation execution through `issue_run`, or model automations as issues.
-- If Workflow creation fails, fail that ledger row's start explicitly. Don't hide it behind a second queue/reconciler unless a _current, linked_ Cloudflare platform gap requires it.
-- Keep issue-run code issue-specific and automation code automation-specific; share only the product-neutral primitives (`RunWorkflow`, model/tool setup, MCP controller patterns).
+These rules keep the split between Workflow and facet intact:
 
-## Where Workflows stops being the right tool
+- Do not add a queue, dispatcher, or queue consumer between `AgentDO` and `RunWorkflow`. The run id as instance id is the idempotency boundary.
+- Do not monkey-patch SDK lifecycle methods. Do not take a method off `this` and call it loose, because that drops the `this` binding.
+- Do not rebuild a DO-local waiter or timeout. Use `submitMessages()`, `onSubmissionStatus()`, and `waitForEvent()`.
+- Do not route automations through `issue_run` or model them as issues.
+- If Workflow creation fails, fail that run's start in the ledger. Do not hide the failure behind a reconciler unless a linked Cloudflare platform gap requires one.
+- Keep issue-run code and automation code separate. Share only product-neutral parts: `RunWorkflow`, model and tool setup, and MCP controller patterns.
 
-Not all durable-ish work belongs on `RunWorkflow`. Product runs (issue/automation) have explicit run ids, DB status, audit events, user-visible cancel, and durable Think-submission waits — that's exactly what Workflows is for. Agent-local background work that isn't itself a product run (connector capability refreshes, cache/materialization, non-critical sandbox cleanup, agent maintenance) belongs on managed fibers (`startFiber`, `inspectFiber`, `cancelFiber`, `FiberContext.signal`) instead — SDK-native inspection/cancellation without a run ledger. Sandbox quick tunnels are preview transport for live artifacts, not durable storage; accepted artifacts persist separately in Garden storage.
-
-## Open gaps
-
-| Gap                                 | Notes                                                                                                                                                                                                                               |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| Prove the full lifecycle in staging | Start, wait, resume, cancel, failure, recovery, duplicate-start prevention, terminal visibility — for both run kinds, end to end through `RunWorkflow`.                                                                             |
-| `queue` concurrency policy          | Schema value exists (`automationConcurrencyPolicyValues`); `AutomationTriggerDO.applyConcurrencyPolicy` does not implement it. Implement end to end or drop it from the type until it is.                                           |
-| Webhook/API trigger hardening       | Typed auth, replay/idempotency protection, and attribution for `automation_trigger.kind = webhook                                                                                                                                   | api`. |
-| Automation awaiting states          | If automations ever need HITL pause/resume (approval, clarifying question), the Workflow loop already supports it generically — the gap is in `AutomationRunSubAgent` producing `waiting_for_*`-shaped statuses, not in the engine. |
+Open work on the engine, such as the staging lifecycle proof and the `queue` policy, is tracked in [known gaps](../../reference/known-gaps.md).

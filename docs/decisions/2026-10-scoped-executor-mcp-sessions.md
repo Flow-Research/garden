@@ -1,231 +1,71 @@
-# Scoped Executor MCP runtime
+---
+title: Scope each Executor MCP session to one Garden runtime
+description: Decision record from October 2026 to give every agent runtime its own Executor MCP Durable Object, and what shipped in phase 1.
+status: decision
+owner: "@Flow-Research/security"
+last_reviewed: 2026-11-03
+---
 
-Status: implementing phase 1
+**Date:** October 2026. **Outcome:** phase 1 shipped in PR #239 on 2026-10-26.
 
-Owner: Garden runtime and connector integration
+## Context
+
+Garden runs Executor v1.5.40 inside its web Worker. Each agent runtime reaches Executor tools through an MCP server that the Agents SDK (`agents` 0.17.3) connects over RPC.
+
+Before this decision, every runtime registered that server with the same name:
+
+```text
+Agent runtime -> addMcpServer("executor") -> rpc:executor -> one Durable Object
+```
+
+The Agents SDK resolves an RPC MCP server by its remote name, and PartyServer maps that name to a Durable Object id. The first session initialized that one Durable Object with its own workspace and user. Later calls from other workspaces or users could reach the same initialized Executor runtime, which was not rebuilt for them.
+
+That could mix workspace identity, user identity, connection state, pending MCP requests, and direct Decide sessions across tenants. It also made a transport timeout look like a provider failure while the real work continued.
 
 ## Decision
 
-Keep the current in-process Executor v1 integration. Scope each Executor MCP
-Durable Object by Garden runtime identity. Keep `executor` as the local Garden
-MCP server id, but use a separate scoped name for the remote RPC Durable Object.
+Garden made these choices:
 
-Use one Decide execution path while this work lands. The existing direct Decide
-adapter remains the temporary canonical path because the nested Executor MCP
-route is unreliable. Do not start an Executor v2 migration in this change.
+- Keep the in-process Executor v1 integration. Do not start an Executor v2 migration as part of this change.
+- Give each runtime its own Executor MCP Durable Object by putting the runtime identity in the remote name.
+- Keep `executor` as the local MCP server id, so Garden tool keys do not change.
+- Keep one Decide execution path, the direct adapter in `apps/web/src/lib/server/executor-engine/direct-decide-mcp.ts`. The nested Executor MCP route for Decide was unreliable, and two production paths would make failures and billing hard to trace.
 
-## Problem
-
-Garden currently registers the Executor MCP server with the same name for every
-agent runtime:
+The remote name has this shape:
 
 ```text
-Agent runtime -> addMcpServer("executor") -> rpc:executor -> one DO
+executor:<workspaceId>:<userId>:<agentId>:<threadId>:<issueId or "chat">:<runId or "session">
 ```
 
-The Agents SDK resolves an RPC MCP server by its remote name. PartyServer maps
-that name to a Durable Object id. The first Executor session initializes the DO with
-its workspace and user props. Later calls can reach the same initialized
-Executor runtime with different props, but the runtime is not rebuilt.
+The remote name is an address, not an authorization boundary. Garden still resolves identity from product state, passes it to Executor, and enforces permissions at its API and tool boundaries.
 
-This can mix workspace identity, user identity, connection state, pending MCP
-requests, and direct Decide sessions. It also makes a transport timeout appear
-as a provider failure when the underlying work continues.
+## What shipped in phase 1
 
-The current timeout boundaries are also inconsistent:
+`buildExecutorMcpServerName` in `packages/agent-runtime/src/runtime-mcp-controller.ts` builds the scoped name from `ThreadRuntimeIdentity`. `RuntimeMcpController.ensureProxyMcpConnections` registers the server under local id `executor` with that name. If a stored registration has a different name, such as the old global `rpc:executor`, the method removes it before it adds the scoped one. `packages/agent-runtime/src/mcp-connectors.test.ts` covers the name function.
 
-```text
-Agents RPC server: 4 minutes 30 seconds
-Direct Decide MCP: 5 minutes
-```
+The direct Decide adapter reuses one official MCP client per connection. It drops the session after a failed call or a disconnect, returns typed `DirectDecideMcpError` failures, and does not retry analysis calls.
 
-The outer RPC can therefore fail before the Decide call finishes.
+## Consequences
 
-## Goals
+Two runtimes with different identities never share an Executor MCP Durable Object. A runtime that wakes with the old global registration moves to its scoped name.
 
-- Give every Executor runtime an explicit and stable scope.
-- Preserve the local `executor` server id and existing Garden tool keys.
-- Rebind old `rpc:executor` registrations to the new scoped name.
-- Keep workspace and member identity inside the Executor session boundary.
-- Make the transport path visible in tests and logs.
-- Establish a design that can later use Executor v2 behind the same boundary.
+Each chat thread and each run now gets its own Executor session. That means more Durable Objects and colder starts per thread, in exchange for no shared state across tenants.
 
-## Non-goals
+The decision left a timeout mismatch open: the outer Agents RPC allowed 4 minutes 30 seconds, and the direct Decide call allowed 5 minutes. The record said that long Decide analyses should move to a Workflow instead of longer nested timeouts. That happened in PR #242 on 2026-10-30. Decide analysis now runs as a durable Workflow in `apps/web/src/decide-analysis-workflow.ts`, and `DECIDE_ANALYSIS_TIME_LIMIT_MS` in `direct-decide-mcp.ts` allows one hour per analysis.
 
-- Upgrade Executor packages or migrate to Executor v2.
-- Redesign Garden-native GitHub or Discord tools.
-- Add a connector Worker or MCP proxy Worker.
-- Add a second retry or recovery system.
-- Move purchase or attribution logic into MCP connector execution.
-- Solve long-running Decide workflow orchestration in phase 1.
+## Later phases
 
-## Runtime identity
+The plan named three later phases. They are not done:
 
-The runtime scope uses opaque Garden identifiers:
+1. **Transport proof.** Test against the Worker runtime with two workspaces at once, two users in one workspace, concurrent tool calls, a hibernation and wake cycle, a stale `rpc:executor` registration, Decide progress, and OAuth token refresh.
+2. **Connector cleanup.** Make the connector id to Executor slug mapping canonical, reconcile capability sync with workspace-owned connections, remove unused per-connector MCP state, make unknown hosted tools fail closed, and add transport fields to runtime telemetry.
+3. **Executor v2 evaluation.** Only after the transport proof passes. Executor v2 could replace the integration plane, but it does not replace Garden's runtime scoping.
 
-```text
-executor:<workspaceId>:<userId>:<agentId>:<threadId>:<issueId|chat>:<runId|session>
-```
-
-The scope rules are:
-
-- Chat runtimes use workspace, member, agent, and thread identity.
-- Issue and automation runtimes also include the issue or run identity.
-- The local MCP server id remains `executor`.
-- The remote RPC name carries the scope.
-- A runtime must remove an old registration when its stored remote name does
-  not match the current scope.
-
-The remote name is an addressing key. It is not an authorization boundary by
-itself. Garden still resolves identity from product state and passes that
-identity to Executor. Garden must continue to enforce permissions at the API
-and tool boundaries.
-
-## Ownership model
-
-| Responsibility | Owner |
-| --- | --- |
-| Workspace and member identity | Garden Postgres and runtime identity resolver |
-| Product permissions and grants | Garden |
-| Approval requests and audit | Garden |
-| Provider catalog and OAuth connections | Executor |
-| Encrypted provider credentials | Executor |
-| Remote MCP, OpenAPI, and GraphQL execution | Executor |
-| Garden-native GitHub and Discord execution | Garden Effect services |
-| MCP session warm state | Scoped Executor MCP Durable Object |
-| Long-running issue and automation runs | Cloudflare Workflows |
-
-Garden may project Executor catalog data into its capability tables. Runtime
-connection state must still come from the system that owns the connection.
-
-## Request flow
-
-```text
-AgentDO or run sub-agent
-  |
-  | resolve workspace, user, agent, thread, and optional run identity
-  v
-RuntimeMcpController
-  |
-  | local id = executor
-  | remote name = scoped executor:<identity> name
-  v
-Agents RPC client
-  |
-  | rpc:<scoped name>
-  v
-ExecutorMcpSession Durable Object
-  |
-  | initialize once for this scope
-  v
-Executor v1 MCP server
-  |
-  +-- hosted connector tools
-  +-- direct Decide adapter during phase 1
-```
-
-The controller owns the mapping from product identity to remote runtime name.
-The Agent classes only adapt that name to `addMcpServer()`. This keeps the
-scope rule in one place.
-
-## Decide path
-
-During phase 1, Decide uses the direct adapter in
-`apps/web/src/lib/server/executor-engine/direct-decide-mcp.ts`.
-
-The adapter must:
-
-- resolve the connection through Executor;
-- reuse one official MCP client per connection;
-- preserve progress and structured results;
-- evict a session after a failed call or disconnect;
-- return typed provider and transport failures;
-- avoid automatic retries for analysis calls.
-
-The nested Executor MCP route remains available for comparison tests, but it
-must not be selected as a production fallback for the same Decide call. Two
-production paths make failures and billing behavior difficult to reason about.
-
-## Timeout and long-running work
-
-Phase 1 keeps the existing bounded synchronous call and records the current
-mismatch: the direct Decide client allows five minutes while the outer RPC
-allows four minutes and thirty seconds. This must be resolved before relying
-on the synchronous path for longer analysis.
-
-If Decide's four-minute documented limit is the provider contract, set the
-provider deadline to four minutes and keep a measured response margin outside
-that deadline. If the provider can run longer, move the work to a Workflow
-instead of extending nested RPC timeouts.
-
-If Decide analysis must run longer than the request boundary, the next phase
-will introduce a Workflow run with an id, progress state, cancellation, and
-resume behavior. It must not add a manual transcript recovery loop or a second
-timeout system.
-
-## Rollout
-
-### Phase 1, scoped runtime
-
-1. Build a scoped remote Executor MCP name from `ThreadRuntimeIdentity`.
-2. Pass the scoped name to both Agent host adapters.
-3. Preserve local id `executor`.
-4. Remove an old global or mismatched registration before adding the scoped one.
-5. Add unit coverage for stable names and different identities.
-6. Add a real Durable Object integration test for two identities.
-
-### Phase 2, transport proof
-
-Test these cases against the Worker runtime:
-
-- two workspaces at the same time;
-- two users in one workspace;
-- concurrent tool calls in one runtime;
-- a hibernation and wake cycle;
-- a stale `rpc:executor` registration;
-- Decide progress and timeout behavior;
-- OAuth token refresh and disconnect cleanup.
-
-### Phase 3, connector cleanup
-
-- make connector id to Executor slug mapping canonical;
-- reconcile capability sync with workspace-owned connections;
-- remove unused per-connector MCP runtime state;
-- make unknown hosted tools fail closed;
-- add structured transport fields to runtime telemetry.
-
-### Phase 4, Executor v2 evaluation
-
-Evaluate v2 only after phase 2 passes. The evaluation must prove:
-
-- programmatic client authentication;
-- one Garden workspace per Executor organization or scoped connection;
-- connection ownership and token refresh;
-- direct calls and multi-step execution;
-- approval and resume behavior;
-- failure and audit propagation.
-
-Executor v2 is a possible integration-plane implementation. It is not a
-substitute for Garden runtime scoping.
-
-## Acceptance criteria
-
-- Two identities never address the same scoped Executor MCP name.
-- An old `rpc:executor` registration is removed and replaced on wake.
-- Garden tool keys remain based on local server id `executor`.
-- Executor session metadata matches the runtime that created the session.
-- A failing Decide call does not silently retry or switch transport paths.
-- The test suite covers the scope function and registration behavior.
-- A real Worker test proves cross-identity isolation before deployment.
-
-## Source references
+## Sources
 
 - `packages/agent-runtime/src/runtime-mcp-controller.ts`
-- `packages/agent-runtime/src/agent-do.ts`
-- `packages/agent-runtime/src/run-sub-agent-base.ts`
+- `packages/agent-runtime/src/agent-do.ts` and `packages/agent-runtime/src/run-sub-agent-base.ts`
 - `apps/web/src/lib/server/executor-engine/mcp.ts`
 - `apps/web/src/lib/server/executor-engine/direct-decide-mcp.ts`
-- `docs/core/connectors.md`
-- `docs/known-gaps/connectors.md`
-- installed `agents@0.17.3` RPC transport and PartyServer source
-- Executor MCP documentation at <https://executor.sh/docs/mcp>
+- [Connectors](../concepts/architecture/connectors.md)
+- [Executor MCP documentation](https://executor.sh/docs/mcp)

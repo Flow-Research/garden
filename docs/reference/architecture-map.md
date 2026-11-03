@@ -1,215 +1,180 @@
-# Garden technical architecture
-
-**Status:** current implementation map
-**Last reviewed:** 2026-08-07
-**Stack:** TanStack Start, React, Cloudflare Workers/Durable Objects/Workflows, Cloudflare Agents + Think, Neon Postgres, Drizzle, Better Auth, R2, Cloudflare Sandbox.
-
-This document is code-backed. If it conflicts with a plan/spec elsewhere, prefer the files cited here.
+---
+title: Architecture map
+description: Code-backed map of Garden's runtimes, bindings, tables, and the files that own each concern.
+status: current
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
+
+This page lists where each part of Garden lives in the code. For why the parts fit together this way, see [how Garden is built](../concepts/architecture/how-garden-is-built.mdx).
+
+**Stack:** TanStack Start, React, Cloudflare Workers, Durable Objects, and Workflows, Cloudflare Agents with `@cloudflare/think` 0.10.0, Neon Postgres, Drizzle, Better Auth, R2, Cloudflare Sandbox, and Executor 1.5.40.
+
+## Planes
+
+| Plane | Owns | Built on |
+| --- | --- | --- |
+| Control | Queryable product state: users, workspaces, agents, chat thread metadata, issues, runs, automations, skills, connectors, permissions, documents, and audit | Postgres through Drizzle, and R2 for file bytes |
+| Agent | Live conversations and run turns | Durable Objects, the Agents SDK, and Think |
+| Execution | Durable runs, codemode, container execution, and connector tools | Workflows, `LOADER`, Cloudflare Sandbox, and Executor MCP sessions |
+
+## Runtimes
+
+| Runtime | Responsibility | Code |
+| --- | --- | --- |
+| `AgentDO` | Agent identity, access checks, RPC, Workflow creation, and facet routing | `packages/agent-runtime/src/agent-do.ts` |
+| `ChatSubAgent` | One Think conversation per chat thread | `packages/agent-runtime/src/agent-do.ts` |
+| `IssueRunSubAgent` | Live issue-run turns, issue tools, work products, and source bindings | `packages/agent-runtime/src/issue-run-sub-agent.ts` |
+| `AutomationRunSubAgent` | Live automation-run turns | `packages/agent-runtime/src/automation-run-sub-agent.ts` |
+| `RunSubAgentBase` | Shared base for issue and automation run facets | `packages/agent-runtime/src/run-sub-agent-base.ts` |
+| `BrainAuditSubAgent`, `BrainWriteBackSubAgent` | Brain audit and write-back facets | `packages/agent-runtime/src/brain-audit-sub-agent.ts`, `brain-write-back-sub-agent.ts` |
+| `RunWorkflow` | Durable turn, retry, wait, resume, and cancel for issue and automation runs | `packages/agent-runtime/src/run-workflow.ts` |
+| `DecideAnalysisWorkflow` | Durable Decide analysis | `apps/web/src/decide-analysis-workflow.ts` |
+| `AutomationTriggerDO` | Schedule alarms and trigger concurrency | `packages/agent-runtime/src/automation-trigger-do.ts` |
+| `WorkspaceRealtimeDO` | Workspace WebSocket hub | `packages/agent-runtime/src/workspace-realtime-do.ts` |
+| `ExecutorMcpSession`, `ExecutorMcpExecutionOwnerDirectory` | Executor MCP sessions hosted in the Garden Worker | `apps/web/src/lib/server/executor-engine/mcp.ts`, exported from `apps/web/src/server.ts` |
+| `Sandbox` | Cloudflare Sandbox container | `packages/agent-runtime/src/sandbox-tools.ts` |
+
+`apps/web/src/server.ts` exports the runtime classes. It routes `/agents/agent-d-o/:name` through `requireAgentAccess()` and then the Agents SDK `routeAgentRequest`.
+
+## Bindings
+
+`apps/web/wrangler.jsonc` defines these bindings:
+
+| Kind | Bindings |
+| --- | --- |
+| Durable Objects | `AgentDO`, `Sandbox`, `AUTOMATION_TRIGGER`, `EXECUTOR_MCP_SESSION`, `EXECUTOR_MCP_EXECUTION_OWNER`, `WORKSPACE_REALTIME` |
+| Workflows | `RUN_WORKFLOW`, `DECIDE_ANALYSIS_WORKFLOW` |
+| R2 | `FILES`, `BRAIN_FILES`, `EXECUTOR_BLOBS` |
+| D1 | `EXECUTOR_DB` |
+| Hyperdrive | `HYPERDRIVE` |
+| Worker Loader | `LOADER` |
+| Other | `BROWSER`, `AI` |
+
+Executor runs inside this Worker. There is no connector service binding, and no `RUN_QUEUE` binding. The sandbox image is `docker.io/cloudflare/sandbox:0.12.4-python`.
+
+## Durable Object addressing
+
+- `AgentDO` is named by `agent.host_name` or the agent id.
+- A chat thread does not get its own `AgentDO`. It opens a `ChatSubAgent` facet named by `chat_thread.runtime_key`.
+- Issue run facets are named by issue id. Automation run facets are named by run id.
+
+See [agent runtime](../concepts/architecture/agent-runtime.md).
+
+## Data model
+
+The Drizzle schemas live in `packages/db/src/schema/`:
+
+| Area | File | Main tables or fields |
+| --- | --- | --- |
+| Agents | `agents.ts` | `agent` with `runtimeConfig`, `permissions`, `adapterType`, `hostName`, and `runTimeoutSec` |
+| Agent proposals | `agent-proposals.ts` | Proposed agents |
+| Chat | `chat.ts` | `chat_thread` with `agentId`, `runtimeKind`, `runtimeKey`, and `primaryIssueId` |
+| Issues | `issues.ts`, `issue-values.ts` | Issues, `issue_run`, run events, source bindings, and work products |
+| Automations | `automations.ts`, `automation-values.ts` | `automation`, `automation_trigger`, and `automation_run` |
+| Decide | `decide-analysis.ts` | `decide_analysis_run` |
+| Capabilities and permissions | `capabilities.ts` | `capability`, `permission_grant`, `connection_grant`, and `permission_request` |
+| Audit | `audit.ts` | `invocation_log`, `tool_call_audit`, `activity_event`, and `connector_callback_event` |
+| Documents | `documents.ts` | `document` and `document_version` |
+| Skills | `skills.ts` | Skills and agent assignments |
+| Teams | `teams.ts` | Teams and members |
+| Brain | `brain-folders.ts`, `brain-telemetry.ts` | Brain folders and telemetry |
+| Integrations | `discord.ts`, `github.ts` | Garden-native installs |
+| Workspaces, users, and auth | `workspaces.ts`, `users.ts`, `auth.ts` | Workspaces, users, and Better Auth tables |
+
+Postgres is the authority for queryable state. Think facets keep runtime state in Durable Object SQLite.
+
+## Run start paths
+
+| Run | Start function | Workflow call | Facet |
+| --- | --- | --- | --- |
+| Issue run | `startIssueRun` in `packages/server/src/issues/run-service.ts` | `AgentDO.startIssueRunWorkflow` | `IssueRunSubAgent(issueId)` |
+| Automation run | `startAutomationRun` in `packages/server/src/automations/run-service.ts` | `AgentDO.startAutomationRunWorkflow` | `AutomationRunSubAgent(runId)` |
+
+The Workflow instance id is the run id. See [run engine](../concepts/architecture/run-engine.md).
+
+## Prompt contexts
+
+| Runtime | Contexts | Code |
+| --- | --- | --- |
+| Chat | `foundation`, `agent`, `workspace`, then skills from `getSkills()` | `ChatSubAgent.configureSession` in `agent-do.ts`, `PostgresAgentPromptCatalog` in `prompt.ts` |
+| Issue run | `foundation`, `issue-interaction`, then skills | `RunSubAgentBase.configureSession`, `issue-run-sub-agent.ts` |
+| Automation run | `foundation`, `automation-run`, then skills | `RunSubAgentBase.configureSession`, `automation-run-sub-agent.ts` |
 
-## 1. Architecture overview
-
-Garden has three planes:
-
-1. **Control plane** — Postgres via Drizzle. Owns queryable product state: users, workspaces, agents, chat thread metadata, issues, runs, automations, skills, connectors, permissions, documents, and audit.
-2. **Agent plane** — Cloudflare Durable Objects via the Agents SDK and Think. `AgentDO` is the parent runtime for one agent identity; child Think facets handle chats, issue runs, and automation runs.
-3. **Execution plane** — Workflows for durable run orchestration, codemode for bounded JavaScript tool orchestration, Cloudflare Sandbox for shell/native/container execution, and in-process Executor MCP sessions for connector tools.
+The `foundation` text lives in `packages/agent-runtime/src/instructions/`. Skills load from R2 through `loadRuntimeSkillSources` in `packages/agent-runtime/src/skills.ts`.
 
-```mermaid
-flowchart LR
-  Browser --> Start[TanStack Start routes]
-  Start --> PG[(Postgres)]
-  Browser --> AgentWS[Agents/Think websocket]
-  AgentWS --> AgentDO[AgentDO]
-  AgentDO --> Chat[ChatSubAgent]
-  AgentDO --> Issue[IssueRunSubAgent]
-  AgentDO --> Automation[AutomationRunSubAgent]
-  Start --> AgentRPC[AgentDO RPC]
-  AgentRPC --> Workflow[RunWorkflow]
-  Workflow --> AgentDO
-  AgentDO --> MCP[EXECUTOR_MCP_SESSION]
-  AgentDO --> Sandbox[Cloudflare Sandbox]
-  AgentDO --> R2[(R2 FILES)]
-```
+## Connectors and permissions
 
-## 2. Runtime topology
+| Concern | Code |
+| --- | --- |
+| Connector manifests | `packages/connectors/src/<id>/connector.ts` for `discord`, `github`, `gmail`, `google-drive`, and `slack` |
+| Connector registry | `packages/connectors/src/registry.ts` |
+| Risk classes and trust | `packages/connectors/src/sdk.ts`, `packages/connectors/src/capabilities.ts` |
+| Executor runtime and MCP host | `apps/web/src/lib/server/executor-runtime.ts`, `apps/web/src/lib/server/executor-engine/mcp.ts` |
+| Direct Decide path | `apps/web/src/lib/server/executor-engine/direct-decide-mcp.ts` |
+| Runtime MCP controller | `packages/agent-runtime/src/runtime-mcp-controller.ts` |
+| Permission derivation | `packages/core/src/agents/permissions.ts` |
+| Connections UI | `apps/web/src/features/connections/components/connections-page.tsx` |
 
-| Runtime                 | Responsibility                                                                             | Code evidence                                                                    |
-| ----------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| `AgentDO`               | Parent agent identity, access checks, callable RPC, Workflow creation, child facet routing | `packages/agent-runtime/src/agent-do.ts`                                         |
-| `ChatSubAgent`          | One Think conversation per chat thread; thread-local workspace/docs/MCP registration       | `packages/agent-runtime/src/agent-do.ts:905`                                     |
-| `IssueRunSubAgent`      | Live issue-run Think turn, issue tools, work products, source bindings                     | `packages/agent-runtime/src/issue-run-sub-agent.ts`                              |
-| `AutomationRunSubAgent` | Live automation-run Think turn and completion tool                                         | `packages/agent-runtime/src/automation-run-sub-agent.ts`                         |
-| `RunWorkflow`           | Durable turn/retry/wait/resume/cancel boundary for issue and automation runs               | `packages/agent-runtime/src/run-workflow.ts`                                     |
-| `AutomationTriggerDO`   | Schedule trigger alarms and trigger-local concurrency state                                | `packages/agent-runtime/src/automation-trigger-do.ts`                            |
-| `ExecutorMcpSession`    | Executor MCP session Durable Object hosted by Garden                                       | `apps/web/src/lib/server/executor-engine/mcp.ts`, `EXECUTOR_MCP_SESSION` binding |
-| `Sandbox`               | Cloudflare Sandbox container binding for shell/native execution                            | `apps/web/wrangler.jsonc`, `packages/agent-runtime/src/sandbox-tools.ts`         |
+Trust levels are `auto`, `allow`, and `ask`. See [connectors](../concepts/architecture/connectors.md).
 
-`apps/web/src/server.ts` exports the runtime classes and routes `/agents/agent-d-o/:name` to `getAgentByName(env.AgentDO, runtimeName)` after `requireAgentAccess()`.
+## Realtime and polling
 
-## 3. Durable Object addressing
+| Channel | Code |
+| --- | --- |
+| Chat streaming | `apps/web/src/features/chat/chat-runtime-provider.tsx` |
+| Workspace hub connect route `/api/realtime` | `apps/web/src/lib/server/realtime.ts` |
+| Workspace hub client | `apps/web/src/lib/realtime/realtime-manager.ts` |
+| Issue run polling | `apps/web/src/lib/issues/queries.ts` |
+| Inbox polling | `apps/web/src/lib/inbox/queries.ts` |
 
-The runtime identity is data-driven:
+See [realtime](../concepts/architecture/realtime.md).
 
-- `agent.id` is the canonical agent row id.
-- `agent.host_name` stores the runtime name when needed for migration/persistence.
-- new rows can use the agent UUID as the `AgentDO` name.
-- `AgentDO.agentRuntimeWhere()` resolves either UUID or `hostName`.
+## Documents and execution
 
-Chat threads do **not** get their own top-level `AgentDO`. A chat row binds to an agent and opens a child facet:
+| Concern | Code |
+| --- | --- |
+| Document schema | `packages/db/src/schema/documents.ts` |
+| Document tools and storage | `packages/agent-runtime/src/documents/` |
+| Document routes | `apps/web/src/routes/api/documents/` |
+| Document UI | `apps/web/src/features/artifacts/` |
+| Codemode `execute` | `createExecuteTool` in `packages/agent-runtime/src/chat-sub-agent-tools.ts` |
+| Container sandbox tools | `packages/agent-runtime/src/sandbox-tools.ts` |
 
-```ts
-useAgent({
-  agent: 'AgentDO',
-  name: session.hostName,
-  sub: [{ agent: 'ChatSubAgent', name: session.runtime_key }],
-})
-```
+Think workspace files and container `/workspace` files are separate stores. See [execution runtimes](../concepts/architecture/execution-runtimes.md).
 
-Server-side equivalent:
+## HTTP API
 
-```ts
-await this.subAgent(ChatSubAgent, threadId)
-```
+| Concern | Code |
+| --- | --- |
+| Splat route | `apps/web/src/routes/api/$.ts` |
+| Combined contract | `apps/web/src/lib/api/garden-api-contract.ts` |
+| Server handler | `apps/web/src/lib/server/garden-api.server.ts` |
 
-See `docs/core/chat-runtime-model.md`.
+See [HTTP API](../concepts/architecture/http-api.md).
 
-## 4. Data model
+## Brain
 
-Key Drizzle schemas:
+| Concern | Code |
+| --- | --- |
+| Brain services and Helix client | `packages/brain/src/services/` |
+| Scope rules | `packages/brain/src/domain/scope.ts` |
+| Brain routes | `apps/web/src/routes/api/brain/` |
+| Gateway stack | `compose.brain.yaml` |
 
-| Area                     | Tables / files                                                                                                                            |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Agents                   | `packages/db/src/schema/agents.ts` — `agent` has `runtimeConfig`, `permissions`, `adapterType`, `hostName`, `runTimeoutSec`               |
-| Chat                     | `packages/db/src/schema/chat.ts` — `chat_thread.agentId`, `runtimeKind`, `runtimeKey`, `primaryIssueId`                                   |
-| Issues                   | `packages/db/src/schema/issues.ts`, `issue-values.ts` — issue ledger, run ledger, events, source bindings, work products, inbox dismissal |
-| Automations              | `packages/db/src/schema/automations.ts`, `automation-values.ts` — automations, triggers, runs                                             |
-| Capabilities/permissions | `packages/db/src/schema/capabilities.ts` — `capability`, `permission_grant`, `permission_request`                                         |
-| Audit                    | `packages/db/src/schema/audit.ts` — `tool_call_audit`                                                                                     |
-| Documents                | `packages/db/src/schema/documents.ts` — documents, versions, edits                                                                        |
-| Skills                   | `packages/db/src/schema/skills.ts`                                                                                                        |
-| Workspaces/users         | `packages/db/src/schema/workspaces.ts`, `users.ts`                                                                                        |
+See [Brain](../concepts/architecture/brain.md).
 
-Postgres is the authority for product/queryable state. Child Think facets keep local runtime state in Durable Object SQLite.
+## Frontend shell
 
-## 5. Long-running work
+| Concern | Code |
+| --- | --- |
+| App shell | `apps/web/src/components/shell/app-shell.tsx` |
+| Tabs | `apps/web/src/components/shell/chat-tabs.tsx`, `task-tabs.tsx` |
+| Sidebar and top bar | `AppSidebar` and `AppTopBar` from `packages/ui/components/shell/` |
+| Authenticated workspace route | `apps/web/src/routes/_authenticated/workspace.tsx` |
 
-Issues and automations have separate ledgers but share runtime primitives.
+Settings opens as a dialog, not a route.
 
-### Issue run
+## CI
 
-1. API/server code calls `startIssueRun()` in `packages/server/src/issues/run-service.ts`.
-2. The service creates/updates `issue_run` records and calls `AgentDO.startIssueRunWorkflow({ runId, issueId })`.
-3. `AgentDO` creates `RUN_WORKFLOW` with `id: runId`.
-4. `RunWorkflow` calls `AgentDO.executeRunTurn()` / `completeRunTurn()`.
-5. `AgentDO` delegates to `IssueRunSubAgent(issueId)`.
-
-### Automation run
-
-1. route/trigger code calls `startAutomationRun()` in `packages/server/src/automations/run-service.ts`.
-2. The service creates an `automation_run` row and calls `AgentDO.startAutomationRunWorkflow({ runId })`.
-3. `RunWorkflow` calls `AgentDO.executeAutomationRunTurn()` / `completeAutomationRunTurn()`.
-4. `AgentDO` delegates to `AutomationRunSubAgent(runId)`.
-
-Do not add queue dispatch or issue-backed automation compatibility. Workflow instance id = run id.
-
-## 6. Prompt/context layers
-
-### Chat
-
-`ChatSubAgent.configureSession()` wires:
-
-1. `foundation` — `packages/agent-runtime/src/instructions/base.ts`
-2. `agent` — Postgres agent name/role/instructions via `PostgresAgentPromptCatalog`
-3. `workspace` — Postgres organization name/context
-4. `skills` — assigned skills from R2 via Think-native `SkillSource`s created by `createGardenSkillSources`
-5. cached prompt prefix
-
-### Issue runs
-
-`IssueRunSubAgent.configureSession()` wires `foundation` and bundled `issue-interaction` context.
-
-### Automation runs
-
-`AutomationRunSubAgent.configureSession()` wires `foundation`, `automation-run`, and `skills`.
-
-Shared long-term memory and automatic active-task chat context are not dedicated chat prompt blocks today; see `docs/known-gaps/agent-runtime.md`.
-
-## 7. Connectors and permissions
-
-Connector model lives in `docs/core/connectors.md`.
-
-Current code paths:
-
-- connector manifests: `connectors/*/connector.ts`, `packages/connectors/src/registry.ts`;
-- Executor engine and MCP host: `apps/web/src/lib/server/executor-runtime.ts`, `apps/web/src/lib/server/executor-engine/mcp.ts`;
-- runtime MCP controller: `packages/agent-runtime/src/runtime-mcp-controller.ts`;
-- capability/grant tables: `packages/db/src/schema/capabilities.ts`;
-- permission derivation: `packages/core/agents/permissions.ts`;
-- UI: `apps/web/src/features/connections/components/connections-page.tsx`.
-
-Trust levels are `auto | allow | ask`. Do not use old PRD names like `ask_always`, `ask_on_risky`, or `never_ask` as schema/runtime terms.
-
-## 8. Realtime and polling
-
-Active today:
-
-- chat streaming through Agents/Think websocket for mounted chat panels;
-- issue active-run and event polling through TanStack Query (`apps/web/src/lib/issues/queries.ts`);
-- inbox polling (`apps/web/src/lib/inbox/queries.ts`).
-
-Inactive today:
-
-- app-wide websocket bus. `CoreProvider` supports optional `wsUrl`, but `apps/web/src/components/web-providers.tsx` does not pass one and `apps/web/wrangler.jsonc` has no `BroadcastHub` / `WorkspaceRealtimeAgent` binding.
-
-See `docs/core/realtime-foundation.md` and `docs/known-gaps/realtime-sync.md`.
-
-## 9. Documents and execution
-
-Document artifacts are implemented through:
-
-- schema: `packages/db/src/schema/documents.ts`;
-- tools/storage: `packages/agent-runtime/src/documents/*`;
-- chat tool exposure: `packages/agent-runtime/src/chat-sub-agent-tools.ts`;
-- routes: `apps/web/src/routes/api/documents/*`;
-- UI: `apps/web/src/features/artifacts`, `apps/web/src/features/chat/components`.
-
-Execution surfaces:
-
-- codemode `execute` via `createExecuteTool` and `LOADER`;
-- custom Cloudflare Sandbox tools via `packages/agent-runtime/src/sandbox-tools.ts` and `Sandbox` binding.
-
-Think/Shell `Workspace` files and container `/workspace` files are separate stores until an explicit bridge ships.
-
-## 10. Frontend shell
-
-Current shell uses FlexLayout panels and a two-level sidebar.
-
-Code evidence:
-
-- layout: `apps/web/src/components/shell/workspace-layout.tsx`;
-- sidebar rail contexts: `apps/web/src/components/shell/sidebar.tsx`;
-- panels: `apps/web/src/components/shell/workspace-dock.tsx`;
-- authenticated route: `apps/web/src/routes/_authenticated/workspace.tsx`.
-
-Current panel kinds include dashboard, inbox, issues, issue-detail, automations, automation-detail, chat, agents, agent-detail, skill-editor, and capabilities. Settings is a dialog, not a primary route tab.
-
-## 11. Wrangler bindings
-
-`apps/web/wrangler.jsonc` defines:
-
-- Durable Objects: `AgentDO`, `Sandbox`, `AUTOMATION_TRIGGER`, `EXECUTOR_MCP_SESSION`, `EXECUTOR_MCP_EXECUTION_OWNER`;
-- Workflow: `RUN_WORKFLOW`;
-- R2: `FILES`, `EXECUTOR_BLOBS`;
-- D1: `EXECUTOR_DB`;
-- worker loader: `LOADER`;
-- browser binding: `BROWSER`;
-
-Executor is hosted in this Worker; there is no connector service binding.
-
-No `BROADCAST_DO`, `RUN_QUEUE`, `SUB_AGENT_DO`, or `PrimaryAgent` binding exists in the current config.
-
-## 12. Testing and operations snapshot
-
-Code-backed status is tracked in `docs/known-gaps/infrastructure.md`.
-
-Current known gaps include pre-commit hooks, Playwright E2E, Sentry, staging environment, `/api/health`, and richer observability dashboards. CI exists in `.github/workflows/ci.yml`; its verification job also runs connector coverage checks.
+`.github/workflows/ci.yml` runs verification, including `pnpm verify:connectors`. Known infrastructure gaps are listed in [known gaps](./known-gaps.md).
