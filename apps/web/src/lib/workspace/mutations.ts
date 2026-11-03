@@ -22,14 +22,19 @@ export function useCreateWorkspace() {
       // Land on /home first — the old workspace's entity route would fire
       // detail queries with ids the new workspace doesn't own.
       void navigate({ to: '/home' })
-      // The workspace exists even when switching to it fails; that failure
-      // used to be dropped, leaving the user in the old workspace unawares.
+      // The workspace exists even when Better Auth setActive fails. Opening the
+      // shell locally avoids trapping a first-time user on the empty
+      // "Create a workspace" screen, which has no workspace menu to recover
+      // from (#208).
       const switched = await Result.tryPromise(() =>
         useWorkspaceStore.getState().switchWorkspace(newWs),
       )
       if (Result.isError(switched)) {
+        const listed =
+          qc.getQueryData<Workspace[]>(workspaceKeys.list()) ?? [newWs]
+        useWorkspaceStore.getState().hydrateWorkspace(listed, newWs.id)
         toast.error(
-          `${newWs.name} was created, but switching to it failed. Open it from the workspace menu.`,
+          `${newWs.name} was created, but saving it as the active workspace failed. Reload if the wrong workspace appears.`,
         )
       }
     },
