@@ -105,14 +105,11 @@ export function MessageOrderedParts({
   isLatestStreaming,
   message,
   onOpenDocument,
-  threadId,
 }: {
   debugMode: boolean
   isLatestStreaming?: boolean
   message: ChatUiMessage
   onOpenDocument?: (artifact: GardenArtifactData) => void
-  /** `chat_thread.id`, which the Decide run status route is keyed by. */
-  threadId: string
 }) {
   const nodes = buildMessageRenderModel(message, {
     debugMode,
@@ -163,13 +160,7 @@ export function MessageOrderedParts({
               </PreResponseWrapper>
             )
           case 'decide':
-            return (
-              <DecideAnalysisCard
-                key={node.key}
-                runId={node.runId}
-                threadId={threadId}
-              />
-            )
+            return <DecideAnalysisCard key={node.key} runId={node.runId} />
           case 'artifact':
             return (
               <GardenDocDownloadBlock

@@ -90,9 +90,14 @@ function completedText(resultJson: unknown) {
     .join('\n\n')
 }
 
-function failedText(errorJson: unknown) {
+/** The stored failure reason of a Decide run, trimmed; empty when none. */
+export function decideErrorMessage(errorJson: unknown) {
   const parsed = errorSchema.safeParse(errorJson)
-  const message = parsed.success ? parsed.data.message.trim() : ''
+  return parsed.success ? parsed.data.message.trim() : ''
+}
+
+function failedText(errorJson: unknown) {
+  const message = decideErrorMessage(errorJson)
   return [
     'The Decide analysis failed.',
     message ? `Error from Decide: ${message}` : 'Decide gave no error message.',

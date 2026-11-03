@@ -6,8 +6,8 @@ import type {
 import { Effect } from 'effect'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Executor } from '@executor-js/sdk/core'
+import { DECIDE_ANALYSIS_TIME_LIMIT_MS } from '@garden/agent-runtime/src/decide-analysis-types'
 import {
-  DECIDE_ANALYSIS_TIME_LIMIT_MS,
   decideRequestOptions,
   isDecideTimeLimitResult,
   DirectDecideMcpSessionManager,
