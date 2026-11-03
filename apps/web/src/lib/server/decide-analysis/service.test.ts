@@ -7,6 +7,7 @@ import * as schema from '@garden/db/schema'
 import { startTestDb, type TestDb } from '@garden/db/testing'
 import type { DecideAnalysisWorkflowParams } from '@garden/agent-runtime/src/decide-analysis-types'
 import {
+  exceedsInputLimit,
   cancelDecideAnalysis,
   DECIDE_ANALYSIS_INPUT_LIMIT_BYTES,
   DecideAnalysisServiceError,
@@ -412,15 +413,12 @@ describe('startDecideAnalysis input', () => {
     expect(workflowStarts.length).toBe(startsBefore)
   })
 
-  it('accepts input exactly at the limit', async () => {
-    const thread = await seedThread()
-
-    const result = await startWith(thread, {
-      kind: 'text',
-      text: 'x'.repeat(DECIDE_ANALYSIS_INPUT_LIMIT_BYTES),
-    })
-
-    expect(result.isOk()).toBe(true)
+  // The size check is pure; inserting 100 MB into the test database timed
+  // out, so the boundary is checked without a run.
+  it('accepts input exactly at the limit and rejects one byte more', () => {
+    const atLimit = 'x'.repeat(DECIDE_ANALYSIS_INPUT_LIMIT_BYTES)
+    expect(exceedsInputLimit(atLimit)).toBe(false)
+    expect(exceedsInputLimit(`${atLimit}x`)).toBe(true)
   })
 })
 

@@ -534,7 +534,7 @@ export const DECIDE_ANALYSIS_NEEDS_DATA_MESSAGE =
  * Counts UTF-8 bytes without encoding when the answer is already known: a
  * UTF-16 code unit encodes to between one and three UTF-8 bytes.
  */
-function exceedsInputLimit(text: string) {
+export function exceedsInputLimit(text: string) {
   if (text.length > DECIDE_ANALYSIS_INPUT_LIMIT_BYTES) return true
   if (text.length * 3 <= DECIDE_ANALYSIS_INPUT_LIMIT_BYTES) return false
   return (
