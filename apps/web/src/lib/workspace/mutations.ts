@@ -30,8 +30,9 @@ export function useCreateWorkspace() {
         useWorkspaceStore.getState().switchWorkspace(newWs),
       )
       if (Result.isError(switched)) {
-        const listed =
-          qc.getQueryData<Workspace[]>(workspaceKeys.list()) ?? [newWs]
+        const listed = qc.getQueryData<Workspace[]>(workspaceKeys.list()) ?? [
+          newWs,
+        ]
         useWorkspaceStore.getState().hydrateWorkspace(listed, newWs.id)
         toast.error(
           `${newWs.name} was created, but saving it as the active workspace failed. Reload if the wrong workspace appears.`,
