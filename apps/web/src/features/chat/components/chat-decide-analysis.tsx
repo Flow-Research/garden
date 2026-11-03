@@ -1,9 +1,12 @@
 /**
- * The chat card for a background Decide run. The analyze tool call returns as
+ * The card for a background Decide run. The analyze tool call returns as
  * soon as the run starts and the turn ends there, so this card is what the
- * user watches: a fixed opening line, a live status with Decide's latest
- * progress note, elapsed time and Cancel, then the outcome and the generated
- * files. The answer itself arrives later as the next assistant message.
+ * user watches: a live status with Decide's latest progress note, elapsed
+ * time and Cancel, then the outcome and the generated files. Chat shows it
+ * under a fixed opening line and the answer arrives as the next assistant
+ * message; the automation run page shows the same card while the run waits.
+ * It reads the run through the owner-agnostic status route, so it needs only
+ * the run ID.
  */
 import { useSyncExternalStore } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -22,9 +25,9 @@ import { Spinner } from '@garden/ui/components/ui/spinner'
 import { MessageResponse } from '@/components/ai-elements/message'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import {
-  cancelChatDecideAnalysis,
-  type ChatDecideAnalysisFile,
-} from '@/lib/api/chat-threads'
+  cancelDecideAnalysis,
+  type DecideAnalysisFile,
+} from '@/lib/api/decide-analyses'
 import { decideAnalysisOptions } from '../queries'
 import {
   DECIDE_LONG_RUN_MS,
@@ -90,7 +93,7 @@ const FILE_ICONS: Record<DecideFileKind, typeof FileIcon> = {
  * `download` attribute is ignored, so the action opens the file in a new tab
  * instead of navigating Garden away. Images show an inline preview.
  */
-function DecideFileCard({ file }: { file: ChatDecideAnalysisFile }) {
+function DecideFileCard({ file }: { file: DecideAnalysisFile }) {
   const kind = decideFileKind(file.name)
   const Icon = FILE_ICONS[kind]
   const extension = file.name.includes('.')
@@ -134,18 +137,27 @@ const STATUS_ICONS = {
   cancelled: CircleSlash,
 } as const
 
-export function DecideAnalysisCard({
-  runId,
-  threadId,
-}: {
-  runId: string
-  threadId: string
-}) {
+/** The chat's Decide card: the fixed opening line above the run status. */
+export function DecideAnalysisCard({ runId }: { runId: string }) {
+  return (
+    <div className="flex w-full flex-col gap-3">
+      <MessageResponse>{DECIDE_ANALYSIS_OPENING_LINE}</MessageResponse>
+      <DecideAnalysisStatusCard runId={runId} />
+    </div>
+  )
+}
+
+/**
+ * Live status, Cancel, outcome, and generated files for one Decide run.
+ * Before, the card took a chat thread ID to reach a thread-scoped route, so
+ * an automation run could not show it.
+ */
+export function DecideAnalysisStatusCard({ runId }: { runId: string }) {
   const queryClient = useQueryClient()
-  const options = decideAnalysisOptions(threadId, runId)
+  const options = decideAnalysisOptions(runId)
   const { data, isError } = useQuery(options)
   const cancel = useMutation({
-    mutationFn: () => cancelChatDecideAnalysis(threadId, runId),
+    mutationFn: () => cancelDecideAnalysis(runId),
     onSuccess: (run) => queryClient.setQueryData(options.queryKey, run),
   })
   const isLongRun = useIsLongRun(
@@ -170,7 +182,6 @@ export function DecideAnalysisCard({
 
   return (
     <div className="flex w-full flex-col gap-3">
-      <MessageResponse>{DECIDE_ANALYSIS_OPENING_LINE}</MessageResponse>
       <div
         role="status"
         aria-live="polite"

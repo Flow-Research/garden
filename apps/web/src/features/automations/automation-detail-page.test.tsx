@@ -2,10 +2,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
-import type {
-  Automation,
-  AutomationDetailResponse,
-  AutomationTrigger,
+import {
+  decideAnalysisKeys,
+  type Automation,
+  type AutomationDetailResponse,
+  type AutomationRun,
+  type AutomationTrigger,
+  type DecideAnalysis,
 } from '@/lib/api'
 import { workspaceKeys } from '@/lib/workspace/queries'
 import { toast } from 'sonner'
@@ -210,5 +213,54 @@ describe('AutomationDetailPage pause', () => {
       expect(error).toHaveBeenCalledWith('Server unavailable'),
     )
     expect(screen.getByRole('button', { name: 'Pause' })).not.toBeDisabled()
+  })
+})
+
+describe('AutomationDetailPage Decide card', () => {
+  it('shows the Decide card for a run waiting on an analysis', async () => {
+    const run = {
+      id: 'run-1',
+      automation_id: 'auto-1',
+      trigger_id: null,
+      source: 'manual',
+      status: 'running',
+      run_id: 'run-1',
+      triggered_at: null,
+      completed_at: null,
+      failure_reason: null,
+      trigger_payload: null,
+      created_at: null,
+      decide_analysis_run_ids: ['decide-1'],
+    } satisfies AutomationRun
+    const decide: DecideAnalysis = {
+      runId: 'decide-1',
+      status: 'running',
+      progress: { message: 'Comparing regions' },
+      error: null,
+      files: [],
+      createdAt: new Date().toISOString(),
+      startedAt: new Date().toISOString(),
+    }
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    })
+    queryClient.setQueryData(automationKeys.detail(WS_ID, 'auto-1'), {
+      automation: AUTOMATION,
+      triggers: [],
+      runs: [run],
+    } satisfies AutomationDetailResponse)
+    queryClient.setQueryData(automationKeys.runs(WS_ID, 'auto-1', false), [run])
+    queryClient.setQueryData(workspaceKeys.agents(WS_ID), [])
+    queryClient.setQueryData(decideAnalysisKeys.run('decide-1'), decide)
+    render(
+      <QueryClientProvider client={queryClient}>
+        <WorkspaceIdProvider wsId={WS_ID}>
+          <AutomationDetailPage automationId="auto-1" onDeleted={vi.fn()} />
+        </WorkspaceIdProvider>
+      </QueryClientProvider>,
+    )
+
+    expect(await screen.findByText('Comparing regions')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
   })
 })
