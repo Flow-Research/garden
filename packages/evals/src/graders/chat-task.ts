@@ -13,14 +13,21 @@ const decideRunAbsentExpectedSchema = z
 const workbookSheetsExpectedSchema = z
   .object({ sheets: z.array(z.string().min(1)).min(1) })
   .strict()
-const rawDataExpectedSchema = z.object({ rows: z.number().int().positive() }).strict()
+const rawDataExpectedSchema = z
+  .object({ rows: z.number().int().positive() })
+  .strict()
 const verificationExpectedSchema = z
-  .object({ date: z.string().min(1), regions: z.array(z.string().min(1)).min(1) })
+  .object({
+    date: z.string().min(1),
+    regions: z.array(z.string().min(1)).min(1),
+  })
   .strict()
 const correctionExpectedSchema = z
   .object({ original: z.string().min(1), proposed: z.string().min(1) })
   .strict()
-const answerExpectedSchema = z.object({ values: z.array(z.string().min(1)).min(1) }).strict()
+const answerExpectedSchema = z
+  .object({ values: z.array(z.string().min(1)).min(1) })
+  .strict()
 
 export type DecideAnalysisObservation = NonNullable<
   ChatTaskEvidence['decideAnalysis']
@@ -96,7 +103,9 @@ function gradeCriterion(input: {
       const workbook = input.decideAnalysis?.workbook
       return Result.ok(
         workbook?.opened === true &&
-          expected.data.sheets.every((name) => workbook.sheetNames.includes(name)),
+          expected.data.sheets.every((name) =>
+            workbook.sheetNames.includes(name),
+          ),
       )
     }
     case 'decide-workbook-raw-data': {
@@ -183,7 +192,10 @@ export function decideWorkbookEvidence(input: {
     fileNames: input.fileNames,
     workbook: input.inspection
       ? {
-          name: input.fileNames.find((name) => name.toLowerCase().endsWith('.xlsx')) ?? 'unknown.xlsx',
+          name:
+            input.fileNames.find((name) =>
+              name.toLowerCase().endsWith('.xlsx'),
+            ) ?? 'unknown.xlsx',
           digest: input.inspection.digest,
           sheetNames: input.inspection.sheetNames,
           opened: input.inspection.opened,

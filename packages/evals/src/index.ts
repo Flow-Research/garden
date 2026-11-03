@@ -504,9 +504,7 @@ const decideAnalysisEvidenceSchema = z
 export const chatTaskEvidenceSchema = z
   .object({
     threadId: z.string().uuid(),
-    assistantResponseDigest: z
-      .string()
-      .regex(/^sha256:[a-f0-9]{64}$/),
+    assistantResponseDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
     decideAnalysis: decideAnalysisEvidenceSchema.nullable(),
   })
   .strict()
@@ -517,7 +515,10 @@ const chatTrialReportBaseSchema = z
     trial: trialIdentitySchema,
     configuration: evalConfigurationSchema,
     task: z
-      .object({ taskId: z.string().min(1), version: z.number().int().positive() })
+      .object({
+        taskId: z.string().min(1),
+        version: z.number().int().positive(),
+      })
       .strict(),
     threadId: z.string().uuid().optional(),
     recordedAt: z.iso.datetime(),

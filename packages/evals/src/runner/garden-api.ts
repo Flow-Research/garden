@@ -334,7 +334,9 @@ export function createGardenApiClient(config: GardenApiConfig) {
       agentId: string
       title: string
       deadlineAt: number
-    }): Promise<Result<z.infer<typeof chatThreadResponseSchema>, GardenEvalError>> {
+    }): Promise<
+      Result<z.infer<typeof chatThreadResponseSchema>, GardenEvalError>
+    > {
       return requestJson(
         {
           operation: 'create_chat_thread',
@@ -463,7 +465,8 @@ export function createGardenApiClient(config: GardenApiConfig) {
             new GardenEvalError({
               stage: 'evidence_collection',
               code: 'unsupported_artifact_url',
-              message: 'Decide returned a workbook URL outside its output host.',
+              message:
+                'Decide returned a workbook URL outside its output host.',
               invalidReason: 'required_evidence_unavailable',
               runId: input.runId,
             }),
@@ -476,7 +479,8 @@ export function createGardenApiClient(config: GardenApiConfig) {
             new GardenEvalError({
               stage: 'evidence_collection',
               code: 'deadline_reached',
-              message: 'The eval deadline expired before the workbook download.',
+              message:
+                'The eval deadline expired before the workbook download.',
               invalidReason: 'required_evidence_unavailable',
               runId: input.runId,
             }),
@@ -523,7 +527,8 @@ export function createGardenApiClient(config: GardenApiConfig) {
             new GardenEvalError({
               stage: 'evidence_collection',
               code: 'workbook_too_large',
-              message: 'The Decide workbook exceeds Garden’s 100 MB upload limit.',
+              message:
+                'The Decide workbook exceeds Garden’s 100 MB upload limit.',
               invalidReason: 'required_evidence_unavailable',
               runId: input.runId,
             }),
@@ -571,7 +576,8 @@ export function createGardenApiClient(config: GardenApiConfig) {
               new GardenEvalError({
                 stage: 'evidence_collection',
                 code: 'workbook_too_large',
-                message: 'The Decide workbook exceeds Garden’s 100 MB upload limit.',
+                message:
+                  'The Decide workbook exceeds Garden’s 100 MB upload limit.',
                 invalidReason: 'required_evidence_unavailable',
                 runId: input.runId,
               }),

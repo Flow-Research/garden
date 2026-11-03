@@ -29,10 +29,12 @@ function cellText(value: unknown): string {
   if ('text' in value && typeof value.text === 'string') return value.text
   if ('result' in value) return cellText(value.result)
   if ('richText' in value && Array.isArray(value.richText)) {
-    return value.richText.flatMap((part) => {
-      const parsed = zTextBlock.safeParse(part)
-      return parsed.success ? [parsed.data.text] : []
-    }).join('')
+    return value.richText
+      .flatMap((part) => {
+        const parsed = zTextBlock.safeParse(part)
+        return parsed.success ? [parsed.data.text] : []
+      })
+      .join('')
   }
   return ''
 }
@@ -61,8 +63,7 @@ function worksheetRows(worksheet: ExcelJS.Worksheet | undefined): string[][] {
 export async function inspectDecideWorkbook(
   bytes: Uint8Array,
 ): Promise<DecideWorkbookInspection> {
-  const digest: `sha256:${string}` =
-    `sha256:${createHash('sha256').update(bytes).digest('hex')}`
+  const digest: `sha256:${string}` = `sha256:${createHash('sha256').update(bytes).digest('hex')}`
   const workbook = new ExcelJS.Workbook()
   const workbookBytes = Uint8Array.from(bytes)
   const loadResult = await Result.tryPromise({
@@ -86,20 +87,24 @@ export async function inspectDecideWorkbook(
       const expectedRows = decideCsvRows.map((row) => [...row])
       const rawDataPreserved =
         rawRows.length === expectedRows.length &&
-        rawRows.every((row, index) =>
-          row.length === expectedRows[index]?.length &&
-          expectedRows[index]?.every((cell, cellIndex) =>
-            cellMatches(row[cellIndex], cell),
-          ) === true,
+        rawRows.every(
+          (row, index) =>
+            row.length === expectedRows[index]?.length &&
+            expectedRows[index]?.every((cell, cellIndex) =>
+              cellMatches(row[cellIndex], cell),
+            ) === true,
         )
 
       const targetRow =
         decideCsvRows.find((row) => row[0] === '2026-03-18') ?? []
-      const verificationHasSourceRow = verificationRows.some((row) =>
-        row.length === targetRow.length &&
-        targetRow.every((cell, index) => cellMatches(row[index], cell)),
+      const verificationHasSourceRow = verificationRows.some(
+        (row) =>
+          row.length === targetRow.length &&
+          targetRow.every((cell, index) => cellMatches(row[index], cell)),
       )
-      const expectedRegions = [...new Set(decideCsvRows.slice(1).map((row) => row[1]))]
+      const expectedRegions = [
+        ...new Set(decideCsvRows.slice(1).map((row) => row[1])),
+      ]
       const verificationMatches =
         verificationHasSourceRow &&
         expectedRegions.every((region) =>

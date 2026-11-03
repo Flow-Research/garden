@@ -192,13 +192,19 @@ export function sendGardenChatTurn(
     }
 
     const onClose = () =>
-      fail('chat_socket_closed', 'Garden closed the chat connection before the turn ended.')
+      fail(
+        'chat_socket_closed',
+        'Garden closed the chat connection before the turn ended.',
+      )
     const onError = () =>
       fail('chat_socket_error', 'The Garden chat connection failed.')
 
     const timeout = setTimeout(
       () =>
-        fail('deadline_reached', 'The Garden chat turn exceeded the eval deadline.'),
+        fail(
+          'deadline_reached',
+          'The Garden chat turn exceeded the eval deadline.',
+        ),
       remainingMs,
     )
     client.addEventListener('message', onMessage)
@@ -209,7 +215,11 @@ export function sendGardenChatTurn(
         identified = true
         dispatch()
       },
-      () => fail('chat_identity_failed', 'Garden did not identify the chat runtime.'),
+      () =>
+        fail(
+          'chat_identity_failed',
+          'Garden did not identify the chat runtime.',
+        ),
     )
   })
 }

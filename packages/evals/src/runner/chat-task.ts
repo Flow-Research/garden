@@ -151,9 +151,8 @@ export async function runChatTask(input: {
       }),
     )
 
-    const expectsDecide = input.task.definition.capabilities.connectors.includes(
-      'decide',
-    )
+    const expectsDecide =
+      input.task.definition.capabilities.connectors.includes('decide')
     const decideAnalysis = yield* Result.await(
       collectDecideEvidence({
         api,

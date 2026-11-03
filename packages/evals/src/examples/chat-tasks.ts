@@ -42,7 +42,8 @@ export const decideCsvTask: TaskDefinition & { surface: 'chat' } = {
     {
       criterionId: 'workbook-has-required-sheets',
       graderId: 'decide-workbook-sheets',
-      description: 'The generated workbook opens and has all three required sheets.',
+      description:
+        'The generated workbook opens and has all three required sheets.',
       expected: { sheets: ['Raw Data', 'Verification', 'Analysis'] },
       requiredEvidence: ['decide_workbook'],
     },
@@ -56,14 +57,19 @@ export const decideCsvTask: TaskDefinition & { surface: 'chat' } = {
     {
       criterionId: 'verification-matches-source',
       graderId: 'decide-workbook-verification',
-      description: 'The Verification sheet shows the raw row, all regions, and ast presence.',
-      expected: { date: '2026-03-18', regions: ['North', 'West', 'ast', 'South', 'East'] },
+      description:
+        'The Verification sheet shows the raw row, all regions, and ast presence.',
+      expected: {
+        date: '2026-03-18',
+        regions: ['North', 'West', 'ast', 'South', 'East'],
+      },
       requiredEvidence: ['decide_workbook'],
     },
     {
       criterionId: 'analysis-keeps-correction-separate',
       graderId: 'decide-workbook-analysis',
-      description: 'The Analysis sheet names ast as the original value and East as the proposed correction.',
+      description:
+        'The Analysis sheet names ast as the original value and East as the proposed correction.',
       expected: { original: 'ast', proposed: 'East' },
       requiredEvidence: ['decide_workbook'],
     },
@@ -86,21 +92,24 @@ export const uploadedBriefTask: TaskDefinition & { surface: 'chat' } = {
   surface: 'chat',
   fixture: { fixtureId: 'synthetic-project-brief-v1', version: 1 },
   title: 'Summarize the facts in an uploaded project brief',
-  prompt: 'Read the attached project brief. Summarize the project in one sentence. Include the owner and launch date.',
+  prompt:
+    'Read the attached project brief. Summarize the project in one sentence. Include the owner and launch date.',
   input: { filename: 'lark-migration-brief.md', mediaType: 'text/markdown' },
   capabilities: { connectors: [], permissions: [] },
   successCriteria: [
     {
       criterionId: 'decide-is-not-used-for-brief-facts',
       graderId: 'decide-run-absent',
-      description: 'Garden answers from the brief without starting a Decide analysis.',
+      description:
+        'Garden answers from the brief without starting a Decide analysis.',
       expected: { runCount: 0 },
       requiredEvidence: ['chat_thread', 'decide_analysis'],
     },
     {
       criterionId: 'answer-uses-owner-and-date',
       graderId: 'chat-answer-includes-fixture-facts',
-      description: 'The answer includes the owner and the launch date from the uploaded brief.',
+      description:
+        'The answer includes the owner and the launch date from the uploaded brief.',
       expected: { values: ['Maya Okafor', '2026-12-14'] },
       requiredEvidence: ['chat_thread', 'assistant_response'],
     },
