@@ -39,6 +39,57 @@ export class DirectDecideMcpError extends Data.TaggedError(
 export type DirectDecideCallOptions = {
   readonly signal?: AbortSignal
   readonly onProgress?: (progress: Progress) => void
+  /**
+   * A total request limit in place of the SDK's 60s silence timeout. Set only
+   * for background analyses, which may go quiet far longer than 60s.
+   */
+  readonly timeoutMs?: number
+}
+
+/**
+ * How long Garden waits for one background Decide analysis. Before, the call
+ * used the MCP SDK's 60s silence timeout (DEFAULT_REQUEST_TIMEOUT_MSEC with
+ * `resetTimeoutOnProgress`), and Decide's progress events are optional, so a
+ * run that went quiet for a minute was failed while Decide kept working and
+ * charging. Decide no longer limits analysis time and has no tool to fetch a
+ * result later (decide-mcp-integration-guide: analyze, list_generated_files,
+ * read_generated_file, whoami), so Garden holds the connection open. Workflows
+ * give a step unlimited wall-clock time while it waits on I/O
+ * (developers.cloudflare.com/workflows/reference/limits), so this bound is a
+ * product choice, not a platform one: one hour lets long reports finish and
+ * still ends a request that will never answer.
+ */
+export const DECIDE_ANALYSIS_TIME_LIMIT_MS = 60 * 60 * 1000
+
+/**
+ * Maps Garden call options onto MCP SDK request options. With `timeoutMs`,
+ * the limit is total and progress no longer resets it; without it, progress
+ * resets the SDK's 60s default as before.
+ */
+export function decideRequestOptions(options: DirectDecideCallOptions) {
+  return {
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+    ...(options.onProgress === undefined
+      ? {}
+      : { onprogress: options.onProgress }),
+    ...(options.timeoutMs !== undefined
+      ? { timeout: options.timeoutMs }
+      : options.onProgress === undefined
+        ? {}
+        : { resetTimeoutOnProgress: true }),
+  }
+}
+
+/**
+ * True when Garden's own request limit ended a Decide call. The MCP SDK
+ * raises RequestTimeout (-32001) inside Garden and `directFailureResult`
+ * reports it as `transportKind: 'timeout'`, so this is never a Decide error.
+ */
+export function isDecideTimeLimitResult(result: CallToolResult) {
+  const structured = result.structuredContent as
+    | { details?: { transportKind?: unknown } }
+    | undefined
+  return structured?.details?.transportKind === 'timeout'
 }
 
 type DirectDecideToolRequest = {
@@ -129,13 +180,9 @@ const createDirectDecideMcpSession: DirectDecideMcpSessionFactory = ({
   accessToken,
   onDisconnect,
 }) => {
-  // Decide no longer enforces its own analysis timeout, so Garden sets no
-  // total cap. The request uses the MCP SDK default timeout
-  // (DEFAULT_REQUEST_TIMEOUT_MSEC, 60s in @modelcontextprotocol/sdk 1.31.0
-  // shared/protocol.js), and `resetTimeoutOnProgress` turns it into a limit on
-  // silence between progress events. Decide publishes no progress cadence that
-  // would justify a different value. The Workflow step timeout is the outer
-  // bound for chat analyses.
+  // Calls without `timeoutMs` keep the MCP SDK default request timeout (60s,
+  // reset by each progress event). Background analyses pass
+  // DECIDE_ANALYSIS_TIME_LIMIT_MS instead; see its JSDoc.
   const client = new Client({
     name: 'garden-decide',
     version: '1.0.0',
@@ -151,15 +198,7 @@ const createDirectDecideMcpSession: DirectDecideMcpSessionFactory = ({
     connect: () => client.connect(transport),
     call: (request, options) =>
       client
-        .callTool(request, CallToolResultSchema, {
-          ...(options.signal === undefined ? {} : { signal: options.signal }),
-          ...(options.onProgress === undefined
-            ? {}
-            : {
-                onprogress: options.onProgress,
-                resetTimeoutOnProgress: true,
-              }),
-        })
+        .callTool(request, CallToolResultSchema, decideRequestOptions(options))
         // The installed SDK keeps a legacy `toolResult` union in its return
         // type even when CallToolResultSchema validates the response.
         .then((result) => result as CallToolResult),
@@ -278,7 +317,7 @@ const connectionKey = (connection: ConnectionRef) =>
 
 /**
  * Calls one Decide tool through the session manager. Public progress uses the
- * SDK callback. The five-minute boundary applies only to provider work;
+ * SDK callback. `timeoutMs`, when set, applies only to the tool call;
  * connection setup still uses the SDK default.
  */
 const callDecideTool = (
@@ -529,10 +568,7 @@ export const callDirectDecideTool = (
       const result = yield* executor.directDecideMcp.call(
         connection,
         { name, arguments: args },
-        {
-          signal: options.signal,
-          onProgress: options.onProgress,
-        },
+        options,
       )
 
       if (result.isError === true) {

@@ -99,7 +99,10 @@ spinner and "Analyzing your data…", Decide's latest progress message, the
 elapsed time, and a Cancel action. It settles on "Analysis complete",
 "Analysis failed", or "Analysis cancelled". The user never sees a run ID or
 session ID. A cancelled run needs no chat message because the card shows the
-outcome.
+outcome. A failed card shows the reason the run stored, as written. Past two minutes,
+a running card without a Decide progress message says "Still working in the
+background. You can leave this chat; the answer will appear here when it's
+ready."
 
 ### Generated files render as file cards
 
@@ -147,12 +150,24 @@ address the facet.
 
 ### Timeouts
 
-Decide no longer enforces its own analysis timeout, and Garden drops its
-five-minute `maxTotalTimeout`. The MCP call keeps `resetTimeoutOnProgress`,
-so the request timeout only measures silence between progress events.
-Decide publishes no progress cadence, so Garden keeps the MCP SDK default
-request timeout of 60 seconds. The Workflow step timeout, 10 minutes per
-attempt by default, remains the outer bound.
+Decide no longer limits analysis time, its progress events are optional, and
+it has no tool to fetch a finished result later (the integration guide lists
+`analyze`, `list_generated_files`, `read_generated_file`, and `whoami`). So
+Garden holds the `analyze` request open instead of judging it by silence.
+
+The background call passes one total MCP request timeout,
+`DECIDE_ANALYSIS_TIME_LIMIT_MS` (one hour), and progress no longer resets it.
+Before, the call used the MCP SDK's 60-second silence timeout, and a dev run
+failed with `MCP error -32001: Request timed out` while Decide was likely
+still working and charging. Workflows give a step unlimited wall-clock time
+while it waits on I/O, so the hour is a product choice: long reports finish,
+and a request that will never answer still ends. The provider step's timeout
+is that limit plus one minute, so the request's own timeout fires first and
+commits the plain failure "Decide did not finish within 1 hour, so Garden
+stopped waiting." The provider step never retries, so a timeout cannot charge
+twice.
+
+Other Decide tools keep the SDK default timeout reset by progress.
 
 ### Database connections
 

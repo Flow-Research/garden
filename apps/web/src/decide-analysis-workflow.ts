@@ -18,6 +18,8 @@ import { createGardenLogger } from '@garden/observability/logger'
 import type { AppEnv } from '@/lib/server/env'
 import {
   callDirectDecideTool,
+  DECIDE_ANALYSIS_TIME_LIMIT_MS,
+  isDecideTimeLimitResult,
   type DirectDecideCallOptions,
 } from '@/lib/server/executor-engine/direct-decide-mcp'
 import { runExecutorForEnv } from '@/lib/server/executor-runtime'
@@ -66,6 +68,8 @@ const providerErrorMessage = (result: CallToolResult) =>
         block.type === 'text' && block.text.trim().length > 0,
     )
     ?.text.trim() ?? 'Decide returned a tool error without a message.'
+
+const TIME_LIMIT_MESSAGE = `Decide did not finish within ${DECIDE_ANALYSIS_TIME_LIMIT_MS / 3_600_000} hour, so Garden stopped waiting. Ask a narrower question to retry.`
 
 const workflowFailure = (code: string, message: string): WorkflowFailure => ({
   code,
@@ -162,7 +166,13 @@ export class DecideAnalysisWorkflow extends WorkflowEntrypoint<
 
     const execution = await step.do<ProviderExecution>(
       `provider-${attempt}`,
-      { retries: { limit: 0, delay: '5 seconds' } },
+      {
+        retries: { limit: 0, delay: '5 seconds' },
+        // The 10-minute default step timeout would end the step before the
+        // Decide request limit. One extra minute lets the request's own
+        // timeout fire first and commit a clear failure instead.
+        timeout: DECIDE_ANALYSIS_TIME_LIMIT_MS + 60_000,
+      },
       async () => {
         const marker = throwOnServiceError(
           await markDecideAnalysisProviderStarted(this.env, {
@@ -202,6 +212,7 @@ export class DecideAnalysisWorkflow extends WorkflowEntrypoint<
         }
         let progressWrite: Promise<void> = Promise.resolve()
         const options: DirectDecideCallOptions = {
+          timeoutMs: DECIDE_ANALYSIS_TIME_LIMIT_MS,
           onProgress: (progress: Progress) => {
             progressWrite = progressWrite.then(async () => {
               const saved = await writeDecideAnalysisProgress(this.env, {
@@ -266,10 +277,9 @@ export class DecideAnalysisWorkflow extends WorkflowEntrypoint<
         if (result.isError === true) {
           return {
             kind: 'failed',
-            error: workflowFailure(
-              'provider_error',
-              providerErrorMessage(result),
-            ),
+            error: isDecideTimeLimitResult(result)
+              ? workflowFailure('time_limit', TIME_LIMIT_MESSAGE)
+              : workflowFailure('provider_error', providerErrorMessage(result)),
           }
         }
         return {

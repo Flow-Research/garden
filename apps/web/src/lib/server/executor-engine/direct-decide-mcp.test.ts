@@ -7,6 +7,9 @@ import { Effect } from 'effect'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Executor } from '@executor-js/sdk/core'
 import {
+  DECIDE_ANALYSIS_TIME_LIMIT_MS,
+  decideRequestOptions,
+  isDecideTimeLimitResult,
   DirectDecideMcpSessionManager,
   DirectDecideMcpError,
   type DirectDecideMcpSession,
@@ -625,5 +628,43 @@ describe('direct Decide MCP tools', () => {
 
     expect(sessions).toHaveLength(2)
     expect(sessions[0]?.close).toHaveBeenCalledOnce()
+  })
+})
+
+describe('Decide request time limit', () => {
+  const onProgress = () => undefined
+
+  it('gives a background analysis one total limit that progress does not reset', () => {
+    expect(
+      decideRequestOptions({
+        onProgress,
+        timeoutMs: DECIDE_ANALYSIS_TIME_LIMIT_MS,
+      }),
+    ).toEqual({
+      onprogress: onProgress,
+      timeout: DECIDE_ANALYSIS_TIME_LIMIT_MS,
+    })
+  })
+
+  it('keeps the SDK silence timeout for calls without a limit', () => {
+    expect(decideRequestOptions({ onProgress })).toEqual({
+      onprogress: onProgress,
+      resetTimeoutOnProgress: true,
+    })
+    expect(decideRequestOptions({})).toEqual({})
+  })
+
+  it('recognises Garden ending the call, not a Decide error', () => {
+    const timedOut: CallToolResult = {
+      isError: true,
+      content: [{ type: 'text', text: 'MCP error -32001: Request timed out' }],
+      structuredContent: { details: { transportKind: 'timeout' } },
+    }
+    const decideError: CallToolResult = {
+      isError: true,
+      content: [{ type: 'text', text: 'Insufficient credits.' }],
+    }
+    expect(isDecideTimeLimitResult(timedOut)).toBe(true)
+    expect(isDecideTimeLimitResult(decideError)).toBe(false)
   })
 })
