@@ -33,8 +33,9 @@ process.env.CLOUDFLARE_WORKER_CONFIG_PATH ??= configSelection.path
 // vite plugin then never opens a Cloudflare session, so no account, wrangler
 // login, or workers.dev subdomain is needed. The wrangler config is untouched
 // — the AI binding's `"remote": true` is inert with remote bindings off, and
-// the runtime routes model calls to an OpenAI-compatible endpoint instead
-// (GARDEN_OFFLINE → packages/agent-runtime/src/model.ts).
+// the runtime routes model calls and brain embeddings to an OpenAI-compatible
+// endpoint instead (GARDEN_OFFLINE → packages/agent-runtime/src/model.ts and
+// packages/brain/src/services/Embeddings.ts).
 process.env.CLOUDFLARE_VITE_REMOTE_BINDINGS = offline ? '0' : '1'
 if (offline) {
   process.env.GARDEN_OFFLINE ??= '1'

@@ -106,6 +106,7 @@ First, get a local model running. Pick one of these:
 ```bash
 pnpm offline:up:ollama                                    # starts Postgres + HelixDB + Ollama
 docker compose -f compose.dev.yaml exec ollama ollama pull qwen3:8b
+docker compose -f compose.dev.yaml exec ollama ollama pull all-minilm
 ```
 
 **Option B — the Ollama app** (recommended on Apple Silicon: Docker
@@ -114,6 +115,7 @@ containers can't use the Mac GPU, so the native app is much faster):
 ```bash
 # install from https://ollama.com, then:
 ollama pull qwen3:8b
+ollama pull all-minilm
 pnpm offline:up                                           # starts Postgres and HelixDB
 ```
 
@@ -141,9 +143,11 @@ ones when you want a stronger model without a Cloudflare account:
 | `GARDEN_MODEL_ID`                   | `qwen3:8b`                     | Must support tool calling               |
 | `GARDEN_MODEL_API_KEY`              | unset                          | Required by hosted endpoints            |
 | `GARDEN_MODEL_CONTEXT_WINDOW_TOKENS`| `32768`                        | Sizes context compaction                |
+| `GARDEN_EMBEDDING_MODEL`            | `all-minilm`                   | 384-d embeddings for file indexing. Not the chat model |
 
 Offline limitations:
 
+- File and note indexing embeds through the same OpenAI-compatible endpoint as chat, using `all-minilm` (384 dimensions). Pull it once with the commands above. These vectors are not interchangeable with Workers AI embeddings; keep one embedding provider per Helix database.
 - DOCX import uses a local converter (mammoth) instead of Workers AI document
   conversion — fidelity is slightly reduced.
 - Agent quality tracks the model you point at; small local models may fumble
@@ -184,6 +188,8 @@ AI binding. Two things to know about that binding:
 (`ollama list`, or
 `docker compose -f compose.dev.yaml exec ollama ollama list` for the Docker
 option).
+
+**File upload fails while indexing:** offline mode embeds with `GARDEN_EMBEDDING_MODEL` (`all-minilm` by default) at `GARDEN_MODEL_BASE_URL` (`POST /v1/embeddings`). Pull that model, then retry the upload. A 404 means the embedding model is missing. A dimension error means the model is not 384-d. `Binding AI needs to be run remotely` means this process is not in offline or `openai-compatible` mode; start it with `pnpm dev:offline`.
 
 **Workers AI fails in standard mode:** run `wrangler whoami` again and check
 that `CLOUDFLARE_ACCOUNT_ID` in `.env` belongs to the authenticated account.

@@ -10,6 +10,10 @@ import { tool, type ToolSet } from 'ai'
 import { and, eq, inArray, isNull, or, sql, type SQLWrapper } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
 import { z } from 'zod'
+import {
+  embeddingsRuntimeEnv,
+  type EmbeddingsRuntimeEnv,
+} from '@garden/brain/services/embeddings'
 import { connectorRegistry } from '@garden/connectors'
 import type { ExecutorCatalog } from '@garden/core/executor/catalog'
 import { formatIssueIdentifier } from '@garden/core/issues/identifier'
@@ -92,6 +96,7 @@ type ChatSubAgentToolsInput = {
     helixApiKey?: string
     ai: Ai
     files: R2Bucket
+    modelEnv?: EmbeddingsRuntimeEnv
     getContext?: () =>
       | BrainToolContext
       | null
@@ -1882,6 +1887,7 @@ export function createChatSubAgentTools({
         ...(brain.helixApiKey === undefined
           ? {}
           : { HELIX_API_KEY: brain.helixApiKey }),
+        ...embeddingsRuntimeEnv(brain.modelEnv ?? {}),
       },
       ai: brain.ai,
       files: brain.files,

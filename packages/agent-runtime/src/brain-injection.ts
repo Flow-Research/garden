@@ -5,7 +5,10 @@ import type { ScopeViewer } from '@garden/brain/domain/scope'
 import { Brain } from '@garden/brain/services/brain'
 import type { SearchHit } from '@garden/brain/domain'
 import { makeWorkerBrainLive } from '@garden/brain/services/worker'
-import type { WorkersAiBinding } from '@garden/brain/services/embeddings'
+import type {
+  EmbeddingsRuntimeEnv,
+  WorkersAiBinding,
+} from '@garden/brain/services/embeddings'
 import type { R2BucketLike } from '@garden/brain/services/raw-file-store'
 
 const INJECTION_K = 6
@@ -57,7 +60,10 @@ const observedAtOf = (hit: SearchHit): string | undefined => {
  * breaks because the brain is unavailable.
  */
 export async function loadBrainInjection(args: {
-  readonly env: { HELIX_URL?: string; HELIX_API_KEY?: string }
+  readonly env: {
+    HELIX_URL?: string
+    HELIX_API_KEY?: string
+  } & EmbeddingsRuntimeEnv
   readonly ai: WorkersAiBinding
   readonly files: R2BucketLike
   readonly workspaceId: string
@@ -73,6 +79,7 @@ export async function loadBrainInjection(args: {
     apiKey: args.env.HELIX_API_KEY,
     ai: args.ai,
     files: args.files,
+    modelEnv: args.env,
   })
 
   const hits = await Effect.runPromise(

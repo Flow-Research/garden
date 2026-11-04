@@ -49,7 +49,7 @@ Workers AI has no local simulator, so normal local development uses that one
 remote binding and may incur account usage. Set `AI_GATEWAY_ID` only to route
 requests through an AI Gateway owned by your account. Root `pnpm dev:offline`
 avoids the remote binding entirely — no Cloudflare account or
-`CLOUDFLARE_ACCOUNT_ID` needed — by routing model calls to an
+`CLOUDFLARE_ACCOUNT_ID` needed — by routing chat and brain embeddings to an
 OpenAI-compatible endpoint (see the root README's "Offline mode" section).
 
 `RESEND_API_KEY`, `EXA_API_KEY`, and connector credentials are optional until

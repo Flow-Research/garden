@@ -4,6 +4,7 @@ import { MAX_FILE_SIZE } from '@garden/core/constants/upload'
 import { normalizeDownloadFilename } from '@garden/agent-runtime'
 import { WorkspaceId } from '@garden/brain/domain'
 import { Brain } from '@garden/brain/services/brain'
+import { embeddingsRuntimeEnv } from '@garden/brain/services/embeddings'
 import { makeWebBrainLive } from '@garden/brain/services/web'
 import { formatOf } from '@garden/brain/services/extractor'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
@@ -74,6 +75,7 @@ export const getBrainFiles = async ({
     apiKey: env.HELIX_API_KEY,
     ai: env.AI,
     files: env.BRAIN_FILES,
+    modelEnv: embeddingsRuntimeEnv(env),
   })
 
   const listResult = await Effect.runPromise(
@@ -157,6 +159,7 @@ export const postBrainFileUpload = async ({
     apiKey: env.HELIX_API_KEY,
     ai: env.AI,
     files: env.BRAIN_FILES,
+    modelEnv: embeddingsRuntimeEnv(env),
   })
   const ingestionLive = makeBrainFileIngestionLayer(env).pipe(
     Layer.provide(

@@ -81,6 +81,7 @@ Start Postgres, HelixDB, and Ollama:
 ```bash
 pnpm offline:up:ollama
 docker compose -f compose.dev.yaml exec ollama ollama pull qwen3:8b
+docker compose -f compose.dev.yaml exec ollama ollama pull all-minilm
 ```
 
 The model download is approximately 5 GB.
@@ -93,6 +94,7 @@ Then run:
 
 ```bash
 ollama pull qwen3:8b
+ollama pull all-minilm
 pnpm offline:up
 ```
 
@@ -250,6 +252,14 @@ For Docker-based Ollama, use:
 ```bash
 docker compose -f compose.dev.yaml exec ollama ollama list
 ```
+
+File upload also embeds. Offline mode calls `POST /v1/embeddings` with
+`all-minilm` (384 dimensions), not the chat model and not Workers AI. If
+indexing says that model was not found, pull it and retry the upload. If it
+still says `Binding AI needs to be run remotely`, restart with
+`pnpm dev:offline` so `GARDEN_OFFLINE` reaches the worker. Vectors from
+`all-minilm` and Workers AI `bge-small` are the same width and are not
+interchangeable; use one embedding provider for a given Helix database.
 
 ### Workers AI does not respond
 

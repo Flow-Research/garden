@@ -60,6 +60,13 @@ export type AppEnv = {
   EXA_API_KEY?: string
   HELIX_URL?: string
   HELIX_API_KEY?: string
+  /** Empty string means unset. `pnpm dev:offline` sets `GARDEN_OFFLINE=1`. */
+  GARDEN_OFFLINE?: string
+  GARDEN_MODEL_PROVIDER?: string
+  GARDEN_MODEL_BASE_URL?: string
+  GARDEN_MODEL_API_KEY?: string
+  GARDEN_EMBEDDING_MODEL?: string
+  GARDEN_EMBEDDING_PROVIDER?: string
 }
 
 // The custom Worker entry receives the authoritative Cloudflare bindings as the

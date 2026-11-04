@@ -147,6 +147,10 @@
     "GARDEN_MODEL_ID": "",
     "GARDEN_MODEL_API_KEY": "",
     "GARDEN_MODEL_CONTEXT_WINDOW_TOKENS": "",
+    // Brain embeddings follow the chat provider unless this override is set.
+    // Empty means "unset". Offline mode uses Ollama `all-minilm` (384-d).
+    "GARDEN_EMBEDDING_MODEL": "",
+    "GARDEN_EMBEDDING_PROVIDER": "",
     // Provider OAuth credentials. Empty string means "unset"; local dev fills
     // these from process env (wrangler only forwards declared keys), deployed
     // workers use real secrets which override these defaults.

@@ -6,6 +6,10 @@ import {
 } from '@cloudflare/think'
 import type { LanguageModel, ToolSet, UIMessage } from 'ai'
 import { Effect, Schema } from 'effect'
+import {
+  embeddingsRuntimeEnv,
+  type EmbeddingsRuntimeEnv,
+} from '@garden/brain/services/embeddings'
 import { createAgentModel } from './model'
 import { configureThinkCompaction } from './think-compaction'
 import {
@@ -17,18 +21,19 @@ import {
   type BrainWriteBackRunInput,
 } from './brain-write-back'
 
-type AgentRuntimeEnv = Cloudflare.Env & {
-  AI: Ai
-  AI_GATEWAY_ID?: string
-  ENVIRONMENT?: string
-  BRAIN_FILES: R2Bucket
-  FILES: R2Bucket
-  HYPERDRIVE: Hyperdrive
-  HELIX_URL?: string
-  HELIX_API_KEY?: string
-  VITE_PUBLIC_POSTHOG_HOST?: string
-  VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
-}
+type AgentRuntimeEnv = Cloudflare.Env &
+  EmbeddingsRuntimeEnv & {
+    AI: Ai
+    AI_GATEWAY_ID?: string
+    ENVIRONMENT?: string
+    BRAIN_FILES: R2Bucket
+    FILES: R2Bucket
+    HYPERDRIVE: Hyperdrive
+    HELIX_URL?: string
+    HELIX_API_KEY?: string
+    VITE_PUBLIC_POSTHOG_HOST?: string
+    VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
+  }
 
 type BrainWriteBackConfig = ReturnType<typeof brainWriteBackToolContext>
 
@@ -82,6 +87,7 @@ export class BrainWriteBackSubAgent extends Think<AgentRuntimeEnv> {
         ...(this.env.HELIX_API_KEY === undefined
           ? {}
           : { HELIX_API_KEY: this.env.HELIX_API_KEY }),
+        ...embeddingsRuntimeEnv(this.env),
       },
       ai: this.env.AI,
       files: this.env.BRAIN_FILES,

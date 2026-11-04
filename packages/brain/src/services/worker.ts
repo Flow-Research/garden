@@ -1,7 +1,11 @@
 import { Effect, Layer } from 'effect'
 import { ExtractError } from '../errors.ts'
 import { Brain, makeBrain } from './Brain.ts'
-import { WorkersAiEmbeddingsLive, type WorkersAiBinding } from './Embeddings.ts'
+import {
+  embeddingsLayerFor,
+  type EmbeddingsRuntimeEnv,
+  type WorkersAiBinding,
+} from './Embeddings.ts'
 import { Extractor } from './ExtractorService.ts'
 import { ChunkerLive } from './Chunker.ts'
 import { makeHelixClientLayer } from './HelixClient.ts'
@@ -14,7 +18,8 @@ import { makeR2RawFileStoreLive, type R2BucketLike } from './RawFileStore.ts'
  * `LocalEmbeddingsLive` (bundles `@xenova/transformers` + onnx WASM) and
  * `ExtractorLive` (bundles exceljs/unpdf/mammoth) into the workerd bundle and
  * pulls `@effect/platform-node`. This composition swaps those for the binding-
- * backed implementations: `WorkersAiEmbeddingsLive` (`env.AI`) and an R2-backed
+ * backed implementations: embeddings from `embeddingsLayerFor` (Workers AI, or
+ * the OpenAI-compatible endpoint when `modelEnv` says local) and an R2-backed
  * `RawFileStore`. Extraction is intentionally stubbed — the agent tools only
  * run `search` and `addText`, neither of which touches a source file.
  */
@@ -23,6 +28,7 @@ export function makeWorkerBrainLive(args: {
   apiKey?: string
   ai: WorkersAiBinding
   files: R2BucketLike
+  modelEnv?: EmbeddingsRuntimeEnv
 }): Layer.Layer<Brain> {
   const workerExtractor = Layer.succeed(
     Extractor,
@@ -45,7 +51,7 @@ export function makeWorkerBrainLive(args: {
     Layer.provide(
       makeHelixClientLayer({ baseUrl: args.baseUrl, apiKey: args.apiKey }),
     ),
-    Layer.provide(WorkersAiEmbeddingsLive(args.ai)),
+    Layer.provide(embeddingsLayerFor({ ai: args.ai, env: args.modelEnv })),
     Layer.provide(makeR2RawFileStoreLive(args.files)),
     Layer.provide(ChunkerLive),
     Layer.provide(workerExtractor),

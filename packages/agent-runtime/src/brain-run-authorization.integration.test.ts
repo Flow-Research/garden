@@ -376,6 +376,9 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           GARDEN_MODEL_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
           GARDEN_MODEL_ID: 'fixture',
           GARDEN_OFFLINE: '1',
+          // Chat uses the fixture OpenAI server. Embeddings stay on the local
+          // AI service binding, which returns fixed 384-d vectors.
+          GARDEN_EMBEDDING_PROVIDER: 'workers-ai',
           ENVIRONMENT: 'test',
           BETTER_AUTH_SECRET: 'synthetic-fixture-only',
           BETTER_AUTH_URL: 'http://fixture',

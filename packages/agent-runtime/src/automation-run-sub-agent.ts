@@ -26,6 +26,7 @@ import {
   GARDEN_ANALYTICS_EVENTS,
   type GardenAnalyticsEventName,
 } from '@garden/observability/analytics/events'
+import { embeddingsRuntimeEnv } from '@garden/brain/services/embeddings'
 import { connectorRegistry } from '@garden/connectors'
 import { connectorToolForName } from './chat-permissions'
 import {
@@ -534,6 +535,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
           ...(this.env.HELIX_API_KEY === undefined
             ? {}
             : { HELIX_API_KEY: this.env.HELIX_API_KEY }),
+          ...embeddingsRuntimeEnv(this.env),
         },
         ai: this.env.AI,
         files: this.env.BRAIN_FILES,
