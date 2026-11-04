@@ -62,9 +62,7 @@ export function makeWebBrainLive(args: {
     Layer.provide(
       makeHelixClientLayer({ baseUrl: args.baseUrl, apiKey: args.apiKey }),
     ),
-    Layer.provide(
-      embeddingsLayerFor({ ai: args.ai, env: args.modelEnv }),
-    ),
+    Layer.provide(embeddingsLayerFor({ ai: args.ai, env: args.modelEnv })),
     Layer.provide(makeR2RawFileStoreLive(args.files)),
     Layer.provide(ChunkerLive),
     Layer.provide(WebExtractorLive),

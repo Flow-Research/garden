@@ -60,8 +60,10 @@ const observedAtOf = (hit: SearchHit): string | undefined => {
  * breaks because the brain is unavailable.
  */
 export async function loadBrainInjection(args: {
-  readonly env: { HELIX_URL?: string; HELIX_API_KEY?: string } &
-    EmbeddingsRuntimeEnv
+  readonly env: {
+    HELIX_URL?: string
+    HELIX_API_KEY?: string
+  } & EmbeddingsRuntimeEnv
   readonly ai: WorkersAiBinding
   readonly files: R2BucketLike
   readonly workspaceId: string

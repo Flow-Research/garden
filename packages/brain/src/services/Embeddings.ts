@@ -269,7 +269,10 @@ const embedWithOpenAi = (
     }
     const text = yield* response.text.pipe(
       Effect.mapError((cause) =>
-        embeddingFailure('embedding endpoint returned an unreadable body', cause),
+        embeddingFailure(
+          'embedding endpoint returned an unreadable body',
+          cause,
+        ),
       ),
     )
     const parsed = yield* Effect.try({
@@ -324,10 +327,9 @@ export const makeOpenAiCompatibleEmbeddingsLayer = (
         Layer.provide(Layer.succeed(FetchHttpClient.Fetch)(config.fetch)),
       )
     : FetchHttpClient.layer
-  return Layer.effect(
-    Embeddings,
-    makeOpenAiCompatibleEmbeddings(config),
-  ).pipe(Layer.provide(httpLayer))
+  return Layer.effect(Embeddings, makeOpenAiCompatibleEmbeddings(config)).pipe(
+    Layer.provide(httpLayer),
+  )
 }
 
 /**

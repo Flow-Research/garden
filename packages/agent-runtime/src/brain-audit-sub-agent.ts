@@ -23,16 +23,16 @@ import {
 
 type AgentRuntimeEnv = Cloudflare.Env &
   EmbeddingsRuntimeEnv & {
-  AI: Ai
-  AI_GATEWAY_ID?: string
-  ENVIRONMENT?: string
-  BRAIN_FILES: R2Bucket
-  FILES: R2Bucket
-  HELIX_URL?: string
-  HELIX_API_KEY?: string
-  VITE_PUBLIC_POSTHOG_HOST?: string
-  VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
-}
+    AI: Ai
+    AI_GATEWAY_ID?: string
+    ENVIRONMENT?: string
+    BRAIN_FILES: R2Bucket
+    FILES: R2Bucket
+    HELIX_URL?: string
+    HELIX_API_KEY?: string
+    VITE_PUBLIC_POSTHOG_HOST?: string
+    VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
+  }
 
 type BrainAuditConfig = ReturnType<typeof brainAuditToolContext>
 

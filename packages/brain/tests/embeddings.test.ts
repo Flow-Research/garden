@@ -81,9 +81,7 @@ it.effect('embeds through the OpenAI-compatible endpoint when offline', () => {
     const embeddings = yield* Embeddings
     const rows = yield* embeddings.embed(['second', 'first'])
     expect(aiCalled).toBe(false)
-    expect(requestedUrl).toBe(
-      'http://embeddings.test/gateway/v1/embeddings',
-    )
+    expect(requestedUrl).toBe('http://embeddings.test/gateway/v1/embeddings')
     expect(authorization).toBe('Bearer secret')
     expect(JSON.parse(body)).toEqual({
       model: 'all-minilm',
@@ -162,35 +160,38 @@ it.effect('rejects vectors that do not match the brain index width', () => {
   )
 })
 
-it.effect('keeps the Workers AI binding when offline embeddings are overridden', () => {
-  let model = ''
-  return Effect.gen(function* () {
-    const embeddings = yield* Embeddings
-    const rows = yield* embeddings.embed(['notes'])
-    expect(model).toBe('@cf/baai/bge-small-en-v1.5')
-    expect(rows).toEqual([vector(4)])
-  }).pipe(
-    Effect.provide(
-      embeddingsLayerFor({
-        ai: {
-          run: async (nextModel, input) => {
-            model = nextModel
-            const text =
-              typeof input === 'object' && input !== null && 'text' in input
-                ? input.text
-                : []
-            const texts = Array.isArray(text) ? text : []
-            return { data: texts.map(() => vector(4)) }
+it.effect(
+  'keeps the Workers AI binding when offline embeddings are overridden',
+  () => {
+    let model = ''
+    return Effect.gen(function* () {
+      const embeddings = yield* Embeddings
+      const rows = yield* embeddings.embed(['notes'])
+      expect(model).toBe('@cf/baai/bge-small-en-v1.5')
+      expect(rows).toEqual([vector(4)])
+    }).pipe(
+      Effect.provide(
+        embeddingsLayerFor({
+          ai: {
+            run: async (nextModel, input) => {
+              model = nextModel
+              const text =
+                typeof input === 'object' && input !== null && 'text' in input
+                  ? input.text
+                  : []
+              const texts = Array.isArray(text) ? text : []
+              return { data: texts.map(() => vector(4)) }
+            },
           },
-        },
-        env: {
-          GARDEN_OFFLINE: '1',
-          GARDEN_EMBEDDING_PROVIDER: 'workers-ai',
-        },
-        fetch: async () => {
-          throw new Error('openai embeddings should not be called')
-        },
-      }),
-    ),
-  )
-})
+          env: {
+            GARDEN_OFFLINE: '1',
+            GARDEN_EMBEDDING_PROVIDER: 'workers-ai',
+          },
+          fetch: async () => {
+            throw new Error('openai embeddings should not be called')
+          },
+        }),
+      ),
+    )
+  },
+)

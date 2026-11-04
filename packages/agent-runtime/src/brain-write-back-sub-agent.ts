@@ -23,17 +23,17 @@ import {
 
 type AgentRuntimeEnv = Cloudflare.Env &
   EmbeddingsRuntimeEnv & {
-  AI: Ai
-  AI_GATEWAY_ID?: string
-  ENVIRONMENT?: string
-  BRAIN_FILES: R2Bucket
-  FILES: R2Bucket
-  HYPERDRIVE: Hyperdrive
-  HELIX_URL?: string
-  HELIX_API_KEY?: string
-  VITE_PUBLIC_POSTHOG_HOST?: string
-  VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
-}
+    AI: Ai
+    AI_GATEWAY_ID?: string
+    ENVIRONMENT?: string
+    BRAIN_FILES: R2Bucket
+    FILES: R2Bucket
+    HYPERDRIVE: Hyperdrive
+    HELIX_URL?: string
+    HELIX_API_KEY?: string
+    VITE_PUBLIC_POSTHOG_HOST?: string
+    VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
+  }
 
 type BrainWriteBackConfig = ReturnType<typeof brainWriteBackToolContext>
 

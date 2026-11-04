@@ -73,8 +73,10 @@ export function brainWriteBackToolContext(
 }
 
 export type BrainWriteBackToolDependencies = {
-  readonly env: { HELIX_URL?: string; HELIX_API_KEY?: string } &
-    EmbeddingsRuntimeEnv
+  readonly env: {
+    HELIX_URL?: string
+    HELIX_API_KEY?: string
+  } & EmbeddingsRuntimeEnv
   readonly ai: WorkersAiBinding
   readonly files: R2BucketLike
   readonly databaseUrl: string
