@@ -86,8 +86,8 @@ Evidence path: `apps/web/src/routes/api/teams/-teams.integration.test.ts`
 
 ## Gaps and follow-up
 
-- Local agent environment could not run the integration suite (no container
-  runtime / Docker). Re-run on Node ≥22.12 with Docker for proof (`INCONCLUSIVE`
-  here).
+- Integration proof: **PASS** —
+  `pnpm --filter @garden/web exec vitest run src/routes/api/teams/-teams.integration.test.ts`
+  (19 passed; reassign case logged `reassignedIssueCount: 2`).
 - No user-facing toast that N issues moved to the owner.
 - Agent membership removal does not reassign agent-assigned issues.
