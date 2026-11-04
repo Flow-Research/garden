@@ -833,6 +833,15 @@ export async function addTeamMember(args: {
   return Result.ok(outcome.membership)
 }
 
+type RemoveMemberOutcome =
+  | {
+      kind: 'ok'
+      membership: TeamMemberRow
+      reassignedIssueCount: number
+    }
+  | { kind: 'not_found' }
+  | { kind: 'owner' }
+
 /**
  * Remove a Team membership.
  *
@@ -857,7 +866,7 @@ export async function removeTeamMember(args: {
 > {
   const outcomeResult = await Result.tryPromise({
     try: async () =>
-      args.db.transaction(async (tx) => {
+      args.db.transaction(async (tx): Promise<RemoveMemberOutcome> => {
         const [membership] = await tx
           .select()
           .from(schema.teamMember)
@@ -867,20 +876,19 @@ export async function removeTeamMember(args: {
               eq(schema.teamMember.teamId, args.team.id),
             ),
           )
-        if (!membership) return { kind: 'not_found' as const }
+        if (!membership) return { kind: 'not_found' }
 
         if (membership.userId && membership.userId === args.team.ownerUserId) {
-          return { kind: 'owner' as const }
+          return { kind: 'owner' }
         }
 
         let reassignedIssueCount = 0
         if (membership.userId) {
-          const reassigned = await reassignOpenTeamIssuesToOwner(tx, {
+          reassignedIssueCount = await reassignOpenTeamIssuesToOwner(tx, {
             teamId: args.team.id,
             fromUserId: membership.userId,
             ownerUserId: args.team.ownerUserId,
           })
-          reassignedIssueCount = reassigned
         }
 
         await tx
@@ -900,7 +908,7 @@ export async function removeTeamMember(args: {
           },
         })
 
-        return { kind: 'ok' as const, membership, reassignedIssueCount }
+        return { kind: 'ok', membership, reassignedIssueCount }
       }),
     catch: mapDbError,
   })
@@ -941,6 +949,8 @@ export async function removeTeamMember(args: {
  * Open = not `done` / `cancelled` (includes `blocked`). Keeps `team_id`.
  * Used so removal cannot leave invisible assigned work for non-managers.
  */
+const TERMINAL_ISSUE_STATUSES = ['done', 'cancelled'] as const
+
 async function reassignOpenTeamIssuesToOwner(
   tx: Tx,
   args: {
@@ -961,7 +971,7 @@ async function reassignOpenTeamIssuesToOwner(
         eq(schema.issue.teamId, args.teamId),
         eq(schema.issue.assigneeType, 'user'),
         eq(schema.issue.assigneeId, args.fromUserId),
-        notInArray(schema.issue.status, ['done', 'cancelled']),
+        notInArray(schema.issue.status, [...TERMINAL_ISSUE_STATUSES]),
       ),
     )
     .returning({ id: schema.issue.id })
