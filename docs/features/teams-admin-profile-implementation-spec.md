@@ -57,6 +57,11 @@ document conflicts with an implementation detail.
 - A normal member can see only Teams they belong to.
 - A normal Team member sees only Team issues assigned to them. The Team owner
   can see all issues in their Team; workspace managers can see all issues.
+- Removing a non-owner user member reassigns that user's open Team issues to
+  the Team owner in the same transaction (see
+  [`team-member-removal-assignees.md`](./team-member-removal-assignees.md)).
+  Done/cancelled assignees are left unchanged. Owner removal still requires
+  ownership transfer first.
 - UI `can_manage` and `can_transfer_owner` fields are rendering hints only. API
   handlers remain the authorization boundary.
 
@@ -158,7 +163,7 @@ The existing endpoints are the canonical contract:
 | `DELETE` | `/api/teams/:teamId` | Delete an empty Team; only workspace managers may delete |
 | `GET` | `/api/teams/:teamId/members` | Return resolved user/agent display rows |
 | `POST` | `/api/teams/:teamId/members` | Add one user or agent membership |
-| `DELETE` | `/api/teams/:teamId/members/:membershipId` | Remove a membership, subject to owner/issue rules |
+| `DELETE` | `/api/teams/:teamId/members/:membershipId` | Remove a membership; reassign the user's open Team issues to the Team owner; block owner removal until transfer |
 | `PUT` | `/api/teams/:teamId/owner` | Transfer ownership to a workspace user; manager only |
 
 Request bodies must use the shared Zod schemas in
@@ -278,6 +283,9 @@ focused Settings tests rather than coupling tests to implementation details.
 - cross-workspace users and agents cannot be added;
 - duplicate names and memberships return stable `409` codes;
 - deleting a Team with issues returns the stable `TEAM_HAS_ISSUES` error;
+- removing a user member with open assigned Team issues reassigns those
+  issues to the Team owner; remove with no open assignments only deletes
+  membership;
 - issue counts obey caller visibility;
 - realtime events are emitted only after successful writes;
 - realtime payloads do not expose viewer-relative fields.
@@ -293,7 +301,8 @@ Use the existing Teams integration fixtures and route tests under
   belong to.
 - All Team mutations work through the existing API and return typed, stable
   responses.
-- Team issue visibility is unchanged and enforced server-side.
+- Team issue visibility is unchanged and enforced server-side. Removing a
+  member does not leave open Team issues assigned to that user.
 - The list response and overview agree on one response shape.
 - Realtime updates invalidate affected Team views without broadcasting
   caller-relative permissions or counts.
