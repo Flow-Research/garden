@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import { Result, TaggedError } from 'better-result'
 import type {
   AddTeamMemberRequest,
@@ -833,6 +833,17 @@ export async function addTeamMember(args: {
   return Result.ok(outcome.membership)
 }
 
+/**
+ * Remove a Team membership.
+ *
+ * Before: deleting `team_member` left `issue.assignee_id` pointing at the
+ * removed user. Non-managers then lost visibility of those Team issues
+ * (`teamIssueVisibilityCondition`), so assigned work went silent.
+ * After: open Team issues assigned to the removed user are reassigned to the
+ * Team owner in the same transaction, then the membership row is deleted.
+ * Owner removal stays blocked; agent memberships do not rewrite user
+ * assignees. Refs: #152, `docs/features/teams-admin-profile-implementation-spec.md`.
+ */
 export async function removeTeamMember(args: {
   db: Db
   team: TeamRow
@@ -862,6 +873,16 @@ export async function removeTeamMember(args: {
           return { kind: 'owner' as const }
         }
 
+        let reassignedIssueCount = 0
+        if (membership.userId) {
+          const reassigned = await reassignOpenTeamIssuesToOwner(tx, {
+            teamId: args.team.id,
+            fromUserId: membership.userId,
+            ownerUserId: args.team.ownerUserId,
+          })
+          reassignedIssueCount = reassigned
+        }
+
         await tx
           .delete(schema.teamMember)
           .where(eq(schema.teamMember.id, membership.id))
@@ -875,10 +896,11 @@ export async function removeTeamMember(args: {
             team_id: args.team.id,
             member_type: membership.userId ? 'user' : 'agent',
             member_id: membership.userId ?? membership.agentId,
+            reassigned_issue_count: reassignedIssueCount,
           },
         })
 
-        return { kind: 'ok' as const, membership }
+        return { kind: 'ok' as const, membership, reassignedIssueCount }
       }),
     catch: mapDbError,
   })
@@ -904,12 +926,46 @@ export async function removeTeamMember(args: {
     teamId: args.team.id,
     actorId: args.actorUserId,
     membershipId: args.membershipId,
+    reassignedIssueCount: outcome.reassignedIssueCount,
   })
   return Result.ok({
     id: outcome.membership.id,
     userId: outcome.membership.userId,
     agentId: outcome.membership.agentId,
   })
+}
+
+/**
+ * Move non-terminal Team issues from a removed user onto the Team owner.
+ *
+ * Open = not `done` / `cancelled` (includes `blocked`). Keeps `team_id`.
+ * Used so removal cannot leave invisible assigned work for non-managers.
+ */
+async function reassignOpenTeamIssuesToOwner(
+  tx: Tx,
+  args: {
+    teamId: string
+    fromUserId: string
+    ownerUserId: string
+  },
+): Promise<number> {
+  const reassigned = await tx
+    .update(schema.issue)
+    .set({
+      assigneeType: 'user',
+      assigneeId: args.ownerUserId,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(schema.issue.teamId, args.teamId),
+        eq(schema.issue.assigneeType, 'user'),
+        eq(schema.issue.assigneeId, args.fromUserId),
+        notInArray(schema.issue.status, ['done', 'cancelled']),
+      ),
+    )
+    .returning({ id: schema.issue.id })
+  return reassigned.length
 }
 
 export async function deleteTeam(args: {
