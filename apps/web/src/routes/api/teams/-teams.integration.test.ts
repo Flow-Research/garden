@@ -189,6 +189,7 @@ async function seedTeamIssue(
     number: number
     createdBy: string
     assigneeId?: string
+    status?: (typeof schema.issue.$inferInsert)['status']
   },
 ) {
   const issueId = randomUUID()
@@ -199,6 +200,7 @@ async function seedTeamIssue(
     number: args.number,
     title: `Team issue ${args.number}`,
     createdBy: args.createdBy,
+    status: args.status,
     assigneeType: args.assigneeId ? 'user' : null,
     assigneeId: args.assigneeId ?? null,
   })
@@ -1012,6 +1014,205 @@ describe('teams API (integration)', () => {
     expect(((await removeOwnerResponse.json()) as { code: string }).code).toBe(
       'TEAM_OWNER_REQUIRES_TRANSFER',
     )
+  })
+
+  it('reassigns open Team issues to the owner when removing an assigned member', async () => {
+    const fixture = await seedWorkspace(testDb)
+    const teamId = await seedTeamRow(testDb, {
+      workspaceId: fixture.workspaceId,
+      name: 'Handoff',
+      ownerUserId: fixture.ownerId,
+      memberUserIds: [fixture.memberId, fixture.otherId],
+    })
+    const openAssigned = await seedTeamIssue(testDb, {
+      workspaceId: fixture.workspaceId,
+      teamId,
+      number: 1,
+      createdBy: fixture.ownerId,
+      assigneeId: fixture.memberId,
+      status: 'in_progress',
+    })
+    const blockedAssigned = await seedTeamIssue(testDb, {
+      workspaceId: fixture.workspaceId,
+      teamId,
+      number: 2,
+      createdBy: fixture.ownerId,
+      assigneeId: fixture.memberId,
+      status: 'blocked',
+    })
+    const doneAssigned = await seedTeamIssue(testDb, {
+      workspaceId: fixture.workspaceId,
+      teamId,
+      number: 3,
+      createdBy: fixture.ownerId,
+      assigneeId: fixture.memberId,
+      status: 'done',
+    })
+    const otherAssigned = await seedTeamIssue(testDb, {
+      workspaceId: fixture.workspaceId,
+      teamId,
+      number: 4,
+      createdBy: fixture.ownerId,
+      assigneeId: fixture.otherId,
+      status: 'todo',
+    })
+
+    const [membership] = await testDb.db
+      .select()
+      .from(schema.teamMember)
+      .where(
+        and(
+          eq(schema.teamMember.teamId, teamId),
+          eq(schema.teamMember.userId, fixture.memberId),
+        ),
+      )
+
+    const removeRequest = new Request(
+      `https://garden.test/api/teams/${teamId}/members/${membership?.id}`,
+      {
+        method: 'DELETE',
+        headers: { 'X-Workspace-ID': fixture.workspaceId },
+      },
+    )
+    const removeResponse = await handlerFor(
+      TeamMemberRoute,
+      'DELETE',
+    )(
+      invocation(
+        makeContext({
+          testDb,
+          userId: fixture.ownerId,
+          role: 'owner',
+          request: removeRequest,
+        }),
+        removeRequest,
+        { teamId, membershipId: membership?.id ?? '' },
+        '/api/teams/$teamId/members/$membershipId',
+      ),
+    )
+    expect(removeResponse.status).toBe(204)
+
+    const remainingMembership = await testDb.db
+      .select()
+      .from(schema.teamMember)
+      .where(
+        and(
+          eq(schema.teamMember.teamId, teamId),
+          eq(schema.teamMember.userId, fixture.memberId),
+        ),
+      )
+    expect(remainingMembership).toHaveLength(0)
+
+    const issues = await testDb.db
+      .select({
+        id: schema.issue.id,
+        assigneeType: schema.issue.assigneeType,
+        assigneeId: schema.issue.assigneeId,
+        teamId: schema.issue.teamId,
+      })
+      .from(schema.issue)
+      .where(eq(schema.issue.teamId, teamId))
+    const byId = new Map(issues.map((row) => [row.id, row]))
+
+    expect(byId.get(openAssigned)).toMatchObject({
+      assigneeType: 'user',
+      assigneeId: fixture.ownerId,
+      teamId,
+    })
+    expect(byId.get(blockedAssigned)).toMatchObject({
+      assigneeType: 'user',
+      assigneeId: fixture.ownerId,
+      teamId,
+    })
+    expect(byId.get(doneAssigned)).toMatchObject({
+      assigneeType: 'user',
+      assigneeId: fixture.memberId,
+      teamId,
+    })
+    expect(byId.get(otherAssigned)).toMatchObject({
+      assigneeType: 'user',
+      assigneeId: fixture.otherId,
+      teamId,
+    })
+  })
+
+  it('removes a member with no open assigned Team issues without rewriting issues', async () => {
+    const fixture = await seedWorkspace(testDb)
+    const teamId = await seedTeamRow(testDb, {
+      workspaceId: fixture.workspaceId,
+      name: 'Clean exit',
+      ownerUserId: fixture.ownerId,
+      memberUserIds: [fixture.memberId, fixture.otherId],
+    })
+    const ownerIssue = await seedTeamIssue(testDb, {
+      workspaceId: fixture.workspaceId,
+      teamId,
+      number: 1,
+      createdBy: fixture.ownerId,
+      assigneeId: fixture.ownerId,
+    })
+    const otherIssue = await seedTeamIssue(testDb, {
+      workspaceId: fixture.workspaceId,
+      teamId,
+      number: 2,
+      createdBy: fixture.ownerId,
+      assigneeId: fixture.otherId,
+    })
+    const doneForRemoved = await seedTeamIssue(testDb, {
+      workspaceId: fixture.workspaceId,
+      teamId,
+      number: 3,
+      createdBy: fixture.ownerId,
+      assigneeId: fixture.memberId,
+      status: 'done',
+    })
+
+    const [membership] = await testDb.db
+      .select()
+      .from(schema.teamMember)
+      .where(
+        and(
+          eq(schema.teamMember.teamId, teamId),
+          eq(schema.teamMember.userId, fixture.memberId),
+        ),
+      )
+
+    const removeRequest = new Request(
+      `https://garden.test/api/teams/${teamId}/members/${membership?.id}`,
+      {
+        method: 'DELETE',
+        headers: { 'X-Workspace-ID': fixture.workspaceId },
+      },
+    )
+    const removeResponse = await handlerFor(
+      TeamMemberRoute,
+      'DELETE',
+    )(
+      invocation(
+        makeContext({
+          testDb,
+          userId: fixture.ownerId,
+          role: 'owner',
+          request: removeRequest,
+        }),
+        removeRequest,
+        { teamId, membershipId: membership?.id ?? '' },
+        '/api/teams/$teamId/members/$membershipId',
+      ),
+    )
+    expect(removeResponse.status).toBe(204)
+
+    const issues = await testDb.db
+      .select({
+        id: schema.issue.id,
+        assigneeId: schema.issue.assigneeId,
+      })
+      .from(schema.issue)
+      .where(eq(schema.issue.teamId, teamId))
+    const byId = new Map(issues.map((row) => [row.id, row.assigneeId]))
+    expect(byId.get(ownerIssue)).toBe(fixture.ownerId)
+    expect(byId.get(otherIssue)).toBe(fixture.otherId)
+    expect(byId.get(doneForRemoved)).toBe(fixture.memberId)
   })
 
   it('only workspace managers transfer ownership and the target must be a member', async () => {

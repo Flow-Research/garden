@@ -79,11 +79,15 @@ visibility; the removed member cannot retain invisible assigned work.
 - Existing: owner remove still returns `TEAM_OWNER_REQUIRES_TRANSFER`.
 
 Evidence path: `apps/web/src/routes/api/teams/-teams.integration.test.ts`
-(phase 3 adds the assignee cases).
+
+- `reassigns open Team issues to the owner when removing an assigned member`
+- `removes a member with no open assigned Team issues without rewriting issues`
+- existing `removes members but blocks removing the owner`
 
 ## Gaps and follow-up
 
-- Assignee reassignment regression tests not yet landed (`INCONCLUSIVE` until
-  phase 3).
+- Local agent environment could not run the integration suite (no container
+  runtime / Docker). Re-run on Node ≥22.12 with Docker for proof (`INCONCLUSIVE`
+  here).
 - No user-facing toast that N issues moved to the owner.
 - Agent membership removal does not reassign agent-assigned issues.
