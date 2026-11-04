@@ -1,3 +1,4 @@
+import { embeddingsRuntimeEnv } from '@garden/brain/services/embeddings'
 import { ensureIssueBrainAudience } from './issue-brain-audience'
 import type {
   ChatResponseResult,
@@ -403,6 +404,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
             : { helixApiKey: this.env.HELIX_API_KEY }),
           ai: this.env.AI,
           files: this.env.BRAIN_FILES,
+          modelEnv: embeddingsRuntimeEnv(this.env),
           getContext: () => {
             const run = this.currentRunState
             if (run === null) return null

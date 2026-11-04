@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { Kind, WorkspaceId } from '@garden/brain/domain'
 import { Brain } from '@garden/brain/services/brain'
+import { embeddingsRuntimeEnv } from '@garden/brain/services/embeddings'
 import { makeWebBrainLive } from '@garden/brain/services/web'
 import { archiveInboxItemsByKey } from '@garden/db/inbox'
 import { requireAppRequestContext } from '@/lib/server/context'
@@ -87,6 +88,7 @@ export const resolveBrainProposal = async ({
           apiKey: env.HELIX_API_KEY,
           ai: env.AI,
           files: env.BRAIN_FILES,
+          modelEnv: embeddingsRuntimeEnv(env),
         })
       : null
   if (action === 'approve' && approveLayer === null) {

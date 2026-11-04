@@ -2,6 +2,7 @@ import { Effect, Result as EffectResult } from 'effect'
 import { createFileRoute } from '@tanstack/react-router'
 import { ItemId, WorkspaceId } from '@garden/brain/domain'
 import { Brain } from '@garden/brain/services/brain'
+import { embeddingsRuntimeEnv } from '@garden/brain/services/embeddings'
 import { makeWebBrainLive } from '@garden/brain/services/web'
 import { BrainFileIdSchema } from '@/features/brain/contract'
 import {
@@ -43,6 +44,7 @@ export const getBrainFileExtractedText = async ({
     apiKey: env.HELIX_API_KEY,
     ai: env.AI,
     files: env.BRAIN_FILES,
+    modelEnv: embeddingsRuntimeEnv(env),
   })
 
   const readResult = await Effect.runPromise(

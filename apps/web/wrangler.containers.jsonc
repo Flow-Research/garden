@@ -139,6 +139,10 @@
     "GARDEN_MODEL_ID": "",
     "GARDEN_MODEL_API_KEY": "",
     "GARDEN_MODEL_CONTEXT_WINDOW_TOKENS": "",
+    // Brain embeddings follow the chat provider unless this override is set.
+    // Empty means "unset". Offline mode uses Ollama `all-minilm` (384-d).
+    "GARDEN_EMBEDDING_MODEL": "",
+    "GARDEN_EMBEDDING_PROVIDER": "",
   },
   "migrations": [
     {

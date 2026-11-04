@@ -6,7 +6,10 @@ import { orgScope, userScope } from '@garden/brain/domain/scope'
 import { Brain } from '@garden/brain/services/brain'
 import type { BrainShape } from '@garden/brain/services/brain'
 import { makeWorkerBrainLive } from '@garden/brain/services/worker'
-import type { WorkersAiBinding } from '@garden/brain/services/embeddings'
+import type {
+  EmbeddingsRuntimeEnv,
+  WorkersAiBinding,
+} from '@garden/brain/services/embeddings'
 import type { R2BucketLike } from '@garden/brain/services/raw-file-store'
 
 export type BrainToolContext = {
@@ -254,7 +257,7 @@ const toNeighborhoodEdge = (edge: {
 })
 
 export type BrainToolDependencies = {
-  env: { HELIX_URL?: string; HELIX_API_KEY?: string }
+  env: { HELIX_URL?: string; HELIX_API_KEY?: string } & EmbeddingsRuntimeEnv
   ai: WorkersAiBinding
   files: R2BucketLike
   getContext: () => BrainToolContext | null | Promise<BrainToolContext | null>
@@ -632,6 +635,7 @@ const makeBrainToolsLayer = (
     apiKey: deps.env.HELIX_API_KEY,
     ai: deps.ai,
     files: deps.files,
+    modelEnv: deps.env,
   })
   return Layer.effect(
     BrainToolsService,
