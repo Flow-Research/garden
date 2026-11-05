@@ -7,7 +7,7 @@ import type { Workspace, MemberWithUser, Invitation } from './workspace'
 import type { Project } from './project'
 import type { IssueRun, IssueRunEvent, IssueRunStatus } from './issue-run'
 import type { IssueSourceBinding, IssueWorkProduct } from './issue-work-product'
-import type { Team, TeamMemberKind } from './team'
+import type { TeamMemberKind } from './team'
 
 // App realtime event types.
 export type WSEventType =
@@ -349,26 +349,28 @@ export interface InvitationRevokedPayload {
 }
 
 /**
- * Team event payloads always carry the workspace and Team ids so subscribers
- * can evaluate audience before rendering anything.
+ * Team event payloads carry identifiers only. Every workspace client receives
+ * them, so they must not include a caller-relative Team DTO (`can_manage`,
+ * visibility-dependent counts) or Team content. Clients invalidate and refetch
+ * the authoritative Team queries instead (#154).
  */
 export interface TeamCreatedPayload {
   workspace_id: string
   team_id: string
-  team: Team
+  /** The realtime hub keeps each socket's owned-Team list current from this. */
+  owner_user_id: string
 }
 
 export interface TeamUpdatedPayload {
   workspace_id: string
   team_id: string
-  team: Team
+  /** The realtime hub keeps each socket's owned-Team list current from this. */
+  owner_user_id: string
 }
 
 export interface TeamDeletedPayload {
   workspace_id: string
   team_id: string
-  /** Kept in the payload so the event stays useful after the row is gone. */
-  name: string
 }
 
 export interface TeamMemberAddedPayload {

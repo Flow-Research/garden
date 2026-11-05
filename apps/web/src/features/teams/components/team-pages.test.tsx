@@ -629,7 +629,8 @@ describe('teams UI', () => {
     expect(
       screen.getByRole('button', { name: 'See members' }),
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Manage Teams' })).toBeDisabled()
+    // Settings → Teams opens this page, so the dead Manage Teams control is gone.
+    expect(screen.queryByRole('button', { name: 'Manage Teams' })).toBeNull()
     // The card shows the server's distinct member count (4), not the
     // per-Team sum (5).
     const membersCard = screen.getByText('Total Members').closest('div')
