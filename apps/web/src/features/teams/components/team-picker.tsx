@@ -28,7 +28,10 @@ export function TeamPicker({
 }) {
   const [open, setOpen] = useState(false)
   const workspaceId = useWorkspaceId()
-  const { data: teams = [] } = useQuery(teamListOptions(workspaceId))
+  const { data: teams = [] } = useQuery({
+    ...teamListOptions(workspaceId),
+    select: (data) => data.teams,
+  })
   const current = teams.find((team) => team.id === teamId)
 
   const choose = (nextTeamId: string) => {

@@ -1,14 +1,27 @@
 import React from 'react'
-import { Bug, User, Palette, Settings, Users } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
+import {
+  ArrowUpRight,
+  Bug,
+  User,
+  Palette,
+  Settings,
+  Users,
+  UsersRound,
+} from 'lucide-react'
 import {
   Tabs,
   TabsList,
   TabsTrigger,
   TabsContent,
 } from '@garden/ui/components/ui/tabs'
+import { useAuthStore } from '@garden/app-state/auth'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { useIsMobile } from '@garden/ui/hooks/use-mobile'
 import { cn } from '@garden/ui/lib/utils'
+import { memberListOptions } from '@/lib/workspace/queries'
+import { useSettingsDialogStore } from '../settings-dialog-store'
 import { AccountTab } from './account-tab'
 import { AppearanceTab } from './appearance-tab'
 import { DeveloperTab } from './developer-tab'
@@ -36,8 +49,9 @@ export interface ExtraSettingsTab {
 interface SettingsPageProps {
   /** Additional tabs injected by platform (e.g. desktop daemon settings) */
   extraAccountTabs?: ExtraSettingsTab[]
-  /** Initial tab to show; defaults to "profile". */
-  defaultTab?: string
+  /** The selected tab. Without it, the page manages its own tab, starting on Account. */
+  value?: string
+  onValueChange?: (value: string) => void
 }
 
 const TAB_TRIGGER_CLASS =
@@ -45,9 +59,11 @@ const TAB_TRIGGER_CLASS =
 
 export function SettingsPage({
   extraAccountTabs,
-  defaultTab = 'profile',
+  value,
+  onValueChange,
 }: SettingsPageProps = {}) {
   const workspaceName = useWorkspaceStore((s) => s.workspace?.name)
+  const canManageTeams = useCanManageWorkspace()
   // A fixed 256px nav column left almost no room on a phone; below md the
   // nav becomes a scrolling row of tabs above the content.
   const isMobile = useIsMobile()
@@ -59,7 +75,9 @@ export function SettingsPage({
 
   return (
     <Tabs
-      defaultValue={defaultTab}
+      value={value}
+      defaultValue={value === undefined ? 'profile' : undefined}
+      onValueChange={(next) => onValueChange?.(String(next))}
       orientation={isMobile ? 'horizontal' : 'vertical'}
       className="min-h-0 flex-1 gap-0"
     >
@@ -117,6 +135,11 @@ export function SettingsPage({
             </TabsTrigger>
           ))}
         </TabsList>
+        {canManageTeams ? (
+          <TeamsSettingsLink
+            className={cn(triggerClass, isMobile ? 'mt-1' : '-mt-5 mx-1')}
+          />
+        ) : null}
       </aside>
 
       {/* Right content */}
@@ -145,5 +168,48 @@ export function SettingsPage({
         </div>
       </div>
     </Tabs>
+  )
+}
+
+/**
+ * Whether the signed-in user is a workspace owner or admin, read from the
+ * workspace member list the Teams overview already uses. It is false while
+ * the list loads, so the Teams entry never flashes for a member. This is a
+ * display rule only; the Teams API enforces access on the server.
+ */
+function useCanManageWorkspace() {
+  const workspaceId = useWorkspaceStore((s) => s.workspace?.id)
+  const userId = useAuthStore((s) => s.user?.id)
+  const { data: members } = useQuery({
+    ...memberListOptions(workspaceId ?? ''),
+    enabled: Boolean(workspaceId),
+  })
+  const role = members?.find((member) => member.user_id === userId)?.role
+  return role === 'owner' || role === 'admin'
+}
+
+/**
+ * The Settings entry for Teams. Teams admin already lives at `/teams`, so this
+ * entry opens that page instead of copying it into Settings (Teams admin spec,
+ * section 5.1). Settings closes first so the Teams page never mounts under an
+ * open modal.
+ */
+function TeamsSettingsLink({ className }: { className: string }) {
+  const navigate = useNavigate()
+  const closeSettings = useSettingsDialogStore((s) => s.closeSettings)
+
+  return (
+    <button
+      type="button"
+      className={cn('flex items-center', className)}
+      onClick={() => {
+        closeSettings()
+        void navigate({ to: '/teams' })
+      }}
+    >
+      <UsersRound className="size-[18px]" />
+      Teams
+      <ArrowUpRight className="ml-auto size-4 text-muted-foreground" />
+    </button>
   )
 }
