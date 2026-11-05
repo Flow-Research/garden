@@ -1,14 +1,14 @@
 ---
 title: Add a Teams entry to the Settings dialog
 description: Proposal to give workspace owners and admins a Settings entry that opens the existing /teams admin surface, with the API, authorization, and test contract it must keep.
-status: proposal
+status: archived
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-05
 ---
 
 **Date:** 2026-10-16. **Audience:** frontend, backend, infrastructure, and QA engineers.
 
-> **Not built.** As of 2026-11-03 the Settings dialog (`apps/web/src/features/settings/components/settings-page.tsx`) has no Teams entry. Teams is reachable from the sidebar (`/teams`, with an admin-only Issues child at `/teams/issues`), and the `Manage Teams` button in `team-overview.tsx` is still disabled.
+> **Historical snapshot.** Built on 2026-11-05. The current behavior is in [Teams](../../concepts/features/teams.md). The per-Team policy designs it deferred still need their own spec.
 
 ## 1. Purpose
 
@@ -19,7 +19,7 @@ ownership transfer, and Team-scoped issues. This work should finish the admin
 entry point and make the current behavior explicit, testable, and deployable.
 
 This spec was written against `origin/dev` at `6977ce58`. The
-[architecture map](../reference/architecture-map.md) is authoritative when this
+[architecture map](../../reference/architecture-map.md) is authoritative when this
 document conflicts with an implementation detail.
 
 ## 2. Scope
