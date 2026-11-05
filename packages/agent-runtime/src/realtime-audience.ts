@@ -31,6 +31,8 @@ export function canReceiveRealtimeEvent(
     case 'team_member:added':
     case 'team_member:removed':
       return profile.teamIds.includes(event.payload.team_id)
+    case 'team:policy_updated':
+      return profile.ownedTeamIds.includes(event.payload.team_id)
     case 'issue:created':
     case 'issue:updated': {
       const teamId = event.payload.issue.team_id

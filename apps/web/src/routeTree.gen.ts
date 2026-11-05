@@ -96,6 +96,7 @@ import { Route as ApiWorkspacesIdInvitationsRouteImport } from './routes/api/wor
 import { Route as ApiWorkProductsIdReviewRouteImport } from './routes/api/work-products/$id/review'
 import { Route as ApiTeamsTeamIdOwnerRouteImport } from './routes/api/teams/$teamId/owner'
 import { Route as ApiTeamsTeamIdMembersRouteImport } from './routes/api/teams/$teamId/members'
+import { Route as ApiTeamsTeamIdAgentPolicyRouteImport } from './routes/api/teams/$teamId/agent-policy'
 import { Route as ApiPermissionRequestsIdResolveRouteImport } from './routes/api/permission-requests/$id/resolve'
 import { Route as ApiIssuesIdWorkProductsRouteImport } from './routes/api/issues/$id/work-products'
 import { Route as ApiIssuesIdUsageRouteImport } from './routes/api/issues/$id/usage'
@@ -606,6 +607,12 @@ const ApiTeamsTeamIdMembersRoute = ApiTeamsTeamIdMembersRouteImport.update({
   path: '/members',
   getParentRoute: () => ApiTeamsTeamIdRoute,
 } as any)
+const ApiTeamsTeamIdAgentPolicyRoute =
+  ApiTeamsTeamIdAgentPolicyRouteImport.update({
+    id: '/agent-policy',
+    path: '/agent-policy',
+    getParentRoute: () => ApiTeamsTeamIdRoute,
+  } as any)
 const ApiPermissionRequestsIdResolveRoute =
   ApiPermissionRequestsIdResolveRouteImport.update({
     id: '/api/permission-requests/$id/resolve',
@@ -1048,6 +1055,7 @@ export interface FileRoutesByFullPath {
   '/api/issues/$id/usage': typeof ApiIssuesIdUsageRoute
   '/api/issues/$id/work-products': typeof ApiIssuesIdWorkProductsRoute
   '/api/permission-requests/$id/resolve': typeof ApiPermissionRequestsIdResolveRoute
+  '/api/teams/$teamId/agent-policy': typeof ApiTeamsTeamIdAgentPolicyRoute
   '/api/teams/$teamId/members': typeof ApiTeamsTeamIdMembersRouteWithChildren
   '/api/teams/$teamId/owner': typeof ApiTeamsTeamIdOwnerRoute
   '/api/work-products/$id/review': typeof ApiWorkProductsIdReviewRoute
@@ -1189,6 +1197,7 @@ export interface FileRoutesByTo {
   '/api/issues/$id/usage': typeof ApiIssuesIdUsageRoute
   '/api/issues/$id/work-products': typeof ApiIssuesIdWorkProductsRoute
   '/api/permission-requests/$id/resolve': typeof ApiPermissionRequestsIdResolveRoute
+  '/api/teams/$teamId/agent-policy': typeof ApiTeamsTeamIdAgentPolicyRoute
   '/api/teams/$teamId/members': typeof ApiTeamsTeamIdMembersRouteWithChildren
   '/api/teams/$teamId/owner': typeof ApiTeamsTeamIdOwnerRoute
   '/api/work-products/$id/review': typeof ApiWorkProductsIdReviewRoute
@@ -1338,6 +1347,7 @@ export interface FileRoutesById {
   '/api/issues/$id/usage': typeof ApiIssuesIdUsageRoute
   '/api/issues/$id/work-products': typeof ApiIssuesIdWorkProductsRoute
   '/api/permission-requests/$id/resolve': typeof ApiPermissionRequestsIdResolveRoute
+  '/api/teams/$teamId/agent-policy': typeof ApiTeamsTeamIdAgentPolicyRoute
   '/api/teams/$teamId/members': typeof ApiTeamsTeamIdMembersRouteWithChildren
   '/api/teams/$teamId/owner': typeof ApiTeamsTeamIdOwnerRoute
   '/api/work-products/$id/review': typeof ApiWorkProductsIdReviewRoute
@@ -1486,6 +1496,7 @@ export interface FileRouteTypes {
     | '/api/issues/$id/usage'
     | '/api/issues/$id/work-products'
     | '/api/permission-requests/$id/resolve'
+    | '/api/teams/$teamId/agent-policy'
     | '/api/teams/$teamId/members'
     | '/api/teams/$teamId/owner'
     | '/api/work-products/$id/review'
@@ -1627,6 +1638,7 @@ export interface FileRouteTypes {
     | '/api/issues/$id/usage'
     | '/api/issues/$id/work-products'
     | '/api/permission-requests/$id/resolve'
+    | '/api/teams/$teamId/agent-policy'
     | '/api/teams/$teamId/members'
     | '/api/teams/$teamId/owner'
     | '/api/work-products/$id/review'
@@ -1775,6 +1787,7 @@ export interface FileRouteTypes {
     | '/api/issues/$id/usage'
     | '/api/issues/$id/work-products'
     | '/api/permission-requests/$id/resolve'
+    | '/api/teams/$teamId/agent-policy'
     | '/api/teams/$teamId/members'
     | '/api/teams/$teamId/owner'
     | '/api/work-products/$id/review'
@@ -2470,6 +2483,13 @@ declare module '@tanstack/react-router' {
       path: '/members'
       fullPath: '/api/teams/$teamId/members'
       preLoaderRoute: typeof ApiTeamsTeamIdMembersRouteImport
+      parentRoute: typeof ApiTeamsTeamIdRoute
+    }
+    '/api/teams/$teamId/agent-policy': {
+      id: '/api/teams/$teamId/agent-policy'
+      path: '/agent-policy'
+      fullPath: '/api/teams/$teamId/agent-policy'
+      preLoaderRoute: typeof ApiTeamsTeamIdAgentPolicyRouteImport
       parentRoute: typeof ApiTeamsTeamIdRoute
     }
     '/api/permission-requests/$id/resolve': {
@@ -3246,11 +3266,13 @@ const ApiTeamsTeamIdMembersRouteWithChildren =
   )
 
 interface ApiTeamsTeamIdRouteChildren {
+  ApiTeamsTeamIdAgentPolicyRoute: typeof ApiTeamsTeamIdAgentPolicyRoute
   ApiTeamsTeamIdMembersRoute: typeof ApiTeamsTeamIdMembersRouteWithChildren
   ApiTeamsTeamIdOwnerRoute: typeof ApiTeamsTeamIdOwnerRoute
 }
 
 const ApiTeamsTeamIdRouteChildren: ApiTeamsTeamIdRouteChildren = {
+  ApiTeamsTeamIdAgentPolicyRoute: ApiTeamsTeamIdAgentPolicyRoute,
   ApiTeamsTeamIdMembersRoute: ApiTeamsTeamIdMembersRouteWithChildren,
   ApiTeamsTeamIdOwnerRoute: ApiTeamsTeamIdOwnerRoute,
 }
@@ -3493,13 +3515,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
