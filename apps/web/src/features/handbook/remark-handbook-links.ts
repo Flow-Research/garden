@@ -4,8 +4,6 @@ import type { Link, Root } from 'mdast'
 import { visit } from 'unist-util-visit'
 import type { VFile } from 'vfile'
 
-const docsRoot = fileURLToPath(new URL('../../../../../docs/', import.meta.url))
-const repoRoot = path.resolve(docsRoot, '..')
 const githubBlobBase = 'https://github.com/Flow-Research/garden/blob/dev/'
 export const handbookBasePath = '/handbook'
 
@@ -32,6 +30,13 @@ export function handbookUrlForDocsPath(docsRelativePath: string): string {
  * left unchanged.
  */
 export function remarkHandbookLinks() {
+  // Resolved here, not at module load: this module also ships in the Worker
+  // bundle through `source.ts`, where `import.meta.url` is not a file URL and
+  // `new URL(...)` threw on import, which failed every server-rendered page
+  // with a 500 on garden-dev. The plugin itself only runs during the MDX build.
+  const docsRoot = fileURLToPath(new URL('../../../../../docs/', import.meta.url))
+  const repoRoot = path.resolve(docsRoot, '..')
+
   return (tree: Root, file: VFile) => {
     const sourcePath = file.path
     if (!sourcePath) return
