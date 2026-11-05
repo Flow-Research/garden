@@ -1882,6 +1882,16 @@ function renderMarkdown(report: BenchmarkReport): string {
       return `| ${row.scale}x | ${row.label} | ${formatMs(stats.beforeMedianMs)} | ${formatMs(stats.afterMedianMs)} | ${stats.changePercent.toFixed(1)}% | ${formatNumber(stats.signFlipPValue)} | ${stats.verdict} |`
     })
     .join('\n')
+  const profileRows = report.measurements
+    .filter((row) => row.beforeProfile && row.afterProfile)
+    .map((row) => {
+      const before = row.beforeProfile
+      const after = row.afterProfile
+      if (!before || !after) return ''
+      return `| ${row.scale}x | ${row.label} | ${before.nodeType} / ${before.indexName ?? 'none'} / ${before.sortMethod ?? 'none'} | ${after.nodeType} / ${after.indexName ?? 'none'} / ${after.sortMethod ?? 'none'} | ${before.sharedHitBlocks}/${before.sharedReadBlocks} | ${after.sharedHitBlocks}/${after.sharedReadBlocks} |`
+    })
+    .filter(Boolean)
+    .join('\n')
   return `# Garden database load test
 
 Generated ${report.generatedAt} against PostgreSQL ${report.database.postgresVersion}.
@@ -1893,6 +1903,15 @@ The suite seeded one isolated workspace at ${report.method.scales.map((scale) =>
 | Scale | Query | Before median | After median | Change | Sign-flip p | Verdict |
 | --- | --- | ---: | ---: | ---: | ---: | --- |
 ${rows}
+
+## Query plans
+
+The plan columns show node, index, and sort method. Buffer columns show shared
+hit/read blocks. The candidate index did not appear in the captured plans.
+
+| Scale | Query | Before plan | After plan | Before buffers | After buffers |
+| --- | --- | --- | --- | ---: | ---: |
+${profileRows}
 
 The confidence interval uses paired bootstrap resampling at 95%. The sign-flip test uses a 0.05 significance level. A result is inconclusive when a sample errors or fewer than five paired samples remain.
 

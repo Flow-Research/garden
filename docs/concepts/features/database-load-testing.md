@@ -51,7 +51,7 @@ The report includes the median, p95, range, paired bootstrap confidence interval
 
 ## Where it lives
 
-The harness is `packages/db/src/load-test.ts`. The package command is `db:load-test` in `packages/db/package.json`. The issue-list index is defined in `packages/db/src/schema/issues.ts` and applied by `packages/db/drizzle/0063_pink_jamie_braddock.sql`.
+The harness is `packages/db/src/load-test.ts`. The package command is `db:load-test` in `packages/db/package.json`. The candidate issue-list index is created only in the treatment database by the harness. It is not included as a production schema change because the baseline run did not prove a benefit.
 
 The query sources that define the workload include `apps/web/src/routes/api/issues.ts`, `apps/web/src/routes/api/issues/search.ts`, `apps/web/src/routes/api/issues/$id/timeline.ts`, `apps/web/src/lib/server/inbox-compute.ts`, `apps/web/src/routes/api/agents/$id/activity.ts`, `apps/web/src/routes/api/chat/threads.ts`, and `apps/web/src/lib/server/automations.ts`.
 

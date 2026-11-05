@@ -33,6 +33,29 @@ The suite seeded one isolated workspace at 10x, 100x, 1000x. It ran 7 paired sam
 | 1000x | Automation run history | 29.69 ms | 45.70 ms | 53.9% | 0.3438 | no measurable difference |
 | 1000x | Assigned skill catalog | 24.06 ms | 26.67 ms | 10.9% | 0.7969 | no measurable difference |
 
+## Query plans
+
+The plan columns show node, index, and sort method. Buffer columns show shared
+hit/read blocks. The candidate index did not appear in the captured plans.
+
+| Scale | Query | Before plan | After plan | Before buffers | After buffers |
+| --- | --- | --- | --- | ---: | ---: |
+| 10x | Issue list | Limit / none / top-N heapsort | Limit / none / top-N heapsort | 29/0 | 29/0 |
+| 10x | Issue search | Sort / none / quicksort | Sort / none / quicksort | 29/0 | 29/0 |
+| 10x | Issue timeline | Nested Loop / issue_run_event_issue_idx / none | Nested Loop / issue_run_event_issue_idx / none | 39/0 | 39/0 |
+| 10x | Inbox source queries | Seq Scan / none / none | Seq Scan / none / none | 29/0 | 29/0 |
+| 10x | Agent activity | Limit / none / quicksort | Limit / none / quicksort | 9/0 | 9/0 |
+| 100x | Issue list | Limit / none / top-N heapsort | Limit / none / top-N heapsort | 273/21 | 300/0 |
+| 100x | Issue search | Sort / none / quicksort | Sort / none / quicksort | 294/0 | 294/0 |
+| 100x | Issue timeline | Nested Loop / issue_run_event_issue_idx / none | Nested Loop / issue_run_event_issue_idx / none | 34/6 | 33/7 |
+| 100x | Inbox source queries | Seq Scan / none / none | Seq Scan / none / none | 294/0 | 294/0 |
+| 100x | Agent activity | Limit / none / quicksort | Limit / none / quicksort | 78/0 | 78/0 |
+| 1000x | Issue list | Limit / none / top-N heapsort | Limit / none / top-N heapsort | 114/2877 | 2986/0 |
+| 1000x | Issue search | Sort / none / quicksort | Sort / none / quicksort | 2941/0 | 2941/0 |
+| 1000x | Issue timeline | Nested Loop / issue_run_event_issue_idx / none | Nested Loop / issue_run_event_issue_idx / none | 40/12 | 40/12 |
+| 1000x | Inbox source queries | Seq Scan / none / none | Seq Scan / none / none | 2941/0 | 2941/0 |
+| 1000x | Agent activity | Limit / none / quicksort | Limit / none / quicksort | 4/770 | 4/770 |
+
 The confidence interval uses paired bootstrap resampling at 95%. The sign-flip test uses a 0.05 significance level. A result is inconclusive when a sample errors or fewer than five paired samples remain.
 
 The query rows were consumed and before and after full row-multiset checksums were compared. The comparison ignores row order inside each result set because the search query has non-unique timestamp ties. Profiles use `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` outside the timed samples. The profile is diagnostic evidence, not part of the latency number.
