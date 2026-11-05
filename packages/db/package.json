@@ -24,6 +24,7 @@
     "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix .",
     "test": "vitest run",
+    "db:load-test": "node ../../scripts/run-with-root-env.mjs tsx src/load-test.ts",
     "db:check": "node ../../scripts/run-with-root-env.mjs drizzle-kit check",
     "db:generate": "node ../../scripts/run-with-root-env.mjs drizzle-kit generate",
     "db:migrate": "node ../../scripts/run-with-root-env.mjs drizzle-kit migrate",
