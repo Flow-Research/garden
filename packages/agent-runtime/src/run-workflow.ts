@@ -7,6 +7,10 @@ import { TaggedError } from 'better-result'
 import { disposeRpcResult } from '@garden/app-state/platform/rpc'
 import { createGardenLogger } from '@garden/observability/logger'
 import type { AgentDO } from './agent-do'
+import {
+  DECIDE_ANALYSIS_OWNER_WAIT_MS,
+  getDecideAnalysisFinishedEventType,
+} from './decide-analysis-types'
 import { waitForTurnToSettle } from './run-workflow-turn-wait'
 import { isTerminalSubmissionStatus } from './runtime-utils'
 
@@ -76,6 +80,24 @@ export type RunWorkflowTurnStartResult =
   | { kind: 'run_status'; status: string }
   | { kind: 'submitted'; submissionId: string; submissionStatus: string }
 
+/**
+ * Something outside the agent loop a settled turn left the run waiting on.
+ * An automation turn that starts a Decide analysis ends at once; the run
+ * stays `running` and the Workflow, not the agent, waits for the analysis.
+ * `settled` is true when Decide had already finished by the time the turn
+ * was completed, so there is nothing left to wait for.
+ */
+export type RunWorkflowWait = {
+  kind: 'decide_analysis'
+  decideRunId: string
+  settled: boolean
+}
+
+export type RunWorkflowTurnCompletion = {
+  status: string
+  waitingOn?: RunWorkflowWait
+}
+
 export type RunWorkflowTurnCompleteEvent = {
   error?: string
   status: string
@@ -109,6 +131,7 @@ export class RunWorkflow extends AgentWorkflow<
     })
 
     let mode: 'start' | 'resume' = 'start'
+    let decideRunId: string | undefined
 
     for (let turn = 0; turn < MAX_TURNS; turn++) {
       const started = await step.do<RunWorkflowTurnStartResult>(
@@ -122,6 +145,7 @@ export class RunWorkflow extends AgentWorkflow<
                     runId,
                     mode,
                     turn,
+                    ...(decideRunId === undefined ? {} : { decideRunId }),
                   }),
                 )
               : disposeRpcResult(
@@ -143,7 +167,7 @@ export class RunWorkflow extends AgentWorkflow<
         },
       )
 
-      const result =
+      const result: RunWorkflowTurnCompletion =
         started.kind === 'run_status'
           ? { status: started.status }
           : await this.waitForSubmittedTurnCompletion({
@@ -153,6 +177,19 @@ export class RunWorkflow extends AgentWorkflow<
               step,
               turn,
             })
+
+      if (result.waitingOn?.kind === 'decide_analysis') {
+        await this.waitForDecideAnalysis({
+          runId,
+          step,
+          turn,
+          wait: result.waitingOn,
+        })
+        mode = 'resume'
+        decideRunId = result.waitingOn.decideRunId
+        continue
+      }
+      decideRunId = undefined
 
       if (TERMINAL_RUN_STATUSES.has(result.status)) {
         workflowLogger.info('run_workflow.completed', {
@@ -229,6 +266,46 @@ export class RunWorkflow extends AgentWorkflow<
   }
 
   /**
+   * Pauses an automation run while its Decide analysis works. Before, an
+   * automation turn that called `decide_analyze` blocked on the MCP call
+   * under the SDK's 60-second silence timeout. Now the turn ends as soon as
+   * the analysis starts, and this wait is Workflow time, not turn time: the
+   * Decide Workflow sends `decide-analysis-finished:<decideRunId>` to this
+   * instance when the analysis is terminal, and cancelling the automation
+   * run sends it too. It is the same `waitForEvent` bridge the turn-complete
+   * wait uses, with no DO-local timer. The bound is
+   * `DECIDE_ANALYSIS_OWNER_WAIT_MS`; a wait that times out still resumes the
+   * agent, which reads the Decide run itself and reports that Garden stopped
+   * waiting. References: workers-types `WorkflowStep.waitForEvent`
+   * (`timeout` accepts milliseconds) and docs/proposals/decide-automations.md.
+   */
+  private async waitForDecideAnalysis(input: {
+    runId: string
+    step: AgentWorkflowStep
+    turn: number
+    wait: RunWorkflowWait
+  }) {
+    if (input.wait.settled) return
+    const received = await input.step
+      .waitForEvent(`turn-${input.turn}-decide-analysis`, {
+        type: getDecideAnalysisFinishedEventType(input.wait.decideRunId),
+        timeout: DECIDE_ANALYSIS_OWNER_WAIT_MS,
+      })
+      .then(
+        () => true,
+        () => false,
+      )
+    if (!received) {
+      workflowLogger.warn('run_workflow.decide_analysis_wait_timed_out', {
+        kind: 'automation',
+        runId: input.runId,
+        turn: input.turn,
+        decideRunId: input.wait.decideRunId,
+      })
+    }
+  }
+
+  /**
    * Bridges Think's durable submission ledger into Workflow durability without
    * DO-local timers. The Workflow submits exactly once via `step.do`, then waits
    * on the SDK Workflow event emitted by `Think.onSubmissionStatus`; replayed
@@ -244,7 +321,7 @@ export class RunWorkflow extends AgentWorkflow<
     started: Extract<RunWorkflowTurnStartResult, { kind: 'submitted' }>
     step: AgentWorkflowStep
     turn: number
-  }): Promise<{ status: string }> {
+  }): Promise<RunWorkflowTurnCompletion> {
     const { payload } = input.event
     const submissionId = input.started.submissionId
     const logFields = {
@@ -309,11 +386,11 @@ export class RunWorkflow extends AgentWorkflow<
       }
     }
 
-    return await input.step.do<{ status: string }>(
+    return await input.step.do<RunWorkflowTurnCompletion>(
       `turn-${input.turn}-complete-status`,
       { retries: TURN_RETRIES },
       async () => {
-        const completion =
+        const completion: RunWorkflowTurnCompletion =
           input.event.payload.kind === 'automation'
             ? disposeRpcResult(
                 await this.agent.completeAutomationRunTurn({
@@ -328,7 +405,9 @@ export class RunWorkflow extends AgentWorkflow<
                   submissionId: input.started.submissionId,
                 }),
               )
-        return { status: completion.status }
+        return completion.waitingOn === undefined
+          ? { status: completion.status }
+          : { status: completion.status, waitingOn: completion.waitingOn }
       },
     )
   }

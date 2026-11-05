@@ -6,8 +6,8 @@ import type {
 import { Effect } from 'effect'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Executor } from '@executor-js/sdk/core'
+import { DECIDE_ANALYSIS_TIME_LIMIT_MS } from '@garden/agent-runtime/src/decide-analysis-types'
 import {
-  DECIDE_ANALYSIS_TIME_LIMIT_MS,
   decideRequestOptions,
   isDecideTimeLimitResult,
   DirectDecideMcpSessionManager,
@@ -168,6 +168,43 @@ describe('direct Decide MCP tools', () => {
 
     expect(returned).toEqual(started)
     expect(startAnalysis).toHaveBeenCalledOnce()
+    expect(calls).toEqual([])
+  })
+
+  it('rejects data and source together before any start or provider call', async () => {
+    const startAnalysis = vi.fn(async () => null)
+    const { calls, tools } = registerHarness(
+      { content: [] },
+      undefined,
+      startAnalysis,
+    )
+
+    const returned = await tools.get('decide_analyze')?.callback(
+      {
+        question: 'Analyze this.',
+        data: 'a\n1',
+        source: { kind: 'brain_file', fileId: 'file_1' },
+      },
+      toolExtra().extra,
+    )
+
+    expect(returned?.isError).toBe(true)
+    expect(startAnalysis).not.toHaveBeenCalled()
+    expect(calls).toEqual([])
+  })
+
+  it('refuses a source on the direct path, where Garden cannot read the file', async () => {
+    const { calls, tools } = registerHarness({ content: [] })
+
+    const returned = await tools.get('decide_analyze')?.callback(
+      {
+        question: 'Analyze this.',
+        source: { kind: 'brain_file', fileId: 'file_1' },
+      },
+      toolExtra().extra,
+    )
+
+    expect(returned?.isError).toBe(true)
     expect(calls).toEqual([])
   })
 

@@ -17,7 +17,7 @@ import {
   type GardenArtifactData,
 } from '@/features/artifacts/artifact-renderer'
 import type { ChatUiMessage } from '../chat-runtime-provider'
-import type { ChatDecideAnalysisStatus } from '@/lib/api/chat-threads'
+import type { DecideAnalysisStatus } from '@/lib/api/decide-analyses'
 import { isMissingError } from '@/lib/api/errors'
 
 export { canonicalJsonString } from '@garden/connectors/capabilities'
@@ -91,7 +91,7 @@ export type DecideAnalysisStepView = {
  * as failed instead of spinning.
  */
 export function decideAnalysisStepView(
-  status: ChatDecideAnalysisStatus | 'unavailable' | null,
+  status: DecideAnalysisStatus | 'unavailable' | null,
   progressMessage: string | null,
 ): DecideAnalysisStepView {
   switch (status) {
@@ -149,7 +149,7 @@ export function decideAnalysisStepView(
  * any other Cancel failure keeps the run live and says Cancel did not work.
  */
 export function decideAnalysisCardView(input: {
-  status: ChatDecideAnalysisStatus | null
+  status: DecideAnalysisStatus | null
   progressMessage: string | null
   failureMessage: string | null
   isLongRun: boolean

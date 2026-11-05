@@ -3,7 +3,7 @@ title: The run engine pairs Think submissions with Cloudflare Workflows
 description: How Garden turns an issue_run or automation_run row into a durable, resumable, cancellable Think agent loop, and which work does not belong there.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-05
 ---
 
 Garden runs two product surfaces, issues and automations, through one durable executor. The engine turns an `issue_run` or `automation_run` row into a Think agent loop that survives Durable Object eviction, waits for people, and stops when cancelled.
@@ -44,7 +44,7 @@ A run moves through these steps:
 5. **Wait durably.** If the submission is not already terminal, the Workflow calls `step.waitForEvent` on the event type `run-turn-complete:<submissionId>`. No timer or in-memory waiter exists in the DO.
 6. **Wake.** When a submission ends, Think calls the facet's `onSubmissionStatus` override. The facet reads the run id from metadata and sends the event to the Workflow instance.
 7. **Close the turn.** The Workflow calls `AgentDO.completeRunTurn` or `completeAutomationRunTurn`. The facet inspects the submission and writes the product status. An `error` or `skipped` submission fails the run. An `aborted` submission cancels the run if cancel was requested and fails it otherwise.
-8. **Branch on the status.** A terminal status (`succeeded`, `completed`, `failed`, `cancelled`, `blocked`, or `skipped`) ends the Workflow. An awaiting status (`waiting_for_input` or `waiting_for_approval`) makes the Workflow wait for a `run-control` event. Any other status ends the Workflow as is.
+8. **Branch on the status.** A terminal status (`succeeded`, `completed`, `failed`, `cancelled`, `blocked`, or `skipped`) ends the Workflow. An awaiting status (`waiting_for_input` or `waiting_for_approval`) makes the Workflow wait for a `run-control` event. An automation turn that returns `waitingOn: { kind: "decide_analysis", decideRunId }` makes the Workflow wait for `decide-analysis-finished:<decideRunId>`, bounded by `DECIDE_ANALYSIS_OWNER_WAIT_MS`, then run the next turn in resume mode. See [Decide](../features/decide.md#in-an-automation-the-run-pauses-and-resumes). Any other status ends the Workflow as is.
 9. **Hit the cap.** After 200 turns with no end, the Workflow reports `max_turns_exceeded`.
 
 ## Two ledgers share one engine
@@ -54,7 +54,7 @@ The two surfaces keep separate ledgers and status words:
 | Surface | Ledger | Statuses | Pauses for people |
 | --- | --- | --- | --- |
 | Issues | `issue_run` | `queued`, `running`, `waiting_for_input`, `waiting_for_approval`, `succeeded`, `failed`, `cancelled`, `blocked` | Yes. A run can pause on a question, `mark_blocked`, or an approval gate. |
-| Automations | `automation_run` | `pending`, `queued`, `running`, `completed`, `failed`, `cancelled`, `skipped` | No. An automation run ends in one pass. |
+| Automations | `automation_run` | `pending`, `queued`, `running`, `completed`, `failed`, `cancelled`, `skipped` | Not for people. A run can pause while a Decide analysis it started runs, and resumes when Decide finishes. |
 
 `TERMINAL_RUN_STATUSES` and `AWAITING_RUN_STATUSES` in `run-workflow.ts` are the union of both ledgers. One generic loop is simpler, but it means the Workflow does not check which statuses fit which run kind. Database check constraints and each facet's `completeWorkflowTurn` enforce that.
 
