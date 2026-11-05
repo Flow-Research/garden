@@ -17,7 +17,12 @@ import {
 import { createGardenLogger } from '@garden/observability/logger'
 import type { AppEnv } from '@/lib/server/env'
 import {
+  DECIDE_ANALYSIS_TIME_LIMIT_MS,
+  getDecideAnalysisFinishedEventType,
+} from '@garden/agent-runtime/src/decide-analysis-types'
+import {
   callDirectDecideTool,
+  isDecideTimeLimitResult,
   type DirectDecideCallOptions,
 } from '@/lib/server/executor-engine/direct-decide-mcp'
 import { runExecutorForEnv } from '@/lib/server/executor-runtime'
@@ -66,6 +71,8 @@ const providerErrorMessage = (result: CallToolResult) =>
         block.type === 'text' && block.text.trim().length > 0,
     )
     ?.text.trim() ?? 'Decide returned a tool error without a message.'
+
+const TIME_LIMIT_MESSAGE = `Decide did not finish within ${DECIDE_ANALYSIS_TIME_LIMIT_MS / 3_600_000} hour, so Garden stopped waiting. Ask a narrower question to retry.`
 
 const workflowFailure = (code: string, message: string): WorkflowFailure => ({
   code,
@@ -127,6 +134,9 @@ export class DecideAnalysisWorkflow extends WorkflowEntrypoint<
       message: failure.message,
       status: finished.status,
     })
+    if (finished.status !== 'stale') {
+      await this.publish(event, step, finished.status)
+    }
     return { runId, status: finished.status }
   }
 
@@ -157,12 +167,24 @@ export class DecideAnalysisWorkflow extends WorkflowEntrypoint<
       claimed.status === 'failed' ||
       claimed.status === 'cancelled'
     ) {
+      // A queued run cancelled before the claim never reaches the commit,
+      // and an automation owner still waits for it, so it is notified here.
+      // Chat owners are not: their card already shows the outcome.
+      if (event.payload.owner.kind === 'automation_run') {
+        await this.publish(event, step, claimed.status)
+      }
       return { runId, status: claimed.status }
     }
 
     const execution = await step.do<ProviderExecution>(
       `provider-${attempt}`,
-      { retries: { limit: 0, delay: '5 seconds' } },
+      {
+        retries: { limit: 0, delay: '5 seconds' },
+        // The 10-minute default step timeout would end the step before the
+        // Decide request limit. One extra minute lets the request's own
+        // timeout fire first and commit a clear failure instead.
+        timeout: DECIDE_ANALYSIS_TIME_LIMIT_MS + 60_000,
+      },
       async () => {
         const marker = throwOnServiceError(
           await markDecideAnalysisProviderStarted(this.env, {
@@ -202,6 +224,7 @@ export class DecideAnalysisWorkflow extends WorkflowEntrypoint<
         }
         let progressWrite: Promise<void> = Promise.resolve()
         const options: DirectDecideCallOptions = {
+          timeoutMs: DECIDE_ANALYSIS_TIME_LIMIT_MS,
           onProgress: (progress: Progress) => {
             progressWrite = progressWrite.then(async () => {
               const saved = await writeDecideAnalysisProgress(this.env, {
@@ -266,10 +289,9 @@ export class DecideAnalysisWorkflow extends WorkflowEntrypoint<
         if (result.isError === true) {
           return {
             kind: 'failed',
-            error: workflowFailure(
-              'provider_error',
-              providerErrorMessage(result),
-            ),
+            error: isDecideTimeLimitResult(result)
+              ? workflowFailure('time_limit', TIME_LIMIT_MESSAGE)
+              : workflowFailure('provider_error', providerErrorMessage(result)),
           }
         }
         return {
@@ -305,9 +327,7 @@ export class DecideAnalysisWorkflow extends WorkflowEntrypoint<
     )
 
     if (finished.status === 'stale') return { runId, status: 'stale' }
-    if (finished.status === 'completed' || finished.status === 'failed') {
-      await this.publish(event, step)
-    }
+    await this.publish(event, step, finished.status)
 
     workflowLogger.info('decide_analysis_workflow.completed', {
       runId,
@@ -318,19 +338,57 @@ export class DecideAnalysisWorkflow extends WorkflowEntrypoint<
   }
 
   /**
-   * Hands a completed or failed run to its chat, then records `delivered_at`.
-   * The step uses the Workflow default retry policy; a replay is safe because
-   * the chat submission is keyed by run and attempt. The run is already
-   * terminal here, so a delivery that still fails after retries is logged as
-   * its own event instead of escaping to `run`, which would otherwise rewrite
-   * a finished analysis as a Workflow failure. Cancelled runs never reach
-   * this step: the chat step already shows that outcome.
+   * Hands a terminal run to its owner. Both branches use the Workflow default
+   * retry policy, and the run is already terminal here, so a delivery that
+   * still fails after retries is logged as its own event instead of escaping
+   * to `run`, which would otherwise rewrite a finished analysis as a
+   * Workflow failure.
+   *
+   * A chat gets a completed or failed run as a model turn, then
+   * `delivered_at` is recorded; a replay is safe because the chat submission
+   * is keyed by run and attempt. A cancelled chat run gets nothing: the chat
+   * card already shows that outcome.
+   *
+   * An automation run gets every outcome, cancelled included, because its
+   * `RunWorkflow` is paused on the analysis. Before, this logged
+   * `delivery_skipped` and the automation could not resume. Now it sends
+   * `decide-analysis-finished:<runId>` to the RunWorkflow instance whose ID
+   * is the automation run ID. A repeated event is harmless: the wait
+   * consumes one, and the agent reads the outcome from the database and
+   * records `delivered_at` itself when it resumes.
    */
   private async publish(
     event: WorkflowEvent<DecideAnalysisWorkflowParams>,
     step: WorkflowStep,
+    status: string,
   ) {
-    const { runId, attempt, threadId, agentRuntimeName } = event.payload
+    const { runId, attempt, owner, agentRuntimeName } = event.payload
+    if (owner.kind === 'automation_run') {
+      const notified = await Result.tryPromise({
+        try: () =>
+          step.do(`notify-automation-run-${attempt}`, async () => {
+            const instance = await this.env.RUN_WORKFLOW.get(
+              owner.automationRunId,
+            )
+            await instance.sendEvent({
+              type: getDecideAnalysisFinishedEventType(runId),
+              payload: { decideRunId: runId, status },
+            })
+          }),
+        catch: (cause) => cause,
+      })
+      if (notified.isErr()) {
+        workflowLogger.error('decide_analysis_workflow.delivery_failed', {
+          runId,
+          attempt,
+          ownerKind: owner.kind,
+          message: errorMessage(notified.error),
+        })
+      }
+      return
+    }
+    if (status !== 'completed' && status !== 'failed') return
+    const { threadId } = owner
     const published = await Result.tryPromise({
       try: () =>
         step.do<{ delivered: boolean }>(`publish-${attempt}`, async () => {

@@ -256,6 +256,8 @@ describe('integration router', () => {
     expect(directive).toContain(
       'Do not pass a summary, sample, or truncated content',
     )
+    expect(directive).toContain('source { "kind": "brain_file"')
+    expect(directive).not.toContain('text returned by brain_read_file')
     expect(directive).toContain('its answer arrives later in this chat')
     expect(directive).toContain('Never poll, retry, or wait')
     expect(directive).toContain('never substitute a local analysis')

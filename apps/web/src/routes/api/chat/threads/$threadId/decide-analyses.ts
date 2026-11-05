@@ -42,7 +42,7 @@ export const Route = createFileRoute(
           await listDecideAnalyses(appContext.env, {
             workspaceId: access.thread.workspaceId,
             ownerUserId: access.session.user.id,
-            threadId: access.thread.id,
+            owner: { kind: 'chat', threadId: access.thread.id },
           }),
         )
       },

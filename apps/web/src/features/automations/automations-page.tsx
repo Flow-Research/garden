@@ -264,7 +264,7 @@ function AutomationRow({
  * 44rem dialog with three sibling collapsibles, no hierarchy, generic
  * emerald accent, and a horizontal-scroll template strip that read as
  * sloppy (variable widths, "are there more?", duplicated icon-tile chrome).
- * The Garden design system (docs/design.md, docs/vibe.md) calls for warm
+ * The Garden design system (docs/reference/design-tokens.md, docs/concepts/design/design-direction.md) calls for warm
  * parchment + vellum surfaces, hairline borders, the Moss/Sage/Amber/Clay
  * foliage palette, and Geist type — not emerald + generic shadcn neutrals.
  *
