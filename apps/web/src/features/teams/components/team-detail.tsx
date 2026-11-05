@@ -8,6 +8,7 @@ import type { TeamMember } from '@garden/core/types'
 import {
   Funnel,
   MoreHorizontal,
+  ShieldCheck,
   Trash2,
   TriangleAlert,
   Users,
@@ -45,6 +46,7 @@ import {
   EditTeamDialog,
   TransferOwnerDialog,
 } from './team-dialogs'
+import { TeamAgentPolicySheet } from './team-agent-policy-sheet'
 import { TeamIssuesPanel } from './team-issues-panel'
 import { TeamMembersPanel } from './team-members-panel'
 import { memberRoleLabel } from './team-members-table'
@@ -192,6 +194,7 @@ export function TeamDetail({
   const [editOpen, setEditOpen] = useState(false)
   const [transferOpen, setTransferOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [agentPolicyOpen, setAgentPolicyOpen] = useState(false)
   const [memberSearch, setMemberSearch] = useState('')
   const [memberRole, setMemberRole] = useState<MemberRoleFilter>('all')
   const [issueSearch, setIssueSearch] = useState('')
@@ -324,6 +327,10 @@ export function TeamDetail({
                     <DropdownMenuItem onClick={() => setEditOpen(true)}>
                       Edit Team
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setAgentPolicyOpen(true)}>
+                      <ShieldCheck className="size-4" />
+                      Agent policy
+                    </DropdownMenuItem>
                     {team.can_transfer_owner ? (
                       <>
                         <DropdownMenuSeparator />
@@ -430,6 +437,12 @@ export function TeamDetail({
           onClose={() => setAddMemberOpen(false)}
         />
       ) : null}
+      <TeamAgentPolicySheet
+        onOpenChange={setAgentPolicyOpen}
+        open={agentPolicyOpen}
+        teamId={team.id}
+        teamName={team.name}
+      />
       {editOpen ? (
         <EditTeamDialog team={team} onClose={() => setEditOpen(false)} />
       ) : null}

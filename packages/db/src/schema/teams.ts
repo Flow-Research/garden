@@ -3,6 +3,7 @@ import {
   check,
   foreignKey,
   index,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -103,5 +104,36 @@ export const teamMember = pgTable(
       'team_member_identity_check',
       sql`(${table.userId} is not null) <> (${table.agentId} is not null)`,
     ),
+  ],
+)
+
+/**
+ * Team agent policy: one row per Team capping what agents may do when they act
+ * for the Team's members. `policy` is validated by `TeamAgentPolicySchema` in
+ * `@garden/core/teams/agent-policy` on every write and read; the database does
+ * not know its shape. No row means the Team has no policy.
+ */
+export const teamAgentPolicy = pgTable(
+  'team_agent_policy',
+  {
+    teamId: uuid('team_id').primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    policy: jsonb('policy').notNull(),
+    updatedBy: uuid('updated_by')
+      .notNull()
+      .references(() => user.id),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => [
+    foreignKey({
+      name: 'team_agent_policy_team_workspace_fk',
+      columns: [table.teamId, table.workspaceId],
+      foreignColumns: [team.id, team.workspaceId],
+    }).onDelete('cascade'),
+    index('team_agent_policy_workspace_idx').on(table.workspaceId),
   ],
 )

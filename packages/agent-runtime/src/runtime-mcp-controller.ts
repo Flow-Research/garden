@@ -41,6 +41,8 @@ import {
   type GardenLogger,
 } from '@garden/observability/logger'
 import { upsertPermissionRequestInbox } from '@garden/db/inbox'
+import { teamApprovalRequirement } from '@garden/core/teams/agent-policy'
+import { loadTeamAgentPolicyForUser } from '@garden/core/teams/agent-policy-store'
 import {
   extractThreadIdFromAgentName,
   type ActiveConnectorBinding,
@@ -207,6 +209,20 @@ export const EXECUTOR_TOOL_KEY_PREFIX = buildMcpAiToolKey(
   EXECUTOR_MCP_SERVER_ID,
   '',
 )
+
+/**
+ * Approval context shown in the Inbox. When several Teams' rules require the
+ * same approval, the request names the first Team in `team_id` and lists the
+ * rest here so the approver can see every rule that held the call.
+ */
+function permissionRequestContext(
+  toolLabel: string,
+  otherTeams: readonly { teamName: string }[],
+) {
+  if (otherTeams.length === 0) return toolLabel
+  const names = otherTeams.map((team) => team.teamName).join(', ')
+  return `${toolLabel} (also required by ${names} Team policy)`
+}
 
 export class RuntimeMcpError extends TaggedError('RuntimeMcpError')<{
   code:
@@ -1145,7 +1161,32 @@ export class RuntimeMcpController {
     if (!capability) {
       return Result.ok(false)
     }
+
+    // Team policy can only add approvals, so it is read before any rule that
+    // skips one. Loaded per decision so a saved policy applies immediately.
+    const teamPolicyResult = await Result.tryPromise({
+      try: () =>
+        loadTeamAgentPolicyForUser(db, {
+          workspaceId: identityResult.value.workspaceId,
+          userId: identityResult.value.userId,
+        }),
+      catch: (cause) =>
+        new RuntimeMcpError({
+          code: 'database_failed',
+          message:
+            cause instanceof Error
+              ? cause.message
+              : 'Failed to load Team agent policy',
+        }),
+    })
+    if (teamPolicyResult.isErr()) return teamPolicyResult
+    const teamApproval = teamApprovalRequirement(
+      teamPolicyResult.value,
+      capability.riskClass,
+    )
+
     if (
+      !teamApproval &&
       args.shouldAutoApprove?.({
         connectorId: args.connectorId,
         toolName: args.toolName,
@@ -1262,7 +1303,7 @@ export class RuntimeMcpController {
       connectionTrust: connectionGrantResult.value[0]?.trustLevel,
       riskClass: capability.riskClass,
     })
-    if (trustLevel !== 'ask') {
+    if (trustLevel !== 'ask' && !teamApproval) {
       return Result.ok(false)
     }
 
@@ -1320,7 +1361,11 @@ export class RuntimeMcpController {
           agentId: identityResult.value.agentId,
           capabilityId: capability.id,
           runId: identityResult.value.runId ?? null,
-          context: `${args.connectorId}.${args.toolName}`,
+          context: permissionRequestContext(
+            `${args.connectorId}.${args.toolName}`,
+            teamApproval?.otherTeams ?? [],
+          ),
+          teamId: teamApproval?.team.teamId ?? null,
           issueId: identityResult.value.issueId ?? null,
           argsJson: args.toolArgs as object,
           toolCallId: args.toolCallId,

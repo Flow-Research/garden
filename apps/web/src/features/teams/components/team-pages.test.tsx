@@ -76,6 +76,8 @@ const apiMocks = vi.hoisted(() => ({
   addTeamMember: vi.fn(),
   removeTeamMember: vi.fn(),
   transferTeamOwner: vi.fn(),
+  getTeamAgentPolicy: vi.fn(),
+  updateTeamAgentPolicy: vi.fn(),
   listMembers: vi.fn(),
   listAgents: vi.fn(),
   listIssues: vi.fn(),
@@ -850,6 +852,42 @@ describe('teams UI', () => {
     expect(screen.getByText('Total Activity')).toBeInTheDocument()
     expect(screen.getAllByText('02')).toHaveLength(2)
     expect(screen.getByText('07')).toBeInTheDocument()
+  })
+
+  it('opens Agent policy from the Team actions menu', async () => {
+    apiMocks.getTeam.mockResolvedValue(makeTeam())
+    apiMocks.listTeamMembers.mockResolvedValue({
+      members: [makeMember()],
+      total: 1,
+    })
+    apiMocks.getTeamAgentPolicy.mockResolvedValue({
+      team_id: 'team-1',
+      policy: {
+        allowed_areas: ['tasks'],
+        blocked_risk_classes: [],
+        blocked_connector_ids: [],
+        approval_required: [],
+      },
+      can_edit: true,
+      updated_at: null,
+    })
+
+    renderWithQuery(
+      <TeamDetail teamId="team-1" tab="members" onTabChange={() => {}} />,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Team actions' }))
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Agent policy' }),
+    )
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Agent policy' }),
+    ).toBeInTheDocument()
+    expect(
+      await screen.findByRole('switch', { name: 'Tasks' }),
+    ).toBeInTheDocument()
+    expect(apiMocks.getTeamAgentPolicy).toHaveBeenCalledWith('team-1')
   })
 
   it('shows a static owner display when transfer is not allowed', async () => {

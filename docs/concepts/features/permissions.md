@@ -3,7 +3,7 @@ title: One permission story covers direct tools, codemode, and connectors
 description: How agent permissions, capability risk classes, and trust levels decide whether a tool call runs, asks for approval, or is blocked, and the rules that keep approvals out of codemode.
 status: current
 owner: "@Flow-Research/security"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-05
 ---
 
 An agent can act through direct tools, through codemode, and through connector tools that Executor serves over MCP. Approval behavior should not depend on which of those paths a call took. Garden is not fully there yet, but every path already reads the same two inputs: the agent's permissions and the capability's trust level.
@@ -18,6 +18,15 @@ An agent can act through direct tools, through codemode, and through connector t
 - `approval_overrides` sets `send_external` and `destructive` approval to `auto` or `manual`.
 
 `evaluateToolPermission` is the single tool gate for chat, issue runs, and automation runs. `derivePermissions` merges an issue's `permissions_override` over the agent's permissions. If stored permissions cannot be parsed, the agent loses full access and every skill. Corrupt settings never grant more than an admin chose.
+
+## Team agent policy is a second ceiling
+
+A Team can cap what any agent does for its members. The runtime loads the policies of every Team the acting user belongs to and combines them strictest-wins. The acting user is the chat owner, or the user who started the issue or automation run.
+
+- **Existence.** A tool exists only when the agent's permissions allow it and no applicable Team blocks its area, its connector, or its risk class. `evaluateRuntimeToolPermission` in `packages/agent-runtime/src/chat-permissions.ts` applies both, so a Team policy never grants a tool the agent lacks.
+- **Approval.** A connector call needs approval when trust resolution says `ask` or any applicable Team marks its risk class **Approval required**. A Team rule wins over the agent's `approval_overrides`. The request records `permission_request.team_id`, and that Team's current owner may decide it alongside `permissionManage` holders.
+
+[Teams](./teams.md#agent-policy-caps-what-agents-do-for-a-teams-members) describes the policy shape, the UI, and the approval routing.
 
 ## Capabilities carry a risk class and a trust level
 

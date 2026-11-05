@@ -23,7 +23,16 @@ import {
   type GardenLogFields,
   type GardenLogger,
 } from '@garden/observability/logger'
-import { evaluateRuntimeToolPermission } from './chat-permissions'
+import {
+  evaluateExecutorCallTeamPolicy,
+  evaluateRuntimeToolPermission,
+  isTeamToolAllowed,
+} from './chat-permissions'
+import {
+  NO_TEAM_AGENT_POLICY,
+  type EffectiveTeamAgentPolicy,
+} from '@garden/core/teams/agent-policy'
+import { loadTeamAgentPolicyForUser } from '@garden/core/teams/agent-policy-store'
 import {
   type AgentModelEnv,
   createAgentModel,
@@ -223,6 +232,8 @@ export abstract class RunSubAgentBase<
 
   protected currentRunId: string | null = null
   protected currentPermissions: AgentPermissions | null = null
+  /** Team policies of the user who started the run, reloaded every turn. */
+  protected currentTeamPolicy: EffectiveTeamAgentPolicy = NO_TEAM_AGENT_POLICY
   protected aggUsage: RunUsageSnapshot | null = null
   protected readonly aiObservation = new AiObservation(this.ctx, this.env)
   private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
@@ -472,6 +483,9 @@ export abstract class RunSubAgentBase<
 
     this.currentRunId = runId
     this.currentPermissions = loadedResult.value.permissions
+    const teamPolicyResult = await this.loadActingUserTeamPolicy()
+    if (teamPolicyResult.isErr()) throw teamPolicyResult.error
+    this.currentTeamPolicy = teamPolicyResult.value
     this.activateRun(loadedResult.value)
     this.startTurnState(runId, loadedResult.value)
     this.aggUsage = null
@@ -568,10 +582,12 @@ export abstract class RunSubAgentBase<
       stopWhen: this.turnStopConditions(),
       system: `${ctx.system}\n\n${[loadedResult.value.contextBlock, brainContext].filter((part) => part.trim() !== '').join('\n\n')}`,
       tools: stableMcpTools,
-      activeTools: mcpController.activeToolKeysWithoutRawMcp({
-        assembledTools: ctx.tools,
-        stableMcpTools,
-      }),
+      activeTools: mcpController
+        .activeToolKeysWithoutRawMcp({
+          assembledTools: ctx.tools,
+          stableMcpTools,
+        })
+        .filter((key) => isTeamToolAllowed(this.currentTeamPolicy, key)),
     } satisfies TurnConfig
   }
 
@@ -1060,14 +1076,61 @@ export abstract class RunSubAgentBase<
     })
   }
 
-  /** Applies the agent's tool permissions to a runtime tool call. */
+  /**
+   * Loads the Team policies of the run's acting user, the same identity that
+   * drives connector bindings. Read per turn, never cached, so a saved policy
+   * applies from the next turn.
+   */
+  private async loadActingUserTeamPolicy(): Promise<
+    ResultValue<EffectiveTeamAgentPolicy, RunSubAgentError>
+  > {
+    const identityResult = await this.resolveMcpIdentity()
+    if (identityResult.isErr()) {
+      return Result.err(
+        this.runError({
+          code: 'runtime_failed',
+          message: identityResult.error.message,
+        }),
+      )
+    }
+    return Result.tryPromise({
+      try: () =>
+        loadTeamAgentPolicyForUser(
+          getPooledDb(this.env.HYPERDRIVE.connectionString),
+          {
+            workspaceId: identityResult.value.workspaceId,
+            userId: identityResult.value.userId,
+          },
+        ),
+      catch: (cause) =>
+        this.runError({
+          code: 'runtime_failed',
+          message:
+            cause instanceof Error
+              ? cause.message
+              : 'Failed to load Team agent policy',
+        }),
+    })
+  }
+
+  /**
+   * Applies the agent's tool permissions and the acting user's Team policies
+   * to a runtime tool call. Executor calls are also checked against the
+   * connectors their code names, which only the input reveals.
+   */
   protected assertToolAllowed(
     runtimeToolName: string,
+    input?: unknown,
   ): ResultValue<void, RunSubAgentError> {
-    const decision = evaluateRuntimeToolPermission(
+    const permissionDecision = evaluateRuntimeToolPermission(
       this.currentPermissions,
+      this.currentTeamPolicy,
       runtimeToolName,
     )
+    const decision =
+      permissionDecision.allowed && input !== undefined
+        ? evaluateExecutorCallTeamPolicy(this.currentTeamPolicy, input)
+        : permissionDecision
     if (decision.allowed) return Result.ok()
     return Result.err(
       this.runError({

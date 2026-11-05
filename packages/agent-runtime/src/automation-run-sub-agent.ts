@@ -566,7 +566,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     const activeResult = await this.assertRunActiveForTool()
     if (activeResult.isErr()) throw activeResult.error
 
-    const gateResult = this.assertToolAllowed(ctx.toolName)
+    const gateResult = this.assertToolAllowed(ctx.toolName, ctx.input)
     if (gateResult.isErr()) throw gateResult.error
 
     this.aiObservation.beforeToolCall(ctx)
@@ -682,6 +682,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
 
   protected override assertToolAllowed(
     runtimeToolName: string,
+    input?: unknown,
   ): ResultValue<void, RunSubAgentError> {
     if (runtimeToolName === 'complete_automation') return Result.ok()
 
@@ -702,7 +703,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     )
     if (closureResult.isErr()) return closureResult
 
-    return super.assertToolAllowed(runtimeToolName)
+    return super.assertToolAllowed(runtimeToolName, input)
   }
 
   /**
