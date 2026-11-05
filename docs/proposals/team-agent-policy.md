@@ -143,6 +143,8 @@ A write publishes `team:policy_updated` with workspace and Team IDs only, like t
 
 ## UI
 
+Design elements with no backing in Garden still render, disabled, with a **Coming soon** badge: the Chats and Home areas, the Delete projects, Manage billing, and Read locked files restrictions, the Deploy changes and Create documents approval rows, the per-member Team Role select, and the Admin Policy tab. They store nothing and the API rejects them, so the badge is the only thing they do.
+
 - The Team detail page's overflow menu gains **Agent policy** for workspace managers and the Team owner. It opens the panel as a side sheet with **Agent access**, **Connector access**, and **Approval rules** tabs, and **Cancel** and **Save changes**.
 - The Team owner sees the same panel read-only, with a line saying only workspace admins can change it.
 - The per-row **Agent settings** button in the design is dropped. The policy is per Team, not per member, so one entry point is enough.
