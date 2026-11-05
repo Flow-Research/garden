@@ -48,12 +48,34 @@ function isPgError(
   return typeof error === 'object' && error !== null && 'code' in error
 }
 
+/** Named FK that blocks deleting a Team while issues still reference it. */
+const ISSUE_TEAM_WORKSPACE_FK = 'issue_team_workspace_fk'
+
 /**
- * Maps Postgres constraint failures onto stable Team error codes. Constraint
- * names are checked instead of message text; anything unknown becomes a
- * generic operation failure so raw database errors never reach the client.
+ * Member/owner identity foreign keys. Before #155 every `23503` was treated as
+ * an invalid member, so an issue→team delete race returned the wrong message.
  */
-function mapDbError(error: unknown): TeamServiceError {
+const INVALID_TEAM_MEMBER_FK_CONSTRAINTS = new Set([
+  'team_member_user_id_user_id_fk',
+  'team_member_agent_id_agent_id_fk',
+  'team_member_team_workspace_fk',
+  'team_member_workspace_id_organization_id_fk',
+  'team_member_created_by_user_id_fk',
+  'team_owner_user_id_user_id_fk',
+  'team_created_by_user_id_fk',
+])
+
+/**
+ * Maps Postgres constraint failures onto stable Team error codes.
+ *
+ * Before: any foreign-key violation (`23503`) became `INVALID_TEAM_MEMBER`, so
+ * deleting a Team that still had issues (race after the pre-check) looked like
+ * a bad member pick. After: `issue_team_workspace_fk` maps to `TEAM_HAS_ISSUES`;
+ * member/owner FKs stay `INVALID_TEAM_MEMBER`; unknown FKs stay generic.
+ * Check violations (`23514`, member identity) remain invalid-member. Constraint
+ * names are authoritative — never message text. Refs: #155.
+ */
+export function mapDbError(error: unknown): TeamServiceError {
   if (!isPgError(error)) {
     return serviceError('TEAM_OPERATION_FAILED', 500, 'Team operation failed')
   }
@@ -71,12 +93,28 @@ function mapDbError(error: unknown): TeamServiceError {
       'This member already belongs to the Team',
     )
   }
-  if (error.code === '23514' || error.code === '23503') {
+  if (error.code === '23514') {
     return serviceError(
       'INVALID_TEAM_MEMBER',
       400,
       'The selected member is not valid for this Team',
     )
+  }
+  if (error.code === '23503') {
+    if (error.constraint === ISSUE_TEAM_WORKSPACE_FK) {
+      return serviceError('TEAM_HAS_ISSUES', 409, 'Team has linked issues')
+    }
+    if (
+      error.constraint &&
+      INVALID_TEAM_MEMBER_FK_CONSTRAINTS.has(error.constraint)
+    ) {
+      return serviceError(
+        'INVALID_TEAM_MEMBER',
+        400,
+        'The selected member is not valid for this Team',
+      )
+    }
+    return serviceError('TEAM_OPERATION_FAILED', 500, 'Team operation failed')
   }
   return serviceError('TEAM_OPERATION_FAILED', 500, 'Team operation failed')
 }
