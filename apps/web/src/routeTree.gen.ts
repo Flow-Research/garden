@@ -74,6 +74,7 @@ import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiAttachmentsIdRouteImport } from './routes/api/attachments/$id'
 import { Route as ApiAgentsIdRouteImport } from './routes/api/agents/$id'
 import { Route as AuthenticatedInvitationsIdRouteImport } from './routes/_authenticated/invitations/$id'
+import { Route as AuthenticatedHandbookSplatRouteImport } from './routes/_authenticated/handbook.$'
 import { Route as AuthenticatedAutomationsIdRouteImport } from './routes/_authenticated/automations.$id'
 import { Route as AuthenticatedAppWorkflowsRouteImport } from './routes/_authenticated/_app/workflows'
 import { Route as AuthenticatedAppTeamsRouteImport } from './routes/_authenticated/_app/teams'
@@ -483,6 +484,12 @@ const AuthenticatedInvitationsIdRoute =
   AuthenticatedInvitationsIdRouteImport.update({
     id: '/invitations/$id',
     path: '/invitations/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedHandbookSplatRoute =
+  AuthenticatedHandbookSplatRouteImport.update({
+    id: '/handbook/$',
+    path: '/handbook/$',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedAutomationsIdRoute =
@@ -959,6 +966,7 @@ export interface FileRoutesByFullPath {
   '/teams': typeof AuthenticatedAppTeamsRouteWithChildren
   '/workflows': typeof AuthenticatedAppWorkflowsRouteWithChildren
   '/automations/$id': typeof AuthenticatedAutomationsIdRoute
+  '/handbook/$': typeof AuthenticatedHandbookSplatRoute
   '/invitations/$id': typeof AuthenticatedInvitationsIdRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/attachments/$id': typeof ApiAttachmentsIdRoute
@@ -1099,6 +1107,7 @@ export interface FileRoutesByTo {
   '/inbox': typeof AuthenticatedAppInboxRoute
   '/skills': typeof AuthenticatedAppSkillsRoute
   '/automations/$id': typeof AuthenticatedAutomationsIdRoute
+  '/handbook/$': typeof AuthenticatedHandbookSplatRoute
   '/invitations/$id': typeof AuthenticatedInvitationsIdRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/attachments/$id': typeof ApiAttachmentsIdRoute
@@ -1247,6 +1256,7 @@ export interface FileRoutesById {
   '/_authenticated/_app/teams': typeof AuthenticatedAppTeamsRouteWithChildren
   '/_authenticated/_app/workflows': typeof AuthenticatedAppWorkflowsRouteWithChildren
   '/_authenticated/automations/$id': typeof AuthenticatedAutomationsIdRoute
+  '/_authenticated/handbook/$': typeof AuthenticatedHandbookSplatRoute
   '/_authenticated/invitations/$id': typeof AuthenticatedInvitationsIdRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/attachments/$id': typeof ApiAttachmentsIdRoute
@@ -1394,6 +1404,7 @@ export interface FileRouteTypes {
     | '/teams'
     | '/workflows'
     | '/automations/$id'
+    | '/handbook/$'
     | '/invitations/$id'
     | '/api/agents/$id'
     | '/api/attachments/$id'
@@ -1534,6 +1545,7 @@ export interface FileRouteTypes {
     | '/inbox'
     | '/skills'
     | '/automations/$id'
+    | '/handbook/$'
     | '/invitations/$id'
     | '/api/agents/$id'
     | '/api/attachments/$id'
@@ -1681,6 +1693,7 @@ export interface FileRouteTypes {
     | '/_authenticated/_app/teams'
     | '/_authenticated/_app/workflows'
     | '/_authenticated/automations/$id'
+    | '/_authenticated/handbook/$'
     | '/_authenticated/invitations/$id'
     | '/api/agents/$id'
     | '/api/attachments/$id'
@@ -2303,6 +2316,13 @@ declare module '@tanstack/react-router' {
       path: '/invitations/$id'
       fullPath: '/invitations/$id'
       preLoaderRoute: typeof AuthenticatedInvitationsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/handbook/$': {
+      id: '/_authenticated/handbook/$'
+      path: '/handbook/$'
+      fullPath: '/handbook/$'
+      preLoaderRoute: typeof AuthenticatedHandbookSplatRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/automations/$id': {
@@ -2995,6 +3015,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAutomationsRoute: typeof AuthenticatedAutomationsRouteWithChildren
   AuthenticatedConnectionsRoute: typeof AuthenticatedConnectionsRoute
   AuthenticatedWorkspaceRoute: typeof AuthenticatedWorkspaceRoute
+  AuthenticatedHandbookSplatRoute: typeof AuthenticatedHandbookSplatRoute
   AuthenticatedInvitationsIdRoute: typeof AuthenticatedInvitationsIdRoute
 }
 
@@ -3003,6 +3024,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAutomationsRoute: AuthenticatedAutomationsRouteWithChildren,
   AuthenticatedConnectionsRoute: AuthenticatedConnectionsRoute,
   AuthenticatedWorkspaceRoute: AuthenticatedWorkspaceRoute,
+  AuthenticatedHandbookSplatRoute: AuthenticatedHandbookSplatRoute,
   AuthenticatedInvitationsIdRoute: AuthenticatedInvitationsIdRoute,
 }
 
