@@ -14,6 +14,8 @@
     "./types": "./src/types/index.ts",
     "./types/*": "./src/types/*.ts",
     "./agents/permissions": "./src/agents/permissions.ts",
+    "./teams/agent-policy": "./src/teams/agent-policy.ts",
+    "./teams/agent-policy-store": "./src/teams/agent-policy-store.ts",
     "./automations/templates": "./src/automations/templates.ts",
     "./issues/deep-link": "./src/issues/deep-link.ts",
     "./issues/identifier": "./src/issues/identifier.ts",
