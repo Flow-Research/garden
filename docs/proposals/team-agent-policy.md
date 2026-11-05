@@ -2,13 +2,13 @@
 title: Team agent policy
 description: Proposal to let workspace admins cap what agents may do when they act for a Team's members, which connectors they may use, and which actions need the Team owner's approval.
 status: proposal
-owner: "@Umoren"
+owner: '@Umoren'
 last_reviewed: 2026-11-05
 ---
 
 **Date:** 2026-11-05. **Audience:** product, frontend, backend, and QA engineers.
 
-> **Not built.** As of 2026-11-05, Teams play no part in agent permission or approval decisions. This proposal follows [Teams](../concepts/features/teams.md), which shipped the Teams admin entry point, and covers screens 34 to 38 of the Teams admin designs.
+> **Not built.** As of 2026-11-05, Teams play no part in agent permission or approval decisions. This proposal follows the Teams Settings entry (PR #288), and covers screens 34 to 38 of the Teams admin designs.
 
 ## The problem
 
@@ -20,12 +20,12 @@ The question this proposal answers: **when an agent acts for a member of a Team,
 
 These were settled on 2026-11-05.
 
-| Decision | Choice | Why |
-| --- | --- | --- |
-| Which agent a policy applies to | Any agent acting for a Team member | Garden has one shared default agent per workspace, not a personal agent per member. The acting user, the owner of the chat or the user who started the run, is what identifies "Vera's work." |
-| How rules combine | Strictest wins | A Team policy is a ceiling. It can remove abilities and add approvals, never grant more than the agent already has. A person on two Teams gets the stricter of both. |
-| Who approves | The Team owner, plus workspace owners and admins | The design's "Default approver: Department Head" is the Team owner. Admins keep their existing right to approve anything. |
-| Admin Policy tab | Cut | Retention, external sharing, organization policy, and autonomous-action levels have no backing in Garden. Audit logging is always on and must not become a per-Team switch. Those belong to a separate workspace policy proposal. |
+| Decision                        | Choice                                           | Why                                                                                                                                                                                                                               |
+| ------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Which agent a policy applies to | Any agent acting for a Team member               | Garden has one shared default agent per workspace, not a personal agent per member. The acting user, the owner of the chat or the user who started the run, is what identifies "Vera's work."                                     |
+| How rules combine               | Strictest wins                                   | A Team policy is a ceiling. It can remove abilities and add approvals, never grant more than the agent already has. A person on two Teams gets the stricter of both.                                                              |
+| Who approves                    | The Team owner, plus workspace owners and admins | The design's "Default approver: Department Head" is the Team owner. Admins keep their existing right to approve anything.                                                                                                         |
+| Admin Policy tab                | Cut                                              | Retention, external sharing, organization policy, and autonomous-action levels have no backing in Garden. Audit logging is always on and must not become a per-Team switch. Those belong to a separate workspace policy proposal. |
 
 Personal agents are out of scope. If Garden later gives each member an agent, this policy still applies, because it keys on the acting user, not the agent.
 
@@ -37,20 +37,20 @@ The Team settings panel has three tabs. Each maps to an existing permission conc
 
 Admins choose which areas an agent may use for this Team's members. The areas are groups of agent tools:
 
-| Area | Agent tools it covers |
-| --- | --- |
-| Tasks | Issue tools |
-| Knowledge | Brain tools |
-| Inbox | Inbox tools |
+| Area        | Agent tools it covers                   |
+| ----------- | --------------------------------------- |
+| Tasks       | Issue tools                             |
+| Knowledge   | Brain tools                             |
+| Inbox       | Inbox tools                             |
 | Connections | Connector tools served through Executor |
-| Workflows | Automation tools |
-| Skills | Skills |
+| Workflows   | Automation tools                        |
+| Skills      | Skills                                  |
 
 The design also lists **Chats** and **Home**. They are dropped: the agent lives in chat, and Home is a page with no agent tools.
 
 Below the areas, **Restricted** blocks whole risk classes. The design's examples, "Delete projects," "Manage billing," and "Read locked files," have no matching capabilities in Garden. They are replaced by the two classes Garden already labels: **Destructive actions** and **Sending outside the workspace** (`destructive` and `send_external` in `capability.risk_class`).
 
-The design's per-member **Team Role** select is dropped. Team roles beyond the owner are out of scope in [Teams](../concepts/features/teams.md).
+The design's per-member **Team Role** select is dropped. Team roles beyond the owner are out of scope for Teams today.
 
 ### Connector access
 
@@ -100,7 +100,12 @@ One row per Team, typed by one shared schema. Edit the Drizzle schema first, the
 ```ts
 // packages/core/src/teams/agent-policy.ts
 export const TeamAgentAreaSchema = z.enum([
-  'tasks', 'knowledge', 'inbox', 'connections', 'workflows', 'skills',
+  'tasks',
+  'knowledge',
+  'inbox',
+  'connections',
+  'workflows',
+  'skills',
 ])
 export const RiskClassSchema = z.enum(['write', 'send_external', 'destructive'])
 
@@ -127,10 +132,10 @@ No row means no policy. Connectors are stored as a blocklist so a connector adde
 
 ## API
 
-| Method | Endpoint | Who | Behavior |
-| --- | --- | --- | --- |
-| `GET` | `/api/teams/:teamId/agent-policy` | Workspace managers and the Team owner | The policy, or the default "no limits" policy when no row exists |
-| `PUT` | `/api/teams/:teamId/agent-policy` | Workspace managers only | Replace the policy. Validates with `TeamAgentPolicySchema`. Returns `{ error, code }` on failure. |
+| Method | Endpoint                          | Who                                   | Behavior                                                                                          |
+| ------ | --------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/teams/:teamId/agent-policy` | Workspace managers and the Team owner | The policy, or the default "no limits" policy when no row exists                                  |
+| `PUT`  | `/api/teams/:teamId/agent-policy` | Workspace managers only               | Replace the policy. Validates with `TeamAgentPolicySchema`. Returns `{ error, code }` on failure. |
 
 A Team owner can read the policy but not change it. The Team owner is the person it constrains approvals around, so an admin sets it.
 
