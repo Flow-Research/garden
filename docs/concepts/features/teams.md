@@ -6,6 +6,8 @@ owner: "@Umoren"
 last_reviewed: 2026-11-05
 ---
 
+Related issue: [#155](https://github.com/Flow-Research/garden/issues/155)
+
 A Team is a group inside a workspace, such as Engineering or Finance. It holds people and agents, has one human owner, and can own issues. Teams decide who sees which Team issues, so they are both an organizing tool and an access rule.
 
 ## Roles decide what each person can do
@@ -21,6 +23,21 @@ Three roles meet on a Team. The server enforces each rule; the UI only hides con
 A Team has exactly one human owner. An agent can be a member but never the owner. A Team with issues cannot be deleted; the API returns `TEAM_HAS_ISSUES`.
 
 The `can_manage` and `can_transfer_owner` fields in a Team response are rendering hints. `requireTeamAccess`, `requireTeamManage`, and `requireTeamOwnerTransfer` in `apps/web/src/lib/server/team-access.ts` make the actual decision on every request.
+
+## Database errors map by constraint name
+
+`mapDbError` in `apps/web/src/lib/server/teams.ts` turns Postgres failures into stable `{ error, code }` responses. It keys off constraint names, not message text.
+
+| Postgres | Constraint | API code |
+| --- | --- | --- |
+| `23503` FK | `issue_team_workspace_fk` | `TEAM_HAS_ISSUES` (409) — Team still has linked issues (including a delete race after the empty-Team pre-check) |
+| `23503` FK | Team member / owner identity FKs (for example `team_member_user_id_user_id_fk`) | `INVALID_TEAM_MEMBER` (400) |
+| `23514` check | Member identity check | `INVALID_TEAM_MEMBER` (400) |
+| `23505` unique | `team_workspace_name_unique` | `TEAM_NAME_EXISTS` (409) |
+| `23505` unique | Other Team uniques | `TEAM_MEMBER_EXISTS` (409) |
+| Other / unknown FK | — | `TEAM_OPERATION_FAILED` (500) |
+
+Delete still pre-checks for linked issues and returns `TEAM_HAS_ISSUES` without hitting the FK when it can. The `issue_team_workspace_fk` branch covers the race where an issue is inserted between that check and the Team delete.
 
 ## Teams live at `/teams`
 
