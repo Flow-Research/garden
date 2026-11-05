@@ -47,7 +47,7 @@ export const Route = createFileRoute('/api/teams/$teamId/owner')({
             payload: {
               workspace_id: access.team.workspaceId,
               team_id: team.id,
-              team,
+              owner_user_id: team.owner_user_id,
             },
           }),
         )
