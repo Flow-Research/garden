@@ -38,7 +38,11 @@ export function remarkHandbookLinks() {
 
     visit(tree, 'link', (node: Link) => {
       const [target, anchor] = node.url.split('#', 2)
-      if (!target || /^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith('/')) {
+      if (
+        !target ||
+        /^[a-z][a-z0-9+.-]*:/i.test(target) ||
+        target.startsWith('/')
+      ) {
         return
       }
 

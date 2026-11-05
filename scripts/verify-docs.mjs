@@ -20,16 +20,52 @@ import path from 'node:path'
  */
 
 const docsRoot = path.resolve('docs')
-const siteFolders = ['tutorials', 'guides', 'concepts', 'reference', 'decisions', 'proposals', 'archive']
+const siteFolders = [
+  'tutorials',
+  'guides',
+  'concepts',
+  'reference',
+  'decisions',
+  'proposals',
+  'archive',
+]
 const statuses = new Set(['current', 'proposal', 'decision', 'archived'])
-const requiredFields = ['title', 'description', 'status', 'owner', 'last_reviewed']
+const requiredFields = [
+  'title',
+  'description',
+  'status',
+  'owner',
+  'last_reviewed',
+]
 const maxReviewAgeDays = 90
-const repoPathPattern = /`((?:apps|packages|scripts|docs|\.github|\.agents|workers)\/[^`\s]*)`/g
+const repoPathPattern =
+  /`((?:apps|packages|scripts|docs|\.github|\.agents|workers)\/[^`\s]*)`/g
 const linkPattern = /\]\(([^)\s]+)\)/g
 const fencePattern = /^```([A-Za-z0-9_+-]+)/gm
 // Shiki languages used across docs/. Add one here only after checking that
 // Shiki bundles it; an unknown language fails the handbook build.
-const fenceLanguages = new Set(['bash', 'sh', 'shell', 'ts', 'tsx', 'js', 'json', 'jsonc', 'yaml', 'sql', 'text', 'txt', 'dotenv', 'mermaid', 'diff', 'md', 'mdx', 'toml', 'html', 'css'])
+const fenceLanguages = new Set([
+  'bash',
+  'sh',
+  'shell',
+  'ts',
+  'tsx',
+  'js',
+  'json',
+  'jsonc',
+  'yaml',
+  'sql',
+  'text',
+  'txt',
+  'dotenv',
+  'mermaid',
+  'diff',
+  'md',
+  'mdx',
+  'toml',
+  'html',
+  'css',
+])
 
 const errors = []
 
@@ -51,7 +87,13 @@ function readFrontmatter(text) {
       .split('\n')
       .map((line) => line.match(/^([a-z_]+):\s*(.*)$/))
       .filter(Boolean)
-      .map(([, key, value]) => [key, value.replace(/\s+#.*$/, '').replace(/^["']|["']$/g, '').trim()]),
+      .map(([, key, value]) => [
+        key,
+        value
+          .replace(/\s+#.*$/, '')
+          .replace(/^["']|["']$/g, '')
+          .trim(),
+      ]),
   )
 }
 
@@ -62,7 +104,9 @@ function withoutCodeFences(text) {
 
 const pages = [
   path.join(docsRoot, 'index.mdx'),
-  ...siteFolders.flatMap((folder) => walk(path.join(docsRoot, folder))).filter((file) => /\.mdx?$/.test(file)),
+  ...siteFolders
+    .flatMap((folder) => walk(path.join(docsRoot, folder)))
+    .filter((file) => /\.mdx?$/.test(file)),
 ]
 const today = Date.now()
 
@@ -76,25 +120,32 @@ for (const file of pages) {
     continue
   }
   for (const field of requiredFields) {
-    if (!frontmatter[field]) errors.push(`${rel}: frontmatter is missing \`${field}\``)
+    if (!frontmatter[field])
+      errors.push(`${rel}: frontmatter is missing \`${field}\``)
   }
   for (const line of text.match(/^---\n([\s\S]*?)\n---\n/)[1].split('\n')) {
     const value = line.match(/^[a-z_]+:\s+(.*)$/)?.[1] ?? ''
     if (value.includes(': ') && !/^["']/.test(value)) {
-      errors.push(`${rel}: quote the frontmatter value in \`${line.slice(0, 40)}\``)
+      errors.push(
+        `${rel}: quote the frontmatter value in \`${line.slice(0, 40)}\``,
+      )
     }
   }
   for (const [, language] of text.matchAll(fencePattern)) {
-    if (!fenceLanguages.has(language)) errors.push(`${rel}: code fence language \`${language}\` is not loaded`)
+    if (!fenceLanguages.has(language))
+      errors.push(`${rel}: code fence language \`${language}\` is not loaded`)
   }
   if (frontmatter.status && !statuses.has(frontmatter.status)) {
     errors.push(`${rel}: unknown status \`${frontmatter.status}\``)
   }
   if (frontmatter.status === 'current' && frontmatter.last_reviewed) {
     const ageDays = (today - Date.parse(frontmatter.last_reviewed)) / 86_400_000
-    if (Number.isNaN(ageDays)) errors.push(`${rel}: last_reviewed is not a date`)
+    if (Number.isNaN(ageDays))
+      errors.push(`${rel}: last_reviewed is not a date`)
     else if (ageDays > maxReviewAgeDays) {
-      errors.push(`${rel}: last reviewed ${Math.floor(ageDays)} days ago. Re-verify it and update last_reviewed.`)
+      errors.push(
+        `${rel}: last reviewed ${Math.floor(ageDays)} days ago. Re-verify it and update last_reviewed.`,
+      )
     }
   }
 
@@ -103,8 +154,15 @@ for (const file of pages) {
 
   for (const [, url] of body.matchAll(linkPattern)) {
     const target = url.split('#')[0]
-    if (!target || /^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith('/')) continue
-    if (!existsSync(path.resolve(path.dirname(file), decodeURIComponent(target)))) {
+    if (
+      !target ||
+      /^[a-z][a-z0-9+.-]*:/i.test(target) ||
+      target.startsWith('/')
+    )
+      continue
+    if (
+      !existsSync(path.resolve(path.dirname(file), decodeURIComponent(target)))
+    ) {
       errors.push(`${rel}: broken link \`${url}\``)
     }
   }
@@ -112,18 +170,32 @@ for (const file of pages) {
   for (const [, repoPath] of body.matchAll(repoPathPattern)) {
     if (/[*<>{}$]/.test(repoPath)) continue
     const clean = repoPath.replace(/[.,:;)]+$/, '').replace(/#.*$/, '')
-    if (!existsSync(path.resolve(clean))) errors.push(`${rel}: path \`${clean}\` does not exist`)
+    if (!existsSync(path.resolve(clean)))
+      errors.push(`${rel}: path \`${clean}\` does not exist`)
   }
 }
 
-for (const metaFile of walk(docsRoot).filter((file) => path.basename(file) === 'meta.json')) {
+for (const metaFile of walk(docsRoot).filter(
+  (file) => path.basename(file) === 'meta.json',
+)) {
   const dir = path.dirname(metaFile)
   const entries = JSON.parse(readFileSync(metaFile, 'utf8')).pages ?? []
   for (const entry of entries) {
-    if (entry === '...' || entry.startsWith('---') || entry.startsWith('[') || entry.startsWith('!')) continue
+    if (
+      entry === '...' ||
+      entry.startsWith('---') ||
+      entry.startsWith('[') ||
+      entry.startsWith('!')
+    )
+      continue
     const base = path.join(dir, entry)
-    const found = [base, `${base}.md`, `${base}.mdx`].some((candidate) => existsSync(candidate))
-    if (!found) errors.push(`${path.relative(process.cwd(), metaFile)}: sidebar entry \`${entry}\` does not exist`)
+    const found = [base, `${base}.md`, `${base}.mdx`].some((candidate) =>
+      existsSync(candidate),
+    )
+    if (!found)
+      errors.push(
+        `${path.relative(process.cwd(), metaFile)}: sidebar entry \`${entry}\` does not exist`,
+      )
   }
 }
 
