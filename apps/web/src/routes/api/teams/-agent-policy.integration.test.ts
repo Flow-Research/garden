@@ -125,7 +125,9 @@ describe('Team agent policy API (integration)', () => {
       published,
     })
     expect(response.status).toBe(200)
-    expect(((await response.json()) as { policy: unknown }).policy).toEqual(strictPolicy)
+    expect(((await response.json()) as { policy: unknown }).policy).toEqual(
+      strictPolicy,
+    )
     expect(published).toHaveLength(1)
     expect(published[0]?.type).toBe('team:policy_updated')
     expect(published[0]?.payload).toEqual({
@@ -140,7 +142,9 @@ describe('Team agent policy API (integration)', () => {
       userId: fixture.ownerId,
       role: 'owner',
     })
-    expect(((await read.json()) as { policy: unknown }).policy).toEqual(strictPolicy)
+    expect(((await read.json()) as { policy: unknown }).policy).toEqual(
+      strictPolicy,
+    )
   })
 
   it('lets the Team owner read the policy but refuses a write', async () => {
