@@ -154,6 +154,33 @@ async function issueRecipientIds(
   return Array.from(recipients)
 }
 
+/**
+ * Recipients for an approval a Team agent policy required. The Team owner is
+ * the default approver in the Team admin design, so the item goes to them.
+ * When the owner has left the workspace, workspace owners and admins receive
+ * it so the request never waits on nobody.
+ */
+async function teamPolicyApproverIds(
+  db: GardenDb,
+  workspaceId: string,
+  teamId: string,
+): Promise<string[]> {
+  const [team] = await db
+    .select({ ownerUserId: schema.team.ownerUserId })
+    .from(schema.team)
+    .where(
+      and(eq(schema.team.id, teamId), eq(schema.team.workspaceId, workspaceId)),
+    )
+    .limit(1)
+  if (
+    team &&
+    (await isActiveWorkspaceUser(db, workspaceId, team.ownerUserId))
+  ) {
+    return [team.ownerUserId]
+  }
+  return workspacePermissionApproverIds(db, workspaceId)
+}
+
 async function isActiveWorkspaceUser(
   db: GardenDb,
   workspaceId: string,
@@ -528,11 +555,13 @@ export async function upsertPermissionRequestInbox(args: {
   )
     return
 
-  const recipients = row.issue?.teamId
-    ? await resolveIssueRecipientIds(args.db, row.issue, {
-        agentId: row.request.agentId,
-      })
-    : await workspacePermissionApproverIds(args.db, args.workspaceId)
+  const recipients = row.request.teamId
+    ? await teamPolicyApproverIds(args.db, args.workspaceId, row.request.teamId)
+    : row.issue?.teamId
+      ? await resolveIssueRecipientIds(args.db, row.issue, {
+          agentId: row.request.agentId,
+        })
+      : await workspacePermissionApproverIds(args.db, args.workspaceId)
   const titleSuffix = row.issue ? ` on ${row.issue.title}` : ''
   await Promise.all(
     recipients.map((recipientId) =>
