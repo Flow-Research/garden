@@ -34,7 +34,9 @@ export function remarkHandbookLinks() {
   // bundle through `source.ts`, where `import.meta.url` is not a file URL and
   // `new URL(...)` threw on import, which failed every server-rendered page
   // with a 500 on garden-dev. The plugin itself only runs during the MDX build.
-  const docsRoot = fileURLToPath(new URL('../../../../../docs/', import.meta.url))
+  const docsRoot = fileURLToPath(
+    new URL('../../../../../docs/', import.meta.url),
+  )
   const repoRoot = path.resolve(docsRoot, '..')
 
   return (tree: Root, file: VFile) => {
