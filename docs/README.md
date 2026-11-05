@@ -17,7 +17,7 @@ The folders follow [Diátaxis](https://diataxis.fr). Each page has one job.
 | [`concepts/`](./concepts/architecture/how-garden-is-built.mdx) | Why a part of Garden works the way it does | [Run engine](./concepts/architecture/run-engine.md) |
 | [`reference/`](./reference/architecture-map.md) | Facts to look up: paths, bindings, tokens, gaps | [Environment and bindings](./reference/environment-and-bindings.md) |
 | [`decisions/`](./decisions/) | Dated design decisions and their trade-offs | [Scoped Executor MCP sessions](./decisions/2026-10-scoped-executor-mcp-sessions.md) |
-| [`proposals/`](./proposals/) | Designs that are not built yet | [Teams settings entry](./proposals/teams-settings-entry.md) |
+| [`proposals/`](./proposals/) | Designs that are not built yet | [Decide in automations](./proposals/decide-automations.md) |
 | [`archive/`](./archive/) | Historical snapshots. Not current truth. | Past audits and specs |
 
 `templates/` holds the feature page template. It is not a site page.

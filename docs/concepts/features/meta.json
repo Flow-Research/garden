@@ -1,1 +1,14 @@
-{ "title": "Features", "pages": ["issues", "chat", "automations", "decide", "artifacts", "skills", "permissions", "handbook"] }
+{
+  "title": "Features",
+  "pages": [
+    "issues",
+    "chat",
+    "automations",
+    "decide",
+    "artifacts",
+    "skills",
+    "teams",
+    "permissions",
+    "handbook"
+  ]
+}

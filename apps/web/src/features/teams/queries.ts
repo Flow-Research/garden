@@ -23,13 +23,18 @@ export function teamIssueCachesPrefix(wsId: string) {
   return ['issues', wsId, 'team'] as const
 }
 
+/**
+ * The Team list keeps the full response, `{ teams, total, unique_member_count }`.
+ * It used to select only `teams`, so the overview had to override `select` to
+ * read the workspace-wide member count from the same cache entry. Callers now
+ * read `.teams` themselves and every reader sees one shape.
+ */
 export function teamListOptions(wsId: string) {
   return queryOptions({
     queryKey: teamKeys.list(wsId),
     queryFn: () => api.listTeams(),
     staleTime: 30_000,
     placeholderData: (previous) => previous,
-    select: (data) => data.teams,
   })
 }
 
