@@ -856,6 +856,14 @@ separate. The second asks Garden to answer from a synthetic project brief. It
 checks the owner and date and confirms that the chat did not start a Decide
 run.
 
+The uploaded-brief task is version 2. Its fact grader matches text values
+case-insensitively. Expected ISO calendar dates also accept equivalent English
+month-name dates, including `December 14, 2026`, `14 Dec 2026`, and ordinal
+days such as `December 14th, 2026`. Date matching uses UTC and whole tokens;
+wrong dates, missing owners, and unsupported numeric formats still fail.
+Version 1 required the literal ISO date even though the prompt did not ask
+for that format. Run grader regressions with `pnpm --filter @garden/evals test`.
+
 Use the dev deployment and a dedicated eval workspace and agent. Each Promptfoo
 run creates two threads and uploads two synthetic files. The Decide case also
 starts one Decide analysis and creates its workbook. Do not use a user's CSV:

@@ -28,6 +28,11 @@ const correctionExpectedSchema = z
 const answerExpectedSchema = z
   .object({ values: z.array(z.string().min(1)).min(1) })
   .strict()
+const calendarDateSchema = z.iso.date()
+const englishDateFormatters = ['en-US', 'en-GB'].flatMap((locale) => [
+  new Intl.DateTimeFormat(locale, { dateStyle: 'long', timeZone: 'UTC' }),
+  new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }),
+])
 
 export type DecideAnalysisObservation = NonNullable<
   ChatTaskEvidence['decideAnalysis']
@@ -133,10 +138,9 @@ function gradeCriterion(input: {
     case 'chat-answer-includes-fixture-facts': {
       const expected = answerExpectedSchema.safeParse(input.expected)
       if (!expected.success) return invalidExpected(input.graderId)
-      const normalizedResponse = input.response.toLocaleLowerCase()
       return Result.ok(
         expected.data.values.every((value) =>
-          normalizedResponse.includes(value.toLocaleLowerCase()),
+          includesExpectedFact(input.response, value),
         ),
       )
     }
@@ -151,6 +155,42 @@ function gradeCriterion(input: {
         }),
       )
   }
+}
+
+/**
+ * Accepts calendar-date equivalents without loosening other fixture facts.
+ * The brief's correct "December 14, 2026" answer previously failed literal
+ * ISO matching. UTC formatting avoids timezone shifts and ambiguous parsing.
+ * References: `uploadedBriefTask`, Zod ISO dates, and `Intl.DateTimeFormat`.
+ */
+function includesExpectedFact(response: string, expected: string): boolean {
+  const calendarDate = calendarDateSchema.safeParse(expected)
+  if (!calendarDate.success) {
+    return response.toLocaleLowerCase().includes(expected.toLocaleLowerCase())
+  }
+
+  const date = new Date(`${calendarDate.data}T00:00:00Z`)
+  const equivalents = [
+    calendarDate.data,
+    ...englishDateFormatters.map((formatter) => formatter.format(date)),
+  ]
+  const normalizedResponse = ` ${normalizeDateText(response)} `
+  return equivalents.some((equivalent) =>
+    normalizedResponse.includes(` ${normalizeDateText(equivalent)} `),
+  )
+}
+
+/**
+ * Ignores punctuation, whitespace, and English ordinal suffixes when matching
+ * formatted dates. Whole tokens prevent the old substring match from accepting
+ * extra day/year digits. ISO hyphens stay distinct from numeric date formats.
+ */
+function normalizeDateText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\b(\d{1,2})(?:st|nd|rd|th)\b/g, '$1')
+    .replace(/[^\p{L}\p{N}-]+/gu, ' ')
+    .trim()
 }
 
 /** Builds a report reference without including document text or file URLs. */

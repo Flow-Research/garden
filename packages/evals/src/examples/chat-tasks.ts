@@ -87,7 +87,7 @@ export const uploadedBriefFixture = [
 
 export const uploadedBriefTask: TaskDefinition & { surface: 'chat' } = {
   taskId: 'answers.uploaded-brief-facts',
-  version: 1,
+  version: 2,
   suite: 'collaboration',
   surface: 'chat',
   fixture: { fixtureId: 'synthetic-project-brief-v1', version: 1 },

@@ -10,6 +10,7 @@
   "scripts": {
     "eval:issue-run": "node --experimental-strip-types src/cli.ts",
     "eval:promptfoo": "node scripts/eval-promptfoo.mjs",
+    "test": "node --experimental-strip-types --test src/graders/*.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives ."
   },
