@@ -19,10 +19,7 @@ export type GitHubAuthFailureCode =
   | 'token_rejected'
   | 'insufficient_permission'
 
-export type GitHubInstallationStatus =
-  | 'connected'
-  | 'degraded'
-  | 'disconnected'
+export type GitHubInstallationStatus = 'connected' | 'degraded' | 'disconnected'
 
 const GITHUB_AUTH_HINTS: Record<GitHubAuthFailureCode, string> = {
   install_missing:
@@ -71,8 +68,7 @@ export function classifyGitHubMintFailure(error: GitHubAppAuthError): {
   connectorCode: string
 } {
   const installMissing =
-    error.code === 'missing_config' &&
-    /installation id/i.test(error.message)
+    error.code === 'missing_config' && /installation id/i.test(error.message)
 
   const code: GitHubAuthFailureCode = installMissing
     ? 'install_missing'
@@ -123,9 +119,7 @@ export function connectorErrorFromGitHubHttp(args: {
   return new ConnectorHttpError({
     connectorId: 'github',
     operation: args.operation,
-    message:
-      detail ||
-      `GitHub API rejected the request (${args.status}).`,
+    message: detail || `GitHub API rejected the request (${args.status}).`,
     status: args.status,
     cause: args.cause,
   })

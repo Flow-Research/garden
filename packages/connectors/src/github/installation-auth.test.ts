@@ -58,7 +58,10 @@ describe('mintGitHubInstallationAccessToken', () => {
 
   it('maps mint failures to classified ConnectorAuthError', async () => {
     mint.mockResolvedValueOnce(
-      Result.err<{ token: string; expiresAt: string; installationId: string }, GitHubAppAuthError>(
+      Result.err<
+        { token: string; expiresAt: string; installationId: string },
+        GitHubAppAuthError
+      >(
         new GitHubAppAuthError({
           code: 'token_request_failed',
           message: 'Bad credentials',

@@ -128,9 +128,7 @@ function ConnectionsRoute() {
   const navigate = Route.useNavigate()
   const [dismissedFocusId, setDismissedFocusId] = useState<string | null>(null)
   const focusedConnectorId =
-    connector_id && connector_id !== dismissedFocusId
-      ? connector_id
-      : undefined
+    connector_id && connector_id !== dismissedFocusId ? connector_id : undefined
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

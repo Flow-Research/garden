@@ -141,10 +141,7 @@ export const makeGitHubRestClientLayer = (): Layer.Layer<
                   }),
               )
               if (response.status < 200 || response.status >= 300) {
-                const bodyText = yield* readErrorBody(
-                  response,
-                  input.operation,
-                )
+                const bodyText = yield* readErrorBody(response, input.operation)
                 return yield* connectorErrorFromGitHubHttp({
                   operation: input.operation,
                   status: response.status,

@@ -74,7 +74,9 @@ describe('GitHubRestClient remint-once', () => {
     mintOk('ghs_b')
 
     const fetch: typeof globalThis.fetch = (async () =>
-      new Response('Bad credentials', { status: 401 })) as typeof globalThis.fetch
+      new Response('Bad credentials', {
+        status: 401,
+      })) as typeof globalThis.fetch
 
     const error = await Effect.runPromise(
       Effect.gen(function* () {

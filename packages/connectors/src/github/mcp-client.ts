@@ -16,10 +16,7 @@ import {
   mintGitHubInstallationAccessToken,
   withGitHubTokenRejectedRemintOnce,
 } from './installation-auth.ts'
-import {
-  GitHubAppConfig,
-  type GitHubAppConfigShape,
-} from './rest-client.ts'
+import { GitHubAppConfig, type GitHubAppConfigShape } from './rest-client.ts'
 
 const GITHUB_MCP_URL = 'https://api.githubcopilot.com/mcp/'
 const GITHUB_MCP_TOOLSETS = 'repos,issues,pull_requests,actions'

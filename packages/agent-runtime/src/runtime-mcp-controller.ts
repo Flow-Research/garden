@@ -933,13 +933,15 @@ export class RuntimeMcpController {
                 execute: async (input) => {
                   const outcome = await Effect.runPromise(
                     Effect.match(
-                      nativeTool.execute(input).pipe(
-                        Effect.provide(
-                          makeGitHubBaseLayer(
-                            this.githubAppConfig(githubAccount),
+                      nativeTool
+                        .execute(input)
+                        .pipe(
+                          Effect.provide(
+                            makeGitHubBaseLayer(
+                              this.githubAppConfig(githubAccount),
+                            ),
                           ),
                         ),
-                      ),
                       {
                         onFailure: (error) => ({
                           kind: 'failure' as const,

@@ -21,7 +21,6 @@ describe('normalizeGitHubAppPrivateKey', () => {
   })
 })
 
-
 function base64UrlJson(segment: string) {
   return JSON.parse(Buffer.from(segment, 'base64url').toString('utf8')) as {
     iat: number
@@ -80,12 +79,11 @@ describe('createGitHubAppJwt', () => {
 
 describe('createGitHubInstallationAccessToken', () => {
   it('returns token, expiresAt, and installationId from GitHub', async () => {
-    const request = vi.fn(
-      async () =>
-        Response.json({
-          token: 'ghs_test_token',
-          expires_at: '2026-10-22T12:00:00Z',
-        }),
+    const request = vi.fn(async () =>
+      Response.json({
+        token: 'ghs_test_token',
+        expires_at: '2026-10-22T12:00:00Z',
+      }),
     )
     const result = await createGitHubInstallationAccessToken({
       env: {
@@ -133,9 +131,8 @@ describe('createGitHubInstallationAccessToken', () => {
   })
 
   it('maps GitHub token mint failures', async () => {
-    const request = vi.fn(
-      async () =>
-        Response.json({ message: 'Bad credentials' }, { status: 401 }),
+    const request = vi.fn(async () =>
+      Response.json({ message: 'Bad credentials' }, { status: 401 }),
     )
     const result = await createGitHubInstallationAccessToken({
       env: {
