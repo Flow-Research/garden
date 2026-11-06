@@ -77,7 +77,28 @@ The order:
 4. **Build engineering context routing,** then marketing's agent and connectors.
 5. **Add Anytype** as a second source of team knowledge.
 
-## 8. Meetings feature: agreed inputs
+### Engineering basics scan, 2026-11-06
+
+A read-only audit of the code found that the basics are a feature to build, not a set of bugs to fix:
+
+- **GitHub issue sync does not exist.** Nothing imports issues, keeps them updated, or maps GitHub logins to Garden users. The only GitHub routes install the app. Write-back is limited to posting one comment when a person applies a result.
+- **Team members see only issues assigned to them.** Managers and the team owner see the whole board (`apps/web/src/lib/server/issue-access.ts`).
+- **Accepting a workspace invitation adds nobody to a team,** so a new member lands on an empty board.
+- **Agent issue runs work but are not hardened.** Concurrent starts can race, a failed start is only logged, and the run lifecycle is unproven in staging (FLO-31).
+
+## 8. Team structure
+
+Engineering is a kind of work, not a single team. Flow Research runs several product teams that build software: Garden, Workstream, LMS, and Blockchain. Each becomes its own Garden team, and each owns its own GitHub repositories. Linking repositories to a team lets GitHub issue sync land every issue on the right board without manual routing.
+
+The product teams share an engineering agent and its skills, such as triaging an issue, reviewing a pull request, or writing a fix. Only the context changes from team to team. This follows the Grok Bot pattern of one role template reused by many teams.
+
+People sometimes work across product teams. Samuel, Abiola, and Bashir can each belong to more than one. The Teams model already supports this: `team_member` is unique only per team and member (`packages/db/src/schema/teams.ts`), and an agent can be a team member too.
+
+An engineering team counts as onboarded when its repositories are linked to its Garden team, its members have joined with GitHub logins matched to their Garden accounts, its issues appear on its board, and its meetings appear on its team page. The checklist is the same for every product team, so it is built once and repeated. The order is Garden, then Workstream, then LMS, then Blockchain.
+
+Research is a different shape. Flow Research has several research teams, and their output is knowledge: papers, experiments, findings, and literature notes. Much of it probably does not live in GitHub issues, and where it does live is still unknown. Samuel is asking the research teams. Research joins in the second wave with meetings and Org Brain, and may be the team that tests the context layer hardest. A research agent, for example one that reads new papers and files findings into topics, comes later.
+
+## 9. Meetings feature: agreed inputs
 
 - **Recorder:** Gemini notes from Google Meet are the canonical source. Other recorders are out of scope.
 - **Teams:** every Flow Research team exists in Garden with its members, built on the Teams feature.
@@ -87,11 +108,11 @@ The feature collects notes, extracts decisions, action items with owners, open q
 
 Open question: whether some meetings, such as one-on-ones or leadership sessions, stay restricted instead of open to the whole company.
 
-## 9. Anytype
+## 10. Anytype
 
 Teams use Anytype, so it belongs in the context layer eventually. It is local-first. A community MCP server reaches it through a local API on the user's own desktop at `localhost:31009`, using a key approved in the desktop app. Garden runs on Cloudflare and cannot reach a teammate's laptop. Connecting it needs either a small sync helper on each person's machine or Anytype's sync or self-hosted network. Neither path is verified against Anytype's own documentation. Onboarding must not depend on it.
 
-## 10. Open questions
+## 11. Open questions
 
 - How should a certified insight differ from a draft in the UI, and who may certify?
 - Which team owns a meeting that spans several teams, and how are its items split?
